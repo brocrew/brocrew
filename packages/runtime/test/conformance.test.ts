@@ -227,7 +227,7 @@ const CONTRACT_MEMBERS: Record<keyof SessionHandle, string> = {
   checkSignIn: 'look now, and latch the answer (147/149)',
   signInCopyAtLaunch:
     'the copy of its sign-in its provider program was started on, by what tells one copy from another',
-  signInTag: 'a one-way tag for the sign-in it launched on, or null: reads nothing when asked',
+  signInTag: 'a confirmed native account tag, or null: reads nothing when asked',
   account: 'who its provider says it is signed in as, asked through the provider’s own interface',
   send: 'start a turn',
   carryOn:

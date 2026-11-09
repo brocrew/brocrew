@@ -100,7 +100,6 @@ import {
   type ClaudeApiKeyProviderAsync,
   type ClaudeAuthTokenProvider,
   type ClaudeAuthTokenProviderAsync,
-  credentialFingerprint,
 } from '../internal/auth'
 import { buildChildEnv } from '../internal/child-env'
 import {
@@ -1635,17 +1634,16 @@ export class ClaudeSessionHandle implements SessionHandle {
     }
   }
 
-  noteLaunchCredential(fingerprint: string): void {
-    this.launchCredential = fingerprint
+  noteLaunchCredential(token: string): void {
+    this.launchCredential = token
   }
 
   noteLaunchedOnAKey(): void {
     this.launchedOnAKey = true
   }
 
-  /** Of the login this session launched with, so a renewed login answers another tag. */
   signInTag(): string | null {
-    return this.launchCredential === null ? null : `credential:${this.launchCredential}`
+    return null
   }
 
   async checkSignIn(): Promise<boolean> {
@@ -1654,7 +1652,7 @@ export class ClaudeSessionHandle implements SessionHandle {
 
     const current = await this.authTokenProviderAsync()
     if (current === null) return false
-    if (credentialFingerprint(current) === this.launchCredential) return false
+    if (current === this.launchCredential) return false
     this._signInSuperseded = true
     return true
   }
@@ -1665,8 +1663,7 @@ export class ClaudeSessionHandle implements SessionHandle {
     }
     try {
       const current = await this.authTokenProviderAsync()
-      if (current !== null && credentialFingerprint(current) === this.launchCredential)
-        return 'auth'
+      if (current !== null && current === this.launchCredential) return 'auth'
     } catch {
       // An unreadable credential cannot prove the rejected token is still current.
     }
@@ -2909,7 +2906,7 @@ export class ClaudeRuntime implements AgentRuntime {
 
     const { additions, piped, onAKey } = this.childEnvAdditions(providerHome, auth)
     const injected = additions.CLAUDE_CODE_OAUTH_TOKEN
-    if (injected) handle.noteLaunchCredential(credentialFingerprint(injected))
+    if (injected) handle.noteLaunchCredential(injected)
     if (onAKey) handle.noteLaunchedOnAKey()
 
     const mcpServers = claudeMcpServersFor(agentTools, externalMcp?.servers ?? [], managedPluginMcp)

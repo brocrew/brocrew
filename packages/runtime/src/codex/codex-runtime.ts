@@ -3,7 +3,7 @@ import type { ManagedPluginObserver } from '../managed-plugin-observation'
 import { BUILT_IN_SKILLS_FAILURE } from '../built-in-skills'
 import { registerCodexBuiltInSkills } from './built-in-skills'
 import type { BuiltInSkillsContext, StartPhaseSink } from '../runtime'
-import { lstatSync, readFileSync, realpathSync } from 'node:fs'
+import { realpathSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { SessionStatus } from '@brobot2/shared'
 import { resolveGeneratedImage } from './generated-image'
@@ -172,21 +172,6 @@ import type { ThreadStartParams } from './protocol/v2/ThreadStartParams'
 import type { JsonValue } from './protocol/serde_json/JsonValue'
 import type { TurnInterruptParams } from './protocol/v2/TurnInterruptParams'
 import type { TurnStartParams } from './protocol/v2/TurnStartParams'
-
-/** A saved key's public revision, captured before launch; no key material is read. */
-function savedKeyTagIn(home: string): string | null {
-  try {
-    const file = join(home, 'brobot-api-key-login.json')
-    const stat = lstatSync(file)
-    if (!stat.isFile() || stat.size > 256) return null
-    const revision = (JSON.parse(readFileSync(file, 'utf8')) as { setAt?: unknown }).setAt
-    return typeof revision === 'number' && Number.isSafeInteger(revision) && revision >= 0
-      ? `api-revision:${revision}`
-      : null
-  } catch {
-    return null
-  }
-}
 
 /** Per-launch context passed to a {@link TransportFactory} so the spawn gets the profile home (021). */
 export interface CodexLaunchContext {
@@ -2842,7 +2827,6 @@ export class CodexSessionHandle implements SessionHandle {
    * `null` when it could not be read: then nothing can say the sign-in moved.
    */
   private launchAccount: string | null | undefined = undefined
-  private launchKeyTag: string | null = null
   /** The copy of the sign-in the home held just before the app-server was spawned, by what tells it apart. */
   private launchCopy: CodexCopyIdentity | null = null
   /** Latched by {@link checkSignIn}; read for free by every disclosure after that. */
@@ -3647,11 +3631,10 @@ export class CodexSessionHandle implements SessionHandle {
     })()
   }
 
-  /** Of the account or saved-key revision this session launched on. */
+  /** A confirmed native account; a key revision does not identify an account. */
   signInTag(): string | null {
     const account = this.launchAccount
-    if (account === 'api-key') return this.launchKeyTag
-    return account === null || account === undefined ? null : `account:${account}`
+    return account == null || account === 'api-key' ? null : `native-account:${account}`
   }
 
   /**
@@ -3688,14 +3671,9 @@ export class CodexSessionHandle implements SessionHandle {
   }
 
   /** The account the home named just before the app-server was spawned, which is what it loads. */
-  noteLaunchAccount(
-    account: string | null,
-    copy: CodexCopyIdentity | null = null,
-    keyTag: string | null = account === 'api-key' ? savedKeyTagIn(this.providerHome) : null,
-  ): void {
+  noteLaunchAccount(account: string | null, copy: CodexCopyIdentity | null = null): void {
     this.launchAccount = account
     this.launchCopy = copy
-    this.launchKeyTag = keyTag
   }
 
   /**
@@ -6760,7 +6738,6 @@ export class CodexRuntime implements AgentRuntime {
     // The account the app-server is about to load, read just before it is spawned.
     const launchAccount = codexAccountInNow(opts.providerHome)
     const launchCopy = codexCopyIdentityIn(opts.providerHome)
-    const launchKeyTag = launchAccount === 'api-key' ? savedKeyTagIn(opts.providerHome) : null
     // ⚠️ **The cancel is NOT re-asked here, and that was a deliberate reversal.** Re-asking looks
     // strictly safer and is not: 070 pins that a cancel arriving after `start` was called closes the
     // transport it had already spawned, and refusing to spawn instead left that test waiting for a
@@ -6809,7 +6786,7 @@ export class CodexRuntime implements AgentRuntime {
       opts.managedPluginMcp,
       opts.observeManagedPlugins,
     )
-    handle.noteLaunchAccount(launchAccount, launchCopy, launchKeyTag)
+    handle.noteLaunchAccount(launchAccount, launchCopy)
     handle.noteStartPhases(phase)
     try {
       // A malformed thread/start now throws from begin() (empty/missing id) —
@@ -6948,7 +6925,6 @@ export class CodexRuntime implements AgentRuntime {
     let transport: CodexTransport
     let launchAccount: string | null
     let launchCopy: CodexCopyIdentity | null
-    let launchKeyTag: string | null
     let memoryConfig: CodexMemoryConfigResult
     const phase = phasesOf(options.startPhases)
     // 🔴 **697 · `673` F-6 — Claude's boundary, over the steps BEFORE the handshake too.** ⛔ A cancel
@@ -6980,7 +6956,6 @@ export class CodexRuntime implements AgentRuntime {
       bootSettled = settled
       launchAccount = codexAccountInNow(options.providerHome)
       launchCopy = codexCopyIdentityIn(options.providerHome)
-      launchKeyTag = launchAccount === 'api-key' ? savedKeyTagIn(options.providerHome) : null
       try {
         transport = this.transportFactory({ cwd: ref.cwd, providerHome: options.providerHome })
       } catch (error) {
@@ -7035,7 +7010,7 @@ export class CodexRuntime implements AgentRuntime {
       options.managedPluginMcp,
       options.observeManagedPlugins,
     )
-    handle.noteLaunchAccount(launchAccount, launchCopy, launchKeyTag)
+    handle.noteLaunchAccount(launchAccount, launchCopy)
     handle.noteStartPhases(phase)
     try {
       // begin() rejects on a missing thread AND on an explicit post-handshake

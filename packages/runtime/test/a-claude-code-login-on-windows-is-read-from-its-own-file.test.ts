@@ -12,7 +12,6 @@ import {
   claudeKeychainTokenProviderAsync,
   claudeLoginState,
   claudeSetup,
-  credentialFingerprint,
   whyNoClaudeLogin,
 } from '../src/internal/auth'
 
@@ -130,9 +129,6 @@ describe('the login, read as the Keychain item is', () => {
     // ⚑ Claude Code renews the login: the next read is the new one — no restart, no cache.
     write(theFile(), login({ accessToken: 'fake-access-token-two' }))
     expect(token()).toBe('fake-access-token-two')
-    expect(credentialFingerprint('fake-access-token-two')).not.toBe(
-      credentialFingerprint('fake-access-token-one'),
-    )
   })
 
   it('the turn gate’s reader answers the same, without blocking', async () => {

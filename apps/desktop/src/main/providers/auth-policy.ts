@@ -6,7 +6,7 @@ export type IdentityHandle = Pick<SessionHandle, 'account' | 'signInTag'>
 /** Raw facts only; the host owns account waits and persisted identity prefixes. */
 export type IdentityFact =
   | { readonly kind: 'account'; readonly account: SessionAccount }
-  | { readonly kind: 'tag'; readonly tag: string; readonly launchOnly?: true }
+  | { readonly kind: 'tag'; readonly tag: string }
   | null
 
 /** A classified protocol notice, with no native payload interpreted by the host. */
@@ -45,7 +45,7 @@ export interface ProviderAuthPolicy {
     readonly waitsForAccount: boolean
     /** Undefined means that this life has not answered yet. */
     launch(handle: IdentityHandle): IdentityFact | undefined
-    /** Never waits or supplies a launch-only fallback. */
+    /** Never waits or infers an account from a credential. */
     limit(handle: IdentityHandle): IdentityFact
   }
   readonly copy: {

@@ -4,7 +4,6 @@ import { ClaudeRuntime, type ClaudeQuery } from '../src/claude'
 import {
   claudeKeychainTokenProvider,
   claudeKeychainTokenProviderAsync,
-  credentialFingerprint,
   type ClaudeAuthTokenProvider,
   type SessionHandle,
 } from '../src/index'
@@ -20,14 +19,8 @@ import { AsyncQueue } from '../src/internal/async-queue'
  * against a COUNTING provider rather than read off the source: `consultedOncePerLaunch` sends four
  * turns and expects exactly one consultation. It held.
  *
- * ## And what a hash can and cannot be asked
- *
- * ⛔ The comparison is a SHA-256 of the access token and nothing else — never the token, never the
- * expiry (which is `number | null`, so it is blind exactly when the blob changes shape). It answers
- * "the credential moved" and NOT "the account changed": the Keychain blob carries no account
- * identity at all, measured in 147 §1. Every test below is about the first question; there is no
- * test for the second because there is no mechanism for it, and inventing one would be the fabricated
- * fact 039 is about.
+ * Token equality is process-local. A changed token does not identify another account, and the
+ * handle exposes no credential-derived identity for persistence.
  */
 
 class FakeQuery implements ClaudeQuery {
@@ -122,23 +115,8 @@ describe('147 §1 — when the machine login is actually read', () => {
   })
 })
 
-describe('147 — the derived comparison', () => {
-  it('is a one-way digest: not the token, stable for the same token, different for another', () => {
-    const token = 'sk-ant-oat01-SECRET-VALUE'
-    const fingerprint = credentialFingerprint(token)
-
-    // 🔒 Nothing of the credential survives into the value we keep.
-    expect(fingerprint).not.toContain(token)
-    expect(fingerprint).not.toContain('SECRET')
-    expect(fingerprint).toMatch(/^[0-9a-f]{64}$/)
-
-    expect(credentialFingerprint(token)).toBe(fingerprint) // stable — else every turn would refuse
-    expect(credentialFingerprint(`${token}x`)).not.toBe(fingerprint) // and it actually discriminates
-  })
-})
-
 describe('the tag a session gives the sign-in it launched on', () => {
-  it('is one for two sessions on the same login, another on a renewed one, and not what the turn gate compares', async () => {
+  it('never supplies a credential tag, including across a token renewal', async () => {
     let current = 'sk-ant-oat01-A'
     const { runtime } = runtimeOver(() => current)
     const one = await runtime.start(START)
@@ -146,13 +124,11 @@ describe('the tag a session gives the sign-in it launched on', () => {
     current = 'sk-ant-oat01-B'
     const renewed = await runtime.start(START)
 
-    const tag = one.signInTag?.()
-    expect(tag).toMatch(/^credential:[0-9a-f]{64}$/)
-    expect(two.signInTag?.()).toBe(tag)
-    expect(renewed.signInTag?.()).toMatch(/^credential:[0-9a-f]{64}$/)
-    expect(renewed.signInTag?.()).not.toBe(tag)
-    expect(tag).toBe(`credential:${credentialFingerprint('sk-ant-oat01-A')}`)
-    expect(tag).not.toContain('sk-ant-oat01-A')
+    expect(one.signInTag?.() ?? null).toBeNull()
+    expect(two.signInTag?.() ?? null).toBeNull()
+    expect(renewed.signInTag?.() ?? null).toBeNull()
+    expect(await one.checkSignIn?.()).toBe(true)
+    expect(await renewed.checkSignIn?.()).toBe(false)
   })
 
   it('a session launched with no login has none to give', async () => {
@@ -161,7 +137,7 @@ describe('the tag a session gives the sign-in it launched on', () => {
       async () => true,
       undefined,
     )
-    expect((await runtime.start(START)).signInTag?.()).toBeNull()
+    expect((await runtime.start(START)).signInTag?.() ?? null).toBeNull()
   })
 })
 

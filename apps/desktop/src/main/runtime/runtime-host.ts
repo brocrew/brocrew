@@ -6706,8 +6706,8 @@ export class RuntimeHost implements LiveHost {
       const record = this.cutsKept.cuts[conversation]
       // ⚑ A newer cut of the conversation is not this one's to settle.
       if (record === undefined || record.noticeId !== noticeId || isFinal(record.state)) return
-      // ⚑ Only ids of one kind are compared: a Claude account named by its email is not told apart
-      // from one named by its launch credential, whose account read may only have failed.
+      // Compare confirmed account identities only within their own namespace. Historical
+      // credential digests are not evidence of the account now launching.
       const idKind = (id: string): string => id.slice(0, id.lastIndexOf(':'))
       const comparable =
         record.expected !== null &&
@@ -7430,11 +7430,8 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * 🔴 **The account a life runs on, as an id compared and never shown** — from what that life was
-   * launched on, so it never changes for that life: the existing persisted account record,
-   * or the runtime's opaque credential/account revision with its own namespace. ⚑ Kept for its conversation once known,
-   * for the next launch to read if a crash cuts this life. ⚑ `null` when it cannot be told within
-   * {@link accountWaitMs}. ⛔ It never rejects.
+   * The confirmed account a life runs on: an existing account record or a native account ID.
+   * Kept for the next launch if a crash cuts this life; null when not known within accountWaitMs.
    */
   private async learnItsIdentity(session: HostedSession): Promise<string | null> {
     let identity: string | null
@@ -7467,7 +7464,7 @@ export class RuntimeHost implements LiveHost {
       const known = this.accountRecordFor(fact.account)
       return known === null ? null : `${provider}:account:${known.id}`
     }
-    return `${provider}:${fact.launchOnly === true ? 'launch-credential' : 'sign-in'}:${fact.tag}`
+    return `${provider}:sign-in:${fact.tag}`
   }
 
   /** An exact recorded account, absent, or ambiguous; never infer it from the latest launch. */
@@ -32060,13 +32057,8 @@ export class RuntimeHost implements LiveHost {
    * received it. ⚑ Windows are told only when a number moved. ⛔ At most {@link MAX_USAGE_WINDOWS}
    * windows a provider.
    *
-   * ⚑ **A reading belongs to the account it was read on** ({@link accountOf}), when that is known
-   * for it and for what is held: a login renewed on the same account keeps its readings, and
-   * another account's never mix with them. ⚑ Otherwise it belongs to the sign-in it was read on
-   * ({@link SessionHandle.signInTag}). Claude's sign-in is the Mac's, so another one's readings are
-   * never held beside it; its tag is of its login, so a renewal reads as another sign-in. ⚑ A Codex
-   * sign-in is its profile's, and Codex's readings are held from every profile, as the provider
-   * reports them; after a restart, the first reading's sign-in settles them all.
+   * A reading belongs to its confirmed account when known. Codex's native account tag survives
+   * token renewals. An unknown account cannot confirm readings kept by an earlier run.
    */
   private takeTheUsage(session: HostedSession, event: ProviderUsageEvent): void {
     const { provider } = session
@@ -42619,7 +42611,7 @@ export class RuntimeHost implements LiveHost {
    * the death did not.
    *
    * ⛔ **Only when the machine login now holds a DIFFERENT valid token** — the handle's own
-   * comparison ({@link SessionHandle.checkSignIn}, by `credentialFingerprint`). The same token, an
+   * private process-local comparison ({@link SessionHandle.checkSignIn}). The same token, an
    * expired or unreadable login: today's stop and today's Reopen, untouched. ⛔ **Never re-sends the
    * failed turn**: a tool step may already have run. The `reopened` row says why, and the
    * transcript draws it as one line.

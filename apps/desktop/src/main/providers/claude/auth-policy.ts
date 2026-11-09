@@ -16,9 +16,7 @@ export const authPolicy: ProviderAuthPolicy = {
     launch(handle) {
       const account = handle.account === undefined ? null : handle.account()
       if (account === undefined) return undefined
-      if (account !== null) return { kind: 'account', account }
-      const tag = handle.signInTag?.() ?? null
-      return tag === null ? null : { kind: 'tag', tag, launchOnly: true }
+      return account === null ? null : { kind: 'account', account }
     },
     limit(handle) {
       const account = handle.account?.()

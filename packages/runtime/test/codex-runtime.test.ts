@@ -408,7 +408,7 @@ describe('CodexRuntime — the credential pre-flight (098)', () => {
     it('Codex’s own `auth_mode` decides the kind of login; a link in the home is not read', async () => {
       signedIn('acct-one', 'fake-access-one')
       const account = await codexAccountIn(home)
-      expect(account).not.toBeNull()
+      expect(account).toBe('acct-one')
       // A ChatGPT login that also carries a key is still that account.
       writeFileSync(
         join(home, 'auth.json'),
@@ -443,11 +443,11 @@ describe('CodexRuntime — the credential pre-flight (098)', () => {
     it('the tag it gives its sign-in is of the account: a renewal keeps it, another account or a key does not', async () => {
       signedIn('acct-one', 'fake-access-one')
       const tag = (await started()).signInTag?.()
-      expect(tag).toMatch(/^account:[0-9a-f]{64}$/)
+      expect(tag).toBe('native-account:acct-one')
       signedIn('acct-one', 'fake-access-two')
       expect((await started()).signInTag?.()).toBe(tag)
       signedIn('acct-two', 'fake-access-three')
-      expect((await started()).signInTag?.()).toMatch(/^account:[0-9a-f]{64}$/)
+      expect((await started()).signInTag?.()).toBe('native-account:acct-two')
       expect((await started()).signInTag?.()).not.toBe(tag)
       writeFileSync(
         join(home, 'auth.json'),
@@ -456,7 +456,7 @@ describe('CodexRuntime — the credential pre-flight (098)', () => {
       expect((await started()).signInTag?.()).toBeNull()
     })
 
-    it('a saved key has a stable launch identity by revision, with no key in it', async () => {
+    it('a saved key revision supplies no confirmed account identity', async () => {
       writeFileSync(
         join(home, 'auth.json'),
         JSON.stringify({ auth_mode: 'apikey', OPENAI_API_KEY: 'fictional-key' }),
@@ -466,12 +466,11 @@ describe('CodexRuntime — the credential pre-flight (098)', () => {
       stamp(17)
       const first = await started()
       const tag = first.signInTag?.()
-      expect(tag).toBe('api-revision:17')
+      expect(tag).toBeNull()
       expect((await started()).signInTag?.()).toBe(tag)
       stamp(18)
-      expect((await started()).signInTag?.()).not.toBe(tag)
+      expect((await started()).signInTag?.()).toBeNull()
       expect(first.signInTag?.()).toBe(tag)
-      expect(tag).not.toContain('fictional-key')
     })
   })
 

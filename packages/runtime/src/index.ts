@@ -275,8 +275,6 @@ export {
   claudeLoginState,
   claudeLoginStateWithAKey,
 
-  // Export the one-way digest used to compare launch credentials without exposing the credential.
-  credentialFingerprint,
   defaultKeychainReader,
   defaultKeychainReaderAsync,
   defaultKeychainReaderForALaunch,

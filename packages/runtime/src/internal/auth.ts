@@ -1,5 +1,5 @@
 import { execFile, execFileSync } from 'node:child_process'
-import { createHash, randomBytes } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import {
   type BigIntStats,
   type Stats,
@@ -542,43 +542,6 @@ export function claudeKeychainTokenProviderAsync(
     const parsed = parseClaudeOAuthToken(await reader(), clock())
     return parsed ? parsed.accessToken : null
   }
-}
-
-/**
- * A one-way fingerprint of a machine credential, for asking *"is this still the same sign-in?"*
- * without ever holding the sign-in (147).
- *
- * ## Why a hash of the ACCESS TOKEN, and not the token, the expiry, or the account
- *
- * 🔒 **The token itself is never kept.** A session that remembered what it launched with would be a
- * second copy of the secret, alive for the whole conversation, in a process that also writes a
- * ledger and a log. SHA-256 over 108 characters of OAuth token is not invertible and is not a
- * credential: it authenticates nothing, and the only question it can answer is the only one we ask —
- * *are these two reads the same bytes?*
- *
- * ⚠️ **The expiry is NOT sufficient, and it is the obvious wrong answer.** `expiresAt` is
- * `number | null` — {@link parseClaudeOAuthToken} returns null for it when the blob omits it — so a
- * comparison built on it is silently blind exactly when the blob changes shape. The fingerprint
- * exists whenever a token exists.
- *
- * ⛔ **And it answers "the credential moved", NOT "the account changed" — measured, 147 §1.** The
- * Keychain blob holds `accessToken`, `refreshToken`, `expiresAt`, `refreshTokenExpiresAt`, `scopes`,
- * `subscriptionType`, `rateLimitTier` **and no account identity at all**: no id, no email, no
- * organization. So the credential cannot be asked who it belongs to, and an ordinary 8-hourly
- * refresh is indistinguishable from a deliberate account switch. That is not a defect in this
- * function; it is the fact any caller has to be honest about, and it is why the app TELLS the user
- * rather than acting on the difference. See `ClaudeSessionHandle.checkSignIn`.
- *
- * ⚠️ **And the blob's SHAPE is not a stable thing to key on either — three measurements, 149.**
- * `110` read 566 bytes on 2026-08-10 with an `organizationUuid` in them; `147` read it on 2026-08-14
- * and `149` again the same day, both **509 bytes with no `organizationUuid`**. Anthropic dropped the
- * one field that could have told a renewal from a switch, between two measurements four days apart.
- * A comparison built on any named identity field would therefore have gone quietly blind — the
- * failure mode {@link parseClaudeOAuthToken}'s `expiresAt` note is about, arriving through a
- * different field. The access token is the one thing the blob is certain to carry.
- */
-export function credentialFingerprint(token: string): string {
-  return createHash('sha256').update(token, 'utf8').digest('hex')
 }
 
 /**
@@ -1339,7 +1302,7 @@ export function codexAuthHealth(providerHome: string): AuthHealth {
 const CODEX_AUTH_FILE_MAX = 1024 * 1024
 
 /**
- * **The account a Codex home is signed in to**, as a one-way name: its `auth.json`'s
+ * The account a Codex home is signed in to: its `auth.json`'s
  * `tokens.account_id`, or the one name `api-key` for a home logged in with a key. Never a token:
  * Codex renewing its own tokens on the same account keeps the same name. `null` when there is no
  * login to read, or none whole (a write under way): that is *cannot tell*, never a change.
@@ -1385,7 +1348,7 @@ function codexAccountOf(text: string): string | null {
     return typeof key === 'string' && key !== '' ? 'api-key' : null
   }
   if ((mode === 'chatgpt' || mode === undefined) && typeof account === 'string' && account !== '') {
-    return credentialFingerprint(`account:${account}`)
+    return account
   }
   return null
 }

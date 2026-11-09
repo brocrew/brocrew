@@ -262,7 +262,7 @@ export interface SessionHandle {
   /** Identify the sign-in copy used at launch only when the provider keeps per-profile copies. */
   signInCopyAtLaunch?(): unknown
 
-  /** A one-way tag correlates readings without exposing an account or reading credentials on access. */
+  /** A confirmed noncredential native account, captured at launch without another credential read. */
   signInTag?(): string | null
 
   /** Ask the provider for its account: undefined is unreported and null is no named account. */

@@ -33,7 +33,7 @@ export interface Stops {
   /** The account its provider names: a fictional one, none, or no answer at all. */
   account?: 'ada' | 'bea' | 'none' | 'never'
   organization?: string
-  /** The tag its runtime makes of the credential it launched on, as a saved key's would be. */
+  /** A historical credential tag or a confirmed native account tag supplied by the test. */
   tag?: string
   /** Its provider names the account only this long after the life starts, ms; at once if unset. */
   accountAfterMs?: number
@@ -98,22 +98,23 @@ export function registerPersistedCutIdentityCases({
   it.each([
     ['account', { provider: 'claude', account: 'ada' }, /^claude:account:[0-9a-f]{32}$/],
     [
-      'launch tag',
+      'unknown account with a credential tag',
       { provider: 'claude', account: 'none', tag: 'fictional-key' },
-      'claude:launch-credential:fictional-key',
+      undefined,
     ],
     [
-      'provider tag',
-      { provider: 'codex', tag: 'fictional-login' },
-      'codex:sign-in:fictional-login',
+      'native account',
+      { provider: 'codex', tag: 'native-account:fictional-account' },
+      'codex:sign-in:native-account:fictional-account',
     ],
   ] as const)('keeps the persisted identity format for an %s', async (_kind, stops, expected) => {
     const id = await aTurnRunsIn(stops)
     const kept = readKeptCuts(turnsTheAppCutFile(folder()))
     const identity = kept.lives[id]?.identity
-    if (typeof expected === 'string') expect(identity).toBe(expected)
+    if (expected === undefined) expect(identity).toBeUndefined()
+    else if (typeof expected === 'string') expect(identity).toBe(expected)
     else expect(identity).toMatch(expected)
-    expect(identity).not.toContain(EMAIL.ada)
+    if (identity !== undefined) expect(identity).not.toContain(EMAIL.ada)
   })
 }
 

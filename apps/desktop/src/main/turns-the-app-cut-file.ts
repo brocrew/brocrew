@@ -20,8 +20,8 @@ import { MAX_INSTANT } from '../shared/clock'
  * before the cut turn, so that very life opened it. A cut's own `expected` never changes after it is
  * written.
  *
- * No email or credential is kept: accounts use existing account record IDs and runtimes supply
- * opaque sign-in or launch-only credential revisions. Old digest identities cannot prove a match.
+ * Accounts use existing account record IDs or confirmed native account IDs. Historical credential
+ * tags remain readable but cannot prove a match to a newly confirmed account.
  *
  * ⚑ Written beside it and renamed, so a reader never sees half a file. ⚑ A file that is missing or
  * cannot be read authorizes nothing: no cut is continued from it.
