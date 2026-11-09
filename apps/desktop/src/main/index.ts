@@ -218,7 +218,7 @@ import {
   readProfileExecution,
   writeProfileExecution,
 } from './profile-execution-file'
-import { readKeptCuts, turnsTheAppCutFile, writeKeptCuts } from './turns-the-app-cut-file'
+import { importTurnsTheAppCutFile, turnsTheAppCutIn } from './turns-the-app-cut-file'
 import { providerAccountsFile, readKeptAccounts, writeKeptAccounts } from './provider-accounts-file'
 import { readKeptRules, removeKeptRule, type WhereRulesAreKept } from './kept-rules'
 import startTheLocator from './local-settings-locator.worker?nodeWorker'
@@ -591,6 +591,7 @@ function initDatabase(): AppDatabase {
   importSignInChangesFile(database, app.getPath('userData'))
   importProviderUsageFile(database, app.getPath('userData'))
   importScheduleAttemptsFile(database, app.getPath('userData'))
+  importTurnsTheAppCutFile(database, app.getPath('userData'))
   try {
     const compaction = compactWhenMuchIsFree(database, freeBytesOn(app.getPath('userData')))
     if (compaction === 'compacted') console.info('BroCrew gave its free database space back')
@@ -1006,10 +1007,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     scheduleAttempts: scheduleAttemptsIn(database),
     // The turns this app's quit, or a crash, cut, with what it did about each: a cut turn is
     // continued once, at the next launch, on the account it ran on.
-    turnsTheAppCut: {
-      read: () => readKeptCuts(turnsTheAppCutFile(userData)),
-      write: (kept) => writeKeptCuts(turnsTheAppCutFile(userData), kept),
-    },
+    turnsTheAppCut: turnsTheAppCutIn(database),
     // The Claude account those readings were read on, and the one copy of its email.
     accountsKept: {
       read: () => readKeptAccounts(providerAccountsFile(userData)),

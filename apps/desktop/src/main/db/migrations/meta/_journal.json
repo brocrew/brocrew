@@ -183,6 +183,13 @@
       "when": 1794243316572,
       "tag": "0025_schedule_attempts",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1794243504978,
+      "tag": "0026_cut_turns",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
 import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import type { FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -11,9 +12,10 @@ import {
 import type { AppDatabase } from '../../src/main/db/connection'
 import { usageKeptIn } from '../../src/main/provider-usage-file'
 import {
-  readKeptCuts,
-  writeKeptCuts,
-  turnsTheAppCutFile,
+  importTurnsTheAppCutFile,
+  NO_CUTS_KEPT,
+  TURNS_THE_APP_CUT_FILE,
+  turnsTheAppCutIn,
   type CutState,
 } from '../../src/main/turns-the-app-cut-file'
 
@@ -79,21 +81,17 @@ interface CutAccountContext {
 }
 
 export function registerPersistedCutIdentityCases({
+  life,
   folder,
   aTurnRunsIn,
   EMAIL,
 }: CutAccountContext): void {
-  it('persists the account record before first usage and drops old salt authority', async () => {
-    writeFileSync(
-      turnsTheAppCutFile(folder()),
-      JSON.stringify({ salt: 'a7'.repeat(32), lives: {}, cuts: {} }),
-    )
+  it('persists the account record before first usage', async () => {
     const id = await aTurnRunsIn({ account: 'ada', organization: 'Fictional Organisation' })
-    const kept = readKeptCuts(turnsTheAppCutFile(folder()))
+    const kept = turnsTheAppCutIn(life().db).read()
     const account = readKeptAccounts(providerAccountsFile(folder())).claude!
     expect(account).toMatchObject({ email: EMAIL.ada, organization: 'Fictional Organisation' })
     expect(kept.lives[id]?.identity).toBe(`claude:account:${account.id}`)
-    expect(kept).not.toHaveProperty('salt')
   })
 
   it.each([
@@ -110,7 +108,7 @@ export function registerPersistedCutIdentityCases({
     ],
   ] as const)('keeps the persisted identity format for an %s', async (_kind, stops, expected) => {
     const id = await aTurnRunsIn(stops)
-    const kept = readKeptCuts(turnsTheAppCutFile(folder()))
+    const kept = turnsTheAppCutIn(life().db).read()
     const identity = kept.lives[id]?.identity
     if (typeof expected === 'string') expect(identity).toBe(expected)
     else expect(identity).toMatch(expected)
@@ -128,15 +126,26 @@ export function registerLegacyCutIdentityCase({
   waitFor,
   SOON,
 }: CutAccountContext): void {
-  it('keeps an unresolvable legacy digest unknown instead of using the latest account', async () => {
+  it('imports a legacy digest as unknown, skips its life, and never uses the latest account', async () => {
     const id = await aTurnRunsIn()
     await life().host.closeAll()
-    const kept = readKeptCuts(turnsTheAppCutFile(folder()))
-    writeKeptCuts(turnsTheAppCutFile(folder()), {
-      ...kept,
-      cuts: { ...kept.cuts, [id]: { ...kept.cuts[id]!, expected: `claude:${'a'.repeat(32)}` } },
-    })
-    expect(readKeptCuts(turnsTheAppCutFile(folder())).cuts[id]!.expected).toBeNull()
+    const kept = turnsTheAppCutIn(life().db).read()
+    turnsTheAppCutIn(life().db).write(NO_CUTS_KEPT)
+    life().db.prepare('DELETE FROM imported_side_file WHERE name = ?').run(TURNS_THE_APP_CUT_FILE)
+    writeFileSync(
+      join(folder(), TURNS_THE_APP_CUT_FILE),
+      JSON.stringify({
+        lives: {
+          ...kept.lives,
+          [id]: { ...kept.lives[id]!, identity: `claude:${'b'.repeat(32)}` },
+        },
+        cuts: { ...kept.cuts, [id]: { ...kept.cuts[id]!, expected: `claude:${'a'.repeat(32)}` } },
+      }),
+    )
+    importTurnsTheAppCutFile(life().db, folder())
+    const imported = turnsTheAppCutIn(life().db).read()
+    expect(imported.cuts[id]!.expected).toBeNull()
+    expect(imported.lives[id]).toBeUndefined()
     starts(SOON)
     await waitFor(() => typeof stateOf(id) === 'object', 'the legacy cut to be left unknown')
     expect(continuations(id)).toEqual([])
@@ -221,7 +230,7 @@ export function registerFrozenCutAccountCases({
     expect(usageKeptIn(life().db).read().readings.claude).toEqual([
       expect.objectContaining({ window: 'five_hour', account: a.id, usedPercent: 12 }),
     ])
-    expect(readKeptCuts(turnsTheAppCutFile(folder())).cuts[id]!.expected).toBeNull()
+    expect(turnsTheAppCutIn(life().db).read().cuts[id]!.expected).toBeNull()
     starts(SOON, { account: 'ada' })
     await waitFor(() => typeof stateOf(id) === 'object', 'unknown cut decision')
     expect(stateOf(id)).toEqual({ ended: 'account-not-known' })
@@ -248,7 +257,7 @@ export function registerFrozenCutAccountCases({
       .simulateProviderUsage([{ window: 'five_hour', usedPercent: 12, resetsAt: null }])
     await settle()
     await life().host.closeAll()
-    expect(readKeptCuts(turnsTheAppCutFile(folder())).cuts[id]!.expected).toBeNull()
+    expect(turnsTheAppCutIn(life().db).read().cuts[id]!.expected).toBeNull()
     expect(readKeptAccounts(providerAccountsFile(folder())).claudeAccounts).toEqual([
       a,
       conflicting,
@@ -264,7 +273,7 @@ export function registerFrozenCutAccountCases({
     const id = await aTurnRunsIn({ accountsCannotBeKept: true })
     await life().host.closeAll()
     expect(readKeptAccounts(providerAccountsFile(folder()))).toEqual({})
-    expect(readKeptCuts(turnsTheAppCutFile(folder())).cuts[id]!.expected).toBeNull()
+    expect(turnsTheAppCutIn(life().db).read().cuts[id]!.expected).toBeNull()
     starts(SOON)
     await waitFor(() => typeof stateOf(id) === 'object', 'unknown account cut')
     expect(continuations(id)).toEqual([])

@@ -787,3 +787,15 @@ export const scheduleAttempt = sqliteTable('schedule_attempt', {
   record: text('record').notNull(),
   at: integer('at').notNull(),
 })
+
+export const cutTurn = sqliteTable('cut_turn', {
+  id: text('id').primaryKey(),
+  record: text('record').notNull(),
+  at: integer('at').notNull(),
+})
+
+export const cutLife = sqliteTable('cut_life', {
+  conversationId: text('conversation_id').primaryKey(),
+  record: text('record').notNull(),
+  since: integer('since').notNull(),
+})

@@ -139,9 +139,6 @@ describe('§1 · the source census — a new durable write under userData must n
       "'profile-execution.json'",
       // ⚑ The account the usage readings were read on. REMOVED with them (`USAGE`).
       "'provider-accounts.json'",
-      // The turns the app's quit, or a crash, cut, and what it did about each. REMOVED with the
-      // ledger whose turns they are (`LEDGER`).
-      "'turns-the-app-cut.json'",
       // ⚑ **The updater's, in a hidden launch's data folder** — its own switch and the Mac image it
       // downloads. REMOVED: a fresh install has neither (`UPDATES`).
       "'update-settings.json'",
@@ -181,6 +178,7 @@ describe('§1 · the source census — a new durable write under userData must n
       // A hidden launch's theme library is reset with its workspace.
       'THEME_LIBRARY_FOLDER',
       'TRANSCRIPT_RETENTION_FILE',
+      'TURNS_THE_APP_CUT_FILE',
       'WORKER_OUTPUT_DIRNAME',
       'WORKSPACE_DIRNAME',
       // The app's state files a recovery copy takes, each named in `APP_STATE_FILES`; the test

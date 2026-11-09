@@ -1,4 +1,12 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -17,13 +25,20 @@ import {
   scheduleAttemptsIn,
 } from '../src/main/schedule-attempts-file'
 import {
+  importTurnsTheAppCutFile,
+  NO_CUTS_KEPT,
+  TURNS_THE_APP_CUT_FILE,
+  turnsTheAppCutIn,
+} from '../src/main/turns-the-app-cut-file'
+import {
   importSignInChangesFile,
   SIGN_IN_CHANGES_FILE,
   signInChangesIn,
 } from '../src/main/sign-in-changes'
 
 /**
- * A kept-current side file, once imported, across a restore and a return. The restore sets the
+ * A kept-current side file, once imported, across a restore and a return; and one that cannot be
+ * parsed, kept as it is. The restore sets the
  * database aside whole and puts back a copy whose old file is beside it; while that copy is open
  * history-only nothing imports. The return puts the set-aside database back, its import marker
  * with it, so the next writable start finds its rows and imports nothing again, even from a stale
@@ -84,6 +99,31 @@ const CASES: readonly Case[] = [
     rows: (database) => scheduleAttemptsIn(database).read(),
     change: (database) => scheduleAttemptsIn(database).write({ conversations: {} }),
   },
+  {
+    name: 'turns the app cut',
+    file: TURNS_THE_APP_CUT_FILE,
+    said: {
+      lives: { a: { since: 1, identity: 'claude:account:a1', generation: 0, launched: 2 } },
+      cuts: {
+        a: {
+          turn: 't',
+          generation: 0,
+          kind: 'quit',
+          cutAt: 3,
+          provider: 'claude',
+          profile: 'default',
+          expected: 'claude:account:a1',
+          noticeId: 'msg_a',
+          aPersonStartedIt: true,
+          state: 'pending',
+          at: 3,
+        },
+      },
+    },
+    importFile: importTurnsTheAppCutFile,
+    rows: (database) => turnsTheAppCutIn(database).read(),
+    change: (database) => turnsTheAppCutIn(database).write(NO_CUTS_KEPT),
+  },
 ]
 
 describe.each(CASES)('$name', (one) => {
@@ -99,8 +139,10 @@ describe.each(CASES)('$name', (one) => {
     let database = aStart(userData)
     one.importFile(database, userData)
     expect(existsSync(join(userData, one.file))).toBe(false)
+    const imported = one.rows(database)
     one.change(database)
     const kept = one.rows(database)
+    expect(kept).not.toEqual(imported)
     database.close()
 
     // Restore: the newer database is set aside, the copy's file comes back beside an old database.
@@ -115,5 +157,16 @@ describe.each(CASES)('$name', (one) => {
     one.importFile(database, userData)
     expect(one.rows(database)).toEqual(kept)
     expect(existsSync(join(userData, one.file))).toBe(false)
+  })
+
+  it('a file that cannot be parsed is kept, imports nothing, and the start goes on', () => {
+    const userData = mkdtempSync(join(tmpdir(), 'brobot2-side-file-'))
+    roots.push(userData)
+    writeFileSync(join(userData, one.file), '{ torn')
+    const database = aStart(userData)
+    const empty = one.rows(database)
+    expect(() => one.importFile(database, userData)).not.toThrow()
+    expect(one.rows(database)).toEqual(empty)
+    expect(readFileSync(join(userData, one.file), 'utf8')).toBe('{ torn')
   })
 })
