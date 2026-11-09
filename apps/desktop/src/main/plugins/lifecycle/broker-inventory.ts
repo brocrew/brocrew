@@ -3,8 +3,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { PluginLifecycleController } from './controller'
 import { managedPluginFailure, type PluginFailureStage } from '@brobot2/runtime/plugin-failure'
 import { inventoryFetch } from './inventory-fetch'
-import { reportPluginToolFailure, type PluginToolDiagnostic } from '../tool-diagnostics'
-import { randomUUID } from 'node:crypto'
+import type { PluginToolDiagnostic } from '../tool-diagnostics'
 
 export async function admittedPluginTools(
   view: ReturnType<PluginLifecycleController['agentAttachments']>[number],
@@ -15,24 +14,31 @@ export async function admittedPluginTools(
   let stage: PluginFailureStage = 'binding-connection'
   const progress = (next: PluginFailureStage) => {
     stage = next
-    reportPluginToolFailure(diagnostic, 'binding-pending', {
-      stage, cause: 'pending', correlation: randomUUID(),
-    })
+    try {
+      diagnostic?.pending?.(stage)
+    } catch {
+      /* A stage observer cannot fail the binding. */
+    }
   }
   const host = new AbortController()
-  const exited = view.exited?.then(
+  let fail!: (error: unknown) => void
+  const failed = new Promise<never>((_, reject) => {
+    fail = (error) => {
+      if (host.signal.aborted) return
+      host.abort(error)
+      reject(error)
+    }
+  })
+  void view.exited?.then(
     () => {
       const error = Object.assign(new Error('Plugin host exited'), { code: 'process-exited' })
-      host.abort(error)
-      throw error
+      fail(error)
     },
-    () => new Promise<never>(() => {}),
-  ) ?? new Promise<never>(() => {})
-  // The exit witness also ends connection readiness, before an HTTP request exists.
-  void exited.catch(() => undefined)
+    () => undefined,
+  )
   try {
     progress('binding-connection')
-    const connection = await Promise.race([view.connection, exited])
+    const connection = await Promise.race([view.connection, failed])
     stage = 'binding-current'
     if (!view.current()) throw new Error('unavailable')
     stage = 'binding-endpoint'
@@ -40,12 +46,12 @@ export async function admittedPluginTools(
     const credential = endpoint.headers.Authorization.slice('Bearer '.length)
     const client = new Client({ name: 'brocrew-plugin-inventory', version: '1' })
     client.onerror = () => undefined
-    const outcome = await (async () => {
+    const outcome = await Promise.race([(async () => {
       progress('binding-connect')
       await client.connect(
         new StreamableHTTPClientTransport(new URL(endpoint.url), {
           requestInit: { headers: endpoint.headers, redirect: 'error' },
-          fetch: inventoryFetch(host.signal),
+          fetch: inventoryFetch(host.signal, fail),
         }),
       )
       progress('binding-inventory')
@@ -61,7 +67,7 @@ export async function admittedPluginTools(
       const admitted = inventory.tools.filter((tool) => names.has(tool.name))
       if (admitted.length !== inventory.tools.length) await refused()
       return { connection, endpoint, credential, admitted }
-    })().then(
+    })(), failed]).then(
       (value) => ({ ok: true as const, value }),
       (error: unknown) => ({ ok: false as const, error: managedPluginFailure(error, stage) }),
     )

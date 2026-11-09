@@ -2,16 +2,20 @@
 // response headers or another byte is a stall; receiving bytes restarts the clock.
 const INVENTORY_STALE_MS = 30_000
 
-export function inventoryFetch(host: AbortSignal): typeof fetch {
+export function inventoryFetch(host: AbortSignal, failed: (error: unknown) => void): typeof fetch {
   return async (url, init) => {
     const abort = new AbortController()
     const signal = AbortSignal.any([host, abort.signal, ...(init?.signal ? [init.signal] : [])])
+    // An idle standalone SSE subscription is not an unanswered inventory request.
+    if (init?.method !== 'POST') return fetch(url, { ...init, redirect: 'error', signal })
     let timer: ReturnType<typeof setTimeout> | undefined
     const stop = () => clearTimeout(timer)
     const progress = () => {
       stop()
       timer = setTimeout(() => {
-        abort.abort(Object.assign(new Error('Plugin inventory stalled'), { code: 'stalled' }))
+        const error = Object.assign(new Error('Plugin inventory stalled'), { code: 'stalled' })
+        abort.abort(error)
+        failed(error)
       }, INVENTORY_STALE_MS)
       timer.unref?.()
     }
@@ -46,7 +50,9 @@ export function inventoryFetch(host: AbortSignal): typeof fetch {
               }
             } catch (error) {
               finish()
-              controller.error(signal.aborted ? signal.reason : error)
+              const cause = signal.aborted ? signal.reason : error
+              failed(cause)
+              controller.error(cause)
             }
           },
           async cancel() {

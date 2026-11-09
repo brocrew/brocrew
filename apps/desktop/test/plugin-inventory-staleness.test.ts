@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { admittedPluginTools } from '../src/main/plugins/lifecycle/broker-inventory'
 import { createLifecycleAgentBridge } from '../src/main/plugins/lifecycle/agent-bridge'
 import { managedPluginFailure } from '@brobot2/runtime/plugin-failure'
+import type { PluginToolDiagnostic } from '../src/main/plugins/tool-diagnostics'
 import { deferred } from './plugin-lifecycle-fixtures'
 import { lease, request } from './helpers/plugin-agent-bridge'
 
@@ -37,7 +38,7 @@ function view() {
 }
 
 /** A controllable HTTP peer; the production SDK still performs initialize and tools/list. */
-function peer(hold = 'tools/list') {
+function peer(hold = 'tools/list', format: 'json' | 'sse' = 'json') {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   // Node's native timeout signal uses an internal clock. Give the parent's deadline the same
   // controllable clock as the SDK so RED and GREEN exercise precisely the same elapsed time.
@@ -64,9 +65,10 @@ function peer(hold = 'tools/list') {
               capabilities: { tools: {} },
             }
           : { tools: [{ name: 'echo', inputSchema: { type: 'object' } }] }
-      const body = JSON.stringify({ jsonrpc: '2.0', id: packet.id, result })
+      const json = JSON.stringify({ jsonrpc: '2.0', id: packet.id, result })
       if (packet.method !== hold)
-        return new Response(body, { headers: { 'content-type': 'application/json' } })
+        return new Response(json, { headers: { 'content-type': 'application/json' } })
+      const body = format === 'sse' ? `data: ${json}\n\n` : json
       signal = init.signal ?? undefined
       return new Response(
         new ReadableStream<Uint8Array>({
@@ -80,7 +82,7 @@ function peer(hold = 'tools/list') {
             started.resolve()
           },
         }),
-        { headers: { 'content-type': 'application/json' } },
+        { headers: { 'content-type': format === 'sse' ? 'text/event-stream' : 'application/json' } },
       )
     }),
   )
@@ -97,6 +99,7 @@ function peer(hold = 'tools/list') {
       }
     },
     aborted: () => signal?.aborted,
+    disconnect(error: Error) { stream.error(error) },
   }
 }
 
@@ -122,11 +125,12 @@ it.each(['initialize', 'tools/list'])(
       await work
     }
     expect(outcome).toMatchObject({ value: { admitted: [{ name: 'echo' }] } })
+    expect(vi.getTimerCount()).toBe(0)
   },
 )
 
-it('resets inventory staleness on bytes, then reports the silent stage as stalled', async () => {
-  const remote = peer()
+it.each(['json', 'sse'] as const)('resets %s staleness on bytes, then reports the silent stage as stalled', async (format) => {
+  const remote = peer('tools/list', format)
   const work = admittedPluginTools(view().attachment, new Set(['echo']), () => {}).catch(
     (error: unknown) => error,
   )
@@ -153,8 +157,8 @@ it('reports connection refused immediately with the actual connect cause', async
   })
 })
 
-it('ends a pending inventory immediately when the exact host exits', async () => {
-  const remote = peer()
+it.each(['json', 'sse'] as const)('ends a pending %s inventory immediately when the exact host exits', async (format) => {
+  const remote = peer('tools/list', format)
   const { attachment, exited } = view()
   const work = admittedPluginTools(attachment, new Set(), () => {}).catch((error: unknown) => error)
   await remote.started
@@ -171,10 +175,17 @@ it('ends a pending inventory immediately when the exact host exits', async () =>
   })
 })
 
-it('retries a failed inventory on the next read and marks the held retry as starting', async () => {
-  const { attachment } = view()
-  const held = deferred<void>()
-  const bound = {
+it('reports a disconnected SSE reply immediately, preserving the actual transport cause', async () => {
+  const remote = peer('tools/list', 'sse')
+  const work = admittedPluginTools(view().attachment, new Set(), () => {}).catch((error: unknown) => error)
+  await remote.started
+  remote.disconnect(Object.assign(new Error('connection reset'), { code: 'ECONNRESET' }))
+  await vi.advanceTimersByTimeAsync(0)
+  expect(await work).toMatchObject({ pluginStage: 'binding-inventory', pluginCause: 'transport-closed' })
+})
+
+function emptyBinding() {
+  return {
     tools: [],
     resources: [],
     adminOperations: [],
@@ -184,15 +195,11 @@ it('retries a failed inventory on the next read and marks the held retry as star
       admin: vi.fn(),
     },
   }
-  const binding = vi
-    .fn()
-    .mockRejectedValueOnce(
-      managedPluginFailure({ code: 'ECONNREFUSED' }, 'binding-connect'),
-    )
-    .mockImplementationOnce(async () => {
-      await held.promise
-      return bound
-    })
+}
+function bridgeFor(
+  attachment: ReturnType<typeof view>['attachment'],
+  binding: Parameters<typeof createLifecycleAgentBridge>[0]['binding'],
+) {
   const controller = {
     attach: async () => ({}),
     detach: async () => {},
@@ -201,7 +208,7 @@ it('retries a failed inventory on the next read and marks the held retry as star
     withAgentScope: (_workspace: string, decide: (...args: unknown[]) => unknown) =>
       decide({ entries: [{ pluginId: 'chrome', is: 'admitted', view: attachment }] }, () => true),
   } as unknown as Parameters<typeof createLifecycleAgentBridge>[0]['controller']
-  const bridge = createLifecycleAgentBridge({
+  return createLifecycleAgentBridge({
     owner: { valid: () => true },
     controller,
     binding,
@@ -211,6 +218,19 @@ it('retries a failed inventory on the next read and marks the held retry as star
       close: async () => {},
     }),
   })
+}
+
+it('retries a failed inventory on the next read and marks the held retry as starting', async () => {
+  const { attachment } = view()
+  const held = deferred<void>()
+  const binding = vi
+    .fn()
+    .mockRejectedValueOnce(managedPluginFailure({ code: 'ECONNREFUSED' }, 'binding-connect'))
+    .mockImplementationOnce(async () => {
+      await held.promise
+      return emptyBinding()
+    })
+  const bridge = bridgeFor(attachment, binding)
   const owner = lease(), req = request(attachment.workspaceId)
   try {
     expect(await bridge.agentRoutes(owner, req)).toMatchObject({ servers: [], pending: [] })
@@ -228,6 +248,36 @@ it('retries a failed inventory on the next read and marks the held retry as star
     expect((await bridge.agentRoutes(owner, req)).servers).toHaveLength(1)
     expect(bridge.toolsUnavailable('chrome')).toBe(false)
     expect(bridge.toolsCause('chrome')).toBeUndefined()
+  } finally {
+    held.resolve()
+    await bridge.close()
+  }
+})
+
+it('keeps the shared inventory stage after the first of two waiting callers retires', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  const { attachment } = view()
+  const held = deferred<void>()
+  const binding = vi.fn(async (_view, diagnostic: PluginToolDiagnostic) => {
+    diagnostic.pending?.('binding-inventory')
+    await held.promise
+    return emptyBinding()
+  })
+  const bridge = bridgeFor(attachment, binding)
+  const owner = lease(), first = request(attachment.workspaceId), second = request(attachment.workspaceId)
+  try {
+    const waiting = bridge.agentRoutes(owner, first)
+    await vi.advanceTimersByTimeAsync(1001)
+    expect(await waiting).toMatchObject({ pending: ['chrome'] })
+    const joining = bridge.agentRoutes(owner, second)
+    await vi.advanceTimersByTimeAsync(1001)
+    expect(await joining).toMatchObject({ pending: ['chrome'] })
+    await bridge.agentRoutes(owner, { ...first, release: true })
+    expect(binding).toHaveBeenCalledOnce()
+    expect(bridge.toolsPending('chrome')).toBe('binding-inventory')
+    held.resolve()
+    await vi.advanceTimersByTimeAsync(0)
+    expect((await bridge.agentRoutes(owner, second)).servers).toHaveLength(1)
   } finally {
     held.resolve()
     await bridge.close()

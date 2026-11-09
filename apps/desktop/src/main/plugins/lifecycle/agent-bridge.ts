@@ -11,7 +11,7 @@ import {
 } from '../tool-diagnostics'
 import { randomUUID } from 'node:crypto'
 import type { ManagedPluginMcpServer } from '@brobot2/runtime'
-import { managedPluginFailure, pluginFailureReason } from '@brobot2/runtime/plugin-failure'
+import { managedPluginFailure, pluginFailureReason, type PluginFailureStage } from '@brobot2/runtime/plugin-failure'
 import {
   createPluginToolBroker,
   type BrokerOptions,
@@ -101,7 +101,6 @@ export function createLifecycleAgentBridge(options: {
     failed: boolean
     cancelled: boolean
     settled: boolean
-    stage: string
     done: Promise<void>
   }
   type Answer = {
@@ -150,6 +149,7 @@ export function createLifecycleAgentBridge(options: {
   const stopping = new Map<string, Promise<Entry>>()
   const entries = new Map<string, Promise<Entry>>()
   const bindingFailures = new WeakMap<Promise<Entry>, PluginToolFailureDetail>()
+  const bindingStages = new Map<string, { stage: PluginFailureStage }>()
   const liveEntries = new Map<string, Entry>()
   const failedRoutes = new Map<string, string>()
   const overflowFailures = new Set<string>()
@@ -160,14 +160,9 @@ export function createLifecycleAgentBridge(options: {
   const failedAttachments = new Set<string>()
   // The last known stage and cause behind each plugin's unavailable tools, in fixed words only.
   const lastCause = new Map<string, string>()
-  const diagnostic =
-    (id: string): PluginToolDiagnostic =>
-    (reason, detail) => {
-      if (reason === 'binding-pending' && detail) {
-        for (const warmup of warmups.values())
-          if (warmup.pluginId === id && !warmup.settled && !warmup.cancelled)
-            warmup.stage = detail.stage
-      } else if (detail) lastCause.set(id, `${detail.stage}: ${detail.cause}`)
+  const diagnostic = (id: string, pending?: (stage: PluginFailureStage) => void): PluginToolDiagnostic =>
+    Object.assign((reason: Parameters<PluginToolDiagnostic>[0], detail?: PluginToolFailureDetail) => {
+      if (detail) lastCause.set(id, `${detail.stage}: ${detail.cause}`)
       else if (/failed|unproven|rejected|timeout|capacity|collision|rate-limited/.test(reason))
         lastCause.set(id, reason)
       if (lastCause.size > 256) lastCause.delete(lastCause.keys().next().value!)
@@ -177,7 +172,7 @@ export function createLifecycleAgentBridge(options: {
       } catch {
         /* Observers grant no authority. */
       }
-    }
+    }, { pending })
   const routes = new Map<string, Route>()
   const rebuilding = new Set<string>()
   const recoveries = new Map<Entry, Promise<boolean>>()
@@ -197,6 +192,7 @@ export function createLifecycleAgentBridge(options: {
     const entry = entries.get(id)
     entries.delete(id)
     entryIdentities.delete(id)
+    bindingStages.delete(id)
     cancelWarmups((one) => one.pluginId === id)
     liveEntries.delete(id)
     rebuilding.delete(id)
@@ -370,7 +366,11 @@ export function createLifecycleAgentBridge(options: {
         work = undefined
       }
       if (!work) {
-        const report = diagnostic(id)
+        const progress = { stage: 'binding-connection' as PluginFailureStage }
+        bindingStages.set(id, progress)
+        const report = diagnostic(id, (stage) => {
+          if (bindingStages.get(id) === progress) progress.stage = stage
+        })
         work = options.binding(view, report).then((binding) => {
           if (!view.current() || closed || (versions.get(id) ?? 0) !== version)
             throw new Error('unavailable')
@@ -433,6 +433,7 @@ export function createLifecycleAgentBridge(options: {
           }
           held.entry = entry
           liveEntries.set(id, entry)
+          if (bindingStages.get(id) === progress) bindingStages.delete(id)
           return entry
         })
         entries.set(id, work)
@@ -440,6 +441,7 @@ export function createLifecycleAgentBridge(options: {
         const bindingWork = work
         void bindingWork.catch((error) => {
           if (entries.get(id) === bindingWork) entries.delete(id)
+          if (bindingStages.get(id) === progress) bindingStages.delete(id)
           const failure = managedPluginFailure(error, 'route-binding')
           const detail = {
             stage: failure.pluginStage,
@@ -569,7 +571,6 @@ export function createLifecycleAgentBridge(options: {
       failed: false,
       cancelled: false,
       settled: false,
-      stage: 'binding-connection',
       done: Promise.resolve(),
     }
     warmups.set(key, one)
@@ -925,9 +926,10 @@ export function createLifecycleAgentBridge(options: {
       )
     },
     toolsPending(id: string): string | undefined {
-      return [...warmups.values()].find(
+      const pending = [...warmups.values()].some(
         (one) => one.pluginId === id && !one.cancelled && !one.settled,
-      )?.stage
+      )
+      return pending ? bindingStages.get(id)?.stage ?? 'route-open' : undefined
     },
     /** Why this plugin's tools are unavailable, as `stage: cause` or a fixed reason, if known. */
     toolsCause(id: string): string | undefined {
