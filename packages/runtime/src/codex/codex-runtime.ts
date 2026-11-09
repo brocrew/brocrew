@@ -1,4 +1,5 @@
 import { withManagedPluginMcp, type ManagedPluginMcpServer } from '../managed-plugin-mcp'
+import type { ManagedPluginObserver } from '../managed-plugin-observation'
 import { BUILT_IN_SKILLS_FAILURE, registerCodexBuiltInSkills } from '../built-in-skills'
 import type { BuiltInSkillsContext, StartPhaseSink } from '../runtime'
 import { lstatSync, readFileSync, realpathSync } from 'node:fs'
@@ -2918,6 +2919,7 @@ export class CodexSessionHandle implements SessionHandle {
     private readonly sharedSkillsRoot?: string,
     private readonly beforeSkillDiscovery?: () => Promise<void>,
     private readonly managedPluginMcp?: readonly ManagedPluginMcpServer[],
+    private readonly managedPluginObserver?: ManagedPluginObserver,
   ) {
     // Never seed `_ref` from the requested resume ref: it is latched only once
     // the handshake response is validated (and, for resume, matched) — emit().
@@ -5931,6 +5933,7 @@ export class CodexSessionHandle implements SessionHandle {
       this._ref!.sessionId,
       served,
       waiting.controller.signal,
+      this.managedPluginObserver,
     ).then((outcome) => {
       if (this.managedPluginWait !== waiting) return
       this.managedPluginWait = null
@@ -6804,6 +6807,7 @@ export class CodexRuntime implements AgentRuntime {
       opts.sharedSkillsRoot,
       opts.beforeSkillDiscovery,
       opts.managedPluginMcp,
+      opts.observeManagedPlugins,
     )
     handle.noteLaunchAccount(launchAccount, launchCopy, launchKeyTag)
     handle.noteStartPhases(phase)
@@ -7029,6 +7033,7 @@ export class CodexRuntime implements AgentRuntime {
       options.sharedSkillsRoot,
       options.beforeSkillDiscovery,
       options.managedPluginMcp,
+      options.observeManagedPlugins,
     )
     handle.noteLaunchAccount(launchAccount, launchCopy, launchKeyTag)
     handle.noteStartPhases(phase)

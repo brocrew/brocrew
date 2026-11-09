@@ -1,3 +1,4 @@
+import type { ManagedPluginObserver } from './managed-plugin-observation'
 import type { ManagedPluginMcpServer } from './managed-plugin-mcp'
 import type { Provider, SessionStatus } from '@brobot2/shared'
 import type { ChildInputOutcome, ChildThreadState } from './child-conversation'
@@ -68,6 +69,8 @@ export interface ProviderRuntimeContext {
   externalMcp?: ExternalMcpReach
   /** Authenticated per-launch plugin broker routes; absent preserves existing launch behavior. */
   managedPluginMcp?: readonly ManagedPluginMcpServer[]
+  /** Internal observation of existing discovery results; never provider configuration. */
+  observeManagedPlugins?: ManagedPluginObserver
   /** Extra work folders replace the prior grant list and must be supplied again on resume. */
   workFolders?: readonly string[]
 }

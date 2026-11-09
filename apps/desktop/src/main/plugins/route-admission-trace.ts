@@ -1,3 +1,4 @@
+import { managedPluginFailure } from '@brobot2/runtime/plugin-failure'
 import { createHmac, randomBytes } from 'node:crypto'
 import { closeSync, fstatSync, ftruncateSync, openSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
@@ -56,6 +57,9 @@ export function observeAdmission(
 }
 
 const events = [
+  'launch-attachment',
+  'launch-discovery',
+  'route-configured',
   'source-refresh',
   'release-received',
   'source-retired',
@@ -67,10 +71,34 @@ const events = [
   'http-broker-refused',
   'tool-current-refused',
 ] as const
-const identities = ['workspace', 'source', 'lease', 'epoch', 'route', 'hostRun', 'request'] as const
+const identities = ['workspace', 'source', 'lease', 'epoch', 'route', 'hostRun', 'request', 'launch', 'incarnation', 'attachmentRoute', 'server'] as const
 type Identity = (typeof identities)[number]
 type Aliases = Partial<Record<Identity, string>>
-export interface RouteAdmissionEvent extends Aliases {
+const launchStages = ['initial-read', 'before-send-read', 'provider-discovery', 'provider-launch'] as const
+const launchOutcomes = ['configured', 'empty', 'failed', 'discovered', 'unavailable', 'timeout', 'cancelled'] as const
+export interface LaunchTraceDetail extends Aliases {
+  stage?: (typeof launchStages)[number]
+  outcome?: (typeof launchOutcomes)[number]
+  provider?: 'claude' | 'codex'
+  failureStage?: string
+  configuredTools?: readonly string[]
+  discoveredTools?: readonly string[]
+  configuredCount?: number
+  discoveredCount?: number
+  serverCount?: number
+  pending?: readonly string[]
+  off?: readonly string[]
+  unknown?: boolean
+}
+/** The random incarnation salts aliases shared by app and supervisor; never use a capability. */
+export function attachmentTraceId(incarnation: string, kind: 'route' | 'server' | 'tool' | 'plugin' | 'incarnation', value: string): string {
+  try {
+    return createHmac('sha256', incarnation).update(kind).update('\0').update(value).digest('hex').slice(0, 32)
+  } catch {
+    return ''
+  }
+}
+export interface RouteAdmissionEvent extends Aliases, LaunchTraceDetail {
   process: string
   sequence: number
   event: (typeof events)[number]
@@ -80,9 +108,10 @@ export interface RouteAdmissionEvent extends Aliases {
 export type RouteAdmissionSink = (event: RouteAdmissionEvent) => void
 export interface RouteAdmissionTrace {
   aliases: Aliases
+  attachmentId(kind: 'route' | 'server' | 'tool', value: string): string | undefined
   alias(kind: Identity, value: string): string | undefined
   fresh(kind: Identity): string | undefined
-  emit(event: RouteAdmissionEvent['event'], detail?: AdmissionFailure, request?: string): void
+  emit(event: RouteAdmissionEvent['event'], detail?: Partial<AdmissionFailure> & LaunchTraceDetail, request?: string): void
 }
 
 /** One supervisor-local namespace, no alias registry and no credential-derived identifiers. */
@@ -110,8 +139,15 @@ export function createRouteAdmissionTrace(sink?: RouteAdmissionSink) {
     }
     return undefined
   }
-  return (aliases: Aliases): RouteAdmissionTrace => ({
+  return (aliases: Aliases, incarnation?: string): RouteAdmissionTrace => ({
     aliases,
+    attachmentId(kind, value) {
+      try {
+        return incarnation ? attachmentTraceId(incarnation, kind, value) : undefined
+      } catch {
+        return undefined
+      }
+    },
     alias,
     fresh(kind) {
       try {
@@ -135,7 +171,7 @@ export function createRouteAdmissionTrace(sink?: RouteAdmissionSink) {
 export function recordRouteAdmissionTrace(root: string, event: RouteAdmissionEvent): void {
   let fd: number | undefined
   try {
-    const row: Record<string, string | number> = {
+    const row: Record<string, string | number | boolean | readonly string[]> = {
       at: new Date().toISOString(),
       process: /^[a-f0-9]{32}$/.test(event.process) ? event.process : '',
       sequence: Number.isSafeInteger(event.sequence) && event.sequence > 0 ? event.sequence : 0,
@@ -147,18 +183,27 @@ export function recordRouteAdmissionTrace(root: string, event: RouteAdmissionEve
       const value = event[field]
       if (typeof value === 'string' && /^[a-f0-9]{32}$/.test(value)) row[field] = value
     }
+    if (launchStages.includes(event.stage!)) row.stage = event.stage!
+    if (launchOutcomes.includes(event.outcome!)) row.outcome = event.outcome!
+    if (event.provider === 'claude' || event.provider === 'codex') row.provider = event.provider
+    if (event.failureStage !== undefined)
+      row.failureStage = managedPluginFailure({ pluginStage: event.failureStage, pluginCause: 'unknown' }, 'attachment-read').pluginStage
+    for (const field of ['configuredTools', 'discoveredTools', 'pending', 'off'] as const) {
+      const values = event[field]
+      if (Array.isArray(values)) row[field] = values.filter((value) => typeof value === 'string' && /^[a-f0-9]{32}$/.test(value)).slice(0, 512)
+    }
+    for (const field of ['configuredCount', 'discoveredCount', 'serverCount'] as const) {
+      const value = event[field]
+      if (Number.isSafeInteger(value) && value! >= 0) row[field] = value!
+    }
+    if (typeof event.unknown === 'boolean') row.unknown = event.unknown
     const line = JSON.stringify(row) + '\n'
     const path = join(root, 'plugin-route-admission.log')
-    try {
-      fd = openSync(path, 'r+')
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-      fd = openSync(path, 'wx', 0o600)
-    }
+    fd = openSync(path, 'a', 0o600)
     const stat = fstatSync(fd)
     const full = stat.size + Buffer.byteLength(line) > 1024 * 1024
     if (full) ftruncateSync(fd, 0)
-    writeSync(fd, line, full ? 0 : stat.size)
+    writeSync(fd, line)
   } catch {
     /* Diagnostics never change admission. */
   } finally {

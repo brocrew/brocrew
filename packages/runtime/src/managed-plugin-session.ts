@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+import type { ManagedPluginDiscovery } from './managed-plugin-observation'
 import { TurnInProgress } from './turn-in-progress'
 import type { AgentRuntime, ResumeOptions, SessionHandle, StartOptions } from './runtime'
 import { ResumeError } from './runtime'
@@ -48,7 +50,20 @@ function retained(
   )
   return [...next.servers, ...kept.map((one) => ({ ...one, retained: true as const }))]
 }
+export type ManagedPluginLaunchObservation = {
+  readonly launch: string
+  readonly provider: string
+  readonly stage: 'initial-read' | 'before-send-read' | 'provider-discovery' | 'provider-launch'
+  readonly outcome: 'configured' | 'empty' | 'failed' | 'discovered' | 'unavailable' | 'timeout' | 'cancelled'
+  readonly servers: readonly Pick<ManagedPluginMcpServer, 'name' | 'url'>[]
+  readonly pending?: readonly string[]
+  readonly off?: readonly string[]
+  readonly unknown?: boolean
+  readonly failureStage?: PluginFailureStage
+  readonly discovery?: ManagedPluginDiscovery
+}
 export interface ManagedPluginAttachmentSource {
+  observe?(event: ManagedPluginLaunchObservation): void
   read(): Promise<ManagedPluginAttachment>
   close(): Promise<void>
 }
@@ -100,13 +115,26 @@ export function withManagedPluginAttachments(
     options: StartOptions | ResumeOptions,
     ref?: NonNullable<SessionHandle['ref']>,
   ): Promise<SessionHandle> {
+    let launchId = ''
+    try {
+      launchId = randomUUID().replaceAll('-', '')
+    } catch {
+      /* A diagnostic identity is not a launch requirement. */
+    }
+    function observe(event: Omit<ManagedPluginLaunchObservation, 'launch' | 'provider'>) {
+      try {
+        source.observe?.({ ...event, launch: launchId, provider: runtime.provider })
+      } catch {
+        /* Observation never changes a launch or send. */
+      }
+    }
     let unavailable: unknown
     let attachment: ManagedPluginAttachment = { revision: '', servers: [] }
     // At most one source read at a time. One that outlived a send's wait keeps running; the next
     // send does not wait for it again, and adopts its result once it has settled.
     let outstanding:
       { work: Promise<ManagedPluginAttachment>; settled: boolean; outlived: boolean } | undefined
-    async function read(signal?: AbortSignal, within?: number) {
+    async function read(signal?: AbortSignal, within?: number, stage: 'initial-read' | 'before-send-read' = 'initial-read') {
       if (!outstanding) {
         const one = { work: source.read(), settled: false, outlived: false }
         void one.work.then(
@@ -134,6 +162,14 @@ export function withManagedPluginAttachments(
       } catch {
         throw new ManagedPluginFailure('attachment-schema', 'invalid-reply')
       }
+      observe({
+        stage,
+        outcome: next.servers.length ? 'configured' : 'empty',
+        servers: next.servers,
+        pending: next.plugins?.pending,
+        off: next.plugins?.none,
+        unknown: next.plugins?.unknown,
+      })
       return {
         revision: next.revision,
         servers: retained(attachment.servers, next).map((one) => ({ ...one })),
@@ -143,20 +179,31 @@ export function withManagedPluginAttachments(
       attachment = await read(options.signal)
     } catch (error) {
       unavailable = error
+      observe({ stage: 'initial-read', outcome: 'failed', servers: [], failureStage: managedPluginFailure(error, 'attachment-read').pluginStage })
     }
-    const launch = { ...options, managedPluginMcp: attachment.servers }
+    const discoveryObserver = (servers: readonly ManagedPluginMcpServer[]) =>
+      (discovery: ManagedPluginDiscovery) => observe({
+        stage: 'provider-discovery', outcome: discovery.outcome, servers, discovery,
+      })
+    const launch = {
+      ...options,
+      managedPluginMcp: attachment.servers,
+      observeManagedPlugins: discoveryObserver(attachment.servers),
+    }
     let inner: SessionHandle
     try {
       if (ref) inner = await runtime.resume(ref, launch)
       else if ('cwd' in launch) inner = await runtime.start(launch)
       else throw new Error('Plugin unavailable. Try again.')
     } catch (error) {
+      observe({ stage: 'provider-launch', outcome: 'failed', servers: attachment.servers })
       await bounded(source.close()).catch(() => undefined)
       throw error
     }
     const ownership = new ManagedPluginOwnership()
     ownership.track(inner)
     const events = new AsyncQueue<RuntimeEvent>()
+    if (source.observe) events.push(wrapUnknown(runtime.provider, { method: 'plugin/launch', launch: launchId }, 'lifecycle', 'plugin/launch'))
     let reported = false
     function noteUnavailable(error?: unknown, stage: PluginFailureStage = 'attachment-read') {
       if (reported) return
@@ -260,8 +307,9 @@ export function withManagedPluginAttachments(
               try {
                 let next: ManagedPluginAttachment | undefined
                 try {
-                  next = await read(wait.signal, left())
+                  next = await read(wait.signal, left(), 'before-send-read')
                 } catch (error) {
+                  observe({ stage: 'before-send-read', outcome: 'failed', servers: attachment.servers, failureStage: managedPluginFailure(error, 'attachment-read').pluginStage })
                   noteUnavailable(error)
                 }
                 let stale: readonly string[] = []
@@ -345,6 +393,7 @@ export function withManagedPluginAttachments(
                     const resume = {
                       ...seed,
                       ...settings,
+                      observeManagedPlugins: discoveryObserver(next.servers),
                       managedPluginMcp: next.servers,
                       signal: wait.signal,
                     }

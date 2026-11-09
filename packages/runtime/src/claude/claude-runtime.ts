@@ -1,4 +1,5 @@
 import type { ManagedPluginMcpServer } from '../managed-plugin-mcp'
+import { observeManagedPlugins, type ManagedPluginObserver } from '../managed-plugin-observation'
 import { managedTranscriptSettings } from './app-transcript-retention'
 import { randomUUID } from 'node:crypto'
 import {
@@ -887,6 +888,8 @@ export class ClaudeSessionHandle implements SessionHandle {
     private readonly authTokenProviderAsync?: ClaudeAuthTokenProviderAsync,
 
     seedWorkFolders: readonly string[] = [],
+    private readonly managedPluginMcp: readonly ManagedPluginMcpServer[] = [],
+    private readonly managedPluginObserver?: ManagedPluginObserver,
   ) {
     this._targetRef = targetRef ?? null
     this._ref = null
@@ -963,9 +966,10 @@ export class ClaudeSessionHandle implements SessionHandle {
     const frame = message as unknown as Record<string, unknown>
     const tools = frame['tools']
 
-    if (!Array.isArray(tools)) return
     const servers = frame['mcp_servers']
-    const namedTools = tools.filter((one): one is string => typeof one === 'string')
+    const namedTools = Array.isArray(tools)
+      ? tools.filter((one): one is string => typeof one === 'string')
+      : []
 
     const rawServers = Array.isArray(servers) ? servers : []
     const namedServers = rawServers
@@ -975,6 +979,21 @@ export class ClaudeSessionHandle implements SessionHandle {
         return typeof row['name'] === 'string' && typeof row['status'] === 'string'
       })
       .map((server) => ({ name: server.name, status: server.status }))
+
+    for (const { name } of this.managedPluginMcp) {
+      const connected = namedServers.find((server) => server.name === name)?.status === 'connected'
+      const prefix = `mcp__${name}__`
+      observeManagedPlugins(this.managedPluginObserver, {
+        server: name,
+        tools: connected
+          ? namedTools
+              .filter((tool) => tool.startsWith(prefix))
+              .map((tool) => tool.slice(prefix.length))
+          : [],
+        outcome: connected ? 'discovered' : 'unavailable',
+      })
+    }
+    if (!Array.isArray(tools)) return
 
     const shedBeforeBounding =
       tools.length - namedTools.length + (rawServers.length - namedServers.length)
@@ -2613,6 +2632,8 @@ export class ClaudeRuntime implements AgentRuntime {
       this.authTokenProviderAsync,
 
       opts.workFolders,
+      opts.managedPluginMcp,
+      opts.observeManagedPlugins,
     )
     handle.noteAlwaysRulesFile()
     const auth = await this.authForALaunch()
@@ -2801,6 +2822,8 @@ export class ClaudeRuntime implements AgentRuntime {
         this.authTokenProviderAsync,
 
         options.workFolders,
+        options.managedPluginMcp,
+        options.observeManagedPlugins,
       )
       handle.noteAlwaysRulesFile()
 

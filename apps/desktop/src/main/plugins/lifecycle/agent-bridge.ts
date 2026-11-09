@@ -1,4 +1,5 @@
 import {
+  attachmentTraceId,
   createRouteAdmissionTrace,
   observeAdmission,
   type RouteAdmissionSink,
@@ -83,9 +84,10 @@ export function createLifecycleAgentBridge(options: {
     traceFor({
       workspace: identityTrace.alias('workspace', request.workspaceId),
       source: identityTrace.alias('source', request.incarnation),
+      incarnation: attachmentTraceId(request.incarnation, 'incarnation', ''),
       lease: identityTrace.alias('lease', lease.id),
       epoch: identityTrace.alias('epoch', lease.epoch),
-    })
+    }, request.incarnation)
   const answerWithin = options.answerWithinMs ?? 1000
   const openRoute = options.openRoute ?? openManagedPluginRoute
   type Warmup = {
@@ -458,7 +460,7 @@ export function createLifecycleAgentBridge(options: {
           ...source.aliases,
           route: source.fresh('route'),
           hostRun: source.alias('hostRun', view.runId),
-        })
+        }, request.incarnation)
         const route = await openRoute(
           entry.broker,
           agent,

@@ -1,3 +1,4 @@
+import { attachmentTraceId, createRouteAdmissionTrace } from './route-admission-trace'
 import { randomUUID, createHash } from 'node:crypto'
 import { z } from 'zod'
 import type { ManagedPluginAttachment, ManagedPluginAttachmentSource } from '@brobot2/runtime'
@@ -42,14 +43,47 @@ function parsed(reply: {
 /** One fresh source per runtime incarnation. The supervisor owns all broker and private authority. */
 export class WorkspacePluginAttachments {
   constructor(
-    private readonly owner: Pick<PluginSupervisorAttachment, 'agentRoutes'>,
+    private readonly owner: Pick<PluginSupervisorAttachment, 'agentRoutes'> & Partial<Pick<PluginSupervisorAttachment, 'recordTrace'>>,
     private readonly workspaceId: string,
   ) {}
   agent(occupied: readonly string[]): ManagedPluginAttachmentSource {
     const incarnation = randomUUID()
+    const incarnationId = attachmentTraceId(incarnation, 'incarnation', '')
+    const trace = createRouteAdmissionTrace((event) => this.owner.recordTrace?.(event))({ incarnation: incarnationId })
+    const id = (kind: 'route' | 'server' | 'tool' | 'plugin', value: string) => attachmentTraceId(incarnation, kind, value)
     const input = { workspaceId: this.workspaceId, incarnation, occupied: [...occupied] }
     let closed = false
     return {
+      observe: (event) => {
+        const detail = {
+          launch: event.launch,
+          stage: event.stage,
+          outcome: event.outcome,
+          provider: event.provider === 'claude' || event.provider === 'codex' ? event.provider : undefined,
+          failureStage: event.failureStage,
+        } as const
+        if (event.discovery) {
+          const server = event.servers.find((one) => one.name === event.discovery!.server)
+          if (server) trace.emit('launch-discovery', {
+            ...detail,
+            server: id('server', server.name),
+            attachmentRoute: id('route', server.url),
+            discoveredTools: event.discovery.tools.map((tool) => id('tool', tool)).sort(),
+            discoveredCount: event.discovery.tools.length,
+          })
+        } else {
+          trace.emit('launch-attachment', {
+            ...detail,
+            serverCount: event.servers.length,
+            pending: event.pending?.map((plugin) => id('plugin', plugin)),
+            off: event.off?.map((plugin) => id('plugin', plugin)),
+            unknown: event.unknown,
+          })
+          for (const server of event.servers) trace.emit('launch-attachment', {
+            ...detail, server: id('server', server.name), attachmentRoute: id('route', server.url),
+          })
+        }
+      },
       read: async () => {
         if (closed) throw new Error('Plugin unavailable. Try again.')
         const attachment = parsed(await this.owner.agentRoutes(input))

@@ -1,3 +1,4 @@
+import { recordRouteAdmissionTrace, type RouteAdmissionEvent } from '../route-admission-trace'
 import { pluginStartupTrace } from '../startup-failure'
 import { createHash, randomUUID } from 'node:crypto'
 import { lstatSync, realpathSync } from 'node:fs'
@@ -690,6 +691,9 @@ export class PluginSupervisorAttachment {
       this.recovering = undefined
     })
     return this.recovering
+  }
+  recordTrace(event: RouteAdmissionEvent): void {
+    if (this.where) recordRouteAdmissionTrace(this.where.root, event)
   }
   async agentRoutes(input: {
     workspaceId: string

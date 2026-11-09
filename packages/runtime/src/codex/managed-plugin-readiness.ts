@@ -1,4 +1,5 @@
 import type { CodexTransport } from './codex-transport'
+import { observeManagedPlugins, type ManagedPluginObserver } from '../managed-plugin-observation'
 
 export const MANAGED_PLUGIN_READY_WITHIN_MS = 10_000
 export type ManagedPluginReadiness = 'ready' | 'unavailable' | 'timeout' | 'cancelled'
@@ -12,11 +13,18 @@ export function waitForManagedPluginTools(
   threadId: string,
   names: readonly string[],
   signal: AbortSignal,
+  observer?: ManagedPluginObserver,
 ): Promise<ManagedPluginReadiness> {
   if (signal.aborted) return Promise.resolve('cancelled')
   if (names.length === 0) return Promise.resolve('ready')
   return new Promise((resolve) => {
     let settled = false
+    const observed = new Set<string>()
+    const observe: ManagedPluginObserver = (event) => {
+      if (observed.has(event.server)) return
+      observed.add(event.server)
+      observeManagedPlugins(observer, event)
+    }
     const pauses = new Set<() => void>()
     const finish = (outcome: ManagedPluginReadiness): void => {
       if (settled) return
@@ -24,6 +32,8 @@ export function waitForManagedPluginTools(
       clearTimeout(deadline)
       signal.removeEventListener('abort', cancelled)
       for (const wake of pauses) wake()
+      for (const name of names)
+        if (!observed.has(name)) observe({ server: name, tools: [], outcome: outcome === 'timeout' || outcome === 'cancelled' ? outcome : 'unavailable' })
       resolve(outcome)
     }
     const cancelled = (): void => finish('cancelled')
@@ -53,15 +63,29 @@ export function waitForManagedPluginTools(
             if (settled) return false
             const rows = record(response) && Array.isArray(response.data) ? response.data : []
             const server: unknown = rows.find((one: unknown) => record(one) && one.name === name)
-            if (!record(server)) return false
-            if (server.runtimeStatus === 'connected')
-              return server.toolsError === null && record(server.tools)
-            if (server.runtimeStatus !== 'starting' && server.runtimeStatus !== 'notStarted')
+            if (!record(server)) {
+              observe({ server: name, tools: [], outcome: 'unavailable' })
               return false
+            }
+            if (server.runtimeStatus === 'connected') {
+              const tools = server.tools
+              const ready = server.toolsError === null && record(tools)
+              observe({
+                server: name,
+                tools: ready ? Object.keys(tools) : [],
+                outcome: ready ? 'discovered' : 'unavailable',
+              })
+              return ready
+            }
+            if (server.runtimeStatus !== 'starting' && server.runtimeStatus !== 'notStarted') {
+              observe({ server: name, tools: [], outcome: 'unavailable' })
+              return false
+            }
             await pause()
           }
         } catch {
           // Provider error text can contain addresses or authentication details.
+          observe({ server: name, tools: [], outcome: 'unavailable' })
         }
         return false
       }),

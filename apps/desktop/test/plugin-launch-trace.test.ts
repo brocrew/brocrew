@@ -30,7 +30,7 @@ function provider(discovered = true) {
     })
     return {
       status: () => 'idle',
-      events: async function* () {},
+      events: async function* () { yield* [] },
       close: async () => {},
     } as unknown as SessionHandle
   })
@@ -99,6 +99,8 @@ it.each([true, false])('joins configured route tools to provider discovery (heal
     discoveredTools: discovered ? configured.configuredTools : [],
   })
   expect(configured.configuredCount).toBe(1)
+  const event = await handle.events()[Symbol.asyncIterator]().next()
+  expect(event.value).toMatchObject({ type: 'unknown', label: 'plugin/launch', raw: { launch: discovery.launch } })
   expect(rows.find((row) => row.stage === 'initial-read')).toMatchObject({ outcome: 'configured', launch: discovery.launch, serverCount: 1 })
   for (const secret of [route!.server.capability, route!.server.url, route!.server.name, fixture.credential, 'echo']) expect(log.text()).not.toContain(secret)
 })
@@ -112,4 +114,26 @@ it('ignores a throwing launch observer without losing configured routes or chang
   closes.push(() => handle.close())
   expect(raw.start).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ managedPluginMcp: [server] }))
   expect(read).toHaveBeenCalledOnce()
+})
+
+it('persists only allowlisted launch fields and opaque ids even for a malformed observer event', () => {
+  const log = output()
+  log.recordTrace({
+    process: 'a'.repeat(32), sequence: 1, event: 'launch-discovery',
+    launch: 'fictional-token', incarnation: 'b'.repeat(32),
+    stage: 'fictional-content', outcome: 'fictional-content', provider: 'fictional-content',
+    failureStage: 'fictional-token',
+    configuredTools: ['fictional-private-tool', 'c'.repeat(32)],
+    discoveredTools: ['fictional-private-tool'], pending: ['fictional-personal-name'],
+    configuredCount: -1, discoveredCount: Infinity,
+    raw: 'Bearer fictional-private-token',
+  } as unknown as RouteAdmissionEvent)
+  expect(log.rows()).toEqual([expect.objectContaining({
+    event: 'launch-discovery', incarnation: 'b'.repeat(32),
+    configuredTools: ['c'.repeat(32)], discoveredTools: [], pending: [],
+    failureStage: 'attachment-read',
+  })])
+  expect(log.text()).not.toMatch(/fictional|Bearer|Infinity/)
+  expect(log.rows()[0]).not.toHaveProperty('configuredCount')
+  expect(log.rows()[0]).not.toHaveProperty('discoveredCount')
 })
