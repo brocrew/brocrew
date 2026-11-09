@@ -646,6 +646,30 @@ export const STATE_RULES = {
   'transcript-retention.json': transcriptRetentionKept,
 }
 
+/** Files the candidate imports into its database, each rebuilt from its rows to be compared. */
+export const MOVED_INTO_TABLES = {
+  'archived.json': (tables) => ({
+    version: 1,
+    archived: Object.fromEntries(
+      (tables.archived_conversation ?? []).map((row) => [
+        row.conversation_id,
+        { at: row.archived_at },
+      ]),
+    ),
+  }),
+}
+
+/** `state` with each moved file the database marks as imported rebuilt from its rows. */
+export function withMovedFiles(state, tables, moved = MOVED_INTO_TABLES) {
+  const found = { ...state }
+  const imported = new Set((tables.imported_side_file ?? []).map((row) => row.name))
+  for (const [name, rebuild] of Object.entries(moved)) {
+    if (found[name] === undefined && imported.has(name))
+      found[name] = Buffer.from(JSON.stringify(rebuild(tables)))
+  }
+  return found
+}
+
 /**
  * What became of the state files the beta left. One that went, or that no longer says what the beta
  * wrote, is lost. One the candidate wrote again, still saying all of it, is listed as rewritten;

@@ -41,6 +41,7 @@ import {
   startOrder,
   stateFileNames,
   stateKept,
+  withMovedFiles,
   theCandidateInstaller,
   transcriptsOf,
   turnOutcome,
@@ -876,6 +877,31 @@ describe('the state files the beta left', () => {
     const after = { ...before, 'drafts.json': Buffer.from(JSON.stringify(shadowed)) }
     expect(stateKept(before, after, names).lost).toEqual([
       'drafts.json: it holds two drafts for new, and the app reads only the first; the draft for new changed',
+    ])
+  })
+})
+
+describe('a state file the candidate moved into its database', () => {
+  const archived = { version: 1, archived: { a: { at: 5 } } }
+  const before = { 'archived.json': Buffer.from(JSON.stringify(archived)) }
+  const names = ['archived.json']
+
+  it('is kept when its rows say all it said and the import is marked', () => {
+    const tables = {
+      imported_side_file: [{ name: 'archived.json' }],
+      archived_conversation: [{ conversation_id: 'a', archived_at: 5 }],
+    }
+    expect(stateKept(before, withMovedFiles({}, tables), names).lost).toEqual([])
+  })
+
+  it('is lost when a row is missing, or when nothing marks it imported', () => {
+    const marked = { imported_side_file: [{ name: 'archived.json' }], archived_conversation: [] }
+    expect(stateKept(before, withMovedFiles({}, marked), names).lost).toEqual([
+      'archived.json: it no longer says what the beta wrote',
+    ])
+    const unmarked = { archived_conversation: [{ conversation_id: 'a', archived_at: 5 }] }
+    expect(stateKept(before, withMovedFiles({}, unmarked), names).lost).toEqual([
+      'archived.json: it is gone',
     ])
   })
 })

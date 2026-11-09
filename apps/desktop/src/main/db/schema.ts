@@ -733,3 +733,13 @@ export const identityOwnNotesSeen = sqliteTable(
   },
   (t) => [check('identity_own_notes_seen_ck', sql`${t.seenThrough} >= 0`)],
 )
+
+/** A side file a start imported into these tables; a named file is only ever deleted after. */
+export const importedSideFile = sqliteTable('imported_side_file', {
+  name: text('name').primaryKey(),
+})
+
+export const archivedConversation = sqliteTable('archived_conversation', {
+  conversationId: text('conversation_id').primaryKey(),
+  archivedAt: integer('archived_at').notNull(),
+})
