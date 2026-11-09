@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { createLifecycleAgentBridge } from '../src/main/plugins/lifecycle/agent-bridge'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { WorkspacePluginAttachments } from '../src/main/plugins/attachments'
@@ -14,7 +12,7 @@ import {
   type SessionHandle,
 } from '@brobot2/runtime'
 
-import { closes, live, request, lease } from './helpers/plugin-agent-bridge'
+import { closes, connected, live, request, lease } from './helpers/plugin-agent-bridge'
 function brokerClock() {
   let now = 0,
     sequence = 0
@@ -42,17 +40,6 @@ afterEach(async () => {
   for (const close of closes.splice(0).reverse()) await close()
   await cleanupLifecycleFixtures()
 })
-async function connected(route: ManagedPluginMcpServer) {
-  const client = new Client({ name: 'fictional-willow', version: '1' })
-  client.onerror = () => {}
-  closes.push(() => client.close())
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL(route.url), {
-      requestInit: { headers: { Authorization: `Bearer ${route.capability}` } },
-    }),
-  )
-  return client
-}
 async function holdToolCall(
   f: Awaited<ReturnType<typeof live>>,
   quiescent: Promise<void> = new Promise(() => {}),

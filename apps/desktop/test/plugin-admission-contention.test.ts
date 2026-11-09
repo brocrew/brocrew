@@ -1,11 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { randomUUID } from 'node:crypto'
 import Database from 'better-sqlite3'
 import { join } from 'node:path'
 import { cleanupLifecycleFixtures, deferred, fixture } from './plugin-lifecycle-fixtures'
-import { closes, lease, live, request } from './helpers/plugin-agent-bridge'
+import { closes, connected, lease, live, request } from './helpers/plugin-agent-bridge'
 
 afterEach(async () => {
   for (const close of closes.splice(0).reverse()) await close()
@@ -73,39 +71,48 @@ it.each(['chrome', 'whatsapp', null])(
   },
 )
 
-it('keeps an issued route usable while another async lifecycle context owns the writer fence', async () => {
-  const f = await live()
-  const owner = lease(),
-    req = request(f.local.sink.workspaceId)
-  const [route] = await f.bridge.routes(owner, req)
-  const entered = deferred<void>(),
-    release = deferred<void>()
-  const writer = f.state.withExclusive(async () => {
-    f.state.inspect()
-    entered.resolve()
-    await release.promise
-  })
-  await entered.promise
-  const client = new Client({ name: 'fictional-contention', version: '1' })
-  client.onerror = () => {}
-  closes.push(() => client.close())
-  try {
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(route!.url), {
-        requestInit: { headers: { Authorization: `Bearer ${route!.capability}` } },
-      }),
-    )
-    expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(['echo'])
-    expect(await client.callTool({ name: 'echo', arguments: {} })).toMatchObject({
-      content: [{ type: 'text', text: 'fictional fern' }],
-    })
-    expect(f.call).toHaveBeenCalledOnce()
-    expect(f.bridge.toolsUnavailable('chrome')).toBe(false)
-  } finally {
-    release.resolve()
-    await writer
-  }
-})
+it.each(['writer-fence', 'sqlite-exclusive'] as const)(
+  'initializes, lists and calls a live route without lifecycle reads during %s contention',
+  async (mode) => {
+    const f = await live()
+    const [route] = await f.bridge.routes(lease(), request(f.local.sink.workspaceId))
+    const entered = deferred<void>(),
+      release = deferred<void>()
+    let writer: Promise<unknown> | undefined
+    let db: Database.Database | undefined
+    if (mode === 'writer-fence') {
+      writer = f.state.withExclusive(async () => {
+        entered.resolve()
+        await release.promise
+      })
+      await entered.promise
+    } else {
+      db = new Database(join(f.root, 'state', 'writer-lock.sqlite'), { timeout: 0 })
+      db.exec('BEGIN EXCLUSIVE')
+    }
+    const read = vi.spyOn(f.state, 'readWorkspaceAdmission')
+    const admission = vi.spyOn(f.state, 'withWorkspaceAdmission')
+    try {
+      expect(() => f.state.inspect()).toThrow(expect.objectContaining({ code: 'busy' }))
+      const client = await connected(route!)
+      expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(['echo'])
+      expect(await client.callTool({ name: 'echo', arguments: {} })).toMatchObject({
+        content: [{ type: 'text', text: 'fictional fern' }],
+      })
+      expect(f.call).toHaveBeenCalledOnce()
+      expect(read).not.toHaveBeenCalled()
+      expect(admission).not.toHaveBeenCalled()
+      expect(f.bridge.toolsUnavailable('chrome')).toBe(false)
+    } finally {
+      read.mockRestore()
+      admission.mockRestore()
+      db?.exec('ROLLBACK')
+      db?.close()
+      release.resolve()
+      await writer
+    }
+  },
+)
 
 it('does not permanently revoke a contribution during another lifecycle writer lease', async () => {
   const f = await fixture()
@@ -151,14 +158,7 @@ it('recovers once after host exit and stays usable during subsequent writer cont
   })
   await entered.promise
   try {
-    const client = new Client({ name: 'fictional-recovered', version: '1' })
-    client.onerror = () => {}
-    closes.push(() => client.close())
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(route!.url), {
-        requestInit: { headers: { Authorization: `Bearer ${route!.capability}` } },
-      }),
-    )
+    const client = await connected(route!)
     await client.callTool({ name: 'echo', arguments: {} })
     expect(f.call).toHaveBeenCalledOnce()
     expect(recover).toHaveBeenCalledOnce()

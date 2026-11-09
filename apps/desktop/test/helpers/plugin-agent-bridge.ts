@@ -1,13 +1,27 @@
 import { vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { createLifecycleAgentBridge } from '../../src/main/plugins/lifecycle/agent-bridge'
 import { sharedLifecycleWorkspaces } from '../../src/main/plugins/lifecycle/workspaces'
 import { fixture } from '../plugin-lifecycle-fixtures'
 import type { WorkspaceLease } from '../../src/main/plugins/supervisor/owner'
 import type { Command } from '../../src/main/plugins/supervisor/protocol'
 import type { BrokerInput } from '../../src/main/plugins/tool-broker'
+import type { ManagedPluginMcpServer } from '@brobot2/runtime'
 
 export const closes: (() => Promise<unknown>)[] = []
+export async function connected(route: ManagedPluginMcpServer) {
+  const client = new Client({ name: 'fictional-willow', version: '1' })
+  client.onerror = () => {}
+  closes.push(() => client.close())
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(route.url), {
+      requestInit: { headers: { Authorization: `Bearer ${route.capability}` } },
+    }),
+  )
+  return client
+}
 export const request = (
   workspaceId: string,
   incarnation = randomUUID(),
