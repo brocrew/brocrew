@@ -3175,66 +3175,58 @@ describe('ClaudeRuntime — config-independent prompting (007 P1-6)', () => {
     }
   })
 
-  // --- provider-home isolation env forwarding (021) ---
-
   it('pins CLAUDE_CONFIG_DIR to the provider home and hardens the child env', async () => {
     const cap = captureOptions() // starts with providerHome '/tmp/x/home'
     await cap.start()
     const o = cap.get()
     expect(o.env?.['CLAUDE_CONFIG_DIR']).toBe('/tmp/x/home')
     expect(o.env?.['ENABLE_CLAUDEAI_MCP_SERVERS']).toBe('false')
-    // Leave the disabling variable absent so auto-memory remains enabled in the app-owned home.
-    // A value of '0' would depend on the CLI's coercion and would not establish absence.
+    // Absent, not '0', so auto-memory stays on in the app-owned home whatever the CLI coerces.
     expect('CLAUDE_CODE_DISABLE_AUTO_MEMORY' in (o.env ?? {})).toBe(false)
-    // 🔴 **ABSENT, and this is the assertion 140 exists for.** 026 set this from the variable's
-    // name; with it set the CLI forces the permission mode to `default`.
-    // Every launch this app made carried `--permission-mode plan` and ran as `default`, which is how
-    // an agent wrote a file into a real `~/.claude` under a header that said plan mode was on. The
-    // credential half is unaffected: `buildChildEnv`'s allow-list and its name veto are what keep
-    // ambient secrets out of this child, and both are asserted above.
+    // With this set the CLI forces the permission mode to `default`, overriding plan mode.
     expect('CLAUDE_CODE_SUBPROCESS_ENV_SCRUB' in (o.env ?? {})).toBe(false)
     expect(o.strictMcpConfig).toBe(true)
-    expect(o.settingSources).toEqual([]) // 013 isolation kept alongside the new env
+    expect(o.settingSources).toEqual([])
   })
 
-  it('drops ambient credentials (allow-list): no CLAUDE_CODE_OAUTH_TOKEN / GITHUB_TOKEN leak (026)', async () => {
-    const saved = {
-      CLAUDE_CODE_OAUTH_TOKEN: process.env['CLAUDE_CODE_OAUTH_TOKEN'],
-      GITHUB_TOKEN: process.env['GITHUB_TOKEN'],
-      AWS_SECRET_ACCESS_KEY: process.env['AWS_SECRET_ACCESS_KEY'],
-    }
-    process.env['CLAUDE_CODE_OAUTH_TOKEN'] = 'ambient-oauth-should-not-leak'
-    process.env['GITHUB_TOKEN'] = 'ghp-should-not-leak'
-    process.env['AWS_SECRET_ACCESS_KEY'] = 'aws-should-not-leak'
-    try {
-      const cap = captureOptions() // no auth provider wired → no intended token either
-      await cap.start()
-      const o = cap.get()
-      expect(o.env?.['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined() // ambient token dropped
-      expect(o.env?.['GITHUB_TOKEN']).toBeUndefined()
-      expect(o.env?.['AWS_SECRET_ACCESS_KEY']).toBeUndefined()
-      expect(o.env?.['PATH']).toBeDefined() // essentials still kept
-    } finally {
-      for (const [k, v] of Object.entries(saved)) {
-        if (v === undefined) delete process.env[k]
-        else process.env[k] = v
-      }
-    }
+  afterEach(() => vi.unstubAllEnvs())
+
+  async function launchEnvWith(
+    inherited: Record<string, string>,
+    platform: NodeJS.Platform = process.platform,
+  ): Promise<NodeJS.ProcessEnv> {
+    for (const [name, value] of Object.entries(inherited)) vi.stubEnv(name, value)
+    let captured: Options | undefined
+    const runtime = new ClaudeRuntime(
+      (params) => {
+        captured = params.options
+        return new FakeQuery()
+      },
+      async () => true,
+      () => 'made-up-profile-token',
+      undefined,
+      undefined,
+      undefined,
+      platform,
+    )
+    await runtime.start({ cwd: '/tmp/x', providerHome: '/tmp/x/home' })
+    return captured?.env ?? {}
+  }
+
+  it('inherits the person’s environment, so git, gh and aws work in the agent', async () => {
+    const inherited = { GITHUB_TOKEN: 'x', AWS_SECRET_ACCESS_KEY: 'x', SSH_AUTH_SOCK: '/x' }
+    expect(await launchEnvWith(inherited)).toMatchObject(inherited)
   })
 
-  it('strips inherited auth from the child env but keeps essentials (no ANTHROPIC_API_KEY leak)', async () => {
-    const prev = process.env['ANTHROPIC_API_KEY']
-    process.env['ANTHROPIC_API_KEY'] = 'sk-should-not-leak'
-    try {
-      const cap = captureOptions()
-      await cap.start()
-      const o = cap.get()
-      expect(o.env?.['ANTHROPIC_API_KEY']).toBeUndefined()
-      expect(o.env?.['PATH']).toBeDefined() // essential kept so the SDK subprocess can run
-    } finally {
-      if (prev === undefined) delete process.env['ANTHROPIC_API_KEY']
-      else process.env['ANTHROPIC_API_KEY'] = prev
-    }
+  it('on Windows the profile’s home and sign-in replace inherited ones spelled in any case', async () => {
+    const inherited = { Claude_Code_Oauth_Token: 'x', claude_config_dir: 'x' }
+    const env = await launchEnvWith(inherited, 'win32')
+    const pattern = /^(claude_code_oauth_token|claude_config_dir)$/i
+    const kept = Object.keys(env).filter((name) => pattern.test(name))
+    expect(Object.fromEntries(kept.map((name) => [name, env[name]]))).toEqual({
+      CLAUDE_CODE_OAUTH_TOKEN: 'made-up-profile-token',
+      CLAUDE_CONFIG_DIR: '/tmp/x/home',
+    })
   })
 
   it('concurrent starts with different homes get isolated child env (no cross-talk, global untouched)', async () => {

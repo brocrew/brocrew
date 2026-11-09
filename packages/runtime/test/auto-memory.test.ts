@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Options } from '@anthropic-ai/claude-agent-sdk'
 import {
   AUTO_MEMORY_INDEX,
-  buildChildEnv,
   ClaudeRuntime,
   claudeAutoMemoryDir,
   claudeAutoMemoryIndex,
@@ -67,31 +66,6 @@ describe('🔴 the directory we send is the PROFILE’s, and no cwd reaches it (
 })
 
 describe('🔒 the agent cannot relocate its own memory', () => {
-  it('⛔ no inherited CLAUDE_* variable survives into the child', () => {
-    // Any `CLAUDE_*` variable in the user's shell could move where the child keeps its memory, and
-    // `CLAUDE_CONFIG_DIR` would move the whole home. `buildChildEnv` is an explicit finite
-    // ALLOW-LIST, so none of them can arrive from the user's shell, from a `.env` a session wrote, or
-    // from anything the agent can reach — including names this app has never heard of.
-    const env = buildChildEnv(
-      { CLAUDE_CONFIG_DIR: '/homes/claude' },
-      {
-        PATH: '/usr/bin',
-        CLAUDE_SOME_MEMORY_DIR: '/tmp/attacker',
-        CLAUDE_SOME_MEMORY_PATH_OVERRIDE: '/tmp/attacker',
-        CLAUDE_CONFIG_DIR: '/tmp/attacker-home',
-        CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
-      },
-    )
-
-    expect(env['CLAUDE_SOME_MEMORY_DIR']).toBeUndefined()
-    expect(env['CLAUDE_SOME_MEMORY_PATH_OVERRIDE']).toBeUndefined()
-    expect('CLAUDE_CODE_DISABLE_AUTO_MEMORY' in env).toBe(false)
-    // …and the one CLAUDE var that does reach the child is the one the ADAPTER sets, layered after
-    // the veto, never the inherited one.
-    expect(env['CLAUDE_CONFIG_DIR']).toBe('/homes/claude')
-    expect(env['PATH']).toBe('/usr/bin')
-  })
-
   it('⚠️ …and the ONLY layer that can carry `autoMemoryDirectory` is the one we write', async () => {
     // 🔴 **This assertion changed direction at 166 and the old one is worth naming.** It read
     // `expect(captured?.settings).toBeUndefined()` — "the app sends no settings object that could

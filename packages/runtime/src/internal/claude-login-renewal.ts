@@ -4,7 +4,6 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { buildChildEnv } from './child-env'
 
 /**
  * Renewing the person's own Claude Code login by running their own Claude Code.
@@ -63,6 +62,15 @@ const NOT_HANDED_ON = [
  * reads the person's usual one: the run renews that one.
  */
 const NOT_HANDED_ON_A_MAC = ['CLAUDE_CONFIG_DIR', 'CLAUDE_SECURESTORAGE_CONFIG_DIR']
+
+/** Routing that would point the sign-in check at another backend or login than the person's. */
+const NOT_HANDED_TO_THE_CHECK = [
+  'CLAUDE_CODE_USE_BEDROCK',
+  'CLAUDE_CODE_USE_VERTEX',
+  'CLAUDE_CODE_USE_FOUNDRY',
+  'ANTHROPIC_BASE_URL',
+  'CLAUDE_CONFIG_DIR',
+]
 
 /**
  * How a run ended: its exit code (`null` when it could not start or was stopped). ⛔ Never what it
@@ -154,8 +162,13 @@ export function claudeRenewalEnv(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
   program?: string,
+  alsoDropped: readonly string[] = [],
 ): NodeJS.ProcessEnv {
-  const dropped = platform === 'darwin' ? [...NOT_HANDED_ON, ...NOT_HANDED_ON_A_MAC] : NOT_HANDED_ON
+  const dropped = [
+    ...NOT_HANDED_ON,
+    ...(platform === 'darwin' ? NOT_HANDED_ON_A_MAC : []),
+    ...alsoDropped,
+  ]
   const handed: NodeJS.ProcessEnv = {}
   for (const [key, value] of Object.entries(env)) {
     if (!dropped.includes(key.toUpperCase())) handed[key] = value
@@ -250,11 +263,7 @@ export async function probeClaudeCodeLogin(seams: ClaudeRenewalSeams): Promise<A
       {
         cwd: renewalFolder(),
         env: {
-          ...claudeRenewalEnv(
-            buildChildEnv({}, seams.env, seams.platform),
-            seams.platform,
-            program,
-          ),
+          ...claudeRenewalEnv(seams.env, seams.platform, program, NOT_HANDED_TO_THE_CHECK),
           CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
         },
         timeoutMs: seams.timeLimitMs ?? 8_000,

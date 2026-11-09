@@ -47,8 +47,7 @@ import type { AuthState, LoginAbsence } from '../auth-state'
  * Everything is seam-injectable so the unit tests mock the Keychain/fs and no live secret ever
  * flows in `pnpm run ci`.
  *
- * ⛔ **An API key in this app's own environment is never passed on** — `buildChildEnv` drops it.
- * Only the key a person entered reaches a provider, by its own path.
+ * A provider sign-in variable in this app's environment reaches agents, as in a plain client.
  *
  * Hard rules (015): never write/log the Claude token; copy ONLY Codex `auth.json`,
  * once, `0600`, atomically, never symlinked; never overwrite a possibly-refreshed

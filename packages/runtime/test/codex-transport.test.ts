@@ -1,15 +1,15 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import {
   SpawnCodexTransport,
   type CodexIncoming,
   type SpawnCodexOptions,
 } from '../src/codex/codex-transport'
 import { readTable, type TableReading } from '../src/codex/windows-tree'
-import { buildChildEnv } from '../src/internal/child-env'
+import { createSpawnTransportFactory } from '../src/codex/codex-runtime'
 
 /**
  * Direct unit tests for the hardened {@link SpawnCodexTransport} (012, fixing
@@ -88,8 +88,7 @@ setInterval(() => {}, 100000);
  * scripts run under `process.execPath` and read `process.env.PATH`, so they genuinely want what the
  * test runner has. The point of the change is that they now have to SAY so: the call site is where a
  * reviewer can see that a spawn inherits, instead of it being what happens when nobody writes
- * anything. One test below deliberately passes a sanitized env instead, and the contrast is the
- * assertion.
+ * anything.
  */
 const fast = {
   exitGraceMs: 300,
@@ -241,44 +240,35 @@ describe('SpawnCodexTransport — one terminal transition (no un-settled request
   }, 15000)
 })
 
-describe('SpawnCodexTransport — forwards the sanitized allow-list child env (021 / 026)', () => {
-  it('spawns the child with CODEX_HOME pinned, PATH kept, and every ambient secret dropped', async () => {
-    // End-to-end hostile-ambient (026): the exact env the adapter builds — CODEX_HOME/
-    // SQLITE pinned, but the ambient OPENAI_API_KEY / GITHUB_TOKEN / AWS_SECRET_ACCESS_KEY
-    // dropped by the allow-list — must be what the child actually sees.
-    const env = buildChildEnv(
-      { CODEX_HOME: '/profile/codex', CODEX_SQLITE_HOME: '/profile/codex' },
-      {
-        ...process.env,
-        OPENAI_API_KEY: 'sk-should-not-leak',
-        GITHUB_TOKEN: 'ghp-should-not-leak',
-        AWS_SECRET_ACCESS_KEY: 'aws-should-not-leak',
-      },
-    )
-    const t = track(new SpawnCodexTransport(NODE, ['-e', ENV_ECHO], { ...fast, env }))
-    let seen:
-      | {
-          codexHome: unknown
-          sqlite: unknown
-          openaiKey: unknown
-          githubToken: unknown
-          awsSecret: unknown
-          path: unknown
-        }
-      | undefined
+describe('createSpawnTransportFactory — the child environment', () => {
+  it('inherits the environment and pins the profile home', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'brobot-codex-env-'))
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }))
+    // Windows starts Node directly; its app-server argument selects the script in the child cwd.
+    const script = process.platform === 'win32' ? join(dir, 'app-server') : join(dir, 'codex.mjs')
+    writeFileSync(script, `#!${NODE}\n${ENV_ECHO}`)
+    chmodSync(script, 0o755)
+    vi.stubEnv('GITHUB_TOKEN', 'ghp_made_up')
+    vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'made-up-secret')
+    vi.stubEnv('CODEX_HOME', '/home/tester/.codex')
+    const factory = createSpawnTransportFactory(process.platform === 'win32' ? NODE : script)
+    const t = factory({ cwd: dir, providerHome: '/profile/codex' })
+    vi.unstubAllEnvs()
+    onTestFinished(() => t.close())
+    let seen: Record<string, unknown> | undefined
     for await (const m of t.incoming()) {
       if (m.kind === 'notification' && m.method === 'env') {
-        seen = m.params as typeof seen
+        seen = m.params as Record<string, unknown>
         break
       }
     }
-    expect(seen?.codexHome).toBe('/profile/codex')
-    expect(seen?.sqlite).toBe('/profile/codex')
-    expect(seen?.openaiKey).toBeNull() // allow-list dropped it before spawn
-    expect(seen?.githubToken).toBeNull() // an unrelated ambient secret — also dropped
-    expect(seen?.awsSecret).toBeNull()
-    expect(seen?.path).toBe('present') // essentials kept so the child can run
-    await t.close()
+    expect(seen).toMatchObject({
+      codexHome: '/profile/codex',
+      sqlite: '/profile/codex',
+      githubToken: 'ghp_made_up',
+      awsSecret: 'made-up-secret',
+      path: 'present',
+    })
   }, 15000)
 })
 
@@ -338,7 +328,7 @@ describe('the spawn transport exposes its child PID (076)', () => {
 /**
  * 🔒 **The raw transport cannot inherit ambient credentials by omission** (063, from 061 finding 4).
  *
- * The safe boundary used to live one level up. `createSpawnTransportFactory` sanitizes the child
+ * The safe boundary used to live one level up. `createSpawnTransportFactory` builds the child
  * environment and pins the profile home, but the class it wraps took `env` as an OPTIONAL field, and
  * omitting it handed the `app-server` — and every tool Codex launches beneath it — the desktop app's
  * entire `process.env`. A consumer who reasonably imported the transport got the unsafe spawn by

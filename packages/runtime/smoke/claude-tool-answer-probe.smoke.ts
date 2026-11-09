@@ -436,8 +436,7 @@ async function capture(label: ArmName): Promise<Arm> {
  * tool said: a `<system-reminder>` carrying `<total_tokens>…</total_tokens>`, appended to the last
  * text block (arm A) or as a block of its own after a `\n` on the one before (arms B and C). The SDK
  * stream does not carry it, so the stream no longer equals the model-bound bytes whole — it equals
- * them with this taken off. It is not inherited from the caller's environment: `buildChildEnv` is an
- * allow-list and passes no `CLAUDE_*` name through.
+ * them with this taken off.
  */
 const CLI_REMINDER =
   /\n*<system-reminder>\n<total_tokens>[^<]*<\/total_tokens>\n<\/system-reminder>\s*$/

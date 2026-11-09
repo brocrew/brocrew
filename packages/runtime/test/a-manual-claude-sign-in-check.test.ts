@@ -98,8 +98,9 @@ it.each(['darwin', 'win32'] as const)(
     })
     expect(result.state).toBe('usable')
     const env = run.mock.calls[0]![2].env
-    for (const key of Object.keys(inherited).filter((key) => /claude|anthropic|aws/i.test(key)))
+    for (const key of Object.keys(inherited).filter((key) => /claude|anthropic/i.test(key)))
       expect(env).not.toHaveProperty(key)
+    expect(env.AWS_PROFILE).toBe('fictional-backend')
     expect(env.HOME).toBe('/fictional/home')
     expect(env.HTTPS_PROXY).toBe('https://proxy.invalid')
     if (platform === 'win32') expect(env.SystemRoot).toBe('C:\\fictional\\Windows')

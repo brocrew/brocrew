@@ -86,13 +86,12 @@ export function claudeAutoMemoryIndex(providerHome: string): string {
  * memory to its own file … **Step 2** — add a pointer to that file in `MEMORY.md`. `MEMORY.md` is an
  * index, not a memory … Never write memory content directly into `MEMORY.md`."*
  *
- * ## ⚠️ The one mechanism that could have moved this boundary, and why it does not
+ * ## The one mechanism that could move this boundary
  *
  * The CLI can attach up to five memory files to a turn automatically, which would make a topic file
- * `'prompt'` rather than `'on-request'`. ⛔ **It cannot fire in this app**: it runs only when a
- * server-side feature flag that defaults off is on, or when an environment variable of its own is
- * set. `buildChildEnv`'s allow-list does not carry that variable and `childEnvAdditions` does not
- * add it, so the child never sees one.
+ * `'prompt'` rather than `'on-request'`. It runs only when a server-side feature flag that defaults
+ * off is on, or when an environment variable of its own is set, which this app does not add; the
+ * child inherits it only if the person set it.
  *
  * ⚠️ **A flag is a boundary that can move**, and this is the honest weakness in the ruling rather
  * than a footnote: the day that flag turns on for this account, a topic file could reach the model

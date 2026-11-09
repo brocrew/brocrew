@@ -216,13 +216,10 @@ export function codexAppServerArgs(): string[] {
  * bare command for back-compat, but a bare command is a PATH lookup — an app launched from
  * Finder inherits launchd's minimal PATH and has no `codex` on it — so the desktop app passes
  * the absolute path of the binary it ships instead. Which binary to run is the caller's
- * knowledge; how to run it (sanitized env, pinned homes) stays here.
+ * knowledge; how to run it (inherited env, pinned homes) stays here.
  */
 export function createSpawnTransportFactory(command = 'codex'): TransportFactory {
   return (context: CodexLaunchContext): CodexTransport => {
-    // Per-profile isolation (021, from 015): pin CODEX_HOME + CODEX_SQLITE_HOME to
-    // the app-owned home and strip auth/redirector vars — the child gets a sanitized
-    // env, global process.env is never mutated. cwd anchors the app-server too.
     return new SpawnCodexTransport(command, codexAppServerArgs(), {
       cwd: context.cwd,
       env: buildChildEnv({

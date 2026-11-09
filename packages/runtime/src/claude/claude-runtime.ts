@@ -2772,7 +2772,7 @@ export class ClaudeRuntime implements AgentRuntime {
   ): Options {
     const { additions, piped } = this.childEnvAdditions(providerHome, auth)
     const options: Options = {
-      env: buildChildEnv(additions),
+      env: buildChildEnv(additions, process.env, this.platform),
       strictMcpConfig: true,
 
       settingSources: [],
@@ -2967,7 +2967,7 @@ export class ClaudeRuntime implements AgentRuntime {
         ),
       },
 
-      env: buildChildEnv(additions),
+      env: buildChildEnv(additions, process.env, this.platform),
       strictMcpConfig: true,
 
       settings: {
