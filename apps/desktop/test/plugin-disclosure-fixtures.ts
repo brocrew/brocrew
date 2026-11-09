@@ -11,6 +11,7 @@ import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-c
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { registerPluginSettings, type PluginSettingsController } from '../src/main/plugins/settings'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
+import type { PluginRelease } from '../src/main/plugins/package-schema'
 
 export interface ReviewConsent {
   releaseDigest: string
@@ -132,7 +133,13 @@ export async function disclosureFixture(
   const ownerOptions = {
     ...f.opts,
     catalogue: { bytes: first.bytes },
-    download: vi.fn(async () => offered.archive),
+    download: vi.fn<
+      (
+        release: Readonly<PluginRelease>,
+        signal: AbortSignal,
+        progress?: (received: number) => void,
+      ) => Promise<Uint8Array>
+    >(async () => offered.archive),
     refreshCatalogue: async () => ({
       catalogue: { bytes: next.bytes },
       names: f.opts.names,
@@ -169,7 +176,14 @@ export async function disclosureFixture(
     read: async () => null,
   })
   const clients: DisclosureClient[] = []
-  const download = vi.fn(async () => next.archive)
+  const download = vi.fn<
+    (
+      release: Readonly<PluginRelease>,
+      signal: AbortSignal,
+      progress?: (received: number) => void,
+    ) => Promise<Uint8Array>
+  >(async () => next.archive)
+  const reviewFailures = vi.fn<(...fields: unknown[]) => Promise<void>>(async () => {})
   async function connect() {
     const input = {
       root: f.root,
@@ -180,6 +194,7 @@ export async function disclosureFixture(
       projection: projection().sink,
       propose() {},
       download,
+      recordReviewFailure: reviewFailures,
     }
     const client = await connectPluginSettings(input)
     clients.push(client)
@@ -201,6 +216,8 @@ export async function disclosureFixture(
     controller,
     connect,
     download,
+    ownerDownload: ownerOptions.download,
+    reviewFailures,
     snapshot,
     async replaceRelease() {
       next = modern('1.0.3', ['other-makers'], true)

@@ -4,6 +4,7 @@ import {
   pluginStartupReason,
   pluginStartupDiagnostic,
   recordPluginStartupFailure,
+  recordPluginReviewFailure,
 } from './startup-failure'
 import { pluginAdapter } from './lifecycle/adapters'
 import { ManagedPluginFailure } from '@brobot2/runtime/plugin-failure'
@@ -411,11 +412,11 @@ export function productionPluginController() {
     cancelPreparations() {
       connected?.cancelPreparations?.()
     },
-    async reviewMutation(action, id) {
+    async reviewMutation(action, id, transfer) {
       const connection = current()
       if (catalogueEntries?.format !== 2 || !connection.reviewMutation)
         throw new PluginSupervisorError('incompatible')
-      return connection.reviewMutation(action, id)
+      return connection.reviewMutation(action, id, transfer)
     },
     available: () => started && !ended,
     ready: async () => {
@@ -707,6 +708,8 @@ export function productionPluginController() {
               attempt = candidate
               peer = candidate
               const connection = await connectPluginSettings({
+                recordReviewFailure: (...fields) =>
+                  recordPluginReviewFailure(options.root, ...fields),
                 path: join(options.root, 'person-control/person.sock'),
                 personKey,
                 root: options.root,

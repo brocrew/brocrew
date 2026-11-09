@@ -10,7 +10,7 @@ import { privateChild } from '../node-host-files'
 import { PluginSupervisorError, Hex } from '../supervisor/protocol'
 import { PersonChannel } from './transport'
 import type { PluginLifecycleController, PreparedPluginMutation } from './controller'
-import type { LifecycleWorkspace } from './types'
+import type { LifecycleWorkspace, PluginArchiveTransfer } from './types'
 import { ProjectionReceipt } from '../state/format'
 
 const id = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)
@@ -34,9 +34,12 @@ const Request = z.discriminatedUnion('kind', [
     action: z.enum(['install', 'update']),
     pluginId: id,
     releaseDigest: Hex,
+    requestId: z.uuid().optional(),
   }),
+  z.strictObject({ kind: z.literal('cancel-transfer'), requestId: z.uuid() }),
   z.strictObject({
     kind: z.literal('update-prepared'),
+    requestId: z.uuid().optional(),
     pluginId: id,
     operationId: z.uuid(),
     releaseDigest: Hex,
@@ -48,6 +51,7 @@ const Request = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('install'), pluginId: id, operationId: z.uuid() }),
   z.strictObject({
     kind: z.literal('install-prepared'),
+    requestId: z.uuid().optional(),
     preparation: z.uuid(),
     pluginId: id,
     operationId: z.uuid(),
@@ -112,6 +116,7 @@ export async function servePersonPluginControl(options: {
       ledgerV2?: boolean
       mutationSource?: string
       preparations: Map<string, PreparedPluginMutation & { expiresAt: number }>
+      transfers: Map<string, AbortController>
       legacyIds?: readonly string[]
       detaching?: Promise<void>
     }>()
@@ -153,7 +158,7 @@ export async function servePersonPluginControl(options: {
       options.key,
       challenge,
       'server',
-      async (input) => {
+      async (input, progress) => {
         const request = Request.parse(input)
         if (closing) throw new PluginSupervisorError('unavailable')
         if (request.kind === 'attach') {
@@ -209,7 +214,32 @@ export async function servePersonPluginControl(options: {
         )
           throw new PluginSupervisorError('incompatible')
         const visible = (id: string) => !session.legacyIds || session.legacyIds.includes(id)
+        const withTransfer = async <T>(
+          requestId: string | undefined,
+          pluginId: string,
+          work: (transfer?: PluginArchiveTransfer) => Promise<T>,
+        ): Promise<T> => {
+          if (!requestId) return work()
+          if (session.transfers.has(requestId)) throw new PluginSupervisorError('policy-refused')
+          const abort = new AbortController()
+          session.transfers.set(requestId, abort)
+          try {
+            const value = await work({
+              signal: abort.signal,
+              onProgress: (value) => {
+                if (!abort.signal.aborted) progress?.({ ...value, requestId, id: pluginId })
+              },
+            })
+            abort.signal.throwIfAborted()
+            return value
+          } finally {
+            session.transfers.delete(requestId)
+          }
+        }
         switch (request.kind) {
+          case 'cancel-transfer':
+            session.transfers.get(request.requestId)?.abort()
+            return true
           case 'mutation-status':
             options.controller.requireMutationSource(request.catalogueDigest)
             if (!session.mutationSource) throw new PluginSupervisorError('incompatible')
@@ -224,12 +254,15 @@ export async function servePersonPluginControl(options: {
           case 'prepare-mutation': {
             if (!session.mutationSource) throw new PluginSupervisorError('incompatible')
             options.controller.requireMutationSource(session.mutationSource)
-            const value = await options.controller.prepareMutation(
-              handle,
-              request.action,
-              request.pluginId,
-              request.releaseDigest,
-              session.mutationSource,
+            const value = await withTransfer(request.requestId, request.pluginId, (transfer) =>
+              options.controller.prepareMutation(
+                handle,
+                request.action,
+                request.pluginId,
+                request.releaseDigest,
+                session.mutationSource!,
+                transfer,
+              ),
             )
             // Bounded, one outstanding consent per plugin and session; replacement revokes the old consent.
             for (const [key, old] of session.preparations)
@@ -246,6 +279,7 @@ export async function servePersonPluginControl(options: {
                 'tool-health-v1',
                 'tool-cause-v1',
                 'startup-diagnostic-v1',
+                'download-progress-v1',
                 ...(options.restartChrome ? ['chrome-recovery-v1'] : []),
                 ...(options.controller.preparedMutationFeature()
                   ? ['authors-v1', 'prepared-mutations-v1']
@@ -329,20 +363,23 @@ export async function servePersonPluginControl(options: {
               prepared.releaseDigest !== request.releaseDigest
             )
               throw new PluginSupervisorError('policy-refused')
-            if (action === 'install')
-              await options.controller.installPrepared(
-                handle,
-                request.pluginId,
-                prepared,
-                request.operationId,
-              )
-            else
-              await options.controller.updatePrepared(
-                handle,
-                request.pluginId,
-                prepared,
-                request.operationId,
-              )
+            await withTransfer(request.requestId, request.pluginId, (transfer) =>
+              action === 'install'
+                ? options.controller.installPrepared(
+                    handle,
+                    request.pluginId,
+                    prepared,
+                    request.operationId,
+                    transfer,
+                  )
+                : options.controller.updatePrepared(
+                    handle,
+                    request.pluginId,
+                    prepared,
+                    request.operationId,
+                    transfer,
+                  ),
+            )
             return true
           }
           case 'uninstall':
@@ -411,6 +448,7 @@ export async function servePersonPluginControl(options: {
       ledgerV2?: boolean
       mutationSource?: string
       preparations: Map<string, PreparedPluginMutation & { expiresAt: number }>
+      transfers: Map<string, AbortController>
       legacyIds?: readonly string[]
       detaching?: Promise<void>
     }
@@ -418,6 +456,7 @@ export async function servePersonPluginControl(options: {
     const session: PersonSession = {
       channel,
       preparations: new Map(),
+      transfers: new Map(),
       attaching: false,
       lost: false,
       failed: false,
@@ -427,6 +466,7 @@ export async function servePersonPluginControl(options: {
     channel.onClose(() => {
       clearTimeout(authentication)
       session.lost = true
+      for (const abort of session.transfers.values()) abort.abort()
       void channel.settled().then(() => channels.delete(channel))
       // Unproved disconnect cleanup stays a lifecycle obligation, never a success acknowledgment.
       if (!session.attaching)

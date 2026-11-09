@@ -10,7 +10,7 @@ import {
 } from '../../shared/plugin-settings'
 import { StringDecoder } from 'node:string_decoder'
 import type { ChildProcess } from 'node:child_process'
-import { PluginSupervisorError, ownerDiagnosticLine } from './supervisor/protocol'
+import { PluginSupervisorError, ownerDiagnosticLine, type Refusal } from './supervisor/protocol'
 import { managedPluginFailure, ManagedPluginFailure } from '@brobot2/runtime/plugin-failure'
 
 function redactPluginStartupText(text: string, secrets: readonly string[]): string {
@@ -314,6 +314,21 @@ async function writePluginStartupLog(root: string, name: string, contents: strin
   } finally {
     await rm(temporary, { force: true }).catch(() => {})
   }
+}
+export type PluginReviewStage = 'download' | 'verify' | 'installed-disclosure' | 'owner-prepare'
+/** Only closed vocabulary is retained; no error text, paths, URLs or inspected objects. */
+export async function recordPluginReviewFailure(
+  root: string,
+  action: 'install' | 'update',
+  stage: PluginReviewStage,
+  code: Refusal,
+  cause: Refusal | 'integrity' | 'transport' | 'verification' | 'unknown',
+): Promise<void> {
+  await writePluginStartupLog(
+    root,
+    'plugin-settings-failure.log',
+    `${new Date().toISOString()} action=${action} stage=${stage} code=${code} cause=${cause}\n`,
+  )
 }
 /** Retain one bounded, readable failure. Only the bounded child diagnostic and recognized errno cross this boundary. */
 export async function recordPluginStartupFailure(

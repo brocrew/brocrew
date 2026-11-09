@@ -11,7 +11,11 @@ import {
 } from '../startup-failure'
 import type { PluginStartupDiagnostic } from '../../../shared/plugin-settings'
 import { PluginVerificationError } from '../verification-error'
-import { PluginDownloadError, downloadPluginBytes } from '../catalogue/download'
+import {
+  PluginDownloadError,
+  downloadPluginBytes,
+  pluginDownloadFailure,
+} from '../catalogue/download'
 import { PluginListError } from '../catalogue/list-error'
 import { createContributionRegistry, pluginContributions } from '../contributions'
 import { pluginNodePolicy } from '../node-policy'
@@ -35,6 +39,7 @@ import type {
   LifecycleWorkspace,
   WorkspaceProjection,
   Installation,
+  PluginArchiveTransfer,
 } from './types'
 import type { PluginCard, PluginRemovalOutcome } from '../../../shared/plugin-settings'
 
@@ -247,7 +252,7 @@ export class PluginLifecycleController {
     }).verifyCatalogue(this.options.catalogue.bytes)
   }
   /** Verify author identity before revoking or changing any installation authority. */
-  private async mutationPackage(id: string) {
+  private async mutationPackage(id: string, transfer?: PluginArchiveTransfer) {
     const proof = this.options.catalogue,
       catalogue = this.catalogue()
     const release = catalogue.entries.find((entry) => entry.id === id)
@@ -258,24 +263,33 @@ export class PluginLifecycleController {
       .catch(async () => {
         bytes = await (
           this.options.download ??
-          ((entry, signal) =>
+          ((entry, signal, onProgress) =>
             downloadPluginBytes({
               url: entry.archive.url,
               maximum: PLUGIN_LIMITS.archiveBytes,
               size: entry.archive.size,
               sha256: entry.archive.sha256,
               signal,
+              onProgress,
             }))
-        )(release, AbortSignal.timeout(30000))
+        )(release, transfer?.signal ?? new AbortController().signal, (receivedBytes) =>
+          transfer?.onProgress({
+            phase: 'downloading',
+            receivedBytes,
+            totalBytes: release.archive.size,
+          }),
+        )
+        transfer?.signal.throwIfAborted()
+        transfer?.onProgress({
+          phase: 'checking',
+          receivedBytes: bytes.length,
+          totalBytes: release.archive.size,
+        })
         return catalogue.verifyPackage(id, release.version, bytes)
       })
       .catch((error) => {
         if (error instanceof PluginVerificationError || error instanceof PluginDownloadError)
-          throw new PluginSupervisorError(
-            error instanceof PluginDownloadError && error.kind === 'transport'
-              ? 'network'
-              : 'policy-refused',
-          )
+          throw new PluginSupervisorError(pluginDownloadFailure(error), { cause: error })
         throw error
       })
     if (
@@ -371,15 +385,17 @@ export class PluginLifecycleController {
     id: string,
     releaseDigest: string,
     catalogueDigest: string,
+    transfer?: PluginArchiveTransfer,
   ): Promise<PreparedPluginMutation> {
     this.workspace(handle)
     this.requireMutationSource(catalogueDigest)
     if (this.catalogue().entries.find((e) => e.id === id)?.archive.sha256 !== releaseDigest)
       throw new PluginSupervisorError('policy-refused')
-    const checked = await this.mutationPackage(id)
+    const checked = await this.mutationPackage(id, transfer)
     if (checked.release.archive.sha256 !== releaseDigest || !checked.release.authors)
       throw new PluginSupervisorError('policy-refused')
     return this.mutationFence(async () => {
+      transfer?.signal.throwIfAborted()
       this.requireMutationSource(catalogueDigest)
       if (this.options.catalogue !== checked.proof)
         throw new PluginSupervisorError('policy-refused')
@@ -763,16 +779,18 @@ export class PluginLifecycleController {
     id: string,
     prepared: PreparedPluginMutation,
     operationId: string = randomUUID(),
+    transfer?: PluginArchiveTransfer,
   ): Promise<void> {
     if (!prepared || !this.requiresPreparedMutations())
       throw new PluginSupervisorError('policy-refused')
-    return this.installMutation(handle, id, prepared, operationId)
+    return this.installMutation(handle, id, prepared, operationId, transfer)
   }
   private async installMutation(
     handle: LifecycleWorkspace,
     id: string,
     prepared: PreparedPluginMutation | undefined,
     operationId: string,
+    transfer?: PluginArchiveTransfer,
   ): Promise<void> {
     const workspace = this.workspace(handle)
     this.requirePreparation(id, 'install', prepared)
@@ -785,10 +803,13 @@ export class PluginLifecycleController {
     )
       return refuse()
     if (!idSchema.safeParse(id).success || !z.uuid().safeParse(operationId).success) return refuse()
-    const preflight = this.requiresPreparedMutations() ? await this.mutationPackage(id) : undefined
+    const preflight = this.requiresPreparedMutations()
+      ? await this.mutationPackage(id, transfer)
+      : undefined
     let token: symbol | undefined = this.requiresPreparedMutations() ? undefined : this.block(id)
     try {
       await this.mutationFence(async () => {
+        transfer?.signal.throwIfAborted()
         this.requirePreparation(id, 'install', prepared)
         if (preflight && this.options.catalogue !== preflight.proof) return refuse()
         if (this.requiresPreparedMutations()) token = this.block(id)
@@ -838,7 +859,7 @@ export class PluginLifecycleController {
           ? preflight.bytes
           : await (this.options.download ?? downloadPluginArchive)(
               release,
-              AbortSignal.timeout(30000),
+              new AbortController().signal,
             )
         const checked = preflight?.checked ?? catalogue.verifyPackage(id, release.version, bytes!)
         if (checked.manifest.skills.length !== 0) return refuse()
@@ -933,16 +954,18 @@ export class PluginLifecycleController {
     id: string,
     prepared: PreparedPluginMutation,
     operationId: string = randomUUID(),
+    transfer?: PluginArchiveTransfer,
   ): Promise<void> {
     if (!prepared || !this.requiresPreparedMutations())
       throw new PluginSupervisorError('policy-refused')
-    return this.updateMutation(handle, id, prepared, operationId)
+    return this.updateMutation(handle, id, prepared, operationId, transfer)
   }
   private async updateMutation(
     handle: LifecycleWorkspace,
     id: string,
     prepared: PreparedPluginMutation | undefined,
     operationId: string,
+    transfer?: PluginArchiveTransfer,
   ): Promise<void> {
     const workspace = this.workspace(handle)
     this.requirePreparation(id, 'update', prepared)
@@ -952,10 +975,13 @@ export class PluginLifecycleController {
     )
       return refuse()
     if (!idSchema.safeParse(id).success || !z.uuid().safeParse(operationId).success) return refuse()
-    const preflight = this.requiresPreparedMutations() ? await this.mutationPackage(id) : undefined
+    const preflight = this.requiresPreparedMutations()
+      ? await this.mutationPackage(id, transfer)
+      : undefined
     let token: symbol | undefined = this.requiresPreparedMutations() ? undefined : this.block(id)
     try {
       await this.mutationFence(async () => {
+        transfer?.signal.throwIfAborted()
         this.requirePreparation(id, 'update', prepared)
         if (preflight && this.options.catalogue !== preflight.proof) return refuse()
         if (this.requiresPreparedMutations()) token = this.block(id)
@@ -998,7 +1024,7 @@ export class PluginLifecycleController {
           ? preflight.bytes
           : await (this.options.download ?? downloadPluginArchive)(
               release,
-              AbortSignal.timeout(30000),
+              new AbortController().signal,
             )
         const checked = preflight?.checked ?? catalogue.verifyPackage(id, release.version, bytes!)
         if (

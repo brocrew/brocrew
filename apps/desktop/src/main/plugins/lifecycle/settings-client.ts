@@ -2,7 +2,12 @@ import {
   PluginMutationReviewSchema,
   type PluginMutationReview,
 } from '../../../shared/plugin-settings'
-import { downloadPluginBytes, PluginDownloadError } from '../catalogue/download'
+import {
+  downloadPluginBytes,
+  pluginDownloadFailure,
+  PluginDownloadError,
+} from '../catalogue/download'
+import { PluginVerificationError } from '../verification-error'
 import {
   releaseDisclosure,
   installedDisclosure,
@@ -28,16 +33,19 @@ import {
   PLUGIN_UNAVAILABLE_REASONS,
   PluginStartupDiagnosticSchema,
   pluginRemovalOutcome,
+  PluginReviewProgressSchema,
+  type PluginReviewProgress,
 } from '../../../shared/plugin-settings'
 import { createRepoAwarePluginVerifier } from '../package-verifier'
 import { pluginSha256, verifyPluginDigest, PLUGIN_LIMITS } from '../package-digests'
 import { strictPluginJson } from '../strict-json'
 import type { PluginMutationBlocked, PluginMutationConsent } from '../../../shared/plugin-settings'
-import { PluginSupervisorError } from '../supervisor/protocol'
+import { PluginSupervisorError, type Refusal } from '../supervisor/protocol'
 import {
   PluginStartupError,
   pluginStartupReason,
   type PluginOwnerCheckStage,
+  type PluginReviewStage,
 } from '../startup-failure'
 
 const Cards = z
@@ -74,7 +82,17 @@ export async function connectPluginSettings(options: {
   lost?(): void
   signal?: AbortSignal
   /** Inert unit-test transport; production uses the bounded admitted archive transport. */
-  download?(release: Readonly<PluginRelease>, signal: AbortSignal): Promise<Uint8Array>
+  download?(
+    release: Readonly<PluginRelease>,
+    signal: AbortSignal,
+    onProgress?: (received: number) => void,
+  ): Promise<Uint8Array>
+  recordReviewFailure?(
+    action: 'install' | 'update',
+    stage: PluginReviewStage,
+    code: Refusal,
+    cause: Refusal | 'integrity' | 'transport' | 'verification' | 'unknown',
+  ): Promise<void>
 }): Promise<PluginSettingsController & { close(): Promise<void> }> {
   if (
     options.repoCatalogueSha256 !== undefined &&
@@ -331,6 +349,51 @@ export async function connectPluginSettings(options: {
       else throw error
     }
   }
+  async function ownerDownloadCall(
+    request: object,
+    id: string,
+    transfer?: {
+      requestId: string
+      signal: AbortSignal
+      onProgress(progress: PluginReviewProgress): void
+    },
+  ) {
+    if (!transfer) return channel.call(request)
+    const entry = admitted.entries.find((one) => one.id === id)
+    if (!entry) return failPolicy()
+    transfer.signal.throwIfAborted()
+    const cancel = () => {
+      void channel.call({ kind: 'cancel-transfer', requestId: transfer.requestId }).catch(() => {})
+    }
+    transfer.signal.addEventListener('abort', cancel, { once: true })
+    let received = 0
+    try {
+      const reply = await channel.call(
+        { ...request, requestId: transfer.requestId },
+        undefined,
+        (input) => {
+          const value = PluginReviewProgressSchema.parse(input)
+          if (
+            value.requestId !== transfer.requestId ||
+            value.id !== id ||
+            value.totalBytes !== entry.archive.size ||
+            value.receivedBytes > entry.archive.size ||
+            (value.phase === 'downloading' && value.receivedBytes < received)
+          )
+            throw new PluginSupervisorError('unavailable')
+          const advanced = value.phase === 'downloading' && value.receivedBytes > received
+          if (advanced) received = value.receivedBytes
+          if (transfer.signal.aborted) return false
+          transfer.onProgress(value)
+          return advanced
+        },
+      )
+      transfer.signal.throwIfAborted()
+      return reply
+    } finally {
+      transfer.signal.removeEventListener('abort', cancel)
+    }
+  }
   async function mutate(action: 'install' | 'update', id: string, consent?: PluginMutationConsent) {
     const ticket = generation
     try {
@@ -360,13 +423,23 @@ export async function connectPluginSettings(options: {
         return failPolicy()
       if (action === 'update') await invalidate(id)
       if (!alive || switching || ticket !== generation) return failPolicy()
-      await channel.call({
-        kind: action + '-prepared',
-        pluginId: id,
-        operationId: randomUUID(),
-        releaseDigest: parsed.data.releaseDigest,
-        preparation: parsed.data.preparation,
-      })
+      await ownerDownloadCall(
+        {
+          kind: action + '-prepared',
+          pluginId: id,
+          operationId: randomUUID(),
+          releaseDigest: parsed.data.releaseDigest,
+          preparation: parsed.data.preparation,
+        },
+        id,
+        features.includes('download-progress-v1')
+          ? {
+              requestId: randomUUID(),
+              signal: options.signal ?? new AbortController().signal,
+              onProgress() {},
+            }
+          : undefined,
+      )
       invalidateConsent()
     } catch (error) {
       invalidateConsent()
@@ -375,30 +448,45 @@ export async function connectPluginSettings(options: {
       throw error
     }
   }
-  async function prepareOwnerMutation(action: 'install' | 'update', id: string) {
+  async function prepareOwnerMutation(
+    action: 'install' | 'update',
+    id: string,
+    transfer?: {
+      requestId: string
+      signal: AbortSignal
+      onProgress(progress: PluginReviewProgress): void
+    },
+  ) {
     consents.delete(id)
     try {
       if (!policyDigest && blocked !== 'source-mismatch') await negotiate(true)
       await checkOwner()
       if (blocked) return refuseBlocked()
       if (sourceFormat !== 2) throw new PluginSupervisorError('incompatible')
+      if (transfer && !features.includes('download-progress-v1'))
+        throw new PluginSupervisorError('incompatible')
       const ticket = generation,
         entry = admitted.entries.find((one) => one.id === id)
       if (!entry?.authors) return failPolicy()
       const proof = z.strictObject({ preparation: z.uuid() }).parse(
-        await channel.call({
-          kind: 'prepare-mutation',
-          action,
-          pluginId: id,
-          releaseDigest: entry.archive.sha256,
-        }),
+        await ownerDownloadCall(
+          {
+            kind: 'prepare-mutation',
+            action,
+            pluginId: id,
+            releaseDigest: entry.archive.sha256,
+          },
+          id,
+          transfer,
+        ),
       )
       if (!alive || switching || ticket !== generation) return failPolicy()
       const consent = { preparation: proof.preparation, releaseDigest: entry.archive.sha256 }
       consents.set(id, { ...consent, action })
       return consent
     } catch (error) {
-      invalidateConsent()
+      // The review caller owns teardown; aborting it here would hide the owner's real failure.
+      if (!transfer) invalidateConsent()
       if (error instanceof PluginSupervisorError && error.code === 'source-mismatch')
         blocked = 'source-mismatch'
       throw error
@@ -420,11 +508,13 @@ export async function connectPluginSettings(options: {
         reviewListeners.delete(listener)
       }
     },
-    async reviewMutation(action, id) {
+    async reviewMutation(action, id, transfer) {
       invalidateConsent()
       await checkOwner()
       if (blocked) return refuseBlocked()
       if (sourceFormat !== 2) throw new PluginSupervisorError('incompatible')
+      if (!features.includes('download-progress-v1'))
+        throw new PluginSupervisorError('incompatible')
       const ticket = generation,
         epoch = reviewEpoch,
         catalogue = admitted,
@@ -434,8 +524,8 @@ export async function connectPluginSettings(options: {
       reviewing = abort
       const signal = AbortSignal.any([
         abort.signal,
-        AbortSignal.timeout(30000),
         ...(options.signal ? [options.signal] : []),
+        ...(transfer ? [transfer.signal] : []),
       ])
       const current = () =>
         alive &&
@@ -444,28 +534,48 @@ export async function connectPluginSettings(options: {
         reviewEpoch === epoch &&
         !signal.aborted &&
         admitted === catalogue
+      let stage: PluginReviewStage = 'download'
+      const requestId = transfer?.requestId ?? randomUUID()
+      const progress = (value: Omit<PluginReviewProgress, 'requestId' | 'id'>) => {
+        if (current()) transfer?.onProgress({ ...value, requestId, id })
+      }
       try {
         const archive = await (
           options.download ??
-          ((release, signal) =>
+          ((release, signal, onProgress) =>
             downloadPluginBytes({
               url: release.archive.url,
               maximum: PLUGIN_LIMITS.archiveBytes,
               size: release.archive.size,
               sha256: release.archive.sha256,
               signal,
+              onProgress,
             }))
-        )(entry, signal)
+        )(entry, signal, (receivedBytes) =>
+          progress({ phase: 'downloading', receivedBytes, totalBytes: entry.archive.size }),
+        )
         if (!current()) return failPolicy()
+        progress({
+          phase: 'checking',
+          receivedBytes: archive.length,
+          totalBytes: entry.archive.size,
+        })
+        stage = 'verify'
         verifyPluginDigest(archive, entry.archive, PLUGIN_LIMITS.archiveBytes)
         const details = releaseDisclosure(catalogue.verifyPackage(id, entry.version, archive))
         if (!details.authors) return failPolicy()
+        stage = 'installed-disclosure'
         const previous =
           action === 'update'
             ? await installedDisclosure(options.root, id, vault)
             : { identity: null, details: null }
         if (!current()) return failPolicy()
-        const proof = await prepareOwnerMutation(action, id)
+        stage = 'owner-prepare'
+        const proof = await prepareOwnerMutation(action, id, {
+          requestId,
+          signal,
+          onProgress: (value) => progress(value),
+        })
         if (!current()) return failPolicy()
         if (
           action === 'update' &&
@@ -492,15 +602,27 @@ export async function connectPluginSettings(options: {
         consents.set(id, { ...consent, action })
         return structuredClone(shown)
       } catch (error) {
-        consents.delete(id)
-        reviews.delete(id)
-        if (!current()) return failPolicy()
-        if (error instanceof PluginSupervisorError) throw error
-        throw new PluginSupervisorError(
-          error instanceof PluginDownloadError && error.kind === 'transport'
-            ? 'network'
-            : 'policy-refused',
-        )
+        if (reviewing === abort) {
+          consents.delete(id)
+          reviews.delete(id)
+        }
+        const cause =
+          error instanceof PluginSupervisorError
+            ? error.code
+            : error instanceof PluginDownloadError
+              ? error.stalled
+                ? 'download-stalled'
+                : error.kind
+              : error instanceof PluginVerificationError
+                ? 'verification'
+                : 'unknown'
+        const code = !current()
+          ? 'policy-refused'
+          : error instanceof PluginSupervisorError
+            ? error.code
+            : pluginDownloadFailure(error)
+        await options.recordReviewFailure?.(action, stage, code, cause)
+        throw new PluginSupervisorError(code, { cause: error })
       } finally {
         if (reviewing === abort) reviewing = undefined
       }

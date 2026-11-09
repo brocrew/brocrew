@@ -1,12 +1,22 @@
 import { pluginSha256 } from '../package-digests'
+/** Stop a silent archive transfer; real bytes restart this clock regardless of total duration. */
+export const PLUGIN_DOWNLOAD_STALL_MS = 30_000
 /** No URL/credential is ever logged. Integrity/policy failures must not masquerade as offline. */
 export class PluginDownloadError extends Error {
   constructor(
     readonly kind: 'transport' | 'integrity',
     readonly status?: number,
+    readonly stalled = false,
   ) {
-    super('Plugin unavailable. Try again.')
+    super(stalled ? 'The plugin download stalled. Try again.' : 'Plugin unavailable. Try again.')
   }
+}
+export function pluginDownloadFailure(error: unknown) {
+  return error instanceof PluginDownloadError && error.kind === 'transport'
+    ? error.stalled
+      ? ('download-stalled' as const)
+      : ('network' as const)
+    : ('policy-refused' as const)
 }
 export const PLUGIN_LIST_URL =
   'https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue.json'
@@ -43,7 +53,7 @@ function allowed(value: string, initial: boolean): URL {
   return url
 }
 /** Shared catalogue/archive transport. Three redirects, credential-free HTTPS:443, exact hosts,
- * one deadline across all headers/bodies/hops, no implicit fetch redirects or decompression.
+ * archive byte-stall timing (or an explicit catalogue deadline), no implicit redirects or decompression.
  */
 export async function downloadPluginBytes(options: {
   url: string
@@ -52,19 +62,33 @@ export async function downloadPluginBytes(options: {
   sha256?: string
   signal?: AbortSignal
   milliseconds?: number
+  onProgress?: (received: number) => void
   fetch?: typeof fetch
 }): Promise<Buffer> {
   const abort = new AbortController(),
     signal = options.signal ? AbortSignal.any([options.signal, abort.signal]) : abort.signal
   let timer: ReturnType<typeof setTimeout> | undefined
+  let rejectStopped: (error: PluginDownloadError) => void
   const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      abort.abort()
-      reject(new PluginDownloadError('transport'))
-    }, options.milliseconds ?? 30000)
+    rejectStopped = reject
   })
+  const watch = () => {
+    clearTimeout(timer)
+    timer = setTimeout(() => {
+      rejectStopped(
+        new PluginDownloadError('transport', undefined, options.milliseconds === undefined),
+      )
+      abort.abort()
+    }, options.milliseconds ?? PLUGIN_DOWNLOAD_STALL_MS)
+  }
+  const cancelled = () => rejectStopped(new PluginDownloadError('transport'))
+  options.signal?.addEventListener('abort', cancelled, { once: true })
+  if (options.signal?.aborted) cancelled()
+  watch()
   const work = async () => {
     let url = allowed(options.url, true)
+    options.onProgress?.(0)
+    let reportedAt = performance.now()
     const releaseChain = url.hostname === 'github.com'
     for (let hops = 0; hops <= 3; hops++) {
       if (signal.aborted) throw new PluginDownloadError('transport')
@@ -101,6 +125,11 @@ export async function downloadPluginBytes(options: {
         return invalid()
       const reader = response.body.getReader(),
         chunks: Uint8Array[] = []
+      const cancelBody = () => {
+        void reader.cancel().catch(() => undefined)
+      }
+      signal.addEventListener('abort', cancelBody, { once: true })
+      if (signal.aborted) cancelBody()
       let bytes = 0
       try {
         for (;;) {
@@ -110,6 +139,13 @@ export async function downloadPluginBytes(options: {
           if (bytes > options.maximum || (options.size !== undefined && bytes > options.size))
             return invalid()
           chunks.push(part.value)
+          if (part.value.byteLength) {
+            if (options.milliseconds === undefined) watch()
+            if (performance.now() - reportedAt >= 250 || bytes === options.size) {
+              options.onProgress?.(bytes)
+              reportedAt = performance.now()
+            }
+          }
         }
         if (
           !bytes ||
@@ -120,8 +156,10 @@ export async function downloadPluginBytes(options: {
         const result = Buffer.concat(chunks)
         if (options.sha256 !== undefined && pluginSha256(result) !== options.sha256)
           return invalid()
+        options.onProgress?.(bytes)
         return result
       } finally {
+        signal.removeEventListener('abort', cancelBody)
         void reader.cancel().catch(() => undefined)
       }
     }
@@ -134,6 +172,7 @@ export async function downloadPluginBytes(options: {
     throw new PluginDownloadError('transport')
   } finally {
     clearTimeout(timer)
+    options.signal?.removeEventListener('abort', cancelled)
     abort.abort()
   }
 }

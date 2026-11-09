@@ -120,6 +120,7 @@ export type Refusal =
   | 'policy-refused'
   | 'source-mismatch'
   | 'network'
+  | 'download-stalled'
 export const OwnerDiagnostic = z.strictObject({
   phase: z.enum(['accepting', 'draining', 'blocked', 'stopped', 'missing', 'unreadable']),
   stage: z.enum(['attach-record', 'hello', 'hold', 'detach', 'lease-lost', 'recovery']),

@@ -1,7 +1,11 @@
 import { PLUGIN_LIMITS } from '../package-digests'
 import type { PluginRelease } from '../package-schema'
 import { PluginSupervisorError } from '../supervisor/protocol'
-import { downloadPluginBytes } from '../catalogue/download'
+import {
+  downloadPluginBytes,
+  PluginDownloadError,
+  pluginDownloadFailure,
+} from '../catalogue/download'
 /** Same bounded GitHub transport as the catalogue; downloaded digests checked before staging. */
 export async function downloadPluginArchive(
   release: Readonly<PluginRelease>,
@@ -15,7 +19,10 @@ export async function downloadPluginArchive(
       sha256: release.archive.sha256,
       signal,
     })
-  } catch {
-    throw new PluginSupervisorError('unavailable')
+  } catch (error) {
+    throw new PluginSupervisorError(
+      error instanceof PluginDownloadError ? pluginDownloadFailure(error) : 'unavailable',
+      { cause: error },
+    )
   }
 }

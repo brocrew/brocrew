@@ -3,6 +3,11 @@ import type { PluginRelease, PluginTarget } from '../package-schema'
 import type { GlobalPluginState } from '../state/store'
 import type { ProjectionReceipt, Installation } from '../state/format'
 import type { PluginNodeReady, PluginNodeStart } from '../node-host'
+import type { PluginReviewProgress } from '../../../shared/plugin-settings'
+export interface PluginArchiveTransfer {
+  signal: AbortSignal
+  onProgress(progress: Pick<PluginReviewProgress, 'phase' | 'receivedBytes' | 'totalBytes'>): void
+}
 
 export interface LifecycleRun {
   readonly runId: string
@@ -59,7 +64,11 @@ export interface LifecycleOptions {
   deny(pluginId: string): void
   /** Owner-only wakeup. Receivers must still await the retained run's positive exit proof. */
   onChromeHostExit?(runId: string): void
-  download?: (release: Readonly<PluginRelease>, signal: AbortSignal) => Promise<Uint8Array>
+  download?: (
+    release: Readonly<PluginRelease>,
+    signal: AbortSignal,
+    onProgress?: (received: number) => void,
+  ) => Promise<Uint8Array>
   now?: () => number
   /** Live host-broker reachability, separate from the plugin process lifecycle. */
   toolsUnavailable?: (pluginId: string) => boolean

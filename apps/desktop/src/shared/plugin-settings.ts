@@ -113,9 +113,10 @@ export const PLUGIN_DISCLOSURE_WORDS = Object.freeze({
   reviewAgain:
     "This change couldn't be confirmed. If the plugin now shows as installed or updated, it went through. Otherwise, review it again.",
   network: "Couldn't download this plugin. Check your connection and try again.",
+  downloadStalled: 'The plugin download stalled. Try again.',
 })
 export type PluginMutationFailure =
-  PluginMutationBlocked | 'policy-refused' | 'network' | 'unavailable'
+  PluginMutationBlocked | 'policy-refused' | 'network' | 'download-stalled' | 'unavailable'
 // Person-control may wait 180 seconds for a cold plugin start; leave room for its page load.
 export const PLUGIN_CONFIGURATION_TIMEOUT = 200_000
 export const PLUGIN_STATES = [
@@ -258,6 +259,7 @@ export function pluginMutationFailureNotice(cause: PluginMutationFailure): strin
     return pluginMutationNotice(cause)
   if (cause === 'policy-refused') return PLUGIN_DISCLOSURE_WORDS.reviewAgain
   if (cause === 'network') return PLUGIN_DISCLOSURE_WORDS.network
+  if (cause === 'download-stalled') return PLUGIN_DISCLOSURE_WORDS.downloadStalled
   return 'Plugin unavailable. Try again.'
 }
 /** Closed uninstall facts; remote removal is never inferred from deleting local data. */
@@ -283,6 +285,19 @@ export interface PluginScreenBounds {
   y: number
   width: number
   height: number
+}
+export const PluginReviewProgressSchema = z.strictObject({
+  requestId: z.uuid(),
+  id: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
+  phase: z.enum(['downloading', 'checking']),
+  receivedBytes: z.number().int().nonnegative().safe(),
+  totalBytes: z.number().int().positive().safe().optional(),
+})
+export type PluginReviewProgress = z.infer<typeof PluginReviewProgressSchema>
+export interface PluginReviewTransfer {
+  requestId: string
+  signal: AbortSignal
+  onProgress(progress: PluginReviewProgress): void
 }
 export type PluginSettingsRequest =
   | { kind: 'list' | 'status' | 'availability' }

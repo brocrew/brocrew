@@ -21,6 +21,7 @@ import {
   PLUGIN_STATES,
   pluginMutationAllowed,
   PluginMutationReviewSchema,
+  type PluginReviewTransfer,
   PluginDisplayedConsentSchema,
   PLUGIN_REVIEW_INVALIDATED,
   type PluginMutationReview,
@@ -63,7 +64,11 @@ export interface PluginSettingsController {
   mutationStatus?(): PluginMutationBlocked | null
   mutationRequired?(): boolean
   prepareMutation?(action: 'install' | 'update', id: string): Promise<PluginMutationConsent>
-  reviewMutation?(action: 'install' | 'update', id: string): Promise<PluginMutationReview>
+  reviewMutation?(
+    action: 'install' | 'update',
+    id: string,
+    transfer?: PluginReviewTransfer,
+  ): Promise<PluginMutationReview>
   cancelPreparations?(): void
   onReviewInvalidated?(listener: () => void): () => void
   available?(): boolean
@@ -554,7 +559,7 @@ export function registerPluginSettings(
           const mutationFailure: PluginMutationFailure =
             code === 'incompatible'
               ? 'owner-incompatible'
-              : ['policy-refused', 'source-mismatch', 'network'].includes(code)
+              : ['policy-refused', 'source-mismatch', 'network', 'download-stalled'].includes(code)
                 ? (code as PluginMutationFailure)
                 : 'unavailable'
           return { ...failure, mutationFailure }

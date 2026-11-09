@@ -6,6 +6,7 @@ import { pack, unpack, OWNER_LIMITS, PluginSupervisorError } from '../supervisor
 const Packet = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('call'), id: z.uuid(), value: z.unknown() }),
   z.strictObject({ kind: z.literal('reply'), id: z.uuid(), ok: z.boolean(), value: z.unknown() }),
+  z.strictObject({ kind: z.literal('progress'), id: z.uuid(), value: z.unknown() }),
 ])
 const Frame = z.strictObject({
   challenge: z.string(),
@@ -34,6 +35,8 @@ export class PersonChannel {
       resolve(value: unknown): void
       reject(error: Error): void
       timer: ReturnType<typeof setTimeout>
+      progress?(value: unknown): boolean
+      within: number
     }
   >()
   private readonly work = new Set<Promise<unknown>>()
@@ -47,7 +50,10 @@ export class PersonChannel {
     private readonly key: string,
     private readonly challenge: string,
     private readonly side: 'server' | 'client',
-    private readonly handle: (input: unknown) => Promise<unknown>,
+    private readonly handle: (
+      input: unknown,
+      progress?: (value: unknown) => void,
+    ) => Promise<unknown>,
     private readonly reportRefusals: () => boolean = () => false,
   ) {
     socket.setEncoding('utf8')
@@ -89,7 +95,15 @@ export class PersonChannel {
         if (frame.challenge !== this.challenge || frame.sequence !== ++this.received)
           throw new Error('unavailable')
         const packet = frame.packet
-        if (packet.kind === 'reply') {
+        if (packet.kind === 'progress') {
+          const waiter = this.pending.get(packet.id)
+          if (!waiter?.progress) throw new Error('unavailable')
+          // The caller validates correlation and increasing real byte counts before extending liveness.
+          if (waiter.progress(packet.value)) {
+            clearTimeout(waiter.timer)
+            waiter.timer = setTimeout(() => this.close(), waiter.within)
+          }
+        } else if (packet.kind === 'reply') {
           const waiter = this.pending.get(packet.id)
           if (!waiter) throw new Error('unavailable')
           this.pending.delete(packet.id)
@@ -103,6 +117,7 @@ export class PersonChannel {
                   'source-mismatch',
                   'incompatible',
                   'network',
+                  'download-stalled',
                 ]),
               })
               .safeParse(packet.value)
@@ -112,12 +127,20 @@ export class PersonChannel {
           }
         } else {
           if (++this.incoming > 8) throw new Error('unavailable')
+          let finished = false
           const work = Promise.resolve()
-            .then(() => this.handle(packet.value))
+            .then(() =>
+              this.handle(packet.value, (value) => {
+                if (!finished) this.send({ kind: 'progress', id: packet.id, value })
+              }),
+            )
             .then(
-              (value) =>
-                this.send({ kind: 'reply', id: packet.id, ok: true, value: value ?? null }),
-              (error) =>
+              (value) => {
+                finished = true
+                this.send({ kind: 'reply', id: packet.id, ok: true, value: value ?? null })
+              },
+              (error) => {
+                finished = true
                 this.send({
                   kind: 'reply',
                   id: packet.id,
@@ -125,12 +148,17 @@ export class PersonChannel {
                   value:
                     this.reportRefusals() &&
                     error instanceof PluginSupervisorError &&
-                    ['policy-refused', 'source-mismatch', 'incompatible', 'network'].includes(
-                      error.code,
-                    )
+                    [
+                      'policy-refused',
+                      'source-mismatch',
+                      'incompatible',
+                      'network',
+                      'download-stalled',
+                    ].includes(error.code)
                       ? { pluginRefusal: error.code }
                       : null,
-                }),
+                })
+              },
             )
             .catch(() => this.close())
             .finally(() => {
@@ -146,7 +174,11 @@ export class PersonChannel {
     }
     if (Buffer.byteLength(this.input) > OWNER_LIMITS.packet) this.close()
   }
-  call(value: unknown, within: number = ANSWER_WITHIN[this.side]): Promise<unknown> {
+  call(
+    value: unknown,
+    within: number = ANSWER_WITHIN[this.side],
+    progress?: (value: unknown) => boolean,
+  ): Promise<unknown> {
     if (this.closed || this.pending.size >= 8)
       return Promise.reject(new PluginSupervisorError('unavailable'))
     const id = randomUUID()
@@ -154,7 +186,7 @@ export class PersonChannel {
       const timer = setTimeout(() => {
         this.close()
       }, within)
-      this.pending.set(id, { resolve, reject, timer })
+      this.pending.set(id, { resolve, reject, timer, progress, within })
       try {
         this.send({ kind: 'call', id, value })
       } catch {
