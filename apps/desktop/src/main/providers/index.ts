@@ -158,7 +158,7 @@ export interface ProviderKnowledge {
   readonly keptRules: KeptRulePolicy
   readonly skills: SkillPolicy
 }
-/** Instruction and memory readers are separate from the transcript-only definition closure. */
+/** Instruction and memory readers supplied by each registered adapter. */
 export const providerKnowledge: Readonly<Record<Provider, ProviderKnowledge>> = {
   claude: {
     instructions: claudeInstructions,
@@ -187,7 +187,7 @@ import type { ProviderAuthPolicy } from './auth-policy'
 import { authPolicy as claudeAuthPolicy } from './claude/auth-policy'
 import { authPolicy as codexAuthPolicy } from './codex/auth-policy'
 
-/** Authentication policies are separate from transcript and knowledge import closures. */
+/** Native authentication policies supplied by each registered adapter. */
 export const providerAuthPolicies: Readonly<Record<Provider, ProviderAuthPolicy>> = {
   claude: claudeAuthPolicy,
   codex: codexAuthPolicy,
