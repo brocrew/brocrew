@@ -499,6 +499,7 @@ describe('saved methods change only through a confirmed, recoverable profile ope
   it.runIf(process.platform !== 'win32')(
     'rejects an external chmod and faithfully restores original modes',
     async () => {
+      chmodSync(path('review.md'), 0o640)
       const api = await service()
       const removed = await api.remove('lark', selection(api), person)
       chmodSync(path('index.md'), 0o644)

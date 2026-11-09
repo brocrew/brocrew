@@ -3004,9 +3004,7 @@ const WHAT_A_REOPEN_ADDS: ReadonlySet<TranscriptEvent['type']> = new Set([
 /** Older provider events receive display metadata without changing their stored form. */
 function transcriptEventForDisplay(event: TranscriptEvent, owner?: Provider): TranscriptEvent {
   const provider =
-    event.type === 'unknown'
-      ? SUPPORTED_PROVIDERS.find((one) => one === event.provider)
-      : owner
+    event.type === 'unknown' ? SUPPORTED_PROVIDERS.find((one) => one === event.provider) : owner
   return provider === undefined
     ? event
     : (providerDefinitions[provider].transcripts.eventForDisplay?.(event) ?? event)
