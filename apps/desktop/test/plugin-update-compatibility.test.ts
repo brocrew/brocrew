@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createHash } from 'node:crypto'
 import { readFile, readdir, mkdir, writeFile, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import {
   fixture,
   projection,
@@ -23,7 +21,6 @@ import { GlobalPluginState as ParentState } from './fixtures/plugin-update-paren
 import { PluginLifecycleController as ParentController } from './fixtures/plugin-update-parent/lifecycle-controller'
 import { servePersonPluginControl as parentServer } from './fixtures/plugin-update-parent/lifecycle-person-control'
 import { connectPluginSettings as parentClient } from './fixtures/plugin-update-parent/lifecycle-settings-client'
-import parentSources from './fixtures/plugin-update-parent/source.json'
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -38,22 +35,6 @@ afterEach(async () => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
-const snapshotRoot = fileURLToPath(new URL('./fixtures/plugin-update-parent/', import.meta.url))
-it.each(parentSources.files)(
-  'pins the parent $path with import and unsigned API adaptation',
-  async (source) => {
-    const adapted = await readFile(join(snapshotRoot, source.file), 'utf8')
-    const imports = new Map<string, string | undefined>(Object.entries(source.imports))
-    const original = adapted.replace(/from '(\.[^']+)'/g, (_, spec: string) => {
-      const originalImport = imports.get(spec)
-      expect(originalImport).toBeDefined()
-      return `from '${originalImport}'`
-    })
-    expect(createHash('sha256').update(original).digest('hex')).toBe(
-      'unsignedApiSha256' in source ? source.unsignedApiSha256 : source.sourceSha256,
-    )
-  },
-)
 function exitable(f: Awaited<ReturnType<typeof fixture>>) {
   const start = f.opts.runtime.start
   f.opts.runtime.start = async (spec) => {

@@ -6,11 +6,16 @@ import { PersonChannel } from '../src/main/plugins/lifecycle/transport'
 class Wire extends EventEmitter {
   writableLength = 0
   destroyed = false
+  legacy = false
   peer!: Wire
   setEncoding() {}
   write(data: string) {
     queueMicrotask(() => {
-      if (!this.peer.destroyed) this.peer.emit('data', data)
+      if (!this.peer.destroyed)
+        this.peer.emit(
+          'data',
+          this.legacy ? JSON.stringify({ data: data.trim(), mac: 'retired' }) + '\n' : data,
+        )
     })
     return true
   }
@@ -26,30 +31,27 @@ afterEach(() => {
   for (const c of channels.splice(0)) c.close()
   vi.useRealTimers()
 })
-function pair(handle: (input: unknown, progress?: (value: unknown) => void) => Promise<unknown>) {
+function pair(
+  handle: (input: unknown, progress?: (value: unknown) => void) => Promise<unknown>,
+  legacy = false,
+) {
   const a = new Wire(),
     b = new Wire()
+  a.legacy = b.legacy = legacy
   a.peer = b
   b.peer = a
   const client = new PersonChannel(
     a as unknown as Socket,
-    '1'.repeat(64),
     '2'.repeat(64),
     'client',
     async () => null,
   )
-  const server = new PersonChannel(
-    b as unknown as Socket,
-    '1'.repeat(64),
-    '2'.repeat(64),
-    'server',
-    handle,
-  )
+  const server = new PersonChannel(b as unknown as Socket, '2'.repeat(64), 'server', handle)
   channels.push(client, server)
   return client
 }
 
-it('a progressing authenticated call can outlive its original answer interval', async () => {
+it('a progressing call can outlive its original answer interval', async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   let emit!: (value: unknown) => void, finish!: (value: unknown) => void
   const client = pair(async (_input, progress) => {
@@ -119,4 +121,9 @@ it('queued progress cannot write after its terminal reply', async () => {
   await Promise.resolve()
   expect(client.open).toBe(true)
   expect(await client.call('ordinary')).toBe(true)
+})
+
+it('reads replies and calls wrapped by an older peer', async () => {
+  const client = pair(async (input) => input, true)
+  expect(await client.call({ kind: 'fictional' })).toEqual({ kind: 'fictional' })
 })

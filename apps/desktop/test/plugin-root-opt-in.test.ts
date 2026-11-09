@@ -14,7 +14,6 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { createConnection } from 'node:net'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { pluginSupervisorRoot } from '../src/main/plugins/supervisor/client'
@@ -25,7 +24,6 @@ import {
   servePersonPluginControl,
 } from '../src/main/plugins/lifecycle/person-control'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
-import { PersonChannel } from '../src/main/plugins/lifecycle/transport'
 import { PluginSupervisorError } from '../src/main/plugins/supervisor/protocol'
 
 const folders: string[] = [],
@@ -347,35 +345,7 @@ describe('workspace opt-in keeps every other plugin setup unchanged', () => {
   )
 })
 
-async function connectAt(path: string, key: string): Promise<PersonChannel> {
-  // Use this exact endpoint, even on Windows: the normal helper derives a new pipe from the key.
-  const socket = createConnection(path)
-  const challenge = await new Promise<string>((resolve, reject) => {
-    let input = ''
-    const timer = setTimeout(() => {
-      socket.destroy()
-      reject(new Error('fictional challenge timed out'))
-    }, 2000)
-    socket.once('error', (error) => {
-      clearTimeout(timer)
-      reject(error)
-    })
-    const read = (bytes: Buffer) => {
-      input += bytes.toString('utf8')
-      if (!input.endsWith('\n') && input.length <= 65) return
-      clearTimeout(timer)
-      socket.off('data', read)
-      if (!/^[a-f0-9]{64}\n$/.test(input)) {
-        socket.destroy()
-        reject(new Error('fictional challenge is invalid'))
-      } else resolve(input.trimEnd())
-    }
-    socket.on('data', read)
-  })
-  return new PersonChannel(socket, key, challenge, 'client', async () => ({}))
-}
-
-it('person capabilities and sockets refuse the other root key in both directions', async () => {
+it('person endpoints route to the chosen plugin root', async () => {
   const f = await fixture()
   await optIn(f, f.workspace, 'p1')
   const roots = [root(f, f.otherWorkspace), root(f)]
@@ -402,11 +372,6 @@ it('person capabilities and sockets refuse the other root key in both directions
   }
   expect(bridges[0]!.path).not.toBe(bridges[1]!.path)
   for (let i = 0; i < bridges.length; i++) {
-    const foreign = await connectAt(bridges[i]!.path, keys[1 - i]!)
-    await expect(foreign.call({ kind: 'attach', workspaceId: randomUUID() })).rejects.toThrow()
-    foreign.close()
-    await foreign.settled()
-    expect(attach).toHaveBeenCalledTimes(i)
     const valid = await connectPersonPluginControl({
       path: bridges[i]!.path,
       key: keys[i]!,

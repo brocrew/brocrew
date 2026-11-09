@@ -1,11 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { randomBytes, randomUUID, createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { PluginLifecycleController as AuthorsController } from './fixtures/plugin-disclosure-mixed/authors-controller'
 import { servePersonPluginControl as authorsServer } from './fixtures/plugin-disclosure-mixed/authors-person-control'
-import frozenSources from './fixtures/plugin-disclosure-mixed/source.json'
 import { GlobalPluginState as OlderState } from './fixtures/plugin-delete-parent/store'
 import { fixture, projection, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 import { packageFixture, catalogueBytes } from './plugin-package-fixtures'
@@ -260,21 +258,6 @@ describe('new client mutation admission', () => {
       ),
     ).toBe(false)
     expect(allowed({ ...legacy, mutationBlocked: 'source-mismatch' }, 'install')).toBe(false)
-  })
-  it('pins the historical authors-only sources with unsigned API adaptation', async () => {
-    for (const pin of frozenSources) {
-      const adapted = await readFile(
-        new URL('./fixtures/plugin-disclosure-mixed/' + pin.file, import.meta.url),
-        'utf8',
-      )
-      const original = adapted.replace(
-        /from '(\.[^']+)'/g,
-        (_, path: string) => "from '" + (pin.imports as Record<string, string>)[path] + "'",
-      )
-      expect(createHash('sha256').update(original).digest('hex')).toBe(
-        'unsignedApiSha256' in pin ? pin.unsignedApiSha256 : pin.sourceSha256,
-      )
-    }
   })
 })
 

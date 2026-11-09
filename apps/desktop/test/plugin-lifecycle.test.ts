@@ -645,33 +645,11 @@ describe.skipIf(process.platform === 'win32')(
       await consumerClosed
       expect(consumer.open).toBe(false)
     })
-    it('lease and broker packets are not person-control authority', async () => {
-      const f = await fixture()
-      await f.controller.detach(f.handle)
-      const bridge = await servePersonPluginControl({
-        root: f.root,
-        key: 'a'.repeat(64),
-        controller: f.controller,
-        read: async () => null,
-      })
-      const wrong = await connectPersonPluginControl({
-        path: bridge.path,
-        key: 'b'.repeat(64),
-        handle: async () => true,
-      })
-      try {
-        await expect(
-          wrong.call({ kind: 'attach', workspaceId: randomUUID() }),
-        ).rejects.toMatchObject({ code: 'unavailable' })
-        expect(
-          Command.safeParse({ kind: 'install', pluginId: 'chrome', operationId: randomUUID() })
-            .success,
-        ).toBe(false)
-        expect(f.starts()).toBe(0)
-      } finally {
-        wrong.close()
-        await bridge.close()
-      }
+    it('keeps install commands outside the supervisor lease protocol', () => {
+      expect(
+        Command.safeParse({ kind: 'install', pluginId: 'chrome', operationId: randomUUID() })
+          .success,
+      ).toBe(false)
     })
     it('an empty catalogue cannot connect to a missing Settings owner', async () => {
       const f = await fixture()
@@ -699,7 +677,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(f.state.inspect().pending).toBeNull()
       expect(f.state.exportActivation().entries).toEqual([])
     })
-    it('replayed authenticated frames cannot create a second session or operation', async () => {
+    it('replayed frames cannot create a second session or operation', async () => {
       const f = await fixture()
       await f.controller.detach(f.handle)
       const key = 'a'.repeat(64)
@@ -712,7 +690,7 @@ describe.skipIf(process.platform === 'win32')(
       const socket = createConnection(bridge.path)
       try {
         const challenge = String((await once(socket, 'data'))[0]).trimEnd()
-        const frame = pack(key, 'request', {
+        const frame = pack({
           challenge,
           sequence: 1,
           packet: {

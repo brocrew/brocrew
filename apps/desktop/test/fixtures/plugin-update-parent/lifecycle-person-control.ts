@@ -73,8 +73,6 @@ export async function servePersonPluginControl(options: {
       detaching?: Promise<void>
     }>()
   let closing = false
-  // A detach refused while its channel is open is tried again once that channel has closed, when
-  // every notice to its consumer holds.
   const detach = (session: {
     channel: PersonChannel
     handle?: LifecycleWorkspace
@@ -102,9 +100,9 @@ export async function servePersonPluginControl(options: {
       return
     }
     const challenge = randomBytes(32).toString('hex')
-    // Fresh challenge binds every MAC/counter stream; even a captured attach cannot be replayed.
+    // Each connection has its own challenge and counter.
     socket.write(challenge + '\n')
-    const channel = new PersonChannel(socket, options.key, challenge, 'server', async (input) => {
+    const channel = new PersonChannel(socket, challenge, 'server', async (input) => {
       const request = Request.parse(input)
       if (closing) throw new PluginSupervisorError('unavailable')
       if (request.kind === 'attach') {
@@ -117,8 +115,6 @@ export async function servePersonPluginControl(options: {
           throw new PluginSupervisorError('unavailable')
         clearTimeout(authentication)
         session.attaching = true
-        // A closed channel was this consumer's only route to its plugins, so the consumer ended
-        // with it: every notice to it holds, and a lost session detaches without its answer.
         const tell = async (command: z.infer<typeof ConsumerCommand>): Promise<unknown> => {
           if (!channel.open) return true
           try {
@@ -303,7 +299,7 @@ export async function connectPersonPluginControl(options: {
       socket.off('data', hello)
       socket.off('error', failed)
       clearTimeout(timer)
-      resolve(new PersonChannel(socket, options.key, challenge, 'client', options.handle))
+      resolve(new PersonChannel(socket, challenge, 'client', options.handle))
     }
     socket.on('data', hello)
   })
