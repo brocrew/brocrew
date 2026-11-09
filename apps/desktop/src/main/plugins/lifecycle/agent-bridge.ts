@@ -10,7 +10,11 @@ import {
 } from '../tool-diagnostics'
 import { randomUUID } from 'node:crypto'
 import type { ManagedPluginMcpServer } from '@brobot2/runtime'
-import { managedPluginFailure, pluginFailureReason, type PluginFailureStage } from '@brobot2/runtime/plugin-failure'
+import {
+  managedPluginFailure,
+  pluginFailureReason,
+  type PluginFailureStage,
+} from '@brobot2/runtime/plugin-failure'
 import {
   createPluginToolBroker,
   type BrokerOptions,
@@ -159,19 +163,25 @@ export function createLifecycleAgentBridge(options: {
   const failedAttachments = new Set<string>()
   // The last known stage and cause behind each plugin's unavailable tools, in fixed words only.
   const lastCause = new Map<string, string>()
-  const diagnostic = (id: string, pending?: (stage: PluginFailureStage) => void): PluginToolDiagnostic =>
-    Object.assign((reason: Parameters<PluginToolDiagnostic>[0], detail?: PluginToolFailureDetail) => {
-      if (detail) lastCause.set(id, `${detail.stage}: ${detail.cause}`)
-      else if (/failed|unproven|rejected|timeout|capacity|collision|rate-limited/.test(reason))
-        lastCause.set(id, reason)
-      if (lastCause.size > 256) lastCause.delete(lastCause.keys().next().value!)
-      try {
-        if (detail) options.diagnostic?.(id, reason, detail)
-        else options.diagnostic?.(id, reason)
-      } catch {
-        /* Observers grant no authority. */
-      }
-    }, { pending })
+  const diagnostic = (
+    id: string,
+    pending?: (stage: PluginFailureStage) => void,
+  ): PluginToolDiagnostic =>
+    Object.assign(
+      (reason: Parameters<PluginToolDiagnostic>[0], detail?: PluginToolFailureDetail) => {
+        if (detail) lastCause.set(id, `${detail.stage}: ${detail.cause}`)
+        else if (/failed|unproven|rejected|timeout|capacity|collision|rate-limited/.test(reason))
+          lastCause.set(id, reason)
+        if (lastCause.size > 256) lastCause.delete(lastCause.keys().next().value!)
+        try {
+          if (detail) options.diagnostic?.(id, reason, detail)
+          else options.diagnostic?.(id, reason)
+        } catch {
+          /* Observers grant no authority. */
+        }
+      },
+      { pending },
+    )
   const routes = new Map<string, Route>()
   const rebuilding = new Set<string>()
   const recoveries = new Map<Entry, Promise<boolean>>()
@@ -879,10 +889,12 @@ export function createLifecycleAgentBridge(options: {
         rebuilding.has(id) ||
         overflowFailures.has(id) ||
         liveEntries.get(id)?.broker.status().available === false ||
-        [...failedRoutes].some(([key, plugin]) =>
-          plugin === id && ![...warmups.values()].some((one) =>
-            !one.cancelled && !one.settled && `${one.caller}:${id}` === key,
-          ),
+        [...failedRoutes].some(
+          ([key, plugin]) =>
+            plugin === id &&
+            ![...warmups.values()].some(
+              (one) => !one.cancelled && !one.settled && `${one.caller}:${id}` === key,
+            ),
         )
       )
     },
@@ -890,7 +902,7 @@ export function createLifecycleAgentBridge(options: {
       const pending = [...warmups.values()].some(
         (one) => one.pluginId === id && !one.cancelled && !one.settled,
       )
-      return pending ? bindingStages.get(id)?.stage ?? 'route-open' : undefined
+      return pending ? (bindingStages.get(id)?.stage ?? 'route-open') : undefined
     },
     /** Why this plugin's tools are unavailable, as `stage: cause` or a fixed reason, if known. */
     toolsCause(id: string): string | undefined {

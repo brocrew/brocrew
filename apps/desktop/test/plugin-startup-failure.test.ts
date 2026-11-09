@@ -154,9 +154,11 @@ it('retains a split first stderr line and real child exit through wrappers into 
   expect(log).toContain('second private stack line')
 })
 it('does not invent a child exit or stderr at an attachment timeout and bounds escaped text', () => {
-  const snapshot = observePluginSupervisorLaunch(
-    { exitCode: null, signalCode: null, stderr: null } as unknown as ChildProcess,
-  )
+  const snapshot = observePluginSupervisorLaunch({
+    exitCode: null,
+    signalCode: null,
+    stderr: null,
+  } as unknown as ChildProcess)
   expect(pluginStartupDiagnostic(snapshot())).toEqual({
     exitCode: null,
     signal: null,
@@ -228,9 +230,10 @@ it('drains stderr after exit before retaining the failure, within the original l
     await draining
     expect(pluginStartupDiagnostic(snapshot())?.stderr).toBe('Error: fictional late pipe failure')
     expect(pluginStartupDiagnostic(snapshot())?.exitCode).toBe(17)
-    const stuck = observePluginSupervisorLaunch(
-      { ...child, stderr: new EventEmitter() } as unknown as ChildProcess,
-    )
+    const stuck = observePluginSupervisorLaunch({
+      ...child,
+      stderr: new EventEmitter(),
+    } as unknown as ChildProcess)
     const timed = stuck.drainUntil(performance.now() + 100)
     await vi.advanceTimersByTimeAsync(100)
     await timed

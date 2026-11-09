@@ -101,8 +101,7 @@ export function managedPluginFailure(
           else if (one.code === 'EACCES' || one.code === 'EPERM') normalized = 'io-denied'
           else if (one.code === 'ETIMEDOUT') normalized = 'timeout'
           else if (one.code === 'ECONNREFUSED') normalized = 'connection-refused'
-          else if (['ECONNRESET', 'EPIPE'].includes(one.code))
-            normalized = 'transport-closed'
+          else if (['ECONNRESET', 'EPIPE'].includes(one.code)) normalized = 'transport-closed'
           else if (/^E[A-Z0-9_]{1,30}$/.test(one.code)) normalized = 'io-failed'
         }
       }

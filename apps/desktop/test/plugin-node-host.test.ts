@@ -725,7 +725,9 @@ process.exit(23);
     expect(pluginStartupDiagnostic(refusal)).toEqual({
       exitCode: 23,
       signal: null,
-      stderr: expect.stringMatching(/^Error: rejected \/fictional\/plugin\/auth\.json [a-f0-9]{64}$/),
+      stderr: expect.stringMatching(
+        /^Error: rejected \/fictional\/plugin\/auth\.json [a-f0-9]{64}$/,
+      ),
     })
     expect(await child.exited).toMatchObject({ exited: true })
     const firstLog = resolve(child.receiptPath, '..', 'plugin-startup.log')

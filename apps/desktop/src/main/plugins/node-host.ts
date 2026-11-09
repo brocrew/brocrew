@@ -455,8 +455,7 @@ export function createPluginNodeHost(options: {
         const diagnostic = PluginStartupDiagnosticSchema.safeParse({
           exitCode: value.exitCode,
           signal: value.signal,
-          stderr:
-            typeof value.stderr === 'string' ? pluginStartupStderr(value.stderr) : null,
+          stderr: typeof value.stderr === 'string' ? pluginStartupStderr(value.stderr) : null,
         })
         if (diagnostic.success) {
           serverDiagnostic = diagnostic.data

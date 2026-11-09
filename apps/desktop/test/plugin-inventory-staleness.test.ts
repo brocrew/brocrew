@@ -82,7 +82,9 @@ function peer(hold = 'tools/list', format: 'json' | 'sse' = 'json') {
             started.resolve()
           },
         }),
-        { headers: { 'content-type': format === 'sse' ? 'text/event-stream' : 'application/json' } },
+        {
+          headers: { 'content-type': format === 'sse' ? 'text/event-stream' : 'application/json' },
+        },
       )
     }),
   )
@@ -101,9 +103,11 @@ function peer(hold = 'tools/list', format: 'json' | 'sse' = 'json') {
   }
 }
 
-it.each(['initialize', 'tools/list'].flatMap((method) =>
-  (['json', 'sse'] as const).map((format) => ({ method, format })),
-))(
+it.each(
+  ['initialize', 'tools/list'].flatMap((method) =>
+    (['json', 'sse'] as const).map((format) => ({ method, format })),
+  ),
+)(
   'accepts a slow $format $method response that keeps delivering real bytes past 1.5 seconds',
   async ({ method, format }) => {
     const remote = peer(method, format)
@@ -132,9 +136,13 @@ it.each(['initialize', 'tools/list'].flatMap((method) =>
 it('reports connection refused immediately with the actual connect cause', async () => {
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockRejectedValue(
-      new TypeError('fetch failed', { cause: Object.assign(new Error(), { code: 'ECONNREFUSED' }) }),
-    ),
+    vi
+      .fn()
+      .mockRejectedValue(
+        new TypeError('fetch failed', {
+          cause: Object.assign(new Error(), { code: 'ECONNREFUSED' }),
+        }),
+      ),
   )
   await expect(admittedPluginTools(view().attachment, new Set(), () => {})).rejects.toMatchObject({
     pluginStage: 'binding-connect',
@@ -200,7 +208,8 @@ it('retries a failed inventory on the next read and marks the held retry as star
       return emptyBinding()
     })
   const bridge = bridgeFor(attachment, binding)
-  const owner = lease(), req = request(attachment.workspaceId)
+  const owner = lease(),
+    req = request(attachment.workspaceId)
   try {
     expect(await bridge.agentRoutes(owner, req)).toMatchObject({ servers: [], pending: [] })
     expect(bridge.toolsUnavailable('chrome')).toBe(true)
@@ -227,13 +236,17 @@ it('keeps the shared inventory stage after the first of two waiting callers reti
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   const { attachment } = view()
   const held = deferred<void>()
-  const binding = vi.fn(async (_view: ReturnType<typeof view>['attachment'], diagnostic: PluginToolDiagnostic) => {
-    diagnostic.pending?.('binding-inventory')
-    await held.promise
-    return emptyBinding()
-  })
+  const binding = vi.fn(
+    async (_view: ReturnType<typeof view>['attachment'], diagnostic: PluginToolDiagnostic) => {
+      diagnostic.pending?.('binding-inventory')
+      await held.promise
+      return emptyBinding()
+    },
+  )
   const bridge = bridgeFor(attachment, binding)
-  const owner = lease(), first = request(attachment.workspaceId), second = request(attachment.workspaceId)
+  const owner = lease(),
+    first = request(attachment.workspaceId),
+    second = request(attachment.workspaceId)
   try {
     const waiting = bridge.agentRoutes(owner, first)
     await vi.advanceTimersByTimeAsync(1001)

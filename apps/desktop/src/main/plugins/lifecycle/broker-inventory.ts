@@ -19,12 +19,13 @@ export async function admittedPluginTools(
       /* A stage observer cannot fail the binding. */
     }
   }
-  const exited = view.exited?.then(
-    () => {
-      throw Object.assign(new Error('Plugin host exited'), { code: 'process-exited' })
-    },
-    () => new Promise<never>(() => {}),
-  ) ?? new Promise<never>(() => {})
+  const exited =
+    view.exited?.then(
+      () => {
+        throw Object.assign(new Error('Plugin host exited'), { code: 'process-exited' })
+      },
+      () => new Promise<never>(() => {}),
+    ) ?? new Promise<never>(() => {})
   try {
     progress('binding-connection')
     const connection = await Promise.race([view.connection, exited])
