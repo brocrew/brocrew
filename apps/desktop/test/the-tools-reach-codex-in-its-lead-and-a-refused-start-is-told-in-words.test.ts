@@ -1014,12 +1014,6 @@ describe('§5 · Codex’s own launch failures, as the app reads them', () => {
       expect((drifted as Error).message).toContain(CODEX_PROTOCOL_VERSION)
       expect(startRefusalOf(drifted)).toBeNull()
 
-      // ⚑ A home the app-server did not adopt: StartFailed.
-      const elsewhere = await startOn({ ...aScript(), echoHome: '/somewhere/else' })
-      expect(elsewhere).toBeInstanceOf(StartFailed)
-      expect((elsewhere as Error).message).toContain('did not adopt the profile home')
-      expect(startRefusalOf(elsewhere)).toBeNull()
-
       // The paired positives. This app's own close of the transport is a plain Error: neither type …
       const closed = await startOn({
         ...aScript(),

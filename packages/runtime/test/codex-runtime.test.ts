@@ -3077,10 +3077,6 @@ describe('CodexRuntime — provider-home isolation (021)', () => {
     expect(ctx).toEqual({ cwd: '/tmp/x', providerHome: '/managed/proj/profile' })
     await handle.close()
   })
-
-
-
-
 })
 
 describe('CodexRuntime — every launch keeps Codex’s own agents (D-014)', () => {
