@@ -1,5 +1,5 @@
 import { PLUGIN_FRAMEWORK_FEATURES } from '../hooks/definitions'
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 
 export const OWNER_LIMITS = {
@@ -37,13 +37,9 @@ export const CONFIGURATION_LEDGER_V2 = 'configuration-ledger-v2'
 export const OWNER_RECOVERY = 'owner-recovery'
 /** Per-lease negotiation for served, pending, off and unknown route facts. */
 export const AGENT_ROUTES_FORMAT_2 = 'agent-routes-format-2'
-/**
- * The app holds one connection open for its whole life; its close, not a late heartbeat, ends
- * the app's registration. A busy or suspended app keeps it open.
- */
 export const APP_HELD_CONNECTION = 'app-held-connection'
 export const OWNER_WIRE: WireVersion = {
-  major: 1,
+  major: 2,
   minMinor: 0,
   maxMinor: 0,
   features: [
@@ -56,19 +52,14 @@ export const OWNER_WIRE: WireVersion = {
     ...PLUGIN_FRAMEWORK_FEATURES,
   ],
 }
-/** Every copy of the app sharing the plugin root reads this strictly: it never gains a field. */
-export const OwnerRecord = z.strictObject({
+/** Ignore retired fields when reading an older owner record. */
+export const OwnerRecord = z.object({
   version: z.literal(1),
   epoch: Uuid,
-  key: Hex,
   phase: z.enum(['accepting', 'draining', 'blocked', 'stopped']),
   wire: Wire,
 })
 export type OwnerRecord = z.infer<typeof OwnerRecord>
-/**
- * Why the owner began to drain: the last lease expired, the last lease was released, the owner
- * was shut down, or no lease came within the expiry.
- */
 export const StopReason = z.enum(['lease-expired', 'released', 'shutdown', 'drain'])
 export type StopReason = z.infer<typeof StopReason>
 /** Kept beside the owner record, never in it; a reader ignores fields it does not know. */
@@ -88,10 +79,6 @@ export const Command = z.discriminatedUnion('kind', [
     ...Identity,
     lease: Hex,
     counter: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
-    /**
-     * Names one renewal; every retry of it after a lost reply carries the same value. Sent only
-     * when the hello negotiated RENEW_RETRY; without it a renew is the next counter and nothing else.
-     */
     renewal: Hex.optional(),
   }),
   z.strictObject({ kind: z.literal('release'), ...Identity, lease: Hex }),
@@ -110,7 +97,6 @@ export const Command = z.discriminatedUnion('kind', [
 export type Command = z.infer<typeof Command>
 export const Request = z.strictObject({ epoch: Uuid, nonce: Hex, challenge: Hex, command: Command })
 export type Request = z.infer<typeof Request>
-export const Envelope = z.strictObject({ data: z.string().max(OWNER_LIMITS.packet), mac: Hex })
 export type Refusal =
   | 'unavailable'
   | 'busy'
@@ -152,7 +138,7 @@ export function ownerDiagnosticLine(diagnostic: OwnerDiagnostic): string {
 }
 export class PluginSupervisorError extends Error {
   readonly diagnostic?: OwnerDiagnostic
-  /** Local authenticated owner continuity; never serialized or logged. */
+  /** Local owner continuity; never serialized or logged. */
   readonly ownerIdentity?: string
   readonly ownerEpoch?: string
   constructor(
@@ -186,24 +172,17 @@ export class PluginSupervisorError extends Error {
 export function refuse(code: Refusal = 'unavailable', diagnostic?: OwnerDiagnostic): never {
   throw new PluginSupervisorError(code, { diagnostic })
 }
-const mac = (key: string, direction: string, data: string) =>
-  createHmac('sha256', Buffer.from(key, 'hex')).update(`${direction}\n${data}`).digest('hex')
-export function pack(key: string, direction: 'request' | 'response', value: unknown): string {
-  const data = JSON.stringify(value)
-  const packet = JSON.stringify({ data, mac: mac(key, direction, data) }) + '\n'
+export function pack(value: unknown): string {
+  const packet = JSON.stringify(value) + '\n'
   if (Buffer.byteLength(packet) > OWNER_LIMITS.packet) refuse()
   return packet
 }
-export function unpack(key: string, direction: 'request' | 'response', bytes: string): unknown {
-  const packet = Envelope.parse(JSON.parse(bytes))
-  if (
-    !timingSafeEqual(
-      Buffer.from(packet.mac, 'hex'),
-      Buffer.from(mac(key, direction, packet.data), 'hex'),
-    )
-  )
-    refuse()
-  return JSON.parse(packet.data)
+export function unpack(bytes: string): unknown {
+  const packet = JSON.parse(bytes)
+  // Older peers wrap the JSON in a signed envelope; only its data is still needed.
+  return packet && typeof packet.data === 'string' && 'mac' in packet
+    ? JSON.parse(packet.data)
+    : packet
 }
 export function compatible(
   left: WireVersion,

@@ -33,7 +33,7 @@ vi.mock('../src/main/plugins/private-files', async () => {
 })
 import { privateChild } from '../src/main/plugins/node-host-files'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
-import { OWNER_WIRE, secret, type OwnerRecord } from '../src/main/plugins/supervisor/protocol'
+import { OWNER_WIRE, type OwnerRecord } from '../src/main/plugins/supervisor/protocol'
 import {
   readRecoveryAdvice,
   writeRecoveryAdvice,
@@ -56,7 +56,6 @@ async function fixture() {
   const record: OwnerRecord = {
     version: 1,
     epoch: randomUUID(),
-    key: secret(),
     phase: 'blocked',
     wire: OWNER_WIRE,
   }
@@ -64,7 +63,7 @@ async function fixture() {
   const directory = await privateChild(root, `supervisor-launches/${randomUUID()}`)
   return { root, parent, directory, storage, record, path: join(directory, 'recovery-advice.json') }
 }
-it('retains only this launch and epoch advice, without copying owner capabilities', async () => {
+it('retains only this launch and epoch advice', async () => {
   const f = await fixture()
   try {
     expect(await writeRecoveryAdvice(f.root, f.directory, f.record)).toBe(true)
@@ -74,7 +73,6 @@ it('retains only this launch and epoch advice, without copying owner capabilitie
       ownerEpoch: f.record.epoch,
       diagnostic: { phase: 'blocked', stage: 'recovery', reason: 'restart-required' },
     })
-    expect(await readFile(f.path, 'utf8')).not.toContain(f.record.key)
     expect(f.storage.read()).toEqual(f.record)
     f.storage.write({ ...f.record, epoch: randomUUID() })
     expect(await readRecoveryAdvice(f.root, f.directory, () => f.storage.read())).toBeUndefined()

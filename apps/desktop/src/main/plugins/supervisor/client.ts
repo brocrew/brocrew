@@ -66,7 +66,7 @@ function serializedLaunch(identity: string, launch: () => Promise<void>): Promis
   launches.set(identity, work)
   return work
 }
-const releasedDrains = new Map<string, { epoch: string; key: string; since: number }>()
+const releasedDrains = new Map<string, { epoch: string; since: number }>()
 function releasedDrainStalled(
   storage: SupervisorStorage,
   record: OwnerRecord | null,
@@ -90,20 +90,15 @@ function releasedDrainStalled(
     if (
       !previous ||
       previous.epoch !== record.epoch ||
-      previous.key !== record.key ||
       !Number.isFinite(now) ||
       now < previous.since
     ) {
       if (releasedDrains.size >= 64) releasedDrains.delete(releasedDrains.keys().next().value!)
-      releasedDrains.set(id, { epoch: record.epoch, key: record.key, since: now })
+      releasedDrains.set(id, { epoch: record.epoch, since: now })
       return false
     }
     const current = storage.read()
-    if (
-      current?.epoch !== record.epoch ||
-      current.key !== record.key ||
-      current.phase !== record.phase
-    ) {
+    if (current?.epoch !== record.epoch || current.phase !== record.phase) {
       releasedDrains.delete(id)
       return false
     }
@@ -147,12 +142,10 @@ function holdSupervisorConnection(
         bytes = bytes.subarray(end + 1)
         if (!challenge) {
           challenge = z.strictObject({ challenge: Hex }).parse(JSON.parse(line)).challenge
-          socket.write(
-            pack(record.key, 'request', { epoch: record.epoch, nonce, challenge, command }),
-          )
+          socket.write(pack({ epoch: record.epoch, nonce, challenge, command }))
           return
         }
-        const response = Reply.parse(unpack(record.key, 'response', line))
+        const response = Reply.parse(unpack(line))
         if (response.nonce !== nonce || response.epoch !== record.epoch || !response.ok)
           throw new Error('the plugin service refused the held connection')
         done = true
@@ -164,7 +157,7 @@ function holdSupervisorConnection(
     })
   })
 }
-/** One authenticated, bounded command on a private socket. No raw error or packet leaves here. */
+/** One bounded command on the owner socket. */
 export function supervisorRequest(
   storage: SupervisorStorage,
   record: OwnerRecord,
@@ -204,12 +197,10 @@ export function supervisorRequest(
         bytes = Buffer.alloc(0)
         if (!challenge) {
           challenge = z.strictObject({ challenge: Hex }).parse(JSON.parse(line)).challenge
-          socket.write(
-            pack(record.key, 'request', { epoch: record.epoch, nonce, challenge, command }),
-          )
+          socket.write(pack({ epoch: record.epoch, nonce, challenge, command }))
           return
         }
-        const response = Reply.parse(unpack(record.key, 'response', line))
+        const response = Reply.parse(unpack(line))
         if (response.nonce !== nonce || response.epoch !== record.epoch) refuse()
         if (!response.ok)
           throw new PluginSupervisorError(response.code, {
@@ -228,7 +219,7 @@ export function supervisorRequest(
     })
   })
 }
-/** Stable projection identity for the authenticated canonical workspace path. */
+/** Stable projection identity for the canonical workspace path. */
 export function pluginWorkspaceIdentity(workspaceRoot: string): string {
   const hash = createHash('sha256').update(realpathSync(workspaceRoot)).digest('hex')
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`
@@ -348,12 +339,7 @@ export class PluginWorkspaceLease {
           else if (error instanceof PluginSupervisorError && error.code === 'busy') probe = 'live'
         }
         record = readOwner()
-        if (
-          record?.epoch !== observed.epoch ||
-          record.key !== observed.key ||
-          record.phase !== observed.phase
-        )
-          probe = 'unknown'
+        if (record?.epoch !== observed.epoch || record.phase !== observed.phase) probe = 'unknown'
       }
       const stalled = releasedDrainStalled(storage, record, probe)
       const launchOnce = async () => {
@@ -387,6 +373,8 @@ export class PluginWorkspaceLease {
           await new Promise((resolve) => setTimeout(resolve, 10))
         } while (performance.now() < until)
       }
+      if (record?.wire.major === 1 && options.launch && (options.wire ?? OWNER_WIRE).major > 1)
+        await launchOnce()
       if (!record || record.phase === 'stopped' || (probe === 'no-answer' && options.launch))
         await launchOnce()
       if (record && (record.phase === 'blocked' || record.phase === 'draining')) {
@@ -438,7 +426,6 @@ export class PluginWorkspaceLease {
           const current = readOwner()
           if (
             current?.epoch === record.epoch &&
-            current.key === record.key &&
             current.phase === 'accepting' &&
             (!error.diagnostic ||
               (error.diagnostic.phase === 'accepting' &&
@@ -454,9 +441,7 @@ export class PluginWorkspaceLease {
                 reason: error.diagnostic?.reason ?? 'unknown',
               },
               ownerIdentity: createHash('sha256')
-                .update(
-                  `${storage.rootIdentity}\0${storage.identity}\0${record.epoch}\0${record.key}`,
-                )
+                .update(`${storage.rootIdentity}\0${storage.identity}\0${record.epoch}`)
                 .digest('hex'),
             })
         }

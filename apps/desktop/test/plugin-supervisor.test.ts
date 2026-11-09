@@ -154,12 +154,6 @@ async function launch(root: string) {
   expect(await message(child)).toEqual({ kind: 'ready' })
   return child
 }
-
-/**
- * Moves the owner's socket aside and listens in its place. Bytes pass both ways, except that a
- * reply can be lost (the client's socket closes) or held (the client's own deadline ends it).
- * Either way the owner has already acted on the request. Requests and replies are kept.
- */
 async function interpose(root: string) {
   const path = join(root, 'supervisor/owner.sock'),
     aside = join(root, 'supervisor/owner-aside.sock')
@@ -213,17 +207,8 @@ async function interpose(root: string) {
     },
   }
 }
-const renewal = (key: string, packet: string) =>
-  (unpack(key, 'request', packet.trim()) as { command: Extract<Command, { kind: 'renew' }> })
-    .command
-function ownerKey(root: string) {
-  const storage = new SupervisorStorage(root, [], false)
-  try {
-    return storage.read()!.key
-  } finally {
-    storage.close()
-  }
-}
+const renewal = (packet: string) =>
+  (unpack(packet.trim()) as { command: Extract<Command, { kind: 'renew' }> }).command
 function stopReason(root: string) {
   const { phase, epoch } = JSON.parse(
     readFileSync(join(root, 'supervisor/owner.json'), 'utf8'),
@@ -249,7 +234,12 @@ describe.skipIf(process.platform === 'win32')(
       })
       const first = await attach(root, workspaces[0]!, {
         launch: launchAgain,
-        wire: { major: 1, minMinor: 0, maxMinor: 3, features: ['fictional-preview'] },
+        wire: {
+          major: OWNER_WIRE.major,
+          minMinor: 0,
+          maxMinor: 3,
+          features: ['fictional-preview'],
+        },
       })
       const rest = await Promise.all(
         workspaces.slice(1).map((workspace) => attach(root, workspace, { launch: launchAgain })),
@@ -262,7 +252,7 @@ describe.skipIf(process.platform === 'win32')(
       for (const client of rest) await client.renew()
       expect(child.exitCode).toBeNull()
       await expect(
-        attach(root, workspaces[0]!, { wire: { ...OWNER_WIRE, major: 2 } }),
+        attach(root, workspaces[0]!, { wire: { ...OWNER_WIRE, major: OWNER_WIRE.major + 1 } }),
       ).rejects.toMatchObject({ code: 'incompatible' })
       await expect(PluginSupervisor.start({ root, workspaceRoots: [] })).rejects.toMatchObject({
         code: 'busy',
@@ -491,14 +481,13 @@ describe.skipIf(process.platform === 'win32')(
       const lost = vi.fn()
       const client = await attach(root, workspaces[0]!, { onLost: lost })
       expect(client.features).toContain(RENEW_RETRY)
-      const key = ownerKey(root)
       const proxy = await interpose(root)
       try {
         proxy.plan.lose = 1
         await expect(client.renew()).rejects.toMatchObject({ code: 'unavailable' })
         await client.renew()
         await client.renew()
-        const sent = proxy.requests.map((packet) => renewal(key, packet))
+        const sent = proxy.requests.map((packet) => renewal(packet))
         expect(sent.map((command) => command.counter)).toEqual([1, 1, 2])
         expect(sent[0]!.renewal).toMatch(/^[a-f0-9]{64}$/)
         expect(sent[1]!.renewal).toBe(sent[0]!.renewal)
@@ -515,7 +504,6 @@ describe.skipIf(process.platform === 'win32')(
       owners.push(await PluginSupervisor.start({ root, workspaceRoots: [], tickEvery: 60_000 }))
       const lost = vi.fn()
       const client = await attach(root, workspaces[0]!, { onLost: lost })
-      const key = ownerKey(root)
       const proxy = await interpose(root)
       try {
         proxy.plan.hold = 1
@@ -525,7 +513,7 @@ describe.skipIf(process.platform === 'win32')(
         // Nobody calls renew here: the retry comes before the next heartbeat would.
         await vi.waitFor(() => expect(proxy.count.settled).toBe(1), { timeout: 10_000 })
         await client.renew()
-        const sent = proxy.requests.map((packet) => renewal(key, packet))
+        const sent = proxy.requests.map((packet) => renewal(packet))
         expect(sent.map((command) => command.counter)).toEqual([1, 1, 2])
         expect(sent[1]!.renewal).toBe(sent[0]!.renewal)
         expect(lost).not.toHaveBeenCalled()
@@ -560,22 +548,14 @@ describe.skipIf(process.platform === 'win32')(
         expect(answered).toEqual([])
         // Sent afresh, the renewal whose retry was accepted is now older than the last one.
         const refusals = proxy.replies.length
-        await expect(
-          supervisorRequest(storage, record, renewal(record.key, first!)),
-        ).rejects.toMatchObject({ code: 'unavailable' })
+        await expect(supervisorRequest(storage, record, renewal(first!))).rejects.toMatchObject({
+          code: 'unavailable',
+        })
         // The last counter again, but not the renewal that set it.
         await expect(
-          supervisorRequest(
-            storage,
-            record,
-            Object.assign(renewal(record.key, last!), { renewal: secret() }),
-          ),
+          supervisorRequest(storage, record, Object.assign(renewal(last!), { renewal: secret() })),
         ).rejects.toMatchObject({ code: 'unavailable' })
-        expect(
-          proxy.replies
-            .slice(refusals)
-            .map((packet) => unpack(record.key, 'response', packet.trim())),
-        ).toEqual([
+        expect(proxy.replies.slice(refusals).map((packet) => unpack(packet.trim()))).toEqual([
           expect.objectContaining({ ok: false, code: 'unavailable' }),
           expect.objectContaining({ ok: false, code: 'unavailable' }),
         ])
@@ -587,14 +567,11 @@ describe.skipIf(process.platform === 'win32')(
       }
       expect(await client.close()).toBe(true)
     })
-    it("a build from before renew retries reads this owner's record and renews as it always did", async () => {
+    it('a client without renew retries renews with increasing counters', async () => {
       const { root } = fixture()
       owners.push(await PluginSupervisor.start({ root, workspaceRoots: [], tickEvery: 60_000 }))
       const storage = new SupervisorStorage(root, [], false)
-      // The earlier build reads owner.json with this same strict schema, here and before it
-      // starts an owner of its own.
-      const earlierRead = () =>
-        Earlier.OwnerRecord.parse(JSON.parse(readFileSync(storage.record, 'utf8')))
+      const earlierRead = () => storage.read()!
       try {
         const record = earlierRead()
         expect(record).toMatchObject({
@@ -611,7 +588,7 @@ describe.skipIf(process.platform === 'win32')(
           workspace,
           generation,
           build: 'fictional-earlier-build',
-          wire: Earlier.OWNER_WIRE,
+          wire: { ...Earlier.OWNER_WIRE, major: OWNER_WIRE.major },
         })) as { lease: string; features: string[] }
         expect(hello.features).toEqual([])
         const lease = hello.lease
@@ -631,19 +608,16 @@ describe.skipIf(process.platform === 'win32')(
         storage.close()
       }
     })
-    it('a client of this build renews against an owner from before renew retries', async () => {
+    it('a client renews against an owner without renew retries', async () => {
       const { root, workspaces } = fixture()
       const storage = new SupervisorStorage(root, [], true)
-      const record: Earlier.OwnerRecord = {
-        version: 1,
+      const record = {
+        version: 1 as const,
         epoch: randomUUID(),
-        key: secret(),
-        phase: 'accepting',
-        wire: Earlier.OWNER_WIRE,
+        phase: 'accepting' as const,
+        wire: { ...Earlier.OWNER_WIRE, major: OWNER_WIRE.major },
       }
       storage.write(record)
-      // Stands in for the earlier owner: its strict schema, its counter rule, and a dropped
-      // socket for any request that schema refuses.
       const counters = new Map<string, number>(),
         received: Earlier.Command[] = [],
         plan = { lose: 0 }
@@ -654,7 +628,7 @@ describe.skipIf(process.platform === 'win32')(
         socket.once('data', (packet) => {
           let request: Earlier.Request
           try {
-            request = Earlier.Request.parse(unpack(record.key, 'request', packet.toString().trim()))
+            request = Earlier.Request.parse(unpack(packet.toString().trim()))
             if (request.epoch !== record.epoch || request.challenge !== challenge) throw new Error()
           } catch {
             dropped++
@@ -664,9 +638,7 @@ describe.skipIf(process.platform === 'win32')(
           const command = request.command
           received.push(command)
           const reply = (body: object) =>
-            socket.end(
-              pack(record.key, 'response', { nonce: request.nonce, epoch: record.epoch, ...body }),
-            )
+            socket.end(pack({ nonce: request.nonce, epoch: record.epoch, ...body }))
           if (command.kind === 'hello') {
             const lease = secret()
             counters.set(lease, 0)
@@ -712,8 +684,6 @@ describe.skipIf(process.platform === 'win32')(
           expect.objectContaining({ counter: 2 }),
         ])
 
-        // A lost reply that the earlier owner did apply: its retry is refused at once, as the
-        // earlier client would have ended there too, and the lease ends without waiting 60 s.
         storage.write(record)
         const second = await attach(root, workspaces[1]!, { onLost: lost })
         plan.lose = 1
@@ -763,7 +733,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(await stopping.shutdown()).toBe(true)
       expect(stopReason(shut.root)).toMatchObject({ phase: 'stopped', reason: 'shutdown' })
     })
-    it('requires the private capability, rejects replay/reflection/tampering, and bounds socket input', async () => {
+    it('uses plain JSON lines and bounds socket input', async () => {
       const { root } = fixture()
       const owner = await PluginSupervisor.start({ root, workspaceRoots: [] })
       owners.push(owner)
@@ -783,15 +753,37 @@ describe.skipIf(process.platform === 'win32')(
             wire: OWNER_WIRE,
           },
         }
-        const packet = pack(record.key, 'request', value)
-        expect(unpack(record.key, 'request', packet.trim())).toEqual(value)
-        expect(() => unpack(secret(), 'request', packet.trim())).toThrow()
-        expect(() => unpack(record.key, 'response', packet.trim())).toThrow()
+        const packet = pack(value)
+        expect(JSON.parse(packet)).toEqual(value)
+        expect(unpack(packet.trim())).toEqual(value)
+        expect(() => pack('x'.repeat(OWNER_LIMITS.packet))).toThrow()
         const socket = createConnection(storage.socket)
         await once(socket, 'data')
         const closed = once(socket, 'close')
-        socket.end(packet) // MAC is valid, but this is not the connection's challenge.
+        socket.end(packet)
         await closed
+        for (const invalid of ['{\n', '{}\n', packet + packet]) {
+          const malformed = createConnection(storage.socket)
+          await once(malformed, 'data')
+          const malformedClosed = once(malformed, 'close')
+          malformed.end(invalid)
+          await malformedClosed
+        }
+        const fragmented = createConnection(storage.socket)
+        const [{ challenge }] = (await once(fragmented, 'data')).map((chunk) =>
+          JSON.parse(String(chunk)),
+        )
+        const probe = pack({ ...value, challenge, command: { kind: 'probe' } })
+        const response = once(fragmented, 'data')
+        fragmented.write(probe.slice(0, 10))
+        fragmented.write(probe.slice(10))
+        expect(JSON.parse(String((await response)[0]))).toMatchObject({
+          ok: true,
+          nonce: value.nonce,
+          epoch: record.epoch,
+          value: { phase: 'accepting' },
+        })
+        fragmented.destroy()
         const overflow = createConnection(storage.socket)
         await once(overflow, 'data')
         const overflowClosed = once(overflow, 'close')
@@ -878,11 +870,21 @@ describe.skipIf(process.platform === 'win32')(
       const owner = await PluginSupervisor.start({
         root,
         workspaceRoots: [],
-        wire: { major: 1, minMinor: 1, maxMinor: 3, features: ['fictional-a', 'fictional-b'] },
+        wire: {
+          major: OWNER_WIRE.major,
+          minMinor: 1,
+          maxMinor: 3,
+          features: ['fictional-a', 'fictional-b'],
+        },
       })
       owners.push(owner)
       const lease = await attach(root, workspaces[0]!, {
-        wire: { major: 1, minMinor: 2, maxMinor: 4, features: ['fictional-b', 'fictional-c'] },
+        wire: {
+          major: OWNER_WIRE.major,
+          minMinor: 2,
+          maxMinor: 4,
+          features: ['fictional-b', 'fictional-c'],
+        },
       })
       expect(lease.minor).toBe(3)
       expect(lease.features).toEqual(['fictional-b'])
@@ -905,13 +907,12 @@ describe.skipIf(process.platform === 'win32')(
       expect(new Set(attached.map((client) => client.lease)).size).toBe(4)
       for (const client of attached) expect(await client.close()).toBe(true)
     })
-    it('rejects an authenticated old reply even when a peer replays its old server challenge', async () => {
+    it('rejects an old reply even when a peer replays its old server challenge', async () => {
       const { root, workspaces } = fixture()
       const storage = new SupervisorStorage(root, [], true)
       const record = {
         version: 1 as const,
         epoch: randomUUID(),
-        key: secret(),
         phase: 'accepting' as const,
         wire: OWNER_WIRE,
       }
@@ -922,11 +923,9 @@ describe.skipIf(process.platform === 'win32')(
       const server = createServer((socket) => {
         socket.write(`${JSON.stringify({ challenge: oldChallenge })}\n`)
         socket.once('data', (packet) => {
-          freshNonce = (
-            unpack(record.key, 'request', packet.toString().trim()) as { nonce: string }
-          ).nonce
+          freshNonce = (unpack(packet.toString().trim()) as { nonce: string }).nonce
           socket.end(
-            pack(record.key, 'response', {
+            pack({
               ok: true,
               epoch: record.epoch,
               nonce: oldNonce,

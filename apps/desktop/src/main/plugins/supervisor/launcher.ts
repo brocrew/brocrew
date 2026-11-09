@@ -20,6 +20,7 @@ import { SupervisorStorage } from './storage'
 import { readRecoveryAdvice } from './recovery-advice'
 import { windowsSystemEnvironment } from '../system-environment'
 import { OWNER_LAUNCH_MS, PluginSupervisorError } from './protocol'
+import { stopLegacySupervisor } from './legacy-owner'
 import { LaunchConfig, type PluginLifecyclePlan } from './launch-format'
 import type { SharedDataOwner } from '../shared-data'
 
@@ -46,6 +47,12 @@ export function createPluginSupervisorLauncher(options: {
     let readyPhase: ((error?: unknown) => void) | undefined
     try {
       const root = storage.root
+      const previous = storage.read()
+      if (previous?.wire.major === 1)
+        await stopLegacySupervisor(root, () => {
+          const current = storage.read()
+          return current?.epoch === previous.epoch && current.wire.major === 1
+        })
       phase = 'catalogue'
       const lifecycle = lifecycleForNewOwner ? await lifecycleForNewOwner() : captured.lifecycle
       phase = 'runtime'
