@@ -1,9 +1,11 @@
+import { execFileSync } from 'node:child_process'
 import {
   cpSync,
   copyFileSync,
-  mkdirSync,
+  existsSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -12,204 +14,53 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { assetNames, fileSeal, releasePlan, verifyAssets } from '../release-artifacts.mjs'
-import { checkedArtifact, checkedRun, checkedTag } from '../lib/release-github.mjs'
+import * as releaseArtifacts from '../release-artifacts.mjs'
+import { checkedArtifact, checkedRun, checkedTag, github } from '../lib/release-github.mjs'
 import { publishSelection } from '../release-selection.mjs'
 import { WINDOWS_PROOF_SOURCE } from '../lib/release-proofs.mjs'
-import { windowsProofFixture } from './fixtures/release-proof.mjs'
-import { macProofFixture } from './fixtures/release-mac-proof.mjs'
+import { kind, publicationFixture as fixturePublication } from './fixtures/release-proof.mjs'
+import { macWitness } from './fixtures/release-mac-proof.mjs'
 
-import { FICTIONAL_SIGNING_ENV } from './fixtures/mac-signing-identity.mjs'
+vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }))
+vi.mock('../release-artifacts.mjs', async (importOriginal) => {
+  const actual = await importOriginal()
+  return { ...actual, PROOF_PUBLICATION: { ...actual.PROOF_PUBLICATION } }
+})
+const PROOF_PUBLICATION = releaseArtifacts.PROOF_PUBLICATION ?? {
+  repository: 'brocrew/brocrew',
+  source: '9a83971b5bca3320782521712b11234b4a18ed48',
+  tree: 'a4d8cad87e63b1a193348350aab160ce7ae57547',
+  executionTag: 'v0.2.13-proof-carrier.1',
+}
+// The mocked copy receives fictional pins where the actual constants are still unknown (null).
+for (const [key, value] of Object.entries({
+  stableTagObject: 'a'.repeat(40),
+  runId: 11,
+  runAttempt: 1,
+  artifactId: 40,
+  digest: 'sha256:' + '5'.repeat(64),
+  manifestSha256: '6'.repeat(64),
+  macInstallWitnessSha256: '7'.repeat(64),
+}))
+  PROOF_PUBLICATION[key] ??= value
 
+const actualMacWitnessSha256 = PROOF_PUBLICATION.macInstallWitnessSha256
 const roots = []
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+  vi.restoreAllMocks()
   vi.unstubAllEnvs()
+  PROOF_PUBLICATION.macInstallWitnessSha256 = actualMacWitnessSha256
 })
 
-function publicationFixture() {
-  for (const [name, value] of Object.entries(FICTIONAL_SIGNING_ENV)) vi.stubEnv(name, value)
-  vi.stubEnv('GITHUB_REPOSITORY', 'brocrew/brocrew')
-  const root = folder(),
-    { path, manifest } = fixture()
-  const source = 'a'.repeat(40),
-    tree = 'b'.repeat(40),
-    tagObject = 'c'.repeat(40)
-  const digest = 'sha256:' + 'd'.repeat(64)
-  Object.assign(manifest, {
-    repository: 'brocrew/brocrew',
-    source,
-    tree,
-    candidateTag: 'v0.2.12-candidate.1',
-    candidateTagObject: tagObject,
-    runId: 11,
-    runAttempt: 1,
-    macSigned: true,
-    windowsSigned: true,
-    origins: { macos: { artifactId: 41, digest }, windows: { artifactId: 42, digest } },
+// A version string selects a format-1 route; `true` selects the format-2 execution carrier.
+const publicationFixture = (option) =>
+  fixturePublication({
+    folder,
+    fixture,
+    publication: PROOF_PUBLICATION,
+    ...(typeof option === 'string' ? { version: option } : { external: option === true }),
   })
-  const bundle = join(root, 'bundle')
-  mkdirSync(bundle)
-  cpSync(path, join(bundle, 'assets'), { recursive: true })
-  writeFileSync(join(bundle, 'build-manifest.json'), JSON.stringify(manifest))
-  const artifactFolders = new Map([[40, bundle]])
-  const artifacts = new Map(),
-    runs = new Map()
-  const add = (id, runId, head, name, workflow, times = {}) => {
-    artifacts.set(id, {
-      id,
-      name,
-      digest,
-      expired: false,
-      workflow_run: { id: runId, head_sha: head },
-    })
-    runs.set(runId, {
-      id: runId,
-      run_attempt: 1,
-      head_sha: head,
-      repository: { full_name: 'brocrew/brocrew' },
-      status: 'completed',
-      conclusion: 'success',
-      path: `.github/workflows/${workflow}`,
-      event: runId === 11 ? 'push' : 'workflow_dispatch',
-      head_branch: manifest.candidateTag,
-      workflow_id: workflow === 'upgrade-path.yml' ? 387765924 : 1,
-      ...times,
-    })
-  }
-  add(40, 11, source, 'candidate-release-1', 'release.yml')
-  add(41, 11, source, 'release-macos', 'release.yml')
-  add(42, 11, source, 'release-windows', 'release.yml')
-  const proofs = ['mac-guided-upgrade', 'windows-clean', 'windows-upgrade'].map((kind, i) => {
-    const artifactId = 50 + i,
-      runId = 20 + i
-    const proofFolder = join(root, kind)
-    const mac = i === 0
-    add(
-      artifactId,
-      runId,
-      mac ? source : WINDOWS_PROOF_SOURCE,
-      mac ? 'actual-signed-mac-upgrade-evidence' : 'windows-installed-plugin-upgrade-evidence',
-      mac ? 'mac-signed-upgrade.yml' : 'upgrade-path.yml',
-      {
-        run_started_at: i === 2 ? '2026-11-08T01:00:00Z' : '2026-11-08T00:00:00Z',
-        updated_at: '2026-11-08T00:30:00Z',
-      },
-    )
-    let proof = { kind, artifactId, runId, runAttempt: 1, digest }
-    if (mac) {
-      proof.receiptFile = 'signed-upgrade-evidence/summary.json'
-      macProofFixture(join(proofFolder, 'signed-upgrade-evidence'), manifest, proof)
-    } else proof = { ...proof, ...windowsProofFixture(proofFolder, manifest, kind) }
-    proof.receiptSha256 = fileSeal(join(proofFolder, proof.receiptFile)).sha256
-    artifactFolders.set(artifactId, proofFolder)
-    return proof
-  })
-  const notes = 'Mac releases are signed and notarized'
-  const selection = {
-    format: 1,
-    repository: manifest.repository,
-    source,
-    tree,
-    version: manifest.version,
-    candidate: {
-      runId: 11,
-      runAttempt: 1,
-      artifactId: 40,
-      digest,
-      manifestSha256: fileSeal(join(bundle, 'build-manifest.json')).sha256,
-    },
-    proofs,
-    notes,
-    notesSha256: createHash('sha256').update(notes).digest('hex'),
-  }
-  const selectionHash = createHash('sha256').update(JSON.stringify(selection)).digest('hex')
-  const body = `${notes}\n\n<!-- tested-selection-sha256:${selectionHash} -->\n`
-  const state = {
-    release: null,
-    calls: [],
-    attestations: [],
-    downloads: [],
-    corruptReadback: false,
-    movedTag: false,
-  }
-  const asset = (name) => {
-    const row = manifest.assets.find((row) => row.name === name)
-    return { name, size: row.bytes, digest: `sha256:${row.sha256}` }
-  }
-  const client = {
-    source: vi.fn((sha, shaTree) => {
-      expect([sha, shaTree]).toEqual([source, tree])
-    }),
-    api(endpoint) {
-      if (endpoint.startsWith('actions/runs/')) return runs.get(Number(endpoint.split('/')[2]))
-      if (endpoint.startsWith('actions/artifacts/'))
-        return artifacts.get(Number(endpoint.split('/')[2]))
-      if (endpoint.startsWith('git/ref/'))
-        return { object: { type: 'tag', sha: state.movedTag ? 'e'.repeat(40) : tagObject } }
-      if (endpoint.startsWith('git/tags/'))
-        return {
-          object: { type: 'commit', sha: source },
-          tagger: { name: 'BroCrew', email: '343827643+brocrew@users.noreply.github.com' },
-        }
-      if (endpoint === 'releases/tags/v0.2.12') return structuredClone(state.release)
-      throw new Error(`Unexpected mock endpoint ${endpoint}`)
-    },
-    download: vi.fn(async (id, dest, pin) => {
-      expect(pin).toBe(artifacts.get(id).digest)
-      cpSync(artifactFolders.get(id), dest, { recursive: true })
-    }),
-    attest: vi.fn((file, sha, ref, id, attempt) => {
-      expect([sha, ref, id, attempt]).toEqual([source, manifest.candidateTag, 11, 1])
-      state.attestations.push(file)
-    }),
-    run(args) {
-      state.calls.push(args)
-      const command = args[1]
-      if (command === 'create')
-        state.release = {
-          id: 99,
-          tag_name: 'v0.2.12',
-          body,
-          draft: true,
-          prerelease: false,
-          assets: [],
-        }
-      else if (command === 'upload')
-        for (const file of args.slice(3, args.indexOf('--repo')))
-          state.release.assets.push(asset(basename(file)))
-      else if (command === 'download') {
-        const name = args[args.indexOf('--pattern') + 1],
-          dest = args[args.indexOf('--dir') + 1]
-        state.downloads.push({ name, dest })
-        copyFileSync(join(path, name), join(dest, name))
-        if (state.corruptReadback && dest.endsWith('public-readback'))
-          writeFileSync(join(dest, name), 'changed by transport')
-      } else if (command === 'edit') state.release.draft = false
-      else throw new Error(`Unexpected mock mutation ${command}`)
-    },
-  }
-  return {
-    root,
-    manifest,
-    selection,
-    selectionHash,
-    client,
-    state,
-    artifacts,
-    runs,
-    asset,
-    body,
-    artifactFolders,
-    publish: () =>
-      publishSelection(
-        selection,
-        client,
-        join(folder(), 'candidate'),
-        'refs/tags/v0.2.12',
-        selectionHash,
-      ),
-  }
-}
 
 describe('publication of an immutable tested selection', () => {
   it('uploads exactly eight tested assets, reads all draft/public files and attests each readback', async () => {
@@ -221,10 +72,17 @@ describe('publication of an immutable tested selection', () => {
     expect(f.state.release.assets.map((row) => row.name).sort()).toEqual(assetNames('0.2.12'))
     expect(f.state.downloads).toHaveLength(16)
     expect(f.state.attestations).toHaveLength(25)
-    expect(
-      f.state.calls.map((args) => args[1]).filter((command) => command !== 'download'),
-    ).toEqual(['create', 'upload', 'edit'])
+    expect(f.state.calls.map(kind).filter((command) => command !== 'download')).toEqual([
+      'create',
+      ...Array(8).fill('upload'),
+      'edit',
+    ])
     expect(f.state.calls.flat()).not.toContain('--clobber')
+    for (const name of assetNames('0.2.12'))
+      expect(f.state.uploadTypes[name]).toBe(f.uploadType(name))
+    expect(f.state.calls.filter((args) => args[0] === 'release').map(kind)).toEqual(
+      Array(16).fill('download'),
+    )
   })
   for (const draft of [true, false])
     it(`resumes a matching ${draft ? 'partial draft' : 'published release'} without replacing files`, async () => {
@@ -239,10 +97,11 @@ describe('publication of an immutable tested selection', () => {
         assets: (draft ? names.slice(0, 3) : names).map(f.asset),
       }
       await f.publish()
-      const uploads = f.state.calls.filter((args) => args[1] === 'upload')
-      expect(uploads).toHaveLength(draft ? 1 : 0)
-      if (draft) expect(uploads[0].slice(3, uploads[0].indexOf('--repo'))).toHaveLength(5)
-      expect(f.state.calls.some((args) => args[1] === 'create')).toBe(false)
+      const uploads = f.state.calls.filter((args) => kind(args) === 'upload')
+      expect(uploads.map((args) => basename(args[args.indexOf('--input') + 1]))).toEqual(
+        draft ? names.slice(3) : [],
+      )
+      expect(f.state.calls.some((args) => kind(args) === 'create')).toBe(false)
     })
   for (const failure of [
     'receipt',
@@ -280,7 +139,7 @@ describe('publication of an immutable tested selection', () => {
         }
       }
       await expect(f.publish()).rejects.toThrow()
-      expect(f.state.calls.some((args) => ['upload', 'edit', 'create'].includes(args[1]))).toBe(
+      expect(f.state.calls.some((args) => ['upload', 'edit', 'create'].includes(kind(args)))).toBe(
         false,
       )
     })
@@ -289,22 +148,254 @@ describe('publication of an immutable tested selection', () => {
     f.state.corruptReadback = true
     await expect(f.publish()).rejects.toThrow('Uploaded release bytes differ')
     expect(f.state.release.draft).toBe(false)
-    expect(f.state.calls.filter((args) => args[1] === 'upload')).toHaveLength(1)
+    expect(f.state.calls.filter((args) => kind(args) === 'upload')).toHaveLength(8)
     expect(f.state.calls.flat()).not.toContain('delete')
   })
 })
+
+describe('draft-aware release discovery and immutable release identity', () => {
+  it('discovers an unpublished draft by release ID while the tag endpoint remains published-only', async () => {
+    const f = publicationFixture()
+    const result = await f.publish()
+    expect(result).toMatchObject({ releaseId: 99, publicReadback: true })
+    expect(f.state.apiCalls.filter((path) => path === 'releases/tags/v0.2.12')).toHaveLength(1)
+    expect(f.state.idReads).toBe(2)
+    expect(f.state.calls.filter((args) => kind(args) === 'create')).toHaveLength(1)
+    expect(f.state.downloads).toHaveLength(16)
+  })
+  for (const complete of [false, true])
+    it(`resumes a matching ${complete ? 'complete' : 'empty'} draft through its ID`, async () => {
+      const f = publicationFixture()
+      f.state.release = f.matchingRelease(complete ? assetNames('0.2.12') : [])
+      await f.publish()
+      expect(f.state.calls.some((args) => kind(args) === 'create')).toBe(false)
+      expect(f.state.calls.filter((args) => kind(args) === 'upload')).toHaveLength(complete ? 0 : 8)
+      expect(f.state.calls.filter((args) => kind(args) === 'edit')).toHaveLength(1)
+    })
+  it('finds the target on a later release-list page without treating a draft as published', async () => {
+    const f = publicationFixture()
+    f.state.listBefore = Array.from({ length: 100 }, (_, i) => ({
+      id: 1000 + i,
+      tag_name: `v0.1.${i}`,
+    }))
+    f.state.release = f.matchingRelease()
+    await f.publish()
+    expect(f.state.apiCalls).toContain('releases?per_page=100&page=2')
+    expect(f.state.calls.some((args) => kind(args) === 'create')).toBe(false)
+  })
+  for (const acrossPages of [false, true])
+    it(`refuses duplicate target releases ${acrossPages ? 'across pages' : 'on one page'}`, async () => {
+      const f = publicationFixture()
+      f.state.release = f.matchingRelease()
+      if (acrossPages)
+        f.state.listBefore = Array.from({ length: 99 }, (_, i) => ({
+          id: 1000 + i,
+          tag_name: `v0.1.${i}`,
+        }))
+      f.state.listBefore.push({ ...f.matchingRelease(), id: 98 })
+      await expect(f.publish()).rejects.toThrow('Multiple releases have the target tag')
+      expect(f.state.calls).toEqual([])
+    })
+  for (const id of [0, -1, 1.5, '99'])
+    it(`refuses a listed release ID ${JSON.stringify(id)} before metadata lookup or mutation`, async () => {
+      const f = publicationFixture()
+      f.state.release = { ...f.matchingRelease(), id }
+      await expect(f.publish()).rejects.toThrow('Invalid release ID')
+      expect(f.state.idReads).toBe(0)
+      expect(f.state.calls).toEqual([])
+    })
+  for (const response of [null, {}])
+    it(`refuses a non-list discovery response ${JSON.stringify(response)}`, async () => {
+      const f = publicationFixture()
+      f.state.listResponse = () => response
+      await expect(f.publish()).rejects.toThrow('Invalid release listing')
+      expect(f.state.calls).toEqual([])
+    })
+  for (const phase of ['list', 'ID'])
+    it(`preserves ${phase} lookup errors instead of creating another draft`, async () => {
+      const f = publicationFixture()
+      f.state.release = f.matchingRelease()
+      const fail = () => {
+        throw new Error('permission denied')
+      }
+      if (phase === 'list') f.state.listResponse = fail
+      else f.state.idResponse = fail
+      await expect(f.publish()).rejects.toThrow('permission denied')
+      expect(f.state.calls).toEqual([])
+    })
+  it('binds a created draft from its create response while the release listing lags behind', async () => {
+    const f = publicationFixture()
+    const result = await f.publish()
+    expect(result).toMatchObject({ releaseId: 99, publicReadback: true })
+    expect(f.state.calls.filter((args) => kind(args) === 'create')).toHaveLength(1)
+    const afterCreate = f.state.apiCalls.slice(f.state.apiCallsAtCreate)
+    expect(afterCreate.filter((path) => path.startsWith('releases?'))).toEqual([])
+    expect(
+      f.state.apiCalls.slice(f.state.apiCallsAtCreate, f.state.apiCallsAtFirstUpload),
+    ).not.toContain('releases/99')
+  })
+  it('sends exactly the reviewed draft request once', async () => {
+    const f = publicationFixture()
+    await f.publish()
+    expect(f.state.createRequest).toBe(
+      JSON.stringify({
+        tag_name: 'v0.2.12',
+        name: 'BroCrew 0.2.12',
+        body: f.body,
+        draft: true,
+        prerelease: false,
+      }),
+    )
+  })
+  for (const [label, change, message] of [
+    ['ID 0', (row) => ({ ...row, id: 0 }), 'Invalid release ID'],
+    ['ID -1', (row) => ({ ...row, id: -1 }), 'Invalid release ID'],
+    ['ID 1.5', (row) => ({ ...row, id: 1.5 }), 'Invalid release ID'],
+    ['ID "99"', (row) => ({ ...row, id: '99' }), 'Invalid release ID'],
+    ['missing ID', (row) => ({ ...row, id: undefined }), 'Invalid release ID'],
+    ['non-object response', () => null, 'Invalid release ID'],
+    ['tag', (row) => ({ ...row, tag_name: 'v0.2.13' }), 'Existing release is not bound'],
+    ['marker', (row) => ({ ...row, body: 'another selection' }), 'Existing release is not bound'],
+  ])
+    it(`refuses a created release with an invalid ${label} after one request`, async () => {
+      const f = publicationFixture()
+      f.state.createResponse = change
+      await expect(f.publish()).rejects.toThrow(message)
+      expect(f.state.calls.map(kind)).toEqual(['create'])
+    })
+  for (const command of ['create', 'upload', 'edit'])
+    it(`propagates a ${command} transport error without retrying`, async () => {
+      const f = publicationFixture()
+      f.state.runFailure = (current) => {
+        if (current === command) throw new Error(`${command} failed`)
+      }
+      await expect(f.publish()).rejects.toThrow(`${command} failed`)
+      expect(f.state.calls.filter((args) => kind(args) === command)).toHaveLength(1)
+      expect(f.state.calls.filter((args) => kind(args) === 'create')).toHaveLength(1)
+      if (command === 'create')
+        expect(f.state.apiCalls.filter((path) => path.startsWith('releases?'))).toHaveLength(1)
+      if (command !== 'edit')
+        expect(f.state.calls.some((args) => kind(args) === 'edit')).toBe(false)
+    })
+  for (const [phase, ordinal] of [
+    ['discovery', 1],
+    ['after upload', 2],
+    ['after edit', 3],
+  ])
+    for (const [field, change] of [
+      ['ID', (row) => ({ ...row, id: 98 })],
+      ['tag', (row) => ({ ...row, tag_name: 'v0.2.13' })],
+      ['notes or marker', (row) => ({ ...row, body: 'a different tested selection' })],
+      ['prerelease', (row) => ({ ...row, prerelease: true })],
+      ['draft shape', (row) => ({ ...row, draft: 'true' })],
+      ['asset shape', (row) => ({ ...row, assets: null })],
+      ['disappearance', () => null],
+    ])
+      it(`refuses ${field} drift at ${phase} without a later mutation`, async () => {
+        const f = publicationFixture()
+        f.state.release = f.matchingRelease()
+        f.state.idResponse = (row, count) => (count === ordinal ? change(row) : row)
+        await expect(f.publish()).rejects.toThrow('Existing release is not bound')
+        expect(f.state.calls.filter((args) => kind(args) === 'create')).toHaveLength(0)
+        expect(f.state.calls.filter((args) => kind(args) === 'upload')).toHaveLength(
+          ordinal > 1 ? 8 : 0,
+        )
+        expect(f.state.calls.filter((args) => kind(args) === 'edit')).toHaveLength(
+          ordinal > 2 ? 1 : 0,
+        )
+        expect(f.state.calls.flat()).not.toContain('delete')
+      })
+  for (const [label, change] of [
+    ['missing asset', (assets) => assets.pop()],
+    ['duplicate asset', (assets) => assets.push(assets[0])],
+    [
+      'foreign asset',
+      (assets) => {
+        assets[0].name = 'foreign.zip'
+      },
+    ],
+    [
+      'size',
+      (assets) => {
+        assets[0].size++
+      },
+    ],
+    [
+      'digest',
+      (assets) => {
+        assets[0].digest = 'sha256:' + '0'.repeat(64)
+      },
+    ],
+  ])
+    it(`refuses uploaded draft ${label} before publication`, async () => {
+      const f = publicationFixture()
+      f.state.release = f.matchingRelease()
+      f.state.idResponse = (row, count) => {
+        if (count === 2) change(row.assets)
+        return row
+      }
+      await expect(f.publish()).rejects.toThrow()
+      expect(f.state.calls.filter((args) => kind(args) === 'upload')).toHaveLength(8)
+      expect(f.state.calls.some((args) => kind(args) === 'edit')).toBe(false)
+    })
+  it('refuses altered draft download bytes before publishing', async () => {
+    const f = publicationFixture()
+    f.state.corruptDraftReadback = true
+    await expect(f.publish()).rejects.toThrow('Uploaded release bytes differ')
+    expect(f.state.calls.some((args) => kind(args) === 'edit')).toBe(false)
+  })
+  it('refuses a draft readback attestation failure before publishing', async () => {
+    const f = publicationFixture()
+    const attest = f.client.attest.getMockImplementation()
+    f.client.attest.mockImplementation((path, ...args) => {
+      if (path.includes('/draft-readback/')) throw new Error('draft attestation differs')
+      return attest(path, ...args)
+    })
+    await expect(f.publish()).rejects.toThrow('draft attestation differs')
+    expect(f.state.calls.some((args) => kind(args) === 'edit')).toBe(false)
+  })
+  it('does not fill missing assets on an already published release', async () => {
+    const f = publicationFixture()
+    f.state.release = f.matchingRelease(assetNames('0.2.12').slice(0, 1), false)
+    await expect(f.publish()).rejects.toThrow('Published release has missing assets')
+    expect(f.state.calls.filter((args) => kind(args) !== 'download')).toEqual([])
+  })
+  it('does not claim publication when edit succeeds but the release remains a draft', async () => {
+    const f = publicationFixture()
+    f.state.keepDraft = true
+    await expect(f.publish()).rejects.toThrow('Stable publication did not complete')
+    expect(f.state.calls.filter((args) => kind(args) === 'edit')).toHaveLength(1)
+  })
+  for (const [label, change] of [
+    ['ID', (row) => ({ ...row, id: 98 })],
+    ['tag', (row) => ({ ...row, tag_name: 'v0.2.13' })],
+    ['marker', (row) => ({ ...row, body: 'an older selection marker' })],
+    ['prerelease', (row) => ({ ...row, prerelease: true })],
+    ['absence', () => null],
+    ['draft', (row) => ({ ...row, draft: true })],
+  ])
+    it(`refuses final published-tag ${label} mismatch without rewriting the release`, async () => {
+      const f = publicationFixture()
+      f.state.publicResponse = change
+      await expect(f.publish()).rejects.toThrow()
+      expect(f.state.calls.filter((args) => kind(args) === 'create')).toHaveLength(1)
+      expect(f.state.calls.filter((args) => kind(args) === 'upload')).toHaveLength(8)
+      expect(f.state.calls.filter((args) => kind(args) === 'edit')).toHaveLength(1)
+      expect(f.state.calls.flat()).not.toContain('delete')
+    })
+})
+
 const folder = () => {
   const path = mkdtempSync(join(tmpdir(), 'fictional-release-'))
   roots.push(path)
   return path
 }
-const fixture = () => {
-  const path = folder(),
-    version = '0.2.12'
+const fixture = (version = '0.2.12') => {
+  const path = folder()
   for (const name of assetNames(version)) writeFileSync(join(path, name), `final bytes for ${name}`)
   for (const [metadata, files] of [
-    ['latest-mac.yml', ['BroCrew-0.2.12-arm64-mac.zip', 'BroCrew-0.2.12-arm64.dmg']],
-    ['latest.yml', ['BroCrew-Setup-0.2.12-x64.exe']],
+    ['latest-mac.yml', [`BroCrew-${version}-arm64-mac.zip`, `BroCrew-${version}-arm64.dmg`]],
+    ['latest.yml', [`BroCrew-Setup-${version}-x64.exe`]],
   ]) {
     const lines = [`version: ${version}`, 'files:']
     for (const file of files) {
@@ -322,6 +413,360 @@ const fixture = () => {
     },
   }
 }
+
+describe('honest publication execution source', () => {
+  function executionFixture(change = {}) {
+    const state = {
+      head: 'e'.repeat(40),
+      tree: 'f'.repeat(40),
+      parent: PROOF_PUBLICATION.source,
+      productTree: PROOF_PUBLICATION.tree,
+      dirty: '',
+      paths: 'scripts/release-selection.mjs\0',
+      canonical: true,
+      tagType: 'tag',
+      tagTarget: 'e'.repeat(40),
+      tagObject: 'd'.repeat(40),
+      ...change,
+    }
+    vi.stubEnv('GITHUB_REF', `refs/tags/${PROOF_PUBLICATION.executionTag}`)
+    vi.stubEnv('GITHUB_EVENT_NAME', 'workflow_dispatch')
+    vi.stubEnv('GITHUB_SHA', 'e'.repeat(40))
+    execFileSync.mockReset()
+    execFileSync.mockImplementation((program, args) => {
+      if (program === 'gh') {
+        if (args[1].includes('/git/ref/tags/'))
+          return JSON.stringify({ object: { type: state.tagType, sha: state.tagObject } })
+        return JSON.stringify({
+          object: { type: 'commit', sha: state.tagTarget },
+          tagger: { name: 'BroCrew', email: '343827643+brocrew@users.noreply.github.com' },
+        })
+      }
+      const command = args.slice(2).join(' ')
+      if (command === 'rev-parse HEAD') return state.head
+      if (command === 'rev-parse HEAD^{tree}') return state.tree
+      if (command === `rev-parse ${PROOF_PUBLICATION.source}^{tree}`) return state.productTree
+      if (command === 'show -s --format=%P ' + state.head) return state.parent
+      if (command.startsWith('status ')) return state.dirty
+      if (command.startsWith('diff --name-only ')) return state.paths
+      if (command.startsWith('merge-base --is-ancestor ')) return ''
+      if (command.startsWith('rev-list ')) return ''
+      if (command.startsWith('show -s --format=%an'))
+        return state.canonical
+          ? 'BroCrew\n343827643+brocrew@users.noreply.github.com\nBroCrew\n343827643+brocrew@users.noreply.github.com'
+          : 'foreign'
+      throw new Error(`Unexpected source check: ${command}`)
+    })
+    const client = github(PROOF_PUBLICATION.repository, '/fictional/committed-carrier')
+    return { state, check: () => client.source(PROOF_PUBLICATION.source, PROOF_PUBLICATION.tree) }
+  }
+
+  it('records actual execution source separately from the unchanged original product', () => {
+    const f = executionFixture()
+    expect(f.check()).toEqual({
+      source: f.state.head,
+      tree: f.state.tree,
+      tag: PROOF_PUBLICATION.executionTag,
+      tagObject: f.state.tagObject,
+    })
+    expect(process.env.GITHUB_SHA).toBe(f.state.head)
+    expect(process.env.GITHUB_REF).toBe(`refs/tags/${PROOF_PUBLICATION.executionTag}`)
+  })
+
+  for (const [reason, change] of [
+    ['wrong product tree', { productTree: '0'.repeat(40) }],
+    ['wrong execution source', { head: '0'.repeat(40) }],
+    ['product masquerading as carrier', { head: PROOF_PUBLICATION.source }],
+    ['unreviewed ancestor chain', { parent: '0'.repeat(40) }],
+    ['dirty tracked source', { dirty: ' M scripts/release-selection.mjs' }],
+    ['changed product runtime', { paths: 'apps/desktop/src/main/runtime/runtime-host.ts\0' }],
+    ['changed proof transport', { paths: 'scripts/mac-signed-upgrade-transport.mjs\0' }],
+    ['empty carrier delta', { paths: '' }],
+    ['foreign author', { canonical: false }],
+    ['lightweight carrier tag', { tagType: 'commit' }],
+    ['moved carrier tag', { tagTarget: '0'.repeat(40) }],
+  ])
+    it(`rejects ${reason}`, () => expect(executionFixture(change).check).toThrow())
+
+  it('rejects a push event even at the reserved execution tag', () => {
+    const f = executionFixture()
+    vi.stubEnv('GITHUB_EVENT_NAME', 'push')
+    expect(f.check).toThrow()
+  })
+})
+
+describe('fixed 0.2.13 external publication execution', () => {
+  it('only dispatches qualification/publication of the original targets and never builds', () => {
+    const ref = 'refs/tags/v0.2.13-proof-carrier.1'
+    expect(releasePlan(ref, 'workflow_dispatch', 'qualify')).toEqual({
+      version: '0.2.13',
+      tag: 'v0.2.13',
+      build: false,
+      qualify: true,
+      publish: false,
+      targetRef: 'refs/tags/v0.2.13-candidate.3',
+      external: true,
+    })
+    expect(releasePlan(ref, 'workflow_dispatch', 'publish')).toEqual({
+      version: '0.2.13',
+      tag: 'v0.2.13',
+      build: false,
+      qualify: false,
+      publish: true,
+      targetRef: 'refs/tags/v0.2.13',
+      external: true,
+    })
+    for (const [event, mode] of [
+      ['push', ''],
+      ['push', 'publish'],
+      ['workflow_dispatch', 'build'],
+      ['workflow_dispatch', ''],
+    ])
+      expect(() => releasePlan(ref, event, mode)).toThrow()
+    for (const ref of [
+      'refs/heads/main',
+      'refs/tags/v0.2.13-proof-carrier.2',
+      'refs/tags/v0.2.12-proof-carrier.1',
+      'refs/tags/v0.2.12-proof-carrier.4',
+    ])
+      expect(() => releasePlan(ref, 'workflow_dispatch', 'publish')).toThrow()
+  })
+
+  it('publishes unchanged product bytes through the distinct pinned execution/proof sources', async () => {
+    const f = publicationFixture(true)
+    await expect(f.publish()).resolves.toMatchObject({ publicReadback: true })
+    expect(f.selection.source).toBe(PROOF_PUBLICATION.source)
+    expect(f.selection.execution.source).not.toBe(f.selection.source)
+    expect(f.state.release.tag_name).toBe('v0.2.13')
+    expect(f.state.calls.flat()).not.toContain('--clobber')
+  })
+  for (const reason of [
+    'execution',
+    'product',
+    'tree',
+    'candidate-run',
+    'candidate-digest',
+    'candidate-manifest',
+    'windows-origin',
+    'obsolete-guided-proof',
+    'capture-origin',
+    'capture-time',
+    'clean-order',
+    'carrier-tag',
+    'stable-tag-object',
+  ])
+    it(`rejects external ${reason} mismatch before any release mutation`, async () => {
+      const f = publicationFixture(true)
+      if (reason === 'execution')
+        f.selection.execution = { ...f.selection.execution, source: '0'.repeat(40) }
+      if (reason === 'product') f.selection.source = '0'.repeat(40)
+      if (reason === 'tree') f.selection.tree = '0'.repeat(40)
+      if (reason === 'candidate-run') f.selection.candidate.runId++
+      if (reason === 'candidate-digest') f.selection.candidate.digest = 'sha256:' + '0'.repeat(64)
+      if (reason === 'candidate-manifest') f.selection.candidate.manifestSha256 = '0'.repeat(64)
+      if (reason === 'windows-origin') f.runs.get(21).head_sha = WINDOWS_PROOF_SOURCE
+      if (reason === 'obsolete-guided-proof')
+        f.selection.proofs.push({ kind: 'mac-guided-upgrade' })
+      if (reason === 'clean-order') f.runs.get(22).run_started_at = '2026-11-08T00:00:00Z'
+      if (reason === 'carrier-tag') f.state.movedCarrier = true
+      if (reason === 'stable-tag-object') f.state.movedStableTag = true
+      if (reason === 'capture-origin' || reason === 'capture-time') {
+        const folder = f.artifactFolders.get(51)
+        const path = join(folder, 'driver', 'public-catalogue-capture.json')
+        const capture = JSON.parse(readFileSync(path, 'utf8'))
+        if (reason === 'capture-origin') capture.origin.runId = 'unrelated'
+        else capture.capturedAt = '2026-11-07T00:00:00Z'
+        writeFileSync(path, JSON.stringify(capture))
+      }
+      await expect(f.publish()).rejects.toThrow()
+      expect(f.state.calls).toEqual([])
+    })
+
+  it('publishes the reviewed normal-install assessment with only the two hosted Windows proofs', async () => {
+    const f = publicationFixture(true)
+    const api = vi.spyOn(f.client, 'api')
+    expect(f.selection.proofs.map((one) => one.kind)).toEqual(['windows-clean', 'windows-upgrade'])
+    await expect(f.publish()).resolves.toMatchObject({ publicReadback: true })
+    expect(api.mock.calls.flat()).not.toContain('actions/runs/20')
+    expect(api.mock.calls.flat()).not.toContain('actions/artifacts/50')
+  })
+
+  it('freezes the known cut and keeps every unknown pin null so it refuses closed', async () => {
+    const actual = await vi.importActual('../release-artifacts.mjs')
+    expect(Object.isFrozen(actual.PROOF_PUBLICATION)).toBe(true)
+    expect(actual.PROOF_PUBLICATION).toMatchObject({
+      version: '0.2.13',
+      source: '9a83971b5bca3320782521712b11234b4a18ed48',
+      tree: 'a4d8cad87e63b1a193348350aab160ce7ae57547',
+      executionTag: 'v0.2.13-proof-carrier.1',
+      candidateTag: 'v0.2.13-candidate.3',
+      candidateTagObject: 'a596b217fda7a07af1a295eb1087a1570ef4a3a3',
+      stableTagObject: 'b4ecb380c9e10620c56b3901c5f2ab35caf68460',
+      runId: 42648536967,
+      runAttempt: 1,
+      artifactId: 13690006066,
+      digest: 'sha256:da6517c9b6b23b003ab9db441961bba112fee30bffea71076b9b3924c548678a',
+      manifestSha256: '5ccd759369eaf92073e917c8574e370eca39eb31ab6813b891ef18e2c4e42244',
+    })
+    expect(actual.PROOF_PUBLICATION.macInstallWitnessSha256).toBe(
+      '4e478f6c88b4936a1a672c5bcb0445c3144b701d23f5bf419798c56fe8057489',
+    )
+  })
+
+  for (const [reason, message] of [
+    ['missing witness', 'belongs only to the 0.2.13 route'],
+    ['changed bytes', 'Mac normal-install assessment bytes differ'],
+    ['changed digest', 'The pinned Mac normal-install operator assessment is required'],
+    [
+      'self-consistent foreign witness',
+      'The pinned Mac normal-install operator assessment is required',
+    ],
+  ])
+    it(`rejects normal-install ${reason} before any release mutation`, async () => {
+      const f = publicationFixture(true)
+      if (reason === 'missing witness') delete f.selection.macInstallWitness
+      else if (reason === 'changed bytes') f.selection.macInstallWitness.json += '\n'
+      else if (reason === 'changed digest') f.selection.macInstallWitness.sha256 = '0'.repeat(64)
+      else {
+        f.selection.macInstallWitness.json = JSON.stringify({ source: 'foreign' })
+        f.selection.macInstallWitness.sha256 = createHash('sha256')
+          .update(f.selection.macInstallWitness.json)
+          .digest('hex')
+      }
+      await expect(f.publish()).rejects.toThrow(message)
+      expect(f.state.calls).toEqual([])
+    })
+
+  for (const field of ['format', 'repository', 'source', 'tree', 'version', 'candidate', 'dmg'])
+    it(`rejects normal-install assessment ${field} mismatch before any release mutation`, async () => {
+      const f = publicationFixture(true)
+      const assessment = JSON.parse(f.selection.macInstallWitness.json)
+      assessment[field] =
+        field === 'dmg' ? { ...assessment.dmg, sha256: '0'.repeat(64) } : 'foreign'
+      const json = JSON.stringify(assessment)
+      const sha256 = createHash('sha256').update(json).digest('hex')
+      f.selection.macInstallWitness = { json, sha256 }
+      PROOF_PUBLICATION.macInstallWitnessSha256 = sha256
+      await expect(f.publish()).rejects.toMatchObject({ code: 'ERR_ASSERTION' })
+      expect(f.state.calls).toEqual([])
+    })
+
+  for (const reason of ['missing', 'duplicate'])
+    it(`rejects ${reason} Windows normal-install proof before any release mutation`, async () => {
+      const f = publicationFixture(true)
+      if (reason === 'missing') f.selection.proofs.pop()
+      else f.selection.proofs.push({ ...f.selection.proofs[0] })
+      await expect(f.publish()).rejects.toThrow(
+        'Each required native proof must be selected exactly once',
+      )
+      expect(f.state.calls).toEqual([])
+    })
+
+  it('retains the guided Mac proof requirement and origin on the legacy route', async () => {
+    const f = publicationFixture()
+    f.runs.get(20).head_sha = '0'.repeat(40)
+    await expect(f.publish()).rejects.toThrow()
+    expect(f.state.calls).toEqual([])
+    f.runs.get(20).head_sha = f.selection.source
+    f.selection.proofs = f.selection.proofs.filter((one) => one.kind !== 'mac-guided-upgrade')
+    await expect(f.publish()).rejects.toThrow(
+      'Each required native proof must be selected exactly once',
+    )
+    expect(f.state.calls).toEqual([])
+  })
+
+  it('reads original external Windows proof receipts and native evidence from exact driver subdirectories', async () => {
+    const f = publicationFixture(true)
+    for (const proof of f.selection.proofs.filter((one) => one.kind.startsWith('windows-'))) {
+      const artifactRoot = f.artifactFolders.get(proof.artifactId)
+      expect(proof.receiptFile).toBe('driver/native-receipt.json')
+      expect(existsSync(join(artifactRoot, 'native-receipt.json'))).toBe(false)
+      expect(existsSync(join(artifactRoot, 'driver', 'native-receipt.json'))).toBe(true)
+      expect(existsSync(join(artifactRoot, 'driver', 'summary.json'))).toBe(true)
+    }
+    await expect(f.publish()).resolves.toMatchObject({ publicReadback: true })
+  })
+
+  for (const reason of [
+    'flat receipt path',
+    'different subdirectory',
+    'parent traversal alias',
+    'backslash path',
+    'missing driver with flat fallback',
+    'changed driver receipt bytes',
+    'changed driver summary',
+  ])
+    it(`rejects external Windows ${reason} before any release mutation`, async () => {
+      const f = publicationFixture(true)
+      const proof = f.selection.proofs.find((one) => one.kind === 'windows-clean')
+      const artifactRoot = f.artifactFolders.get(proof.artifactId)
+      const driver = join(artifactRoot, 'driver')
+      if (reason === 'flat receipt path') {
+        copyFileSync(join(driver, 'native-receipt.json'), join(artifactRoot, 'native-receipt.json'))
+        proof.receiptFile = 'native-receipt.json'
+      }
+      if (reason === 'different subdirectory') {
+        cpSync(driver, join(artifactRoot, 'other'), { recursive: true })
+        proof.receiptFile = 'other/native-receipt.json'
+      }
+      if (reason === 'parent traversal alias')
+        proof.receiptFile = 'driver/../driver/native-receipt.json'
+      if (reason === 'backslash path') proof.receiptFile = 'driver\\native-receipt.json'
+      if (reason === 'missing driver with flat fallback') {
+        for (const name of readdirSync(driver))
+          copyFileSync(join(driver, name), join(artifactRoot, name))
+        rmSync(driver, { recursive: true })
+      }
+      if (reason === 'changed driver receipt bytes')
+        writeFileSync(
+          join(driver, 'native-receipt.json'),
+          readFileSync(join(driver, 'native-receipt.json'), 'utf8') + '\n',
+        )
+      if (reason === 'changed driver summary') {
+        const file = join(driver, 'summary.json')
+        const summary = JSON.parse(readFileSync(file, 'utf8'))
+        summary.nativeExecuted = false
+        writeFileSync(file, JSON.stringify(summary))
+      }
+      await expect(f.publish()).rejects.toThrow()
+      expect(f.state.calls).toEqual([])
+    })
+
+  for (const [external, kind, wrongPath] of [
+    [false, 'windows-clean', 'driver/native-receipt.json'],
+    [false, 'mac-guided-upgrade', 'summary.json'],
+  ])
+    it(`keeps ${kind} legacy or Mac receipt paths strict (external=${external})`, async () => {
+      const f = publicationFixture(external)
+      f.selection.proofs.find((one) => one.kind === kind).receiptFile = wrongPath
+      await expect(f.publish()).rejects.toThrow('The original native proof receipt is required')
+      expect(f.state.calls).toEqual([])
+    })
+
+  it('refuses a format-2 selection for any version other than 0.2.13', async () => {
+    const f = publicationFixture(true)
+    f.selection.version = '0.2.12'
+    await expect(f.publish()).rejects.toThrow(
+      'The fixed product and publication execution sources differ',
+    )
+    expect(f.state.calls).toEqual([])
+  })
+  it('accepts the exact 0.2.13 contract on a format-1 selection and refuses its carrier pins', async () => {
+    const f = publicationFixture('0.2.13')
+    await expect(f.publish()).resolves.toMatchObject({ publicReadback: true })
+    const g = publicationFixture('0.2.13')
+    g.selection.execution = { source: 'e'.repeat(40) }
+    await expect(g.publish()).rejects.toThrow(
+      'External publication requires its explicit selection format',
+    )
+  })
+  it('does not accept an external selection through the stable-tag execution route', async () => {
+    const f = publicationFixture()
+    f.selection.format = 2
+    await expect(f.publish()).rejects.toThrow('External selection cannot change publication routes')
+    expect(f.state.calls).toEqual([])
+  })
+})
 
 describe('release artifact selection', () => {
   it('cannot publish a proof-only newer version or publish from a candidate/branch ref', async () => {
@@ -433,4 +878,86 @@ describe('release artifact selection', () => {
     object.tagger.name = 'A different tagger'
     expect(() => checkedTag(client, 'v0.2.12', source)).toThrow()
   })
+})
+
+describe('finite 0.2.13 normal-install publication', () => {
+  it('publishes 0.2.13 with the two current Windows proofs and the reviewed Mac assessment', async () => {
+    const f = publicationFixture('0.2.13')
+    const api = vi.spyOn(f.client, 'api')
+    const result = await f.publish()
+    expect(result).toMatchObject({ releaseId: 99, publicReadback: true })
+    expect(f.selection.proofs.map((one) => one.kind)).toEqual(['windows-clean', 'windows-upgrade'])
+    expect(f.client.download.mock.calls.map((call) => call[0])).toContain(41)
+    expect(api.mock.calls.flat()).not.toContain('actions/runs/20')
+    expect(f.state.release.tag_name).toBe('v0.2.13')
+  })
+  it('keeps the guided Mac proof and legacy Windows route for every other version', async () => {
+    const f = publicationFixture()
+    f.selection.macInstallWitness = macWitness({ version: '0.2.12' })
+    await expect(f.publish()).rejects.toThrow('belongs only to the 0.2.13 route')
+    expect(f.state.calls).toEqual([])
+  })
+  for (const [reason, change, message] of [
+    ['missing assessment', (f) => delete f.selection.macInstallWitness, 'only to the 0.2.13 route'],
+    [
+      'alternate assessment field',
+      (f) => {
+        f.selection.macProof = f.selection.macInstallWitness
+        delete f.selection.macInstallWitness
+      },
+      'only to the 0.2.13',
+    ],
+    [
+      'guided Mac proof',
+      (f) => f.selection.proofs.push({ ...f.selection.proofs[0], kind: 'mac-guided-upgrade' }),
+      'selected exactly once',
+    ],
+    [
+      'duplicate clean proof',
+      (f) => (f.selection.proofs[1] = f.selection.proofs[0]),
+      'selected exactly once',
+    ],
+    ['missing upgrade proof', (f) => f.selection.proofs.pop(), 'selected exactly once'],
+    [
+      'legacy receipt path',
+      (f) => (f.selection.proofs[0].receiptFile = 'native-receipt.json'),
+      'The original native proof receipt is required',
+    ],
+    [
+      'legacy Windows producer',
+      (f) => (f.runs.get(21).head_sha = WINDOWS_PROOF_SOURCE),
+      'The selected workflow attempt did not pass on the tested source',
+    ],
+    ['other workflow', (f) => (f.runs.get(21).workflow_id = 1), 'Windows native proof origin'],
+    [
+      'upgrade before clean',
+      (f) => (f.runs.get(22).run_started_at = '2026-11-08T00:00:00Z'),
+      'Windows upgrade must start only after the clean proof passed',
+    ],
+    ['format 2', (f) => (f.selection.format = 2), 'Selection format/repository differs'],
+    [
+      'assessment text',
+      (f) => (f.selection.macInstallWitness.json += ' '),
+      'Mac normal-install assessment bytes differ',
+    ],
+    [
+      'resealed assessment DMG',
+      (f) => {
+        f.assessment.dmg.sha256 = '0'.repeat(64)
+        f.selection.macInstallWitness = macWitness(f.assessment)
+      },
+      'Expected values to be strictly deep-equal',
+    ],
+    [
+      'rebuilt Mac bytes',
+      (f) => writeFileSync(join(f.artifactFolders.get(41), 'BroCrew-0.2.13-arm64.dmg'), 'rebuilt'),
+      'Expected values to be strictly deep-equal',
+    ],
+  ])
+    it(`refuses 0.2.13 ${reason} before any release mutation`, async () => {
+      const f = publicationFixture('0.2.13')
+      change(f)
+      await expect(f.publish()).rejects.toThrow(message)
+      expect(f.state.calls).toEqual([])
+    })
 })

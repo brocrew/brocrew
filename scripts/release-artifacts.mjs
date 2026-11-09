@@ -14,7 +14,39 @@ import { pathToFileURL } from 'node:url'
 import { readUpdateFile } from './release-check.mjs'
 import { expectedSigningIdentity } from './lib/mac-signing-identity.mjs'
 
+// Release pins are bound only from actual producer, tag and reviewed Mac assessment callbacks.
+// A null pin is not yet known and matches no selection.
+export const PROOF_PUBLICATION = Object.freeze({
+  repository: 'brocrew/brocrew',
+  version: '0.2.13',
+  source: '9a83971b5bca3320782521712b11234b4a18ed48',
+  tree: 'a4d8cad87e63b1a193348350aab160ce7ae57547',
+  executionTag: 'v0.2.13-proof-carrier.1',
+  candidateTag: 'v0.2.13-candidate.3',
+  candidateTagObject: 'a596b217fda7a07af1a295eb1087a1570ef4a3a3',
+  stableTagObject: 'b4ecb380c9e10620c56b3901c5f2ab35caf68460',
+  runId: 42648536967,
+  runAttempt: 1,
+  artifactId: 13690006066,
+  digest: 'sha256:da6517c9b6b23b003ab9db441961bba112fee30bffea71076b9b3924c548678a',
+  manifestSha256: '5ccd759369eaf92073e917c8574e370eca39eb31ab6813b891ef18e2c4e42244',
+  macInstallWitnessSha256: '4e478f6c88b4936a1a672c5bcb0445c3144b701d23f5bf419798c56fe8057489',
+})
+
 export function releasePlan(ref, event, mode = '') {
+  if (ref === `refs/tags/${PROOF_PUBLICATION.executionTag}`) {
+    if (event !== 'workflow_dispatch' || !['qualify', 'publish'].includes(mode))
+      throw new Error('The reviewed proof carrier only qualifies or publishes existing bytes')
+    return {
+      version: PROOF_PUBLICATION.version,
+      tag: `v${PROOF_PUBLICATION.version}`,
+      build: false,
+      qualify: mode === 'qualify',
+      publish: mode === 'publish',
+      targetRef: `refs/tags/${mode === 'qualify' ? PROOF_PUBLICATION.candidateTag : `v${PROOF_PUBLICATION.version}`}`,
+      external: true,
+    }
+  }
   const match = /^refs\/tags\/v(\d+\.\d+\.\d+)(-candidate\.([1-9]\d*))?$/.exec(ref)
   if (!match) throw new Error('A stable version tag or vX.Y.Z-candidate.N tag is required')
   const candidate = Boolean(match[2])

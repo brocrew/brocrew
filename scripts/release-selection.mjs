@@ -1,23 +1,60 @@
 import { createHash } from 'node:crypto'
+import { isDeepStrictEqual } from 'node:util'
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { assetNames, fileSeal, releasePlan, verifyAssets } from './release-artifacts.mjs'
-import { checkedArtifact, checkedRun, checkedTag, github, readJson } from './lib/release-github.mjs'
-import { verifyWindowsProof, WINDOWS_PROOF_SOURCE } from './lib/release-proofs.mjs'
-import { verifyMacProof } from './lib/release-mac-proof.mjs'
+import {
+  assetNames,
+  fileSeal,
+  PROOF_PUBLICATION,
+  releasePlan,
+  verifyAssets,
+} from './release-artifacts.mjs'
+import {
+  checkedArtifact,
+  checkedPublisherTag,
+  checkedRun,
+  checkedTag,
+  github,
+  readJson,
+} from './lib/release-github.mjs'
+import {
+  verifyWindowsProof,
+  WINDOWS_CURRENT_SOURCE,
+  WINDOWS_PROOF_SOURCE,
+} from './lib/release-proofs.mjs'
+import { verifyMacNormalInstall, verifyMacProof } from './lib/release-mac-proof.mjs'
 
 export const PROOF_WORKFLOWS = {
   'mac-guided-upgrade': 'mac-signed-upgrade.yml',
   'windows-clean': 'upgrade-path.yml',
   'windows-upgrade': 'upgrade-path.yml',
 }
+// The finite normal-install contract applies to this exact version only.
+const NORMAL_INSTALL_VERSION = '0.2.13'
 
 export async function verifySelection(selection, client, dest) {
-  if (selection.format !== 1 || selection.repository !== process.env.GITHUB_REPOSITORY)
+  if (![1, 2].includes(selection.format) || selection.repository !== process.env.GITHUB_REPOSITORY)
     throw new Error('Selection format/repository differs')
   const { source, tree, candidate } = selection
-  client.source(source, tree)
+  const execution = client.source(source, tree)
+  const external = selection.format === 2
+  if (external) {
+    if (
+      !execution ||
+      !isDeepStrictEqual(selection.execution, execution) ||
+      source !== PROOF_PUBLICATION.source ||
+      tree !== PROOF_PUBLICATION.tree ||
+      selection.version !== PROOF_PUBLICATION.version ||
+      execution.tag !== PROOF_PUBLICATION.executionTag
+    )
+      throw new Error('The fixed product and publication execution sources differ')
+    for (const key of ['runId', 'runAttempt', 'artifactId', 'digest', 'manifestSha256'])
+      if (candidate[key] !== PROOF_PUBLICATION[key])
+        throw new Error('The original signed candidate selection differs')
+    checkedTag(client, `v${PROOF_PUBLICATION.version}`, source, PROOF_PUBLICATION.stableTagObject)
+  } else if (execution)
+    throw new Error('External publication requires its explicit selection format')
   const run = checkedRun(client, candidate.runId, candidate.runAttempt, source, 'release.yml')
   const artifact = checkedArtifact(client, candidate, run.id, source)
   if (artifact.name !== `candidate-release-${candidate.runAttempt}` || run.event !== 'push')
@@ -46,6 +83,12 @@ export async function verifySelection(selection, client, dest) {
     manifest.windowsSigned !== true
   )
     throw new Error('Candidate version, source, run or signing result differs')
+  if (
+    external &&
+    (manifest.candidateTag !== PROOF_PUBLICATION.candidateTag ||
+      manifest.candidateTagObject !== PROOF_PUBLICATION.candidateTagObject)
+  )
+    throw new Error('The original signed candidate tag differs')
   checkedTag(client, manifest.candidateTag, source, manifest.candidateTagObject)
   if (JSON.stringify(Object.keys(manifest.origins).sort()) !== JSON.stringify(['macos', 'windows']))
     throw new Error('Both platform build origins are required')
@@ -57,11 +100,17 @@ export async function verifySelection(selection, client, dest) {
   verifyAssets(assets, manifest)
   for (const path of [manifestPath, ...manifest.assets.map((row) => join(assets, row.name))])
     client.attest(path, source, manifest.candidateTag, run.id, candidate.runAttempt)
-  const kinds = Object.keys(PROOF_WORKFLOWS).sort()
+  const normal = selection.version === NORMAL_INSTALL_VERSION
+  if (normal !== (selection.macInstallWitness !== undefined))
+    throw new Error('The Mac normal-install assessment belongs only to the 0.2.13 route')
+  if (external && selection.macInstallWitness?.sha256 !== PROOF_PUBLICATION.macInstallWitnessSha256)
+    throw new Error('The pinned Mac normal-install operator assessment is required')
+  const kinds = normal ? ['windows-clean', 'windows-upgrade'] : Object.keys(PROOF_WORKFLOWS).sort()
   if (JSON.stringify(selection.proofs.map((proof) => proof.kind).sort()) !== JSON.stringify(kinds))
     throw new Error('Each required native proof must be selected exactly once')
+  const windowsSource = normal ? WINDOWS_CURRENT_SOURCE : WINDOWS_PROOF_SOURCE
   for (const proof of selection.proofs) {
-    const nativeSource = proof.kind.startsWith('windows-') ? WINDOWS_PROOF_SOURCE : source
+    const nativeSource = proof.kind.startsWith('windows-') ? windowsSource : source
     const nativeRun = checkedRun(
       client,
       proof.runId,
@@ -80,9 +129,12 @@ export async function verifySelection(selection, client, dest) {
     const mac = proof.kind === 'mac-guided-upgrade'
     if (mac && nativeArtifact.name !== 'actual-signed-mac-upgrade-evidence')
       throw new Error('Unexpected Mac native proof origin')
-    if (
-      proof.receiptFile !== (mac ? 'signed-upgrade-evidence/summary.json' : 'native-receipt.json')
-    )
+    const receiptFile = mac
+      ? 'signed-upgrade-evidence/summary.json'
+      : normal
+        ? 'driver/native-receipt.json'
+        : 'native-receipt.json'
+    if (proof.receiptFile !== receiptFile)
       throw new Error('The original native proof receipt is required')
     const folder = join(dest, '..', `proof-${proof.kind}`)
     await client.download(proof.artifactId, folder, proof.digest)
@@ -90,10 +142,30 @@ export async function verifySelection(selection, client, dest) {
     if (fileSeal(path).sha256 !== proof.receiptSha256)
       throw new Error('Native proof receipt bytes differ')
     if (proof.kind.startsWith('windows-')) {
-      verifyWindowsProof(folder, proof, manifest)
+      const proofRoot = normal ? join(folder, 'driver') : folder
+      if (external) {
+        const captured = Date.parse(
+          readJson(join(proofRoot, 'public-catalogue-capture.json')).capturedAt,
+        )
+        if (
+          !(
+            captured >= Date.parse(nativeRun.run_started_at) &&
+            captured <= Date.parse(nativeRun.updated_at)
+          )
+        )
+          throw new Error('Catalogue capture is outside its original native invocation')
+      }
+      verifyWindowsProof(proofRoot, proof, manifest, normal)
       continue
     }
     verifyMacProof(join(folder, 'signed-upgrade-evidence'), proof, manifest)
+  }
+  if (normal) {
+    // Original signed Mac bytes and receipt from the candidate build, never a rebuilt copy.
+    const { artifactId, digest } = manifest.origins.macos
+    const macOrigin = join(dest, '..', 'mac-original-artifact')
+    await client.download(artifactId, macOrigin, digest)
+    verifyMacNormalInstall(macOrigin, selection.macInstallWitness, manifest)
   }
   const clean = selection.proofs.find((proof) => proof.kind === 'windows-clean')
   const upgrade = selection.proofs.find((proof) => proof.kind === 'windows-upgrade')
@@ -101,14 +173,14 @@ export async function verifySelection(selection, client, dest) {
     client,
     clean.runId,
     clean.runAttempt,
-    WINDOWS_PROOF_SOURCE,
+    windowsSource,
     'upgrade-path.yml',
   )
   const upgradeRun = checkedRun(
     client,
     upgrade.runId,
     upgrade.runAttempt,
-    WINDOWS_PROOF_SOURCE,
+    windowsSource,
     'upgrade-path.yml',
   )
   if (!(Date.parse(upgradeRun.run_started_at) >= Date.parse(cleanRun.updated_at)))
@@ -120,43 +192,91 @@ export async function verifySelection(selection, client, dest) {
     createHash('sha256').update(selection.notes).digest('hex') !== selection.notesSha256
   )
     throw new Error('Pinned release notes are required')
+  if (external) {
+    checkedPublisherTag(client, execution.source, execution.tagObject)
+    checkedTag(client, `v${PROOF_PUBLICATION.version}`, source, PROOF_PUBLICATION.stableTagObject)
+  }
   return { manifest, assets }
 }
 
+const contentType = (name) =>
+  name.endsWith('.zip')
+    ? 'application/zip'
+    : name.endsWith('.dmg')
+      ? 'application/x-apple-diskimage'
+      : name.endsWith('.yml')
+        ? 'application/yaml'
+        : 'application/octet-stream'
+
 export async function publishSelection(selection, client, dest, ref, selectionHash) {
   const plan = releasePlan(ref, 'workflow_dispatch', 'publish')
+  const target = plan.targetRef ?? ref
+  if (Boolean(plan.external) !== (selection.format === 2))
+    throw new Error('External selection cannot change publication routes')
   if (plan.version !== selection.version)
     throw new Error('Stable tag version differs from tested version')
-  const tagObject = checkedTag(client, plan.tag, selection.source)
+  if (target !== `refs/tags/${plan.tag}`) throw new Error('Stable publication target differs')
+  const tagObject = checkedTag(
+    client,
+    plan.tag,
+    selection.source,
+    plan.external ? PROOF_PUBLICATION.stableTagObject : null,
+  )
   const { manifest, assets } = await verifySelection(selection, client, dest)
   const repo = selection.repository
   const marker = `<!-- tested-selection-sha256:${selectionHash} -->`
   const notesPath = join(dest, '..', 'release-notes.md')
-  writeFileSync(notesPath, `${selection.notes}\n\n${marker}\n`)
-  let existing = client.api(`releases/tags/${plan.tag}`)
-  if (
-    existing !== null &&
-    (existing.body !== `${selection.notes}\n\n${marker}\n` ||
-      existing.tag_name !== plan.tag ||
-      existing.prerelease)
-  )
-    throw new Error('Existing release is not bound to this tested selection')
-  if (existing === null) {
-    client.run([
-      'release',
-      'create',
-      plan.tag,
-      '--repo',
-      repo,
-      '--verify-tag',
-      '--draft',
-      '--title',
-      `BroCrew ${selection.version}`,
-      '--notes-file',
-      notesPath,
-    ])
-    existing = client.api(`releases/tags/${plan.tag}`)
+  const body = `${selection.notes}\n\n${marker}\n`
+  writeFileSync(notesPath, body)
+  const boundRelease = (release, id) => {
+    if (
+      !release ||
+      release.id !== id ||
+      release.body !== body ||
+      release.tag_name !== plan.tag ||
+      release.prerelease !== false ||
+      typeof release.draft !== 'boolean' ||
+      !Array.isArray(release.assets)
+    )
+      throw new Error('Existing release is not bound to this tested selection')
+    return release
   }
+  const readRelease = (id) => {
+    if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Invalid release ID')
+    return boundRelease(client.api(`releases/${id}`), id)
+  }
+  const findRelease = () => {
+    const matches = []
+    for (let page = 1; ; page++) {
+      const rows = client.api(`releases?per_page=100&page=${page}`)
+      if (!Array.isArray(rows)) throw new Error('Invalid release listing')
+      matches.push(...rows.filter((release) => release.tag_name === plan.tag))
+      if (rows.length < 100) break
+    }
+    if (matches.length > 1) throw new Error('Multiple releases have the target tag')
+    return matches.length ? readRelease(matches[0].id) : null
+  }
+  let existing = findRelease()
+  if (existing === null) {
+    const requestPath = join(dest, '..', 'create-release.json')
+    writeFileSync(
+      requestPath,
+      JSON.stringify({
+        tag_name: plan.tag,
+        name: `BroCrew ${selection.version}`,
+        body,
+        draft: true,
+        prerelease: false,
+      }),
+    )
+    const created = JSON.parse(
+      client.run(['api', '--method', 'POST', `repos/${repo}/releases`, '--input', requestPath]),
+    )
+    if (!Number.isSafeInteger(created?.id) || created.id <= 0) throw new Error('Invalid release ID')
+    existing = boundRelease(created, created.id)
+  }
+  const releaseId = existing.id
+  const uploads = `https://uploads.github.com/repos/${repo}/releases/${releaseId}/assets`
   const expected = assetNames(selection.version)
   if (existing.assets.some((asset) => !expected.includes(asset.name)))
     throw new Error('Unexpected existing release assets')
@@ -192,29 +312,46 @@ export async function publishSelection(selection, client, dest, ref, selectionHa
   await readback(existing, join(dest, '..', 'existing-assets'))
   const missing = expected.filter((name) => !existing.assets.some((asset) => asset.name === name))
   if (!existing.draft && missing.length) throw new Error('Published release has missing assets')
-  if (missing.length)
+  for (const name of missing)
     client.run([
-      'release',
-      'upload',
-      plan.tag,
-      ...missing.map((name) => join(assets, name)),
-      '--repo',
-      repo,
+      'api',
+      '--method',
+      'POST',
+      `${uploads}?name=${encodeURIComponent(name)}`,
+      '--input',
+      join(assets, name),
+      '-H',
+      `Content-Type: ${contentType(name)}`,
     ])
-  const draft = client.api(`releases/tags/${plan.tag}`)
+  const draft = readRelease(releaseId)
   if (JSON.stringify(draft.assets.map((asset) => asset.name).sort()) !== JSON.stringify(expected))
     throw new Error('Remote release must contain exactly eight assets')
   await readback(draft, join(dest, '..', 'draft-readback'))
   verifyAssets(join(dest, '..', 'draft-readback'), manifest)
   checkedTag(client, plan.tag, selection.source, tagObject)
+  if (selection.format === 2)
+    checkedPublisherTag(client, selection.execution.source, selection.execution.tagObject)
   if (draft.draft)
-    client.run(['release', 'edit', plan.tag, '--repo', repo, '--draft=false', '--latest'])
-  const published = client.api(`releases/tags/${plan.tag}`)
-  if (published.draft || published.prerelease)
-    throw new Error('Stable publication did not complete')
+    client.run([
+      'api',
+      '--method',
+      'PATCH',
+      `repos/${repo}/releases/${releaseId}`,
+      '-f',
+      `tag_name=${plan.tag}`,
+      '-F',
+      'draft=false',
+      '-f',
+      'make_latest=true',
+    ])
+  if (readRelease(releaseId).draft) throw new Error('Stable publication did not complete')
+  const published = boundRelease(client.api(`releases/tags/${plan.tag}`), releaseId)
+  if (published.draft) throw new Error('Stable publication did not complete')
   await readback(published, join(dest, '..', 'public-readback'))
   verifyAssets(join(dest, '..', 'public-readback'), manifest)
   checkedTag(client, plan.tag, selection.source, tagObject)
+  if (selection.format === 2)
+    checkedPublisherTag(client, selection.execution.source, selection.execution.tagObject)
   return {
     releaseId: published.id,
     tagObject,
@@ -233,10 +370,10 @@ async function main() {
   )
   mkdirSync(dest, { recursive: true })
   if (mode === 'qualify') {
-    releasePlan(process.env.GITHUB_REF, 'workflow_dispatch', 'qualify')
+    const plan = releasePlan(process.env.GITHUB_REF, 'workflow_dispatch', 'qualify')
     const selection = JSON.parse(process.env.TESTED_SELECTION_JSON)
     const { manifest } = await verifySelection(selection, client, join(dest, 'candidate'))
-    if (`refs/tags/${manifest.candidateTag}` !== process.env.GITHUB_REF)
+    if (`refs/tags/${manifest.candidateTag}` !== (plan.targetRef ?? process.env.GITHUB_REF))
       throw new Error('Selection ref differs from candidate ref')
     writeFileSync(join(dest, 'tested-selection.json'), JSON.stringify(selection, null, 2) + '\n')
     console.log(`Tested selection SHA256: ${fileSeal(join(dest, 'tested-selection.json')).sha256}`)
@@ -254,7 +391,11 @@ async function main() {
     if (
       meta.expired ||
       run.event !== 'workflow_dispatch' ||
-      !/^v\d+\.\d+\.\d+-candidate\.[1-9]\d*$/.test(run.head_branch)
+      (process.env.GITHUB_REF === `refs/tags/${PROOF_PUBLICATION.executionTag}` &&
+        run.workflow_id !== 387765921) ||
+      !(process.env.GITHUB_REF === `refs/tags/${PROOF_PUBLICATION.executionTag}`
+        ? run.head_branch === PROOF_PUBLICATION.executionTag
+        : /^v\d+\.\d+\.\d+-candidate\.[1-9]\d*$/.test(run.head_branch))
     )
       throw new Error('Tested selection must come from a successful candidate qualification')
     await client.download(id, join(dest, 'selection'), meta.digest)
@@ -271,6 +412,10 @@ async function main() {
     )
       throw new Error('Tested selection digest differs')
     const selection = readJson(path)
+    if (process.env.GITHUB_REF === `refs/tags/${PROOF_PUBLICATION.executionTag}`) {
+      if (selection.format !== 2 || selection.execution?.source !== process.env.GITHUB_SHA)
+        throw new Error('Qualification and publisher execution sources differ')
+    }
     const result = await publishSelection(
       selection,
       client,

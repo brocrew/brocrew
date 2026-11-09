@@ -1,6 +1,8 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { BASELINE } from '../../mac-signed-upgrade-contract.mjs'
+import { BASELINE, candidateNames } from '../../mac-signed-upgrade-contract.mjs'
+import { fileSeal } from '../../release-artifacts.mjs'
 import { FICTIONAL_IDENTITY } from './mac-signing-identity.mjs'
 
 // Deliberately fictional evidence for validator controls; never a native qualification.
@@ -144,4 +146,135 @@ export function macProofFixture(folder, manifest, reference) {
     candidate: summary.candidate,
   })
   return summary
+}
+
+// The original release-macos artifact: five signed Mac files and their candidate receipt.
+export function macOriginalArtifactFixture(folder, manifest, assets) {
+  mkdirSync(folder, { recursive: true })
+  const files = candidateNames(manifest.version).map((name) => {
+    copyFileSync(join(assets, name), join(folder, name))
+    const row = manifest.assets.find((one) => one.name === name)
+    return { name, size: row.bytes, sha256: row.sha256, sha512: row.sha512 }
+  })
+  const receipt = {
+    format: 'brocrew-mac-signed-candidate-v1',
+    source: manifest.source,
+    tree: manifest.tree,
+    version: manifest.version,
+    teamId: FICTIONAL_IDENTITY.teamId,
+    files,
+  }
+  writeFileSync(join(folder, 'mac-signed-candidate.json'), JSON.stringify(receipt))
+  const { bytes, sha256 } = fileSeal(join(folder, 'mac-signed-candidate.json'))
+  return { bytes, sha256 }
+}
+
+// A deliberately fictional reviewed normal-install assessment; never a native observation.
+export function macNormalAssessment(manifest, signingReceipt) {
+  const dmg = manifest.assets.find((row) => row.name === `BroCrew-${manifest.version}-arm64.dmg`)
+  const evidence = (role, i) => ({
+    role,
+    reference: `fictional/${role}.json`,
+    bytes: 100 + i,
+    sha256: String(i + 1).repeat(64),
+  })
+  return {
+    format: 'brocrew.mac-normal-install-operator-witness.v1',
+    repository: manifest.repository,
+    source: manifest.source,
+    tree: manifest.tree,
+    version: manifest.version,
+    candidate: {
+      runId: manifest.runId,
+      runAttempt: manifest.runAttempt,
+      macArtifactId: manifest.origins.macos.artifactId,
+      macArtifactDigest: manifest.origins.macos.digest,
+    },
+    dmg: { name: dmg.name, bytes: dmg.bytes, sha256: dmg.sha256 },
+    signingReceipt,
+    recordKind: 'new-consolidation-of-original-receipts',
+    scope: {
+      observation: 'headless-bundled-service',
+      notClaimed: ['browser-interaction', 'finder', 'gui', 'linked-accounts', 'soak'],
+    },
+    normalInstall: { procedure: 'download-and-drag', scriptedCopyIsFinderDrag: false },
+    automaticUpdates: 'parked-unscheduled-outside-0.2.13',
+    keychain: {
+      observed: false,
+      disposition: 'cannot-show',
+      detail: 'A headless service observation cannot show a Keychain prompt or saved-key reuse.',
+    },
+    signing: {
+      runId: manifest.runId,
+      runAttempt: manifest.runAttempt,
+      jobId: 700,
+      rawOutputs: 'original-hosted-signing-job',
+      consolidatedStatus: 'source-backed-operator-summary',
+      teamId: FICTIONAL_IDENTITY.teamId,
+      authority: FICTIONAL_IDENTITY.authority,
+      results: {
+        codesign: 'PASS',
+        hardenedRuntime: 'PASS',
+        secureTimestamp: 'PASS',
+        appNotary: 'Accepted',
+        dmgNotary: 'Accepted',
+        stapler: 'PASS',
+        gatekeeper: 'PASS',
+      },
+    },
+    oldMac: {
+      attempt: 'fictional-normal-dmg-1',
+      harness: { source: '9'.repeat(40), sha256: '8'.repeat(64) },
+      service: {
+        resource: 'Contents/Resources/plugin-supervisor/entry.cjs',
+        sha256: '7'.repeat(64),
+      },
+      started: '2026-11-08T02:00:00Z',
+      finished: '2026-11-08T02:05:00Z',
+      plugins: [
+        {
+          id: 'chrome',
+          version: '0.1.11',
+          archiveSha256: '3'.repeat(64),
+          manifestSha256: '5'.repeat(64),
+          state: 'Running',
+          tools: ['list_browser_profiles', 'open_tab'],
+          toolCount: 2,
+        },
+        {
+          id: 'whatsapp',
+          version: '0.1.5',
+          archiveSha256: '4'.repeat(64),
+          manifestSha256: '6'.repeat(64),
+          state: 'Running',
+          tools: ['list_chats'],
+          toolCount: 1,
+        },
+      ],
+    },
+    lifecycle: {
+      sameOwner: true,
+      exit: { code: 0, signal: null },
+      leaseClosed: true,
+      timedOut: false,
+      signalFallback: false,
+      cleanupFailures: [],
+      appUnchanged: true,
+      dmgUnchanged: true,
+      fixtureUnchanged: true,
+      imageDetached: true,
+    },
+    evidence: [
+      'signing-build-identity',
+      'service-plugins-tools',
+      'exit-lease-process-cleanup',
+      'unchanged-bytes-detach',
+    ].map(evidence),
+  }
+}
+
+// The exact UTF-8 text carried in the selection, with its self-hash.
+export function macWitness(assessment) {
+  const json = JSON.stringify(assessment, null, 2) + '\n'
+  return { json, sha256: createHash('sha256').update(json, 'utf8').digest('hex') }
 }
