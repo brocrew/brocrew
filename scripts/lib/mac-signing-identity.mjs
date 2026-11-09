@@ -43,25 +43,6 @@ export function selectSigningCertificate(text, env = process.env) {
   return hashes[0]
 }
 
-export function withoutSigningCredentials(environment) {
-  const env = { ...environment }
-  for (const name of [
-    'MAC_EXPECTED_TEAM_ID',
-    'MAC_EXPECTED_SIGNING_AUTHORITY',
-    'MAC_CERT_P12_BASE64',
-    'MAC_CERT_P12_PASSWORD',
-    'APPLE_API_KEY_P8',
-    'APPLE_API_KEY',
-    'APPLE_API_KEY_ID',
-    'APPLE_API_ISSUER',
-    'CSC_KEYCHAIN',
-    'CSC_NAME',
-    'MAC_SIGNING_IDENTITY',
-  ])
-    delete env[name]
-  return env
-}
-
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (process.argv[2] === 'check') expectedSigningIdentity()
   else if (process.argv[2] === 'mask') {

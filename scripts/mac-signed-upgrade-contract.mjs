@@ -1,23 +1,8 @@
 // 695-visible: these checks read the visible journey's results; this module never launches it.
 import { lstatSync, readdirSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
-import {
-  expectedSigningIdentity,
-  requireDistributionSignature,
-} from './lib/mac-signing-identity.mjs'
 import { requireEvidence, STATE_FILES } from './lib/mac-update-test.mjs'
-
-export const BASELINE = Object.freeze({
-  version: '0.2.11',
-  source: 'cfe64af3add0e9104cd5f4f940c23c9a758ca4b0',
-  tree: '898d38281013a5a33f205b47cea753fb147c7a87',
-  name: 'BroCrew-0.2.11-arm64.dmg',
-  size: 354070741,
-  sha256: '200220906296555bb8b09e3ce199600081a401295db2f102c9b21b69471ee7b1',
-})
-const oid = /^[a-f0-9]{40}$/
-const sha256 = /^[a-f0-9]{64}$/
 
 export function candidateNames(version) {
   return [
@@ -27,54 +12,6 @@ export function candidateNames(version) {
     `BroCrew-${version}-arm64-mac.zip.blockmap`,
     'latest-mac.yml',
   ]
-}
-
-export function candidateReceipt(receipt, expected, identity = expectedSigningIdentity()) {
-  requireEvidence(
-    receipt?.format === 'brocrew-mac-signed-candidate-v1',
-    'Wrong candidate receipt format.',
-  )
-  for (const key of ['source', 'tree'])
-    requireEvidence(
-      oid.test(receipt[key]) && receipt[key] === expected[key],
-      `Candidate ${key} differs.`,
-    )
-  requireEvidence(
-    /^\d+\.\d+\.\d+$/.test(receipt.version) &&
-      receipt.version === expected.version &&
-      receipt.version !== BASELINE.version,
-    'Candidate version differs.',
-  )
-  requireEvidence(receipt.teamId === identity.teamId, 'Candidate signing team differs.')
-  const names = candidateNames(receipt.version)
-  requireEvidence(Array.isArray(receipt.files), 'Candidate file seals are missing.')
-  requireEvidence(
-    receipt.files.length === names.length,
-    'Candidate must seal exactly five Mac assets.',
-  )
-  requireEvidence(
-    new Set(receipt.files.map((file) => file.name)).size === receipt.files.length,
-    'Duplicate candidate file seal.',
-  )
-  for (const name of names) {
-    const file = receipt.files.find((one) => one.name === name)
-    requireEvidence(
-      file && Number.isSafeInteger(file.size) && file.size > 0 && sha256.test(file.sha256),
-      `Candidate seal missing: ${name}.`,
-    )
-    requireEvidence(
-      typeof file.sha512 === 'string' &&
-        Buffer.from(file.sha512, 'base64').length === 64 &&
-        Buffer.from(file.sha512, 'base64').toString('base64') === file.sha512,
-      `Candidate SHA-512 missing: ${name}.`,
-    )
-  }
-  for (const file of receipt.files)
-    requireEvidence(
-      file.name === basename(file.name) && !/[\\?#]/.test(file.name),
-      'Unsafe candidate filename.',
-    )
-  return receipt
 }
 
 export function publicFeedUnchanged(text) {
@@ -95,10 +32,6 @@ export function publicFeedUnchanged(text) {
       fields.url === undefined,
     'The app does not retain its public GitHub feed.',
   )
-}
-
-export function signedIdentity(output, identity = expectedSigningIdentity()) {
-  requireDistributionSignature(output, { identity })
 }
 
 function permissionInventory(folder) {

@@ -3,7 +3,6 @@ import {
   expectedSigningIdentity,
   requireDistributionSignature,
   selectSigningCertificate,
-  withoutSigningCredentials,
 } from '../lib/mac-signing-identity.mjs'
 import { FICTIONAL_IDENTITY, FICTIONAL_SIGNING_ENV } from './fixtures/mac-signing-identity.mjs'
 
@@ -43,22 +42,5 @@ describe('independent runtime signing expectation', () => {
         identity: FICTIONAL_IDENTITY,
       }),
     ).toThrow('configured Mac signing identity')
-  })
-  it('strips signing metadata and credential variables from the app without changing the parent', () => {
-    const original = {
-      ...FICTIONAL_SIGNING_ENV,
-      MAC_CERT_P12_BASE64: 'fictional-p12',
-      APPLE_API_KEY_P8: 'fictional-p8',
-      APPLE_API_KEY: '/fictional/key',
-      MAC_CERT_P12_PASSWORD: 'fictional-password',
-      APPLE_API_KEY_ID: 'fictional-id',
-      APPLE_API_ISSUER: 'fictional-issuer',
-      CSC_KEYCHAIN: '/fictional/keychain',
-      CSC_NAME: 'fictional-name',
-      MAC_SIGNING_IDENTITY: 'fictional-hash',
-      PATH: '/fixture',
-    }
-    expect(withoutSigningCredentials(original)).toEqual({ PATH: '/fixture' })
-    expect(original.MAC_EXPECTED_SIGNING_AUTHORITY).toBe(FICTIONAL_IDENTITY.authority)
   })
 })

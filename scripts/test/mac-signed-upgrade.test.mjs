@@ -1,75 +1,19 @@
-import { afterEach, beforeEach, test, vi } from 'vitest'
-import { FICTIONAL_IDENTITY, FICTIONAL_SIGNING_ENV } from './fixtures/mac-signing-identity.mjs'
-beforeEach(() => {
-  for (const [name, value] of Object.entries(FICTIONAL_SIGNING_ENV)) vi.stubEnv(name, value)
-})
-afterEach(() => vi.unstubAllEnvs())
+import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync, mkdirSync, chmodSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  BASELINE,
-  candidateReceipt,
   publicFeedUnchanged,
-  signedIdentity,
   fixturePermissions,
   permissionsKept,
   credentialPreserved,
-  candidateNames,
   registriesKept,
   assertThreeWorkspaceStates,
 } from '../mac-signed-upgrade-contract.mjs'
 
 const source = 'a'.repeat(40),
   tree = 'b'.repeat(40)
-const expected = {
-  source,
-  tree,
-  version: '0.2.12',
-}
-const checksum = Buffer.alloc(64, 7).toString('base64')
-function receipt() {
-  return {
-    format: 'brocrew-mac-signed-candidate-v1',
-    source,
-    tree,
-    version: '0.2.12',
-    teamId: FICTIONAL_IDENTITY.teamId,
-    files: candidateNames('0.2.12').map((name) => ({
-      name,
-      size: 10,
-      sha256: 'd'.repeat(64),
-      sha512: checksum,
-    })),
-  }
-}
-test('actual baseline is pinned independently of candidate run and source', () => {
-  assert.equal(BASELINE.source, 'cfe64af3add0e9104cd5f4f940c23c9a758ca4b0')
-  assert.equal(BASELINE.size, 354070741)
-  assert.equal(BASELINE.sha256, '200220906296555bb8b09e3ce199600081a401295db2f102c9b21b69471ee7b1')
-  assert.equal(candidateReceipt(receipt(), expected).version, '0.2.12')
-  for (const changed of [
-    { source: 'e'.repeat(40) },
-    { tree: 'e'.repeat(40) },
-    { version: '0.0.99' },
-    { version: '0.2.11' },
-    { teamId: 'OTHERTEAM' },
-    { format: 'synthetic-rehearsal' },
-  ])
-    assert.throws(() => candidateReceipt({ ...receipt(), ...changed }, expected))
-})
-test('candidate receipt cannot omit, duplicate or redirect sealed assets', () => {
-  const original = receipt()
-  for (const files of [
-    original.files.slice(1),
-    [...original.files, original.files[0]],
-    original.files.map((file, index) => (index === 0 ? { ...file, sha512: 'bad' } : file)),
-    original.files.map((file, index) => (index === 0 ? { ...file, size: 0 } : file)),
-    [...original.files, { name: '../outside', size: 10, sha256: 'd'.repeat(64) }],
-  ])
-    assert.throws(() => candidateReceipt({ ...original, files }, expected))
-})
 test('the installed public feed remains public rather than rewritten to a sandbox', () => {
   publicFeedUnchanged(
     "owner: brocrew\nrepo: brocrew\nprovider: github\nupdaterCacheDirName: '@brobot2desktop-updater'\n",
@@ -80,18 +24,6 @@ test('the installed public feed remains public rather than rewritten to a sandbo
     'owner: brocrew\nrepo: brocrew\nprovider: github\nprivate: true\n',
   ])
     assert.throws(() => publicFeedUnchanged(text))
-})
-test('candidate signature requires the actual team, Developer ID, runtime and timestamp', () => {
-  const identity = `Authority=${FICTIONAL_IDENTITY.authority}\nTeamIdentifier=${FICTIONAL_IDENTITY.teamId}\nflags=0x10000(runtime)\nTimestamp=Nov 8, 2026\n`
-  signedIdentity(identity)
-  for (const remove of [
-    'Authority=Developer ID Application:',
-    `TeamIdentifier=${FICTIONAL_IDENTITY.teamId}`,
-    'flags=0x10000(runtime)',
-    'Timestamp=',
-  ])
-    assert.throws(() => signedIdentity(identity.replace(remove, 'missing')))
-  assert.throws(() => signedIdentity('Signature=adhoc\nTeamIdentifier=not set\n'))
 })
 test('persistent fixture permissions include nested skill files and ignore transient database journals', () => {
   const folder = mkdtempSync(join(tmpdir(), 'signed-upgrade-modes-'))
