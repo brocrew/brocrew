@@ -3,6 +3,7 @@ export function liveGroupMembers(group: number): Promise<number[]>
 export function stopGroups(
   groups: ReadonlyMap<number, string> | Iterable<number>,
   graceMs?: number,
+  onFailure?: (error: Error) => void,
 ): Promise<boolean>
 
 export function pluginServerLaunch(

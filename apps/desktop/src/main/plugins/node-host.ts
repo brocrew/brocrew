@@ -3,6 +3,7 @@ import {
   pluginStartupStderr,
   pluginStartupOutput,
   recordPluginStartupFailure,
+  pluginFailureCause,
 } from './startup-failure'
 import {
   PluginStartupDiagnosticSchema,
@@ -34,8 +35,10 @@ import { createFileNotThroughALink } from './private-files'
 import {
   endWindowsTree,
   stopGroups,
+  liveGroupMembers,
   readPriorityClamped,
 } from '../../../resources/plugin-host/process-groups.mjs'
+import { recordDrainTrace } from './supervisor/drain-trace'
 import { writeReceipt } from '../../../resources/plugin-host/receipts.mjs'
 
 export interface PluginNodeStart {
@@ -62,6 +65,8 @@ export interface PluginNodeProcess {
   ready(): Promise<PluginNodeReady>
   stop(): Promise<PluginNodeExit>
   readonly exited: Promise<PluginNodeExit>
+  /** After guardian close, one census may replace a failed group proof with physical absence. */
+  proveEmptyGroups?(): Promise<boolean>
 }
 interface Deferred<T> {
   promise: Promise<T>
@@ -591,7 +596,14 @@ export function createPluginNodeHost(options: {
         (windows
           ? typeof child.pid === 'number' &&
             (await endWindowsTree(child.pid, forkedAt, guardianEndedAt || Date.now()))
-          : groups.size > 0 && (await stopGroups(groups)))
+          : groups.size > 0 &&
+            (await stopGroups(groups, 1500, (cause) => {
+              recordDrainTrace(root, {
+                stage: 'group-cleanup',
+                state: 'failed',
+                cause: pluginFailureCause(cause, secrets),
+              })
+            })))
       await Promise.all(
         ['auth.json', 'launch.json'].map((name) =>
           rm(join(run, name), { force: true }).catch(() => {}),
@@ -634,6 +646,38 @@ export function createPluginNodeHost(options: {
       ready: () => ready.promise,
       stop,
       exited: exited.promise,
+      async proveEmptyGroups(): Promise<boolean> {
+        if ((await exited.promise).exited) return true
+        // An error event alone is not guardian death; unknown groups and Windows stay blocked.
+        if (!guardianEndedAt || windows || !groups.size) return false
+        try {
+          for (const group of groups.keys())
+            if ((await liveGroupMembers(group)).length) return false
+        } catch (error) {
+          recordDrainTrace(root, {
+            stage: 'group-cleanup',
+            state: 'failed',
+            cause: pluginFailureCause(error, secrets),
+          })
+          return false
+        }
+        try {
+          writeReceipt(run, 'exit.json', {
+            format: 1,
+            runId,
+            pluginId: manifest.id,
+            releaseDigest: spec.releaseDigest,
+            guardianPid: child.pid,
+            writerPid: process.pid,
+            groups: [...groups],
+            exited: true,
+          })
+        } catch {
+          // Physical absence is proven; a successor must prove it again if publication failed.
+        }
+        starts.delete(manifest.id)
+        return true
+      },
     })
   }
   return {

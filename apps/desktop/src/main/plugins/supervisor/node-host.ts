@@ -20,6 +20,7 @@ export function ownedPluginNodeProcess(process: PluginNodeProcess): OwnedPluginC
     },
     exited,
     descendantsGone: () => proof.catch(() => false),
+    proveEmptyGroups: process.proveEmptyGroups ? () => process.proveEmptyGroups!() : undefined,
   })
 }
 

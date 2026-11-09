@@ -90,7 +90,15 @@ export async function liveGroupMembers(group) {
   })
 }
 /** On Windows the guardian's job ends the tree; a group here is the server by its creation time. */
-export async function stopGroups(groups, graceMs = 1500) {
+export async function stopGroups(groups, graceMs = 1500, onFailure = () => {}) {
+  const failed = (error) => {
+    try {
+      onFailure(error)
+    } catch {
+      /* Diagnostics never change the proof. */
+    }
+  }
+  let stage = 'group-census'
   if (process.platform === 'win32')
     return (
       groups instanceof Map && groups.size > 0 && endProcessesByIdentity(groups, graceMs + 2000)
@@ -106,20 +114,25 @@ export async function stopGroups(groups, graceMs = 1500) {
       if (!retired.has(group)) active.add(group)
     }
   }
-  if ([...active].some((pid) => !Number.isSafeInteger(pid) || pid <= 1 || pid === process.pid))
+  if ([...active].some((pid) => !Number.isSafeInteger(pid) || pid <= 1 || pid === process.pid)) {
+    failed(new Error('group-identity: invalid group'))
     return false
+  }
   try {
     const signalled = { SIGTERM: new Set(), SIGKILL: new Set() }
     const signal = async (kind) => {
       refresh()
       for (const group of active) {
+        stage = 'group-census'
         if ((await liveGroupMembers(group)).length === 0) {
           active.delete(group)
           retired.add(group)
           continue
         }
+        stage = 'group-identity'
         const birth = groupIdentity(group)
         if (birth && identities.get(group) && birth !== identities.get(group)) {
+          failed(new Error('group-identity: changed birth'))
           certain = false
           active.delete(group)
           retired.add(group)
@@ -128,6 +141,7 @@ export async function stopGroups(groups, graceMs = 1500) {
         if (signalled[kind].has(group)) continue
         signalled[kind].add(group)
         try {
+          stage = 'group-signal-' + kind
           process.kill(-group, kind)
         } catch (e) {
           if (e.code !== 'ESRCH') throw e
@@ -136,6 +150,7 @@ export async function stopGroups(groups, graceMs = 1500) {
     }
     const gone = async () => {
       refresh()
+      stage = 'group-census'
       for (const group of active)
         if ((await liveGroupMembers(group)).length === 0) {
           active.delete(group)
@@ -155,8 +170,10 @@ export async function stopGroups(groups, graceMs = 1500) {
       await signal('SIGKILL')
       await pause(25)
     }
+    if (active.size) failed(new Error('group-census: live members remain after cleanup'))
     return active.size === 0 && certain
-  } catch {
+  } catch (error) {
+    failed(new Error(stage, { cause: error }))
     return false
   }
 }

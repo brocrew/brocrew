@@ -45,6 +45,8 @@ export interface OwnedPluginChild {
   stop(): void | Promise<void>
   exited: Promise<void>
   descendantsGone(): Promise<boolean>
+  /** Exact physical host only: prove recorded groups empty after its guardian has closed. */
+  proveEmptyGroups?(): Promise<boolean>
 }
 export interface OwnerOptions {
   root: string
@@ -113,7 +115,8 @@ async function stopAndProveChild(
       ),
   )
   const [, didExit, areGone] = await Promise.all([stopped, exited, descendantsGone])
-  return didExit && areGone
+  if (didExit && areGone) return true
+  return child.proveEmptyGroups ? (await child.proveEmptyGroups()) === true : false
 }
 
 function drainWriteErrno(error: unknown): string {

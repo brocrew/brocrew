@@ -8,6 +8,7 @@ export interface DrainTrace {
   stage:
     | 'drain'
     | 'invalidation'
+    | 'group-cleanup'
     | 'child-stop'
     | 'child-exit'
     | 'descendants'
