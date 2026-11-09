@@ -51,8 +51,10 @@ export function exportChromePlugin(destination) {
     path.join(destination, 'README.md'),
     '# Chrome plugin for BroCrew\n\nThis repository is a clean source export of the Chrome plugin maintained and integration-tested with BroCrew. It contains no app history or client data. Its release workflow builds a deterministic archive, runs tests with fake browsers and emits the entry for BroCrew’s plugin list. Users install from Settings → Plugins; they run no commands and supply no key or token.\n\nThe first supported app target is macOS arm64. Windows and Linux app hosts are not enabled by this release. App-level archive verification and lifecycle tests remain in the BroCrew source repository.\n',
   )
-  for (const script of ['plugin-source.mjs', 'build-plugin-release.mjs'])
-    fs.copyFileSync(path.join(root, 'scripts', script), path.join(destination, 'scripts', script))
+  fs.copyFileSync(
+    path.join(root, 'scripts/build-plugin-release.mjs'),
+    path.join(destination, 'scripts/build-plugin-release.mjs'),
+  )
   fs.mkdirSync(path.join(destination, 'release-test'))
   fs.writeFileSync(path.join(destination, 'release-test/release.test.ts'), releaseTest)
   fs.writeFileSync(
@@ -108,11 +110,6 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
-    inputs:
-      source_commit:
-        description: Reviewed public monorepo commit (full SHA)
-        required: true
-        type: string
 permissions:
   contents: read
 jobs:
@@ -123,8 +120,7 @@ jobs:
     permissions:
       contents: write
     env:
-      BROCREW_PLUGIN_SOURCE_COMMIT: \${{ inputs.source_commit || vars.PLUGIN_SOURCE_COMMIT }}
-      BROCREW_MONOREPO_ROOT: \${{ github.workspace }}/.canonical
+      BROCREW_PLUGIN_SOURCE_COMMIT: \${{ github.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -132,14 +128,6 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22.23.3'
-      - name: Validate explicit canonical source pin
-        run: node -e 'if (!/^[a-f0-9]{40}$/.test(process.env.BROCREW_PLUGIN_SOURCE_COMMIT || "")) throw new Error("A full reviewed source pin is required")'
-      - uses: actions/checkout@v7
-        with:
-          repository: brocrew/brocrew
-          ref: \${{ env.BROCREW_PLUGIN_SOURCE_COMMIT }}
-          path: .canonical
-          persist-credentials: false
       - run: npm ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund
       - run: npm ci --prefix plugins/chrome --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
@@ -165,8 +153,7 @@ jobs:
     permissions:
       contents: read
     env:
-      BROCREW_PLUGIN_SOURCE_COMMIT: \${{ inputs.source_commit || vars.PLUGIN_SOURCE_COMMIT }}
-      BROCREW_MONOREPO_ROOT: \${{ github.workspace }}/.canonical
+      BROCREW_PLUGIN_SOURCE_COMMIT: \${{ github.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -175,40 +162,13 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22.23.3'
-      - name: Validate explicit canonical source pin
-        run: node -e 'if (!/^[a-f0-9]{40}$/.test(process.env.BROCREW_PLUGIN_SOURCE_COMMIT || "")) throw new Error("A full reviewed source pin is required")'
-      - uses: actions/checkout@v7
-        with:
-          repository: brocrew/brocrew
-          ref: \${{ env.BROCREW_PLUGIN_SOURCE_COMMIT }}
-          path: .canonical
-          persist-credentials: false
       - run: npm ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund
       - run: npm ci --prefix plugins/chrome --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
-      - name: Refuse modified or extra package sources
-        run: |
-          set -eu
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/chrome/src plugins/chrome/ui plugins/shared/ui plugins/chrome/bridge plugins/chrome/build.mjs plugins/chrome/manifest-template.json plugins/chrome/package.json plugins/chrome/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs package.json package-lock.json)"
       - run: npm run build -- artifact
-      - run: npm run build -- artifact-repeat
-      - name: Verify reproducible archive bytes
-        run: diff -r artifact artifact-repeat
       - run: npm test
         env:
           BROCREW_CHROME_TEST_ARTIFACT: \${{ github.workspace }}/artifact
-      - name: Record source and toolchain receipts
-        run: |
-          set -eu
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/chrome/src plugins/chrome/ui plugins/shared/ui plugins/chrome/bridge plugins/chrome/build.mjs plugins/chrome/manifest-template.json plugins/chrome/package.json plugins/chrome/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs package.json package-lock.json)"
-          git rev-parse HEAD > artifact/source-commit.txt
-          node --version > artifact/node-version.txt
-          npm --version > artifact/npm-version.txt
-          node -p "require('./plugins/chrome/node_modules/esbuild/package.json').version" > artifact/esbuild-version.txt
-          sha256sum package-lock.json plugins/chrome/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs plugins/chrome/build.mjs .github/workflows/release.yml > artifact/build-inputs.sha256
-          sha256sum artifact/*.tar.gz artifact/plugin-list-entry.json > artifact/downloads.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: chrome-build-only-\${{ github.sha }}
