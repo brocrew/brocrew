@@ -379,7 +379,7 @@ describe('Chrome release fixture', () => {
       expect(JSON.stringify(refused)).not.toContain('fictional_unreviewed')
     })
   })
-  it('refuses a credential-bearing definition alone and never includes its bytes in the log', async () => {
+  it('lists a credential-bearing definition without a refusal log', async () => {
     await builtInventory(async ({ inventory, inventoryReply, agent, view }) => {
       const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const credential = (await view.connection).mcp().headers.Authorization.slice('Bearer '.length)
@@ -390,10 +390,10 @@ describe('Chrome release fixture', () => {
       )
       const client = await agent()
       const tools = (await client.listTools()).tools
-      expect(tools).toHaveLength(33)
-      expect(tools.some((tool) => tool.name === 'snapshot')).toBe(false)
-      expect(JSON.stringify(tools)).not.toContain(credential)
-      expect(log.mock.calls).toEqual([['Some plugin tools were refused.']])
+      expect(tools).toHaveLength(34)
+      expect(tools.some((tool) => tool.name === 'snapshot')).toBe(true)
+      expect(JSON.stringify(tools)).toContain(credential)
+      expect(log.mock.calls).toEqual([])
     })
   })
   it('has a strict manifest with no optional skills or service templates', () => {
