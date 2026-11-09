@@ -611,10 +611,12 @@ describe('the index as its launch was sent it', () => {
     expect(record?.savedMethods).toBeUndefined()
   })
 
+  const recordedLead =
+    '## Saved methods\n\n- Rotate a fictional log — /fictional/runbooks/rotate-log.md\n'
+
   /** A Codex launch's record in the instructions layout, with this conversation's text. */
   function aCodexGiven(over: Partial<ReturnType<typeof givenAnswer>> = {}) {
-    const text =
-      '## Saved methods\n\n- Rotate a fictional log — /fictional/runbooks/rotate-log.md\n'
+    const text = recordedLead
     const given = givenAnswer()
     return givenAnswer({
       placement: 'first-message',
@@ -651,6 +653,7 @@ describe('the index as its launch was sent it', () => {
     rmSync(folder, { recursive: true })
     const row = leadRow(aCodexGiven({ savedMethods: use }))
     expect(savedPieces(row)).toEqual([
+      { kind: 'text', text: recordedLead },
       {
         kind: 'notice',
         cy: 'input-saved-methods',
@@ -660,7 +663,7 @@ describe('the index as its launch was sent it', () => {
     ])
   })
 
-  it('codex: the lead row says why an index was not sent', () => {
+  it('codex: the lead row keeps its recorded text alongside the index refusal', () => {
     const row = leadRow(
       aCodexGiven({
         savedMethods: {
@@ -671,6 +674,7 @@ describe('the index as its launch was sent it', () => {
       }),
     )
     expect(savedPieces(row)).toEqual([
+      { kind: 'text', text: recordedLead },
       {
         kind: 'notice',
         cy: 'input-saved-methods',
@@ -679,8 +683,8 @@ describe('the index as its launch was sent it', () => {
     ])
   })
 
-  it('codex: an older launch’s record with no saved methods says nothing about them', () => {
-    expect(savedPieces(leadRow(aCodexGiven()))).toEqual([])
+  it('codex: an older launch’s record without saved-method metadata keeps its recorded text', () => {
+    expect(savedPieces(leadRow(aCodexGiven()))).toEqual([{ kind: 'text', text: recordedLead }])
   })
 })
 
