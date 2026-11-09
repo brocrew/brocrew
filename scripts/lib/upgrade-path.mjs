@@ -684,6 +684,14 @@ export const MOVED_INTO_TABLES = {
       ...(Object.keys(readOn).length === 0 ? {} : { readOn }),
     }
   },
+  'schedule-attempts.json': (tables) => ({
+    conversations: Object.fromEntries(
+      (tables.schedule_attempt ?? []).map((row) => [
+        row.conversation_id,
+        { ...JSON.parse(row.record), at: row.at },
+      ]),
+    ),
+  }),
   'sign-in-changes.json': (tables) => ({
     version: 1,
     changed: Object.fromEntries(
