@@ -12,6 +12,7 @@ export function signInObservation(event: TranscriptEvent): TranscriptEvent {
     return { ...event, signIn: { state: 'refused', message: REFUSED_NOTICE } }
   }
   if (!/^claude could not authenticate; retrying\b/.test(event.message)) return event
+  if (event.cause !== undefined) return { ...event, signIn: { state: 'stale' } }
   const attempt = event.message.match(/attempt \d+\/\d+/)?.[0]
   return {
     ...event,

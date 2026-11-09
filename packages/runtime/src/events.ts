@@ -919,8 +919,8 @@ const errorEventSchema = z.object({
   cause: errorCauseSchema.optional(),
   signIn: z
     .object({
-      state: z.enum(['retrying', 'refused']),
-      message: z.string(),
+      state: z.enum(['retrying', 'refused', 'stale']),
+      message: z.string().optional(),
     })
     .optional(),
   /** Absent unless the adapter recognised the refusal. See {@link providerRefusalSchema}. */

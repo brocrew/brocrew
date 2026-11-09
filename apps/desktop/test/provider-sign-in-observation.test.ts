@@ -26,3 +26,13 @@ it('classifies a refused login, while leaving API-key and unrelated failures unc
   expect(signInObservation(key)).toBe(key)
   expect(signInObservation(other)).toBe(other)
 })
+
+it('retains a diagnosed stale-login remedy instead of restarting its old retry row', () => {
+  const event: TranscriptEvent = {
+    type: 'error',
+    message: 'claude could not authenticate; retrying (attempt 3/3, HTTP 401)',
+    fatal: true,
+    cause: 'auth_stale',
+  }
+  expect(signInObservation(event)).toEqual({ ...event, signIn: { state: 'stale' } })
+})

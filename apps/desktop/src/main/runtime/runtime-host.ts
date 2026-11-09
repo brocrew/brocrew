@@ -14309,15 +14309,14 @@ export class RuntimeHost implements LiveHost {
   private showTheWindowsLookingAt(sessionId: string, message: RuntimeEventMessage): void {
     const looking = this.lookingAtItsRecord.get(sessionId)
     if (looking === undefined) return
+    const provider = this.deps.store.recordedOne(sessionId)?.provider
     for (const [owner, { sink }] of looking) {
       if (!sink.alive) {
         looking.delete(owner)
         continue
       }
       try {
-        sink.send(
-          transcriptMessageForDisplay(message, this.deps.store.recordedOne(sessionId)?.provider),
-        )
+        sink.send(transcriptMessageForDisplay(message, provider))
       } catch (error) {
         console.warn(
           `runtime host could not show ${sessionId}'s new row to a window: ${errorMessage(error)}`,
@@ -36049,6 +36048,7 @@ export class RuntimeHost implements LiveHost {
     sessionId: string,
     options: { before?: number; turns?: number },
   ): HistoryWindow {
+    const provider = this.deps.store.recordedOne(sessionId)?.provider
     const window = this.deps.store.turnWindow(sessionId, {
       turns: options.turns ?? HISTORY_WINDOW_TURNS,
       maxEvents: HISTORY_WINDOW_MAX_EVENTS,
