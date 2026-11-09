@@ -67,7 +67,8 @@ export const PROVIDER_DESCRIPTORS = [
     apiKey: { spendsToken: true },
     words: {
       refusedSignIn: 'claude-sign-in',
-      interruptActionSummary: 'the command it is waiting on, while work it sent to the background keeps running',
+      interruptActionSummary:
+        'the command it is waiting on, while work it sent to the background keeps running',
       providerChoice: "'claude' runs the conversation through Claude.",
       interruptSummary:
         'the command that turn is waiting on ends with it, and work it sent to the background keeps running',

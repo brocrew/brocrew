@@ -3,7 +3,11 @@ import { expect, it } from 'vitest'
 import type { FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import type { RuntimeHost, RuntimeEventSink } from './giver-notice-host'
-import { readKeptAccounts, writeKeptAccounts, providerAccountsFile } from '../../src/main/providers/claude/account-record'
+import {
+  readKeptAccounts,
+  writeKeptAccounts,
+  providerAccountsFile,
+} from '../../src/main/providers/claude/account-record'
 import { readKeptUsage, providerUsageFile } from '../../src/main/provider-usage-file'
 import {
   readKeptCuts,

@@ -116,7 +116,10 @@ describe('off the main thread', () => {
     const registration = readFileSync(join(MAIN, 'providers/index.ts'), 'utf8')
     expect(registration).toContain("import('./claude/local-settings-locator.worker?nodeWorker')")
     expect(index).toContain('settingsLocations(locateOffTheMainThread)')
-    const worker = readFileSync(join(MAIN, 'providers/claude/local-settings-locator.worker.ts'), 'utf8')
+    const worker = readFileSync(
+      join(MAIN, 'providers/claude/local-settings-locator.worker.ts'),
+      'utf8',
+    )
     expect(worker).toMatch(/\bprojectLocalSettingsFile\(folder\)/)
   })
 })

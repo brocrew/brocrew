@@ -5914,10 +5914,7 @@ function foldEvent(
       // The runtime's notice that the model is still thinking is drawn as one live line at the
       // end, from the conversation's liveness, so it leaves no row behind once thinking ends.
       if (event.stall === true && event.thinking === true) return
-      if (
-        event.onAKey !== true &&
-        (event.cause === 'auth_stale' || event.signIn !== undefined)
-      ) {
+      if (event.onAKey !== true && (event.cause === 'auth_stale' || event.signIn !== undefined)) {
         const needsSignIn = event.signIn?.state === 'refused'
         const retrying = event.signIn?.state === 'retrying'
         claudeSignInNotice(

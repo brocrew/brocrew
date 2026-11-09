@@ -10,9 +10,17 @@ import {
 } from '../src/renderer/src/lib/transcript'
 import { visibleItems } from '../src/renderer/src/lib/transcript-mode'
 
-function applyEvent(state: Parameters<typeof applyDisplayedEvent>[0], event: TranscriptEvent): void {
+function applyEvent(
+  state: Parameters<typeof applyDisplayedEvent>[0],
+  event: TranscriptEvent,
+): void {
   const provider = state.ref?.provider
-  applyDisplayedEvent(state, provider === undefined ? event : (providerDefinitions[provider].transcripts.eventForDisplay?.(event) ?? event))
+  applyDisplayedEvent(
+    state,
+    provider === undefined
+      ? event
+      : (providerDefinitions[provider].transcripts.eventForDisplay?.(event) ?? event),
+  )
 }
 
 const retry = (attempt: number): Extract<TranscriptEvent, { type: 'error' }> => ({

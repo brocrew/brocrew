@@ -85,7 +85,8 @@ function scene(
     ref: { ...META.ref!, provider: 'claude' },
   }
   r.transcript.ref = r.meta.ref
-  for (const event of content) applyEvent(r.transcript, signInObservation(event === refused ? refusal : event))
+  for (const event of content)
+    applyEvent(r.transcript, signInObservation(event === refused ? refusal : event))
   r.phase = 'recorded'
   return mount(
     ConversationPane,

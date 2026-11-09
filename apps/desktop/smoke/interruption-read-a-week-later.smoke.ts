@@ -6,7 +6,11 @@ import { loadavg } from 'node:os'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { expect, it } from 'vitest'
 import { ClaudeRuntime, type ClaudeQuery, type QueryFactory } from '@brobot2/runtime/claude'
-import { claudeKeychainTokenProvider, provisionProviderHome, type AgentRuntime } from '@brobot2/runtime'
+import {
+  claudeKeychainTokenProvider,
+  provisionProviderHome,
+  type AgentRuntime,
+} from '@brobot2/runtime'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'

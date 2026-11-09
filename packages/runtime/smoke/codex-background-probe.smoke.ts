@@ -3,8 +3,19 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { CodexRuntime, type CodexIncoming, type CodexLaunchContext, type CodexTransport } from '../src/codex'
-import { codexAuthHealth, provisionCodexAuth, provisionProviderHome, type RuntimeEvent, type SessionHandle } from '../src/index'
+import {
+  CodexRuntime,
+  type CodexIncoming,
+  type CodexLaunchContext,
+  type CodexTransport,
+} from '../src/codex'
+import {
+  codexAuthHealth,
+  provisionCodexAuth,
+  provisionProviderHome,
+  type RuntimeEvent,
+  type SessionHandle,
+} from '../src/index'
 import { bundledCodexBinary, bundledCodexTransportFactory } from './bundled-codex'
 import { runEvidence, runScratch } from './run-paths'
 

@@ -7,7 +7,13 @@ import { isDeepStrictEqual } from 'node:util'
 import { expect, it } from 'vitest'
 import { ClaudeRuntime } from '@brobot2/runtime/claude'
 import { CodexRuntime } from '@brobot2/runtime/codex'
-import { claudeKeychainTokenProvider, codexAuthHealth, provisionCodexAuth, provisionProviderHome, type AgentRuntime } from '@brobot2/runtime'
+import {
+  claudeKeychainTokenProvider,
+  codexAuthHealth,
+  provisionCodexAuth,
+  provisionProviderHome,
+  type AgentRuntime,
+} from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

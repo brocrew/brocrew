@@ -4,7 +4,12 @@ import { join } from 'node:path'
 import { query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { expect, it } from 'vitest'
 import { ClaudeRuntime, type QueryFactory } from '../src/claude'
-import { claudeKeychainTokenProvider, provisionProviderHome, type RuntimeEvent, type SessionHandle } from '../src/index'
+import {
+  claudeKeychainTokenProvider,
+  provisionProviderHome,
+  type RuntimeEvent,
+  type SessionHandle,
+} from '../src/index'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
 import { runEvidence, runScratch } from './run-paths'
 

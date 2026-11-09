@@ -7,7 +7,12 @@ import type { CanUseTool, Options, SDKMessage } from '@anthropic-ai/claude-agent
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import { askedOfTheChannel, CHANNEL_REFUSAL_SENTENCES, type PermissionOutcome, type RuntimeEvent } from '@brobot2/runtime'
+import {
+  askedOfTheChannel,
+  CHANNEL_REFUSAL_SENTENCES,
+  type PermissionOutcome,
+  type RuntimeEvent,
+} from '@brobot2/runtime'
 import { ClaudeRuntime, type ClaudeQuery } from '@brobot2/runtime/claude'
 import { CodexRuntime } from '@brobot2/runtime/codex'
 import { AsyncQueue } from '../../../packages/runtime/src/internal/async-queue'

@@ -20,7 +20,6 @@ export {
   AGENTS_FILENAME,
 } from '../providers/repository-instructions'
 
-
 /**
  * Called on every start AND every resume, deliberately: a launch reads the live profile again.
  * A file changed during a conversation takes effect at the next launch.

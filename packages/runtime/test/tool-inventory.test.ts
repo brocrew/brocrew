@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { boundInventory, parametersOf, qualifyWith, splitQualified, MAX_DECLARED_TOOLS, MAX_PUBLISHED_SERVERS, MAX_PUBLISHED_TOOLS, MAX_TOOL_NAME, MAX_TOOL_PARAMETERS, MAX_TOOL_TEXT } from '../src/tool-inventory'
+import {
+  boundInventory,
+  parametersOf,
+  qualifyWith,
+  splitQualified,
+  MAX_DECLARED_TOOLS,
+  MAX_PUBLISHED_SERVERS,
+  MAX_PUBLISHED_TOOLS,
+  MAX_TOOL_NAME,
+  MAX_TOOL_PARAMETERS,
+  MAX_TOOL_TEXT,
+} from '../src/tool-inventory'
 import { CLAUDE_TOOL_NAMING } from '../src/claude/tool-naming'
 import { CODEX_TOOL_NAMING } from '../src/codex/tool-naming'
 

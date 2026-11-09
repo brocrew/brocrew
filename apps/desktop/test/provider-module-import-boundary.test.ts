@@ -154,7 +154,9 @@ describe('provider modules stay behind the main-process registry', () => {
   })
 
   it('keeps stateless definitions independent of runtime construction and home compatibility', () => {
-    const policies = files.filter((file) => /^providers\/(claude|codex)\/transcripts\.ts$/.test(nameOf(file)))
+    const policies = files.filter((file) =>
+      /^providers\/(claude|codex)\/transcripts\.ts$/.test(nameOf(file)),
+    )
     expect(policies).toHaveLength(2)
     const heavy = new Set([
       programCompatibility,
@@ -211,7 +213,12 @@ describe('provider modules stay behind the main-process registry', () => {
       if (forbidden.has(file)) reached.push(nameOf(file))
       for (const next of valueImports(file)) visit(next)
     }
-    for (const file of files.filter((file) => /^providers\/(claude|codex)\/(instructions|memory|skills|given|kept-rules|snapshot)\.ts$/.test(nameOf(file)))) visit(file)
+    for (const file of files.filter((file) =>
+      /^providers\/(claude|codex)\/(instructions|memory|skills|given|kept-rules|snapshot)\.ts$/.test(
+        nameOf(file),
+      ),
+    ))
+      visit(file)
     expect(reached).toEqual([])
   })
 

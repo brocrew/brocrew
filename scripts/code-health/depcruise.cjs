@@ -14,7 +14,8 @@ module.exports = {
       severity: 'error',
       from: {
         path: '^(apps/desktop/src/|packages/(shared|orchestration)/src/)',
-        pathNot: '^apps/desktop/src/main/providers/(index\\.ts$|workspace-layout\\.mjs$|claude/|codex/)',
+        pathNot:
+          '^apps/desktop/src/main/providers/(index\\.ts$|workspace-layout\\.mjs$|claude/|codex/)',
       },
       to: {
         path: '^(apps/desktop/src/main/providers/(claude|codex)/|packages/runtime/src/(claude|codex)(/|\\.ts$))',

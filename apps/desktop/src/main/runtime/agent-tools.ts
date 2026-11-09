@@ -6161,7 +6161,9 @@ export function agentToolsFor(
        * names it. ⚠️ The sentence INSTRUCTS rather than describing `can_message` (standing rule 8).
        */
       description:
-        'Send a message to an agent: a note for its information, or a follow-up on a piece of work you gave it, which you name — say which. To give work, use give_work; to ask something and get the answer back, use ask_question. It is held until that agent is free, then delivered with whatever else is held for it, oldest first (a person\u2019s command goes on its own). With interrupt: true, the turn that agent is running is also asked to stop, so that the message need not wait for its work to finish; the agent is told who asked for the stop. ' + theRuleOfAStopForWords(undefined, 'it') + ' Use interrupt only for something the agent must know before it goes on, not for a routine note, and only for an agent you started or one started under it. Says whether the message is held or went straight out, and what became of the stop.',
+        'Send a message to an agent: a note for its information, or a follow-up on a piece of work you gave it, which you name — say which. To give work, use give_work; to ask something and get the answer back, use ask_question. It is held until that agent is free, then delivered with whatever else is held for it, oldest first (a person\u2019s command goes on its own). With interrupt: true, the turn that agent is running is also asked to stop, so that the message need not wait for its work to finish; the agent is told who asked for the stop. ' +
+        theRuleOfAStopForWords(undefined, 'it') +
+        ' Use interrupt only for something the agent must know before it goes on, not for a routine note, and only for an agent you started or one started under it. Says whether the message is held or went straight out, and what became of the stop.',
       /**
        * ⛔ **Advertised against a TYPE, so *documented* and *read* cannot drift apart** (415, HO-021
        * §3). ⚠️ The `satisfies` below fails to compile if this shape and
@@ -6222,7 +6224,9 @@ export function agentToolsFor(
             .boolean()
             .optional()
             .describe(
-              'true also asks the turn that agent is running to stop, so that this message need not wait for its work to finish — a turn can run for hours. Use it only for something the agent must know before it goes on: a change of plan, a request to pause and save where it is. To answer a question it asked you, use answer_question, which asks that turn to stop by default. ' + theRuleOfAStopForWords(undefined, 'it') + ' Its open questions stay open. Only for an agent you started or one started under it. Leave it out for anything that can wait.',
+              'true also asks the turn that agent is running to stop, so that this message need not wait for its work to finish — a turn can run for hours. Use it only for something the agent must know before it goes on: a change of plan, a request to pause and save where it is. To answer a question it asked you, use answer_question, which asks that turn to stop by default. ' +
+                theRuleOfAStopForWords(undefined, 'it') +
+                ' Its open questions stay open. Only for an agent you started or one started under it. Leave it out for anything that can wait.',
             ),
         } satisfies Readonly<Record<keyof MessageAgentArguments, z.ZodType>>).map(
           ([field, schema]) => [field, agentToolHandlerInput(schema)],
@@ -7611,7 +7615,13 @@ export function agentToolsFor(
        * state it is in now.
        */
       description:
-        'Stop what an agent below you is doing right now — one you created, or one that those agents created in turn. Its conversation stays open and it can be given something else. It asks the turn it is in to stop: that turn may end there, throwing away whatever it was part-way through, or it may be finished anyway — once the agent is no longer working, get_agent_status says which, so read it there before you rely on either. The stop also ends commands that turn started: ' + PROVIDER_DESCRIPTORS.map((descriptor) => `on ${descriptor.displayName}, ${descriptor.words.interruptActionSummary}`).join('; ') + '.' + ' A command an earlier turn left running keeps running. The answer names what the stop ended, once that turn has ended, and what still runs. The agent is not told who stopped it or why — only, the next time it is sent words, which of its commands the stop ended: to stop its turn and tell it why in one act, use message_agent with interrupt.',
+        'Stop what an agent below you is doing right now — one you created, or one that those agents created in turn. Its conversation stays open and it can be given something else. It asks the turn it is in to stop: that turn may end there, throwing away whatever it was part-way through, or it may be finished anyway — once the agent is no longer working, get_agent_status says which, so read it there before you rely on either. The stop also ends commands that turn started: ' +
+        PROVIDER_DESCRIPTORS.map(
+          (descriptor) =>
+            `on ${descriptor.displayName}, ${descriptor.words.interruptActionSummary}`,
+        ).join('; ') +
+        '.' +
+        ' A command an earlier turn left running keeps running. The answer names what the stop ended, once that turn has ended, and what still runs. The agent is not told who stopped it or why — only, the next time it is sent words, which of its commands the stop ended: to stop its turn and tell it why in one act, use message_agent with interrupt.',
       /**
        * 🔴 **486 · a person is asked as well** (HO-031 §2.4).
        *
@@ -8347,7 +8357,9 @@ export function agentToolsFor(
        * one the asker was told could be.
        */
       description:
-        'Ask a question and get the answer back. Say who answers it: the conversation that gave you your work, a person, or another agent you name, by the piece it owns (W1.2) or its id. A question to the conversation that gave you your work or to a person is about a piece of work you are holding — your own conversation\u2019s work counts — so name the piece, or leave it out when you hold only one; the app knows who gave it to you, and a question about work a person gave you goes to a person. A question to another agent may name the piece it is about, or none. Any work stays yours and stays open — this is not reply_to_parent, which hands it back. This call does not wait: it returns as soon as the question is recorded and routed, and the answer reaches you later as a message, however long they take. An answer can ask the turn you are in to stop, so that you read it at once. ' + theRuleOfAStopForWords(undefined, 'it') + ' Your other questions stay open. If the one you asked cannot answer, or its conversation ends first, you are told that instead. withdraw_question takes a question back. Carry on from here.',
+        'Ask a question and get the answer back. Say who answers it: the conversation that gave you your work, a person, or another agent you name, by the piece it owns (W1.2) or its id. A question to the conversation that gave you your work or to a person is about a piece of work you are holding — your own conversation\u2019s work counts — so name the piece, or leave it out when you hold only one; the app knows who gave it to you, and a question about work a person gave you goes to a person. A question to another agent may name the piece it is about, or none. Any work stays yours and stays open — this is not reply_to_parent, which hands it back. This call does not wait: it returns as soon as the question is recorded and routed, and the answer reaches you later as a message, however long they take. An answer can ask the turn you are in to stop, so that you read it at once. ' +
+        theRuleOfAStopForWords(undefined, 'it') +
+        ' Your other questions stay open. If the one you asked cannot answer, or its conversation ends first, you are told that instead. withdraw_question takes a question back. Carry on from here.',
       /**
        * ⛔ **Advertised against a TYPE, so *documented* and *read* cannot drift apart** — see
        * {@link AskQuestionArguments}, including which addressee it does and does not take.

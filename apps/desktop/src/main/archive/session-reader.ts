@@ -153,8 +153,7 @@ export const MAX_WHOLE_TRANSCRIPT_BYTES = 64 * 1024 * 1024
  */
 export function readTranscript(source: TranscriptSource): ImportedTranscript {
   const size = sizeOf(source.path)
-  if (size === 0)
-    return { entries: [], unreadable: 0, lastAt: source.fallbackAt, edits: undefined }
+  if (size === 0) return { entries: [], unreadable: 0, lastAt: source.fallbackAt, edits: undefined }
   if (size > MAX_WHOLE_TRANSCRIPT_BYTES) {
     throw new Error(
       `${source.path} is ${size} bytes, over readTranscript's ${MAX_WHOLE_TRANSCRIPT_BYTES}-byte ceiling — ` +

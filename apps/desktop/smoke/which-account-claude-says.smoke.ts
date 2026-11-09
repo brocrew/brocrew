@@ -4,7 +4,13 @@ import { join } from 'node:path'
 import { query, type AccountInfo } from '@anthropic-ai/claude-agent-sdk'
 import { expect, it } from 'vitest'
 import { ClaudeRuntime, type ClaudeQuery, type QueryFactory } from '@brobot2/runtime/claude'
-import { claudeKeychainTokenProvider, claudeKeychainTokenProviderAsync, claudeKeychainTokenProviderForALaunch, provisionProviderHome, type SessionHandle } from '@brobot2/runtime'
+import {
+  claudeKeychainTokenProvider,
+  claudeKeychainTokenProviderAsync,
+  claudeKeychainTokenProviderForALaunch,
+  provisionProviderHome,
+  type SessionHandle,
+} from '@brobot2/runtime'
 import {
   closeBounded,
   loopbackRuntime,

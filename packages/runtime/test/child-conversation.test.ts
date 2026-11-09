@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { CHILD_STATE_UNKNOWN, capabilitiesFor, childInputRefusal, childStatusOf, type ChildThreadState } from '../src/index'
-import { CodexRuntime, type CodexLaunchContext, type CodexIncoming, type CodexTransport } from '../src/codex'
+import {
+  CHILD_STATE_UNKNOWN,
+  capabilitiesFor,
+  childInputRefusal,
+  childStatusOf,
+  type ChildThreadState,
+} from '../src/index'
+import {
+  CodexRuntime,
+  type CodexLaunchContext,
+  type CodexIncoming,
+  type CodexTransport,
+} from '../src/codex'
 import { AsyncQueue } from '../src/internal/async-queue'
 import { CODEX_PROTOCOL_VERSION } from '../src/codex/protocol-version'
 import { threadStartResponse } from './fixtures/codex-protocol'

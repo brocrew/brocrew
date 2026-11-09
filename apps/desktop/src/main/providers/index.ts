@@ -236,7 +236,15 @@ export function providerSetupServices(
 import { metadata as claudeMetadata } from './claude/registration'
 import { metadata as codexMetadata } from './codex/registration'
 
-export { legacyAccountRecordFormat, AN_ACCOUNT_ID, providerAccountsFile, readKeptAccounts, writeKeptAccounts, type KnownAccount, type KeptAccounts } from './claude/account-record'
+export {
+  legacyAccountRecordFormat,
+  AN_ACCOUNT_ID,
+  providerAccountsFile,
+  readKeptAccounts,
+  writeKeptAccounts,
+  type KnownAccount,
+  type KeptAccounts,
+} from './claude/account-record'
 export { theCheapestModel } from './claude/api-key'
 export { legacySharedSkillProvider } from './codex/skills'
 export { recordedNativeRead as historicalInstructionReads } from './codex/given'
@@ -285,7 +293,7 @@ export interface ProviderHomeSeams {
 export interface ProviderRuntimeSeams {
   managedProviderHomesRoot?: string
   codexCommand: () => string
-  
+
   claudeProgram: () => string
   /**
    * The API key a person entered for a provider, or null — see `api-keys.ts`. Read on every launch;

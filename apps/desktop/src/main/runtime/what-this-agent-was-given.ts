@@ -134,7 +134,6 @@ function isBroBotsWorkspaceText(text: string): boolean {
  * conversation's are the ones it reported.
  */
 
-
 /** ⚑ A file read now: its text and fingerprint. */
 interface ReadNow {
   readonly text: string
@@ -1503,7 +1502,8 @@ export function oneMessageAsTheModelGotIt(handed: WhatTheMessageReadIsHanded): W
       const brobots = file.text !== undefined
       if (historicalInstructionReads.matches(file.kind)) nativeReadBytes += file.bytes
       const pastTheBudget =
-        historicalInstructionReads.matches(file.kind) && historicalInstructionReads.mayBeCut(nativeReadBytes, file.truncated)
+        historicalInstructionReads.matches(file.kind) &&
+        historicalInstructionReads.mayBeCut(nativeReadBytes, file.truncated)
       const sent = brobots
         ? null
         : pastTheBudget

@@ -1,14 +1,14 @@
 const KEY_CHECK = {
-      issuer: 'Anthropic',
-      checkUrl: 'https://api.anthropic.com/v1/models?limit=100',
-      spendsToken: true,
-      header: 'x-api-key',
-      prefix: '',
-      extraHeaders: {
-        'anthropic-version': '2023-06-01',
-      },
-      windowsLoginNeedsFile: true,
-    }
+  issuer: 'Anthropic',
+  checkUrl: 'https://api.anthropic.com/v1/models?limit=100',
+  spendsToken: true,
+  header: 'x-api-key',
+  prefix: '',
+  extraHeaders: {
+    'anthropic-version': '2023-06-01',
+  },
+  windowsLoginNeedsFile: true,
+}
 import { claudeCredentialsFileReader, parseClaudeOAuthToken } from '@brobot2/runtime'
 import type { ApiKeyCheck } from '../../../shared/runtime-ipc'
 import { bodyOf, checkKeyModelList, KEY_CHECK_TIMEOUT_MS, refusedAt, succeeded } from '../key-check'
@@ -23,8 +23,7 @@ export function aLoginRunsWithoutAKey(
   platform: NodeJS.Platform = process.platform,
   readClaudeLogin: () => string | null = () => claudeCredentialsFileReader()(),
 ): boolean {
-  if (!KEY_CHECK.windowsLoginNeedsFile || platform !== 'win32')
-    return true
+  if (!KEY_CHECK.windowsLoginNeedsFile || platform !== 'win32') return true
   try {
     return parseClaudeOAuthToken(readClaudeLogin(), 0) !== null
   } catch {

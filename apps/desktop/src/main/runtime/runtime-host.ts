@@ -3003,16 +3003,21 @@ const WHAT_A_REOPEN_ADDS: ReadonlySet<TranscriptEvent['type']> = new Set([
 
 /** Older provider events receive display metadata without changing their stored form. */
 function transcriptEventForDisplay(event: TranscriptEvent, owner?: Provider): TranscriptEvent {
-  const provider = owner ?? (event.type === 'unknown'
-    ? SUPPORTED_PROVIDERS.find((one) => one === event.provider)
-    : undefined)
+  const provider =
+    owner ??
+    (event.type === 'unknown'
+      ? SUPPORTED_PROVIDERS.find((one) => one === event.provider)
+      : undefined)
   return provider === undefined
     ? event
     : (providerDefinitions[provider].transcripts.eventForDisplay?.(event) ?? event)
 }
 
 /** Display metadata travels with a row without changing its saved form or ordinal. */
-function transcriptMessageForDisplay(message: RuntimeEventMessage, provider?: Provider): RuntimeEventMessage {
+function transcriptMessageForDisplay(
+  message: RuntimeEventMessage,
+  provider?: Provider,
+): RuntimeEventMessage {
   const event = transcriptEventForDisplay(message.event, provider)
   return event === message.event ? message : { ...message, event }
 }
@@ -14310,7 +14315,9 @@ export class RuntimeHost implements LiveHost {
         continue
       }
       try {
-        sink.send(transcriptMessageForDisplay(message, this.deps.store.recordedOne(sessionId)?.provider))
+        sink.send(
+          transcriptMessageForDisplay(message, this.deps.store.recordedOne(sessionId)?.provider),
+        )
       } catch (error) {
         console.warn(
           `runtime host could not show ${sessionId}'s new row to a window: ${errorMessage(error)}`,
@@ -36057,7 +36064,10 @@ export class RuntimeHost implements LiveHost {
       entries: window.entries.map((entry) => ({
         ordinal: entry.ordinal,
         at: entry.at,
-        event: transcriptEventForDisplay(entry.event, this.deps.store.recordedOne(sessionId)?.provider),
+        event: transcriptEventForDisplay(
+          entry.event,
+          this.deps.store.recordedOne(sessionId)?.provider,
+        ),
         ...(entry.event.type === 'assistant_message'
           ? { humanFinal: humanFinals.get(entry.ordinal) ?? null }
           : {}),

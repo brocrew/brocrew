@@ -1,12 +1,12 @@
 const KEY_CHECK = {
-      issuer: 'OpenAI',
-      checkUrl: 'https://api.openai.com/v1/models',
-      spendsToken: false,
-      header: 'authorization',
-      prefix: 'Bearer ',
-      extraHeaders: {},
-      windowsLoginNeedsFile: false,
-    }
+  issuer: 'OpenAI',
+  checkUrl: 'https://api.openai.com/v1/models',
+  spendsToken: false,
+  header: 'authorization',
+  prefix: 'Bearer ',
+  extraHeaders: {},
+  windowsLoginNeedsFile: false,
+}
 import type { ApiKeyCheck } from '../../../shared/runtime-ipc'
 import { checkKeyModelList } from '../key-check'
 

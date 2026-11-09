@@ -4,7 +4,12 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
-import { codexMessageAsKept, codexTextAsKept, REQUEST_MARKER, savedMethodsLinesInLead } from '../src/main/providers/codex/codex-injected'
+import {
+  codexMessageAsKept,
+  codexTextAsKept,
+  REQUEST_MARKER,
+  savedMethodsLinesInLead,
+} from '../src/main/providers/codex/codex-injected'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
 import { importCodexRollout } from '../src/main/providers/codex/import-transcript'
 import { readingATurn, type TurnAsked } from '../src/main/archive/turn-as-sent'

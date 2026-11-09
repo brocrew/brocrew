@@ -1,4 +1,3 @@
-
 export interface CodexMemorySetting {
   /** The TOML table the key lives in. */
   readonly table: string

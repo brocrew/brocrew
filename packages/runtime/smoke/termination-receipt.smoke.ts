@@ -3,7 +3,12 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { ClaudeRuntime } from '../src/claude'
-import { claudeKeychainTokenProvider, provisionProviderHome, type RuntimeEvent, type SessionHandle } from '../src/index'
+import {
+  claudeKeychainTokenProvider,
+  provisionProviderHome,
+  type RuntimeEvent,
+  type SessionHandle,
+} from '../src/index'
 import { runEvidence, runScratch } from './run-paths'
 
 /**

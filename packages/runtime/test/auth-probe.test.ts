@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { CODEX_UNAUTHORIZED, codexAuthStateFrom, CODEX_SIGN_IN_REFUSED_AT_ROUTING, isCodexUnauthorized, probeCodexAuth } from '../src/codex'
+import {
+  CODEX_UNAUTHORIZED,
+  codexAuthStateFrom,
+  CODEX_SIGN_IN_REFUSED_AT_ROUTING,
+  isCodexUnauthorized,
+  probeCodexAuth,
+} from '../src/codex'
 import { blocksLaunch, isUsable, type AuthState } from '../src/index'
 import type { CodexIncoming, CodexTransport } from '../src/codex'
 

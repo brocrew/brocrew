@@ -2805,7 +2805,9 @@ void runAsSoleInstance({
  * must never make the window wait. The worker answers once and ends; one that stops without an
  * answer, or takes longer than git's own timeout for every folder, is a failed refresh.
  */
-async function locateOffTheMainThread(folders: readonly string[]): Promise<ReadonlyMap<string, string>> {
+async function locateOffTheMainThread(
+  folders: readonly string[],
+): Promise<ReadonlyMap<string, string>> {
   const worker = await startSettingsLocator()
   return new Promise((resolve, reject) => {
     let settled = false

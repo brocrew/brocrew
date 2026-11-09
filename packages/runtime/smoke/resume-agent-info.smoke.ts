@@ -14,7 +14,14 @@ import {
   type Marker,
 } from '../../../scripts/lib/personal-home-guard.mjs'
 import { ClaudeRuntime, claudeProjectDirName, type ClaudeQuery } from '../src/claude'
-import { claudeKeychainTokenProvider, provisionProviderHome, type AgentInfo, type RuntimeEvent, type SessionHandle, type SessionRef } from '../src/index'
+import {
+  claudeKeychainTokenProvider,
+  provisionProviderHome,
+  type AgentInfo,
+  type RuntimeEvent,
+  type SessionHandle,
+  type SessionRef,
+} from '../src/index'
 
 /**
  * **What a RESUMED Claude session says its model is** (179).

@@ -2,7 +2,13 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { CodexRuntime } from '@brobot2/runtime/codex'
-import { codexAuthHealth, provisionCodexAuth, provisionProviderHome, type RuntimeEvent, type SessionHandle } from '@brobot2/runtime'
+import {
+  codexAuthHealth,
+  provisionCodexAuth,
+  provisionProviderHome,
+  type RuntimeEvent,
+  type SessionHandle,
+} from '@brobot2/runtime'
 import { providerSchema } from '@brobot2/shared'
 import { bundledCodexTransportFactory } from '../../../packages/runtime/smoke/bundled-codex'
 import { runEvidence, runScratch } from '../../../packages/runtime/smoke/run-paths'

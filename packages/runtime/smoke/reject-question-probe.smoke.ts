@@ -3,7 +3,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { ClaudeRuntime, type ClaudeQuery, type QueryFactory } from '../src/claude'
-import { claudeKeychainTokenProvider, provisionProviderHome, type RuntimeEvent, type SessionHandle } from '../src/index'
+import {
+  claudeKeychainTokenProvider,
+  provisionProviderHome,
+  type RuntimeEvent,
+  type SessionHandle,
+} from '../src/index'
 
 /**
  * 122 · **Does Claude terminalize a turn whose `AskUserQuestion` was REJECTED?**

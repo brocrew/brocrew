@@ -5,7 +5,12 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AuthUnavailableError, FakeProviderSessions, spawnNoWaitClearsOf, transientSetupFailureOf } from '@brobot2/runtime'
+import {
+  AuthUnavailableError,
+  FakeProviderSessions,
+  spawnNoWaitClearsOf,
+  transientSetupFailureOf,
+} from '@brobot2/runtime'
 import { ClaudeRuntime } from '@brobot2/runtime/claude'
 import { CodexRuntime, createSpawnTransportFactory } from '@brobot2/runtime/codex'
 import type { FakeSessionHandle } from '@brobot2/runtime'

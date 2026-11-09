@@ -1,5 +1,11 @@
 import type { BuiltInSkillsContext } from '../runtime'
-import { BUILT_IN_SKILLS_FAILURE, record, validateBuiltInSkills, isTheSamePath, mayBeWithin } from '../built-in-skills'
+import {
+  BUILT_IN_SKILLS_FAILURE,
+  record,
+  validateBuiltInSkills,
+  isTheSamePath,
+  mayBeWithin,
+} from '../built-in-skills'
 
 export function verifyCodexBuiltInSkills(
   response: unknown,

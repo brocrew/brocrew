@@ -231,7 +231,6 @@ export interface ToolNaming {
   readonly separator: string
 }
 
-
 /** How the model must spell one of `server`'s tools, given the provider's own convention. */
 export function qualifyWith(naming: ToolNaming, server: string, tool: string): string {
   return `${naming.prefix}${server}${naming.separator}${tool}`

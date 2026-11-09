@@ -28,7 +28,11 @@ import {
 } from '../src/main/profile-execution-file'
 import { RuntimeHost, THE_APP_ITSELF, aTurnTheAppCutText } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
-import { readKeptAccounts, writeKeptAccounts, providerAccountsFile } from '../src/main/providers/claude/account-record'
+import {
+  readKeptAccounts,
+  writeKeptAccounts,
+  providerAccountsFile,
+} from '../src/main/providers/claude/account-record'
 import { readKeptUsage, writeKeptUsage, providerUsageFile } from '../src/main/provider-usage-file'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'

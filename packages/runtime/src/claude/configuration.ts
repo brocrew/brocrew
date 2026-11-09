@@ -1,4 +1,8 @@
-import { humanList, type ProviderConfigLayout, type SdkOptionClaim } from '../provider-configuration'
+import {
+  humanList,
+  type ProviderConfigLayout,
+  type SdkOptionClaim,
+} from '../provider-configuration'
 type OptionStance = SdkOptionClaim['stance']
 export const CLAUDE_SDK_OPTIONS: readonly SdkOptionClaim[] = [
   { option: 'tools', label: 'tools', stance: 'passed' },
@@ -18,12 +22,8 @@ export const CLAUDE_SDK_OPTIONS: readonly SdkOptionClaim[] = [
   },
 ]
 
-
-
-
 const labelsFor = (stance: OptionStance): string[] =>
   CLAUDE_SDK_OPTIONS.filter((claim) => claim.stance === stance).map((claim) => claim.label)
-
 
 const CLAUDE_MODEL_NOTE =
   `programmatic — ${humanList(labelsFor('passed'))} are passed as SDK query() options; ` +
@@ -32,7 +32,6 @@ const CLAUDE_MODEL_NOTE =
     ? ''
     : ` ${humanList(labelsFor('absent'))}: NOT passed — this app configures none, and the pins above` +
       ` mean none are read from a file either`)
-
 
 export const CLAUDE_CONFIG_LAYOUT: ProviderConfigLayout = {
   homeEnv: 'CLAUDE_CONFIG_DIR',
@@ -47,4 +46,3 @@ export const CLAUDE_CONFIG_LAYOUT: ProviderConfigLayout = {
     },
   ],
 }
-

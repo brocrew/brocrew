@@ -12,7 +12,14 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { childWorkRoot, claudeSidecarPath, countThinkingBlocks, locateChildWork, parseClaudeSidecar, readChildWork } from '../src/main/providers/claude/child-work'
+import {
+  childWorkRoot,
+  claudeSidecarPath,
+  countThinkingBlocks,
+  locateChildWork,
+  parseClaudeSidecar,
+  readChildWork,
+} from '../src/main/providers/claude/child-work'
 import { readChildFile } from '../src/main/child-work-file'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

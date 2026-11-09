@@ -6,7 +6,11 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { TheCliAnswersInOrder } from '../../../packages/runtime/test/the-cli-answers-in-order'
-import { AuthUnavailableError, CLAUDE_LOGIN_RENEWED, type ClaudeLoginRenewal } from '@brobot2/runtime'
+import {
+  AuthUnavailableError,
+  CLAUDE_LOGIN_RENEWED,
+  type ClaudeLoginRenewal,
+} from '@brobot2/runtime'
 import { ClaudeRuntime } from '@brobot2/runtime/claude'
 import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'

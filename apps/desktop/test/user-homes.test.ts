@@ -4,7 +4,11 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import Database from 'better-sqlite3'
 import { claudeHomeDescriptions } from '../src/main/providers/claude/discovery'
-import { discoverUserHomeSessions, userProviderHomePath, userProviderHomes } from '../src/main/adopt/user-homes'
+import {
+  discoverUserHomeSessions,
+  userProviderHomePath,
+  userProviderHomes,
+} from '../src/main/adopt/user-homes'
 import { claudeProjectDirName } from '@brobot2/runtime/claude'
 
 /**

@@ -15,7 +15,11 @@ import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { profileBundleSpans, thisConversationSpans } from '../src/main/runtime/factory-text'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
-import { brobotWorkspace, ensureWorkspace, workspaceOwnFilesIn } from '../src/main/runtime/workspace'
+import {
+  brobotWorkspace,
+  ensureWorkspace,
+  workspaceOwnFilesIn,
+} from '../src/main/runtime/workspace'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { SNAPSHOT_FILES, snapshotFor } from '../src/main/provider-snapshots'
 import {

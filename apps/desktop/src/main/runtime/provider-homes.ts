@@ -13,7 +13,6 @@ import {
   profileAlreadyNamed,
 } from '../../shared/runtime-ipc'
 
-
 export type { ProviderAuthOps, ProviderHomeSeams, ProviderRuntimeSeams } from '../providers'
 
 /**

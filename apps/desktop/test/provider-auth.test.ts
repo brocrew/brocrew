@@ -3,7 +3,11 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { A_CHECK_NOT_ANSWERED_SAYS, type AuthState, type ReprovisionOutcome } from '@brobot2/runtime'
+import {
+  A_CHECK_NOT_ANSWERED_SAYS,
+  type AuthState,
+  type ReprovisionOutcome,
+} from '@brobot2/runtime'
 import { type CodexLoginOutcome } from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'

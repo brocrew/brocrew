@@ -4,7 +4,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { expect, it } from 'vitest'
-import { buildChildEnv, claudeKeychainTokenProvider, provisionProviderHome, type RuntimeEvent, type SessionHandle } from '../src/index'
+import {
+  buildChildEnv,
+  claudeKeychainTokenProvider,
+  provisionProviderHome,
+  type RuntimeEvent,
+  type SessionHandle,
+} from '../src/index'
 import { ClaudeRuntime } from '../src/claude'
 
 /**

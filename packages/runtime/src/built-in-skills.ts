@@ -38,13 +38,7 @@ export function validateBuiltInSkills(
       !/^[a-z][a-z0-9-]{0,63}$/.test(bare) ||
       names.has(skill.name) ||
       skill.name !== `${layout.prefix}${bare}` ||
-      skill.path !==
-        path.join(
-          context.root,
-          layout.directory,
-          bare,
-          'SKILL.md',
-        ) ||
+      skill.path !== path.join(context.root, layout.directory, bare, 'SKILL.md') ||
       !skill.description ||
       skill.description.length > 500
     ) {

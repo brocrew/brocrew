@@ -16,7 +16,14 @@ import ts from 'typescript'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { ClaudeRuntime } from '@brobot2/runtime/claude'
-import { FakeProviderSessions, FakeRuntime, FakeSessionHandle, type AgentRuntime, type AgentToolset, type StartOptions } from '@brobot2/runtime'
+import {
+  FakeProviderSessions,
+  FakeRuntime,
+  FakeSessionHandle,
+  type AgentRuntime,
+  type AgentToolset,
+  type StartOptions,
+} from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

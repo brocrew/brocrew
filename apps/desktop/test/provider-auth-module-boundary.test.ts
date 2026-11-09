@@ -62,7 +62,11 @@ describe('provider authentication has one owner', () => {
     'keeps only compatibility exports in %s',
     (file) => {
       if (!existsSync(new URL(file, main))) {
-        expect(['runtime/claude-program.ts', 'runtime/codex-binary.ts', 'runtime/provider-versions.ts']).toContain(file)
+        expect([
+          'runtime/claude-program.ts',
+          'runtime/codex-binary.ts',
+          'runtime/provider-versions.ts',
+        ]).toContain(file)
         return
       }
       const implementations = sourceOf(file)

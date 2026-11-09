@@ -12,11 +12,24 @@ import {
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, parse, resolve } from 'node:path'
 import { claudeAutoMemoryIndex } from '@brobot2/runtime/claude'
-import { codexAdHocNotesDir, codexMemoryDir, codexMemoryIndex, codexMemorySummary } from '@brobot2/runtime/codex'
+import {
+  codexAdHocNotesDir,
+  codexMemoryDir,
+  codexMemoryIndex,
+  codexMemorySummary,
+} from '@brobot2/runtime/codex'
 import { SUPPORTED_PROVIDERS } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { AGENT_MEMORY_NOTES_SHOWN, AGENT_MEMORY_TOTAL_CAP, composeSystemHint, INSTRUCTION_FILE_CAP, INSTRUCTION_TOTAL_CAP, readInstructionFile, readSessionInstructions } from '../src/main/runtime/instructions'
+import {
+  AGENT_MEMORY_NOTES_SHOWN,
+  AGENT_MEMORY_TOTAL_CAP,
+  composeSystemHint,
+  INSTRUCTION_FILE_CAP,
+  INSTRUCTION_TOTAL_CAP,
+  readInstructionFile,
+  readSessionInstructions,
+} from '../src/main/runtime/instructions'
 import { projectInstructionChain } from '../src/main/providers/claude/instructions'
 
 /**

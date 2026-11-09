@@ -5,18 +5,11 @@ export interface ProviderConfigLayout {
   readonly files: readonly { readonly name: string; readonly note: string }[]
 }
 
-type OptionStance =
-  
-  | 'passed'
-  
-  | 'pinned'
-  
-  | 'absent'
+type OptionStance = 'passed' | 'pinned' | 'absent'
 
 export interface SdkOptionClaim {
-  
   readonly option: string
-  
+
   readonly label: string
   readonly stance: OptionStance
 }

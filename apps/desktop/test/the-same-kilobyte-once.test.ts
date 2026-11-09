@@ -21,7 +21,12 @@ import {
 } from '../src/main/runtime/instructions'
 import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
 import { CODEX_INSTRUCTIONS_FILE } from '../src/main/providers/codex/layout.mjs'
-import { brobotWorkspace, ensureWorkspace, WORKSPACE_CANARY, workspaceOwnFilesIn } from '../src/main/runtime/workspace'
+import {
+  brobotWorkspace,
+  ensureWorkspace,
+  WORKSPACE_CANARY,
+  workspaceOwnFilesIn,
+} from '../src/main/runtime/workspace'
 
 /**
  * 🔴 **The same kilobyte, once** (594, `HO-075` §1 · `576`'s measurement).

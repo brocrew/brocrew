@@ -4,7 +4,12 @@ import { describe, expect, it } from 'vitest'
 import { TheCliAnswersInOrder } from '../../../packages/runtime/test/the-cli-answers-in-order'
 import { ClaudeRuntime, type ClaudeSessionHandle, type ClaudeQuery } from '@brobot2/runtime/claude'
 import { CodexRuntime, type CodexIncoming, type CodexTransport } from '@brobot2/runtime/codex'
-import { PLAN_CONSENTS, type PermissionOutcome, type PlanConsent, type RuntimeEvent } from '@brobot2/runtime'
+import {
+  PLAN_CONSENTS,
+  type PermissionOutcome,
+  type PlanConsent,
+  type RuntimeEvent,
+} from '@brobot2/runtime'
 import { CODEX_PROTOCOL_VERSION } from '../../../packages/runtime/src/codex/protocol-version'
 import {
   completedTurn,

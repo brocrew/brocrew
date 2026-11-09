@@ -5,7 +5,15 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { boundInventory, MAX_COMMAND_TEXT, FakeRuntime, MAX_TOOL_TEXT, type FakeSessionHandle, type AgentToolset, type StartOptions } from '@brobot2/runtime'
+import {
+  boundInventory,
+  MAX_COMMAND_TEXT,
+  FakeRuntime,
+  MAX_TOOL_TEXT,
+  type FakeSessionHandle,
+  type AgentToolset,
+  type StartOptions,
+} from '@brobot2/runtime'
 import { CODEX_TOOL_NAMING } from '../../../packages/runtime/src/codex/tool-naming'
 import { CODEX_TOOLS_DESCRIPTION } from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
@@ -40,7 +48,11 @@ import {
 import { profileBundleSpans, thisConversationSpans } from '../src/main/runtime/factory-text'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
-import { brobotWorkspace, ensureWorkspace, workspaceOwnFilesIn } from '../src/main/runtime/workspace'
+import {
+  brobotWorkspace,
+  ensureWorkspace,
+  workspaceOwnFilesIn,
+} from '../src/main/runtime/workspace'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { SNAPSHOT_FILES, snapshotFor } from '../src/main/provider-snapshots'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'

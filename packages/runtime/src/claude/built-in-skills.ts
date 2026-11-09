@@ -1,5 +1,11 @@
 import type { BuiltInSkillsContext } from '../runtime'
-import { BUILT_IN_SKILLS_FAILURE, record, validateBuiltInSkills, isTheSamePath, mayBeTheSamePath } from '../built-in-skills'
+import {
+  BUILT_IN_SKILLS_FAILURE,
+  record,
+  validateBuiltInSkills,
+  isTheSamePath,
+  mayBeTheSamePath,
+} from '../built-in-skills'
 
 export function claudeBuiltInSkillOptions(context: BuiltInSkillsContext, sharedRoot?: string) {
   validateBuiltInSkills(context, { prefix: 'brobot:', directory: 'skills' })
@@ -44,4 +50,3 @@ export function verifyClaudeBuiltInSkills(
     throw new Error(BUILT_IN_SKILLS_FAILURE)
   }
 }
-

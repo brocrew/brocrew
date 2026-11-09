@@ -3,10 +3,13 @@ import { CODEX_CONFIG_LAYOUT } from '@brobot2/runtime/codex'
 export const metadata = {
   signInKey: () => 'codex',
   signInConflict(holder: string, asked: string): Error {
-    if (holder === asked) return new Error('a codex sign-in is already in progress for this profile')
-    return new Error(`a codex sign-in is already in progress for the profile "${holder}" — only one can run ` +
-      'at a time, because codex sends its browser redirect to one fixed port on this machine. ' +
-      'Finish or cancel that one, then try again.')
+    if (holder === asked)
+      return new Error('a codex sign-in is already in progress for this profile')
+    return new Error(
+      `a codex sign-in is already in progress for the profile "${holder}" — only one can run ` +
+        'at a time, because codex sends its browser redirect to one fixed port on this machine. ' +
+        'Finish or cancel that one, then try again.',
+    )
   },
   config: CODEX_CONFIG_LAYOUT,
   deletionWords: [

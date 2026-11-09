@@ -3,13 +3,13 @@ import { providerDescriptor, providerRecord } from '@brobot2/shared'
 export interface ProviderCommand {
   /** What the provider calls it, without its prefix — `compact`, `imagegen`. */
   readonly name: string
-  
+
   readonly description?: string
   /** The provider's own hint for what follows the command — `[pr number]`. 17 of 44 carry one. */
   readonly argumentHint?: string
-  
+
   readonly aliases?: string[]
-  
+
   readonly skill?: ProviderSkill
 }
 
