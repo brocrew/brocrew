@@ -300,7 +300,7 @@ it('uses the prepared adapter runtime for a start', async () => {
   }))
   Reflect.set(f.deps, 'prepareProviderLaunch', prepared)
   const started = await host.createSession({ provider: 'claude', cwd: dir }, sink)
-  expect(started.ok).toBe(true)
+  expect(started.sessionId).toBeTruthy()
   const creations = f.create.mock.calls.length
   expect(creations).toBe(prepared.mock.calls.length)
   expect(f.rawRuntimes.some((runtime) => vi.mocked(runtime.start).mock.calls.length > 0)).toBe(true)
