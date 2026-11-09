@@ -16,7 +16,8 @@ if (names.length === 0) {
   process.exit(1)
 }
 const commitNames = [...names, ...listed('BROBOT_COMMIT_PATTERNS')]
-const carries = (text, list) => list.some((name) => text.normalize('NFC').toLowerCase().includes(name))
+const carries = (text, list) =>
+  list.some((name) => text.normalize('NFC').toLowerCase().includes(name))
 const git = (args, input) =>
   execFileSync('git', args, { encoding: 'utf8', input, maxBuffer: 256 * 1024 * 1024 })
 
