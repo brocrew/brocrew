@@ -19,9 +19,7 @@ export function noPrivateCredential(value: unknown, secret: string): void {
     return item
   })
 }
-export async function pluginProviderFixture(
-  options: { diagnostic?: PluginToolDiagnostic } = {},
-) {
+export async function pluginProviderFixture(options: { diagnostic?: PluginToolDiagnostic } = {}) {
   const credential = createPluginCredential()
   const seen: { method: string; authenticated: boolean }[] = []
   const audit: unknown[] = []
