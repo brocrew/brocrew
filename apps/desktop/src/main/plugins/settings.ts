@@ -21,9 +21,11 @@ import {
   PLUGIN_STATES,
   pluginMutationAllowed,
   PluginMutationReviewSchema,
+  PluginReviewProgressSchema,
   type PluginReviewTransfer,
   PluginDisplayedConsentSchema,
   PLUGIN_REVIEW_INVALIDATED,
+  PLUGIN_REVIEW_PROGRESS,
   type PluginMutationReview,
   type PluginMutationFailure,
   type PluginMutationConsent,
@@ -101,6 +103,7 @@ export function registerPluginSettings(
       generation: number
       screen?: PluginConfigurationView
       reviews: Map<string, { reviewId: string; review: PluginMutationReview }>
+      pending?: { requestId: string; id: string; abort: AbortController }
     }
   >()
   const liveWindows = new Set<BrowserWindow>()
@@ -117,6 +120,8 @@ export function registerPluginSettings(
     const state = windows.get(owner)
     if (!state) return 0
     const generation = ++state.generation
+    state.pending?.abort.abort()
+    state.pending = undefined
     if (!preservingReview) {
       state.reviews.clear()
       controller?.cancelPreparations?.()
@@ -277,7 +282,18 @@ export function registerPluginSettings(
       const state = windows.get(owner)!
       let created: PluginConfigurationView | undefined
       let mutationContext = false
+      let preparing: typeof state.pending
+      let preparationGeneration = state.generation
       try {
+        if (input.kind === 'cancel-prepare' && exact(input, ['kind', 'id', 'requestId'])) {
+          const pending = state.pending
+          if (pending && pending.requestId === input.requestId && pending.id === input.id) {
+            pending.abort.abort()
+            state.pending = undefined
+            state.generation++
+          }
+          return { ok: true }
+        }
         if (input.kind === 'close' && exact(input, ['kind'])) {
           await close(owner)
           return { ok: true }
@@ -335,7 +351,9 @@ export function registerPluginSettings(
             input.kind === 'configure'
               ? ['kind', 'id', 'screenId', 'bounds']
               : input.kind === 'prepare'
-                ? ['kind', 'id', 'action']
+                ? Object.hasOwn(input, 'requestId')
+                  ? ['kind', 'id', 'action', 'requestId']
+                  : ['kind', 'id', 'action']
                 : Object.hasOwn(input, 'consent') &&
                     ['install', 'update'].includes(String(input.kind))
                   ? ['kind', 'id', 'consent']
@@ -343,6 +361,21 @@ export function registerPluginSettings(
           )
         )
           return refused
+        if (input.kind === 'prepare') {
+          const requestId = Object.hasOwn(input, 'requestId') ? input.requestId : randomUUID()
+          if (
+            typeof requestId !== 'string' ||
+            !PluginReviewProgressSchema.shape.requestId.safeParse(requestId).success ||
+            !['install', 'update'].includes(String(input.action))
+          )
+            return refused
+          const closing = close(owner)
+          preparing = { requestId, id: input.id, abort: new AbortController() }
+          preparationGeneration = state.generation
+          state.pending = preparing
+          await closing
+          if (state.pending !== preparing || preparing.abort.signal.aborted) return refused
+        }
         if (input.kind === 'configure') {
           if (state.reviews.size) await close(owner)
           if (!rectangle(input.bounds, owner)) {
@@ -406,12 +439,38 @@ export function registerPluginSettings(
             !pluginMutationAllowed({ ...card, preparationRequired: undefined }, action)
           )
             throw new PluginSupervisorError('policy-refused')
-          const generation = await close(owner)
-          const parsed = PluginMutationReviewSchema.safeParse(
-            await controller.reviewMutation(action, card.id),
+          const generation = preparationGeneration
+          const pending = preparing!
+          const requestId = pending.requestId
+          if (
+            state.pending !== pending ||
+            generation !== state.generation ||
+            pending.abort.signal.aborted
           )
+            return refused
+          let result: PluginMutationReview
+          try {
+            result = await controller.reviewMutation(action, card.id, {
+              requestId,
+              signal: pending.abort.signal,
+              onProgress(progress) {
+                if (
+                  state.pending !== pending ||
+                  generation !== state.generation ||
+                  owner.isDestroyed()
+                )
+                  return
+                if (progress.requestId === requestId && progress.id === card.id)
+                  owner.webContents.send(PLUGIN_REVIEW_PROGRESS, progress)
+              },
+            })
+          } finally {
+            if (state.pending === pending) state.pending = undefined
+          }
+          const parsed = PluginMutationReviewSchema.safeParse(result)
           if (!parsed.success || generation !== state.generation || owner.isDestroyed()) {
-            controller.cancelPreparations?.()
+            if (generation === state.generation && !owner.isDestroyed())
+              controller.cancelPreparations?.()
             throw new PluginSupervisorError('policy-refused')
           }
           const { consent, ...display } = parsed.data
@@ -571,6 +630,8 @@ export function registerPluginSettings(
           return { ...failure, mutationFailure }
         }
         return failure
+      } finally {
+        if (preparing && state.pending === preparing) state.pending = undefined
       }
     },
   )

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef } from 'vue'
+import ProgressBar from './ProgressBar.vue'
 import { loadPluginConfiguration } from '../lib/plugin-configuration-load'
 import {
   pluginMutationAllowed,
@@ -14,6 +15,7 @@ import {
 } from '../../../shared/plugin-settings'
 import type {
   PluginCard,
+  PluginReviewProgress,
   PluginWindowReview,
   PluginListState,
   PluginListFailureReason,
@@ -32,6 +34,39 @@ const cards = ref<PluginCard[]>([]),
   starting = ref<string | null>(null)
 const reviews = ref(new Map<string, PluginWindowReview>())
 let stopReviews = () => {}
+interface ReviewPreparation {
+  id: string
+  requestId: string
+  generation: number
+  stop: () => void
+}
+const preparation = shallowRef<ReviewPreparation | null>(null)
+const reviewProgress = ref<PluginReviewProgress | null>(null)
+const progressLabel = computed(() => {
+  const progress = reviewProgress.value
+  if (!progress) return 'Preparing plugin review…'
+  const name = cards.value.find((card) => card.id === progress.id)?.name ?? progress.id
+  if (progress.phase === 'checking') return `Checking ${name}…`
+  const received = progress.receivedBytes.toLocaleString()
+  return progress.totalBytes
+    ? `Downloading ${name}: ${received} of ${progress.totalBytes.toLocaleString()} bytes`
+    : `Downloading ${name}: ${received} bytes`
+})
+function currentPreparation(own: ReviewPreparation) {
+  return alive && preparation.value === own && own.generation === generation
+}
+function retirePreparation(cancel = false) {
+  const own = preparation.value
+  if (!own) return
+  preparation.value = null
+  reviewProgress.value = null
+  own.stop()
+  busy.value = false
+  if (cancel) {
+    generation++
+    void request({ kind: 'cancel-prepare', id: own.id, requestId: own.requestId })
+  }
+}
 const selected = ref<PluginCard | null>(null),
   confirmation = ref<PluginCard | null>(null),
   stage = ref<HTMLElement | null>(null),
@@ -113,7 +148,6 @@ function actionFailure(action: string, answer: PluginSettingsReply, consent = fa
   return `Couldn't ${action}. ${detail} ${next}`
 }
 const current = (turn: number) => alive && turn === generation
-let preparing: number | undefined
 const failedRetries = ref(new Set<string>())
 const cannotStart = (card: PluginCard) => card.state === 'Unavailable'
 async function restartChrome() {
@@ -251,21 +285,37 @@ async function configure(card: PluginCard) {
 }
 async function preview(action: 'install' | 'update', card: PluginCard) {
   if (busy.value || card.mutationBlocked) return
-  const turn = ++generation
-  preparing = turn
+  retirePreparation(true)
+  const own: ReviewPreparation = {
+    id: card.id,
+    requestId: crypto.randomUUID(),
+    generation: ++generation,
+    stop: () => {},
+  }
+  preparation.value = own
   busy.value = true
   error.value = ''
   reviews.value.clear()
-  const answer = await request({ kind: 'prepare', action, id: card.id })
-  if (!current(turn)) return
-  preparing = undefined
-  busy.value = false
+  own.stop =
+    client?.onReviewProgress?.((progress) => {
+      if (
+        !currentPreparation(own) ||
+        progress.id !== own.id ||
+        progress.requestId !== own.requestId
+      )
+        return
+      reviewProgress.value = { ...progress }
+    }) ?? (() => {})
+  const answer = await request({ kind: 'prepare', action, id: card.id, requestId: own.requestId })
+  if (!currentPreparation(own)) return
+  retirePreparation()
   const parsed = answer.ok ? PluginWindowReviewSchema.safeParse(answer.review) : null
   if (parsed?.success && parsed.data.id === card.id && parsed.data.action === action)
     reviews.value.set(card.id, parsed.data)
   else error.value = actionFailure(`review ${action} of ${card.name}`, answer)
 }
 async function cancelReview() {
+  retirePreparation(true)
   const turn = ++generation
   reviews.value.clear()
   error.value = ''
@@ -337,14 +387,10 @@ onMounted(async () => {
   stopReviews =
     client?.onReviewInvalidated?.(() => {
       if (!alive) return
-      if (preparing === generation || reviews.value.size > 0)
+      if (preparation.value || reviews.value.size > 0)
         error.value =
           'This plugin review is no longer current. Review it again before installing or updating.'
-      if (preparing === generation) {
-        generation++
-        preparing = undefined
-        busy.value = false
-      }
+      retirePreparation(true)
       reviews.value.clear()
     }) ?? (() => {})
   stop =
@@ -375,6 +421,7 @@ onMounted(async () => {
   scheduleHealth()
 })
 onUnmounted(() => {
+  retirePreparation(true)
   alive = false
   clearTimeout(healthTimer)
   generation++
@@ -530,6 +577,35 @@ onUnmounted(() => {
               >Restart BroCrew if this keeps happening.</span
             >
           </p>
+        </div>
+        <div
+          v-if="preparation?.id === card.id"
+          class="plugin-review-transfer"
+          data-cy="plugin-review-transfer"
+        >
+          <p
+            :id="`${preparation.requestId}-progress`"
+            role="status"
+            data-cy="plugin-review-progress-label"
+          >
+            {{ progressLabel }}
+          </p>
+          <ProgressBar
+            v-if="reviewProgress"
+            :phase="reviewProgress.phase"
+            :received="reviewProgress.receivedBytes"
+            :total="reviewProgress.totalBytes"
+            :aria-labelledby="`${preparation.requestId}-progress`"
+            data-cy="plugin-review-progress"
+          />
+          <button
+            class="bb-button"
+            type="button"
+            data-cy="plugin-prepare-cancel"
+            @click="retirePreparation(true)"
+          >
+            Cancel
+          </button>
         </div>
         <div
           v-if="reviews.get(card.id)"
@@ -793,6 +869,13 @@ h2 {
 button:disabled {
   cursor: default;
   opacity: 0.55;
+}
+.plugin-review-transfer {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
 }
 .plugin-confirmation {
   flex-basis: 100%;

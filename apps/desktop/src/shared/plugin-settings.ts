@@ -3,6 +3,7 @@ export {
   PLUGIN_SETTINGS_CHANNEL,
   PLUGIN_SCREEN_CLOSED,
   PLUGIN_REVIEW_INVALIDATED,
+  PLUGIN_REVIEW_PROGRESS,
 } from './plugin-settings-channels'
 const disclosureText = (maximum: number) =>
   z
@@ -311,7 +312,8 @@ export type PluginSettingsRequest =
   | { kind: 'list' | 'status' | 'availability' }
   | { kind: 'install' | 'update'; id: string; consent?: PluginDisplayedConsent }
   | { kind: 'uninstall' | 'retry' | 'restart'; id: string }
-  | { kind: 'prepare'; action: 'install' | 'update'; id: string }
+  | { kind: 'prepare'; action: 'install' | 'update'; id: string; requestId?: string }
+  | { kind: 'cancel-prepare'; id: string; requestId: string }
   | { kind: 'configure'; id: string; screenId: string; bounds: PluginScreenBounds }
   | { kind: 'bounds'; bounds: PluginScreenBounds }
   | { kind: 'close' }
@@ -344,5 +346,6 @@ export type PluginSettingsReply =
 export interface PluginsClient {
   request(input: PluginSettingsRequest): Promise<PluginSettingsReply>
   onReviewInvalidated?(listener: () => void): () => void
+  onReviewProgress?(listener: (progress: PluginReviewProgress) => void): () => void
   onClosed(listener: (screenId: string) => void): () => void
 }

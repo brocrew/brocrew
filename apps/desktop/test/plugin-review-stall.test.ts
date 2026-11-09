@@ -96,6 +96,53 @@ it.each(['preview', 'owner'] as const)(
 )
 
 it.each(['preview', 'owner'] as const)(
+  'delivers real byte progress from a slow %s transfer to only its Settings window',
+  async (where) => {
+    const { f, client } = await setup()
+    const peer = settingsPeer(client),
+      other = settingsPeer(client)
+    const requestId = randomUUID()
+    let started!: () => void
+    const begun = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    const download = where === 'preview' ? f.download : f.ownerDownload
+    download.mockImplementationOnce((_release, signal, onProgress) => {
+      started()
+      return progressing(f.next.archive, signal, onProgress)
+    })
+    const pending = peer.call({ kind: 'prepare', action: 'update', id: 'chrome', requestId })
+    await begun
+    await vi.advanceTimersByTimeAsync(60_001)
+    expect(await pending).toMatchObject({ ok: true })
+    const delivered = peer.owner.webContents.send.mock.calls
+      .filter(([channel]) => channel === 'plugins:review-progress')
+      .map(([, value]) => value)
+    const width = Math.ceil(f.next.archive.length / 3)
+    for (const receivedBytes of [width, width * 2, f.next.archive.length])
+      expect(delivered).toContainEqual({
+        requestId,
+        id: 'chrome',
+        phase: 'downloading',
+        receivedBytes,
+        totalBytes: f.next.archive.length,
+      })
+    expect(delivered).toContainEqual({
+      requestId,
+      id: 'chrome',
+      phase: 'checking',
+      receivedBytes: f.next.archive.length,
+      totalBytes: f.next.archive.length,
+    })
+    expect(other.owner.webContents.send).not.toHaveBeenCalledWith(
+      'plugins:review-progress',
+      expect.anything(),
+    )
+    expect(f.f.state.inspect().guards[0]?.release.version).toBe('1.0.1')
+  },
+)
+
+it.each(['preview', 'owner'] as const)(
   'returns the real %s stall notice before any update is offered',
   async (where) => {
     const { f, client } = await setup()
@@ -155,10 +202,11 @@ it('cancelling a pending review aborts its real owner-side download without publ
         started()
       }),
   )
-  const peer = settingsPeer(client)
-  const pending = peer.call({ kind: 'prepare', action: 'update', id: 'chrome' })
+  const peer = settingsPeer(client),
+    requestId = randomUUID()
+  const pending = peer.call({ kind: 'prepare', action: 'update', id: 'chrome', requestId })
   await begun
-  await peer.call({ kind: 'close' })
+  await peer.call({ kind: 'cancel-prepare', id: 'chrome', requestId })
   await stopped
   expect(await pending).toMatchObject({ ok: false, mutationFailure: 'policy-refused' })
   expect(f.f.state.inspect().pending).toBeNull()

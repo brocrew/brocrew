@@ -60,6 +60,7 @@ export const NOT_THE_WIRE: ReadonlySet<string> = new Set([
   'onState', // Setup progress is a passive main-to-renderer subscription.
   'onClosed', // Plugin-screen lifecycle push; the listener remains in preload.
   'onReviewInvalidated', // Passive review invalidation push; no payload or invoke.
+  'onReviewProgress', // Main-owned progress push; the subscription callback stays in preload.
   'onEvent',
   'onLiveness',
   'onClosing',

@@ -1097,12 +1097,20 @@ function preloadSurface(): Map<string, string> {
   const plugins = membersOf(
     withoutProse(source('src/preload/plugins.ts')).replace(/^ {4}(?=\w)/gm, '  '),
   )
-  expect([...plugins.keys()].sort()).toEqual(['onClosed', 'onReviewInvalidated', 'request'])
+  expect([...plugins.keys()].sort()).toEqual([
+    'onClosed',
+    'onReviewInvalidated',
+    'onReviewProgress',
+    'request',
+  ])
   expect(plugins.get('onClosed')).toContain('ipc.on(PLUGIN_SCREEN_CLOSED, notify)')
   expect(plugins.get('onClosed')).toContain('ipc.off(PLUGIN_SCREEN_CLOSED, notify)')
   expect(plugins.get('onReviewInvalidated')).toContain('ipc.on(PLUGIN_REVIEW_INVALIDATED, notify)')
   expect(plugins.get('onReviewInvalidated')).toContain('ipc.off(PLUGIN_REVIEW_INVALIDATED, notify)')
   expect(plugins.get('onReviewInvalidated')).not.toContain('ipc.invoke')
+  expect(plugins.get('onReviewProgress')).toContain('ipc.on(PLUGIN_REVIEW_PROGRESS, notify)')
+  expect(plugins.get('onReviewProgress')).toContain('ipc.off(PLUGIN_REVIEW_PROGRESS, notify)')
+  expect(plugins.get('onReviewProgress')).not.toContain('ipc.invoke')
   for (const [name, body] of plugins)
     surface.set(name, body.replace('ipc.invoke', 'ipcRenderer.invoke'))
   expect(surface.get('storage')).toMatch(/^ {2}storage: storageBridge\(ipcRenderer\),/)
@@ -1228,32 +1236,29 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
     const body = surface.get('onState')!
     expect(body).toContain('ipc.on(PROVIDER_SETUP_CHANNELS.changed, forward)')
     expect(body).toContain('ipc.off(PROVIDER_SETUP_CHANNELS.changed, forward)')
-    expect(invokes(body)).toBe(false)
-    expect(NOT_THE_WIRE.has('onState')).toBe(true)
-    const planted = body + "\nipcRenderer.invoke('planted-setup-command')"
-    expect(invokes(planted)).toBe(true)
-    expect(
-      [...surface]
-        .filter(([name, member]) => !invokes(name === 'onState' ? planted : member))
-        .map(([name]) => name)
-        .sort(),
-    ).not.toEqual([...NOT_THE_WIRE].sort())
   })
 
-  it('the review subscription alone is exempt; planting any invoke makes it a wire member', () => {
-    const body = surface.get('onReviewInvalidated')!
-    expect(NOT_THE_WIRE.has('onReviewInvalidated')).toBe(true)
-    expect(invokes(body)).toBe(false)
-    const planted = body + "\nif (false) ipcRenderer.invoke('planted-review-command')"
-    expect(invokes(planted)).toBe(true)
-    expect(
-      [...surface]
-        .filter(([name, member]) => !invokes(name === 'onReviewInvalidated' ? planted : member))
-        .map(([name]) => name)
-        .sort(),
-    ).not.toEqual([...NOT_THE_WIRE].sort())
-    expect(NOT_THE_WIRE.has('request')).toBe(false)
-  })
+  it.each(['onState', 'onReviewInvalidated', 'onReviewProgress'])(
+    'the %s subscription alone is exempt; planting any invoke makes it a wire member',
+    (name) => {
+      const body = surface.get(name)!
+      expect(NOT_THE_WIRE.has(name)).toBe(true)
+      expect(invokes(body)).toBe(false)
+      const planted =
+        body +
+        (name === 'onState'
+          ? "\nipcRenderer.invoke('planted-setup-command')"
+          : "\nif (false) ipcRenderer.invoke('planted-review-command')")
+      expect(invokes(planted)).toBe(true)
+      expect(
+        [...surface]
+          .filter(([key, member]) => !invokes(key === name ? planted : member))
+          .map(([name]) => name)
+          .sort(),
+      ).not.toEqual([...NOT_THE_WIRE].sort())
+      expect(NOT_THE_WIRE.has('request')).toBe(false)
+    },
+  )
 
   it('⛔ the census really read the preload — the surface is the size the app has', () => {
     // Non-vacuity: a path typo, a rename or a regex that matched nothing all produce an empty map,

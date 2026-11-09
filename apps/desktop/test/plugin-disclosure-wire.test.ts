@@ -57,3 +57,23 @@ it('the passive invalidation subscription carries no payload or invoke and can b
   stop()
   expect(ipc.off).toHaveBeenCalledWith('plugins:review-invalidated', forward)
 })
+it('progress forwards only the main payload and unsubscribes without an invoke', () => {
+  const ipc = { invoke: vi.fn(), on: vi.fn(), off: vi.fn() },
+    bridge = pluginsBridge(ipc),
+    listener = vi.fn()
+  const stop = bridge.onReviewProgress!(listener)
+  const registered = ipc.on.mock.calls.find(([channel]) => channel === 'plugins:review-progress')!
+  const forward = registered[1] as (event: unknown, value: unknown) => void
+  const progress = {
+    requestId: '00000000-0000-4000-8000-000000000001',
+    id: 'chrome',
+    phase: 'downloading',
+    receivedBytes: 10,
+    totalBytes: 100,
+  }
+  forward({ sender: 'private-main-event' }, progress)
+  expect(listener).toHaveBeenCalledExactlyOnceWith(progress)
+  expect(ipc.invoke).not.toHaveBeenCalled()
+  stop()
+  expect(ipc.off).toHaveBeenCalledWith('plugins:review-progress', forward)
+})
