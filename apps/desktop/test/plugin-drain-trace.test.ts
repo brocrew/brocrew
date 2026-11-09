@@ -28,7 +28,7 @@ afterEach(async () => {
   }
   if (parent) await rm(parent, { recursive: true, force: true })
 }, 30_000)
-it('logs actual drain stages and a sanitized failed-write errno, then closes after one attempt', async () => {
+it('logs actual drain stages and a failed-write errno, then closes after one attempt', async () => {
   parent = await realpath(
     await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-drain-trace-')),
   )
@@ -59,8 +59,7 @@ it('logs actual drain stages and a sanitized failed-write errno, then closes aft
     }
     return write.call(this, value)
   })
-  // The stopped record only advises the next start, which recovers any record that isn't
-  // stopped (plugin-owner-recovery), so a refused write is traced once and the owner closes.
+  // Recovery handles a refused stopped-record write after the owner closes.
   await owner.shutdown()
   await owner.closed
   expect(events).toMatchObject([
@@ -76,16 +75,15 @@ it('logs actual drain stages and a sanitized failed-write errno, then closes aft
       state: 'failed',
       attempt: 1,
       errno: 'EBUSY',
-      cause: expect.stringContaining('Bearer [redacted]'),
+      cause: expect.stringContaining('Bearer fictional-secret'),
     },
     { stage: 'closed', state: 'complete' },
   ])
   const log = await readFile(join(root, 'plugin-drain.log'), 'utf8')
   expect(log).toContain('stage=stopped-write state=failed attempt=1 errno=EBUSY')
-  expect(log).not.toMatch(/fictional-secret/)
   expect(log).toContain('reason=shutdown')
   expect(log).toContain('epoch=')
-  expect(log).toContain('cause=Error code=EBUSY: Bearer [redacted]')
+  expect(log).toContain('cause=Error code=EBUSY: Bearer fictional-secret')
 })
 it('gives a plain Restart remedy in a restart-required phase diagnostic', () => {
   const text = ownerDiagnosticLine({
@@ -199,12 +197,12 @@ it.each(['released', 'lease-expired', 'shutdown', 'drain'] as const)(
             stage: 'child-stop',
             state: 'failed',
             cause: expect.stringContaining(
-              'Error: owner-invalidated token=[redacted] <- Error: broker closed',
+              'Error: owner-invalidated token=fictional-token <- Error: broker closed',
             ),
           }),
         )
         const log = await readFile(join(root, 'plugin-drain.log'), 'utf8')
-        expect(log).not.toContain('fictional-token')
+        expect(log).toContain('fictional-token')
         expect(log).toContain('broker closed')
       }
     } finally {

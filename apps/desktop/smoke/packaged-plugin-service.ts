@@ -61,7 +61,7 @@ export async function smoke(resources: string, scratch: string, packages?: strin
         ? { ...windowsSystemEnvironment(), USERPROFILE: root, TEMP: scratch, TMP: scratch }
         : { HOME: root, PATH: '/usr/bin:/bin', LC_ALL: 'C' },
   })
-  const diagnostic = observePluginSupervisorLaunch(child, [])
+  const diagnostic = observePluginSupervisorLaunch(child)
   let spawnError: Error | undefined
   let ended = false
   const closed = new Promise<void>((resolve) => {
