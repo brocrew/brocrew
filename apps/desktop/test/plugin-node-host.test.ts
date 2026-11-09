@@ -19,10 +19,13 @@ import {
 } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import { pluginStartupDiagnostic } from '../src/main/plugins/startup-failure'
 import { createPluginNodeHost } from '../src/main/plugins/node-host'
+import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
+import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
+import { ownedPluginNodeProcess } from '../src/main/plugins/supervisor/node-host'
 import {
   preparePluginNodeRuntime,
   PLUGIN_HOST_SCRIPTS,
@@ -40,6 +43,27 @@ import { createRepoAwarePluginVerifier } from '../src/main/plugins/package-verif
 import { manifestFor, packageFixture } from './plugin-package-fixtures'
 import { sharedDataOwner } from '../src/main/plugins/shared-data'
 import { SHARED_DATA_FEATURE } from '../src/main/plugins/shared-data-contract'
+
+const cleanupFault = vi.hoisted(() => ({ once: false }))
+vi.mock('../resources/plugin-host/process-groups.mjs', async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import('../resources/plugin-host/process-groups.mjs')>()
+  return {
+    ...original,
+    stopGroups: (...args: Parameters<typeof original.stopGroups>) => {
+      if (cleanupFault.once) {
+        cleanupFault.once = false
+        args[2]?.(
+          new Error('group-census', {
+            cause: Object.assign(new Error('fictional ps failure'), { code: 'EIO' }),
+          }),
+        )
+        return Promise.resolve(false)
+      }
+      return original.stopGroups(...args)
+    },
+  }
+})
 
 const copyFault = vi.hoisted(() => ({ once: false }))
 const admissionFault = vi.hoisted(() => ({
@@ -564,6 +588,56 @@ const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));`,
     expect(await child.exited).toEqual({ exited: true })
     expect(await liveGroupMembers(ready.serverPid)).toEqual([])
   }, 15000)
+  it.each([false, true])(
+    'rechecks a failed cleanup with live group=%s without signalling it',
+    async (live) => {
+      const { host, home, pidFile } = await context()
+      const child = await host.start(fixture()),
+        ready = await child.ready()
+      if (live) {
+        await fetch(ready.origin + '/v1/launch', { headers: ready.admin().headers })
+        await browserStarted(pidFile)
+      }
+      const guardian = (await (
+        await fetch(ready.origin + '/v1/owner', { headers: ready.admin().headers })
+      ).json()) as { pid: number }
+      cleanupFault.once = true
+      process.kill(guardian.pid, 'SIGKILL')
+      expect(await child.exited).toEqual({ exited: false })
+      try {
+        if (!live) await expect.poll(() => liveGroupMembers(ready.serverPid)).toEqual([])
+        else expect((await liveGroupMembers(ready.serverPid)).length).toBeGreaterThan(0)
+        if (live) expect((await child.proveEmptyGroups?.()) === true).toBe(false)
+        else {
+          const workspace = join(home, 'fictional-workspace')
+          await mkdir(workspace, { mode: 0o700 })
+          const options = { root: home, workspaceRoots: [workspace] }
+          const owner = await PluginSupervisor.start(options)
+          const lease = await PluginWorkspaceLease.attach({
+            root: home,
+            workspaceRoot: workspace,
+            generation: randomUUID(),
+            build: 'fictional',
+          })
+          owner.adopt(ownedPluginNodeProcess(child))
+          expect(await lease.close()).toBe(true)
+          const successor = await PluginSupervisor.start(options)
+          expect(await successor.shutdown()).toBe(true)
+        }
+        const trace = await readFile(join(home, 'plugin-drain.log'), 'utf8')
+        expect(trace).toContain('stage=group-cleanup state=failed')
+        expect(trace).toContain('group-census')
+        expect(trace).toContain('EIO')
+        const receipt = JSON.parse(await readFile(child.receiptPath, 'utf8'))
+        expect(receipt.exited).toBe(!live)
+        expect(receipt.runId).toBe(child.runId)
+        if (live) expect((await liveGroupMembers(ready.serverPid)).length).toBeGreaterThan(0)
+      } finally {
+        await stopGroups(new Map([[ready.serverPid, '']]), 0)
+      }
+    },
+    15000,
+  )
   it('never enters the package if the guardian dies before its group reaches the live host', async () => {
     const { host, pidFile } = await context()
     admissionFault.once = true
@@ -586,6 +660,7 @@ const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));`,
       await expect(child.ready()).rejects.toThrow('plugin-host-ready')
       // No admission evidence means no claim of proved cleanup, even though entry was gated.
       expect(await child.exited).toEqual({ exited: false })
+      expect((await child.proveEmptyGroups?.()) === true).toBe(false)
       for (let i = 0; i < 100 && (await liveGroupMembers(admissionFault.pid)).length; i++)
         await new Promise((resolve) => setTimeout(resolve, 25))
       expect(await liveGroupMembers(admissionFault.pid)).toEqual([])
@@ -612,7 +687,13 @@ const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));`,
       await child.ready()
       expect(await child.stop()).toEqual({ exited: true })
       expect(await liveGroupMembers(unrelated.pid!)).toContain(unrelated.pid)
-      expect(await stopGroups(new Map([[unrelated.pid!, 'fictional-other-birth']]))).toBe(false)
+      const diagnostic = vi.fn()
+      expect(
+        await stopGroups(new Map([[unrelated.pid!, 'fictional-other-birth']]), 1500, diagnostic),
+      ).toBe(false)
+      expect(diagnostic).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'group-identity: changed birth' }),
+      )
       expect(await liveGroupMembers(unrelated.pid!)).toContain(unrelated.pid)
     } finally {
       unrelated.kill('SIGTERM')

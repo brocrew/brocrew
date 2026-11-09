@@ -107,6 +107,7 @@ process.on('message', (message) => {
         },
         exited: proof,
         descendantsGone: async () => mode !== 'unproved',
+        proveEmptyGroups: async () => false,
       })
       if (mode === 'unproved') child.kill()
     }

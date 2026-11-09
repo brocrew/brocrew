@@ -136,6 +136,25 @@ describe.skipIf(process.platform === 'win32')('supervisor and Node-host controll
     expect(await closing).toBe(true)
     expect(process.stop).toHaveBeenCalledOnce()
   })
+  it('finishes a released stop after the exact host re-proves its failed group empty, then admits a successor', async () => {
+    const global = await attached()
+    const process = {
+      ...processFixture(Promise.resolve({ exited: false })),
+      proveEmptyGroups: vi.fn(async () => true),
+    }
+    process.stop.mockResolvedValue({ exited: false })
+    await createSupervisedPluginHost(owner!, { start: async () => process }).start(spec)
+    expect(await lease!.close()).toBe(true)
+    expect(process.proveEmptyGroups).toHaveBeenCalledOnce()
+    const successor = await PluginSupervisor.start({
+      root: global,
+      workspaceRoots: [join(root, 'workspace')],
+    })
+    owner = successor
+    expect(JSON.parse(await readFile(join(global, 'supervisor/owner.json'), 'utf8')).phase).toBe(
+      'accepting',
+    )
+  })
   it('readiness failure retains the registered run for actual shutdown proof', async () => {
     await attached()
     const process = processFixture()
