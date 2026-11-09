@@ -1,6 +1,6 @@
 # Installing BroCrew on the Mac
 
-BroCrew is signed "ad hoc" but not by a registered Apple developer, so macOS can't check it for malware and blocks it the first time you open it. These steps get you past that once, and set up your API keys.
+The Mac download is signed. It is also notarized by Apple. These steps install the app and set up your API keys.
 
 ## Before you install
 
@@ -17,25 +17,7 @@ BroCrew is signed "ad hoc" but not by a registered Apple developer, so macOS can
 
 1. Download `BroCrew-….dmg` from the latest release on the repository's **Releases** page.
 2. Open it, and drag **BroCrew** into the **Applications** folder.
-3. Open **BroCrew** from Applications. macOS says it could not verify BroCrew. Choose **Done**.
-4. Within the hour, open **System Settings → Privacy & Security** and scroll down to **Security**. Next to the line about BroCrew, choose **Open Anyway**. Confirm with your password or Touch ID, then choose **Open Anyway** once more.
-
-macOS remembers this, so BroCrew opens normally from then on.
-
-- On macOS 15 and later, right-click → Open no longer gets past this. Use Privacy & Security as above.
-- **Open Anyway** shows for about an hour after macOS blocked BroCrew. If it isn't there, open BroCrew again from Applications, then go back to Privacy & Security.
-- On a standard (non-administrator) account, macOS asks for an administrator's name and password.
-- On a Mac your company manages, **Open Anyway** may not be offered at all. Ask whoever manages the Mac.
-
-### If macOS says BroCrew "is damaged"
-
-This should not happen with this build. If it does, open **Terminal** and run:
-
-```
-xattr -dr com.apple.quarantine /Applications/BroCrew.app
-```
-
-Then open BroCrew again. This removes the mark macOS puts on files downloaded from the internet, for BroCrew only.
+3. Open **BroCrew** from Applications. If macOS asks whether you want to open an app downloaded from the internet, choose **Open**.
 
 ## Add your API keys
 
@@ -46,7 +28,7 @@ Then open BroCrew again. This removes the mark macOS puts on files downloaded fr
 
 BroCrew seals each key it saves with a key kept in your Mac's Keychain. To change a key, save the new one in the same place. To stop using a key, remove it there.
 
-**The Keychain may ask** whether BroCrew may use "@brobot2/desktop Safe Storage". On your own Mac, enter your login password and choose **Always Allow**: that is how BroCrew opens the keys it saved. It may ask again after you update BroCrew, because macOS sees each build as a new app. On someone else's Mac, choose **Deny**.
+**The Keychain may ask** whether BroCrew may use "@brobot2/desktop Safe Storage". On your own Mac, enter your login password and choose **Always Allow**: that is how BroCrew opens the keys it saved. On someone else's Mac, choose **Deny**.
 
 ## Your first conversation
 
@@ -60,14 +42,13 @@ BroCrew keeps your conversations, settings and saved keys in `~/Library/Applicat
 
 ## Running from source instead
 
-You can also run BroCrew from its source code, with no download to approve. See the repository's README. A BroCrew run from source never checks for updates; update it with `git pull`.
+You can also run BroCrew from its source code. See the repository's README. A BroCrew run from source never checks for updates; update it with `git pull`.
 
 ## Updating and removing
 
 - **Updates.** Stable automatic checks use brocrew.app, with GitHub as a fallback if the service cannot be reached. The request includes the installed app version; the requested file identifies Mac or Windows. Turn off **Check automatically** to send no update requests to brocrew.app. Manual checks and downloads then use GitHub. See [Updates](updates.md) for the request details and installation steps.
   - When there is a new version, BroCrew downloads it, checks it against the SHA-512 checksum the release publishes (fetched over HTTPS), and opens it for you. Quit every BroCrew, then drag the new one into Applications, replacing the old one.
-  - **An update BroCrew downloads opens without the Gatekeeper prompt.** macOS asks about apps a browser downloaded; BroCrew downloads its own update, and trusts it because the checksum matches. A `.dmg` you download yourself from the Releases page needs **Open Anyway** once more, as above.
-- **If you had BroBot or BroBot2** (the beta's earlier names) in Applications, move it to the Trash once BroCrew works, and take it out of the Dock if you kept it there. They use the same data, and an old copy opened by mistake would run old code on it.
+- **If you had BroBot or BroBot2** in Applications, move it to the Trash once BroCrew works, and take it out of the Dock if you kept it there. They use the same data, and an old copy opened by mistake would run old code on it.
 - **To remove BroCrew**, drag it from Applications to the Trash. Your conversations and settings stay in `~/Library/Application Support/@brobot2/desktop`. Delete that folder too if you want nothing left behind.
 
 ## If something goes wrong
@@ -88,23 +69,12 @@ Get the latest build from the [Releases page](https://github.com/brocrew/brocrew
 | Your computer                        | File                              |
 | ------------------------------------ | --------------------------------- |
 | Mac with Apple Silicon (M1 or later) | `BroCrew-<version>-arm64.dmg`     |
-| Windows 10 or 11, 64-bit (beta)      | `BroCrew-Setup-<version>-x64.exe` |
+| Windows 10 or 11, 64-bit             | `BroCrew-Setup-<version>-x64.exe` |
 
 There's no Linux or Intel Mac build yet.
 
-**Mac builds are signed ad hoc and are not notarized.** Windows releases are signed. Your computer may warn when you open a download. Download BroCrew only from this repo's Releases page. Each file's SHA-256 checksum is shown next to it there, if you want to check your download. You can also run BroCrew from source (below).
+Both downloads are signed. The Mac download is also notarized by Apple. Windows may still show a warning for a new version at first. Download BroCrew only from this repo's Releases page. Each file's SHA-256 checksum is shown next to it there, if you want to check your download. You can also run BroCrew from source (below).
 
-**On a Mac** (these steps are for macOS 15 Sequoia or later):
-
-1. Open the `.dmg` and drag **BroCrew** into **Applications**.
-2. Open BroCrew from Applications. macOS says it can't verify the app: click **Done**, not Move to Trash.
-3. Open **System Settings → Privacy & Security**, scroll down to **Security**, and click **Open Anyway** next to the line about BroCrew. Enter your password, then click **Open Anyway** once more. From then on, BroCrew opens normally.
-4. If macOS says instead that BroCrew "is damaged and can't be opened", it couldn't check the app's signature. If you downloaded it from this repo's Releases page, clear the download flag in Terminal, then open it again:
-
-   ```bash
-   xattr -dr com.apple.quarantine /Applications/BroCrew.app
-   ```
-
-On macOS 14 or earlier, you can also right-click the app, choose **Open**, then **Open** again.
+For Mac installation steps, see [Install](#install).
 
 [Run from source](run-from-source.md).

@@ -44,7 +44,7 @@ Choose **New conversation** in the left rail, pick a Claude or Codex model, and 
 ## Updating and removing
 
 - **Updates.** Stable automatic checks use brocrew.app, with GitHub as a fallback if the service cannot be reached. The request includes the installed app version; the requested file identifies Mac or Windows. Turn off **Check automatically** to send no update requests to brocrew.app. Manual checks and downloads then use GitHub. See [Updates](updates.md) for the request details. When there is a new version, you choose to download it; BroCrew checks it against the SHA-512 checksum the release publishes, and installs it when you choose to restart, once nothing is running. You can also run a newer installer from the Releases page over the old one.
-- **If you have BroBot or BroBot2 installed** (the beta's earlier names), the BroCrew installer replaces it. Your conversations, settings and saved keys stay, and the Start menu entry and desktop shortcut are now called BroCrew. The app keeps the folder the old one was installed in, and BroCrew goes in a folder inside it, such as `…\Programs\BroBot\BroCrew`: that is expected. If you pinned the old app to the taskbar, unpin it and pin BroCrew instead. If you installed it for all users rather than only for yourself, choose the same again, or uninstall it first: otherwise you get both.
+- **If you have BroBot or BroBot2 installed**, the BroCrew installer replaces it. Your conversations, settings and saved keys stay, and the Start menu entry and desktop shortcut are now called BroCrew. The app keeps the folder the old one was installed in, and BroCrew goes in a folder inside it, such as `…\Programs\BroBot\BroCrew`: that is expected. If you pinned the old app to the taskbar, unpin it and pin BroCrew instead. If you installed it for all users rather than only for yourself, choose the same again, or uninstall it first: otherwise you get both.
 - **If you also run BroCrew from source** on the same PC, both use the same data folder, so they share your conversations, settings and keys, and only one can run at a time. See [Where BroCrew keeps its data](data-folder.md). A BroCrew run from source never checks for updates; update it with `git pull`.
 - **To remove BroCrew**, go to **Settings → Apps**, find BroCrew, and choose **Uninstall**. Your conversations and settings stay in `%APPDATA%\@brobot2\desktop`. Delete that folder too if you want nothing left behind.
 
@@ -59,13 +59,13 @@ Get the latest build from the [Releases page](https://github.com/brocrew/brocrew
 | Your computer                        | File                              |
 | ------------------------------------ | --------------------------------- |
 | Mac with Apple Silicon (M1 or later) | `BroCrew-<version>-arm64.dmg`     |
-| Windows 10 or 11, 64-bit (beta)      | `BroCrew-Setup-<version>-x64.exe` |
+| Windows 10 or 11, 64-bit             | `BroCrew-Setup-<version>-x64.exe` |
 
 There's no Linux or Intel Mac build yet.
 
-**Windows releases are signed; Windows may still warn about a new version at first.** Mac builds are signed ad hoc and are not notarized. Your computer may warn when you open a download. Download BroCrew only from this repo's Releases page. Each file's SHA-256 checksum is shown next to it there, if you want to check your download. You can also run BroCrew from source (below).
+Both downloads are signed. The Mac download is also notarized by Apple. Windows may still show a warning for a new version at first. Download BroCrew only from this repo's Releases page. Each file's SHA-256 checksum is shown next to it there, if you want to check your download. You can also run BroCrew from source (below).
 
-**On Windows** (beta):
+**On Windows**:
 
 1. If your browser says the file isn't commonly downloaded, choose **Keep**.
 2. Open the installer. If Windows shows **"Windows protected your PC"**, click **More info**, then **Run anyway**.
