@@ -148,7 +148,12 @@ export const MANIFEST = Object.freeze([
     why: RESOURCES,
     source: 'main/resources/resources.ts (resourcesRoot)',
   },
-  { name: 'drafts.json', expect: 'file', why: DRAFTS, source: 'main/drafts-file.ts (744)' },
+  {
+    name: 'drafts.json',
+    expect: 'file',
+    why: DRAFTS,
+    source: 'main/drafts-file.ts (importDraftsFile)',
+  },
   // The conversations a person archived, named by their rows in the ledger it goes with.
   { name: 'archived.json', expect: 'file', why: LEDGER, source: 'main/archived-file.ts' },
   { name: 'exports', expect: 'dir', why: EXPORTS, source: 'main/index.ts:415' },
@@ -250,10 +255,8 @@ export const MANIFEST = Object.freeze([
 export const ACTIVE_THEME_PART = /^active-theme\.json\.(?:\d+\.[0-9a-f-]{36}|[0-9a-f]{12})\.tmp$/
 
 /**
- * 🔴 **744 · the private name one drafts save is written to before it is renamed into place** —
- * `DRAFTS_PART` in `apps/desktop/src/main/drafts-file.ts`. ⚠️ A kill inside a save leaves one, and it
- * holds somebody's words: it is the drafts file's, and is reported as the unsent drafts, not as
- * something BroBot did not write.
+ * The private name an older build wrote one drafts save to before renaming it into place. A kill
+ * inside a save left one, holding somebody's words: it goes as the unsent drafts.
  */
 export const DRAFTS_PART = /^drafts\.json\.[0-9a-f]{12}\.part$/
 

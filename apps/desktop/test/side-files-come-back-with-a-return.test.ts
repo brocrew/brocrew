@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
+import { importDraftsFile, SAVED_DRAFTS_FILE, savedDraftsBook } from '../src/main/drafts-file'
 import {
   importProviderUsageFile,
   NO_USAGE_KEPT,
@@ -37,8 +38,8 @@ import {
 } from '../src/main/sign-in-changes'
 
 /**
- * A kept-current side file, once imported, across a restore and a return; and one that cannot be
- * parsed, kept as it is. The restore sets the
+ * A side file, once imported, across a restore and a return; and one that cannot be parsed, kept
+ * as it is. The restore sets the
  * database aside whole and puts back a copy whose old file is beside it; while that copy is open
  * history-only nothing imports. The return puts the set-aside database back, its import marker
  * with it, so the next writable start finds its rows and imports nothing again, even from a stale
@@ -123,6 +124,14 @@ const CASES: readonly Case[] = [
     importFile: importTurnsTheAppCutFile,
     rows: (database) => turnsTheAppCutIn(database).read(),
     change: (database) => turnsTheAppCutIn(database).write(NO_CUTS_KEPT),
+  },
+  {
+    name: 'drafts',
+    file: SAVED_DRAFTS_FILE,
+    said: { version: 1, drafts: [{ slot: 'new', text: 'unsent', attached: [], pinned: true }] },
+    importFile: importDraftsFile,
+    rows: (database) => savedDraftsBook(database),
+    change: (database) => database.exec('DELETE FROM draft'),
   },
 ]
 

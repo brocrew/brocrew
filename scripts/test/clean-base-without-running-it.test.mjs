@@ -498,10 +498,7 @@ describe('§9 · the module defaults, for a caller that does not pass options', 
     expect(plan.keeps.some((keep) => keep.flag === '--keep-profile-auth')).toBe(false)
   })
 
-  it('⚑ 744 · the unsent drafts and a save a kill left half-written go as the unsent drafts — and the pattern is the product’s own', () => {
-    expect(code('apps/desktop/src/main/drafts-file.ts')).toContain(
-      'export const DRAFTS_PART = /^drafts\\.json\\.[0-9a-f]{12}\\.part$/',
-    )
+  it('⚑ 744 · the old drafts file and a save a kill left half-written go as the unsent drafts', () => {
     expect(DRAFTS_PART.source).toBe('^drafts\\.json\\.[0-9a-f]{12}\\.part$')
     const userData = plantUserData(fixture(), { profiles: HIS_PROFILES })
     writeFileSync(join(userData, 'drafts.json'), '{"version":1,"drafts":[]}')

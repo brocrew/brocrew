@@ -1,9 +1,11 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
-import { createDraftWriter, readDraftsFile } from '../src/main/drafts-file'
+import { openDatabase, type AppDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
+import { createDraftWriter, importDraftsFile, savedDraftsBook } from '../src/main/drafts-file'
 import { restoreSavedDrafts } from '../src/main/saved-drafts'
 import { createDraftBook, draftKey } from '../src/renderer/src/lib/drafts'
 import {
@@ -16,17 +18,6 @@ import {
 } from '../src/renderer/src/lib/kept-drafts'
 import type { SavedDrafts } from '../src/shared/saved-drafts'
 
-const disk = vi.hoisted(() => ({ hold: null as null | (() => Promise<void>) }))
-vi.mock('node:fs/promises', async (original) => {
-  const actual = await original<typeof import('node:fs/promises')>()
-  return {
-    ...actual,
-    writeFile: async (...args: Parameters<typeof actual.writeFile>) => {
-      await actual.writeFile(...args)
-      await disk.hold?.()
-    },
-  }
-})
 const folders: string[] = []
 function folder(): string {
   const path = mkdtempSync(join(tmpdir(), 'kept-draft-'))
@@ -38,16 +29,38 @@ const brook = draftKey('brook')
 const packet = (slot: string, text: string): SavedDrafts => ({
   drafts: [{ slot, text, attached: [] }],
 })
-const read = (path: string): SavedDrafts =>
-  JSON.parse(readFileSync(join(path, 'drafts.json'), 'utf8'))
+const databases = new Map<string, AppDatabase>()
+function dbAt(path: string): AppDatabase {
+  let database = databases.get(path)
+  if (database === undefined) {
+    database = openDatabase(join(path, 'brobot2.sqlite'))
+    applyMigrations(database, join(__dirname, '../src/main/db/migrations'))
+    databases.set(path, database)
+  }
+  return database
+}
+const bookAt = (path: string): unknown => savedDraftsBook(dbAt(path))
+const read = (path: string): SavedDrafts => bookAt(path) as SavedDrafts
+/** Every write to the drafts fails, as a full disk would make it, until `false`. */
+function savesFail(path: string, failing: boolean): void {
+  for (const operation of ['INSERT', 'UPDATE', 'DELETE']) {
+    dbAt(path).exec(
+      failing
+        ? `CREATE TRIGGER fail_${operation} BEFORE ${operation} ON draft
+           BEGIN SELECT RAISE(ABORT, 'fictional disk failure'); END`
+        : `DROP TRIGGER fail_${operation}`,
+    )
+  }
+}
 afterEach(() => {
-  disk.hold = null
+  for (const database of databases.values()) database.close()
+  databases.clear()
   for (const path of folders.splice(0)) rmSync(path, { recursive: true, force: true })
 })
 
 it('an incomplete last book preserves the other saved slots through a fresh writer and restore', async () => {
   const path = folder()
-  const writer = createDraftWriter(path)
+  const writer = createDraftWriter(dbAt(path))
   await writer.write(packet(fern, 'f'.repeat(8000)))
   await writer.write(packet(brook, 'b'.repeat(66)))
   writer.expectQuitSaves(1)
@@ -55,22 +68,20 @@ it('an incomplete last book preserves the other saved slots through a fresh writ
   await writer.write({ ...packet(brook, 'b'.repeat(67)), last: true })
   expect(await waiting).toBe('saved')
   // A new process reads the file, without any of the old writer's memory.
-  const file = await readDraftsFile(path)
-  expect(file.kind).toBe('book')
-  const saved = await restoreSavedDrafts(file.kind === 'book' ? file.raw : null, {
+  const saved = await restoreSavedDrafts(bookAt(path), {
     exists: () => true,
   })
   const book = createDraftBook()
   restoreDrafts(book, saved)
   expect(book.read(fern).length).toBe(8000)
   expect(book.read(brook).length).toBe(67)
-  await createDraftWriter(path).write(packet(brook, 'b'.repeat(68)))
+  await createDraftWriter(dbAt(path)).write(packet(brook, 'b'.repeat(68)))
   expect(read(path).drafts.find((draft) => draft.slot === fern)?.text.length).toBe(8000)
 })
 
 it('a last handover arriving after the quit stopped waiting is still saved, and still cannot clear', async () => {
   const path = folder()
-  const writer = createDraftWriter(path)
+  const writer = createDraftWriter(dbAt(path))
   await writer.write(packet(fern, 'f'.repeat(8000)))
   writer.expectQuitSaves(1)
   expect(await writer.quitSaves(1)).toBe('unanswered')
@@ -81,54 +92,21 @@ it('a last handover arriving after the quit stopped waiting is still saved, and 
   ])
 })
 
-it('a last handover still writing when the quit stops waiting is renamed into place, and so is the save behind it', async () => {
-  const path = folder()
-  const writer = createDraftWriter(path)
-  await writer.write(packet(fern, 'f'.repeat(8000)))
-  let release!: () => void
-  let started!: () => void
-  const held = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  const began = new Promise<void>((resolve) => {
-    started = resolve
-  })
-  disk.hold = () => {
-    started()
-    return held
-  }
-  writer.expectQuitSaves(1)
-  const waiting = writer.quitSaves(30)
-  const saving = writer.write({ ...packet(fern, 'typed before quit'), last: true })
-  await began
-  const behind = writer.write(packet(brook, 'typed while it wrote'))
-  expect(await waiting).toBe('unanswered')
-  disk.hold = null
-  release()
-  await Promise.all([saving, behind])
-  await writer.settled()
-  expect(read(path).drafts.map((draft) => [draft.slot, draft.text])).toEqual([
-    [fern, 'typed before quit'],
-    [brook, 'typed while it wrote'],
-  ])
-  expect(readdirSync(path)).toEqual(['drafts.json'])
-})
-
 it('an explicit normal clear removes only that slot, so a sent draft stays cleared on restart', async () => {
   const path = folder()
-  const writer = createDraftWriter(path)
+  const writer = createDraftWriter(dbAt(path))
   await writer.write({
     drafts: [...packet(fern, 'fern words').drafts, ...packet(brook, 'brook words').drafts],
   })
   await writer.write({ drafts: [], cleared: [fern] })
   expect(read(path).drafts.map((draft) => draft.slot)).toEqual([brook])
-  await createDraftWriter(path).write({ drafts: [] })
+  await createDraftWriter(dbAt(path)).write({ drafts: [] })
   expect(read(path).drafts.map((draft) => draft.slot)).toEqual([brook])
 })
 
 it('an empty quit snapshot cannot clear a saved slot even if it contains a removal', async () => {
   const path = folder()
-  const writer = createDraftWriter(path)
+  const writer = createDraftWriter(dbAt(path))
   await writer.write(packet(fern, 'fern words'))
   writer.expectQuitSaves(1)
   const waiting = writer.quitSaves(1000)
@@ -139,7 +117,7 @@ it('an empty quit snapshot cannot clear a saved slot even if it contains a remov
 
 it('a malformed handover cannot erase the saved book', async () => {
   const path = folder()
-  const writer = createDraftWriter(path)
+  const writer = createDraftWriter(dbAt(path))
   await writer.write(packet(fern, 'fern words'))
   await writer.write(null)
   expect(read(path).drafts.map((draft) => draft.slot)).toEqual([fern])
@@ -147,7 +125,7 @@ it('a malformed handover cannot erase the saved book', async () => {
 
 it('the renderer names a real removal explicitly and long typing reaches the file before a failed quit', async () => {
   const path = folder()
-  const writer = createDraftWriter(path)
+  const writer = createDraftWriter(dbAt(path))
   const book = createDraftBook()
   const saves: Promise<void>[] = []
   const keeper = keepDraftsOnDisk(
@@ -173,7 +151,6 @@ it('the renderer names a real removal explicitly and long typing reaches the fil
   keeper.flush()
   await Promise.all(saves)
   keeper.stop()
-  await writer.settled()
   writer.expectQuitSaves(1)
   expect(await writer.quitSaves(1)).toBe('unanswered')
   const back = createDraftBook()
@@ -188,7 +165,7 @@ it('a slow launch read starts saving after its late answer without overwriting t
   })
   const handoff = handOver(await savedDraftsBeforeDrawing(() => pending, 1), pending)
   const path = folder()
-  const writer = createDraftWriter(path)
+  const writer = createDraftWriter(dbAt(path))
   const book = createDraftBook()
   const saves: Promise<void>[] = []
   const keeper = keepTheDraftBook({
@@ -215,17 +192,14 @@ it('a slow launch read starts saving after its late answer without overwriting t
   expect(book.read(brook)).toBe('brook saved')
   expect(read(path).drafts.find((draft) => draft.slot === fern)?.text.length).toBe(9000)
   keeper.stop()
-  await writer.settled()
 })
 
 it('a failed final disk write leaves the previous saved draft available to a new process', async () => {
   const path = folder()
-  const writer = createDraftWriter(path)
+  const writer = createDraftWriter(dbAt(path))
   await writer.write(packet(fern, 'f'.repeat(8000)))
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-  disk.hold = async () => {
-    throw new Error('fictional disk failure')
-  }
+  savesFail(path, true)
   try {
     writer.expectQuitSaves(1)
     const waiting = writer.quitSaves(1000)
@@ -243,7 +217,7 @@ it('sending a locally typed draft before the initial read answers does not resur
     answer = resolve
   })
   const path = folder()
-  const writer = createDraftWriter(path)
+  const writer = createDraftWriter(dbAt(path))
   const old = packet(fern, 'older draft')
   await writer.write(old)
   const handoff = handOver(await savedDraftsBeforeDrawing(() => pending, 1), pending)
@@ -272,12 +246,11 @@ it('sending a locally typed draft before the initial read answers does not resur
   expect(book.read(fern)).toBe('')
   expect(read(path).drafts).toEqual([])
   keeper.stop()
-  await writer.settled()
 })
 
 it('the quit receipt contains save counts, time and per-slot sizes without any draft text', async () => {
   const path = folder()
-  const writer = createDraftWriter(path)
+  const writer = createDraftWriter(dbAt(path))
   const text = 'a fictional unsent message that must not appear in a log'
   await writer.write(packet(fern, text))
   await writer.write(packet(brook, 'brook words'))
@@ -291,7 +264,6 @@ it('the quit receipt contains save counts, time and per-slot sizes without any d
     expect(receipt.accepted).toBe(2)
     expect(receipt.saved).toBe(2)
     expect(receipt.lastSavedAt).toEqual(expect.any(Number))
-    expect(receipt.loaded).toBe(true)
     expect(receipt.slots).toEqual([
       { slot: fern, characters: text.length, attachments: 0 },
       { slot: brook, characters: 11, attachments: 0 },
@@ -308,11 +280,11 @@ it.each(['rejected', 'held'])(
   'a %s initial renderer read still saves new typing and answers the final handover',
   async (kind) => {
     const path = folder()
-    const seeded = createDraftWriter(path)
+    const seeded = createDraftWriter(dbAt(path))
     await seeded.write({
       drafts: [...packet(fern, 'old fern').drafts, ...packet(brook, 'old brook').drafts],
     })
-    const writer = createDraftWriter(path)
+    const writer = createDraftWriter(dbAt(path))
     const ready: Promise<SavedDrafts | null> =
       kind === 'held'
         ? new Promise(() => undefined)
@@ -347,24 +319,20 @@ it.each(['rejected', 'held'])(
       expect(read(path).drafts.find((draft) => draft.slot === brook)?.text).toBe('old brook')
     } finally {
       keeper.stop()
-      await writer.settled()
-      await writer.settled()
     }
   },
 )
 
 it('a failed explicit removal is retained when a later successful save changes another slot', async () => {
   const path = folder()
-  const writer = createDraftWriter(path)
+  const writer = createDraftWriter(dbAt(path))
   await writer.write(packet(fern, 'sent words'))
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-  disk.hold = async () => {
-    throw new Error('fictional disk failure')
-  }
+  savesFail(path, true)
   try {
     await writer.write({ drafts: [], cleared: [fern] })
     expect(read(path).drafts.map((draft) => draft.slot)).toEqual([fern])
-    disk.hold = null
+    savesFail(path, false)
     await writer.write(packet(brook, 'new brook words'))
     const restarted = createDraftBook()
     restoreDrafts(restarted, read(path))
@@ -375,54 +343,37 @@ it('a failed explicit removal is retained when a later successful save changes a
   }
 })
 
-it('a newer edit queued during a failed removal wins when the next save retries both', async () => {
+it('a newer edit after a failed removal wins when the next save retries both', async () => {
   const path = folder()
-  const writer = createDraftWriter(path)
+  const writer = createDraftWriter(dbAt(path))
   await writer.write(packet(fern, 'sent words'))
-  let release!: () => void
-  let started!: () => void
-  const held = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  const began = new Promise<void>((resolve) => {
-    started = resolve
-  })
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-  disk.hold = async () => {
-    started()
-    await held
-    throw new Error('fictional disk failure')
-  }
+  savesFail(path, true)
   try {
-    const removal = writer.write({ drafts: [], cleared: [fern] })
-    await began
-    const newer = writer.write(packet(fern, 'a new message'))
-    release()
-    await Promise.all([removal, newer])
-    disk.hold = null
+    await writer.write({ drafts: [], cleared: [fern] })
+    await writer.write(packet(fern, 'a new message'))
+    savesFail(path, false)
     await writer.write(packet(brook, 'brook words'))
     expect(read(path).drafts.find((draft) => draft.slot === fern)?.text).toBe('a new message')
   } finally {
-    release()
     warn.mockRestore()
   }
 })
 
 it.each([{ version: 2 }, {}])(
-  'a drafts file another build wrote (%o) is restored as far as it reads, and saving goes on',
+  'a drafts file another build wrote (%o) is imported, restored as far as it reads, and saving goes on',
   async (written) => {
     const path = folder()
     writeFileSync(
       join(path, 'drafts.json'),
       JSON.stringify({ ...written, ...packet(brook, 'kept by another build') }),
     )
-    const file = await readDraftsFile(path)
-    expect(file.kind).toBe('book')
-    const saved = await restoreSavedDrafts(file.kind === 'book' ? file.raw : null, {
+    importDraftsFile(dbAt(path), path)
+    const saved = await restoreSavedDrafts(bookAt(path), {
       exists: () => true,
     })
     expect(saved.drafts.map((draft) => draft.text)).toEqual(['kept by another build'])
-    const writer = createDraftWriter(path)
+    const writer = createDraftWriter(dbAt(path))
     await writer.write(packet(fern, 'new local words'))
     expect(read(path).drafts.map((draft) => [draft.slot, draft.text])).toEqual([
       [brook, 'kept by another build'],
@@ -447,25 +398,21 @@ it('what another build wrote and this one does not read survives this build savi
       ],
     }),
   )
-  const writer = createDraftWriter(path)
+  importDraftsFile(dbAt(path), path)
+  const writer = createDraftWriter(dbAt(path))
   await writer.write(packet(fern, 'fern words, edited here'))
-  const once = JSON.parse(readFileSync(join(path, 'drafts.json'), 'utf8'))
-  expect(once.kept).toBe('by a newer build')
-  expect(once.drafts).toEqual([
+  expect(read(path).drafts).toEqual([
     { slot: fern, text: 'fern words, edited here', attached: [], pinned: true },
     unknownSlot,
     newerShape,
   ])
   await writer.write({ drafts: [], cleared: [fern] })
-  expect(JSON.parse(readFileSync(join(path, 'drafts.json'), 'utf8')).drafts).toEqual([
-    unknownSlot,
-    newerShape,
-  ])
+  expect(read(path).drafts).toEqual([unknownSlot, newerShape])
 })
 
 it('a slot sent and a keeper stopped in the same tick still persists its explicit removal', async () => {
   const path = folder()
-  const writer = createDraftWriter(path)
+  const writer = createDraftWriter(dbAt(path))
   const book = createDraftBook()
   book.write(fern, 'sent words')
   await writer.write(draftsToSave(book))
@@ -485,14 +432,13 @@ it('a slot sent and a keeper stopped in the same tick still persists its explici
   })
   book.write(fern, '')
   keeper.stop()
-  await writer.settled()
   await Promise.all(saves)
   expect(read(path).drafts).toEqual([])
 })
 
 it('a late-restored draft sent before the debounce is absent after restart', async () => {
   const path = folder()
-  const writer = createDraftWriter(path)
+  const writer = createDraftWriter(dbAt(path))
   const saved = packet(brook, 'a fictional restored message')
   await writer.write(saved)
   let answer!: (saved: SavedDrafts) => void
@@ -530,9 +476,8 @@ it('a late-restored draft sent before the debounce is absent after restart', asy
     book.write(brook, '')
     await nextTick()
     await Promise.all(saves)
-    const file = await readDraftsFile(path)
     const restarted = createDraftBook()
-    const restored = await restoreSavedDrafts(file.kind === 'book' ? file.raw : null, {
+    const restored = await restoreSavedDrafts(bookAt(path), {
       exists: () => true,
     })
     restoreDrafts(restarted, restored)
@@ -540,7 +485,6 @@ it('a late-restored draft sent before the debounce is absent after restart', asy
     expect(restored.drafts).toEqual([])
   } finally {
     keeping.stop()
-    await writer.settled()
     vi.useRealTimers()
   }
 })
@@ -549,7 +493,7 @@ it.each([false, true])(
   'a local send before the first read answers stays cleared through quit (same tick: %s)',
   async (sameTick) => {
     const path = folder()
-    const writer = createDraftWriter(path)
+    const writer = createDraftWriter(dbAt(path))
     await writer.write(packet(fern, 'an older fictional draft'))
     const ready = new Promise<SavedDrafts>(() => undefined)
     const handoff = handOver(await savedDraftsBeforeDrawing(() => ready, 1), ready)
@@ -588,8 +532,7 @@ it.each([false, true])(
       const quitting = writer.quitSaves(1000)
       last!()
       expect(await quitting).toBe('saved')
-      const file = await readDraftsFile(path)
-      const saved = await restoreSavedDrafts(file.kind === 'book' ? file.raw : null, {
+      const saved = await restoreSavedDrafts(bookAt(path), {
         exists: () => true,
       })
       const restarted = createDraftBook()
@@ -598,7 +541,6 @@ it.each([false, true])(
       expect(saved.drafts).toEqual([])
     } finally {
       keeping.stop()
-      await writer.settled()
       vi.useRealTimers()
     }
   },
