@@ -53,9 +53,9 @@ If the provider refuses a saved key (for example, it was revoked), the conversat
 
 An agent that gave work to the refused one is told that a person needs to check or replace the key.
 
-**A key saved by an earlier version** is moved into the file in the background the first time the new version starts. Until it has moved, or if it can't be moved, that provider's agents don't start and say *"Saved key can't be read, save it again in Settings."* They never switch to your sign-in on their own. Saving the key again, or removing it, ends that.
+**A key saved by an earlier version** is not carried over: save it again under **API key** on the card.
 
-**If the keys file can't be read,** BroCrew leaves it as it is, and both providers' saved keys are treated the same way. Saving a key again sets the old file aside under a new name and starts a new one.
+**If the keys file can't be read,** BroCrew leaves it as it is, and both providers' agents don't start; they say *"Saved key can't be read, save it again in Settings."* They never switch to your sign-in on their own. Saving a key again sets the old file aside under a new name and starts a new one.
 
 ## Remove a key
 

@@ -314,7 +314,7 @@ describe('§4 · Providers stops calling the key ready, until a turn or a check 
     store = createSessionStore(db)
     // The first key is saved at 1, before every life the host starts (its clock is the real one).
     keySavedAt = 1
-    keys = new ApiKeys(userData, store, () => keySavedAt)
+    keys = new ApiKeys(userData, () => keySavedAt)
     checkSays = { ok: true }
     checksStarted = 0
     handles = []

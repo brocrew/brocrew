@@ -49,10 +49,6 @@ node scripts/check-workspace-routing.mjs --app-data /example/application-data
 
 Pass Electron's `appData` folder, the parent of `@brobot2`, rather than a workspace folder. The command checks packaged and development routing without writing files, seeding lists, claiming owners, or opening workspace databases. It prints the selected paths and conflicts, and exits with status 1 for conflicts or refusals, 2 for invalid arguments. Add `--require-policy` to check a build that requires this policy.
 
-## What a test build still shares with that person
-
-- **The Keychain entry that sealed API keys in earlier versions, on macOS.** A test build that starts on a data folder holding a key an earlier version saved asks once to use the Keychain entry `@brobot2/desktop Safe Storage`, to move that key. On someone else's Mac, choose **Deny**, never **Always Allow**.
-
 ## Recovery copies
 
 Before an update changes your data, BroCrew saves a checked copy of its database and the app's saved workspace state, so a newer version can't strand your history.
@@ -60,7 +56,7 @@ Before an update changes your data, BroCrew saves a checked copy of its database
 - **When:** on existing data, at the first start of each new version, and before any change to the database's format. Restarting the same version makes no new copy.
 - **Where:** in the data folder, under `backups/`. Each copy is checked after it's written. One that isn't complete is never offered.
 - **How many:** one copy, made before the latest upgrade. It is removed after three days or three successful starts of the new version, whichever comes first. A successful start means the database opened and all migrations completed. Settings → General shows its size and expiry, and **Delete now** removes it early. Removing a copy does not make the same version create another on its next start. Cleanup requires sole ownership of the data folder and readable, intact copies; it never runs during a restore.
-- **Private:** only your user account can read them, as long as it alone can read the data folder. In a data folder other users can read, or on a drive that can't limit who reads it (FAT, exFAT), the copies are as open as the data beside them, and Settings says so beside the workspace. Saved API keys are not in a copy, except a key an earlier version kept in the database, which stays sealed there.
+- **Private:** only your user account can read them, as long as it alone can read the data folder. In a data folder other users can read, or on a drive that can't limit who reads it (FAT, exFAT), the copies are as open as the data beside them, and Settings says so beside the workspace. Saved API keys are never in a copy.
 - **Not copied:** the providers' own folders (an agent's memory, the providers' own transcripts and saved authentication), your project files, and anything you exported. A restore doesn't rewind them.
 
 ### If an older BroCrew meets newer data

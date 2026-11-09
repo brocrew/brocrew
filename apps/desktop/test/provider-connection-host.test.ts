@@ -123,7 +123,7 @@ function deferred() {
 
 it('Codex key consumption during real home preparation cannot launch under changed-back sign-in metadata', async () => {
   const f = fixture()
-  const keys = new ApiKeys(dir, f.store)
+  const keys = new ApiKeys(dir)
   f.state.revisionOf = (provider) => keys.revision(provider)
   let applied: string | undefined
   const copied = vi.fn()

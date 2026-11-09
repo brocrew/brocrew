@@ -31817,13 +31817,6 @@ export class RuntimeHost implements LiveHost {
     return notice === null ? keys.status(provider) : { ...keys.status(provider), notice }
   }
 
-  /** A key an earlier version saved has moved to the keys file: the next start uses it. */
-  earlierKeyMoved(provider: Provider): void {
-    this.keyChanges.set(provider, (this.keyChanges.get(provider) ?? 0) + 1)
-    this.providerLoginChanged(provider)
-    this.letTheWakeUpsWaitingForItsKeyGo(provider)
-  }
-
   /**
    * 🔒 **Stop using a provider's API key** — answers where it stands now. ⚑ The provider runs on its
    * login again; for Codex, every profile home is logged out now and takes the copied login back.

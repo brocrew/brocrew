@@ -3,7 +3,6 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -21,46 +20,22 @@ import {
   askTheProvider,
   theCheapestModel,
   whyNotAKey,
-  type EarlierKeys,
 } from '../src/main/runtime/api-keys'
 import { bringTheCodexKeyTo, prepareProviderHome } from '../src/main/runtime/provider-homes'
 import type { CodexKeySeam } from '../src/main/runtime/provider-homes'
 
 /**
- * API keys: the keys file, the move of keys an earlier version sealed, the provider check, and the
- * Codex home's stamp. No test here holds a real key or opens a real Keychain: each uses a made-up
- * string and a fake opener.
+ * API keys: the keys file, the provider check, and the Codex home's stamp. No test here holds a
+ * real key: each uses a made-up string.
  */
 
 const KEY = 'sk-test-0123456789abcdef' // gitleaks:allow — a made-up key
-const OLD_KEY = 'sk-test-earlier-0123456789' // gitleaks:allow — a made-up key
-
-/** The database rows an earlier version sealed, in memory. "Sealed" is the key reversed. */
-function earlierRows(
-  rows: Partial<Record<'claude' | 'codex', { setAt: number; key: string }>> = {},
-) {
-  const kept = new Map<string, { sealed: string; setAt: number }>()
-  for (const [provider, row] of Object.entries(rows))
-    kept.set(provider, { sealed: seal(row.key), setAt: row.setAt })
-  const store: EarlierKeys & { kept: typeof kept } = {
-    kept,
-    earlierApiKey: (provider) => kept.get(provider) ?? null,
-    forgetEarlierApiKey: (provider) => {
-      kept.delete(provider)
-    },
-  }
-  return store
-}
-const seal = (key: string): string => [...key].reverse().join('')
-const open = vi.fn(async (sealed: string) => seal(sealed))
 
 let userData: string
 beforeEach(() => {
   userData = mkdtempSync(join(tmpdir(), 'brocrew-api-keys-'))
-  open.mockClear()
 })
 afterEach(() => {
-  vi.useRealTimers()
   chmodSync(userData, 0o700)
   rmSync(userData, { recursive: true, force: true })
 })
@@ -73,16 +48,6 @@ const CANT_BE_USED = {
 }
 const readTheFile = (): { keys: Record<string, { key: string; setAt: number }> } =>
   JSON.parse(readFileSync(fileOf(), 'utf8'))
-const settle = async (): Promise<void> => {
-  for (let i = 0; i < 10; i += 1) await new Promise((resolve) => setImmediate(resolve))
-}
-function held<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((done) => {
-    resolve = done
-  })
-  return { promise, resolve }
-}
 
 describe('whyNotAKey', () => {
   it('🔴 accepts a key as a provider shows it, and refuses what no key is', () => {
@@ -106,7 +71,7 @@ describe('whyNotAKey', () => {
 
 describe('ApiKeys', () => {
   it('saved-key launch revisions stay distinct across replacement and removal in one clock tick', async () => {
-    const keys = new ApiKeys(userData, earlierRows(), () => 1234)
+    const keys = new ApiKeys(userData, () => 1234)
     await keys.set('codex', 'fictional-key-fern')
     const first = keys.status('codex').setAt!
     await keys.set('codex', 'fictional-key-willow')
@@ -118,7 +83,7 @@ describe('ApiKeys', () => {
   })
 
   it('🔴 keeps a key in a file only the person can read, trims it, and tells the window no key', async () => {
-    const keys = new ApiKeys(userData, earlierRows(), () => 1234)
+    const keys = new ApiKeys(userData, () => 1234)
     expect(keys.status('claude')).toEqual({
       provider: 'claude',
       set: false,
@@ -148,7 +113,7 @@ describe('ApiKeys', () => {
 
   it('⚑ a second key replaces the first, at the clock’s moment', async () => {
     let now = 10
-    const keys = new ApiKeys(userData, earlierRows(), () => now)
+    const keys = new ApiKeys(userData, () => now)
     await keys.set('codex', 'sk-first')
     now = 20
     await keys.set('codex', 'sk-second')
@@ -156,13 +121,13 @@ describe('ApiKeys', () => {
   })
 
   it('⛔ a key that is refused is not kept', async () => {
-    const keys = new ApiKeys(userData, earlierRows())
+    const keys = new ApiKeys(userData)
     expect(await keys.set('claude', 'has space')).toContain('no spaces')
     expect(existsSync(fileOf())).toBe(false)
   })
 
   it('⚑ remove says whether there was a key, and a removed key is no key', async () => {
-    const keys = new ApiKeys(userData, earlierRows())
+    const keys = new ApiKeys(userData)
     expect(await keys.remove('claude')).toBe(false)
     await keys.set('claude', KEY)
     expect(await keys.remove('claude')).toBe(true)
@@ -171,7 +136,7 @@ describe('ApiKeys', () => {
   })
 
   it('🔴 two providers saved in the same tick both keep their key', async () => {
-    const keys = new ApiKeys(userData, earlierRows())
+    const keys = new ApiKeys(userData)
     await Promise.all([keys.set('claude', KEY), keys.set('codex', 'sk-codex-fern')])
     expect(await keys.read('claude')).toBe(KEY)
     expect(await keys.read('codex')).toBe('sk-codex-fern')
@@ -179,7 +144,7 @@ describe('ApiKeys', () => {
 
   it('🔴 a keys file that can’t be read stops both starts, is left as it is, and a save sets it aside', async () => {
     writeFileSync(fileOf(), '{ not json', { mode: 0o600 })
-    const keys = new ApiKeys(userData, earlierRows(), () => 77)
+    const keys = new ApiKeys(userData, () => 77)
     for (const provider of ['claude', 'codex'] as const) {
       expect(keys.status(provider)).toMatchObject(CANT_BE_USED)
       await expect(keys.read(provider)).rejects.toThrow(ApiKeyUnreadableError)
@@ -203,7 +168,7 @@ it.skipIf(process.platform === 'win32')(
   '🔴 a save over an unreadable file that can’t be written leaves that file in place, still refusing',
   async () => {
     writeFileSync(fileOf(), '{ not json', { mode: 0o600 })
-    const keys = new ApiKeys(userData, earlierRows(), () => 77)
+    const keys = new ApiKeys(userData, () => 77)
     chmodSync(userData, 0o500)
     expect(await keys.set('codex', 'sk-codex-fern')).toContain('couldn’t write the key')
     chmodSync(userData, 0o700)
@@ -212,173 +177,6 @@ it.skipIf(process.platform === 'win32')(
       expect(keys.status(provider)).toMatchObject(CANT_BE_USED)
   },
 )
-
-describe('moving the keys an earlier version sealed', () => {
-  it('🔴 a key moves once with its own time, its sealed row goes, and a second start opens nothing', async () => {
-    const rows = earlierRows({ codex: { key: OLD_KEY, setAt: 555 } })
-    const moved = vi.fn()
-    const keys = new ApiKeys(userData, rows)
-    expect(keys.status('codex')).toMatchObject({ ...CANT_BE_USED, setAt: 555 })
-    await keys.moveEarlierKeys(open, moved)
-    expect(await keys.current('codex')).toEqual({ key: OLD_KEY, setAt: 555 })
-    expect(rows.kept.size).toBe(0)
-    expect(open).toHaveBeenCalledTimes(1)
-    expect(keys.revision('codex')).toBe(1)
-    expect(moved).toHaveBeenCalledWith('codex')
-
-    await new ApiKeys(userData, rows).moveEarlierKeys(open, moved)
-    expect(open).toHaveBeenCalledTimes(1)
-  })
-
-  it('⚑ no rows and no file: nothing is opened or written', async () => {
-    await new ApiKeys(userData, earlierRows()).moveEarlierKeys(open, vi.fn())
-    expect(open).not.toHaveBeenCalled()
-    expect(readdirSync(userData)).toEqual([])
-  })
-
-  it('🔴 a crash after the write and before the row goes: the next start drops the row unopened', async () => {
-    const rows = earlierRows({ claude: { key: OLD_KEY, setAt: 9 } })
-    const forget = rows.forgetEarlierApiKey
-    rows.forgetEarlierApiKey = () => {
-      throw new Error('the app stopped here')
-    }
-    await new ApiKeys(userData, rows).moveEarlierKeys(open, vi.fn()).catch(() => undefined)
-    expect(rows.kept.size).toBe(1)
-    rows.forgetEarlierApiKey = forget
-    open.mockClear()
-    const keys = new ApiKeys(userData, rows)
-    await keys.moveEarlierKeys(open, vi.fn())
-    expect(open).not.toHaveBeenCalled()
-    expect(rows.kept.size).toBe(0)
-    expect(await keys.read('claude')).toBe(OLD_KEY)
-  })
-
-  it.skipIf(process.platform === 'win32')(
-    '🔴 a write that fails keeps the row, and the key can’t be used until the next start moves it',
-    async () => {
-      const rows = earlierRows({ claude: { key: OLD_KEY, setAt: 9 } })
-      const keys = new ApiKeys(userData, rows)
-      chmodSync(userData, 0o500)
-      await keys.moveEarlierKeys(open, vi.fn())
-      chmodSync(userData, 0o700)
-      expect(rows.kept.size).toBe(1)
-      expect(existsSync(fileOf())).toBe(false)
-      expect(keys.status('claude')).toMatchObject(CANT_BE_USED)
-      await expect(keys.read('claude')).rejects.toThrow(ApiKeyUnreadableError)
-
-      const next = new ApiKeys(userData, rows)
-      await next.moveEarlierKeys(open, vi.fn())
-      expect(await next.read('claude')).toBe(OLD_KEY)
-      expect(rows.kept.size).toBe(0)
-    },
-  )
-
-  it('🔴 while the system has not answered, a start is refused at once in the plain words, never on the sign-in', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    const rows = earlierRows({ claude: { key: OLD_KEY, setAt: 9 } })
-    const keys = new ApiKeys(userData, rows)
-    const moving = keys.moveEarlierKeys(() => new Promise<string>(() => {}), vi.fn())
-    await settle()
-    expect(keys.status('claude')).toMatchObject(CANT_BE_USED)
-    const started = performance.now()
-    await expect(keys.read('claude')).rejects.toThrow('Saved key can’t be read')
-    await expect(keys.current('claude')).rejects.toThrow(ApiKeyUnreadableError)
-    expect(performance.now() - started).toBeLessThan(50)
-    expect(vi.getTimerCount()).toBe(0)
-    expect(rows.kept.size).toBe(1)
-    void moving
-  })
-
-  it('🔴 a key the system refuses to open can’t be used, and the move itself throws nothing', async () => {
-    const rows = earlierRows({ codex: { key: OLD_KEY, setAt: 9 } })
-    const keys = new ApiKeys(userData, rows)
-    const moved = vi.fn()
-    await keys.moveEarlierKeys(async () => {
-      throw new Error('Error while decrypting the ciphertext')
-    }, moved)
-    expect(keys.status('codex')).toEqual({ provider: 'codex', setAt: 9, ...CANT_BE_USED })
-    await expect(keys.read('codex')).rejects.toThrow(ApiKeyUnreadableError)
-    expect(rows.kept.size).toBe(1)
-    expect(moved).not.toHaveBeenCalled()
-  })
-
-  it('🔴 a key saved while the old one is being opened wins, with no refusal', async () => {
-    const rows = earlierRows({ claude: { key: OLD_KEY, setAt: 9 } })
-    const keys = new ApiKeys(userData, rows, () => 1000)
-    const opened = held<string>()
-    const moving = keys.moveEarlierKeys(() => opened.promise, vi.fn())
-    await settle()
-    expect(await keys.set('claude', KEY)).toBeNull()
-    expect(rows.kept.size).toBe(0)
-    opened.resolve(OLD_KEY)
-    await moving
-    expect(await keys.current('claude')).toEqual({ key: KEY, setAt: 1000 })
-    expect(keys.status('claude')).toMatchObject({ set: true, inUse: true })
-  })
-
-  it('🔴 a key removed while the old one is being opened stays removed, and nothing is written', async () => {
-    const rows = earlierRows({ claude: { key: OLD_KEY, setAt: 9 } })
-    const keys = new ApiKeys(userData, rows)
-    const opened = held<string>()
-    const moving = keys.moveEarlierKeys(() => opened.promise, vi.fn())
-    await settle()
-    expect(await keys.remove('claude')).toBe(true)
-    opened.resolve(OLD_KEY)
-    await moving
-    expect(await keys.read('claude')).toBeNull()
-    expect(rows.kept.size).toBe(0)
-    expect(existsSync(fileOf()) ? readTheFile().keys['claude'] : undefined).toBeUndefined()
-    expect(keys.status('claude')).toMatchObject({ set: false, inUse: false })
-  })
-
-  it('🔴 a row a restored database brings back after the move is dropped unopened', async () => {
-    const rows = earlierRows({ claude: { key: OLD_KEY, setAt: 9 } })
-    const keys = new ApiKeys(userData, rows)
-    await keys.moveEarlierKeys(open, vi.fn())
-    await keys.remove('claude')
-    rows.kept.set('claude', { sealed: seal(OLD_KEY), setAt: 9 })
-    open.mockClear()
-    const next = new ApiKeys(userData, rows)
-    await next.moveEarlierKeys(open, vi.fn())
-    expect(open).not.toHaveBeenCalled()
-    expect(rows.kept.size).toBe(0)
-    expect(await next.read('claude')).toBeNull()
-  })
-
-  it('🔴 a key removed after a failed move stays removed when a restored database brings its row back', async () => {
-    const rows = earlierRows({ claude: { key: OLD_KEY, setAt: 9 } })
-    const keys = new ApiKeys(userData, rows)
-    await keys.moveEarlierKeys(async () => {
-      throw new Error('denied')
-    }, vi.fn())
-    expect(await keys.remove('claude')).toBe(true)
-    rows.kept.set('claude', { sealed: seal(OLD_KEY), setAt: 9 })
-    open.mockClear()
-    const next = new ApiKeys(userData, rows)
-    await next.moveEarlierKeys(open, vi.fn())
-    expect(open).not.toHaveBeenCalled()
-    expect(rows.kept.size).toBe(0)
-    expect(await next.read('claude')).toBeNull()
-    expect(next.status('claude')).toMatchObject({ set: false })
-  })
-
-  it('🔴 a moved Codex key keeps its time, so a home logged in with it is not logged in again', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'brocrew-codex-home-'))
-    try {
-      writeFileSync(join(home, 'auth.json'), '{}')
-      writeFileSync(join(home, 'brobot-api-key-login.json'), JSON.stringify({ setAt: 555 }))
-      const keys = new ApiKeys(userData, earlierRows({ codex: { key: OLD_KEY, setAt: 555 } }))
-      await keys.moveEarlierKeys(open, vi.fn())
-      const change = vi.fn()
-      expect(await bringTheCodexKeyTo(home, { current: () => keys.current('codex'), change })).toBe(
-        'the-key',
-      )
-      expect(change).not.toHaveBeenCalled()
-    } finally {
-      rmSync(home, { recursive: true, force: true })
-    }
-  })
-})
 
 describe('askTheProvider', () => {
   const answering = (status: number) =>

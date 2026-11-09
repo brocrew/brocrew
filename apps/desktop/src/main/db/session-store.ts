@@ -995,9 +995,6 @@ export interface SessionStore extends OwnNotesStore {
   deleteHandAddedModel(provider: Provider, model: string, at: number): readonly string[]
   lastPicked(provider: Provider): ModelAndEffort | null
   aPersonPicked(provider: Provider, pair: ModelAndEffort, at: number): void
-  /** A provider's API key as an earlier version sealed it, until it is moved to the keys file. */
-  earlierApiKey(provider: Provider): { readonly sealed: string; readonly setAt: number } | null
-  forgetEarlierApiKey(provider: Provider): void
   conversationsPerIdentity(): readonly IdentityHistory[]
   removeAgentIdentity(profileSlug: string): boolean
   spawnPolicy(): { spawningEnabled: boolean }
@@ -1417,8 +1414,6 @@ export const NULL_SESSION_STORE: SessionStore = {
   deleteHandAddedModel: () => [],
   lastPicked: () => null,
   aPersonPicked: () => {},
-  earlierApiKey: () => null,
-  forgetEarlierApiKey: () => {},
   conversationsPerIdentity: () => [],
   removeAgentIdentity: () => false,
   spawnPolicy: () => ({ spawningEnabled: false }),
@@ -2383,12 +2378,6 @@ export function createSessionStore(
       return next
     },
   )
-  let apiKeyStatements: { read: AppStatement; forget: AppStatement } | null = null
-  const apiKeySql = (): NonNullable<typeof apiKeyStatements> =>
-    (apiKeyStatements ??= {
-      read: db.prepare(`SELECT sealed, updated_at FROM provider_api_key WHERE provider = ?`),
-      forget: db.prepare(`DELETE FROM provider_api_key WHERE provider = ?`),
-    })
   let spawnStatements: {
     readCapabilities: AppStatement
     writeCapabilities: AppStatement
@@ -7157,17 +7146,6 @@ export function createSessionStore(
     },
     aPersonPicked(provider, pair, at) {
       writeTheList(provider, (held) => ({ ...held, lastPicked: pair }), at)
-    },
-
-    earlierApiKey(provider) {
-      const row = apiKeySql().read.get(provider) as
-        { sealed: string; updated_at: number } | undefined
-      return row === undefined || row.sealed === ''
-        ? null
-        : { sealed: row.sealed, setAt: row.updated_at }
-    },
-    forgetEarlierApiKey(provider) {
-      apiKeySql().forget.run(provider)
     },
 
     conversationsPerIdentity() {

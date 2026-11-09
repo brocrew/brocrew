@@ -837,7 +837,7 @@ export function turnOutcome(turn, os, keyStatus) {
     turn.refusedAt === 'start' &&
     posts.length === 0 &&
     turn.refusedAfterMs < 60_000 &&
-    /Saved key can[’']t be read/i.test(turn.refused) &&
+    /can[’']t read the API key saved for/i.test(turn.refused) &&
     keyStatus?.set === true &&
     keyStatus.inUse === false &&
     keyStatus.readState === 'unreadable'
