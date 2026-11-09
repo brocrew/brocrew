@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { randomUUID } from 'node:crypto'
@@ -100,6 +100,66 @@ it('keeps an issued route usable while another async lifecycle context owns the 
       content: [{ type: 'text', text: 'fictional fern' }],
     })
     expect(f.call).toHaveBeenCalledOnce()
+    expect(f.bridge.toolsUnavailable('chrome')).toBe(false)
+  } finally {
+    release.resolve()
+    await writer
+  }
+})
+
+it('does not permanently revoke a contribution during another lifecycle writer lease', async () => {
+  const f = await fixture()
+  await f.controller.install(f.handle, 'chrome')
+  const entry = f.controller.contributions(f.handle, 'chrome')
+  const entered = deferred<void>(),
+    release = deferred<void>()
+  const writer = f.state.withExclusive(async () => {
+    entered.resolve()
+    await release.promise
+  })
+  await entered.promise
+  try {
+    expect(entry.current()).toBe(true)
+  } finally {
+    release.resolve()
+    await writer
+  }
+  expect(entry.current()).toBe(true)
+})
+
+it('recovers once after host exit and stays usable during subsequent writer contention', async () => {
+  const exited = deferred<void>()
+  const recover = vi.fn((view, stopped) => f.controller.restartChromeTools(view.runId, stopped))
+  const f = await live({ firstExit: exited.promise, recoverChromeHost: recover })
+  const owner = lease(),
+    req = request(f.local.sink.workspaceId)
+  await f.bridge.routes(owner, req)
+  exited.resolve()
+  await vi.waitFor(() => expect(recover).toHaveBeenCalledOnce())
+  let route: Awaited<ReturnType<typeof f.bridge.routes>>[number] | undefined
+  await vi.waitFor(async () => {
+    ;[route] = await f.bridge.routes(owner, req)
+    expect(route).toBeDefined()
+  })
+  const entered = deferred<void>(),
+    release = deferred<void>()
+  const writer = f.state.withExclusive(async () => {
+    entered.resolve()
+    await release.promise
+  })
+  await entered.promise
+  try {
+    const client = new Client({ name: 'fictional-recovered', version: '1' })
+    client.onerror = () => {}
+    closes.push(() => client.close())
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(route!.url), {
+        requestInit: { headers: { Authorization: `Bearer ${route!.capability}` } },
+      }),
+    )
+    await client.callTool({ name: 'echo', arguments: {} })
+    expect(f.call).toHaveBeenCalledOnce()
+    expect(recover).toHaveBeenCalledOnce()
     expect(f.bridge.toolsUnavailable('chrome')).toBe(false)
   } finally {
     release.resolve()

@@ -40,3 +40,23 @@ it('shows the reported stage and cause when a running plugin has unavailable too
     expect(m.q('plugin-tools-unavailable').textContent).toContain('binding-connect: timeout'),
   )
 })
+
+it('updates the restart banner when a later health read reports the cause', async () => {
+  const f = fictionalPlugins()
+  const degraded = {
+    id: 'chrome', name: 'Chrome', installed: true, state: 'Running' as const,
+    toolsUnavailable: true as const, canRestart: true as const,
+  }
+  f.set([degraded])
+  const original = f.client.request
+  f.client.request = async (input) => input.kind === 'restart'
+    ? { ok: true, cards: [degraded] }
+    : original(input)
+  const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 760, height: 900 })
+  await vi.waitFor(() => expect(m.all('plugin-restart')).toHaveLength(1))
+  m.q('plugin-restart').click()
+  await vi.waitFor(() => expect(m.q('plugins-error').textContent).toContain('after the restart request'))
+  f.set([{ ...degraded, toolsCause: 'binding-inventory: timeout' }])
+  await vi.waitFor(() => expect(m.q('plugins-error').textContent).toContain('binding-inventory: timeout'), { timeout: 7000 })
+  expect(m.q('plugins-error').textContent).not.toContain('did not report why')
+})
