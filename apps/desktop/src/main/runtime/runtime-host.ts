@@ -21233,6 +21233,7 @@ export class RuntimeHost implements LiveHost {
     provider: Provider,
     profileId: string,
     sessionId?: string,
+    connection?: ProviderConnection,
   ): Promise<{ readonly home: string; readonly loginRenewed: boolean }> {
     const barrier = this.homeCopyBarriers.get(profileSignInKey(provider, profileId))
     const launch = sessionId === undefined ? undefined : this.slots.get(sessionId)?.launch
@@ -21248,7 +21249,9 @@ export class RuntimeHost implements LiveHost {
     await this.homeCopyJobs.get(profileSignInKey(provider, profileId))
     const renewedForIt = sessionId !== undefined && this.renewedForItsReopen.delete(sessionId)
     const prepare = (): string | Promise<string> =>
-      this.deps.prepareProviderHome(provider, profileId)
+      connection === undefined
+        ? this.deps.prepareProviderHome(provider, profileId)
+        : this.deps.prepareProviderHome(provider, profileId, connection)
     const renewal = this.deps.loginRenewal?.(provider)
     if (renewal === undefined || this.aKeyIsSaved(provider)) {
       return { home: await prepare(), loginRenewed: renewedForIt }
@@ -21376,13 +21379,14 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **A folder a person or the spawn rails named, else the durable workspace** — `resolveCwd`'s
     // blank branch, which is where every conversation that asked for none runs.
     const cwd = this.deps.resolveCwd(id, input.cwd)
-    const connectionId = recorded
+    const connection = recorded
       ? this.deps.connectionFor?.(input.provider, this.deps.store.connectionOf(id))
       : this.deps.connectionFor?.(input.provider)
     const { home: providerHome, loginRenewed } = await this.prepareAHome(
       input.provider,
       profileId,
       id,
+      connection,
     )
     // ⛔ **Asked again now the home exists, because the first answer was about a different disk**
     // (265 §4). The claim above covers every creation in THIS host; a variant laid down while we
@@ -21412,9 +21416,9 @@ export class RuntimeHost implements LiveHost {
     // refused here in its own words, before a model list is asked whose failure would read as a
     // list that names no model.
     const rawRuntime =
-      connectionId === undefined
+      connection === undefined
         ? this.deps.createRuntime(input.provider)
-        : this.deps.createRuntime(input.provider, connectionId)
+        : this.deps.createRuntime(input.provider, connection)
     // 🔴 **D-042 · R1 — every start names its model and effort** (024's effort, 038's model): what
     // the caller named, else this agent's default, else the last pair a person picked on this
     // provider, else the provider's own default BY NAME — {@link theSelectedModel}, after the home is
@@ -21604,7 +21608,7 @@ export class RuntimeHost implements LiveHost {
           if (recorded) {
             const launched = this.deps.store.firstLaunchOf({
               id,
-              ...(handle.connectionId === undefined ? {} : { connectionId: handle.connectionId }),
+              ...(connection === undefined ? {} : { connectionId: connection.id }),
               model,
               ...(reasoningEffort ? { reasoningEffort } : {}),
               ...(planMode !== undefined ? { planMode } : {}),
@@ -21616,7 +21620,7 @@ export class RuntimeHost implements LiveHost {
           this.deps.store.create({
             id,
             provider: input.provider,
-            ...(handle.connectionId === undefined ? {} : { connectionId: handle.connectionId }),
+            ...(connection === undefined ? {} : { connectionId: connection.id }),
             cwd,
             approvalMode,
             profileId,
@@ -39075,14 +39079,16 @@ export class RuntimeHost implements LiveHost {
     // that ran short, said in words (`710`, {@link howAFailureReads}); the log keeps the errno.
     if (this.launches.closed) return { ok: false, reason: 'closing' }
     let providerHome: string
-    let connectionId: string | undefined
+    let connection: ProviderConnection | undefined
     try {
-      connectionId = this.deps.connectionFor?.(provider)
+      connection = this.deps.connectionFor?.(provider)
       const preparation = this.launches.open(`${provider} model home preparation`)
       try {
         if (this.deps.beforeProviderLaunch) await this.deps.beforeProviderLaunch()
         preparation.signal.throwIfAborted()
-        providerHome = await this.deps.prepareProviderHome(provider, profileId)
+        providerHome = await (connection === undefined
+          ? this.deps.prepareProviderHome(provider, profileId)
+          : this.deps.prepareProviderHome(provider, profileId, connection))
       } finally {
         this.launches.finish(preparation)
       }
@@ -39104,9 +39110,9 @@ export class RuntimeHost implements LiveHost {
         launch.signal.throwIfAborted()
       }
       const runtime =
-        connectionId === undefined
+        connection === undefined
           ? this.deps.createRuntime(provider)
-          : this.deps.createRuntime(provider, connectionId)
+          : this.deps.createRuntime(provider, connection)
       const listing = runtime.listModels({ providerHome, signal: launch.signal })
       // Owned until the probe's own promise settles — both adapters close their child in a
       // `finally`, so that is the nearest thing to a termination receipt a probe has. Handed
@@ -40133,7 +40139,7 @@ export class RuntimeHost implements LiveHost {
     // ⚑ `592` recorded that move deliberately: see `test/session-profile.test.ts`'s *"the path for
     // an omitted profile moved, and only because the SLUG did"*.
     const profileId = row.profileId ?? DEFAULT_PROFILE_ID
-    const connectionId = this.deps.connectionFor?.(
+    const connection = this.deps.connectionFor?.(
       row.provider,
       this.deps.store.connectionOf(sessionId),
     )
@@ -40141,6 +40147,7 @@ export class RuntimeHost implements LiveHost {
       row.provider,
       profileId,
       sessionId,
+      connection,
     )
     // Null only for rows written before the mode was recorded, and for adopted ones we never
     // ran; those resume PROMPTING, which is the safe direction — never the other way round.
@@ -40181,9 +40188,9 @@ export class RuntimeHost implements LiveHost {
     // The runtime first, as a start makes it: a missing program is refused in its own words, never
     // as a list that names no model.
     const rawRuntime =
-      connectionId === undefined
+      connection === undefined
         ? this.deps.createRuntime(row.provider)
-        : this.deps.createRuntime(row.provider, connectionId)
+        : this.deps.createRuntime(row.provider, connection)
     const selected = await this.theSelectedModel(row.provider, row.profileId, profileId, {
       ...(recordedModel === undefined ? {} : { model: recordedModel }),
       ...(recordedEffort === undefined ? {} : { effort: recordedEffort }),

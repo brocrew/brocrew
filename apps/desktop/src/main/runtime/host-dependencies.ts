@@ -73,9 +73,9 @@ export interface RuntimeHostDeps {
   /** Records synchronous work without timing provider waits. */
   mainThreadWork?: Pick<MainThreadWork, 'start' | 'timed'>
   /** The adapter for a provider, already wired with its auth seam. */
-  createRuntime(provider: Provider, connectionId?: string): AgentRuntime
+  createRuntime(provider: Provider, connection?: ProviderConnection): AgentRuntime
   /** Resolve metadata before home/provider work; absence preserves legacy test/runtime wiring. */
-  connectionFor?(provider: Provider, recordedConnection?: string | null): string
+  connectionFor?(provider: Provider, recordedConnection?: string | null): ProviderConnection
   listConnections?(): readonly ProviderConnection[]
   /**
    * Provision the app-owned home for a provider IN A GIVEN PROFILE and return its path.
@@ -93,7 +93,11 @@ export interface RuntimeHostDeps {
    * outright is still telling the truth about where the home is, so declaring `Promise<string>`
    * would have turned dozens of honest stubs into compile errors for nothing.
    */
-  prepareProviderHome(provider: Provider, profileId: string): string | Promise<string>
+  prepareProviderHome(
+    provider: Provider,
+    profileId: string,
+    connection?: ProviderConnection,
+  ): string | Promise<string>
   /** Wait for transcript clearing before a provider process can start. */
   beforeProviderLaunch?: () => Promise<void>
   readSelectedSkills?: (profileId: string | null, grants: SkillGrants) => SkillLaunchSelection

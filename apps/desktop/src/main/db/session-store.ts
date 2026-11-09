@@ -49,7 +49,6 @@ import type {
 import type { HandedPath } from '../../shared/attachment-contracts'
 import type { ScheduleLevel, ScheduledRow } from '../../shared/agent-state-contracts'
 import { createOwnNotesStore, type OwnNotesStore } from './own-notes'
-import { resolveProviderConnection } from './provider-connections'
 import {
   createMemoryRecoveryStore,
   validMemoryIntent,
@@ -6731,6 +6730,13 @@ export function createSessionStore(
     `SELECT 1 FROM provider_session
       WHERE id = ? AND external_ref IS NULL AND launched_as IS NOT NULL`,
   )
+  const connectionBelongsToProvider = db.prepare(
+    'SELECT 1 FROM provider_connection WHERE id = ? AND provider = ?',
+  )
+  function assertConnectionProvider(provider: Provider, connectionId: string): void {
+    if (!connectionBelongsToProvider.get(connectionId, provider))
+      throw new Error('The selected connection is unavailable')
+  }
   const firstLaunchTx = db.transaction(
     (
       record: Pick<
@@ -6750,10 +6756,7 @@ export function createSessionStore(
       if (record.connectionId !== undefined) {
         if (prior.connection_id !== null && prior.connection_id !== record.connectionId)
           throw new Error('The recorded connection cannot be replaced')
-        resolveProviderConnection(db, {
-          provider: prior.provider,
-          connectionId: record.connectionId,
-        })
+        assertConnectionProvider(prior.provider, record.connectionId)
       }
       const wrote = writeAFirstLaunch.run(
         record.reasoningEffort ?? null,
@@ -6771,10 +6774,7 @@ export function createSessionStore(
 
   const createTx = db.transaction((record: NewSessionRecord, at: number) => {
     if (record.connectionId !== undefined)
-      resolveProviderConnection(db, {
-        provider: record.provider,
-        connectionId: record.connectionId,
-      })
+      assertConnectionProvider(record.provider, record.connectionId)
     const identityId = identityRowFor(record.profileId, at)
     if (record.worker !== undefined) {
       const fact = workerRegistrationOf({ type: 'worker_registered', ...record.worker })

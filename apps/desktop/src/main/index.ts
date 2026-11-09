@@ -842,7 +842,6 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     (provider) => ({
       list: () => listProviderConnections(database, provider),
       resolve: (connectionId) => resolveProviderConnection(database, { provider, connectionId }),
-      revision: () => apiKeys.revision(provider),
     }),
   )
   const providerAuth = providerAuthFromModules(providerModules)
@@ -929,12 +928,12 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     },
     // Resolve the bundled Codex by absolute path, independent of PATH and the user's installed
     // version. Resolve per launch so a missing binary is reported on the command that needs it.
-    createRuntime: (provider, connectionId) =>
-      providerModules[provider].createRuntime(connectionId),
+    createRuntime: (provider, connection) =>
+      providerModules[provider].createRuntime(connection),
     connectionFor: (provider, connectionId) => {
       const connections = providerModules[provider].connections
       if (!connections) throw new Error('Provider connection services were not bound')
-      return connections.resolve(connectionId).id
+      return connections.resolve(connectionId)
     },
     listConnections: () =>
       Object.values(providerModules).flatMap((module) => module.connections?.list() ?? []),
@@ -942,9 +941,9 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     beforeProviderLaunch: async () => {
       transcriptRetention?.beforeLaunch()
     },
-    prepareProviderHome: async (provider, profileId) => {
+    prepareProviderHome: async (provider, profileId, connection) => {
       transcriptRetention?.beforeLaunch()
-      return providerModules[provider].home.prepare(profileId)
+      return providerModules[provider].home.prepare(profileId, connection)
     },
     prepareBuiltInSkills: ({ pack, ...input }) =>
       prepareBuiltInSkills({

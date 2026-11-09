@@ -26,6 +26,7 @@ function compatibilityRecord(
   db: AppDatabase,
   provider: Provider,
   method: ConnectionAuthMethod,
+  keySaved?: boolean,
 ): ProviderConnection | null {
   const row = db
     .prepare(
@@ -45,7 +46,7 @@ function compatibilityRecord(
     !row.name.trim()
   )
     return null
-  if (method === 'api-key' && !hasSavedKey(db, provider)) return null
+  if (method === 'api-key' && !(keySaved ?? hasSavedKey(db, provider))) return null
   return {
     id: row.id,
     provider,
@@ -72,17 +73,19 @@ export function resolveProviderConnection(
   selection: { readonly provider: Provider; readonly connectionId?: string | null },
 ): ProviderConnection {
   const { provider, connectionId } = selection
+  const keySaved = hasSavedKey(db, provider)
+  const currentMethod = keySaved ? 'api-key' : 'sign-in'
   const method =
     connectionId == null
-      ? hasSavedKey(db, provider)
-        ? 'api-key'
-        : 'sign-in'
+      ? currentMethod
       : connectionId === compatibilityConnectionId(provider, 'api-key')
         ? 'api-key'
         : connectionId === compatibilityConnectionId(provider, 'sign-in')
           ? 'sign-in'
           : null
-  const record = method === null ? null : compatibilityRecord(db, provider, method)
+  const record = method === null ? null : compatibilityRecord(db, provider, method, keySaved)
   if (!record) throw new Error('The selected connection is unavailable')
+  if (connectionId != null && method !== currentMethod)
+    throw new Error('The selected connection conflicts with the current credential route')
   return record
 }

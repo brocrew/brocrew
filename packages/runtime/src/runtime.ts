@@ -217,8 +217,6 @@ export type TurnProvenance =
 
 /** One event stream owns lifecycle: working per accepted turn, terminal turn before idle, and frozen state after session end or fatal error. */
 export interface SessionHandle {
-  /** The admitted app connection for this launch; older adapters may not provide attribution. */
-  readonly connectionId?: string
   /** Carry deliveries past retirement; an idle-looking retiring handle cannot accept another turn. */
   isRetiring?(): boolean
   /** Whether this launch's SDK init confirmed the installed skill catalogue. */
