@@ -1,24 +1,24 @@
 {
   "schema": 1,
   "release": {
-    "id": 437895124,
-    "tag": "v0.2.11",
-    "source": "cfe64af3add0e9104cd5f4f940c23c9a758ca4b0",
-    "tree": "898d38281013a5a33f205b47cea753fb147c7a87"
+    "id": 438799280,
+    "tag": "v0.2.12",
+    "source": "90c4db564be21eb4fa22b7fba95c5d861ac95b29",
+    "tree": "cf373e75a8fb2336fd92799fb003270257bb6c38"
   },
   "metrics": {
     "AUTO-A02": {
       "definition": "byte-lf-over-2000-v1",
-      "selector": "selected-product-v1",
-      "profileSha256": "51f56131c48ebf2560fb28e4765eb3accc8ce387abff0338b215940bc38d401b",
-      "count": 23,
-      "inventorySha256": "6fe8de379786505bf3b7314dfc5ce14cbf922bfdb789762e56423bf1005bc113",
-      "receiptSha256": "cea1accab2ea94960640a2c6c2f91532c8b7f1f122fc066e59855234f62d388e"
+      "selector": "selected-source-v2",
+      "profileSha256": "699ff53fde8b14541c6113f10443193febc250fc15eb590e11c21e662c7c650e",
+      "count": 22,
+      "inventorySha256": "74b96f9152cb7cc45377847e28ffee6855f489d7c3405d811601b9392d06bc40",
+      "receiptSha256": "c8ec426d9bb1a80b385a0121ce4c4e1ceea6d72f822f87f2d4f49b98dd0710fb"
     }
   },
   "provenance": {
-    "measuringSource": "346f3f5952eb8def744ca1ff0d29b94824719e38",
-    "evidenceReport": "projects/brobot-selfdev/reports/section6-a02/cfe-derivation-v2-terminal.md",
-    "evidenceResource": "res_1f8fcfcadb514a04a3ea9c22c33ecfa9"
+    "measuringSource": "e067bdda24c506240ca8536c1aae219b14a9d60c",
+    "evidenceReport": "projects/brobot-selfdev/reports/section6-a02-source-only/product012-derivation-terminal.md",
+    "evidenceResource": "res_194375d979fc40fe9d8dc29c32e054ef"
   }
 }
