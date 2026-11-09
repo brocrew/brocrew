@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { rename } from 'node:fs/promises'
+import { copyFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { providerAuthPolicies } from '../providers/auth-definitions'
 import { providerDescriptor, SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
@@ -25,9 +25,6 @@ export function whyNotAKey(key: string): string | null {
   }
   return null
 }
-
-/** How long moving a key an earlier version sealed waits for the system to open it. */
-export const EARLIER_KEY_TIMEOUT_MS = 15_000
 
 type Entry = { readonly key: string; readonly setAt: number }
 type Keys = Partial<Record<Provider, Entry>>
@@ -107,6 +104,7 @@ export class ApiKeys {
         file.keys[provider] = { key: key.trim(), setAt }
         file.cantRead = file.cantRead?.filter((one) => one !== provider)
         this.lastSetAt.set(provider, setAt)
+        this.noEarlierKeysLeft(provider, file)
         return true
       })
     } catch {
@@ -120,8 +118,9 @@ export class ApiKeys {
     this.changed(provider)
     let had = this.status(provider).set
     await this.change((file) => {
+      const settled = this.noEarlierKeysLeft(provider, file)
       const setAt = file.keys[provider]?.setAt
-      if (setAt === undefined && !file.cantRead?.includes(provider)) return false
+      if (setAt === undefined && !file.cantRead?.includes(provider)) return settled
       if (setAt !== undefined) this.lastSetAt.set(provider, setAt)
       delete file.keys[provider]
       file.cantRead = file.cantRead?.filter((one) => one !== provider)
@@ -167,7 +166,7 @@ export class ApiKeys {
     }
     let key: string
     try {
-      key = await withinTheDeadline(open(row.sealed))
+      key = await open(row.sealed)
       if (whyNotAKey(key) !== null) return
     } catch {
       return
@@ -187,6 +186,18 @@ export class ApiKeys {
     this.earlier.forgetEarlierApiKey(provider)
     this.changed(provider)
     moved(provider)
+  }
+
+  /**
+   * Marks the earlier keys moved once a person's act leaves none for any other provider, so a row
+   * a restored database brings back is dropped unopened. Answers whether it marked.
+   */
+  private noEarlierKeysLeft(provider: Provider, file: KeysFile): boolean {
+    if (file.earlierKeysMoved === true) return false
+    if (SUPPORTED_PROVIDERS.some((p) => p !== provider && this.earlier.earlierApiKey(p) !== null))
+      return false
+    file.earlierKeysMoved = true
+    return true
   }
 
   /** Saved, but not in a form a start can use: still sealed by an earlier version, or unreadable. */
@@ -229,7 +240,8 @@ export class ApiKeys {
           ? { keys: {}, cantRead: [...SUPPORTED_PROVIDERS] }
           : { ...read, keys: { ...read.keys } }
       if (!edit(file)) return false
-      if (read === null) await rename(this.path, `${this.path}.unreadable-${this.clock()}`)
+      // Copied, not moved: if the write fails the unreadable file still stands and still refuses.
+      if (read === null) await copyFile(this.path, `${this.path}.unreadable-${this.clock()}`)
       if (file.cantRead?.length === 0) delete file.cantRead
       await writeAtomically(this.path, `${JSON.stringify({ version: 1, ...file }, null, 2)}\n`)
       return true
@@ -246,7 +258,7 @@ function keysFileOf(parsed: unknown): KeysFile {
   for (const provider of SUPPORTED_PROVIDERS) {
     const entry = (keys as Record<string, unknown>)[provider] as Partial<Entry> | undefined
     if (entry === undefined) continue
-    if (typeof entry.key !== 'string' || whyNotAKey(entry.key) !== null) throw new Error('bad key')
+    if (typeof entry.key !== 'string' || entry.key === '') throw new Error('no key')
     if (typeof entry.setAt !== 'number') throw new Error('bad time')
     read[provider] = { key: entry.key, setAt: entry.setAt }
   }
@@ -257,20 +269,6 @@ function keysFileOf(parsed: unknown): KeysFile {
     keys: read,
     ...(unread.length > 0 ? { cantRead: unread } : {}),
     ...(earlierKeysMoved === true ? { earlierKeysMoved: true } : {}),
-  }
-}
-
-async function withinTheDeadline<T>(work: Promise<T>): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      work,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('timed out')), EARLIER_KEY_TIMEOUT_MS)
-      }),
-    ])
-  } finally {
-    clearTimeout(timer)
   }
 }
 

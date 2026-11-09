@@ -18,7 +18,6 @@ import {
   API_KEYS_FILE,
   ApiKeyUnreadableError,
   ApiKeys,
-  EARLIER_KEY_TIMEOUT_MS,
   askTheProvider,
   theCheapestModel,
   whyNotAKey,
@@ -200,6 +199,20 @@ describe('ApiKeys', () => {
   })
 })
 
+it.skipIf(process.platform === 'win32')(
+  '🔴 a save over an unreadable file that can’t be written leaves that file in place, still refusing',
+  async () => {
+    writeFileSync(fileOf(), '{ not json', { mode: 0o600 })
+    const keys = new ApiKeys(userData, earlierRows(), () => 77)
+    chmodSync(userData, 0o500)
+    expect(await keys.set('codex', 'sk-codex-fern')).toContain('couldn’t write the key')
+    chmodSync(userData, 0o700)
+    expect(readFileSync(fileOf(), 'utf8')).toBe('{ not json')
+    for (const provider of ['claude', 'codex'] as const)
+      expect(keys.status(provider)).toMatchObject(CANT_BE_USED)
+  },
+)
+
 describe('moving the keys an earlier version sealed', () => {
   it('🔴 a key moves once with its own time, its sealed row goes, and a second start opens nothing', async () => {
     const rows = earlierRows({ codex: { key: OLD_KEY, setAt: 555 } })
@@ -271,12 +284,9 @@ describe('moving the keys an earlier version sealed', () => {
     await expect(keys.read('claude')).rejects.toThrow('Saved key can’t be read')
     await expect(keys.current('claude')).rejects.toThrow(ApiKeyUnreadableError)
     expect(performance.now() - started).toBeLessThan(50)
-    expect(vi.getTimerCount()).toBe(1)
-
-    vi.advanceTimersByTime(EARLIER_KEY_TIMEOUT_MS)
-    await moving
-    expect(keys.status('claude')).toMatchObject(CANT_BE_USED)
+    expect(vi.getTimerCount()).toBe(0)
     expect(rows.kept.size).toBe(1)
+    void moving
   })
 
   it('🔴 a key the system refuses to open can’t be used, and the move itself throws nothing', async () => {
@@ -333,6 +343,23 @@ describe('moving the keys an earlier version sealed', () => {
     expect(open).not.toHaveBeenCalled()
     expect(rows.kept.size).toBe(0)
     expect(await next.read('claude')).toBeNull()
+  })
+
+  it('🔴 a key removed after a failed move stays removed when a restored database brings its row back', async () => {
+    const rows = earlierRows({ claude: { key: OLD_KEY, setAt: 9 } })
+    const keys = new ApiKeys(userData, rows)
+    await keys.moveEarlierKeys(async () => {
+      throw new Error('denied')
+    }, vi.fn())
+    expect(await keys.remove('claude')).toBe(true)
+    rows.kept.set('claude', { sealed: seal(OLD_KEY), setAt: 9 })
+    open.mockClear()
+    const next = new ApiKeys(userData, rows)
+    await next.moveEarlierKeys(open, vi.fn())
+    expect(open).not.toHaveBeenCalled()
+    expect(rows.kept.size).toBe(0)
+    expect(await next.read('claude')).toBeNull()
+    expect(next.status('claude')).toMatchObject({ set: false })
   })
 
   it('🔴 a moved Codex key keeps its time, so a home logged in with it is not logged in again', async () => {
