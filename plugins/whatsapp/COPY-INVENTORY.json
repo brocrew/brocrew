@@ -151,30 +151,6 @@
       "destinationSha256": "e36f04a974d27d22112bf5e884c5b93c1459d90808393ec05b2dafa2a18e1138"
     },
     {
-      "destination": "plugins/whatsapp/bridge/archive.go",
-      "sources": [
-        {
-          "project": "source project",
-          "path": "infra/whatsapp/bridge_archive.go",
-          "sha256": "7d9cedcdddc7d886d2bbcaecccc725873f79a1c7a3f870d930619f31a46fd9ac"
-        }
-      ],
-      "changes": "Copied; comments that named other files removed.",
-      "destinationSha256": "6588c2c697ee08485a96328dc611dbc5caa2d9e67e4594a8a842d25a72a93888"
-    },
-    {
-      "destination": "plugins/whatsapp/bridge/archive_test.go",
-      "sources": [
-        {
-          "project": "source project",
-          "path": "infra/whatsapp/bridge_archive_test.go",
-          "sha256": "c4486ee41d6571b96e475649e50ef362a4d08254fb92a9367b33ac808b4629d9"
-        }
-      ],
-      "changes": "Copied; size pins follow the 100 MB limit.",
-      "destinationSha256": "0be9c7a315062ee006c117c38dd0bb1dd8d2274310f240ce2856d78f7cd63c1f"
-    },
-    {
       "destination": "plugins/whatsapp/bridge/sniff_test.go",
       "sources": [
         {

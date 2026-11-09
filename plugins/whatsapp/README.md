@@ -1,13 +1,13 @@
 # WhatsApp plugin source
 
-A one-time port of the WhatsApp bridge and server from whatsapp-mcp (MIT, Copyright (c) 2025 Luke Harries; its notice is in `bridge/UPSTREAM-LICENSE` and ships in the package's `licenses/`), with the group-sending, file-typing and archive checks of the source project that ran it. It has no runtime dependency on either. Only code was copied: no WhatsApp session, keys, message store, contacts or media. `COPY-INVENTORY.json` records each copied file, its source digest and its destination; `UPSTREAM-CHANGES.md` says what changed.
+A one-time port of the WhatsApp bridge and server from whatsapp-mcp (MIT, Copyright (c) 2025 Luke Harries; its notice is in `bridge/UPSTREAM-LICENSE` and ships in the package's `licenses/`), with the group-sending and file-typing checks of the source project that ran it. It has no runtime dependency on either. Only code was copied: no WhatsApp session, keys, message store, contacts or media. `COPY-INVENTORY.json` records each copied file, its source digest and its destination; `UPSTREAM-CHANGES.md` says what changed.
 
 ## What it does
 
 - **Linking.** The settings page shows a fresh QR code. The phone scans it, and this plugin becomes one of its linked devices. "Log out" removes the device from the phone's linked devices, through WhatsApp, and deletes the session, the messages it kept and the photos and PDFs it downloaded. If WhatsApp can't be reached within about 25 seconds, only the plugin's side is cleared: the device can no longer be used, and the page says to remove it on the phone too. A log out the app quits during is finished at the next start. Uninstalling logs out first, then deletes all of the plugin's data.
 - **Reading** (`list_chats`, `read_messages`, `search_messages`, `search_contacts`, `get_media`) works only while the person has "Read conversations" on. It is off at first, and applies to all agents.
 - **Sending** (`send_to_group`) goes only to groups whose "Can write" the person turned on; never to a person. Text up to 4,000 characters, or one file with a caption up to 1,000. Five messages per group in ten minutes, twenty an hour in all, and the same message to the same group once an hour. `list_groups` names the groups that can be written to.
-- **Files to send** must be in the plugin's `files` folder (an absolute path, shown in the tool's description), up to 100 MB. The bridge checks the file's type from its bytes, and refuses programs and archives that hold keys or credentials.
+- **Files to send** must be in the plugin's `files` folder (an absolute path, shown in the tool's description), up to 100 MB. The bridge checks the file's type from its bytes.
 - **Every refusal** gives the agent a fixed line and is written to `refusals.jsonl` in the plugin's private folder: when, which tool and which rule, never what was asked.
 
 ## Parts

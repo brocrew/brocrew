@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"io"
 	"regexp"
@@ -19,7 +20,6 @@ const (
 
 type attachType struct {
 	Kind, Mime, Ext string
-	ScanTarGz       bool
 }
 
 const (
@@ -103,18 +103,19 @@ func office(names []string) (attachType, bool, bool) { // type, isOffice, allowe
 }
 
 func sniffZip(r io.ReaderAt, size int64, ext string) (attachType, sniffResult) {
-	names, err := zipNames(r, size)
+	reader, err := zip.NewReader(r, size)
 	if err != nil {
 		return attachType{}, sniffRefused
+	}
+	names := make([]string, 0, len(reader.File))
+	for _, f := range reader.File {
+		names = append(names, f.Name)
 	}
 	if t, isOffice, allowed := office(names); isOffice {
 		if !allowed {
 			return attachType{}, sniffRefused
 		}
 		return t, sniffOK
-	}
-	if anyEntryDenied(names) {
-		return attachType{}, sniffRefused
 	}
 	has := func(n string) bool {
 		for _, x := range names {
@@ -221,7 +222,7 @@ func tarHeaderOK(block []byte) bool {
 }
 
 // sniffKnown decides the type from the bytes: sniffOK with the type, sniffUnknown when the bytes match none of the known types,
-// sniffRefused for what is unsafe (an empty or too big file, an archive with credential-looking entries, a document with macros
+// sniffRefused for what is unsafe (an empty or too big file, a document with macros
 // or embedded objects). fileName only separates look-alikes (txt/csv, mp3/aac...) and names compound archive types.
 func sniffKnown(r io.ReaderAt, size int64, fileName string) (attachType, sniffResult) {
 	lower, ext := nameParts(fileName)
@@ -322,10 +323,10 @@ func sniffKnown(r io.ReaderAt, size int64, fileName string) (attachType, sniffRe
 		return sniffZip(r, size, ext)
 	case bytes.HasPrefix(head, []byte{0x1f, 0x8b, 0x08}):
 		if strings.HasSuffix(lower, ".tar.gz") {
-			return attachType{Kind: "document", Mime: "application/gzip", Ext: "tar.gz", ScanTarGz: true}, sniffOK
+			return attachType{Kind: "document", Mime: "application/gzip", Ext: "tar.gz"}, sniffOK
 		}
 		if ext == "tgz" {
-			return attachType{Kind: "document", Mime: "application/gzip", Ext: "tgz", ScanTarGz: true}, sniffOK
+			return attachType{Kind: "document", Mime: "application/gzip", Ext: "tgz"}, sniffOK
 		}
 		return attachType{Kind: "document", Mime: "application/gzip", Ext: "gz"}, sniffOK
 	case bytes.HasPrefix(head, []byte{0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00}):
@@ -347,10 +348,6 @@ func sniffKnown(r io.ReaderAt, size int64, fileName string) (attachType, sniffRe
 	case len(head) >= 512 && (ascii(257, 262) == "ustar" || ext == "tar"):
 		if !tarHeaderOK(head[:512]) {
 			return attachType{}, sniffUnknown
-		}
-		names, err := tarNames(io.NewSectionReader(r, 0, size))
-		if err != nil || anyEntryDenied(names) {
-			return attachType{}, sniffRefused
 		}
 		return attachType{Kind: "document", Mime: "application/x-tar", Ext: "tar"}, sniffOK
 	}

@@ -167,12 +167,6 @@ func openAttachment(filesDir string, request sendFile) (attachment, string) {
 	if !bytes.Equal(hasher.Sum(nil), wantSHA) {
 		return refuse("changed")
 	}
-	if typ.ScanTarGz {
-		names, err := tarGzNames(io.NewSectionReader(file, 0, request.Size))
-		if err != nil || anyEntryDenied(names) {
-			return refuse("unsupported_media_type")
-		}
-	}
 	return attachment{File: file, Size: request.Size, Mime: typ.Mime, Kind: typ.Kind, Name: displayName(request.Name, typ.Ext),
 		SHA: wantSHA, Ext: typ.Ext}, ""
 }
