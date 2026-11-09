@@ -50,6 +50,7 @@ function peer(hold = 'tools/list', format: 'json' | 'sse' = 'json') {
   const started = deferred<void>()
   let stream!: ReadableStreamDefaultController<Uint8Array>
   let remaining = ''
+  let disconnected = false
   let signal: AbortSignal | undefined
   vi.stubGlobal(
     'fetch',
@@ -93,13 +94,13 @@ function peer(hold = 'tools/list', format: 'json' | 'sse' = 'json') {
       remaining = remaining.slice(1)
     },
     finish() {
-      if (!signal?.aborted) {
+      if (!signal?.aborted && !disconnected) {
         stream.enqueue(new TextEncoder().encode(remaining))
         stream.close()
       }
     },
     aborted: () => signal?.aborted,
-    disconnect(error: Error) { stream.error(error) },
+    disconnect(error: Error) { disconnected = true; stream.error(error) },
   }
 }
 
@@ -177,11 +178,17 @@ it.each(['json', 'sse'] as const)('ends a pending %s inventory immediately when 
 
 it('reports a disconnected SSE reply immediately, preserving the actual transport cause', async () => {
   const remote = peer('tools/list', 'sse')
-  const work = admittedPluginTools(view().attachment, new Set(), () => {}).catch((error: unknown) => error)
+  let outcome: unknown
+  const work = admittedPluginTools(view().attachment, new Set(), () => {}).catch((error: unknown) => { outcome = error })
   await remote.started
   remote.disconnect(Object.assign(new Error('connection reset'), { code: 'ECONNRESET' }))
   await vi.advanceTimersByTimeAsync(0)
-  expect(await work).toMatchObject({ pluginStage: 'binding-inventory', pluginCause: 'transport-closed' })
+  try {
+    expect(outcome).toMatchObject({ pluginStage: 'binding-inventory', pluginCause: 'transport-closed' })
+  } finally {
+    await vi.advanceTimersByTimeAsync(60_000)
+    await work
+  }
 })
 
 function emptyBinding() {
