@@ -86,6 +86,7 @@ import {
   startOrder,
   stateFileNames,
   stateKept,
+  withMovedFiles,
   theCandidateInstaller,
   transcriptsOf,
   turnOutcome,
@@ -2921,7 +2922,11 @@ try {
       recordedWith: recordedWith(afterFirst.lineage, candidateLineage),
     },
   )
-  const stateNow = stateKept(stateBefore, readState(), stateFiles)
+  const stateNow = stateKept(
+    stateBefore,
+    withMovedFiles(readState(), afterFirst.tables),
+    stateFiles,
+  )
   summary.afterFirst.state = stateNow
   check(
     stateNow.lost.length === 0,
@@ -3113,7 +3118,8 @@ try {
   const transcriptsThen = transcriptsKept(transcriptsBefore, { exact: false })
   check(transcriptsThen.length === 0, 'the Codex transcripts only grew', transcriptsThen)
   check(
-    stateKept(stateBefore, readState(), stateFiles).lost.length === 0,
+    stateKept(stateBefore, withMovedFiles(readState(), afterSecond.tables), stateFiles).lost
+      .length === 0,
     'after the second start, every state file the beta left still says what it said',
   )
   const sinceTheFirstStart = copiesSince(copiesAfterFirst, copies(), args['candidate-version'])

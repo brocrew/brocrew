@@ -197,7 +197,7 @@ export function mcpRequestWorld() {
       }
       const host = new RuntimeHost({
         store,
-        archived: archivedConversationsIn(folder),
+        archived: archivedConversationsIn(db),
         ...neutralHostDeps(() => folder),
         createRuntime: (provider: Provider) => new RecordingRuntime(provider, { sessions: issued }),
         prepareProviderHome: (provider, profile = 'default') => {
