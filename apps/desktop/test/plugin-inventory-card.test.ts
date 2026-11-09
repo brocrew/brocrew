@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -22,7 +22,7 @@ it('carries a retry stage and last cause to Settings without changing older card
     preparedMutationFeature: () => false,
     status: async () => ({ cards: [card] }),
   } as unknown as PluginLifecycleController
-  const key = 'c'.repeat(64)
+  const key = randomBytes(32).toString('hex')
   const host = await servePersonPluginControl({ root, key, controller, read: async () => null })
   const channel = await connectPersonPluginControl({
     path: host.path, key, handle: async () => true,
