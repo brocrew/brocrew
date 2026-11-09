@@ -1,3 +1,4 @@
+import type { ProviderConnection } from '@brobot2/shared'
 import { keptRules } from './kept-rules'
 import { authPolicy } from './auth-policy'
 import { machineLoginPresence } from './backing-login'
@@ -103,14 +104,29 @@ export async function prepareOnTheLogin(
   }
 }
 
-export function claudeRuntime(seams: ClaudeRuntimeSeams): AgentRuntime {
+function keyForConnection(
+  key: ClaudeRuntimeSeams['key'],
+  connection?: ProviderConnection,
+): ClaudeRuntimeSeams['key'] {
+  if (connection === undefined) return key
+  if (connection.authMethod === 'sign-in') return () => null
+  return async () => {
+    const selected = await key?.()
+    if (selected == null || selected === '')
+      throw new AuthUnavailableError('claude', 'The selected API key is unavailable')
+    return selected
+  }
+}
+
+export function claudeRuntime(seams: ClaudeRuntimeSeams, connection?: ProviderConnection): AgentRuntime {
+  const key = keyForConnection(seams.key, connection)
   return new ClaudeRuntime(
     undefined,
     undefined,
     claudeKeychainTokenProvider(),
     claudeKeychainTokenProviderAsync(),
     undefined,
-    seams.key === undefined ? undefined : () => seams.key?.() ?? null,
+    key === undefined ? undefined : () => key() ?? null,
     undefined,
 
     () => whyNoClaudeLogin({ command: claudeCommandFor(seams) }),
@@ -124,10 +140,12 @@ export async function prepareClaudeHome(
   paths: ProviderHomePaths,
   profileId: string,
   seams: ClaudeHomeSeams,
+  connection?: ProviderConnection,
 ): Promise<string> {
   const home = await prepareStateHome(paths, profileId, seams.provisionHome)
 
-  const health = await (seams.health ?? (() => claudeHealth(seams.key, claudeCommandFor(seams))))()
+  const key = keyForConnection(seams.key, connection)
+  const health = await (seams.health ?? (() => claudeHealth(key, claudeCommandFor(seams))))()
   if (!health.ok) {
     throw new AuthUnavailableError('claude', health.reason ?? 'Claude machine login unavailable')
   }
@@ -227,11 +245,11 @@ export interface ClaudeModuleSeams {
 
 export const claudeModuleFactory = {
   runtime:
-    (seams: ClaudeRuntimeSeams): (() => AgentRuntime) =>
-    () =>
-      claudeRuntime(seams),
+    (seams: ClaudeRuntimeSeams): ((connection?: ProviderConnection) => AgentRuntime) =>
+    (connection) =>
+      claudeRuntime(seams, connection),
   home: (paths: ProviderHomePaths, seams: ClaudeHomeSeams): ProviderHomeStrategy => ({
-    prepare: (profileId) => prepareClaudeHome(paths, profileId, seams),
+    prepare: (profileId, connection) => prepareClaudeHome(paths, profileId, seams, connection),
   }),
   auth: claudeAuth,
 }

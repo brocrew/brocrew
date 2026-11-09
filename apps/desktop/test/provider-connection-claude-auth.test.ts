@@ -3,14 +3,36 @@ import { mkdtempSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { ClaudeRuntime, type ClaudeQuery } from '@brobot2/runtime/claude'
+import type { ClaudeQuery } from '@brobot2/runtime/claude'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { ApiKeys } from '../src/main/runtime/api-keys'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { resolveProviderConnection } from '../src/main/db/provider-connections'
-import { onProviderConnection } from '../src/main/providers'
+import { claudeRuntime } from '../src/main/providers/claude'
+
+const native = vi.hoisted(() => ({
+  queryFactory: vi.fn<(params: unknown) => ClaudeQuery>(),
+  login: vi.fn(() => 'fictional-login'),
+  spawn: vi.fn(() => { throw new Error('No provider process in this test') }),
+}))
+
+vi.mock('@brobot2/runtime/claude', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@brobot2/runtime/claude')>()
+  return {
+    ...actual,
+    ClaudeRuntime: class extends actual.ClaudeRuntime {
+      constructor(...args: ConstructorParameters<typeof actual.ClaudeRuntime>) {
+        super(
+          (params) => native.queryFactory(params), async () => true,
+          native.login, async () => native.login(), native.spawn, args[5], 'linux',
+          args[7], args[8], async () => native.login(), args[10],
+        )
+      }
+    },
+  }
+})
 
 class Query implements ClaudeQuery {
   private end!: () => void
@@ -36,75 +58,84 @@ class Query implements ClaudeQuery {
 
 let dir: string
 let db: AppDatabase
+const handles: import('@brobot2/runtime').SessionHandle[] = []
 beforeEach(() => {
+  vi.clearAllMocks()
   dir = mkdtempSync(join(tmpdir(), 'brocrew-connection-auth-'))
   db = openDatabase(':memory:')
   applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations'))
 })
-afterEach(() => {
+afterEach(async () => {
+  await Promise.all(handles.splice(0).map((handle) => handle.close()))
   db.close()
   rmSync(dir, { recursive: true, force: true })
 })
 
 for (const operation of ['start', 'resume', 'models'] as const) {
-  it(`Claude ${operation}: changed-back key selection at authForALaunch cannot persist sign-in attribution`, async () => {
+  for (const method of ['sign-in', 'api-key'] as const) {
+    it(`Claude ${operation}: keeps the selected ${method} method when the saved key changes during its read`, async () => {
+      const store = createSessionStore(db)
+      const keys = new ApiKeys(store, {
+        available: () => true,
+        seal: (key) => Buffer.from(key).toString('base64'),
+        open: (sealed) => Buffer.from(sealed, 'base64').toString(),
+      })
+      if (method === 'api-key') await keys.set('claude', 'fictional-fern-key')
+      const connection = resolveProviderConnection(db, { provider: 'claude' })
+      const home = join(dir, 'claude')
+      mkdirSync(home)
+      const query = new Query()
+      native.queryFactory.mockReturnValue(query)
+      const readKey = vi.fn(async () => {
+        if (method === 'sign-in') await keys.set('claude', 'fictional-willow-key')
+        const key = await keys.read('claude')
+        keys.remove('claude')
+        return key
+      })
+      const runtime = claudeRuntime({ program: () => '/fictional/claude', key: readKey }, connection)
+      const options = { cwd: dir, providerHome: home }
+      if (operation === 'models') {
+        expect(await runtime.listModels(options)).toEqual([])
+      } else {
+        const handle = operation === 'start'
+          ? await runtime.start(options)
+          : await runtime.resume({ provider: 'claude', sessionId: 'fictional-native', cwd: dir, rotation: 0 }, options)
+        handles.push(handle)
+      }
+      expect(native.queryFactory).toHaveBeenCalledTimes(1)
+      expect(native.spawn).not.toHaveBeenCalled()
+      if (method === 'sign-in') {
+        expect(readKey).not.toHaveBeenCalled()
+        expect(native.login).toHaveBeenCalled()
+      } else {
+        expect(readKey).toHaveBeenCalledTimes(1)
+        expect(native.login).not.toHaveBeenCalled()
+        expect(keys.status('claude').set).toBe(false)
+      }
+      expect(connection.authMethod).toBe(method)
+    })
+  }
+
+  it(`Claude ${operation}: a selected API key that disappears does not fall back to a login`, async () => {
     const store = createSessionStore(db)
     const keys = new ApiKeys(store, {
       available: () => true,
       seal: (key) => Buffer.from(key).toString('base64'),
       open: (sealed) => Buffer.from(sealed, 'base64').toString(),
     })
+    await keys.set('claude', 'fictional-fern-key')
+    const connection = resolveProviderConnection(db, { provider: 'claude' })
+    keys.remove('claude')
     const home = join(dir, 'claude')
     mkdirSync(home)
-    const query = new Query()
-    const queryFactory = vi.fn(() => query)
-    const spawn = vi.fn(() => {
-      throw new Error('No provider process in this test')
-    })
-    const login = vi.fn(() => 'fictional-login')
-    let consumed: string | null | undefined
-    const actual = new ClaudeRuntime(
-      queryFactory,
-      async () => true,
-      login,
-      async () => login(),
-      spawn,
-      async () => {
-        await keys.set('claude', 'fictional-fern-key')
-        const key = await keys.read('claude')
-        consumed = key === null ? 'sign-in' : 'api-key'
-        keys.remove('claude')
-        return key
-      },
-      'linux',
-      () => 'Fictional login unavailable',
-      '/fictional/claude',
-    )
-    const runtime = onProviderConnection(
-      'claude',
-      () => actual,
-      (connectionId) => resolveProviderConnection(db, { provider: 'claude', connectionId }),
-      undefined,
-      () => keys.revision('claude'),
-    )
+    const runtime = claudeRuntime({ program: () => '/fictional/claude', key: () => keys.read('claude') }, connection)
     const options = { cwd: dir, providerHome: home }
-    const pending =
-      operation === 'models'
-        ? runtime.listModels(options)
-        : operation === 'start'
-          ? runtime.start(options)
-          : runtime.resume(
-              { provider: 'claude', sessionId: 'fictional-native', cwd: dir, rotation: 0 },
-              options,
-            )
-    await expect(pending).rejects.toThrow('connection changed')
-    expect(consumed).toBe('api-key')
-    expect(resolveProviderConnection(db, { provider: 'claude' }).id).toBe('claude:sign-in')
-    expect(keys.revision('claude')).toBe(2)
-    expect(queryFactory).toHaveBeenCalledTimes(1)
-    expect(query.close).toHaveBeenCalledTimes(1)
-    expect(login).not.toHaveBeenCalled()
-    expect(spawn).not.toHaveBeenCalled()
-    expect(db.prepare('SELECT connection_id FROM provider_session').all()).toEqual([])
+    const pending = operation === 'models' ? runtime.listModels(options)
+      : operation === 'start' ? runtime.start(options)
+      : runtime.resume({ provider: 'claude', sessionId: 'fictional-native', cwd: dir, rotation: 0 }, options)
+    await expect(pending).rejects.toThrow('The selected API key is unavailable')
+    expect(native.queryFactory).not.toHaveBeenCalled()
+    expect(native.login).not.toHaveBeenCalled()
+    expect(native.spawn).not.toHaveBeenCalled()
   })
 }

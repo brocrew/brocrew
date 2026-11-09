@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
+import { resolveProviderConnection } from '../src/main/db/provider-connections'
 import {
   createSessionStore,
   type NewSessionRecord,
@@ -62,7 +63,7 @@ it('keeps legacy null choices null when read and reopened', () => {
   ).toEqual({ connection_id: null })
 })
 
-for (const connectionId of ['codex:sign-in', 'fictional-missing', 'claude:api-key']) {
+for (const connectionId of ['codex:sign-in', 'fictional-missing']) {
   it(`refuses unavailable binding ${connectionId} atomically`, () => {
     expect(() => create('fictional-refused', connectionId)).toThrow()
     expect(
@@ -71,6 +72,16 @@ for (const connectionId of ['codex:sign-in', 'fictional-missing', 'claude:api-ke
     expect(db.prepare("SELECT * FROM agent_identity WHERE slug='fern'").get()).toBeUndefined()
   })
 }
+
+it('records a resolved key choice after the saved key changes, without repeating availability admission', () => {
+  db.prepare('INSERT INTO provider_api_key(provider,sealed,updated_at) VALUES(?,?,?)').run(
+    'claude', 'fictional-key', 1,
+  )
+  const selected = resolveProviderConnection(db, { provider: 'claude' })
+  db.prepare('DELETE FROM provider_api_key WHERE provider=?').run('claude')
+  create('fictional-resolved-key', selected.id)
+  expect(store.connectionOf('fictional-resolved-key')).toBe(selected.id)
+})
 
 it('keeps a saved-key reference rather than copying the sealed value', () => {
   db.prepare('INSERT INTO provider_api_key(provider,sealed,updated_at) VALUES(?,?,?)').run(

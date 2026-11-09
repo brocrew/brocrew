@@ -1,3 +1,4 @@
+import type { ProviderConnection } from '@brobot2/shared'
 import { authPolicy } from './auth-policy'
 import { machineLoginPresence } from './backing-login'
 export { machineLoginPresence } from './backing-login'
@@ -140,10 +141,32 @@ export function codexRuntime(seams: CodexRuntimeSeams): AgentRuntime {
   return new CodexRuntime(createSpawnTransportFactory(seams.command()), codexAuthHealth)
 }
 
+function keyForConnection(
+  key: CodexKeySeam | undefined,
+  connection?: ProviderConnection,
+): CodexKeySeam | undefined {
+  if (connection === undefined) return key
+  if (key === undefined) {
+    if (connection.authMethod === 'api-key')
+      throw new AuthUnavailableError('codex', 'The selected API key is unavailable')
+    return undefined
+  }
+  return {
+    change: (home, change) => key.change(home, change),
+    current: connection.authMethod === 'sign-in' ? () => null : async () => {
+      const selected = await key.current()
+      if (selected === null)
+        throw new AuthUnavailableError('codex', 'The selected API key is unavailable')
+      return selected
+    },
+  }
+}
+
 export async function prepareCodexHome(
   paths: ProviderHomePaths,
   profileId: string,
   seams: CodexHomeSeams,
+  connection?: ProviderConnection,
 ): Promise<string> {
   const home = await prepareStateHome(paths, profileId, seams.provisionHome)
 
@@ -151,7 +174,8 @@ export async function prepareCodexHome(
 
   ensureCodexMemoryConfig(home)
 
-  if (seams.key !== undefined && (await bringTheCodexKeyTo(home, seams.key)) === 'the-key') {
+  const key = keyForConnection(seams.key, connection)
+  if (key !== undefined && (await bringTheCodexKeyTo(home, key)) === 'the-key') {
     return home
   }
 
@@ -297,7 +321,7 @@ export const codexModuleFactory = {
     () =>
       codexRuntime(seams),
   home: (paths: ProviderHomePaths, seams: CodexHomeSeams): ProviderHomeStrategy => ({
-    prepare: (profileId) => prepareCodexHome(paths, profileId, seams),
+    prepare: (profileId, connection) => prepareCodexHome(paths, profileId, seams, connection),
   }),
   auth: codexAuth,
 }
