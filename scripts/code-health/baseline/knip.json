@@ -48,7 +48,6 @@
   "exports|apps/desktop/src/main/archive/native-file.ts|newestStateDatabase",
   "exports|apps/desktop/src/main/archive/read-bundle.ts|MAX_BUNDLE_BYTES",
   "exports|apps/desktop/src/main/archive/turn-reading.ts|TEXT_BLOCKS",
-  "exports|apps/desktop/src/main/archived-file.ts|ARCHIVED_FILE_VERSION",
   "exports|apps/desktop/src/main/build-stamp.ts|COMBINED_BRANCH",
   "exports|apps/desktop/src/main/build-stamp.ts|COMBINED_FROM",
   "exports|apps/desktop/src/main/child-work.ts|MAX_CHILD_WORK_BYTES",
