@@ -1,12 +1,47 @@
 import { afterEach, expect, it } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { cleanupLifecycleFixtures, deferred } from './plugin-lifecycle-fixtures'
+import { randomUUID } from 'node:crypto'
+import { cleanupLifecycleFixtures, deferred, fixture } from './plugin-lifecycle-fixtures'
 import { closes, lease, live, request } from './helpers/plugin-agent-bridge'
 
 afterEach(async () => {
   for (const close of closes.splice(0).reverse()) await close()
   await cleanupLifecycleFixtures()
+})
+
+it.each(['chrome', 'whatsapp', null])('reads a fresh pending %s operation while its writer is suspended', async (pluginId) => {
+  const f = await fixture()
+  await f.controller.install(f.handle, 'chrome')
+  const view = f.controller.agentAttachments(f.local.sink.workspaceId)[0]!
+  const entered = deferred<void>(), release = deferred<void>()
+  const writer = f.state.withExclusive(async () => {
+    const state = f.state.inspect()
+    const installed = state.guards.find((one) => one.pluginId === pluginId)
+    f.state.prepare({
+      operationId: randomUUID(),
+      consent: {
+        action: pluginId === null ? 'global-restore' : installed ? 'update' : 'install',
+        pluginId, at: 1000, expectedSequence: state.sequence,
+        expectedInstallId: installed?.installId ?? null,
+        release: pluginId === null ? null : {
+          version: f.pkg.release.version, archiveSha256: f.pkg.release.archive.sha256,
+          manifestSha256: f.pkg.release.manifestSha256, dataSchema: f.pkg.manifest.dataSchema,
+        },
+      },
+      snapshot: pluginId === null ? f.state.exportActivation() : null,
+    })
+    entered.resolve()
+    await release.promise
+  })
+  await entered.promise
+  try {
+    expect(view.current()).toBe(pluginId === 'whatsapp')
+    expect(f.state.readWorkspaceAdmission().pendingPlugin).toBe(pluginId ?? '*')
+  } finally {
+    release.resolve()
+    await writer
+  }
 })
 
 it('keeps an issued route usable while another async lifecycle context owns the writer fence', async () => {

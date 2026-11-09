@@ -162,7 +162,7 @@ export class GlobalPluginState {
   withWorkspaceAdmission<T>(
     decide: (read: WorkspaceAdmission) => T extends PromiseLike<unknown> ? never : T,
   ): T {
-    const state = this.disk.load()
+    const state = this.disk.loadForAdmission()
     const installations = this.committed(state).entries
     const read = frozen({
       sequence: state.sequence,
@@ -172,7 +172,7 @@ export class GlobalPluginState {
     })
     const result = decide(read)
     if (result && typeof (result as { then?: unknown }).then === 'function') refuseState('conflict')
-    const after = this.disk.load()
+    const after = this.disk.loadForAdmission()
     if (
       after.rootId !== state.rootId ||
       after.epoch !== state.epoch ||

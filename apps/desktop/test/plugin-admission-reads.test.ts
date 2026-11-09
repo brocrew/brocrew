@@ -34,8 +34,8 @@ it.each(['admitted', 'screen', 'agentAttachments', 'agentScope'] as const)(
     const f = await fixture()
     await f.controller.install(f.handle, 'chrome')
     const installId = f.controller.screen(f.handle, 'chrome').installation.installId
-    const disk = (f.state as unknown as { disk: { load(...args: unknown[]): unknown } }).disk
-    const loads = vi.spyOn(disk, 'load')
+    const disk = (f.state as unknown as { disk: { loadForAdmission(): unknown } }).disk
+    const loads = vi.spyOn(disk, 'loadForAdmission')
     if (operation === 'admitted')
       expect(f.controller.admitted(f.handle, 'chrome', installId)).toBe(true)
     if (operation === 'screen')
@@ -82,8 +82,8 @@ it('shares fresh admission only within a synchronous route plan and revokes its 
   const f = await fixture()
   await f.controller.install(f.handle, 'chrome')
   const view = f.controller.agentAttachments(f.local.sink.workspaceId)[0]!
-  const disk = (f.state as unknown as { disk: { load(): unknown } }).disk
-  const loads = vi.spyOn(disk, 'load')
+  const disk = (f.state as unknown as { disk: { loadForAdmission(): unknown } }).disk
+  const loads = vi.spyOn(disk, 'loadForAdmission')
   let retained!: (one: typeof view) => boolean
   f.controller.withAgentScope(f.local.sink.workspaceId, (scope, current) => {
     retained = current

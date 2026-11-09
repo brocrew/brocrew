@@ -526,6 +526,7 @@ onUnmounted(() => {
             data-cy="plugin-tools-unavailable"
           >
             Agents can't use {{ card.name }} right now.
+            {{ card.toolsCause }}
           </p>
           <p v-if="card.installed">Installed for all workspaces.</p>
           <template
@@ -562,7 +563,7 @@ onUnmounted(() => {
             data-cy="plugin-start-error"
           >
             {{ card.name }} can't start right now.
-            {{ pluginUnavailableNotice(card.unavailableReason) }}
+            {{ card.toolsCause ?? pluginUnavailableNotice(card.unavailableReason) }}
             <span v-if="card.startupDiagnostic" data-cy="plugin-start-diagnostic">{{
               pluginStartupDiagnosticNotice(card.startupDiagnostic)
             }}</span>

@@ -634,6 +634,15 @@ export class PluginStateDisk extends PluginJournalReader {
       return structuredClone(this.held.state)
     })
   }
+  /**
+   * The service's sole writer publishes synchronously and invalidates held state before each
+   * publication. Admission can read between its awaits without taking its async writer lock.
+   * A cold read never repairs an interrupted publication.
+   */
+  loadForAdmission(): LifecycleState {
+    this.check()
+    return structuredClone(this.held?.state ?? this.loadLocked(undefined, false))
+  }
   /** The current activation snapshot, read once with the state it belongs to. */
   activationSnapshot(ref: ActivationRef): ActivationSnapshot {
     const held = this.held?.activation
