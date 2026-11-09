@@ -30,9 +30,6 @@ export {
   REQUEST_MARKER,
   ENVIRONMENT_CLOSE,
   splitCodexMessage,
-  savedMethodsLinesInLead,
-  codexMessageAsKept,
-  codexTextAsKept,
   type CodexMessageParts,
 } from './codex/codex-injected'
 export {

@@ -408,9 +408,8 @@ describe('§3 · no text main or a package composes writes a task number of its 
   })
 
   // The exact exceptions are Markdown headings, config comments and a CSS colour.
-  it('🔴 the population is exactly the seven prints that are not a task', () => {
+  it('the population is exactly the prints that are not a task', () => {
     const files = walked()
-    // ⚑ non-vacuity: the walk reaches every file a receipt or a notice is composed in
     for (const must of [
       'apps/desktop/src/main/runtime/agent-tools.ts',
       'apps/desktop/src/main/runtime/factory-text.ts',
@@ -428,17 +427,11 @@ describe('§3 · no text main or a package composes writes a task number of its 
     )
     expect(found.sort()).toEqual(
       [
-        // These plugin sections are Markdown headings, never task-number prints.
         "apps/desktop/src/main/plugins/instructions.ts · : `## ${PLUGINS_HEADING}\\n\\n${pluginInstructionParagraphs(entries).join('\\n\\n')}`",
         'apps/desktop/src/main/runtime/factory-text.ts · heading: `## ${PLUGINS_HEADING}`,',
-        // The other dynamic Markdown headings in the instructions a model is given
         'apps/desktop/src/main/runtime/factory-text.ts · heading: `## ${YOUR_OWN_INSTRUCTIONS_HEADING}`,',
         'apps/desktop/src/main/runtime/factory-text.ts · heading: `## ${SAVED_METHODS_HEADING}`,',
-        // ⚑ the same saved-methods heading, found in a Codex lead to scrub its index lines
-        'apps/desktop/src/main/providers/codex/codex-injected.ts · const SAVED_METHODS_SECTION = `\\n\\n## ${SAVED_METHODS_HEADING}\\n\\n`',
-        // ⚑ a TOML comment in a provider's config file
         'packages/runtime/src/codex/memory-config.ts · return `# ${setting.key}: ${setting.why}`',
-        // ⚑ a CSS hex colour the theme module writes
         'apps/desktop/src/shared/themes/colour.ts · const base = `#${hex2(c.r)}${hex2(c.g)}${hex2(c.b)}`',
       ].sort(),
     )

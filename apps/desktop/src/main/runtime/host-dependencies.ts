@@ -13,7 +13,6 @@ import type { SkillLaunchSelection } from '../skills/launch-selection'
 import type { SkillGrants } from '../../shared/skills-catalogue'
 import type { PreparedBuiltInSkills } from '../skills/prepare-built-in-skills'
 import type { SavedMethodsUse } from '../../shared/saved-methods'
-import type { SavedMethodsLines } from '../saved-methods'
 import type { TextPackUse } from '../../shared/text-pack'
 import type { TextPackRead } from '../skills/text-pack'
 import type { AgentRuntime, SessionRef } from '@brobot2/runtime'
@@ -438,13 +437,7 @@ export interface RuntimeHostDeps {
     textPack?: TextPackUse
     /** What this launch was given from its profile's saved methods, by count and size. */
     savedMethods?: SavedMethodsUse
-    /** The saved-methods index's lines as sent, and what this life's records keep in their place. */
-    savedMethodsLines?: SavedMethodsLines
-    /**
-     * ⚑ **F093 · R2 — the context the instructions were composed from**, handed back so the
-     * launch's record names the grants and the own-instructions version its text was rendered from.
-     * ⚠️ Optional for {@link memoryLoaded}'s reason: without it the host builds the context again.
-     */
+
     context?: InstructionContext
   }
   /**

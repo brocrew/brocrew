@@ -595,12 +595,8 @@ describe('§4 · composed, as sent', () => {
     expect(read.systemHint).toBe(read.instructions.composed)
     expect(read.firstTurnLead).toBeNull()
     const seam = read2(join(ROOT, 'main/index.ts'))
-    // ⚑ **The composition root reads the field rather than composing again.** Two calls would be
-    // two chances to disagree — the rule `blockHeader` already states about the byte budget.
-    // ⚑ **D-024 · R1 moved the field it reads** from `read.instructions.composed` to the reader's
-    // channel answers, both passed through as read, with the saved-methods lines put back.
-    expect(seam).toContain('withTheLinesSent(read.systemHint, savedMethodsLines)')
-    expect(seam).toContain('firstTurnLead: withTheLinesSent(read.firstTurnLead, savedMethodsLines)')
+    expect(seam).toContain('systemHint: read.systemHint ?? undefined')
+    expect(seam).toContain('firstTurnLead: read.firstTurnLead')
     expect(code(seam)).not.toContain('composeSystemHint(')
   })
 

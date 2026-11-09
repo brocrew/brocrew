@@ -44,12 +44,7 @@ import {
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  readSavedMethods,
-  savedMethodsLinesOf,
-  savedMethodsUseOf,
-  withTheLinesSent,
-} from '../src/main/saved-methods'
+import { readSavedMethods, savedMethodsUseOf } from '../src/main/saved-methods'
 import {
   brobotWorkspace,
   CLAUDE_INSTRUCTIONS_FILE,
@@ -813,7 +808,6 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
   const withSavedMethods: Reader = (provider, cwd, providerHome, context) => {
     const userData = dirname(dirname(dirname(providerHome)))
     const savedMethods = readSavedMethods(join(dirname(providerHome), 'runbooks'), Date.now())
-    const lines = savedMethodsLinesOf(savedMethods)
     const composed = profileBundleSpans(context)
     const bundle = publishProfileBundle(provider, providerHome, composed.text)
     const read = readSessionInstructions({
@@ -832,11 +826,10 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     })
     return {
       instructions: read.instructions,
-      systemHint: read.systemHint === null ? undefined : withTheLinesSent(read.systemHint, lines),
+      systemHint: read.systemHint ?? undefined,
       ...(read.firstTurnLead === null
         ? {}
-        : { firstTurnLead: withTheLinesSent(read.firstTurnLead, lines) }),
-      ...(lines === null ? {} : { savedMethodsLines: lines }),
+        : { firstTurnLead: read.firstTurnLead }),
       memoryLoaded: read.memoryLoaded,
       profileFile: read.profileFile,
       savedMethods: savedMethodsUseOf(savedMethods),
@@ -847,7 +840,7 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
   const rowsBesideTheLaunches = (app: App, id: string) =>
     JSON.stringify(app.store.events(id).filter((one) => one.event.type !== 'launched'))
 
-  it('§4 · the saved-methods index reaches the model on a start and a reopen, and only the launch record keeps its lines', async () => {
+  it('the saved-methods index reaches the model on a start and a reopen, and its rows keep the same lines', async () => {
     // The app-server reflects each turn's input back, as it does, so its echo is recorded too.
     script.echoInput = true
     const app = anApp(withSavedMethods)
@@ -873,11 +866,8 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
 
     const id = await aCodexConversation(app)
     await saying(app, id, 'hello')
-    // The model was sent the lines; the message's row and the launch's record keep none of them.
     expect(sentTo(before)).toContain(TITLE)
-    // Premise: the echo, the provider's error and the MCP diagnostic were recorded, each with the
-    // text that was sent, in its kept form.
-    const MARKER = 'The 1 saved method listed here is not kept in this record'
+
     const echoes = ledger(app, id).filter(
       (event) => event.type === 'unknown' && event.category === 'echo',
     )
@@ -889,15 +879,15 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     )
     for (const rows of [echoes, errors, diagnostics]) {
       expect(rows.length).toBeGreaterThan(0)
-      expect(JSON.stringify(rows)).toContain(MARKER)
+      expect(JSON.stringify(rows)).toContain(TITLE)
     }
     // What holds no index is kept as it came: the agent's own answer.
     expect(
       ledger(app, id).some((event) => event.type === 'assistant_message' && event.text === 'ok'),
     ).toBe(true)
     const [first] = messagesAfter(app, id, -1)
-    expect(first?.event.sent).toContain('The 1 saved method listed here is not kept in this record')
-    expect(rowsBesideTheLaunches(app, id)).not.toContain(TITLE)
+    expect(first?.event.sent).toContain(TITLE)
+    expect(rowsBesideTheLaunches(app, id)).toContain(TITLE)
     expect(JSON.stringify(newestLaunch(app, id))).toContain(TITLE)
     // The row's lead is the kept text, at its kept length, so a later life reads it back whole.
     const block = wholeLeadOf(newestLaunch(app, id))
@@ -916,21 +906,13 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
       .filter((one) => one.method === 'turn/start').length
     await reopen(app, id)
     await saying(app, id, 'again')
-    // What it owes is read from the records, which keep no lines; the model is sent them.
     expect(sentTo(atReopen)).toContain(SECOND)
     // Two methods: the lines hold a newline, so the echo's JSON copy holds them escaped.
     const ledgerNow = rowsBesideTheLaunches(app, id)
-    expect(ledgerNow).not.toContain(TITLE)
-    expect(ledgerNow).not.toContain(SECOND)
-    expect(ledgerNow).toContain('The 2 saved methods listed here are not kept in this record')
+    expect(ledgerNow).toContain(TITLE)
+    expect(ledgerNow).toContain(SECOND)
   })
 
-  // ── §5 ───────────────────────────────────────────────────────────────────
-
-  /**
-   * A reopen whose "This conversation" section changed since its thread last got it: c1 says one
-   * message, a second conversation of the profile starts (which c1's section lists), and c1 reopens.
-   */
   const aReopenThatOwesWhatChanged = async (app: App) => {
     const c1 = await aCodexConversation(app)
     await saying(app, c1, 'one')
@@ -980,7 +962,7 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     expect(two?.event.lead).toEqual({ is: 'whole', chars: block.length })
   })
 
-  it('§5 · with saved methods and a leads read that never answers, the model gets the lines and only the launch record keeps them', async () => {
+  it('with saved methods and a leads read that never answers, the model gets the lines and its rows keep them', async () => {
     script.echoInput = true
     const app = anApp(withSavedMethods, 'never')
     const folder = join(app.userData, 'provider-homes', 'ali', 'runbooks')
@@ -1010,7 +992,7 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     const [two] = messagesAfter(app, c1, reopened.ordinal)
     expect(two?.event.lead?.is).toBe('whole')
     // …and every row keeps the marker in their place.
-    expect(two?.event.sent).toContain('The 1 saved method listed here is not kept in this record')
-    expect(rowsBesideTheLaunches(app, c1)).not.toContain(TITLE)
+    expect(two?.event.sent).toContain(TITLE)
+    expect(rowsBesideTheLaunches(app, c1)).toContain(TITLE)
   })
 })

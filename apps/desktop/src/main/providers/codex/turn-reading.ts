@@ -11,7 +11,7 @@ import {
   notInTheRecord,
 } from '../../archive/turn-reading'
 import { THIS_CONVERSATION_HEADER, WHAT_CHANGED_HEADER } from '../../runtime/instruction-headings'
-import { codexMessageAsKept, codexTextAsKept, splitCodexMessage } from './codex-injected'
+import { splitCodexMessage } from './codex-injected'
 import { messageText } from './import-transcript'
 // ──────────────────────────────────────────────── what each part is ───
 
@@ -158,16 +158,12 @@ export function readingCodex(asked: TurnAsked): TurnReading {
             return 'more'
           }
           const candidate = state === 'looking' && (asked.life === null || life === asked.life)
-          // ⚑ Read from this record: the whole message, by the importer's own rule. ⛔ A record an
-          // earlier message read from the record took whole is not looked at again (W4.204); one
-          // whose block an earlier handed-over message took keeps its other blocks open.
           let takenHere = false
           let isTheRecord = false
           if (
             candidate &&
             next() === 'its-own-record' &&
-            splitCodexMessage(role, messageText(codexMessageAsKept(payload)['content'])).said ===
-              asked.text
+            splitCodexMessage(role, messageText(payload['content'])).said === asked.text
           ) {
             if (taken < asked.before.length) {
               taken += 1
@@ -188,7 +184,7 @@ export function readingCodex(asked: TurnAsked): TurnReading {
               next() === 'handed-over' &&
               role === 'user' &&
               block.isText &&
-              codexTextAsKept(block.text) === asked.text
+              block.text === asked.text
             ) {
               if (taken < asked.before.length) taken += 1
               else {
