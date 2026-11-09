@@ -57,10 +57,7 @@ export async function admittedPluginTools(
       progress('binding-inventory')
       // Keep the SDK's documented default: 1.29 has no public timeout-disable option and
       // Chrome's static tools/list emits no MCP progress. HTTP bytes have their own idle rule.
-      const inventory = await client.listTools(undefined, {
-        resetTimeoutOnProgress: true,
-        onprogress: () => undefined,
-      })
+      const inventory = await client.listTools()
       stage = 'binding-current'
       if (inventory.nextCursor || inventory.tools.length > 256 || !view.current())
         throw new Error('unavailable')
