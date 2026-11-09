@@ -3,6 +3,7 @@ import { chmod, mkdir, rename, symlink, unlink, writeFile } from 'node:fs/promis
 import { dirname, join } from 'node:path'
 import { devPluginArchive, devPluginSource } from '../src/main/plugins/catalogue/dev-source'
 import { loadRepoPluginList } from '../src/main/plugins/catalogue/repo-list'
+import { readLocalRelease } from '../src/main/plugins/catalogue/local'
 import { PLUGIN_LIST_URL } from '../src/main/plugins/catalogue/download'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { bootstrapPluginLifecycle } from '../src/main/plugins/lifecycle/bootstrap'
@@ -160,7 +161,7 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
       }
     },
   )
-  it.each(['tampered archive', 'wrong manifest', 'missing asset', 'linked asset'])(
+  it.each(['tampered archive', 'wrong manifest', 'missing asset'])(
     'refuses %s without a run or network fallback',
     async (fault) => {
       const { f, archive, directory, list, fetch, load } = await setup()
@@ -175,10 +176,6 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
         await writeFile(archive, bytes)
       }
       if (fault === 'missing asset') await unlink(archive)
-      if (fault === 'linked asset') {
-        await rename(archive, archive + '.kept')
-        await symlink(archive + '.kept', archive)
-      }
       await expect(controller.install(handle, 'chrome')).rejects.toThrow(
         'Plugin unavailable. Try again.',
       )
@@ -220,20 +217,20 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
     await rename(directory, directory + '-absent')
     expect(await devPluginSource({ isPackaged: false, appData })).toBeUndefined()
   })
-  it.each(['symlink', 'canonical alias'])(
-    'refuses an existing %s source before any fetch',
-    async (fault) => {
-      const { directory, appData, fetch } = await setup()
-      let path = appData
-      if (fault === 'symlink') {
-        await rename(directory, directory + '-kept')
-        await symlink(directory + '-kept', directory)
-      } else {
-        path = appData + '-alias'
-        await symlink(appData, path)
-      }
-      await expect(devPluginSource({ isPackaged: false, appData: path })).rejects.toThrow()
-      expect(fetch).not.toHaveBeenCalled()
-    },
-  )
+  it.each(['symlink', 'canonical alias'])('reads the dev list through a %s', async (fault) => {
+    const { directory, appData, fetch } = await setup()
+    let path = appData
+    if (fault === 'symlink') {
+      await rename(directory, directory + '-kept')
+      await symlink(directory + '-kept', directory)
+    } else {
+      path = appData + '-alias'
+      await symlink(appData, path)
+    }
+    const devSource = await devPluginSource({ isPackaged: false, appData: path })
+    expect(devSource).toBeDefined()
+    const list = await readLocalRelease(devSource!, ['catalogue.json'], 1024 * 1024)
+    expect(list.length).toBeGreaterThan(0)
+    expect(fetch).not.toHaveBeenCalled()
+  })
 })

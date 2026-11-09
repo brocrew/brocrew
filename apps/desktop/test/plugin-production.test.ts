@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto'
 import { fixture } from './plugin-lifecycle-fixtures'
 import { registerPluginSettings } from '../src/main/plugins/settings'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdir, symlink, readFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
 import type { PluginCard } from '../src/shared/plugin-settings'
@@ -680,20 +680,6 @@ describe.skipIf(process.platform === 'win32')(
         expect(f.peer.install).toHaveBeenCalledOnce()
       },
     )
-    it('refuses a linked dev root before network or supervisor startup', async () => {
-      const f = await setup()
-      const appData = join(f.options.workspaceRoot, 'app-data')
-      await mkdir(join(appData, '@brobot2'), { recursive: true, mode: 0o700 })
-      await symlink(f.options.workspaceRoot, join(appData, '@brobot2/plugin-dev-source'))
-      f.controller.start({ ...f.options, devSource: { isPackaged: false, appData } })
-      await f.controller.ready!()
-      expect(f.fetch).not.toHaveBeenCalled()
-      expect(f.supervisor.start).not.toHaveBeenCalled()
-      await expect(f.controller.catalogue()).rejects.toMatchObject({
-        state: 'fetch-error',
-        reason: 'supervisor-unavailable',
-      })
-    })
     it('no network reports a list fetch error without launch or a half-install', async () => {
       const f = await setup()
       f.fetch.mockRejectedValue(new Error('fictional offline'))

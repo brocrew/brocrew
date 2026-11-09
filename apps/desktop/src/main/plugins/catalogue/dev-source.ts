@@ -1,6 +1,5 @@
-import { lstat, realpath } from 'node:fs/promises'
+import { lstat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { PluginSupervisorError } from '../supervisor/protocol'
 import type { PluginRelease } from '../package-schema'
 import { PLUGIN_LIMITS, verifyPluginDigest } from '../package-digests'
 import { assertPluginArchiveUrl } from './download'
@@ -11,7 +10,7 @@ export interface DevPluginSource {
   readonly appData: string
 }
 
-/** Missing input keeps the normal source; unsafe input never falls back to the network. */
+/** A missing dev folder keeps the normal source; a present one never falls back to the network. */
 export async function devPluginSource(options?: DevPluginSource): Promise<string | undefined> {
   if (!options || options.isPackaged !== false) return undefined
   const root = join(options.appData, '@brobot2', 'plugin-dev-source')
@@ -19,10 +18,7 @@ export async function devPluginSource(options?: DevPluginSource): Promise<string
     if (error.code === 'ENOENT') return undefined
     throw error
   })
-  if (!stat) return undefined
-  if (!stat.isDirectory() || stat.isSymbolicLink() || (await realpath(root)) !== root)
-    throw new PluginSupervisorError('unavailable')
-  return root
+  return stat ? root : undefined
 }
 
 export async function devPluginArchive(

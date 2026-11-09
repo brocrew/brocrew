@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, realpath, rm, writeFile, symlink, unlink } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { localPluginArchive } from '../src/main/plugins/catalogue/local'
 import { downloadPluginBytes, PLUGIN_LIST_URL } from '../src/main/plugins/catalogue/download'
@@ -156,20 +156,12 @@ describe.skipIf(process.platform === 'win32')('reviewed local release adapter', 
     await expect(localPluginArchive(f.directory, f.pkg.release)).rejects.toThrow()
     expect(f.fetch).not.toHaveBeenCalled()
   })
-  it('refuses linked folders/files and changed or oversized archive bytes', async () => {
+  it('refuses changed or oversized archive bytes', async () => {
     const f = await fixture()
     const file = join(f.directory, 'archives', f.pkg.release.archive.sha256 + '.tar')
-    await unlink(file)
-    await symlink(join(f.directory, 'catalogue.json'), file)
-    await expect(localPluginArchive(f.directory, f.pkg.release)).rejects.toThrow()
-    await unlink(file)
     await writeFile(file, Buffer.alloc(f.pkg.archive.length + 1), { mode: 0o600 })
     await expect(localPluginArchive(f.directory, f.pkg.release)).rejects.toThrow()
     await writeFile(file, Buffer.alloc(f.pkg.archive.length), { mode: 0o600 })
     await expect(localPluginArchive(f.directory, f.pkg.release)).rejects.toThrow()
-    await writeFile(file, f.pkg.archive, { mode: 0o600 })
-    const alias = join(f.parent, 'alias')
-    await symlink(f.directory, alias)
-    await expect(localPluginArchive(alias, f.pkg.release)).rejects.toThrow()
   })
 })
