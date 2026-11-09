@@ -240,9 +240,7 @@ export function mergeCodexMemoryConfig(existing: string | null): CodexMemoryMerg
   try {
     before = parseToml(original)
   } catch (error) {
-    // ⛔ We cannot merge into a document we cannot read, and guessing at its structure is how the
-    // "rewrite" row of 312's table happens by accident. The launch attestation
-    // (`assertCodexSqliteHomeContained`) is what reports an unparseable config to the user.
+    // Leave an unparseable configuration for Codex to report without rewriting it.
     return { kind: 'refused', why: `the existing config.toml does not parse: ${errorText(error)}` }
   }
 

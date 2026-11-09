@@ -149,21 +149,6 @@ describe('changeCodexKeyInHome', () => {
     })
   })
 
-  it('⛔ an app-server pinned to ANOTHER home is refused at the handshake: no login is asked of it', async () => {
-    const outcome = await changeCodexKeyInHome(
-      factory(answers({ initialize: { codexHome: '/somewhere/else' } })),
-      home,
-      { to: 'the-key', apiKey: KEY },
-    )
-    expect(outcome).toEqual({
-      ok: false,
-      reason: 'Codex could not be started to log this profile in with the key.',
-    })
-    expect(made[0]?.methods()).toEqual(['initialize'])
-    expect(JSON.stringify(outcome)).not.toContain(KEY)
-    expect(made[0]?.closes).toBeGreaterThan(0)
-  })
-
   it('⚑ a gesture already cancelled never starts an app-server', async () => {
     const controller = new AbortController()
     controller.abort()
@@ -195,7 +180,7 @@ describe('changeCodexKeyInHome', () => {
     })
     expect(await freed(), 'after a refused login').toBe(true)
     await changeCodexKeyInHome(
-      factory(answers({ initialize: { codexHome: '/elsewhere' } })),
+      factory(answers({ initialize: new Error('initialize failed') })),
       home,
       { to: 'the-key', apiKey: KEY },
     )

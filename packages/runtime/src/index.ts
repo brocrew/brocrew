@@ -273,7 +273,6 @@ export {
 
 export {
   AuthUnavailableError,
-  CodexSettingsUnusableError,
   NoCodexSignInOnThisComputerError,
   CodexRefusedItsSignInError,
   codexCopyIdentityIn,
@@ -283,7 +282,6 @@ export {
   replaceARefusedCodexCopy,
   reprovisionCodexAuth,
   codexAuthHealth,
-  assertCodexSqliteHomeContained,
   personalCodexAuthPath,
   claudeKeychainTokenProvider,
   claudeKeychainTokenProviderAsync,

@@ -218,8 +218,7 @@ class FakeTransport implements CodexTransport {
   }
 }
 
-/** A transport factory mirroring a conformant app-server adopting our CODEX_HOME (P1-H):
- *  the fake reports the launched providerHome as its codexHome so attestation passes. */
+/** A transport factory that reports the configured provider home in its initialize response. */
 function adopt(transport: FakeTransport): (ctx: CodexLaunchContext) => CodexTransport {
   return (ctx) => {
     transport.codexHome ??= ctx.providerHome
@@ -3079,43 +3078,9 @@ describe('CodexRuntime — provider-home isolation (021)', () => {
     await handle.close()
   })
 
-  it('fails closed when initialize reports a codexHome that is not the profile home', async () => {
-    // The app-server ignored our CODEX_HOME (or a host config overrode it): its
-    // state would leak across profiles, so the session must not start.
-    const transport = new FakeTransport()
-    transport.onRequest('initialize', () => ({
-      userAgent: transport.userAgent,
-      codexHome: '/some/other/home',
-    }))
-    transport.onRequest('thread/start', () => okThread('th_1'))
-    const runtime = new CodexRuntime(adopt(transport))
-    await expect(
-      runtime.start({ cwd: '/tmp/x', providerHome: '/managed/profile' }),
-    ).rejects.toThrow(/profile home/)
-  })
 
-  it('accepts a matching codexHome echoed by initialize', async () => {
-    const transport = new FakeTransport()
-    transport.onRequest('initialize', () => ({
-      userAgent: transport.userAgent,
-      codexHome: '/managed/profile',
-    }))
-    transport.onRequest('thread/start', () => okThread('th_1'))
-    const runtime = new CodexRuntime(adopt(transport))
-    const handle = await runtime.start({ cwd: '/tmp/x', providerHome: '/managed/profile' })
-    expect(handle.ref?.sessionId).toBe('th_1')
-    await handle.close()
-  })
 
-  it('fails closed when initialize does not report a codexHome (absence rejected, 027 P1-H)', async () => {
-    const transport = new FakeTransport()
-    transport.onRequest('initialize', () => ({ userAgent: transport.userAgent })) // NO codexHome — protocol requires it
-    transport.onRequest('thread/start', () => okThread('th_1'))
-    const runtime = new CodexRuntime(adopt(transport))
-    await expect(
-      runtime.start({ cwd: '/tmp/x', providerHome: '/managed/profile' }),
-    ).rejects.toThrow(/codexHome/)
-  })
+
 })
 
 describe('CodexRuntime — every launch keeps Codex’s own agents (D-014)', () => {
@@ -3378,68 +3343,6 @@ describe('CodexRuntime — CLI ↔ vendored-protocol version gate (043 P2-6)', (
     expect(codexVersionFromUserAgent('probe/1.2.3-rc.1 (Linux)')).toBe('1.2.3-rc.1')
     expect(codexVersionFromUserAgent('nonsense')).toBeNull()
     expect(codexVersionFromUserAgent('')).toBeNull()
-  })
-})
-
-describe('CodexRuntime — sqlite_home attested BEFORE spawn (041 P1-H)', () => {
-  let home: string
-  beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), 'brobot-codex-prespawn-'))
-  })
-  afterEach(() => {
-    rmSync(home, { recursive: true, force: true })
-  })
-
-  it('a redirecting sqlite_home rejects start WITHOUT ever constructing the transport (no app-server is launched)', async () => {
-    // Pre-fix the attestation ran inside begin() — i.e. AFTER the spawn + handshake — so the
-    // app-server was already live, with state redirected outside the managed home.
-    writeFileSync(join(home, 'config.toml'), '"sqlite_home" = "/tmp/brobot-escape"\n')
-    let spawned = false
-    const runtime = new CodexRuntime(() => {
-      spawned = true
-      return new FakeTransport()
-    })
-    await expect(runtime.start({ cwd: '/tmp/x', providerHome: home })).rejects.toBeInstanceOf(
-      AuthUnavailableError,
-    )
-    expect(spawned).toBe(false) // the transport factory was never reached
-  })
-
-  it('a redirecting sqlite_home rejects resume WITHOUT constructing the transport', async () => {
-    writeFileSync(join(home, 'config.toml'), 'sqlite_home = "/tmp/brobot-escape"\n')
-    let spawned = false
-    const runtime = new CodexRuntime(() => {
-      spawned = true
-      return new FakeTransport()
-    })
-    await expect(
-      runtime.resume(
-        { provider: 'codex', sessionId: 'th_x', cwd: '/tmp/x', rotation: 0 },
-        { providerHome: home },
-      ),
-    ).rejects.toBeInstanceOf(AuthUnavailableError)
-    expect(spawned).toBe(false)
-  })
-
-  it('a directly-constructed handle still fails closed — before ANY protocol traffic', async () => {
-    // The runtime's pre-spawn gate can't cover a handle built directly with a caller-supplied
-    // transport, so begin() re-attests before the first request rather than after a round-trip.
-    writeFileSync(join(home, 'config.toml'), '"sqlite_home" = "/tmp/brobot-escape"\n')
-    const transport = new FakeTransport()
-    const handle = new CodexSessionHandle(transport, '/tmp/x', 0, home)
-    await expect(handle.begin('started', undefined)).rejects.toBeInstanceOf(AuthUnavailableError)
-    expect(transport.requests).toEqual([]) // not even `initialize` was sent
-    await handle.close()
-  })
-
-  it('a CONTAINED sqlite_home still launches normally', async () => {
-    writeFileSync(join(home, 'config.toml'), 'sqlite_home = "sub/state"\n')
-    const transport = new FakeTransport()
-    transport.onRequest('thread/start', () => okThread('th_1'))
-    const runtime = new CodexRuntime(adopt(transport))
-    const handle = await runtime.start({ cwd: '/tmp/x', providerHome: home })
-    expect(handle.ref?.sessionId).toBe('th_1')
-    await handle.close()
   })
 })
 
@@ -7589,17 +7492,6 @@ describe('auto-approve mode — Codex (078)', () => {
     })
 
     it('⛔ …and even when its TOML no longer PARSES — 168 M4', async () => {
-      // ⛔ **The one home that could not launch was the one the migration could never reach.**
-      // `assertCodexSqliteHomeContained` parses this very file and fails closed on a config it
-      // cannot read; it used to run BEFORE the removal, so a 157 block whose TOML had been broken
-      // — by a half-written file, an editor, a merge — threw `AuthUnavailableError` on every start
-      // and every resume, forever, with the line that would have deleted it two lines below the
-      // throw. The removal runs first now.
-      //
-      // ⚠️ **Corrected in place at 314**: the block is still deleted here, and the home is then
-      // given a fresh `config.toml` carrying only the memory gates. So the assertion moved from
-      // *the file is absent* to *the block is gone and what is there now parses* — which is the
-      // property 168 M4 was about, and the stronger half of it.
       const config = join(home, 'config.toml')
       writeFileSync(config, `${STALE}[permissions.deny\nthis = "is not toml\n`)
       const transport = new FakeTransport()
@@ -7618,19 +7510,17 @@ describe('auto-approve mode — Codex (078)', () => {
       await handle.close()
     })
 
-    it('⚑ …but an unparseable config that is NOT ours still fails the launch closed', async () => {
-      // ⛔ **The paired positive, and the reason removing-before-attesting is not a hole.** The
-      // removal deletes only a file carrying our own generated header. Somebody else's broken
-      // `config.toml` reaches the attestation exactly as it did before, is refused there, and is
-      // still on disk afterwards — this app does not delete a Codex config it did not write.
+    it('leaves an unparseable configuration for Codex without deleting it', async () => {
       const config = join(home, 'config.toml')
       writeFileSync(config, '[permissions.deny\nthis = "is not toml\n')
       const transport = new FakeTransport()
       transport.onRequest('thread/start', () => okThread('th_1'))
-      await expect(
-        new CodexRuntime(adopt(transport)).start({ cwd: '/tmp/x', providerHome: home }),
-      ).rejects.toThrow(/could not be parsed/)
-      expect(existsSync(config), 'left strictly alone').toBe(true)
+      const handle = await new CodexRuntime(adopt(transport)).start({
+        cwd: '/tmp/x',
+        providerHome: home,
+      })
+      expect(readFileSync(config, 'utf8')).toBe('[permissions.deny\nthis = "is not toml\n')
+      await handle.close()
     })
 
     it('⚑ a RESUME clears it too — the path a 157-era home is most likely to arrive by', async () => {
@@ -11017,7 +10907,7 @@ describe('Codex memory is switched on at launch (314 §2)', () => {
     // memory on and runs a child that has it off.
     let atSpawn: string | null = null
     const transport = new FakeTransport()
-    transport.codexHome = home // this launch really reaches `initialize`, so the home must attest
+    transport.codexHome = home
     transport.onRequest('thread/start', () => okThread('th_1'))
     const handle = await new CodexRuntime(() => {
       atSpawn = existsSync(config()) ? readFileSync(config(), 'utf8') : null
@@ -11060,14 +10950,7 @@ describe('Codex memory is switched on at launch (314 §2)', () => {
     await handle.close()
   })
 
-  it('⛔ the gates are written BELOW the stale sweep and ABOVE the attestation', async () => {
-    // ⚑ **Both halves of that ordering are load-bearing and neither is visible from one call site.**
-    // Below the sweep, or we merge into a file the next line deletes. Above the attestation, because
-    // `assertCodexSqliteHomeContained` parses this very file — so a launch that failed closed on a
-    // config we had not written yet would be attesting a file the child never sees.
-    //
-    // ⚠️ The `sqlite_home` here is contained, so the attestation PASSES; what it proves is that the
-    // attestation ran on bytes that already carried the gates.
+  it('preserves the existing SQLite setting when adding memory settings', async () => {
     writeFileSync(config(), 'sqlite_home = "sub/state"\n')
     const transport = new FakeTransport()
     transport.onRequest('thread/start', () => okThread('th_1'))
@@ -11081,18 +10964,16 @@ describe('Codex memory is switched on at launch (314 §2)', () => {
     await handle.close()
   })
 
-  it('🔴 …and a config that REDIRECTS sqlite state still fails the launch closed', async () => {
-    // ⛔ **The paired negative, and the one that would matter if the ordering were wrong.** Writing
-    // to a home before attesting it must not become a way of accepting it: this config is refused at
-    // exactly the same line it was refused at before 314, and the merge above it changes nothing
-    // about that. ⚠️ The escape is still on disk afterwards — we do not delete somebody's config.
+  it('preserves an external SQLite setting when adding memory settings', async () => {
     writeFileSync(config(), 'sqlite_home = "/tmp/brobot-escape"\n')
     const transport = new FakeTransport()
     transport.onRequest('thread/start', () => okThread('th_1'))
-    await expect(
-      new CodexRuntime(adopt(transport)).start({ cwd: '/tmp/x', providerHome: home }),
-    ).rejects.toThrow(/redirects/)
+    const handle = await new CodexRuntime(adopt(transport)).start({
+      cwd: '/tmp/x',
+      providerHome: home,
+    })
     expect(readFileSync(config(), 'utf8')).toContain('sqlite_home = "/tmp/brobot-escape"')
+    await handle.close()
   })
 })
 

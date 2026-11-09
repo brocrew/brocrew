@@ -3,7 +3,6 @@ import { keyPolicy } from './api-key'
 import { CodexUnavailableError } from './program'
 import {
   CodexRefusedItsSignInError,
-  CodexSettingsUnusableError,
   NoCodexSignInOnThisComputerError,
   codexCopyIdentityIn,
   isTheSameCodexCopy,
@@ -64,11 +63,9 @@ export const authPolicy: ProviderAuthPolicy = {
   launchRefusal: (error) =>
     error instanceof NoCodexSignInOnThisComputerError
       ? 'no-copy'
-      : error instanceof CodexSettingsUnusableError
-        ? 'profile'
-        : error instanceof CodexUnavailableError
-          ? 'program'
-          : null,
+      : error instanceof CodexUnavailableError
+        ? 'program'
+        : null,
   setup: () => null,
   renewedNotice: null,
   key: keyPolicy,

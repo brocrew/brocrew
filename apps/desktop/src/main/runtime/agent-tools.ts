@@ -2990,8 +2990,6 @@ export function aLaunchThatDidNotStart(error: unknown): {
   /** For `sign-in` and `settings`: whose. */
   readonly provider?: Provider
 } | null {
-  // ⚑ By class: the settings a Codex profile's `config.toml` holds, which its home's check refused
-  // (`assertCodexSqliteHomeContained`), else a sign-in missing, expired or refused.
   if (error instanceof AuthUnavailableError) {
     const native = providerAuthPolicies[error.provider]?.launchRefusal(error)
     // A computer with no Codex sign-in for a profile to copy is said apart: there is none to renew.

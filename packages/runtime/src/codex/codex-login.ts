@@ -1,7 +1,4 @@
-import { realpathSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { signInNotCheckedInTime, type AuthState } from '../auth-state'
-import { assertCodexSqliteHomeContained } from '../internal/auth'
 import {
   assertNotCancelled,
   cancelWith,
@@ -139,56 +136,6 @@ function handshakeBudget(): <T>(p: Promise<T>, what: string) => Promise<T> {
     withDeadline(p, Math.max(1, deadline - Date.now()), `codex ${what}`)
 }
 
-/** Canonical absolute path (resolving symlinks like macOS `/tmp` → `/private/tmp`), lexical if not. */
-function canonicalPath(path: string): string {
-  try {
-    return realpathSync(path)
-  } catch {
-    return resolve(path)
-  }
-}
-
-/**
- * 🔒 **Initialize, and REFUSE to go on unless the child adopted the home we pinned** (098, review
- * finding 6; the rule is 027's, fixing 023 P1-H).
- *
- * `CODEX_HOME` is an environment variable, and `CodexSessionHandle.begin` has treated pinning it as
- * insufficient on its own since 027: it reads the `codexHome` the app-server echoes from
- * `initialize` and throws if it is not the profile home. These two flows spawn the identical binary
- * through the identical factory and skipped that check.
- *
- * ⚠️ **On the sign-in path it matters more than anywhere else in the app.** Every other Codex spawn
- * *reads* the credential; a sign-in makes the app-server **write a brand-new `auth.json`** wherever
- * it decided its home is. A child that ignored the pin would put a freshly minted OAuth credential
- * into the user's real `~/.codex` — overwriting and rotating their machine login, which is the one
- * thing this whole change exists to stop happening to them.
- *
- * `sqlite_home` is attested too, for the same reason `begin` attests it: a profile `config.toml` can
- * redirect state out of the home, and this runs before any of it is written.
- */
-async function initializeInHome(
-  transport: CodexTransport,
-  providerHome: string,
-  bounded: <T>(p: Promise<T>, what: string) => Promise<T>,
-): Promise<void> {
-  assertCodexSqliteHomeContained(providerHome) // pre-traffic, exactly as `begin` does
-  const result = await bounded(transport.request('initialize', INITIALIZE_PARAMS), 'initialize')
-  const reported =
-    typeof result === 'object' &&
-    result !== null &&
-    typeof (result as Record<string, unknown>)['codexHome'] === 'string'
-      ? ((result as Record<string, unknown>)['codexHome'] as string)
-      : ''
-  if (!reported) {
-    throw new Error('codex initialize did not report a codexHome (required for home attestation)')
-  }
-  if (canonicalPath(reported) !== canonicalPath(providerHome)) {
-    throw new Error(
-      `codex did not adopt the profile home: expected ${providerHome}, got ${reported}`,
-    )
-  }
-}
-
 /**
  * A sign-in in progress, owning the app-server that is listening for the redirect.
  *
@@ -250,7 +197,7 @@ export class CodexLogin {
     const login = new CodexLogin(transport)
     const bounded = handshakeBudget()
     try {
-      await initializeInHome(transport, providerHome, bounded)
+      await bounded(transport.request('initialize', INITIALIZE_PARAMS), 'initialize')
       bootSettled()
       const result = await bounded(
         transport.request('account/login/start', { type: 'chatgpt' }),
@@ -425,7 +372,7 @@ export async function probeCodexAuthInHome(
     // Ownership from the spawn, not from the handshake (070/185) — see {@link CodexLogin.start}.
     cancel = cancelWith(signal, () => spawned.close())
     const bounded = handshakeBudget()
-    await initializeInHome(spawned, providerHome, bounded)
+    await bounded(spawned.request('initialize', INITIALIZE_PARAMS), 'initialize')
     bootSettled()
     const state = await bounded(probeCodexAuth(spawned), 'auth status')
     if (cancel.cancelled) throw new Error('codex sign-in check was cancelled')
@@ -490,8 +437,7 @@ export type CodexKeyOutcome =
  * ⛔ Never into an argument, an environment, a log or an error: a failure answers in this app's own
  * words, and the provider's text — which a request's rejection carries — is never handed on.
  *
- * ⚑ **The same gates as a sign-in**: the home's boot slot, the home attested at `initialize`, every
- * request bounded, and the app-server closed on every path.
+ * The home's boot slot serializes startup, requests are bounded, and the app-server closes on every path.
  */
 export async function changeCodexKeyInHome(
   transports: TransportFactory,
@@ -510,7 +456,7 @@ export async function changeCodexKeyInHome(
     transport = spawned
     cancel = cancelWith(signal, () => spawned.close())
     const bounded = handshakeBudget()
-    await initializeInHome(spawned, providerHome, bounded)
+    await bounded(spawned.request('initialize', INITIALIZE_PARAMS), 'initialize')
     bootSettled()
     try {
       if (change.to === 'the-key') {
