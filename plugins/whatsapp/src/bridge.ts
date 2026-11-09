@@ -7,6 +7,7 @@ import type { WhatsAppConfig } from './config.js'
 import { privateDirectory } from './config.js'
 import type { Logger } from './logger.js'
 import { GROUP_ID } from './settings.js'
+import { writeAtomicallySync } from '../../shared/atomic-file.js'
 
 export type BridgeState =
   'starting' | 'unlinked' | 'pairing' | 'connecting' | 'linked' | 'unavailable'
@@ -121,11 +122,7 @@ async function readBounded(response: Response): Promise<unknown> {
   return JSON.parse(Buffer.concat(parts).toString('utf8'))
 }
 
-/**
- * Copies the packaged program into its bin folder as an executable, but only when
- * its bytes are the ones this server was built with. The package's own files are read-only. The copy
- * keeps the program's extension: Windows starts no program file without one, such as `.exe`.
- */
+// Keep the executable extension so Windows can start the installed program.
 async function installProgram(program: string, expected: string, bin: string): Promise<string> {
   const bytes = await fs.promises.readFile(program)
   if (sha256(bytes) !== expected) throw new BridgeUnavailable()
@@ -135,10 +132,7 @@ async function installProgram(program: string, expected: string, bin: string): P
     fs.chmodSync(target, 0o755)
     return target
   }
-  fs.rmSync(target, { force: true, recursive: true })
-  const stage = path.join(bin, `.stage-${randomBytes(8).toString('hex')}`)
-  fs.writeFileSync(stage, bytes, { mode: 0o700, flag: 'wx' })
-  fs.renameSync(stage, target)
+  writeAtomicallySync(target, bytes, 0o700)
   // Windows refuses to delete a program that is still running; an old copy goes at a later start.
   for (const name of fs.readdirSync(bin))
     if (name !== path.basename(target))

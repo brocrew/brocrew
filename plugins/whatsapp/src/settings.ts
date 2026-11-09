@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto'
+import { writeAtomicallySync } from '../../shared/atomic-file.js'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -47,14 +47,7 @@ export function createSettingsStore(home: string): SettingsStore {
     current = DEFAULTS
   }
   const save = (next: Settings): Settings => {
-    const stage = path.join(home, `.settings-${randomBytes(8).toString('hex')}.json`)
-    fs.writeFileSync(stage, JSON.stringify(next) + '\n', { mode: 0o600, flag: 'wx' })
-    try {
-      fs.renameSync(stage, file)
-    } catch (error) {
-      fs.rmSync(stage, { force: true })
-      throw error
-    }
+    writeAtomicallySync(file, JSON.stringify(next) + '\n')
     current = next
     return current
   }

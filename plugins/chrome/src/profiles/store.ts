@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import { privateFolder } from '../privatePaths.js'
 import type { SharedProfileAccess } from './sharedTypes.js'
-import { PRIVATE } from '../privateModes.js'
+import { writeAtomicallySync } from '../../../shared/atomic-file.js'
 export const PROFILE_NAME = /^[a-z0-9-]{1,32}$/
 export interface ProfileFlags {
   enabled: boolean
@@ -154,15 +154,10 @@ export function createProfileStore(opts: {
   }
   const read = (): ProfileRecord[] => readFile().profiles
   const write = (profiles: ProfileRecord[]): void => {
-    const tmp = path.join(opts.home, `.profiles.${process.pid}.${Date.now()}.tmp`)
-    fs.writeFileSync(
-      tmp,
+    writeAtomicallySync(
+      file,
       JSON.stringify({ defaults: DEFAULTS_VERSION, profiles }, null, 2) + '\n',
-      {
-        mode: PRIVATE.file,
-      },
     )
-    fs.renameSync(tmp, file)
   }
   try {
     const stored = readFile()

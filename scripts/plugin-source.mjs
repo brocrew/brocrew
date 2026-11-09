@@ -21,14 +21,14 @@ function entries(root, revision, folder) {
       return { mode, hash, name: name.slice(folder.length + 1) }
     })
 }
-// The plugin's own tree, then the UI files shared by the plugin pages.
+// The plugin's own tree, then shared runtime and UI files.
 const sources = (root, revision, id) =>
-  [`plugins/${pluginId(id)}`, 'plugins/shared/ui'].map((folder) => ({
+  [`plugins/${pluginId(id)}`, 'plugins/shared'].map((folder) => ({
     folder,
     files: entries(root, revision, folder),
   }))
 
-// Export every tracked plugin and shared UI file unchanged. Generated release tooling lives outside these trees.
+// Generated release tooling lives outside the exported source trees.
 export function copyPluginSource(root, destination, id) {
   const trees = sources(root, 'HEAD', id)
   if (!trees[0].files.length) throw new Error('Missing plugin source tree')
@@ -78,7 +78,7 @@ export function verifyPluginSource({ root, canonicalRoot, id, sourceCommit }) {
     const actual = []
     const visit = (dir, prefix = '') => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (prefix === '' && entry.name === 'node_modules' && folder !== 'plugins/shared/ui')
+        if (prefix === '' && entry.name === 'node_modules' && folder !== 'plugins/shared')
           continue
         const name = prefix + entry.name
         if (entry.isSymbolicLink()) throw new Error('Linked plugin source refused')
