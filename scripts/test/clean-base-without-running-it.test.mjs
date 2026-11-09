@@ -159,6 +159,8 @@ describe('§1 · the source census — a new durable write under userData must n
       "'updates', 'staging'",
       // ⚑ **W4.131 · A2** — a hidden launch's own list of workspaces. REMOVED (`WORKSPACES`).
       "'workspaces.json'",
+      // The API keys a person saved. REMOVED: a fresh install has none (`LEDGER`).
+      'API_KEYS_FILE',
       // The conversations a person archived, removed with the ledger whose rows they name (`LEDGER`).
       'ARCHIVED_FILE',
       // The workspace's recovery copies, removed with the ledger they copy (`RECOVERY`).
@@ -254,6 +256,7 @@ describe('§1 · the source census — a new durable write under userData must n
       'sign-in-changes.json',
       'schedule-attempts.json',
       'profile-execution.json',
+      'api-keys.json',
       'turns-the-app-cut.json',
       'start-attempts.jsonl',
       'start-attempts.1.jsonl',
@@ -686,6 +689,8 @@ describe('§11 · ⛔ 539 · the signs a nested userData is recognised by', () =
       'schedule-attempts.json',
       // Any program with profiles may keep how they run in a file of this name.
       'profile-execution.json',
+      // Any program may keep API keys in a file of this name.
+      'api-keys.json',
       // Any program may keep the turns it cut in a file of this name.
       'turns-the-app-cut.json',
       // Any program may time its own starts in files of these names.

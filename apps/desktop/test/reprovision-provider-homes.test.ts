@@ -106,7 +106,7 @@ describe('copying this install’s provider sign-ins', () => {
       store: createSessionStore(db),
       ...neutralHostDeps(() => root),
       connectionFor: (provider, connectionId) =>
-        resolveProviderConnection(db, { provider, connectionId }).id,
+        resolveProviderConnection(db, { provider, connectionId, keySaved: false }).id,
       connectionRevision: () => connectionRevision,
       pluginAttachments: {
         agent: () => {
@@ -163,7 +163,8 @@ describe('copying this install’s provider sign-ins', () => {
               return handle
             },
           }),
-          (requested) => resolveProviderConnection(db, { provider, connectionId: requested }),
+          (requested) =>
+            resolveProviderConnection(db, { provider, connectionId: requested, keySaved: false }),
           connectionId,
           () => connectionRevision,
         ),

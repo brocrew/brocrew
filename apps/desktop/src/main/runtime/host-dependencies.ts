@@ -175,7 +175,8 @@ export interface RuntimeHostDeps {
    * 🔒 **The API keys a person enters** (`api-keys.ts`). Optional: a host without them runs every
    * provider on its machine login, and refuses to keep a key, saying so.
    */
-  apiKeys?: Pick<ApiKeys, 'status' | 'remove'> & {
+  apiKeys?: Pick<ApiKeys, 'status'> & {
+    remove(provider: Provider): boolean | Promise<boolean>
     revision?(provider: Provider): number
     set(provider: Provider, key: string): string | null | Promise<string | null>
     read(provider: Provider): string | null | Promise<string | null>

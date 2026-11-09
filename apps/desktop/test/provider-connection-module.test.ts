@@ -25,9 +25,9 @@ it('registers connection operations inside modules without probing a program, lo
       assertMayOpen: sideEffect,
     }))
     const sources = providerRecord((provider) => ({
-      list: () => listProviderConnections(db, provider),
+      list: () => listProviderConnections(db, provider, false),
       resolve: (connectionId?: string | null) =>
-        resolveProviderConnection(db, { provider, connectionId }),
+        resolveProviderConnection(db, { provider, connectionId, keySaved: false }),
     }))
     const modules = Reflect.apply(createProviderModules, undefined, [
       (provider: keyof typeof paths) => paths[provider],

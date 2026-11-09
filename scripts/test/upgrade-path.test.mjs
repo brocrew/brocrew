@@ -1215,7 +1215,7 @@ describe('a turn on the saved key after the upgrade', () => {
   const notHandedOver = {
     answer: null,
     refused:
-      "Error invoking remote method 'runtime:command': Error: BroCrew can’t read the API key saved for Codex on this computer. macOS may be waiting for permission to read its saved key.",
+      "Error invoking remote method 'runtime:command': Error: Saved key can’t be read, save it again in Settings.",
     refusedAt: 'start',
     refusedAfterMs: 12_100,
     requests: [],
@@ -1282,7 +1282,6 @@ describe('a turn on the saved key after the upgrade', () => {
     not({ ...notHandedOver, refused: 'unknown session' })
     // The app's own status does not say the key is unreadable.
     not(notHandedOver, inUse)
-    not(notHandedOver, { set: true, inUse: false, readState: 'not-checked' })
     not(notHandedOver, null)
   })
 })

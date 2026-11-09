@@ -49,11 +49,7 @@ afterEach(() => {
 for (const operation of ['start', 'resume', 'models'] as const) {
   it(`Claude ${operation}: changed-back key selection at authForALaunch cannot persist sign-in attribution`, async () => {
     const store = createSessionStore(db)
-    const keys = new ApiKeys(store, {
-      available: () => true,
-      seal: (key) => Buffer.from(key).toString('base64'),
-      open: (sealed) => Buffer.from(sealed, 'base64').toString(),
-    })
+    const keys = new ApiKeys(dir, store)
     const home = join(dir, 'claude')
     mkdirSync(home)
     const query = new Query()
@@ -73,7 +69,7 @@ for (const operation of ['start', 'resume', 'models'] as const) {
         await keys.set('claude', 'fictional-fern-key')
         const key = await keys.read('claude')
         consumed = key === null ? 'sign-in' : 'api-key'
-        keys.remove('claude')
+        void keys.remove('claude')
         return key
       },
       'linux',
@@ -83,7 +79,12 @@ for (const operation of ['start', 'resume', 'models'] as const) {
     const runtime = onProviderConnection(
       'claude',
       () => actual,
-      (connectionId) => resolveProviderConnection(db, { provider: 'claude', connectionId }),
+      (connectionId) =>
+        resolveProviderConnection(db, {
+          provider: 'claude',
+          connectionId,
+          keySaved: keys.status('claude').set,
+        }),
       undefined,
       () => keys.revision('claude'),
     )
@@ -99,7 +100,10 @@ for (const operation of ['start', 'resume', 'models'] as const) {
             )
     await expect(pending).rejects.toThrow('connection changed')
     expect(consumed).toBe('api-key')
-    expect(resolveProviderConnection(db, { provider: 'claude' }).id).toBe('claude:sign-in')
+    await vi.waitFor(() => expect(keys.status('claude').set).toBe(false))
+    expect(
+      resolveProviderConnection(db, { provider: 'claude', keySaved: keys.status('claude').set }).id,
+    ).toBe('claude:sign-in')
     expect(keys.revision('claude')).toBe(2)
     expect(queryFactory).toHaveBeenCalledTimes(1)
     expect(query.close).toHaveBeenCalledTimes(1)

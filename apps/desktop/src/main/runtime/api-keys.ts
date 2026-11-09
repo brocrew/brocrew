@@ -1,28 +1,18 @@
-import { ApiKeyUnreadableError, type WhyUnreadable } from '../providers/api-key-error'
-export { ApiKeyUnreadableError, PROVIDER_CARD } from '../providers/api-key-error'
+import { readFileSync } from 'node:fs'
+import { rename } from 'node:fs/promises'
+import { join } from 'node:path'
 import { providerAuthPolicies } from '../providers/auth-definitions'
-import { providerDescriptor, type Provider } from '@brobot2/shared'
+import { providerDescriptor, SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
 import type { ApiKeyCheck, ApiKeyStatus } from '../../shared/runtime-ipc'
 import type { SessionStore } from '../db/session-store'
+import { writeAtomically } from '../recovery/files'
+import { ApiKeyUnreadableError, SAVED_KEY_UNREADABLE } from '../providers/api-key-error'
+export { ApiKeyUnreadableError } from '../providers/api-key-error'
 
-export interface KeyCipher {
-  available(): boolean | Promise<boolean>
-
-  seal(key: string): string | Promise<string>
-
-  open(sealed: string): string | Promise<string>
-}
-
-export class KeyStorageNotAnswering extends Error {}
-
-export class SealedWithAnotherKey extends Error {}
+/** Saved API keys, in the clear, readable by the person's own account only. */
+export const API_KEYS_FILE = 'api-keys.json'
 
 export const API_KEY_MAX_LENGTH = 512
-
-function whyUnreadable(cause: unknown): WhyUnreadable {
-  if (cause instanceof KeyStorageNotAnswering) return 'storage-not-answering'
-  return cause instanceof SealedWithAnotherKey ? 'sealed-with-another-key' : 'not-known'
-}
 
 export function whyNotAKey(key: string): string | null {
   if (key.trim() === '') return 'Enter the key, or remove the one that is saved.'
@@ -36,47 +26,52 @@ export function whyNotAKey(key: string): string | null {
   return null
 }
 
-/** How long BroBot waits for encryption or decryption before offering recovery. */
-export const KEY_STORAGE_TIMEOUT_MS = 15_000
+/** How long moving a key an earlier version sealed waits for the system to open it. */
+export const EARLIER_KEY_TIMEOUT_MS = 15_000
 
-type OpenKey = { readonly key: string; readonly setAt: number }
-type ReadState = { sealed: string; setAt: number; unreadableReason?: string }
+type Entry = { readonly key: string; readonly setAt: number }
+type Keys = Partial<Record<Provider, Entry>>
+type KeysFile = {
+  keys: Keys
+  /** Providers whose key was in a file that couldn't be read, until saved again or removed. */
+  cantRead?: Provider[]
+  earlierKeysMoved?: true
+}
+
+/** The sealed keys an earlier version kept in the database, read only to move them. */
+export type EarlierKeys = Pick<SessionStore, 'earlierApiKey' | 'forgetEarlierApiKey'>
 
 export class ApiKeys {
-  private readonly readability = new Map<Provider, ReadState>()
+  private readonly path: string
   private readonly changes = new Map<Provider, number>()
-  private readonly lastSavedAt = new Map<Provider, number>()
-  private readonly operations = new Map<Provider, Promise<unknown>>()
-  private readonly reads = new Map<
-    Provider,
-    { sealed: string; setAt: number; work: Promise<OpenKey> }
-  >()
+  private readonly lastSetAt = new Map<Provider, number>()
+  private writes: Promise<unknown> = Promise.resolve()
 
   constructor(
-    private readonly store: Pick<SessionStore, 'keptApiKey' | 'keepSealedApiKey' | 'forgetApiKey'>,
-    private readonly cipher: KeyCipher,
+    userData: string,
+    private readonly earlier: EarlierKeys,
     private readonly clock: () => number = Date.now,
-    private readonly platform: NodeJS.Platform = process.platform,
-  ) {}
+  ) {
+    this.path = join(userData, API_KEYS_FILE)
+  }
 
-  /** Status never opens a key or initializes the system's encryption service. */
   status(provider: Provider): ApiKeyStatus {
-    const kept = this.store.keptApiKey(provider)
     const spends = providerDescriptor(provider).apiKey.spendsToken
       ? { aCheckSpendsAToken: true as const }
       : {}
-    if (kept === null) return { provider, set: false, setAt: null, inUse: false, ...spends }
-    const read = this.readability.get(provider)
-    const known = read?.sealed === kept.sealed && read.setAt === kept.setAt ? read : undefined
+    const file = this.file()
+    const entry = file?.keys[provider]
+    if (entry !== undefined)
+      return { provider, set: true, setAt: entry.setAt, inUse: true, ...spends }
+    if (!this.cantBeUsed(provider, file))
+      return { provider, set: false, setAt: null, inUse: false, ...spends }
     return {
       provider,
       set: true,
-      setAt: kept.setAt,
-      inUse: known !== undefined && known.unreadableReason === undefined,
-      ...(known === undefined ? { readState: 'not-checked' as const } : {}),
-      ...(known?.unreadableReason === undefined
-        ? {}
-        : { readState: 'unreadable' as const, unreadableReason: known.unreadableReason }),
+      setAt: this.earlier.earlierApiKey(provider)?.setAt ?? null,
+      inUse: false,
+      readState: 'unreadable',
+      unreadableReason: SAVED_KEY_UNREADABLE,
       ...spends,
     }
   }
@@ -89,121 +84,193 @@ export class ApiKeys {
     return this.changes.get(provider) ?? 0
   }
 
-  /** Concurrent launches share one read; only readability, never the key, is cached. */
-  current(provider: Provider): Promise<OpenKey | null> {
-    const kept = this.store.keptApiKey(provider)
-    if (kept === null) return Promise.resolve(null)
-    const reading = this.reads.get(provider)
-    if (reading?.sealed === kept.sealed && reading.setAt === kept.setAt) return reading.work
-    const change = this.changes.get(provider)
-    const work = (async (): Promise<OpenKey> => {
-      try {
-        const key = await this.bounded(provider, () => this.cipher.open(kept.sealed))
-        if (!key || !this.stillCurrent(provider, kept, change)) throw new Error('key changed')
-
-        if (whyNotAKey(key) !== null) throw new SealedWithAnotherKey()
-        this.readability.set(provider, kept)
-        return { key, setAt: kept.setAt }
-      } catch (cause) {
-        const error = new ApiKeyUnreadableError(provider, this.platform, whyUnreadable(cause))
-        if (this.stillCurrent(provider, kept, change))
-          this.readability.set(provider, { ...kept, unreadableReason: error.message })
-        throw error
-      }
-    })()
-    this.reads.set(provider, { ...kept, work })
-    const release = (): void => {
-      if (this.reads.get(provider)?.work === work) this.reads.delete(provider)
-    }
-    void work.then(release, release)
-    return work
+  /** Never waits: a key that is saved but can't be used refuses at once. */
+  async current(provider: Provider): Promise<Entry | null> {
+    const file = this.file()
+    const entry = file?.keys[provider]
+    if (entry !== undefined) return entry
+    if (this.cantBeUsed(provider, file)) throw new ApiKeyUnreadableError(provider)
+    return null
   }
 
   async set(provider: Provider, key: string): Promise<string | null> {
     const why = whyNotAKey(key)
     if (why !== null) return why
-    if (this.operations.has(provider)) return this.saveRefusal()
-    const change = (this.changes.get(provider) ?? 0) + 1
-    this.changes.set(provider, change)
-    this.reads.delete(provider)
+    this.changed(provider)
     try {
-      const sealed = await this.bounded(provider, async (signal) => {
-        if (!(await this.cipher.available()) || signal.aborted)
-          throw new Error('encryption unavailable')
-        return await this.cipher.seal(key.trim())
+      await this.change((file) => {
+        const previous = Math.max(
+          this.lastSetAt.get(provider) ?? -1,
+          file.keys[provider]?.setAt ?? -1,
+        )
+        const setAt = Math.max(this.clock(), previous + 1)
+        file.keys[provider] = { key: key.trim(), setAt }
+        file.cantRead = file.cantRead?.filter((one) => one !== provider)
+        this.lastSetAt.set(provider, setAt)
+        return true
       })
-      if (this.changes.get(provider) !== change)
-        return 'The saved key changed while this save was waiting. Try again.'
-      const previous = Math.max(
-        this.lastSavedAt.get(provider) ?? -1,
-        this.store.keptApiKey(provider)?.setAt ?? -1,
-      )
-      const setAt = Math.max(this.clock(), previous + 1)
-      this.store.keepSealedApiKey(provider, sealed, setAt)
-      this.lastSavedAt.set(provider, setAt)
-      this.readability.set(provider, { sealed, setAt })
-      return null
     } catch {
-      return this.saveRefusal()
+      return 'BroCrew couldn’t write the key to its data folder, so it was not saved. Try again.'
     }
+    this.earlier.forgetEarlierApiKey(provider)
+    return null
   }
 
-  private saveRefusal(): string {
-    return (
-      'BroCrew could not encrypt the key, so it was not saved. ' +
-      (this.platform === 'darwin'
-        ? 'macOS may be waiting for permission to use its saved key. '
-        : '') +
-      'Re-enter the key under “API key” in Providers and try again.'
-    )
+  async remove(provider: Provider): Promise<boolean> {
+    this.changed(provider)
+    let had = this.status(provider).set
+    await this.change((file) => {
+      const setAt = file.keys[provider]?.setAt
+      if (setAt === undefined && !file.cantRead?.includes(provider)) return false
+      if (setAt !== undefined) this.lastSetAt.set(provider, setAt)
+      delete file.keys[provider]
+      file.cantRead = file.cantRead?.filter((one) => one !== provider)
+      had = true
+      return true
+    })
+    this.earlier.forgetEarlierApiKey(provider)
+    return had
   }
 
-  remove(provider: Provider): boolean {
-    const setAt = this.store.keptApiKey(provider)?.setAt
-    if (setAt !== undefined) this.lastSavedAt.set(provider, setAt)
-    this.changes.set(provider, (this.changes.get(provider) ?? 0) + 1)
-    this.readability.delete(provider)
-    this.reads.delete(provider)
-    return this.store.forgetApiKey(provider)
+  /**
+   * Moves the keys an earlier version sealed in the database into the file, once, in the
+   * background. A key is in the file before its sealed copy goes. A person's save or remove
+   * meanwhile wins: the opened key is then dropped.
+   */
+  async moveEarlierKeys(
+    open: (sealed: string) => Promise<string>,
+    moved: (provider: Provider) => void,
+  ): Promise<void> {
+    const waiting = SUPPORTED_PROVIDERS.filter((p) => this.earlier.earlierApiKey(p) !== null)
+    if (waiting.length === 0) return
+    await Promise.all(waiting.map((provider) => this.moveEarlierKey(provider, open, moved)))
+    if (SUPPORTED_PROVIDERS.some((p) => this.earlier.earlierApiKey(p) !== null)) return
+    await this.change((file) => {
+      if (file.earlierKeysMoved === true) return false
+      file.earlierKeysMoved = true
+      return true
+    }, false)
   }
 
-  private stillCurrent(provider: Provider, kept: ReadState, change: number | undefined): boolean {
-    const now = this.store.keptApiKey(provider)
-    return (
-      this.changes.get(provider) === change &&
-      now?.sealed === kept.sealed &&
-      now.setAt === kept.setAt
-    )
-  }
-
-  private async bounded<T>(
+  private async moveEarlierKey(
     provider: Provider,
-    action: (signal: AbortSignal) => T | Promise<T>,
-  ): Promise<T> {
-    // A deadline releases BroBot, not the native operation. Keep its slot until it really settles.
-    if (this.operations.has(provider)) throw new KeyStorageNotAnswering('still waiting')
-    const cancelled = new AbortController()
-    const native = Promise.resolve().then(() => action(cancelled.signal))
-    this.operations.set(provider, native)
-    const release = (): void => {
-      if (this.operations.get(provider) === native) this.operations.delete(provider)
+    open: (sealed: string) => Promise<string>,
+    moved: (provider: Provider) => void,
+  ): Promise<void> {
+    const row = this.earlier.earlierApiKey(provider)
+    const file = this.file()
+    if (row === null || file === null) return
+    // Already moved, or replaced since: a restored database must not bring an old key back.
+    if (file.keys[provider] !== undefined || file.earlierKeysMoved === true) {
+      this.earlier.forgetEarlierApiKey(provider)
+      return
     }
-    void native.then(release, release)
-    let timer: ReturnType<typeof setTimeout> | undefined
+    let key: string
     try {
-      return await Promise.race([
-        native,
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(
-            () => reject(new KeyStorageNotAnswering('timed out')),
-            KEY_STORAGE_TIMEOUT_MS,
-          )
-        }),
-      ])
-    } finally {
-      cancelled.abort()
-      clearTimeout(timer)
+      key = await withinTheDeadline(open(row.sealed))
+      if (whyNotAKey(key) !== null) return
+    } catch {
+      return
     }
+    const wrote = await this.change((next) => {
+      const now = this.earlier.earlierApiKey(provider)
+      if (
+        next.keys[provider] !== undefined ||
+        now?.sealed !== row.sealed ||
+        now.setAt !== row.setAt
+      )
+        return false
+      next.keys[provider] = { key: key.trim(), setAt: row.setAt }
+      return true
+    }, false).catch(() => false)
+    if (!wrote) return
+    this.earlier.forgetEarlierApiKey(provider)
+    this.changed(provider)
+    moved(provider)
+  }
+
+  /** Saved, but not in a form a start can use: still sealed by an earlier version, or unreadable. */
+  private cantBeUsed(provider: Provider, file: KeysFile | null): boolean {
+    if (file === null || file.cantRead?.includes(provider) === true) return true
+    return file.earlierKeysMoved !== true && this.earlier.earlierApiKey(provider) !== null
+  }
+
+  private changed(provider: Provider): void {
+    this.changes.set(provider, this.revision(provider) + 1)
+  }
+
+  /** `null` when the file exists and can't be read; a missing file holds no keys. */
+  private file(): KeysFile | null {
+    let text: string
+    try {
+      text = readFileSync(this.path, 'utf8')
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === 'ENOENT' ? { keys: {} } : null
+    }
+    try {
+      return keysFileOf(JSON.parse(text))
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Every change to the file goes through one queue, so two providers' writes never drop each
+   * other's key. A person's save or remove sets an unreadable file aside, never overwriting it;
+   * the background move leaves it alone.
+   */
+  /** Answers whether it wrote; it rejects when the write fails. */
+  private change(edit: (file: KeysFile) => boolean, byAPerson = true): Promise<boolean> {
+    const work = this.writes.then(async () => {
+      const read = this.file()
+      if (read === null && !byAPerson) return false
+      const file: KeysFile =
+        read === null
+          ? { keys: {}, cantRead: [...SUPPORTED_PROVIDERS] }
+          : { ...read, keys: { ...read.keys } }
+      if (!edit(file)) return false
+      if (read === null) await rename(this.path, `${this.path}.unreadable-${this.clock()}`)
+      if (file.cantRead?.length === 0) delete file.cantRead
+      await writeAtomically(this.path, `${JSON.stringify({ version: 1, ...file }, null, 2)}\n`)
+      return true
+    })
+    this.writes = work.catch(() => undefined)
+    return work
+  }
+}
+
+function keysFileOf(parsed: unknown): KeysFile {
+  const { keys, cantRead, earlierKeysMoved } = parsed as Record<string, unknown>
+  if (typeof keys !== 'object' || keys === null) throw new Error('no keys')
+  const read: Keys = {}
+  for (const provider of SUPPORTED_PROVIDERS) {
+    const entry = (keys as Record<string, unknown>)[provider] as Partial<Entry> | undefined
+    if (entry === undefined) continue
+    if (typeof entry.key !== 'string' || whyNotAKey(entry.key) !== null) throw new Error('bad key')
+    if (typeof entry.setAt !== 'number') throw new Error('bad time')
+    read[provider] = { key: entry.key, setAt: entry.setAt }
+  }
+  const unread = Array.isArray(cantRead)
+    ? SUPPORTED_PROVIDERS.filter((provider) => cantRead.includes(provider))
+    : []
+  return {
+    keys: read,
+    ...(unread.length > 0 ? { cantRead: unread } : {}),
+    ...(earlierKeysMoved === true ? { earlierKeysMoved: true } : {}),
+  }
+}
+
+async function withinTheDeadline<T>(work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('timed out')), EARLIER_KEY_TIMEOUT_MS)
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -226,29 +293,10 @@ export async function askTheProvider(
   return await providerAuthPolicies[provider].key.check(key, fetchFor)
 }
 
-export function safeStorageCipher(safeStorage: {
-  isAsyncEncryptionAvailable(): Promise<boolean>
-  encryptStringAsync(plainText: string): Promise<Buffer>
-  decryptStringAsync(encrypted: Buffer): Promise<{ result: string; shouldReEncrypt: boolean }>
-}): KeyCipher {
-  return {
-    available: () => safeStorage.isAsyncEncryptionAvailable(),
-    seal: async (key) => (await safeStorage.encryptStringAsync(key)).toString('base64'),
-    open: async (sealed) => {
-      try {
-        return (await safeStorage.decryptStringAsync(Buffer.from(sealed, 'base64'))).result
-      } catch (error) {
-        throw whyItDidNotOpen(error)
-      }
-    },
-  }
-}
-
-const ELECTRON_HAD_NO_SEALING_KEY = 'is temporarily unavailable'
-const ELECTRON_COULD_NOT_DECRYPT = 'Error while decrypting the ciphertext'
-
-function whyItDidNotOpen(error: unknown): unknown {
-  const said = error instanceof Error ? error.message : ''
-  if (said.includes(ELECTRON_HAD_NO_SEALING_KEY)) return new KeyStorageNotAnswering()
-  return said.includes(ELECTRON_COULD_NOT_DECRYPT) ? new SealedWithAnotherKey() : error
+/** Opens a key an earlier version sealed with Electron's `safeStorage`. */
+export function openWithSafeStorage(safeStorage: {
+  decryptStringAsync(encrypted: Buffer): Promise<{ result: string }>
+}): (sealed: string) => Promise<string> {
+  return async (sealed) =>
+    (await safeStorage.decryptStringAsync(Buffer.from(sealed, 'base64'))).result
 }

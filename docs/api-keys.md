@@ -28,9 +28,9 @@ New conversations start on the key. A conversation that is already running goes 
 On a Mac, BroCrew hands your Anthropic key to Claude without putting it anywhere an agent's commands can see. On Windows the key is in the Claude CLI's own environment: the CLI keeps it out of the commands it runs, but a command running as you could still read it from there. Codex keeps your OpenAI key in a file in BroCrew's data folder, readable by your user account, so any command an agent runs could read it, even one Codex runs in its sandbox without asking you.
 
 **Where BroCrew keeps them:**
-- BroCrew encrypts each key it saves with Electron's `safeStorage`. On macOS the encryption key is kept in your Keychain; on Windows the key is encrypted for your Windows account.
-- BroCrew's database holds only the encrypted key and when it was saved. The database alone cannot give a key back.
-- The window is never sent a key. It is told only whether one is saved, since when, and whether it is in use.
+- BroCrew keeps the keys you save in one file, `api-keys.json`, in its data folder, the way Claude Code and Codex keep theirs. On macOS and Linux only your user account can read it; on Windows it has your user folder's permissions. Any program running as you can read it.
+- Recovery copies never include it, and a restore leaves it as it is.
+- The window is never sent a key. It is told only whether one is saved, since when, and whether it can be used.
 - No log, error, event or transcript carries a key.
 - BroCrew sends a key nowhere but to that provider's own program on your computer, and to the provider when you press **Check it works**.
 
@@ -53,7 +53,9 @@ If the provider refuses a saved key (for example, it was revoked), the conversat
 
 An agent that gave work to the refused one is told that a person needs to check or replace the key.
 
-**If a saved key can no longer be decrypted,** for example after its Keychain entry changed, BroCrew refuses to start that provider's agents and says so.
+**A key saved by an earlier version** is moved into the file in the background the first time the new version starts. Until it has moved, or if it can't be moved, that provider's agents don't start and say *"Saved key can't be read, save it again in Settings."* They never switch to your sign-in on their own. Saving the key again, or removing it, ends that.
+
+**If the keys file can't be read,** BroCrew leaves it as it is, and both providers' saved keys are treated the same way. Saving a key again sets the old file aside under a new name and starts a new one.
 
 ## Remove a key
 

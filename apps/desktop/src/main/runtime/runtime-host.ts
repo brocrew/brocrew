@@ -10888,8 +10888,8 @@ export class RuntimeHost implements LiveHost {
       this.stateMayHaveMoved(conversation)
       return
     }
-    // ⛔ Refused because its saved key could not be read: no retry on a timer, which would read the
-    // key again and again — the system may ask the person each time.
+    // Refused because its saved key can't be used: it waits for the key to be saved again, removed
+    // or moved, rather than failing again on a timer.
     const provider = this.startable(conversation)?.provider
     if (provider !== undefined && this.itsSavedKeyCannotBeRead(provider)) {
       this.waitForItsKey(conversation, wakeUp, provider, error)
@@ -31817,6 +31817,13 @@ export class RuntimeHost implements LiveHost {
     return notice === null ? keys.status(provider) : { ...keys.status(provider), notice }
   }
 
+  /** A key an earlier version saved has moved to the keys file: the next start uses it. */
+  earlierKeyMoved(provider: Provider): void {
+    this.keyChanges.set(provider, (this.keyChanges.get(provider) ?? 0) + 1)
+    this.providerLoginChanged(provider)
+    this.letTheWakeUpsWaitingForItsKeyGo(provider)
+  }
+
   /**
    * 🔒 **Stop using a provider's API key** — answers where it stands now. ⚑ The provider runs on its
    * login again; for Codex, every profile home is logged out now and takes the copied login back.
@@ -31824,7 +31831,7 @@ export class RuntimeHost implements LiveHost {
   async removeApiKey(provider: Provider): Promise<ApiKeyChanged> {
     const keys = this.deps.apiKeys
     if (!keys) return this.apiKeyStatus(provider)
-    keys.remove(provider)
+    await keys.remove(provider)
     this.keyChanges.set(provider, (this.keyChanges.get(provider) ?? 0) + 1)
     this.keyRefusedForBilling.delete(provider)
     const notice = await this.bringTheKeyToItsHomes(provider)

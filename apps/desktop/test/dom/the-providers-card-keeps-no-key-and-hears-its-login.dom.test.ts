@@ -502,23 +502,11 @@ describe('§4 · b975fa15 · a stopped provider says so at the top of its card',
   })
 })
 
-describe('a saved key is read only when needed', () => {
-  it('shows an unchecked key without claiming a refusal, and keeps replacement available', async () => {
-    const { m } = theCard({
-      apiKeyStatus: async () => ({ ...A_KEY, inUse: false, readState: 'not-checked' }),
-    })
-    await settled()
-    expect(text(m.q('provider-key-in-use'))).toContain(
-      'will read the key when a conversation starts',
-    )
-    expect(m.q('provider-key-in-use').classList.contains('warn')).toBe(false)
-    expect(visible(m.q('provider-key-replace'))).toBe(true)
-  })
-
+describe('a check that finds the saved key unusable', () => {
   it('a refused check shows recovery words and refreshes the unreadable status', async () => {
     const reason =
       'BroBot can’t read its saved key. macOS may be waiting for permission. Save it again in Providers.'
-    let status: ApiKeyStatus = { ...A_KEY, inUse: false, readState: 'not-checked' }
+    let status: ApiKeyStatus = { ...A_KEY }
     const { m } = theCard({
       apiKeyStatus: async () => status,
       checkApiKey: async () => {
@@ -585,16 +573,6 @@ describe('a saved key this computer can’t read: the card says one true thing',
       expect(text(noKey.m.q('provider-account'))).toContain('Runs on your')
     })
   }
-
-  it('⚑ a key not read yet is not a key that can’t be read: the card stays Ready', async () => {
-    const { m } = theCard({
-      checkProviderAuth: async () => ON_THE_KEY,
-      apiKeyStatus: async () => ({ ...A_KEY, inUse: false, readState: 'not-checked' }),
-    })
-    await settled()
-    expect(text(m.q('provider-standing'))).toBe('Ready')
-    expect(text(m.q('provider-account'))).toBe('Runs on the saved API key.')
-  })
 })
 
 describe('the setup window at launch asked for a provider’s key field', () => {

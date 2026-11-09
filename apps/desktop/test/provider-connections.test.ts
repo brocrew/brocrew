@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it } from 'vitest'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
@@ -16,50 +16,38 @@ beforeEach(() => {
 })
 afterEach(() => db.close())
 
-it('lists sign-ins first, with saved keys referenced rather than unsealed or copied', () => {
-  expect(listProviderConnections(db, 'claude').map((row) => row.id)).toEqual(['claude:sign-in'])
-  db.prepare('INSERT INTO provider_api_key (provider,sealed,updated_at) VALUES (?,?,?)').run(
-    'claude',
-    'fictional-sealed-fern',
-    1,
-  )
-  const prepare = vi.spyOn(db, 'prepare')
-  const records = listProviderConnections(db, 'claude')
+it('lists sign-ins first, and the saved key only while one is saved', () => {
+  expect(listProviderConnections(db, 'claude', false).map((row) => row.id)).toEqual([
+    'claude:sign-in',
+  ])
+  const records = listProviderConnections(db, 'claude', true)
   expect(records.map((row) => [row.id, row.authMethod, row.credentialSource])).toEqual([
     ['claude:sign-in', 'sign-in', 'provider-sign-in'],
     ['claude:api-key', 'api-key', 'provider-api-key'],
   ])
-  expect(JSON.stringify(records)).not.toContain('fictional-sealed-fern')
-  expect(prepare.mock.calls.some(([sql]) => /select\s+(?:\*|sealed)/i.test(sql))).toBe(false)
-  prepare.mockRestore()
 })
 
 it('keeps null and omitted old choices dynamic, including keys set or removed later', () => {
   for (const provider of ['claude', 'codex'] as const) {
-    expect(resolveProviderConnection(db, { provider }).authMethod).toBe('sign-in')
-    db.prepare('INSERT INTO provider_api_key (provider,sealed,updated_at) VALUES (?,?,?)').run(
-      provider,
-      'fictional-sealed',
-      1,
-    )
-    expect(resolveProviderConnection(db, { provider, connectionId: null }).authMethod).toBe(
-      'api-key',
-    )
-    db.prepare('DELETE FROM provider_api_key WHERE provider = ?').run(provider)
-    expect(resolveProviderConnection(db, { provider }).authMethod).toBe('sign-in')
+    expect(resolveProviderConnection(db, { provider, keySaved: false }).authMethod).toBe('sign-in')
+    expect(
+      resolveProviderConnection(db, { provider, connectionId: null, keySaved: true }).authMethod,
+    ).toBe('api-key')
   }
 })
 
 it('refuses a missing, cross-provider, disabled or noncompatibility explicit selection without fallback', () => {
   for (const connectionId of ['missing', 'codex:sign-in', 'claude:api-key'])
-    expect(() => resolveProviderConnection(db, { provider: 'claude', connectionId })).toThrow()
+    expect(() =>
+      resolveProviderConnection(db, { provider: 'claude', connectionId, keySaved: false }),
+    ).toThrow()
   db.prepare('UPDATE provider_connection SET enabled = 0 WHERE id = ?').run('claude:sign-in')
-  expect(() => resolveProviderConnection(db, { provider: 'claude' })).toThrow()
+  expect(() => resolveProviderConnection(db, { provider: 'claude', keySaved: false })).toThrow()
   db.prepare('UPDATE provider_connection SET enabled = 1, base_url = ? WHERE id = ?').run(
     'https://fictional.invalid',
     'claude:sign-in',
   )
-  expect(() => resolveProviderConnection(db, { provider: 'claude' })).toThrow()
+  expect(() => resolveProviderConnection(db, { provider: 'claude', keySaved: false })).toThrow()
 })
 
 it('does not expose extra rows even if a future or foreign writer inserted one', () => {
@@ -68,9 +56,15 @@ it('does not expose extra rows even if a future or foreign writer inserted one',
     (id,provider,name,auth_method,credential_source,base_url,enabled,contract_version)
     VALUES ('fictional-extra','claude','company gateway','api-key','provider-api-key',NULL,1,1)`,
   ).run()
-  expect(listProviderConnections(db, 'claude').map((row) => row.id)).toEqual(['claude:sign-in'])
+  expect(listProviderConnections(db, 'claude', false).map((row) => row.id)).toEqual([
+    'claude:sign-in',
+  ])
   expect(() =>
-    resolveProviderConnection(db, { provider: 'claude', connectionId: 'fictional-extra' }),
+    resolveProviderConnection(db, {
+      provider: 'claude',
+      connectionId: 'fictional-extra',
+      keySaved: false,
+    }),
   ).toThrow()
 })
 

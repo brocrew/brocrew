@@ -215,7 +215,7 @@ import {
   stageKnowledgeFile,
   sweepKnowledgeStages,
 } from './runtime/agent-memory'
-import { ApiKeys, askTheProvider, safeStorageCipher } from './runtime/api-keys'
+import { ApiKeys, askTheProvider, openWithSafeStorage } from './runtime/api-keys'
 import { listProcesses, memoryOf } from './runtime/process-listing'
 import { providerUsageFile, readKeptUsage, writeKeptUsage } from './provider-usage-file'
 import { readKeptAttempts, scheduleAttemptsFile, writeKeptAttempts } from './schedule-attempts-file'
@@ -780,9 +780,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
       personsOwn: SUPPORTED_PROVIDERS.map((provider) => userProviderHomePath(provider)),
     }
   }
-  // 🔒 **The API keys a person enters, sealed by `safeStorage`** — read on every launch, so a key
-  // set, replaced or removed applies to the next one (`api-keys.ts`).
-  const apiKeys = new ApiKeys(store, safeStorageCipher(safeStorage))
+  const apiKeys = new ApiKeys(userData, store)
   // Quit cancels native provider service work without leaving a renewal child behind.
   const stopProviderServices = new AbortController()
   app.once('will-quit', () => stopProviderServices.abort())
@@ -840,8 +838,13 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
       },
     }),
     (provider) => ({
-      list: () => listProviderConnections(database, provider),
-      resolve: (connectionId) => resolveProviderConnection(database, { provider, connectionId }),
+      list: () => listProviderConnections(database, provider, apiKeys.status(provider).set),
+      resolve: (connectionId) =>
+        resolveProviderConnection(database, {
+          provider,
+          connectionId,
+          keySaved: apiKeys.status(provider).set,
+        }),
       revision: () => apiKeys.revision(provider),
     }),
   )
@@ -1227,6 +1230,18 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
   knowledgeChanged = () => runtimeHost.agentKnowledgeChanged()
   // Older questions' copies are filled in the background, a bounded slice at a time.
   runtimeHost.fillQuestionCopies()
+  // Never on the launch path: opening a sealed key can wait on the system's permission.
+  void firstWindowLoad.then(() =>
+    setImmediate(() => {
+      apiKeys
+        .moveEarlierKeys(openWithSafeStorage(safeStorage), (provider) =>
+          runtimeHost.earlierKeyMoved(provider),
+        )
+        .catch((error: unknown) => {
+          console.warn(`could not move the API keys an earlier version saved: ${String(error)}`)
+        })
+    }),
+  )
   return runtimeHost
 }
 

@@ -1037,8 +1037,8 @@ export interface ApiKeyStatus {
    * go on with what it started with until it starts again.
    */
   readonly inUse: boolean
-  /** A saved key is opened only when needed; status itself never reads the Keychain. */
-  readonly readState?: 'not-checked' | 'unreadable'
+  /** A key is saved but can't be used: a start of this provider refuses, with the reason. */
+  readonly readState?: 'unreadable'
   readonly unreadableReason?: string
   /**
    * The account this key belongs to can't pay: a turn on it, or a check, was refused for billing at

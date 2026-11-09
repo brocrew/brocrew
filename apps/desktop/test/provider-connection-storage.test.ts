@@ -62,7 +62,7 @@ it('keeps legacy null choices null when read and reopened', () => {
   ).toEqual({ connection_id: null })
 })
 
-for (const connectionId of ['codex:sign-in', 'fictional-missing', 'claude:api-key']) {
+for (const connectionId of ['codex:sign-in', 'fictional-missing']) {
   it(`refuses unavailable binding ${connectionId} atomically`, () => {
     expect(() => create('fictional-refused', connectionId)).toThrow()
     expect(

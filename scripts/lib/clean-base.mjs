@@ -186,6 +186,12 @@ export const MANIFEST = Object.freeze([
     source: 'main/profile-execution-file.ts (profileExecutionFile)',
   },
   {
+    name: 'api-keys.json',
+    expect: 'file',
+    why: LEDGER,
+    source: 'main/runtime/api-keys.ts (API_KEYS_FILE)',
+  },
+  {
     name: 'turns-the-app-cut.json',
     expect: 'file',
     why: LEDGER,
@@ -281,6 +287,12 @@ export const SCHEDULE_ATTEMPTS_PART = /^schedule-attempts\.json\.\d+\.tmp$/
  * leaves one: it goes with the ledger whose profiles and conversations it names.
  */
 export const PROFILE_EXECUTION_PART = /^profile-execution\.json\.\d+\.tmp$/
+
+/**
+ * A write of the saved API keys in progress, or a keys file that couldn't be read and was set aside
+ * when a key was saved, in `apps/desktop/src/main/runtime/api-keys.ts`. Both go with the keys.
+ */
+export const API_KEYS_PART = /^api-keys\.json\.(?:[0-9a-f]{12}\.tmp|unreadable-\d+)$/
 
 /**
  * What a folder or profile directory under `provider-homes/` may be named.
@@ -925,6 +937,10 @@ export function planCleanBase(anchor, { dropExports = false, keepAuth = false } 
       continue
     }
     if (PROFILE_EXECUTION_PART.test(entry.name)) {
+      actions.push({ rel: entry.name, expect: 'file', why: LEDGER })
+      continue
+    }
+    if (API_KEYS_PART.test(entry.name)) {
       actions.push({ rel: entry.name, expect: 'file', why: LEDGER })
       continue
     }
