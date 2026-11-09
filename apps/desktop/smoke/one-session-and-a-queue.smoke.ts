@@ -5,7 +5,6 @@ import { expect, it } from 'vitest'
 import { ClaudeRuntime, claudeKeychainTokenProvider } from '@brobot2/runtime/claude'
 import { CodexRuntime, codexAuthHealth } from '@brobot2/runtime/codex'
 
-
 import { provisionProviderHome, type AgentRuntime } from '@brobot2/runtime'
 import { bundledCodexTransportFactory } from '../../../packages/runtime/smoke/bundled-codex'
 import type { Provider } from '@brobot2/shared'
