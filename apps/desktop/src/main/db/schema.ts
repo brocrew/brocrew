@@ -799,3 +799,8 @@ export const cutLife = sqliteTable('cut_life', {
   record: text('record').notNull(),
   since: integer('since').notNull(),
 })
+
+export const draft = sqliteTable('draft', {
+  slot: text('slot').primaryKey(),
+  entry: text('entry').notNull(),
+})
