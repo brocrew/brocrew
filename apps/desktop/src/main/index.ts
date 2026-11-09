@@ -275,7 +275,7 @@ import {
 import { startUpdates } from './updates-in-the-app'
 import { startWorkspaces } from './workspaces-in-the-app'
 import { startProviderSnapshots } from './provider-snapshots'
-import { signInChangesIn } from './sign-in-changes'
+import { importSignInChangesFile, signInChangesIn } from './sign-in-changes'
 import { archivedConversationsIn, importArchivedFile } from './archived-file'
 import {
   defaultDataFolder,
@@ -588,6 +588,7 @@ function initDatabase(): AppDatabase {
     )
   }
   importArchivedFile(database, app.getPath('userData'))
+  importSignInChangesFile(database, app.getPath('userData'))
   try {
     const compaction = compactWhenMuchIsFree(database, freeBytesOn(app.getPath('userData')))
     if (compaction === 'compacted') console.info('BroCrew gave its free database space back')
@@ -907,7 +908,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
       ),
     ),
     // Keep provider sign-in change times across restarts.
-    signInChanges: signInChangesIn(userData),
+    signInChanges: signInChangesIn(database),
     archived: archivedConversationsIn(database),
     // When a give names a folder, describe where it meets provider folders, managed homes, this
     // data folder or other listed workspaces' data, excluding each workspace's own workspace folder.

@@ -26,7 +26,6 @@ import {
   WORKSPACE,
   WORKSPACES,
   WORKSPACES_PART,
-  SIGN_IN_CHANGES_PART,
   SCHEDULE_ATTEMPTS_PART,
   PROFILE_EXECUTION_PART,
 } from '../lib/clean-base.mjs'
@@ -146,9 +145,6 @@ describe('§1 · the source census — a new durable write under userData must n
       // What the app already did about each stopped conversation's scheduled jobs. REMOVED with
       // the ledger whose conversations it is about (`LEDGER`).
       "'schedule-attempts.json'",
-      // ⚑ **W4.172 · F095 — the moments each provider's sign-in changed**, which end the limits the
-      // sign-in before reached. REMOVED with the ledger whose limits they end (`LEDGER`).
-      "'sign-in-changes.json'",
       // The turns the app's quit, or a crash, cut, and what it did about each. REMOVED with the
       // ledger whose turns they are (`LEDGER`).
       "'turns-the-app-cut.json'",
@@ -180,6 +176,7 @@ describe('§1 · the source census — a new durable write under userData must n
       // ⚑ **744's unsent drafts** (R100) — removed with the ledger their slots name (`DRAFTS`).
       'SAVED_DRAFTS_FILE',
       'SHARED_SKILLS_DIRNAME',
+      'SIGN_IN_CHANGES_FILE',
       'SKILLS_CONVERSION_FILE',
       // Each launch's timing, and the file it is moved to once full. REMOVED with the ledger whose
       // conversations they time (`LEDGER`).
@@ -598,22 +595,18 @@ describe('§10e · how each profile runs its work', () => {
   })
 })
 
-describe('§10c · W4.172 · the moments each provider’s sign-in changed', () => {
-  it('⚑ go with the ledger whose limits they end, a write a kill left too — and the pattern is the product’s own', () => {
-    expect(code('apps/desktop/src/main/sign-in-changes.ts')).toContain(
-      'const temporary = `${file}.${String(process.pid)}.tmp`',
-    )
-    expect(SIGN_IN_CHANGES_PART.source).toBe('^sign-in-changes\\.json\\.\\d+\\.tmp$')
+describe('§10c · the file older builds kept sign-in changes in', () => {
+  it('goes with the ledger whose limits it ends', () => {
     const userData = plantUserData(fixture(), { profiles: HIS_PROFILES })
-    for (const name of ['sign-in-changes.json', 'sign-in-changes.json.4242.tmp']) {
-      writeFileSync(join(userData, name), '{}')
-    }
+    writeFileSync(join(userData, 'sign-in-changes.json'), '{}')
     const plan = planCleanBase(
       trustedAnchor(userData, { repoRoot: REPO, home: fixture(), env: {} }),
     )
-    for (const rel of ['sign-in-changes.json', 'sign-in-changes.json.4242.tmp']) {
-      expect(plan.actions).toContainEqual({ rel, expect: 'file', why: LEDGER })
-    }
+    expect(plan.actions).toContainEqual({
+      rel: 'sign-in-changes.json',
+      expect: 'file',
+      why: LEDGER,
+    })
   })
 })
 

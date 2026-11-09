@@ -171,7 +171,7 @@ export const MANIFEST = Object.freeze([
     name: 'sign-in-changes.json',
     expect: 'file',
     why: LEDGER,
-    source: 'main/sign-in-changes.ts (signInChangesIn)',
+    source: 'main/sign-in-changes.ts (importSignInChangesFile)',
   },
   {
     name: 'schedule-attempts.json',
@@ -266,13 +266,6 @@ export const TRANSCRIPT_RETENTION_PART =
 export const WORKSPACES_PART = /^workspaces?\.json\.(?:\d+|[0-9a-f]{12})\.tmp$/
 
 export const PROVIDER_USAGE_PART = /^provider-(?:usage|accounts)\.json\.(?:\d+|[0-9a-f]{12})\.tmp$/
-
-/**
- * W4.172 · the name one write of the sign-in changes goes to before it is renamed into place —
- * `<file>.<pid>.tmp`, in `apps/desktop/src/main/sign-in-changes.ts`. ⚠️ A kill inside a write leaves
- * one: it goes with the moments it would have held, which go with the ledger whose limits they end.
- */
-export const SIGN_IN_CHANGES_PART = /^sign-in-changes\.json\.\d+\.tmp$/
 
 /**
  * The name one write of what the app did about scheduled jobs goes to before it is renamed into
@@ -926,10 +919,6 @@ export function planCleanBase(anchor, { dropExports = false, keepAuth = false } 
     }
     if (PROVIDER_USAGE_PART.test(entry.name)) {
       actions.push({ rel: entry.name, expect: 'file', why: USAGE })
-      continue
-    }
-    if (SIGN_IN_CHANGES_PART.test(entry.name)) {
-      actions.push({ rel: entry.name, expect: 'file', why: LEDGER })
       continue
     }
     if (SCHEDULE_ATTEMPTS_PART.test(entry.name)) {

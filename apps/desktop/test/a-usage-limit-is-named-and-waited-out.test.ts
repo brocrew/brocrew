@@ -19,12 +19,7 @@ import {
 } from '../src/main/runtime/reply-rails'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  readSignInChanges,
-  SIGN_IN_CHANGES_FILE,
-  signInChangesIn,
-  writeSignInChanges,
-} from '../src/main/sign-in-changes'
+import { signInChangesIn } from '../src/main/sign-in-changes'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { clockTime } from '../src/shared/clock'
 import type { Exchange } from '../src/shared/last-exchange'
@@ -368,7 +363,7 @@ describe('F074 · a usage limit is named, and what the app would start waits for
         newSessionId: () => `sess_${String(++counter)}`,
         commandListWaitMs: 200,
         afterALimitResetsMs: 20,
-        signInChanges: signInChangesIn(userData),
+        signInChanges: signInChangesIn(db),
         readProviderConfig: (_provider, home) => ({
           home,
           homeEnv: 'CLAUDE_CONFIG_DIR',
@@ -798,8 +793,8 @@ describe('F074 · a usage limit is named, and what the app would start waits for
       theSignInMovesOnUnder(held.handle, other.handle)
       await host.send(other.id, 'hello again', window)
       await aMoment()
-      // ⚑ Kept in the data folder, as `main/index.ts` keeps it.
-      const kept = readSignInChanges(join(userData, SIGN_IN_CHANGES_FILE))
+      // ⚑ Kept in the database, as `main/index.ts` keeps it.
+      const kept = signInChangesIn(db).read()
       expect(kept.get('claude')).toBeGreaterThan(0)
       expect(kept.has('codex')).toBe(false)
       // ⚑ The app restarts: every life of the next run starts on the current sign-in.
@@ -831,7 +826,7 @@ describe('F074 · a usage limit is named, and what the app would start waits for
       await host.send(other.id, 'hello again', window)
       await aMoment()
       await host.closeAll()
-      rmSync(join(userData, SIGN_IN_CHANGES_FILE))
+      signInChangesIn(db).write(new Map())
       host = aHost()
       expect(host.limitsForAPerson().rows).toHaveLength(1)
       // ⚑ …as a switch made while the app was closed is: every life now starts on the current
@@ -847,10 +842,7 @@ describe('F074 · a usage limit is named, and what the app would start waits for
 
     it('⛔ W4.172 · a kept moment still ahead of the clock is set aside: it would hide every limit until then', async () => {
       await host.closeAll()
-      writeSignInChanges(
-        join(userData, SIGN_IN_CHANGES_FILE),
-        new Map([['claude', Date.now() + 86_400_000]]),
-      )
+      signInChangesIn(db).write(new Map([['claude', Date.now() + 86_400_000]]))
       anotherWall(claudeWall(Date.now() + 60_000))
       host = aHost()
       expect(host.limitsForAPerson().rows).toHaveLength(1)
