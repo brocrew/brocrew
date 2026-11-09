@@ -1,10 +1,13 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { BASELINE } from '../../mac-signed-upgrade-contract.mjs'
+import * as releaseProofs from '../../lib/release-proofs.mjs'
+const MAC_ARTIFACT_SOURCE =
+  releaseProofs.MAC_ARTIFACT_SOURCE ?? '993be94ba9b8431a07c32672fce09762e4e922d0'
 import { FICTIONAL_IDENTITY } from './mac-signing-identity.mjs'
 
 // Deliberately fictional evidence for validator controls; never a native qualification.
-export function macProofFixture(folder, manifest, reference) {
+export function macProofFixture(folder, manifest, reference, external = false) {
   const save = (name, value) => writeFileSync(join(folder, name), JSON.stringify(value))
   mkdirSync(folder, { recursive: true })
   const files = manifest.assets
@@ -23,6 +26,10 @@ export function macProofFixture(folder, manifest, reference) {
     tree: manifest.tree,
     version: manifest.version,
     releaseId: 101,
+  }
+  if (external) {
+    delete input.releaseId
+    input.runAttempt = manifest.runAttempt
   }
   const bundle = {
     version: manifest.version,
@@ -57,18 +64,19 @@ export function macProofFixture(folder, manifest, reference) {
     format: 'brocrew-mac-upgrade-proof-v1',
     runId: String(reference.runId),
     runAttempt: String(reference.runAttempt),
-    harnessSource: manifest.source,
+    harnessSource: external ? MAC_ARTIFACT_SOURCE : manifest.source,
     source: manifest.source,
     baseline: BASELINE,
     candidate: {
       format: 'brocrew-mac-signed-candidate-v1',
       ...input,
+      ...(external ? { input: { ...input } } : {}),
       teamId: FICTIONAL_IDENTITY.teamId,
       files,
     },
     to: { ...input, files },
     mode: 'guided',
-    transport: 'controlled-draft-github',
+    transport: external ? 'controlled-original-artifact' : 'controlled-draft-github',
     publicFeedAvailability: 'not proved',
     success: true,
     sameCode: false,
@@ -81,7 +89,23 @@ export function macProofFixture(folder, manifest, reference) {
     },
     installedCandidate: bundle,
     quarantineAppliedByFixture: { image: true, installedApp: true },
-    controlledTransport: { failures: [], requests: ['fictional request'] },
+    controlledTransport: {
+      failures: [],
+      requests: external
+        ? files
+            .filter((one) => one.name.endsWith('.dmg'))
+            .map((one) => ({
+              version: manifest.version,
+              kind: 'asset',
+              name: one.name,
+              bytes: one.size,
+              sha256: one.sha256,
+              sha512: one.sha512,
+              completed: true,
+              upstream: 'sealed original Release artifact',
+            }))
+        : ['fictional request'],
+    },
     replacementCount: 1,
     workspaceCount: 3,
     workspaces,

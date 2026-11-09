@@ -9,17 +9,21 @@ import {
   signedIdentity,
 } from '../mac-signed-upgrade-contract.mjs'
 import { dataPreserved } from './mac-update-test.mjs'
+import { MAC_ARTIFACT_SOURCE } from './release-proofs.mjs'
 
 // The successful workflow origin is checked separately; retain and inspect its actual receipts.
-export function verifyMacProof(folder, reference, manifest) {
+export function verifyMacProof(folder, reference, manifest, external = false) {
   const summary = JSON.parse(readFileSync(join(folder, 'summary.json'), 'utf8'))
   assert.equal(summary.format, 'brocrew-mac-upgrade-proof-v1')
   assert.equal(summary.runId, String(reference.runId))
   assert.equal(summary.runAttempt, String(reference.runAttempt))
-  assert.equal(summary.harnessSource, manifest.source)
+  assert.equal(summary.harnessSource, external ? MAC_ARTIFACT_SOURCE : manifest.source)
   assert.equal(summary.source, manifest.source)
   assert.equal(summary.mode, 'guided')
-  assert.equal(summary.transport, 'controlled-draft-github')
+  assert.equal(
+    summary.transport,
+    external ? 'controlled-original-artifact' : 'controlled-draft-github',
+  )
   assert.equal(summary.publicFeedAvailability, 'not proved')
   assert.equal(summary.success, true)
   assert.equal(summary.failure, undefined)
@@ -47,7 +51,23 @@ export function verifyMacProof(folder, reference, manifest) {
   assert.equal(input.source, manifest.source)
   assert.equal(input.tree, manifest.tree)
   assert.equal(input.version, manifest.version)
-  assert(Number.isSafeInteger(input.releaseId) && input.releaseId > 0)
+  if (external) {
+    assert.equal(input.runAttempt, manifest.runAttempt)
+    assert.equal(input.releaseId, undefined)
+    assert.equal(summary.candidate.input?.runAttempt, manifest.runAttempt)
+    assert.equal(summary.candidate.input?.releaseId, undefined)
+    for (const key of [
+      'runId',
+      'runAttempt',
+      'artifactId',
+      'artifactSha256',
+      'source',
+      'tree',
+      'version',
+    ])
+      assert.equal(summary.candidate.input[key], input[key])
+    for (const file of summary.candidate.files) assert.equal(file.assetId, undefined)
+  } else assert(Number.isSafeInteger(input.releaseId) && input.releaseId > 0)
   assert.equal(summary.from, undefined)
   const seals = (rows) => [...rows].sort((a, b) => a.name.localeCompare(b.name))
   assert.deepEqual(seals(input.files), seals(files))
@@ -75,6 +95,22 @@ export function verifyMacProof(folder, reference, manifest) {
   assert.deepEqual(summary.quarantineAppliedByFixture, { image: true, installedApp: true })
   assert.deepEqual(summary.controlledTransport.failures, [])
   assert(summary.controlledTransport.requests.length > 0)
+  if (external) {
+    const downloads = summary.controlledTransport.requests.filter(
+      (one) => one.version === manifest.version && one.kind === 'asset',
+    )
+    assert(downloads.some((one) => one.name === `BroCrew-${manifest.version}-arm64.dmg`))
+    for (const download of downloads) {
+      const file = files.find((one) => one.name === download.name)
+      assert(file, 'Unsealed original-artifact download')
+      assert.equal(download.upstream, 'sealed original Release artifact')
+      assert.equal(download.assetId, undefined)
+      assert.equal(download.completed, true)
+      assert.equal(download.bytes, file.size)
+      assert.equal(download.sha256, file.sha256)
+      assert.equal(download.sha512, file.sha512)
+    }
+  }
   assert.equal(summary.replacementCount, 1)
   assert.equal(summary.workspaceCount, 3)
   assert.equal(summary.workspaces.length, 3)
