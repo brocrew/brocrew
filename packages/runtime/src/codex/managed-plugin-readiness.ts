@@ -73,13 +73,16 @@ export function waitForManagedPluginTools(
               return false
             }
             if (server.runtimeStatus === 'connected') {
-              const tools = server.tools
-              const ready = server.toolsError === null && record(tools)
-              observe({
-                server: name,
-                tools: ready ? Object.keys(tools) : [],
-                outcome: ready ? 'discovered' : 'unavailable',
-              })
+              const ready = server.toolsError === null && record(server.tools)
+              try {
+                observe({
+                  server: name,
+                  tools: ready ? Object.keys(server.tools as Record<string, unknown>) : [],
+                  outcome: ready ? 'discovered' : 'unavailable',
+                })
+              } catch {
+                /* Inventory observation cannot change the existing readiness result. */
+              }
               return ready
             }
             if (server.runtimeStatus !== 'starting' && server.runtimeStatus !== 'notStarted') {

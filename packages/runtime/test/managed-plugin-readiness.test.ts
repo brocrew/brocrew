@@ -144,7 +144,7 @@ it.each(
         }
       return ready()
     }
-    const observer = vi.fn((_event: ManagedPluginDiscovery) => {
+    const observer = vi.fn<(event: ManagedPluginDiscovery) => void>(() => {
       if (discovery === 'observer-throws' || discovery === 'failed-observer-throws')
         throw new Error('fictional-observer-marker')
     })
@@ -218,7 +218,7 @@ it.each(
       },
       [Symbol.asyncIterator]: () => frames[Symbol.asyncIterator](),
     }
-    const observer = vi.fn((_event: ManagedPluginDiscovery) => {
+    const observer = vi.fn<(event: ManagedPluginDiscovery) => void>(() => {
       if (throws) throw new Error('fictional-observer-marker')
     })
     const runtime = new ClaudeRuntime(
