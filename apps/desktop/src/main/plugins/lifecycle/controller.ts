@@ -535,7 +535,9 @@ export class PluginLifecycleController {
             !this.runs.get(id)!.ended &&
             (this.options.toolsUnavailable?.(id) || this.options.toolsPending?.(id))
               ? {
-                  ...(this.options.toolsUnavailable?.(id) ? { toolsUnavailable: true as const } : {}),
+                  ...(this.options.toolsUnavailable?.(id)
+                    ? { toolsUnavailable: true as const }
+                    : {}),
                   ...(toolsCause(this.options.toolsPending?.(id))
                     ? { toolsPending: this.options.toolsPending!(id) }
                     : {}),
@@ -631,9 +633,7 @@ export class PluginLifecycleController {
     const workspace: Workspace = { sink, installs: new Map(), live: true }
     this.workspaces.set(handle, workspace)
     try {
-      // Access comes from the current activation and its run. Attaching writes nothing, and a
-      // plugin whose operation is pending is not in the committed set, so its old release is
-      // never started mid-update.
+      // Attaching writes nothing; a plugin with a pending operation never starts its old release.
       await Promise.all(
         this.options.state.readWorkspaceAdmission().installations.map((installed) =>
           this.withPlugin(installed.pluginId, async () => {
