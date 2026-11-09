@@ -212,7 +212,7 @@ import {
 import { ApiKeys, askTheProvider } from './runtime/api-keys'
 import { listProcesses, memoryOf } from './runtime/process-listing'
 import { importProviderUsageFile, usageKeptIn } from './provider-usage-file'
-import { readKeptAttempts, scheduleAttemptsFile, writeKeptAttempts } from './schedule-attempts-file'
+import { importScheduleAttemptsFile, scheduleAttemptsIn } from './schedule-attempts-file'
 import {
   profileExecutionFile,
   readProfileExecution,
@@ -590,6 +590,7 @@ function initDatabase(): AppDatabase {
   importArchivedFile(database, app.getPath('userData'))
   importSignInChangesFile(database, app.getPath('userData'))
   importProviderUsageFile(database, app.getPath('userData'))
+  importScheduleAttemptsFile(database, app.getPath('userData'))
   try {
     const compaction = compactWhenMuchIsFree(database, freeBytesOn(app.getPath('userData')))
     if (compaction === 'compacted') console.info('BroCrew gave its free database space back')
@@ -1002,10 +1003,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     },
     // What this app already did about each stopped conversation's scheduled jobs, kept across a
     // restart in this data folder.
-    scheduleAttempts: {
-      read: () => readKeptAttempts(scheduleAttemptsFile(userData)),
-      write: (kept) => writeKeptAttempts(scheduleAttemptsFile(userData), kept),
-    },
+    scheduleAttempts: scheduleAttemptsIn(database),
     // The turns this app's quit, or a crash, cut, with what it did about each: a cut turn is
     // continued once, at the next launch, on the account it ran on.
     turnsTheAppCut: {

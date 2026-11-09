@@ -1,6 +1,6 @@
 import type { AgentState, ScheduleLevel } from '../src/shared/agent-state-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -25,11 +25,12 @@ import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
+  importScheduleAttemptsFile,
   MAX_ATTEMPT_CONVERSATIONS,
-  readKeptAttempts,
-  scheduleAttemptsFile,
-  writeKeptAttempts,
+  SCHEDULE_ATTEMPTS_FILE,
+  scheduleAttemptsIn,
   type ConversationAttempts,
+  type KeptAttempts,
 } from '../src/main/schedule-attempts-file'
 import { clockTime, clockTimeFrom } from '../src/shared/clock'
 import type { RuntimeEventMessage, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
@@ -423,7 +424,7 @@ interface WakeUpRead {
 }
 
 /** What the host keeps about scheduled jobs, as a test reads it. */
-type KeptAttemptsRead = ReturnType<typeof readKeptAttempts>
+type KeptAttemptsRead = KeptAttempts
 
 /** A timer the host armed: the callback it armed it with and the delay it asked for. */
 interface TimerCall {
@@ -457,8 +458,9 @@ const GAP = 120
 describe('what was done about scheduled jobs is kept for the conversations recorded most recently', () => {
   it('⛔ of one more than the cap, the one recorded longest ago goes, and a read gives back what was written', () => {
     const dir = mkdtempSync(join(tmpdir(), 'brobot2-attempts-'))
+    const db = openDatabase(join(dir, 'brobot2.sqlite'))
     try {
-      const file = scheduleAttemptsFile(dir)
+      applyMigrations(db, migrationsFolder)
       const done = (at: number): ConversationAttempts => ({
         attempts: [{ key: 'a job', revision: 'as it was', attempted: true }],
         admittedAt: at,
@@ -467,7 +469,7 @@ describe('what was done about scheduled jobs is kept for the conversations recor
         notStartedSaid: { 'job-a': 'no-word-from-its-provider' },
         at,
       })
-      writeKeptAttempts(file, {
+      scheduleAttemptsIn(db).write({
         conversations: Object.fromEntries(
           Array.from({ length: MAX_ATTEMPT_CONVERSATIONS + 1 }, (_, n) => [
             `sess_${String(n)}`,
@@ -475,7 +477,7 @@ describe('what was done about scheduled jobs is kept for the conversations recor
           ]),
         ),
       })
-      const back = readKeptAttempts(file).conversations
+      const back = scheduleAttemptsIn(db).read().conversations
       expect(Object.keys(back)).toHaveLength(MAX_ATTEMPT_CONVERSATIONS)
       // ⚠️ The one dropped is read as nothing done: it costs one more start, and no more.
       expect(back['sess_0']).toBeUndefined()
@@ -483,12 +485,23 @@ describe('what was done about scheduled jobs is kept for the conversations recor
         done(1_000 + MAX_ATTEMPT_CONVERSATIONS),
       )
 
-      // A file that is not this app's own shape is nothing done, never an error.
+      // The old file is imported once; one that is not JSON is kept and imports nothing.
+      const file = join(dir, SCHEDULE_ATTEMPTS_FILE)
       writeFileSync(file, '{ torn')
-      expect(readKeptAttempts(file)).toEqual({ conversations: {} })
-      writeFileSync(file, JSON.stringify({ conversations: { sess_x: { at: 'yesterday' } } }))
-      expect(readKeptAttempts(file)).toEqual({ conversations: {} })
+      importScheduleAttemptsFile(db, dir)
+      expect(readFileSync(file, 'utf8')).toBe('{ torn')
+      expect(Object.keys(scheduleAttemptsIn(db).read().conversations)).toHaveLength(
+        MAX_ATTEMPT_CONVERSATIONS,
+      )
+      writeFileSync(
+        file,
+        JSON.stringify({ conversations: { sess_x: { at: 'yesterday' }, sess_y: done(7) } }),
+      )
+      importScheduleAttemptsFile(db, dir)
+      expect(scheduleAttemptsIn(db).read().conversations).toEqual({ sess_y: done(7) })
+      expect(existsSync(file)).toBe(false)
     } finally {
+      db.close()
       rmSync(dir, { recursive: true, force: true })
     }
   })
@@ -546,10 +559,10 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
           }
         : {}),
       scheduleAttempts: {
-        read: () => readKeptAttempts(scheduleAttemptsFile(userData)),
+        read: () => scheduleAttemptsIn(db).read(),
         write: (kept) => {
           if (control.attemptsCannotBeKept === true) throw new Error('the disk is full')
-          writeKeptAttempts(scheduleAttemptsFile(userData), kept)
+          scheduleAttemptsIn(db).write(kept)
         },
       },
       startGapMs: GAP,
@@ -871,7 +884,7 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     )
     await settle()
     await host.closeAll()
-    const kept = readKeptAttempts(scheduleAttemptsFile(userData)).conversations[a]
+    const kept = scheduleAttemptsIn(db).read().conversations[a]
     expect(kept?.attempts.some((one) => one.attempted)).toBe(true)
     expect(kept?.told).toHaveLength(1)
 
@@ -884,9 +897,9 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     expect(heldNotices(a)).toHaveLength(1)
     await host.closeAll()
 
-    // ⚑ The control: without what was kept, the same launch starts it again — so the file is what
-    // held it back.
-    rmSync(scheduleAttemptsFile(userData))
+    // ⚑ The control: without what was kept, the same launch starts it again — so the kept attempts
+    // are what held it back.
+    scheduleAttemptsIn(db).write({ conversations: {} })
     restartsAt(local(9, 28, 15, 20))
     await waitFor(() => handlesOf(a).length === before + 2, 'A to be started without the file')
   })
@@ -918,9 +931,7 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     await settle()
   }
   const keptAsDealtWith = (id: string) =>
-    (readKeptAttempts(scheduleAttemptsFile(userData)).conversations[id]?.told ?? []).map(
-      (one) => one.said,
-    )
+    (scheduleAttemptsIn(db).read().conversations[id]?.told ?? []).map((one) => one.said)
 
   it('⚑ a job a start did not bring back over a day ago, with the conversation started twice since, gets no word and no start, now or two launches later', async () => {
     const [a] = await aFirstLife(async ([first]) => makes(first!, FAR_AHEAD), 'agent-a')
@@ -1109,9 +1120,9 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     if (a === undefined) throw new Error('a conversation was opened')
     const before = handlesOf(a).length
     const attemptedIn = (): boolean =>
-      readKeptAttempts(scheduleAttemptsFile(userData)).conversations[a]?.attempts.some(
-        (one) => one.attempted,
-      ) === true
+      scheduleAttemptsIn(db)
+        .read()
+        .conversations[a]?.attempts.some((one) => one.attempted) === true
 
     // A start that fails: what was kept is put back, so the start is asked for again.
     control.failResume = true
@@ -1152,7 +1163,7 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     const before = handlesOf(a).length
     const consumed = (): Set<string> =>
       new Set(
-        (readKeptAttempts(scheduleAttemptsFile(userData)).conversations[a]?.attempts ?? [])
+        (scheduleAttemptsIn(db).read().conversations[a]?.attempts ?? [])
           .filter((one) => one.attempted)
           .map((one) => one.key),
       )
@@ -1229,7 +1240,7 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
       true,
     )
     // …and on disk…
-    expect(attemptedIn(readKeptAttempts(scheduleAttemptsFile(userData)))).toBe(true)
+    expect(attemptedIn(scheduleAttemptsIn(db).read())).toBe(true)
     // …so a host rebuilt from the file, the job's minute still ahead, starts nothing for it.
     control.failResume = false
     control.diskFillsOnResume = false
@@ -1551,9 +1562,7 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     })
     doubleOf(f).simulateConversationReset()
     await settle()
-    expect(
-      readKeptAttempts(scheduleAttemptsFile(userData)).conversations[f]?.resetUnmarkedAt,
-    ).toBeDefined()
+    expect(scheduleAttemptsIn(db).read().conversations[f]?.resetUnmarkedAt).toBeDefined()
     await host.close(f, THE_APP_ITSELF)
     await settle()
     expect(wakeUpsOf(host).has(f)).toBe(false)

@@ -12,6 +12,11 @@ import {
   usageKeptIn,
 } from '../src/main/provider-usage-file'
 import {
+  importScheduleAttemptsFile,
+  SCHEDULE_ATTEMPTS_FILE,
+  scheduleAttemptsIn,
+} from '../src/main/schedule-attempts-file'
+import {
   importSignInChangesFile,
   SIGN_IN_CHANGES_FILE,
   signInChangesIn,
@@ -66,6 +71,18 @@ const CASES: readonly Case[] = [
     importFile: importProviderUsageFile,
     rows: (database) => usageKeptIn(database).read(),
     change: (database) => usageKeptIn(database).write(NO_USAGE_KEPT),
+  },
+  {
+    name: 'schedule attempts',
+    file: SCHEDULE_ATTEMPTS_FILE,
+    said: {
+      conversations: {
+        a: { attempts: [], admittedAt: null, told: [], runs: {}, notStartedSaid: {}, at: 1 },
+      },
+    },
+    importFile: importScheduleAttemptsFile,
+    rows: (database) => scheduleAttemptsIn(database).read(),
+    change: (database) => scheduleAttemptsIn(database).write({ conversations: {} }),
   },
 ]
 

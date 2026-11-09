@@ -781,3 +781,9 @@ export const providerUsageReadOn = sqliteTable('provider_usage_read_on', {
   provider: text('provider').primaryKey(),
   tag: text('tag').notNull(),
 })
+
+export const scheduleAttempt = sqliteTable('schedule_attempt', {
+  conversationId: text('conversation_id').primaryKey(),
+  record: text('record').notNull(),
+  at: integer('at').notNull(),
+})
