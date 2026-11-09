@@ -147,7 +147,7 @@ it('Codex key consumption during real home preparation cannot launch under chang
           current: async () => {
             await keys.set('codex', 'fictional-willow-key')
             const key = await keys.current('codex')
-            void keys.remove('codex')
+            await keys.remove('codex')
             return key
           },
           change: async (_home, change) => {
