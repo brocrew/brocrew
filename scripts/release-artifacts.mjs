@@ -14,7 +14,37 @@ import { pathToFileURL } from 'node:url'
 import { readUpdateFile } from './release-check.mjs'
 import { expectedSigningIdentity } from './lib/mac-signing-identity.mjs'
 
+export const PROOF_PUBLICATION = Object.freeze({
+  repository: 'brocrew/brocrew',
+  version: '0.2.12',
+  source: '90c4db564be21eb4fa22b7fba95c5d861ac95b29',
+  tree: 'cf373e75a8fb2336fd92799fb003270257bb6c38',
+  executionTag: 'v0.2.12-proof-carrier.3',
+  candidateTag: 'v0.2.12-candidate.2',
+  candidateTagObject: 'a23e5c10edb681806fc8e5cd550231ba2e17c699',
+  stableTagObject: 'fd7c19c6c1a2f1eb06948c788d4291c76c71dead',
+  runId: 42502289113,
+  runAttempt: 1,
+  artifactId: 13626690549,
+  digest: 'sha256:5a1d37a902ad0ff3f3656288f7cfa1b70b621cd0c4e51590c184c7730be73680',
+  manifestSha256: '7340e91f2bcf66e25a03533763d5fedbf7dce8bbf5693e03d589109311489e5b',
+  macInstallWitnessSha256: '39ddf8f6048de189438487a9441bd955297cb7d505e9fbda1ea31af8fd8ad8e7',
+})
+
 export function releasePlan(ref, event, mode = '') {
+  if (ref === `refs/tags/${PROOF_PUBLICATION.executionTag}`) {
+    if (event !== 'workflow_dispatch' || !['qualify', 'publish'].includes(mode))
+      throw new Error('The reviewed proof carrier only qualifies or publishes existing bytes')
+    return {
+      version: PROOF_PUBLICATION.version,
+      tag: `v${PROOF_PUBLICATION.version}`,
+      build: false,
+      qualify: mode === 'qualify',
+      publish: mode === 'publish',
+      targetRef: `refs/tags/${mode === 'qualify' ? PROOF_PUBLICATION.candidateTag : `v${PROOF_PUBLICATION.version}`}`,
+      external: true,
+    }
+  }
   const match = /^refs\/tags\/v(\d+\.\d+\.\d+)(-candidate\.([1-9]\d*))?$/.exec(ref)
   if (!match) throw new Error('A stable version tag or vX.Y.Z-candidate.N tag is required')
   const candidate = Boolean(match[2])

@@ -197,6 +197,35 @@ describe('§3 · release workflow route', () => {
     expect(publish).toContain('selection_sha256')
     expect(workflow.match(/contents: write/g)).toHaveLength(1)
   })
+  it('keeps the proof publication carrier out of all automatic build routes', () => {
+    const parsed = builderTools.loadYaml(workflow)
+    expect(parsed.on.push.tags).toContain('!v0.2.12-proof-carrier.1')
+    expect(parsed.on.push.tags).toContain('!v0.2.12-proof-carrier.2')
+    expect(parsed.on.push.tags).toContain('!v0.2.12-proof-carrier.3')
+    for (const job of ['windows', 'macos', 'candidate'])
+      expect(parsed.jobs[job].if).toBe("needs.plan.outputs.build == 'true'")
+    for (const job of ['qualify', 'publish'])
+      expect(parsed.jobs[job].needs).toEqual(['plan', 'leak'])
+    expect(parsed.jobs.publish.environment).toBe('release')
+    expect(parsed.jobs.publish.permissions).toEqual({
+      contents: 'write',
+      actions: 'read',
+      attestations: 'read',
+    })
+    expect(parsed.jobs.qualify.permissions).toEqual({
+      contents: 'read',
+      actions: 'read',
+      attestations: 'read',
+    })
+    const proof = builderTools.loadYaml(
+      readFileSync(join(here, '../../.github/workflows/mac-signed-upgrade.yml'), 'utf8'),
+    )
+    expect(proof.permissions).toEqual({ contents: 'read', actions: 'read' })
+    expect(proof.jobs.upgrade.permissions).toBeUndefined()
+    expect(workflow).not.toContain('accepted_source_sha')
+    expect(workflow).not.toContain('target_ref:')
+  })
+
   it('retains packaged/recovery/update checks and signs the Mac distribution', () => {
     expect(mac).toContain('--mac dmg zip dir --arm64')
     expect(mac).toContain('-c.mac.hardenedRuntime=true')
@@ -233,7 +262,13 @@ describe('signed validation without a paid Windows build', () => {
 
   it('reserves validation tags without changing automatic candidate or stable release routes', () => {
     const release = load(readFileSync(join(repo, '.github/workflows/release.yml'), 'utf8'))
-    expect(release.on.push.tags).toEqual(['v*', '!v*-mac-signing-check.*'])
+    expect(release.on.push.tags).toEqual([
+      'v*',
+      '!v*-mac-signing-check.*',
+      '!v0.2.12-proof-carrier.1',
+      '!v0.2.12-proof-carrier.2',
+      '!v0.2.12-proof-carrier.3',
+    ])
     const mac = workflow()
     expect(mac.on.workflow_dispatch.inputs.signed_release_validation.default).toBe(false)
     expect(mac.on.workflow_dispatch.inputs.package_version.default).toBe('0.1.8')

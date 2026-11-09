@@ -1,5 +1,5 @@
-# Candidate tags build once. Qualification seals the tested selection. Publication on the
-# identical stable-tag SHA downloads that selection and never rebuilds or replaces asset bytes.
+# Candidate tags build once. Qualification seals the tested selection. The reviewed 0.2.12 proof carrier may
+# verify and publish the original candidate bytes while the stable tag retains their source.
 #
 #   - `vX.Y.Z`        → a full release: what every BroCrew that checks for updates is offered;
 #   - `vX.Y.Z-candidate.N` builds version X.Y.Z without publishing.
@@ -30,11 +30,18 @@ name: Release
 
 on:
   push:
-    tags: ['v*', '!v*-mac-signing-check.*']
+    tags:
+      [
+        'v*',
+        '!v*-mac-signing-check.*',
+        '!v0.2.12-proof-carrier.1',
+        '!v0.2.12-proof-carrier.2',
+        '!v0.2.12-proof-carrier.3',
+      ]
   workflow_dispatch:
     inputs:
       mode:
-        description: Qualify a candidate or publish its exact tested files from the stable tag
+        description: Qualify or publish exact tested files; the reviewed012 proof carrier preserves the stable source
         type: choice
         required: true
         options: [qualify, publish]
