@@ -57,6 +57,7 @@ const Cards = z
       installed: z.boolean(),
       priorityClamped: z.boolean().nullable().optional(),
       toolsUnavailable: z.literal(true).optional(),
+      toolsPending: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/).optional(),
       unavailableReason: z.enum(PLUGIN_UNAVAILABLE_REASONS).optional(),
       startupDiagnostic: PluginStartupDiagnosticSchema.optional(),
       toolsCause: z
@@ -653,7 +654,9 @@ export async function connectPluginSettings(options: {
       try {
         reply = await channel.call({
           kind: modern
-            ? features.includes('startup-diagnostic-v1')
+            ? features.includes('tool-starting-v1')
+              ? 'list-tool-starting'
+              : features.includes('startup-diagnostic-v1')
               ? 'list-startup-diagnostic'
               : features.includes('tool-cause-v1')
                 ? 'list-tool-cause'

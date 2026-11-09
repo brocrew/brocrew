@@ -528,6 +528,11 @@ onUnmounted(() => {
         <div class="plugin-card-copy">
           <h2>{{ card.name }}</h2>
           <span class="plugin-state" data-cy="plugin-state">{{ card.state }}</span>
+          <p v-if="card.state === 'Running' && card.toolsPending" role="status"
+            data-cy="plugin-tools-pending">
+            {{ card.toolsCause ? 'Retrying' : 'Starting' }} agent tools: {{ card.toolsPending }}.
+            <template v-if="card.toolsCause">Last attempt: {{ card.toolsCause }}.</template>
+          </p>
           <p
             v-if="card.state === 'Running' && card.toolsUnavailable"
             role="status"

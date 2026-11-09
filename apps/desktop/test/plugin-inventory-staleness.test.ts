@@ -132,7 +132,7 @@ it('resets inventory staleness on bytes, then reports the silent stage as stalle
   )
   await remote.started
   await vi.advanceTimersByTimeAsync(20_000)
-  remote.byte()
+  if (!remote.aborted()) remote.byte()
   await vi.advanceTimersByTimeAsync(20_000)
   expect(remote.aborted()).toBe(false)
   await vi.advanceTimersByTimeAsync(10_001)
@@ -221,6 +221,7 @@ it('retries a failed inventory on the next read and marks the held retry as star
     expect(await retry).toMatchObject({ servers: [], pending: ['chrome'] })
     expect(binding).toHaveBeenCalledTimes(2)
     expect(bridge.toolsUnavailable('chrome')).toBe(false)
+    expect(bridge.toolsPending('chrome')).toBe('binding-connection')
     expect(bridge.toolsCause('chrome')).toBe('binding-connect: connection-refused')
     held.resolve()
     await vi.advanceTimersByTimeAsync(0)

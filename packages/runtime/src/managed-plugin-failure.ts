@@ -37,6 +37,9 @@ const causes = [
   'io-denied',
   'io-failed',
   'transport-closed',
+  'connection-refused',
+  'process-exited',
+  'stalled',
   'invalid-reply',
   'timeout',
   'cancelled',
@@ -98,7 +101,8 @@ export function managedPluginFailure(
             normalized = one.code as PluginFailureCause
           else if (one.code === 'EACCES' || one.code === 'EPERM') normalized = 'io-denied'
           else if (one.code === 'ETIMEDOUT') normalized = 'timeout'
-          else if (['ECONNRESET', 'ECONNREFUSED', 'EPIPE'].includes(one.code))
+          else if (one.code === 'ECONNREFUSED') normalized = 'connection-refused'
+          else if (['ECONNRESET', 'EPIPE'].includes(one.code))
             normalized = 'transport-closed'
           else if (/^E[A-Z0-9_]{1,30}$/.test(one.code)) normalized = 'io-failed'
         }

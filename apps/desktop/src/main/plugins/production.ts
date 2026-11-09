@@ -308,7 +308,9 @@ export function productionPluginController() {
         state: card.state,
         // An absent installation has no tools; other tool access stays unknown.
         tools: card.installed === false ? 'none' : 'unknown',
-        toolHealth: card.state === 'Running' && !card.toolsUnavailable ? 'ready' : 'unavailable',
+        toolHealth: card.state === 'Running' && !card.toolsUnavailable
+          ? card.toolsPending ? 'unknown' : 'ready'
+          : 'unavailable',
         ...(card.toolsCause ? { toolsCause: card.toolsCause } : {}),
         service: card.state === 'Running' ? (names[card.id] ?? card.id) : null,
       }))

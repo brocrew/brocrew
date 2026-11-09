@@ -27,6 +27,7 @@ export async function createSupervisorLifecycle(options: {
       ...options.lifecycle,
       toolsUnavailable: (id) => consumer.agents?.toolsUnavailable(id) ?? false,
       toolsCause: (id) => consumer.agents?.toolsCause(id),
+      toolsPending: (id) => consumer.agents?.toolsPending(id),
       deny(id) {
         consumer.agents?.deny(id)
         options.lifecycle.deny(id)

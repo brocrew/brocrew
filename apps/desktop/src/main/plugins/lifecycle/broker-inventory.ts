@@ -2,15 +2,37 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { PluginLifecycleController } from './controller'
 import { managedPluginFailure, type PluginFailureStage } from '@brobot2/runtime/plugin-failure'
+import { inventoryFetch } from './inventory-fetch'
+import { reportPluginToolFailure, type PluginToolDiagnostic } from '../tool-diagnostics'
+import { randomUUID } from 'node:crypto'
 
 export async function admittedPluginTools(
   view: ReturnType<PluginLifecycleController['agentAttachments']>[number],
   names: ReadonlySet<string>,
   refused: () => void | Promise<void>,
+  diagnostic?: PluginToolDiagnostic,
 ) {
   let stage: PluginFailureStage = 'binding-connection'
+  const progress = (next: PluginFailureStage) => {
+    stage = next
+    reportPluginToolFailure(diagnostic, 'binding-pending', {
+      stage, cause: 'pending', correlation: randomUUID(),
+    })
+  }
+  const host = new AbortController()
+  const exited = view.exited?.then(
+    () => {
+      const error = Object.assign(new Error('Plugin host exited'), { code: 'process-exited' })
+      host.abort(error)
+      throw error
+    },
+    () => new Promise<never>(() => {}),
+  ) ?? new Promise<never>(() => {})
+  // The exit witness also ends connection readiness, before an HTTP request exists.
+  void exited.catch(() => undefined)
   try {
-    const connection = await view.connection
+    progress('binding-connection')
+    const connection = await Promise.race([view.connection, exited])
     stage = 'binding-current'
     if (!view.current()) throw new Error('unavailable')
     stage = 'binding-endpoint'
@@ -19,20 +41,20 @@ export async function admittedPluginTools(
     const client = new Client({ name: 'brocrew-plugin-inventory', version: '1' })
     client.onerror = () => undefined
     const outcome = await (async () => {
-      stage = 'binding-connect'
+      progress('binding-connect')
       await client.connect(
         new StreamableHTTPClientTransport(new URL(endpoint.url), {
           requestInit: { headers: endpoint.headers, redirect: 'error' },
-          fetch: (url, init) =>
-            fetch(url, {
-              ...init,
-              redirect: 'error',
-              signal: AbortSignal.timeout(1500),
-            }),
+          fetch: inventoryFetch(host.signal),
         }),
       )
-      stage = 'binding-inventory'
-      const inventory = await client.listTools(undefined, { timeout: 1500 })
+      progress('binding-inventory')
+      // Keep the SDK's documented default: 1.29 has no public timeout-disable option and
+      // Chrome's static tools/list emits no MCP progress. HTTP bytes have their own idle rule.
+      const inventory = await client.listTools(undefined, {
+        resetTimeoutOnProgress: true,
+        onprogress: () => undefined,
+      })
       stage = 'binding-current'
       if (inventory.nextCursor || inventory.tools.length > 256 || !view.current())
         throw new Error('unavailable')
@@ -53,5 +75,7 @@ export async function admittedPluginTools(
     return outcome.value
   } catch (error) {
     throw managedPluginFailure(error, stage)
+  } finally {
+    host.abort()
   }
 }

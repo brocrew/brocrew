@@ -544,9 +544,12 @@ export class PluginLifecycleController {
             !this.blocks.has(id) &&
             this.runs.has(id) &&
             !this.runs.get(id)!.ended &&
-            this.options.toolsUnavailable?.(id)
+            (this.options.toolsUnavailable?.(id) || this.options.toolsPending?.(id))
               ? {
-                  toolsUnavailable: true as const,
+                  ...(this.options.toolsUnavailable?.(id) ? { toolsUnavailable: true as const } : {}),
+                  ...(toolsCause(this.options.toolsPending?.(id))
+                    ? { toolsPending: this.options.toolsPending!(id) }
+                    : {}),
                   ...(toolsCause(this.options.toolsCause?.(id))
                     ? { toolsCause: this.options.toolsCause!(id) }
                     : {}),

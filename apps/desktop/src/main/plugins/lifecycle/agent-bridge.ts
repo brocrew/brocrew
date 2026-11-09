@@ -101,6 +101,7 @@ export function createLifecycleAgentBridge(options: {
     failed: boolean
     cancelled: boolean
     settled: boolean
+    stage: string
     done: Promise<void>
   }
   type Answer = {
@@ -162,7 +163,11 @@ export function createLifecycleAgentBridge(options: {
   const diagnostic =
     (id: string): PluginToolDiagnostic =>
     (reason, detail) => {
-      if (detail) lastCause.set(id, `${detail.stage}: ${detail.cause}`)
+      if (reason === 'binding-pending' && detail) {
+        for (const warmup of warmups.values())
+          if (warmup.pluginId === id && !warmup.settled && !warmup.cancelled)
+            warmup.stage = detail.stage
+      } else if (detail) lastCause.set(id, `${detail.stage}: ${detail.cause}`)
       else if (/failed|unproven|rejected|timeout|capacity|collision|rate-limited/.test(reason))
         lastCause.set(id, reason)
       if (lastCause.size > 256) lastCause.delete(lastCause.keys().next().value!)
@@ -564,6 +569,7 @@ export function createLifecycleAgentBridge(options: {
       failed: false,
       cancelled: false,
       settled: false,
+      stage: 'binding-connection',
       done: Promise.resolve(),
     }
     warmups.set(key, one)
@@ -911,8 +917,17 @@ export function createLifecycleAgentBridge(options: {
         rebuilding.has(id) ||
         overflowFailures.has(id) ||
         liveEntries.get(id)?.broker.status().available === false ||
-        [...failedRoutes.values()].includes(id)
+        [...failedRoutes].some(([key, plugin]) =>
+          plugin === id && ![...warmups.values()].some((one) =>
+            !one.cancelled && !one.settled && `${one.caller}:${id}` === key,
+          ),
+        )
       )
+    },
+    toolsPending(id: string): string | undefined {
+      return [...warmups.values()].find(
+        (one) => one.pluginId === id && !one.cancelled && !one.settled,
+      )?.stage
     },
     /** Why this plugin's tools are unavailable, as `stage: cause` or a fixed reason, if known. */
     toolsCause(id: string): string | undefined {

@@ -29,7 +29,12 @@ export async function whatsappBrokerBinding(
   const resources = view.package.manifest.permissions.resources
   const account = resources.find((one) => one.id === whatsappBrokerResourceId)
   if (!account) throw new Error('unavailable')
-  const { endpoint, credential, admitted } = await admittedPluginTools(view, names, refused)
+  const { endpoint, credential, admitted } = await admittedPluginTools(
+    view,
+    names,
+    refused,
+    diagnostic,
+  )
   return {
     tools: admitted.map((tool) => ({
       name: tool.name,

@@ -42,6 +42,7 @@ const reasons = [
   'result-invalid',
   'tool-error',
   'binding-failed',
+  'binding-pending',
   'route-open-failed',
   'route-unavailable',
   'route-stale',

@@ -74,6 +74,8 @@ export interface LifecycleOptions {
   toolsUnavailable?: (pluginId: string) => boolean
   /** Fixed-vocabulary `stage: cause` behind unavailable tools, when known. */
   toolsCause?: (pluginId: string) => string | undefined
+  /** Current inventory stage while a binding is starting or retrying. */
+  toolsPending?: (pluginId: string) => string | undefined
   /** Inert fault controls only; never a production launch option. */
   fault?: (point: 'prepared' | 'staged' | 'ready' | 'activated' | 'update-fenced') => void
 }
