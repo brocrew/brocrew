@@ -37,12 +37,7 @@ import { RuntimeHost, type RuntimeHostDeps } from '../src/main/runtime/runtime-h
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
-import {
-  readKeptCuts,
-  writeKeptCuts,
-  NO_CUTS_KEPT,
-  type CutRecord,
-} from '../src/main/turns-the-app-cut-file'
+import { NO_CUTS_KEPT, turnsTheAppCutIn, type CutRecord } from '../src/main/turns-the-app-cut-file'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
 import type { ReconciliationPiece } from '../src/main/runtime/work-reconciliation'
@@ -211,10 +206,7 @@ describe('a work wait is reconciled without a window', () => {
     build = () =>
       new RuntimeHost({
         afterFirstWindowLoad: firstLoad,
-        turnsTheAppCut: {
-          read: () => readKeptCuts(join(userData, 'cuts.json')),
-          write: (kept) => writeKeptCuts(join(userData, 'cuts.json'), kept),
-        },
+        turnsTheAppCut: turnsTheAppCutIn(db),
         store,
         limitsWriterStamp: () => (stampsAvailable ? contentStamp() : null),
         windowWriterStamp: (query) => (stampsAvailable ? windowStamp(query) : null),
@@ -782,7 +774,7 @@ describe('a work wait is reconciled without a window', () => {
         state: 'pending',
         ...(resumesAt === null ? {} : { resetsAt: resumesAt }),
       }
-      writeKeptCuts(join(userData, 'cuts.json'), { ...NO_CUTS_KEPT, cuts: { [owner]: cut } })
+      turnsTheAppCutIn(db).write({ ...NO_CUTS_KEPT, cuts: { [owner]: cut } })
       host = build()
       expect(host.workIncidentsForAPerson().rows).toEqual([])
       // Recovery metadata is visible only after this incident has reached the person.
@@ -826,7 +818,7 @@ describe('a work wait is reconciled without a window', () => {
         aPersonStartedIt: false,
         state: { ended },
       }
-      writeKeptCuts(join(userData, 'cuts.json'), { ...NO_CUTS_KEPT, cuts: { [owner]: cut } })
+      turnsTheAppCutIn(db).write({ ...NO_CUTS_KEPT, cuts: { [owner]: cut } })
       host = build()
       await cycle()
       expect(host.workIncidentsForAPerson().rows).toMatchObject([
