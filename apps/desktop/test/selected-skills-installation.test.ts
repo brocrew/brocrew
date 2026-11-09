@@ -494,9 +494,10 @@ it.each(['claude', 'codex'] as const)(
       selection: { revision: 1, skills },
       isCurrent: () => true,
     })
-    const layout = provider === 'claude'
-      ? { prefix: 'brobot:', directory: 'skills' }
-      : { prefix: '', directory: '' }
+    const layout =
+      provider === 'claude'
+        ? { prefix: 'brobot:', directory: 'skills' }
+        : { prefix: '', directory: '' }
     expect(prepared.context.skills).toHaveLength(64)
     expect(prepared.versions).toHaveLength(64)
     expect(() => validateBuiltInSkills(prepared.context, layout)).not.toThrow()

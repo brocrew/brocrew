@@ -141,7 +141,11 @@ describe('copying this install’s provider sign-ins', () => {
           launches++
           if (refuseReturnedHandle) {
             refuseReturnedHandle = false
-            throw new RejectedSessionLaunch(new Error('fictional native launch refusal'), handle, handle.close())
+            throw new RejectedSessionLaunch(
+              new Error('fictional native launch refusal'),
+              handle,
+              handle.close(),
+            )
           }
           return handle
         },
@@ -161,7 +165,11 @@ describe('copying this install’s provider sign-ins', () => {
           launches++
           if (refuseReturnedHandle) {
             refuseReturnedHandle = false
-            throw new RejectedSessionLaunch(new Error('fictional native launch refusal'), handle, handle.close())
+            throw new RejectedSessionLaunch(
+              new Error('fictional native launch refusal'),
+              handle,
+              handle.close(),
+            )
           }
           return handle
         },

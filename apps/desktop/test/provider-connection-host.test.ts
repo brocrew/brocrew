@@ -46,13 +46,17 @@ function fixture(usePreparedLaunch = false) {
   } = { revision: 0 }
   const rawRuntimes: FakeRuntime[] = []
   let number = 0
-  const prepare = vi.fn<(provider: Provider, profile: string, connection?: ProviderConnection) => string | Promise<string>>(
-    (provider, profile) => {
-      const home = join(dir, profile, provider)
-      mkdirSync(home, { recursive: true })
-      return home
-    },
-  )
+  const prepare = vi.fn<
+    (
+      provider: Provider,
+      profile: string,
+      connection?: ProviderConnection,
+    ) => string | Promise<string>
+  >((provider, profile) => {
+    const home = join(dir, profile, provider)
+    mkdirSync(home, { recursive: true })
+    return home
+  })
   const resolve = (provider: Provider, id?: string | null) =>
     resolveProviderConnection(db, { provider, connectionId: id })
   const connectionFor = vi.fn(resolve)
@@ -84,10 +88,12 @@ function fixture(usePreparedLaunch = false) {
   Reflect.set(deps, 'connectionFor', connectionFor)
   const revision = vi.fn((provider: Provider) => state.revisionOf?.(provider) ?? state.revision)
   Reflect.set(deps, 'connectionRevision', revision)
-  const prepared = vi.fn(async (provider: Provider, profile: string, connection?: ProviderConnection) => ({
-    home: await prepare(provider, profile, connection),
-    runtime: create(provider, connection),
-  }))
+  const prepared = vi.fn(
+    async (provider: Provider, profile: string, connection?: ProviderConnection) => ({
+      home: await prepare(provider, profile, connection),
+      runtime: create(provider, connection),
+    }),
+  )
   if (usePreparedLaunch) Reflect.set(deps, 'prepareProviderLaunch', prepared)
   host = new RuntimeHost(deps)
   return { store, prepare, create, connectionFor, revision, state, deps, rawRuntimes, prepared }
@@ -143,7 +149,10 @@ it('Codex home preparation uses the once-selected method instead of a newly save
       connection,
     ),
   )
-  const created = await host.createSession({ provider: 'codex', profileId: 'fern', model: 'fake-codex-a' }, sink)
+  const created = await host.createSession(
+    { provider: 'codex', profileId: 'fern', model: 'fake-codex-a' },
+    sink,
+  )
   expect(applied).toBeUndefined()
   expect(keys.revision('codex')).toBe(0)
   expect(copied).toHaveBeenCalled()
@@ -206,9 +215,14 @@ for (const provider of ['claude', 'codex'] as const) {
         await expect(pending).resolves.toHaveProperty('sessionId')
       }
       expect(f.revision).not.toHaveBeenCalled()
-      expect(f.rawRuntimes.some((runtime) =>
-        vi.mocked(runtime.start).mock.calls.length > 0 || vi.mocked(runtime.resume).mock.calls.length > 0 || vi.mocked(runtime.listModels).mock.calls.length > 0,
-      )).toBe(true)
+      expect(
+        f.rawRuntimes.some(
+          (runtime) =>
+            vi.mocked(runtime.start).mock.calls.length > 0 ||
+            vi.mocked(runtime.resume).mock.calls.length > 0 ||
+            vi.mocked(runtime.listModels).mock.calls.length > 0,
+        ),
+      ).toBe(true)
       if (sessionId === undefined) {
         expect(db.prepare('SELECT id FROM provider_session').all()).toHaveLength(1)
       } else {
@@ -223,7 +237,10 @@ for (const provider of ['claude', 'codex'] as const) {
     const f = fixture()
     const created = await host.createSession({ provider, profileId: 'fern', cwd: dir }, sink)
     expect(f.connectionFor).toHaveBeenCalledWith(provider)
-    expect(f.create).toHaveBeenCalledWith(provider, expect.objectContaining({ id: `${provider}:sign-in`, authMethod: 'sign-in' }))
+    expect(f.create).toHaveBeenCalledWith(
+      provider,
+      expect.objectContaining({ id: `${provider}:sign-in`, authMethod: 'sign-in' }),
+    )
     expect(f.store.connectionOf(created.sessionId)).toBe(`${provider}:sign-in`)
     expect(created.providerHome).toBe(join(dir, 'fern', provider))
   })
@@ -293,7 +310,10 @@ for (const provider of ['claude', 'codex'] as const) {
     expect(resumed.ref).toEqual(created.ref)
     expect(resumed.providerHome).toBe(join(dir, 'fern', provider))
     expect(f.store.connectionOf(created.sessionId)).toBeNull()
-    expect(f.create).toHaveBeenLastCalledWith(provider, expect.objectContaining({ id: `${provider}:api-key`, authMethod: 'api-key' }))
+    expect(f.create).toHaveBeenLastCalledWith(
+      provider,
+      expect.objectContaining({ id: `${provider}:api-key`, authMethod: 'api-key' }),
+    )
   })
 }
 
