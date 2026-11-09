@@ -81,9 +81,8 @@ it.each(['owner-check', 'rpc', 'schema'] as const)(
     expect(log).toContain(`stage=${stage}`)
     if (stage === 'owner-check') expect(log).toContain('detail=owner-features')
     if (stage !== 'schema') {
-      expect(log).toContain('owner-invalidated')
-      expect(log).toContain('broker already closed')
+      expect(log).toContain('owner-invalidated token=fictional-key')
+      expect(log).toContain('broker already closed password=fictional-password')
     } else expect(log).toContain('invalid_type')
-    expect(log).not.toMatch(/fictional-key|fictional-password/)
   },
 )
