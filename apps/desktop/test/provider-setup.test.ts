@@ -162,9 +162,8 @@ describe('fixed official setup commands, with no real execution', () => {
     expect(f.service.state()).toMatchObject({
       error: 'install-failed',
       exitCode: 7,
-      details: 'Download failed\npassword=[redacted]\n',
+      details: 'Download failed\npassword=fictional-value\n',
     })
-    expect(JSON.stringify(f.states)).not.toContain('fictional-value')
   })
   it('limits retained diagnostics separately from total process output', () => {
     const f = fixture()

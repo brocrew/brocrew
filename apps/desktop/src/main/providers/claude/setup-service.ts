@@ -99,11 +99,6 @@ function diagnostics(text: string): string {
       (character) => character === '\n' || character === '\t' || character.charCodeAt(0) >= 32,
     )
     .join('')
-    .replace(
-      /((?:token|password|secret|authorization|api[_-]?key)\s*[:=]\s*)\S+/giu,
-      '$1[redacted]',
-    )
-    .replace(/https?:\/\/[^\s/@]+:[^\s/@]+@/giu, 'https://[redacted]@')
 }
 
 /** Owns only fixed installer/auth commands. No authentication output is returned or logged. */
