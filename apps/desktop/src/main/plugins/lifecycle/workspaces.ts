@@ -1,4 +1,5 @@
-import { bounded, type PluginLifecycleController } from './controller'
+import type { PluginLifecycleController } from './controller'
+import { bounded } from './plugin-work'
 import type { LifecycleWorkspace, WorkspaceProjection } from './types'
 
 /** Person UI and agent consumers share one lifecycle projection, with independent lifetimes. */

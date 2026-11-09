@@ -56,6 +56,21 @@ function runtime(beforeStart: (id: string) => Promise<void> = async () => {}) {
   }
   return { peer, starts, stops }
 }
+/** Opens a second owner whose Chrome start is held until `release` resolves. */
+async function suspendedChromeAttach(f: Awaited<ReturnType<typeof fixture>>) {
+  const entered = deferred<void>(),
+    release = deferred<void>()
+  const peers = runtime(async (id) => {
+    if (id === 'chrome') {
+      entered.resolve()
+      await release.promise
+    }
+  })
+  const controller = await PluginLifecycleController.open({ ...f.opts, runtime: peers.peer })
+  const attaching = controller.attach(projection().sink)
+  await entered.promise
+  return { controller, peers, attaching, release }
+}
 function apply(f: Awaited<ReturnType<typeof fixture>>, id: string) {
   const install = f.state.readWorkspaceAdmission().installations.find((one) => one.pluginId === id)!
   return f.controller.applyProfile(f.handle, {
@@ -71,18 +86,9 @@ function apply(f: Awaited<ReturnType<typeof fixture>>, id: string) {
 }
 
 it('starts WhatsApp and reads status while Chrome attach start is suspended', async () => {
-  const f = await installedPair()
-  const entered = deferred<void>(),
-    release = deferred<void>()
-  const peers = runtime(async (id) => {
-    if (id === 'chrome') {
-      entered.resolve()
-      await release.promise
-    }
-  })
-  const controller = await PluginLifecycleController.open({ ...f.opts, runtime: peers.peer })
-  const attaching = controller.attach(projection().sink)
-  await entered.promise
+  const { controller, peers, attaching, release } = await suspendedChromeAttach(
+    await installedPair(),
+  )
   let statusDone = false
   const status = controller.status().then(() => {
     statusDone = true
@@ -209,17 +215,7 @@ it.each(['update', 'global-restore'] as const)(
 it('drain waits for an attach start already in flight and stops its late run', async () => {
   const f = await fixture()
   await f.controller.install(f.handle, 'chrome')
-  const entered = deferred<void>(),
-    release = deferred<void>()
-  const peers = runtime(async (id) => {
-    if (id === 'chrome') {
-      entered.resolve()
-      await release.promise
-    }
-  })
-  const controller = await PluginLifecycleController.open({ ...f.opts, runtime: peers.peer })
-  const attaching = controller.attach(projection().sink)
-  await entered.promise
+  const { controller, peers, attaching, release } = await suspendedChromeAttach(f)
   let drained = false
   const drain = controller.drain().then(() => {
     drained = true

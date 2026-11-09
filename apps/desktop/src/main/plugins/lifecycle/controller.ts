@@ -32,6 +32,7 @@ import { createRepoAwarePluginVerifier, type VerifiedPluginPackage } from '../pa
 import { PluginSupervisorError } from '../supervisor/protocol'
 import { downloadPluginArchive } from './download'
 import { LifecycleEffects, type Effect } from './files'
+import { bounded, PluginWorkQueue } from './plugin-work'
 import { PluginPackageVault } from './vault'
 import type {
   LifecycleOptions,
@@ -48,20 +49,6 @@ const refuse = (): never => {
 }
 const pending = (): never => {
   throw new PluginSupervisorError('cleanup-pending')
-}
-/** A consumer step's time limit: past it the step refuses cleanup-pending, and its work goes on. */
-export async function bounded<T>(work: () => Promise<T>, ms = 20000): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      Promise.resolve().then(work),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new PluginSupervisorError('cleanup-pending')), ms)
-      }),
-    ])
-  } finally {
-    clearTimeout(timer)
-  }
 }
 const idSchema = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)
 /** A cause the launch line may name: fixed-vocabulary words, never an error body. */
@@ -105,7 +92,7 @@ export class PluginLifecycleController {
   private readonly workspaces = new Map<LifecycleWorkspace, Workspace>()
   private readonly blocks = new Map<string, symbol>()
   private readonly runs = new Map<string, Running>()
-  private readonly pluginWork = new Map<string, Promise<void>>()
+  private readonly pluginWork = new PluginWorkQueue(() => this.draining && pending())
   private readonly attachmentChecks = new WeakMap<
     object,
     (workspaceId: string, read: WorkspaceAdmission) => boolean
@@ -137,20 +124,7 @@ export class PluginLifecycleController {
     private readonly vault: PluginPackageVault,
   ) {}
   private withPlugin<T>(id: string, work: () => Promise<T>): Promise<T> {
-    const prior = this.pluginWork.get(id) ?? Promise.resolve()
-    const result = prior.then(() => {
-      if (this.draining) return pending()
-      return work()
-    })
-    const tail = result.then(
-      () => {},
-      () => {},
-    )
-    this.pluginWork.set(id, tail)
-    void tail.then(() => {
-      if (this.pluginWork.get(id) === tail) this.pluginWork.delete(id)
-    })
-    return result
+    return this.pluginWork.run(id, work)
   }
   static async open(options: LifecycleOptions): Promise<PluginLifecycleController> {
     try {
@@ -663,20 +637,15 @@ export class PluginLifecycleController {
       await Promise.all(
         this.options.state.readWorkspaceAdmission().installations.map((installed) =>
           this.withPlugin(installed.pluginId, async () => {
-            if (
+            const moved = () =>
               this.blocks.has(installed.pluginId) ||
               this.current(installed.pluginId)?.incarnation !== installed.incarnation
-            )
-              return
+            if (moved()) return
             workspace.installs.set(installed.pluginId, installed.installId)
             let stage = 'vault-load'
             try {
               const checked = await this.vault.load(this.descriptor(installed))
-              if (
-                this.blocks.has(installed.pluginId) ||
-                this.current(installed.pluginId)?.incarnation !== installed.incarnation
-              )
-                return
+              if (moved()) return
               stage = 'start'
               await this.ensureRunning(installed, checked)
               this.startFailures.delete(installed.pluginId)
@@ -1157,7 +1126,6 @@ export class PluginLifecycleController {
         install = this.current(id),
         running = this.runs.get(id)
       if (
-        this.draining ||
         !install ||
         !running ||
         (runId !== undefined && running.run.runId !== runId) ||
@@ -1574,7 +1542,7 @@ export class PluginLifecycleController {
         }
       }
       stopRuns()
-      await Promise.allSettled([...this.pluginWork.values()])
+      await this.pluginWork.settled()
       stopRuns()
       const results = await Promise.allSettled(stopping.values())
       const failed = results.filter((one) => one.status === 'rejected')
@@ -1616,7 +1584,7 @@ export class PluginLifecycleController {
     const pending = this.options.state.inspect().pending
     const leftover = this.drained ? pending?.next?.pluginId : undefined
     const blockers: string[] = []
-    for (const id of this.pluginWork.keys())
+    for (const id of this.pluginWork.ids())
       blockers.push(`${id} has a lifecycle operation in progress`)
     if (pending !== null && leftover === undefined) {
       const { action, pluginId } = pending.request.consent
