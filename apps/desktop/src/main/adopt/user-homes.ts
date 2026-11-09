@@ -1,8 +1,8 @@
 import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
-import { providerDefinitions } from '../providers/definitions'
-export { claudeHomeDescriptions, type ListClaudeSessions } from '../providers/definitions'
+import { providerDefinitions } from '../providers/index'
+
 import {
   discoverSessionsIn,
   type DiscoveredSession,

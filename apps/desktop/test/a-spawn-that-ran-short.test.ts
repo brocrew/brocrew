@@ -5,13 +5,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  AuthUnavailableError,
-  ClaudeRuntime,
-  CodexRuntime,
-  FakeProviderSessions,
-  createSpawnTransportFactory,
-} from '@brobot2/runtime'
+import { AuthUnavailableError, FakeProviderSessions } from '@brobot2/runtime'
+import { ClaudeRuntime } from '@brobot2/runtime/claude'
+import { CodexRuntime, createSpawnTransportFactory } from '@brobot2/runtime/codex'
 import type { FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
@@ -19,7 +15,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { CodexUnavailableError } from '../src/main/runtime/codex-binary'
+import { CodexUnavailableError } from '../src/main/providers/codex/program'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'

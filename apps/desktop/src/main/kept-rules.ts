@@ -2,7 +2,7 @@ import { realpathSync } from 'node:fs'
 import { resolve, sep } from 'node:path'
 import { providerRecord, type Provider } from '@brobot2/shared'
 import type { KeptRuleRemoved, KeptRules, KeptRulesFile } from '../shared/runtime-ipc'
-import { providerKnowledge } from './providers/knowledge-definitions'
+import { providerKnowledge } from './providers/index'
 import { NO_LONGER_KEPT } from './providers/kept-rule-io'
 
 /**

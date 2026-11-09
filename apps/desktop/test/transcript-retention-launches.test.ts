@@ -9,7 +9,7 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { prepareOnTheLogin } from '../src/main/providers/claude'
+import { prepareOnTheLogin } from '../src/main/providers/claude/index'
 import type { ProviderAuthOps } from '../src/main/runtime/provider-homes'
 import {
   TranscriptRetentionHost,

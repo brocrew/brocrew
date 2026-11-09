@@ -1,3 +1,4 @@
+import type { Provider } from '@brobot2/shared'
 import Database from 'better-sqlite3'
 import { providerSchema } from '@brobot2/shared'
 import { randomUUID } from 'node:crypto'
@@ -33,7 +34,7 @@ type Session = {
   updated: number | null
   parent: string | null
   generation: number
-  provider: 'claude' | 'codex' | null
+  provider: Provider | null
   model: string | null
 }
 type Reading = Extract<TeamProfileGraphResult, { type: 'snapshot' }> & {
@@ -59,7 +60,7 @@ const sessionQuery = (table: 'turn' | 'events', projection: string): string => {
 }
 
 const epoch = (v: unknown): v is number => graphEpoch.safeParse(v).success
-const provider = (v: unknown): 'claude' | 'codex' | null => providerSchema.safeParse(v).data ?? null
+const provider = (v: unknown): Provider | null => providerSchema.safeParse(v).data ?? null
 const textBytes = (v: unknown): number => (typeof v === 'string' ? Buffer.byteLength(v, 'utf8') : 8)
 const key = (v: unknown): string => {
   if (typeof v !== 'string' || !v.length || v.length > 200) throw new Failed('metadata', 1)

@@ -4,7 +4,7 @@ import {
   claudeLoginNotRenewed,
   type ClaudeLoginRenewal,
 } from '@brobot2/runtime'
-import { prepareOnTheLogin } from '../src/main/runtime/provider-homes'
+import { prepareOnTheLogin } from '../src/main/providers/claude/index'
 
 /**
  * A Claude start on the person's own login has their Claude Code renew the login first when it

@@ -11,7 +11,7 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { claudeAutoMemoryIndex } from '@brobot2/runtime'
+import { claudeAutoMemoryIndex } from '@brobot2/runtime/claude'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { readSessionInstructions } from '../src/main/runtime/instructions'

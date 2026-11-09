@@ -1,14 +1,9 @@
 import type { SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it } from 'vitest'
 import { AsyncQueue } from '../src/internal/async-queue'
-import {
-  CLAUDE_CAPABILITIES,
-  CODEX_CAPABILITIES,
-  ClaudeRuntime,
-  FakeRuntime,
-  type ClaudeQuery,
-  type TurnProvenance,
-} from '../src/index'
+import { CLAUDE_CAPABILITIES, ClaudeRuntime, type ClaudeQuery } from '../src/claude'
+import { CODEX_CAPABILITIES } from '../src/codex'
+import { FakeRuntime, type TurnProvenance } from '../src/index'
 
 /**
  * 🔴 **662 · what the Claude SDK is handed, for each thing a turn can say about its author.**

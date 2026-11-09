@@ -3,15 +3,8 @@ import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
 import { query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { expect, it } from 'vitest'
-import {
-  buildChildEnv,
-  ClaudeRuntime,
-  claudeAutoMemoryDir,
-  claudeKeychainTokenProvider,
-  provisionProviderHome,
-  type RuntimeEvent,
-  type SessionHandle,
-} from '../src/index'
+import { buildChildEnv, claudeKeychainTokenProvider, provisionProviderHome, type RuntimeEvent, type SessionHandle } from '../src/index'
+import { ClaudeRuntime, claudeAutoMemoryDir } from '../src/claude'
 
 /**
  * 166 · **Does a developer remember across PROJECTS — and still not across profiles?**

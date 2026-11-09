@@ -1,8 +1,4 @@
 import { workspaceInstructionNames } from '../providers/workspace-layout.mjs'
-export {
-  CLAUDE_INSTRUCTIONS_FILE,
-  CODEX_INSTRUCTIONS_FILE,
-} from '../providers/workspace-layout.mjs'
 import {
   type Stats,
   closeSync,

@@ -10,8 +10,10 @@ import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { AsyncQueue } from '../src/internal/async-queue'
 import { claudeMcpServersFor, forbiddenExternalSpellings } from '../src/claude/agent-tools'
 import { discoverExternalMcpTools, type ExternalMcpReach } from '../src/external-mcp'
-import { CLAUDE_TOOL_NAMING, qualifyWith } from '../src/tool-inventory'
-import { ClaudeRuntime, type AgentToolset, type ClaudeQuery } from '../src/index'
+import { CLAUDE_TOOL_NAMING } from '../src/claude/tool-naming'
+import { qualifyWith } from '../src/tool-inventory'
+import { ClaudeRuntime, type ClaudeQuery } from '../src/claude'
+import { type AgentToolset } from '../src/index'
 
 /**
  * 🔴 **516 · the Claude half of *one local server, one identity*** (HO-040 §4.2, `507` §3.1).

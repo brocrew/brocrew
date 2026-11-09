@@ -1,11 +1,8 @@
 import { accessSync, constants, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { posix, win32 } from 'node:path'
-import {
-  ClaudeUnavailableError,
-  claudeCommandIn,
-  claudeProgramWhereTheSdkLooks,
-} from '@brobot2/runtime'
+import { ClaudeUnavailableError, claudeProgramWhereTheSdkLooks } from '@brobot2/runtime/claude'
+import { claudeCommandIn } from '@brobot2/runtime'
 import type { ProviderProgramFrom, ProviderProgramUpdate } from '../../../shared/runtime-ipc'
 
 /**

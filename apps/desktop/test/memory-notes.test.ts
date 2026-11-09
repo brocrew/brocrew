@@ -2,12 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  codexAdHocNotesDir,
-  codexMemoryIndex,
-  codexMemorySummary,
-  SUPPORTED_PROVIDERS,
-} from '@brobot2/runtime'
+import { codexAdHocNotesDir, codexMemoryIndex, codexMemorySummary } from '@brobot2/runtime/codex'
+import { SUPPORTED_PROVIDERS } from '@brobot2/runtime'
 import { memoryNoteDir, noteNamesIn, notesThatAppeared } from '../src/main/runtime/memory-notes'
 import { AGENT_MEMORY_NOTES_SHOWN } from '../src/main/runtime/instructions'
 import { MEMORY_NOTES_PER_EVENT, MEMORY_NOTE_TEXT_CAP } from '../src/shared/runtime-ipc'

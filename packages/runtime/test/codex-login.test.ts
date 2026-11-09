@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CodexIncoming, CodexTransport } from '../src/index'
+import type { CodexIncoming, CodexTransport } from '../src/codex'
 import { A_CHECK_NOT_ANSWERED_SAYS, signInNotCheckedInTime } from '../src/auth-state'
 import { AsyncQueue } from '../src/internal/async-queue'
 import {

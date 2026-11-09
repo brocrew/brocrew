@@ -3,16 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { query, type AccountInfo } from '@anthropic-ai/claude-agent-sdk'
 import { expect, it } from 'vitest'
-import {
-  ClaudeRuntime,
-  claudeKeychainTokenProvider,
-  claudeKeychainTokenProviderAsync,
-  claudeKeychainTokenProviderForALaunch,
-  provisionProviderHome,
-  type ClaudeQuery,
-  type QueryFactory,
-  type SessionHandle,
-} from '@brobot2/runtime'
+import { ClaudeRuntime, type ClaudeQuery, type QueryFactory } from '@brobot2/runtime/claude'
+import { claudeKeychainTokenProvider, claudeKeychainTokenProviderAsync, claudeKeychainTokenProviderForALaunch, provisionProviderHome, type SessionHandle } from '@brobot2/runtime'
 import {
   closeBounded,
   loopbackRuntime,
@@ -22,7 +14,7 @@ import {
 } from '../../../packages/runtime/smoke/loopback-claude'
 import { probeRunDeadline, runBudgetMs } from '../../../packages/runtime/smoke/probe-run-deadline'
 import { runScratch } from '../../../packages/runtime/smoke/run-paths'
-import { findClaudeProgramHere } from '../src/main/runtime/claude-program'
+import { findClaudeProgramHere } from '../src/main/providers/claude/program'
 
 /**
  * # Which account Claude Code says a conversation is signed in to

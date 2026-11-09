@@ -1,4 +1,11 @@
-import type { ProviderDescriptor } from '@brobot2/shared'
+export interface KeyCheckRequest {
+  readonly issuer: string
+  readonly checkUrl: string
+  readonly header: string
+  readonly prefix: string
+  readonly extraHeaders: Readonly<Record<string, string>>
+}
+
 import type { ApiKeyCheck } from '../../shared/runtime-ipc'
 
 /** How long a check waits for the provider before it says it could not reach it. */
@@ -13,7 +20,7 @@ type ListedModels = {
 
 /** The shared no-cost request and its neutral HTTP refusals; providers own any further check. */
 export async function checkKeyModelList(
-  facts: ProviderDescriptor['apiKey'],
+  facts: KeyCheckRequest,
   key: string,
   fetchFor: typeof fetch,
 ): Promise<ListedModels | { readonly answer: ApiKeyCheck }> {

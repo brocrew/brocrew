@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { codexDescent } from '../src/main/adopt/discover-sessions'
+import { codexDescent } from '../src/main/providers/codex/discovery'
 
 /**
  * 111 · Which Codex threads are somebody's child, read the way the provider actually writes it.

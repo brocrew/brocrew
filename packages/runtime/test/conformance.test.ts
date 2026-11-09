@@ -5,24 +5,9 @@ import { PassThrough } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import type { CanUseTool, Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it, vi } from 'vitest'
-import {
-  type AgentRuntime,
-  AnswerRefused,
-  ClaudeRuntime,
-  CodexRuntime,
-  FakeLaunchGate,
-  FakeProviderSessions,
-  FakeRuntime,
-  permissionOutcomeSchema,
-  ResumeError,
-  TURN_REFUSED,
-  TurnInProgress,
-  type CodexIncoming,
-  type CodexTransport,
-  type PermissionOutcome,
-  type RuntimeEvent,
-  type SessionHandle,
-} from '../src/index'
+import { type AgentRuntime, AnswerRefused, FakeLaunchGate, FakeProviderSessions, FakeRuntime, permissionOutcomeSchema, ResumeError, TURN_REFUSED, TurnInProgress, type PermissionOutcome, type RuntimeEvent, type SessionHandle } from '../src/index'
+import { ClaudeRuntime } from '../src/claude'
+import { CodexRuntime, type CodexIncoming, type CodexTransport } from '../src/codex'
 import { AsyncQueue } from '../src/internal/async-queue'
 import { cancelWith } from '../src/internal/bounded'
 import { CODEX_PROTOCOL_VERSION } from '../src/codex/protocol-version'

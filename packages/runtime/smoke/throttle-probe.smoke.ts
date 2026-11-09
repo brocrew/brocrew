@@ -7,21 +7,9 @@ import {
   pathsNaming,
   type Marker,
 } from '../../../scripts/lib/personal-home-guard.mjs'
-import {
-  ClaudeRuntime,
-  CodexRuntime,
-  claudeKeychainTokenProvider,
-  codexAuthHealth,
-  provisionCodexAuth,
-  provisionProviderHome,
-  type ClaudeQuery,
-  type CodexIncoming,
-  type CodexTransport,
-  type QueryFactory,
-  type RuntimeEvent,
-  type SessionHandle,
-  type TransportFactory,
-} from '../src/index'
+import { ClaudeRuntime, type ClaudeQuery, type QueryFactory } from '../src/claude'
+import { CodexRuntime, type CodexIncoming, type CodexTransport, type TransportFactory } from '../src/codex'
+import { claudeKeychainTokenProvider, codexAuthHealth, provisionCodexAuth, provisionProviderHome, type RuntimeEvent, type SessionHandle } from '../src/index'
 import { bundledCodexTransportFactory } from './bundled-codex'
 
 /**

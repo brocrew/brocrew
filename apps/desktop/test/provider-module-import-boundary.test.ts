@@ -90,7 +90,7 @@ describe('provider modules stay behind the main-process registry', () => {
       join(root, 'runtime/runtime-host.ts'),
     ])
     const violations = files
-      .filter((file) => nameOf(file).startsWith('providers/'))
+      .filter((file) => /^providers\/(claude|codex)\//.test(nameOf(file)))
       .flatMap((file) =>
         valueImports(file)
           .filter(
@@ -154,7 +154,8 @@ describe('provider modules stay behind the main-process registry', () => {
   })
 
   it('keeps stateless definitions independent of runtime construction and home compatibility', () => {
-    expect(existsSync(definitions)).toBe(true)
+    const policies = files.filter((file) => /^providers\/(claude|codex)\/transcripts\.ts$/.test(nameOf(file)))
+    expect(policies).toHaveLength(2)
     const heavy = new Set([
       programCompatibility,
       registry,
@@ -184,7 +185,7 @@ describe('provider modules stay behind the main-process registry', () => {
       if (heavy.has(file)) reached.push(nameOf(file))
       for (const next of valueImports(file)) visit(next)
     }
-    if (existsSync(definitions)) visit(definitions)
+    for (const file of policies) visit(file)
     expect(reached).toEqual([])
   })
 
@@ -210,7 +211,7 @@ describe('provider modules stay behind the main-process registry', () => {
       if (forbidden.has(file)) reached.push(nameOf(file))
       for (const next of valueImports(file)) visit(next)
     }
-    visit(knowledge)
+    for (const file of files.filter((file) => /^providers\/(claude|codex)\/(instructions|memory|skills|given|kept-rules|snapshot)\.ts$/.test(nameOf(file)))) visit(file)
     expect(reached).toEqual([])
   })
 

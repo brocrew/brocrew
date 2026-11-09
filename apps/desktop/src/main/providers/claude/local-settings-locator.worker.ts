@@ -1,5 +1,5 @@
 import { parentPort } from 'node:worker_threads'
-import { projectLocalSettingsFile } from '@brobot2/runtime'
+import { projectLocalSettingsFile } from '@brobot2/runtime/claude'
 
 /**
  * Finds the Claude local settings file of each folder it is sent, off the main thread: finding one

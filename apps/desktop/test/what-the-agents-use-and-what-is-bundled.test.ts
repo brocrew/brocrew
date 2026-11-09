@@ -15,8 +15,8 @@ import {
   resourcesFromTheListing,
   type ListedProcess,
 } from '../src/main/runtime/process-listing'
-import { providerVersionsReader } from '../src/main/runtime/provider-versions'
-import type { CodexProgram } from '../src/main/runtime/codex-binary'
+import { providerVersionsReader } from '../src/main/providers/index'
+import type { CodexProgram } from '../src/main/providers/codex/program'
 
 type VersionFixture = {
   output: string

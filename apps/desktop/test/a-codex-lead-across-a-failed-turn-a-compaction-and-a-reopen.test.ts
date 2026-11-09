@@ -7,12 +7,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  CodexRuntime,
-  type CodexIncoming,
-  type CodexLaunchContext,
-  type CodexTransport,
-} from '@brobot2/runtime'
+import { CodexRuntime, type CodexIncoming, type CodexLaunchContext, type CodexTransport } from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
 import { CODEX_PROTOCOL_VERSION } from '../../../packages/runtime/src/codex/protocol-version'
 import {
@@ -50,12 +45,8 @@ import {
   savedMethodsUseOf,
   withTheLinesSent,
 } from '../src/main/saved-methods'
-import {
-  brobotWorkspace,
-  CLAUDE_INSTRUCTIONS_FILE,
-  ensureWorkspace,
-  workspaceOwnFilesIn,
-} from '../src/main/runtime/workspace'
+import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
+import { brobotWorkspace, ensureWorkspace, workspaceOwnFilesIn } from '../src/main/runtime/workspace'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { THE_MODEL_LIST } from './lib/scripted-codex-host'
 import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'

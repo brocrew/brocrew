@@ -19,8 +19,6 @@ export interface ProviderConnection {
 export interface ProviderConnectionCapabilities {
   readonly contractVersion: 1
   readonly authMethods: readonly ConnectionAuthMethod[]
-  readonly protocol: 'claude-agent-sdk' | 'codex-app-server'
-  readonly versionSource: 'sdk' | 'app-server'
   readonly additionalConnections: false
 }
 

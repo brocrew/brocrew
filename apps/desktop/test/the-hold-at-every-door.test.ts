@@ -7,18 +7,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
-import {
-  ClaudeRuntime,
-  FakeProviderSessions,
-  FakeRuntime,
-  FakeSessionHandle,
-  TURN_REFUSED,
-  type AgentRuntime,
-  type AgentToolset,
-  type SessionHandle,
-  type StartOptions,
-  type TurnProvenance,
-} from '@brobot2/runtime'
+import { ClaudeRuntime } from '@brobot2/runtime/claude'
+import { FakeProviderSessions, FakeRuntime, FakeSessionHandle, TURN_REFUSED, type AgentRuntime, type AgentToolset, type SessionHandle, type StartOptions, type TurnProvenance } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

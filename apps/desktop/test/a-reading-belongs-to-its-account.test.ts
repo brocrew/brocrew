@@ -14,13 +14,7 @@ import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { providerUsageFile, readKeptUsage, writeKeptUsage } from '../src/main/provider-usage-file'
-import {
-  AN_ACCOUNT_ID,
-  type KeptAccounts,
-  providerAccountsFile,
-  readKeptAccounts,
-  writeKeptAccounts,
-} from '../src/main/provider-accounts-file'
+import { AN_ACCOUNT_ID, type KeptAccounts, providerAccountsFile, readKeptAccounts, writeKeptAccounts } from '../src/main/providers/claude/account-record'
 import { APP_STATE_FILES, NOT_STATE } from '../src/main/recovery/state-files'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 

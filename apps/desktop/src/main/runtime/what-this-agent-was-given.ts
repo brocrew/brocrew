@@ -6,10 +6,10 @@ import type {
 import type { UserTurnEvent } from '../../shared/human-answer-contracts'
 import {
   providerKnowledge,
-  recordedNativeRead,
-  recordedProfileMemory,
-} from '../providers/knowledge-definitions'
-import { providerDefinitions } from '../providers/definitions'
+  historicalInstructionReads,
+  historicalProfileMemory,
+} from '../providers/index'
+import { providerDefinitions } from '../providers/index'
 import { createHash } from 'node:crypto'
 import { basename } from 'node:path'
 import { z } from 'zod'
@@ -133,7 +133,7 @@ function isBroBotsWorkspaceText(text: string): boolean {
  * ⚑ For a conversation whose launch reported none (one with no launch record); a live Codex
  * conversation's are the ones it reported.
  */
-export { filesCodexWouldRead } from '../providers/knowledge-definitions'
+
 
 /** ⚑ A file read now: its text and fingerprint. */
 interface ReadNow {
@@ -662,7 +662,7 @@ function originOf(
       return {
         origin: 'unknown',
         madeAutomatically: false,
-        says: recordedProfileMemory.says,
+        says: historicalProfileMemory.says,
       }
     case 'agent-memory':
     case 'agent-memory-topic':
@@ -1389,7 +1389,7 @@ function whyItWasNotSent(reason: string): string {
 function titleOfFile(kind: GivenFileKind, path: string, brobots: boolean): string {
   if (kind === 'profile-instructions') return 'BroCrew’s instructions for this agent'
   if (kind === 'workspace-instructions' || brobots) return 'BroCrew’s workspace file'
-  if (kind === 'profile-memory') return recordedProfileMemory.title
+  if (kind === 'profile-memory') return historicalProfileMemory.title
   return `${basename(path)}, this folder’s own file`
 }
 
@@ -1498,16 +1498,16 @@ export function oneMessageAsTheModelGotIt(handed: WhatTheMessageReadIsHanded): W
       )
     }
     // ⚑ Codex's one budget for the AGENTS files it reads, spent in the order it read them.
-    let codexRead = 0
+    let nativeReadBytes = 0
     for (const file of record.files) {
       const brobots = file.text !== undefined
-      if (file.kind === 'read-by-codex') codexRead += file.bytes
+      if (historicalInstructionReads.matches(file.kind)) nativeReadBytes += file.bytes
       const pastTheBudget =
-        file.kind === 'read-by-codex' && recordedNativeRead.mayBeCut(codexRead, file.truncated)
+        historicalInstructionReads.matches(file.kind) && historicalInstructionReads.mayBeCut(nativeReadBytes, file.truncated)
       const sent = brobots
         ? null
         : pastTheBudget
-          ? { text: null, why: recordedNativeRead.why }
+          ? { text: null, why: historicalInstructionReads.why }
           : theTextItWasSent(file)
       add(
         instructionsSit,

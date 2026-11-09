@@ -157,10 +157,10 @@ export {
 } from './conversation-caller'
 export type { RuntimeEventSink, CallerIdentity, Caller } from './conversation-caller'
 import type { ProviderHomesReprovision } from '../../shared/runtime-ipc'
-import { providerKnowledge } from '../providers/knowledge-definitions'
+import { providerKnowledge } from '../providers/index'
 import { legacyAccountRecordFormat, providerAuthPolicies } from '../providers/auth-definitions'
 import type { IdentityFact, ProviderAuthPolicy } from '../providers/auth-policy'
-import { providerDefinitions } from '../providers/definitions'
+import { providerDefinitions } from '../providers/index'
 import {
   RejectedSessionLaunch,
   StoppedBeforeSend,
@@ -664,7 +664,7 @@ import {
   type LibraryQuery,
 } from '../library/session-library'
 import { deriveLedger, type DeriveOutcome } from '../archive/derive-ledger'
-import type { ResolveImagePath } from '../archive/import-codex'
+import type { ResolveImagePath } from '../archive/transcript-types'
 import {
   EmptyNativeTranscript,
   linesAsRows,
@@ -3002,17 +3002,18 @@ const WHAT_A_REOPEN_ADDS: ReadonlySet<TranscriptEvent['type']> = new Set([
 ])
 
 /** Older provider events receive display metadata without changing their stored form. */
-function transcriptEventForDisplay(event: TranscriptEvent): TranscriptEvent {
-  if (event.type !== 'unknown') return event
-  const provider = SUPPORTED_PROVIDERS.find((one) => one === event.provider)
+function transcriptEventForDisplay(event: TranscriptEvent, owner?: Provider): TranscriptEvent {
+  const provider = owner ?? (event.type === 'unknown'
+    ? SUPPORTED_PROVIDERS.find((one) => one === event.provider)
+    : undefined)
   return provider === undefined
     ? event
     : (providerDefinitions[provider].transcripts.eventForDisplay?.(event) ?? event)
 }
 
 /** Display metadata travels with a row without changing its saved form or ordinal. */
-function transcriptMessageForDisplay(message: RuntimeEventMessage): RuntimeEventMessage {
-  const event = transcriptEventForDisplay(message.event)
+function transcriptMessageForDisplay(message: RuntimeEventMessage, provider?: Provider): RuntimeEventMessage {
+  const event = transcriptEventForDisplay(message.event, provider)
   return event === message.event ? message : { ...message, event }
 }
 
@@ -5700,7 +5701,7 @@ export class RuntimeHost implements LiveHost {
     this.closeDrainTimeoutMs = deps.closeDrainTimeoutMs ?? DEFAULT_CLOSE_DRAIN_TIMEOUT_MS
     this.interruptWaitMs = deps.interruptWaitMs ?? DEFAULT_INTERRUPT_WAIT_MS
     this.launchTimeouts = providerRecord((provider) => {
-      const defaults = providerDescriptor(provider).launch
+      const defaults = providerDefinitions[provider].launch
       return {
         fresh: deps.launchTimeoutMs ?? defaults.freshTimeoutMs,
         resume: deps.resumeTimeouts?.[provider] ?? deps.launchTimeoutMs ?? defaults.resumeTimeoutMs,
@@ -14309,7 +14310,7 @@ export class RuntimeHost implements LiveHost {
         continue
       }
       try {
-        sink.send(transcriptMessageForDisplay(message))
+        sink.send(transcriptMessageForDisplay(message, this.deps.store.recordedOne(sessionId)?.provider))
       } catch (error) {
         console.warn(
           `runtime host could not show ${sessionId}'s new row to a window: ${errorMessage(error)}`,
@@ -24274,7 +24275,7 @@ export class RuntimeHost implements LiveHost {
       )
     }
     session.sentOrdinal = Math.max(session.sentOrdinal ?? message.ordinal, message.ordinal)
-    session.sink.send(transcriptMessageForDisplay(message))
+    session.sink.send(transcriptMessageForDisplay(message, session.provider))
   }
 
   /**
@@ -36056,7 +36057,7 @@ export class RuntimeHost implements LiveHost {
       entries: window.entries.map((entry) => ({
         ordinal: entry.ordinal,
         at: entry.at,
-        event: transcriptEventForDisplay(entry.event),
+        event: transcriptEventForDisplay(entry.event, this.deps.store.recordedOne(sessionId)?.provider),
         ...(entry.event.type === 'assistant_message'
           ? { humanFinal: humanFinals.get(entry.ordinal) ?? null }
           : {}),

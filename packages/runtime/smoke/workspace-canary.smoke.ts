@@ -2,13 +2,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import {
-  CodexRuntime,
-  codexAuthHealth,
-  provisionCodexAuth,
-  provisionProviderHome,
-  type RuntimeEvent,
-} from '../src/index'
+import { CodexRuntime } from '../src/codex'
+import { codexAuthHealth, provisionCodexAuth, provisionProviderHome, type RuntimeEvent } from '../src/index'
 import { bundledCodexTransportFactory } from './bundled-codex'
 
 /**

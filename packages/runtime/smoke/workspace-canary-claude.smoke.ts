@@ -2,12 +2,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import {
-  ClaudeRuntime,
-  claudeKeychainTokenProvider,
-  provisionProviderHome,
-  type RuntimeEvent,
-} from '../src/index'
+import { ClaudeRuntime } from '../src/claude'
+import { claudeKeychainTokenProvider, provisionProviderHome, type RuntimeEvent } from '../src/index'
 
 /**
  * ONE live Claude turn that answers BOTH questions at once (Slice 2 · 006), because the Claude

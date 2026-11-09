@@ -1,3 +1,4 @@
+import { signInObservation } from '../../src/main/providers/claude/sign-in-observation'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
@@ -84,7 +85,7 @@ function scene(
     ref: { ...META.ref!, provider: 'claude' },
   }
   r.transcript.ref = r.meta.ref
-  for (const event of content) applyEvent(r.transcript, event === refused ? refusal : event)
+  for (const event of content) applyEvent(r.transcript, signInObservation(event === refused ? refusal : event))
   r.phase = 'recorded'
   return mount(
     ConversationPane,
@@ -185,7 +186,7 @@ describe('Claude sign-in recovery where the error is read', () => {
 
   it('a recording retains the explanation and Details without a live recovery action', async () => {
     bridge(USABLE)
-    const r = record(events)
+    const r = record(events.map(signInObservation))
     const m = mount(TranscriptView, {
       items: r.transcript.items,
       provider: 'claude',

@@ -8,7 +8,7 @@ import { expect, it } from 'vitest'
 // environment — the loopback provider's `env_key` — so it owns the spawn on purpose, from inside the
 // package the class belongs to. Nothing here widens the package's public surface.
 import { SpawnCodexTransport } from '../src/codex/codex-transport'
-import { ensureCodexMemoryConfig } from '../src/index'
+import { ensureCodexMemoryConfig } from '../src/codex'
 import { bundledCodexBinary } from './bundled-codex'
 import { runEvidence, runScratch } from './run-paths'
 

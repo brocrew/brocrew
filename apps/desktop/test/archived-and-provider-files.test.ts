@@ -10,7 +10,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { claudeProjectDirName } from '@brobot2/runtime'
+import { claudeProjectDirName } from '@brobot2/runtime/claude'
 import { ARCHIVED_FILE, archivedConversationsIn, archivedFilePath } from '../src/main/archived-file'
 import {
   frontMatterOf,

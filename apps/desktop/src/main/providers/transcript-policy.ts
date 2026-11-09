@@ -5,7 +5,7 @@ import type { ProviderFile, MemoryNote } from '../conversation-file-io'
 import type { ChildWorkPart } from '../child-work-file'
 import type { ChildWorkResult } from '../../shared/runtime-ipc'
 import type { TurnAsked, TurnReadingOptions, TurnReading } from '../archive/turn-reading'
-import type { FileEdits, SessionRef } from '@brobot2/runtime'
+import type { SessionRef } from '@brobot2/runtime'
 import type { Discovery, ProviderDescription } from '../adopt/discovery-types'
 import type { ImportedTranscript, ResolveImagePath } from '../archive/transcript-types'
 export interface TranscriptPolicy {
@@ -31,7 +31,7 @@ export interface TranscriptPolicy {
   parse(
     frames: string[],
     fallbackAt: number,
-    options?: { edits?: FileEdits | undefined; resolveImage?: ResolveImagePath | undefined },
+    options?: { edits?: object | undefined; resolveImage?: ResolveImagePath | undefined },
   ): ImportedTranscript
   nativePath(home: string, ref: SessionRef): string | null
   ownsRecord(home: string, file: string): boolean
@@ -47,6 +47,11 @@ export interface DiscoveryPolicy {
   descriptions?(): Promise<Map<string, ProviderDescription>>
 }
 export interface ProviderDefinition {
+  signInKey(profileId: string): string
+  signInConflict(holder: string, asked: string): Error
+  readonly config: import('@brobot2/runtime').ProviderConfigLayout
+  readonly deletionWords: readonly (readonly [string, string])[]
+  readonly launch: { readonly freshTimeoutMs: number; readonly resumeTimeoutMs: number }
   readonly workspaceInstructionFile: string
   readonly transcripts: TranscriptPolicy
   readonly discovery: DiscoveryPolicy

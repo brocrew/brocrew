@@ -21,7 +21,7 @@ import {
   type MethodLibraryInputs,
 } from '../saved-method-library'
 import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
-import { providerKnowledge } from '../providers/knowledge-definitions'
+import { providerKnowledge } from '../providers/index'
 import type { SessionStore } from '../db/session-store'
 import { isPathSegment } from '../../shared/runtime-ipc'
 import type { ActedBy } from '../../shared/who-did-it'

@@ -1,5 +1,6 @@
 import type { TranscriptEvent } from '../../../shared/conversation-events'
-import { splitQualified, CODEX_TOOL_NAMING } from '@brobot2/runtime'
+import { splitQualified } from '@brobot2/runtime'
+import { CODEX_TOOL_NAMING } from '@brobot2/runtime/codex'
 import { imageResolver } from './images'
 import { scanRetention } from './retention'
 import { filesOf, memoryNotesOf } from './conversation-files'

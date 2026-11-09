@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { claudeProjectDirName } from '@brobot2/runtime'
+import { claudeProjectDirName } from '@brobot2/runtime/claude'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { F093World, waitFor } from './lib/f093-host'
 

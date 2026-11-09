@@ -1,4 +1,4 @@
-import { providerKnowledge } from '../providers/knowledge-definitions'
+import { providerKnowledge } from '../providers/index'
 import {
   constants,
   closeSync,

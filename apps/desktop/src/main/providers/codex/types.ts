@@ -1,4 +1,4 @@
-import type { CodexKeyChange, CodexKeyOutcome } from '@brobot2/runtime'
+import type { CodexKeyChange, CodexKeyOutcome } from '@brobot2/runtime/codex'
 /**
  * 🔒 **The person's Codex API key, and the login that puts it in a profile home** — the key comes
  * from `api-keys.ts`; the login is Codex's own (`changeCodexKeyInHome`), so Codex keeps the key in

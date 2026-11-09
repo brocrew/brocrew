@@ -1,4 +1,4 @@
-import { legacySkillReminderFormats } from '../providers/knowledge-definitions'
+import { legacySkillReminderFormats } from '../providers/index'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { providerDescriptor, type Provider } from '@brobot2/shared'

@@ -189,7 +189,6 @@ export const providerSession = sqliteTable(
     updatedAt: integer('updated_at').notNull(),
   },
   (t) => [
-    check('provider_session_provider_ck', sql`${t.provider} in ('claude', 'codex')`),
     check(
       'provider_session_status_ck',
       sql`${t.status} in ('idle', 'working', 'waiting_permission', 'ended', 'errored')`,
@@ -491,7 +490,6 @@ export const identityMemoryAmendment = sqliteTable(
       'identity_memory_amendment_act_ck',
       sql`${t.act} in ('removed', 'corrected', 'restored')`,
     ),
-    check('identity_memory_amendment_provider_ck', sql`${t.provider} in ('claude', 'codex')`),
     check(
       'identity_memory_amendment_after_matches_act_ck',
       sql`(${t.act} = 'removed' and ${t.textBefore} is not null and ${t.textAfter} is null) or (${t.act} = 'corrected' and ${t.textBefore} is not null and ${t.textAfter} is not null) or (${t.act} = 'restored' and ${t.textBefore} is null and ${t.textAfter} is not null and ${t.sourceId} is not null)`,

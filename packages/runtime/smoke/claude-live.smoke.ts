@@ -15,17 +15,8 @@ import {
   describeScan,
   pathsNaming,
 } from '../../../scripts/lib/personal-home-guard.mjs'
-import {
-  ClaudeRuntime,
-  ResumeError,
-  claudeKeychainTokenProvider,
-  defaultKeychainReader,
-  provisionProviderHome,
-  type PermissionDecision,
-  type RuntimeEvent,
-  type SessionHandle,
-  type SessionRef,
-} from '../src/index'
+import { ClaudeRuntime } from '../src/claude'
+import { ResumeError, claudeKeychainTokenProvider, defaultKeychainReader, provisionProviderHome, type PermissionDecision, type RuntimeEvent, type SessionHandle, type SessionRef } from '../src/index'
 import { ProbeRunDeadlineExpired, probeRunDeadline, runBudgetMs } from './probe-run-deadline'
 import { runEvidence, runScratch } from './run-paths'
 import { TODO_WRITE_TOOLS, isTodoTool } from '../src/claude/todo-plan'

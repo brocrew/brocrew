@@ -1,6 +1,7 @@
 import { closeSync, existsSync, fstatSync, openSync, readSync, realpathSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
-import { claudeTranscriptPath, type SessionRef } from '@brobot2/runtime'
+import { claudeTranscriptPath } from '@brobot2/runtime/claude'
+import { type SessionRef } from '@brobot2/runtime'
 
 /** How far back {@link newestReplyModel} reads before it says it found none. */
 const REPLY_MODEL_BUDGET_BYTES = 4 * 1024 * 1024

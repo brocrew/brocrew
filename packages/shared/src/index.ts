@@ -33,9 +33,3 @@ export type {
   ProviderCapabilities,
   ProviderMarkKind,
 } from './provider-capabilities'
-export {
-  CLAUDE_SDK_OPTIONS,
-  CODEX_THREAD_START_CLAIMS,
-  type SdkOptionClaim,
-} from './providers/configuration'
-export { CODEX_MEMORY_SETTINGS, type CodexMemorySetting } from './providers/codex-memory-settings'

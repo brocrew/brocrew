@@ -1,7 +1,7 @@
 import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { SUPPORTED_PROVIDERS, providerRecord, type Provider } from '@brobot2/shared'
-import { providerDefinitions } from './providers/definitions'
+import { providerDefinitions } from './providers/index'
 import { sameFolder } from './same-folder'
 import { readWorkspaceList } from './workspaces'
 import { whereItStands } from '../../../../scripts/lib/safe-remove.mjs'

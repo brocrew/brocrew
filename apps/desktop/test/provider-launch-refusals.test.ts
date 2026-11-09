@@ -1,13 +1,9 @@
 import { aLaunchThatDidNotStart } from '../src/main/runtime/agent-tools'
 import { describe, expect, it } from 'vitest'
-import {
-  AuthUnavailableError,
-  ClaudeUnavailableError,
-  CodexSettingsUnusableError,
-  NoCodexSignInOnThisComputerError,
-} from '@brobot2/runtime'
+import { AuthUnavailableError, CodexSettingsUnusableError, NoCodexSignInOnThisComputerError } from '@brobot2/runtime'
+import { ClaudeUnavailableError } from '@brobot2/runtime/claude'
 import { providerAuthPolicies } from '../src/main/providers/auth-definitions'
-import { CodexUnavailableError } from '../src/main/runtime/codex-binary'
+import { CodexUnavailableError } from '../src/main/providers/codex/program'
 import { whyALaunchWasRefused } from '../src/main/runtime/launch-refusal'
 
 function classifier(

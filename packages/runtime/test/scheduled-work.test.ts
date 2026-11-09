@@ -1,11 +1,7 @@
 import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it } from 'vitest'
-import {
-  ClaudeRuntime,
-  runtimeEventSchema,
-  type ClaudeQuery,
-  type RuntimeEvent,
-} from '../src/index'
+import { ClaudeRuntime, type ClaudeQuery } from '../src/claude'
+import { runtimeEventSchema, type RuntimeEvent } from '../src/index'
 import { SessionCrons } from '../src/claude/session-crons'
 import { isProviderWork } from '../src/internal/provider-work'
 import {

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { claudeProjectDirName } from '@brobot2/runtime'
+import { claudeProjectDirName } from '@brobot2/runtime/claude'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { profileExecutionFile } from '../src/main/profile-execution-file'

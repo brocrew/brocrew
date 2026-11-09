@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { claudeAutoMemoryDir, codexAdHocNotesDir } from '@brobot2/runtime'
+import { claudeAutoMemoryDir } from '@brobot2/runtime/claude'
+import { codexAdHocNotesDir } from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
 import { amendAgentMemory, readAgentMemoryPaged } from '../src/main/runtime/agent-memory'
 

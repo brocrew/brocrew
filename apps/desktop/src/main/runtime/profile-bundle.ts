@@ -1,7 +1,7 @@
 import { lstatSync, openSync, readSync, closeSync } from 'node:fs'
 import { join } from 'node:path'
 import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
-import { providerKnowledge } from '../providers/knowledge-definitions'
+import { providerKnowledge } from '../providers/index'
 import { BUNDLE_MARKER } from './factory-text'
 import { publishOwnFile } from './workspace'
 

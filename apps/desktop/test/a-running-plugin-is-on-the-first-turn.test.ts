@@ -4,13 +4,9 @@ import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import {
-  ClaudeRuntime,
-  CodexRuntime,
-  withManagedPluginAttachments,
-  type CodexIncoming,
-  type CodexTransport,
-} from '@brobot2/runtime'
+import { ClaudeRuntime } from '@brobot2/runtime/claude'
+import { CodexRuntime, type CodexIncoming, type CodexTransport } from '@brobot2/runtime/codex'
+import { withManagedPluginAttachments } from '@brobot2/runtime'
 import { AsyncQueue } from '../../../packages/runtime/src/internal/async-queue'
 import { CODEX_PROTOCOL_VERSION } from '../../../packages/runtime/src/codex/protocol-version'
 import {

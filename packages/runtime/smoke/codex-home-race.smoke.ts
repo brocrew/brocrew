@@ -2,7 +2,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { CodexRuntime } from '../src/index'
+import { CodexRuntime } from '../src/codex'
 import { bundledCodexTransportFactory } from './bundled-codex'
 
 /**

@@ -12,7 +12,8 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { ClaudeRuntime, FakeRuntime, claudeProjectDirName } from '@brobot2/runtime'
+import { ClaudeRuntime, claudeProjectDirName } from '@brobot2/runtime/claude'
+import { FakeRuntime } from '@brobot2/runtime'
 import {
   NO_DISCOVERY,
   discoverSessionsIn,

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { ChildProcess } from 'node:child_process'
 import type { Options, SpawnOptions } from '@anthropic-ai/claude-agent-sdk'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ClaudeRuntime } from '../src/index'
+import { ClaudeRuntime } from '../src/claude'
 import { API_KEY_DESCRIPTOR, handOverApiKey } from '../src/claude/api-key-handover'
 
 /**

@@ -13,13 +13,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  FakeProviderSessions,
-  FakeRuntime,
-  FakeSessionHandle,
-  CodexSessionHandle,
-} from '@brobot2/runtime'
-import type { CodexTransport } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime, FakeSessionHandle } from '@brobot2/runtime'
+import { CodexSessionHandle } from '@brobot2/runtime/codex'
+import type { CodexTransport } from '@brobot2/runtime/codex'
 import type { ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
@@ -32,11 +28,7 @@ import {
 } from '../src/main/profile-execution-file'
 import { RuntimeHost, THE_APP_ITSELF, aTurnTheAppCutText } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
-import {
-  readKeptAccounts,
-  writeKeptAccounts,
-  providerAccountsFile,
-} from '../src/main/provider-accounts-file'
+import { readKeptAccounts, writeKeptAccounts, providerAccountsFile } from '../src/main/providers/claude/account-record'
 import { readKeptUsage, writeKeptUsage, providerUsageFile } from '../src/main/provider-usage-file'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'

@@ -19,14 +19,9 @@ import {
   readSessionInstructions,
   type WorkspaceOwnFile,
 } from '../src/main/runtime/instructions'
-import {
-  brobotWorkspace,
-  CLAUDE_INSTRUCTIONS_FILE,
-  CODEX_INSTRUCTIONS_FILE,
-  ensureWorkspace,
-  WORKSPACE_CANARY,
-  workspaceOwnFilesIn,
-} from '../src/main/runtime/workspace'
+import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
+import { CODEX_INSTRUCTIONS_FILE } from '../src/main/providers/codex/layout.mjs'
+import { brobotWorkspace, ensureWorkspace, WORKSPACE_CANARY, workspaceOwnFilesIn } from '../src/main/runtime/workspace'
 
 /**
  * 🔴 **The same kilobyte, once** (594, `HO-075` §1 · `576`'s measurement).

@@ -5,7 +5,7 @@ import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { SessionBundle } from '../src/main/archive/export-session'
-import { CLAUDE_JSONL } from '../src/main/archive/native-file'
+import { CLAUDE_JSONL } from '../src/main/providers/claude/transcripts'
 import { resourcesRoot } from '../src/main/resources/resources'
 import type { RuntimeChangeMessage, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 

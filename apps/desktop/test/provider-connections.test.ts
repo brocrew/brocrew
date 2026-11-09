@@ -79,7 +79,8 @@ it('describes authentication and protocol capabilities without a secret or host 
     const contract = providerDescriptor(provider).connections
     expect(contract.authMethods).toEqual(['sign-in', 'api-key'])
     expect(contract.contractVersion).toBe(1)
-    expect(contract.versionSource).toBe(provider === 'claude' ? 'sdk' : 'app-server')
+    expect(contract).not.toHaveProperty('protocol')
+    expect(contract).not.toHaveProperty('versionSource')
     expect(contract.additionalConnections).toBe(false)
     expect(contract).not.toHaveProperty('host')
   }

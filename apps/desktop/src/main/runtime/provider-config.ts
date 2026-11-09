@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { providerDescriptor, type Provider } from '@brobot2/shared'
-export { CLAUDE_SDK_OPTIONS, CODEX_THREAD_START_CLAIMS, type SdkOptionClaim } from '@brobot2/shared'
+import type { Provider } from '@brobot2/shared'
+import { providerDefinitions } from '../providers'
 import type { ProviderConfigInfo } from '../../shared/runtime-ipc'
 
 /**
@@ -32,7 +32,7 @@ function present(path: string): boolean {
  * again on demand, because a snapshot goes stale the moment a file is added.
  */
 export function readProviderConfig(provider: Provider, home: string): ProviderConfigInfo {
-  const layout = providerDescriptor(provider).config
+  const layout = providerDefinitions[provider].config
   return {
     home,
     homeEnv: layout.homeEnv,

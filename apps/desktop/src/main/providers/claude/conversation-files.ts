@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
-import { claudeAutoMemoryDir, claudeTranscriptPath } from '@brobot2/runtime'
+import { claudeAutoMemoryDir, claudeTranscriptPath } from '@brobot2/runtime/claude'
 import { ownsRecord } from './native-record'
 
 import type { ProviderSessionOf } from '../../db/conversation-tree'

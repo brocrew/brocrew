@@ -9,7 +9,8 @@ import {
   type SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk'
 import { expect, it } from 'vitest'
-import { claudeKeychainTokenProvider, claudeProjectDirName } from '@brobot2/runtime'
+import { claudeKeychainTokenProvider } from '@brobot2/runtime'
+import { claudeProjectDirName } from '@brobot2/runtime/claude'
 import { claudeMcpServersFor } from '../../../packages/runtime/src/claude/agent-tools'
 import { buildChildEnv } from '../../../packages/runtime/src/internal/child-env'
 import {

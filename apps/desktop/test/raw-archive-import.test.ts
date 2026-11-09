@@ -5,7 +5,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { NORMALIZER_VERSION } from '../src/main/archive/normalizer'
-import { FakeRuntime, FileEdits, claudeProjectDirName } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime'
+import { FileEdits, claudeProjectDirName } from '@brobot2/runtime/claude'
 // Reached by path on purpose: the normalizer is not on the runtime package's public surface, and
 // 088 may not change that package. Importing it HERE keeps the app's own mapping honest without
 // widening what the app depends on.
@@ -16,7 +17,7 @@ import {
   discoverSessionsIn,
   type Discovery,
 } from '../src/main/adopt/discover-sessions'
-import { importClaudeTranscript } from '../src/main/archive/import-claude'
+import { importClaudeTranscript } from '../src/main/providers/claude/import-transcript'
 
 import { nativeTranscriptPath } from '../src/main/archive/native-file'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'

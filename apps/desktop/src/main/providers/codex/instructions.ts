@@ -1,6 +1,6 @@
 import type { InjectedInstruction, RefusedInstruction } from '../../../shared/instruction-contracts'
 import { given } from './given'
-import { CODEX_MEMORY_SUMMARY } from '@brobot2/runtime'
+import { CODEX_MEMORY_SUMMARY } from '@brobot2/runtime/codex'
 import { readCodexAgentMemory, type CodexMemoryRead } from './memory'
 import { agentPreamble } from '../../runtime/agent-preamble'
 import type { InstructionInputs, SessionLaunchRead } from '../instruction-types'

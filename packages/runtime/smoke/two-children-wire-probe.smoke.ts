@@ -7,19 +7,8 @@ import {
   pathsNaming,
   type Marker,
 } from '../../../scripts/lib/personal-home-guard.mjs'
-import {
-  CodexRuntime,
-  codexAuthHealth,
-  createSpawnTransportFactory,
-  provisionCodexAuth,
-  provisionProviderHome,
-  type CodexIncoming,
-  type CodexTransport,
-  type ReasoningEffort,
-  type RuntimeEvent,
-  type SessionHandle,
-  type TransportFactory,
-} from '../src/index'
+import { CodexRuntime, createSpawnTransportFactory, type CodexIncoming, type CodexTransport, type TransportFactory } from '../src/codex'
+import { codexAuthHealth, provisionCodexAuth, provisionProviderHome, type ReasoningEffort, type RuntimeEvent, type SessionHandle } from '../src/index'
 import { bundledCodexBinary } from './bundled-codex'
 import { runEvidence, runScratch } from './run-paths'
 

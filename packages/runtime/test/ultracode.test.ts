@@ -4,15 +4,9 @@ import { fileURLToPath } from 'node:url'
 import type { EffortLevel, Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it } from 'vitest'
 import { AsyncQueue } from '../src/internal/async-queue'
-import {
-  ClaudeRuntime,
-  CLAUDE_CAPABILITIES,
-  CODEX_CAPABILITIES,
-  capabilitiesFor,
-  type ClaudeQuery,
-  type ResumeOptions,
-  type StartOptions,
-} from '../src/index'
+import { ClaudeRuntime, CLAUDE_CAPABILITIES, type ClaudeQuery } from '../src/claude'
+import { CODEX_CAPABILITIES } from '../src/codex'
+import { capabilitiesFor, type ResumeOptions, type StartOptions } from '../src/index'
 
 /**
  * **`ultracode` is a setting, not a level** (106).

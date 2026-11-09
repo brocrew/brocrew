@@ -1,14 +1,7 @@
 import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it } from 'vitest'
-import {
-  ClaudeRuntime,
-  claudeKeychainTokenProvider,
-  claudeKeychainTokenProviderAsync,
-  credentialFingerprint,
-  type ClaudeAuthTokenProvider,
-  type ClaudeQuery,
-  type SessionHandle,
-} from '../src/index'
+import { ClaudeRuntime, type ClaudeQuery } from '../src/claude'
+import { claudeKeychainTokenProvider, claudeKeychainTokenProviderAsync, credentialFingerprint, type ClaudeAuthTokenProvider, type SessionHandle } from '../src/index'
 import { AsyncQueue } from '../src/internal/async-queue'
 
 /**

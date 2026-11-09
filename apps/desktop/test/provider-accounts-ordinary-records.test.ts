@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { readKeptAccounts, writeKeptAccounts } from '../src/main/provider-accounts-file'
+import { readKeptAccounts, writeKeptAccounts } from '../src/main/providers/claude/account-record'
 import { legacyAccountRecordFormat } from '../src/main/providers/claude/account-record'
 const root = mkdtempSync(join(tmpdir(), 'fictional-accounts-'))
 afterEach(() => rmSync(root, { recursive: true, force: true }))

@@ -1,7 +1,7 @@
 import type { Provider } from '@brobot2/shared'
 import type { ProviderSessionOf } from './db/conversation-tree'
 import type { ProviderFile, MemoryNote } from './conversation-file-io'
-import { providerDefinitions } from './providers/definitions'
+import { providerDefinitions } from './providers/index'
 export {
   frontMatterOf,
   removeFromHome,

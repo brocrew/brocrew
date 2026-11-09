@@ -11,7 +11,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { resolveProviderConnection } from '../src/main/db/provider-connections'
 import { onProviderConnection } from '../src/main/providers'
-import { prepareCodexHome } from '../src/main/providers/codex'
+import { prepareCodexHome } from '../src/main/providers/codex/index'
 import { ApiKeys } from '../src/main/runtime/api-keys'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 

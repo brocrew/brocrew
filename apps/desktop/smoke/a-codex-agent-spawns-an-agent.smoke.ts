@@ -3,13 +3,8 @@ import { mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import {
-  CodexRuntime,
-  codexAuthHealth,
-  provisionCodexAuth,
-  provisionProviderHome,
-  type AgentRuntime,
-} from '@brobot2/runtime'
+import { CodexRuntime } from '@brobot2/runtime/codex'
+import { codexAuthHealth, provisionCodexAuth, provisionProviderHome, type AgentRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

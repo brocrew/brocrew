@@ -1,9 +1,9 @@
 import { pluginStartupTrace } from './plugins/startup-failure'
 import type { HandedPath } from '../shared/attachment-contracts'
-import { providerSetupServices } from './providers/program-compat'
+import { providerSetupServices } from './providers/index'
 import { setupProcesses } from './provider-setup/process'
 import { registerProviderSetup } from './provider-setup/ipc'
-import { providerKnowledge } from './providers/knowledge-definitions'
+import { providerKnowledge } from './providers/index'
 import { workspaceLaunchMessage } from './workspace-routing'
 import { WorkspacePluginAttachments } from './plugins/attachments'
 import { pluginWorkspaceIdentity } from './plugins/supervisor/client'
@@ -227,7 +227,7 @@ import {
 import { readKeptCuts, turnsTheAppCutFile, writeKeptCuts } from './turns-the-app-cut-file'
 import { providerAccountsFile, readKeptAccounts, writeKeptAccounts } from './provider-accounts-file'
 import { readKeptRules, removeKeptRule, type WhereRulesAreKept } from './kept-rules'
-import startTheLocator from './local-settings-locator.worker?nodeWorker'
+import { startSettingsLocator } from './providers'
 import { settingsLocations } from './settings-locations'
 import { snapshotFor } from './provider-snapshots'
 import { ASSET_SCHEME_PRIVILEGES, installAssetProtocol } from './asset-protocol'
@@ -2805,9 +2805,9 @@ void runAsSoleInstance({
  * must never make the window wait. The worker answers once and ends; one that stops without an
  * answer, or takes longer than git's own timeout for every folder, is a failed refresh.
  */
-function locateOffTheMainThread(folders: readonly string[]): Promise<ReadonlyMap<string, string>> {
+async function locateOffTheMainThread(folders: readonly string[]): Promise<ReadonlyMap<string, string>> {
+  const worker = await startSettingsLocator()
   return new Promise((resolve, reject) => {
-    const worker = startTheLocator({})
     let settled = false
     const settle = (then: () => void): void => {
       if (settled) return

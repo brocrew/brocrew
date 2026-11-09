@@ -17,12 +17,9 @@ import {
   type InventoryReading,
   type ToolStanding,
 } from '../src/renderer/src/lib/tool-inventory'
-import {
-  qualifyWith as runtimeQualifyWith,
-  splitQualified as runtimeSplitQualified,
-  CLAUDE_TOOL_NAMING,
-  CODEX_TOOL_NAMING,
-} from '../../../packages/runtime/src/tool-inventory'
+import { qualifyWith as runtimeQualifyWith, splitQualified as runtimeSplitQualified } from '../../../packages/runtime/src/tool-inventory'
+import { CLAUDE_TOOL_NAMING } from '../../../packages/runtime/src/claude/tool-naming'
+import { CODEX_TOOL_NAMING } from '../../../packages/runtime/src/codex/tool-naming'
 import { applyEvent, createTranscript, type ToolRegistry } from '../src/renderer/src/lib/transcript'
 import { carryForward, foldWindow } from '../src/renderer/src/lib/transcript-window'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'

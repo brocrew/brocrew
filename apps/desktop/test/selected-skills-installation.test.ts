@@ -18,11 +18,9 @@ import { readBuiltInSkills, prepareBuiltInSkills } from '../src/main/skills/prep
 import { launchSkillSelections } from '../src/main/skills/launch-selection'
 import { selectedSkillView } from '../src/main/skills/selected-skill-view'
 import { verifyBuiltInSkills, creationAllowedSkills } from '../src/main/skills/built-in-catalogue'
-import {
-  registerCodexBuiltInSkills,
-  verifyClaudeBuiltInSkills,
-  validateBuiltInSkills,
-} from '../../../packages/runtime/src/built-in-skills'
+import { registerCodexBuiltInSkills } from '../../../packages/runtime/src/codex/built-in-skills'
+import { verifyClaudeBuiltInSkills } from '../../../packages/runtime/src/claude/built-in-skills'
+import { validateBuiltInSkills } from '../../../packages/runtime/src/built-in-skills'
 import type { SkillDetail, SkillGrants } from '../src/shared/skills-catalogue'
 
 const resources = resolve(import.meta.dirname, '../resources/built-in-skills')

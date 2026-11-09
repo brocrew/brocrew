@@ -13,7 +13,7 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { claudeAutoMemoryDir } from '@brobot2/runtime'
+import { claudeAutoMemoryDir } from '@brobot2/runtime/claude'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
