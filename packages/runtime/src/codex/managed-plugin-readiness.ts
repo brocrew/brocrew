@@ -33,7 +33,12 @@ export function waitForManagedPluginTools(
       signal.removeEventListener('abort', cancelled)
       for (const wake of pauses) wake()
       for (const name of names)
-        if (!observed.has(name)) observe({ server: name, tools: [], outcome: outcome === 'timeout' || outcome === 'cancelled' ? outcome : 'unavailable' })
+        if (!observed.has(name))
+          observe({
+            server: name,
+            tools: [],
+            outcome: outcome === 'timeout' || outcome === 'cancelled' ? outcome : 'unavailable',
+          })
       resolve(outcome)
     }
     const cancelled = (): void => finish('cancelled')

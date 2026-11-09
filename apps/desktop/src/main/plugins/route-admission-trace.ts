@@ -71,11 +71,37 @@ const events = [
   'http-broker-refused',
   'tool-current-refused',
 ] as const
-const identities = ['workspace', 'source', 'lease', 'epoch', 'route', 'hostRun', 'request', 'launch', 'incarnation', 'attachmentRoute', 'server'] as const
+const identities = [
+  'workspace',
+  'source',
+  'lease',
+  'epoch',
+  'route',
+  'hostRun',
+  'request',
+  'launch',
+  'incarnation',
+  'attachmentRoute',
+  'server',
+  'plugin',
+] as const
 type Identity = (typeof identities)[number]
 type Aliases = Partial<Record<Identity, string>>
-const launchStages = ['initial-read', 'before-send-read', 'provider-discovery', 'provider-launch'] as const
-const launchOutcomes = ['configured', 'empty', 'failed', 'discovered', 'unavailable', 'timeout', 'cancelled'] as const
+const launchStages = [
+  'initial-read',
+  'before-send-read',
+  'provider-discovery',
+  'provider-launch',
+] as const
+const launchOutcomes = [
+  'configured',
+  'empty',
+  'failed',
+  'discovered',
+  'unavailable',
+  'timeout',
+  'cancelled',
+] as const
 export interface LaunchTraceDetail extends Aliases {
   stage?: (typeof launchStages)[number]
   outcome?: (typeof launchOutcomes)[number]
@@ -91,9 +117,18 @@ export interface LaunchTraceDetail extends Aliases {
   unknown?: boolean
 }
 /** The random incarnation salts aliases shared by app and supervisor; never use a capability. */
-export function attachmentTraceId(incarnation: string, kind: 'route' | 'server' | 'tool' | 'plugin' | 'incarnation', value: string): string {
+export function attachmentTraceId(
+  incarnation: string,
+  kind: 'route' | 'server' | 'tool' | 'plugin' | 'incarnation',
+  value: string,
+): string {
   try {
-    return createHmac('sha256', incarnation).update(kind).update('\0').update(value).digest('hex').slice(0, 32)
+    return createHmac('sha256', incarnation)
+      .update(kind)
+      .update('\0')
+      .update(value)
+      .digest('hex')
+      .slice(0, 32)
   } catch {
     return ''
   }
@@ -111,7 +146,11 @@ export interface RouteAdmissionTrace {
   attachmentId(kind: 'route' | 'server' | 'tool', value: string): string | undefined
   alias(kind: Identity, value: string): string | undefined
   fresh(kind: Identity): string | undefined
-  emit(event: RouteAdmissionEvent['event'], detail?: Partial<AdmissionFailure> & LaunchTraceDetail, request?: string): void
+  emit(
+    event: RouteAdmissionEvent['event'],
+    detail?: Partial<AdmissionFailure> & LaunchTraceDetail,
+    request?: string,
+  ): void
 }
 
 /** One supervisor-local namespace, no alias registry and no credential-derived identifiers. */
@@ -187,10 +226,16 @@ export function recordRouteAdmissionTrace(root: string, event: RouteAdmissionEve
     if (launchOutcomes.includes(event.outcome!)) row.outcome = event.outcome!
     if (event.provider === 'claude' || event.provider === 'codex') row.provider = event.provider
     if (event.failureStage !== undefined)
-      row.failureStage = managedPluginFailure({ pluginStage: event.failureStage, pluginCause: 'unknown' }, 'attachment-read').pluginStage
+      row.failureStage = managedPluginFailure(
+        { pluginStage: event.failureStage, pluginCause: 'unknown' },
+        'attachment-read',
+      ).pluginStage
     for (const field of ['configuredTools', 'discoveredTools', 'pending', 'off'] as const) {
       const values = event[field]
-      if (Array.isArray(values)) row[field] = values.filter((value) => typeof value === 'string' && /^[a-f0-9]{32}$/.test(value)).slice(0, 512)
+      if (Array.isArray(values))
+        row[field] = values
+          .filter((value) => typeof value === 'string' && /^[a-f0-9]{32}$/.test(value))
+          .slice(0, 512)
     }
     for (const field of ['configuredCount', 'discoveredCount', 'serverCount'] as const) {
       const value = event[field]

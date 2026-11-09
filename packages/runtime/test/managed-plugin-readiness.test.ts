@@ -107,87 +107,93 @@ const warnings = (events: RuntimeEvent[]) =>
 
 it.each(
   (['start', 'resume'] as const).flatMap((launch) =>
-    ([
-      'healthy',
-      'failed',
-      'missing',
-      'tools-error',
-      'refused',
-      'observer-throws',
-      'failed-observer-throws',
-    ] as const).map((discovery) => ({ launch, discovery })),
+    (
+      [
+        'healthy',
+        'failed',
+        'missing',
+        'tools-error',
+        'refused',
+        'observer-throws',
+        'failed-observer-throws',
+      ] as const
+    ).map((discovery) => ({ launch, discovery })),
   ),
-)('Codex $launch observes $discovery discovery without changing dispatch', async ({
-  launch,
-  discovery,
-}) => {
-  const location = home()
-  const wire = new Wire(location)
-  const healthy = discovery === 'healthy' || discovery === 'observer-throws'
-  wire.catalog = healthy ? ['echo'] : []
-  wire.discovery = async () => {
-    if (discovery === 'refused') throw new Error('fictional-private-discovery-marker')
-    if (discovery === 'missing') return { data: [] }
-    if (discovery === 'failed' || discovery === 'failed-observer-throws')
-      return { data: [{ name: route.name, runtimeStatus: 'failed' }] }
-    if (discovery === 'tools-error')
-      return {
-        data: [
-          {
-            name: route.name,
-            runtimeStatus: 'connected',
-            toolsError: 'fictional-private-discovery-marker',
-            tools: {},
-          },
-        ],
-      }
-    return ready()
-  }
-  const observer = vi.fn((_event: ManagedPluginDiscovery) => {
-    if (discovery === 'observer-throws' || discovery === 'failed-observer-throws')
-      throw new Error('fictional-observer-marker')
-  })
-  const runtime = new CodexRuntime(() => wire)
-  const context = { ...location, managedPluginMcp: [route], observeManagedPlugins: observer }
-  const handle =
-    launch === 'start'
-      ? await runtime.start(context)
-      : await runtime.resume(
-          { provider: 'codex', sessionId: 'fictional-thread', cwd: location.cwd, rotation: 0 },
-          context,
-        )
-  handles.push(handle)
-  const events: RuntimeEvent[] = []
-  void (async () => {
-    for await (const event of handle.events()) events.push(event)
-  })()
-  expect(observer).not.toHaveBeenCalled()
-  await handle.send('Fictional observed turn')
-  await tick()
-  expect(observer.mock.calls).toEqual([
-    [
+)(
+  'Codex $launch observes $discovery discovery without changing dispatch',
+  async ({ launch, discovery }) => {
+    const location = home()
+    const wire = new Wire(location)
+    const healthy = discovery === 'healthy' || discovery === 'observer-throws'
+    wire.catalog = healthy ? ['echo'] : []
+    wire.discovery = async () => {
+      if (discovery === 'refused') throw new Error('fictional-private-discovery-marker')
+      if (discovery === 'missing') return { data: [] }
+      if (discovery === 'failed' || discovery === 'failed-observer-throws')
+        return { data: [{ name: route.name, runtimeStatus: 'failed' }] }
+      if (discovery === 'tools-error')
+        return {
+          data: [
+            {
+              name: route.name,
+              runtimeStatus: 'connected',
+              toolsError: 'fictional-private-discovery-marker',
+              tools: {},
+            },
+          ],
+        }
+      return ready()
+    }
+    const observer = vi.fn((_event: ManagedPluginDiscovery) => {
+      if (discovery === 'observer-throws' || discovery === 'failed-observer-throws')
+        throw new Error('fictional-observer-marker')
+    })
+    const runtime = new CodexRuntime(() => wire)
+    const context = { ...location, managedPluginMcp: [route], observeManagedPlugins: observer }
+    const handle =
+      launch === 'start'
+        ? await runtime.start(context)
+        : await runtime.resume(
+            { provider: 'codex', sessionId: 'fictional-thread', cwd: location.cwd, rotation: 0 },
+            context,
+          )
+    handles.push(handle)
+    const events: RuntimeEvent[] = []
+    void (async () => {
+      for await (const event of handle.events()) events.push(event)
+    })()
+    expect(observer).not.toHaveBeenCalled()
+    await handle.send('Fictional observed turn')
+    await tick()
+    expect(observer.mock.calls).toEqual([
+      [
+        {
+          server: route.name,
+          tools: healthy ? ['echo'] : [],
+          outcome: healthy ? 'discovered' : 'unavailable',
+        },
+      ],
+    ])
+    expect(wire.catalogsAtTurns).toEqual([healthy ? ['echo'] : []])
+    expect(warnings(events)).toHaveLength(healthy ? 0 : 1)
+    expect(JSON.stringify(observer.mock.calls)).not.toContain('fictional-private-discovery-marker')
+    expect(JSON.stringify(observer.mock.calls)).not.toContain(route.capability)
+    expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual([
       {
-        server: route.name,
-        tools: healthy ? ['echo'] : [],
-        outcome: healthy ? 'discovered' : 'unavailable',
+        method: 'mcpServerStatus/list',
+        params: {
+          threadId: 'fictional-thread',
+          serverName: route.name,
+          detail: 'toolsAndAuthOnly',
+        },
       },
-    ],
-  ])
-  expect(wire.catalogsAtTurns).toEqual([healthy ? ['echo'] : []])
-  expect(warnings(events)).toHaveLength(healthy ? 0 : 1)
-  expect(JSON.stringify(observer.mock.calls)).not.toContain('fictional-private-discovery-marker')
-  expect(JSON.stringify(observer.mock.calls)).not.toContain(route.capability)
-  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual([
-    {
-      method: 'mcpServerStatus/list',
-      params: { threadId: 'fictional-thread', serverName: route.name, detail: 'toolsAndAuthOnly' },
-    },
-  ])
-  const launchRequest = wire.requests.find((one) => one.method === `thread/${launch}`)
-  expect(launchRequest).toBeDefined()
-  expect(launchRequest!.params).not.toHaveProperty('observeManagedPlugins')
-  expect(launchRequest!.params).not.toHaveProperty('config.observeManagedPlugins')
-})
+    ])
+    const launchRequest = wire.requests.find((one) => one.method === `thread/${launch}`)
+    expect(launchRequest).toBeDefined()
+    expect(launchRequest!.params).not.toHaveProperty('observeManagedPlugins')
+    expect(launchRequest!.params).not.toHaveProperty('config.observeManagedPlugins')
+  },
+)
 
 it.each(
   (['start', 'resume'] as const).flatMap((launch) =>
@@ -195,80 +201,79 @@ it.each(
       [false, true].map((throws) => ({ launch, status, throws })),
     ),
   ),
-)('Claude $launch observes $status init with throwing observer $throws', async ({
-  launch,
-  status,
-  throws,
-}) => {
-  const location = home()
-  const frames = new AsyncQueue<SDKMessage>()
-  const received: unknown[] = []
-  let launchOptions: unknown
-  const query: ClaudeQuery = {
-    async interrupt() {},
-    close() {
-      frames.close()
-    },
-    async return() {
-      frames.close()
-    },
-    [Symbol.asyncIterator]: () => frames[Symbol.asyncIterator](),
-  }
-  const observer = vi.fn((_event: ManagedPluginDiscovery) => {
-    if (throws) throw new Error('fictional-observer-marker')
-  })
-  const runtime = new ClaudeRuntime(
-    (params) => {
-      launchOptions = params.options
-      void (async () => {
-        for await (const message of params.prompt) received.push(message)
-      })()
-      return query
-    },
-    async () => true,
-  )
-  const context = { ...location, managedPluginMcp: [route], observeManagedPlugins: observer }
-  const handle =
-    launch === 'start'
-      ? await runtime.start(context)
-      : await runtime.resume(
-          { provider: 'claude', sessionId: 'fictional-claude', cwd: location.cwd, rotation: 0 },
-          context,
-        )
-  handles.push(handle)
-  const events: RuntimeEvent[] = []
-  void (async () => {
-    for await (const event of handle.events()) events.push(event)
-  })()
-  expect(observer).not.toHaveBeenCalled()
-  frames.push({
-    type: 'system',
-    subtype: 'init',
-    session_id: 'fictional-claude',
-    cwd: location.cwd,
-    tools: [`mcp__${route.name}__echo`, 'mcp__person-server__private-tool', 'Read'],
-    mcp_servers: [
-      { name: route.name, status },
-      { name: 'person-server', status: 'connected' },
-    ],
-  } as unknown as SDKMessage)
-  await tick()
-  expect(observer.mock.calls).toEqual([
-    [
-      {
-        server: route.name,
-        tools: status === 'connected' ? ['echo'] : [],
-        outcome: status === 'connected' ? 'discovered' : 'unavailable',
+)(
+  'Claude $launch observes $status init with throwing observer $throws',
+  async ({ launch, status, throws }) => {
+    const location = home()
+    const frames = new AsyncQueue<SDKMessage>()
+    const received: unknown[] = []
+    let launchOptions: unknown
+    const query: ClaudeQuery = {
+      async interrupt() {},
+      close() {
+        frames.close()
       },
-    ],
-  ])
-  expect(events.some((event) => event.type === 'tool_inventory')).toBe(true)
-  await handle.send('Fictional observed turn')
-  await tick()
-  expect(received).toHaveLength(1)
-  expect(launchOptions).not.toHaveProperty('observeManagedPlugins')
-  expect(launchOptions).not.toHaveProperty('managedPluginObserver')
-})
+      async return() {
+        frames.close()
+      },
+      [Symbol.asyncIterator]: () => frames[Symbol.asyncIterator](),
+    }
+    const observer = vi.fn((_event: ManagedPluginDiscovery) => {
+      if (throws) throw new Error('fictional-observer-marker')
+    })
+    const runtime = new ClaudeRuntime(
+      (params) => {
+        launchOptions = params.options
+        void (async () => {
+          for await (const message of params.prompt) received.push(message)
+        })()
+        return query
+      },
+      async () => true,
+    )
+    const context = { ...location, managedPluginMcp: [route], observeManagedPlugins: observer }
+    const handle =
+      launch === 'start'
+        ? await runtime.start(context)
+        : await runtime.resume(
+            { provider: 'claude', sessionId: 'fictional-claude', cwd: location.cwd, rotation: 0 },
+            context,
+          )
+    handles.push(handle)
+    const events: RuntimeEvent[] = []
+    void (async () => {
+      for await (const event of handle.events()) events.push(event)
+    })()
+    expect(observer).not.toHaveBeenCalled()
+    frames.push({
+      type: 'system',
+      subtype: 'init',
+      session_id: 'fictional-claude',
+      cwd: location.cwd,
+      tools: [`mcp__${route.name}__echo`, 'mcp__person-server__private-tool', 'Read'],
+      mcp_servers: [
+        { name: route.name, status },
+        { name: 'person-server', status: 'connected' },
+      ],
+    } as unknown as SDKMessage)
+    await tick()
+    expect(observer.mock.calls).toEqual([
+      [
+        {
+          server: route.name,
+          tools: status === 'connected' ? ['echo'] : [],
+          outcome: status === 'connected' ? 'discovered' : 'unavailable',
+        },
+      ],
+    ])
+    expect(events.some((event) => event.type === 'tool_inventory')).toBe(true)
+    await handle.send('Fictional observed turn')
+    await tick()
+    expect(received).toHaveLength(1)
+    expect(launchOptions).not.toHaveProperty('observeManagedPlugins')
+    expect(launchOptions).not.toHaveProperty('managedPluginObserver')
+  },
+)
 
 it('holds the first model turn until the managed catalog is available, while showing working', async () => {
   const { wire, handle, events } = await start()

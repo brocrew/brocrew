@@ -81,13 +81,16 @@ export function createLifecycleAgentBridge(options: {
   const traceFor = createRouteAdmissionTrace(options.routeTrace)
   const identityTrace = traceFor({})
   const sourceTrace = (lease: Readonly<WorkspaceLease>, request: Request) =>
-    traceFor({
-      workspace: identityTrace.alias('workspace', request.workspaceId),
-      source: identityTrace.alias('source', request.incarnation),
-      incarnation: attachmentTraceId(request.incarnation, 'incarnation', ''),
-      lease: identityTrace.alias('lease', lease.id),
-      epoch: identityTrace.alias('epoch', lease.epoch),
-    }, request.incarnation)
+    traceFor(
+      {
+        workspace: identityTrace.alias('workspace', request.workspaceId),
+        source: identityTrace.alias('source', request.incarnation),
+        incarnation: attachmentTraceId(request.incarnation, 'incarnation', ''),
+        lease: identityTrace.alias('lease', lease.id),
+        epoch: identityTrace.alias('epoch', lease.epoch),
+      },
+      request.incarnation,
+    )
   const answerWithin = options.answerWithinMs ?? 1000
   const openRoute = options.openRoute ?? openManagedPluginRoute
   type Warmup = {
@@ -456,11 +459,15 @@ export function createLifecycleAgentBridge(options: {
           `${request.incarnation}:${randomUUID()}`,
         )
         const source = sourceTrace(lease, request)
-        const trace = traceFor({
-          ...source.aliases,
-          route: source.fresh('route'),
-          hostRun: source.alias('hostRun', view.runId),
-        }, request.incarnation)
+        const trace = traceFor(
+          {
+            ...source.aliases,
+            route: source.fresh('route'),
+            plugin: attachmentTraceId(request.incarnation, 'plugin', id),
+            hostRun: source.alias('hostRun', view.runId),
+          },
+          request.incarnation,
+        )
         const route = await openRoute(
           entry.broker,
           agent,

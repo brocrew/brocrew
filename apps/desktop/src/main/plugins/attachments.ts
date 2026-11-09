@@ -43,14 +43,18 @@ function parsed(reply: {
 /** One fresh source per runtime incarnation. The supervisor owns all broker and private authority. */
 export class WorkspacePluginAttachments {
   constructor(
-    private readonly owner: Pick<PluginSupervisorAttachment, 'agentRoutes'> & Partial<Pick<PluginSupervisorAttachment, 'recordTrace'>>,
+    private readonly owner: Pick<PluginSupervisorAttachment, 'agentRoutes'> &
+      Partial<Pick<PluginSupervisorAttachment, 'recordTrace'>>,
     private readonly workspaceId: string,
   ) {}
   agent(occupied: readonly string[]): ManagedPluginAttachmentSource {
     const incarnation = randomUUID()
     const incarnationId = attachmentTraceId(incarnation, 'incarnation', '')
-    const trace = createRouteAdmissionTrace((event) => this.owner.recordTrace?.(event))({ incarnation: incarnationId })
-    const id = (kind: 'route' | 'server' | 'tool' | 'plugin', value: string) => attachmentTraceId(incarnation, kind, value)
+    const trace = createRouteAdmissionTrace((event) => this.owner.recordTrace?.(event))({
+      incarnation: incarnationId,
+    })
+    const id = (kind: 'route' | 'server' | 'tool' | 'plugin', value: string) =>
+      attachmentTraceId(incarnation, kind, value)
     const input = { workspaceId: this.workspaceId, incarnation, occupied: [...occupied] }
     let closed = false
     return {
@@ -59,18 +63,21 @@ export class WorkspacePluginAttachments {
           launch: event.launch,
           stage: event.stage,
           outcome: event.outcome,
-          provider: event.provider === 'claude' || event.provider === 'codex' ? event.provider : undefined,
+          provider:
+            event.provider === 'claude' || event.provider === 'codex' ? event.provider : undefined,
           failureStage: event.failureStage,
         } as const
         if (event.discovery) {
           const server = event.servers.find((one) => one.name === event.discovery!.server)
-          if (server) trace.emit('launch-discovery', {
-            ...detail,
-            server: id('server', server.name),
-            attachmentRoute: id('route', server.url),
-            discoveredTools: event.discovery.tools.map((tool) => id('tool', tool)).sort(),
-            discoveredCount: event.discovery.tools.length,
-          })
+          if (server)
+            trace.emit('launch-discovery', {
+              ...detail,
+              server: id('server', server.name),
+              plugin: server.pluginId ? id('plugin', server.pluginId) : undefined,
+              attachmentRoute: id('route', server.url),
+              discoveredTools: event.discovery.tools.map((tool) => id('tool', tool)).sort(),
+              discoveredCount: event.discovery.tools.length,
+            })
         } else {
           trace.emit('launch-attachment', {
             ...detail,
@@ -79,9 +86,13 @@ export class WorkspacePluginAttachments {
             off: event.off?.map((plugin) => id('plugin', plugin)),
             unknown: event.unknown,
           })
-          for (const server of event.servers) trace.emit('launch-attachment', {
-            ...detail, server: id('server', server.name), attachmentRoute: id('route', server.url),
-          })
+          for (const server of event.servers)
+            trace.emit('launch-attachment', {
+              ...detail,
+              server: id('server', server.name),
+              plugin: server.pluginId ? id('plugin', server.pluginId) : undefined,
+              attachmentRoute: id('route', server.url),
+            })
         }
       },
       read: async () => {

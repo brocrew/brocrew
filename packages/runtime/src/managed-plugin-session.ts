@@ -54,8 +54,9 @@ export type ManagedPluginLaunchObservation = {
   readonly launch: string
   readonly provider: string
   readonly stage: 'initial-read' | 'before-send-read' | 'provider-discovery' | 'provider-launch'
-  readonly outcome: 'configured' | 'empty' | 'failed' | 'discovered' | 'unavailable' | 'timeout' | 'cancelled'
-  readonly servers: readonly Pick<ManagedPluginMcpServer, 'name' | 'url'>[]
+  readonly outcome:
+    'configured' | 'empty' | 'failed' | 'discovered' | 'unavailable' | 'timeout' | 'cancelled'
+  readonly servers: readonly Pick<ManagedPluginMcpServer, 'name' | 'url' | 'pluginId'>[]
   readonly pending?: readonly string[]
   readonly off?: readonly string[]
   readonly unknown?: boolean
@@ -134,7 +135,11 @@ export function withManagedPluginAttachments(
     // send does not wait for it again, and adopts its result once it has settled.
     let outstanding:
       { work: Promise<ManagedPluginAttachment>; settled: boolean; outlived: boolean } | undefined
-    async function read(signal?: AbortSignal, within?: number, stage: 'initial-read' | 'before-send-read' = 'initial-read') {
+    async function read(
+      signal?: AbortSignal,
+      within?: number,
+      stage: 'initial-read' | 'before-send-read' = 'initial-read',
+    ) {
       if (!outstanding) {
         const one = { work: source.read(), settled: false, outlived: false }
         void one.work.then(
@@ -179,12 +184,21 @@ export function withManagedPluginAttachments(
       attachment = await read(options.signal)
     } catch (error) {
       unavailable = error
-      observe({ stage: 'initial-read', outcome: 'failed', servers: [], failureStage: managedPluginFailure(error, 'attachment-read').pluginStage })
-    }
-    const discoveryObserver = (servers: readonly ManagedPluginMcpServer[]) =>
-      (discovery: ManagedPluginDiscovery) => observe({
-        stage: 'provider-discovery', outcome: discovery.outcome, servers, discovery,
+      observe({
+        stage: 'initial-read',
+        outcome: 'failed',
+        servers: [],
+        failureStage: managedPluginFailure(error, 'attachment-read').pluginStage,
       })
+    }
+    const discoveryObserver =
+      (servers: readonly ManagedPluginMcpServer[]) => (discovery: ManagedPluginDiscovery) =>
+        observe({
+          stage: 'provider-discovery',
+          outcome: discovery.outcome,
+          servers,
+          discovery,
+        })
     const launch = {
       ...options,
       managedPluginMcp: attachment.servers,
@@ -203,7 +217,15 @@ export function withManagedPluginAttachments(
     const ownership = new ManagedPluginOwnership()
     ownership.track(inner)
     const events = new AsyncQueue<RuntimeEvent>()
-    if (source.observe) events.push(wrapUnknown(runtime.provider, { method: 'plugin/launch', launch: launchId }, 'lifecycle', 'plugin/launch'))
+    if (source.observe)
+      events.push(
+        wrapUnknown(
+          runtime.provider,
+          { method: 'plugin/launch', launch: launchId },
+          'lifecycle',
+          'plugin/launch',
+        ),
+      )
     let reported = false
     function noteUnavailable(error?: unknown, stage: PluginFailureStage = 'attachment-read') {
       if (reported) return
@@ -309,7 +331,12 @@ export function withManagedPluginAttachments(
                 try {
                   next = await read(wait.signal, left(), 'before-send-read')
                 } catch (error) {
-                  observe({ stage: 'before-send-read', outcome: 'failed', servers: attachment.servers, failureStage: managedPluginFailure(error, 'attachment-read').pluginStage })
+                  observe({
+                    stage: 'before-send-read',
+                    outcome: 'failed',
+                    servers: attachment.servers,
+                    failureStage: managedPluginFailure(error, 'attachment-read').pluginStage,
+                  })
                   noteUnavailable(error)
                 }
                 let stale: readonly string[] = []

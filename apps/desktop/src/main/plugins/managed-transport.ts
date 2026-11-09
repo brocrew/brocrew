@@ -425,12 +425,18 @@ export async function openManagedPluginRoute(
   const url = `http://127.0.0.1:${(http.address() as AddressInfo).port}/mcp`
   // Reuse the inventory already admitted above; observation does not rediscover or authorize.
   try {
-    if (trace?.aliases.incarnation) trace.emit('route-configured', {
-      attachmentRoute: trace.attachmentId('route', url),
-      server: trace.attachmentId('server', name),
-      configuredTools: offered.flatMap((tool) => { const id = trace.attachmentId('tool', tool.name); return id ? [id] : [] }).sort(),
-      configuredCount: offered.length,
-    })
+    if (trace?.aliases.incarnation)
+      trace.emit('route-configured', {
+        attachmentRoute: trace.attachmentId('route', url),
+        server: trace.attachmentId('server', name),
+        configuredTools: offered
+          .flatMap((tool) => {
+            const id = trace.attachmentId('tool', tool.name)
+            return id ? [id] : []
+          })
+          .sort(),
+        configuredCount: offered.length,
+      })
   } catch {
     /* Diagnostic only. */
   }
