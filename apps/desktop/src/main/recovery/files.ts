@@ -1,7 +1,17 @@
-import { createHash, randomBytes } from 'node:crypto'
+import { retrying, syncFolder, flushFile, type RetryOptions } from '@brobot2/runtime/atomic-write'
+export {
+  retrying,
+  syncFolder,
+  writeAtomically,
+  writeJsonAtomically,
+  isBrieflyHeld,
+  RETRY_DELAYS_MS,
+  type RetryOptions,
+} from '@brobot2/runtime/atomic-write'
+import { createHash } from 'node:crypto'
 import { constants, type BigIntStats } from 'node:fs'
 import * as nodeFsPromises from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
+import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import type { Step } from './contract'
 import {
   BACKUPS_DIRNAME,
@@ -160,38 +170,6 @@ export async function pathExists(path: string, fs: RecoveryFs = nodeFs): Promise
   }
 }
 
-/** The codes a file held briefly by another program gives, mostly antivirus and indexers on Windows. */
-const BRIEFLY_HELD = new Set(['EBUSY', 'EPERM', 'EACCES'])
-
-/** Whether `error` is one a file held briefly by another program gives. */
-export function isBrieflyHeld(error: unknown): boolean {
-  const code = errorCode(error)
-  return code !== undefined && BRIEFLY_HELD.has(code)
-}
-
-/** The waits between tries: ten tries over about two seconds. */
-export const RETRY_DELAYS_MS: readonly number[] = [50, 100, 150, 200, 250, 300, 300, 300, 350]
-
-export interface RetryOptions {
-  readonly delays?: readonly number[]
-  readonly sleep?: (ms: number) => Promise<void>
-}
-
-export async function retrying<T>(op: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
-  const delays = options.delays ?? RETRY_DELAYS_MS
-  const sleep =
-    options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      return await op()
-    } catch (error) {
-      const wait = delays[attempt]
-      if (wait === undefined || !isBrieflyHeld(error)) throw error
-      await sleep(wait)
-    }
-  }
-}
-
 export async function readTextOrNull(
   path: string,
   fs: RecoveryFs = nodeFs,
@@ -202,63 +180,6 @@ export async function readTextOrNull(
   } catch (error) {
     if (errorCode(error) === 'ENOENT') return null
     throw error
-  }
-}
-
-export async function writeAtomically(
-  path: string,
-  data: string | Uint8Array,
-  fs: RecoveryFs = nodeFs,
-  platform: NodeJS.Platform = process.platform,
-): Promise<void> {
-  const temporary = join(dirname(path), `${basename(path)}.${randomBytes(6).toString('hex')}.tmp`)
-  let handle: RecoveryFileHandle | null = null
-  try {
-    handle = await fs.open(temporary, 'wx', 0o600)
-    await handle.writeFile(data)
-    await handle.sync()
-    const written = handle
-    handle = null
-    await written.close()
-    await retrying(() => fs.rename(temporary, path))
-  } catch (error) {
-    await handle?.close().catch(() => undefined)
-    await fs.rm(temporary, { force: true }).catch(() => undefined)
-    throw error
-  }
-  if (platform === 'win32') await flushFile(path, fs)
-  else await syncFolder(dirname(path), fs, platform)
-}
-
-/** {@link writeAtomically} for a JSON value, two-space indented with a final newline. */
-export async function writeJsonAtomically(
-  path: string,
-  value: unknown,
-  fs: RecoveryFs = nodeFs,
-): Promise<void> {
-  await writeAtomically(path, `${JSON.stringify(value, null, 2)}\n`, fs)
-}
-
-export async function syncFolder(
-  folder: string,
-  fs: RecoveryFs = nodeFs,
-  platform: NodeJS.Platform = process.platform,
-): Promise<void> {
-  if (platform === 'win32') return
-  const handle = await fs.open(folder, 'r')
-  try {
-    await handle.sync()
-  } finally {
-    await handle.close()
-  }
-}
-
-async function flushFile(path: string, fs: RecoveryFs): Promise<void> {
-  const handle = await retrying(() => fs.open(path, 'r+'))
-  try {
-    await handle.sync()
-  } finally {
-    await handle.close()
   }
 }
 

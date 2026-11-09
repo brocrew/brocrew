@@ -91,19 +91,8 @@ const ROUTE: Record<string, string[]> = {
   // place for somebody to "just read it here" — and the census did not look at it. `ipc.ts` was
   // listed and never scanned, which is the same hole with a name on it.
   '../src/main/runtime/runtime-host.ts': [],
-  // ⛔ **The one file that WRITES an attachment into existence** (254 §2). ⚠️ **It is on the route
-  // for that reason, not despite it**: a module that hands back a path is a module somebody could
-  // later "improve" by reading the file it just wrote, and every rule below now applies to it.
-  // ⚑ Six bindings, all of which create, publish, list or delete THIS module's own output — none
-  // returns a file's contents. ⚠️ **`rename` replaced `utimes`** when the write became write-aside-
-  // and-rename: the name only ever appears on a complete file, and the freshness that `utimes` used
-  // to supply now comes for free, from the file that lands there. ⚠️ **`readdir` is the one worth naming**: it is the enumeration
-  // primitive `218` §3 keeps off `handed-path.ts` (*"a dropped folder is one path — not enumerated"*),
-  // and a per-file map is the only way to grant it here and refuse it there.
   '../src/main/runtime/pasted-image.ts': [
     'mkdir',
-    'writeFile',
-    'rename',
     'readdir',
     'stat',
     'unlink',
@@ -665,7 +654,7 @@ describe('the clipboard is the one thing BroBot may read, and only in one place 
     // path no gate had looked at, which is the whole reason it is on this route.
     const source = readFileSync(join(here, '../src/main/runtime/pasted-image.ts'), 'utf8')
     expect(source).toContain("from 'node:fs/promises'")
-    expect(source).toContain('await writeFile(')
+    expect(source).toContain('await writeAtomically(')
     expect(source).toContain('await classifyHandedPath(')
     expect(source).toContain('await unlink(')
   })

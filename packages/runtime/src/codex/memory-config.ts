@@ -1,9 +1,9 @@
 import { CODEX_MEMORY_SETTINGS, type CodexMemorySetting } from '@brobot2/shared'
 export { CODEX_MEMORY_SETTINGS, type CodexMemorySetting } from '@brobot2/shared'
-import { closeSync, readFileSync, renameSync, statSync, unlinkSync, writeSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse as parseToml } from 'smol-toml'
-import { aStagingName, createFreshFile } from '../internal/provider-home'
+import { stageAtomicWriteSync, type AtomicWriteStage } from '../atomic-write'
 
 /**
  * 🔴 **Turn Codex memory on, in a file Codex also writes** (314, on 312's measurement).
@@ -402,12 +402,6 @@ export function ensureCodexMemoryConfig(
   return publish(path, merge.text, existing, seams)
 }
 
-/**
- * ⛔ **Never written at the published name** — the shape `workspace.ts` and `provider-home.ts` both
- * use. A staged file created `O_CREAT|O_EXCL` cannot be redirected by anything planted at that name,
- * and `rename` replaces the leaf in one step, so a crash cannot leave a truncated `config.toml`
- * behind — which would be a config that fails to parse, which is a profile that cannot launch.
- */
 function publish(
   path: string,
   text: string,
@@ -421,58 +415,51 @@ function publish(
   } catch {
     // absent — 0600 under a 0700 home is the right default for a file we are creating
   }
-  const staged = aStagingName(path)
-  let fd: number
+  let stage: AtomicWriteStage
   try {
-    fd = createFreshFile(staged, mode)
+    stage = stageAtomicWriteSync(path, text, mode)
   } catch (error) {
-    return { outcome: 'failed', path, why: `could not stage the merge: ${errorText(error)}` }
+    return { outcome: 'failed', path, why: `could not write the merge: ${errorText(error)}` }
   }
   const discard = (outcome: 'raced' | 'failed', why: string): CodexMemoryConfigResult => {
     try {
-      unlinkSync(staged)
+      stage.discard()
     } catch {
-      // best effort — one staging file beside the config is better than losing the reason
+      // Preserve the original failure.
     }
     return { outcome, path, why }
   }
   try {
-    writeSync(fd, text)
-  } catch (error) {
-    return discard('failed', `could not write the merge: ${errorText(error)}`)
+    seams.beforePublish?.()
+    // Codex also writes this file; retry the merge if its text changed.
+    let now: string | null
+    try {
+      now = readFileSync(path, 'utf8')
+    } catch (error) {
+      if (!isAbsent(error)) {
+        return discard('failed', `config.toml stopped being readable: ${errorText(error)}`)
+      }
+      now = null
+    }
+    if (now !== expected) {
+      return discard(
+        'raced',
+        'config.toml changed between the read and the write; the next launch will retry',
+      )
+    }
+    try {
+      stage.commit()
+    } catch (error) {
+      return discard('failed', `could not publish the merge: ${errorText(error)}`)
+    }
+    return { outcome: 'written', path }
   } finally {
     try {
-      closeSync(fd)
+      stage.discard()
     } catch {
-      // the bytes are written; a failed close is not a failed publish
+      // Preserve the original failure.
     }
   }
-  seams.beforePublish?.()
-  // ⛔ **The last look before the rename** (see the module note on why there is no lock). Codex
-  // appends its own trust entries to this file whenever it likes, and renaming our merge over an
-  // appended entry would delete exactly the thing 312 measured us not deleting. Two syscalls apart
-  // is not zero, and the docblock says so rather than claiming exclusion we do not have.
-  let now: string | null
-  try {
-    now = readFileSync(path, 'utf8')
-  } catch (error) {
-    if (!isAbsent(error)) {
-      return discard('failed', `config.toml stopped being readable: ${errorText(error)}`)
-    }
-    now = null
-  }
-  if (now !== expected) {
-    return discard(
-      'raced',
-      'config.toml changed between the read and the write; the next launch will retry',
-    )
-  }
-  try {
-    renameSync(staged, path)
-  } catch (error) {
-    return discard('failed', `could not publish the merge: ${errorText(error)}`)
-  }
-  return { outcome: 'written', path }
 }
 
 function isAbsent(error: unknown): boolean {

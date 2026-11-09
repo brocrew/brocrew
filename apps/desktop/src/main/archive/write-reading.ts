@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { writeAtomically } from '@brobot2/runtime/atomic-write'
+import { mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { MAX_READING_BYTES } from '../../shared/runtime-ipc'
 
@@ -58,6 +59,6 @@ export async function writeReadingExport(path: string, body: string): Promise<Re
   // ⚠️ **The directory is made here rather than assumed**, which is `writeBundleExport`'s own
   // posture: `exports/` exists on every install that has ever exported and on no other.
   await mkdir(dirname(path), { recursive: true })
-  await writeFile(path, body, 'utf8')
+  await writeAtomically(path, body)
   return { ok: true, written: { path, bytes } }
 }

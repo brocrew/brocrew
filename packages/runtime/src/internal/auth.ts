@@ -1,22 +1,19 @@
+import { writeAtomicallySync } from '../atomic-write'
 import { execFile, execFileSync } from 'node:child_process'
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import {
   type BigIntStats,
   type Stats,
   closeSync,
   constants as fsConstants,
   existsSync,
-  linkSync,
   lstatSync,
   fstatSync,
   openSync,
   readFileSync,
   realpathSync,
-  renameSync,
-  rmSync,
   statSync,
   unlinkSync,
-  writeSync,
 } from 'node:fs'
 import { lstat, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -1073,26 +1070,10 @@ async function provisionCodexAuthLocked(
         if (transientSetupFailureOf(error) !== null) throw error
         throw new AuthUnavailableError('codex', `personal Codex auth.json not found at ${source}`)
       }
-
-      // Unique, unguessable temp created with O_CREAT|O_EXCL|O_WRONLY|O_NOFOLLOW: a
-      // pre-existing temp OR a symlink at that path makes the create FAIL (ELOOP/EEXIST)
-      // instead of redirecting the credential bytes to another file.
-      const tmp = join(providerHome, `.auth.json.tmp-${randomBytes(12).toString('hex')}`)
-      const flags =
-        fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW
       // ⛔ **Immediately before the bytes exist anywhere**, not only before the lock (293 §1). This
       // is the last instruction that can still refuse; after it a credential is on some disk.
       ancestry?.verify()
-      const fd = openSync(tmp, flags, 0o600)
-      try {
-        writeSync(fd, data)
-        // No-clobber atomic install: hard-link the temp to the dest; `link` fails EEXIST
-        // if a dest appeared concurrently rather than overwriting it.
-        linkSync(tmp, dest)
-      } finally {
-        closeSync(fd)
-        rmSync(tmp, { force: true }) // dest keeps the inode alive
-      }
+      writeAtomicallySync(dest, data, { exclusive: true })
     },
     { verify: ancestry?.verify },
   )
@@ -1174,23 +1155,8 @@ export async function replaceARefusedCodexCopy(
           }
         }
         if (fresh === null) return 'not-tried'
-        const tmp = join(providerHome, `.auth.json.tmp-${randomBytes(12).toString('hex')}`)
-        const flags =
-          fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW
         ancestry.verify()
-        const fd = openSync(tmp, flags, 0o600)
-        try {
-          try {
-            writeSync(fd, fresh.bytes)
-          } finally {
-            closeSync(fd)
-          }
-
-          renameSync(tmp, dest)
-        } catch (error) {
-          rmSync(tmp, { force: true })
-          throw error
-        }
+        writeAtomicallySync(dest, fresh.bytes)
         return fresh.from
       },
       { verify: ancestry.verify },
@@ -1293,22 +1259,7 @@ export async function reprovisionCodexAuth(
     const existing = destStat?.isFile() ? readOrNull(dest) : null
     if (existing && existing.equals(data)) return 'unchanged'
 
-    const tmp = join(providerHome, `.auth.json.tmp-${randomBytes(12).toString('hex')}`)
-    const flags =
-      fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW
-    const fd = openSync(tmp, flags, 0o600)
-    try {
-      try {
-        writeSync(fd, data)
-      } finally {
-        closeSync(fd) // closed on the throwing path too — no descriptor outlives this block
-      }
-
-      renameSync(tmp, dest) // atomic REPLACE — the one difference from the copy-once path
-    } catch (error) {
-      rmSync(tmp, { force: true }) // a failed install leaves no half-written credential behind
-      throw error
-    }
+    writeAtomicallySync(dest, data)
     return 'replaced'
   })
 }

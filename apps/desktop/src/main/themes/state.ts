@@ -1,8 +1,7 @@
-import { randomUUID } from 'node:crypto'
 import type { Stats } from 'node:fs'
-import { lstat, open, realpath, rename, rm } from 'node:fs/promises'
+import { lstat, realpath, rename } from 'node:fs/promises'
 import { join } from 'node:path'
-import { errorCode, retrying } from '../recovery/files'
+import { errorCode, nodeFs, retrying, writeAtomically } from '../recovery/files'
 import {
   readThemeFile,
   THEME_ID,
@@ -138,36 +137,17 @@ export async function writeWorkspaceFile(
   if (!root) throw new Error('unavailable workspace state folder')
   const owned = await lstat(root)
   const target = join(root, name)
-  const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`
-  let handle: Awaited<ReturnType<typeof open>> | undefined
-  let temporaryIdentity: Awaited<ReturnType<typeof lstat>> | undefined
-  try {
-    handle = await open(temporary, 'wx', 0o600)
-    temporaryIdentity = await handle.stat()
-    await handle.writeFile(text)
-    await handle.sync()
-    await handle.close()
-    handle = undefined
-    const current = await lstat(root)
-    if (
-      (await themeDirectory(userData)) !== root ||
-      current.dev !== owned.dev ||
-      current.ino !== owned.ino
-    )
-      throw new Error('changed workspace state folder')
-    // A file another program holds for a moment (antivirus, an indexer) is tried again.
-    await retrying(() => files.rename(temporary, target))
-  } finally {
-    await handle?.close().catch(() => undefined)
-    const remaining = await lstat(temporary).catch(() => null)
-    if (
-      temporaryIdentity &&
-      remaining &&
-      !remaining.isSymbolicLink() &&
-      remaining.dev === temporaryIdentity.dev &&
-      remaining.ino === temporaryIdentity.ino
-    ) {
-      await rm(temporary, { force: true }).catch(() => undefined)
-    }
-  }
+  await writeAtomically(target, text, {
+    ...nodeFs,
+    rename: async (from, to) => {
+      const current = await lstat(root)
+      if (
+        (await themeDirectory(userData)) !== root ||
+        current.dev !== owned.dev ||
+        current.ino !== owned.ino
+      )
+        throw new Error('changed workspace state folder')
+      await files.rename(from, to)
+    },
+  })
 }

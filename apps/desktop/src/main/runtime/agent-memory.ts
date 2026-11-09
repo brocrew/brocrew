@@ -1,18 +1,12 @@
+import { stageAtomicWriteSync } from '@brobot2/runtime/atomic-write'
 import {
-  closeSync,
   existsSync,
-  fchmodSync,
-  fsyncSync,
-  linkSync,
   lstatSync,
   readdirSync,
-  renameSync,
   statSync,
   unlinkSync,
-  writeFileSync,
 } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { aStagingName, createFreshFile } from '@brobot2/runtime'
 import {
   captureMethodFileGuard,
   readKnowledgeFileCapture,
@@ -418,11 +412,7 @@ export interface MemoryWriteSeams {
   readonly beforeStagePublishOpen?: (stage: string) => void
 }
 
-/**
- * A correction's staging filename: `.<entry>.brobot-<24 hex digits>` ({@link aStagingName}), or
- * `.<entry>.brobot-<pid>-<n>`, as builds before random names left them.
- */
-const STAGED = /^\..+\.brobot-(?:[0-9a-f]{24}|\d+-\d+)$/
+const STAGED = /^(?:\..+\.brobot-(?:[0-9a-f]{24}|\d+-\d+)|.+\.[0-9a-f]{12}\.tmp)$/
 
 /** The staged corrections this process is writing now. */
 const writing = new Set<string>()
@@ -435,11 +425,6 @@ export interface KnowledgeFileStage {
   discard(): void
 }
 
-/**
- * Prepare bounded exact bytes beside the destination. This internal
- * helper grants no path authority: main derives the destination and supplies its intent guard.
- * An absent destination is installed exclusively; replacing a file replaces only its named entry.
- */
 export async function stageKnowledgeFile(
   path: string,
   bytes: Buffer,
@@ -458,27 +443,10 @@ export async function stageKnowledgeFile(
     throw new Error('The knowledge destination is outside the managed root')
   check()
   const folder = dirname(destination)
-  const staged = aStagingName(join(folder, `.${basename(destination)}`))
   seams.beforeStageCreate?.(folder)
-  const fd = createFreshFile(staged)
+  const stage = stageAtomicWriteSync(destination, contents, mode)
+  const staged = stage.temporary
   writing.add(staged)
-  try {
-    try {
-      writeFileSync(fd, contents)
-      fchmodSync(fd, mode)
-      fsyncSync(fd)
-    } finally {
-      closeSync(fd)
-    }
-  } catch (error) {
-    writing.delete(staged)
-    try {
-      unlinkSync(staged)
-    } catch {
-      /* Preserve the write error. */
-    }
-    throw new Error(`${path}: ${String(error)}`, { cause: error })
-  }
   let active = true
   return {
     install(replace, guard) {
@@ -487,11 +455,7 @@ export async function stageKnowledgeFile(
       guard()
       seams.beforeStagePublishOpen?.(staged)
       guard()
-      if (replace) renameSync(staged, destination)
-      else {
-        linkSync(staged, destination)
-        unlinkSync(staged)
-      }
+      stage.commit(!replace)
       active = false
       writing.delete(staged)
     },
@@ -500,7 +464,7 @@ export async function stageKnowledgeFile(
       active = false
       writing.delete(staged)
       try {
-        unlinkSync(staged)
+        stage.discard()
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
           console.warn(`${staged}: ${String(error)}`)

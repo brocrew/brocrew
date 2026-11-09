@@ -306,7 +306,7 @@ describe('the two gates, merged in place (314 §1)', () => {
       ensureCodexMemoryConfig(join(home, 'nope')) // a home that is not there
       writeFileSync(config(), CODEX_OWN)
       ensureCodexMemoryConfig(home)
-      expect(readdirSync(home).filter((name) => name.includes('.brobot-'))).toEqual([])
+      expect(readdirSync(home).filter((name) => name.endsWith('.tmp'))).toEqual([])
     })
 
     it('🔴 a config that changed under us is NOT clobbered — the write is abandoned', () => {
@@ -320,7 +320,7 @@ describe('the two gates, merged in place (314 §1)', () => {
       })
       expect(result.outcome).toBe('raced')
       expect(readFileSync(config(), 'utf8')).toBe(appended)
-      expect(readdirSync(home).filter((name) => name.includes('.brobot-'))).toEqual([])
+      expect(readdirSync(home).filter((name) => name.endsWith('.tmp'))).toEqual([])
       // …and the next launch simply does it, which is what makes abandoning safe.
       expect(ensureCodexMemoryConfig(home).outcome).toBe('written')
       expect(readFileSync(config(), 'utf8')).toContain('/Users/someone/dev/other')

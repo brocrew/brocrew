@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto'
-import { linkSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { writeAtomicallySync } from '@brobot2/runtime/atomic-write'
+import { mkdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   claimPackagedWorkspace,
@@ -75,19 +75,15 @@ export function workspaceRouting(
     const legacy = readRoutingFile(legacyPath)
     if (legacy) {
       entries(legacy.value, legacyPath)
-      const temporary = `${listFile}.${process.pid}.${randomUUID()}.seed`
       try {
         mkdirSync(root, { recursive: true })
-        writeFileSync(temporary, legacy.text, { flag: 'wx', mode: 0o600 })
         try {
-          linkSync(temporary, listFile)
+          writeAtomicallySync(listFile, legacy.text, { exclusive: true })
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
         }
       } catch (error) {
         return routingFailure('list-seed-failed', listFile, legacyPath, error)
-      } finally {
-        rmSync(temporary, { force: true })
       }
       list = readRoutingFile(listFile)
     }

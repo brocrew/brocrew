@@ -1,17 +1,15 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { writeAtomicallySync } from '@brobot2/runtime/atomic-write'
+import { createHash } from 'node:crypto'
 import {
   closeSync,
   constants,
   fstatSync,
-  linkSync,
   mkdirSync,
   openSync,
   readSync,
   readdirSync,
   realpathSync,
-  rmSync,
   statSync,
-  writeFileSync,
 } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 
@@ -227,19 +225,15 @@ export function claimPackagedWorkspace(appData: string, folder: string): void {
   if (!routingPath(path)) return routingFailure('owner-path-invalid', root, path)
   const file = join(root, `${ownerKey(path)}.json`)
   if (readRoutingFile(file)) return
-  const temporary = `${file}.${randomUUID()}.tmp`
   try {
-    writeFileSync(temporary, JSON.stringify({ version: 1, path }), { flag: 'wx', mode: 0o600 })
     try {
-      linkSync(temporary, file)
+      writeAtomicallySync(file, JSON.stringify({ version: 1, path }), { exclusive: true })
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
     }
   } catch (error) {
     if (error instanceof WorkspaceRoutingError) throw error
     return routingFailure('owner-write-failed', file, path, error)
-  } finally {
-    rmSync(temporary, { force: true })
   }
 }
 

@@ -4,12 +4,9 @@ import {
   fstatSync,
   openSync,
   readSync,
-  renameSync,
-  unlinkSync,
-  writeSync,
 } from 'node:fs'
 import { join } from 'node:path'
-import { aStagingName, createFreshFile } from '../internal/provider-home'
+import { writeAtomicallySync } from '../atomic-write'
 
 /**
  * 🔴 **736 · R95 — Codex's *Always allow* on an MCP tool, KEPT in the conversation's provider home.**
@@ -163,21 +160,5 @@ export function forgetToolApproval(providerHome: string, approval: KeptToolAppro
 
 /** The whole list, staged and renamed over the file — see {@link keepToolApproval}. */
 function writeKept(file: string, kept: readonly KeptToolApproval[]): void {
-  const staged = aStagingName(file)
-  const fd = createFreshFile(staged)
-  try {
-    try {
-      writeSync(fd, `${JSON.stringify({ always: kept }, null, 2)}\n`)
-    } finally {
-      closeSync(fd)
-    }
-    renameSync(staged, file)
-  } catch (error) {
-    try {
-      unlinkSync(staged)
-    } catch {
-      // best effort — the reason below is what matters
-    }
-    throw error
-  }
+  writeAtomicallySync(file, `${JSON.stringify({ always: kept }, null, 2)}\n`)
 }

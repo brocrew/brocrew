@@ -1,4 +1,5 @@
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { writeAtomicallySync } from '@brobot2/runtime/atomic-write'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 /**
@@ -91,14 +92,7 @@ export function readKeptAccounts(file: string): KeptAccounts {
 /** Write the account, replacing what the file held; beside it first, then renamed. */
 export function writeKeptAccounts(file: string, accounts: KeptAccounts): void {
   mkdirSync(dirname(file), { recursive: true })
-  const temporary = `${file}.${String(process.pid)}.tmp`
-  try {
-    writeFileSync(temporary, `${JSON.stringify(accounts, null, 2)}\n`, { mode: 0o600 })
-    renameSync(temporary, file)
-  } catch (error) {
-    rmSync(temporary, { force: true })
-    throw error
-  }
+  writeAtomicallySync(file, `${JSON.stringify(accounts, null, 2)}\n`)
 }
 
 function aKnownAccount(said: unknown): KnownAccount | null {
