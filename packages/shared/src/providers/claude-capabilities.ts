@@ -12,7 +12,7 @@ import type { ProviderCapabilities } from '../provider-capabilities'
  */
 export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
   mark: { state: 'available', kind: 'letter' },
-  /** `internal/claude-login-renewal.ts` renews an expired login with its one-message request. */
+  /** `claude/login-renewal.ts` renews an expired login with its one-message request. */
   loginRenewalMessage: { state: 'available' },
   /**
    * Wired through `Options.permissionMode: 'plan'` in `ClaudeRuntime.optionsFor`, where it also
@@ -156,7 +156,7 @@ export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
     reason:
       'Claude sessions run on the API key saved under “API key” on the Claude card in Providers, or, with none saved, on your machine login directly — there is no separate sign-in here to renew. Without a saved key, switching profiles on your machine is picked up the next time you start a conversation.',
     checkedAgainst:
-      'Claude Agent SDK 0.3.281 (exact-pinned): `Query` declares `accountInfo()` (sdk.d.ts:2971) and no login/authenticate verb anywhere in the declaration file; `forceLoginMethod`/`forceLoginOrgUUID` are settings the CLI reads, not methods we can call. And `internal/auth.ts` copies no Claude credential into the profile home (015), so there is none to renew.',
+      'Claude Agent SDK 0.3.281 (exact-pinned): `Query` declares `accountInfo()` (sdk.d.ts:2971) and no login/authenticate verb anywhere in the declaration file; `forceLoginMethod`/`forceLoginOrgUUID` are settings the CLI reads, not methods we can call. And `claude/auth.ts` copies no Claude credential into the profile home (015), so there is none to renew.',
   },
   /**
    * `absent` for the second half of the same fact, and it needs saying separately: there is nothing
@@ -175,7 +175,7 @@ export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
     reason:
       'There is nothing to copy — with no API key saved, Claude sessions read your machine login directly. If it has expired, starting a Claude conversation renews it.',
     checkedAgainst:
-      '`internal/auth.ts` (015): `provisionCodexAuth` copies ONLY the Codex `auth.json`; the Claude bridge is `claudeKeychainTokenProvider`, which re-reads the macOS Keychain on every launch and persists nothing. Verified on this machine with `security find-generic-password`: exactly one `Claude Code-credentials` item, machine-wide, and no Claude credential file in any profile folder we provision.',
+      '`codex/auth.ts` (015): `provisionCodexAuth` copies ONLY the Codex `auth.json`; the Claude bridge is `claudeKeychainTokenProvider`, which re-reads the macOS Keychain on every launch and persists nothing. Verified on this machine with `security find-generic-password`: exactly one `Claude Code-credentials` item, machine-wide, and no Claude credential file in any profile folder we provision.',
   },
   /**
    * **`absent`, and here that is the reassurance rather than the limitation** (329).

@@ -10,6 +10,11 @@ import { transcripts } from './transcripts'
 import { discovery } from './discovery'
 import {
   AuthUnavailableError,
+  type AgentRuntime,
+  type AuthHealth,
+  type AuthState,
+} from '@brobot2/runtime'
+import {
   claudeAuthHealthAsync,
   whyNoClaudeLogin,
   claudeKeychainTokenProvider,
@@ -20,12 +25,9 @@ import {
   claudeKeychainTokenProviderAsync,
   claudeLoginState,
   claudeLoginStateWithAKey,
-  type AgentRuntime,
-  type AuthHealth,
-  type AuthState,
   type ClaudeLoginRenewal,
-} from '@brobot2/runtime'
-import { ClaudeRuntime } from '@brobot2/runtime/claude'
+  ClaudeRuntime,
+} from '@brobot2/runtime/claude'
 import { ApiKeyUnreadableError } from '../api-key-error'
 import { prepareStateHome } from '../home'
 import type { LoginRenewalOperations, LoginRenewalOutcome } from '../auth-types'

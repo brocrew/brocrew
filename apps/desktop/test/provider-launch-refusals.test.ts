@@ -1,10 +1,10 @@
 import { aLaunchThatDidNotStart } from '../src/main/runtime/agent-tools'
 import { describe, expect, it } from 'vitest'
+import { AuthUnavailableError } from '@brobot2/runtime'
 import {
-  AuthUnavailableError,
   CodexSettingsUnusableError,
   NoCodexSignInOnThisComputerError,
-} from '@brobot2/runtime'
+} from '@brobot2/runtime/codex'
 import { ClaudeUnavailableError } from '@brobot2/runtime/claude'
 import { providerAuthPolicies } from '../src/main/providers/auth-definitions'
 import { CodexUnavailableError } from '../src/main/providers/codex/program'

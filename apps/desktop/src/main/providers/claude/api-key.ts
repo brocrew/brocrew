@@ -9,7 +9,7 @@ const KEY_CHECK = {
   },
   windowsLoginNeedsFile: true,
 }
-import { claudeCredentialsFileReader, parseClaudeOAuthToken } from '@brobot2/runtime'
+import { claudeCredentialsFileReader, parseClaudeOAuthToken } from '@brobot2/runtime/claude'
 import type { ApiKeyCheck } from '../../../shared/runtime-ipc'
 import { bodyOf, checkKeyModelList, KEY_CHECK_TIMEOUT_MS, refusedAt, succeeded } from '../key-check'
 

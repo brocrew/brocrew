@@ -3,12 +3,8 @@ import { mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { ClaudeRuntime } from '@brobot2/runtime/claude'
-import {
-  claudeKeychainTokenProvider,
-  provisionProviderHome,
-  type AgentRuntime,
-} from '@brobot2/runtime'
+import { ClaudeRuntime, claudeKeychainTokenProvider } from '@brobot2/runtime/claude'
+import { provisionProviderHome, type AgentRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

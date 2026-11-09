@@ -78,3 +78,20 @@ export { CODEX_THREAD_START_CLAIMS, CODEX_CONFIG_LAYOUT } from './codex/configur
 export { CODEX_TOOL_NAMING } from './codex/tool-naming'
 
 export { nativeAccountTag, isNativeAccountTag } from './codex/account-identity'
+
+export {
+  CodexSettingsUnusableError,
+  NoCodexSignInOnThisComputerError,
+  CodexRefusedItsSignInError,
+  codexCopyIdentityIn,
+  isTheSameCodexCopy,
+  type CodexCopyIdentity,
+  provisionCodexAuth,
+  replaceARefusedCodexCopy,
+  reprovisionCodexAuth,
+  codexAuthHealth,
+  assertCodexSqliteHomeContained,
+  personalCodexAuthPath,
+  codexAccountIn,
+  type CodexCopySource,
+} from './codex/auth'

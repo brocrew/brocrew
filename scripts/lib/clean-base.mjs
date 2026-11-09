@@ -898,7 +898,7 @@ export function planCleanBase(anchor, { dropExports = false, keepAuth = false } 
         // ⛔ **What the flag really costs, said where a person reads it** (352 §2.3/§2.4). The
         // credential and the profile NAME are the same directory, so a keep cannot be scoped to one
         // of them — and `provisionCodexAuth` copies once and never overwrites
-        // (`internal/auth.ts:316`), so a copy the provider has already retired is not repaired by
+        // (`codex/auth.ts`), so a copy the provider has already retired is not repaired by
         // starting another conversation. Only the launcher's own sign-in replaces it.
         keeps.push({
           rel: `${HOMES_DIRNAME}/*/*/codex/${CODEX_AUTH} — and every profile directory holding one`,

@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { homedir, userInfo } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { personalCodexAuthPath } from '@brobot2/runtime'
+import { personalCodexAuthPath } from '@brobot2/runtime/codex'
 
 /**
  * # A test sees no real home

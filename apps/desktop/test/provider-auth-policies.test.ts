@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { CodexRefusedItsSignInError } from '@brobot2/runtime'
+import { CodexRefusedItsSignInError } from '@brobot2/runtime/codex'
 import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
 import * as registry from '../src/main/providers'
 

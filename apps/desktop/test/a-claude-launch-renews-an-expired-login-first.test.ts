@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import {
-  AuthUnavailableError,
-  claudeLoginNotRenewed,
-  type ClaudeLoginRenewal,
-} from '@brobot2/runtime'
+import { AuthUnavailableError } from '@brobot2/runtime'
+import { claudeLoginNotRenewed, type ClaudeLoginRenewal } from '@brobot2/runtime/claude'
 import { prepareOnTheLogin } from '../src/main/providers/claude/index'
 
 /**

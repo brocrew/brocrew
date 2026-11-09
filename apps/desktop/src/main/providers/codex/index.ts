@@ -10,17 +10,13 @@ import { transcripts } from './transcripts'
 import { discovery } from './discovery'
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { AuthUnavailableError, provisionProviderHome, type AgentRuntime } from '@brobot2/runtime'
 import {
-  AuthUnavailableError,
   codexAuthHealth,
   personalCodexAuthPath,
   provisionCodexAuth,
   replaceARefusedCodexCopy,
-  provisionProviderHome,
   reprovisionCodexAuth,
-  type AgentRuntime,
-} from '@brobot2/runtime'
-import {
   CodexRuntime,
   createSpawnTransportFactory,
   ensureCodexMemoryConfig,
@@ -239,7 +235,7 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
       const managedRoot = paths.managedRoot
       return await replaceARefusedCodexCopy(home, {
         managedRoot,
-        refused: refused as import('@brobot2/runtime').CodexCopyIdentity,
+        refused: refused as import('@brobot2/runtime/codex').CodexCopyIdentity,
         stillWanted,
         candidates: [
           {

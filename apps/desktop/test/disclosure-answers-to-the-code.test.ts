@@ -170,7 +170,8 @@ describe('the provider disclosure answers to the adapter (308)', () => {
 
   it('⚠️ the Codex block names the files the code names', () => {
     const owners =
-      read('packages/runtime/src/internal/auth.ts') +
+      read('packages/runtime/src/claude/auth.ts') +
+      read('packages/runtime/src/codex/auth.ts') +
       read('packages/runtime/src/codex/stale-permission-config.ts') +
       read('packages/runtime/src/codex/kept-tool-approvals.ts') +
       read('packages/runtime/src/codex/codex-runtime.ts')

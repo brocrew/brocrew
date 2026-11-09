@@ -2,7 +2,7 @@ import {
   claudeLoginRenewer,
   defaultKeychainReaderAsync,
   probeClaudeCodeLogin,
-} from '@brobot2/runtime'
+} from '@brobot2/runtime/claude'
 import {
   CLAUDE_CODE_SWITCH,
   LOOK_FOR_THE_INSTALLED_ONE,

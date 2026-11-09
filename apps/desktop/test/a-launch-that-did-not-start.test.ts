@@ -6,11 +6,11 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AuthUnavailableError,
-  CodexSettingsUnusableError,
   FakeLaunchGate,
   FakeProviderSessions,
   FakeRuntime,
 } from '@brobot2/runtime'
+import { CodexSettingsUnusableError } from '@brobot2/runtime/codex'
 import type { AgentToolAnswer } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'

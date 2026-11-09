@@ -7,10 +7,9 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   AuthUnavailableError,
   FakeProviderSessions,
-  claudeCommandIn,
-  type ClaudeLoginRenewal,
   type FakeSessionHandle,
 } from '@brobot2/runtime'
+import { claudeCommandIn, type ClaudeLoginRenewal } from '@brobot2/runtime/claude'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

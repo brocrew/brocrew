@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, vi } from 'vitest'
-import { personalCodexAuthPath } from '@brobot2/runtime'
+import { personalCodexAuthPath } from '@brobot2/runtime/codex'
 
 /** What the fictional home's own Codex sign-in holds: fictional, and recognisable in a diff. */
 const THE_FICTIONAL_HOMES_SIGN_IN = '{"tokens":{"access_token":"FICTIONAL-HOME-DECOY"}}'

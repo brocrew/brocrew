@@ -1,7 +1,6 @@
 import { refusalWords } from './refusal-words'
 import { keyPolicy } from './api-key'
-import { CLAUDE_LOGIN_RENEWED, claudeSetup } from '@brobot2/runtime'
-import { ClaudeUnavailableError } from '@brobot2/runtime/claude'
+import { CLAUDE_LOGIN_RENEWED, claudeSetup, ClaudeUnavailableError } from '@brobot2/runtime/claude'
 import type { ProviderAuthPolicy } from '../auth-policy'
 
 export const authPolicy: ProviderAuthPolicy = {

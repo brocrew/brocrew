@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { NoCodexSignInOnThisComputerError, personalCodexAuthPath } from '@brobot2/runtime'
+import { NoCodexSignInOnThisComputerError, personalCodexAuthPath } from '@brobot2/runtime/codex'
 import {
   DEFAULT_PROFILE_ID,
   deriveProviderHome,

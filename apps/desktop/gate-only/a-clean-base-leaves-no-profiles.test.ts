@@ -12,7 +12,7 @@ import {
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
-import { provisionCodexAuth } from '@brobot2/runtime'
+import { provisionCodexAuth } from '@brobot2/runtime/codex'
 import {
   DEFAULT_PROFILE_ID,
   HOME_FOLDER,
@@ -296,7 +296,7 @@ describe('a clean base that leaves no profiles standing (352)', () => {
   /**
    * 🔴 **The reason the default had to flip, stated as the mechanism rather than the symptom.**
    *
-   * `provisionCodexAuth` copies once and never overwrites (`internal/auth.ts:316`), so it
+   * `provisionCodexAuth` copies once and never overwrites (`codex/auth.ts`), so it
    * preserves a copy that refreshed independently. Starting another conversation cannot
    * repair a stale copy, despite the retry advice in the rejection notice
    * (`renderer/src/lib/transcript.ts:1354`).

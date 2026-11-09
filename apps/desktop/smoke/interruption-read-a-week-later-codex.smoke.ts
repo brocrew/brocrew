@@ -9,8 +9,9 @@ import {
   type CodexIncoming,
   type CodexTransport,
   type TransportFactory,
+  codexAuthHealth,
 } from '@brobot2/runtime/codex'
-import { codexAuthHealth, type AgentRuntime } from '@brobot2/runtime'
+import { type AgentRuntime } from '@brobot2/runtime'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'

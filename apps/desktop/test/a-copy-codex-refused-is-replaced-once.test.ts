@@ -9,10 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AuthUnavailableError,
-  CodexRefusedItsSignInError,
-  codexCopyIdentityIn,
   withProviderHomeLock,
-  type CodexCopyIdentity,
   FakeRuntime,
   type FakeSessionHandle,
   type ResumeOptions,
@@ -20,6 +17,11 @@ import {
   type SessionRef,
   type StartOptions,
 } from '@brobot2/runtime'
+import {
+  CodexRefusedItsSignInError,
+  codexCopyIdentityIn,
+  type CodexCopyIdentity,
+} from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
