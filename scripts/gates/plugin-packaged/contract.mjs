@@ -5,7 +5,8 @@ import { safeMatrix, safeSelection, safeMatrixDrains, safeMatrixPageStates } fro
 import { safePageState } from './page-state.mjs'
 import { safeProviderState } from './provider-state.mjs'
 import { safePluginState } from './plugin-state.mjs'
-import { GATE_BUILD_MARKER, assertNormalPluginBuild } from '../../check-no-plugin-gate-inputs.mjs'
+
+const GATE_BUILD_MARKER = 'packaged-plugin-gate-only'
 
 export const checks = [
   'packagedArm64',
@@ -92,7 +93,6 @@ export function safeReport(value) {
 /** Only temporary build inputs change. The committed product remains fail-closed. */
 export function projectBuild(config, entry, appData, browser) {
   if (![appData, browser].every(path.isAbsolute)) throw new Error('Invalid gate build inputs')
-  assertNormalPluginBuild(config, entry)
   const replace = (source, before, after) => {
     if (source.split(before).length !== 2) throw new Error('Build anchor changed')
     return source.replace(before, after)

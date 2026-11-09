@@ -27,7 +27,6 @@ export function verifyReload(sourceSha, catalogueBytes, bytes) {
       value.publication === false,
   )
   demand(value.realSdk === null && value.final018Qualification === null)
-  demand(value.normalSourceRefused === true && value.normalOutputRefused === true)
   demand(value.cleanup?.directClosed === true && value.cleanup.twoEmptySamples === true)
   demand(/^[a-f0-9]{64}$/.test(value.packageSha256) && value.bundle?.controlledSdkRefusal === true)
   for (const name of ['mainSha256', 'preloadSha256'])

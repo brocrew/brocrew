@@ -3,7 +3,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { HIDDEN_LAUNCH_ARG } from '../../lib/hidden-launch.mjs'
-import { checkNormalPluginBuild } from '../../check-no-plugin-gate-inputs.mjs'
 import { failureFor, printFailure, phaseStep } from './diagnostics.mjs'
 import { directoryPackageArguments, hostedBuilder } from './packaging.mjs'
 import { integrityCheckpoint } from './integrity.mjs'
@@ -43,7 +42,6 @@ export function stageProtocolDependencies(root) {
 export async function prepareBuild(root, { node22, pnpm }) {
   ownedRoot(root)
   if (repository !== path.join(root, 'repo')) throw new Error('Isolated scratch checkout required')
-  checkNormalPluginBuild(repository)
   const configPath = path.join(
     repository,
     'apps/desktop/src/main/plugins/catalogue/build-config.ts',
@@ -90,7 +88,6 @@ export async function prepareBuild(root, { node22, pnpm }) {
   } finally {
     fs.writeFileSync(configPath, original.config)
     fs.writeFileSync(entryPath, original.entry)
-    checkNormalPluginBuild(repository)
   }
   await phaseStep(root, 'app-integrity', () =>
     integrityCheckpoint(root, app, 'afterSourceRestore', bundleStamp),

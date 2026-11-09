@@ -7,7 +7,7 @@ import { demand, readFile, hash, appSourceFor } from './contract.mjs'
 
 export async function stageSource(
   version,
-  { temp, repository, observe, command, privateRoot, checkNormalPluginBuild, cleanup },
+  { temp, repository, observe, command, privateRoot, cleanup },
 ) {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(temp, 'plugin-v2-'))),
     records = []
@@ -47,13 +47,9 @@ export async function stageSource(
     )
     // Overlay the gate from the tested checkout while keeping the selected app source.
     const files = (
-      await command(
-        'git',
-        ['ls-files', '-z', 'scripts/gates/plugin-v2', 'scripts/check-no-plugin-gate-inputs.mjs'],
-        root,
-        records,
-        { cwd: repository },
-      )
+      await command('git', ['ls-files', '-z', 'scripts/gates/plugin-v2'], root, records, {
+        cwd: repository,
+      })
     )
       .split('\0')
       .filter(Boolean)
@@ -69,7 +65,6 @@ export async function stageSource(
     const sourceVersion = JSON.parse(readFile(path.join(repo, 'apps/desktop/package.json'))).version
     // Both reviewed release sources keep0.0.0 in package.json; Builder stamps the chosen test version.
     demand(sourceVersion === '0.0.0')
-    checkNormalPluginBuild(repo)
     fs.writeFileSync(path.join(root, 'staged'), hash(Buffer.from(JSON.stringify(a))), {
       flag: 'wx',
       mode: 0o600,

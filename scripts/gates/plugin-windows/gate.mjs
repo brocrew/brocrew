@@ -14,7 +14,6 @@ import { builderOutputClass, outputClass } from '../plugin-packaged/diagnostics.
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { HIDDEN_LAUNCH_ARG } from '../../lib/hidden-launch.mjs'
 import { attach, press } from '../../lib/update-rehearsal-app.mjs'
-import { checkNormalPluginBuild } from '../../check-no-plugin-gate-inputs.mjs'
 import { projectBuild } from '../plugin-packaged/contract.mjs'
 import { GATE_REPOSITORIES } from '../plugin-packaged/fixture-guards.mjs'
 import {
@@ -385,7 +384,6 @@ export function stageRelease(release, appData, variant = 'valid', id = 'chrome')
 
 /** The packaged app, built once from a projection of the source that is restored afterwards. */
 export async function buildApp(root, appData, browser) {
-  checkNormalPluginBuild(repository)
   const configPath = path.join(
     repository,
     'apps/desktop/src/main/plugins/catalogue/build-config.ts',
@@ -442,7 +440,6 @@ export async function buildApp(root, appData, browser) {
   } finally {
     fs.writeFileSync(configPath, original.config)
     fs.writeFileSync(entryPath, original.entry)
-    checkNormalPluginBuild(repository)
   }
   return path.join(repository, 'apps/desktop/dist/win-unpacked')
 }

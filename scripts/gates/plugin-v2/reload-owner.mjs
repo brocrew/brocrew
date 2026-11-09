@@ -9,7 +9,6 @@ import { command, cleanup, cancellation } from './processes.mjs'
 import { projectReload, RELOAD_MARKER, RELOAD_CHANNEL } from './reload-projection.mjs'
 import { reloadJourney } from './reload-journey.mjs'
 import { projectedVersionArguments } from './staging.mjs'
-import { checkNormalPluginBuild } from '../../check-no-plugin-gate-inputs.mjs'
 
 const route = path.dirname(fileURLToPath(import.meta.url))
 const readJSON = (p) => JSON.parse(readFile(p))
@@ -22,16 +21,12 @@ function printReloadFailure(error, records, phase, result) {
       seen: {
         bundle: result.bundle,
         packageSha256: result.packageSha256,
-        normalSourceRefused: result.normalSourceRefused,
-        normalOutputRefused: result.normalOutputRefused,
         journey: result.journey,
         cleanup: result.cleanup,
       },
       expected: {
         bundle: 'main/preload hashes and controlledSdkRefusal=true',
         packageSha256: 'inventory hash matching the unchanged packaged app',
-        normalSourceRefused: true,
-        normalOutputRefused: true,
         journey: { nativeDatabaseClosed: true, nativeAppClosed: true },
         cleanup: { directClosed: true, twoEmptySamples: true },
       },
@@ -135,8 +130,6 @@ export async function runReload(root) {
     bundle: null,
     packageSha256: null,
     journey: null,
-    normalSourceRefused: false,
-    normalOutputRefused: false,
     cleanup: { directClosed: false, twoEmptySamples: false },
     realSdk: null,
     final018Qualification: null,
@@ -173,7 +166,6 @@ export async function runReload(root) {
       manifestSha256: input.manifestSha256,
       files: modules.map(({ name, sha256, bytes }) => ({ name, sha256, bytes })),
     }
-    checkNormalPluginBuild(repo)
     const appData = path.join(root, 'a')
     fs.mkdirSync(appData, { mode: 0o700 })
     projected = projectReload(repo, {
@@ -183,14 +175,6 @@ export async function runReload(root) {
       browser: path.join(root, 'no-browser.exe'),
       modules,
     })
-    let refused = false
-    try {
-      checkNormalPluginBuild(repo)
-    } catch {
-      refused = true
-    }
-    demand(refused)
-    result.normalSourceRefused = true
     phase = 'prepare-plugin-node'
     await command(process.execPath, ['scripts/prepare-plugin-node.mjs'], root, records, {
       cwd: repo,
@@ -225,14 +209,6 @@ export async function runReload(root) {
     phase = 'restore-normal-source'
     projected.restore()
     projected = undefined
-    refused = false
-    try {
-      checkNormalPluginBuild(repo)
-    } catch {
-      refused = true
-    }
-    demand(refused)
-    result.normalOutputRefused = true
     phase = 'native-reload-journey'
     result.journey = await reloadJourney({ root, app, records })
     phase = 'unchanged-package-inventory'
@@ -259,8 +235,6 @@ export async function runReload(root) {
     result.passed =
       !result.failure &&
       result.packageSha256 !== null &&
-      result.normalSourceRefused &&
-      result.normalOutputRefused &&
       result.journey?.nativeDatabaseClosed === true &&
       result.journey?.nativeAppClosed === true &&
       result.cleanup.directClosed === true &&

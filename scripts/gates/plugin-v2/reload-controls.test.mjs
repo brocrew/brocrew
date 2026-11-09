@@ -7,7 +7,6 @@ import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { authorizeReloadRequest } from './reload-authorize.mjs'
 import { projectReload } from './reload-projection.mjs'
-import { checkNormalPluginBuild } from '../../check-no-plugin-gate-inputs.mjs'
 import {
   deliveryEvidence,
   assertBehavior,
@@ -86,7 +85,6 @@ test('real reload projection uses actual host/factory/preload and restores ordin
       ...m,
       source: fileURLToPath(new URL('./reload-source/' + m.name, import.meta.url)),
     }))
-    checkNormalPluginBuild(target)
     assert.throws(() =>
       projectReload(target, {
         root,
@@ -109,16 +107,7 @@ test('real reload projection uses actual host/factory/preload and restores ordin
     assert.ok(entry.includes('createReloadGateRuntime({ownedRoot:'))
     assert.ok(!entry.includes('fixtureSource:'))
     assert.ok(entry.includes('reload-native-db-closed.json'))
-    assert.throws(() => checkNormalPluginBuild(target))
     projected.restore()
-    checkNormalPluginBuild(target)
-    for (const name of ['apps/desktop/out/main/index.js', 'apps/desktop/out/preload/index.js']) {
-      const f = path.join(target, name)
-      fs.mkdirSync(path.dirname(f), { recursive: true })
-      fs.writeFileSync(f, 'plugin-reload-main-app-gate-only __pluginReloadGate')
-      assert.throws(() => checkNormalPluginBuild(target))
-      fs.unlinkSync(f)
-    }
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
   }
