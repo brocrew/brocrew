@@ -648,7 +648,6 @@
   "exports|scripts/recovery-real-entry-check.mjs|DEAD_CONTROLS",
   "exports|scripts/recovery-real-entry-check.mjs|DEAD_CONTROL_PREFIXES",
   "exports|scripts/recovery-real-entry-check.mjs|ROWS_DRAWN",
-  "exports|scripts/secret-scan-redaction-check.mjs|checkRedaction",
   "exports|scripts/test/fixtures/a-planted-user-data.mjs|DEAD_PID",
   "exports|scripts/test/hidden-launch.test.mjs|readmeLaunchFaults",
   "exports|scripts/test/hidden-launch.test.mjs|readmeLaunches",

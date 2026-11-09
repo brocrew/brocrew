@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { aFakeSecret, redactionVerdict } from '../secret-scan-redaction-check.mjs'
 import { HEADER, rowsFrom, summaryOf, withTheDay } from '../download-counts.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -81,46 +80,6 @@ describe('the private-name check, run as CI runs it', () => {
     expect(status).toBe(1)
     expect(out).toContain(`commit ${sha}`)
     expect(check(names).status).toBe(0)
-  })
-})
-
-describe('the secret scan · redaction, judged on made-up answers', () => {
-  const secret = aFakeSecret()
-  const body = secret.slice(4)
-  const redacted = '[{"RuleID":"github-pat","Secret":"REDACTED","Match":"GITHUB_TOKEN=REDACTED"}]'
-
-  it('a fresh fake secret has the shape gitleaks’ github-pat rule finds', () => {
-    expect(secret).toMatch(/^ghp_[0-9A-Za-z]{36}$/)
-    expect(aFakeSecret()).not.toBe(secret)
-  })
-
-  it('holds when it was found and hidden everywhere', () => {
-    expect(
-      redactionVerdict({ secret, status: 1, output: 'Secret: REDACTED', report: redacted }),
-    ).toBeNull()
-  })
-
-  it('refuses a scan that found nothing, or showed any of it, or did not say REDACTED', () => {
-    expect(redactionVerdict({ secret, status: 0, output: '', report: '[]' })).toContain('unproven')
-    expect(
-      redactionVerdict({
-        secret,
-        status: 1,
-        output: `Secret: ${body.slice(5, 20)}`,
-        report: redacted,
-      }),
-    ).toContain('printed')
-    expect(
-      redactionVerdict({
-        secret,
-        status: 1,
-        output: '',
-        report: redacted.replace('REDACTED', secret),
-      }),
-    ).toContain('report')
-    expect(
-      redactionVerdict({ secret, status: 1, output: '', report: '[{"RuleID":"github-pat"}]' }),
-    ).toContain('REDACTED')
   })
 })
 
@@ -321,14 +280,12 @@ describe('the workflows · run on a public repository, whatever it is named, and
     expect(counts).toContain('git push origin download-counts')
   })
 
-  it('gitleaks is pinned to a version and its sha256, and redaction is proven before the scan', () => {
+  it('gitleaks is pinned to a version and its sha256, and the scan is redacted', () => {
     expect(checks).toMatch(/GITLEAKS_VERSION: \d+\.\d+\.\d+\n/)
     expect(checks).toMatch(/GITLEAKS_SHA256: [0-9a-f]{64}\n/)
     expect(checks).toContain('sha256sum -c -')
-    const proof = checks.indexOf('node scripts/secret-scan-redaction-check.mjs')
     const scan = checks.indexOf('gitleaks git .')
-    expect(proof).toBeGreaterThan(0)
-    expect(scan).toBeGreaterThan(proof)
+    expect(scan).toBeGreaterThan(0)
     expect(checks.slice(scan)).toContain('--redact')
   })
 

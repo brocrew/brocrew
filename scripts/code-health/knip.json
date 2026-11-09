@@ -51,7 +51,6 @@
         "scripts/recovery-real-entry-check.mjs",
         "scripts/release-check.mjs",
         "scripts/resume-live-smoke.mjs",
-        "scripts/secret-scan-redaction-check.mjs",
         "scripts/test-dom-in-groups.mjs",
         "scripts/test/mac-update-test.test.mjs",
         "scripts/test/upgrade-path.test.mjs",

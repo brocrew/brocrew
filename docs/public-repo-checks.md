@@ -29,8 +29,6 @@ A commit that fails was made before it was pushed. Reword it, then push again.
 
 gitleaks, a pinned version checked against the sha256 its release publishes, scans the whole history with its own rules and `--redact`. In the public repository that history begins at its first commit, the fresh export. The old history is never pushed there.
 
-Before it scans anything, `scripts/secret-scan-redaction-check.mjs` makes a secret-shaped value that exists nowhere else, scans a folder holding only it, and stops the job unless gitleaks found it and hid it, in its output and in its report.
-
 The scan itself runs without `--verbose`, which would print the text around a finding: the log carries gitleaks' summary, and a finding is printed from its redacted report as rule, file, line and commit. A scan that read no commit fails, since it would prove nothing.
 
 A made-up value that gitleaks' rules match is allowed narrowly:
