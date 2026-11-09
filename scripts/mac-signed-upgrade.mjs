@@ -51,7 +51,6 @@ import {
   SCRIPTED_MODEL,
   aScriptedModel,
   saveRehearsalCodexKey,
-  closeExpectedLaunchSetup,
   codexConfigFor,
   theAppsEnvironment,
   connectDevTools,
@@ -266,7 +265,6 @@ async function seedWorkspace(workspace) {
   await mkdir(codexHome, { recursive: true })
   await writeFile(join(codexHome, 'config.toml'), codexConfigFor(model.port))
   let cdp = await launch('a', workspace.port, VERSION_A)
-  workspace.result.setup = await closeExpectedLaunchSetup(cdp)
   await cdp.evaluate(
     'return await window.api.updates.set({checkAutomatically:true,channel:"stable"})',
   )
