@@ -1,9 +1,7 @@
 import { navigationReply } from './helpers/navigation-reply'
 import { z } from 'zod'
-import { writeFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
-import { profileExecutionFile } from '../src/main/profile-execution-file'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 
@@ -196,7 +194,7 @@ describe('parallel worker tools and conversation readings', () => {
     expect(service.structured?.worker).toBeUndefined()
     expect(service.text).not.toContain('Worker:')
     await serviceHost.closeAll()
-    writeFileSync(profileExecutionFile(world.folder), '{')
+    world.loseTheKept()
     const unknown = world.aHost()
     expect(
       unknown.agentCard(a.owner, { ownerId: agentCallerId(caller) }, caller)?.worker,

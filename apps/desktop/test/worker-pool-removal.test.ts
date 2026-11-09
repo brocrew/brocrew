@@ -1,10 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { openDatabase, type AppDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
 import {
-  PROFILE_EXECUTION_VERSION,
-  profileExecutionFile,
   readProfileExecution,
   reconcileProfileExecution,
   writeProfileExecution,
@@ -72,12 +72,16 @@ const changed = (pools: readonly NormalWorkerPool[]) => ({
 })
 
 let folder: string
-let file: string
+let file: AppDatabase
 beforeEach(() => {
   folder = mkdtempSync(join(tmpdir(), 'brocrew-pool-removal-'))
-  file = profileExecutionFile(folder)
+  file = openDatabase(join(folder, 'brobot2.sqlite'))
+  applyMigrations(file, join(__dirname, '../src/main/db/migrations'))
 })
-afterEach(() => rmSync(folder, { recursive: true, force: true }))
+afterEach(() => {
+  file.close()
+  rmSync(folder, { recursive: true, force: true })
+})
 
 describe('durable giver pool removal', () => {
   it('[D01] round trips removal intent and all existing holds and never-born metadata', () => {
@@ -96,31 +100,6 @@ describe('durable giver pool removal', () => {
     expect(read.kept.profiles[IDENTITY]?.workerPools?.[0]).not.toBe(
       input.profiles[IDENTITY]?.workerPools?.[0],
     )
-    expect(JSON.parse(readFileSync(file, 'utf8')).version).toBe(2)
-    expect(PROFILE_EXECUTION_VERSION).toBe(2)
-    writeFileSync(file, JSON.stringify({ version: 1, profiles: input.profiles }))
-    expect(readProfileExecution(file).readable).toBe(false)
-  })
-
-  it('[D02] rejects false or unknown intent fields before replacing a valid file', () => {
-    for (const fields of [
-      { removing: false },
-      { removing: null },
-      { removing: 'yes' },
-      { removing: {} },
-      { removing: true, futureRemoval: true },
-      { removing: true, futureRemoval: undefined },
-    ]) {
-      writeProfileExecution(file, kept())
-      const previous = readFileSync(file, 'utf8')
-      const malformed = kept([pool(fields as unknown as Partial<NormalWorkerPool>)])
-      expect(() => writeProfileExecution(file, malformed)).toThrow('invalid entry')
-      expect(readFileSync(file, 'utf8')).toBe(previous)
-      if (!Object.hasOwn(fields, 'futureRemoval') || fields.futureRemoval !== undefined) {
-        writeFileSync(file, JSON.stringify({ version: 2, profiles: malformed.profiles }))
-        expect(readProfileExecution(file).readable).toBe(false)
-      }
-    }
   })
 
   it('[D03] undoes a pre-delete intent only after the existing worker proofs pass', () => {

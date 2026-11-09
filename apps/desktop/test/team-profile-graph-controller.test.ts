@@ -27,7 +27,6 @@ it('accepts real completion-based expiry after a nonzero build interval', async 
     advanced = false
   const engine = new TeamProfileGraphEngine(
     f.file,
-    f.executionFile,
     () => wall,
     () => performance.now(),
     () => {

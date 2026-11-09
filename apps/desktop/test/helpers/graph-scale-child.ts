@@ -7,7 +7,6 @@ export type GraphScaleInput = {
   sample: number
   bundle: string
   file: string
-  executionFile: string
   context: TeamProfileGraphReadContext
 }
 
@@ -16,7 +15,7 @@ async function readSample(input: GraphScaleInput) {
   const caller = new GraphCallerProbe()
   const reader = new TeamProfileGraphLifetime(() => {
     const worker = new Worker(input.bundle, {
-      workerData: { file: input.file, executionFile: input.executionFile },
+      workerData: { file: input.file },
       resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16 },
     })
     worker.once('exit', () => (exitAt = performance.now()))

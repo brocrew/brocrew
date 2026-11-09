@@ -1,9 +1,14 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { openDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'
+import {
+  NO_PROFILE_EXECUTION,
+  writeProfileExecution,
+  type KeptProfileExecution,
+} from '../../src/main/profile-execution-file'
 import { graphCutoff, graphOracle } from '../fixtures/team-profile-graph-oracle'
 import type { TeamProfileGraphReadContext } from '../../src/shared/team-profile-graph'
 
@@ -16,10 +21,9 @@ export const graphContext: TeamProfileGraphReadContext = {
 export function graphFixture() {
   const directory = mkdtempSync(join(tmpdir(), 'fictional-team-graph-'))
   const file = join(directory, 'fictional.sqlite')
-  const executionFile = join(directory, 'profile-execution.json')
-  writeFileSync(executionFile, JSON.stringify({ version: 2, profiles: {} }))
   const db = openDatabase(file)
   applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../../src/main/db/migrations'))
+  writeProfileExecution(db, NO_PROFILE_EXECUTION)
   const identity = (
     id: string,
     slug = id.slice(4),
@@ -105,8 +109,12 @@ export function graphFixture() {
   return {
     directory,
     file,
-    executionFile,
     db,
+    /** How profiles run, as the graph reads them. */
+    kinds: (kept: KeptProfileExecution) => writeProfileExecution(db, kept),
+    /** Nothing kept about how profiles run, as before anything was written. */
+    forgetKinds: () =>
+      db.exec('DELETE FROM profile_execution; DELETE FROM profile_execution_state'),
     identity,
     session,
     event,
