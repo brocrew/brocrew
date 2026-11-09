@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
+import { scratchFolders } from './helpers/scratch-folders'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { REQUEST_MARKER } from '../src/main/archive/codex-injected'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
@@ -32,15 +32,7 @@ const THREAD = 'thread-saved-methods'
 const SESSION = 'sess_saved_methods'
 const TITLES = ['Rotate a fictional log', 'Back up a fictional disk'] as const
 
-const folders: string[] = []
-afterEach(() => {
-  for (const folder of folders.splice(0)) rmSync(folder, { recursive: true, force: true })
-})
-const scratch = (name: string): string => {
-  const folder = mkdtempSync(join(realpathSync(tmpdir()), `${name}-`))
-  folders.push(folder)
-  return folder
-}
+const scratch = scratchFolders()
 
 function aProfile(methods: boolean): string {
   const folder = savedMethodsFolder(scratch('re-derived'), 'fictional-writer')

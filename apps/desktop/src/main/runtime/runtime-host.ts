@@ -40335,12 +40335,7 @@ export class RuntimeHost implements LiveHost {
         ? {}
         : {
             firstTurnLead: instructions.firstTurnLead,
-            ...this.theLeadAReopenOwes(
-              sessionId,
-              row.provider,
-              launchGave,
-              reopenedThreadLeads,
-            ),
+            ...this.theLeadAReopenOwes(sessionId, row.provider, launchGave, reopenedThreadLeads),
           }),
     })
     // ⛔ **The row stops saying `ended`, because this conversation is running again** (179).

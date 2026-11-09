@@ -827,9 +827,7 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     return {
       instructions: read.instructions,
       systemHint: read.systemHint ?? undefined,
-      ...(read.firstTurnLead === null
-        ? {}
-        : { firstTurnLead: read.firstTurnLead }),
+      ...(read.firstTurnLead === null ? {} : { firstTurnLead: read.firstTurnLead }),
       memoryLoaded: read.memoryLoaded,
       profileFile: read.profileFile,
       savedMethods: savedMethodsUseOf(savedMethods),

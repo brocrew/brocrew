@@ -22,7 +22,7 @@ import { performance, PerformanceObserver } from 'node:perf_hooks'
 const STALL_TICK_MS = 100
 
 /** The lateness that counts as a stall. */
-export const STALL_FLOOR_MS = 500
+const STALL_FLOOR_MS = 500
 
 /** How many kinds of work a stall's line names, longest first. */
 const NAMED_AT_MOST = 6
