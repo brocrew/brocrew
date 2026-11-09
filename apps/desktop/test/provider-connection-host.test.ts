@@ -36,7 +36,7 @@ afterEach(async () => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-function fixture() {
+function fixture(usePreparedLaunch = false) {
   const store = createSessionStore(db)
   const sessions = new FakeProviderSessions()
   const state: {
@@ -84,8 +84,13 @@ function fixture() {
   Reflect.set(deps, 'connectionFor', connectionFor)
   const revision = vi.fn((provider: Provider) => state.revisionOf?.(provider) ?? state.revision)
   Reflect.set(deps, 'connectionRevision', revision)
+  const prepared = vi.fn(async (provider: Provider, profile: string, connection?: ProviderConnection) => ({
+    home: await prepare(provider, profile, connection),
+    runtime: create(provider, connection),
+  }))
+  if (usePreparedLaunch) Reflect.set(deps, 'prepareProviderLaunch', prepared)
   host = new RuntimeHost(deps)
-  return { store, prepare, create, connectionFor, revision, state, deps, rawRuntimes }
+  return { store, prepare, create, connectionFor, revision, state, deps, rawRuntimes, prepared }
 }
 
 function deferred() {
@@ -293,15 +298,10 @@ for (const provider of ['claude', 'codex'] as const) {
 }
 
 it('uses the prepared adapter runtime for a start', async () => {
-  const f = fixture()
-  const prepared = vi.fn(async (provider: Provider, profile: string, connection?: ProviderConnection) => ({
-    home: await f.prepare(provider, profile, connection),
-    runtime: f.create(provider, connection),
-  }))
-  Reflect.set(f.deps, 'prepareProviderLaunch', prepared)
+  const f = fixture(true)
   const started = await host.createSession({ provider: 'claude', cwd: dir }, sink)
   expect(started.sessionId).toBeTruthy()
-  const creations = f.create.mock.calls.length
-  expect(creations).toBe(prepared.mock.calls.length)
+  expect(f.prepared).toHaveBeenCalled()
+  expect(f.create.mock.calls.length).toBe(f.prepared.mock.calls.length)
   expect(f.rawRuntimes.some((runtime) => vi.mocked(runtime.start).mock.calls.length > 0)).toBe(true)
 })
