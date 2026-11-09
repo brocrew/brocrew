@@ -7,14 +7,6 @@ on:
   schedule:
     - cron: '0 6 * * 0'
   workflow_dispatch:
-    inputs:
-      target:
-        description: Git comparison target (empty uses the current revision)
-        type: string
-      plugin_bootstrap:
-        description: Explicit first bootstrap against reviewed a42 base
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -35,7 +27,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-          fetch-depth: 0
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
@@ -60,14 +51,7 @@ jobs:
         run: node --test scripts/code-health/gate.test.mjs
 
       - name: Scan and compare with the baselines
-        env:
-          CODE_HEALTH_TARGET: ${{ inputs.target }}
-          PLUGIN_BOOTSTRAP: ${{ inputs.plugin_bootstrap || 'false' }}
-          PLUGIN_AUTO_BOOTSTRAP: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
-        run: |
-          args=()
-          if [ "$PLUGIN_BOOTSTRAP" = true ]; then args+=(--bootstrap-plugin-policy); fi
-          node scripts/code-health/gate.mjs --out "$RUNNER_TEMP/code-health" "${args[@]}"
+        run: node scripts/code-health/gate.mjs --out "$RUNNER_TEMP/code-health"
 
       - name: Report
         if: always()

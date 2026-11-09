@@ -50,46 +50,8 @@ duplication, module-boundary and dead-code reviewers read it; the code reviewer 
 
 ## Plugin execution boundary
 
-The same dependency-cruiser graph also feeds a count-only rule for tracked code under
-`apps/desktop/src/main/plugins/` (host) and `apps/desktop/resources/plugin-host/` (service).
-Explicit type-only barrel imports are allowed. Value imports of `@brobot2/runtime` are counted
-once per source module; executable helper paths to `packages/runtime/src/index.ts` or the
-Claude Agent SDK / Codex SDK are counted once per root and resolved forbidden target.
-Full type reach is diagnostic and stays available to the existing module checks.
-
-`baseline/plugin-policy.json` holds only integer ceilings per rule and host/service role.
-Measured counts must equal these ceilings, and each ceiling must be no greater than the ordinary
-Git comparison target's ceiling. Equal-count replacements pass. A decrease requires lowering
-its ceiling in the same change; a stale ceiling, rise or ceiling increase fails. `--update` never
-writes plugin ceilings. The four original baselines keep their existing comparison semantics.
-
-Use `--target <revision>` or `CODE_HEALTH_TARGET` to select the comparison target; local default
-is `HEAD^`. Hosted pushes use their before revision, pull requests their base, and scheduled runs
-the current revision. History is checked out so the target file can be read. A missing or unreadable
-target policy is an error. A new-branch push resolves the repository default-branch ref instead of
-its all-zero before SHA. The existing workflow explicitly enables the first-policy rollout on push/PR:
-when the known introduction commit `fd4def60421930acfa4095203f16f8f3ce8e752b` is in the candidate
-but not the ordinary target, that target has no policy, and reviewed a42 is an ancestor, it selects
-`a42dd460f37a702905ee71fdd8ca61ed78c5e5e0` and its explicit bootstrap. Any existing target policy
-always wins, including squash/cherry-pick histories; malformed or unreadable content cannot reset it.
-Manual dispatch also supports that exact target with `plugin_bootstrap=true` (CLI: `--target` plus
-`--bootstrap-plugin-policy`). The reviewed base has two host / zero service counts per row.
-Unknown refs and Git ancestry errors fail; a missing file alone never activates bootstrap.
-The two failure-helper value imports are retargeted to the same neutral `runtime/plugin-failure`
-leaf, bringing candidate ceilings to zero. A bootstrap result qualifies only that actual run.
-
-The report retains `plugin-policy.json` counts, shortest witnesses, full-graph diagnostics, selected
-root coverage, unresolved execution edges, SDK endpoint gaps and computed-loader locations.
-External endpoints remain in the native graph; `doNotFollow` prevents scanning SDK bodies.
-A literal SDK import omitted by resolution still counts and reports a coverage error. Missing roots
-and unresolved executable edges cannot produce a clean result. Unknown computed imports remain
-an explicit static-analysis limit; this is not a proof of arbitrary runtime loader behavior or of
-third-party helper neutrality. The neutral failure leaf is import-free; provider-home uses Node builtins.
-
-This slice implements rule 1 only. Brand dispatch, content/packaging/copy-policy detection and
-additional provider SDK inventories require separately measured and assigned work; no inactive
-policy is represented as a measured zero. Generic dispatch and PDF/navigation/decorative vocabulary
-are not banned by this import boundary. Focused tests use the pinned native scanner to plant the
-actual failure-helper value import, observe policy exit 1, restore exit 0, and repeat for a helper
-reaching an SDK without the runtime barrel. They do not recreate the production crash or qualify a
-built app. CI, Windows and the packaged plugin-service smoke remain separate execution evidence.
+Two dependency-cruiser rules keep plugin host code (`apps/desktop/src/main/plugins/`) and the
+plugin service (`apps/desktop/resources/plugin-host/`) away from the runtime barrel
+(`packages/runtime/src/index.ts`) and the Claude Agent SDK / Codex SDK, directly or through any
+chain of imports. They are ordinary depcruise rules, so existing violations sit in
+`baseline/depcruise.json` and new ones fail the gate.

@@ -2,7 +2,10 @@ import { attachmentTraceId, createRouteAdmissionTrace } from './route-admission-
 import { randomUUID, createHash } from 'node:crypto'
 import { z } from 'zod'
 import { providerSchema } from '@brobot2/shared'
-import type { ManagedPluginAttachment, ManagedPluginAttachmentSource } from '@brobot2/runtime'
+import type {
+  ManagedPluginAttachment,
+  ManagedPluginAttachmentSource,
+} from '@brobot2/runtime/managed-plugin-session'
 import type { PluginSupervisorAttachment } from './supervisor/client'
 
 const Route = {

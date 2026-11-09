@@ -9,7 +9,7 @@ import {
   type PluginToolFailureDetail,
 } from '../tool-diagnostics'
 import { randomUUID } from 'node:crypto'
-import type { ManagedPluginMcpServer } from '@brobot2/runtime'
+import type { ManagedPluginMcpServer } from '@brobot2/runtime/managed-plugin-mcp'
 import {
   managedPluginFailure,
   pluginFailureReason,
