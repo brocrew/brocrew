@@ -292,7 +292,7 @@ export const PROFILE_EXECUTION_PART = /^profile-execution\.json\.\d+\.tmp$/
  * A write of the saved API keys in progress, or a keys file that couldn't be read and was set aside
  * when a key was saved, in `apps/desktop/src/main/runtime/api-keys.ts`. Both go with the keys.
  */
-export const API_KEYS_PART = /^api-keys\.json\.(?:[0-9a-f]{12}\.tmp|unreadable-\d+)$/
+const API_KEYS_PART = /^api-keys\.json\.(?:[0-9a-f]{12}\.tmp|unreadable-\d+)$/
 
 /**
  * What a folder or profile directory under `provider-homes/` may be named.

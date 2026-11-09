@@ -48,7 +48,7 @@ afterEach(() => {
 
 for (const operation of ['start', 'resume', 'models'] as const) {
   it(`Claude ${operation}: changed-back key selection at authForALaunch cannot persist sign-in attribution`, async () => {
-    const store = createSessionStore(db)
+    createSessionStore(db)
     const keys = new ApiKeys(dir)
     const home = join(dir, 'claude')
     mkdirSync(home)
