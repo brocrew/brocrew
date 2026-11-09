@@ -81,8 +81,7 @@
     "apps/desktop": {
       "project": ["**/*.{ts,tsx,js,mjs,cjs,vue,html}"],
       "entry": [
-        // electron-builder loads this hook from the candidate CLI afterSign path.
-        "build/mac-after-sign.cjs",
+        "build/notarize-dmg.cjs",
         "src/main/index.ts",
         "src/main/plugins/supervisor/entry.ts",
         "src/main/plugins/supervisor/sqlite-adapter.ts",

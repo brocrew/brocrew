@@ -38,73 +38,31 @@ runs:
         for name in MAC_CERT_P12_BASE64 MAC_CERT_P12_PASSWORD APPLE_API_KEY_P8 APPLE_API_KEY_ID APPLE_API_ISSUER; do
           [ -n "${!name}" ] || { echo "Missing $name"; exit 1; }
         done
-        node scripts/lib/mac-signing-identity.mjs mask
         signing_dir="$RUNNER_TEMP/mac-signing-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
         mkdir "$signing_dir"
-        keychain="$signing_dir/release.keychain-db"
-        keychain_password="$(openssl rand -hex 32)"
-        echo "::add-mask::$keychain_password"
-        printf '%s' "$MAC_CERT_P12_BASE64" | base64 --decode > "$signing_dir/certificate.p12"
         printf '%s' "$APPLE_API_KEY_P8" > "$signing_dir/notary.p8"
-        export SIGNING_DIR="$signing_dir"
-        node <<'NODE'
-        const { execFileSync } = require('node:child_process')
-        const { writeFileSync } = require('node:fs')
-        const { join } = require('node:path')
-        const original = execFileSync('security', ['list-keychains', '-d', 'user'], { encoding: 'utf8' })
-          .split('\n').filter((line) => line.trim()).map((line) => {
-            const match = /^\s*"(.*)"\s*$/.exec(line)
-            if (!match) throw new Error('Cannot preserve the user keychain search list')
-            return match[1]
-          })
-        writeFileSync(join(process.env.SIGNING_DIR, 'keychain-search-list.json'), JSON.stringify(original), { flag: 'wx', mode: 0o600 })
-        NODE
-        security create-keychain -p "$keychain_password" "$keychain"
-        security set-keychain-settings -lut 7200 "$keychain"
-        security unlock-keychain -p "$keychain_password" "$keychain"
-        security import "$signing_dir/certificate.p12" -k "$keychain" -P "$MAC_CERT_P12_PASSWORD" -T /usr/bin/codesign
-        rm "$signing_dir/certificate.p12"
-        security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
-        node <<'NODE'
-        const { execFileSync } = require('node:child_process')
-        const { readFileSync } = require('node:fs')
-        const { join } = require('node:path')
-        const keychain = join(process.env.SIGNING_DIR, 'release.keychain-db')
-        const original = JSON.parse(readFileSync(join(process.env.SIGNING_DIR, 'keychain-search-list.json'), 'utf8'))
-        execFileSync('security', ['list-keychains', '-d', 'user', '-s', keychain, ...original.filter((entry) => entry !== keychain)])
-        NODE
-        identity="$(security find-identity -v -p codesigning "$keychain" | node scripts/lib/mac-signing-identity.mjs)"
-        [[ "$identity" =~ ^[A-F0-9]{40}$ ]] || { echo 'Exactly one Developer ID identity for the release team is required'; exit 1; }
-        {
-          echo "CSC_KEYCHAIN=$keychain"
-          echo "CSC_NAME=$identity"
-          echo "MAC_SIGNING_IDENTITY=$identity"
-          echo "APPLE_API_KEY=$signing_dir/notary.p8"
-          echo "APPLE_API_KEY_ID=$APPLE_API_KEY_ID"
-          echo "APPLE_API_ISSUER=$APPLE_API_ISSUER"
-          echo "MAC_SIGNING_EVIDENCE=$RUNNER_TEMP/mac-signing-evidence"
-        } >> "$GITHUB_ENV"
+        echo "APPLE_API_KEY=$signing_dir/notary.p8" >> "$GITHUB_ENV"
     - name: Build and package (app stapled before dmg and updater zip)
       shell: bash
+      env:
+        CSC_LINK: ${{ env.MAC_CERT_P12_BASE64 }}
+        CSC_KEY_PASSWORD: ${{ env.MAC_CERT_P12_PASSWORD }}
       run: |
         set -euo pipefail
         pnpm --filter @brobot2/desktop run build
         pnpm --filter @brobot2/desktop exec electron-builder --mac dmg zip dir --arm64 --config electron-builder.yml \
           -c.forceCodeSigning=true -c.mac.hardenedRuntime=true \
-          -c.mac.timestamp=http://timestamp.apple.com/ts01 -c.mac.notarize=false \
-          -c.afterSign=./build/mac-after-sign.cjs \
+          -c.mac.timestamp=http://timestamp.apple.com/ts01 -c.mac.notarize=true -c.dmg.sign=true \
+          -c.artifactBuildCompleted=./build/notarize-dmg.cjs \
           -c.extraMetadata.version=${{ inputs.version }} \
           -c.publish.provider=github -c.publish.owner=${{ inputs.owner }} -c.publish.repo=${{ inputs.repo }} \
           --publish never
-        node scripts/mac-release-signing.mjs apps/desktop/dist ${{ inputs.version }}
-      # The app carries no Claude Code: the check runs the newest tested one, installed with npm
-      # outside the app, as `macos.yml` does.
     - name: Install Claude Code (the newest tested version) outside the app
       id: claude
       shell: bash
       run: node scripts/install-tested-claude.mjs
 
-    - name: Check signed app, nested code, stapled DMG and updater ZIP, and packaged behavior
+    - name: Check signed app, stapled DMG and updater ZIP, and packaged behavior
       env:
         BROBOT_CHECK_CLAUDE: ${{ steps.claude.outputs.program }}
       shell: bash
@@ -126,36 +84,13 @@ runs:
         path: ${{ runner.temp }}/recovery-evidence
         if-no-files-found: warn
         retention-days: 30
-    - name: Keep signature and notary evidence
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: signing-evidence-${{ inputs.artifact_name }}
-        path: ${{ runner.temp }}/mac-signing-evidence
-        if-no-files-found: warn
-        retention-days: 30
     - name: Remove temporary signing credentials
       if: always()
       shell: bash
       run: |
         set -euo pipefail
         signing_dir="$RUNNER_TEMP/mac-signing-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-        export SIGNING_DIR="$signing_dir"
-        status=0
-        if [ -f "$signing_dir/keychain-search-list.json" ]; then
-          node <<'NODE' || status=$?
-        const { execFileSync } = require('node:child_process')
-        const { readFileSync } = require('node:fs')
-        const { join } = require('node:path')
-        const original = JSON.parse(readFileSync(join(process.env.SIGNING_DIR, 'keychain-search-list.json'), 'utf8'))
-        execFileSync('security', ['list-keychains', '-d', 'user', '-s', ...original])
-        NODE
-        fi
-        if [ -e "$signing_dir/release.keychain-db" ]; then
-          security delete-keychain "$signing_dir/release.keychain-db" || status=$?
-        fi
-        rm -rf "$signing_dir" || status=$?
-        exit "$status"
+        rm -rf "$signing_dir"
     - id: assets
       uses: actions/upload-artifact@v4
       with:
