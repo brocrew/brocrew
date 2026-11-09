@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
-import type { RecoveryFs } from '../recovery/files'
+import { errorCode, nodeFs, type RecoveryFs } from '../recovery/files'
 
-/** Ordinary skill reads/copies. The digest only groups duplicate imports; it never admits a read. */
-export async function ordinarySkillTree(root: string, fs: RecoveryFs, to?: string) {
+/** Reads or copies a skill tree in one pass; the digest names its paths, bytes and executable bits. */
+export async function ordinarySkillTree(root: string, fs: RecoveryFs = nodeFs, to?: string) {
   const entries: {
     path: string
     directory: boolean
@@ -58,7 +58,9 @@ export async function ordinarySkillTree(root: string, fs: RecoveryFs, to?: strin
         }
       } else throw new Error('Not a regular skill file or directory')
     } catch (cause) {
-      throw new Error(`${path}: ${String(cause)}`, { cause })
+      throw Object.assign(new Error(`${path}: ${String(cause)}`, { cause }), {
+        code: errorCode(cause),
+      })
     }
   }
   await walk(root, '', 0)

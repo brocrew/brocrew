@@ -64,7 +64,7 @@ import {
   type CheckpointDeletion,
 } from './checkpoint-deletion'
 import { APP_STATE_FILES } from './state-files'
-import { copySkillTree, readSkillTree, stateContentAt as contentAt } from './trees'
+import { copySkillTree, stateContentAt as contentAt } from './trees'
 import { SKILL_TREES, SKILLS_CONVERSION_FILE } from '../skills/shared-paths'
 
 /** The steps of making a copy, in order. */
@@ -722,20 +722,21 @@ async function copyStateFilesOnce(
   for (const file of APP_STATE_FILES) {
     const source = stateFile(userData, file)
     const copy = join(folder, file.name)
+    let tree
     try {
       await assertOwnedPathsAreReal(userData, [copy], fs)
-      await retrying(async () => {
+      tree = await retrying(async () => {
         // A try a briefly held file stopped may have left part of a copy.
         await removeCheckpointEntry(userData, folder, file.name, fs)
-        if (file.kind === 'tree') await copySkillTree(source, copy, fs)
-        else await copyDurably(source, copy, fs)
+        if (file.kind === 'tree') return copySkillTree(source, copy, fs)
+        await copyDurably(source, copy, fs)
+        return null
       })
     } catch (error) {
       if (errorCode(error) !== 'ENOENT' || (await pathExists(source, fs))) throw error
       files.push({ name: file.name, present: false })
       continue
     }
-    const tree = file.kind === 'tree' ? await readSkillTree(copy, fs) : null
     files.push({
       name: file.name,
       present: true,

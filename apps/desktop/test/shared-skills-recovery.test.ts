@@ -8,6 +8,7 @@ import {
   readdir,
   rename,
   rm,
+  symlink,
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -22,7 +23,7 @@ import { SqliteSkillCatalogue } from '../src/main/skills/catalogue-store'
 import { SharedSkillLibrary } from '../src/main/skills/shared-library'
 import { convertSharedSkills } from '../src/main/skills/shared-conversion'
 import { makeCheckpoint, isIntact, listCheckpoints } from '../src/main/recovery/checkpoint'
-import { readSkillTree } from '../src/main/recovery/trees'
+import { ordinarySkillTree } from '../src/main/skills/ordinary-tree'
 import { nodeFs, type RecoveryFs } from '../src/main/recovery/files'
 import { restore, returnToNewer, recoverInterrupted } from '../src/main/recovery/restore'
 import { buildLineage, isLineagePrefix } from '../src/main/recovery/database-facts'
@@ -126,8 +127,8 @@ describe('shared skills follow checkpoint, restore, return and upgrade', () => {
     await chmod(join(library.active, 'recipe-check/check.sh'), 0o700)
     await mkdir(join(library.off, 'later-skill'))
     await writeFile(join(library.off, 'later-skill/SKILL.md'), 'A fictional off skill.')
-    const older = await readSkillTree(library.active)
-    const olderOff = await readSkillTree(library.off)
+    const older = await ordinarySkillTree(library.active)
+    const olderOff = await ordinarySkillTree(library.off)
     const olderMarker = await readFile(join(root, 'skills-conversion.json'), 'utf8')
     db.close()
     const saved = await checkpoint()
@@ -140,23 +141,23 @@ describe('shared skills follow checkpoint, restore, return and upgrade', () => {
     await library.convert(async () => [])
     const newerMarker = await readFile(join(root, 'skills-conversion.json'), 'utf8')
     expect(newerMarker).not.toBe(olderMarker)
-    const newer = await readSkillTree(library.active)
-    const newerOff = await readSkillTree(library.off)
+    const newer = await ordinarySkillTree(library.active)
+    const newerOff = await ordinarySkillTree(library.off)
     const lineage = await buildLineage(migrations)
     await restore({
       userData: root,
       checkpointId: saved.manifest.id,
       canOpen: (one) => isLineagePrefix(one, lineage),
     })
-    expect((await readSkillTree(library.active)).sha256).toBe(older.sha256)
-    expect((await readSkillTree(library.off)).sha256).toBe(olderOff.sha256)
+    expect((await ordinarySkillTree(library.active)).sha256).toBe(older.sha256)
+    expect((await ordinarySkillTree(library.off)).sha256).toBe(olderOff.sha256)
     expect(await readFile(join(root, 'skills-conversion.json'), 'utf8')).toBe(olderMarker)
     await returnToNewer({ userData: root })
-    expect((await readSkillTree(library.active)).sha256).toBe(newer.sha256)
-    expect((await readSkillTree(library.off)).sha256).toBe(newerOff.sha256)
+    expect((await ordinarySkillTree(library.active)).sha256).toBe(newer.sha256)
+    expect((await ordinarySkillTree(library.off)).sha256).toBe(newerOff.sha256)
     expect(await readFile(join(root, 'skills-conversion.json'), 'utf8')).toBe(newerMarker)
     await convertSharedSkills(root, database())
-    expect((await readSkillTree(library.active)).sha256).toBe(newer.sha256)
+    expect((await ordinarySkillTree(library.active)).sha256).toBe(newer.sha256)
   })
   it('can restore an older checkpoint with no skill directories and return without losing them', async () => {
     const db = database()
@@ -165,7 +166,7 @@ describe('shared skills follow checkpoint, restore, return and upgrade', () => {
     const old = await checkpoint()
     const library = new SharedSkillLibrary(root)
     await library.convert(async () => [{ id: 'person/recipe-check', name: 'recipe-check', body }])
-    const before = await readSkillTree(library.active)
+    const before = await ordinarySkillTree(library.active)
     await restore({ userData: root, checkpointId: old.manifest.id, canOpen: () => true })
     await expect(readFile(join(root, 'skills-conversion.json'))).rejects.toHaveProperty(
       'code',
@@ -173,11 +174,11 @@ describe('shared skills follow checkpoint, restore, return and upgrade', () => {
     )
     await expect(readdir(library.active)).rejects.toHaveProperty('code', 'ENOENT')
     await returnToNewer({ userData: root })
-    expect((await readSkillTree(library.active)).sha256).toBe(before.sha256)
+    expect((await ordinarySkillTree(library.active)).sha256).toBe(before.sha256)
     await library.convert(async () => {
       throw new Error('must not export again')
     })
-    expect((await readSkillTree(library.active)).sha256).toBe(before.sha256)
+    expect((await ordinarySkillTree(library.active)).sha256).toBe(before.sha256)
   })
   it('settles an interruption after a skill directory rename with all tree bytes intact', async () => {
     const { db } = await initialize()
@@ -186,7 +187,7 @@ describe('shared skills follow checkpoint, restore, return and upgrade', () => {
     const saved = await checkpoint()
     const library = new SharedSkillLibrary(root)
     await library.save('recipe-check/SKILL.md', 'Newer bytes.')
-    const newer = await readSkillTree(library.active)
+    const newer = await ordinarySkillTree(library.active)
     await expect(
       restore({
         userData: root,
@@ -200,7 +201,7 @@ describe('shared skills follow checkpoint, restore, return and upgrade', () => {
     expect(await recoverInterrupted({ userData: root })).toHaveProperty('kind', 'finished')
     expect(await readFile(join(library.active, 'recipe-check/SKILL.md'), 'utf8')).toBe(body)
     await returnToNewer({ userData: root })
-    expect((await readSkillTree(library.active)).sha256).toBe(newer.sha256)
+    expect((await ordinarySkillTree(library.active)).sha256).toBe(newer.sha256)
   })
   it('retries a changing tree before publishing a checked recovery copy', async () => {
     const { db } = await initialize()
@@ -314,6 +315,25 @@ describe('shared skills follow checkpoint, restore, return and upgrade', () => {
       Buffer.from([1, 2, 3]),
     )
   })
+  it('backs up and restores a skill that is a link to a folder elsewhere', async () => {
+    const { db } = await initialize()
+    await convertSharedSkills(root, db)
+    db.close()
+    const elsewhere = join(root, 'elsewhere/linked-skill')
+    await mkdir(elsewhere, { recursive: true })
+    await writeFile(join(elsewhere, 'SKILL.md'), 'A fictional linked skill.')
+    await symlink(elsewhere, join(root, 'skills/linked-skill'), 'junction')
+    const saved = await checkpoint()
+    expect(await isIntact(saved)).toBe(true)
+    expect(await readFile(join(saved.folder, 'skills/linked-skill/SKILL.md'), 'utf8')).toBe(
+      'A fictional linked skill.',
+    )
+    await writeFile(join(elsewhere, 'SKILL.md'), 'Newer linked bytes.')
+    await restore({ userData: root, checkpointId: saved.manifest.id, canOpen: () => true })
+    expect(await readFile(join(root, 'skills/linked-skill/SKILL.md'), 'utf8')).toBe(
+      'A fictional linked skill.',
+    )
+  })
   it('includes trees in the upgrade snapshot and checkpoint assertion', async () => {
     const { db } = await initialize()
     await convertSharedSkills(root, db)
@@ -338,8 +358,8 @@ describe('shared skills follow checkpoint, restore, return and upgrade', () => {
       'database.sqlite': await readFile(join(saved.folder, 'database.sqlite')),
     }
     expect(skillTreeStateDigest(files.skills)).toEqual({
-      bytes: (await readSkillTree(join(root, 'skills'))).bytes,
-      sha256: (await readSkillTree(join(root, 'skills'))).sha256,
+      bytes: (await ordinarySkillTree(join(root, 'skills'))).bytes,
+      sha256: (await ordinarySkillTree(join(root, 'skills'))).sha256,
     })
     expect(() =>
       verifyCheckpoint(saved.manifest, files, {
