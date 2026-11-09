@@ -14,10 +14,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { startUpdates } from '../src/main/updates-in-the-app'
 
 const fake = vi.hoisted(() => ({
+  hostPlatform: process.platform,
   updater: null as unknown,
   opened: vi.fn(async () => ''),
   fetch: vi.fn<typeof fetch>(),
 }))
+vi.mock('../src/main/update-settings', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/main/update-settings')>()
+  return {
+    ...actual,
+    writeUpdateSettings(...args: Parameters<typeof actual.writeUpdateSettings>) {
+      // Simulate the updater's platform, but keep real disk IO on the host platform.
+      const simulatedPlatform = process.platform
+      Object.defineProperty(process, 'platform', { value: fake.hostPlatform })
+      try {
+        return actual.writeUpdateSettings(...args)
+      } finally {
+        Object.defineProperty(process, 'platform', { value: simulatedPlatform })
+      }
+    },
+  }
+})
 vi.mock('electron-updater', () => ({
   default: {
     get autoUpdater() {
