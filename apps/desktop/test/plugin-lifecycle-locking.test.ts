@@ -150,7 +150,8 @@ it.each(['update', 'global-restore'] as const)('attach excludes pending %s witho
 })
 
 it('drain waits for an attach start already in flight and stops its late run', async () => {
-  const f = await installedPair()
+  const f = await fixture()
+  await f.controller.install(f.handle, 'chrome')
   const entered = deferred<void>(), release = deferred<void>()
   const peers = runtime(async (id) => { if (id === 'chrome') { entered.resolve(); await release.promise } })
   const controller = await PluginLifecycleController.open({ ...f.opts, runtime: peers.peer })
@@ -159,13 +160,17 @@ it('drain waits for an attach start already in flight and stops its late run', a
   let drained = false
   const drain = controller.drain().then(() => { drained = true })
   try {
-    await vi.waitFor(() => expect(peers.starts).toContain('whatsapp'))
+    // Status is an independent completion witness while the start is suspended.
+    let read = false
+    const status = controller.status().then(() => { read = true })
+    await vi.waitFor(() => expect(read).toBe(true))
     expect(drained).toBe(false)
+    await status
   } finally {
     release.resolve()
     await attaching
     await drain
   }
-  expect(peers.stops.sort()).toEqual(['chrome', 'whatsapp'])
+  expect(peers.stops).toEqual(['chrome'])
   expect(controller.cleanForShutdown()).toBe(true)
 })

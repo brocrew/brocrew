@@ -43,7 +43,7 @@ const TAIL_LIMIT = 16
 const refuse = (): never => {
   throw new PluginSupervisorError('unavailable')
 }
-/** Owner's lifecycle exclusive gate is mandatory for every read/reserve. This kept-current journal
+/** Owner's per-plugin lifecycle gate is mandatory for every read/reserve. This kept-current journal
  * is excluded from workspace/global activation restores. A consumed intent is never auto-replayed.
  */
 export class PluginProfileLedger {

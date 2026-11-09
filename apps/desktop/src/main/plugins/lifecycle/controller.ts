@@ -75,7 +75,7 @@ interface Workspace {
   live: boolean
 }
 type WorkspaceAdmission = ReturnType<LifecycleOptions['state']['readWorkspaceAdmission']>
-/** The journal's pending operation, which a list under the state lock sees only once it is stuck. */
+/** The journal's pending operation, including one whose writer is still working. */
 interface Unfinished {
   install: Installation
   operationId: string
@@ -105,6 +105,7 @@ export class PluginLifecycleController {
   private readonly workspaces = new Map<LifecycleWorkspace, Workspace>()
   private readonly blocks = new Map<string, symbol>()
   private readonly runs = new Map<string, Running>()
+  private readonly pluginWork = new Map<string, Promise<void>>()
   private readonly attachmentChecks = new WeakMap<
     object,
     (workspaceId: string, read: WorkspaceAdmission) => boolean
@@ -135,6 +136,19 @@ export class PluginLifecycleController {
     private readonly effects: LifecycleEffects,
     private readonly vault: PluginPackageVault,
   ) {}
+  private withPlugin<T>(id: string, work: () => Promise<T>): Promise<T> {
+    const prior = this.pluginWork.get(id) ?? Promise.resolve()
+    const result = prior.then(() => {
+      if (this.draining) return pending()
+      return work()
+    })
+    const tail = result.then(() => {}, () => {})
+    this.pluginWork.set(id, tail)
+    void tail.then(() => {
+      if (this.pluginWork.get(id) === tail) this.pluginWork.delete(id)
+    })
+    return result
+  }
   static async open(options: LifecycleOptions): Promise<PluginLifecycleController> {
     try {
       const state = options.state.inspect()
@@ -305,8 +319,8 @@ export class PluginLifecycleController {
     return this.requiresPreparedMutations() ? this.mutationPackage(id, transfer) : undefined
   }
   /** Policy is a normal refusal, never a storage exception. Leave real disk errors to the fence. */
-  private async mutationFence<T>(work: () => Promise<T>): Promise<T> {
-    const outcome = await this.options.state.withExclusive(async () => {
+  private async mutationFence<T>(work: () => Promise<T>, id?: string): Promise<T> {
+    const locked = () => this.options.state.withExclusive(async () => {
       // Preserve the existing storage-error path for the dormant v1 policy.
       if (!this.requiresPreparedMutations()) return { ok: true, value: await work() } as const
       const before = this.options.state.inspect()
@@ -337,6 +351,7 @@ export class PluginLifecycleController {
         throw error
       }
     })
+    const outcome = await (id === undefined ? locked() : this.withPlugin(id, locked))
     if (!outcome.ok) throw outcome.error
     return outcome.value
   }
@@ -502,15 +517,14 @@ export class PluginLifecycleController {
   }
   async status(): Promise<{ cards: PluginCard[]; cleanupPending: string[] }> {
     let unfinished: Unfinished | undefined
-    const read = await this.options.state.withExclusive(async () => {
+    const read = this.options.state.withWorkspaceAdmission((state) => {
       const releases = this.catalogue().entries
-      const state = this.options.state.inspect()
       if (state.pending?.next)
         unfinished = { install: state.pending.next, operationId: state.pending.request.operationId }
-      const activations = this.options.state.committedActivation().entries
+      const activations = state.installations
       const names = new Set([
         ...releases.map((one) => one.id),
-        ...state.guards.map((one) => one.pluginId),
+        ...state.guardIds,
       ])
       return {
         cards: [...names].sort().map((id) => {
@@ -613,16 +627,16 @@ export class PluginLifecycleController {
     this.retryAt ||= now + this.retryDelay
     if (now < this.retryAt) return
     const { install, operationId } = unfinished
-    this.retrying = (async () => {
+    this.retrying = this.withPlugin(install.pluginId, async () => {
       const run = this.runs.get(install.pluginId)
       if (run?.ended && run.installId === install.installId)
         await this.stop(install.pluginId, operationId)
       if (this.draining) return
       await this.options.state.withExclusive(async () => {
         if (this.options.state.inspect().pending?.request.operationId === operationId)
-          await this.recover()
+          await this.recover(install.pluginId)
       })
-    })()
+    })
       .catch(() => undefined)
       .finally(() => {
         this.retrying = undefined
@@ -645,12 +659,14 @@ export class PluginLifecycleController {
       // Access comes from the current activation and its run. Attaching writes nothing, and a
       // plugin whose operation is pending is not in the committed set, so its old release is
       // never started mid-update.
-      await this.options.state.withExclusive(async () => {
-        for (const installed of this.options.state.committedActivation().entries) {
+      await Promise.all(this.options.state.readWorkspaceAdmission().installations.map((installed) =>
+        this.withPlugin(installed.pluginId, async () => {
+          if (this.blocks.has(installed.pluginId) || this.current(installed.pluginId)?.incarnation !== installed.incarnation) return
           workspace.installs.set(installed.pluginId, installed.installId)
           let stage = 'vault-load'
           try {
             const checked = await this.vault.load(this.descriptor(installed))
+            if (this.blocks.has(installed.pluginId) || this.current(installed.pluginId)?.incarnation !== installed.incarnation) return
             stage = 'start'
             await this.ensureRunning(installed, checked)
             this.startFailures.delete(installed.pluginId)
@@ -677,8 +693,8 @@ export class PluginLifecycleController {
               error,
             )
           }
-        }
-      })
+        }),
+      ))
       this.agentScopeChanged()
       return handle
     } catch {
@@ -933,7 +949,7 @@ export class PluginLifecycleController {
           await this.unwind(effect)
           return refuse()
         }
-      })
+      }, id)
       if (this.blocks.get(id) === token) this.blocks.delete(id)
       this.agentScopeChanged()
     } catch (error) {
@@ -1077,7 +1093,7 @@ export class PluginLifecycleController {
         await this.effects.write(effect)
         this.options.fault?.('prepared')
         await this.finishUpdate(effect, operation.next!)
-      })
+      }, id)
       if (this.blocks.get(id) === token) this.blocks.delete(id)
       this.agentScopeChanged()
     } catch (error) {
@@ -1125,8 +1141,7 @@ export class PluginLifecycleController {
         return Promise.reject(new PluginSupervisorError('unavailable'))
       return prior.work.then(stopped)
     }
-    const work = this.options.state
-      .withExclusive(async () => {
+    const work = this.withPlugin('chrome', async () => {
         const id = 'chrome',
           install = this.current(id),
           running = this.runs.get(id)
@@ -1348,7 +1363,7 @@ export class PluginLifecycleController {
     let logout: PluginRemovalOutcome['logout'] = 'unconfirmed'
     const token = this.block(id) // Synchronous denial before the queue, tombstone, or any consumer awaits.
     try {
-      await this.options.state.withExclusive(async () => {
+      await this.withPlugin(id, () => this.options.state.withExclusive(async () => {
         const state = this.options.state.inspect()
         const guard = state.guards.find((one) => one.pluginId === id)
         if (!guard) {
@@ -1379,7 +1394,7 @@ export class PluginLifecycleController {
           return
         }
         logout = await this.remove(id, operationId, null)
-      })
+      }))
       if (this.blocks.get(id) === token) this.blocks.delete(id)
       this.agentScopeChanged()
       if (pluginAdapter(id)?.uninstall) return { data: 'deleted', logout }
@@ -1415,11 +1430,12 @@ export class PluginLifecycleController {
     await this.effects.write({ ...effect, phase: 'aborted', offlineCleanup: true })
     this.cleanup.delete(entry.pluginId)
   }
-  private async recover(): Promise<void> {
+  private async recover(id?: string): Promise<void> {
     const state = this.options.state.inspect()
     for (const record of state.operations) {
       const operation = record.operation
       if (operation.request.consent.action === 'global-restore') continue
+      if (id !== undefined && operation.next?.pluginId !== id) continue
       const next = operation.next!,
         effect = await this.effects.read(operation.request.operationId)
       if (
@@ -1467,7 +1483,7 @@ export class PluginLifecycleController {
     installId: string,
     allowLedgerV2 = true,
   ): Promise<number> {
-    return this.options.state.withExclusive(async () => {
+    return this.withPlugin(id, async () => {
       const screen = this.screen(handle, id)
       if (!pluginAdapter(id) || screen.installation.installId !== installId) return refuse()
       return new PluginProfileLedger(this.options.root).revision(installId, allowLedgerV2)
@@ -1485,7 +1501,7 @@ export class PluginLifecycleController {
     },
   ): Promise<void> {
     const proposal = PluginProposal.parse(input.proposal)
-    await this.options.state.withExclusive(async () => {
+    await this.withPlugin(input.pluginId, async () => {
       const screen = this.screen(handle, input.pluginId)
       const adapter = pluginAdapter(input.pluginId)
       if (
@@ -1521,23 +1537,34 @@ export class PluginLifecycleController {
   /** Trusted owner teardown only. Mark intent synchronously before any child can be stopped. */
   drain(): Promise<void> {
     this.draining = true
+    for (const call of this.profileCalls.values()) call.abort()
     // The supervisor bounds its caller's wait while retaining this exact cleanup barrier.
     this.drainWork ??= (async () => {
-      const results = await Promise.allSettled(
-        [...this.runs.values()].map(async (running) => {
-          const [, exit] = await Promise.allSettled([
-            Promise.resolve().then(() => running.run.stop()),
-            running.run.exited,
-          ])
-          if (exit.status !== 'fulfilled')
-            throw new PluginSupervisorError('cleanup-pending', {
-              cause: new Error(`${running.package.manifest.id}: its exit was not proven`, {
-                cause: exit.reason,
-              }),
-            })
-          await running.revocation
-        }),
-      )
+      const stopping = new Map<Running, Promise<void>>()
+      const stopRuns = () => {
+        for (const running of this.runs.values()) {
+          if (stopping.has(running)) continue
+          const stopped = (async () => {
+            const [, exit] = await Promise.allSettled([
+              Promise.resolve().then(() => running.run.stop()),
+              running.run.exited,
+            ])
+            if (exit.status !== 'fulfilled')
+              throw new PluginSupervisorError('cleanup-pending', {
+                cause: new Error(`${running.package.manifest.id}: its exit was not proven`, {
+                  cause: exit.reason,
+                }),
+              })
+            await running.revocation
+          })()
+          void stopped.catch(() => undefined)
+          stopping.set(running, stopped)
+        }
+      }
+      stopRuns()
+      await Promise.allSettled([...this.pluginWork.values()])
+      stopRuns()
+      const results = await Promise.allSettled(stopping.values())
       const failed = results.filter((one) => one.status === 'rejected')
       if (failed.length)
         throw new PluginSupervisorError('cleanup-pending', {
@@ -1577,6 +1604,7 @@ export class PluginLifecycleController {
     const pending = this.options.state.inspect().pending
     const leftover = this.drained ? pending?.next?.pluginId : undefined
     const blockers: string[] = []
+    for (const id of this.pluginWork.keys()) blockers.push(`${id} has a lifecycle operation in progress`)
     if (pending !== null && leftover === undefined) {
       const { action, pluginId } = pending.request.consent
       blockers.push(`an unfinished ${action} of ${pluginId ?? 'plugins'}`)

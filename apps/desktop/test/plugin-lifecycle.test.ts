@@ -337,7 +337,7 @@ describe.skipIf(process.platform === 'win32')(
       const lock = vi.spyOn(f.state, 'withExclusive')
       await f.controller.status()
       await f.controller.status()
-      expect(lock).toHaveBeenCalledTimes(2) // The two reads only.
+      expect(lock).not.toHaveBeenCalled() // Status reads and absent recovery need no writer lease.
     })
     it('a removal left unfinished never blocks a drain, and the next owner finishes it', async () => {
       let stopFails = true
