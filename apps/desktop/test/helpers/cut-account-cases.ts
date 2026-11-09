@@ -8,7 +8,8 @@ import {
   writeKeptAccounts,
   providerAccountsFile,
 } from '../../src/main/provider-accounts-file'
-import { readKeptUsage, providerUsageFile } from '../../src/main/provider-usage-file'
+import type { AppDatabase } from '../../src/main/db/connection'
+import { usageKeptIn } from '../../src/main/provider-usage-file'
 import {
   readKeptCuts,
   writeKeptCuts,
@@ -61,7 +62,7 @@ export interface Stops {
 }
 
 interface CutAccountContext {
-  life(): { readonly host: RuntimeHost }
+  life(): { readonly host: RuntimeHost; readonly db: AppDatabase }
   folder(): string
   root(): string
   handles(): FakeSessionHandle[]
@@ -202,7 +203,7 @@ export function registerFrozenCutAccountCases({
           .claude.some((one) => one.usedPercent === 9),
       'overlapping B usage',
     )
-    expect(readKeptUsage(providerUsageFile(folder())).readings.claude).toEqual([
+    expect(usageKeptIn(life().db).read().readings.claude).toEqual([
       expect.objectContaining({ account: b.id, usedPercent: 9 }),
     ])
     ;(handle as unknown as { account: () => unknown }).account = () => ({ email: EMAIL.ada })
@@ -217,7 +218,7 @@ export function registerFrozenCutAccountCases({
     await life().host.closeAll()
     const kept = readKeptAccounts(providerAccountsFile(folder()))
     expect(kept.claudeAccounts).toEqual([a, b])
-    expect(readKeptUsage(providerUsageFile(folder())).readings.claude).toEqual([
+    expect(usageKeptIn(life().db).read().readings.claude).toEqual([
       expect.objectContaining({ window: 'five_hour', account: a.id, usedPercent: 12 }),
     ])
     expect(readKeptCuts(turnsTheAppCutFile(folder())).cuts[id]!.expected).toBeNull()
@@ -253,9 +254,9 @@ export function registerFrozenCutAccountCases({
       conflicting,
     ])
     expect(
-      readKeptUsage(providerUsageFile(folder())).readings.claude.every(
-        (one) => one.account === undefined,
-      ),
+      usageKeptIn(life().db)
+        .read()
+        .readings.claude.every((one) => one.account === undefined),
     ).toBe(true)
   })
 

@@ -37,7 +37,7 @@ import {
   writeKeptAccounts,
   providerAccountsFile,
 } from '../src/main/provider-accounts-file'
-import { readKeptUsage, writeKeptUsage, providerUsageFile } from '../src/main/provider-usage-file'
+import { usageKeptIn } from '../src/main/provider-usage-file'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -286,10 +286,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
             writeKeptCuts(turnsTheAppCutFile(folder), kept)
           },
         },
-        usageKept: {
-          read: () => readKeptUsage(providerUsageFile(folder)),
-          write: (kept) => writeKeptUsage(providerUsageFile(folder), kept),
-        },
+        usageKept: usageKeptIn(db),
         accountsKept: {
           read: () => readKeptAccounts(providerAccountsFile(folder)),
           write: (kept) => {

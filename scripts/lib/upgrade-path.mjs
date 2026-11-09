@@ -657,6 +657,33 @@ export const MOVED_INTO_TABLES = {
       ]),
     ),
   }),
+  'provider-usage.json': (tables) => {
+    // The beta's file listed both providers, each with an empty list when it had nothing.
+    const byProvider = (rows, row) =>
+      rows.reduce(
+        (all, one) => ({ ...all, [one.provider]: [...(all[one.provider] ?? []), row(one)] }),
+        { claude: [], codex: [] },
+      )
+    const position = (a, b) => a.position - b.position
+    const readOn = Object.fromEntries(
+      (tables.provider_usage_read_on ?? []).map((row) => [row.provider, row.tag]),
+    )
+    return {
+      readings: byProvider([...(tables.provider_usage_reading ?? [])].sort(position), (row) => ({
+        window: row.window,
+        usedPercent: row.used_percent,
+        resetsAt: row.resets_at,
+        at: row.at,
+        ...(row.account === null ? {} : { account: row.account }),
+      })),
+      seen: byProvider([...(tables.provider_usage_window_seen ?? [])].sort(position), (row) => ({
+        window: row.window,
+        first: row.first,
+        last: row.last,
+      })),
+      ...(Object.keys(readOn).length === 0 ? {} : { readOn }),
+    }
+  },
   'sign-in-changes.json': (tables) => ({
     version: 1,
     changed: Object.fromEntries(

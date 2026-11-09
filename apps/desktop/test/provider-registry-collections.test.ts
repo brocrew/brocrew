@@ -1,8 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { PROVIDER_DESCRIPTORS, SUPPORTED_PROVIDERS, type ProviderDescriptor } from '@brobot2/shared'
+import { openDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
 
 const descriptors = PROVIDER_DESCRIPTORS as unknown as ProviderDescriptor[]
 const ids = SUPPORTED_PROVIDERS as unknown as string[]
@@ -49,16 +51,19 @@ it('builds optional strict usage fields for every registered descriptor', () => 
 })
 
 it('gives a newly registered provider its own persisted usage arrays and reads its rows', () => {
-  const { NO_USAGE_KEPT, readKeptUsage } = usage
+  const { NO_USAGE_KEPT, usageKeptIn } = usage
   expect(Object.keys(NO_USAGE_KEPT.readings)).toEqual(ids)
   expect(Reflect.get(NO_USAGE_KEPT.readings, 'probe')).toEqual([])
   expect(Reflect.get(NO_USAGE_KEPT.readings, 'probe')).not.toBe(NO_USAGE_KEPT.readings.claude)
   const directory = mkdtempSync(join(tmpdir(), 'registry-collections-'))
+  const db = openDatabase(join(directory, 'brobot2.sqlite'))
   try {
-    const file = join(directory, 'usage.json')
-    writeFileSync(file, JSON.stringify({ readings: { probe: [reading] } }))
-    expect(Reflect.get(readKeptUsage(file).readings, 'probe')).toEqual([reading])
+    applyMigrations(db, join(__dirname, '../src/main/db/migrations'))
+    const readings = { ...NO_USAGE_KEPT.readings, probe: [reading] }
+    usageKeptIn(db).write({ ...NO_USAGE_KEPT, readings })
+    expect(Reflect.get(usageKeptIn(db).read().readings, 'probe')).toEqual([reading])
   } finally {
+    db.close()
     rmSync(directory, { recursive: true, force: true })
   }
 })

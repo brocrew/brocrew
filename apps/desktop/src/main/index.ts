@@ -211,7 +211,7 @@ import {
 } from './runtime/agent-memory'
 import { ApiKeys, askTheProvider } from './runtime/api-keys'
 import { listProcesses, memoryOf } from './runtime/process-listing'
-import { providerUsageFile, readKeptUsage, writeKeptUsage } from './provider-usage-file'
+import { importProviderUsageFile, usageKeptIn } from './provider-usage-file'
 import { readKeptAttempts, scheduleAttemptsFile, writeKeptAttempts } from './schedule-attempts-file'
 import {
   profileExecutionFile,
@@ -589,6 +589,7 @@ function initDatabase(): AppDatabase {
   }
   importArchivedFile(database, app.getPath('userData'))
   importSignInChangesFile(database, app.getPath('userData'))
+  importProviderUsageFile(database, app.getPath('userData'))
   try {
     const compaction = compactWhenMuchIsFree(database, freeBytesOn(app.getPath('userData')))
     if (compaction === 'compacted') console.info('BroCrew gave its free database space back')
@@ -992,10 +993,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     removeKeptRule: (input) => removeKeptRule(whereRulesAreKept(), input),
     listProcesses,
     // Keep each provider's latest usage readings in this data folder across restarts.
-    usageKept: {
-      read: () => readKeptUsage(providerUsageFile(userData)),
-      write: (usage) => writeKeptUsage(providerUsageFile(userData), usage),
-    },
+    usageKept: usageKeptIn(database),
     // How each profile runs its work: which are services, and each service's one conversation.
     profileExecution: {
       read: () => readProfileExecution(profileExecutionFile(userData)),
