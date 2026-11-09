@@ -136,13 +136,11 @@ it.each(
 it('reports connection refused immediately with the actual connect cause', async () => {
   vi.stubGlobal(
     'fetch',
-    vi
-      .fn()
-      .mockRejectedValue(
-        new TypeError('fetch failed', {
-          cause: Object.assign(new Error(), { code: 'ECONNREFUSED' }),
-        }),
-      ),
+    vi.fn().mockRejectedValue(
+      new TypeError('fetch failed', {
+        cause: Object.assign(new Error(), { code: 'ECONNREFUSED' }),
+      }),
+    ),
   )
   await expect(admittedPluginTools(view().attachment, new Set(), () => {})).rejects.toMatchObject({
     pluginStage: 'binding-connect',
