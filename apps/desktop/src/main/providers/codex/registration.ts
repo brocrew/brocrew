@@ -18,3 +18,5 @@ export const metadata = {
   ],
   launch: { freshTimeoutMs: 15_000, resumeTimeoutMs: 60_000 },
 } as const
+
+export { isNativeAccountTag as isRecordedAccountTag } from '@brobot2/runtime/codex'

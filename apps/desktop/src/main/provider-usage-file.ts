@@ -5,11 +5,13 @@ import { providerRecord, type Provider } from '@brobot2/shared'
 import { MAX_INSTANT } from '../shared/clock'
 import type { ProviderUsageReading, UsageWindowSeen } from '../shared/runtime-ipc'
 import { AN_ACCOUNT_ID } from './provider-accounts-file'
+import { isRecordedAccountTag } from './providers/index'
 
 /** Existing opaque identities plus legacy tags, which remain distinct from new namespaces. */
 const opaqueTag = (tag: unknown): tag is string =>
   typeof tag === 'string' &&
-  /^(?:[0-9a-f]{32}|(?:credential|account):[0-9a-f]{64}|api-revision:[0-9]+)$/.test(tag)
+  (isRecordedAccountTag(tag) ||
+    /^(?:[0-9a-f]{32}|(?:credential|account):[0-9a-f]{64}|api-revision:[0-9]+)$/.test(tag))
 
 /**
  * 🔴 **F096 — each provider's newest usage reading per window, kept across a restart.**

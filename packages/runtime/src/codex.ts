@@ -76,3 +76,5 @@ export {
 export { CODEX_THREAD_START_CLAIMS, CODEX_CONFIG_LAYOUT } from './codex/configuration'
 
 export { CODEX_TOOL_NAMING } from './codex/tool-naming'
+
+export { nativeAccountTag, isNativeAccountTag } from './codex/account-identity'

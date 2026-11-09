@@ -174,6 +174,32 @@ describe('F096 · a provider’s usage, kept at its edges', () => {
       seen: { claude: [{ window: 'seven_day', first: 500, last: 1_000 }], codex: [] },
     })
 
+    it.each([
+      'native-account:fictional/account-G7',
+      'a'.repeat(32),
+      `credential:${'b'.repeat(64)}`,
+      `account:${'c'.repeat(64)}`,
+      'api-revision:17',
+    ])('preserves the exact recorded account tag through a file read: %s', (tag) => {
+      const file = providerUsageFile(dir)
+      const usage: KeptUsage = {
+        ...usageAt(11),
+        readOn: { codex: tag },
+        readings: {
+          claude: [],
+          codex: [{ window: 'weekly', usedPercent: 11, resetsAt: null, at: 1_000, account: tag }],
+        },
+      }
+      writeKeptUsage(file, usage)
+      expect(readKeptUsage(file)).toEqual(usage)
+    })
+
+    it('does not retain an empty native account identifier', () => {
+      const file = providerUsageFile(dir)
+      writeKeptUsage(file, { ...usageAt(11), readOn: { codex: 'native-account:' } })
+      expect(readKeptUsage(file).readOn).toBeUndefined()
+    })
+
     it('⛔ §3 · a write that fails leaves the file it would have replaced whole — and one that goes leaves no temporary', () => {
       const file = providerUsageFile(dir)
       writeKeptUsage(file, usageAt(11))
