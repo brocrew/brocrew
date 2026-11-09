@@ -267,7 +267,7 @@ it('keeps the shared inventory stage after the first of two waiting callers reti
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   const { attachment } = view()
   const held = deferred<void>()
-  const binding = vi.fn(async (_view, diagnostic: PluginToolDiagnostic) => {
+  const binding = vi.fn(async (_view: ReturnType<typeof view>['attachment'], diagnostic: PluginToolDiagnostic) => {
     diagnostic.pending?.('binding-inventory')
     await held.promise
     return emptyBinding()
