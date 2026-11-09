@@ -3,8 +3,10 @@ import { createServer as createHttpsServer } from 'node:https'
 import { connect } from 'node:net'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { readFile, rm } from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
+import { readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { pipeline } from 'node:stream/promises'
 import { createHash, X509Certificate } from 'node:crypto'
 import { requireEvidence } from './lib/mac-update-test.mjs'
 
@@ -30,70 +32,18 @@ export function requestFor(host, path, build) {
           url.pathname.startsWith(`/brocrew/brocrew/releases/download/v${build.version}/`)
         ? decodeURIComponent(url.pathname.split('/').at(-1))
         : null
-  const seal = build.files.find((file) => file.name === name)
   requireEvidence(
-    seal && seal.name !== 'latest-mac.yml',
+    build.names.includes(name) && name !== 'latest-mac.yml',
     'Controlled transport received an unexpected request.',
   )
-  return { kind: 'asset', seal }
+  return { kind: 'asset', name }
 }
 
 function atomFor(version) {
   return `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><id>brocrew-proof</id><title>Controlled candidate</title><updated>2026-11-08T00:00:00Z</updated><entry><id>v${version}</id><title>Controlled candidate ${version}</title><updated>2026-11-08T00:00:00Z</updated><link href="https://github.com/brocrew/brocrew/releases/tag/v${version}"/><content>Controlled transport fixture</content></entry></feed>`
 }
 
-// Authentication and the temporary download URL remain outside the app and every receipt.
-export async function githubAssetBody(assetId, token, fetcher = fetch) {
-  requireEvidence(
-    Number.isSafeInteger(assetId) && assetId > 0 && token,
-    'A draft GitHub asset binding is missing.',
-  )
-  const redirect = await fetcher(
-    `https://api.github.com/repos/brocrew/brocrew/releases/assets/${assetId}`,
-    {
-      headers: {
-        authorization: `Bearer ${token}`,
-        accept: 'application/octet-stream',
-        'x-github-api-version': '2022-11-28',
-      },
-      redirect: 'manual',
-      signal: AbortSignal.timeout(60_000),
-    },
-  ).catch(() => {
-    throw new Error('GitHub draft asset redirect request failed.')
-  })
-  const location = redirect.headers.get('location')
-  if (!(redirect.status >= 300 && redirect.status < 400 && location))
-    throw Object.assign(new Error('GitHub did not supply a draft asset redirect.'), {
-      upstreamStatus: redirect.status,
-    })
-  const url = new URL(location)
-  requireEvidence(
-    url.protocol === 'https:' &&
-      url.hostname === 'release-assets.githubusercontent.com' &&
-      !url.username &&
-      !url.password,
-    'GitHub draft asset redirect origin differs.',
-  )
-  const response = await fetcher(url.href, {
-    redirect: 'error',
-    signal: AbortSignal.timeout(600_000),
-  }).catch(() => {
-    throw new Error('GitHub draft asset body request failed.')
-  })
-  if (!(response.ok && response.body))
-    throw Object.assign(new Error('GitHub draft asset body was unavailable.'), {
-      upstreamStatus: response.status,
-    })
-  return response
-}
-
-export async function startControlledTransport({
-  folder,
-  initial,
-  token,
-  upstream = githubAssetBody,
-}) {
+export async function startControlledTransport({ folder, initial }) {
   let build = initial
   const requests = [],
     failures = [],
@@ -152,51 +102,19 @@ export async function startControlledTransport({
         response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
         response.end(JSON.stringify({ tag_name: `v${build.version}` }))
       } else {
-        const seal = route.seal
-        const body = await upstream(seal.assetId, token)
-        const sha256 = createHash('sha256'),
-          sha512 = createHash('sha512')
-        let bytes = 0
-        record.name = seal.name
-        record.assetId = seal.assetId
-        record.upstream = 'GitHub release asset; redirect kept only in memory'
+        const path = join(build.directory, route.name)
+        record.name = route.name
+        record.bytes = (await stat(path)).size
         response.writeHead(200, {
           'content-type': 'application/octet-stream',
-          'content-length': seal.size,
+          'content-length': record.bytes,
           'cache-control': 'no-store',
         })
-        for await (const chunk of body.body) {
-          bytes += chunk.length
-          sha256.update(chunk)
-          sha512.update(chunk)
-          if (!response.write(chunk))
-            await new Promise((done, failed) => {
-              const drained = () => {
-                response.off('close', closed)
-                done()
-              }
-              const closed = () => {
-                response.off('drain', drained)
-                failed(new Error('App closed the controlled download.'))
-              }
-              response.once('drain', drained)
-              response.once('close', closed)
-            })
-        }
-        record.bytes = bytes
-        record.sha256 = sha256.digest('hex')
-        record.sha512 = sha512.digest('base64')
-        requireEvidence(
-          bytes === seal.size && record.sha256 === seal.sha256 && record.sha512 === seal.sha512,
-          'GitHub draft asset bytes differ from sealed candidate.',
-        )
-        response.end()
+        await pipeline(createReadStream(path), response)
       }
       record.completed = true
     } catch (error) {
-      // Neither an upstream exception nor a temporary URL is suitable artifact content.
-      record.failure = 'Controlled update transport failed; no later proof stage is valid.'
-      if (Number.isInteger(error.upstreamStatus)) record.upstreamStatus = error.upstreamStatus
+      record.failure = `Controlled update transport failed: ${error.message}`
       failures.push(record.failure)
       if (!response.headersSent) response.writeHead(502)
       response.destroy()

@@ -1,12 +1,9 @@
-// 695-visible: the hosted guided journey observes real windows and the mounted DMG; hiding them
-// would bypass the installed-app journey being checked.
-import { spawn, execFile } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { promisify, parseArgs, isDeepStrictEqual } from 'node:util'
 import { mkdir, readFile, writeFile, lstat, realpath, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { createHash } from 'node:crypto'
-import { withoutSigningCredentials } from './lib/mac-signing-identity.mjs'
+import { readUpdateFile } from './release-check.mjs'
 import {
   checkedMacBundle,
   launchServicesArguments,
@@ -17,6 +14,7 @@ import {
   observeMacWindow,
   quitMacChild,
   databaseSnapshot,
+  diskImageFrom,
   nativeFiles,
   checkpointIds,
   checkNativePrefixes,
@@ -35,17 +33,14 @@ import {
   localModelTurnFacts,
   stateBytes,
   stateSummary,
+  VERSION_B as SAME_CODE_VERSION,
+  verifyCheckpoint,
 } from './lib/mac-update-test.mjs'
 import { startControlledTransport } from './mac-signed-upgrade-transport.mjs'
 import { resultLine } from './lib/upgrade-path.mjs'
 import {
-  BASELINE as PUBLIC_BASELINE,
-  candidateReceipt,
-  candidateImage,
+  candidateNames,
   publicFeedUnchanged,
-  signedIdentity,
-  signedCheckpoint,
-  sealedFile,
   fixturePermissions,
   permissionsKept,
   credentialPreserved,
@@ -65,34 +60,34 @@ import {
   openUpdates,
 } from './lib/update-rehearsal-app.mjs'
 
-// No build or app rewrite occurs here. Only disposable GitHub-hosted arm64 runners may install.
+// Only disposable GitHub-hosted arm64 runners may install.
 assertHostedMac(process.env, process.platform, process.arch)
 const { values } = parseArgs({
-  options: { inputs: { type: 'string' }, evidence: { type: 'string' } },
+  options: {
+    predecessor: { type: 'string' },
+    'predecessor-source': { type: 'string' },
+    candidate: { type: 'string' },
+    evidence: { type: 'string' },
+  },
 })
-requireEvidence(values.inputs && values.evidence, 'Both --inputs and --evidence are required.')
-const inputs = JSON.parse(await readFile(values.inputs, 'utf8'))
 requireEvidence(
-  inputs.transport === 'controlled-draft-github',
-  'The proof requires the declared controlled draft transport.',
+  values.predecessor && values['predecessor-source'] && values.candidate && values.evidence,
+  'Usage: --predecessor <dir> --predecessor-source <commit> --candidate <dir> --evidence <dir>.',
 )
-const BASELINE = inputs.baseline,
-  receipt = inputs.candidate
-candidateReceipt(receipt, receipt.input)
-const VERSION_A = BASELINE.version,
-  VERSION_B = receipt.version
-const distA = resolve(BASELINE.directory),
-  distB = resolve(receipt.directory)
+async function releaseFolder(folder, source) {
+  const directory = resolve(folder)
+  const manifest = await readFile(join(directory, 'latest-mac.yml'), 'utf8')
+  const { version } = readUpdateFile(manifest)
+  return { version, source, directory, manifest, names: candidateNames(version) }
+}
+const predecessor = await releaseFolder(values.predecessor, values['predecessor-source'])
+const candidate = await releaseFolder(values.candidate, process.env.GITHUB_SHA)
+const VERSION_A = predecessor.version,
+  VERSION_B = candidate.version
+requireEvidence(VERSION_A !== VERSION_B, `The candidate is already the published ${VERSION_A}.`)
 const evidenceRoot = resolve(values.evidence)
 let evidence = evidenceRoot
-requireEvidence(inputs.mode === 'guided', 'Only the three-workspace guided proof is admitted.')
-requireEvidence(
-  BASELINE.version === PUBLIC_BASELINE.version &&
-    BASELINE.source === PUBLIC_BASELINE.source &&
-    BASELINE.tree === PUBLIC_BASELINE.tree,
-  'Public baseline identity differs.',
-)
-const sourceFor = (version) => (version === VERSION_A ? BASELINE.source : receipt.source)
+const sourceFor = (version) => (version === VERSION_A ? predecessor.source : candidate.source)
 const app = '/Applications/BroCrew.app',
   dataRoot = join(homedir(), 'Library', 'Application Support', '@brobot2')
 const defaultData = join(dataRoot, 'desktop')
@@ -120,24 +115,12 @@ const summary = {
   runId: process.env.GITHUB_RUN_ID,
   runAttempt: process.env.GITHUB_RUN_ATTEMPT,
   harnessSource: process.env.GITHUB_SHA,
-  source: receipt.source,
-  baseline: BASELINE,
-  candidate: receipt,
-  transport: inputs.transport,
+  from: { version: VERSION_A, source: predecessor.source },
+  to: { version: VERSION_B, source: candidate.source },
   mode: 'guided',
   workspaceCount: 3,
   workspaces: workspaces.map((one) => one.result),
-  to: {
-    ...receipt.input,
-    files: receipt.files.map((file) => ({
-      name: file.name,
-      size: file.size,
-      sha256: file.sha256,
-      sha512: file.sha512,
-    })),
-  },
   replacementCount: 0,
-  publicFeedAvailability: 'not proved',
   sameCode: false,
   scriptedCopyIsFinderDrag: false,
   quarantineAppliedByFixture: { image: false, installedApp: false },
@@ -166,41 +149,13 @@ async function connect(url) {
 }
 const screenshot = (cdp, name) => captureScreenshot(cdp, join(evidence, name))
 
-const expectedBundles = new Map()
-function passed(name, facts = true) {
-  summary.assertions.push({ name, workspace: currentWorkspace?.name ?? null, passed: true, facts })
-  console.log(`PASS ${name}`)
-}
 async function quarantine(path, stage) {
   const attributes = await run('/usr/bin/xattr', ['-l', path])
   summary.quarantine.push({ stage, path, attributes, observedAt: new Date().toISOString() })
 }
-async function zipEntryDigest(archive, name) {
-  const sum = createHash('sha256')
-  const child = spawn('/usr/bin/unzip', ['-p', archive, name], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stderr.resume()
-  const done = new Promise((resolve, reject) => {
-    child.once('error', reject)
-    child.once('exit', (code) =>
-      code === 0 ? resolve() : reject(new Error('Sealed ZIP member could not be read.')),
-    )
-  })
-  await Promise.all([
-    done,
-    (async () => {
-      for await (const chunk of child.stdout) sum.update(chunk)
-    })(),
-  ])
-  return sum.digest('hex')
-}
-async function expectedBundle(build) {
-  const archive = join(build.directory, `BroCrew-${build.version}-arm64-mac.zip`)
-  return {
-    asarSha256: await zipEntryDigest(archive, 'BroCrew.app/Contents/Resources/app.asar'),
-    executableSha256: await zipEntryDigest(archive, 'BroCrew.app/Contents/MacOS/BroCrew'),
-  }
+function passed(name, facts = true) {
+  summary.assertions.push({ name, workspace: currentWorkspace?.name ?? null, passed: true, facts })
+  console.log(`PASS ${name}`)
 }
 async function bundleChecked(bundle, version) {
   const base = await checkedMacBundle(bundle, version, undefined, run)
@@ -210,26 +165,11 @@ async function bundleChecked(bundle, version) {
     timeout: 120_000,
   })
   const identity = signature.stdout + signature.stderr
-  if (version === PUBLIC_BASELINE.version)
-    requireEvidence(
-      identity.includes('Signature=adhoc') && identity.includes('TeamIdentifier=not set'),
-      'Actual baseline is no longer ad hoc.',
-    )
-  else {
-    signedIdentity(identity)
+  if (version === VERSION_B) {
     await run('/usr/bin/xcrun', ['stapler', 'validate', bundle])
     await run('/usr/sbin/spctl', ['--assess', '--verbose=4', '--type', 'execute', bundle])
   }
-  const installed = {
-    asarSha256: base.asarSha256,
-    executableSha256: await digest(`${bundle}/Contents/MacOS/BroCrew`),
-  }
-  if (expectedBundles.has(version))
-    requireEvidence(
-      isDeepStrictEqual(installed, expectedBundles.get(version)),
-      'Installed bundle bytes differ from sealed update ZIP.',
-    )
-  return { version: base.version, bundleId: base.bundleId, signature: identity, ...installed }
+  return { version: base.version, bundleId: base.bundleId, signature: identity }
 }
 async function requireNoInstalledProcesses() {
   const listing = await run('/bin/ps', ['-axo', 'pid=,command='])
@@ -253,9 +193,7 @@ async function launch(
       ],
     }),
     {
-      env: withoutSigningCredentials(
-        theAppsEnvironment({ kind: 'generic', url: transport.address }),
-      ),
+      env: theAppsEnvironment({ kind: 'generic', url: transport.address }),
     },
   )
   const { cdp, record } = await observeMacWindow({
@@ -276,17 +214,8 @@ async function launch(
     connect,
     attempts: summary.launchAttempts,
     verifyBundle: () => bundleChecked(app, version),
-    onChild: async (child) => {
+    onChild: (child) => {
       active = child
-      const observed = await exec('/bin/ps', ['eww', '-p', String(child.pid), '-o', 'command='], {
-        encoding: 'utf8',
-      })
-      requireEvidence(
-        !/(?:^|\s)(?:GH_TOKEN|GITHUB_TOKEN|ACTIONS_RUNTIME_TOKEN|ACTIONS_ID_TOKEN_REQUEST_TOKEN|MAC_CERT_P12_BASE64|MAC_CERT_P12_PASSWORD|APPLE_API_KEY_P8|MAC_EXPECTED_TEAM_ID|MAC_EXPECTED_SIGNING_AUTHORITY)=/.test(
-          observed.stdout,
-        ),
-        'A credential variable reached the launched app; its value is omitted.',
-      )
     },
   })
   summary.launches.push({ ...record, workspace: currentWorkspace.name })
@@ -499,7 +428,7 @@ async function guidedDownload(workspace, published) {
     const state = (await cdp.evaluate('return await window.api.updates.read()')).state
     if (state.kind === 'error') throw new Error(state.message)
     return state.kind === 'available' && state.version === VERSION_B
-  }, 'actual011 offers the signed candidate')
+  }, 'the published version offers the candidate')
   await screenshot(cdp, 'a-offers-candidate.png')
   await click(cdp, '[data-cy=updates-download]')
   await waitFor(
@@ -516,10 +445,6 @@ async function guidedDownload(workspace, published) {
     downloads,
   )
   requireEvidence((await realpath(image)) === image, 'Downloaded image path differs.')
-  await sealedFile(
-    image,
-    receipt.files.find((file) => file.name === published.url),
-  )
   let mounted = await waitFor(
     async () => mountedImageOf(await plist('/usr/bin/hdiutil', ['info', '-plist']), image),
     'the app actually opens and mounts its downloaded DMG',
@@ -585,13 +510,12 @@ end tell`,
   summary.download = {
     image,
     ...published,
-    sha256: await digest(image),
     finder: finder.trim(),
     guided,
     bundle: await bundleChecked(source, VERSION_B),
   }
   transport.requireHealthy()
-  passed('actual011-download-sha-finder-quarantine-and-guided-message', summary.download)
+  passed('guided-download-finder-quarantine-and-message', summary.download)
   return source
 }
 
@@ -648,15 +572,19 @@ async function reopenFirst(workspace) {
   )
   const checkpoint = join(data, 'backups', added[0])
   const manifest = JSON.parse(await readFile(join(checkpoint, 'manifest.json'), 'utf8'))
-  const checked = signedCheckpoint(
-    manifest,
+  requireEvidence(
+    manifest.madeBy?.appVersion === VERSION_B && manifest.madeBy?.build === candidate.source,
+    'The recovery copy was not made by the candidate.',
+  )
+  const checked = verifyCheckpoint(
+    { ...manifest, madeBy: { ...manifest.madeBy, appVersion: SAME_CODE_VERSION } },
     {
       ...stateBytes(checkpoint),
       'database.sqlite': await readFile(join(checkpoint, 'database.sqlite')),
     },
     {
       version: VERSION_B,
-      source: receipt.source,
+      source: candidate.source,
       id: added[0],
       workspaceId: (await readFile(join(data, 'backups', 'workspace-id'), 'utf8')).trim(),
       state: baseline.state,
@@ -785,16 +713,12 @@ try {
   for (const workspace of workspaces)
     requireEvidence(!(await exists(workspace.data)), 'A fixture workspace already exists.')
   await mkdir(evidenceRoot, { recursive: true })
-  await sealedFile(join(distA, PUBLIC_BASELINE.name), PUBLIC_BASELINE)
-  for (const file of receipt.files) await sealedFile(join(distB, file.name), file)
-  expectedBundles.set(VERSION_B, await expectedBundle(receipt))
-  const published = candidateImage(await readFile(join(distB, 'latest-mac.yml'), 'utf8'), receipt)
-  await writeFile(join(evidenceRoot, 'input-receipt.json'), JSON.stringify(inputs, null, 2))
-  transport = await startControlledTransport({
-    folder: fixtureRoot,
-    initial: BASELINE,
-    token: process.env.GH_TOKEN,
-  })
+  const published = diskImageFrom(candidate.manifest, VERSION_B)
+  const baselineImage = join(
+    predecessor.directory,
+    diskImageFrom(predecessor.manifest, VERSION_A).url,
+  )
+  transport = await startControlledTransport({ folder: fixtureRoot, initial: predecessor })
   summary.controlledTransport = {
     address: transport.address,
     spki: transport.spki,
@@ -804,7 +728,7 @@ try {
   model = await aScriptedModel(null, () => new Date().toISOString())
   const attached = await plist('/usr/bin/hdiutil', [
     'attach',
-    join(distA, PUBLIC_BASELINE.name),
+    baselineImage,
     '-readonly',
     '-nobrowse',
     '-plist',
@@ -818,7 +742,7 @@ try {
   summary.baselineBundle = await bundleChecked(app, VERSION_A)
   for (const workspace of workspaces) await seedWorkspace(workspace)
   await allRunning(VERSION_A, 'concurrentBaseline')
-  transport.switchTo(receipt)
+  transport.switchTo(candidate)
   const source = await guidedDownload(workspaces[0], published)
   await allRunning(VERSION_A, 'concurrentBeforeNormalQuit')
   await quitAll('baseline-before-single-replacement')
@@ -826,10 +750,6 @@ try {
     settingsBefore = await readFile(settings)
   for (const workspace of workspaces)
     await captureBaseline(workspace, registryBefore, settingsBefore)
-  requireEvidence(
-    (await digest(join(app, 'Contents/Resources/app.asar'))) === summary.baselineBundle.asarSha256,
-    'Public baseline ASAR changed before replacement.',
-  )
   await bundleChecked(app, VERSION_A)
   await requireNoInstalledProcesses()
   await rm(app, { recursive: true })

@@ -5,25 +5,18 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllEnvs())
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
-import { mkdtempSync, writeFileSync, mkdirSync, chmodSync, rmSync, symlinkSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, mkdirSync, chmodSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   BASELINE,
   candidateReceipt,
-  artifactBinding,
-  candidateImage,
-  sealedFile,
   publicFeedUnchanged,
   signedIdentity,
-  signedCheckpoint,
   fixturePermissions,
   permissionsKept,
-  upgradeRequest,
   credentialPreserved,
   candidateNames,
-  artifactMembers,
   registriesKept,
   assertThreeWorkspaceStates,
 } from '../mac-signed-upgrade-contract.mjs'
@@ -34,9 +27,6 @@ const expected = {
   source,
   tree,
   version: '0.2.12',
-  runId: 42,
-  artifactId: 43,
-  artifactSha256: 'c'.repeat(64),
 }
 const checksum = Buffer.alloc(64, 7).toString('base64')
 function receipt() {
@@ -80,45 +70,6 @@ test('candidate receipt cannot omit, duplicate or redirect sealed assets', () =>
   ])
     assert.throws(() => candidateReceipt({ ...original, files }, expected))
 })
-test('failed, substituted and expired candidate artifacts cannot supply runtime inputs', () => {
-  const run = {
-    id: 42,
-    repository: { full_name: 'brocrew/brocrew' },
-    head_sha: source,
-    status: 'completed',
-    conclusion: 'success',
-  }
-  const artifact = {
-    id: 43,
-    workflow_run: { id: 42, head_sha: source },
-    digest: `sha256:${expected.artifactSha256}`,
-    expired: false,
-  }
-  artifactBinding(run, artifact, expected)
-  for (const changed of [
-    { conclusion: 'failure' },
-    { status: 'in_progress' },
-    { head_sha: tree },
-    { id: 99 },
-    { repository: { full_name: 'side/repo' } },
-  ])
-    assert.throws(() => artifactBinding({ ...run, ...changed }, artifact, expected))
-  for (const changed of [
-    { id: 99 },
-    { expired: true },
-    { digest: `sha256:${'d'.repeat(64)}` },
-    { workflow_run: { id: 99, head_sha: source } },
-  ])
-    assert.throws(() => artifactBinding(run, { ...artifact, ...changed }, expected))
-})
-test('downloaded candidate manifest must bind the DMG size and SHA512 to final bytes', () => {
-  const manifest = `version: 0.2.12\nfiles:\n  - url: BroCrew-0.2.12-arm64.dmg\n    size: 10\n    sha512: ${checksum}\n`
-  assert.equal(candidateImage(manifest, receipt()).url, 'BroCrew-0.2.12-arm64.dmg')
-  assert.throws(() => candidateImage(manifest.replace('size: 10', 'size: 11'), receipt()))
-  assert.throws(() =>
-    candidateImage(manifest.replace(checksum, Buffer.alloc(64, 1).toString('base64')), receipt()),
-  )
-})
 test('the installed public feed remains public rather than rewritten to a sandbox', () => {
   publicFeedUnchanged(
     "owner: brocrew\nrepo: brocrew\nprovider: github\nupdaterCacheDirName: '@brobot2desktop-updater'\n",
@@ -142,34 +93,6 @@ test('candidate signature requires the actual team, Developer ID, runtime and ti
     assert.throws(() => signedIdentity(identity.replace(remove, 'missing')))
   assert.throws(() => signedIdentity('Signature=adhoc\nTeamIdentifier=not set\n'))
 })
-test('candidate checkpoint cannot inherit synthetic or other-source identity', () => {
-  for (const madeBy of [
-    { appVersion: '0.0.99', build: source },
-    { appVersion: '0.2.12', build: tree },
-  ])
-    assert.throws(() => signedCheckpoint({ madeBy }, {}, expected), /identity differs/)
-})
-test('sealed bytes are checked from disk; changed bytes, sizes and linked files fail', async () => {
-  const folder = mkdtempSync(join(tmpdir(), 'signed-upgrade-seal-'))
-  try {
-    const file = join(folder, 'app.dmg'),
-      bytes = Buffer.from('real sealed candidate')
-    const seal = {
-      size: bytes.length,
-      sha256: createHash('sha256').update(bytes).digest('hex'),
-      sha512: createHash('sha512').update(bytes).digest('base64'),
-    }
-    writeFileSync(file, bytes)
-    await sealedFile(file, seal)
-    writeFileSync(file, Buffer.from('fake sealed candidate'))
-    await assert.rejects(sealedFile(file, seal), /SHA-256 differs/)
-    await assert.rejects(sealedFile(file, { ...seal, size: 1 }), /size\/type differs/)
-    symlinkSync(file, join(folder, 'linked.dmg'))
-    await assert.rejects(sealedFile(join(folder, 'linked.dmg'), seal), /size\/type differs/)
-  } finally {
-    rmSync(folder, { recursive: true })
-  }
-})
 test('persistent fixture permissions include nested skill files and ignore transient database journals', () => {
   const folder = mkdtempSync(join(tmpdir(), 'signed-upgrade-modes-'))
   try {
@@ -189,36 +112,12 @@ test('persistent fixture permissions include nested skill files and ignore trans
   }
 })
 
-test('guided input requires immutable candidate pins and rejects automatic prototypes', () => {
-  const build = { ...expected, releaseId: 44 }
-  upgradeRequest({ mode: 'guided', to: build })
-  for (const request of [
-    { mode: 'automatic', from: build, to: { ...build, version: '0.2.13' } },
-    { mode: 'guided', from: build, to: build },
-    { mode: 'guided', to: { ...build, releaseId: undefined } },
-    { mode: 'guided', to: { ...build, artifactSha256: undefined } },
-    { mode: 'guided', to: { ...build, version: '0.2.11' } },
-  ])
-    assert.throws(() => upgradeRequest(request))
-})
 test('the encrypted credential sentinel cannot disappear or be replaced while other data survives', () => {
   const rows = [{ provider: 'codex', sealed: 'fictional-ciphertext', updated_at: 12 }]
   credentialPreserved(rows, structuredClone(rows))
   assert.throws(() => credentialPreserved([], []))
   assert.throws(() => credentialPreserved(rows, []))
   assert.throws(() => credentialPreserved(rows, [{ ...rows[0], sealed: 'rewritten-ciphertext' }]))
-})
-
-test('candidate transport archive has exactly five final updater files plus its inner receipt', () => {
-  const files = [...candidateNames('0.2.12'), 'mac-signed-candidate.json']
-  artifactMembers(files.join('\n'), '0.2.12')
-  for (const changed of [
-    files.slice(1),
-    [...files, files[0]],
-    [...files, '../outside'],
-    [...files, 'source.js'],
-  ])
-    assert.throws(() => artifactMembers(changed.join('\n'), '0.2.12'))
 })
 
 test('all three workspace registry entries survive, allowing only their last-opened timestamps to change', () => {

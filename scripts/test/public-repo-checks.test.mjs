@@ -248,7 +248,7 @@ describe('the workflows · run on a public repository, whatever it is named, and
     const release = read('.github/workflows/release.yml')
     expect(release).toContain('run: node scripts/leak-check.mjs\n')
     const jobs = release.slice(release.indexOf('\njobs:\n')).split(/^ {2}([\w-]+):\n/m)
-    expect(jobs[jobs.indexOf('publish') + 1]).toContain('    needs: [plan, leak]\n')
+    expect(jobs[jobs.indexOf('draft') + 1]).toMatch(/^ {4}needs: \[plan, leak, /m)
   })
 
   it('ordinary jobs keep public guards and plugin reviews stay restricted', () => {

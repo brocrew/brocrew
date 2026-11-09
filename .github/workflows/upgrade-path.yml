@@ -23,6 +23,8 @@
 # Run it on a commit that carries the app's whole window (main, or a branch cut from it): the
 # check expects that setup at launch, and a commit without the window's half of the app fails it.
 #
+# The release calls the Windows job with its own signed installer as the candidate.
+#
 # Opt-in, so it spends no runner minutes on ordinary pushes: by hand (Actions → Upgrade path → Run
 # workflow), or a pushed tag `upgrade-path-*`. It starts from v0.1.6; by hand any published
 # release or prerelease can be named, and a tag whose name holds `-before-the-switch-` starts from
@@ -48,6 +50,18 @@ on:
         description: The version the candidate is stamped with
         default: 0.1.7
         type: string
+  workflow_call:
+    inputs:
+      windows_beta:
+        type: string
+        required: true
+      candidate_version:
+        type: string
+        required: true
+      windows_artifact_id:
+        description: An uploaded Windows installer to test instead of building one
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -105,7 +119,16 @@ jobs:
             --pattern '*-Setup-*-x64*.exe' --dir upgrade-path-beta
           ls -la upgrade-path-beta
 
+      - name: The release's installer
+        if: inputs.windows_artifact_id
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ inputs.windows_artifact_id }}
+          merge-multiple: true
+          path: apps/desktop/dist
+
       - name: Build the candidate from this commit (NSIS, x64, unsigned)
+        if: ${{ !inputs.windows_artifact_id }}
         shell: bash
         run: |
           set -euo pipefail
@@ -166,14 +189,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: upgrade-path-windows
+          name: upgrade-path-windows-${{ github.run_attempt }}
           path: upgrade-path-evidence
           if-no-files-found: error
           retention-days: 7
 
   mac:
     name: Mac, from the tester's beta to the candidate
-    if: github.repository == 'brocrew/brocrew'
+    if: github.repository == 'brocrew/brocrew' && !inputs.windows_artifact_id
     runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
     timeout-minutes: 75
     steps:
@@ -241,7 +264,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: upgrade-path-mac
+          name: upgrade-path-mac-${{ github.run_attempt }}
           path: upgrade-path-evidence
           if-no-files-found: error
           retention-days: 7

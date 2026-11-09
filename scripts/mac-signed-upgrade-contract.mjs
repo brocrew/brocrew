@@ -1,18 +1,12 @@
-// 695-visible: these receipts bind the visible rehearsal process; this module never launches it.
-import { createHash } from 'node:crypto'
-import { createReadStream, lstatSync, readdirSync } from 'node:fs'
+// 695-visible: these checks read the visible journey's results; this module never launches it.
+import { lstatSync, readdirSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import {
   expectedSigningIdentity,
   requireDistributionSignature,
 } from './lib/mac-signing-identity.mjs'
-import {
-  diskImageFrom,
-  requireEvidence,
-  verifyCheckpoint,
-  STATE_FILES,
-} from './lib/mac-update-test.mjs'
+import { requireEvidence, STATE_FILES } from './lib/mac-update-test.mjs'
 
 export const BASELINE = Object.freeze({
   version: '0.2.11',
@@ -33,15 +27,6 @@ export function candidateNames(version) {
     `BroCrew-${version}-arm64-mac.zip.blockmap`,
     'latest-mac.yml',
   ]
-}
-
-export function artifactMembers(text, version) {
-  const members = text.trim().split('\n')
-  const expected = [...candidateNames(version), 'mac-signed-candidate.json'].sort()
-  requireEvidence(
-    isDeepStrictEqual(members.sort(), expected),
-    'Candidate artifact inventory differs from the five final assets and receipt.',
-  )
 }
 
 export function candidateReceipt(receipt, expected, identity = expectedSigningIdentity()) {
@@ -92,64 +77,6 @@ export function candidateReceipt(receipt, expected, identity = expectedSigningId
   return receipt
 }
 
-export function artifactBinding(run, artifact, expected) {
-  requireEvidence(
-    run.id === expected.runId &&
-      run.head_sha === expected.source &&
-      run.status === 'completed' &&
-      run.conclusion === 'success',
-    'Candidate build run is not successful at the pinned source.',
-  )
-  requireEvidence(
-    run.repository?.full_name === 'brocrew/brocrew',
-    'Candidate build repository differs.',
-  )
-  requireEvidence(
-    artifact.id === expected.artifactId &&
-      artifact.workflow_run?.id === run.id &&
-      artifact.workflow_run?.head_sha === expected.source &&
-      !artifact.expired,
-    'Candidate artifact provenance differs.',
-  )
-  requireEvidence(
-    artifact.digest === `sha256:${expected.artifactSha256}` && sha256.test(expected.artifactSha256),
-    'Candidate artifact digest differs.',
-  )
-}
-
-export async function digestFile(path, algorithm = 'sha256', encoding = 'hex') {
-  const sum = createHash(algorithm)
-  for await (const chunk of createReadStream(path)) sum.update(chunk)
-  return sum.digest(encoding)
-}
-
-export async function sealedFile(path, seal) {
-  const stat = lstatSync(path)
-  requireEvidence(
-    stat.isFile() && !stat.isSymbolicLink() && stat.size === seal.size,
-    `File size/type differs: ${basename(path)}.`,
-  )
-  requireEvidence(
-    (await digestFile(path)) === seal.sha256,
-    `File SHA-256 differs: ${basename(path)}.`,
-  )
-  if (seal.sha512)
-    requireEvidence(
-      (await digestFile(path, 'sha512', 'base64')) === seal.sha512,
-      `File SHA-512 differs: ${basename(path)}.`,
-    )
-}
-
-export function candidateImage(text, receipt) {
-  const image = diskImageFrom(text, receipt.version)
-  const seal = receipt.files.find((file) => file.name === image.url)
-  requireEvidence(
-    seal && image.sha512 === seal.sha512 && image.size === seal.size,
-    'Candidate manifest differs from sealed DMG.',
-  )
-  return image
-}
-
 export function publicFeedUnchanged(text) {
   const fields = Object.fromEntries(
     text
@@ -172,20 +99,6 @@ export function publicFeedUnchanged(text) {
 
 export function signedIdentity(output, identity = expectedSigningIdentity()) {
   requireDistributionSignature(output, { identity })
-}
-
-// The old same-code verifier fixes the B version at 0.0.99. Validate the real identity first,
-// then reuse its complete manifest/byte inventory check with only that fixed field adapted.
-export function signedCheckpoint(manifest, files, expected) {
-  requireEvidence(
-    manifest.madeBy?.appVersion === expected.version && manifest.madeBy?.build === expected.source,
-    'Recovery copy candidate identity differs.',
-  )
-  return verifyCheckpoint(
-    { ...manifest, madeBy: { ...manifest.madeBy, appVersion: '0.0.99' } },
-    files,
-    expected,
-  )
 }
 
 function permissionInventory(folder) {
@@ -228,40 +141,6 @@ export function fixturePermissions(folder, nativeNames = []) {
     result.push({ path: name, directory: false, mode: stat.mode & 0o777 })
   }
   return result
-}
-
-export function upgradeRequest(request) {
-  requireEvidence(
-    request?.mode === 'guided' && request.from === undefined,
-    'Only the three-workspace guided upgrade is supported.',
-  )
-  const builds = [request.to]
-  for (const build of builds) {
-    requireEvidence(
-      build &&
-        oid.test(build.source) &&
-        oid.test(build.tree) &&
-        /^\d+\.\d+\.\d+$/.test(build.version),
-      'Upgrade build identity is incomplete.',
-    )
-    requireEvidence(sha256.test(build.artifactSha256), 'Upgrade artifact SHA-256 is missing.')
-    for (const key of ['runId', 'artifactId', 'releaseId'])
-      requireEvidence(
-        Number.isSafeInteger(build[key]) && build[key] > 0,
-        `Upgrade ${key} is missing.`,
-      )
-  }
-  const from = BASELINE.version
-  requireEvidence(newerVersion(request.to.version, from), 'Upgrade target must be strictly newer.')
-  return request
-}
-function newerVersion(target, current) {
-  const next = target.split('.').map(Number),
-    before = current.split('.').map(Number)
-  for (let index = 0; index < 3; index++) {
-    if (next[index] !== before[index]) return next[index] > before[index]
-  }
-  return false
 }
 
 export function credentialPreserved(before, after) {

@@ -62,6 +62,12 @@ const MAC = `**macOS (Apple silicon: M1 or later; macOS 15 or later):**
 
 BroCrew keeps its data in \`~/Library/Application Support/@brobot2/desktop\`. A BroCrew you run from source on the same Mac uses the same folder.`
 
+const MAC_RELEASE = `**macOS (Apple silicon: M1 or later; macOS 15 or later):**
+1. Download \`BroCrew-….dmg\` below, open it, and drag BroCrew into Applications.
+2. Open BroCrew from Applications.
+
+BroCrew keeps its data in \`~/Library/Application Support/@brobot2/desktop\`. A BroCrew you run from source on the same Mac uses the same folder.`
+
 const KEYS = `open Settings → Providers, save an Anthropic API key on the Claude card (from ${ANTHROPIC_KEYS}) and an OpenAI API key on the Codex card (from ${OPENAI_KEYS}), and press Check it works on each.`
 
 const CLAUDE_CODE = `To use Claude agents, install Claude Code from ${CLAUDE_CODE_SETUP}. BroCrew does not include it: it runs the Claude Code installed on your computer. Codex comes with BroCrew.`
@@ -97,13 +103,15 @@ export function notesOf(tag, commit, repository = null, windowsSigned = false) {
   const release = versionOf(tag)
   const what =
     release !== null
-      ? `BroCrew ${release.version}${release.beta ? ', a beta,' : ''} for Windows x64 and for Macs with Apple silicon (${windowsSigned ? 'signed on Windows' : 'unsigned on Windows'}; signed ad hoc and not notarized on the Mac)`
+      ? `BroCrew ${release.version}${release.beta ? ', a beta,' : ''} for Windows x64 and for Macs with Apple silicon (${windowsSigned ? 'signed on Windows' : 'unsigned on Windows'}; signed and notarized on the Mac)`
       : platforms.length === 1
         ? platforms[0] === 'windows'
           ? 'Unsigned beta build of BroCrew for Windows x64'
           : 'Beta build of BroCrew for Macs with Apple silicon, signed ad hoc and not notarized'
         : 'Beta builds of BroCrew for Windows x64 and for Macs with Apple silicon (unsigned on Windows; signed ad hoc and not notarized on the Mac)'
-  const install = platforms.map((one) => (one === 'windows' ? WINDOWS : MAC))
+  const install = platforms.map((one) =>
+    one === 'windows' ? WINDOWS : release !== null ? MAC_RELEASE : MAC,
+  )
   const signIn =
     release !== null
       ? [CLAUDE_CODE_FIRST, `To add your API keys: ${KEYS}`]

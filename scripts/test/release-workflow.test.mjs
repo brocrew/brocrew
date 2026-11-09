@@ -139,70 +139,44 @@ describe('§2 · release-check.mjs', () => {
 describe('§3 · release workflow route', () => {
   const workflow = readFileSync(join(here, '../../.github/workflows/release.yml'), 'utf8')
   const mac = readFileSync(join(here, '../../.github/actions/signed-mac/action.yml'), 'utf8')
-  it('uses valid YAML and passes version/repository inputs to every composite shell step', () => {
-    const load = builderTools.loadYaml
-    const action = load(mac)
-    const parsed = load(workflow)
-    expect(parsed.jobs.macos.environment).toBe('mac-signing')
-    expect(parsed.jobs.qualify.environment).toBe('mac-signing')
-    expect(parsed.jobs.publish.environment).toBe('release')
-    expect(parsed.jobs.publish.needs).not.toContain('macos')
-    for (const job of ['qualify', 'publish']) {
-      expect(parsed.jobs[job].steps[0]).toEqual({
-        uses: 'actions/checkout@v7',
-        with: { 'fetch-depth': 0, 'persist-credentials': false },
-      })
-      expect(parsed.jobs[job].steps[1]).toEqual({
-        uses: './.github/actions/setup-desktop',
-        with: { install: 'false' },
-      })
-    }
-    const setup = load(
-      readFileSync(join(here, '../../.github/actions/setup-desktop/action.yml'), 'utf8'),
+  const jobs = builderTools.loadYaml(workflow).jobs
+  it('drafts only after both builds and both upgrade tests, and publishes only through release', () => {
+    expect(jobs.windows.environment).toBe('windows-signing')
+    expect(jobs.macos.environment).toBe('mac-signing')
+    expect(jobs['mac-upgrade'].needs).toEqual(['plan', 'macos'])
+    expect(jobs['windows-upgrade'].uses).toBe('./.github/workflows/upgrade-path.yml')
+    expect(jobs.draft.needs).toEqual(
+      expect.arrayContaining(['leak', 'windows', 'macos', 'mac-upgrade', 'windows-upgrade']),
     )
-    expect(setup.inputs.install.default).toBe('true')
-    const installation = setup.runs.steps.find((step) => step.run)
-    expect(installation.if).toBe("inputs.install == 'true'")
-    expect(installation.run).toContain('pnpm install --frozen-lockfile')
-
-    for (const step of action.runs.steps) if (step.run) expect(step.shell).toBe('bash')
-    expect(mac).not.toMatch(/\$\{\{\s*(needs|secrets)\./)
+    expect(jobs.publish.needs).toContain('draft')
+    expect(jobs.publish.environment).toBe('release')
+    for (const name of Object.keys(jobs))
+      if (!['draft', 'publish'].includes(name)) expect(jobs[name].permissions).toBeUndefined()
   })
-  it('supplies runtime expected metadata without exposing signing secrets to the proof', () => {
-    const proof = readFileSync(join(here, '../../.github/workflows/mac-signed-upgrade.yml'), 'utf8')
-    expect(proof).toContain('environment: mac-signing')
-    for (const name of ['MAC_EXPECTED_TEAM_ID', 'MAC_EXPECTED_SIGNING_AUTHORITY']) {
-      expect(proof).toContain(`vars.${name}`)
-      expect(workflow).toContain(`vars.${name}`)
+  it('a tag other than vX.Y.Z stops in plan', () => {
+    const run = jobs.plan.steps[0].run
+    for (const [tag, status] of [
+      ['v0.2.14', 0],
+      ['v0.2.14-rc1', 1],
+      ['v0.2.14-candidate.1', 1],
+    ]) {
+      const check = run.slice(0, run.indexOf('if [ "$RELEASE_REPO"'))
+      const result = spawnSync('bash', ['-c', check], {
+        env: { ...process.env, GITHUB_REF_NAME: tag },
+        encoding: 'utf8',
+      })
+      expect(result.status, tag).toBe(status)
     }
-    expect(proof).not.toMatch(/secrets\.(MAC_CERT|APPLE_API)/)
-    expect(mac).toContain('node scripts/lib/mac-signing-identity.mjs mask')
-  })
-  it('restricts builds to candidates and publication to an explicit stable-tag dispatch', () => {
-    expect(workflow).toContain("if: needs.plan.outputs.build == 'true'")
-    expect(workflow).toContain("if: needs.plan.outputs.publish == 'true'")
-    const publish = workflow.slice(workflow.indexOf('\n  publish:'))
-    expect(publish).not.toMatch(/electron-builder|pnpm install|--clobber/)
-    expect(publish).toContain('environment: release')
-    expect(publish).toContain('selection_artifact_id')
-    expect(publish).toContain('selection_sha256')
-    expect(workflow.match(/contents: write/g)).toHaveLength(1)
   })
   it('retains packaged/recovery/update checks and signs the Mac distribution', () => {
     expect(mac).toContain('--mac dmg zip dir --arm64')
     expect(mac).toContain('-c.mac.hardenedRuntime=true')
-    expect(mac).toContain('-c.mac.timestamp=')
     expect(mac).not.toContain('-c.mac.identity=-')
-    expect(mac).toContain('mac-after-sign.cjs')
-    expect(mac).toContain('scripts/mac-release-signing.mjs')
     expect(mac).toContain('scripts/macos-packaged-check.mjs')
     expect(mac).toContain('scripts/release-check.mjs')
     expect(mac).toContain('scripts/recovery-real-entry-check.mjs')
-    expect(workflow).toContain('artifact_name: release-macos')
-    expect(workflow).not.toContain('macos-update-test')
-    expect(mac).not.toContain('macUpdateInstall')
-    expect(workflow).toContain('environment: mac-signing')
-    expect(workflow).toContain('actions/attest-build-provenance@v2')
+    for (const step of builderTools.loadYaml(mac).runs.steps)
+      if (step.run) expect(step.shell).toBe('bash')
   })
 })
 

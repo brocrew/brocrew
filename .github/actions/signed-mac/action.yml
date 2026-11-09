@@ -12,14 +12,11 @@ inputs:
     description: Update repository name
   artifact_name:
     required: true
-    description: Distinct immutable artifact name
+    description: Artifact name
 outputs:
   artifact_id:
-    description: Immutable artifact ID
+    description: Artifact ID
     value: ${{ steps.assets.outputs.artifact-id }}
-  artifact_digest:
-    description: Artifact transport SHA256
-    value: ${{ steps.assets.outputs.artifact-digest }}
 runs:
   using: composite
   steps:
@@ -159,12 +156,6 @@ runs:
         fi
         rm -rf "$signing_dir" || status=$?
         exit "$status"
-    - name: Record the final candidate file inventory
-      shell: bash
-      run: |
-        set -euo pipefail
-        export SOURCE_TREE="$(git rev-parse HEAD^{tree})"
-        node scripts/release-artifacts.mjs mac-receipt apps/desktop/dist ${{ inputs.version }}
     - id: assets
       uses: actions/upload-artifact@v4
       with:
@@ -175,6 +166,5 @@ runs:
           apps/desktop/dist/BroCrew-${{ inputs.version }}-arm64-mac.zip
           apps/desktop/dist/BroCrew-${{ inputs.version }}-arm64-mac.zip.blockmap
           apps/desktop/dist/latest-mac.yml
-          apps/desktop/dist/mac-signed-candidate.json
         if-no-files-found: error
         retention-days: 30

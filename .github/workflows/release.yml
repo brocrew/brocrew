@@ -1,52 +1,17 @@
-# Candidate tags build once. Qualification seals the tested selection. Publication on the
-# identical stable-tag SHA downloads that selection and never rebuilds or replaces asset bytes.
+# A `vX.Y.Z` tag builds and signs both platforms, runs the upgrade test on each OS with this
+# run's files, and makes a draft release of exactly those files. The draft goes public when the
+# `release` environment's required reviewer approves it. The upgrade test installs the latest
+# published release, makes data with it, updates to this run's build and checks that the data,
+# saved keys and workspaces survive; it does not cover installed plugins or older releases.
 #
-#   - `vX.Y.Z`        → a full release: what every BroCrew that checks for updates is offered;
-#   - `vX.Y.Z-candidate.N` builds version X.Y.Z without publishing.
-#
-# ⚑ The version comes from the tag (`-c.extraMetadata.version`), so a release needs no commit that
-# bumps a number. ⛔ Only the version: the app's name — the package's `name`, which places its data
-# folder and names its Keychain entry — never moves (`apps/desktop/src/main/data-folder.ts`).
-#
-# ⚑ Where releases live, and where every BroCrew built here looks for its updates, is ONE setting:
-# the repository variable `RELEASE_REPO` (owner/repo), else the repository this workflow runs in
-# — the public repository, once there is one. ⛔ It must be that repository: the job's token publishes only
-# to its own, so a release built here pointing elsewhere would offer updates nobody can publish.
-#
-# What each build proves before anything is published: the platform check (Codex in the app and no
-# Claude Code, the newest tested Claude Code installed outside it, the database module, the data
-# folder — `scripts/windows-packaged-check.mjs`,
-# `scripts/macos-packaged-check.mjs`) and `scripts/release-check.mjs` — the update file names this
-# version and every file it names is there, with the size and sha512 it says; the app looks at this
-# repository. Each build also checks recovery through its packaged app's real entry. Only when
-# both builds and their checks pass does the candidate job attest and retain the files.
-# A later stable-tag dispatch publishes only the qualified bytes through the protected
-# release environment, with its existing required reviewer and no-admin-bypass controls.
-#
+# The version comes from the tag (`-c.extraMetadata.version`); the package name, which places the
+# data folder, never changes. Releases live in `RELEASE_REPO`, which must be this repository.
 # Windows signs with DEVERP when the windows-signing environment has all four eSigner secrets.
-# That environment is restricted to v* tags. Other workflows cannot read its secrets; their
-# Windows builds stay unsigned. Mac releases are signed and notarized.
 name: Release
 
 on:
   push:
     tags: ['v*', '!v*-mac-signing-check.*']
-  workflow_dispatch:
-    inputs:
-      mode:
-        description: Qualify a candidate or publish its exact tested files from the stable tag
-        type: choice
-        required: true
-        options: [qualify, publish]
-      selection_json:
-        description: Pinned build and native proof inventory (qualify only)
-        type: string
-      selection_artifact_id:
-        description: Immutable tested-selection artifact ID (publish only)
-        type: string
-      selection_sha256:
-        description: SHA256 of tested-selection.json (publish only)
-        type: string
 
 permissions:
   contents: read
@@ -65,34 +30,34 @@ jobs:
       repo: ${{ steps.plan.outputs.repo }}
       owner: ${{ steps.plan.outputs.owner }}
       name: ${{ steps.plan.outputs.name }}
-      build: ${{ steps.plan.outputs.build }}
-      qualify: ${{ steps.plan.outputs.qualify }}
-      publish: ${{ steps.plan.outputs.publish }}
+      predecessor: ${{ steps.plan.outputs.predecessor }}
+      predecessor_source: ${{ steps.plan.outputs.predecessor_source }}
     steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - &node-only
-        uses: ./.github/actions/setup-desktop
-        with:
-          install: 'false'
       - id: plan
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_REPO: ${{ vars.RELEASE_REPO || github.repository }}
-          RELEASE_MODE: ${{ inputs.mode }}
         run: |
           set -euo pipefail
-          node scripts/release-artifacts.mjs plan >> "$GITHUB_OUTPUT"
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "$GITHUB_REF_NAME is not a release tag. A release tag is vX.Y.Z."
+            exit 1
+          fi
           if [ "$RELEASE_REPO" != "$GITHUB_REPOSITORY" ]; then
             echo "RELEASE_REPO is $RELEASE_REPO, but this workflow can publish only to $GITHUB_REPOSITORY"
             exit 1
           fi
+          predecessor="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
           {
+            echo "version=${GITHUB_REF_NAME#v}"
             echo "repo=$RELEASE_REPO"
             echo "owner=${RELEASE_REPO%%/*}"
             echo "name=${RELEASE_REPO#*/}"
+            echo "predecessor=$predecessor"
+            echo "predecessor_source=$(gh api "repos/$GITHUB_REPOSITORY/commits/$predecessor" --jq .sha)"
           } >> "$GITHUB_OUTPUT"
+          echo "Releasing ${GITHUB_REF_NAME#v}; the upgrade tests start from $predecessor."
 
   # Publication waits for the private-name check; the names come from the repository secret.
   leak:
@@ -104,7 +69,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - *node-only
+      - uses: ./.github/actions/setup-desktop
+        with:
+          install: 'false'
       - name: No private name in the tree
         env:
           BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
@@ -113,15 +80,13 @@ jobs:
   windows:
     name: Build for Windows (NSIS, x64)
     needs: plan
-    if: needs.plan.outputs.build == 'true'
-    # ⚑ `windows-2022`: pnpm's node-gyp does not know the Visual Studio of `windows-latest` (`windows.yml`).
+    # `windows-2022`: pnpm's node-gyp does not know the Visual Studio of `windows-latest` (`windows.yml`).
     runs-on: windows-2022
     environment: windows-signing
     timeout-minutes: 45
     outputs:
       signed: ${{ steps.signing.outputs.enabled }}
       artifact_id: ${{ steps.assets.outputs.artifact-id }}
-      artifact_digest: ${{ steps.assets.outputs.artifact-digest }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -200,14 +165,14 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: recovery-evidence-windows
+          name: recovery-evidence-windows-${{ github.run_attempt }}
           path: ${{ runner.temp }}/recovery-evidence
           if-no-files-found: warn
           retention-days: 14
       - id: assets
         uses: actions/upload-artifact@v4
         with:
-          name: release-windows
+          name: release-windows-${{ github.run_attempt }}
           path: |
             apps/desktop/dist/BroCrew-Setup-${{ needs.plan.outputs.version }}-x64.exe
             apps/desktop/dist/BroCrew-Setup-${{ needs.plan.outputs.version }}-x64.exe.blockmap
@@ -218,13 +183,11 @@ jobs:
   macos:
     name: Build for the Mac (Developer ID, notarized, Apple silicon)
     needs: plan
-    if: needs.plan.outputs.build == 'true'
     runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
     environment: mac-signing
     timeout-minutes: 100
     outputs:
       artifact_id: ${{ steps.build.outputs.artifact_id }}
-      artifact_digest: ${{ steps.build.outputs.artifact_digest }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -235,7 +198,7 @@ jobs:
           version: ${{ needs.plan.outputs.version }}
           owner: ${{ needs.plan.outputs.owner }}
           repo: ${{ needs.plan.outputs.name }}
-          artifact_name: release-macos
+          artifact_name: release-macos-${{ github.run_attempt }}
         env:
           MAC_EXPECTED_TEAM_ID: ${{ vars.MAC_EXPECTED_TEAM_ID }}
           MAC_EXPECTED_SIGNING_AUTHORITY: ${{ vars.MAC_EXPECTED_SIGNING_AUTHORITY }}
@@ -245,125 +208,115 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
-  candidate:
-    name: Seal the candidate build origins and eight assets
-    needs: [plan, windows, macos]
-    if: needs.plan.outputs.build == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
+  mac-upgrade:
+    name: Upgrade test on the Mac
+    needs: [plan, macos]
+    runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
+    timeout-minutes: 75
     steps:
-      - &checked-source
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
-      - *node-only
-      - uses: actions/download-artifact@v4
+      - uses: actions/setup-node@v7
         with:
-          artifact-ids: ${{ needs.windows.outputs.artifact_id }}
-          merge-multiple: true
-          path: staging/windows
+          node-version-file: '.nvmrc'
       - uses: actions/download-artifact@v4
         with:
           artifact-ids: ${{ needs.macos.outputs.artifact_id }}
           merge-multiple: true
-          path: staging/macos
-      - name: Record exact build origins and final file hashes
-        env:
-          RELEASE_REPO: ${{ needs.plan.outputs.repo }}
-          MAC_ARTIFACT_ID: ${{ needs.macos.outputs.artifact_id }}
-          MAC_ARTIFACT_DIGEST: sha256:${{ needs.macos.outputs.artifact_digest }}
-          WINDOWS_ARTIFACT_ID: ${{ needs.windows.outputs.artifact_id }}
-          WINDOWS_ARTIFACT_DIGEST: sha256:${{ needs.windows.outputs.artifact_digest }}
-          WINDOWS_SIGNED: ${{ needs.windows.outputs.signed }}
-        run: |
-          set -euo pipefail
-          export SOURCE_TREE="$(git rev-parse HEAD^{tree})"
-          export CANDIDATE_TAG_OBJECT="$(git rev-parse refs/tags/$GITHUB_REF_NAME)"
-          mkdir -p candidate/assets
-          node scripts/release-artifacts.mjs collect staging candidate/assets
-      - name: Attest the final files and their build manifest
-        uses: actions/attest-build-provenance@v2
-        with:
-          subject-path: |
-            candidate/assets/*
-            candidate/build-manifest.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: candidate-release-${{ github.run_attempt }}
           path: candidate
-          if-no-files-found: error
-          retention-days: 30
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mac-signed-candidate-receipt
-          path: mac-signed-candidate.json
-          if-no-files-found: error
-          retention-days: 30
-
-  qualify:
-    name: Seal a mechanically verified tested selection
-    needs: plan
-    if: needs.plan.outputs.qualify == 'true'
-    runs-on: ubuntu-latest
-    environment: mac-signing
-    permissions:
-      contents: read
-      actions: read
-      attestations: read
-    steps:
-      - *checked-source
-      - *node-only
-      - name: Verify source, candidate bytes, native proof origins and sealed receipts
+      - name: Download the latest published release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TESTED_SELECTION_JSON: ${{ inputs.selection_json }}
-          MAC_EXPECTED_TEAM_ID: ${{ vars.MAC_EXPECTED_TEAM_ID }}
-          MAC_EXPECTED_SIGNING_AUTHORITY: ${{ vars.MAC_EXPECTED_SIGNING_AUTHORITY }}
+          GH_TOKEN: ${{ github.token }}
+          PREDECESSOR: ${{ needs.plan.outputs.predecessor }}
         run: |
-          node scripts/lib/mac-signing-identity.mjs mask
-          node scripts/release-selection.mjs qualify qualification
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tested-selection-${{ github.run_attempt }}
-          path: qualification/tested-selection.json
-          if-no-files-found: error
-          retention-days: 30
-
-  publish:
-    name: Publish only the exact tested files
-    needs: [plan, leak]
-    if: needs.plan.outputs.publish == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    # The repository's required reviewer and no-admin-bypass settings remain mandatory.
-    environment: release
-    permissions:
-      contents: write
-      actions: read
-      attestations: read
-    steps:
-      - *checked-source
-      - *node-only
-      - name: Verify the tested selection, publish a complete draft, and read every file back
+          gh release download "$PREDECESSOR" --repo "$GITHUB_REPOSITORY" \
+            --pattern '*-arm64.dmg' --pattern latest-mac.yml --dir predecessor
+          ls -la predecessor candidate
+      - name: Install it, make data in three workspaces, update to this build, and check the data
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ needs.plan.outputs.repo }}
-          TESTED_SELECTION_ARTIFACT_ID: ${{ inputs.selection_artifact_id }}
-          TESTED_SELECTION_SHA256: ${{ inputs.selection_sha256 }}
-          MAC_EXPECTED_TEAM_ID: ${{ vars.MAC_EXPECTED_TEAM_ID }}
-          MAC_EXPECTED_SIGNING_AUTHORITY: ${{ vars.MAC_EXPECTED_SIGNING_AUTHORITY }}
-        run: |
-          node scripts/lib/mac-signing-identity.mjs mask
-          node scripts/release-selection.mjs publish publication
-      - name: Keep the publication readback
+          PREDECESSOR_SOURCE: ${{ needs.plan.outputs.predecessor_source }}
+        run: >-
+          node scripts/mac-signed-upgrade.mjs --predecessor predecessor
+          --predecessor-source "$PREDECESSOR_SOURCE" --candidate candidate
+          --evidence mac-upgrade-evidence
+      - name: Keep the evidence, whatever happened
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: publication-readback-${{ github.run_attempt }}
-          path: publication/publication-readback.json
+          name: mac-upgrade-evidence-${{ github.run_attempt }}
+          path: mac-upgrade-evidence
           if-no-files-found: warn
-          retention-days: 30
+          retention-days: 14
+
+  windows-upgrade:
+    name: Upgrade test on Windows
+    needs: [plan, windows]
+    uses: ./.github/workflows/upgrade-path.yml
+    with:
+      windows_beta: ${{ needs.plan.outputs.predecessor }}
+      candidate_version: ${{ needs.plan.outputs.version }}
+      windows_artifact_id: ${{ needs.windows.outputs.artifact_id }}
+
+  draft:
+    name: Draft the release with this run's files
+    needs: [plan, leak, windows, macos, mac-upgrade, windows-upgrade]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-desktop
+        with:
+          install: 'false'
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.windows.outputs.artifact_id }},${{ needs.macos.outputs.artifact_id }}
+          merge-multiple: true
+          path: release
+      - name: Replace any earlier draft of this version with a new one
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ needs.plan.outputs.repo }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          BROCREW_WINDOWS_SIGNED: ${{ needs.windows.outputs.signed }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          gh api --paginate "repos/$REPO/releases" --jq ".[] | select(.tag_name == \"$tag\") | .draft" > existing
+          while read -r draft; do
+            if [ "$draft" != true ]; then
+              echo "$tag is already published; push a new version tag."
+              exit 1
+            fi
+            gh release delete "$tag" --repo "$REPO" --yes
+          done < existing
+          node scripts/beta-release.mjs notes "$tag" "$GITHUB_SHA" > notes.md
+          gh release create "$tag" --repo "$REPO" --draft --verify-tag \
+            --title "$(node scripts/beta-release.mjs title "$tag")" --notes-file notes.md \
+            "release/BroCrew-Setup-$VERSION-x64.exe" \
+            "release/BroCrew-Setup-$VERSION-x64.exe.blockmap" \
+            release/latest.yml \
+            "release/BroCrew-$VERSION-arm64.dmg" \
+            "release/BroCrew-$VERSION-arm64.dmg.blockmap" \
+            "release/BroCrew-$VERSION-arm64-mac.zip" \
+            "release/BroCrew-$VERSION-arm64-mac.zip.blockmap" \
+            release/latest-mac.yml
+
+  publish:
+    name: Publish the draft once the release is approved
+    needs: [plan, draft]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ needs.plan.outputs.repo }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: gh release edit "v$VERSION" --repo "$REPO" --draft=false --latest
