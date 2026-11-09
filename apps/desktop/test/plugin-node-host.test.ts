@@ -296,7 +296,7 @@ async function browserStarted(path: string): Promise<{ pid: number; child: numbe
 // Process groups and POSIX permissions have no Windows implementation in this host.
 describe.skipIf(process.platform === 'win32')('app-supplied plugin Node host', () => {
   beforeAll(async () => {
-    root = await realpath(await mkdtemp(join(tmpdir(), 'fictional-node-host-')))
+    root = await realpath(await mkdtemp(join(tmpdir(), 'nh-')))
     resources = join(root, 'bundle')
     await mkdir(join(resources, 'plugin-node'), { recursive: true, mode: 0o700 })
     const binary = await readFile(
