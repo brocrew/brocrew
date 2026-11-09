@@ -261,7 +261,6 @@ export { CODEX_CAPABILITIES } from './codex/capabilities'
 
 export { buildChildEnv } from './internal/child-env'
 export {
-  aStagingName,
   createFreshFile,
   isStillTheFileOpened,
   openNotThroughALink,

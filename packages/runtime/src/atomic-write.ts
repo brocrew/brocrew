@@ -13,7 +13,7 @@ import {
 import * as nodeFs from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 
-export interface AtomicWriteHandle {
+interface AtomicWriteHandle {
   writeFile(data: string | Uint8Array): Promise<void>
   sync(): Promise<void>
   close(): Promise<void>
@@ -26,15 +26,13 @@ export interface AtomicWriteFs {
 }
 
 export type AtomicWriteData =
-  | string
-  | Uint8Array
-  | ((append: (text: string) => Promise<void>) => Promise<void>)
+  string | Uint8Array | ((append: (text: string) => Promise<void>) => Promise<void>)
 
 /** The codes a file held briefly by another program gives, mostly antivirus and indexers on Windows. */
 const BRIEFLY_HELD = new Set(['EBUSY', 'EPERM', 'EACCES'])
 
 /** Whether `error` is one a file held briefly by another program gives. */
-export function isBrieflyHeld(error: unknown): boolean {
+function isBrieflyHeld(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException | null)?.code
   return code !== undefined && BRIEFLY_HELD.has(code)
 }
@@ -129,7 +127,7 @@ export async function flushFile(path: string, fs: AtomicWriteFs): Promise<void> 
   }
 }
 
-export function retryingSync<T>(op: () => T): T {
+function retryingSync<T>(op: () => T): T {
   for (let attempt = 0; ; attempt += 1) {
     try {
       return op()

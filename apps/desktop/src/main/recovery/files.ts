@@ -4,7 +4,6 @@ export {
   syncFolder,
   writeAtomically,
   writeJsonAtomically,
-  isBrieflyHeld,
   RETRY_DELAYS_MS,
   type RetryOptions,
 } from '@brobot2/runtime/atomic-write'
