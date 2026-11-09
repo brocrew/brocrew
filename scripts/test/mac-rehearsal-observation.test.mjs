@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ts from 'typescript'
+import { openUpdates } from '../lib/update-rehearsal-app.mjs'
 import {
   databaseSnapshot,
   nativeFiles,
@@ -248,4 +249,87 @@ describe('entrypoint native-prefix bindings', () => {
       writeFileSync(file, 'changed native bytes\n')
       for (const call of calls) await expect(execute(call)).rejects.toThrow('lost original bytes')
     })
+})
+
+it('uses the Updates control and reaches Download from offered or checking state', async () => {
+  const source = ts.createSourceFile(
+    'mac-signed-upgrade.mjs',
+    readFileSync(new URL('../mac-signed-upgrade.mjs', import.meta.url), 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  )
+  const guided = source.statements.find(
+    (node) => ts.isFunctionDeclaration(node) && node.name?.text === 'guidedDownload',
+  )
+  expect(guided).toBeDefined()
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+  for (const initiallyOpen of [false, true])
+    for (const kind of ['available', 'checking']) {
+      let opened = initiallyOpen
+      let state = { kind, version: '0.2.16' }
+      const updates = {
+        checkNow: vi.fn(async () => ({ state })),
+        read: vi.fn(async () => {
+          const current = state
+          state = { kind: 'available', version: '0.2.16' }
+          return { state: current }
+        }),
+      }
+      const document = {
+        querySelector(selector) {
+          expect(['[data-cy=rail-version]', '[data-cy=updates-menu]']).toContain(selector)
+          return {
+            disabled: false,
+            scrollIntoView() {},
+            getAttribute: () => String(opened),
+            getBoundingClientRect: () => ({
+              x: 10,
+              y: 20,
+              width: selector === '[data-cy=updates-menu]' && !opened ? 0 : 100,
+              height: 40,
+            }),
+          }
+        },
+      }
+      const cdp = {
+        evaluate: (body) =>
+          new AsyncFunction('document', 'window', body)(document, { api: { updates } }),
+        send: vi.fn(async (_method, event) => {
+          if (event.type === 'mouseReleased') opened = !opened
+        }),
+      }
+      const download = new Error('the Download action was reached')
+      const run = new AsyncFunction(
+        'workspace',
+        'selectWorkspace',
+        'openUpdates',
+        'click',
+        'waitFor',
+        'screenshot',
+        'VERSION_B',
+        `${guided.getText(source)}; return await guidedDownload(workspace, {})`,
+      )
+      await expect(
+        run(
+          { cdp },
+          vi.fn(),
+          openUpdates,
+          async (_cdp, selector) => {
+            expect(selector).toBe('[data-cy=updates-download]')
+            throw download
+          },
+          async (check) => {
+            if (!(await check())) expect(await check()).toBe(true)
+          },
+          vi.fn(),
+          '0.2.16',
+        ),
+      ).rejects.toBe(download)
+      expect(updates.checkNow).toHaveBeenCalledOnce()
+      expect(updates.read).toHaveBeenCalledTimes(kind === 'checking' ? 2 : 1)
+      expect(cdp.send).toHaveBeenCalledTimes(initiallyOpen ? 0 : 3)
+      await openUpdates(cdp)
+      expect(cdp.send).toHaveBeenCalledTimes(initiallyOpen ? 0 : 3)
+    }
 })

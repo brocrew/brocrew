@@ -212,9 +212,9 @@ export async function press(cdp, selector, { beforePress = async () => {}, wait 
 
 export async function openUpdates(cdp) {
   const opened = await cdp.evaluate(
-    'return document.querySelector("[data-cy=rail-workspace]")?.getAttribute("aria-expanded") === "true"',
+    'return document.querySelector("[data-cy=rail-version]")?.getAttribute("aria-expanded") === "true"',
   )
-  if (!opened) await press(cdp, '[data-cy=rail-workspace]', { wait: 180_000 })
+  if (!opened) await press(cdp, '[data-cy=rail-version]', { wait: 180_000 })
   if (
     !(await until(
       () =>
