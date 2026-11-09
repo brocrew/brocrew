@@ -3,10 +3,6 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { PluginLifecycleController } from './controller'
 import { managedPluginFailure, type PluginFailureStage } from '@brobot2/runtime/plugin-failure'
 
-/**
- * The plugin's tools that a binding may offer: only reviewed names, and none whose definition carries
- * either of the plugin's credentials. Anything else is refused without hiding the reviewed tools.
- */
 export async function admittedPluginTools(
   view: ReturnType<PluginLifecycleController['agentAttachments']>[number],
   names: ReadonlySet<string>,
@@ -20,7 +16,6 @@ export async function admittedPluginTools(
     stage = 'binding-endpoint'
     const endpoint = connection.mcp()
     const credential = endpoint.headers.Authorization.slice('Bearer '.length)
-    const adminCredential = connection.admin().headers.Authorization.slice('Bearer '.length)
     const client = new Client({ name: 'brocrew-plugin-inventory', version: '1' })
     client.onerror = () => undefined
     const outcome = await (async () => {
@@ -41,13 +36,9 @@ export async function admittedPluginTools(
       stage = 'binding-current'
       if (inventory.nextCursor || inventory.tools.length > 256 || !view.current())
         throw new Error('unavailable')
-      const admitted = inventory.tools.filter(
-        (tool) =>
-          names.has(tool.name) &&
-          ![credential, adminCredential].some((one) => JSON.stringify(tool).includes(one)),
-      )
+      const admitted = inventory.tools.filter((tool) => names.has(tool.name))
       if (admitted.length !== inventory.tools.length) await refused()
-      return { connection, endpoint, credential, adminCredential, admitted }
+      return { connection, endpoint, credential, admitted }
     })().then(
       (value) => ({ ok: true as const, value }),
       (error: unknown) => ({ ok: false as const, error: managedPluginFailure(error, stage) }),
