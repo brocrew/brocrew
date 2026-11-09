@@ -12,7 +12,6 @@ import {
 } from '../src/index'
 import { claudeKeychainTokenProvider, ClaudeRuntime } from '../src/claude'
 
-
 /**
  * 140 · **Does `permissionMode: 'plan'` still put the pinned CLI into plan mode?**
  *

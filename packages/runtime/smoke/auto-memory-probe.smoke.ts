@@ -11,7 +11,6 @@ import {
 } from '../src/index'
 import { claudeKeychainTokenProvider, ClaudeRuntime, claudeAutoMemoryDir } from '../src/claude'
 
-
 /**
  * 166 · **Does a developer remember across PROJECTS — and still not across profiles?**
  *
