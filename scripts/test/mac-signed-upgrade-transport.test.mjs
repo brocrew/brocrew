@@ -1,4 +1,4 @@
-import { test } from 'vitest'
+import { test, vi } from 'vitest'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -6,7 +6,10 @@ import { join } from 'node:path'
 import { request as httpRequest } from 'node:http'
 import { Agent, request as httpsRequest } from 'node:https'
 import { connect as tlsConnect } from 'node:tls'
+import { pipeline } from 'node:stream/promises'
 import { requestFor, startControlledTransport } from '../mac-signed-upgrade-transport.mjs'
+
+vi.mock('node:stream/promises', { spy: true })
 
 const bytes = Buffer.from('candidate disk image bytes')
 const names = ['BroCrew-0.2.12-arm64.dmg', 'latest-mac.yml']
@@ -46,11 +49,11 @@ async function throughProxy(proxy, path) {
     request.once('error', failed)
     request.end()
   })
-  const agent = new Agent({ keepAlive: false })
+  const agent = new Agent({ keepAlive: true })
   agent.createConnection = () =>
     tlsConnect({ socket, servername: 'brocrew.app', rejectUnauthorized: false })
   try {
-    return await new Promise((done, failed) => {
+    const received = await new Promise((done, failed) => {
       const request = httpsRequest({ hostname: 'brocrew.app', path, agent }, (response) => {
         const chunks = []
         response.on('data', (chunk) => chunks.push(chunk))
@@ -62,6 +65,9 @@ async function throughProxy(proxy, path) {
       request.once('error', failed)
       request.end()
     })
+    // Reading the last byte does not mean the server's file pipeline has finished.
+    await Promise.all(vi.mocked(pipeline).mock.results.map(({ value }) => value))
+    return received
   } finally {
     agent.destroy()
     socket.destroy()
@@ -81,9 +87,7 @@ test('the CONNECT TLS transport serves the update file and the release folder fi
     const asset = await throughProxy(proxy, '/update/BroCrew-0.2.12-arm64.dmg?v=0.2.11')
     assert.deepEqual(asset.body, bytes)
     assert.equal(proxy.requests[1].bytes, bytes.length)
-    // The client can read the last byte before the server's stream finishes.
-    for (let wait = 0; !proxy.requests[1].completed && wait < 100; wait++)
-      await new Promise((done) => setTimeout(done, 10))
+    assert.equal(vi.mocked(pipeline).mock.calls.length, 1)
     assert.equal(proxy.requests[1].completed, true)
     proxy.requireHealthy()
     assert.equal(JSON.stringify(proxy.requests).includes('?'), false)
