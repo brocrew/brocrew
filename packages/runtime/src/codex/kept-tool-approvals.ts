@@ -1,10 +1,4 @@
-import {
-  closeSync,
-  constants,
-  fstatSync,
-  openSync,
-  readSync,
-} from 'node:fs'
+import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs'
 import { join } from 'node:path'
 import { writeAtomicallySync } from '../atomic-write'
 

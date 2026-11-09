@@ -11,8 +11,7 @@ function retry<T>(operation: () => T): T {
       return operation()
     } catch (error) {
       const delay = DELAYS[attempt]
-      if (delay === undefined || !HELD.has((error as NodeJS.ErrnoException).code ?? ''))
-        throw error
+      if (delay === undefined || !HELD.has((error as NodeJS.ErrnoException).code ?? '')) throw error
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delay)
     }
   }

@@ -1,12 +1,6 @@
 import { stageAtomicWriteSync } from '@brobot2/runtime/atomic-write'
 import { isInside as within } from '@brobot2/shared/paths'
-import {
-  existsSync,
-  lstatSync,
-  readdirSync,
-  statSync,
-  unlinkSync,
-} from 'node:fs'
+import { existsSync, lstatSync, readdirSync, statSync, unlinkSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import {
   captureMethodFileGuard,

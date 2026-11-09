@@ -247,9 +247,7 @@ describe('exporting a session', () => {
         `${name}'s file for this conversation is empty, so there is nothing to export.`,
       )
       expect(readFileSync(good.path)).toEqual(bytes)
-      expect(readdirSync(dirname(good.path)).filter((name) => name.endsWith('.tmp'))).toEqual(
-        [],
-      )
+      expect(readdirSync(dirname(good.path)).filter((name) => name.endsWith('.tmp'))).toEqual([])
     },
   )
 

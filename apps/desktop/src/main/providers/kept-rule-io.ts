@@ -8,10 +8,7 @@ import {
   realpathSync,
   writeFileSync,
 } from 'node:fs'
-import {
-  MAX_SETTINGS_BYTES,
-  isStillTheFileOpened,
-} from '@brobot2/runtime'
+import { MAX_SETTINGS_BYTES, isStillTheFileOpened } from '@brobot2/runtime'
 export const NO_LONGER_KEPT = 'That rule is no longer kept there.'
 
 type Read =

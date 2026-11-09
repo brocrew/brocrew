@@ -175,7 +175,10 @@ describe('a memory entry corrected, its stage beside it as on macOS and Linux', 
   it('🔴 a link put at its staged name as it is made sends nothing outside', async () => {
     const note = aNote()
     const target = join(outside, 'staged')
-    aLinkAsItIsMade((path) => basename(path).startsWith('note.md.') && path.endsWith('.tmp'), target)
+    aLinkAsItIsMade(
+      (path) => basename(path).startsWith('note.md.') && path.endsWith('.tmp'),
+      target,
+    )
 
     const outcome = await correct(note)
 

@@ -522,7 +522,9 @@ describe('§9 · the module defaults, for a caller that does not pass options', 
 
   it('⚑ W4.120 · a hidden launch’s update settings and a write a kill left go with the updater’s files — and the name is the product’s own', () => {
     expect(code('apps/desktop/src/main/update-settings.ts')).toContain('writeAtomicallySync(file,')
-    expect(UPDATE_SETTINGS_PART.source).toBe('^update-settings\\.json\\.(?:\\d+|[0-9a-f]{12})\\.tmp$')
+    expect(UPDATE_SETTINGS_PART.source).toBe(
+      '^update-settings\\.json\\.(?:\\d+|[0-9a-f]{12})\\.tmp$',
+    )
     const userData = plantUserData(fixture(), { profiles: HIS_PROFILES })
     writeFileSync(join(userData, 'update-settings.json'), '{"updates":{}}')
     writeFileSync(join(userData, 'update-settings.json.4242.tmp'), '{"upd')

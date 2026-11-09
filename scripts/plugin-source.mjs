@@ -78,8 +78,7 @@ export function verifyPluginSource({ root, canonicalRoot, id, sourceCommit }) {
     const actual = []
     const visit = (dir, prefix = '') => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (prefix === '' && entry.name === 'node_modules' && folder !== 'plugins/shared')
-          continue
+        if (prefix === '' && entry.name === 'node_modules' && folder !== 'plugins/shared') continue
         const name = prefix + entry.name
         if (entry.isSymbolicLink()) throw new Error('Linked plugin source refused')
         if (entry.isDirectory()) visit(path.join(dir, entry.name), name + '/')

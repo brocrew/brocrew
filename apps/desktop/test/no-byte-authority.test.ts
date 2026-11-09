@@ -91,12 +91,7 @@ const ROUTE: Record<string, string[]> = {
   // place for somebody to "just read it here" — and the census did not look at it. `ipc.ts` was
   // listed and never scanned, which is the same hole with a name on it.
   '../src/main/runtime/runtime-host.ts': [],
-  '../src/main/runtime/pasted-image.ts': [
-    'mkdir',
-    'readdir',
-    'stat',
-    'unlink',
-  ],
+  '../src/main/runtime/pasted-image.ts': ['mkdir', 'readdir', 'stat', 'unlink'],
   // 🔴 **744 · the records a RESTORED draft's chips are drawn from** (R100). ⚑ It makes `HandedPath`s
   // out of the kept drafts file's contents, so it is on the route for `pasted-image.ts`' reason — and
   // it holds NO filesystem binding: `drafts-file.ts` reads BroBot's own file and hands it the parsed

@@ -30,8 +30,7 @@ it('flushes profile and preference writes before publishing them, retrying a hel
   })
   vi.spyOn(Atomics, 'wait').mockReturnValue('timed-out')
   const publish = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
-    if (publish.mock.calls.length === 1)
-      throw Object.assign(new Error('held'), { code: 'EPERM' })
+    if (publish.mock.calls.length === 1) throw Object.assign(new Error('held'), { code: 'EPERM' })
     events.push('published')
     rename(from, to)
   })
