@@ -563,7 +563,10 @@ onUnmounted(() => {
             data-cy="plugin-start-error"
           >
             {{ card.name }} can't start right now.
-            {{ card.toolsCause ?? pluginUnavailableNotice(card.unavailableReason) }}
+            <span v-if="card.toolsCause">{{ card.toolsCause }}.</span>
+            <template v-if="card.unavailableReason || !card.toolsCause">
+              {{ pluginUnavailableNotice(card.unavailableReason) }}
+            </template>
             <span v-if="card.startupDiagnostic" data-cy="plugin-start-diagnostic">{{
               pluginStartupDiagnosticNotice(card.startupDiagnostic)
             }}</span>
