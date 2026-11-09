@@ -88,17 +88,16 @@ import {
   waitForManagedPluginTools,
 } from './managed-plugin-readiness'
 import { AsyncQueue } from '../internal/async-queue'
+import { AuthUnavailableError, type AuthHealth } from '../internal/auth'
 import {
-  AuthUnavailableError,
   assertCodexSqliteHomeContained,
   codexAccountIn,
   codexAccountInNow,
-  type AuthHealth,
   CodexRefusedItsSignInError,
   codexCopyIdentityIn,
   isTheSameCodexCopy,
   type CodexCopyIdentity,
-} from '../internal/auth'
+} from './auth'
 import { buildChildEnv } from '../internal/child-env'
 import { assertNotCancelled, cancelWith, withDeadline, withTimeout } from '../internal/bounded'
 import { DeltaCoalescer } from '../internal/delta-coalescer'

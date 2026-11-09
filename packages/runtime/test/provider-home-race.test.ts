@@ -22,7 +22,7 @@ import { hostname, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest'
-import { provisionCodexAuth } from '../src/internal/auth'
+import { provisionCodexAuth } from '../src/codex/auth'
 import { provisionProviderHome, withProviderHomeLock } from '../src/internal/provider-home'
 
 /**

@@ -17,21 +17,23 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { withProviderHomeLock } from '../src/internal/provider-home'
+import { AuthUnavailableError } from '../src/internal/auth'
 import {
-  AuthUnavailableError,
   NoCodexSignInOnThisComputerError,
   assertCodexSqliteHomeContained,
   fallbackSignIn,
-  claudeAuthHealth,
-  claudeKeychainTokenProvider,
   codexAuthHealth,
-  parseClaudeOAuthToken,
   provisionCodexAuth,
   codexCopyIdentityIn,
   type CodexCopyIdentity,
   replaceARefusedCodexCopy,
   reprovisionCodexAuth,
-} from '../src/internal/auth'
+} from '../src/codex/auth'
+import {
+  claudeAuthHealth,
+  claudeKeychainTokenProvider,
+  parseClaudeOAuthToken,
+} from '../src/claude/auth'
 
 /**
  * A sign-in file is compared by a digest of its bytes, so a failure prints two digests and never

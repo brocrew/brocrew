@@ -30,11 +30,11 @@ import {
   askedOfTheChannel,
   ResumeError,
   type AgentToolset,
-  type ClaudeAuthTokenProvider,
   type RuntimeEvent,
   type SessionHandle,
   type SessionRef,
 } from '../src/index'
+import { type ClaudeAuthTokenProvider } from '../src/claude'
 import {
   ClaudeRuntime,
   ClaudeSessionHandle,

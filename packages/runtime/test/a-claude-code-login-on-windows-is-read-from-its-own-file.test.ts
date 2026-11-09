@@ -13,7 +13,7 @@ import {
   claudeLoginState,
   claudeSetup,
   whyNoClaudeLogin,
-} from '../src/internal/auth'
+} from '../src/claude/auth'
 
 const { watched } = vi.hoisted(() => {
   /** Every function a module exports, each recorded and passing through; its default too. */

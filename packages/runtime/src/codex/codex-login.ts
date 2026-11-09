@@ -1,7 +1,7 @@
 import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { signInNotCheckedInTime, type AuthState } from '../auth-state'
-import { assertCodexSqliteHomeContained } from '../internal/auth'
+import { assertCodexSqliteHomeContained } from './auth'
 import {
   assertNotCancelled,
   cancelWith,

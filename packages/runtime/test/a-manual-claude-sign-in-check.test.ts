@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as wait } from 'node:timers/promises'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { probeClaudeCodeLogin, type RunAProgram } from '../src/internal/claude-login-renewal'
+import { probeClaudeCodeLogin, type RunAProgram } from '../src/claude/login-renewal'
 
 let folder: string
 beforeEach(() => {

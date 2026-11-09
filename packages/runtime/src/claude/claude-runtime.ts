@@ -94,13 +94,13 @@ import type { LaunchSetting } from '../launch-settings'
 import { sessionAccountFrom, type SessionAccount } from '../session-account'
 import { sessionRefSchema, type SessionRef } from '../session-ref'
 import { AsyncQueue } from '../internal/async-queue'
+import { AuthUnavailableError } from '../internal/auth'
 import {
-  AuthUnavailableError,
   whyNoClaudeLogin,
   type ClaudeApiKeyProviderAsync,
   type ClaudeAuthTokenProvider,
   type ClaudeAuthTokenProviderAsync,
-} from '../internal/auth'
+} from './auth'
 import { buildChildEnv } from '../internal/child-env'
 import {
   assertNotCancelled,

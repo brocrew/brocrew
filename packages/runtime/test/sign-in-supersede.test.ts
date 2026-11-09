@@ -5,8 +5,8 @@ import {
   claudeKeychainTokenProvider,
   claudeKeychainTokenProviderAsync,
   type ClaudeAuthTokenProvider,
-  type SessionHandle,
-} from '../src/index'
+} from '../src/claude'
+import { type SessionHandle } from '../src/index'
 import { AsyncQueue } from '../src/internal/async-queue'
 
 /**

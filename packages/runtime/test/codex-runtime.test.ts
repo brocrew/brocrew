@@ -15,9 +15,6 @@ import { join, resolve } from 'node:path'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AuthUnavailableError,
-  CodexRefusedItsSignInError,
-  codexCopyIdentityIn,
-  codexAccountIn,
   ResumeError,
   type PermissionDecision,
   type PermissionOutcome,
@@ -31,6 +28,7 @@ import {
   askedOfTheChannel,
   TurnInProgress,
 } from '../src/index'
+import { CodexRefusedItsSignInError, codexCopyIdentityIn, codexAccountIn } from '../src/codex'
 import {
   CodexRuntime,
   CodexSessionHandle,

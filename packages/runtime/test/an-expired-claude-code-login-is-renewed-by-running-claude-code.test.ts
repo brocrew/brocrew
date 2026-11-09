@@ -14,7 +14,7 @@ import {
   claudeCredentialsFileReader,
   claudeKeychainTokenProvider,
   claudeLoginNotRenewed,
-} from '../src/internal/auth'
+} from '../src/claude/auth'
 import {
   CLAUDE_RENEWAL_ARGS,
   claudeLoginNeedsRenewal,
@@ -23,7 +23,7 @@ import {
   renewClaudeCodeLogin,
   type ARunEnded,
   type RunAProgram,
-} from '../src/internal/claude-login-renewal'
+} from '../src/claude/login-renewal'
 
 /**
  * An expired Claude Code login is renewed by running the person's own Claude Code once, with the

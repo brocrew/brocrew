@@ -7,11 +7,11 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AuthUnavailableError,
-  whyNoClaudeLogin,
   FakeRuntime,
   allProviderCapabilities,
   type RuntimeEvent,
 } from '@brobot2/runtime'
+import { whyNoClaudeLogin } from '@brobot2/runtime/claude'
 import { claudeProjectDirName } from '@brobot2/runtime/claude'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
