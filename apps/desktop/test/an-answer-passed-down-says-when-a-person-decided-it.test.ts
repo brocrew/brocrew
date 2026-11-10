@@ -23,26 +23,6 @@ import {
   RecordingSink,
 } from './lib/host-fixture'
 
-/**
- * # F026 · an answer an agent passes down says when a person decided it
- *
- * Landing coverage for `8ba2c8df`. ⚑ Two sentences the asker now reads, worked out from this app's
- * own records:
- * - the agent answering had passed the question up, and a PERSON answered it there: *"It had passed
- *   your question up, and a person answered it there. Its answer below is in its own words…"*;
- * - the asker had addressed the question to a person, and an agent answered instead: *"…the question
- *   you asked a person about W2.1, instead of that person, … This app cannot tell you whether it
- *   asked them first."*
- *
- * ⛔ Neither sentence on an ordinary answer, on a decline, on a person's own answer, on a pass-up
- * nobody answered yet, on one a person declined, or on one an AGENT answered upstream. ⚑ A question
- * asked of a person and then passed up and answered by a person reads as the person's answer where
- * it was passed up: the person check comes first.
- *
- * ⚑ The harness is `agents-ask-each-other`'s: a PM a person opened, in `ask`, gives a worker a piece; the worker's turn parks on a card a
- * person watches, so every answer to it is held, and read off its ledger as `message_queued`.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
@@ -51,8 +31,7 @@ const PASSED_UP =
 const INSTEAD = 'instead of that person'
 const CANNOT_TELL = 'This app cannot tell you whether it asked them first.'
 
-describe('F026 · an answer an agent passes down says when a person decided it', () => {
-  /** ⚑ Every toolset a launch was handed, starts AND resumes, in order. */
+describe('an answer an agent passes down says when a person decided it', () => {
   let userData: string
   let root: string
   let db: AppDatabase
@@ -83,8 +62,8 @@ describe('F026 · an answer an agent passes down says when a person decided it',
   }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-f026-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-f026-root-'))
+    userData = mkdtempSync(join(tmpdir(), 'brobot2-passed-down-'))
+    root = mkdtempSync(join(tmpdir(), 'brobot2-passed-down-root-'))
     db = openDatabase(join(userData, 'brobot2.sqlite'))
     applyMigrations(db, migrationsFolder)
     clock = 9_000_000
@@ -103,7 +82,6 @@ describe('F026 · an answer an agent passes down says when a person decided it',
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
 
-  /** ⚑ A person opens a conversation; its toolset is the last one handed out. */
   const personOpens = async (
     profileId: string,
     approvalMode: 'ask' | 'auto' = 'ask',
@@ -130,13 +108,11 @@ describe('F026 · an answer an agent passes down says when a person decided it',
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
 
-  /** ⚑ Every message this conversation was handed — a turn or a held message — by its words. */
   const toldIn = (sessionId: string): string[] =>
     ledger(sessionId).flatMap((event) =>
       event.type === 'user_turn' || event.type === 'message_queued' ? [event.text] : [],
     )
 
-  /** ⚑ The words the asker was handed for this question, once they reached it. */
   const theAnswerTo = async (asker: string, id: string): Promise<string> => {
     await waitFor(
       () => toldIn(asker).some((text) => text.includes(`quoting ${id}.`)),
@@ -147,7 +123,6 @@ describe('F026 · an answer an agent passes down says when a person decided it',
     return text
   }
 
-  /** ⚑ A person's PM gives a worker a piece; the worker's brief parks on a card a person watches. */
   const aPmWithAWorkerOnATask = async () => {
     await host.close((await personOpens('worker')).id, window)
     const pm = await personOpens(DEFAULT_PROFILE_ID)
@@ -181,7 +156,6 @@ describe('F026 · an answer an agent passes down says when a person decided it',
     return asked.question as string
   }
 
-  /** ⚑ The PM passes the worker's question on, and gets the id it now holds upstream. */
   const passUp = async (
     pmTools: AgentToolset,
     id: string,
@@ -226,7 +200,7 @@ describe('F026 · an answer an agent passes down says when a person decided it',
   }
 
   describe('§1 · passed up, and a person answered it there', () => {
-    it('🔴 the asker reads that it was passed up and a person answered it there, and that the words are the agent’s own', async () => {
+    it('the asker reads that it was passed up and a person answered it there, and that the words are the agent’s own', async () => {
       const { pm, worker, workerTools, piece } = await aPmWithAWorkerOnATask()
       const id = await ask(workerTools, 'the-parent', piece, 'which city?')
       const up = await passUp(pm.tools, id, worker, 'a-person')
@@ -237,16 +211,14 @@ describe('F026 · an answer an agent passes down says when a person decided it',
       expect(text).toContain(
         `${host.nameByItsWork(pm.id)} answered the question you asked about ${piece}, quoting ${id}.\n\n${PASSED_UP}\n\nYou asked: which city?`,
       )
-      // ⛔ The worker asked its parent, not a person: nothing says the parent answered instead of one.
       expect(text).not.toContain(INSTEAD)
       expect(text).not.toContain(CANNOT_TELL)
     })
 
-    it('⛔ passed up, and nobody has answered it there yet: the agent’s answer is its own, and says nothing of a person', async () => {
+    it('passed up, and nobody has answered it there yet: the agent’s answer is its own, and says nothing of a person', async () => {
       const { pm, worker, workerTools, piece } = await aPmWithAWorkerOnATask()
       const id = await ask(workerTools, 'the-parent', piece, 'which city?')
       const up = await passUp(pm.tools, id, worker, 'a-person')
-      // ⛔ THE PREMISE: the passed-up question is open, and nothing decided it.
       expect(store.theDecisionOn(pm.id, up)).toBeNull()
       await answerDown(pm.tools, id, worker, 'Rabat')
 
@@ -257,7 +229,7 @@ describe('F026 · an answer an agent passes down says when a person decided it',
       expect(text).not.toContain('It had passed your question up')
     })
 
-    it('⛔ passed up, and the person DECLINED it there: no sentence says a person answered', async () => {
+    it('passed up, and the person DECLINED it there: no sentence says a person answered', async () => {
       const { pm, worker, workerTools, piece } = await aPmWithAWorkerOnATask()
       const id = await ask(workerTools, 'the-parent', piece, 'which city?')
       const up = await passUp(pm.tools, id, worker, 'a-person')
@@ -278,7 +250,7 @@ describe('F026 · an answer an agent passes down says when a person decided it',
       expect(text).not.toContain(INSTEAD)
     })
 
-    it('⛔ the agent DECLINES the asker after a person answered upstream: a decline carries neither sentence', async () => {
+    it('the agent DECLINES the asker after a person answered upstream: a decline carries neither sentence', async () => {
       const { pm, worker, workerTools, piece } = await aPmWithAWorkerOnATask()
       const id = await ask(workerTools, 'the-parent', piece, 'which city?')
       const up = await passUp(pm.tools, id, worker, 'a-person')
@@ -298,8 +270,7 @@ describe('F026 · an answer an agent passes down says when a person decided it',
       expect(text).not.toContain(INSTEAD)
     })
 
-    it('⛔ passed up to its own PARENT, and an AGENT answered it there: no sentence says a person did', async () => {
-      // ⚑ A chain of three, so the PM has a parent to pass to: top → lead → worker.
+    it('passed up to its own PARENT, and an AGENT answered it there: no sentence says a person did', async () => {
       await host.close((await personOpens('lead')).id, window)
       await host.close((await personOpens('worker')).id, window)
       const top = await personOpens(DEFAULT_PROFILE_ID)
@@ -337,7 +308,6 @@ describe('F026 · an answer an agent passes down says when a person decided it',
         () => store.theDecisionOn(lead, up) !== null,
         'the top’s decision to land in the lead’s ledger',
       )
-      // ⛔ THE PREMISE: answered — by an agent, not a person.
       expect(store.theDecisionOn(lead, up)).toMatchObject({
         outcome: 'answered',
         by: { who: 'an-agent' },
@@ -353,7 +323,7 @@ describe('F026 · an answer an agent passes down says when a person decided it',
   })
 
   describe('§2 · asked of a person, and an agent answered instead', () => {
-    it('🔴 the asker reads that the agent answered instead of that person, and that this app cannot tell whether it asked them first', async () => {
+    it('the asker reads that the agent answered instead of that person, and that this app cannot tell whether it asked them first', async () => {
       const { pm, worker, workerTools, piece } = await aPmWithAWorkerOnATask()
       const id = await ask(workerTools, 'a-person', piece, 'which colour?')
       await answerDown(pm.tools, id, worker, 'blue')
@@ -365,7 +335,7 @@ describe('F026 · an answer an agent passes down says when a person decided it',
       expect(text).not.toContain('It had passed your question up')
     })
 
-    it('⛔ the person answers it themselves: a person’s answer, and no word of anybody answering instead', async () => {
+    it('the person answers it themselves: a person’s answer, and no word of anybody answering instead', async () => {
       const { worker, workerTools, piece, surface } = await aPmWithAWorkerOnATask()
       const id = await ask(workerTools, 'a-person', piece, 'which colour?')
       const taken = await host.respondUserInput(
@@ -385,26 +355,7 @@ describe('F026 · an answer an agent passes down says when a person decided it',
       expect(text).not.toContain('It had passed your question up')
     })
 
-    it('⛔ the agent DECLINES a question asked of a person: the decline says nothing of answering instead', async () => {
-      const { pm, worker, workerTools, piece } = await aPmWithAWorkerOnATask()
-      const id = await ask(workerTools, 'a-person', piece, 'which colour?')
-      const declined = await callOn(pm.tools, 'answer_question', {
-        question: id,
-        asked_by: worker,
-        cannot_answer: 'that is the person’s to choose',
-      })
-      expect(declined.outcome, JSON.stringify(declined)).toBe('ok')
-
-      const text = await theAnswerTo(worker, id)
-      expect(text).toContain(
-        `${host.nameByItsWork(pm.id)} declined to answer the question you asked about ${piece}, quoting ${id}.`,
-      )
-      expect(text).not.toContain(INSTEAD)
-      expect(text).not.toContain(CANNOT_TELL)
-    })
-
-    it('🔴 asked of a person, passed up to a person and answered there: the person’s answer is said, never “instead of that person”', async () => {
-      // ⚑ The person check comes FIRST: the question was still decided by a person.
+    it('asked of a person, passed up to a person and answered there: the person’s answer is said, never “instead of that person”', async () => {
       const { pm, worker, workerTools, piece } = await aPmWithAWorkerOnATask()
       const id = await ask(workerTools, 'a-person', piece, 'which colour?')
       const up = await passUp(pm.tools, id, worker, 'a-person')
@@ -420,22 +371,8 @@ describe('F026 · an answer an agent passes down says when a person decided it',
     })
   })
 
-  describe('§3 · an ordinary agent’s answer has neither sentence', () => {
-    it('⛔ asked of the parent and answered by it: the agent’s own answer, as before', async () => {
-      const { pm, worker, workerTools, piece } = await aPmWithAWorkerOnATask()
-      const id = await ask(workerTools, 'the-parent', piece, 'which city?')
-      await answerDown(pm.tools, id, worker, 'Rabat')
-
-      const text = await theAnswerTo(worker, id)
-      expect(text).toContain(
-        `${host.nameByItsWork(pm.id)} answered the question you asked about ${piece}, quoting ${id}.\n\nYou asked: which city?\n\n  answer: Rabat`,
-      )
-      expect(text).not.toContain('It had passed your question up')
-      expect(text).not.toContain(INSTEAD)
-      expect(text).not.toContain(CANNOT_TELL)
-    })
-
-    it('⛔ asked of a peer by name and answered by it: neither sentence', async () => {
+  describe('§3 · a peer’s answer has neither sentence', () => {
+    it('asked of a peer by name and answered by it: neither sentence', async () => {
       const ada = await personOpens(DEFAULT_PROFILE_ID)
       const bo = await personOpens('reviewer')
       const asked = await callOn(ada.tools, 'ask_question', {

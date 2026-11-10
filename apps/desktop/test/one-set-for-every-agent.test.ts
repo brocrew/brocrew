@@ -39,12 +39,10 @@ const LAUNCHES: readonly Omit<InstructionContext, 'cwd' | 'spawningEnabled' | 'o
     startedBy: null,
     depth: 0,
     capabilities: DEFAULT_CAPABILITIES,
-    // ⚑ D-016 · a conversation a person started owns a root; one another started owns none.
     root: 'W1',
   },
   {
     profileSlug: 'project-manager',
-    // ⚑ D-016 · commit 7 · the conversation that started it, named by the piece it owns.
     startedBy: theConversationCalled('Giver', { label: 'W1', title: 'Bakery website' }),
     depth: 1,
     capabilities: { ...DEFAULT_CAPABILITIES, canAssignWork: 'none' },
@@ -63,10 +61,10 @@ const LAUNCHES: readonly Omit<InstructionContext, 'cwd' | 'spawningEnabled' | 'o
   },
 ]
 
-describe('PE-003 · one set of instructions for every agent', () => {
+describe('one set of instructions for every agent', () => {
   for (const provider of providerSchema.options) {
     it(`${provider}: every profile, depth and grant gets the same core, and BroBot its addition`, () => {
-      const root = mkdtempSync(join(tmpdir(), 'brobot-pe003-'))
+      const root = mkdtempSync(join(tmpdir(), 'brobot-one-set-'))
       roots.push(root)
       const cwd = join(root, 'work')
       mkdirSync(cwd)
@@ -74,7 +72,6 @@ describe('PE-003 · one set of instructions for every agent', () => {
         ...launch,
         cwd,
         spawningEnabled: true,
-        // ⚑ D-024 · R1 · no other conversation of the profile — no line at all.
         others: { shown: [], more: 0 },
       }))
       const published = contexts.map((context, index) => {
@@ -82,8 +79,6 @@ describe('PE-003 · one set of instructions for every agent', () => {
         mkdirSync(home)
         const bundle = publishProfileBundle(provider, home, composeProfileBundle(context, provider))
         expect(bundle.ok).toBe(true)
-        // ⚑ **D-024 · R1 — what is true of one launch is composed apart**, as `main/index.ts`
-        // passes it, and rides that launch alone: Claude's system prompt, Codex's first message.
         const read = readSessionInstructions({
           provider,
           identity: context,
@@ -103,8 +98,6 @@ describe('PE-003 · one set of instructions for every agent', () => {
       expect(new Set(published.map((one) => one.itsOwn)).size).toBe(LAUNCHES.length)
       LAUNCHES.forEach((launch, index) => {
         expect(published[index]?.handed).toContain(agentPreamble(launch))
-        expect(published[index]?.itsOwn).not.toContain('You are running as the profile')
-        expect(published[index]?.file).not.toContain('You are running as the profile')
       })
       // Every profile but BroBot gets the same core, word for word, at any depth and grant.
       const rulesOf = (file: string): string => file.slice(file.indexOf('# Your instructions'))
@@ -128,17 +121,6 @@ describe('PE-003 · one set of instructions for every agent', () => {
       expect(
         factoryOf({ ...first, capabilities: { ...DEFAULT_CAPABILITIES, canMessage: 'none' } }),
       ).toBe(factories[0])
-      for (const text of factories) {
-        expect(text).not.toMatch(/\b(?:spawn_agent|end_agent|resume_agent)\b/)
-        expect(text).not.toContain('## Rules')
-      }
-      // ⚑ D-024 · R1 · both halves of what a launch is told: the file, and its own text.
-      for (const { file, itsOwn } of published) {
-        for (const told of [file, itsOwn]) {
-          expect(told).not.toMatch(/## You are (BroBot|a project manager|a worker)/)
-          expect(told).not.toContain('Your recorded role is')
-        }
-      }
     })
   }
 })

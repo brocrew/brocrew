@@ -19,33 +19,10 @@ import {
   neutralHostDeps,
 } from './lib/host-fixture'
 
-/**
- * 🔴 **D-009 · F012, decision 4's answer half — an answer to an asker the quit left open STARTS
- * it, rather than only recording words nobody is running to read.**
- *
- * ⛔ **What `agents-ask-each-other.test.ts` §3 measures instead.** That test's `toldIn` reads the
- * asker's LEDGER, and `deliverAnswer`'s held-message write ({@link RuntimeHost}'s
- * `holdUntilItStarts`) appends the `message_queued` row before it ever tries to start the asker —
- * so a delivery that skips the start still leaves the words in the ledger, and that assertion
- * passes whether or not the asker actually came up. ⚑ **This file asks the other question**: did
- * the answer really start the asker?
- *
- * ⚑ **D-017 · R11 — the state no longer says whether a process runs** (`05` rule 5): after the quit
- * the asker reads *waiting on <name>'s answer* (R19 — its question is the peer's to answer), not a
- * process word. ⛔ So the start is read off what only a RUNNING asker can show: the host has
- * registered it ({@link RuntimeHost.sessionIds} — a session it can talk to), and its own state is
- * *needs you* — the provider double's representative turn, begun by the delivered answer, is parked
- * on its permission card, which nothing but a running provider holds. A `deliverAnswer` that skipped
- * the start would leave the asker unregistered, with no turn to park on a card.
- *
- * ⚑ **Real host, real SQLite ledger, real toolsets; the only double is the provider** — the same
- * shape `a-childs-state.test.ts` uses.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-describe('D-009 · an answer to an asker the quit left open really starts it', () => {
+describe('an answer to an asker the quit left open really starts it', () => {
   let userData: string
   let root: string
   let db: AppDatabase
@@ -75,8 +52,8 @@ describe('D-009 · an answer to an asker the quit left open really starts it', (
   }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-m13-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-m13-root-'))
+    userData = mkdtempSync(join(tmpdir(), 'brobot2-quit-asker-'))
+    root = mkdtempSync(join(tmpdir(), 'brobot2-quit-asker-root-'))
     db = openDatabase(join(userData, 'brobot2.sqlite'))
     applyMigrations(db, migrationsFolder)
     clock = 9_000_000
@@ -124,7 +101,7 @@ describe('D-009 · an answer to an asker the quit left open really starts it', (
     throw new Error(`timed out waiting for ${what}`)
   }
 
-  it('🔴 the asker is WAITING ON THE PEER’S ANSWER right after a quit, with nothing running, and the peer’s answer starts it', async () => {
+  it('the asker is WAITING ON THE PEER’S ANSWER right after a quit, with nothing running, and the peer’s answer starts it', async () => {
     const ada = await personOpens('default')
     const bo = await personOpens('reviewer')
     const asked = await callOn(ada, 'ask_question', {
@@ -135,16 +112,11 @@ describe('D-009 · an answer to an asker the quit left open really starts it', (
     expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
     const id = asked.question as string
 
-    // ⚑ The quit — a stop, never an ending (D-017 · R3) — then the next launch, with its own store
-    // object (`a-next-launch-test-needs-its-own-store-object`).
+    // The quit, then the next launch with its own store object.
     await host.closeAll()
     store = createSessionStore(db, tick)
     host = buildHost()
 
-    // ⛔ **THE BEFORE, paired so the assertion below is not vacuous**: nothing is running in
-    // either conversation yet — a fresh host has started nobody. ⚑ D-017 · R11 · R19: the asker's
-    // state is the question it is waiting on, the one its record holds; ⚑ F036 · and the peer owes
-    // it an answer, which its own state now says, read from the asker's record, not running either.
     expect(host.sessionIds).not.toContain(ada)
     expect(host.sessionIds).not.toContain(bo)
     expect(stateOf(ada)).toMatchObject({ is: 'waiting-on-an-answer' })
@@ -161,11 +133,8 @@ describe('D-009 · an answer to an asker the quit left open really starts it', (
     })
     expect(answered.outcome, JSON.stringify(answered)).toBe('ok')
 
-    // 🔴 **THE ONE FACT this file exists to pin**: the answer did not just leave words in Ada's
-    // ledger for nobody to read — it actually started Ada. A `deliverAnswer` that skips
-    // `ensureRunning` returns `null` (success) here too, so this can only be told apart from what a
-    // running asker shows, never from `answer_question`'s outcome or Ada's ledger: the host has
-    // registered her, and the turn the answer began is parked on the provider's own card.
+    // A delivery that skipped the start would still leave words in the ledger, so read what only a
+    // running asker shows: the host registered it and its turn is parked on the provider's card.
     await waitFor(() => host.sessionIds.includes(ada), 'the answer to start the asker')
     await waitFor(() => stateOf(ada)?.is === 'needs-you', 'the answer’s turn to reach the asker')
     expect(stateOf(ada)).toEqual({ is: 'needs-you' })

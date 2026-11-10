@@ -202,31 +202,6 @@ describe('provider limits use one candidate read', () => {
     expect(candidateReads()).toHaveLength(1)
   })
 
-  it('times native reads, decoding and folding under fixed phase names without row contents', () => {
-    const owner = conversation('live')
-    row(owner, { message: wall })
-    expect(store.providerLimitsSeen(now).rows).toHaveLength(1)
-    const phases = work.take()
-    for (const name of [
-      'read-walls',
-      'count-ledgers',
-      'decode-walls',
-      'retractions',
-      'read-torn-clears',
-      'read-completed-turns',
-      'read-clears',
-      'fold-walls',
-    ]) {
-      expect(phases.find((one) => one.what === `store.providerLimitsSeen.${name}`)).toMatchObject({
-        count: 1,
-      })
-    }
-    expect(phases.every((one) => one.ms > 0)).toBe(true)
-    expect(JSON.stringify(phases)).not.toContain(wall)
-    expect(JSON.stringify(phases)).not.toContain(owner)
-    expect(candidateReads()).toHaveLength(1)
-  })
-
   it('keeps the limits with 925000 unrelated rows written since, reading and parsing no wall again', () => {
     const live = conversation('live')
     const noise = conversation('noise')

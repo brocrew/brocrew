@@ -324,7 +324,7 @@ describe('§3 · the launch the message went in', () => {
     ])
   })
 
-  it('the answer carries the message’s place and time, the launch’s, and R1’s slot as handed', () => {
+  it('the answer carries the message’s place and time, the launch’s, and its first-of-launch slot as handed', () => {
     const got = oneMessageAsTheModelGotIt(handed({ firstOfItsLaunch: false }))
     expect(got).toMatchObject({
       sessionId: 'sess_7',
