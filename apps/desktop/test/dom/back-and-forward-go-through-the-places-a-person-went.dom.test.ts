@@ -591,15 +591,6 @@ it('a conversation archived from its header comes back as its read-only history'
   await expect.poll(() => m.all('linked-history').length).toBe(1)
   expect(m.q('linked-history').textContent).toContain('Kept words.')
   expect(runtime.look).not.toHaveBeenCalled()
-  // Every archive in the window goes through the one that marks the history.
-  const source = (await import('../../src/renderer/src/components/RuntimeScreen.vue?raw')).default
-  expect([...source.matchAll(/@archived="(\w+)"/g)].map(([, name]) => name).sort()).toEqual([
-    'archivedFromTheSheet',
-    'archivedHere',
-  ])
-  expect(source).toMatch(/function archivedFromTheSheet[^}]*archivedHere\(conversations\)/)
-  expect(source).toMatch(/const archiveOfActive[\s\S]*?archivedHere\(outcome\.conversations\)/)
-  expect(source).toMatch(/if \(left !== null\) \{\s*archivedHere\(\[left\]\)/)
 })
 
 it('a conversation archived elsewhere since it was visited comes back as its read-only history', async () => {

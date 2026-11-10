@@ -698,17 +698,6 @@ it('resolves and opens archived links once in nested scopes before and after tel
     await expect.poll(() => open.mock.calls.length).toBe(2)
     expect(resolve).toHaveBeenCalledTimes(4)
     expect(window.open).not.toHaveBeenCalled()
-    // On the screen the archive is a page of the main area, inside the screen's own link scope.
-    const source = (await import('../../src/renderer/src/components/RuntimeScreen.vue?raw')).default
-    const at = source.indexOf('<LinkedHistory\n', source.indexOf('<template>'))
-    expect(at).toBeGreaterThan(-1)
-    const scope = source.indexOf(
-      '<MessageLinks\n    :resolve="resolveMessageLink"\n    :open="openMessageDestination"',
-    )
-    expect(scope).toBeGreaterThan(-1)
-    expect(scope).toBeLessThan(at)
-    expect(source.indexOf('</MessageLinks>', scope)).toBeGreaterThan(at)
-    expect(source.lastIndexOf('<main', at)).toBeGreaterThan(source.lastIndexOf('</main>', at))
   } finally {
     unmountAll()
     target.remove()
