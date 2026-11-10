@@ -124,6 +124,7 @@ export function mountedImageOf(info, image) {
   const mounts = (matches[0]['system-entities'] ?? [])
     .map((one) => one['mount-point'])
     .filter((one) => typeof one === 'string')
+  if (mounts.length === 0) return null
   requireEvidence(
     mounts.length === 1 && mounts[0].startsWith('/Volumes/'),
     'Downloaded image must have exactly one mounted volume.',

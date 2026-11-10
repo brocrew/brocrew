@@ -109,7 +109,14 @@ test('mount evidence names the actual downloaded image rather than another volum
     mount: '/Volumes/BroCrew 0.0.99',
   })
   assert.throws(() => mountedImageOf({ images: [own, own] }, image))
-  assert.throws(() => mountedImageOf({ images: [{ ...own, 'system-entities': [] }] }, image))
+  assert.equal(mountedImageOf({ images: [{ ...own, 'system-entities': [] }] }, image), null)
+  for (const entities of [
+    [{ 'mount-point': '/Volumes/First' }, { 'mount-point': '/Volumes/Second' }],
+    [{ 'mount-point': '/tmp/BroCrew' }],
+  ])
+    assert.throws(() =>
+      mountedImageOf({ images: [{ ...own, 'system-entities': entities }] }, image),
+    )
 })
 
 test('checks the actual opened download path, including collision-safe numbered names', () => {
