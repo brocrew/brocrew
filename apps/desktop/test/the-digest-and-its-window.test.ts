@@ -1,5 +1,5 @@
 import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -584,6 +584,62 @@ describe('§4 · regenerate it and get the same digest', () => {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 describe('§5 · the window covers what it says and nothing else', () => {
+  it('returns every digest event type and keeps more than a thousand in-window rows', () => {
+    conversation('sess_a')
+    const events: Parameters<SessionStore['append']>[2][] = [
+      {
+        type: 'work_given',
+        piece: 'work_1',
+        label: 'W1',
+        parent: 'work_root',
+        givenBy: 'sess_pm',
+        title: 'Read the ledger',
+        brief: 'Read the ledger',
+      },
+      { type: 'work_replied', piece: 'work_1', outcome: 'done', summary: 'Read', resources: [] },
+      { type: 'work_taken_back', piece: 'work_1', by: null },
+      { type: 'work_closed', piece: 'work_1', by: null },
+      { type: 'request_routed', requestId: 'req_1', to: 'the-parent', parent: 'sess_pm' },
+      { type: 'request_escalated', requestId: 'req_1' },
+      { type: 'request_stranded', requestId: 'req_1' },
+      { type: 'request_resolved', id: 'req_1' },
+      { type: 'request_interrupted', requestId: 'req_1' },
+      { type: 'question_asked', requestId: 'req_1', prompt: 'Which ledger?', questions: [] },
+      { type: 'user_decision', requestId: 'req_1', outcome: 'answered' },
+      { type: 'work_interrupted', by: 'a-person' },
+      { type: 'work_restarted' },
+      {
+        type: 'tool_refused',
+        tool: 'give_work',
+        rail: 'missing-agent',
+        permanence: 'permanent',
+        retryable: false,
+        remedy: null,
+      },
+      { type: 'sub_agent', agentId: 'child_1', phase: 'ended' },
+      { type: 'workflow_run', taskId: 'wf_1', source: 'task_progress', agents: [] },
+      { type: 'tool_call', id: 'call_1', name: 'brobot__list_agents', summary: 'List agents' },
+      { type: 'tool_result', id: 'call_1', summary: 'One agent', ok: true },
+      { type: 'message_unqueued', messageId: 'msg_1', reason: 'sent' },
+      ...Array.from({ length: 1_001 }, () => ({ type: 'turn', state: 'completed' }) as const),
+    ]
+    store.atomically(() => {
+      at('sess_a', FROM - 1, { type: 'turn', state: 'failed' })
+      for (const [index, event] of events.entries()) at('sess_a', INSIDE + index, event)
+      at('sess_a', INSIDE, {
+        type: 'context_reading',
+        reading: { kind: 'tokens', used: 500 },
+        source: 'message_start',
+      })
+      at('sess_a', TO, { type: 'turn', state: 'interrupted' })
+    })
+
+    const { rows, rowsUnread } = store.digestWindow(FROM, TO)
+    expect(rowsUnread).toBe(0)
+    expect(rows.map((row) => row.event.type)).toEqual(events.map((event) => event.type))
+    expect(new Set(rows.map((row) => row.event.type))).toEqual(new Set(DIGEST_EVENT_TYPES))
+  })
+
   it('🔴 half-open: a row AT `from` is in, a row AT `to` is out', () => {
     conversation('sess_a')
     at('sess_a', FROM - 1, { type: 'turn', state: 'completed' })
@@ -603,54 +659,6 @@ describe('§5 · the window covers what it says and nothing else', () => {
     for (let n = 0; n < 50; n++)
       at('sess_a', FROM - n * 1_000 - 1, { type: 'turn', state: 'completed' })
     expect(digestOf().lines).toEqual([])
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// §6 · the read shape — the SQL, the vocabulary and the fold move together
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-describe('§6 · the statement, censused', () => {
-  const storeSource = readFileSync(join(here, '../src/main/db/session-store.ts'), 'utf8')
-
-  /** The one extractor this census reads the shipped statement with. */
-  function statement(name: string): string {
-    const start = storeSource.indexOf(`const ${name} = db.prepare(`)
-    expect(start, `${name} is not declared where this census looks`).toBeGreaterThan(-1)
-    const open = storeSource.indexOf('`', start)
-    const close = storeSource.indexOf('`', open + 1)
-    expect(close, `${name}'s SQL is not one template literal`).toBeGreaterThan(open)
-    return storeSource.slice(open + 1, close)
-  }
-
-  it('🔴 the digest SQL is ONE flat literal, so this census reads the shipped string', () => {
-    const sql = statement('selectDigestWindow')
-    // ⚑ Non-vacuity: an extractor that returned '' would make every negative below pass.
-    expect(sql.toLowerCase()).toContain('where s.agent_identity_id is not null')
-    expect(sql.toLowerCase()).toContain('join events e')
-    // ⛔ **No interpolation.** `indexOf('`')` stops at the first backtick, so a `${…}` anywhere in
-    // this statement would hand the census a fragment and a very good match.
-    expect(sql).not.toContain('${')
-    // ⚑ The positive control on that check: the pattern really does fire on a string that has one.
-    expect('SELECT ${types} FROM events').toContain('${')
-  })
-
-  it('⛔ the SQL type list and `DIGEST_EVENT_TYPES` are the same set', () => {
-    // ⚠️ **`selectPieceEvents`' rule, inherited**: a type the fold branches on and the statement
-    // omits reads as *"that event never happened"* — silently, and only on the replayed path.
-    const sql = statement('selectDigestWindow')
-    const inList = sql.slice(sql.indexOf('e.type IN ('))
-    const spelled = [...inList.matchAll(/'([a-z_]+)'/g)].map((match) => match[1])
-    expect(spelled.length).toBeGreaterThan(0)
-    expect([...spelled].sort()).toEqual([...DIGEST_EVENT_TYPES].sort())
-  })
-
-  it('⛔ the statement carries no LIMIT, and its only clock is the window it was given', () => {
-    const sql = statement('selectDigestWindow')
-    expect(sql.toLowerCase()).not.toContain('limit')
-    // ⚠️ **Exactly two bounds on `created_at`, which are the two the caller passed.** A third
-    // would be a window the caller did not choose.
-    expect([...sql.matchAll(/created_at\s*(>=|<|<=|>)/g)]).toHaveLength(2)
   })
 })
 
