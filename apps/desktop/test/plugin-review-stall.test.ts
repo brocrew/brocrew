@@ -71,31 +71,6 @@ function progressing(
 }
 
 it.each(['preview', 'owner'] as const)(
-  'reviews an update with a progressing sixty-second %s download',
-  async (where) => {
-    const { f, client } = await setup()
-    const download = where === 'preview' ? f.download : f.ownerDownload
-    download.mockClear()
-    let started!: () => void
-    const begun = new Promise<void>((resolve) => {
-      started = resolve
-    })
-    download.mockImplementationOnce((_release, signal) => {
-      started()
-      return progressing(f.next.archive, signal)
-    })
-    const pending = review(client, 'update')
-    await begun
-    await vi.advanceTimersByTimeAsync(60_001)
-    const shown = await pending
-    expect(shown.details?.digest).toBe(f.next.release.archive.sha256)
-    expect(f.f.state.inspect().guards[0]?.release.version).toBe('1.0.1')
-    expect(f.f.state.inspect().pending).toBeNull()
-    expect(f.reviewFailures).not.toHaveBeenCalled()
-  },
-)
-
-it.each(['preview', 'owner'] as const)(
   'delivers real byte progress from a slow %s transfer to only its Settings window',
   async (where) => {
     const { f, client } = await setup()

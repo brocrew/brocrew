@@ -267,7 +267,7 @@ it('an old screen destruction is tagged with A while B is opening', async () => 
   expect(f.owner.contentView.addChildView).toHaveBeenLastCalledWith(bView)
 })
 
-it('P3: real Settings dispatch denies uninstall before catalogue or slow UI teardown', async () => {
+it('real Settings dispatch denies uninstall before catalogue or slow UI teardown', async () => {
   const f = setup()
   await f.call({ kind: 'configure', id: 'chrome', screenId, bounds })
   const never = new Promise<void>(() => {})
@@ -280,7 +280,7 @@ it('P3: real Settings dispatch denies uninstall before catalogue or slow UI tear
   void f.call({ kind: 'uninstall', id: 'chrome' })
   expect(denied).toHaveBeenCalledOnce()
 })
-it('P3: failed UI teardown cannot suppress the real Settings uninstall dispatch', async () => {
+it('failed UI teardown cannot suppress the real Settings uninstall dispatch', async () => {
   const f = setup()
   await f.call({ kind: 'configure', id: 'chrome', screenId, bounds })
   f.close.mockRejectedValueOnce(new Error('fictional failed close'))
@@ -293,7 +293,7 @@ it('P3: failed UI teardown cannot suppress the real Settings uninstall dispatch'
 })
 
 it.skipIf(process.platform === 'win32')(
-  'P4: real Settings can reinstall after clean uninstall recovery without another restart',
+  'real Settings can reinstall after clean uninstall recovery without another restart',
   async () => {
     const { fixture, reopenLifecycleFixture, cleanupLifecycleFixtures } =
       await import('./plugin-lifecycle-fixtures')

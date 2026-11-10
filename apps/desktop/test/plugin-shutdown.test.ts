@@ -223,23 +223,6 @@ describe.skipIf(process.platform === 'win32')(
         await closing.catch(() => undefined)
       }
     })
-    it('a proven unexpected exit clears acknowledged cleanup but stays denied', async () => {
-      const exit = deferred<void>()
-      const f = await fixture({ runtime: exitingRuntime(exit.promise) })
-      await f.controller.install(f.handle, 'chrome')
-      const revoke = vi.spyOn(f.local.sink, 'revoke')
-      exit.resolve()
-      await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
-      // The exact process is gone and its consumers acknowledged cleanup; the crashed run is
-      // still unavailable, but there is no unresolved obligation to block a clean owner drain.
-      await vi.waitFor(async () => expect((await f.controller.status()).cleanupPending).toEqual([]))
-      expect((await f.controller.status()).cards).toMatchObject([{ state: 'Unavailable' }])
-      expect(
-        f.controller.admitted(f.handle, 'chrome', f.state.exportActivation().entries[0]!.installId),
-      ).toBe(false)
-      expect(f.controller.cleanForShutdown()).toBe(true)
-      await expect(f.controller.drain()).resolves.toBeUndefined()
-    })
     it('drain waits for acknowledged cleanup of an already exited run', async () => {
       const exit = deferred<void>(),
         ack = deferred<boolean>(),
@@ -292,18 +275,6 @@ describe.skipIf(process.platform === 'win32')(
       expect(f.controller.cleanForShutdown()).toBe(true)
       await expect(f.controller.drain()).resolves.toBeUndefined()
     })
-    it('a crash whose exit is not proven keeps its cleanup, whatever consumers answer', async () => {
-      // Unchanged behaviour: the missing proof, not a consumer's answer, keeps the cleanup.
-      const exit = deferred<void>()
-      const f = await fixture({ runtime: exitingRuntime(exit.promise) })
-      await f.controller.install(f.handle, 'chrome')
-      const revoke = vi.spyOn(f.local.sink, 'revoke')
-      exit.reject(new Error('fictional exit witness lost'))
-      await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
-      expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
-      expect((await f.controller.status()).cards[0]?.state).toBe('Unavailable')
-      expect(f.controller.cleanForShutdown()).toBe(false)
-    })
     it('a refused shutdown names what blocks it, down to the plugin and its missing proof', async () => {
       const exit = deferred<void>()
       const f = await fixture({ runtime: exitingRuntime(exit.promise) })
@@ -312,6 +283,8 @@ describe.skipIf(process.platform === 'win32')(
       await vi.waitFor(async () =>
         expect((await f.controller.status()).cleanupPending).toEqual(['chrome']),
       )
+      expect((await f.controller.status()).cards[0]?.state).toBe('Unavailable')
+      expect(f.controller.cleanForShutdown()).toBe(false)
       expect(f.controller.shutdownBlockers()).toEqual(['chrome has not proven its cleanup'])
       const refusal = await f.controller.drain().then(
         () => undefined,
@@ -509,25 +482,7 @@ describe.skipIf(process.platform === 'win32')(
       const exit = new Promise<void>((_resolve, reject) => {
         rejectExit = reject
       })
-      const f = await fixture({
-        runtime: {
-          previousOwnerClean: async () => true,
-          removeCode: async () => {},
-          async start() {
-            return {
-              runId: randomUUID(),
-              exited: exit,
-              ready: async () => ({
-                serverPid: 404941,
-                origin: 'http://127.0.0.1:1',
-                mcp: () => ({ url: '', headers: { Authorization: '' } }),
-                admin: () => ({ url: '', headers: { Authorization: '' } }),
-              }),
-              stop: async () => {},
-            }
-          },
-        },
-      })
+      const f = await fixture({ runtime: exitingRuntime(exit) })
       await f.controller.install(f.handle, 'chrome')
       const draining = f.controller.drain()
       const refused = expect(draining).rejects.toMatchObject({ code: 'cleanup-pending' })

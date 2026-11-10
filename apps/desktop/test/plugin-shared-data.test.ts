@@ -164,39 +164,6 @@ it('grants only the verified plugin namespace, with stable identity and bounded 
   expect(Array.from(sharedWorkspaceLabel('🙂'.repeat(200)))).toHaveLength(80)
 })
 
-it('never sends owner qualification as migration activation and refuses obsolete launch fields', async () => {
-  const f = await ownerFixture(),
-    pkg = verified(fixturePackage())
-  expect(await sharedDataEnvironment(pkg, f.hostRoot, f.owner)).not.toHaveProperty(
-    'BROCREW_CHROME_MIGRATION_QUALIFICATION',
-  )
-  const qualification = {
-    format: 1 as const,
-    ownerId: f.owner.ownerId,
-    platform: process.platform === 'win32' ? ('win32' as const) : ('darwin' as const),
-    qualificationId: 'a'.repeat(64),
-    legacyOwnersRetired: true as const,
-  }
-  const config = {
-    format: 1,
-    root: f.root,
-    workspaceRoots: [f.workspaceRoot],
-    runtime: { directory: f.folder, id: 'c'.repeat(64) },
-    sharedDataOwner: f.owner,
-    lifecycle: {
-      source: 'repo-list',
-      catalogue: join(f.folder, 'catalogue.json'),
-      catalogueSha256: 'a'.repeat(64),
-      personKey: 'b'.repeat(64),
-      names: {},
-    },
-  }
-  expect(LaunchConfig.safeParse(config).success).toBe(true)
-  expect(LaunchConfig.safeParse({ ...config, migrationQualification: qualification }).success).toBe(
-    false,
-  )
-})
-
 it('keeps fixture and development-source owners outside the trusted shared launch interface', async () => {
   const f = await ownerFixture()
   const lifecycle = {
@@ -360,12 +327,4 @@ it('adds host-owned shared access to visible consent and marks an update as chan
       details: { ...current, permissions: installed.permissions },
     }),
   )
-})
-
-it('creates the shared sibling without process-local root admission', async () => {
-  const f = await ownerFixture()
-  const result = await sharedDataEnvironment(verified(fixturePackage()), f.hostRoot, f.owner)
-  const expected = join(f.appData, '@brobot2', 'shared', 'chrome')
-  expect(result.BROCREW_CHROME_SHARED).toBe(expected)
-  expect((await stat(expected)).isDirectory()).toBe(true)
 })

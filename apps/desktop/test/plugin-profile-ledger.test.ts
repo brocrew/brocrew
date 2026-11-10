@@ -26,6 +26,29 @@ afterEach(async () => {
   vi.unstubAllGlobals()
   await cleanupLifecycleFixtures()
 })
+async function settingsClient(
+  f: Awaited<ReturnType<typeof fixture>>,
+  read: () => Promise<unknown>,
+) {
+  const bridge = await servePersonPluginControl({
+    root: f.root,
+    key: 'e'.repeat(64),
+    controller: f.controller,
+    read,
+  })
+  closers.push(() => bridge.close())
+  const client = await connectPluginSettings({
+    path: bridge.path,
+    personKey: 'e'.repeat(64),
+    root: f.root,
+    target: f.opts.target,
+    catalogue: f.opts.catalogue,
+    projection: projection().sink,
+    propose: () => {},
+  })
+  closers.push(() => client.close())
+  return client
+}
 describe.skipIf(process.platform === 'win32')(
   'person-only per-install Apply revision ledger',
   () => {
@@ -97,23 +120,10 @@ describe.skipIf(process.platform === 'win32')(
       await f.controller.install(f.handle, 'chrome')
       const route = await chromeAdminRouteFixture(f.parent)
       vi.stubGlobal('fetch', route.request)
-      const bridge = await servePersonPluginControl({
-        root: f.root,
-        key: 'e'.repeat(64),
-        controller: f.controller,
-        read: async () => ({ profiles: [route.snapshot()], tabs: [] }),
-      })
-      closers.push(() => bridge.close())
-      const client = await connectPluginSettings({
-        path: bridge.path,
-        personKey: 'e'.repeat(64),
-        root: f.root,
-        target: f.opts.target,
-        catalogue: f.opts.catalogue,
-        projection: projection().sink,
-        propose: () => {},
-      })
-      closers.push(() => client.close())
+      const client = await settingsClient(f, async () => ({
+        profiles: [route.snapshot()],
+        tabs: [],
+      }))
       const screen = await client.screen('chrome')
       let time = 0,
         request = 0
@@ -246,23 +256,11 @@ describe.skipIf(process.platform === 'win32')(
     it('the real package-screen press applies through person control; read shows the new revision and reinstall invalidates old scope', async () => {
       const f = await fixture()
       await f.controller.install(f.handle, 'chrome')
-      const bridge = await servePersonPluginControl({
-        root: f.root,
-        key: 'e'.repeat(64),
-        controller: f.controller,
-        read: async () => ({ configRevision: 0, profiles: [], tabs: [] }),
-      })
-      closers.push(() => bridge.close())
-      const client = await connectPluginSettings({
-        path: bridge.path,
-        personKey: 'e'.repeat(64),
-        root: f.root,
-        target: f.opts.target,
-        catalogue: f.opts.catalogue,
-        projection: projection().sink,
-        propose: () => {},
-      })
-      closers.push(() => client.close())
+      const client = await settingsClient(f, async () => ({
+        configRevision: 0,
+        profiles: [],
+        tabs: [],
+      }))
       const screen = await client.screen('chrome'),
         fetch = vi.fn(async () => new Response('{}', { status: 201 }))
       vi.stubGlobal('fetch', fetch)

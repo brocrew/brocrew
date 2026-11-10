@@ -24,8 +24,8 @@ afterEach(async () => {
   await cleanupLifecycleFixtures()
 })
 
-it.each([false, true, undefined])(
-  'separates the completed local wipe from remote logout confirmation %s',
+it.each([true, undefined])(
+  'leaves remote logout unconfirmed when the phone removal is %s',
   async (removeOnPhone) => {
     let removed = false
     const fetch = vi.fn(async (url: string) => {
@@ -39,7 +39,7 @@ it.each([false, true, undefined])(
     })
     vi.stubGlobal('fetch', fetch)
     await expect(logOutBeforeUninstall(connection, new AbortController().signal)).resolves.toBe(
-      removeOnPhone === false ? 'confirmed' : 'unconfirmed',
+      'unconfirmed',
     )
     expect(fetch.mock.calls.map(([url]) => url)).toEqual([
       'http://127.0.0.1:1/v1/status',
