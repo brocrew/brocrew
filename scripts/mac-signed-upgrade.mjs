@@ -225,10 +225,13 @@ async function quit() {
   active = await quitMacChild(active, app, processInfo, passed)
 }
 async function checkRetention(before, state, natives, settingsBefore, registryBefore) {
-  const after = databaseSnapshot(join(data, 'brobot2.sqlite'), { credentials: true })
+  const after = databaseSnapshot(join(data, 'brobot2.sqlite'), {
+    credentials: true,
+    movedState: true,
+  })
   const comparison = dataPreserved(before, after)
   credentialPreserved(before.provider_api_key, after.provider_api_key)
-  statePreserved(state, stateBytes(data))
+  statePreserved(state, stateBytes(data, after))
   registriesKept(
     registryBefore,
     JSON.parse(await readFile(registry, 'utf8')),
@@ -321,8 +324,11 @@ async function seedWorkspace(workspace) {
   )
   workspace.cdp = cdp
   workspace.conversations = conversations
-  workspace.beforeButtons = databaseSnapshot(join(data, 'brobot2.sqlite'), { credentials: true })
-  workspace.stateBeforeButtons = stateBytes(data)
+  workspace.beforeButtons = databaseSnapshot(join(data, 'brobot2.sqlite'), {
+    credentials: true,
+    movedState: true,
+  })
+  workspace.stateBeforeButtons = stateBytes(data, workspace.beforeButtons)
   workspace.nativeBeforeButtons = await nativeFiles(nativeRoot, data)
   nativeTranscriptsPresent(workspace.beforeButtons, workspace.nativeBeforeButtons)
   requireEvidence(
@@ -504,8 +510,12 @@ end tell`,
 
 async function captureBaseline(workspace, registryBefore, settingsBefore) {
   selectWorkspace(workspace)
-  const before = databaseSnapshot(join(data, 'brobot2.sqlite'), { credentials: true })
-  const state = stateBytes(data),
+  const before = databaseSnapshot(join(data, 'brobot2.sqlite'), {
+    credentials: true,
+    movedState: true,
+  })
+  const files = stateBytes(data)
+  const state = stateBytes(data, before),
     natives = await nativeFiles(nativeRoot, data)
   dataPreserved(workspace.beforeButtons, before, { allowAppended: true })
   statePreserved(workspace.stateBeforeButtons, state)
@@ -518,6 +528,7 @@ async function captureBaseline(workspace, registryBefore, settingsBefore) {
   workspace.baseline = {
     before,
     state,
+    files,
     natives,
     settingsBefore,
     registryBefore,
@@ -570,14 +581,18 @@ async function reopenFirst(workspace) {
       source: candidate.source,
       id: added[0],
       workspaceId: (await readFile(join(data, 'backups', 'workspace-id'), 'utf8')).trim(),
-      state: baseline.state,
+      state: baseline.files,
       migrations: baseline.before.migrations.map((one) => ({
         createdAt: one.created_at,
         hash: one.hash,
       })),
     },
   )
-  const copy = databaseSnapshot(join(checkpoint, 'database.sqlite'), { credentials: true })
+  const copy = databaseSnapshot(join(checkpoint, 'database.sqlite'), {
+    credentials: true,
+    movedState: true,
+  })
+  statePreserved(baseline.state, stateBytes(checkpoint, copy))
   dataPreserved(baseline.before, copy)
   credentialPreserved(baseline.before.provider_api_key, copy.provider_api_key)
   const kept = await checkRetention(

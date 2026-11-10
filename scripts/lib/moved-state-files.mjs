@@ -4,6 +4,20 @@
 /** Each row as an entry named by its `key` column. */
 const keyed = (rows, key, value) => Object.fromEntries(rows.map((row) => [row[key], value(row)]))
 
+/** The tables that hold each side file, including state written directly into SQLite. */
+export const MOVED_STATE_TABLES = {
+  'drafts.json': ['draft'],
+  'archived.json': ['archived_conversation'],
+  'profile-execution.json': ['profile_execution', 'profile_execution_state'],
+  'provider-usage.json': [
+    'provider_usage_reading',
+    'provider_usage_window_seen',
+    'provider_usage_read_on',
+  ],
+  'schedule-attempts.json': ['schedule_attempt'],
+  'sign-in-changes.json': ['sign_in_change'],
+}
+
 /** Files the candidate imports into its database, each rebuilt from its rows to be compared. */
 const MOVED_INTO_TABLES = {
   'drafts.json': (rows) => ({
@@ -62,13 +76,17 @@ const MOVED_INTO_TABLES = {
   }),
 }
 
-/** `state` with each moved file the database marks as imported rebuilt from its rows. */
+/** Physical files take precedence; otherwise compare imported or native SQLite state as books. */
 export function withMovedFiles(state, tables) {
   const found = { ...state }
   const rows = (table) => tables[table] ?? []
   const imported = new Set(rows('imported_side_file').map((row) => row.name))
   for (const [name, rebuild] of Object.entries(MOVED_INTO_TABLES)) {
-    if (found[name] === undefined && imported.has(name))
+    if (
+      found[name] === undefined &&
+      (imported.has(name) ||
+        MOVED_STATE_TABLES[name].every((table) => Object.hasOwn(tables, table)))
+    )
       found[name] = Buffer.from(JSON.stringify(rebuild(rows)))
   }
   return found

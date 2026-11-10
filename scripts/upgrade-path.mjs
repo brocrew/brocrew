@@ -1771,10 +1771,11 @@ const saveTheKey = (provider, key) =>
 const savedCleanly = (saved) =>
   saved?.set === true && saved.refused === null && saved.threw === undefined
 
-/** What the app recorded in `schedule-attempts.json` for one conversation, or why it is unread. */
+/** What the app recorded of scheduling attempts for one conversation, or why it is unread. */
 function scheduleAttemptsOf(conversation) {
   try {
-    return JSON.parse(readFileSync(join(data, 'schedule-attempts.json'), 'utf8'))?.conversations?.[
+    const state = readState(data, readDatabase(data).tables)
+    return JSON.parse(state['schedule-attempts.json']?.toString('utf8') ?? '{}').conversations?.[
       conversation
     ]
   } catch (error) {
@@ -2554,6 +2555,7 @@ try {
       { path, ...fileFacts(join(data, path)) },
     ]),
   )
+  const filesBefore = readState()
   const stateBefore = readState(data, before.tables)
   const besideBefore = besideTheFolder(args['beta-registry'])
   summary.baseline = {
@@ -2768,7 +2770,7 @@ try {
       build: args['source-sha'],
       lineage: before.lineage,
       stateFiles,
-      state: stateBefore,
+      state: filesBefore,
     })
     const inTheCopy = readDatabase(folder, 'database.sqlite')
     requireEvidence(

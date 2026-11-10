@@ -907,11 +907,11 @@ describe('a state file the candidate moved into its database', () => {
     expect(lostOf(was, tables)).toEqual([])
   })
 
-  it('is lost when a row is missing, or when nothing marks it imported', () => {
+  it('rejects lost rows and reads native rows without an import receipt', () => {
     const marked = { imported_side_file: [{ name: 'archived.json' }], archived_conversation: [] }
     expect(lostOf(before, marked)).toEqual(['archived.json: it no longer says what the beta wrote'])
     const unmarked = { archived_conversation: [{ conversation_id: 'a', archived_at: 5 }] }
-    expect(lostOf(before, unmarked)).toEqual(['archived.json: it is gone'])
+    expect(lostOf(before, unmarked)).toEqual([])
   })
 })
 

@@ -18,6 +18,7 @@ import { rehearsalStateKept } from './update-rehearsal-state.mjs'
 import { aConversation } from './update-rehearsal-data.mjs'
 import { SCRIPTED_MODEL, until } from './update-rehearsal-app.mjs'
 import { readStateEntry, SKILL_TREE_NAMES, skillTreeStateDigest } from './skill-tree-state.mjs'
+import { MOVED_STATE_TABLES, withMovedFiles } from './moved-state-files.mjs'
 
 export const FEED_URL = 'http://127.0.0.1:47123/'
 export { STATE_FILES, VERSION_A, VERSION_B }
@@ -188,7 +189,7 @@ export function statePreserved(before, after) {
 }
 
 /** Plain files stay byte-for-byte; trees carry sorted paths, file hashes and executable bits. */
-export function stateBytes(folder) {
+export function stateBytes(folder, tables = {}) {
   const state = {}
   for (const name of STATE_FILES) {
     const path = join(folder, name)
@@ -201,7 +202,7 @@ export function stateBytes(folder) {
     // Do not turn broken links or a disappearing nested file into an absent state entry.
     state[name] = readStateEntry(path)
   }
-  return state
+  return withMovedFiles(state, tables)
 }
 
 export function stateDigest(name, bytes) {
@@ -582,7 +583,10 @@ export function macCommands(record) {
   }
   return { run, plist, processInfo }
 }
-export function databaseSnapshot(file, { credentials = false, usage = false } = {}) {
+export function databaseSnapshot(
+  file,
+  { credentials = false, usage = false, movedState = false } = {},
+) {
   const db = new DatabaseSync(file, { readOnly: true })
   try {
     requireEvidence(
@@ -611,6 +615,11 @@ export function databaseSnapshot(file, { credentials = false, usage = false } = 
             `SELECT * FROM ${table} ORDER BY provider${table === 'provider_usage_read_on' ? '' : ', "window"'}`,
           )
           .all()
+    if (movedState) {
+      const tables = new Set(['imported_side_file', ...Object.values(MOVED_STATE_TABLES).flat()])
+      for (const table of tables)
+        snapshot[table] = db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()
+    }
     snapshot.migrations = db.prepare('SELECT * FROM __drizzle_migrations ORDER BY id').all()
     db.exec('COMMIT')
     return snapshot
