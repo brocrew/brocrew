@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import { privateFolder } from '../privatePaths.js'
-import type { SharedProfileAccess } from './sharedTypes.js'
+import type { CreatedBy, HelperSwitch, ProfileRecord, SharedProfileAccess } from './sharedTypes.js'
 import { writeAtomicallySync } from '../../../shared/atomic-file.js'
 export const PROFILE_NAME = /^[a-z0-9-]{1,32}$/
 export interface ProfileFlags {
@@ -12,30 +12,6 @@ export interface ProfileFlags {
   allowSync: boolean
 }
 export const FLAG_NAMES = ['enabled', 'allowExtensions', 'allowSettings', 'allowSync'] as const
-export type CreatedBy = 'agent' | 'panel'
-export interface ProfileRecord {
-  /** Local capability-mode epoch; persisted with flags so failed registry writes cannot admit ABA. */
-  authorizationEpoch?: string
-  name: string
-  /** Person-facing label only; name remains the immutable storage/tool key. */
-  displayName?: string
-  deleting?: boolean
-  enabled: boolean
-  allowExtensions: boolean
-  allowSettings: boolean
-  allowSync: boolean
-  createdAt: string
-  createdBy: CreatedBy
-  description: string
-  temporary: boolean
-  /**
-   * The person's switch for the BroCrew helper. off: never loaded until they turn it on.
-   * turning-on: they pressed Turn on, which beats Chrome's older record of the switch until the
-   * helper is running again.
-   */
-  helper: HelperSwitch
-}
-export type HelperSwitch = 'on' | 'off' | 'turning-on'
 export const DESCRIPTION_MAX = 500
 // eslint-disable-next-line no-control-regex -- Refuse control characters in profile labels.
 const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/

@@ -1,4 +1,27 @@
-import type { ProfileRecord } from './store.js'
+export type CreatedBy = 'agent' | 'panel'
+export interface ProfileRecord {
+  /** Local capability-mode epoch; persisted with flags so failed registry writes cannot admit ABA. */
+  authorizationEpoch?: string
+  name: string
+  /** Person-facing label only; name remains the immutable storage/tool key. */
+  displayName?: string
+  deleting?: boolean
+  enabled: boolean
+  allowExtensions: boolean
+  allowSettings: boolean
+  allowSync: boolean
+  createdAt: string
+  createdBy: CreatedBy
+  description: string
+  temporary: boolean
+  /**
+   * The person's switch for the BroCrew helper. off: never loaded until they turn it on.
+   * turning-on: they pressed Turn on, which beats Chrome's older record of the switch until the
+   * helper is running again.
+   */
+  helper: HelperSwitch
+}
+export type HelperSwitch = 'on' | 'off' | 'turning-on'
 export interface SharedProfileAdmission {
   profile: ProfileRecord
   identity: string

@@ -1,6 +1,6 @@
 import { ChromiumWindows } from '../shared/browser/chromiumWindows.js'
 import { BrocrewHelper, offInLastSession } from './brocrewHelper.js'
-import type { HelperSwitch } from '../profiles/store.js'
+import type { HelperSwitch } from '../profiles/sharedTypes.js'
 import type { HelperState } from './brocrewHelper.js'
 import { privateFolder } from '../privatePaths.js'
 import { assertOwnProfileDir } from '../shared/browser/launchGuard.js'

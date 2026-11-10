@@ -19,10 +19,15 @@ import {
   ProfileStoreError,
   FLAG_NAMES,
 } from './store.js'
-import type { ProfileStore, ProfileRecord, HelperSwitch } from './store.js'
+import type { ProfileStore } from './store.js'
 import { durableJson, identity, ownerState, withSharedLock } from './sharedLock.js'
 import type { ProcessIdentity, Liveness } from './sharedLock.js'
-import type { SharedProfileAccess, SharedProfileAdmission } from './sharedTypes.js'
+import type {
+  HelperSwitch,
+  ProfileRecord,
+  SharedProfileAccess,
+  SharedProfileAdmission,
+} from './sharedTypes.js'
 import { readVolumeIdentity } from './volumeIdentity.js'
 export type ChromeState = 'ended' | 'live' | 'unknown'
 export class ProfileInUseElsewhereError extends ProfileStoreError {
