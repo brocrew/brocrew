@@ -12,7 +12,11 @@ export async function readAdminJson(
     redirect: 'error',
     signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]),
   })
-  if (response.status !== 200 || !response.body) throw new PluginSupervisorError('unavailable')
+  if (!response.ok) {
+    const reply = await response.json()
+    throw new Error(reply.error ?? `Plugin configuration read failed (${response.status}).`)
+  }
+  if (!response.body) throw new PluginSupervisorError('unavailable')
   const reader = response.body.getReader()
   const parts: Uint8Array[] = []
   let bytes = 0

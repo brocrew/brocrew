@@ -50,6 +50,7 @@ it('preserves actual package failures and never accepts an incomplete applicatio
     .fn()
     .mockResolvedValueOnce(Response.json({ error: 'Package storage failed.' }, { status: 500 }))
     .mockResolvedValueOnce(Response.json({ applied: false }))
+    .mockResolvedValueOnce(Response.json({ error: 'Package snapshot failed.' }, { status: 503 }))
   vi.stubGlobal('fetch', fetch)
   await expect(
     applyPluginConfiguration(endpoint, {}, 0, new AbortController().signal),
@@ -57,7 +58,8 @@ it('preserves actual package failures and never accepts an incomplete applicatio
   await expect(
     applyPluginConfiguration(endpoint, {}, 1, new AbortController().signal),
   ).rejects.toThrow('not applied')
-  expect(fetch).toHaveBeenCalledTimes(2)
+  await expect(readPluginConfiguration(endpoint, new AbortController().signal)).rejects.toThrow('Package snapshot failed.')
+  expect(fetch).toHaveBeenCalledTimes(3)
 })
 
 describe.skipIf(process.platform === 'win32')('consumed configuration checkpoints', () => {
