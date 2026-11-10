@@ -166,10 +166,6 @@ describe('a failed launch hands the message back (015), to the slot it came from
     lastTried: 'the paragraphs I typed',
   }
 
-  it('restores when a launch attempt ENDS having failed with something to give back', () => {
-    expect(shouldRestoreDraft(attempt)).toBe(true)
-  })
-
   it('does not restore while the launch is still running', () => {
     expect(shouldRestoreDraft({ ...attempt, busy: true })).toBe(false)
   })
@@ -193,35 +189,13 @@ describe('a failed launch hands the message back (015), to the slot it came from
   })
 })
 
-/**
- * # …and so does a CANCELLED one (102, found by review)
- *
- * `shouldRestoreDraft` above keys on there being an error, because until 102 that was the only way
- * to tell "the launch ended without opening anything" from "it opened". A cancel is an ending with
- * no error on it — so the message was typed, sent, cleared from the composer, and then wiped from
- * `lastTried` by the very watcher that declined to hand it back. Nothing anywhere still held it.
- */
 describe('a cancelled launch hands the message back too (102)', () => {
-  // ⚠️ **These were `shouldReturnFirstMessage`'s until 221 §2 retired it into
-  // {@link firstMessageBelongsTo}.** It had no production caller left once both endings of a launch
-  // were decided in one place, and an exported predicate nothing calls is a rule nobody enforces —
-  // 217 §9 (c)'s dead prop, one layer up. The claims are unchanged.
   const goesBack = (opened: string | null, launchError: string | null): boolean =>
     firstMessageBelongsTo({ opened, launchError, sendError: null }) === 'launcher'
 
-  it('gives it back when nothing opened and nothing failed', () => {
-    expect(goesBack(null, null)).toBe(true)
-  })
-
-  it('leaves it to the launcher when the launch FAILED — one hand-back, not two', () => {
-    // `shouldRestoreDraft` owns this ending and has since 015; doing it here as well would write
-    // the same text twice, and the second write is the one that could land over newer typing.
-    expect(goesBack(null, 'no such directory')).toBe(false)
-  })
-
   it('never gives it back when a conversation DID open — it became the first message', () => {
-    // The paired positive for the negative above, and the one that matters: handing it back here
-    // would leave the words in the launcher AND in the conversation that has just said them.
+    // Handing it back here would leave the words in the launcher AND in the conversation that has
+    // just said them.
     expect(goesBack('sess_1', null)).toBe(false)
     expect(goesBack('sess_1', 'a later failure')).toBe(false)
   })

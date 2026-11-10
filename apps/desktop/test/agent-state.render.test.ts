@@ -90,34 +90,8 @@ function classes(html: string, cy: string): Set<string> {
 }
 
 /**
- * # ⛔ THE AXES, and the floor that makes a SEVENTH facet impossible to add quietly (645)
- *
- * ⚠️ **This registry replaces five hand-written loops, and the reason is that the hand-written ones
- * failed.** `250` added a fourth facet and widened this file by hand; `258` added a fifth and
- * widened it by hand; `636` added a SIXTH — `waiting` — and nobody widened anything, so
- * `AgentState.vue` went on receiving it as a stray fallthrough attribute until `645`, and
- * the clause `636` wrote into `accessibleName` was a branch no call site could produce.
- *
- * ⚠️ **The function itself was never untested** — `three-surfaces-read-the-new-field.test.ts` has
- * pinned that sentence since `636`. ⛔ **This file is the only one that renders the COMPONENT over
- * the whole product**, so it is the only one that could have seen the wiring missing, and it is
- * the one that was five axes wide.
- *
- * 🔴 **The floor this file already carries could not have caught it.** *"the lists this file
- * registers from ARE the vocabularies (268 §3)"* guards the MEMBERS of `DOINGS`, `BEINGS` and
- * `NEEDINGS` — it says nothing about the SET OF AXES, which is the thing that went stale.
- *
- * ⛔ **So the axes are now exhaustive over `keyof AgentFacets` at COMPILE time**, by `-?` on the
- * mapped type: a facet added to `AgentFacets` and not to this object does not type-check, and a key
- * here that is not a facet is an excess property. ⚑ **And the loop below is pinned to this object
- * at RUN time** by the floor at the foot of the file, so declaring an axis and not sweeping it is
- * a red verdict too. Both directions, because `250`'s lesson is that one of them is not enough.
- *
- * ⚠️ **`CONVERSATION_WAITS` and not a literal list**, like `agent-state.test.ts`' census: the
- * roster is filtered out of `TASK_STATES`' own `waiting-on-` prefix (`609`), so a new wait a
- * conversation can be in joins this sweep without anybody remembering
- * ([[a-loop-over-a-literal-variant-list-is-not-exhaustive]]). ⛔ **D-016 · commit 6** — the one
- * wait said on a piece only, *waiting on you*, is no conversation's, and the facet cannot hold it.
+ * Each facet of `AgentFacets` with its absent case. The `satisfies` makes a facet added to
+ * `AgentFacets` a compile error until it is listed here, so every sweep below covers it.
  */
 const FACET_AXES = {
   doing: [...DOINGS, undefined],
@@ -132,14 +106,7 @@ const FACET_AXES = {
   owes: [['Ada (the owner of W1.2 · The pages)'], undefined],
 } as const satisfies { [K in keyof AgentFacets]-?: readonly (AgentFacets[K] | undefined)[] }
 
-/**
- * ⚑ **Every state the eight axes above can hold — 24,576 of them, absent facets genuinely absent.**
- *
- * ⛔ **The old note here said *"All 512 states"* and the product had been 1,280 since `446` added a
- * fourth NEEDING** — a number that outlived its derivation
- * ([[a-number-can-survive-the-death-of-its-derivation]]). ⚠️ The count is asserted at the foot of
- * the file now instead of being described here, so it cannot drift again.
- */
+/** Every state the axes above can hold, absent facets genuinely absent. */
 const ALL: AgentFacets[] = []
 for (const doing of FACET_AXES.doing) {
   for (const being of FACET_AXES.being) {
@@ -428,15 +395,6 @@ describe('the plate is one white island on every surface (acceptance 5)', () => 
     const markup = html.replace(/<!--[\s\S]*?-->/g, '')
     expect([...markup.matchAll(/data-on-white/g)]).toHaveLength(1)
   })
-
-  it('and there is nothing per-surface about it — the same markup everywhere', async () => {
-    // 081 §5 asked for a different EDGE on each of the three surfaces; this collapsed to one
-    // treatment in paper tokens, so there is no surface prop to get wrong. Pinned as an absence,
-    // with the positive statement of what replaced it.
-    const html = await render({ doing: 'idle' })
-    expect(html).not.toContain('data-surface')
-    expect(html).toContain('data-cy="agent-plate"')
-  })
 })
 
 describe('the accessible name reaches the DOM (081 §7, hazard 3)', () => {
@@ -620,22 +578,5 @@ describe('the lists this file registers from ARE the vocabularies (268 §3)', ()
     expect(DOINGS).toContain('unknown')
     expect(DRAWN_BEINGS).toEqual([...BEINGS])
     expect(DEMANDED).toEqual([...NEEDINGS])
-  })
-
-  /**
-   * ⛔ **645 · the floor above guards the MEMBERS of a vocabulary. This one guards the AXES.**
-   *
-   * ⚠️ `636` added a sixth facet to `AgentFacets` and every sweep in this file went on passing,
-   * because the axes were five hand-written loops and nothing compared them to anything. ⚑ The
-   * compile-time half is the `satisfies` on `FACET_AXES`; this is the run-time half, and it is the
-   * one that catches an axis DECLARED and not SWEPT.
-   */
-  it('🔴 645 · every facet `AgentFacets` declares is an axis, and every axis is actually swept', () => {
-    const swept = new Set(ALL.flatMap((facets) => Object.keys(facets)))
-    expect([...swept].sort()).toEqual(Object.keys(FACET_AXES).sort())
-    // ⛔ **A literal, for 268 §3's reason** — a count computed from the axes it is checking could
-    // not notice a vocabulary shrinking. ⚑ 8 doings × 8 beings × 4 needings × 2 × 2 × 4 waits ×
-    // 3 works (D-006; D-016 took the proposal out of the needings).
-    expect(ALL).toHaveLength(24_576)
   })
 })

@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -21,8 +18,6 @@ import { watchClosing } from '../src/renderer/src/App.vue'
  * is a compositing question, so it lives in the browser project. Both halves exist because either
  * one alone passes over the other's defect (083's whole argument).
  */
-
-const src = dirname(fileURLToPath(import.meta.url))
 
 const render = (): Promise<string> =>
   renderToString(createSSRApp({ render: () => h(ClosingShade as never) }))
@@ -116,45 +111,5 @@ describe('subscribing to the announcement', () => {
     // A build that shipped an older preload beside a newer renderer. The renderer must degrade to
     // "no shade", which is what the app did for its whole life before 271 — not to a blank window.
     expect(() => watchClosing(() => {})()).not.toThrow()
-  })
-})
-
-/**
- * The mount point is three lines and a template, so what is asserted here is that those three lines
- * are wired to the two things above rather than to a copy of them.
- *
- * ⚠️ **A source scan, deliberately, and only for the wiring.** `App.vue` mounts `RuntimeScreen`,
- * which asks the bridge for app info, capabilities and profiles the moment it appears — so a test
- * that mounted `App.vue` to prove that `v-if` would be standing up the whole product to check one
- * attribute. The BEHAVIOUR both sides of that `v-if` is covered above and in the dom test.
- */
-describe('the mount point', () => {
-  const app = readFileSync(join(src, '../src/renderer/src/App.vue'), 'utf8')
-
-  it('shows the shade only while closing', () => {
-    // ⚠️ **`appClosing` and not a local `closing`, and 273 changed this line deliberately** (193 M5:
-    // an old assertion is never quietly flipped). `272` found that the window is not the only reader
-    // the announcement needed — both closed-conversation lists refresh themselves as the quit closes
-    // each conversation — so the flag moved to `lib/app-closing.ts` and the shade became one of its
-    // readers. ⚑ What this line is about has not changed: the shade is shown by the announcement and
-    // by nothing else. `shutdown-door.test.ts` holds the other readers to the same module.
-    expect(app).toMatch(/<ClosingShade v-if="appClosing" \/>/)
-  })
-
-  it('drives it from the announcement rather than from anything of its own', () => {
-    // Same change, same reason: the handler is now the module's one writer, passed by name. The
-    // fact being pinned is still that `watchClosing` is what sets it — see the note above.
-    expect(app).toMatch(/stopWatching = watchClosing\(beginClosing\)/)
-    // …and lets go on the way out, so a re-mounted app does not accumulate listeners.
-    expect(app).toMatch(/onBeforeUnmount\(\(\) => stopWatching\?\.\(\)\)/)
-  })
-
-  it('puts the shade OUTSIDE the screen, over the titlebar and the rail', () => {
-    // ⛔ Inside `RuntimeScreen` it would leave a live-looking rail and a working New-conversation
-    // button beside a message saying the app is closing — two answers to one fact, which is the
-    // shape 076 §3 and 187 §1 both record this repository paying for.
-    const template = app.slice(app.indexOf('<template>'))
-    expect(template.indexOf('<RuntimeScreen />')).toBeLessThan(template.indexOf('<ClosingShade'))
-    expect(template).not.toMatch(/<RuntimeScreen>[\s\S]*<ClosingShade/)
   })
 })

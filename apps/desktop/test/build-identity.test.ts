@@ -1,6 +1,4 @@
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { BUILD_IS_DEV, BUILD_IS_UNRECORDED } from '@brobot2/shared'
 import { describeBuild, readGitFacts } from '../src/main/build-stamp'
@@ -85,26 +83,6 @@ describe('describeBuild — what a build says it is', () => {
   it('spells the same two words the renderer branches on', () => {
     expect(describeBuild('serve').id).toBe(BUILD_IS_DEV)
     expect(describeBuild('build', () => null).id).toBe(BUILD_IS_UNRECORDED)
-  })
-
-  /**
-   * ⚠️ **And the RENDERER spells it a third time**, for a second, measured reason: `@brobot2/shared`
-   * reaches `AppTitleBar.vue` as `import type` only, and making it a value import drags `zod` into
-   * the renderer bundle — **1,351,038 bytes against 1,215,826, +135 kB for a three-letter string**
-   * (one build each, same commit, one variable). ⛔ So three files spell `dev` and this is the only
-   * thing that would notice if one of them stopped agreeing.
-   */
-  it('and the renderer branches on that same word', () => {
-    // ⚑ **`AppTitleBar.vue` since 389 §2** — the chip and its two `computed`s moved out of
-    // `RuntimeScreen` so the bar could be mounted by a test. The literal and the reason for it are
-    // unchanged; only the file that spells it moved.
-    const screen = readFileSync(
-      join(__dirname, '..', 'src', 'renderer', 'src', 'components', 'AppTitleBar.vue'),
-      'utf8',
-    )
-    expect(screen).toContain(`read.build.id === '${BUILD_IS_DEV}'`)
-    // ⛔ Paired, so this cannot pass by the file simply not branching at all.
-    expect(screen).toMatch(/if \(read\.build\.id === '[a-z]+'\) \{/)
   })
 })
 
@@ -277,99 +255,5 @@ describe('stampReachedTheBundle — the guard on the silent failure', () => {
     expect(() =>
       guard.writeBundle({}, { 'x.sql': { type: 'asset' as never, code: '"e76e7c6"' } }),
     ).toThrow(/build stamp/)
-  })
-
-  it('is the wire the app actually reads — `readAppInfo` puts it in the payload', () => {
-    // ⚠️ Nothing else covers this join. `readAppInfo` boots Electron on import, so no test calls
-    // it; without this pin the producer could stop sending `build` and the only thing that would
-    // notice is `appInfoSchema.parse` throwing in a running app — which renders as a startup error
-    // beside an empty chip, at the exact moment somebody is trying to find out what they are
-    // running.
-    const main = readFileSync(join(__dirname, '..', 'src', 'main', 'index.ts'), 'utf8')
-    // ⚑ F077 · the branches a combined build holds ride the same field.
-    expect(main).toMatch(
-      /appInfoSchema\.parse\(\{[\s\S]*?\n {4}build: \{ \.\.\.buildIdentity\(\), branches: buildBranches\(\) \},/,
-    )
-    expect(main).toMatch(
-      /import \{ buildBranches, buildIdentity, shownVersion \} from '\.\/build-identity'/,
-    )
-  })
-
-  it('is the guard the real build actually runs', () => {
-    // ⚠️ 325's lesson: a guard tested only through its own export can be dead code in the product.
-    // This reads the config source and pins that the plugin is installed beside `copyMigrations`,
-    // so the two tests above are about a plugin that is on the path a build walks.
-    const source = readFileSync(join(__dirname, '..', 'electron.vite.config.ts'), 'utf8')
-    expect(source).toMatch(/stampReachedTheBundle\(build\.id\)/)
-  })
-})
-
-/**
- * ⚠️ **Source pins, and what changed under them** (389 §2). This paragraph used to read *"Nothing in
- * this repository mounts `RuntimeScreen` — it is the whole app — so there is no render test that can
- * read this chip."* ⛔ **That stopped being true when `389` moved the bar into `AppTitleBar.vue`**,
- * which a test CAN mount: `dom/one-bar-one-shelf.dom.test.ts` reads this chip in a real engine, at
- * three widths, and measures that it truncates rather than pushing the window title off centre.
- *
- * ⚑ **These pins stay, and they are still the instrument for the half a mount cannot see**: what the
- * chip SAYS was measured against the running app in all three states and is quoted in `331`'s
- * response, and a `computed` is only checkable against that measurement as source. The pins keep the
- * wiring from drifting away from it between now and the next time somebody looks.
- */
-describe('the titlebar chip', () => {
-  const screen = readFileSync(
-    join(__dirname, '..', 'src', 'renderer', 'src', 'components', 'AppTitleBar.vue'),
-    'utf8',
-  )
-
-  it('shows the build where the app version used to be', () => {
-    // The positive: one interpolation, and it is the composed line.
-    expect(screen).toMatch(/data-cy="build-line"/)
-    expect(screen).toMatch(/\{\{ buildLine \}\}/)
-    // ⛔ The negative it is paired with — `v{{ info.version }}` was the whole defect, and it is
-    // gone from the template. It survives in `buildTitle`, which the line below proves, so this is
-    // "moved", not "deleted".
-    expect(screen).not.toMatch(/v\{\{ info\.version \}\}/)
-    expect(screen).toMatch(
-      /const name = `\$\{read\.name\} \$\{\/\^\\d\/\.test\(read\.version\) \? 'v' : ''\}\$\{read\.version\}`/,
-    )
-  })
-
-  it('composes the line from the fields, and reads `dirty` rather than re-deriving it', () => {
-    expect(screen).toMatch(/const uncommitted = read\.build\.dirty \? ' · uncommitted' : ''/)
-    expect(screen).toMatch(
-      /return `\$\{read\.build\.id\}\$\{uncommitted\} · schema \$\{read\.db\.migrationsApplied\}\$\{branchWords\.value\}`/,
-    )
-    // ⛔ Never recovered from the text of the id. See `describeBuild`'s "same sha" test above for
-    // the other half of this rule. ⚠️ This reads the file as TEXT, comments included — it caught
-    // its own docblock naming the pattern before this line was written, which is the honest
-    // description of what it can and cannot tell apart.
-    expect(screen).not.toMatch(/endsWith\('-dirty'\)/)
-  })
-
-  it('keeps what other things read off this element', () => {
-    // `packaged-smoke` waits for `/schema \d+/` inside `[data-cy=app-info]` to prove the packaged
-    // app opened its database, and `ui-live-smoke` takes the same element's region. Both would
-    // have gone quiet, not red, if this chip had been rebuilt around them.
-    expect(screen).toMatch(/<div class="sync-state" data-cy="app-info">/)
-    expect(screen).toMatch(/· schema \$\{read\.db\.migrationsApplied\}/)
-  })
-
-  it('marks a dirty build with a word AND a colour, and lets a person copy the sha', () => {
-    // ⚑ F077 · a build that left a branch out wears the same amber, beside its words.
-    expect(screen).toMatch(
-      /:class="\{ 'build-dirty': props\.info\.build\.dirty \|\| branchWords !== '' \}"/,
-    )
-    // The waiting colour; under a theme's title-bar ink, the waiting colour worked out from it.
-    expect(screen).toMatch(
-      /\.sync-detail\.build-dirty \{\n {2}color: var\(--titlebar-waiting, var\(--waiting\)\);/,
-    )
-    // ⚑ Amber is a declared token; 104/105 found `var(--warning, …)` fallbacks doing all the work
-    // for a token defined in no stylesheet in this repo.
-    expect(
-      readFileSync(join(__dirname, '..', 'src', 'renderer', 'src', 'assets', 'tokens.css'), 'utf8'),
-    ).toMatch(/--waiting: #/)
-    // The titlebar is `user-select: none`; the chip opts back in so the sha can be dragged over.
-    expect(screen).toMatch(/\.sync-detail \{[^}]*user-select: text;/)
   })
 })

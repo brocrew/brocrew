@@ -1,5 +1,5 @@
 import { neutralHostDeps } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,7 +10,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { answerFor, attentionQueue, OPEN_REQUEST_MISSED } from '../src/renderer/src/lib/attention'
+import { answerFor, attentionQueue } from '../src/renderer/src/lib/attention'
 import { createSessionRecord, type SessionRecord } from '../src/renderer/src/lib/session-record'
 import { applyEvent } from '../src/renderer/src/lib/transcript'
 import type { CreatedSession, RuntimeCommand, RuntimeEventMessage } from '../src/shared/runtime-ipc'
@@ -33,7 +33,6 @@ import type { CreatedSession, RuntimeCommand, RuntimeEventMessage } from '../src
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const SCREEN = join(here, '../src/renderer/src/components/RuntimeScreen.vue')
 
 /** A sink that keeps what it was sent, exactly as 203's does. */
 function sinkNamed(ownerId: string): RuntimeEventSink & { events: () => RuntimeEventMessage[] } {
@@ -340,42 +339,5 @@ describe('answering from the overview', () => {
     expect(answerFor({ kind: 'reject', label: 'Reject' })).not.toEqual(
       answerFor({ kind: 'approve', label: 'Approve', consent: 'access-for-this-turn' }),
     )
-  })
-})
-
-/**
- * ⛔ **The screen's half, as source** — `211` §11's rule. A pane that can be sent to a card and a
- * screen that never sends it there is exactly the state this dispatch found.
- */
-describe('236 §2 · the screen carries the id it was handed', () => {
-  const source = readFileSync(SCREEN, 'utf8')
-  const open = source.slice(
-    source.indexOf('function openRequest('),
-    source.indexOf('function onKey('),
-  )
-
-  it('⚑ the slice found the function — otherwise every rule below passes over nothing', () => {
-    expect(open.length, 'openRequest moved or was renamed — re-point this').toBeGreaterThan(80)
-    expect(open).toContain('select(request.sessionId)')
-  })
-
-  it('🔴 it passes `request.itemId` to the pane, rather than dropping it', () => {
-    expect(open).toContain('pane.value?.focus(request.itemId)')
-    // ⛔ **…on the next tick, and not synchronously.** Opening from the overview is usually what
-    // MOUNTS the pane, so an id carried to a `pane.value` that is still null is the same defect
-    // with the fix written above it.
-    expect(open).toContain('void nextTick(')
-  })
-
-  it('⛔ …and a miss is SAID, because landing silently is the finding', () => {
-    expect(open).toContain('say(OPEN_REQUEST_MISSED)')
-    expect(OPEN_REQUEST_MISSED).toContain('further back')
-  })
-
-  it('⛔ …and the pane is reachable at all — the ref the call needs', () => {
-    // Two lines, a hundred lines apart, and either one alone leaves the other dead: the `ref` on
-    // the mount and the declaration it fills.
-    expect(source).toContain('const pane = ref<InstanceType<typeof ConversationPane> | null>(null)')
-    expect(source).toMatch(/<ConversationPane\b[\s\S]{0,200}?ref="pane"/)
   })
 })

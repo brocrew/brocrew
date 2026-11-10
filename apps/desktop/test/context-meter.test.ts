@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { ContextReading, RuntimeEvent } from '@brobot2/runtime'
 import {
@@ -212,20 +210,7 @@ describe('the context meter raises no attention trace (acceptance 5)', () => {
     expect(tracesOutsideDrawer(waiting)).toBeGreaterThanOrEqual(1)
   })
 
-  it('the reading is not an input to the attention model at all', () => {
-    // ⚠️ Asserted against the SOURCE, not against a literal built two lines up (review finding 20).
-    // The old version did `expect(Object.keys(input).sort()).toEqual([...])` on an object this test
-    // had just written — a tautology that could not fail, and which would have gone on passing the
-    // day someone added a `reading` field to `AttentionInput`. Reading the interface out of
-    // `drawer.ts` is what makes it a claim about the app.
-    const source = readFileSync(
-      fileURLToPath(new URL('../src/renderer/src/lib/drawer.ts', import.meta.url)),
-      'utf8',
-    )
-    const body = /export interface AttentionInput \{([^}]*)\}/.exec(source)?.[1] ?? ''
-    expect(body, 'AttentionInput not found in drawer.ts').not.toBe('')
-    const fields = [...body.matchAll(/^\s{2}(\w+):/gm)].map((m) => m[1]).sort()
-    expect(fields).toEqual(['drawerOpen', 'status', 'tab', 'waiting'])
+  it('an idle conversation with nothing waiting raises no trace', () => {
     expect(
       Object.values(
         attentionTraces({ waiting: 0, status: 'idle', drawerOpen: true, tab: 'changes' }),

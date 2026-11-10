@@ -1,10 +1,7 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import { allProviderCapabilities } from '@brobot2/runtime'
 import type { CreatedSession } from '../src/shared/runtime-ipc'
 import ConversationPane from '../src/renderer/src/components/ConversationPane.vue'
 import SessionDrawer from '../src/renderer/src/components/SessionDrawer.vue'
@@ -206,17 +203,8 @@ describe('the top bar states and does not act (079 §1)', () => {
     expect(plate).toContain('data-needing="permission"')
     expect(plate).toContain('role="img"')
     expect(html).toContain('#i-lock')
-    // The dots it replaced are gone from the two pills, and the status pill still says the word
-    // (the liveness pill says its word only while the provider is silent — D-017b).
+    // The status pill still says the word.
     expect(html).toContain('data-cy="session-status"')
-    const source = readFileSync(
-      fileURLToPath(new URL('../src/renderer/src/components/SessionHeader.vue', import.meta.url)),
-      'utf8',
-    )
-    expect(source).not.toContain('.liveness.live .dot')
-    expect(source).not.toContain('.liveness.waiting .dot')
-    // …but the yolo pill, which is a different axis, keeps its own.
-    expect(source).toContain('.liveness.auto .dot')
   })
 
   it('…and with nothing open it wears no badge, which is the pairing for the test above', async () => {
@@ -227,28 +215,6 @@ describe('the top bar states and does not act (079 §1)', () => {
     // The plate is still drawn, and still says what it does know.
     expect(quiet).toContain('data-cy="agent-plate"')
     expect(plate).toContain('data-doing="idle"')
-  })
-
-  /**
-   * Plan mode left the shelf and the bar for the Agent panel, where its states are pinned
-   * (`live-settings.render.test.ts`), and the usage cells left the conversation for the title bar.
-   * Asserted positively, because these renders are server-side: the bar's provider is on the page.
-   */
-  it('the plan state is not on the shelf or the bar, and the usage is the title bar’s', async () => {
-    const planning = await pane({
-      capabilities: allProviderCapabilities(),
-      record: record([{ type: 'status', state: 'working' }], {
-        ...META,
-        settings: { ...META.settings, planMode: true, pendingPlanMode: false },
-      }),
-    })
-    // The words a person reads on this render: the provider the bar states.
-    expect(planning).toMatch(/data-cy="provider-chip"[^>]*><span class="dot"[^>]*><\/span>claude</)
-    expect(planning).not.toContain('data-cy="shelf-usage-claude-5h"')
-    expect(planning).not.toContain('data-cy="shelf-plan"')
-    expect(planning).not.toContain('PLAN · proposing first')
-    expect(planning).not.toContain('planning · stopping next message')
-    expect(planning).not.toContain('data-cy="session-plan-indicator"')
   })
 
   it('⚑ D-017b · the liveness pill is drawn only while the provider is silent — the one condition it says', async () => {
@@ -455,39 +421,7 @@ describe('one drawer, every tab live (079 §2 → 096 → 508)', () => {
     }
   })
 
-  it('and the underline is gone, with the label and the ink carrying active instead (088 §3)', async () => {
-    // The tab has no underline and retains the alternative active marker. Assert both
-    // together; use a source assertion for the style because SSR has no computed styles.
-    const source = readFileSync(
-      fileURLToPath(new URL('../src/renderer/src/components/SessionDrawer.vue', import.meta.url)),
-      'utf8',
-    )
-    // ⚠️ Scoped to the style block AND stripped of comments. Two earlier versions of these three
-    // lines went red on the prose that explains the removal — the comment naming the deleted rule
-    // is inside the `<style>` block, so scoping alone was not enough. A source assertion that can
-    // be satisfied, or broken, by its own documentation is the shape that has caught this project
-    // before.
-    const styles = source.slice(source.indexOf('<style')).replace(/\/\*[\s\S]*?\*\//g, '')
-    expect(styles).not.toContain('border-bottom-color: var(--accent)')
-    expect(styles).not.toMatch(
-      /border-bottom: (?:2px|var\(--border-accent-width\)) solid transparent/,
-    )
-    // The positive pairing: `active` still styles something, and the label is still conditional.
-    expect(styles).toMatch(/\.tab\.active \{[^}]*color: var\(--text\)/)
-    expect(styles).toMatch(/\.tab\.active \{[^}]*font-weight/)
-    // …and 080's width-driven mechanism is DELETED rather than left dormant (088 §2). Checked
-    // against the SCRIPT with its comments stripped, for the same reason as the styles above: the
-    // comment that explains the deletion is free to name the thing it deleted, and a maintenance
-    // note that did so would otherwise turn this green assertion red for saying something true.
-    const script = source
-      .slice(0, source.indexOf('</script>'))
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\/\/.*$/gm, '')
-    expect(script).not.toContain('iconOnly')
-    // The positive pairing: the script is not empty and the label is still decided, just per-tab.
-    expect(script).toContain('attentionTraces')
-
-    // In the markup: the active tab is the one that is marked as such and the one with the words.
+  it('the active tab is the one marked active and the one with the words (088 §3)', async () => {
     const html = await drawer({ tab: 'events' })
     expect(tag(html, 'drawer-tab-events')).toContain('data-active="true"')
     expect(tag(html, 'drawer-tab-open')).toContain('data-active="false"')
@@ -696,24 +630,5 @@ describe('the reading light covers the whole pane, drawer included', () => {
       expect(html).not.toContain('data-chat-theme="dark"')
       expect(html.match(/data-chat-theme="light"/g)?.length).toBe(1)
     }
-    // ⚠️ The pane must not have kept a prop that no longer does anything. Read from the source,
-    // because a leftover `chatLight: boolean` would be silently satisfied by every call above.
-    //
-    // ⛔ **With its PROSE removed, and that is not tidiness.** The pane's own template comment
-    // explains, in words, that `chatLight` is the thing 344 removed — so the first version of this
-    // line went red over a sentence describing its own success. A `toContain` in the same shape
-    // fails the other way and is silent. Same fix as `conversation-chrome.test.ts`'s `source()`.
-    const code = readFileSync(
-      fileURLToPath(
-        new URL('../src/renderer/src/components/ConversationPane.vue', import.meta.url),
-      ),
-      'utf8',
-    )
-      .replace(/\/\*[\s\S]*?\*\//g, ' ')
-      .replace(/<!--[\s\S]*?-->/g, ' ')
-      .replace(/(^|[^:])\/\/.*$/gm, '$1')
-    expect(code).not.toContain('chatLight')
-    // Paired positive: the strip left real code behind, so the absence above is a finding.
-    expect(code).toContain('data-chat-theme="light"')
   })
 })

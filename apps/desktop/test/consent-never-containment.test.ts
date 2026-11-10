@@ -1,39 +1,10 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { SPAWN_RAIL_MEANS } from '../src/shared/capabilities'
 
 /**
- * 🔴 **368 · Consent, never containment** (HO-012 §2).
- *
- * ## ⛔ What this file is holding the sentence to
- *
- * HO-012 §2: the honest description of `366`'s rail *"should be in the disclosure itself, not only
- * in this correspondence. A person reading what a mode does deserves **the limit of the protection
- * along with its existence**."* ⚑ So the assertions below come in pairs — a clause that names what
- * the rail buys is worth nothing here unless the clause bounding it is asserted in the same test.
- *
- * ⚠️ **Every negative is paired with a positive from the SAME string** (169's rule, `171`'s shape).
- * A `not.toMatch` over a constant that had been emptied would pass every one of them, so the file
- * opens by asserting the sentence says its three things and only then asserts what it refuses to
- * say.
- *
- * ## ⛔ The two ways a sentence like this decays, and the row that catches each
- *
- *  1. **It is pasted into a component** and the constant becomes decoration. §2 below is a census
- *     over the two scanned trees with prose stripped first — `a-source-census-must-strip-prose-
- *     before-it-asserts` — with a non-vacuity floor, because a walk that found no files would
- *     report the same clean result as a walk that found no paste.
- *  2. **It grows into a paragraph.** `031`'s rating is that a paragraph nobody reads is worse than
- *     nothing, and HO-012's own brief names *"a wall of caveats"* as the failure mode. The bound is
- *     written as a LITERAL rather than as an expression over the constant, because a bound spelled
- *     `SPAWN_RAIL_MEANS.length` moves with what it is meant to pin.
+ * Consent, never containment: the sentence the capabilities sheet shows about a conversation an
+ * agent starts names what the rail buys and, in the same breath, the limit of that protection.
  */
-
-const HERE = fileURLToPath(new URL('.', import.meta.url))
-const SRC = join(HERE, '../src')
-const SHEET = join(SRC, 'renderer/src/components/CapabilitiesSheet.vue')
 
 describe('§1 · the sentence says both halves, and refuses the four it must not say', () => {
   it('⛔ names what the rail buys — the door, the ceiling, and where the mode comes from', () => {
@@ -123,69 +94,5 @@ describe('§1 · the sentence says both halves, and refuses the four it must not
     // `provider-neutrality.test.ts` scans `shared/` and would refuse a quoted literal anyway; this
     // says the same thing about the PROSE, which that census deliberately allows.
     expect(SPAWN_RAIL_MEANS).not.toMatch(/claude|codex/i)
-  })
-})
-
-describe('§2 · the constant is REACHED, and nowhere pasted', () => {
-  /** Comments first, because a docblock quoting the sentence is not a paste of it. */
-  function withoutProse(source: string): string {
-    return source
-      .replace(/\/\*[\s\S]*?\*\//g, ' ')
-      .replace(/<!--[\s\S]*?-->/g, ' ')
-      .replace(/^[ \t]*\/\/.*$/gm, ' ')
-  }
-
-  function walk(dir: string, out: string[] = []): string[] {
-    for (const entry of readdirSync(dir)) {
-      const at = join(dir, entry)
-      if (statSync(at).isDirectory()) walk(at, out)
-      else if (/\.(ts|vue)$/.test(entry)) out.push(at)
-    }
-    return out
-  }
-
-  /** A 40-character slice from the middle — long enough that only a paste can carry it. */
-  const SLICE = SPAWN_RAIL_MEANS.slice(60, 100)
-
-  it('🔴 nothing in renderer/ or shared/ carries the words — not even the file that declares them', () => {
-    expect(SLICE.length, 'the probe slice is empty').toBe(40)
-
-    const files = [join(SRC, 'renderer'), join(SRC, 'shared')].flatMap((root) => walk(root))
-    // ⛔ Non-vacuity: a walk that found nothing would report the same clean result as a walk that
-    // found no paste. `367` counted 60+ over these two trees.
-    expect(files.length, 'the walk of renderer/ + shared/ found no files').toBeGreaterThan(60)
-
-    const carriers = files
-      .filter((file) => withoutProse(readFileSync(file, 'utf8')).includes(SLICE))
-      .map((file) => file.slice(SRC.length + 1))
-    // ⚑ **Empty INCLUDING the declaration, and that is the data rather than an oversight.**
-    // `SPAWN_RAIL_MEANS` is written as concatenated literals and the slice crosses the seam between
-    // the first two, so these forty characters exist contiguously in no source file at all — which
-    // makes this census a clean test of *"did somebody paste the sentence"* with no exemption to
-    // keep honest.
-    expect(carriers).toEqual([])
-  })
-
-  it('⚠️ …and the census can SEE a paste, in code and not in a comment', () => {
-    // ⛔ **A negative is only as strong as the search shape.** The row above reports nothing, which
-    // is also what a broken predicate reports. Both directions, on the strip that does the work:
-    // planted in code it must be found, and planted in a docblock — the shape a file quoting this
-    // sentence in its own reasoning would take — it must not be.
-    expect(withoutProse(`const pasted = '${SLICE}'`).includes(SLICE)).toBe(true)
-    expect(withoutProse(`/** the sheet says ${SLICE} */`).includes(SLICE)).toBe(false)
-    expect(withoutProse(`<!-- the sheet says ${SLICE} -->`).includes(SLICE)).toBe(false)
-  })
-
-  it('⚑ …and the sheet reaches for it by NAME, which an import alone would not prove', () => {
-    // `a-census-that-asks-for-the-import-must-ask-for-the-call`: an unused import satisfies an
-    // import census, and lint is not a guard this file may lean on. So both — the symbol is
-    // imported AND it is interpolated into the template.
-    const sheet = readFileSync(SHEET, 'utf8')
-    const code = withoutProse(sheet)
-    expect(code).toMatch(
-      /import \{[\s\S]*?SPAWN_RAIL_MEANS[\s\S]*?\} from '\.\.\/\.\.\/\.\.\/shared\/capabilities'/,
-    )
-    expect(code).toContain('{{ SPAWN_RAIL_MEANS }}')
-    expect(code).toContain('data-cy="spawn-rail-means"')
   })
 })

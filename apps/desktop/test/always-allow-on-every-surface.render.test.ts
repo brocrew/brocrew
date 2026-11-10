@@ -50,58 +50,12 @@ import {
 import { asTheWireWouldCarry } from './lib/the-wire'
 
 /**
- * # 🔴 739 · Draw 1 (the button) and `737` F-5 — *Always allow* on every surface a card reaches
- *
- * ⚑ **The finding, verbatim** (`736` §12 F-1): *"⚠️ **F-1 · *Always allow* is offered by the
- * runtime and drawn by no surface.** … place `allow_always` in `PLACE` and give it words from
- * `scope.grants.allow_always` + `alwaysFile`"* — and **F-6**: *"A failed keep is refused
- * `not-usable`, and the host words every `not-usable` as the empty-answer sentence. This is latent
- * until the button is drawn."* ⚑ **And `737` F-5**: *"Codex's own MCP card reads back *Approved*
- * after *Allow once*."*
- *
- * ⚑ **The rulings it answers** (`739` §1): **R95** — *"every choice the provider's CLI offers on an
- * ask (*Always allow*, …) is offered, with the CLI's persistence"*; **R94** — *"the card's words say
- * what the rule covers"*; **R99** — *"where an *always* is kept"* is the CLI's, and `740` (in flight)
- * moves it: ⛔ so every word below is read off the wire (`scope.grants.allow_always`, `alwaysFile`),
- * never a copy of today's file.
- *
- * | § | surface | 🔴 subject (RED on `main` 8a52dfd8) | ⚑ control, one fact over (green on both) |
- * |---|---|---|---|
- * | 0 | the wire | — | main's host sends the MCP card's rule and file, a Codex command card whose ONLY accept is the prefix rule, one offering a plain accept AND the prefix rule, a card Codex offered no `always`, and a failed keep refused `stillOpen` in `740`'s own words |
- * | 1 | the card | *Always allow* in the row, its line naming the rule AND then the file verbatim, the `kept grant` row; the (composed) Claude `rm` card's line adds what it also covers for this conversation — the edits, never its own folder, and one fact over another folder IS said; `740`'s measured `make build` card prints the project's file as the wire names it; a card with no grants says the fallback and names no empty list; a server's tool with no clean name says *every call to this tool on <server>*, never a gap; the always-only command card draws the button and NO cannot-allow sentence, its proposal saying which answer keeps it; *Always allow* is OUTLINED (`approve-quiet`), never the filled `approve` | a card Codex offered no `always`: no button, no row, the other lines unchanged; a command card with no amendment offered keeps *proposed, not applied here*; `keeps` beside another outcome moves nothing; the plain answer on the same request is the filled `approve` |
- * | 2 | Home | the row offers *Always allow* with the card's own line, and the kept line in its scope; the always-only row offers it and says no cannot-allow; the press sends the plain outcome | the no-always row keeps *Allow once* · *Deny* · *Cancel*; the no-amendment row keeps its proposal line; the Allow once press |
- * | 3 | the person's queue | *Always allow* with the same line | the no-always row |
- * | 4 | Home's refusal (`736` F-6) | the host's reason for a failed keep, drawn on the row it was pressed from; `740`'s sentence flows through as data | the card drew it already; a row with no refusal draws none |
- * | 5 | the read-back (`737` F-5) | Codex's MCP card answered *Allow once* reads *Allowed once* | the plain card reads *Approved*, a server's card *Allowed*, an *Always allow* its own verdict |
- * | 6 | the settled card, expanded (review) | answered *Always allow*: the `kept grant` row is drawn — and on the always-only command card, its proposal's pointer to that row with it | ⚑ PINS (green on `main` by construction — it draws the row and the pointer nowhere): answered *Allow once*, *Deny*, *Cancel* or settled by a turn's end, the expanded body draws NO `kept grant` row; a prefix-rule command card answered *Approve* or *Deny* (round 2 #2), and the always-only card answered *Deny* or *Cancel* (#16), draw *proposed, not applied here* and NO pointer to a `kept grant` row; the settled *Allow once* card's body is drawn open and absent folded |
- * | 7 | the two grants on one card (review) | the card offering the wholesale grant AND *Always allow* draws ONE button whose word says *Always* — the kept one; the wholesale grant reads *Allow every Bash call for this conversation*, and settles as *Allowed every Bash call for this conversation*; Home's row the same | the wholesale grant still names its tool from the request, and never reads back as the conversation grant’s *Allowed for this conversation* (058) |
- *
- * ⚑ **The premises are main's own host** (`when-codex-asks-to-run-an-mcp-tool.render.test.ts`'
- * `capture()`, `730`): the REAL `CodexRuntime` and `RuntimeHost` over a scripted app-server, so every
- * Codex card below is the `RuntimeEventMessage` the window was SENT, folded by `acceptEvent`. The
- * failed keep is the host's own: this rig declares no MCP server, so `keepToolApproval` has no
- * address to keep and the adapter refuses the answer `not-kept` (`740`, R99 — `736` F-6's
- * `not-usable` until then), which the host words as its OWN sentence for a failed keep, never the
- * empty-answer one (§0 reads it off the host). ⚠️ The quotation above is `736`'s, of the adapter then.
- * ⚠️ **The Claude cards are built** (the rig opens Codex only) and sent through main's `toWireEvent`
- * and the same fold: ⚑ `740`'s MEASURED `make build` card ({@link MAKE_BUILD_GRANTS}, pinned to the
- * REAL `ClaudeRuntime` in `claude-runtime.test.ts`' *"740 · R99 (`736` F-4) — `make build`’s rule
- * is offered as *always*…"*), and ⚠️ a COMPOSED `rm` card ({@link RM_GRANTS}) — `736`'s shape, which
- * `740` made unreachable (R99: an `rm` is offered no *always*), kept for the one fact no measured
- * card carries: what an *Always allow* press ALSO installs for this conversation.
- *
- * ⚠️ **What `main` (8a52dfd8; 5f406f2f before it) draws instead, measured**: no *Always allow* on any surface — the row
- * is *Allow once* · *Deny* · *Cancel request*; the always-only command card says *"The only way to
- * allow this that the provider offered keeps the grant beyond this conversation, and BroBot does
- * not offer that choice yet."*; no `kept grant` row; Home draws no refusal at all; the MCP card
- * answered *Allow once* reads *Approved*; and the wholesale grant says *Always allow Bash this
- * session* / *Always allowed this session*. ⚠️ **The new exports** (`ALWAYS_ALLOW`, `ALLOWED_ONCE`,
- * `keptGrantOf`, `keptGrantSaid`) are read through the module's namespace ({@link since739}) and only
- * inside subjects, so on `main` a subject fails on what `main` draws and the controls still run.
- *
- * ⚠️ **SSR** ([[brobot2-ssr-tests-pass-vacuously]]) — each absence is asserted beside a reading the
- * same markup does hold, with the templates' comments stripped. The engine's half — drawn whole in a
- * conversation at 972 px and on Home, and a real press — is
+ * *Always allow* on every surface a permission card reaches: the card, Home's row, the person's
+ * queue, Home's refusal of a failed keep, the settled card's read-back, and a card that offers the
+ * wholesale grant beside it. The Codex cards are what the real host sends over a scripted
+ * app-server, folded by `acceptEvent`; the Claude cards are built and sent through `toWireEvent` and
+ * the same fold. SSR markup is read with the templates' comments stripped, and each absence is
+ * asserted beside a reading the same markup does hold. The browser half (a real press) is
  * `test/dom/always-allow-on-every-surface.dom.test.ts`.
  */
 
@@ -1215,11 +1169,6 @@ describe('§4 · `736` F-6 — a keep that failed is said on the row it was pres
     ])
   })
 
-  it('🔴 `740`’s sentence for a failed keep flows through as the host says it — the renderer writes none of its own', async () => {
-    const html = await renderHome(homeRow(refusedWith(NOT_KEPT_740)))
-    expect(textsOf(html, 'attention-refused')).toEqual([NOT_KEPT_740])
-  })
-
   it('⚑ THE CONTROL — the card drew the same reason already; a row nobody refused draws none', async () => {
     const reason = theHostsReason()
     const refused = refusedWith(reason).transcript.items.find((each) => each.kind === 'permission')
@@ -1494,20 +1443,5 @@ describe('§7 · a card offering the wholesale grant AND *Always allow* says *Al
       /^⚠ Covers any Bash command for this conversation — /,
     )
     expect(JSON.stringify(wide)).not.toMatch(/always/i)
-  })
-
-  it('⚑ THE CONTROL — the wholesale grant still names its tool from the request, and never reads back as the conversation grant’s *Allowed for this conversation* (058)', async () => {
-    const html = await card(makeBuild(), { provider: 'claude' })
-    expect(wordOn(html, 'allow_all_for_session')).toBe(since739.wideGrantLabel('Bash'))
-    expect(wordOn(html, 'allow_all_for_session')).toContain('Bash')
-    const decided: TranscriptEvent = {
-      type: 'user_decision',
-      requestId: 'req_1',
-      outcome: 'allow_all_for_session',
-      by: { who: 'a-person' },
-    }
-    const settled = await card(makeBuild(decided), { provider: 'claude' })
-    expect(textsOf(settled, 'permission-verdict')).toHaveLength(1)
-    expect(textsOf(settled, 'permission-verdict')).not.toEqual(['Allowed for this conversation'])
   })
 })

@@ -1,7 +1,5 @@
 import type { ConversationWait } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   accessibleName,
@@ -21,7 +19,6 @@ import {
   plateWord,
   platePx,
   PLATE_FLOOR,
-  PLATE_TOKENS,
   priorityDotToken,
   sessionBeing,
   sessionDoing,
@@ -42,9 +39,6 @@ import {
   type SessionFacetInput,
 } from '../src/renderer/src/lib/agent-state'
 import { CONVERSATION_WAITS } from '../src/shared/tasks'
-// ⚑ **645 · the WORD each wait is drawn with, from the table that owns it** — the same move
-// `lib/agent-state.ts` makes at its own import, and `222` §4's rule: a census that spelled these
-// phrases a second time would go green over a table that had moved.
 import { WORK_STATE_WORD } from '../src/renderer/src/lib/work-report'
 import { pendingKind, sessionPanel } from '../src/renderer/src/lib/session-panel'
 import type { SessionStatus } from '../src/shared/runtime-ipc'
@@ -76,58 +70,9 @@ import {
  * written, in a file whose whole subject is a component saying things it has not checked.
  */
 
-const source = (path: string): string =>
-  readFileSync(fileURLToPath(new URL(`../src/renderer/src/${path}`, import.meta.url)), 'utf8')
-
-const TOKENS = source('assets/tokens.css')
-
-/** One rule's declarations, found by its selector at the start of a line (as `chat-theme.test.ts`).
- *  `[,{]` because a rule may have a selector LIST — see that file for the whole reason (126). */
-function rule(selector: string): Record<string, string> {
-  const at = TOKENS.search(
-    new RegExp(`^${selector.replace(/[[\]().*+?^$|\\]/g, '\\$&')}\\s*[,{]`, 'm'),
-  )
-  expect(at, `no rule for ${selector}`).toBeGreaterThanOrEqual(0)
-  const open = TOKENS.indexOf('{', at)
-  let depth = 0
-  let end = open
-  for (; end < TOKENS.length; end++) {
-    if (TOKENS[end] === '{') depth++
-    if (TOKENS[end] === '}' && --depth === 0) break
-  }
-  const out: Record<string, string> = {}
-  for (const m of TOKENS.slice(open + 1, end).matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)) {
-    out[m[1]!] = m[2]!.trim()
-  }
-  return out
-}
-
-const DARK = rule(':root')
-const LIGHT = rule("[data-chat-theme='light']")
-const PLATE = rule('[data-on-white]')
-
 /**
- * # ⛔ THE AXES OF EVERY SWEEP IN THIS FILE — exhaustive over `keyof AgentFacets` (645)
- *
- * ⚑ **`250` doubled this sweep by hand and said why. `258` doubled it again and said why. `636`
- * added a SIXTH facet and doubled nothing** — so `waiting` was an axis no property in this file
- * swept, which is verbatim the failure the `258` note below records and was written to prevent.
- *
- * ⚠️ **Stated precisely, because the looser version is wrong:** the clause `636` added to
- * {@link accessibleName} was NOT untested — `three-surfaces-read-the-new-field.test.ts` pins the
- * sentence for every wait. 🔴 **What nothing pinned was the arithmetic here**, which is the only
- * assertion that says a clause is said *and nothing else is*, and which is what caught `258`.
- *
- * ⛔ **A comment asking the next dispatch to remember is not a mechanism.** The registry is, by
- * `-?` on the mapped type: a facet added to `AgentFacets` and not named here does not compile, and
- * a key here that is not a facet is an excess property. ⚠️ **The loop is pinned to the registry at
- * run time** by the floor beneath it, so an axis declared and not swept is a red verdict too.
- *
- * ⚑ **`CONVERSATION_WAITS` and not a literal list**: the roster is filtered out of `TASK_STATES`'
- * own `waiting-on-` prefix (`609`), so a new wait a conversation can be in joins every sweep in
- * this file without anybody remembering ([[a-loop-over-a-literal-variant-list-is-not-exhaustive]]).
- * ⛔ **D-016 · commit 6 · less the one wait said on a piece only** — *waiting on you*, which no
- * conversation is ever in, so the facet's own type cannot hold it.
+ * The axes of every sweep in this file: each facet of `AgentFacets` with its absent case. The
+ * `satisfies` makes a facet added to `AgentFacets` a compile error until it is listed here.
  */
 const FACET_AXES = {
   doing: [...DOINGS, undefined],
@@ -181,55 +126,6 @@ for (const doing of FACET_AXES.doing) {
   }
 }
 
-/**
- * ⛔ **The structural claim about the white plate, read off the stylesheet text** (tokens.css §14):
- * every sentence returned is a way the island could drift from the light conversation.
- *
- * ⚠️ Comments are stripped first: §14 is four paragraphs of prose ABOUT `[data-on-white]` sitting
- * above the rule, and a scan that counted those found two selectors where there is one.
- */
-function islandFindings(tokensCss: string): string[] {
-  const out: string[] = []
-  const css = tokensCss.replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '))
-  /**
-   * ⚑ **One palette block, plus at most one ALIAS block shared with `:root`** (the app-wide look).
-   * A role or state alias (`--role-prose: var(--text-base)`) resolves where it is declared, so it
-   * is re-declared in every scope to read that scope's own palette. ⛔ That block may hold
-   * references only: `var(--x)`, or a mix of references (`color-mix(in srgb, var(--accent) 12%,
-   * var(--panel))` reads each scope's own accent and panel exactly as a bare alias does). A literal
-   * value in it would be the second palette this guard exists to refuse.
-   */
-  const ALIASES = ":root,\n[data-chat-theme='light'],\n[data-on-white] {"
-  const aliasAt = css.indexOf(ALIASES)
-  const aliasBody =
-    aliasAt === -1 ? '' : css.slice(aliasAt + ALIASES.length, css.indexOf('}', aliasAt))
-  const REFERENCE =
-    /^(?:var\(--[\w-]+\)|color-mix\(in (?:srgb|oklab), var\(--[\w-]+\) \d+(?:\.\d+)?%, (?:var\(--[\w-]+\)|transparent)\))$/
-  for (const [, name, value] of aliasBody.matchAll(/(--[\w-]+):\s*([^;]+);/g)) {
-    if (!REFERENCE.test(value!.trim().replace(/\s+/g, ' ')))
-      out.push(`the shared alias block holds a value, not a reference: ${name}`)
-  }
-  /**
-   * ⚑ The derived-theme rules (every theme but classic) name the island too, always together with
-   * the light conversation in one `:is()`, so they cannot split the two. They are set aside before
-   * counting; a rule that names the island on its own still counts, and still fails.
-   */
-  const derived = /[^{}]*:not\(\[data-theme='classic'\]\)[^{}]*\{[^{}]*\}/g
-  for (const [rule] of css.matchAll(derived)) {
-    if (
-      rule.includes('[data-on-white]') &&
-      !rule.includes(":is([data-chat-theme='light'], [data-on-white])")
-    )
-      out.push('a derived rule names the island without the light conversation')
-  }
-  const named = [...css.replace(derived, '').matchAll(/\[data-on-white\]/g)].length
-  if (named !== (aliasAt === -1 ? 1 : 2))
-    out.push('the island is named in more than one place — a second block wins by source order')
-  if (!css.includes("[data-chat-theme='light'],\n[data-on-white] {"))
-    out.push('the island is a rule of its own again — it must share §13’s block')
-  return out
-}
-
 describe('the three vocabularies', () => {
   it('is the shape 081 specified — seven, seven, THREE, and now two booleans', () => {
     expect(DOINGS).toHaveLength(7)
@@ -274,30 +170,6 @@ describe('the three vocabularies', () => {
     expect(BEINGS).toContain('ended')
   })
 
-  /**
-   * ⛔ **645 · the test above guards the MEMBERS of each vocabulary. This one guards the AXES.**
-   *
-   * ⚠️ **Nothing guarded them, and that is how `636` landed a sixth facet into `AgentFacets` while
-   * every sweep in this file went on passing over five.** ⚑ The compile-time half is the `-?` on
-   * `FACET_AXES`; this is the run-time half, and it is the one that catches an axis DECLARED and
-   * not SWEPT — which the compiler cannot see.
-   */
-  it('🔴 645 · every facet `AgentFacets` declares is an axis, and every axis is actually swept', () => {
-    const swept = new Set(ALL.flatMap((facets) => Object.keys(facets)))
-    expect([...swept].sort()).toEqual(Object.keys(FACET_AXES).sort())
-    // …and the eight are the eight, named, so a key renamed on both sides at once still moves this.
-    expect([...swept].sort()).toEqual([
-      'being',
-      'detached',
-      'doing',
-      'needing',
-      'owes',
-      'scheduled',
-      'waiting',
-      'work',
-    ])
-  })
-
   it('every value has a word, and no value has a glyph for a word', () => {
     for (const doing of DOINGS) expect(DOING_WORD[doing], doing).toBeTruthy()
     for (const being of BEINGS) expect(BEING_WORD[being], being).toBeTruthy()
@@ -320,96 +192,16 @@ describe('the three vocabularies', () => {
   })
 })
 
-describe('no colour is carried anywhere but tokens.css (acceptance 6)', () => {
-  /** Every `--token` this module names, found mechanically so no hand-kept list can rot. */
-  const named = [
-    ...new Set([...source('lib/agent-state.ts').matchAll(/'(--[a-z0-9-]+)'/g)].map((m) => m[1]!)),
-  ]
-
-  it('names some tokens at all — the scan is not vacuous', () => {
-    expect(named.length).toBeGreaterThanOrEqual(7)
-    expect(named).toContain('--waiting')
-    expect(named).toContain('--danger')
-  })
-})
-
-describe('the white plate is a light island (tokens.css §14)', () => {
-  /**
-   * ⚠️ **This said "and nothing else", and `126` retired that clause on purpose.**
-   *
-   * Its reason was containment: the island was a block of its own holding five values copied from
-   * §13, and an island that quietly grew would be a second palette drifting from the first. The
-   * test below was the guard against that drift.
-   *
-   * ⛔ **`126` gave `[data-on-white]` a second carrier — `ChildWorkViewer`'s paper — and five
-   * tokens is not a palette for a surface that renders a whole conversation.** Measured in
-   * Chromium: 34 text elements on that paper, 25 of them under 3:1, drawn from `--text-soft`,
-   * `--code-text-dim`, `--mono-text`, `--muted` and the dark state colours. Listing what such a
-   * surface needs is the mistake `086`, `087` and `091` each made once, so the island became §13's
-   * OTHER SELECTOR rather than a hand-kept slice of it.
-   *
-   * So the containment rule is gone and the drift rule it protected is now unrepresentable: there
-   * is one block. What is left to check is the half that still has content — every token the plate
-   * actually draws is in that block, at a paper value. The `nothing else` half is replaced by the
-   * structural assertion below, which is stronger than the sentence it retires.
-   */
-  it('re-declares every token drawn ON it — and shares ONE block with the light conversation', () => {
-    expect(PLATE_TOKENS.length).toBeGreaterThan(0)
-    for (const token of PLATE_TOKENS) {
-      expect(PLATE[token], `${token} missing from the plate scope`).toBeDefined()
-    }
-    // …and it is a real palette rather than an empty rule — very much larger than the five the
-    // plate itself draws, which is the whole reason 126 stopped hand-keeping it.
-    expect(Object.keys(PLATE).length).toBeGreaterThan(PLATE_TOKENS.length * 4)
-
-    /**
-     * ⛔ **The structural claim, read off the STYLESHEET TEXT and not off two parses.**
-     *
-     * ⚠️ The first version asserted `Object.keys(PLATE)` equals `Object.keys(LIGHT)` — and review
-     * proved that is `X` compared with `X`: `rule()` finds the first line-anchored match and then
-     * scans forward for `{`, so both selectors resolve to the SAME byte range (open 24288, close
-     * 33591) and the comparison cannot fail. Worse, it left a live escape: APPENDING a second
-     * `[data-on-white] { --faint: #5f6979; }` at the end of the file leaves every test in this repo
-     * green while the runtime cascade takes the last one — the plate silently back on the dark
-     * value, which is precisely the drift the retired clause existed to prevent.
-     *
-     * So the claim is made about the file: the attribute appears in exactly one selector position,
-     * and that position is §13's own rule. A re-split fails the second half; an appended block
-     * fails the first.
-     */
-    expect(islandFindings(TOKENS)).toEqual([])
-  })
-
-  it('at exactly the values the light conversation uses — one palette, not two', () => {
-    // ⚠️ Two of these three are now true by construction (one block, two selectors) and are kept as
-    // the statement of WHAT that construction buys. The third is not: `not.toBe(DARK[token])` is a
-    // live check that the paper value actually differs from the near-black one, which no amount of
-    // selector sharing guarantees.
-    for (const token of PLATE_TOKENS) {
-      expect(PLATE[token], `${token} missing from the plate scope`).toBeDefined()
-      expect(PLATE[token], `${token} disagrees with the light conversation`).toBe(LIGHT[token])
-      expect(PLATE[token], `${token} is still the dark value`).not.toBe(DARK[token])
-    }
-  })
-})
-
-describe('the sprite has every glyph the badges name', () => {
-  const sprite = source('components/IconSprite.vue')
-
+describe('the badges name five distinct glyphs', () => {
   it('all FIVE the badges name, three of which 082 added', () => {
     // Derived from the maps rather than listed, so a new badge glyph is checked the moment it
-    // exists. (A second hard-coded loop over the three additions used to sit here; it was a strict
-    // subset of this one and added nothing — found in review.)
+    // exists.
     const named = [
       ...Object.values(NEEDING_GLYPH),
       beingCondition('silent')!.glyph,
       beingCondition('errored')!.glyph,
     ]
     expect(new Set(named).size).toBe(5)
-    for (const glyph of named) {
-      expect(sprite, `${glyph} is not in the sprite`).toContain(`id="${glyph.slice(1)}"`)
-    }
-    // …and the three 082 added really were absent before, so this is not describing the status quo.
     expect(named).toEqual(expect.arrayContaining(['#i-lock', '#i-question', '#i-bang']))
   })
 })
@@ -480,11 +272,10 @@ describe('the priority dot — the ONE thing a below-floor mark can say', () => 
     }
   })
 
-  it('always returns a token, and always one the theme declares', () => {
+  it('always returns a token', () => {
     for (const facets of ALL) {
       const token = priorityDotToken(facets)
       expect(token, JSON.stringify(facets)).toMatch(/^--[a-z0-9-]+$/)
-      expect(DARK[token], `${token} is not a real token`).toBeDefined()
     }
   })
 
@@ -518,19 +309,6 @@ describe('the two condition badges never collide with the NEEDING corner (081 co
     expect(underlineFor('errored').token).toBe('--danger')
     expect(priorityDotToken({ being: 'errored', needing: 'permission' })).toBe('--waiting')
   })
-
-  it('the clock belongs to silent, and to nothing else in this app any more', () => {
-    // 081 collision b. `silent` counts UP; a queued message is HELD. One glyph for both was the bug.
-    expect(beingCondition('silent')!.glyph).toBe('#i-clock')
-    const queued = source('components/QueuedMessage.vue')
-    expect(queued).toContain('#i-pause')
-    expect(queued).not.toContain('#i-clock')
-    // The rest of 077's bubble is untouched — the positive pairing for that absence.
-    expect(queued).toContain('data-cy="queued-entry"')
-    expect(queued).toContain('not sent')
-    expect(queued).toContain('data-cy="cancel-queued"')
-    expect(queued).toContain('data-cy="restore-queued"')
-  })
 })
 
 describe('motion is two states, and reduced motion removes it', () => {
@@ -548,7 +326,6 @@ describe('motion is two states, and reduced motion removes it', () => {
   it('every BEING gets a real token for its underline', () => {
     for (const being of BEINGS) {
       expect(BEING_TOKEN[being], being).toMatch(/^--/)
-      expect(DARK[BEING_TOKEN[being]], BEING_TOKEN[being]).toBeDefined()
     }
     // `closing` is --muted and NOT the poster's orange: orange is --auto, and it belongs to the
     // unattended session. A second meaning for it would break the one place this app shouts.

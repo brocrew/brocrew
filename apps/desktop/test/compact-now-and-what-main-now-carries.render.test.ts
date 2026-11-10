@@ -1,8 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { WorkGivenOut } from '../src/shared/task-contracts'
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { canSend, sendIntentFor } from '../src/renderer/src/components/PromptComposer.vue'
 import {
@@ -42,32 +39,17 @@ import { everythingOverTheWire } from './lib/the-wire'
 import { CLAUDE_COMPACTION_NOTE, CODEX_COMPACTION_NOTE } from './provider-capability-fixture'
 
 /**
- * # 🔴 718 — Compact now, and what main now carries: the halves a node process can reach
+ * Compact now, and what main now carries: the halves a node process can reach.
  *
- * ⚑ **The dispatch's seven draws, as rules**, each with its control one fact over:
+ *  - §1: "Compact now…" is offered exactly where the composer's plain Send of `/compact` would go,
+ *    with that press's intent (`now`, or `queue` behind a turn), and withheld in words elsewhere.
+ *  - §2: the sender's card says the piece its receipt names, by its label.
+ *  - §3: the Work tab and the work a conversation was given spell each piece by its label alone.
+ *  - §5: a start from the StartAsAgent sheet is its own launch: its own key, its own error, its own
+ *    Cancel, and the sheet closes only when the conversation opens.
  *
- *  - **§1 · `R60`** — *"Compact now…"* is offered exactly where the composer's plain Send of
- *    `/compact` would go, with that press's intent (`now`, or `queue` behind a turn), and withheld
- *    in words everywhere else (`compaction-offer.ts`). ⚠️ **The fold is NEW**, so its own arms
- *    cannot be RED on `main` and are marked ⚑; the draw they feed is, in the DOM file.
- *  - **§2 · `707` GAP-2** — the SENDER's card says the piece its receipt names. ⚑ **D-016** took
- *    the project out and the tree put the label in: *W1.1*, whatever an older receipt's
- *    `elsewhere` said.
- *  - **§3 · `707` GAP-3 / GAP-4** — the Work tab and the work a conversation was given spell each
- *    piece by its label alone. ⚑ **D-016**: no reader's project, no *in <project>*. ⛔ The band's
- *    given-out lines went (PM ruling, 2026-10-01), and their check with them.
- *  - **§4 · `710` F-5** — the take-over notice said what happened and what to press; ⚑ D-017b
- *    retired it with the fork, so §4 pins the one open door's words and where the store forgets.
- *  - **§5 · `710` F-9** — a start from the StartAsAgent sheet is its OWN launch: its own key, its
- *    own error, its own Cancel, and the screen closes the sheet only when the conversation opens.
- *
- * ⚠️ The drawn halves — the door, the dark button, the sheet's refusal box, the window's title —
- * are `compact-now-and-what-main-now-carries.dom.test.ts`'.
+ * The drawn halves are in `compact-now-and-what-main-now-carries.dom.test.ts`.
  */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const RENDERER = join(here, '../src/renderer/src')
-const read = (path: string): string => readFileSync(join(RENDERER, path), 'utf8')
 
 /* ================================================================ §1 · R60 — the offer */
 
@@ -389,51 +371,6 @@ describe('§3b · `707` GAP-4, D-016 — the work this conversation was GIVEN, b
   })
 })
 
-/* ================================================================ §4 · F-5 */
-
-/** The body of one top-level function in a source file, bounded by the next top-level line. */
-function bodyOf(source: string, header: string): string {
-  const from = source.indexOf(header)
-  expect(from, `no ${header} in the source`).toBeGreaterThan(-1)
-  expect(source.indexOf(header, from + 1), `a second ${header}`).toBe(-1)
-  const end = source.indexOf('\n}\n', from)
-  expect(end).toBeGreaterThan(from)
-  return source.slice(from, end)
-}
-
-/**
- * ⚑ **D-017b retired the take-over notice and the reopen's**: the three presses that could meet a
- * take-over answered and let go in the same moment are one door now (`openConversation`, which
- * looks and starts nothing), `release` keeps the record — the view stays, drawn from its ledger —
- * and a reopen that stopped again as it was handed over is shown, recorded. ⚑ What §4 keeps is
- * standing rule 8.4 (no *try again*) at the door that replaced them, and the store's deletes, each
- * located on a path that opened nothing here.
- */
-describe('§4 · `710` F-5, D-017b — the one open door says the host’s words, and never *try again*', () => {
-  const screen = read('components/RuntimeScreen.vue')
-
-  it('🔴 the presses go through ONE door, which says the host’s refusal and never *try again*', () => {
-    // ⚑ **The door**: it looks, and a refusal is the host's own sentence (`lookError`) — ⚑ UI-007:
-    // through `refusedToOpen`, which says the plain sentence where the host gave no words.
-    const door = bodyOf(screen, 'async function openConversation(')
-    expect(door).toContain('await store.look(sessionId)')
-    expect(door).toContain('say(refusedToOpen(store.lookError.value))')
-    expect(door).not.toMatch(/try again/i)
-    // ⚑ **Its presses** — the queue's travel and a work report's link — reach it, and say nothing
-    // of their own.
-    for (const header of ['async function goToQuestion(', 'async function goToTheWork(']) {
-      const body = bodyOf(screen, header)
-      expect(body, header).toContain('openConversation(')
-      expect(body, header).not.toMatch(/try again/i)
-    }
-    // ⛔ The take-over press and its sentence are gone with the fork they answered.
-    expect(screen).not.toContain('async function takeOver(')
-    expect(screen).not.toContain('HANDED_BACK_AS_IT_WAS_TAKEN')
-    // ⚑ …and none left anywhere on the screen, so a copy cannot hide in another function.
-    expect(screen).not.toMatch(/try again in a moment/i)
-  })
-})
-
 /* ================================================================ §5 · F-9 */
 
 type Pending = { resolve: (created: CreatedSession) => void; reject: (cause: Error) => void }
@@ -561,9 +498,8 @@ describe('§5 · `710` F-9 — the sheet’s launch is its own: key, error and C
   })
 
   /**
-   * 🔴 **The two moments a sheet launch settles in, as data** (`placed-launch.ts`) — `RuntimeScreen`
-   * is mounted by no test, so the decision it makes is made HERE and the screen is read below for
-   * routing through it (`718`'s review: its guards were pinned by nothing).
+   * The two moments a sheet launch settles in, as data (`placed-launch.ts`): `RuntimeScreen` is
+   * mounted by no test, so the decision it makes is made here.
    */
   it('🔴 opened: close the sheet that asked — and only if it is still the one up', () => {
     expect(afterAPlacedLaunch({ kind: 'opened' }, true)).toEqual({ close: true, notice: null })

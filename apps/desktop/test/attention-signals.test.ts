@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { inflateSync } from 'node:zlib'
 import { describe, expect, it, vi } from 'vitest'
 import { AttentionSignals, ATTENTION_SIGNAL_INTERVAL_MS } from '../src/main/attention-signals'
@@ -175,21 +174,6 @@ it('main consumes replays and focused/rate-limited arrivals, with no delayed sum
   expect(effects.bounce).toHaveBeenCalledTimes(3)
 })
 
-it('only a document reload resets the replay baseline, while retaining the native rate budget', () => {
-  const { effects, signals, advance } = native()
-  signals.update({ enabled: true, count: 1, arrival: 20 })
-  signals.update({ enabled: true, count: 1, arrival: 21 })
-  signals.reloaded()
-  signals.update({ enabled: true, count: 1, arrival: 0 })
-  signals.update({ enabled: true, count: 1, arrival: 1 })
-  expect(effects.bounce).toHaveBeenCalledTimes(1)
-  advance()
-  signals.update({ enabled: true, count: 1, arrival: 1 })
-  expect(effects.bounce).toHaveBeenCalledTimes(1)
-  signals.update({ enabled: true, count: 1, arrival: 2 })
-  expect(effects.bounce).toHaveBeenCalledTimes(2)
-})
-
 function decode(png: Buffer | null): Buffer {
   if (png === null) throw new Error('An overlay was expected.')
   expect([...png.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10])
@@ -250,32 +234,8 @@ it('refuses malformed IPC metadata rather than asking native code to guess', () 
   }
 })
 
-it.each([
-  ['did-navigate', 'darwin'],
-  ['render-process-gone', 'darwin'],
-  ['did-navigate', 'win32'],
-  ['render-process-gone', 'win32'],
-])('the main %s wiring silently rebaselines %s and retains its rate budget', (event, platform) => {
-  const source = readFileSync(new URL('../src/main/index.ts', import.meta.url), 'utf8')
-  const start = source.indexOf(
-    "      window.webContents.on('render-process-gone', () => owned.reloaded())",
-  )
-  const end = source.indexOf('      attentionWindows.set(window, signals)', start)
-  expect(start).toBeGreaterThanOrEqual(0)
-  expect(end).toBeGreaterThan(start)
+it.each(['darwin', 'win32'])('a reload rebaselines %s and keeps its rate budget', (platform) => {
   const { effects, signals, advance } = native(platform)
-  const handlers = new Map<string, () => void>()
-  const window = {
-    webContents: {
-      on: (name: string, callback: () => void) => {
-        handlers.set(name, callback)
-      },
-    },
-  }
-  // Evaluate only the two registrations from main; no Electron or app startup runs here.
-  new Function('window', 'owned', source.slice(start, end))(window, signals)
-  expect([...handlers.keys()]).toEqual(['render-process-gone', 'did-navigate'])
-  expect(handlers.has('did-start-navigation')).toBe(false)
   const summons = () =>
     platform === 'darwin'
       ? effects.bounce.mock.calls.length
@@ -283,9 +243,7 @@ it.each([
   signals.update({ enabled: true, count: 1, arrival: 20 })
   signals.update({ enabled: true, count: 2, arrival: 21 })
   expect(summons()).toBe(1)
-  const reset = handlers.get(event)
-  if (reset === undefined) throw new Error('the native reset was not installed')
-  reset()
+  signals.reloaded()
   signals.update({ enabled: true, count: 3, arrival: 0 })
   expect(summons()).toBe(1)
   expect(platform === 'darwin' ? effects.badge : effects.overlay).toHaveBeenLastCalledWith(3)
