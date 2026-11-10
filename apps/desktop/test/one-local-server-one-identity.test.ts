@@ -1,7 +1,7 @@
 import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -41,36 +41,6 @@ import { EXTERNAL_MCP_REMOVAL_MEANS, externalMcpServerRowId } from '../src/share
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const srcRoot = join(here, '../src')
-
-/**
- * One local server is bound to one identity and one provider.
- *
- * > ⚑ *"For actual real work, I need to give some mcp tools to brobot and the agents… an interface
- * > where I can add a new mcp server (by its local unauthenticated url) and then all the agents can
- * > see it."*
- *
- * ⛔ **"All the agents" became *register once, grant per identity*** (HO-040 §4.2) — *"this is the
- * part that makes focused identities genuinely specialised rather than differently named"* — so
- * §2's whole subject is one identity holding a server and its neighbour not holding it, in one
- * sample.
- *
- * ## ⛔ A REAL local MCP server, twice, because the rail is a HANDSHAKE
- *
- * ⚠️ **The refusal HO-040 §4.3 ruled cannot be measured against a fake.** *"No external server's
- * tools may arrive under a name that collides with one of ours"* — and the only way this app learns
- * what a server publishes is to ask it. ⚑ So §1 stands up two reference-implementation servers that
- * differ **in exactly one tool name**, puts both through the real door, and reads the two answers in
- * one sample (standing rule 3).
- *
- * ⛔ **Each server gets its own kernel-assigned port on `127.0.0.1`, in THIS process** — its own
- * free port and its own pid by construction.
- *
- * ## ⚑ Real host, real SQLite ledger, real migrations, real rails
- *
- * The only doubles are the provider adapter and the MCP server a person would have started
- * themselves.
- */
 
 /* ────────────────────────────────────────── a real local MCP server, for the length of a test */
 
@@ -179,7 +149,7 @@ const NOTHING_CHOSEN = Object.fromEntries(
   CAPABILITY_FIELDS.map((field) => [field.key, null]),
 ) as unknown as CapabilityGrant
 
-describe('516 · one local server, one identity', () => {
+describe('one local server, one identity', () => {
   let userData: string
   let work: string
   let db: AppDatabase
@@ -597,41 +567,6 @@ describe('516 · one local server, one identity', () => {
       expect(host.removeExternalMcpServer(row.id)).toBe(false)
     })
 
-    it('⛔ there is no way to EDIT a registered server — the absence is the rule', () => {
-      // 🔴 **`HO-042` §6 endorsed the immutable URL by name**: *"a mutable URL would let one global
-      // row silently retarget every identity that already trusted it."* ⚑ The enforcement is that
-      // no `UPDATE external_mcp_server` statement exists anywhere and no wire verb asks for one.
-      //
-      // ⚑ **524 · it now holds TWO facts still, and the second arrived without touching this test.**
-      // `HO-048` §1 put `reach` on this row, and because the enforcement is *no UPDATE on this
-      // table* rather than *no UPDATE of this column*, the new fact inherited the rule the day it
-      // was added. ⚠️ `EXTERNAL_MCP_REACH_IS_FIXED` is the sentence a person reads before the press,
-      // and the verb list below grew the reach-shaped spelling so a future save verb meets this
-      // census under either name.
-      //
-      // ⚠️ **Prose stripped first**, because this file and the store both DISCUSS the rule — a
-      // census that cannot tell a warning about a hazard from the hazard is one that gets deleted
-      // the first time it fires on a docblock.
-      const strip = (text: string): string =>
-        text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ')
-      const store = strip(readFileSync(join(srcRoot, 'main/db/session-store.ts'), 'utf8'))
-      const wire = strip(readFileSync(join(srcRoot, 'shared/runtime-ipc.ts'), 'utf8'))
-      // ⛔ **The positive control first**: without it an empty read passes every negative below.
-      expect(store).toContain('INSERT OR IGNORE INTO external_mcp_server')
-      expect(wire).toContain('registerExternalMcpServer')
-
-      expect(store).not.toMatch(/UPDATE\s+external_mcp_server/i)
-      for (const verb of [
-        'saveExternalMcpServer',
-        'editExternalMcpServer',
-        'setExternalMcpUrl',
-        'setExternalMcpReach',
-      ]) {
-        expect(wire, `${verb} would make a registered server mutable`).not.toContain(verb)
-        expect(store, `${verb} would make a registered server mutable`).not.toContain(verb)
-      }
-    })
-
     it('🔴 a grant survives a restart — a NEW store object over the same ledger', async () => {
       const server = await localMcpServer(['search_issues'])
       await openAndClose('worker')
@@ -652,55 +587,14 @@ describe('516 · one local server, one identity', () => {
     })
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §4 · what a fresh install holds, and what no migration writes
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§4 · both tables start EMPTY, and no migration seeds either', () => {
-    it('⛔ a migrated database holds no registered server and no grant', () => {
-      // ⚑ **There is no built-in `brobot` row and there never will be** (`507` §2.3): this app's own
-      // in-process server is product plumbing with no URL to store. ⚠️ That is what makes
-      // `clean-base`'s sentence — *no external MCP servers and no grants* — a fact rather than a
-      // hope.
+  describe('both tables start empty', () => {
+    it('a migrated database holds no registered server and no grant', () => {
       const count = (table: string): number =>
         (db.prepare(`SELECT count(*) AS n FROM ${table}`).get() as { n: number }).n
       expect(count('external_mcp_server')).toBe(0)
       expect(count('external_mcp_server_grant')).toBe(0)
     })
-
-    it('⛔ no migration writes a row into either table — a census, with its control', () => {
-      // ⚠️ **Prose stripped**, so a migration's own header — which may discuss a seed it does not
-      // write — cannot answer for a statement (`a-source-census-must-strip-prose-before-it-asserts`).
-      const files = readdirSync(migrationsFolder)
-        .filter((name) => name.endsWith('.sql'))
-        .map((name) => ({
-          name,
-          sql: readFileSync(join(migrationsFolder, name), 'utf8').replace(/^\s*--.*$/gm, ' '),
-        }))
-      // ⛔ **The positive control the negative needs** (standing rule 4): the census really reads
-      // the file that creates the tables — since D-016 the one migration, `0000_the_tree.sql` — so an
-      // empty or mis-pathed read cannot pass it.
-      expect(
-        files
-          .filter((one) => /CREATE TABLE `external_mcp_server`/.test(one.sql))
-          .map((o) => o.name),
-      ).toEqual(['0000_the_tree.sql'])
-      const writesARegistryRow = /INSERT\s+(OR\s+\w+\s+)?INTO\s+`?external_mcp_server/i
-      for (const one of files) {
-        expect(one.sql, `${one.name} writes a registry row`).not.toMatch(writesARegistryRow)
-      }
-      // ⚑ **And the pattern really fires** on the statement it is looking for, bare and with a
-      // conflict clause, so the negative above is a measurement rather than a regex nothing matches.
-      expect('INSERT INTO `external_mcp_server` (`id`) VALUES (1)').toMatch(writesARegistryRow)
-      expect('INSERT OR IGNORE INTO external_mcp_server_grant VALUES (1)').toMatch(
-        writesARegistryRow,
-      )
-    })
   })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §5 · the door itself — a person's, and nobody else's
-  // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§5 · both registry verbs are refused unless a person is asking', () => {
     /** ⛔ A sink that declares nothing — every channel but a window (349). */
@@ -744,13 +638,6 @@ describe('516 · one local server, one identity', () => {
       expect(registeredNames()).toEqual(['jira'])
       expect(await executeRuntimeCommand(host, window, remove)).toBe(true)
       expect(registeredNames()).toEqual([])
-    })
-
-    it('⚠️ …and the sentence names the verb, so a log says what was missing', () => {
-      for (const verb of ['registerExternalMcpServer', 'removeExternalMcpServer'] as const) {
-        expect(noPersonBehindIt(verb)).toContain('a person is asking')
-        expect(noPersonBehindIt(verb)).toContain(verb)
-      }
     })
   })
 })

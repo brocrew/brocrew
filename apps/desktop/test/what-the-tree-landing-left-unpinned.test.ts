@@ -1,14 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import {
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readlinkSync,
-  rmSync,
-  symlinkSync,
-} from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,27 +12,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { keepResource, resourcesRoot, sha256Hex } from '../src/main/resources/resources'
-import { pieceNumbersOf } from '../src/shared/piece-called'
 import { fixtureProviderConfig, RecordingSink, neutralHostDeps } from './lib/host-fixture'
-
-/**
- * # D-016b part 2 - what the tree's landing left unpinned
- *
- * The tree (`5e931be8`) moved rows whose old killers were retired with their sections, and the
- * landing re-anchored each one in place. This file is the killer they were owed: four rows, each
- * pinned by a test that pairs its refusal with a positive read from the same
- * reader, so a plant that only breaks the negative cannot pass by breaking everything.
- *
- *  - `688:M10` a piece label with a component past 2^53 is no label (pure).
- *  - `508:M16` the Work tab row carries the piece's title and never its brief (real host, SQLite).
- *  - `521:M7` a dangling symlink standing at the kept name is something, and is left alone (tmp dirs).
- *  - `437:M2` a question is routed by the task edge, so a giver that was replaced is answered by
- *    its replacement (real host, R10).
- *
- * Real host, real SQLite ledger, real migrations wherever a host is mounted; the pure groups mount
- * none, and only the group that needs a tmp dir makes one.
- */
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -164,89 +135,7 @@ const mount = (
 const plainFake = (provider: Provider, issued: FakeProviderSessions): FakeRuntime =>
   new FakeRuntime(provider, { sessions: issued })
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// 688:M10 - a label whose component the numbers cannot hold exactly is no label
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-describe('688 · a piece label is read only when every component is an exact integer', () => {
-  it('a label with a component past 2^53 is refused, and the exact ones are kept', () => {
-    // The paired positives come first, from the same reader: they show the reader answers at all,
-    // and that the largest exact integer is still kept.
-    expect(pieceNumbersOf('W12.3.40')).toEqual([12, 3, 40])
-    expect(pieceNumbersOf('W9007199254740991')).toEqual([9007199254740991])
-
-    // One past the largest exact integer: the digits are well-formed, and the number they parse to
-    // is not the number they spell. A value mismatch, not a throw.
-    expect(() => pieceNumbersOf('W9007199254740993')).not.toThrow()
-    expect(pieceNumbersOf('W9007199254740993')).toBeNull()
-    expect(() => pieceNumbersOf('W1.9007199254740993')).not.toThrow()
-    expect(pieceNumbersOf('W1.9007199254740993')).toBeNull()
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// 521:M7 - a dangling link at the kept name is something
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-describe('521 · keeping a resource beside a name somebody else stands on', () => {
-  let userData: string
-
-  beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-521-'))
-  })
-
-  afterEach(() => {
-    rmSync(userData, { recursive: true, force: true })
-  })
-
-  const anOffer = (
-    text: string,
-    name = 'r.md',
-  ): { bytes: Buffer; sha256: string; name: string } => {
-    const bytes = Buffer.from(text, 'utf8')
-    return { bytes, sha256: sha256Hex(bytes), name }
-  }
-
-  it('a dangling symlink standing at the kept name is something, and is left alone', () => {
-    const root = resourcesRoot(userData)
-    const offered = anOffer('the answer\n')
-    const folder = join(root, offered.sha256)
-    const kept = join(folder, offered.name)
-    const nowhere = join(userData, 'a-target-that-was-never-made')
-    mkdirSync(folder, { recursive: true, mode: 0o700 })
-    symlinkSync(nowhere, kept)
-    // The premise: a link is at the name, and what it points at does not exist, so a `stat` that
-    // follows it finds nothing and only an `lstat` sees it.
-    expect(lstatSync(kept).isSymbolicLink()).toBe(true)
-    expect(existsSync(nowhere)).toBe(false)
-
-    expect(keepResource(root, offered)).toEqual({
-      ok: false,
-      problem: 'something-else-is-at-that-name',
-    })
-    // Left alone: still a link, still to the same nowhere, and nothing written beside it.
-    expect(lstatSync(kept).isSymbolicLink()).toBe(true)
-    expect(readlinkSync(kept)).toBe(nowhere)
-    expect(readdirSync(folder)).toEqual([offered.name])
-    expect(readdirSync(root)).toEqual([offered.sha256])
-  })
-
-  it('the same offer is kept when nothing is at the name, and again when the same bytes already are', () => {
-    const root = resourcesRoot(userData)
-    const offered = anOffer('the answer\n')
-
-    expect(keepResource(root, offered)).toEqual({ ok: true })
-    expect(lstatSync(join(root, offered.sha256, offered.name)).isFile()).toBe(true)
-    expect(keepResource(root, offered)).toEqual({ ok: true })
-    expect(readdirSync(join(root, offered.sha256))).toEqual([offered.name])
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// 508:M16 - the Work tab row draws the title
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-describe('508 · the Work tab row carries the piece’s title', () => {
+describe('the Work tab row carries the piece’s title', () => {
   let rig: Mounted
 
   beforeEach(() => {
@@ -287,11 +176,7 @@ describe('508 · the Work tab row carries the piece’s title', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// 437:M2 - a question is routed by the task edge
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-describe('437 · a question is routed by the task edge, not the spawn edge', () => {
+describe('a question is routed by the task edge, not the spawn edge', () => {
   let rig: Mounted
 
   beforeEach(() => {

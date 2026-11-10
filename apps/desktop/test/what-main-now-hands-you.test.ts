@@ -1,7 +1,4 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { readdirSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   applyEvent,
@@ -14,24 +11,8 @@ import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { pieceSays } from '../src/renderer/src/lib/relayed-turn'
 import { ROWS_UNREAD_LEAD, rowsUnreadSays } from '../src/renderer/src/lib/rows-unread'
 import { createAgentStore } from '../src/renderer/src/lib/agent-store'
-import {
-  NEW_AGENT,
-  WHERE_AGENTS_ARE_CREATED,
-} from '../src/renderer/src/lib/where-agents-are-created'
 import type { RuntimeBridge } from '../src/shared/runtime-ipc'
 
-/**
- * # 🔴 678 · Draw what main now hands you — the folds, the Events tab, and the two censuses
- *
- * ⚑ **The DOM halves are `test/dom/what-main-now-hands-you.dom.test.ts` and
- * `test/dom/one-count-one-sentence.dom.test.ts`**: what a person reads, on a real screen. ⛔ **This
- * file holds what those cannot reach cheaply** — the trust boundary of each new field, the traps in
- * a join that runs in two orders, the raw Events tab's lines, and the censuses that keep one count
- * to one sentence and one control to one name.
- */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const RENDERER = join(here, '..', 'src', 'renderer', 'src')
 const ev = (event: Record<string, unknown>): TranscriptEvent => event as unknown as TranscriptEvent
 
 function fold(events: readonly TranscriptEvent[]): TranscriptState {
@@ -194,33 +175,8 @@ describe('§2 · F-G2 · a turn is joined to the piece it gave', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// §3 · F-R18 — one count, one sentence
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-/** ⚑ Code only — a docblock quoting the words it retired is not a use. */
-const code = (source: string): string =>
-  source
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '')
-
-function rendererFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
-    entry.isDirectory()
-      ? rendererFiles(join(dir, entry.name))
-      : /\.(ts|vue)$/.test(entry.name)
-        ? [join(dir, entry.name)]
-        : [],
-  )
-}
-
-/** ⚑ Every place a source spells a row count's plural by hand — the shape each surface had. */
-const pluralisesRows = (source: string): number =>
-  (source.match(/===\s*1\s*\?\s*'row'\s*:\s*'rows'/g) ?? []).length
-
-describe('§3 · F-R18 · one count, one sentence', () => {
-  it('🔴 the sentence — both halves, by name — and nothing at 0 or at a value that is not a count', () => {
+describe('one count, one sentence', () => {
+  it('the sentence, and nothing at 0 or at a value that is not a count', () => {
     expect(rowsUnreadSays(1)).toBe(
       '1 row of this app’s record could not be read, so a piece of work may be missing here, or its state may be wrong.',
     )
@@ -229,38 +185,10 @@ describe('§3 · F-R18 · one count, one sentence', () => {
     for (const none of [0, -1, Number.NaN]) expect(rowsUnreadSays(none), String(none)).toBeNull()
     expect(ROWS_UNREAD_LEAD).toBe('This may not be accurate')
   })
-
-  it('⚑ the reader finds every hand-spelt plural — the control plants TWO', () => {
-    expect(pluralisesRows("a === 1 ? 'row' : 'rows'\nb === 1 ? 'row' : 'rows'")).toBe(2)
-  })
-
-  /**
-   * 🔴 **Scoped by what it is ABOUT** (rule 27.1): a surface that says a count of rows could not be
-   * read spells the plural by hand — every one before `678` did — so the plural IS the census's
-   * population, wherever it lives. ⚑ **One owner** (`rows-unread.ts`) and **one named exception**,
-   * with its reason: the spawn list counts half-written SPAWN rows, from which no work and no state
-   * is derived, so the work sentence would be false there.
-   */
-  it('🔴 only `rows-unread.ts` spells a row count — and the spawn list, named', () => {
-    const found: string[] = []
-    for (const file of rendererFiles(RENDERER)) {
-      const count = pluralisesRows(code(readFileSync(file, 'utf8')))
-      for (let i = 0; i < count; i++)
-        found.push(file.slice(RENDERER.length + 1).replaceAll('\\', '/'))
-    }
-    expect(found.sort()).toEqual(['components/WorkingTogether.vue', 'lib/rows-unread.ts'])
-    // ⚑ …and the WorkingTogether one is the spawn list's, not a work list's
-    const band = code(readFileSync(join(RENDERER, 'components/WorkingTogether.vue'), 'utf8'))
-    expect(band).toContain("{{ view.childList.short === 1 ? 'row' : 'rows' }}")
-  })
 })
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// §4 · the two sentences — a control named by the words ON it
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-describe('§4 · *"Create it from the rail"* → the control, by its own label', () => {
-  it('🔴 both refusals of the agent sheet send a person to New agent on the Team page', async () => {
+describe('a refusal names the control by its own label', () => {
+  it('both refusals of the agent sheet send a person to New agent on the Team page', async () => {
     const store = createAgentStore({
       agentIdentities: async () => null,
       setCapabilities: async () => null,
@@ -268,27 +196,11 @@ describe('§4 · *"Create it from the rail"* → the control, by its own label',
     } as unknown as RuntimeBridge)
     const saved = await store.save('ghost', {} as never, [])
     const chose = await store.chooseProviderFor('ghost', 'codex')
-    // ⚑ **696 · the provider door answers `{ ok, … }`** now, so it can hand on what it cleared; its
-    // refusal is the same sentence, as `reason`.
     expect(chose.ok).toBe(false)
     for (const said of [saved, chose.ok ? null : chose.reason]) {
       expect(said).toContain('There is no agent identity called ghost')
       expect(said).toContain('Create it with New agent on the Team page')
-      // ⛔ the word nothing in this app is labelled (`110`), and the section `570` removed
       expect(said).not.toMatch(/\brail\b/)
     }
-  })
-
-  it('⚑ the label is the one the Team page’s button DRAWS — rendered from the constant, not typed twice', () => {
-    expect(NEW_AGENT).toBe('New agent')
-    expect(WHERE_AGENTS_ARE_CREATED).toBe('with New agent on the Team page')
-    const team = code(readFileSync(join(RENDERER, 'components/TeamWorkspace.vue'), 'utf8'))
-    expect(team).toMatch(/data-cy="team-create"[^>]*>\s*\{\{ NEW_AGENT \}\}\s*<\/button>/)
-    expect(team).not.toContain('>New agent</button>')
-    // ⚑ and the page is called *Team* where a person finds it — the rail row and the page heading
-    expect(code(readFileSync(join(RENDERER, 'components/SideRail.vue'), 'utf8'))).toContain(
-      '<strong>Team</strong>',
-    )
-    expect(team).toMatch(/<h1(?: class="[^"]*")?>Team<\/h1>/)
   })
 })

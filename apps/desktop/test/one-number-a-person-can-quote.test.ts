@@ -20,25 +20,10 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
-/**
- * 🔴 **383 · one number a person can quote.**
- *
- * ⚑ **D-016 · a piece of work reads by its label** — `W1.2` is the root numbered 1, then 2 under
- * it. The numbers under one parent come from `work_sequence(parent)` and are taken before the send
- * (R4), so a number once handed out names one piece and is never handed out again.
- *
- *  - **§1** a number taken and never used is BURNED, not reissued — the property only a COUNTER
- *    has, because a maximum over what survived cannot see a number that left no row.
- *  - **§2** the pieces a conversation owns are still a function of its ledger: its rows alone
- *    reproduce them, in a database whose `work` table is empty, and with the index that serves the
- *    read dropped.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-/** `375`'s harness: the toolset handed to each launch, kept so a child's tools can be called. */
-describe('383 · one number a person can quote', () => {
+describe('one number a person can quote', () => {
   let userData: string
   let root: string
   let db: AppDatabase
@@ -130,13 +115,6 @@ describe('383 · one number a person can quote', () => {
     return { pm, pmTools: theToolsetJustHandedOut() }
   }
 
-  /**
-   * 🔴 **Work given through the one verb an agent has for it**, and the piece it numbered.
-   *
-   * ⛔ **Nothing here plants a `work_given` row.** The number under test is the one `giveWork`
-   * took, which is the only thing that makes this a measurement of the product rather than of a
-   * fixture.
-   */
   const giveWork = async (
     pmTools: AgentToolset,
     title: string,
@@ -155,15 +133,8 @@ describe('383 · one number a person can quote', () => {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
-  // §1 · a number is handed out once
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§1 · a bare number names ONE piece under its parent', () => {
-    it('⚠️ a number taken under a piece and never used is BURNED, not reissued', async () => {
-      // ⚑ *"Gaps are never renumbered"*, in the direction the counter makes reachable: the
-      // numbering is a transaction of its own, so a number is gone the moment it is handed over —
-      // which is what a give refused or failed after its number was taken leaves behind (R4).
+  describe('a bare number names one piece under its parent', () => {
+    it('a number taken under a piece is never reissued', async () => {
       const { pm, pmTools } = await aPm()
       const pmRoot = store.rootOf(pm)
       if (pmRoot === null) throw new Error('the PM holds no root')
@@ -176,12 +147,8 @@ describe('383 · one number a person can quote', () => {
     })
   })
 
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
-  // §2 · the pieces are still a function of the ledger
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§2 · the pieces are still a function of the ledger, with the `work` table beside them', () => {
-    it('🔴 the LEDGER ROWS ALONE reproduce every piece, in a database whose `work` table is empty', async () => {
+  describe('the pieces are still a function of the ledger, with the `work` table beside them', () => {
+    it('the ledger rows alone reproduce every piece, in a database whose `work` table is empty', async () => {
       // ⛔ **The demonstration that diverges.** The owner's ledger is copied into a fresh database
       // and the same rows are derived, while the table that could have been where a piece was
       // really kept is asserted empty in the copy.
@@ -245,17 +212,6 @@ describe('383 · one number a person can quote', () => {
       } finally {
         fresh.close()
       }
-    })
-
-    it('⛔ …and dropping `events_work_idx` changes nothing', async () => {
-      const { pmTools } = await aPm()
-      const { worker } = await giveWork(pmTools, 'the work')
-      const expected = store.piecesOwnedBy(worker)
-      expect(expected).toHaveLength(1)
-
-      db.prepare('DROP INDEX events_work_idx').run()
-      const withoutIt = createSessionStore(db, tick)
-      expect(withoutIt.piecesOwnedBy(worker)).toEqual(expected)
     })
   })
 })

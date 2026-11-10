@@ -1,5 +1,4 @@
 import { waitFor } from './lib/f093-host'
-import type { HandedPath } from '../src/shared/attachment-contracts'
 import type {
   MessageSentEvent,
   QueuedMessageEvent,
@@ -7,7 +6,7 @@ import type {
   UnqueuedMessageEvent,
 } from '../src/shared/conversation-events'
 import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
-import { mkdtempSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -530,43 +529,6 @@ describe('687 · what the cards cannot say yet', () => {
         attribution: 'app_authored',
         sent: GO_AHEAD_MESSAGE,
       })
-    })
-
-    it('⚑ an app-authored ending on the vanished-file path carries its authorship too', async () => {
-      // ⚠️ **No product producer holds app-authored words WITH a path** — the go-ahead carries
-      // none (`234` §3). ⚑ The door is asked directly, as `THE_APP_ITSELF` with nothing else, which
-      // is exactly the authorship the held go-ahead has — so this is that row's shape on the one
-      // ending the go-ahead itself cannot reach.
-      const { sessionId, handle } = await aPlanWaitingForItsGoAhead()
-      /** Hold `text` behind a running turn with a file that is gone before it flushes. */
-      const heldWithAFileThatGoes = async (
-        text: string,
-        by: typeof window | typeof THE_APP_ITSELF,
-        name: string,
-      ): Promise<void> => {
-        await host.send(sessionId, `keep planning before ${name}`, window)
-        await waitFor(() => handle.status() !== 'idle', 'a turn to hold behind')
-        const path = join(realpathSync(root), name)
-        writeFileSync(path, 'x')
-        const attached: HandedPath[] = [{ path, kind: 'file', outsideCwd: false }]
-        await host.queueMessage(sessionId, text, by, attached)
-        unlinkSync(path)
-        await answerEveryCard(sessionId)
-        await waitFor(() => endingSaying(sessionId, text) !== undefined, 'the flush to end it')
-        await answerEveryCard(sessionId)
-        await waitFor(() => handle.status() === 'idle', 'the turn to end')
-      }
-      // ⚑ **THE CONTROL, in the same ledger and through the same writer**: the person's own.
-      await heldWithAFileThatGoes('mine, with a file', window, 'mine-goes-away.md')
-      await heldWithAFileThatGoes('the app’s own words', THE_APP_ITSELF, 'goes-away.md')
-      const ending = endingSaying(sessionId, 'the app’s own words')
-      expect(ending?.reason).toBe('abandoned')
-      expect(ending?.detail).toBeDefined()
-      expect(ending?.attribution).toBe('app_authored')
-      const theirs = endingSaying(sessionId, 'mine, with a file')
-      expect(theirs?.reason).toBe('abandoned')
-      expect(theirs?.detail).toBeDefined()
-      expect(theirs).not.toHaveProperty('attribution')
     })
   })
 

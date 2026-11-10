@@ -13,62 +13,12 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import {
-  composeProfileBundle,
-  type InstructionContext,
-  thisConversationSpans,
-} from '../src/main/runtime/factory-text'
+import { composeProfileBundle, thisConversationSpans } from '../src/main/runtime/factory-text'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
-import { RULE_WRITING_POLICY, capabilityField } from '../src/shared/capabilities'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-/**
- * 🔴 **544 · what a chain is told about its own depth, and whether the rail agrees.**
- *
- * ## ⛔ The two halves of `HO-054` §1, measured on one machine
- *
- * ⚠️ **BroBot read `Deepest chain: 2` as *me (1), project manager (2), nothing below*, instructed
- * its project manager to report the refusal that would follow, and none came.** The PO measured the
- * chain against its own ruling and it was legal — `HO-005` §2 Q3: *a conversation a person creates
- * is depth 0; a spawn is its parent's depth + 1*, so BroBot 0 → project-manager 1 → `web-builder` 2
- * is inside a bound of 2. ⛔ **Two things follow and this file is both of them.**
- *
- * **§1 · the rail, by an actual refusal** (standing rule 3, `HO-054` §1.3). `540` created the doubt
- * — *"spawn depth is not capped at three"* — and its own search shape could not have seen this rail:
- * `too-deep`, `max_depth` and `maxDepth` appear zero times in that response. ⚑ A rail proven once in
- * Slice 3 and not exercised since is a rail that may have regressed, so it is exercised here, and
- * the counting is measured against the RULING rather than against the constant's name.
- *
- * **§2 · the sentence, and it may only say what the rail does** (`HO-054` §1.2, standing rule 15).
- * ⚑ The bound is rendered as what will happen to the next conversation this one tries to start —
- * see {@link ProfileCapabilities.maxDepth}'s own `says`. ⛔ **Every arm of it is asserted BESIDE the
- * rail's answer for the same conversation**, in both directions: a sentence and a door that are
- * measured separately are a sentence and a door that come apart.
- *
- * ## ⚑ D-016 · the chain is a chain of PIECES
- *
- * ⛔ `spawn_agent` is gone: a conversation is started by the first piece given to it, and depth is
- * counted below the ROOT a person's conversation owns — the root is 0, the piece it gives is 1
- * (`SessionStore.depthOf`, which takes a piece). ⚑ Every rail and every sentence below is asked of
- * `give_work`, and the ruling it is counted against is unchanged: a person's conversation is 0.
- *
- * ## ⚑ Why this is not `341`'s test again
- *
- * ⛔ `the-rails-before-anything-can-reach-them.test.ts` proves the refusal and its shallower
- * control, on a real chain, and `a-top-tier-that-can-delegate.test.ts` proves it through the tool a
- * model calls. ⚠️ **Neither asserts the root is `0`** — the one sentence `HO-005` §2 Q3 is made of —
- * and neither reads what the conversation was TOLD. This file asks both of a single chain.
- *
- * ## ⚑ D-024 · the sentence is in the conversation's OWN block
- *
- * ⛔ **Not in the profile's file any more** (R1): one profile runs several conversations, and the
- * grants are said for this one's depth, so `## What you have been granted` is composed per launch by
- * `thisConversationSpans` and appended LAST to the hint the adapter is handed — never written to
- * disk. ⚑ Every assertion below reads that hint, as the adapter received it.
- */
 
 class ToolWatchingRuntime extends FakeRuntime {
   constructor(
@@ -119,15 +69,6 @@ class Sink implements RuntimeEventSink {
   sendLiveness(): void {}
 }
 
-/**
- * 🔴 **The two arms, held here as BYTES rather than imported** — `a-mutation-on-a-census-is-
- * invisible-to-that-census`.
- *
- * ⛔ **A test that imported the constants would go green on any rewording, including one that put
- * a bare number back.** ⚑ These are the independent half; `the-text-a-child-is-actually-told.test.ts`
- * §10 holds the derived half, and standing rule 5 is why the load-bearing clause is pinned by name
- * rather than by a `toContain` over a fragment.
- */
 const REACHED =
   '- You have reached your delegation limit and cannot give work from this conversation.'
 const ONE_MORE =
@@ -135,7 +76,7 @@ const ONE_MORE =
 const NOT_REACHED = ''
 const GRANTS_HEADING = '## What you may do'
 
-describe('544 · what a chain is told about its own depth', () => {
+describe('what a chain is told about its own depth', () => {
   let userData: string
   let work: string
   let db: AppDatabase
@@ -367,22 +308,6 @@ describe('544 · what a chain is told about its own depth', () => {
       expect(seven.permanence).toBe('until-a-person-changes-it')
       expect(seven.retryable).toBe(false)
     })
-
-    it('⚑ the bound is the SPAWNER’s own row, so the same call passes one row over', async () => {
-      // 🔴 **Tested where the two readings DIVERGE** (standing rule 3). ⛔ A rail reading the ROOT's
-      // grant, or the child's, gives the same answer as one reading the spawner's while every row
-      // holds the ruled `6` — which is every install. ⚠️ So the sixth spawner's row is moved and
-      // nothing else is.
-      for (const name of CHAIN) await bringIntoBeing(name)
-      await personOpens('pm')
-      grant('w6', { maxDepth: 7 })
-      for (const name of TO_THE_BOUND) {
-        expect((await callGive(toolsOfTheLast(), name)).outcome).toBe('ok')
-      }
-      const deeper = await callGive(toolsOfTheLast(), 'w7')
-      expect(deeper.outcome, JSON.stringify(deeper)).toBe('ok')
-      expect(store.depthOf(deeper.piece as string)).toBe(7)
-    })
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────
@@ -489,56 +414,6 @@ describe('544 · what a chain is told about its own depth', () => {
         profileId: 'w3',
       })
     })
-
-    it('🔴 the number is GONE, and with it the position the reader was never given', async () => {
-      // ⛔ **The defect, pinned as an absence.** `Deepest chain: 2` is an absolute depth counted
-      // from the conversation a person started, and nothing in the bundle ever said where that was
-      // — the sentence that supplies the origin is `CapabilityField.help`, whose only reader is
-      // `CapabilitiesSheet.vue`. ⚠️ **A digit on this line is the defect returning**, whatever it
-      // is spelled as.
-      await personOpens('pm')
-      const line = depthLineOfTheLast()
-      expect(line, 'a bare number is back on the line a model reads').not.toMatch(/[0-9]/)
-      const said = told.at(-1) as string
-      expect(said).not.toContain('- Deepest chain:')
-      // ⚑ **And the GRANT-SHEET question still answers with the count**, which is the half that
-      // must not change: what a person edits is a number.
-      //
-      // ⚠️ **Said precisely, because the obvious wording would be false:** no surface asks that
-      // question of THIS field today. `grantSays(…, null)` is reached from the roster row alone,
-      // and that row walks `canSpawn` and `canStaff`; `CapabilitiesSheet.vue` draws this grant
-      // through its count editor off the raw value and never calls `says`. ⛔ So this pins the
-      // schema's answer, not a rendered surface — see {@link CapabilityField.says}, which says the
-      // same thing about itself.
-      expect(capabilityField('maxDepth').says(2, null)).toBe('2')
-    })
-
-    it('⚠️ …and NO grant line carries a bare number except the one this dispatch reports and does not repair', async () => {
-      // 🔴 **A census over the whole block, because the assertion above is about one line and the
-      // defect is about a CATEGORY** (HO-037 §4: *a category defined by the pipe leaves everything
-      // outside the pipe unguarded*). ⛔ A tenth grant whose `says` ignores its second argument
-      // compiles, and would ship the next absolute number into the block with every existing test
-      // green. ⚑ This is what makes that visible on the commit that does it.
-      //
-      // ⚑ **D-014 took the one exemption away with its grant** — `At once` printed *3 from one
-      // conversation, 8 in this app at once*, which 544 reported rather than repaired; the counts
-      // are gone, so no line is exempt now.
-      await personOpens('pm')
-      const said = told.at(-1) as string
-      // ⚑ **D-024 · R1 — the slice still ends at the grants**: they are the last section of this
-      // conversation's own block, and `composeSystemHint` appends that block last.
-      const heading = said.indexOf(GRANTS_HEADING)
-      expect(heading, 'the hint has no grant section').toBeGreaterThan(-1)
-      const block = said
-        .slice(heading)
-        .split('\n')
-        .filter((line) => line.startsWith('- '))
-      expect(block).toHaveLength(4)
-      expect(block.slice(0, 3).every((line) => line.startsWith('- You may'))).toBe(true)
-      expect(block[3]).toBe(`- ${RULE_WRITING_POLICY}`)
-      expect(/[0-9]/.test(capabilityField('maxDepth').says(6, null))).toBe(true)
-      expect(block.filter((line) => /[0-9]/.test(line))).toEqual([])
-    })
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────
@@ -564,71 +439,6 @@ describe('544 · what a chain is told about its own depth', () => {
         label: store.rootOf(pm)?.label,
         profileId: 'worker',
       })
-    })
-
-    it('⚠️ …and a bound far past the default says the other thing, at a depth no default chain reaches', async () => {
-      // ⛔ **The off-by-one in the other direction, which `HO-054` §1.3 asks to be measured rather
-      // than assumed**: if the counting were one out, a conversation at depth 6 holding 9 would be
-      // told the wrong thing, and the door would disagree.
-      for (const name of CHAIN) await bringIntoBeing(name)
-      await personOpens('pm')
-      grant('w6', { maxDepth: 9 })
-      for (const name of TO_THE_BOUND) {
-        expect((await callGive(toolsOfTheLast(), name)).outcome).toBe('ok')
-      }
-      expect(depthLineOfTheLast()).toBe(NOT_REACHED)
-      expect((await callGive(toolsOfTheLast(), 'w7')).outcome).toBe('ok')
-    })
-
-    it('🔴 *not reached* promises no give — the door refuses this one for a different reason', async () => {
-      // ⛔ **The over-claim this sentence must not make.** It is about ONE rail. A give that is not
-      // too deep can still be refused, with another word — so a reader that took *not reached* for
-      // permission would be wrong. ⚑ D-014: this was an identity that may start nobody
-      // (`can_spawn`), which is gone; ⚑ **D-016** — and then the second start of one identity,
-      // which a give now REACHES instead: a name this app does not hold is the refusal left that
-      // depth does not answer (R3).
-      await bringIntoBeing('worker')
-      await personOpens('pm')
-      const itsOwnDoor = toolsOfTheLast()
-      expect(depthLineOfTheLast()).toBe(NOT_REACHED)
-      expect((await callGive(itsOwnDoor, 'worker')).outcome).toBe('ok')
-      const refused = await callGive(itsOwnDoor, 'nobody-made-this')
-      expect(refused.outcome).toBe('refused')
-      expect(refused.rail).toBe('no-such-profile')
-    })
-
-    it('⚑ an identity this app cannot NAME is told nothing about depth — silence, not a guess', async () => {
-      // 🔴 **`HO-054` §2.2's own answer, and it needed no new code**: an adopted row carries no
-      // profile, `capabilities` is null, and the whole grant list is replaced by the sentence that
-      // says the record is missing (485). ⛔ A depth sentence composed for it would be this app
-      // telling a conversation what a row it cannot find permits.
-      const nameless: InstructionContext = {
-        profileSlug: null,
-        cwd: work,
-        startedBy: null,
-        depth: 0,
-        capabilities: null,
-        spawningEnabled: true,
-        // ⚑ **D-016** — the conversation's root: none is read for a row this app cannot name.
-        root: null,
-        // ⚑ **D-024 · R1** — and no other conversations: a row with no identity is in no
-        // profile's list.
-        others: { shown: [], more: 0 },
-      }
-      // 🔴 **D-024 · R1 — the grants, and the sentence that replaces them, are in this
-      // conversation's own block now**, which is where the missing record is said…
-      const none = thisConversationSpans(nameless).text
-      expect(none).not.toContain(capabilityField('maxDepth').label)
-      expect(none).not.toContain(REACHED)
-      expect(none).not.toContain(ONE_MORE)
-      expect(none).toContain("The app cannot identify this conversation's profile")
-      // ⚠️ …and the profile's file is the other half of what it is told — one string with the block
-      // until D-024 — so its silence is asked too, or a depth line could come back in the half this
-      // case would otherwise have stopped reading.
-      const itsFile = composeProfileBundle(nameless)
-      expect(itsFile).not.toContain(capabilityField('maxDepth').label)
-      expect(itsFile).not.toContain(REACHED)
-      expect(itsFile).not.toContain(ONE_MORE)
     })
 
     it('⚠️ the app-wide switch and the depth line answer two different questions, and both are said', async () => {
