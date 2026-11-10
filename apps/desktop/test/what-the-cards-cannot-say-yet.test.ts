@@ -1,4 +1,22 @@
+import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
+import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { waitFor } from './lib/f093-host'
+import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
+
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+
+import { type AppDatabase, openDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
+import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import type { ToolName } from '../src/main/runtime/agent-tools'
+import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import { GO_AHEAD_MESSAGE } from '../src/renderer/src/lib/plan-mode'
 import type {
   MessageSentEvent,
   QueuedMessageEvent,
@@ -6,29 +24,15 @@ import type {
   UnqueuedMessageEvent,
 } from '../src/shared/conversation-events'
 import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime'
-import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
-import type { ToolName } from '../src/main/runtime/agent-tools'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type {
   QueuedMessageDisclosure,
   RuntimeEventMessage,
   SessionLivenessMessage,
 } from '../src/shared/runtime-ipc'
-import { GO_AHEAD_MESSAGE } from '../src/renderer/src/lib/plan-mode'
-import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+
+import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime'
+import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
+import type { Provider } from '@brobot2/shared'
 
 /**
  * # 687 — what the cards cannot say yet

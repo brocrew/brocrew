@@ -131,7 +131,7 @@ export function outcomeAllows(outcome: PermissionOutcome): boolean {
 }
 
 /** The WHOLESALE grant, once a request offers one. */
-export interface WideGrant {
+interface WideGrant {
   outcome: typeof WIDE
   /** What it says, with the tool in it — see {@link wideGrantLabel} (and its R80 arm, which has none). */
   label: string
@@ -487,7 +487,7 @@ export function wideGrantWarningParts(action: string): {
 }
 
 /** 🔴 743 · what a settled card that granted nothing says in its `persistence` row. */
-export const NOTHING_GRANTED = 'nothing granted'
+const NOTHING_GRANTED = 'nothing granted'
 
 /**
  * 🔴 **743 · `739` F-7 — what a SETTLED card's `persistence` row says: how long its ANSWER grants

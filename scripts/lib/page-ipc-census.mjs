@@ -17,7 +17,7 @@ import { createRequire } from 'node:module'
 import { join } from 'node:path'
 
 /** The placeholder every `${…}` becomes: one identifier, typed `any`, so interpolation never types. */
-export const INTERPOLATION = '__interpolated'
+const INTERPOLATION = '__interpolated'
 
 // ⚑ **A type the LANGUAGE declares is the only one excluded** — a DOM read the page's `lib` cannot
 // type (`Element.dataset`) is the page's business, not a stale IPC read. ⚠️ Everything else counts,

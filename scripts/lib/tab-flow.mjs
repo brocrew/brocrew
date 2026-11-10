@@ -368,7 +368,7 @@ export const WIDE_READ_MARK = 'tab-flow: wide read'
  * What a `data-cy` value may look like. Anything else is not a hook name someone wrote down — it is
  * a fragment of a selector being built at runtime, and {@link unreadableSelectorIn} is what says so.
  */
-export const HOOK_NAME = /^[A-Za-z0-9][A-Za-z0-9_./:-]*$/
+const HOOK_NAME = /^[A-Za-z0-9][A-Za-z0-9_./:-]*$/
 
 /**
  * The `[data-cy=…]` openers in an expression, with the raw value each one carries.
@@ -380,7 +380,7 @@ export const HOOK_NAME = /^[A-Za-z0-9][A-Za-z0-9_./:-]*$/
  * renderer still draw what this selector names* — and a second regex for `[data-cy=…]` would be
  * free to disagree with this one about which reads it can even see.
  */
-export function selectorsIn(expression) {
+function selectorsIn(expression) {
   const pattern = /\[\s*data-cy\s*(\^|\*|\$|~|\|)?=\s*("([^"]*)"|'([^']*)'|([^\]]*))\s*\]/g
   return [...expression.matchAll(pattern)].map((match) => ({
     at: match.index,
@@ -490,7 +490,7 @@ const JSON_HOLE_STANDS_FOR = '"x"'
  * @param {string | ((hole: string) => string)} standsFor what each `${…}` becomes — or, given the
  *   hole's own expression, what that one becomes (727)
  */
-export function fillHoles(line, standsFor) {
+function fillHoles(line, standsFor) {
   let out = ''
   let at = 0
   for (;;) {

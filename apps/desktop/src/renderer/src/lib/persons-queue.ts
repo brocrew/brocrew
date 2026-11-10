@@ -594,7 +594,7 @@ export type NoAnswerHere =
  * lives in `shared/` rather than on the wire: a sentence that crossed the IPC boundary would be a
  * second copy of a string this module can derive, free to go stale against the word beside it.
  */
-export interface QueueCoverage {
+interface QueueCoverage {
   /** Which candidate set the look started from. */
   readonly walk: LedgerWalkKind
   /** ⛔ **How many ledgers it opened** — the QUERY's number, never `rows.length`. */
@@ -1842,7 +1842,7 @@ export const LOOK = 'Look'
  * the stalled band and for its reason, since nothing is frozen behind it and it is not counted.
  * Unlike that band it can be cleared here: a person looks at the holder, or hands the piece back.
  */
-export interface StoppedWorkRow {
+interface StoppedWorkRow {
   /** The piece's id. */
   readonly key: string
   /** The holder's conversation, where Look goes. */
@@ -1860,10 +1860,10 @@ export interface StoppedWorkRow {
 }
 
 /** The two work lists a take-back can be pressed on. */
-export type WorkPart = 'incidents' | 'recoveries'
+type WorkPart = 'incidents' | 'recoveries'
 
 /** One work card: a listed entry, or one a take-back from this window still speaks for. */
-export interface WorkCard {
+interface WorkCard {
   readonly entry: WorkEntry
   readonly listed: boolean
   readonly pending: boolean
@@ -1888,7 +1888,7 @@ export interface TodoCard {
  * still speaks for after the look stopped listing it. A hand-back's answer is kept apart from the
  * list, so a refresh that drops the row does not take the answer with it.
  */
-export interface StoppedWorkCard {
+interface StoppedWorkCard {
   readonly row: StoppedWorkRow
   /** The last look lists this stop, so it can be handed back. */
   readonly listed: boolean
@@ -1899,7 +1899,7 @@ export interface StoppedWorkCard {
 }
 
 /** The stopped pieces, with the stalled band's two holes. */
-export interface StoppedWorkView {
+interface StoppedWorkView {
   /** Every such piece, as the host read them. */
   readonly rows: readonly StoppedWorkRow[]
   /** The most recent look did not answer, so the list may be short. */
@@ -1913,7 +1913,7 @@ export interface StoppedWorkView {
  * Each piece is drawn once: the newer stop wins, and for the same stop the told one, since a giver
  * is told after its piece stalls.
  */
-export function eachStopOnce(
+function eachStopOnce(
   stalls: LedgerWalk<StalledWork> | null,
   stops: LedgerWalk<StoppedWorkForAPerson> | null,
 ): {
@@ -1947,7 +1947,7 @@ function stopKey(row: StoppedWorkRow): string {
 }
 
 /** Its one derivation: `null` is nobody has looked yet, not that nothing has stopped. */
-export function stoppedWorkView(
+function stoppedWorkView(
   walked: LedgerWalk<StoppedWorkForAPerson> | null,
   lastLookAnswered: boolean,
 ): StoppedWorkView | null {
@@ -2037,7 +2037,7 @@ export function instructionAsksView(
 }
 
 /** One agent's request to register an MCP server, as the person reads it on its card. */
-export interface McpServerRequestRow {
+interface McpServerRequestRow {
   /** The request's own id: the list keys on it, and `decideMcpServerRequest` takes it. */
   readonly requestId: string
   /** The agent that asked, named over the roster. */
@@ -2075,7 +2075,7 @@ export interface McpServerRequestsView {
  * — "Registered. It offers: …", "Refused. Nothing was registered.", or why it is over — until the
  * person dismisses it. Nothing needs them any more, so it counts nowhere.
  */
-export interface McpServerRequestSettledHere {
+interface McpServerRequestSettledHere {
   readonly row: McpServerRequestRow
   readonly said: string
 }
@@ -2084,7 +2084,7 @@ export interface McpServerRequestSettledHere {
 const SETTLED_CARDS_KEPT = 10
 
 /** The requests' one derivation. `null` is nobody has looked yet, not no agent is asking. */
-export function mcpServerRequestsView(
+function mcpServerRequestsView(
   walked: readonly McpServerRequestForAPerson[] | null,
   lastLookAnswered: boolean,
   nameOf: (slug: string) => string,

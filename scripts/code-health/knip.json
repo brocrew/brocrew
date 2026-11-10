@@ -4,6 +4,12 @@
   "ignore": ["scripts/code-health/depcruise.cjs", "scripts/code-health/depcruise-plugin.mjs"],
   "workspaces": {
     ".": {
+      "vitest": {
+        "config": [
+          "vitest{,.*}.config.{js,mjs,ts,cjs,mts,cts}",
+          "vitest.{workspace,projects}.{js,mjs,ts,cjs,mts,cts,json}"
+        ]
+      },
       "project": [
         "*.{ts,js,mjs,cjs}",
         "scripts/**/*.{ts,js,mjs,cjs}",
@@ -78,6 +84,12 @@
       "entry": ["gate.mjs", "gate.test.mjs"]
     },
     "apps/desktop": {
+      "vitest": {
+        "config": [
+          "vitest{,.*}.config.{js,mjs,ts,cjs,mts,cts}",
+          "vitest.{workspace,projects}.{js,mjs,ts,cjs,mts,cts,json}"
+        ]
+      },
       "project": ["**/*.{ts,tsx,js,mjs,cjs,vue,html}"],
       "entry": [
         "build/notarize-dmg.mjs",

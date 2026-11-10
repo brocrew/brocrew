@@ -1,10 +1,28 @@
+import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { waitFor } from './lib/f093-host'
-import type { TranscriptEvent } from '../src/shared/conversation-events'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
+
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+
+import { type AppDatabase, openDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
+import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { resourcesRoot } from '../src/main/resources/resources'
+import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
+
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type {
   AgentToolset,
@@ -15,20 +33,6 @@ import type {
   StartOptions,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import {
-  fixtureProviderConfig,
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-} from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')

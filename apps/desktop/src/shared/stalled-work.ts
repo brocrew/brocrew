@@ -102,7 +102,7 @@ export interface StalledWork {
  * ⚑ **The row's two facts, and the name main can make of the second** — the band's own reason for
  * naming main-side: a renderer cannot turn a `sess_<uuid>` into a word.
  */
-export interface StalledWorkAsk {
+interface StalledWorkAsk {
   /** ⛔ Off the row's own actor (`AskToStop.by`) — a person, an agent, or a caller this app cannot name. */
   readonly by: WhoStoppedIt
   /** ⚑ The asking conversation — present only when {@link by} is `an-agent`, else `null`. */

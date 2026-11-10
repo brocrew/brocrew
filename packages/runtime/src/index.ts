@@ -38,7 +38,6 @@ export {
   type UserInputQuestion,
   type UserInputOption,
   type UserInputPermission,
-  type PlanConsent,
 } from './permission'
 
 export { AnswerRefused, answerRefusalOf, type AnswerRefusal } from './answer-refused'

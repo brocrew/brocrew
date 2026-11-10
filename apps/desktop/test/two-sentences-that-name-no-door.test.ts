@@ -1,25 +1,29 @@
-import { ToolWatchingRuntime } from './lib/provider-double'
 import {
   neutralHostDeps,
   RecordingSink,
   syntheticProviderHome,
   fixtureProviderConfig,
 } from './lib/host-fixture'
+import { ToolWatchingRuntime } from './lib/provider-double'
+
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions } from '@brobot2/runtime'
-import type { AgentToolAnswer, AgentToolset } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
+
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { TOOL_NAMES, type ToolName } from '../src/main/runtime/agent-tools'
+import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
+
+import { FakeProviderSessions } from '@brobot2/runtime'
+import type { AgentToolAnswer, AgentToolset } from '@brobot2/runtime'
+import type { Provider } from '@brobot2/shared'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
