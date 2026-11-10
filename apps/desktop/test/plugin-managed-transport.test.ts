@@ -22,6 +22,17 @@ async function fixture() {
   cleanup.push(() => f.close())
   return f
 }
+async function connect(route: { server: { url: string; capability: string } }) {
+  const client = new Client({ name: 'fictional', version: '1' })
+  cleanup.push(() => client.close())
+  client.onerror = () => undefined
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(route.server.url), {
+      requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
+    }),
+  )
+  return client
+}
 for (const provider of ['claude', 'codex'] as const) {
   it(`${provider} configuration discovers and calls through an authenticated SSE broker stream`, async () => {
     const f = await fixture(),
@@ -104,15 +115,7 @@ describe('authenticated broker boundaries', () => {
   })
   it('enforces current resource policy and leaves unsupported surfaces absent', async () => {
     const f = await fixture(),
-      route = await f.route('willow'),
-      client = new Client({ name: 'fictional', version: '1' })
-    cleanup.push(() => client.close())
-    client.onerror = () => undefined
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(route.server.url), {
-        requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
-      }),
-    )
+      client = await connect(await f.route('willow'))
     f.allow(false)
     expect((await client.callTool({ name: 'echo', arguments: { profile: 'fern' } })).isError).toBe(
       true,
@@ -121,36 +124,13 @@ describe('authenticated broker boundaries', () => {
     await expect(client.listPrompts()).rejects.toThrow()
     expect(f.seen).toEqual([])
   })
-  it('keeps a thrown downstream error out of model results and diagnostics', async () => {
-    const f = await fixture(),
-      route = await f.route('willow'),
-      client = new Client({ name: 'fictional', version: '1' })
-    cleanup.push(() => client.close())
-    client.onerror = () => undefined
-    f.reply('error')
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(route.server.url), {
-        requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
-      }),
-    )
-    const result = await client.callTool({ name: 'echo', arguments: { profile: 'fern' } })
-    expect(result.isError).toBe(true)
-    noPrivateCredential([result, f.audit], f.credential)
-  })
 })
 
 it('does not invent remote quiescence when an authenticated stream is cancelled', async () => {
   const f = await fixture(),
-    route = await f.route('willow'),
-    client = new Client({ name: 'fictional', version: '1' })
-  cleanup.push(() => client.close())
-  client.onerror = () => undefined
+    route = await f.route('willow')
   f.reply('hold')
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL(route.server.url), {
-      requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
-    }),
-  )
+  const client = await connect(route)
   const controller = new AbortController()
   const pending = client.callTool({ name: 'echo', arguments: { profile: 'fern' } }, undefined, {
     signal: controller.signal,
@@ -166,16 +146,9 @@ it('does not invent remote quiescence when an authenticated stream is cancelled'
 
 it('delivers the failed call before closing its route while retaining unknown remote quiescence', async () => {
   const f = await fixture(),
-    route = await f.route('willow'),
-    client = new Client({ name: 'fictional', version: '1' })
-  cleanup.push(() => client.close())
-  client.onerror = () => undefined
+    route = await f.route('willow')
   f.reply('hold')
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL(route.server.url), {
-      requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
-    }),
-  )
+  const client = await connect(route)
   const pending = client
     .callTool({ name: 'echo', arguments: { profile: 'fern' } }, undefined, { timeout: 1500 })
     .catch(() => ({ lost: true }))
@@ -253,15 +226,7 @@ it('does not diagnose successful calls as failures when their per-call MCP strea
   const reasons: string[] = []
   const f = await pluginProviderFixture({ diagnostic: (reason) => reasons.push(reason) })
   cleanup.push(() => f.close())
-  const route = await f.route('fictional-diagnostic'),
-    client = new Client({ name: 'fictional-success', version: '1' })
-  cleanup.push(() => client.close())
-  client.onerror = () => undefined
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL(route.server.url), {
-      requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
-    }),
-  )
+  const client = await connect(await f.route('fictional-diagnostic'))
   expect(await client.callTool({ name: 'echo', arguments: { profile: 'fern' } })).toMatchObject({
     content: [{ text: PLUGIN_MARKER }],
   })
@@ -274,19 +239,11 @@ it('still diagnoses an actual failed call even though its MCP client also closes
   const f = await pluginProviderFixture({ diagnostic: (reason) => reasons.push(reason) })
   cleanup.push(() => f.close())
   f.reply('error')
-  const route = await f.route('fictional-failed'),
-    client = new Client({ name: 'fictional-failed', version: '1' })
-  cleanup.push(() => client.close())
-  client.onerror = () => undefined
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL(route.server.url), {
-      requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
-    }),
-  )
-  expect(await client.callTool({ name: 'echo', arguments: { profile: 'fern' } })).toMatchObject({
-    isError: true,
-  })
+  const client = await connect(await f.route('fictional-failed'))
+  const result = await client.callTool({ name: 'echo', arguments: { profile: 'fern' } })
+  expect(result).toMatchObject({ isError: true })
   expect(reasons).toContain('transport-call-failed')
+  noPrivateCredential([result, f.audit], f.credential)
 })
 
 it('delivers the real plugin tool error through the agent MCP route', async () => {
@@ -294,15 +251,7 @@ it('delivers the real plugin tool error through the agent MCP route', async () =
   const f = await pluginProviderFixture({ diagnostic: (reason) => reasons.push(reason) })
   cleanup.push(() => f.close())
   f.reply('tool-error')
-  const route = await f.route('fictional-window-timeout')
-  const client = new Client({ name: 'fictional-window-timeout', version: '1' })
-  client.onerror = () => undefined
-  cleanup.push(() => client.close())
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL(route.server.url), {
-      requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
-    }),
-  )
+  const client = await connect(await f.route('fictional-window-timeout'))
   expect(await client.callTool({ name: 'echo', arguments: { profile: 'fern' } })).toMatchObject({
     isError: true,
     content: [{ type: 'text', text: 'Error: window operation timed out' }],
