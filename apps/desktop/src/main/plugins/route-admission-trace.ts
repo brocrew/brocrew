@@ -81,7 +81,14 @@ type Identity = IdentityName
 type TraceContext = Partial<Record<Identity, string>>
 type LaunchStage = 'initial-read' | 'before-send-read' | 'provider-discovery' | 'provider-launch'
 type LaunchOutcome =
-  'configured' | 'empty' | 'failed' | 'discovered' | 'unavailable' | 'timeout' | 'cancelled' | 'unknown'
+  | 'configured'
+  | 'empty'
+  | 'failed'
+  | 'discovered'
+  | 'unavailable'
+  | 'timeout'
+  | 'cancelled'
+  | 'unknown'
 interface LaunchTraceDetail extends TraceContext {
   stage?: LaunchStage
   outcome?: LaunchOutcome

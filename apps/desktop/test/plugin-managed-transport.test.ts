@@ -23,10 +23,7 @@ async function fixture(secondTool = false) {
   cleanup.push(() => f.close())
   return f
 }
-async function connect(
-  route: { server: { url: string; capability: string } },
-  name = 'fictional',
-) {
+async function connect(route: { server: { url: string; capability: string } }, name = 'fictional') {
   const client = new Client({ name, version: '1' })
   cleanup.push(() => client.close())
   client.onerror = () => undefined

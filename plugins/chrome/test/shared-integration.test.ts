@@ -120,10 +120,9 @@ it('shared tool listing hides off profiles while Settings can still list them', 
     guard: () => ({ roots: [f.config.workspace], hostHome: '', mount: '', maxBytes: 1000 }),
     downloadsRoot: f.config.downloadsRoot,
   })
-  const result = await tools.find((t) => t.definition.name === 'list_browser_profiles')!.execute(
-    {},
-    {},
-  )
+  const result = await tools
+    .find((t) => t.definition.name === 'list_browser_profiles')!
+    .execute({}, {})
   expect(JSON.stringify(result)).not.toContain('fern')
   expect(f.store.list()).toHaveLength(1)
 })
