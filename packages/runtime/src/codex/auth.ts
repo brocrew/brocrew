@@ -29,8 +29,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-
-
 /**
  * No Codex sign-in for a profile to copy at its first start: this computer has none, and BroBot's
  * own profile has none inside BroBot's data folder. Its own class, because signing in again does
@@ -592,14 +590,6 @@ function codexRefreshedAt(text: string): number | null {
   const at = typeof said === 'string' ? Date.parse(said) : Number.NaN
   return Number.isFinite(at) ? at : null
 }
-
-
-
-
-
-
-
-
 
 /** `lstat` or null (path missing) — never throws for a missing path. */
 function statOrNull(path: string): Stats | null {

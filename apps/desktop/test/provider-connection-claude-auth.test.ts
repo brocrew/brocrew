@@ -110,7 +110,10 @@ for (const operation of ['start', 'resume', 'models'] as const) {
       createSessionStore(db)
       const keys = new ApiKeys(dir)
       if (method === 'api-key') await keys.set('claude', 'fictional-fern-key')
-      const connection = resolveProviderConnection(db, { provider: 'claude', keySaved: keys.status('claude').set })
+      const connection = resolveProviderConnection(db, {
+        provider: 'claude',
+        keySaved: keys.status('claude').set,
+      })
       const home = join(dir, 'claude')
       mkdirSync(home)
       const query = new Query()
@@ -153,7 +156,10 @@ for (const operation of ['start', 'resume', 'models'] as const) {
     createSessionStore(db)
     const keys = new ApiKeys(dir)
     await keys.set('claude', 'fictional-fern-key')
-    const connection = resolveProviderConnection(db, { provider: 'claude', keySaved: keys.status('claude').set })
+    const connection = resolveProviderConnection(db, {
+      provider: 'claude',
+      keySaved: keys.status('claude').set,
+    })
     await keys.remove('claude')
     const home = join(dir, 'claude')
     mkdirSync(home)
