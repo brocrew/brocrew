@@ -199,10 +199,12 @@ export function withManagedPluginAttachments(
           servers,
           discovery,
         })
+    let currentDiscoveryObserver = discoveryObserver(attachment.servers)
     const launch = {
       ...options,
       managedPluginMcp: attachment.servers,
-      observeManagedPlugins: discoveryObserver(attachment.servers),
+      observeManagedPlugins: (discovery: ManagedPluginDiscovery) =>
+        currentDiscoveryObserver(discovery),
     }
     let inner: SessionHandle
     try {
@@ -385,7 +387,10 @@ export function withManagedPluginAttachments(
                     ).then(
                       () => {
                         settled = true
-                        if (!closed) attachment = offered
+                        if (!closed) {
+                          attachment = offered
+                          currentDiscoveryObserver = discoveryObserver(offered.servers)
+                        }
                       },
                       (error: unknown) => {
                         settled = true

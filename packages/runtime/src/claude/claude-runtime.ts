@@ -805,6 +805,7 @@ export class ClaudeSessionHandle implements SessionHandle {
         this.isShuttingDown
       )
         throw new Error('Plugin unavailable. Try again.')
+      this.managedPluginMcp = next
     } catch {
       throw new Error('Plugin unavailable. Try again.')
     }
@@ -875,7 +876,7 @@ export class ClaudeSessionHandle implements SessionHandle {
     private readonly authTokenProviderAsync?: ClaudeAuthTokenProviderAsync,
 
     seedWorkFolders: readonly string[] = [],
-    private readonly managedPluginMcp: readonly ManagedPluginMcpServer[] = [],
+    private managedPluginMcp: readonly ManagedPluginMcpServer[] = [],
     private readonly managedPluginObserver?: ManagedPluginObserver,
   ) {
     this._targetRef = targetRef ?? null

@@ -9,7 +9,7 @@ import type { SessionHandle } from '../src/runtime'
 import {
   PLUGIN_ATTACHMENT_WAIT_MS,
   withManagedPluginAttachments,
-  type ManagedPluginLaunchObservation,
+  type ManagedPluginAttachmentSource,
 } from '../src/managed-plugin-session'
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -28,7 +28,7 @@ it.each([false, true])(
       capability: 'a'.repeat(64),
     }
     const added = { ...initial, name: 'plugin-willow', pluginId: 'willow' }
-    const observations: ManagedPluginLaunchObservation[] = []
+    const observations: Parameters<NonNullable<ManagedPluginAttachmentSource['observe']>>[0][] = []
     const query: ClaudeQuery = {
       interrupt: async () => {},
       close: () => frames.close(),
