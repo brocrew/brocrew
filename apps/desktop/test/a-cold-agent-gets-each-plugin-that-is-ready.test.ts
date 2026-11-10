@@ -254,7 +254,8 @@ describe('a cold agent gets each plugin that is ready', () => {
     const held = deferred<void>()
     w.state.get('aster')!.open = held.promise
     w.commit('aster', { is: 'admitted' })
-    const l = lease(), callers = Array.from({ length: 1025 }, () => request())
+    const l = lease(),
+      callers = Array.from({ length: 1025 }, () => request())
     const first = w.bridge.agentRoutes(l, callers[0]!)
     await vi.waitFor(() => expect(w.opening).toHaveLength(1))
     held.reject(new Error('fictional route failure'))
@@ -262,8 +263,7 @@ describe('a cold agent gets each plugin that is ready', () => {
     for (const caller of callers.slice(1))
       expect((await w.bridge.agentRoutes(l, caller)).servers).toEqual([])
     expect(w.bridge.toolsUnavailable('aster')).toBe(true)
-    for (const caller of callers)
-      await w.bridge.agentRoutes(l, { ...caller, release: true })
+    for (const caller of callers) await w.bridge.agentRoutes(l, { ...caller, release: true })
     expect(w.bridge.toolsUnavailable('aster')).toBe(false)
     w.state.get('aster')!.open = undefined
     expect((await w.bridge.agentRoutes(l, request())).servers).toHaveLength(1)

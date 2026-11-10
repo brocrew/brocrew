@@ -61,20 +61,28 @@ it('forwards package tool metadata through the actual MCP tools/list route', asy
 it('forwards nested request metadata and downstream progress beyond elapsed deadlines', async () => {
   let observed: unknown
   const metadata = { fictional: { nested: ['one', { two: 2 }] } }
-  const f = await pluginProviderFixture({ onCall: (params) => { observed = params._meta } })
+  const f = await pluginProviderFixture({
+    onCall: (params) => {
+      observed = params._meta
+    },
+  })
   cleanup.push(() => f.close())
   const { client } = await caller(f)
   f.reply('controlled')
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   const received: number[] = []
   let seen!: () => void
-  const pending = client.callTool({ name: 'echo', arguments: { profile: 'fern' }, _meta: metadata }, undefined, {
-    resetTimeoutOnProgress: true,
-    onprogress: (value) => {
-      received.push(value.progress)
-      seen()
+  const pending = client.callTool(
+    { name: 'echo', arguments: { profile: 'fern' }, _meta: metadata },
+    undefined,
+    {
+      resetTimeoutOnProgress: true,
+      onprogress: (value) => {
+        received.push(value.progress)
+        seen()
+      },
     },
-  })
+  )
   void pending.catch(() => undefined)
   await f.admission
   expect(f.requestedProgress()).toBe(true)

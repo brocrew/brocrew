@@ -526,7 +526,7 @@ export function createPluginToolBroker(options: BrokerOptions): PluginToolBroker
         if (signal?.aborted) return refuse('cancelled')
         if (
           count + uncertain.size + (active && !uncertain.has(active) ? 1 : 0) >=
-            PLUGIN_BROKER_LIMITS.total
+          PLUGIN_BROKER_LIMITS.total
         )
           return refuse('busy')
       } catch (error) {
