@@ -271,6 +271,9 @@ describe.skipIf(process.platform === 'win32')(
       await vi.waitFor(async () => expect((await f.controller.status()).cleanupPending).toEqual([]))
       // Cleanup is complete, but this crashed run stays denied until the owner is replaced.
       expect((await f.controller.status()).cards[0]?.state).toBe('Unavailable')
+      expect(
+        f.controller.admitted(f.handle, 'chrome', f.state.exportActivation().entries[0]!.installId),
+      ).toBe(false)
       expect(f.controller.agentAttachments(f.local.sink.workspaceId)).toEqual([])
       expect(f.controller.cleanForShutdown()).toBe(true)
       await expect(f.controller.drain()).resolves.toBeUndefined()

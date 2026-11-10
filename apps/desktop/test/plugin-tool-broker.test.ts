@@ -753,9 +753,7 @@ describe('revocation and malformed downstream boundaries', () => {
     expect(h.audit).toContainEqual(
       expect.objectContaining({ event: 'unavailable', reason: 'proof-rejected' }),
     )
-    expect(h.audit).toContainEqual(
-      expect.objectContaining({ event: 'refused', code: 'unavailable' }),
-    )
+    expect(h.audit.filter((e) => e.event === 'refused' && e.code === 'unavailable')).toHaveLength(2)
     expect(JSON.stringify(h.audit)).not.toContain('fictional-quiescence-secret')
   })
   it('handles throwing result getters as a fixed failure with no unhandled secret exception', async () => {
