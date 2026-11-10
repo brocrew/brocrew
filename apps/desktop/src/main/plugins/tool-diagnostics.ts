@@ -42,7 +42,6 @@ export type PluginToolFailureReason =
   | 'route-request-failed'
   | 'name-collision'
   | 'attachment-failed'
-  | 'attachment-capacity'
   | 'transport-connection-reset'
   | 'transport-connection-refused'
   | 'transport-timeout'

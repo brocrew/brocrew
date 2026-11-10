@@ -104,9 +104,6 @@ export function createLifecycleAgentBridge(options: {
     unknown: boolean
   }
   const warmups = new Map<string, Warmup>()
-  // The existing route limit covers opens and late cleanup, not just already published routes.
-  const reservations = new Set<symbol>()
-  const routeReservations = new WeakMap<ManagedPluginRoute, symbol>()
   const opening = new Set<Promise<void>>()
   const chains = new Map<string, Promise<unknown>>()
   const entryIdentities = new Map<string, string>()
@@ -125,13 +122,6 @@ export function createLifecycleAgentBridge(options: {
   let cleanupFailed = false
   function closeRoute(route: ManagedPluginRoute) {
     const work = route.close()
-    const reservation = routeReservations.get(route)
-    void work.then(
-      () => {
-        if (reservation) reservations.delete(reservation)
-      },
-      () => undefined,
-    )
     closing.add(work)
     void work
       .finally(() => closing.delete(work))
@@ -328,13 +318,11 @@ export function createLifecycleAgentBridge(options: {
         })
         .catch(() => undefined)
   }
-  let waiting = 0
   async function openView(
     lease: Readonly<WorkspaceLease>,
     request: Request,
     view: View,
     live: () => boolean,
-    track: (route: ManagedPluginRoute) => void,
   ) {
     const caller = `${lease.id}:${request.incarnation}`
     const id = view.installation.pluginId
@@ -463,7 +451,6 @@ export function createLifecycleAgentBridge(options: {
         })
         const route = await openRoute(entry.broker, agent, diagnostic(id), trace)
         trace.emit('route-issued')
-        track(route)
         if (!live() || !entry.broker.status().available) {
           await closeRoute(route)
           return
@@ -512,7 +499,7 @@ export function createLifecycleAgentBridge(options: {
       }
     }
   }
-  function warm(lease: Readonly<WorkspaceLease>, request: Request, view: View): Warmup | undefined {
+  function warm(lease: Readonly<WorkspaceLease>, request: Request, view: View): Warmup {
     const caller = `${lease.id}:${request.incarnation}`
     const id = view.installation.pluginId
     if (entries.has(id) && entryIdentities.get(id) !== identityOf(view)) deny(id)
@@ -520,10 +507,6 @@ export function createLifecycleAgentBridge(options: {
     const existing = warmups.get(key)
     if (existing && (!existing.settled || routes.get(`${caller}:${id}`)?.current())) return existing
     cancelWarmups((one) => one.caller === caller && one.pluginId === id)
-    if (reservations.size >= 1024) return undefined
-    const reservation = Symbol()
-    reservations.add(reservation)
-    let allocated = false
     const one: Warmup = {
       caller,
       pluginId: id,
@@ -541,17 +524,13 @@ export function createLifecycleAgentBridge(options: {
       valid(lease) &&
       view.current() &&
       !retired.has(caller)
-    one.done = openView(lease, request, view, live, (route) => {
-      allocated = true
-      routeReservations.set(route, reservation)
-    })
+    one.done = openView(lease, request, view, live)
       .then((result) => {
         one.failed = result === false
       })
       .finally(() => {
         one.settled = true
         opening.delete(one.done)
-        if (!allocated) reservations.delete(reservation)
         if (warmups.get(key) === one && !routes.get(`${caller}:${id}`)?.current())
           warmups.delete(key)
       })
@@ -564,7 +543,6 @@ export function createLifecycleAgentBridge(options: {
     lease: Readonly<WorkspaceLease>,
     request: Request,
     scope: readonly AgentScopeEntry[] | null,
-    held: ReadonlySet<string> = new Set(),
     check?: (view: View) => boolean,
   ): Answer {
     const caller = `${lease.id}:${request.incarnation}`
@@ -591,7 +569,6 @@ export function createLifecycleAgentBridge(options: {
               !served.has(one.pluginId) &&
               one.is !== 'off' &&
               (one.is === 'pending' ||
-                held.has(one.pluginId) ||
                 [...warmups.values()].some(
                   (w) => w.caller === caller && w.pluginId === one.pluginId && !w.settled,
                 )),
@@ -673,16 +650,13 @@ export function createLifecycleAgentBridge(options: {
         })
       })
       const failedHere = new Set<string>()
-      let capacityReported = false
       // The last scope this read verified. Once it has one, running out of time answers with
       // it; only a read that never got a scope answers unknown.
-      let known: { scope: readonly AgentScopeEntry[]; capacity: Set<string> } | undefined
+      let known: readonly AgentScopeEntry[] | undefined
       for (;;) {
         if (!valid(lease) || retired.has(caller)) return empty
         if (performance.now() - asked >= answerWithin)
-          return known
-            ? snapshot(lease, request, known.scope, known.capacity)
-            : snapshot(lease, request, null)
+          return known ? snapshot(lease, request, known) : snapshot(lease, request, null)
         const woke = wake
         // Plan without effects under one operation-local, byte-verified decision.
         let plan: {
@@ -729,16 +703,9 @@ export function createLifecycleAgentBridge(options: {
           void closeRoute(item.route).catch(() => undefined)
         }
         const warming: Warmup[] = []
-        const capacityPending = new Set<string>()
         for (const view of plan.views) {
           const opening = warm(lease, request, view)
-          if (!opening) {
-            capacityPending.add(view.installation.pluginId)
-            if (!capacityReported) {
-              capacityReported = true
-              reportPluginToolFailure(diagnostic(view.installation.pluginId), 'attachment-capacity')
-            }
-          } else if (!opening.settled) warming.push(opening)
+          if (!opening.settled) warming.push(opening)
         }
         // Effects and async warmup never inherit the planning snapshot. Answer using a
         // new verified decision after those synchronous effects have been started.
@@ -748,7 +715,7 @@ export function createLifecycleAgentBridge(options: {
             request.workspaceId,
             (scope, current) => ({
               entries: scope.entries,
-              answer: snapshot(lease, request, scope.entries, capacityPending, current),
+              answer: snapshot(lease, request, scope.entries, current),
             }),
           )
           scope = answer.entries
@@ -757,7 +724,7 @@ export function createLifecycleAgentBridge(options: {
           return snapshot(lease, request, null)
         }
         if (now.servers.length || !now.pending.length) return now
-        known = { scope, capacity: capacityPending }
+        known = scope
         const next = await Promise.race([
           woke.then(() => 'wake' as const),
           deadline,
@@ -774,7 +741,7 @@ export function createLifecycleAgentBridge(options: {
               }),
           ),
         ])
-        if (next === 'deadline') return snapshot(lease, request, scope, capacityPending)
+        if (next === 'deadline') return snapshot(lease, request, scope)
       }
     } finally {
       clearTimeout(timer)
@@ -802,12 +769,7 @@ export function createLifecycleAgentBridge(options: {
         if (item.lease.id === lease.id && item.incarnation === request.incarnation)
           void closeRoute(item.route).catch(() => undefined)
     }
-    if (!request.release && (waiting >= 64 || retired.size >= 4096)) {
-      reportPluginToolFailure(diagnostic('host'), 'attachment-capacity')
-      return Promise.reject(new Error('unavailable'))
-    }
     const asked = performance.now()
-    waiting++
     let expired = false,
       started = false
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -822,7 +784,6 @@ export function createLifecycleAgentBridge(options: {
         throw error
       })
       .finally(() => {
-        waiting--
         clearTimeout(timer)
       })
     if (request.release) return work

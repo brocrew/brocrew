@@ -209,7 +209,7 @@ async function aWorkspace(
 const ids = (servers: readonly { pluginId: string }[]) => servers.map((one) => one.pluginId)
 
 describe('a cold agent gets each plugin that is ready', () => {
-  it('pending warmups reserve the existing route capacity until their cleanup completes', async () => {
+  it('opens all pending warmups and keeps cleanup independent of discovery', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
     const w = await aWorkspace(['aster'], 5, Promise.resolve(), true)
     const binding = deferred<Binding>()
@@ -228,20 +228,20 @@ describe('a cold agent gets each plugin that is ready', () => {
       for (let n = 1; n < 1100; n++) expect((await read(request())).pending).toEqual(['aster'])
       expect(
         w.diagnostic.mock.calls.filter(([, reason]) => reason === 'attachment-capacity'),
-      ).toHaveLength(76)
+      ).toHaveLength(0)
       binding.resolve(undefined as unknown as Binding)
-      await vi.waitFor(() => expect(w.opened.length).toBe(1024))
+      await vi.waitFor(() => expect(w.opened.length).toBe(1100))
       expect((await read(first)).servers).toHaveLength(1)
       w.state.get('aster')!.close = closing.promise
       const releasing = w.bridge.agentRoutes(l, { ...first, release: true })
       await vi.waitFor(() => expect(w.closed).toHaveLength(1))
-      expect((await read(request())).pending).toEqual(['aster'])
-      expect(w.opened).toHaveLength(1024)
+      expect((await read(request())).servers).toHaveLength(1)
+      expect(w.opened).toHaveLength(1101)
       closing.resolve()
       await releasing
       w.state.get('aster')!.close = undefined
       expect((await read(request())).servers).toHaveLength(1)
-      expect(w.opened).toHaveLength(1025)
+      expect(w.opened).toHaveLength(1102)
     } finally {
       binding.resolve(undefined as unknown as Binding)
       closing.resolve()
@@ -292,7 +292,7 @@ describe('a cold agent gets each plugin that is ready', () => {
     expect((await reading).servers).toEqual([])
     expect(w.closed).toEqual(['aster'])
   })
-  it('discovery capacity never rejects a release of an already served caller', async () => {
+  it('accepts more than 64 pending discoveries while still releasing an already served caller', async () => {
     const w = await aWorkspace(['aster'])
     w.commit('aster', { is: 'admitted' })
     const l = lease(),
@@ -303,15 +303,27 @@ describe('a cold agent gets each plugin that is ready', () => {
       await held.promise
       return {} as LifecycleWorkspace
     })
-    const pending = Array.from({ length: 64 }, () => w.bridge.agentRoutes(lease(), request()))
+    const pending = Promise.allSettled(
+      Array.from({ length: 65 }, () => w.bridge.agentRoutes(lease(), request())),
+    )
     const releasing = w.bridge.agentRoutes(l, { ...r, release: true })
     try {
       await expect(releasing).resolves.toMatchObject({ servers: [] })
     } finally {
       w.commit('aster', { is: 'off' })
       held.resolve()
-      await Promise.allSettled(pending)
+      expect((await pending).every((answer) => answer.status === 'fulfilled')).toBe(true)
     }
+  })
+
+  it('serves fresh callers after 4096 retirements without reviving retired callers', async () => {
+    const w = await aWorkspace(['aster'], 400, Promise.resolve(), true)
+    w.commit('aster', { is: 'admitted' })
+    const l = lease()
+    const retired = Array.from({ length: 4096 }, () => request())
+    await Promise.all(retired.map((one) => w.bridge.agentRoutes(l, { ...one, release: true })))
+    expect((await w.bridge.agentRoutes(l, request())).servers).toHaveLength(1)
+    expect((await w.bridge.agentRoutes(l, retired[0]!)).servers).toEqual([])
   })
 
   it.each([
