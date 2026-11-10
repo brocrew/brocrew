@@ -2,8 +2,7 @@ import { recordPluginToolFailure } from '../tool-diagnostics'
 import { recordRouteAdmissionTrace } from '../route-admission-trace'
 import { sharedLifecycleWorkspaces } from './workspaces'
 import { createLifecycleAgentBridge } from './agent-bridge'
-import { pluginToolRefusalLog } from './chrome-broker'
-import { requirePluginAdapter } from './adapters'
+import { pluginToolRefusalLog, pluginBrokerBinding } from './broker-binding'
 import type { PluginSupervisor } from '../supervisor/owner'
 import { createSupervisedPluginHost } from '../supervisor/node-host'
 import type { createPluginNodeHost, PluginNodeReady } from '../node-host'
@@ -47,8 +46,7 @@ export async function createSupervisorLifecycle(options: {
     owner: options.owner,
     routeTrace: recordRouteAdmissionTrace,
     controller,
-    binding: (view, diagnostic) =>
-      requirePluginAdapter(view.installation.pluginId).broker(view, refused, diagnostic),
+    binding: (view, diagnostic) => pluginBrokerBinding(view, diagnostic),
     diagnostic: (id, reason, detail) => recordPluginToolFailure(id, reason, detail),
     refused,
     restartHost: (id, runId, stopped) => controller.restartPluginTools(id, runId, stopped),
