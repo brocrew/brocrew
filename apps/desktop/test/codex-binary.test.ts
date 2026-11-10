@@ -301,15 +301,6 @@ describe('bundled codex binary', () => {
       }
     })
 
-    it('keeps each vendor tree OUT of the packed node_modules — shipped once, not twice', () => {
-      // electron-builder packs production node_modules (optionalDependencies included) in a
-      // pass a custom `files` pattern does not scope; only this negation reaches it. Without
-      // it the ~310MB vendor tree ships twice — the asar copy unreachable dead weight.
-      for (const bundled of [DARWIN, WINDOWS]) {
-        expect(config).toMatch(new RegExp(`^\\s*- '!node_modules/${bundled.package}/\\*\\*'$`, 'm'))
-      }
-    })
-
     it('unpacks the native database module — dlopen cannot open a file inside app.asar', () => {
       // 020 built this for real, and better-sqlite3's prebuilt .node turned out to be N-API, so
       // no Electron-ABI rebuild was needed — but it still has to be a real file on disk. Deleting

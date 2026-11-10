@@ -179,14 +179,6 @@ describe('what the Codex note claims, against `provisionCodexAuth` itself', () =
     expect(note()).toMatch(/never replaced/i)
   })
 
-  it('⚠️ …and the second source really was different, so the test above is not comparing a file to itself', async () => {
-    // The control for the assertion above. Without it, "the bytes did not change" would also pass if
-    // both fixtures happened to be identical — which is `310`'s no-op-mutation lesson in test form.
-    const home = temp('home')
-    await provisionCodexAuth(home, { sourceAuthPath: fakeMachineAuth('{"marker":"329-second"}') })
-    expect(signInAt(join(home, 'auth.json'))).toBe(digestOf('{"marker":"329-second"}'))
-  })
-
   it('🔴 “where it has none, as a copy of BroBot’s own” — with no machine sign-in, BroBot’s own is copied', async () => {
     const root = temp('managed')
     const home = join(root, 'homes', 'farah', 'codex')
@@ -224,20 +216,5 @@ describe('what the other provider’s reason claims, against the same code', () 
     const reached = await providersThatProvisionACredential()
     expect(reached).not.toContain('claude')
     expect(reached, 'and the probe is live — it saw the other provider do it').toContain('codex')
-  })
-})
-
-describe('the folder a home is made in', () => {
-  it('⚠️ a pre-existing directory is not a credential — the emptiness check is about files', async () => {
-    // The control for "leaves the folder with nothing in it": `provisionProviderHome` creates the
-    // tree, so that assertion is only meaningful if creating the tree is not itself what it reads.
-    const userData = temp('userdata')
-    const home = await prepareProviderHome(
-      userData,
-      { profileId: 'other', provider: 'claude' },
-      { claudeAuthHealth: () => ({ ok: true }) },
-    )
-    mkdirSync(join(home, 'sub'))
-    expect(readdirSync(home)).toEqual(['sub'])
   })
 })

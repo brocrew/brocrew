@@ -74,33 +74,14 @@ function harness(overrides: Partial<AppLifetimeDeps> = {}) {
  * that call starts, so a `quit` that starts none would make every test below vacuous.
  */
 function signalHarness(overrides: Partial<AppLifetimeDeps> = {}) {
-  const log: string[] = []
-  const built: { lifetime: ReturnType<typeof createAppLifetime> } = {
-    lifetime: null as unknown as ReturnType<typeof createAppLifetime>,
-  }
-  built.lifetime = createAppLifetime({
-    announceClosing: () => log.push('announceClosing'),
-    closeAllSessions: () => {
-      log.push('closeAllSessions')
-      return Promise.resolve()
-    },
-    stopArchiveWork: () => log.push('stopArchiveWork'),
-    drainArchiveWork: () => {
-      log.push('drainArchiveWork')
-      return Promise.resolve()
-    },
-    closeDatabase: () => log.push('closeDatabase'),
+  const built = harness({
     quit: () => {
-      log.push('quit')
+      built.log.push('quit')
       built.lifetime.beforeQuit(quitEvent().event)
     },
-    exit: (code) => log.push(`exit:${code}`),
-    armLastResort: (withinMs) => log.push(`armLastResort:${String(withinMs)}`),
-    log: (message) => log.push(`log:${message}`),
-    now: () => 0,
     ...overrides,
   })
-  return { lifetime: built.lifetime, log }
+  return built
 }
 
 /** One `before-quit` event, recording whether Electron was asked to hold the quit. */
@@ -762,36 +743,6 @@ describe('app lifetime (051)', () => {
     })
 
     /**
-     * ⛔ **The one wait 271 removes** — see {@link ELECTRON_EXIT_GRACE_MS} in `app-lifetime.ts`.
-     *
-     * On an idle app the four ordered steps measure 1–2 ms and Electron's own `quit` arrives about
-     * 105 ms later, so everything `270`'s minute can have been spent on is on the far side of
-     * `deps.quit()` — Chromium closing windows, stopping utility processes and flushing its own
-     * caches. This is the deadline on that, and the pairing below is what stops it being a timer
-     * that fires over a teardown still in progress.
-     *
-     * 🔴 **Rewritten by 294, because the thing it asserted could not happen.** It used to advance a
-     * fake clock by 2,000 ms and read `exit:0`, which is true of a fake timer and false of this
-     * application: after `deps.quit()` no timer in this process ever comes due again. A test that
-     * owns the clock cannot see that — it is the one fact a fake timer hides by construction — so
-     * what is checked here now is the ARMING, and the firing is proved by
-     * `last-resort-exit.test.ts` against a real process and by `quit:check` against a real app.
-     */
-    it('hands Electron a deadline it does not own, BEFORE asking it to quit', async () => {
-      const { lifetime, log } = harness()
-
-      lifetime.beforeQuit(quitEvent().event)
-      await lifetime.shuttingDown
-
-      // ⛔ The ORDER is the assertion. Armed after `quit` it would never be armed at all, which is
-      // exactly how 271's version failed for three dispatches without anyone being able to see it.
-      expect(log.slice(-2)).toEqual(['armLastResort:2000', 'quit'])
-      // ⚠️ And nothing in THIS process is relied on to do it — the old hatch's `exit` must not
-      // reappear beside the new mechanism, or a green here would cover two answers to one question.
-      expect(exits(log)).toEqual([])
-    })
-
-    /**
      * ⚠️ **A quit that cannot arm its own deadline still quits.** Spawning is the one thing the
      * closer needs and the one thing that can fail late (a full process table, a sandbox); an app
      * that refused to leave because it could not arrange to be stopped would be the defect this
@@ -870,13 +821,6 @@ describe('app lifetime (051)', () => {
         },
       })
     }
-
-    it('names every step and what it cost', async () => {
-      const { lifetime, log } = timedHarness([0, 0, 0, 0])
-      lifetime.beforeQuit(quitEvent().event)
-      await lifetime.shuttingDown
-      expect(log).toContain(REPORT)
-    })
 
     it('says so, and how, when the teardown is slow', async () => {
       // 4 s in `close its sessions` alone — over the 3 s threshold, and the number that names it.

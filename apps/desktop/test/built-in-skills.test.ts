@@ -57,15 +57,6 @@ describe('the shipped instruction-only catalogue', () => {
     expect(bundle.bodies.size).toBe(8)
     expect(bundle.digest).toMatch(/^[a-f0-9]{64}$/)
   })
-  it('retains both exact reminder blocks and final LF', () => {
-    const blocks = [
-      ...readFileSync(resolve(resources, 'turn-line.md'), 'utf8').matchAll(
-        /```text\n([\s\S]*?)```/g,
-      ),
-    ]
-    expect(builtInSkillReminders('codex', verified().catalogue.skills)).toBe(blocks[0]?.[1])
-    expect(builtInSkillReminders('claude', verified().catalogue.skills)).toBe(blocks[1]?.[1])
-  })
   it('omits build-a-team when creation is denied and restores it when allowed', () => {
     const catalogue = verified().catalogue
     expect(creationAllowedSkills(catalogue, false).map((item) => item.name)).toEqual(

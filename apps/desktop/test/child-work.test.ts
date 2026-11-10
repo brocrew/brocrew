@@ -242,10 +242,8 @@ describe('what it refuses, and why each refusal is its own word (112)', () => {
  * that value and `open(2)`. That makes it worth asserting as itself rather than only through the
  * door that used to be its sole caller.
  *
- * ⚑ **`726` · R92 — it has no root any more.** Until `726` this block was *"the root is the
- * confinement"* (`readWithin`) and pinned that a file outside the home, or a case alias of one, was
- * refused; those two tests went with the root. What it still decides is that the file is there, is
- * a regular file, and fits a ceiling it reports.
+ * It has no root: what it decides is that the file is there, is a regular file, and fits a ceiling
+ * it reports.
  */
 describe('the read, wherever the path came from (115)', () => {
   it('a path that is not there at all is `gone`, which is a different sentence', () => {

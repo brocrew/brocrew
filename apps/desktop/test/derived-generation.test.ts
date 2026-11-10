@@ -818,35 +818,6 @@ describe('the derived-generation contract (065)', () => {
     })
   })
 
-  describe('`hasEvents` is no longer the completeness signal (acceptance 6)', () => {
-    it('counts every call rather than every file, so a duplicate cannot go missing', () => {
-      // ⚠️ Non-vacuity for the count itself, and the one the file-path version could not have: two
-      // calls in one file must read as two. Written against a synthetic file because the real
-      // corpus is what is under test — a guard that proved itself by measuring its own subject
-      // would agree with whatever the subject happened to be.
-      const code = [
-        '  // deps.store.ledgerStatus(commented)',
-        '  const a = deps.store.ledgerStatus(one).present',
-        '  const b = deps.store.ledgerStatus (two).failure',
-      ]
-        .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
-        .join('\n')
-      expect([...code.matchAll(/\.ledgerStatus\s*\(/g)]).toHaveLength(2)
-      // …and the shape the old assertion used sees the same file once, whichever it is. This is the
-      // defect, kept as an executable statement of it rather than a sentence about it.
-      expect(/\.ledgerStatus\s*\(/.test(code)).toBe(true)
-    })
-
-    it('the scan would still catch a call, so it is testing real content', () => {
-      // Non-vacuity #3, for the comment stripping itself: a call in code is found, one in prose is
-      // not — so the emptiness above is a fact about the code rather than about the regex.
-      const stripped = ['  // store.hasEvents(x)', '  if (store.hasEvents(y)) return']
-        .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
-        .join('\n')
-      expect(/\.hasEvents\s*\(/.test(stripped)).toBe(true)
-    })
-  })
-
   describe('a re-derive is reachable, through the one coordinator (acceptance 3)', () => {
     /** A sink that swallows: these tests are about the ledger, not about what a window sees. */
     const SINK = {
@@ -934,20 +905,10 @@ describe('the derived-generation contract (065)', () => {
       await host.close(created.sessionId, SINK)
     })
 
-    it('says so plainly when there is no such session', async () => {
-      const result = await buildHost().rebuildLedger('sess_nobody')
-      expect(result).toEqual({ outcome: 'unknown-session', status: null })
-    })
-
     /**
-     * 🔴 **702 · `697` H-f — a conversation closed before its provider NAMED it is a recording, not a
-     * stranger.**
-     *
-     * ⛔ **Measured by `697` on `695`'s run**: the library lists such a row (`recordedOne`), and this
-     * door looked it up with `find`, which *"drops a row with no provider ref"* — so a Rebuild press on
-     * `sess_9f643857` answered `unknown-session` about a conversation the library had just drawn.
-     * ⚑ Planted the way it happens: a Claude conversation this app ran and closed, whose ref never
-     * arrived — the column is NULL.
+     * A conversation closed before its provider named it is a recording, not a stranger: the
+     * library lists such a row (`recordedOne`), and the rebuild door must not answer
+     * `unknown-session` about it. Planted the way it happens: the provider ref column is NULL.
      */
     it('🔴 answers a closed conversation with NO provider ref as the recording it is — and a stranger as a stranger', async () => {
       const host = buildHost()

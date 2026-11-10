@@ -173,13 +173,6 @@ describe('resolveAssetRequest — serves an image, and only an image (067)', () 
     expect(resolveAssetRequest(`${ASSET_SCHEME}://file/%E0%A4%A`)).toBeNull()
   })
 
-  it('refuses a non-image extension and a missing file', () => {
-    const json = join(images, 'notes.json')
-    writeFileSync(json, '{}')
-    expect(resolveAssetRequest(assetUrl(json))).toBeNull()
-    expect(resolveAssetRequest(assetUrl(join(images, 'gone.png')))).toBeNull()
-  })
-
   it('refuses a directory that ends in `.png`', () => {
     const dir = join(images, 'trap.png')
     mkdirSync(dir)

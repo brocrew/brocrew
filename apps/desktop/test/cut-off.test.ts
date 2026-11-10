@@ -67,7 +67,7 @@ const REF: SessionRef = {
  * The teardown both shipped adapters perform, against the REAL machine.
  *
  * Transcribed from `CodexRuntime.doClose` and `ClaudeRuntime.doClose`, which are identical in the
- * four lines that matter and are pinned as such at the bottom of this file:
+ * four lines that matter:
  *
  * ```
  * this.machine.beginClose()
@@ -154,7 +154,7 @@ describe('the ending a close records (246 §2)', () => {
   it('⛔ …so `cut off` needs that ordering BROKEN — which is the whole of 244’s answer', () => {
     // The negative control, and the only shape that reaches the word: a terminal status landing on
     // a turn whose ending was never announced. No shipped adapter produces it, because both call
-    // `forceEnd` first — see the pin below.
+    // `forceEnd` first.
     const events = closeMidTurn(false)
     expect(events.filter((event) => event.type === 'turn')).toHaveLength(0)
 

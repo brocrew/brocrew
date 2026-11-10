@@ -93,12 +93,120 @@ class APersonsWindow implements RuntimeEventSink {
   sendLiveness(): void {}
 }
 
-describe('adopting existing sessions', () => {
-  let dir: string
-  let userData: string
-  let db: AppDatabase
-  let store: SessionStore
+let dir: string
+let userData: string
+let db: AppDatabase
+let store: SessionStore
 
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), 'brobot2-adopt-'))
+  userData = join(dir, 'userData')
+  mkdirSync(userData, { recursive: true })
+  db = openDatabase(join(dir, 'brobot2.sqlite'))
+  applyMigrations(db, migrations)
+  store = createSessionStore(db)
+})
+
+afterEach(() => {
+  db.close()
+  rmSync(dir, { recursive: true, force: true })
+})
+
+/** A Codex home with its state database and the rollout files its threads point at. */
+function writeCodexThreads(
+  profileId: string,
+  threads: {
+    id: string
+    cwd: string
+    archived?: number
+    updatedAt?: number
+    rolloutExists?: boolean
+    /**
+     * `threads.source` — how the thread was started. The ordinary values are `app-server`,
+     * `vscode`, `cli` and `exec`; a `{"subagent":{…}}` payload here is how Codex records that
+     * another agent spawned it, and it is the signal this fixture needs to plant a real child
+     * rather than a hand-written `child_descent` column.
+     */
+    source?: string
+  }[],
+): string {
+  const home = join(userData, 'provider-homes', 'default', profileId, 'codex')
+  mkdirSync(join(home, 'sessions'), { recursive: true })
+  const state = new Database(join(home, 'state_5.sqlite'))
+  // `IF NOT EXISTS` + `INSERT OR REPLACE` so a home can be rewritten between scans: the back-fill
+  // is about what a second look at the same conversation does, so the provider's own state
+  // database has to say something different and be scanned again.
+  state.exec(
+    `CREATE TABLE IF NOT EXISTS threads (
+       id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL, created_at INTEGER NOT NULL,
+       updated_at INTEGER NOT NULL, source TEXT NOT NULL, model_provider TEXT NOT NULL,
+       cwd TEXT NOT NULL, title TEXT NOT NULL, sandbox_policy TEXT NOT NULL,
+       approval_mode TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0,
+       created_at_ms INTEGER, updated_at_ms INTEGER)`,
+  )
+  for (const thread of threads) {
+    const rollout = join(home, 'sessions', `rollout-${thread.id}.jsonl`)
+    if (thread.rolloutExists !== false) writeFileSync(rollout, '{}\n')
+    state
+      .prepare(
+        `INSERT OR REPLACE INTO threads (id, rollout_path, created_at, updated_at, source, model_provider,
+           cwd, title, sandbox_policy, approval_mode, archived, updated_at_ms)
+         VALUES (?, ?, 1, 2, ?, 'openai', ?, 't', 'workspace-write', 'on-request', ?, ?)`,
+      )
+      .run(
+        thread.id,
+        rollout,
+        thread.source ?? 'app-server',
+        thread.cwd,
+        thread.archived ?? 0,
+        thread.updatedAt ?? null,
+      )
+  }
+  state.close()
+  return home
+}
+
+/** Discovery across every home the app owns — the same walk the real app wires up. */
+function discoverEverything(): Discovery {
+  return listProviderHomes(userData)
+    .map((home) => discoverSessionsIn(home.provider, home.path, home.profileId))
+    .reduce<Discovery>(
+      (all, part) => ({
+        found: [...all.found, ...part.found],
+        skipped: [...all.skipped, ...part.skipped],
+      }),
+      { found: [], skipped: [] },
+    )
+}
+
+function buildHost(overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {}) {
+  let counter = 0
+  return new RuntimeHost({
+    store,
+    discoverSessions: discoverEverything,
+    // The real reader, over the fixtures this suite writes — archiving and import are part of
+    // what a scan does, so the same walk has to see the same files.
+    exportDirectory: () => join(userData, 'exports'),
+    nativeTranscriptPath,
+    createRuntime: (provider) => new FakeRuntime(provider),
+    prepareProviderHome: (provider, profileId) =>
+      join(userData, 'provider-homes', 'default', profileId, provider),
+    providerHomePath: (provider, profileId) =>
+      join(userData, 'provider-homes', 'default', profileId, provider),
+    resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
+    newSessionId: () => `sess_adopted_${++counter}`,
+    readProviderConfig: (_provider, home) => ({
+      home,
+      homeEnv: 'CODEX_HOME',
+      model: 'file-based',
+      authNote: null,
+      files: [],
+    }),
+    ...overrides,
+  })
+}
+
+describe('adopting existing sessions', () => {
   /** A Claude transcript, filed exactly where Claude files it. */
   function writeClaudeTranscript(
     profileId: string,
@@ -124,115 +232,6 @@ describe('adopting existing sessions', () => {
     }
     return path
   }
-
-  /** A Codex home with its state database and the rollout files its threads point at. */
-  function writeCodexThreads(
-    profileId: string,
-    threads: {
-      id: string
-      cwd: string
-      archived?: number
-      updatedAt?: number
-      rolloutExists?: boolean
-      /**
-       * `threads.source` — how the thread was started. The ordinary values are `app-server`,
-       * `vscode`, `cli` and `exec`; a `{"subagent":{…}}` payload here is how Codex records that
-       * another agent spawned it (111), and it is the signal this fixture needs to plant a real
-       * child rather than a hand-written `child_descent` column.
-       */
-      source?: string
-    }[],
-  ): string {
-    const home = join(userData, 'provider-homes', 'default', profileId, 'codex')
-    mkdirSync(join(home, 'sessions'), { recursive: true })
-    const state = new Database(join(home, 'state_5.sqlite'))
-    // ⚑ **`IF NOT EXISTS` + `INSERT OR REPLACE` so a home can be REWRITTEN between scans** (119).
-    // The back-fill is a claim about what a SECOND look at the same conversation does, and the
-    // only honest way to plant "the provider says something different now" is to say it in the
-    // provider's own state database and scan again.
-    state.exec(
-      `CREATE TABLE IF NOT EXISTS threads (
-         id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL, created_at INTEGER NOT NULL,
-         updated_at INTEGER NOT NULL, source TEXT NOT NULL, model_provider TEXT NOT NULL,
-         cwd TEXT NOT NULL, title TEXT NOT NULL, sandbox_policy TEXT NOT NULL,
-         approval_mode TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0,
-         created_at_ms INTEGER, updated_at_ms INTEGER)`,
-    )
-    for (const thread of threads) {
-      const rollout = join(home, 'sessions', `rollout-${thread.id}.jsonl`)
-      if (thread.rolloutExists !== false) writeFileSync(rollout, '{}\n')
-      state
-        .prepare(
-          `INSERT OR REPLACE INTO threads (id, rollout_path, created_at, updated_at, source, model_provider,
-             cwd, title, sandbox_policy, approval_mode, archived, updated_at_ms)
-           VALUES (?, ?, 1, 2, ?, 'openai', ?, 't', 'workspace-write', 'on-request', ?, ?)`,
-        )
-        .run(
-          thread.id,
-          rollout,
-          thread.source ?? 'app-server',
-          thread.cwd,
-          thread.archived ?? 0,
-          thread.updatedAt ?? null,
-        )
-    }
-    state.close()
-    return home
-  }
-
-  /** Discovery across every home the app owns — the same walk the real app wires up. */
-  function discoverEverything(): Discovery {
-    return listProviderHomes(userData)
-      .map((home) => discoverSessionsIn(home.provider, home.path, home.profileId))
-      .reduce<Discovery>(
-        (all, part) => ({
-          found: [...all.found, ...part.found],
-          skipped: [...all.skipped, ...part.skipped],
-        }),
-        { found: [], skipped: [] },
-      )
-  }
-
-  function buildHost(overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {}) {
-    let counter = 0
-    return new RuntimeHost({
-      store,
-      discoverSessions: discoverEverything,
-      // The real reader, over the fixtures this suite writes — archiving and import are part of
-      // what a scan does now (088), so the same walk has to see the same files.
-      exportDirectory: () => join(userData, 'exports'),
-      nativeTranscriptPath,
-      createRuntime: (provider) => new FakeRuntime(provider),
-      prepareProviderHome: (provider, profileId) =>
-        join(userData, 'provider-homes', 'default', profileId, provider),
-      providerHomePath: (provider, profileId) =>
-        join(userData, 'provider-homes', 'default', profileId, provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_adopted_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'file-based',
-        authNote: null,
-        files: [],
-      }),
-      ...overrides,
-    })
-  }
-
-  beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-adopt-'))
-    userData = join(dir, 'userData')
-    mkdirSync(userData, { recursive: true })
-    db = openDatabase(join(dir, 'brobot2.sqlite'))
-    applyMigrations(db, migrations)
-    store = createSessionStore(db)
-  })
-
-  afterEach(() => {
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
-  })
 
   it('adopts a Claude conversation nobody recorded, reading its cwd from the file', async () => {
     // The cwd cannot come from the directory name: that encoding is lossy (086). It comes from
@@ -719,19 +718,7 @@ describe('adopting existing sessions', () => {
       // ⚑ The CLI's transcript — and no `system/init` ever reaches the adapter.
       const transcriptId = launched[0]?.sessionId ?? MINTED_BY_THE_CLI
       writeClaudeTranscript(profile_id, transcriptId, cwd, {
-        records: [
-          { type: 'queue-operation', operation: 'enqueue', sessionId: transcriptId },
-          {
-            type: 'user',
-            sessionId: transcriptId,
-            cwd,
-            message: {
-              role: 'user',
-              content:
-                'Sent by a person, typed into this app.\n\nReply with exactly the single word: OK.',
-            },
-          },
-        ],
+        records: theCLIsTranscript(transcriptId, cwd),
       })
       await host.close(created.sessionId, window)
       query.end()
@@ -985,94 +972,21 @@ describe('adopting existing sessions', () => {
  * only that SQL works.
  */
 describe('the descent back-fill (119)', () => {
-  let dir: string
-  let userData: string
-  let db: AppDatabase
-  let store: SessionStore
-
   const SPAWN = (extra: Record<string, unknown> = {}): string =>
     JSON.stringify({ subagent: { thread_spawn: { parent_thread_id: 'parent-thread', ...extra } } })
 
+  /** One Codex home, rewritten by every case below: one folder and one provider touch. */
   function codexHome(threads: { id: string; source?: string }[]): void {
-    const home = join(userData, 'provider-homes', 'default', 'default', 'codex')
-    mkdirSync(join(home, 'sessions'), { recursive: true })
-    const state = new Database(join(home, 'state_5.sqlite'))
-    state.exec(
-      `CREATE TABLE IF NOT EXISTS threads (
-         id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL, created_at INTEGER NOT NULL,
-         updated_at INTEGER NOT NULL, source TEXT NOT NULL, model_provider TEXT NOT NULL,
-         cwd TEXT NOT NULL, title TEXT NOT NULL, sandbox_policy TEXT NOT NULL,
-         approval_mode TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0,
-         created_at_ms INTEGER, updated_at_ms INTEGER)`,
+    writeCodexThreads(
+      'default',
+      threads.map((thread) => ({ ...thread, cwd: '/tmp/work', updatedAt: 1_700_000_000_000 })),
     )
-    for (const thread of threads) {
-      const rollout = join(home, 'sessions', `rollout-${thread.id}.jsonl`)
-      writeFileSync(rollout, '{}\n')
-      state
-        .prepare(
-          `INSERT OR REPLACE INTO threads (id, rollout_path, created_at, updated_at, source,
-             model_provider, cwd, title, sandbox_policy, approval_mode, archived, updated_at_ms)
-           VALUES (?, ?, 1, 2, ?, 'openai', '/tmp/work', 't', 'workspace-write', 'on-request', 0, ?)`,
-        )
-        .run(thread.id, rollout, thread.source ?? 'app-server', 1_700_000_000_000)
-    }
-    state.close()
-  }
-
-  function buildHost(
-    overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {},
-  ): RuntimeHost {
-    let counter = 0
-    return new RuntimeHost({
-      store,
-      discoverSessions: () =>
-        listProviderHomes(userData)
-          .map((home) => discoverSessionsIn(home.provider, home.path, home.profileId))
-          .reduce<Discovery>(
-            (all, part) => ({
-              found: [...all.found, ...part.found],
-              skipped: [...all.skipped, ...part.skipped],
-            }),
-            { found: [], skipped: [] },
-          ),
-      exportDirectory: () => join(userData, 'exports'),
-      nativeTranscriptPath,
-      createRuntime: (provider) => new FakeRuntime(provider),
-      prepareProviderHome: (provider, profileId) =>
-        join(userData, 'provider-homes', 'default', profileId, provider),
-      providerHomePath: (provider, profileId) =>
-        join(userData, 'provider-homes', 'default', profileId, provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_bf_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'file-based',
-        authNote: null,
-        files: [],
-      }),
-      ...overrides,
-    })
   }
 
   /** The row for one provider thread, straight out of the store. */
   function row(providerSessionId: string) {
     return store.recorded().find((entry) => entry.providerSessionId === providerSessionId)
   }
-
-  beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-backfill-'))
-    userData = join(dir, 'userData')
-    mkdirSync(userData, { recursive: true })
-    db = openDatabase(join(dir, 'brobot2.sqlite'))
-    applyMigrations(db, migrations)
-    store = createSessionStore(db)
-  })
-
-  afterEach(() => {
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
-  })
 
   describe('the rule itself, without a database in the way', () => {
     it('fills a NULL from the live answer', () => {
