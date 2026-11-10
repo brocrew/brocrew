@@ -2814,6 +2814,21 @@ export function createPersonsQueue(): PersonsQueue {
   let handBackPresses = 0
   const handedBack = reactive(new Map<string, { row: StoppedWorkRow; said: string }>())
 
+  const beginPress = <Pending extends { press: number }, Result>(
+    pending: Map<string, Pending>,
+    results: Map<string, Result>,
+    key: string,
+    value: Pending,
+  ) => {
+    pending.set(key, value)
+    results.delete(key)
+    const stillMine = (): boolean => pending.get(key)?.press === value.press
+    const finish = (): void => {
+      if (stillMine()) pending.delete(key)
+    }
+    return { stillMine, finish }
+  }
+
   // A question the host marked as an action is a to-do, drawn on its own card and not as a question.
   const view = computed(() =>
     personsQueueView(questionsOnly(answered.value), decided.value, world.value),
@@ -3042,16 +3057,12 @@ export function createPersonsQueue(): PersonsQueue {
       const key = stopKey(row)
       if (door === undefined || handingBack.has(key)) return
       const press = ++handBackPresses
-      handingBack.set(key, { row, press })
-      handedBack.delete(key)
-      const stillMine = (): boolean => handingBack.get(key)?.press === press
+      const { stillMine, finish } = beginPress(handingBack, handedBack, key, { row, press })
       void door(row.label)
         .then((said) => {
           if (stillMine()) handedBack.set(key, { row, said })
         })
-        .finally(() => {
-          if (stillMine()) handingBack.delete(key)
-        })
+        .finally(finish)
     },
     stoppedCards,
     closingWork,
@@ -3083,9 +3094,10 @@ export function createPersonsQueue(): PersonsQueue {
       const door = doors?.answerTodo
       if (door === undefined || answeringTodo.has(row.key)) return
       const press = ++todoPresses
-      answeringTodo.set(row.key, { row, press })
-      todoSaid.delete(row.key)
-      const stillMine = (): boolean => answeringTodo.get(row.key)?.press === press
+      const { stillMine, finish } = beginPress(answeringTodo, todoSaid, row.key, {
+        row,
+        press,
+      })
       void door(row.sessionId, row.key, done, note.trim())
         .then((refused) => {
           if (!stillMine()) return
@@ -3095,9 +3107,7 @@ export function createPersonsQueue(): PersonsQueue {
             taken: refused === null,
           })
         })
-        .finally(() => {
-          if (stillMine()) answeringTodo.delete(row.key)
-        })
+        .finally(finish)
     },
     dismissTodo(row) {
       todoSaid.delete(row.key)
@@ -3108,16 +3118,12 @@ export function createPersonsQueue(): PersonsQueue {
       const key = entryKey(part, entry)
       if (door === undefined || takingEntry.has(key)) return
       const press = ++entryPresses
-      takingEntry.set(key, { entry, press })
-      entrySaid.delete(key)
-      const stillMine = (): boolean => takingEntry.get(key)?.press === press
+      const { stillMine, finish } = beginPress(takingEntry, entrySaid, key, { entry, press })
       void door(entry.label)
         .then((said) => {
           if (stillMine()) entrySaid.set(key, { entry, said })
         })
-        .finally(() => {
-          if (stillMine()) takingEntry.delete(key)
-        })
+        .finally(finish)
     },
     dismissEntry(part, entry) {
       entrySaid.delete(entryKey(part, entry))
