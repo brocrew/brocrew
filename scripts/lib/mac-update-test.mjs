@@ -498,13 +498,19 @@ export async function keepModelFailureEvidence(model, folder, summary, write) {
 }
 
 /** A timeout receipt keeps event kinds and states, never message bodies or credentials. */
-export async function localModelTurnFacts(cdp, sessionId, responseId) {
+export async function localModelTurnFacts(cdp, sessionId, prompt) {
   return cdp.evaluate(`
     const history = await window.api.runtime.latestHistory({sessionId:${JSON.stringify(sessionId)}})
     const events = (history?.entries ?? []).map(one => one.event)
     const kinds = new Set(['session','provider_turn','assistant_delta','assistant_message','turn','status','error'])
+    const start = events.findIndex(one => one.type === 'user_turn' && one.text === ${JSON.stringify(prompt)})
+    const next = events.findIndex((one, index) => index > start && one.type === 'user_turn')
+    const turn = start < 0 ? [] : events.slice(start + 1, next < 0 ? events.length : next)
+    const reply = turn.findIndex(one => one.type === 'assistant_message' && /^update rehearsal (resp_update_rehearsal_[0-9]+)$/.test(one.text))
+    const responseId = reply < 0 ? null : turn[reply].text.match(/^update rehearsal (resp_update_rehearsal_[0-9]+)$/)[1]
     return {
-      responseRecorded: ${JSON.stringify(responseId)}.length > 0 && JSON.stringify(history).includes(${JSON.stringify(responseId)}),
+      responseId,
+      responseRecorded: responseId !== null && turn.slice(reply + 1).some(one => one.type === 'turn' && one.state === 'completed'),
       providerSessionStarted: events.some(one=>one.type === 'session' && ['started','resumed'].includes(one.state)),
       eventCounts:Object.fromEntries([...kinds,'other'].map(kind=>[kind,events.filter(one=>(kinds.has(one.type) ? one.type : 'other') === kind).length])),
       turnCounts:Object.fromEntries(['completed','failed','interrupted'].map(state=>[state,events.filter(one=>one.type === 'turn' && one.state === state).length])),

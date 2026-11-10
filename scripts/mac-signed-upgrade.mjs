@@ -276,30 +276,25 @@ async function seedWorkspace(workspace) {
   for (let index = 0; index < 2; index++) {
     const turn = { index, phase: 'creating', steps: [] }
     workspace.fixture.turns.push(turn)
-    let expected
-    const sessionId = await startLocalModelTurn(
-      cdp,
-      `${workspace.name} fictional conversation ${index}: café ☕`,
-      {
-        answerARefusal: true,
-        record: (phase, facts) => {
-          turn.phase = phase
-          turn.steps.push({ phase, ...facts })
-          if (phase === 'conversation-created') expected = model.nextResponseId()
-        },
+    const prompt = `${workspace.name} fictional conversation ${index}: café ☕`
+    const sessionId = await startLocalModelTurn(cdp, prompt, {
+      answerARefusal: true,
+      record: (phase, facts) => {
+        turn.phase = phase
+        turn.steps.push({ phase, ...facts })
       },
-    )
+    })
     conversations.push(sessionId)
     await waitFor(async () => {
-      turn.history = await localModelTurnFacts(cdp, sessionId, expected)
+      turn.history = await localModelTurnFacts(cdp, sessionId, prompt)
       return (
         turn.history.responseRecorded &&
-        model.requests.some((one) => one.responseId === expected && one.completed)
+        model.requests.some((one) => one.responseId === turn.history.responseId && one.completed)
       )
     }, `${workspace.name} fictional response is persisted`)
     turn.phase = 'completed'
     turn.sessionId = sessionId
-    turn.responseId = expected
+    turn.responseId = turn.history.responseId
   }
   for (const sessionId of conversations)
     await cdp.evaluate(
@@ -689,23 +684,16 @@ async function reopenSecond(workspace) {
     modelRequests: model.requests.length - requestsBefore,
   }
   workspace.result.resavedCredential = await saveRehearsalCodexKey(cdp)
-  let expected
-  await startLocalModelTurn(
-    cdp,
-    `${workspace.name} fictional resumed turn after the guided replacement`,
-    {
-      sessionId: workspace.conversations[0],
-      record: (phase) => {
-        if (phase === 'conversation-resumed') expected = model.nextResponseId()
-      },
-    },
-  )
-  await waitFor(
-    async () =>
-      (await localModelTurnFacts(cdp, workspace.conversations[0], expected)).responseRecorded &&
-      model.requests.some((one) => one.responseId === expected && one.completed),
-    'same conversation resumes through the local scripted model',
-  )
+  const prompt = `${workspace.name} fictional resumed turn after the guided replacement`
+  await startLocalModelTurn(cdp, prompt, { sessionId: workspace.conversations[0] })
+  let history
+  await waitFor(async () => {
+    history = await localModelTurnFacts(cdp, workspace.conversations[0], prompt)
+    return (
+      history.responseRecorded &&
+      model.requests.some((one) => one.responseId === history.responseId && one.completed)
+    )
+  }, 'same conversation resumes through the local scripted model')
   const credential = await cdp.evaluate(
     "return await window.api.runtime.apiKeyStatus({provider:'codex'})",
   )
@@ -730,7 +718,7 @@ async function reopenSecond(workspace) {
     path: data,
     version: VERSION_B,
     resumedConversation: workspace.conversations[0],
-    responseId: expected,
+    responseId: history.responseId,
   }
   await screenshot(cdp, 'b-second-restored.png')
   passed('second-start-resume-and-fictional-credential-access', workspace.result.second)

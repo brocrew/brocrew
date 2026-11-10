@@ -714,7 +714,7 @@ test('turn timeout facts keep session and failure states while discarding messag
   }
   const runtime = { latestHistory: async () => history }
   const cdp = { evaluate: (body) => new AsyncFunction('window', body)({ api: { runtime } }) }
-  const facts = await localModelTurnFacts(cdp, 'fictional-session', 'resp_fictional_1')
+  const facts = await localModelTurnFacts(cdp, 'fictional-session', 'Fixture prompt')
   assert.equal(facts.responseRecorded, false)
   assert.equal(facts.providerSessionStarted, true)
   assert.equal(facts.hasError, true)
@@ -728,13 +728,33 @@ test('turn timeout facts keep session and failure states while discarding messag
   })
   assert.equal(facts.eventCounts.status, 2)
   assert.equal(JSON.stringify(facts).includes('discard-'), false)
-  history.entries.push({ event: { type: 'assistant_message', text: 'Fixture resp_fictional_1' } })
+  history.entries.push(
+    { event: { type: 'assistant_message', text: 'update rehearsal resp_update_rehearsal_4' } },
+    { event: { type: 'turn', state: 'completed' } },
+    { event: { type: 'user_turn', text: 'Fixture prompt' } },
+  )
   assert.equal(
-    (await localModelTurnFacts(cdp, 'fictional-session', 'resp_fictional_1')).responseRecorded,
+    (await localModelTurnFacts(cdp, 'fictional-session', 'Fixture prompt')).responseRecorded,
+    false,
+  )
+  history.entries.push({
+    event: { type: 'assistant_message', text: 'update rehearsal resp_update_rehearsal_5' },
+  })
+  assert.equal(
+    (await localModelTurnFacts(cdp, 'fictional-session', 'Fixture prompt')).responseRecorded,
+    false,
+  )
+  history.entries.push({ event: { type: 'turn', state: 'completed' } })
+  assert.equal(
+    (await localModelTurnFacts(cdp, 'fictional-session', 'Fixture prompt')).responseId,
+    'resp_update_rehearsal_5',
+  )
+  assert.equal(
+    (await localModelTurnFacts(cdp, 'fictional-session', 'Fixture prompt')).responseRecorded,
     true,
   )
   assert.equal(
-    (await localModelTurnFacts(cdp, 'fictional-session', 'resp_other')).responseRecorded,
+    (await localModelTurnFacts(cdp, 'fictional-session', 'Other prompt')).responseRecorded,
     false,
   )
 })
