@@ -11076,21 +11076,66 @@ export class RuntimeHost implements LiveHost {
     }
     const timeoutMs = this.launchTimeouts[opening.provider][opening.kind]
     const timing = this.timeTheLaunch(slot.id, opening, timeoutMs)
+    // These are stages of this launch, not activity elsewhere in the provider. Replayed stages
+    // cannot keep a stuck launch alive; only forward stages or a growing thread answer can.
+    const phases: readonly StartPhase[] = [
+      'boot-gate-entered',
+      'boot-gate-passed',
+      'spawned',
+      'initialize-sent',
+      'initialized',
+      'boot-gate-released',
+      'skills-registered',
+      'thread-sent',
+      'thread-answered',
+      'validated',
+    ]
+    let furthestPhase = -1
+    let mostBytes = 0
+    let waiting = true
+    let resetClock = (): void => {}
+    let stopClock = (): void => {}
+    const expiry = new Promise<'expired'>((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      resetClock = () => {
+        clearTimeout(timer)
+        timer = setTimeout(() => {
+          waiting = false
+          resolve('expired')
+        }, timeoutMs)
+        // An unobserved launch must not keep the app alive just to reach its idle limit.
+        if (typeof timer.unref === 'function') timer.unref()
+      }
+      stopClock = () => {
+        waiting = false
+        clearTimeout(timer)
+      }
+      resetClock()
+    })
+    const progress: StartPhaseSink = (phase, detail) => {
+      if (!waiting) return
+      timing.phase(phase, detail)
+      const at = phases.indexOf(phase)
+      const bytes = detail?.bytes
+      const grew =
+        phase === 'thread-answered' &&
+        at >= furthestPhase &&
+        bytes !== undefined &&
+        Number.isSafeInteger(bytes) &&
+        bytes > mostBytes
+      if (at > furthestPhase || grew) {
+        furthestPhase = Math.max(furthestPhase, at)
+        if (grew) mostBytes = bytes
+        resetClock()
+      }
+    }
     const started = (async () =>
       this.startedAfterARefusedCopy(
         opening.provider,
         slot.profileId,
-        () => launch(timing.phase),
+        () => launch(progress),
         () => !this.launches.closed && this.slots.get(slot.id) === slot && !onItsWayOut(slot),
       ))()
-    let stopClock = (): void => {}
-    const expiry = new Promise<'expired'>((resolve) => {
-      const timer = setTimeout(() => resolve('expired'), timeoutMs)
-      // Unref'd like every other bound in this app: a launch nobody is waiting for must not be the
-      // reason a quit waits for the start limit.
-      if (typeof timer.unref === 'function') timer.unref()
-      stopClock = () => clearTimeout(timer)
-    })
     // Settled EITHER WAY, deliberately: this race asks only whether the launch is over. What it
     // answered with is `await started` below, which is the one place a rejection is reported from —
     // reporting it from here would swallow the adapter's own error.
@@ -11110,7 +11155,7 @@ export class RuntimeHost implements LiveHost {
       const openingForMs = this.now() - slot.since
       throw new SessionUnavailable(
         'took-too-long',
-        `session ${slot.id} was given up on: its provider did not answer within ` +
+        `session ${slot.id} was given up on: its provider made no launch progress for ` +
           `${timeoutMs}ms (reserved ${openingForMs}ms ago by ${ownerName(slot.ownerId)})`,
         { waitedForMs: timeoutMs, openingForMs },
       )

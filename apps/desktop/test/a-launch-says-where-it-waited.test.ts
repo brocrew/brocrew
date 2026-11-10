@@ -49,11 +49,13 @@ const EVERY_PHASE: readonly StartPhase[] = [
 /** A fake provider that reports its phases, and can stop answering after one of them. */
 class PhasedRuntime extends FakeRuntime {
   stallAfter: StartPhase | null = null
+  holdPhases: ((options: StartOptions | ResumeOptions) => Promise<void>) | null = null
   /** When set, the launch has its session and hands it back only once this settles. */
   answerLate: Promise<void> | null = null
   aborted = false
   readonly handles: Awaited<ReturnType<FakeRuntime['start']>>[] = []
   private say(options: StartOptions | ResumeOptions): Promise<void> {
+    if (this.holdPhases !== null) return this.holdPhases(options)
     for (const phase of EVERY_PHASE) {
       options.startPhases?.(phase, phase === 'thread-answered' ? { bytes: 512 } : undefined)
       if (phase === this.stallAfter) {
@@ -163,6 +165,124 @@ describe('a launch says where it waited', () => {
   })
 
   const ended = () => lines.filter((one) => one.stage === 'ended')
+
+  function heldProgress() {
+    let entered!: (options: StartOptions | ResumeOptions) => void
+    const options = new Promise<StartOptions | ResumeOptions>((resolve) => {
+      entered = resolve
+    })
+    let finish!: () => void
+    let fail!: (error: Error) => void
+    const held = new Promise<void>((resolve, reject) => {
+      finish = resolve
+      fail = reject
+    })
+    runtime.holdPhases = (context) => {
+      context.signal?.addEventListener('abort', () => fail(new Error('fictional launch stopped')), {
+        once: true,
+      })
+      entered(context)
+      return held
+    }
+    return { options, finish, fail }
+  }
+
+  it.each([
+    ['fresh', 15_000],
+    ['resume', 60_000],
+  ] as const)(
+    'a progressing %s launch can exceed its former %i ms total',
+    async (opening, idleMs) => {
+      await host.closeAll()
+      host = buildHost({})
+      const sink = new Sink()
+      const sessionId =
+        opening === 'resume'
+          ? (await host.createSession({ provider: 'codex' }, sink)).sessionId
+          : null
+      if (sessionId !== null) await host.close(sessionId, sink)
+      const held = heldProgress()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const launching =
+        sessionId === null
+          ? host.createSession({ provider: 'codex' }, sink)
+          : host.resumeSession(sessionId, sink)
+      const failure = launching.catch((error: unknown) => error)
+      try {
+        const options = await held.options
+        options.startPhases?.('spawned')
+        await vi.advanceTimersByTimeAsync(idleMs * 0.75)
+        options.startPhases?.('initialized')
+        await vi.advanceTimersByTimeAsync(idleMs * 0.75)
+        options.startPhases?.('thread-answered', { bytes: 128 })
+        await vi.advanceTimersByTimeAsync(idleMs * 0.75)
+        options.startPhases?.('thread-answered', { bytes: 256 })
+        await vi.advanceTimersByTimeAsync(idleMs - 1)
+        expect(options.signal?.aborted).toBe(false)
+        expect(ended().filter((one) => one.outcome === 'timed-out')).toEqual([])
+        held.finish()
+        await expect(launching).resolves.toHaveProperty('sessionId')
+        expect(ended().at(-1)).toMatchObject({ opening, outcome: 'ready', responseBytes: 256 })
+        const count = lines.length
+        options.startPhases?.('validated')
+        await vi.advanceTimersByTimeAsync(idleMs * 2)
+        expect(options.signal?.aborted).toBe(false)
+        expect(lines).toHaveLength(count)
+      } finally {
+        held.finish()
+        vi.useRealTimers()
+        await failure
+      }
+    },
+  )
+
+  it('replayed stages and nonadvancing or unrelated byte counts do not renew the idle window', async () => {
+    const held = heldProgress()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const launching = host.createSession({ provider: 'codex' }, new Sink())
+    const failure = launching.catch((error: unknown) => error)
+    const options = await held.options
+    options.startPhases?.('thread-answered', { bytes: 128 })
+    await vi.advanceTimersByTimeAsync(60)
+    options.startPhases?.('thread-answered', { bytes: 128 })
+    options.startPhases?.('thread-answered', { bytes: 64 })
+    options.startPhases?.('thread-answered', { bytes: Number.NaN })
+    options.startPhases?.('thread-answered', { bytes: Number.POSITIVE_INFINITY })
+    options.startPhases?.('thread-answered', { bytes: -1 })
+    options.startPhases?.('thread-answered', { bytes: 128.5 })
+    options.startPhases?.('spawned', { bytes: 1_000 })
+    options.startPhases?.('initialize-sent')
+    await vi.advanceTimersByTimeAsync(19)
+    expect(options.signal?.aborted).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(await failure).toBeInstanceOf(Error)
+    expect(options.signal?.aborted).toBe(true)
+    expect(ended().at(-1)).toMatchObject({ outcome: 'timed-out' })
+    const count = lines.length
+    options.startPhases?.('validated')
+    await vi.advanceTimersByTimeAsync(160)
+    expect(lines).toHaveLength(count)
+  })
+
+  it('a rejected launch settles immediately after progress rather than waiting for its idle limit', async () => {
+    const held = heldProgress()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const launching = host.createSession({ provider: 'codex' }, new Sink())
+    const failure = launching.catch((error: unknown) => error)
+    const options = await held.options
+    options.startPhases?.('spawned')
+    await vi.advanceTimersByTimeAsync(60)
+    options.startPhases?.('initialized')
+    held.fail(new Error('fictional provider exited during initialization'))
+    expect(await failure).toBeInstanceOf(Error)
+    expect(ended().at(-1)).toMatchObject({ outcome: 'failed' })
+    expect(options.signal?.aborted).toBe(false)
+    const count = lines.length
+    options.startPhases?.('validated')
+    await vi.advanceTimersByTimeAsync(160)
+    expect(options.signal?.aborted).toBe(false)
+    expect(lines).toHaveLength(count)
+  })
 
   it('a fresh start that is ready writes its phases in order, its answer’s size and its outcome', async () => {
     await host.createSession({ provider: 'codex' }, new Sink())

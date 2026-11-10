@@ -2,12 +2,13 @@ import { neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   FakeProcessExit,
   FakeRuntime,
   type AgentRuntime,
   type SessionHandle,
+  type StartPhaseSink,
 } from '@brobot2/runtime'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
@@ -104,6 +105,8 @@ class StallingRuntime implements AgentRuntime {
   running = false
   /** Set when the launch observed its abort — the signal really reached the adapter. */
   aborted = false
+  phase: StartPhaseSink = () => {}
+  readonly entered = deferred()
   private readonly inner: FakeRuntime
   /** Set on the `arrives-anyway` path, so a test can gate and inspect the handle we handed over. */
   late: { handle: SessionHandle; closed: () => boolean } | null = null
@@ -150,10 +153,12 @@ class StallingRuntime implements AgentRuntime {
   }
 
   start(options: Parameters<AgentRuntime['start']>[0]): Promise<SessionHandle> {
+    this.phase = options.startPhases ?? (() => {})
     return this.stall(options.signal, () => this.inner.start(options))
   }
 
   resume(...args: Parameters<AgentRuntime['resume']>): Promise<SessionHandle> {
+    this.phase = args[1].startPhases ?? (() => {})
     return this.stall(args[1].signal, () => this.inner.resume(args[0], args[1]))
   }
 
@@ -163,6 +168,7 @@ class StallingRuntime implements AgentRuntime {
   ): Promise<SessionHandle> {
     // The child exists from here — before the handshake, as Codex's detached app-server does.
     this.running = true
+    this.entered.resolve()
     const stopped = deferred()
     signal?.addEventListener(
       'abort',
@@ -247,8 +253,62 @@ describe('a launch that cannot complete (102)', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     rmSync(userData, { recursive: true, force: true })
   })
+
+  it.each(['idle expiry', 'cancel'] as const)(
+    '%s after progress still closes a late handle and owns it until process exit',
+    async (ending) => {
+      const exit = new FakeProcessExit()
+      const runtime = new StallingRuntime('arrives-anyway', undefined, exit)
+      const host = buildHost(runtime, { launchTimeoutMs: 80 })
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const launching = host.createSession({ provider: 'codex', launchKey: 'progress' }, sink)
+      const failure = launching.catch((error: unknown) => error)
+      try {
+        await runtime.entered.promise
+        await vi.advanceTimersByTimeAsync(0)
+        expect(runtime.running).toBe(true)
+        runtime.phase('spawned')
+        await vi.advanceTimersByTimeAsync(60)
+        runtime.phase('initialized')
+        await vi.advanceTimersByTimeAsync(60)
+        expect(runtime.aborted).toBe(false)
+        if (ending === 'cancel') {
+          const cancelled = host.cancelLaunch('progress', sink.ownerId)
+          runtime.arriveNow()
+          await vi.advanceTimersByTimeAsync(40)
+          expect(await cancelled).toBe(true)
+        } else {
+          await vi.advanceTimersByTimeAsync(20)
+          expect(await failure).toBeInstanceOf(Error)
+          runtime.arriveNow()
+          await vi.advanceTimersByTimeAsync(0)
+        }
+        expect(await failure).toBeInstanceOf(Error)
+        expect(runtime.aborted).toBe(true)
+        expect(runtime.late?.closed()).toBe(true)
+        expect(host.sessionIds).toEqual([])
+        expect(exit.isConfirmed).toBe(false)
+        const refused = await host.resumeSession('sess_1', sink).catch((error: Error) => error)
+        expect((refused as Error).message).toContain('cannot continue yet')
+        runtime.phase('validated')
+        await vi.advanceTimersByTimeAsync(160)
+        expect(exit.isConfirmed).toBe(false)
+        exit.confirm()
+        await vi.advanceTimersByTimeAsync(0)
+        const released = await host.resumeSession('sess_1', sink).catch((error: Error) => error)
+        expect((released as Error).message).toBe('There is no record of this conversation here.')
+      } finally {
+        runtime.arriveNow()
+        exit.confirm()
+        vi.useRealTimers()
+        await failure
+        await host.closeAll()
+      }
+    },
+  )
 
   it('ends by itself, saying what it waited for and how long — with no id in the sentence', async () => {
     const runtime = new StallingRuntime('tears-down')
