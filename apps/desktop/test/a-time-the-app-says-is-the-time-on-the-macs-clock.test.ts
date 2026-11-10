@@ -1,3 +1,4 @@
+import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
 import { waitFor } from './lib/f093-host'
 import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import { registerCalendarRevisionCases } from './helpers/calendar-revision-cases'
@@ -10,8 +11,8 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 import { createSSRApp, h, type Component } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { FakeSessionHandle, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
+import type { FakeSessionHandle, SessionRef } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { nativeExportPath } from '../src/main/archive/export-session'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
@@ -1285,26 +1286,6 @@ describe('§5 · the window, main and the host agree on the zone', () => {
 })
 
 // ─── The host half ─────────────────────────────────────────────────────────────────────────────
-
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handles: FakeSessionHandle[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(options)
-    this.handles.push(handle)
-    return handle
-  }
-  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
-    const handle = await super.resume(ref, options)
-    this.handles.push(handle)
-    return handle
-  }
-}
 
 /** A stretch of the event loop long enough for everything a provider row starts to have run. */
 async function settle(): Promise<void> {
