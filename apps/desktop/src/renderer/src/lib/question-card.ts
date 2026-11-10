@@ -25,7 +25,7 @@ import {
   withoutHandles,
 } from './outgoing-card'
 import { THIS_CONVERSATION_FIRST } from './from-outside'
-import type { PersonsQueueRow } from './persons-queue'
+import type { QueueQuestionContext } from './question-queue-contracts'
 import { sinceWords } from './queue-time'
 
 /**
@@ -365,7 +365,7 @@ export function questionInTheConversation(
  * offer is the one part, with no box: nothing says whether that part takes a typed answer.
  */
 export function questionOnTheQueue(
-  row: PersonsQueueRow,
+  row: QueueQuestionContext,
   question: AppQuestion,
   pressed: QueuePress | undefined,
 ): QuestionCardReading {
