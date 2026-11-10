@@ -397,6 +397,39 @@ describe('virtual classic', () => {
     await cleanLibrary()
   })
 
+  it('names copies of built-in and saved themes from the same slug and free suffix', async () => {
+    await putTheme(fixture.library, 'mine', childTheme('mine'))
+    const store = fixture.store()
+    await store.start()
+    expect(await store.duplicate('defined', 'Defined')).toMatchObject({
+      outcome: 'ok',
+      id: 'defined-2',
+    })
+    expect(store.raw('defined-2')).toEqual({
+      format: 1,
+      id: 'defined-2',
+      name: 'Defined',
+      extends: 'defined',
+    })
+    expect(await store.duplicate('mine', 'Mine')).toMatchObject({ outcome: 'ok', id: 'mine-2' })
+    expect(store.raw('mine-2')).toEqual({ ...childTheme('mine'), id: 'mine-2', name: 'Mine' })
+    expect(await store.duplicate('mine', '  Fictional theme, with the copy name!')).toMatchObject({
+      outcome: 'ok',
+      id: 'fictional-theme-with-the-copy',
+    })
+    expect(await store.duplicate('defined', '!!!')).toMatchObject({ outcome: 'ok', id: 'theme' })
+    expect(await store.duplicate('mine', '***')).toMatchObject({ outcome: 'ok', id: 'theme-2' })
+    expect((await readdir(fixture.library)).sort()).toEqual([
+      'defined-2',
+      'fictional-theme-with-the-copy',
+      'mine',
+      'mine-2',
+      'theme',
+      'theme-2',
+    ])
+    await cleanLibrary()
+  })
+
   it.each([
     { paper: '#182135', canonical: '#182135', expected: '#182135' },
     { paper: 'rgb(0 0 0 / 50%)', canonical: '#00000080', expected: '#0c101a' },
