@@ -88,14 +88,11 @@ async function authenticatedHealth(
   admin: string,
   version: string,
   mcpPath: string,
-  adminPath: string,
-  probe: string,
 ): Promise<void> {
   for (const [path, token, expected, method] of [
     ['/healthz', '', 401, 'GET'],
     ['/healthz', 'invalid', 401, 'GET'],
     ['/healthz', mcp, 401, 'GET'],
-    [adminPath + probe, mcp, 401, 'GET'],
     [mcpPath, '', 401, 'POST'],
     [mcpPath, admin, 401, 'POST'],
     ['/healthz', admin, 200, 'GET'],
@@ -130,13 +127,6 @@ async function authenticatedHealth(
       if (body?.ok !== true || body.version !== version) throw new PluginHostError('ready')
     } else await response.body?.cancel()
   }
-  const adminResponse = await fetch(origin + adminPath + probe, {
-    headers: { Authorization: `Bearer ${admin}` },
-    redirect: 'manual',
-    signal: AbortSignal.timeout(1500),
-  })
-  await adminResponse.body?.cancel()
-  if (adminResponse.status !== 200) throw new PluginHostError('ready')
   const client = new Client({ name: 'brocrew-plugin-host', version: '1' }, { capabilities: {} })
   client.onerror = () => {}
   const transport = new StreamableHTTPClientTransport(new URL(origin + mcpPath), {
@@ -506,8 +496,6 @@ export function createPluginNodeHost(options: {
               adminToken,
               manifest.version,
               manifest.server!.mcpPath,
-              manifest.server!.adminPath,
-              hosted.probe,
             )
           })
           .then(() => {

@@ -139,10 +139,10 @@ const server = http.createServer((req, res) => {
 server.listen(0,'127.0.0.1',()=>process.send({channel:'brocrew-plugin-node:v1',runId:process.env.BROCREW_PLUGIN_RUN_ID,type:'listening',port:server.address().port}));
 process.on('SIGTERM',()=>{});
 `
-function fixture(body = source, mcpPath = '/mcp', sharedData = false) {
+function fixture(body = source, mcpPath = '/mcp', sharedData = false, id = 'chrome') {
   const files = new Map([['server.mjs', Buffer.from(body)]])
   const manifest = manifestFor(files)
-  manifest.id = 'chrome'
+  manifest.id = id
   manifest.platforms = [
     { os: process.platform as 'darwin' | 'linux', cpu: process.arch as 'arm64' | 'x64' },
   ]
@@ -165,7 +165,7 @@ function fixture(body = source, mcpPath = '/mcp', sharedData = false) {
     target: manifest.platforms[0]!,
   }).verifyCatalogue(value.bytes)
   return {
-    package: catalogue.verifyPackage('chrome', manifest.version, value.archive),
+    package: catalogue.verifyPackage(id, manifest.version, value.archive),
     releaseDigest: value.release.archive.sha256,
   }
 }
@@ -302,6 +302,22 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     expect((await fetch(hooks().url + '/healthz', { headers: hooks().headers })).status).toBe(200)
     expect(JSON.stringify(ready)).not.toContain('Bearer')
     expect(await handle.stop()).toEqual({ exited: true })
+  })
+  it('starts a third MCP package with its declared identity and no configuration readiness route', async () => {
+    const { host, home } = await context()
+    const body = source
+      .replaceAll('BROCREW_CHROME_', 'BROCREW_FICTIONAL_ORCHID_')
+      .replace(" if (req.url === '/v1/profiles') return res.end(JSON.stringify({profiles:[]}));", '')
+    const child = await host.start(fixture(body, '/mcp', false, 'fictional-orchid'))
+    const ready = await child.ready()
+    const facts = await (
+      await fetch(ready.origin + '/v1/env', { headers: ready.admin().headers })
+    ).json()
+    expect(facts.home).toBe(join(home, 'data/fictional-orchid'))
+    expect(
+      (await fetch(ready.origin + '/v1/profiles', { headers: ready.admin().headers })).status,
+    ).toBe(404)
+    expect(await child.stop()).toEqual({ exited: true })
   })
   it('starts packages that require the published bootstrap file mode under an ordinary umask', async () => {
     const priorMask = process.umask(0o022)
