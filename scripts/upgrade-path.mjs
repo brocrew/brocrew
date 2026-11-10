@@ -1979,15 +1979,23 @@ async function theKeySavedAgain(into, conversations, claude) {
       'the key saved again: the candidate saved the fictional Anthropic key, and was not refused',
       into.claudeSaved,
     )
-    // Saving the key lets the start the app owes go at once: it is let finish before this run
-    // sends anything, and what it said is checked.
+    // A sealed key's owed start goes now; a readable key's start was already made at first open.
+    // Check its delivery before this run sends anything else.
     const owed =
       claude.stamped && claudeDueConversation !== null ? claudeDueConversation : claudeConversation
     if (owed !== null) await theOwedStartOnTheKey(into, owed, claude)
+    if (owed !== null && !claude.keyWasSealed) {
+      const started = linesOf('candidate-new-key', `starting ${owed} for its scheduled jobs`)
+      check(
+        started.length === 0,
+        'saving the readable key again made no second start for the delivered notice',
+        { started },
+      )
+    }
     if (claudeConversation !== null) {
-      // The app's own start left that conversation open; any other is resumed.
+      // Only a start just released by saving a sealed key has this conversation open.
       const carried = await claudeTurn(claudeConversation, AFTER_THE_KEY_TEXT, {
-        resume: owed !== claudeConversation,
+        resume: !claude.keyWasSealed || owed !== claudeConversation,
       })
       into.claude = { sessionId: claudeConversation, ...carried }
       if (carried.answer === null) into.claude.history = await historyTail(claudeConversation)
@@ -2024,11 +2032,11 @@ async function theKeySavedAgain(into, conversations, claude) {
 }
 
 /**
- * Once the Anthropic key is saved again, the start the app owes `owed` is made by itself: its held
- * words are said once, the model is sent them and answers. From a beta that does not stamp its
- * receipts, the words and the app's own record also name each job whose time it cannot know.
+ * The start owed to `owed` is made at first open on a readable key, or when a sealed key is saved
+ * again: its held words are said once, the model is sent them and answers. From a beta that does
+ * not stamp its receipts, the words and the app's record also name each job whose time it cannot know.
  */
-async function theOwedStartOnTheKey(into, owed, { stamped, jobIds }) {
+async function theOwedStartOnTheKey(into, owed, { stamped, jobIds, keyWasSealed }) {
   const noticesNow = () => {
     try {
       return jobNoticesIn(readDatabase(data).tables.events, owed)
@@ -2044,7 +2052,11 @@ async function theOwedStartOnTheKey(into, owed, { stamped, jobIds }) {
   const answered = await until(
     async () => {
       for (const seen of claudeSeen) {
-        if (seen.stage !== 'candidate-new-key' || seen.method !== 'POST') continue
+        if (
+          seen.stage !== (keyWasSealed ? 'candidate-new-key' : 'candidate-first') ||
+          seen.method !== 'POST'
+        )
+          continue
         if (seen.auth !== 'expected' || seen.notices.length === 0) continue
         const recorded = await running.cdp.evaluate(
           `return JSON.stringify(await window.api.runtime.latestHistory({ sessionId: ${JSON.stringify(owed)} })).includes(${JSON.stringify(claudeAnswerText(seen.id))})`,
@@ -2065,7 +2077,9 @@ async function theOwedStartOnTheKey(into, owed, { stamped, jobIds }) {
       notices.said[0] === notices.queued[0] &&
       answered !== null &&
       answered.notices.some((text) => text.includes(notices.said[0].slice(0, 200))),
-    'the key saved again: the start the app owed was made by itself, said its held words once, and the model was sent them and answered',
+    keyWasSealed
+      ? 'the key saved again: the start the app owed was made by itself, said its held words once, and the model was sent them and answered'
+      : 'the readable key: the start owed was made at first open, said its held words once, and the model was sent them and answered',
     into.owed,
   )
   if (stamped || notices === null) return
@@ -2095,49 +2109,69 @@ async function theOwedStartOnTheKey(into, owed, { stamped, jobIds }) {
 }
 
 /**
- * The start owed to the beta's Claude conversation waits for the key. The app is ended while it
- * waits; the launch after it reads the key once and waits again, tries nothing on a timer, and the
- * words stay held, unsaid.
+ * Crash recovery keeps a delivered notice delivered on a readable key. With an older sealed key,
+ * the owed start still waits: the next launch waits again, with no timer retry or lost notice.
  */
-async function aCrashWhileTheKeyIsAwaited(into, claudeConversation) {
+async function aCrashAfterTheSavedKey(into, claudeConversation, keyWasSealed) {
   const waits = `${claudeConversation}'s start for its scheduled jobs waits until its saved claude key is saved again or removed`
   const retried = `could not start ${claudeConversation} for its scheduled jobs, and tries again in`
+  const started = `starting ${claudeConversation} for its scheduled jobs`
   await launch('candidate-crash', 9343)
-  await bridge('the crash, the start awaiting the key')
-  const waited = await until(() => linesOf('candidate-crash', waits).length > 0 || null, 120_000)
-  check(waited === true, 'the start owed to the Claude conversation waits for the key', {
-    waits,
-  })
+  await bridge('the crash, the saved key')
+  const waited = keyWasSealed
+    ? await until(() => linesOf('candidate-crash', waits).length > 0 || null, 120_000)
+    : null
+  check(
+    keyWasSealed
+      ? waited === true
+      : linesOf('candidate-crash', waits).length === 0 &&
+          linesOf('candidate-crash', started).length === 0,
+    keyWasSealed
+      ? 'the start owed to the Claude conversation waits for the key'
+      : 'the readable key: a later launch neither waits for the key nor starts the delivered job again',
+    { waits, started: linesOf('candidate-crash', started) },
+  )
   into.atTheCrash = jobWordsIn(claudeConversation)
-  await crash('the crash, while the key is awaited')
+  await crash(keyWasSealed ? 'the crash, while the key is awaited' : 'the crash, after delivery')
 
   await launch('candidate-after-the-crash', 9345)
   await bridge('after the crash')
-  const waitedAgain = await until(
-    () => linesOf('candidate-after-the-crash', waits).length > 0 || null,
-    120_000,
-  )
+  const waitedAgain = keyWasSealed
+    ? await until(() => linesOf('candidate-after-the-crash', waits).length > 0 || null, 120_000)
+    : null
   // Past the minute an older build tried again after, to see that nothing does.
   await sleep(70_000)
   await quit('after the crash')
   into.lines = {
     waitsBefore: linesOf('candidate-crash', waits).length,
     waitsAfter: linesOf('candidate-after-the-crash', waits).length,
+    startsBefore: linesOf('candidate-crash', started).length,
+    startsAfter: linesOf('candidate-after-the-crash', started).length,
     retried: [
       ...linesOf('candidate-crash', retried),
       ...linesOf('candidate-after-the-crash', retried),
     ],
   }
   check(
-    waitedAgain === true && into.lines.waitsAfter === 1 && into.lines.retried.length === 0,
-    'after the crash, the next launch read the key once and waited for it again, with no retry on a timer',
+    into.lines.retried.length === 0 &&
+      (keyWasSealed
+        ? waitedAgain === true && into.lines.waitsAfter === 1
+        : into.lines.waitsBefore === 0 &&
+          into.lines.waitsAfter === 0 &&
+          into.lines.startsBefore === 0 &&
+          into.lines.startsAfter === 0),
+    keyWasSealed
+      ? 'after the crash, the next launch read the key once and waited for it again, with no retry on a timer'
+      : 'after the crash, the readable key causes no wait, timed retry or second start for the delivered job',
     into.lines,
   )
   const words = jobWordsIn(claudeConversation)
   into.afterTheCrash = words
   check(
-    words.held === 1 && words.said === 0 && words.ended.length === 0,
-    'its words are still held once, unsaid, and nothing ended them',
+    words.held === 1 && words.said === (keyWasSealed ? 0 : 1) && words.ended.length === 0,
+    keyWasSealed
+      ? 'its words are still held once, unsaid, and nothing ended them'
+      : 'its words were held once and said once before the crash, with no loss or duplicate delivery',
     words,
   )
 }
@@ -2158,12 +2192,12 @@ const FIRST_OPEN_STARTS_MS = 180_000
  */
 function theStartAndTheKey(conversation, called, atFirstOpen) {
   const logs = ['candidate-first', 'candidate-second'].map((stage) => loggedBy(stage)).join('\n')
-  const { refused, retried } = startEvidence({ log: logs, conversation })
-  const seen = { conversation, atFirstOpen: atFirstOpen?.outcome ?? null, refused, retried }
+  const { started, refused, retried } = startEvidence({ log: logs, conversation })
+  const seen = { conversation, atFirstOpen: atFirstOpen?.outcome ?? null, started, refused, retried }
   summary.claude.keyWait[conversation] = seen
   if (atFirstOpen?.outcome === 'told') {
     check(
-      !refused && retried.length === 0,
+      started === 1 && !refused && retried.length === 0,
       `made on the saved key at the first open, the candidate’s start for ${called} waited for no key, and nothing was tried again on a timer`,
       seen,
     )
@@ -2438,10 +2472,19 @@ try {
     }
     for (const one of starts) {
       check(
-        one.outcome === 'told' || one.outcome === 'refused',
-        `at its first open, the candidate’s start for ${one.called} was made and its words sent, or it waits for the saved key, within ${String(FIRST_OPEN_STARTS_MS / 1_000)} s`,
+        one.outcome === (claudeKeyWasSealed ? 'refused' : 'told') &&
+          (claudeKeyWasSealed || one.started === 1),
+        `at its first open, the candidate’s start for ${one.called} ${claudeKeyWasSealed ? 'waits for the sealed key' : 'was made once and its words sent on the readable key'}, within ${String(FIRST_OPEN_STARTS_MS / 1_000)} s`,
         one,
       )
+      if (!claudeKeyWasSealed) {
+        one.delivery = {}
+        await theOwedStartOnTheKey(one.delivery, one.conversation, {
+          stamped: stamped(),
+          jobIds: claudeJobIds,
+          keyWasSealed: false,
+        })
+      }
     }
   }
   await screenshot('beta-first.png')
@@ -2510,6 +2553,11 @@ try {
 
   // ── 5 · what the beta left, read while nothing runs ─────────────────────────────────────────
   const before = readDatabase(data)
+  // Saving a key in file-backed betas removes its legacy sealed database row.
+  const claudeKeyWasSealed = (before.tables.provider_api_key ?? []).some(
+    (row) => row.provider === 'claude',
+  )
+  summary.claude.keyWasSealed = claudeKeyWasSealed
   must(whole(before), "the beta's database is whole", before.integrity)
   /** The id of each job the beta's Claude conversation made, read from the beta's own receipts. */
   const claudeJobIds = {}
@@ -3061,8 +3109,12 @@ try {
     summary.claude.afterAll = { notices, attempts: scheduleAttemptsOf(claudeConversation) }
     if (!stamped()) {
       check(
-        notices.queued.length === 1 && notices.said.length === 0,
-        'the candidate held its words about that job once, unsaid, for a start that waits for the key to be saved again',
+        notices.queued.length === 1 &&
+          notices.said.length === (claudeKeyWasSealed ? 0 : 1) &&
+          (claudeKeyWasSealed || notices.said[0] === notices.queued[0]),
+        claudeKeyWasSealed
+          ? 'the candidate held its words about that job once, unsaid, for a start that waits for the key to be saved again'
+          : 'the readable key: the candidate held its words about that job once and delivered those words once',
         notices,
       )
     } else {
@@ -3079,8 +3131,12 @@ try {
     const due = jobNoticesIn(afterSecond.tables.events, claudeDueConversation)
     summary.claude.dueAfterAll = due
     check(
-      due.queued.length === 1 && due.said.length === 0,
-      'the candidate held its words about the second conversation’s one-shot once, unsaid, for a start that waits for the key to be saved again',
+      due.queued.length === 1 &&
+        due.said.length === (claudeKeyWasSealed ? 0 : 1) &&
+        (claudeKeyWasSealed || due.said[0] === due.queued[0]),
+      claudeKeyWasSealed
+        ? 'the candidate held its words about the second conversation’s one-shot once, unsaid, for a start that waits for the key to be saved again'
+        : 'the readable key: the candidate held the second conversation’s one-shot notice once and delivered those words once',
       due,
     )
   }
@@ -3119,13 +3175,14 @@ try {
   )
   besideKept('after the second start', besideBefore)
 
-  // ── 11 · a crash while the start owed to a conversation waits for the key ─────────────────
+  // ── 11 · a crash after delivery on a readable key, or while a sealed key is awaited ────────
   if (claudeConversation !== null) {
     summary.crash = {}
     await phase('the crash', () =>
-      aCrashWhileTheKeyIsAwaited(
+      aCrashAfterTheSavedKey(
         summary.crash,
         stamped() && claudeDueConversation !== null ? claudeDueConversation : claudeConversation,
+        claudeKeyWasSealed,
       ),
     )
   }
@@ -3138,6 +3195,7 @@ try {
       claudeDueConversation,
       stamped: stamped(),
       jobIds: claudeJobIds,
+      keyWasSealed: claudeKeyWasSealed,
     }),
   )
 
