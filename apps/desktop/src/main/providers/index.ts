@@ -1,3 +1,5 @@
+/// <reference types="electron-vite/node" />
+
 import { providerRecord, providerValue, type Provider } from '@brobot2/shared'
 import { createClaudeModule, type ClaudeModuleSeams } from './claude'
 import { createCodexModule, type CodexModuleSeams } from './codex'
