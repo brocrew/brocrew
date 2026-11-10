@@ -17,6 +17,8 @@ import { AttentionSignals, ATTENTION_SIGNAL_INTERVAL_MS } from '../../src/main/a
 import { isAttentionSignal, type AttentionSignal } from '../../src/shared/attention-signals'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
+import { useProfileSignIn } from '../../src/renderer/src/composables/useProfileSignIn'
+import { DEFAULT_PROFILE_ID, PROVIDER_NAME } from '../../src/shared/runtime-ipc'
 import { chainReading, escalationChain, NOTHING_NAMED_THE_WORK } from '../../src/shared/questions'
 import type { WorkIncident } from '../../src/shared/work-incidents'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
@@ -24,6 +26,7 @@ import { screenFacts, useWhoCalledWhom } from '../../src/renderer/src/composable
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import type {
   ProcessMemory,
+  Provider,
   RuntimeBridge,
   ResumedSession,
   CreatedSession,
@@ -630,6 +633,10 @@ it.each(['launch', 'sign-in'] as const)(
       await expect.poll(() => screen.all('cancel-launch').length).toBe(1)
       expect(screen.all('command-error')).toHaveLength(0)
       expect(check).not.toHaveBeenCalled()
+      // Keep this refusal case on the provider it started with, without a ready fallback.
+      const startedOn = runtime.createSession.mock.calls[0]![0].provider
+      for (const provider of Object.keys(PROVIDER_NAME) as Provider[])
+        if (provider !== startedOn) useProfileSignIn(provider, DEFAULT_PROFILE_ID).auth = null
       answer.resolve({ refused: { reason: word, said: 'The fictional launch did not open.' } })
       await expect.poll(() => screen.all('cancel-launch').length).toBe(0)
       await expect
