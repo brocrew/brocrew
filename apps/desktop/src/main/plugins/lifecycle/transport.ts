@@ -104,21 +104,24 @@ export class PersonChannel {
           else {
             const cause = z
               .strictObject({
-                pluginRefusal: z.enum([
-                  'policy-refused',
-                  'source-mismatch',
-                  'incompatible',
-                  'network',
-                  'download-stalled',
-                  'package-invalid',
-                ]).optional(),
+                pluginRefusal: z
+                  .enum([
+                    'policy-refused',
+                    'source-mismatch',
+                    'incompatible',
+                    'network',
+                    'download-stalled',
+                    'package-invalid',
+                  ])
+                  .optional(),
                 message: z.string().optional(),
               })
               .safeParse(packet.value)
             const error = new PluginSupervisorError(
-              cause.success ? cause.data.pluginRefusal ?? 'unavailable' : 'unavailable',
+              cause.success ? (cause.data.pluginRefusal ?? 'unavailable') : 'unavailable',
             )
-            if (cause.success && cause.data.message !== undefined) error.message = cause.data.message
+            if (cause.success && cause.data.message !== undefined)
+              error.message = cause.data.message
             waiter.reject(error)
           }
         } else {

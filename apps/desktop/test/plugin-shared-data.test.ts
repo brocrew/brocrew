@@ -212,9 +212,7 @@ it('consumes live commands durably without storing a replayable profile action',
   expect(checkpoint).toMatchObject({ format: 2, revision: 1 })
   expect(checkpoint).not.toHaveProperty('proposal')
   expect(await new EarlierProfileLedger(f.root).revision(installId)).toBe(1)
-  expect(
-    await ledger.reserve(installId, 1),
-  ).toBe(2)
+  expect(await ledger.reserve(installId, 1)).toBe(2)
 })
 
 it('gives all default-root workspaces one stable owner identity and shared switch scope', async () => {
