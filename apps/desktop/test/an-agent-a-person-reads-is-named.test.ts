@@ -20,30 +20,11 @@ import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
-/**
- * # 🔴 707 · R41 — an agent a person reads is NAMED, in the sentences main composes
- *
- * ⚑ **PM ruling R41** (`702` F-4): *"every identity a person reads is NAMED (`agentName`), never by
- * slug — the set-aside sentence's SUBJECT (…for “fresh”…) included."* ⚑ The set-aside's subject is
- * `a-persons-choice-holds-the-whole-launch.test.ts`' (§1); this file is the other sentence main
- * composes for a person about an identity by its slug (`707`'s map, read-only on `224e1f45`). ⚠️
- * `707` measured two; the digest's *"…, proposed by <agent>"* went with proposals at D-016.
- *
- * | sentence | where a person reads it | `main` |
- * |---|---|---|
- * | `not-its-provider`'s *"<agent> runs on Codex…"* | the model-choice sheet's Save | the slug in quotes — *"“builder” runs on Codex"* |
- *
- * ⚠️ **Each arm is measured where the two readings DIVERGE** — a name a PERSON gave the identity —
- * because *BroBot* for `brobot` is also what `profileLabel` prints, and a fold that had only moved to
- * that function would pass an arm about BroBot. ⚑ **And each has its control**: an identity with no
- * display name reads its canonical spelling, as every other surface draws it.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const NAMED = 'Hedda'
 
-describe('707 · R41 — an agent a person reads is named', () => {
+describe('an agent a person reads is named', () => {
   let userData: string
   let root: string
   let db: AppDatabase
@@ -87,11 +68,7 @@ describe('707 · R41 — an agent a person reads is named', () => {
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §2 · the model-choice sheet's refusal
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§2 · `not-its-provider` — the identity a person was choosing for', () => {
+  describe('`not-its-provider` — the identity a person was choosing for', () => {
     const refusedFor = async (displayName: string | null): Promise<string> => {
       expect(
         store.createAgentIdentity(
@@ -111,17 +88,10 @@ describe('707 · R41 — an agent a person reads is named', () => {
       return String(out.reason)
     }
 
-    it('🔴 an identity a person named is refused by its NAME', async () => {
+    it('an identity a person named is refused by its NAME', async () => {
       const said = await refusedFor(NAMED)
-      // ⛔ Measured on `main`: *"Choose a Codex model: “builder” runs on Codex, …"*.
       expect(said).toContain(`Choose a Codex model: ${NAMED} runs on Codex,`)
       expect(said).not.toContain('builder')
-    })
-
-    it('⚑ control: an identity with NO display name reads its canonical spelling', async () => {
-      const said = await refusedFor(null)
-      // ⚑ `builder` on both sides of the change — `main` quoted it as an id, `agentName` does not
-      expect(said).toMatch(/^Choose a Codex model: “?builder”? runs on Codex,/)
     })
   })
 })

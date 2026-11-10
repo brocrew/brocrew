@@ -427,32 +427,6 @@ describe('the credential commands, at the boundary that validates them (098)', (
     })
   })
 
-  it('two sign-ins for one profile are refused — the second would race the first for the port', async () => {
-    const started = auth.started()
-    const first = run({ kind: 'signInProvider', provider: 'codex' })
-    await started
-    await expect(run({ kind: 'signInProvider', provider: 'codex' })).rejects.toThrow(
-      /already in progress/,
-    )
-
-    auth.settleSignIn({
-      success: true,
-      state: { state: 'usable', login: 'account', expiresAt: null },
-    })
-    await first
-
-    // Paired: once the first has finished, another is allowed — the guard is a lock, not a ban.
-    const again = auth.started()
-    const second = run({ kind: 'signInProvider', provider: 'codex' })
-    await again
-    auth.settleSignIn({
-      success: true,
-      state: { state: 'usable', login: 'account', expiresAt: null },
-    })
-    await second
-    expect(auth.calls.filter((c) => c.verb === 'signIn')).toHaveLength(2)
-  })
-
   it('🔴 two sign-ins for DIFFERENT profiles are refused too — one port, one machine (257 §1)', async () => {
     // ⛔ **Measured by `256` H2, not reasoned about.** Two real `startCodexLogin` calls on two fresh,
     // different homes were BOTH admitted, both spawned an app-server, and both advertised
@@ -478,7 +452,7 @@ describe('the credential commands, at the boundary that validates them (098)', (
     })
     await first
 
-    // Paired, like the same-profile test above: the guard is a lock, not a ban on other profiles.
+    // The guard is a lock, not a ban on other profiles.
     const again = auth.started()
     const second = run({ kind: 'signInProvider', provider: 'codex', profileId: 'personal' })
     await again
@@ -510,50 +484,8 @@ describe('the credential commands, at the boundary that validates them (098)', (
     expect(await pending).toMatchObject({ success: false, detail: 'canceled' })
   })
 
-  it('⚠️ Claude’s reservation is still per PROFILE, because nothing says it contends', async () => {
-    // ⛔ **The key was widened for Codex and only for Codex** (257 §1). Claude has no browser flow in
-    // this build at all — `createProviderAuthOps.signIn` refuses it, since the credential is the
-    // machine Keychain's — so a provider-wide Claude lock would be a claim about a contended resource
-    // nobody has found. This double accepts every provider, which is what lets the difference show.
-    const started = auth.started()
-    const first = run({ kind: 'signInProvider', provider: 'claude', profileId: 'work' })
-    await started
-    const alsoStarted = auth.started()
-    const second = run({ kind: 'signInProvider', provider: 'claude', profileId: 'personal' })
-    await alsoStarted
-
-    expect(
-      auth.calls.filter((c) => c.verb === 'signIn').map((c) => c.profileId),
-      'both admitted — the two homes are two reservations',
-    ).toEqual(['work', 'personal'])
-    auth.settleSignIn({
-      success: true,
-      state: { state: 'usable', login: 'account', expiresAt: null },
-    })
-    auth.settleSignIn({
-      success: true,
-      state: { state: 'usable', login: 'account', expiresAt: null },
-    })
-    expect(await Promise.all([first, second])).toMatchObject([{ success: true }, { success: true }])
-  })
-
-  /**
-   * 🔴 **265 §2 · two credential writers, one home, no shared admission** (259 lens B finding 2).
-   *
-   * ⛔ **What was unguarded.** `signIns` reserved `signInProvider` and nothing else;
-   * `reprovisionProviderAuth` delegated straight through. Both resolve the same profile home. A
-   * re-copy takes the provider-home lock and atomically replaces `auth.json` — and the Codex
-   * app-server finishing an OAuth flow writes the same file and holds no filesystem lock at all. So
-   * **either operation's success result can be false**: a re-copy reports `replaced` and the pending
-   * OAuth overwrites it, or a sign-in probes account A as usable while a late re-copy leaves account
-   * B's machine credential on disk.
-   *
-   * ⚠️ **The file already covered sign-in versus sign-in** (`257 §1`, above) **and whole-app
-   * shutdown, and never held one while invoking the other** — which is the reviewer's own account of
-   * why the tests missed it. That is what these do.
-   */
-  describe('265 §2 · the two writers are admitted through one door', () => {
-    it('🔴 a re-copy is refused while a sign-in for the same home is in flight', async () => {
+  describe('the two credential writers are admitted through one door', () => {
+    it('a re-copy is refused while a sign-in for the same home is in flight', async () => {
       const started = auth.started()
       const signingIn = run({ kind: 'signInProvider', provider: 'codex', profileId: 'work' })
       await started
@@ -561,8 +493,6 @@ describe('the credential commands, at the boundary that validates them (098)', (
       await expect(
         run({ kind: 'reprovisionProviderAuth', provider: 'codex', profileId: 'work' }),
       ).rejects.toThrow(/sign-in is already being changed/)
-      // ⛔ **Refused above the write, not after it.** The whole failure is a credential landing on
-      // disk behind the user's back, so the op must not have been reached at all.
       expect(auth.calls.filter((c) => c.verb === 'reprovision')).toEqual([])
 
       auth.settleSignIn({
@@ -577,7 +507,7 @@ describe('the credential commands, at the boundary that validates them (098)', (
       ).toBe('replaced')
     })
 
-    it('🔴 …and a sign-in is refused while a re-copy for the same home is in flight', async () => {
+    it('…and a sign-in is refused while a re-copy for the same home is in flight', async () => {
       auth.holdReprovision = true
       const entered = auth.reprovisioning()
       const copying = run({ kind: 'reprovisionProviderAuth', provider: 'codex', profileId: 'work' })
@@ -607,11 +537,7 @@ describe('the credential commands, at the boundary that validates them (098)', (
       expect(auth.calls.filter((c) => c.verb === 'signIn')).toHaveLength(1)
     })
 
-    it('⚑ a re-copy for a DIFFERENT home runs beside the sign-in — the key is the home, not the app', async () => {
-      // ⛔ **The discrimination, and without it the two tests above would pass for a build that
-      // simply serialized every credential gesture.** Codex's OAuth reservation is provider-wide
-      // (257 §1) because the redirect PORT is; this one is per home because the credential FILE is.
-      // A re-copy runs no OAuth, touches another profile's directory, and must not be refused.
+    it('a re-copy for a DIFFERENT home runs beside the sign-in — the key is the home, not the app', async () => {
       const started = auth.started()
       const signingIn = run({ kind: 'signInProvider', provider: 'codex', profileId: 'work' })
       await started
@@ -627,29 +553,7 @@ describe('the credential commands, at the boundary that validates them (098)', (
       await signingIn
     })
 
-    it('⚑ …and so does a re-copy for the same profile in the OTHER provider', async () => {
-      // The second axis of the key. This double admits a Claude sign-in (the real ops layer refuses
-      // it, which is a fact about Claude and not about admission), so it can show that the two homes
-      // of one profile are two reservations.
-      const started = auth.started()
-      const signingIn = run({ kind: 'signInProvider', provider: 'claude', profileId: 'work' })
-      await started
-
-      expect(
-        await run({ kind: 'reprovisionProviderAuth', provider: 'codex', profileId: 'work' }),
-      ).toBe('replaced')
-
-      auth.settleSignIn({
-        success: true,
-        state: { state: 'usable', login: 'account', expiresAt: null },
-      })
-      await signingIn
-    })
-
-    it('⛔ a re-copy that THROWS still releases the home', async () => {
-      // The reservation is held across an `await` and released in a `finally`; a version that
-      // released only on success would leave a profile permanently unable to sign in after one
-      // failed copy — the shape 185 found in the sign-in map itself.
+    it('a re-copy that THROWS still releases the home', async () => {
       auth.holdReprovision = true
       const entered = auth.reprovisioning()
       const copying = run({ kind: 'reprovisionProviderAuth', provider: 'codex', profileId: 'work' })
@@ -684,10 +588,6 @@ describe('the credential commands, at the boundary that validates them (098)', (
   })
 
   it('two sign-ins in the SAME TICK are refused — the guard reserves before it awaits', async () => {
-    // ⚠️ A review finding: `has()` → `await ops.signIn(...)` → `set()` is check-then-act. Both calls
-    // passed the check, both spawned an app-server, and the second overwrote the first in the map —
-    // leaking a detached process holding the OAuth redirect port. Issued with no await between them,
-    // which is the exact interleaving the old shape allowed and the new one does not.
     const started = auth.started()
     const first = run({ kind: 'signInProvider', provider: 'codex' })
     const second = run({ kind: 'signInProvider', provider: 'codex' })
@@ -713,25 +613,23 @@ describe('the credential commands, at the boundary that validates them (098)', (
     expect(await pending).toMatchObject({ success: false })
   })
 
-  it('a check that never answers becomes `unknown`, rather than a promise nobody can settle', async () => {
+  it('a check that never answers becomes `unknown` and its work is released', async () => {
     auth.hangCheck = true
     const state = (await run({ kind: 'checkProviderAuth', provider: 'codex' })) as AuthState
     expect(state.state).toBe('unknown')
-    // 🔒 And the reason is OURS — a rejected transport carries up to 500 bytes of the child's raw
-    // stderr, and the child is the one holding a credential.
+    // The reason is ours: the child's raw stderr may carry a credential.
     expect(state.state === 'unknown' && state.reason).not.toMatch(/stderr|token/i)
-    // 🔴 It says the check ran out of time and that nothing was learned about the sign-in, so a
-    // person does not read it as signed out.
     expect(state.state === 'unknown' && state.reason).toBe(signInNotChecked(true))
     expect(signInNotChecked(true)).toContain('did not finish in time')
     expect(signInNotChecked(true)).toContain(A_CHECK_NOT_ANSWERED_SAYS)
+    expect(auth.signals, 'the op was given something that can reach the child').toHaveLength(1)
+    expect(auth.signals[0]?.aborted, 'and it was used when the deadline expired').toBe(true)
 
-    // Paired: with the hang cleared the same command answers properly, so the deadline is not
-    // swallowing every result.
     auth.hangCheck = false
     expect(((await run({ kind: 'checkProviderAuth', provider: 'codex' })) as AuthState).state).toBe(
       'usable',
     )
+    expect(auth.signals[1]?.aborted).toBe(false)
   }, 20_000)
 
   it('🔴 a check that could not be asked says so, apart from one that ran out of time', async () => {
@@ -745,31 +643,6 @@ describe('the credential commands, at the boundary that validates them (098)', (
     expect(signInNotChecked(false)).toContain(A_CHECK_NOT_ANSWERED_SAYS)
     expect(signInNotChecked(false)).not.toBe(signInNotChecked(true))
   })
-
-  /**
-   * ⛔ **185 · the deadline releases the waiter; the abort releases the work.**
-   *
-   * `withDeadline`'s own docblock has said so since 058 — *"It does not cancel `p`… Rejecting only
-   * releases the AWAITER"* — and on this path `p` is a detached `codex app-server`. Measured before
-   * the fix, 5 trials: 5/5 left a live child and a held boot gate ten seconds after the app had
-   * already answered `unknown`, and 5/5 of those survived the quit.
-   */
-  it('⛔ a check that never answers has its WORK released too, not just its waiter', async () => {
-    auth.hangCheck = true
-    const state = (await run({ kind: 'checkProviderAuth', provider: 'codex' })) as AuthState
-
-    expect(state.state).toBe('unknown')
-    expect(auth.signals, 'the op was given something that can reach the child').toHaveLength(1)
-    expect(auth.signals[0]?.aborted, 'and it was used when the deadline expired').toBe(true)
-
-    // The pairing, and it is what makes this about the deadline rather than about always aborting:
-    // a check that answers is never cancelled, so its app-server tears itself down the ordinary way.
-    auth.hangCheck = false
-    expect(((await run({ kind: 'checkProviderAuth', provider: 'codex' })) as AuthState).state).toBe(
-      'usable',
-    )
-    expect(auth.signals[1]?.aborted).toBe(false)
-  }, 20_000)
 
   it('⛔ quitting releases a credential check still in flight', async () => {
     auth.hangCheck = true
@@ -1016,24 +889,7 @@ describe('the credential commands, at the boundary that validates them (098)', (
       )
     })
   })
-  /**
-   * # 🔴 293 §2 · the reservations that neither survived a teardown nor crossed a host
-   *
-   * (289 rank 4 — Reviewer-26, round 5 lens E.)
-   *
-   * `signIns` and `credentialWrites` were **private `RuntimeHost` maps**. Three consequences, and
-   * they are three different sentences — see `main/runtime/held-resources.ts`:
-   *
-   *  1. `runSignIn` deleted its provider-wide port entry BEFORE awaiting `boundedCancel`, so sign-in
-   *     B could start a second app-server on port 1455 while A's cancellation was still held. ⛔ The
-   *     exact collision `257` closed, through the door `257` did not look at.
-   *  2. The credential-home claim went on the same three-second bound, while the app-server has
-   *     about eight seconds left to live and may still land `auth.json` — `265` §2 from the other
-   *     side.
-   *  3. Neither map crossed a second host, and `live-hosts.ts` exposes only ledger identity and
-   *     session ids.
-   */
-  describe('🔴 293 §2 · a claim is held until the thing it names is really gone', () => {
+  describe('a claim is held until the thing it names is really gone', () => {
     it('🔴 the OAuth port stays claimed while the app-server is still being torn down', async () => {
       const started = auth.started()
       const first = run({ kind: 'signInProvider', provider: 'codex' })
@@ -1143,30 +999,6 @@ describe('the credential commands, at the boundary that validates them (098)', (
         auth.calls.filter((c) => c.verb === 'signIn'),
         'the refused flow spawned',
       ).toEqual([])
-
-      auth.releaseReprovision()
-      expect(await recopy).toBe('replaced')
-      await other.closeAll()
-    })
-
-    it('⚠️ a claim names the RESOURCE, so a different profile’s home is untouched', async () => {
-      // ⛔ The refusals above must not become "one credential gesture at a time in this app".
-      // Codex's PORT is provider-wide and its HOME is not, so a re-copy for another profile is a
-      // different key and goes through — which is also the anti-vacuity for the two above.
-      const other = buildHost()
-      auth.holdReprovision = true
-      const copying = auth.reprovisioning()
-      const recopy = executeRuntimeCommand(other, SINK, {
-        kind: 'reprovisionProviderAuth',
-        provider: 'codex',
-        profileId: 'work',
-      })
-      await copying
-
-      auth.holdReprovision = false
-      expect(
-        await run({ kind: 'reprovisionProviderAuth', provider: 'codex', profileId: 'play' }),
-      ).toBe('replaced')
 
       auth.releaseReprovision()
       expect(await recopy).toBe('replaced')

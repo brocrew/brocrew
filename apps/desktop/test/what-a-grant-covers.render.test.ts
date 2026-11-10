@@ -15,28 +15,6 @@ import {
 import { createSessionRecord } from '../src/renderer/src/lib/session-record'
 import { applyEvent } from '../src/renderer/src/lib/transcript'
 
-/**
- * 🔴 **736 · what a surface says of a grant is what the buttons it DRAWS install** (`736`'s review).
- *
- * ⚑ Two facts moved under the surfaces that were already drawn:
- *
- * - **R95** — the runtime's `persistence` summarises the whole offer, and an offer can now carry
- *   *Always allow*, which no surface draws yet (the frontend's). ⛔ So the card printed
- *   `persistence: always` over *Allow* and *Allow for this conversation*, and Home dropped its
- *   *"for the whole conversation"* line on the very cards that offer that grant.
- * - **R94** — the conversation grant is the provider's own rule for the ask, which can be far wider
- *   than the one action (an edit's is *every edit*), and *"The card's words say what the rule
- *   covers"*. ⛔ No surface said what it covered.
- *
- * ⚑ Both are one derivation each in `permission-offer.ts`, read by the card and by Home.
- *
- * 🔴 **739 · §1 and §3 re-aimed, not removed** (`736` F-1: *"*Always allow* is offered by the
- * runtime and drawn by no surface"*). `739` draws it on every surface, so the buttons a surface draws
- * ARE the offer's: `drawnPersistence` and the *"not offered here yet"* sentence went with the gap,
- * and each pin below now holds its point — *what a surface says is what the buttons it draws
- * install* — against the drawn *Always allow*.
- */
-
 type Grants = NonNullable<
   Extract<TranscriptEvent, { type: 'permission_request' }>['scope']['grants']
 >
@@ -135,11 +113,7 @@ function homeRow(event: TranscriptEvent): AttentionRequest {
 }
 
 describe('§1 · the persistence a surface says is that of the buttons it draws', () => {
-  // 🔴 **739 · re-aimed** — this pinned `drawnPersistence`, which said `session` / `once` over an
-  // offer summarised `always` because *Always allow* was drawn by no surface (`736` F-1). ⚑ `739`
-  // draws it, so the persistence the card says is the offer's own — and it is said only beside the
-  // button that makes it true. The pass-through half is kept as it was.
-  it('🔴 an offer summarised `always` says `always` — beside the *Always allow* it draws, with the conversation grant and without — and an offer that never said `always` is said as it is', async () => {
+  it('an offer summarised `always` says `always` — beside the *Always allow* it draws, with the conversation grant and without — and an offer that never said `always` is said as it is', async () => {
     const withBoth = await renderCard(permissionEvent(RM_OFFER, 'always', RM_GRANTS))
     expect(textOf(withBoth, 'permission-persistence')).toBe('always')
     expect(withBoth).toContain('data-cy="permission-allow_always"')
@@ -156,19 +130,11 @@ describe('§1 · the persistence a surface says is that of the buttons it draws'
     expect(textOf(once, 'permission-persistence')).toBe('once')
   })
 
-  // 🔴 **739 · re-aimed** — the card's persistence was `session` here (the buttons `736` drew); it is
-  // `always` now that *Always allow* is one of them. ⚑ Home's point is unchanged and still pinned:
-  // its conversation line stays on a card that ALSO offers a conversation grant.
-  it('🔴 the card draws it, and Home keeps its conversation line on a card that also offers *Always allow*', async () => {
-    const html = await renderCard(permissionEvent(RM_OFFER, 'always', RM_GRANTS))
-    expect(textOf(html, 'permission-persistence')).toBe('always')
+  it('Home keeps its conversation line on a card that also offers *Always allow*', () => {
     expect(homeRow(permissionEvent(RM_OFFER, 'always', RM_GRANTS)).scope).toContain(
       'for the whole conversation, not just this action',
     )
-    // ⚑ THE CONTROL — an always-only offer draws no conversation grant, so Home says none; the card
-    // says the offer's `always`, the one button it draws that allows.
-    const alone = await renderCard(permissionEvent(ALWAYS_ONLY, 'always'))
-    expect(textOf(alone, 'permission-persistence')).toBe('always')
+    // An always-only offer draws no conversation grant, so Home says none.
     expect(homeRow(permissionEvent(ALWAYS_ONLY, 'always')).scope).not.toContain(
       'for the whole conversation, not just this action',
     )

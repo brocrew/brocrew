@@ -24,30 +24,10 @@ import {
   fixtureProviderConfig,
 } from './lib/host-fixture'
 
-/**
- * # 🔴 673 · what a wake still says wrong — `663`'s F1 and F6, measured on one host
- *
- * ⚑ **D-017 (commit 3) removed `resume_agent`**: a message starts a stopped conversation (R1). ⚑ So
- * "the wake" below is the parent's own message that starts the child.
- *
- *  - **§1 · F1** — right after a reopen, before any turn, a parent's `list_tasks` said
- *    `stalled_because: conversation_ended` beside `given_to_is: idle` on Claude's shape: `648`'s
- *    unwind fired only on a row the PROVIDER writes, and Claude writes none until its first turn.
- *    ⚑ **D-016c** — a stop changes nothing about a piece, so there is no ending to unwind: the work
- *    reads its turn's own cause through the quit and the reopen, on either shape, before any row
- *    the provider writes. ⛔ §1.1, the parent's wake before any turn, went with `resume_agent`: a
- *    parent's start always carries its message's turn now.
- *  - **§2 · F8** — ⚑ **D-016c · gone with its subject**: what the app told a parent about its own
- *    wake of a child it had been told had stopped — the `its-own-wake` receipt, the correction
- *    *"that conversation was started again"*, and R32's taking back of a stop notice its wake made
- *    false. A stop and a start tell nobody anything now, so a waker is told nothing to correct.
- *  - **§3 · F6** — what the parent's message answers when the provider's resume fails on a sign-in,
- *    and when it fails on a thread the provider no longer has.
- */
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-describe('673 · what a wake still says wrong', () => {
+describe('what a wake still says wrong', () => {
   let userData: string
   let root: string
   let db: AppDatabase
@@ -198,14 +178,7 @@ describe('673 · what a wake still says wrong', () => {
     ['the Fake', false],
     ['Claude', true],
   ] as const)('§1 · F1 on %s’s shape', (_shape, silent) => {
-    /**
-     * ⛔ **§1.1 retired with `resume_agent` (D-017, commit 3).** It measured the unwind after the
-     * PARENT's wake, before any turn; a parent's start is its message now, and the turn that message
-     * opens follows it at once, so an agent's start with no turn is gone. ⚑ §1.2, a person's Reopen
-     * before any turn, is the subject on Claude's shape, and the Fake's is its control. ⚑ **D-016c** —
-     * the quit wrote no cause over the turn's, so nothing waits on a provider row to put it back.
-     */
-    it('§1.2 reopened by a person, before any turn: the same', async () => {
+    it('reopened by a person after a quit, before any turn: the work still reads its turn’s own cause', async () => {
       const { pm, worker, piece } = await aPmAndItsIdleWorker()
       await relaunch()
       gate.silentUntilItsFirstTurn = silent
@@ -218,16 +191,6 @@ describe('673 · what a wake still says wrong', () => {
       })
     })
   })
-
-  // ───────────────────────────────────────────────────────────────────────────────
-  // §2 · F8 — ⚑ D-016c: gone with its subject. It measured what the app told a parent about its own
-  // wake of a child it had been told had stopped: the `its-own-wake` / `set-right` receipts, the
-  // correction *"that conversation was started again"*, and R32's taking back of the stop notices
-  // its wake made false (`wokenBy`, `retractWhatItsWakeMadeFalse`, `setRightANoticeAReopenMadeFalse`).
-  // A stop, a reopen and a start tell nobody anything now, and a giver is told once, when its work
-  // stalls. A first message joining a start in flight is
-  // `a-first-message-starts-it-in-one-act.test.ts`'.
-  // ───────────────────────────────────────────────────────────────────────────────
 
   // ───────────────────────────────────────────────────────────────────────────────
   // §3 · F6 — the two things Codex's resume can now say, as a wake reads them
@@ -311,17 +274,7 @@ describe('673 · what a wake still says wrong', () => {
       expect(refused.detail).toEqual({ agent: worker, because: 'the-provider-could-not-resume-it' })
     })
 
-    /**
-     * 🔴 **697 · `673` F-6 — the error the Codex ADAPTER makes, not one this test wrote.** §3.1 and
-     * §3.2 hand the wake errors shaped by hand; this one is `CodexRuntime.resume`'s own, for a
-     * transport that could not be spawned. ⛔ On `main` it left as the factory's bare `Error`, the
-     * wake's classifier knew nothing of it, and `resume_agent` threw where Claude's adapter — for the
-     * same failure — answered *could not be resumed*.
-     *
-     * ⚠️ **705 · R39 — for a failure a person has to fix.** The error here carries no errno code, so
-     * it reads as one; a spawn the machine ran short for (`EMFILE`, `EAGAIN`, …) answers the retryable
-     * `that-conversation-could-not-be-woken-just-now` (`a-shortage-that-clears-by-itself.test.ts`).
-     */
+    /** The error the Codex adapter itself makes for a transport it could not spawn. */
     it('§3.3 a Codex app-server that could not be spawned, for no shortage, is could-not-be-resumed, as on Claude', async () => {
       const { pm, worker } = await aWorkerOver()
       const produced = await new CodexRuntime(() => {

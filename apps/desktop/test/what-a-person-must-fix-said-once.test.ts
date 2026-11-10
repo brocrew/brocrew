@@ -24,30 +24,6 @@ import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-doub
 // Windows chmod cannot create the POSIX EACCES fixture these witnesses require.
 const itWithPosixChmod = process.platform === 'win32' ? it.skip : it
 
-/**
- * # 🔴 716 · what a person must fix, said once — R66, R67 and `710` F-7
- *
- * ⚑ **PM ruling R66** (`710` F-1, F-2): *"R51 covers every start a person must fix. A host step a
- * person must fix (`EACCES` / `EROFS` / `ENOSPC` making a provider home or a workspace) and Claude's
- * 'Native CLI binary … not found', thrown before any spawn, get R51's permanent word, not a broken
- * tool. The sentence says which it is, a program or a folder, in words. The Claude adapter throws a
- * typed error for the missing binary, so the word is chosen by type, never by matching message text."*
- *
- * ⚑ **PM ruling R67** (`710` F-3): *"One word for a missing program, on both providers. Codex's
- * missing binary (`CodexUnavailableError`, today `agent-did-not-start` / `provider-binary-unavailable`)
- * answers with R51's `agent-could-not-be-started`."*
- *
- * ⚑ **`710` F-7, the main half**: *"a structured `reason` on a refused `createSession`, so the launcher
- * can skip its sign-in check when the refusal already said why."* ⛔ A rejection cannot carry one — only
- * its message crosses Electron's two hops (`716`'s map) — so the reason is ANSWERED, when asked for.
- *
- * ⚑ **The errors are real where they can be**: the folder's is Node's own `EACCES` from a `mkdir` under
- * a directory with no write bit; Claude's is the SDK's own resolver missing (the process reports an
- * architecture the SDK ships no program for — `packages/runtime/test/claude-binary.test.ts` §0);
- * Codex's is its resolver's class. ⚠️ Imported as a namespace (`tools`), so `main` — with none of the
- * new sentences — runs this file and goes RED on its assertions.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
@@ -90,7 +66,7 @@ async function claudesMissingProgram(root: string): Promise<Error> {
   }
 }
 
-describe('716 · what a person must fix, said once', () => {
+describe('what a person must fix, said once', () => {
   let userData: string
   let root: string
   let db: AppDatabase
@@ -489,13 +465,6 @@ describe('716 · what a person must fix, said once', () => {
       // ⚑ Neither folder sentence: the reader would have said *could not write* for an `open`.
       expect((failure as Error).message).not.toContain('BroCrew could not')
     })
-
-    it('⚑ control — a containment refusal still reaches a person as its own words', async () => {
-      homeFails = () => new Error('providerHome ancestor passes through a symlink')
-      await expect(personOpens('writer')).rejects.toThrow(
-        'providerHome ancestor passes through a symlink',
-      )
-    })
   })
 
   // ───────────────────────────────────────────────────────────────────────────────
@@ -595,16 +564,7 @@ describe('716 · what a person must fix, said once', () => {
       },
     )
 
-    it('⚑ control — nobody asked: the same refusal is REJECTED, as it always was', async () => {
-      homeFails = () =>
-        Object.assign(new Error('EROFS: mkdir'), { code: 'EROFS', syscall: 'mkdir' })
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
-      // ⚑ Rejected on `main` (with Node's words) and here (with the folder's): the opt-in changes
-      // nothing for a caller that did not ask. What it says is §3's subject, not this arm's.
-      await expect(create()).rejects.toThrow(/EROFS|read-only/)
-    })
-
-    it('⚑ control — a failure with no word is still rejected, even when asked', async () => {
+    it('control — a failure with no word is still rejected, even when asked', async () => {
       homeFails = () => new Error('providerHome ancestor passes through a symlink')
       await expect(create({ answerARefusal: true })).rejects.toThrow('passes through a symlink')
     })

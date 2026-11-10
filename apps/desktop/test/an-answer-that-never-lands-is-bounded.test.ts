@@ -20,39 +20,10 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-/**
- * 🔴 **742 · `739` F-6 — a person's answer the provider never takes is BOUNDED.**
- *
- * ⛔ **The defect**: `respondPermission` and `respondUserInput` awaited the adapter's answer with no
- * bound. An adapter whose answer never settles held the person's IPC for good — the card dark, and
- * Home saying *"answer sent — waiting for the conversation to settle"* with nothing ever following
- * (standing rule 8.4). ⚑ Now the door waits `interruptWaitMs` — `interrupt`'s own bound — and then
- * answers `unacknowledged`, releasing the waiter and not the work: an answer that lands later is
- * recorded then.
- *
- * ⚠️ **Neither adapter on `main` can hang here**: both spend the request and write the answer
- * synchronously. So the RED is by a provider double whose answer is PARKED — the brief's *"transport
- * that never answers"* — which the handle's contract (`Promise<void>`) allows. The control is the
- * same double answering at once, which is every provider on `main`.
- *
- * | § | the answer | what the door must do |
- * |---|---|---|
- * | **1** | a decision the provider never takes | answer `unacknowledged` after the bound, record nothing |
- * | **2** | …and then takes, late | record it then, and the turn goes on |
- * | **3** | …and then takes, after the conversation was closed | record nothing on a life put away |
- * | **4** | …and then refuses, late | log it — never an unhandled rejection, never a row |
- * | **5** | a question's answer: never taken, taken late, taken after a close, a fault late | the same as §1–§4 |
- * | **6** ⚑ control | taken at once, refused at once (rejected or thrown), a fault at once | exactly as on `main` |
- * | **7** | the wire | `unacknowledged` and `waitedMs` reach the window |
- *
- * ⚑ **What a person sees at the limit (rule 8.4)**: the door answers, so nothing holds the window;
- * the card is the provider's question still, and the words for *"not acknowledged"* are `743`'s.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-/** ⚑ Short, so the test measures the bound and not the clock; `main` has no bound at all. */
+/** Short, so the test measures the bound and not the clock. */
 const WAIT_MS = 40
 /**
  * ⚑ **How long a door may take to answer** — well past `WAIT_MS`, and well short of the host's
@@ -163,7 +134,7 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
 
 const letItSettle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 60))
 
-describe('742 · an answer that never lands is bounded (739 F-6)', () => {
+describe('an answer that never lands is bounded', () => {
   let userData: string
   let root: string
   let db: AppDatabase
@@ -255,23 +226,12 @@ describe('742 · an answer that never lands is bounded (739 F-6)', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§1–§4 · a decision the provider does not take', () => {
-    it('🔴 §1 · the door answers `unacknowledged` after the bound, and records nothing', async () => {
+    it('the door answers `unacknowledged` after the bound; a decision taken LATE is recorded then', async () => {
       const { id, card, handle } = await aCard()
       const parked = park(handle, 'respondPermission')
       const door = host.respondPermission(id, card, { outcome: 'allow' }, window)
-      // ⛔ **On `main` this is `pending` for good** — the host awaited an answer that never comes.
       expect(await within(SOON_MS, door)).toEqual({ state: 'resolved', value: UNACKNOWLEDGED })
       expect(parked.calls).toBe(1)
-      // ⚑ **Nothing is recorded as taken** — standing rule 18: the ledger says an answer was taken
-      // only when it was.
-      expect(decisions(id)).toEqual([])
-    })
-
-    it('🔴 §2 · a decision the provider takes LATE is recorded then, and the turn goes on', async () => {
-      const { id, card, handle } = await aCard()
-      const parked = park(handle, 'respondPermission')
-      const door = host.respondPermission(id, card, { outcome: 'allow' }, window)
-      expect(await within(SOON_MS, door)).toEqual({ state: 'resolved', value: UNACKNOWLEDGED })
       expect(decisions(id)).toEqual([])
       // ⚑ **The waiter was released, not the work**: the answer lands, and the row that settles
       // the card is written when it does.
@@ -331,21 +291,12 @@ describe('742 · an answer that never lands is bounded (739 F-6)', () => {
   describe('§5 · an answer to a question the provider does not take', () => {
     const THIS = { kind: 'answer', answers: { q0: 'this' } } as const
 
-    it('🔴 §5.1 · the door answers `unacknowledged` after the bound, and records nothing', async () => {
+    it('the door answers `unacknowledged` after the bound; an answer taken LATE is recorded then', async () => {
       const { id, card, handle } = await aQuestion()
       const parked = park(handle, 'respondUserInput')
       const door = host.respondUserInput(id, card, THIS, window)
-      // ⛔ **On `main` this is `pending` for good**, as §1's is.
       expect(await within(SOON_MS, door)).toEqual({ state: 'resolved', value: UNACKNOWLEDGED })
-      expect(parked.calls).toBe(1)
       expect(decisions(id)).toEqual([])
-    })
-
-    it('🔴 §5.2 · an answer the provider takes LATE is recorded then', async () => {
-      const { id, card, handle } = await aQuestion()
-      const parked = park(handle, 'respondUserInput')
-      const door = host.respondUserInput(id, card, THIS, window)
-      expect(await within(SOON_MS, door)).toEqual({ state: 'resolved', value: UNACKNOWLEDGED })
       await parked.land()
       await letItSettle()
       expect(decisions(id)).toEqual([

@@ -1,3 +1,4 @@
+import { providerDescriptor } from '@brobot2/shared'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -7,7 +8,6 @@ import {
   listProviderConnections,
   resolveProviderConnection,
 } from '../src/main/db/provider-connections'
-import { providerDescriptor } from '@brobot2/shared'
 
 let db: AppDatabase
 beforeEach(() => {

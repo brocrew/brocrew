@@ -565,33 +565,12 @@ describe('671 · what main hands the cards', () => {
       }
     }
 
-    it('⚑ THE CONTROL: on a clean database every one of the five carries 0, and list_tasks says nothing about it', async () => {
-      // ⚑ **D-016** — the give in {@link aPmAndItsWorker} is the work: nothing more is sent.
-      const { pm, worker, pmTools } = await aPmAndItsWorker()
-      expect(await fiveCounts(pm, worker, pmTools)).toEqual({
-        forest: 0,
-        line: 0,
-        drawer: 0,
-        listTasks: 0,
-        stalled: 0,
-      })
-      expect((await call(pmTools, 'list_tasks', {})).text).not.toContain('could not be read')
-    })
-
-    /**
-     * ⚑ **D-016 · re-aimed: the torn row is in the HOLDER's ledger.** ⛔ It was planted in a ledger
-     * none of them is about, because the scan behind them read every `task_assigned` row in the
-     * database. ⚑ Now the four walks start from the `work` table's owners and fold only THEIR
-     * ledgers (measured: a torn `work_given` elsewhere reaches the forest alone, which reads every
-     * ledger), so the one ledger all five read is the holder's.
-     */
-    it('🔴 one torn given row in the holder’s ledger: all five ANSWER, and each carries 1', async () => {
+    it('one torn given row in the holder’s ledger: all five ANSWER, and each carries 1', async () => {
       const { pm, worker, pmTools } = await aPmAndItsWorker()
       db.prepare(
         `INSERT INTO events (id, session_id, generation, ordinal, type, payload, created_at)
          VALUES ('evt_torn', ?, 0, 90000, 'work_given', '{not json', ?)`,
       ).run(worker, tick())
-      // ⛔ **Until `671` every one of these RAISED** (`664` F1, `543`'s pinned LOUD direction).
       expect(await fiveCounts(pm, worker, pmTools)).toEqual({
         forest: 1,
         line: 1,

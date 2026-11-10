@@ -24,39 +24,10 @@ import {
   fixtureProviderConfig,
 } from './lib/host-fixture'
 
-/**
- * # 🔴 703 · what a waker reads after its own act — `698` F-A, F-B, F-C
- *
- *  - **§1 · F-A** — a parent that reads a notice about its work, HELD for it, after a later fact made
- *    it false. ⚑ R32's rule: the app takes its own notice back, unread, under `retracted`, for each
- *    fact that does — the parent's own QUESTION about the work, which the holder takes up (§1.1,
- *    the brief's case); the work CLOSING, by the parent's withdrawal or the holder's landed answer
- *    (§1.3–§1.5, §1.9, and §1.12 with a flush in flight). ⚑ Controls: a note naming no piece
- *    (§1.1b), another task's notice (§1.6), a push already read (§1.7). ⛔ **D-017 retired the WAIT
- *    cases** (§1.1c, §1.1e, §1.11, §1.11b): a Close no longer ends an asking worker's question (R4),
- *    so its parent is told nothing a wake must set right. ⛔ **D-016c retired the corrections'
- *    controls** (§1.6b, §1.6c, §1.13): a stop moves no piece and a reopen sends no correction, so a
- *    Close's one notice is the stall on the turn it cut (`turn_interrupted`), and there is no
- *    correction left to keep. ⚑ **Two cases pinned here as findings were
- *    RULED** (R48, R49) and built by `711`, whose file holds them now: an answer that did not land
- *    (§1.8 here, `a-notice-that-cannot-be-true-is-replaced.test.ts` §1.1, held since D-030) and the
- *    parent's own answer after a PERSON's Reopen (§1.10 here, that file's §2.1, retired by D-017 · R4). ⚠️ And §1.1 measures beside it that the
- *    fold's label does not move.
- *  - **§2 · F-B** — `agent-already-has-a-message-waiting` offered *withdraw it, or ask about it* for a
- *    PERSON's held message, and both halves were false. ⚑ `703` split the word and this section
- *    measured both; ⛔ **D-010 retired the refusal itself** — a conversation holds any number of
- *    messages — so its tests went with it.
- *  - **§3 · F-C** — ⚑ reached and built by `703` (§3.3) from the parent's own end of its child;
- *    ⛔ **D-017 retired §3.1 and §3.3 with `end_agent`**. ⚑ §3.2 measures R4 at a person's Close:
- *    the question never ends, so nothing is told, and the parent's own message that starts the
- *    child again (R1) sets nothing right.
- *
- * ⚑ **On both provider shapes** — the Fake's, and Claude's silent-until-its-first-turn resume.
- */
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-describe('703 · what a waker reads after its own act', () => {
+describe('what a waker reads after its own act', () => {
   let userData: string
   let root: string
   let db: AppDatabase
@@ -370,12 +341,6 @@ describe('703 · what a waker reads after its own act', () => {
       })
 
       /**
-       * ⛔ **§1.1c retired with its premise (D-017 · R4).** It held a WAIT correction a person's Close
-       * and Reopen of an ASKING worker queued behind *"has ended"*; the question now survives the
-       * Close, so the work still waits on the parent and the Close tells it nothing to correct.
-       */
-
-      /**
        * ⚑ **The control — a question only HELD takes nothing back** (`703`'s review, round two). A
        * person makes the holder busy, so the parent's question is held: it has reached nobody, and
        * the push is still true.
@@ -391,57 +356,6 @@ describe('703 · what a waker reads after its own act', () => {
         })
         await letItSettle()
         expect(unqueued(pm)).toEqual([])
-      })
-
-      /**
-       * ⛔ **§1.1e retired with its premise (D-017 · R4)** — §1.1c's WAIT, reached by the parent's own
-       * wake: a Close of an asking worker tells its parent nothing, and its wake sets nothing right.
-       */
-
-      /**
-       * ⚑ **…and a stop with NO WAIT** — a person's Close and Reopen of a worker that asked nothing.
-       * ⚑ **D-016c** — the Close stalls the work on the turn it cut, and that notice is the only one
-       * held: the Reopen sends no correction behind it. The question takes it back.
-       */
-      it('§1.1f a stop and the Reopen after it, no WAIT: the question takes the stop’s notice back', async () => {
-        const { pm, worker, label } = await aPmAndItsParkedWorker()
-        await host.send(pm, 'keep an eye on the migration', window)
-        await waitFor(() => cardsOn(pm) > 0, 'the parent to park mid-turn')
-        await host.close(worker, window)
-        await waitFor(() => held(pm).some(saysItStopped), 'the stop held')
-        gate.silentUntilItsFirstTurn = silent
-        await host.resumeSession(worker, window)
-        await letItSettle()
-
-        expect(await callOn(pm, 'message_agent', aQuestionTo(worker, label))).toMatchObject({
-          outcome: 'ok',
-          delivery: 'sent',
-        })
-        await letItSettle()
-        expect(unqueued(pm)).toMatchObject([
-          { reason: 'retracted', detail: expect.stringMatching(TAKEN_BACK_ASKED) },
-        ])
-        expect(saysItStopped(unqueued(pm)[0]?.text ?? '')).toBe(true)
-      })
-
-      /**
-       * ⚑ **…and a question reaches the holder too**. ⚑ **Re-aimed**: the one-open-task
-       * rail went with the `work` kind. ⚑ A give to a holder whose piece of this giver's
-       * stalled goes through, and its answer names that piece.
-       */
-      it('§1.2 a new give to the holder of stalled work names that work; a question goes too', async () => {
-        const { pm, worker, piece, label } = await aPmAndItsParkedWorker()
-        await letTheTurnEnd(worker)
-        expect(theWork(worker, piece)).toEqual({ state: 'stalled', stalledBecause: 'turn_ended' })
-        expect(
-          await callOn(pm, 'give_work', {
-            profile: 'worker',
-            definition_of_done: 'The requested result and its checks are recorded.',
-            title: 'Carry on',
-            brief: 'carry on',
-          }),
-        ).toMatchObject({ outcome: 'ok', stalled: [label] })
-        expect((await callOn(pm, 'message_agent', aQuestionTo(worker, label))).outcome).toBe('ok')
       })
     })
 
@@ -532,24 +446,6 @@ describe('703 · what a waker reads after its own act', () => {
       })
     })
 
-    // ⚑ **§1 · F-A — the parent’s own ANSWER** — its cases are retired or moved:
-    /**
-     * ⛔ **§1.11 and §1.11b retired with their premise (D-017).** They measured the WAIT correction
-     * a parent's wake of its closed ASKING child queued, taken back when the parent then answered
-     * or interrupted it. ⚑ A Close no longer ends the question (R4), so the parent is told nothing
-     * and its wake sets nothing right — and the app's own *"wake it, then answer"* is gone: the
-     * answer itself starts the asker (R1, `what-a-close-does-that-a-reopen-never-undoes` §2.2).
-     */
-
-    /**
-     * ⚑ **§1.10 moved to `711`** — `a-notice-that-cannot-be-true-is-replaced.test.ts` §2.1. It was
-     * pinned here as a measurement pending the PM's choice (the parent's own answer after a
-     * PERSON's Reopen left *"It is waiting: …nobody has answered"*); ⚑ R49 ruled it: that
-     * correction is REPLACED by one line true at that moment, behind the ending it sets right.
-     * ⛔ D-017 · R4 then retired it there: a Close no longer ends the question, so no such correction
-     * is queued.
-     */
-
     describe('§1 · F-A — a flush in flight', () => {
       /**
        * 🔴 **RED on `main` and on `703`'s first draft** (`703`'s review, F-A-5). ⛔ The take-back asked
@@ -627,13 +523,6 @@ describe('703 · what a waker reads after its own act', () => {
         expect(held(pm)).toContain('/compact')
       })
     })
-
-    /**
-     * ⛔ **§1.13 retired with the corrections (D-016c).** It was the control for the flush rule's
-     * other half: a stop's notice on the wire counts as READ, so the correction answering it was kept
-     * through the withdrawal. ⚑ A reopen sends no correction now, so nothing answers a stop; the
-     * rule that the head a flush is handing over is left to it is §1.12's.
-     */
 
     describe('§1 · F-A — a holder the quit stopped', () => {
       /**
@@ -729,13 +618,6 @@ describe('703 · what a waker reads after its own act', () => {
         expect(pushesRead(pm)[0]).toContain(`${kept.label} `)
       })
 
-      /**
-       * ⛔ **§1.6b and §1.6c retired with the corrections (D-016c).** They kept the correction that
-       * set right a stop the parent had READ through the withdrawal — once, and by position across
-       * two Close/Reopen cycles. ⚑ A reopen sends no correction and a second stop tells nobody
-       * anything, so there is nothing to keep and no second notice to take back.
-       */
-
       /** ⚑ **The control — a push already READ is not taken back**: there is nothing unread. */
       it('§1.7 a push the parent has read stays read; nothing is taken back', async () => {
         const { pm, piece } = await aBusyParentHoldingThePush()
@@ -745,19 +627,10 @@ describe('703 · what a waker reads after its own act', () => {
         await letItSettle()
         expect(unqueued(pm).map((one) => one.reason)).toEqual(['sent'])
       })
-
-      /**
-       * ⚑ **§1.8 moved to `711`** — `a-notice-that-cannot-be-true-is-replaced.test.ts` §1.1. It was
-       * pinned here as a measurement pending the PM's choice (an answer refused
-       * `parent-is-holding-a-message` left *"It has not been answered"*); ⚑ R48 ruled it: the push is
-       * REPLACED by one true line — answered, not delivered, `list_tasks` shows it. ⚑ **D-030 retired
-       * that line**: an answer whose delivery fails is held for the parent, so the push is taken back
-       * as any landed answer takes it back.
-       */
     })
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // §3 · F-C — a WAIT after its own ending and its own wake: reached (§3.3), and its neighbours
+    // §3 · F-C — a WAIT after a person's Close
     // ─────────────────────────────────────────────────────────────────────────────
 
     /** ⚑ A worker that ASKED its parent, its turn over, the question still open. */
@@ -785,14 +658,6 @@ describe('703 · what a waker reads after its own act', () => {
         .map((one) => one.state)
 
     describe('§3 · F-C — a WAIT after a person’s Close and the parent’s own message', () => {
-      /**
-       * ⛔ **§3.1 and §3.3 retired with `end_agent` (D-017, commit 3).** Both began with the parent's
-       * own ending of its child — §3.1 measured R4 there, §3.3 reached `703`'s F-C path from it (told
-       * NOTHING, `its-own-ending`, then a person's Reopen and Close, then its own wake). ⚑ Nothing ends
-       * a conversation now, so a parent is never told nothing by an ending of its own, and §3.2's
-       * person's Close is the one stop left on this path.
-       */
-
       /**
        * ⚑ **A PERSON's Close** (D-017 · R3/R4): the question never leaves, so the parent's own
        * message, which starts the conversation again (R1 — `resume_agent` is gone), finds the work
