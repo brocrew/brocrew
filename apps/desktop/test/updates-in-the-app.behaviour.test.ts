@@ -445,6 +445,7 @@ it('clears crash-left staging files at each start before any download', () => {
   expect(existsSync(partial)).toBe(false)
   expect(fake.downloads).toEqual([])
   expect(fake.checks).toBe(0)
+  mkdirSync(staging, { recursive: true })
   writeFileSync(partial, 'Another fictional interrupted download')
   updates!.stop()
   start()
