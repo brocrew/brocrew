@@ -22,7 +22,12 @@
 // can answer.
 import { spawn, spawnSync } from 'node:child_process'
 import { readStateEntry, SKILL_TREE_NAMES } from './lib/skill-tree-state.mjs'
-import { keepPluginDrainEvidence, sleep, until } from './lib/update-rehearsal-app.mjs'
+import {
+  aCrashAfterTheSavedKey,
+  keepPluginDrainEvidence,
+  sleep,
+  until,
+} from './lib/update-rehearsal-app.mjs'
 import { withMovedFiles } from './lib/moved-state-files.mjs'
 import {
   appendFileSync,
@@ -2109,74 +2114,6 @@ async function theOwedStartOnTheKey(into, owed, { stamped, jobIds, keyWasSealed 
 }
 
 /**
- * Crash recovery keeps a delivered notice delivered on a readable key. With an older sealed key,
- * the owed start still waits: the next launch waits again, with no timer retry or lost notice.
- */
-async function aCrashAfterTheSavedKey(into, claudeConversation, keyWasSealed) {
-  const waits = `${claudeConversation}'s start for its scheduled jobs waits until its saved claude key is saved again or removed`
-  const retried = `could not start ${claudeConversation} for its scheduled jobs, and tries again in`
-  const started = `starting ${claudeConversation} for its scheduled jobs`
-  await launch('candidate-crash', 9343)
-  await bridge('the crash, the saved key')
-  const waited = keyWasSealed
-    ? await until(() => linesOf('candidate-crash', waits).length > 0 || null, 120_000)
-    : null
-  check(
-    keyWasSealed
-      ? waited === true
-      : linesOf('candidate-crash', waits).length === 0 &&
-          linesOf('candidate-crash', started).length === 0,
-    keyWasSealed
-      ? 'the start owed to the Claude conversation waits for the key'
-      : 'the readable key: a later launch neither waits for the key nor starts the delivered job again',
-    { waits, started: linesOf('candidate-crash', started) },
-  )
-  into.atTheCrash = jobWordsIn(claudeConversation)
-  await crash(keyWasSealed ? 'the crash, while the key is awaited' : 'the crash, after delivery')
-
-  await launch('candidate-after-the-crash', 9345)
-  await bridge('after the crash')
-  const waitedAgain = keyWasSealed
-    ? await until(() => linesOf('candidate-after-the-crash', waits).length > 0 || null, 120_000)
-    : null
-  // Past the minute an older build tried again after, to see that nothing does.
-  await sleep(70_000)
-  await quit('after the crash')
-  into.lines = {
-    waitsBefore: linesOf('candidate-crash', waits).length,
-    waitsAfter: linesOf('candidate-after-the-crash', waits).length,
-    startsBefore: linesOf('candidate-crash', started).length,
-    startsAfter: linesOf('candidate-after-the-crash', started).length,
-    retried: [
-      ...linesOf('candidate-crash', retried),
-      ...linesOf('candidate-after-the-crash', retried),
-    ],
-  }
-  check(
-    into.lines.retried.length === 0 &&
-      (keyWasSealed
-        ? waitedAgain === true && into.lines.waitsAfter === 1
-        : into.lines.waitsBefore === 0 &&
-          into.lines.waitsAfter === 0 &&
-          into.lines.startsBefore === 0 &&
-          into.lines.startsAfter === 0),
-    keyWasSealed
-      ? 'after the crash, the next launch read the key once and waited for it again, with no retry on a timer'
-      : 'after the crash, the readable key causes no wait, timed retry or second start for the delivered job',
-    into.lines,
-  )
-  const words = jobWordsIn(claudeConversation)
-  into.afterTheCrash = words
-  check(
-    words.held === 1 && words.said === (keyWasSealed ? 0 : 1) && words.ended.length === 0,
-    keyWasSealed
-      ? 'its words are still held once, unsaid, and nothing ended them'
-      : 'its words were held once and said once before the crash, with no loss or duplicate delivery',
-    words,
-  )
-}
-
-/**
  * How long the candidate's first open waits for each start it owes to be made or refused: starts
  * owed at once go one at a time, some twenty seconds apart, each once its provider has started.
  */
@@ -3183,6 +3120,7 @@ try {
         summary.crash,
         stamped() && claudeDueConversation !== null ? claudeDueConversation : claudeConversation,
         claudeKeyWasSealed,
+        { launch, bridge, linesOf, check, jobWordsIn, crash, quit },
       ),
     )
   }
