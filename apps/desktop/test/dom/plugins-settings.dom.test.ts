@@ -232,10 +232,10 @@ it('a failed retry keeps the approved line and restart hint without raw errors',
 })
 it.each([
   ['owner-window-open', 'If another BroCrew window is open, close it, then try again.'],
-  ['restart-required', 'Restart your computer, then reopen BroCrew.'],
+  ['restart-required', "BroCrew couldn't stop or check the previous plugin processes. Try again."],
   [
     'previous-service-stopping',
-    "The previous plugin service didn't finish stopping. Restart your computer, then open BroCrew again.",
+    "The previous plugin service didn't finish stopping. Try again to check its status.",
   ],
 ] as const)(
   'shows the specific %s remedy without an app-restart contradiction',

@@ -43,19 +43,20 @@ it('retains the failed phase through supervisor wrappers without exposing arbitr
   expect(pluginStartupReason(new Error('fictional secret'), 'connection')).toBe('connection')
 })
 it.each(['blocked', 'draining'] as const)(
-  'projects a typed eligible %s reboot refusal into the computer restart remedy',
+  'keeps a legacy typed %s recovery refusal factual without prescribing a reboot',
   (phase) => {
     const error = new PluginSupervisorError('cleanup-pending', {
       ownerEpoch: randomUUID(),
       diagnostic: { phase, stage: 'recovery', probe: 'no-answer', reason: 'restart-required' },
     })
-    expect(pluginStartupReason(error, 'service-start')).toBe('restart-required')
+    expect(pluginStartupReason(error, 'service-start')).toBe('cleanup-pending')
     expect(pluginUnavailableNotice(pluginStartupReason(error, 'service-start'))).toBe(
-      'Restart your computer, then reopen BroCrew.',
+      'The plugin service is busy or still stopping. Wait a moment, then try again.',
     )
     expect(pluginStartupDiagnostic(error)?.stderr).toContain(`phase=${phase}`)
-    if (process.platform === 'win32')
-      expect(pluginStartupDiagnostic(error)?.stderr).toContain('Start > Power > Restart')
+    expect(pluginStartupDiagnostic(error)?.stderr).toContain('reason=proof-pending')
+    expect(pluginStartupDiagnostic(error)?.stderr).not.toContain('Restart your computer')
+    expect(pluginStartupDiagnostic(error)?.stderr).not.toContain('Start > Power > Restart')
   },
 )
 it.each(['accepting', 'missing', 'unreadable', 'stopped'] as const)(

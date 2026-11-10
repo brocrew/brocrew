@@ -133,7 +133,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
         elapsed = 61_000
         expect(await attempt()).toBe('previous-service-stopping')
         expect(pluginUnavailableNotice('previous-service-stopping')).toBe(
-          "The previous plugin service didn't finish stopping. Restart your computer, then open BroCrew again.",
+          "The previous plugin service didn't finish stopping. Try again to check its status.",
         )
         await writeFile(storage.stop, JSON.stringify({ epoch: randomUUID(), reason: 'released' }), {
           mode: 0o600,

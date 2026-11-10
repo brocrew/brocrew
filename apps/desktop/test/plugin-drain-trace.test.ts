@@ -80,15 +80,16 @@ it('logs actual drain stages and a failed-write errno, then closes after one att
   expect(log).toContain('epoch:')
   expect(log).toContain('Error code=EBUSY: Bearer fictional-secret')
 })
-it('gives a plain Restart remedy in a restart-required phase diagnostic', () => {
+it('records a legacy restart-required phase diagnostic without prescribing a reboot', () => {
   const text = ownerDiagnosticLine({
     phase: 'blocked',
     stage: 'recovery',
     probe: 'no-answer',
     reason: 'restart-required',
   })
-  expect(text).toContain('Restart your computer')
-  if (process.platform === 'win32') expect(text).toContain('Start > Power > Restart')
+  expect(text).toBe('phase=blocked stage=recovery probe=no-answer reason=restart-required')
+  expect(text).not.toContain('Restart your computer')
+  expect(text).not.toContain('Start > Power > Restart')
   expect(text).not.toContain('Shut down')
 })
 it.each(['released', 'lease-expired', 'shutdown', 'drain'] as const)(
