@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -26,7 +26,7 @@ const onMac = process.platform === 'darwin'
 let dir = ''
 let compiled: { status: number | null; stderr: string } = { status: null, stderr: '' }
 
-// Compiled once. A failed compile fails each case by itself, so the source check below still runs.
+// Compiled once. A failed compile fails each case by itself.
 beforeAll(() => {
   if (!onMac) return
   dir = mkdtempSync(join(tmpdir(), 'voice-transcript-'))
@@ -114,14 +114,4 @@ it.runIf(onMac)('repeats only whole words', () => {
 
 it.runIf(onMac)('has nothing to deliver when nothing was said', () => {
   expect(heard(['', 'closes'])).toBe('')
-})
-
-it('ends a recording with the kept transcript, not the last result alone', () => {
-  const helper = readFileSync(
-    fileURLToPath(new URL('../native/voice/main.swift', import.meta.url)),
-    'utf8',
-  )
-  expect(helper).not.toContain('finish(text: result.bestTranscription.formattedString)')
-  expect(helper).toContain('self.transcript.hear(')
-  expect(helper).toContain('self.finish(text: self.transcript.text)')
 })

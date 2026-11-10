@@ -22,66 +22,15 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { WORKSPACE_DIRNAME } from '../src/main/runtime/workspace'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
-/**
- * ⚑ **584 · a LOCAL constant** (`HO-078` §1). ⛔ `PROJECT_MANAGER_PROFILE_ID` named the one other
- * identity this app used to ship, and a fresh install now ships `brobot` and nothing else — so the
- * slug is a name somebody CREATES, which is what this file drives it as.
- */
+/** A name somebody creates: a fresh install ships `brobot` and no other identity. */
 const PROJECT_MANAGER_PROFILE_ID = 'project-manager'
 
 /**
- * 🔴 **424 §A · HO-023 §3, made true: BroBot's own conversation never runs in a project folder.**
- *
- * ## ⛔ The two sentences that could not both be true
- *
- * **HO-023 §3, the PO's ruling:** *"BroBot's session always runs in BroBot's workspace, never a
- * project folder, because BroBot is in no project."*
- *
- * **`420` §0, measured:** *"A front-door conversation runs in the PINNED PROJECT'S FOLDER. The
- * workspace is the fallback."* `runtime-host.ts` took `input.cwd ?? this.projectCwd(projectSlug)`,
- * and a conversation that named neither got whatever a person had typed into the project sheet.
- * ⚑ The ruling held by accident: `0013` seeds the pinned row before a `cwd` column existed and
- * `0016` adds it nullable with no backfill, so only an install where nobody had filled that field
- * agreed with it.
- *
- * ## ⚑ The discriminant, in one sentence
- *
- * **A conversation WITH BroBot inherits no project's folder; every other identity inherits the
- * folder of the project it is placed in.** ⛔ **"BroBot is in no project" is not representable** —
- * `agent_profile.project_id` is `NOT NULL` (`417` §1.5) — so the ruling is implemented as the
- * narrower thing that is true, and §2 below asserts that the BINDING is exactly as it was.
- *
- * ⛔ **It is not keyed on the REQUEST.** *"Nobody named a project"* would be the other candidate and
- * it changes nothing any caller does: `NewConversation.vue` sends `projectSlug` on every launch and
- * every spawn sends a `cwd`. ⚠️ **And it is not keyed on `role`** — standing rule 10 — but on
- * {@link DEFAULT_PROFILE_ID}, which `SEEDED_GRANTS` already calls *"the only fact in this app today
- * that names BroBot"*.
- *
- * ## ⚠️ Where this file is measured
- *
- * ⛔ **Every assertion is taken where the two readings DIVERGE** (standing rule 3): the pinned
- * project HAS a folder throughout §0, so *"BroBot gets the workspace"* and *"everybody gets the
- * project's folder"* give different answers. §1 is the state where they agree, and it is here as
- * the control that §0's difference is the FOLDER rather than the identity.
- *
- * ⚑ **Real host, real SQLite ledger, real migrations, real IPC boundary** — the harness `376`
- * established and `420` used for the characterisation this replaces. The only double is the
+ * Where a conversation runs when it is opened: a launch that names no folder runs in the
+ * workspace, BroBot's or not; a folder a person typed wins; a case variant of BroBot's name is
+ * refused before it reaches anything; and a child of BroBot may start in a folder outside BroBot's
+ * own. Real host, real SQLite ledger, real migrations, real IPC boundary; the only double is the
  * provider.
- *
- * ⚠️ **`420`'s `where-a-front-door-conversation-runs.test.ts` is NOT in this branch.** It lives on
- * `mla/420-launched-without-a-picker`, which is not merged; its §1 keeps passing against this
- * change and its §2 — the characterisation of the defect — goes red, which is what it was written
- * to do. See the response document for the one-line instruction that belongs with the merge.
- *
- * ## ⚑ D-016 · projects went, and their folders with them
- *
- * ⛔ **No project has a folder any more**, so nothing is inherited and the discriminant above is
- * gone: every launch that names no folder runs in the workspace, BroBot's or not. ⚑ What this
- * file still measures is what stayed true without it — the workspace for a launch that names no
- * folder, a folder a person TYPED winning, a case variant of BroBot's slug refused before it
- * reaches anything, and a child of BroBot started in a folder outside BroBot's own. ⚠️ §0's
- * *with a folder on the pinned project*, the binding case, §1's clearing control and §2's
- * *placed in a second project* went: each was about a project's folder.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))

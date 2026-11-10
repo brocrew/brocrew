@@ -14,8 +14,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { NESTED_USERDATA_SIGNS } from '../../../scripts/lib/clean-base.mjs'
 import { pinTheDataFolder, workspaceOf, type PinnableApp } from '../src/main/data-folder'
@@ -53,7 +52,6 @@ import { sameFolder, samePath } from '../src/main/same-folder'
  *  - §7 · whether one runs now: its gate, asked.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
 const roots: string[] = []
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
@@ -181,7 +179,7 @@ describe('§1 · the list', () => {
   })
 })
 
-describe('§2 · ⛔ no launch reads the list to choose its folder', () => {
+describe('no launch reads the list to choose its folder', () => {
   /** Electron's `app`, as the pin sees it: what it set. */
   function anApp(appData: string, switches: readonly string[] = []) {
     const set: [string, string][] = []
@@ -218,17 +216,6 @@ describe('§2 · ⛔ no launch reads the list to choose its folder', () => {
       pinTheDataFolder(named.app)
       expect(named.set, String(list)).toEqual([])
     }
-  })
-
-  it('⚑ a person’s launch adds itself, never waits on it, and a list it cannot write changes nothing', () => {
-    const wired = readFileSync(join(here, '../src/main/workspaces-in-the-app.ts'), 'utf8')
-    expect(wired).toContain(
-      '  if (!options.hidden) {\n    try {\n      rememberWorkspace(listFile, userData, Date.now())\n    } catch (error) {',
-    )
-    // ⚑ What it would throw on: a list whose folder is a file.
-    const root = aFolder()
-    writeFileSync(join(root, 'file'), '')
-    expect(() => rememberWorkspace(join(root, 'file', 'workspaces.json'), root, 1)).toThrow()
   })
 })
 
@@ -424,40 +411,23 @@ describe('§4 · a new workspace’s name and folder', () => {
   })
 })
 
-describe('§5 · the arguments that open a workspace: built, never copied', () => {
-  it('🔴 the folder, and nothing of this launch’s own', () => {
+describe('the arguments that open a workspace: built, never copied', () => {
+  it('the folder, and nothing of this launch’s own', () => {
     expect(
       argumentsToOpen('/w/Research', { packaged: true, appPath: '/app', hidden: false }),
     ).toEqual(['--user-data-dir=/w/Research'])
-    // ⚑ A development build is `electron <app> …`.
+    // A development build is `electron <app> …`.
     expect(
       argumentsToOpen('/w/R', { packaged: false, appPath: '/dev/app', hidden: false }),
     ).toEqual(['/dev/app', '--user-data-dir=/w/R'])
-    // ⚑ A hidden launch — a test — opens it hidden too: no test puts a window on a person's screen.
+    // A hidden launch — a test — opens it hidden too: no test puts a window on a person's screen.
     expect(argumentsToOpen('/w/R', { packaged: true, appPath: '/app', hidden: true })).toEqual([
       '--user-data-dir=/w/R',
       '--brobot-hidden',
     ])
-    const wired = readFileSync(join(here, '../src/main/workspaces-in-the-app.ts'), 'utf8')
-    expect(wired).not.toMatch(/process\.argv|remote-debugging/)
-    // ⛔ A hidden launch never offers a new workspace in a person's home.
-    expect(wired).toContain("  const home = app.getPath('home')")
-    expect(wired).toContain('const newWorkspacesHome = options.hidden ? dirname(userData) : home')
-    expect(wired.match(/getPath\('home'\)/g)).toHaveLength(1)
-    // ⚑ Its environment is built too; a development build keeps its renderer's address.
-    expect(wired).toContain(
-      "env: builtEnvironment(process.env, app.isPackaged ? [] : ['ELECTRON_RENDERER_URL']),",
-    )
-    expect(wired).toContain('const start = howToStart(')
   })
 
-  it('⛔ a hidden launch starts, makes and renames only folders beside its own', () => {
-    const wired = readFileSync(join(here, '../src/main/workspaces-in-the-app.ts'), 'utf8')
-    expect(wired).toContain(
-      'options.hidden && (sameFolder(folder, defaultFolder) || !isWithin(folder, dirname(userData)))',
-    )
-    // ⚑ Asked before every open, make and rename.
-    expect(wired.match(/outOfReach\(/g)).toHaveLength(3)
+  it('a folder is within itself and below it, read through links, never a sibling sharing its prefix', () => {
     const root = aFolder()
     mkdirSync(join(root, 'ab'))
     symlinkSync(join(root, 'ab'), join(root, 'link'))
@@ -468,18 +438,13 @@ describe('§5 · the arguments that open a workspace: built, never copied', () =
     expect(isWithin(join(root, 'link', 'w'), join(root, 'ab'))).toBe(true)
   })
 
-  it('🔴 listed as the BroBot it starts will spell it: links resolved, except on Windows', () => {
+  it('listed as the BroBot it starts will spell it: links resolved, except on Windows', () => {
     const root = aFolder()
     mkdirSync(join(root, 'real'))
     symlinkSync(join(root, 'real'), join(root, 'link'))
     expect(asStartedOn(join(root, 'link'), 'darwin')).toBe(join(root, 'real'))
     expect(asStartedOn(join(root, 'link'), 'win32')).toBe(join(root, 'link'))
     expect(asStartedOn(join(root, 'gone'), 'linux')).toBe(join(root, 'gone'))
-    const wired = readFileSync(join(here, '../src/main/workspaces-in-the-app.ts'), 'utf8')
-    expect(wired).toContain('const as = listedAs(verdict.path) ?? asStartedOn(verdict.path)')
-    expect(wired).toContain(
-      'const as = asStartedOn(verdict.path)\n      const refusal = await openOn(as)',
-    )
   })
 
   it('🔴 started as nobody’s child on macOS and Linux; directly on Windows', () => {

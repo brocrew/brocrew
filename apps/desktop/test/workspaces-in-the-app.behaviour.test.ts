@@ -317,7 +317,8 @@ it('the one packaged executable opens another workspace and Finder subsequently 
   expect(fake.launches).toHaveLength(1)
 })
 
-it('explicit configured creation supplies its first database before requesting the separate launch', async () => {
+/** A hidden packaged window whose workspace policy names this folder first; creates Birch from it. */
+async function createBirchFromAConfiguredWindow(): Promise<{ appPath: string; target: string }> {
   const config = join(appData, '@brobot2'),
     appPath = join(root, 'packaged'),
     target = join(root, 'birch')
@@ -351,6 +352,11 @@ it('explicit configured creation supplies its first database before requesting t
   expect(await ask(WORKSPACES_CHANNELS.create, { name: 'Birch', path: target })).toMatchObject({
     opened: true,
   })
+  return { appPath, target }
+}
+
+it('explicit configured creation supplies its first database before requesting the separate launch', async () => {
+  const { appPath, target } = await createBirchFromAConfiguredWindow()
   expect(readFileSync(join(target, 'brobot2.sqlite')).length).toBe(0)
   const child = {
     isPackaged: true,
@@ -528,39 +534,7 @@ it('a workspace made here starts in Crew Night', async () => {
 })
 
 it('a workspace made here starts in Crew Night, though its first database is made before it opens', async () => {
-  const config = join(appData, '@brobot2'),
-    appPath = join(root, 'packaged'),
-    target = join(root, 'birch')
-  mkdirSync(config, { recursive: true })
-  mkdirSync(appPath)
-  writeFileSync(join(appPath, 'package.json'), JSON.stringify({ requireWorkspacePolicy: true }))
-  writeFileSync(
-    join(config, 'workspace-policy.json'),
-    JSON.stringify({
-      version: 1,
-      firstWorkspace: userData,
-      packagedForbidden: [],
-      developmentForbidden: [],
-    }),
-  )
-  writeFileSync(
-    join(config, 'packaged-workspaces.json'),
-    JSON.stringify({ version: 1, workspaces: [{ path: userData, lastOpenedAt: 1 }] }),
-  )
-  fake.handlers.clear()
-  startWorkspaces({
-    app: {
-      isPackaged: true,
-      getPath: (name: string) =>
-        ({ userData, appData, home: root })[name as 'userData' | 'appData' | 'home'],
-      getAppPath: () => appPath,
-    } as unknown as App,
-    hidden: true,
-    pickFolder: async () => null,
-  })
-  expect(await ask(WORKSPACES_CHANNELS.create, { name: 'Birch', path: target })).toMatchObject({
-    opened: true,
-  })
+  const { target } = await createBirchFromAConfiguredWindow()
   expect(existsSync(join(target, 'brobot2.sqlite'))).toBe(true)
   expect(await theLookItStartsIn(target)).toBe('crew-night')
 })

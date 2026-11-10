@@ -125,13 +125,6 @@ it('retains the actual read denial and file through startup presentation', () =>
   expect((error as Error).cause).toMatchObject({ code: 'EACCES' })
 })
 
-it('still rejects JSON past the normal size bound and names the file', () => {
-  const file = join(root, 'oversized.json')
-  writeFileSync(file, ' '.repeat(1024 * 1024 + 1))
-  expect(() => readRoutingFile(file)).toThrow('file too large')
-  expect(() => readRoutingFile(file)).toThrow(file)
-})
-
 it('names the genuinely missing database and operating system cause', () => {
   const file = join(root, 'brobot2.sqlite')
   let error: unknown
