@@ -1,12 +1,7 @@
 import type { PersistedEventInfo } from './conversation-events'
+import type { StopAsker, WhoStoppedIt } from './who-did-it'
 
-import {
-  WHO_DID_IT,
-  WHO_DID_IT_SAYS,
-  type ActedBy,
-  type StopAsker,
-  type WhoStoppedIt,
-} from './who-did-it'
+import { WHO_DID_IT, WHO_DID_IT_SAYS, type ActedBy, type WhoDidIt } from './who-did-it'
 
 /**
  * 🔴 **Telling *somebody stopped this* from *this broke*** (395, HO-007 S5) — the reading, and the
@@ -135,7 +130,7 @@ export type HowWorkStopped = (typeof HOW_WORK_STOPPED)[number]
 export type { WhoStoppedIt } from './who-did-it'
 
 export const WHO_STOPPED_IT: readonly WhoStoppedIt[] = WHO_DID_IT.filter(
-  (who): who is WhoStoppedIt => who !== 'the-app-itself',
+  (who: WhoDidIt): who is WhoStoppedIt => who !== 'the-app-itself',
 )
 
 /**
