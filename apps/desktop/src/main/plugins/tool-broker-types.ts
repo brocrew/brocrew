@@ -1,4 +1,4 @@
-import type { PluginToolFailureReason } from './tool-diagnostics'
+import type { PluginToolFailureReason, PluginCallDiagnostic } from './tool-diagnostics'
 export type BrokerValue =
   | null
   | boolean
@@ -91,11 +91,12 @@ export type BrokerFailure =
   | 'deadline'
   | 'downstream'
 export interface BrokerAudit {
-  readonly event: 'queued' | 'started' | 'finished' | 'refused' | 'unavailable'
+  readonly event: 'queued' | 'started' | 'finished' | 'refused' | 'unavailable' | 'call'
   readonly operation: 'tool' | 'admin'
   readonly queued: number
   readonly code?: BrokerFailure
   readonly reason?: PluginToolFailureReason
+  readonly call?: PluginCallDiagnostic
 }
 export interface BrokerOptions {
   readonly binding: BrokerBinding
@@ -161,5 +162,6 @@ export interface PluginToolBroker {
     queued: number
     executing: boolean
     awaitingQuiescence: boolean
+    unknownCalls: readonly PluginCallDiagnostic[]
   }>
 }

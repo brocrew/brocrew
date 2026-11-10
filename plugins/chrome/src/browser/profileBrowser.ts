@@ -47,6 +47,7 @@ export interface ProfileBrowser {
     page: Page,
     fn: () => Promise<T>,
     savedFile?: () => string | undefined,
+    onprogress?: () => void,
   ): Promise<T>
   touch(profile: string): void
 }

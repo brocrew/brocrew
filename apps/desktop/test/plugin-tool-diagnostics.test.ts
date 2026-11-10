@@ -26,6 +26,25 @@ it('logs failures for any plugin ID without filtering the reason at runtime', as
   expect(lines[3]).toContain('fictional-private-error')
 })
 
+it('retains content-free unknown completion and its host-exit resolution', async () => {
+  const log = await fixture()
+  const call = {
+    callId: '11111111-2222-4333-8444-555555555555',
+    tool: 'screenshot',
+    startedAt: '2026-11-10T13:00:00.000Z',
+    lastStage: 'page-ready' as const,
+    state: 'completion-unknown' as const,
+    hostRun: 'fictional-host-run',
+  }
+  recordPluginToolFailure('chrome', 'call-state', call)
+  recordPluginToolFailure('chrome', 'call-state', { ...call, state: 'host-exited' })
+  const lines = await log.lines(2)
+  expect(lines).toHaveLength(2)
+  for (const [index, expected] of [call, { ...call, state: 'host-exited' }].entries())
+    for (const [key, value] of Object.entries(expected))
+      expect(lines[index]).toContain(`${key}: '${value}'`)
+})
+
 it('logs the stage, cause and correlation of a failure, and its real error message on the same line', async () => {
   const log = await fixture()
   const correlation = '11111111-2222-4333-8444-555555555555'

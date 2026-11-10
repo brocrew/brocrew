@@ -23,6 +23,7 @@ interface Rec {
   dest: string | null
   swept: boolean
   decided: Promise<void>
+  receivedBytes: number
 }
 // Shared across browser generations, separately for each profile. Claimed tool downloads
 // retain their existing limit; only unattended page downloads consume this allowance.
@@ -47,6 +48,7 @@ class CaptureImpl implements Capture {
   constructor(
     readonly frames: FrameIds,
     private readonly router: DownloadRouter,
+    readonly onprogress?: () => void,
   ) {}
   end(completed = false, savedGuid?: string): void {
     if (this.ended) return
@@ -109,8 +111,8 @@ export class DownloadRouter {
     this.originWaits.set(guid, result)
     return result
   }
-  capture(frames: FrameIds): Capture {
-    const c = new CaptureImpl(frames, this)
+  capture(frames: FrameIds, onprogress?: () => void): Capture {
+    const c = new CaptureImpl(frames, this, onprogress)
     this.captures.add(c)
     return c
   }
@@ -138,6 +140,7 @@ export class DownloadRouter {
       dest: null,
       swept: false,
       decided: Promise.resolve(),
+      receivedBytes: 0,
     }
     this.recs.set(p.guid, rec)
     const capturesAtStart = [...this.captures]
@@ -226,6 +229,10 @@ export class DownloadRouter {
       rec.state = 'canceled'
       this.recs.delete(guid)
       return
+    }
+    if (typeof p.receivedBytes === 'number' && p.receivedBytes > rec.receivedBytes) {
+      rec.receivedBytes = p.receivedBytes
+      if (rec.owner && !rec.owner.ended) rec.owner.onprogress?.()
     }
     if (p.state !== 'completed') return
     rec.state = 'completed'

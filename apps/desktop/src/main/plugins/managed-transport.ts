@@ -73,10 +73,11 @@ export function createPrivatePluginPort(options: {
         connected = false,
         closingAfterReply = false
       const cancellation = new AbortController()
-      let prove!: () => void, unproved!: () => void
+      let prove!: () => void, unproved!: (cause?: BrokerCallCause) => void
+      let failureCause: BrokerCallCause | undefined
       const quiescent = new Promise<void>((resolve, reject) => {
         prove = resolve
-        unproved = () => reject(new Error(WORDS))
+        unproved = (cause) => reject(new PluginBrokerError('downstream', request.name, cause))
       })
       void quiescent.catch(() => undefined)
       const cancel = () => {
@@ -188,6 +189,7 @@ export function createPrivatePluginPort(options: {
                 ? 'transport-call-failed'
                 : 'transport-connect-failed',
           )
+          failureCause = cancelled || signal.aborted ? 'cancelled' : cause
           return { ok: false, cause: cancelled || signal.aborted ? 'cancelled' : cause }
         } finally {
           signal.removeEventListener('abort', cancel)
@@ -200,7 +202,7 @@ export function createPrivatePluginPort(options: {
             report('transport-close-failed')
           }
           if (natural && closed && !cancelled) prove()
-          else unproved()
+          else unproved(failureCause)
         }
       })()
       return { result, quiescent, cancel }
@@ -379,7 +381,9 @@ export async function openManagedPluginRoute(
             return parsed.success ? parsed.data : textReply()
           } catch (error) {
             // The broker audit records its own closed failure code.
-            return textReply(error instanceof PluginBrokerError ? error.message : WORDS)
+            return textReply(error instanceof PluginBrokerError
+              ? error.tool ? error.message : new PluginBrokerError(error.code, tool.name, undefined, false).message
+              : `Tool ${tool.name} failed; completion is unknown.`)
           }
         })
         const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })

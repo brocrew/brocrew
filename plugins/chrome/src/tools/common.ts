@@ -14,8 +14,11 @@ import { TabError } from '../tabs.js'
 import type { TabRegistry, TabState } from '../tabs.js'
 import type { WindowTasks } from '../windows.js'
 import { MAX_TEXT, ToolError } from './schema.js'
+import type { ToolActivity } from '../shared/toolServer.js'
 import type { PropSpec, ToolSpec } from './schema.js'
 export interface ToolDeps {
+  signal?: AbortSignal
+  activity?: (stage: ToolActivity) => void
   store: ProfileStore
   browser: ProfileBrowser
   windows: WindowTasks
@@ -217,6 +220,7 @@ export async function onTab<T>(
       deps.tabs.resolve(id, generationOf(deps))
       usableProfile(deps, tab.profile)
       await deps.browser.usePage(tab.profile, tab.page)
+      deps.activity?.('page-ready')
       deps.tabs.resolve(id, generationOf(deps))
       usableProfile(deps, tab.profile)
       return fn({ tab, page: tab.page })

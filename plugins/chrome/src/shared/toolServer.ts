@@ -6,6 +6,11 @@ import {
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
 export class PublicToolError extends Error {}
+export type ToolActivity = 'browser-ready' | 'page-ready' | 'page-response' | 'page-loaded' | 'screenshot-captured' | 'download-received' | 'download-saved'
+export interface ToolContext extends Record<string, unknown> {
+  signal?: AbortSignal
+  activity?: (stage: ToolActivity) => void
+}
 export interface ToolDefinition {
   name: string
   description: string
@@ -26,7 +31,7 @@ export interface ToolHandler {
   definition: ToolDefinition
   execute(
     args: Record<string, unknown>,
-    context: Record<string, unknown>,
+    context: ToolContext,
   ): ToolResult | Promise<ToolResult>
 }
 export interface StaticResource {
@@ -54,20 +59,35 @@ export function createToolServer(options: ToolServerOptions): Server {
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: tools.map((t) => t.definition),
   }))
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const { name: toolName, arguments: args } = request.params
     const tool = tools.find((t) => t.definition.name === toolName)
     if (!tool) {
       return { content: [{ type: 'text', text: `Unknown tool: ${toolName}` }] }
     }
+    let active = true
+    let progress = 0
     try {
-      return await tool.execute((args as Record<string, unknown>) ?? {}, context)
+      return await tool.execute((args as Record<string, unknown>) ?? {}, {
+        ...context,
+        signal: extra.signal,
+        activity(stage) {
+          const progressToken = request.params._meta?.progressToken
+          if (active && !extra.signal.aborted && progressToken !== undefined)
+            void extra.sendNotification({
+              method: 'notifications/progress',
+              params: { progressToken, progress: ++progress, message: stage },
+            }).catch(() => undefined)
+        },
+      })
     } catch (err: unknown) {
       const msg =
         err instanceof PublicToolError
           ? err.message.slice(0, 2000)
           : 'Plugin unavailable. Try again.'
       return { content: [{ type: 'text', text: `Error: ${msg}` }] }
+    } finally {
+      active = false
     }
   })
   if (resources.length > 0) {

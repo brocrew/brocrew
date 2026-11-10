@@ -50,6 +50,7 @@ export type PluginToolFailureReason =
   | 'transport-timeout'
   | 'transport-aborted'
   | 'transport-auth-refused'
+  | 'call-state'
 export interface PluginToolFailureDetail {
   stage: PluginFailureStage
   cause: PluginFailureCause
@@ -59,13 +60,26 @@ export interface PluginToolFailureDetail {
 }
 export type PluginToolDiagnostic = ((
   reason: PluginToolFailureReason,
-  detail?: PluginToolFailureDetail,
+  detail?: PluginDiagnosticDetail,
 ) => void) & { pending?(stage: PluginFailureStage): void }
+export const pluginToolActivityStages = [
+  'browser-ready', 'page-ready', 'page-response', 'page-loaded',
+  'screenshot-captured', 'download-received', 'download-saved',
+] as const
+export interface PluginCallDiagnostic {
+  callId: string
+  tool: string
+  startedAt: string
+  lastStage: (typeof pluginToolActivityStages)[number] | 'unknown'
+  state: 'completion-unknown' | 'completed' | 'host-exited'
+  hostRun?: string
+}
+export type PluginDiagnosticDetail = PluginToolFailureDetail | PluginCallDiagnostic
 /** Diagnostics are observers, never execution or ownership authority. */
 export function reportPluginToolFailure(
   diagnostic: PluginToolDiagnostic | undefined,
   reason: PluginToolFailureReason,
-  detail?: PluginToolFailureDetail,
+  detail?: PluginDiagnosticDetail,
 ): void {
   try {
     if (detail) diagnostic?.(reason, detail)
@@ -78,17 +92,28 @@ export function reportPluginToolFailure(
 export function recordPluginToolFailure(
   pluginId: string,
   reason: PluginToolFailureReason,
-  detail?: PluginToolFailureDetail,
+  detail?: PluginDiagnosticDetail,
 ): void {
   logWarn('plugin-tool', reason, {
     plugin: pluginId,
-    ...(detail
+    ...(detail && 'tool' in detail
       ? {
-          stage: detail.stage,
-          cause: detail.cause,
-          correlation: detail.correlation,
-          ...(detail.reason ? { error: detail.reason } : {}),
+          call: {
+            callId: detail.callId,
+            tool: detail.tool,
+            startedAt: detail.startedAt,
+            lastStage: detail.lastStage,
+            state: detail.state,
+            hostRun: detail.hostRun,
+          },
         }
-      : {}),
+      : detail
+        ? {
+            stage: detail.stage,
+            cause: detail.cause,
+            correlation: detail.correlation,
+            ...(detail.reason ? { error: detail.reason } : {}),
+          }
+        : {}),
   })
 }

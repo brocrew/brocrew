@@ -3,6 +3,7 @@ import {
   reportPluginToolFailure,
   type PluginToolDiagnostic,
   type PluginToolFailureDetail,
+  type PluginDiagnosticDetail,
 } from '../tool-diagnostics'
 import { randomUUID } from 'node:crypto'
 import type { ManagedPluginMcpServer } from '@brobot2/runtime/managed-plugin-mcp'
@@ -54,7 +55,7 @@ export function createLifecycleAgentBridge(options: {
   diagnostic?: (
     pluginId: string,
     reason: Parameters<PluginToolDiagnostic>[0],
-    detail?: PluginToolFailureDetail,
+    detail?: PluginDiagnosticDetail,
   ) => void
   now?: () => number
   answerWithinMs?: number
@@ -160,8 +161,8 @@ export function createLifecycleAgentBridge(options: {
     pending?: (stage: PluginFailureStage) => void,
   ): PluginToolDiagnostic =>
     Object.assign(
-      (reason: Parameters<PluginToolDiagnostic>[0], detail?: PluginToolFailureDetail) => {
-        if (detail) lastCause.set(id, `${detail.stage}: ${detail.cause}`)
+      (reason: Parameters<PluginToolDiagnostic>[0], detail?: PluginDiagnosticDetail) => {
+        if (detail && !('tool' in detail)) lastCause.set(id, `${detail.stage}: ${detail.cause}`)
         else if (/failed|unproven|rejected|timeout|capacity|collision|rate-limited/.test(reason))
           lastCause.set(id, reason)
         if (lastCause.size > 256) lastCause.delete(lastCause.keys().next().value!)
@@ -386,6 +387,8 @@ export function createLifecycleAgentBridge(options: {
             ...binding,
             hostExited: hostExitProof,
             audit(event) {
+              if (event.call)
+                reportPluginToolFailure(report, 'call-state', { ...event.call, hostRun: view.runId })
               if (event.event === 'unavailable' || event.event === 'refused')
                 reportPluginToolFailure(report, event.reason ?? event.code ?? 'unavailable')
               try {

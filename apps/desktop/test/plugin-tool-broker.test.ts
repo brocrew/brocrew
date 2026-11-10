@@ -4,6 +4,7 @@ import type {
   BrokerAgent,
   BrokerAudit,
   BrokerClock,
+  BrokerProgress,
   BrokerInput,
   BrokerOptions,
   BrokerPerson,
@@ -56,6 +57,7 @@ class Server {
     result: ReturnType<typeof deferred<BrokerReply>>
     quiet: ReturnType<typeof deferred<void>>
     cancels: number
+    onprogress?: (progress: BrokerProgress) => void
   }> = []
   cancelError: unknown
   startError: unknown
@@ -63,6 +65,7 @@ class Server {
     operation: 'tool' | 'admin',
     request: BrokerRequest,
     signal: AbortSignal,
+    onprogress?: (progress: BrokerProgress) => void,
   ): PluginExecution => {
     if (this.startError) throw this.startError
     const call = {
@@ -72,6 +75,7 @@ class Server {
       result: deferred<BrokerReply>(),
       quiet: deferred<void>(),
       cancels: 0,
+      onprogress,
     }
     this.calls.push(call)
     return {
@@ -83,7 +87,7 @@ class Server {
       },
     }
   }
-  tool = (request: BrokerRequest, signal: AbortSignal) => this.start('tool', request, signal)
+  tool = (request: BrokerRequest, signal: AbortSignal, onprogress?: (progress: BrokerProgress) => void) => this.start('tool', request, signal, onprogress)
   admin = (request: BrokerRequest, signal: AbortSignal) => this.start('admin', request, signal)
   finish(index: number, value: BrokerValue = { done: true }) {
     this.calls[index]!.result.resolve({ ok: true, value })
@@ -409,7 +413,7 @@ describe('bounded fair serial queue', () => {
     h.server.calls[0]!.quiet.resolve()
     await tick()
   })
-  it('caps waiting requests at eight per workspace and 64 in total', async () => {
+  it('caps waiting requests at eight per workspace and active plus queued work at 64', async () => {
     const h = setup()
     const first = h.call()
     await tick()
@@ -425,7 +429,8 @@ describe('bounded fair serial queue', () => {
       const excess = h.broker.owner.grantAgent(workspace, 'one-too-many')
       await expect(h.call(excess)).rejects.toMatchObject({ code: 'busy' })
     }
-    expect(h.broker.status().queued).toBe(64)
+    expect(h.broker.status().queued).toBe(63)
+    await expect(pending.at(-1)).rejects.toMatchObject({ code: 'busy' })
     const extra = h.broker.owner.grantAgent(h.broker.owner.attach('overflow'), 'extra')
     await expect(h.call(extra)).rejects.toMatchObject({ code: 'busy' })
     h.broker.owner.invalidate()
@@ -470,6 +475,23 @@ describe('bounded fair serial queue', () => {
 })
 
 describe('independent transport calls', () => {
+  it('retains only a known activity stage and clears its visible record on positive host exit', async () => {
+    const exited = deferred<void>()
+    const h = setup((options) => ({ ...options, hostExited: exited.promise, server: { ...options.server, independentToolCalls: true } }))
+    const pending = h.call()
+    await tick()
+    h.server.calls[0]!.onprogress?.({ progress: 1, message: 'fictional-page-title' })
+    h.server.calls[0]!.onprogress?.({ progress: 2, message: 'screenshot-captured' })
+    h.server.calls[0]!.result.resolve({ ok: false, cause: 'stalled' })
+    h.server.calls[0]!.quiet.reject(new Error('unproved'))
+    await expect(pending).rejects.toMatchObject({ code: 'downstream' })
+    expect(h.broker.status().unknownCalls).toEqual([expect.objectContaining({ tool: 'read_page', lastStage: 'screenshot-captured', state: 'completion-unknown', startedAt: expect.any(String) })])
+    expect(JSON.stringify(h.audit)).not.toContain('fictional-page-title')
+    exited.resolve()
+    await tick()
+    expect(h.broker.status().unknownCalls).toEqual([])
+    expect(h.broker.owner.hasCompletionProof()).toBe(true)
+  })
   it.each(['reply-first', 'proof-first'])('releases a successful reply with rejected proof (%s)', async (order) => {
     const h = setup((options) => ({ ...options, server: { ...options.server, independentToolCalls: true } }))
     let outcome: unknown
@@ -520,11 +542,11 @@ describe('independent transport calls', () => {
     }))
     const first = tracked(h.call())
     await tick()
-    h.server.calls[0]!.quiet.reject(new Error('unproved'))
+    h.server.calls[0]!.quiet.reject(new PluginBrokerError('downstream', 'read_page', 'stalled'))
     h.server.calls[0]!.result.resolve({ ok: false, cause: 'stalled' })
     await expect(first).rejects.toMatchObject({
       code: 'downstream',
-      message: expect.stringContaining('stalled'),
+      message: 'Tool read_page took too long; completion is unknown. The operation may still be running.',
     })
     await tick()
     const second = h.call()
@@ -571,7 +593,7 @@ describe('deadline, cancellation and independent quiescence proof', () => {
     await tick()
     await expect(first).rejects.toMatchObject({
       code: 'deadline',
-      message: 'Plugin unavailable. Try again.',
+      message: 'Tool read_page took too long; completion is unknown. The operation may still be running.',
     })
     expect(h.server.calls[0]!.signal.aborted).toBe(true)
     expect(h.server.calls[0]!.cancels).toBe(1)
@@ -597,11 +619,11 @@ describe('deadline, cancellation and independent quiescence proof', () => {
     h.clock.advance(1000)
     await tick()
     await expect(queued).rejects.toMatchObject({ code: expect.any(String) })
-    expect(h.broker.status()).toMatchObject({ available: false, executing: true })
+    expect(h.broker.status()).toMatchObject({ available: true, executing: false, awaitingQuiescence: true })
     expect(h.server.calls).toHaveLength(1)
     h.server.calls[0]!.quiet.resolve()
     await tick()
-    expect(h.broker.status()).toMatchObject({ available: false, executing: false })
+    expect(h.broker.status()).toMatchObject({ available: true, executing: false, awaitingQuiescence: false })
   })
   it('a normal result plus quiescence releases the slot unchanged', async () => {
     const h = setup()
@@ -636,7 +658,7 @@ describe('deadline, cancellation and independent quiescence proof', () => {
     h.server.finish(1)
     await second
   })
-  it('marks the plugin unavailable after a one-second missing-proof grace, and rejects new calls', async () => {
+  it('retains missing proof after its observation grace and lets later calls proceed', async () => {
     const h = setup()
     const signal = new AbortController()
     const first = h.call(h.agent, { profile: 'fern' }, signal.signal)
@@ -647,12 +669,16 @@ describe('deadline, cancellation and independent quiescence proof', () => {
     h.clock.advance(1000)
     await tick()
     await expect(first).rejects.toMatchObject({ code: 'cancelled' })
-    await expect(queued).rejects.toMatchObject({ code: 'unavailable' })
-    await expect(h.call()).rejects.toMatchObject({ code: 'unavailable' })
-    expect(h.server.calls).toHaveLength(1)
+    expect(h.server.calls).toHaveLength(2)
+    expect(h.broker.status()).toMatchObject({ available: true, awaitingQuiescence: true })
+    h.server.finish(1)
+    await expect(queued).resolves.toEqual({ done: true })
+    h.broker.owner.invalidate()
+    expect(h.broker.owner.hasCompletionProof()).toBe(false)
     h.server.finish(0)
     await tick()
     expect(h.broker.status().available).toBe(false)
+    expect(h.broker.owner.hasCompletionProof()).toBe(true)
   })
   it('detaching one workspace cancels its work, while another workspace proceeds after proof', async () => {
     const h = setup()
@@ -690,7 +716,7 @@ describe('secret-free failures and diagnostics', () => {
     const h = setup()
     h.server.startError = new Error(secret)
     const error = (await h.call().catch((e: unknown) => e)) as PluginBrokerError
-    expect(error).toMatchObject({ code: 'unavailable', message: 'Plugin unavailable. Try again.' })
+    expect(error).toMatchObject({ code: 'unavailable', message: 'Tool read_page failed: unavailable; completion is unknown.' })
     expect(String(error.stack)).not.toContain(secret)
     expect(JSON.stringify(h.audit)).not.toContain(secret)
     const rejected = setup()
@@ -728,12 +754,13 @@ describe('secret-free failures and diagnostics', () => {
     for (const event of h.audit)
       expect(
         Object.keys(event).every((key) =>
-          ['event', 'operation', 'queued', 'code', 'reason'].includes(key),
+          ['event', 'operation', 'queued', 'code', 'reason', 'call'].includes(key),
         ),
       ).toBe(true)
     for (const event of h.audit)
       if (event.reason !== undefined)
         expect([
+          'call-state',
           'proof-rejected',
           'proof-timeout',
           'cancel-failed',
@@ -828,6 +855,7 @@ describe('revocation and malformed downstream boundaries', () => {
       queued: 0,
       executing: false,
       awaitingQuiescence: false,
+      unknownCalls: [],
     })
     expect(() => h.broker.agent.discover(h.agent)).toThrow(PluginBrokerError)
   })

@@ -731,6 +731,7 @@ export class ChromeBrowser implements ProfileBrowser {
     page: Page,
     fn: () => Promise<T>,
     savedFile?: () => string | undefined,
+    onprogress?: () => void,
   ): Promise<T> {
     const e = this.entries.get(profile)
     const d = e?.downloads
@@ -754,7 +755,7 @@ export class ChromeBrowser implements ProfileBrowser {
       }
       check()
       return frameIdsOf(tree.frameTree)
-    })
+    }, onprogress)
     let completed = false
     let savedGuid: string | undefined
     try {

@@ -286,6 +286,7 @@ export function buildToolDefs(): ToolDef[] {
               ? ordered.slice(0, MAX_REOPEN).map((t) => ({ id: t.id, url: t.page.url() }))
               : []
           const { generation } = await deps.browser.ensure(name, mode)
+          deps.activity?.('browser-ready')
           usableProfile(deps, name)
           const restored = await reopenTabs(
             deps,
@@ -303,6 +304,7 @@ export function buildToolDefs(): ToolDef[] {
             },
           })
           await deps.browser.usePage(name, page)
+          deps.activity?.('page-ready')
           usableProfile(deps, name)
           const tab = deps.tabs.add(name, generation, page)
           let loadError: string | undefined
@@ -311,6 +313,7 @@ export function buildToolDefs(): ToolDef[] {
               waitUntil: 'domcontentloaded',
               timeout: DEFAULT_TIMEOUT_MS,
             })
+            deps.activity?.('page-loaded')
           } catch (e) {
             loadError = describeError(e, DEFAULT_TIMEOUT_MS)
           }
@@ -416,6 +419,7 @@ export function buildToolDefs(): ToolDef[] {
                 : a.action === 'forward'
                   ? await page.goForward(history)
                   : await page.reload(opts)
+          deps.activity?.('page-loaded')
           return {
             url: page.url(),
             title: await titleAfterLoad(page),
@@ -728,6 +732,7 @@ export function buildToolDefs(): ToolDef[] {
                   fullPage: a.scope === 'full',
                   timeout: ms,
                 })
+          deps.activity?.('screenshot-captured')
           if (png.length > MAX_SCREENSHOT_BYTES)
             throw new ToolError('the screenshot is too large — use scope viewport or element')
           return png
@@ -980,9 +985,9 @@ export function buildToolDefs(): ToolDef[] {
             dropPending(tab, download)
             return saveDownload(deps, tab.profile, download, ms, startedAt, (file) => {
               savedFile = file
-            })
+            }, typeof a.timeoutMs === 'number' ? ms : undefined)
           }
-          return deps.browser.captureDownloads(tab.profile, page, save, () => savedFile)
+          return deps.browser.captureDownloads(tab.profile, page, save, () => savedFile, () => deps.activity?.('download-received'))
         })
         return withNotes(value, notes)
       },
@@ -1022,11 +1027,11 @@ export function buildToolDefs(): ToolDef[] {
           return deps.browser.operate(tab.profile, () =>
             saveDownload(deps, tab.profile, download, ms, startedAt, (file) => {
               savedFile = file
-            }),
+            }, typeof a.timeoutMs === 'number' ? ms : undefined),
           )
         }
         return {
-          json: await deps.browser.captureDownloads(tab.profile, tab.page, save, () => savedFile),
+          json: await deps.browser.captureDownloads(tab.profile, tab.page, save, () => savedFile, () => deps.activity?.('download-received')),
         }
       },
     },
@@ -1073,7 +1078,7 @@ export function buildToolDefs(): ToolDef[] {
             await deps.browser.usePage(t.profile, t.page)
             deps.tabs.resolve(t.id, generationOf(deps))
             usableProfile(deps, t.profile)
-            return fetchToDisk(deps, t.page.context(), target, ms)
+            return fetchToDisk(deps, t.page.context(), target, typeof a.timeoutMs === 'number' ? ms : undefined)
           }),
         }
       },
@@ -1242,9 +1247,10 @@ async function fetchToDisk(
   deps: ToolDeps,
   ctx: BrowserContext,
   start: string,
-  ms: number,
+  ms: number | undefined,
 ): Promise<Record<string, unknown>> {
-  const signal = AbortSignal.timeout(ms)
+  const explicit = ms === undefined ? undefined : AbortSignal.timeout(ms)
+  const signal = explicit && deps.signal ? AbortSignal.any([explicit, deps.signal]) : explicit ?? deps.signal
   let url = start
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const cookie = (await ctx.cookies(url)).map((c) => `${c.name}=${c.value}`).join('; ')
@@ -1297,6 +1303,7 @@ async function fetchToDisk(
             return
           }
           bytes += chunk.length
+          if (chunk.length > 0) deps.activity?.('download-received')
           if (bytes > MAX_DOWNLOAD_BYTES) cb(new DownloadTooLarge())
           else cb(null, chunk)
         },
@@ -1308,6 +1315,7 @@ async function fetchToDisk(
           fs.createWriteStream(target, { fd }),
         )
         checkToolAuthorization(deps)
+        deps.activity?.('download-saved')
       } catch (e) {
         privateFiles.remove(target)
         if (e instanceof DownloadTooLarge)
@@ -1374,6 +1382,7 @@ async function saveDownload(
   ms: number,
   startedAt: number,
   savedFile?: (file: string) => void,
+  completionMs?: number,
 ): Promise<Record<string, unknown>> {
   if (
     deps.browser.downloadIsPrivate &&
@@ -1382,7 +1391,7 @@ async function saveDownload(
     throw new ToolError('the download failed')
   let tmp: string | null
   try {
-    tmp = await raceTimeout(download.path(), ms)
+    tmp = await (completionMs === undefined ? download.path() : raceTimeout(download.path(), completionMs))
     checkToolAuthorization(deps)
   } catch (e) {
     await deps.browser.cancelPrivateDownload?.(profile, download).catch(() => undefined)
@@ -1414,6 +1423,7 @@ async function saveDownload(
           return
         }
         bytes += chunk.length
+        if (chunk.length > 0) deps.activity?.('download-received')
         if (bytes > MAX_DOWNLOAD_BYTES) cb(new DownloadTooLarge())
         else cb(null, chunk)
       },
@@ -1421,6 +1431,7 @@ async function saveDownload(
     try {
       await pipeline(source, cap, fs.createWriteStream(target, { fd }))
       checkToolAuthorization(deps)
+      deps.activity?.('download-saved')
     } catch (e) {
       privateFiles.remove(target)
       throw e instanceof DownloadTooLarge ? tooLarge : e
@@ -1452,12 +1463,12 @@ export function createAgentChromeTools(deps: ToolDeps): ToolHandler[] {
       description: fill(def.spec.description),
       inputSchema: jsonSchemaOf(def.spec),
     },
-    async execute(rawArgs): Promise<ToolResult> {
+    async execute(rawArgs, context): Promise<ToolResult> {
       let ms: number | undefined
       try {
         const args = parseArgs(def.spec, rawArgs)
         ms = typeof args.timeoutMs === 'number' ? args.timeoutMs : undefined
-        const out = await def.run(args, deps)
+        const out = await def.run(args, { ...deps, signal: context.signal, activity: context.activity })
         if ('image' in out) {
           return {
             content: [

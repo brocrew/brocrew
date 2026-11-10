@@ -1,4 +1,5 @@
-import type { PluginToolFailureReason } from './tool-diagnostics'
+import { pluginToolActivityStages, type PluginCallDiagnostic, type PluginToolFailureReason } from './tool-diagnostics'
+import { randomUUID } from 'node:crypto'
 import { collidingToolNames, externalMcpNameRefusal } from '../../shared/external-mcp'
 import { pluginSha256 } from './package-digests'
 import { strictPluginJson } from './strict-json'
@@ -47,11 +48,17 @@ const failureCodes = new Set<BrokerFailure>([
 const errorCodes = new WeakMap<object, BrokerFailure>()
 export class PluginBrokerError extends Error {
   readonly code: BrokerFailure
-  constructor(code: BrokerFailure, tool?: string, cause?: BrokerCallCause) {
+  constructor(code: BrokerFailure, readonly tool?: string, readonly callCause?: BrokerCallCause, dispatched = true, completionKnown = false) {
     code = failureCodes.has(code) ? code : 'invalid'
     super(
       tool
-        ? `Tool ${tool} failed: ${cause ?? code}.`
+        ? !dispatched
+          ? `Tool ${tool} was not started: ${code}.`
+          : completionKnown
+            ? `Tool ${tool} failed: ${callCause ?? code}.`
+          : callCause === 'stalled' || code === 'deadline'
+            ? `Tool ${tool} took too long; completion is unknown. The operation may still be running.`
+            : `Tool ${tool} failed: ${callCause ?? code}; completion is unknown.`
         : code === 'busy'
           ? 'Plugin busy. Try again.'
           : 'Plugin unavailable. Try again.',
@@ -126,7 +133,9 @@ interface Job {
   answered: boolean
   cancelling: boolean
   startedAt: number
-  proofUntil: number
+  callId: string
+  startedAtIso: string
+  lastStage: PluginCallDiagnostic['lastStage']
   execution?: PluginExecution
   quiet: boolean
   cancelSent: boolean
@@ -243,6 +252,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
     operation: Job['operation'],
     code?: BrokerFailure,
     reason?: PluginToolFailureReason,
+    call?: PluginCallDiagnostic,
   ): void {
     try {
       audit?.(
@@ -252,11 +262,20 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
           queued: count,
           ...(code ? { code } : {}),
           ...(reason ? { reason } : {}),
+          ...(call ? { call } : {}),
         }),
       )
     } catch {
       /* Diagnostics cannot affect admission or expose an upstream error. */
     }
+  }
+  function callState(job: Job, state: PluginCallDiagnostic['state']): PluginCallDiagnostic {
+    return Object.freeze({ callId: job.callId, tool: job.name, startedAt: job.startedAtIso, lastStage: job.lastStage, state })
+  }
+  function retain(job: Job): void {
+    if (job.quiet || uncertain.has(job)) return
+    uncertain.add(job)
+    log('call', job.operation, undefined, 'call-state', callState(job, 'completion-unknown'))
   }
   function identity(capability: object, kind: Actor['identity']['kind']): Actor {
     const actor = actors.get(capability)
@@ -286,8 +305,10 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
       job.reject(
         new PluginBrokerError(
           code,
-          independent(job) ? job.name : undefined,
+          job.name,
           job.reply?.ok === false ? job.reply.cause : undefined,
+          job.state !== 'queued',
+          job.quiet,
         ),
       )
     } else job.resolve(value ?? null)
@@ -341,7 +362,6 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
     if (job.state !== 'running') return
     if (job.cancelling) {
       if (!job.quiet) return
-      if (clock.now() >= job.proofUntil) unavailable(job.operation, 'proof-timeout')
       finished(job)
     } else if (!independent(job) && clock.now() >= job.startedAt + PLUGIN_BROKER_LIMITS.callMs)
       stop(job, 'deadline')
@@ -378,21 +398,22 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
     if (job.cancelling) return
     job.cancelling = true
     if (independent(job)) {
-      if (!job.quiet) uncertain.add(job)
+      retain(job)
       job.controller.abort()
       requestCancel(job)
       finished(job)
       return
     }
     job.offCall()
-    job.proofUntil = clock.now() + PLUGIN_BROKER_LIMITS.cancelProofMs
     if (job.quiet) {
       finished(job)
       return
     }
-    job.offProof = clock.after(PLUGIN_BROKER_LIMITS.cancelProofMs, () =>
-      unavailable(job.operation, 'proof-timeout'),
-    )
+    job.offProof = clock.after(PLUGIN_BROKER_LIMITS.cancelProofMs, () => {
+      log('refused', job.operation, code, 'proof-timeout')
+      retain(job)
+      finished(job)
+    })
     job.controller.abort()
     requestCancel(job)
   }
@@ -444,6 +465,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
     job.offQueue()
     job.state = 'running'
     job.startedAt = clock.now()
+    job.startedAtIso = new Date().toISOString()
     active = job
     completed = false
     if (!independent(job))
@@ -458,7 +480,11 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
       job.execution =
         job.operation === 'tool'
           ? server.tool(request, job.controller.signal, (progress) => {
-              if (job.state === 'running' && !job.answered) job.onprogress?.(progress)
+              if (job.state === 'running' && !job.answered) {
+                const stage = pluginToolActivityStages.find((one) => one === progress.message)
+                if (stage) job.lastStage = stage
+                job.onprogress?.(progress)
+              }
             })
           : server.admin(request, job.controller.signal)
       if (
@@ -501,14 +527,17 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
         .then(
           () => {
             job.quiet = true
-            uncertain.delete(job)
+            if (uncertain.delete(job))
+              log('call', job.operation, undefined, 'call-state', callState(job, 'completed'))
             if (!active && uncertain.size === 0) completed = true
             settle(job)
           },
-          () => {
+          (error) => {
             if (independent(job)) {
-              if (job.state === 'running' && !job.quiet) uncertain.add(job)
+              if (!job.reply && error instanceof PluginBrokerError)
+                job.reply = { ok: false, cause: error.callCause }
               log('refused', job.operation, 'downstream', 'proof-rejected')
+              stop(job, 'downstream')
             } else unavailable(job.operation, 'proof-rejected')
           },
         )
@@ -572,7 +601,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
         if (
           count +
             uncertain.size +
-            (active && independent(active) && !uncertain.has(active) ? 1 : 0) >=
+            (active && !uncertain.has(active) ? 1 : 0) >=
             PLUGIN_BROKER_LIMITS.total ||
           workspaceCount >= PLUGIN_BROKER_LIMITS.workspace ||
           (q?.actors.get(actor.key)?.length ?? 0) >= PLUGIN_BROKER_LIMITS.agent
@@ -604,7 +633,9 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
         answered: false,
         cancelling: false,
         startedAt: 0,
-        proofUntil: 0,
+        callId: randomUUID(),
+        startedAtIso: '',
+        lastStage: 'unknown',
         quiet: false,
         cancelSent: false,
         onprogress,
@@ -671,6 +702,8 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
         finished(active)
       }
       completed = true
+      for (const job of uncertain)
+        log('call', job.operation, undefined, 'call-state', callState(job, 'host-exited'))
       uncertain.clear()
     },
     () => log('refused', 'tool', 'unavailable', 'host-exit-unproven'),
@@ -743,6 +776,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
         queued: count,
         executing: active !== undefined,
         awaitingQuiescence: uncertain.size > 0 || (active?.cancelling === true && !active.quiet),
+        unknownCalls: Object.freeze([...uncertain].map((job) => callState(job, 'completion-unknown'))),
       }),
   })
 }
