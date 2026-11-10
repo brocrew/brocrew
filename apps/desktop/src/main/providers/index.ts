@@ -84,8 +84,7 @@ export function providerVersionsFromModules(
   return orderedProgramVersions(
     providerRecord((provider) => {
       const service = modules[provider].program
-      if (service === undefined) throw new Error('Provider program services were not bound')
-      return service.version
+      return service?.version?.bind(service)
     }),
   )
 }

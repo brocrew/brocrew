@@ -23,17 +23,10 @@ export interface TurnAsked {
  * ⚑ **What a reading may ask of this build**: whether a Claude model, as a turn's answer names it,
  * takes a context message — `true`, `false`, or `null`: this build holds no snapshot of it.
  */
-export interface TurnReadingOptions {
-  readonly hasAContextMessage?: (model: string) => boolean | null
-}
-
-/** A reading in progress: fed one line at a time, until it has the turn. */
-export interface TurnReading {
-  /** One line of the file; `done` once the turn is whole and nothing after it matters. */
-  line(text: string): 'more' | 'done'
-  /** The turn, or why there is none. */
-  answer(): TurnAsSent
-}
+export type { TurnReadingOptions } from '@brobot2/runtime/provider-module'
+import type { TurnReadingOptions, TurnReading as PortableTurnReading } from '@brobot2/runtime/provider-module'
+import type { DesktopProviderValues } from '../providers/desktop-values'
+export type TurnReading = PortableTurnReading<DesktopProviderValues>
 
 /** How much of a record this build cannot read is kept for the window: enough to see what it is. */
 const RAW_MAX = 20_000

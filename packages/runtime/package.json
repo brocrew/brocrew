@@ -11,6 +11,10 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./provider-module": {
+      "types": "./src/provider-module.ts",
+      "default": "./src/provider-module.ts"
+    },
     "./atomic-write": {
       "types": "./src/atomic-write.ts",
       "default": "./src/atomic-write.ts"

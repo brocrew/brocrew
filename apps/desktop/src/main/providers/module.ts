@@ -1,73 +1,16 @@
-import type { TranscriptPolicy, DiscoveryPolicy } from './transcript-policy'
-import type { AgentRuntime, AuthState, ReprovisionOutcome } from '@brobot2/runtime'
-import type { Provider, ProviderConnection } from '@brobot2/shared'
-import type { LoginRenewalOperations, ProviderSignIn, SignInCopySource } from './auth-types'
-import type { ProviderAuthPolicy } from './auth-policy'
+import type {
+  ProviderModule as PortableModule,
+  ProviderModules as PortableModules,
+} from '@brobot2/runtime/provider-module'
+import type { DesktopProviderValues } from './desktop-values'
 
-/** Directory preparation is independent of a provider's credential services. */
-export type ProvisionHome = (managedRoot: string, home: string) => void | Promise<void>
-
-/** Pure state paths and profile admission, bound once without creating a folder. */
-export interface ProviderHomePaths {
-  readonly managedRoot: string
-  readonly defaultProfile: string
-  homeOf(profileId: string): string
-  profiles(): string[]
-  assertMayOpen(profileId: string): void
-}
-
-/** Operations on one provider's bound paths, with no provider selection at the call site. */
-export interface HomeAuthOperations {
-  readonly renewal?: LoginRenewalOperations
-  probe?(profileId: string, signal?: AbortSignal): Promise<AuthState>
-  credentialHome(profileId: string): string
-  check(profileId: string, signal?: AbortSignal): Promise<AuthState>
-  reprovision(profileId: string): ReprovisionOutcome | Promise<ReprovisionOutcome>
-  signIn(profileId: string, signal?: AbortSignal): Promise<ProviderSignIn>
-  bringTheKeyToItsHomes(): Promise<string | null>
-  replaceARefusedCopy(
-    profileId: string,
-    refused: unknown,
-    stillWanted: () => boolean,
-  ): Promise<SignInCopySource | 'not-tried'>
-}
-
-/**
- * The provider chooses preparation; its credential services are bound separately from state paths.
- * Today state folders also establish profile existence. A later shared-login strategy must retain
- * those folders, or first provide a profile registry. Existing conversations keep their paths.
- */
-export interface ProviderHomeStrategy {
-  prepare(profileId: string): Promise<string>
-}
-
-/** Metadata only; providers retain all existing credential and state operations. */
-export interface ProviderConnectionOperations {
-  list(): readonly ProviderConnection[]
-  resolve(connectionId?: string | null): ProviderConnection
-}
-
-export interface PreparedProviderLaunch {
-  readonly home: string
-  readonly runtime: AgentRuntime
-}
-
-export interface ProviderModule {
-  readonly program?: import('./program-policy').ProviderProgramOperations
-  readonly authPolicy: ProviderAuthPolicy
-  readonly transcripts: TranscriptPolicy
-  readonly discovery: DiscoveryPolicy
-  readonly instructions: import('./knowledge-policy').InstructionPolicy
-  readonly memory: import('./memory-policy').MemoryPolicy
-  readonly snapshot: import('./snapshot-policy').SnapshotPolicy
-  readonly skills: import('./skill-policy').SkillPolicy
-  readonly keptRules: import('./kept-rule-policy').KeptRulePolicy
-  /** A fresh runtime for this launch; the program is resolved only when called. */
-  createRuntime(): AgentRuntime
-  prepareLaunch(profileId: string, connection?: ProviderConnection): Promise<PreparedProviderLaunch>
-  /** Bound by the desktop composition; legacy runtime-only constructions may omit it. */
-  readonly connections?: ProviderConnectionOperations
-  readonly home: ProviderHomeStrategy
-  readonly auth: HomeAuthOperations
-}
-export type ProviderModules = Readonly<Record<Provider, ProviderModule>>
+export type {
+  ProvisionHome,
+  ProviderHomePaths,
+  HomeAuthOperations,
+  ProviderHomeStrategy,
+  ProviderConnectionOperations,
+  PreparedProviderLaunch,
+} from '@brobot2/runtime/provider-module'
+export type ProviderModule = PortableModule<DesktopProviderValues>
+export type ProviderModules = PortableModules<DesktopProviderValues>

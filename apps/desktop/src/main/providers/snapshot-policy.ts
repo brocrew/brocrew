@@ -1,8 +1,8 @@
 import type { ProviderSnapshotFile } from '../../shared/provider-snapshots'
 
-export interface SnapshotPolicy {
-  fileFor(platform: NodeJS.Platform): ProviderSnapshotFile
-}
+import type { SnapshotPolicy as PortablePolicy } from '@brobot2/runtime/provider-module'
+import type { DesktopProviderValues } from './desktop-values'
+export type SnapshotPolicy = PortablePolicy<DesktopProviderValues>
 
 /** Keep bundled capture text inert until requested, then reuse that platform's decoded capture. */
 export function createSnapshotPolicy(

@@ -24,12 +24,8 @@ import type { Provider } from '@brobot2/shared'
  * populated on every row with ~1,070 distinct values each, so both are worth showing — whereas
  * `name` is null on all 1,787 and `is_pinned` is the same value on all 1,787, so neither is.
  */
-export interface ProviderDescription {
-  /** A display title the provider keeps for itself. Empty when it has none. */
-  title: string
-  /** The first user message, as the provider recorded it. Empty when it has none. */
-  preview: string
-}
+import type { ProviderDescription } from '@brobot2/runtime/provider-module'
+export type { ProviderDescription } from '@brobot2/runtime/provider-module'
 
 export interface DiscoveredSession {
   provider: Provider

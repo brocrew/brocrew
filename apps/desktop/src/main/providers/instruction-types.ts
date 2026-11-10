@@ -225,9 +225,4 @@ export interface AgentMemoryPage extends AgentMemoryStoreRead {
   firstListed: readonly string[]
 }
 
-export interface MemoryStoreLayout {
-  readonly fixedFiles: (home: string) => readonly string[]
-  readonly notesFolder: (home: string) => string
-  readonly listNotes: (folder: string) => { names: string[] }
-  readonly acceptsNote: (name: string) => boolean
-}
+export type { MemoryStoreLayout } from '@brobot2/runtime/provider-module'

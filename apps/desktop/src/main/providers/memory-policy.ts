@@ -1,10 +1,11 @@
+import type { MemoryPolicy as PortablePolicy } from '@brobot2/runtime/provider-module'
+import type { DesktopProviderValues } from './desktop-values'
 import type { InjectedInstruction, RefusedInstruction } from '../../shared/instruction-contracts'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 import type {
   AgentMemoryPage,
-  AgentMemoryStoreRead,
   MemoryCandidate,
   MemoryStoreLayout,
 } from './instruction-types'
@@ -27,17 +28,7 @@ interface MemoryLayout {
   acceptsNote(name: string): boolean
   noteDirectory(home: string): string | null
 }
-export interface MemoryPolicy {
-  entryOrigin(
-    kind: InjectedInstruction['kind'],
-  ): import('../../shared/what-this-agent-was-given').GivenOrigin
-  readonly readStore: (home: string) => AgentMemoryStoreRead
-  readonly layout: MemoryStoreLayout
-  counts(home: string): { readonly total: number; readonly listed: number }
-  readPage(home: string, offset: number, limit: number): AgentMemoryPage
-  select(home: string, entry: string): InjectedInstruction | undefined
-  noteDirectory(home: string): string | null
-}
+export type MemoryPolicy = PortablePolicy<DesktopProviderValues>
 
 /** Bounded paging and selection over the provider's own candidates, without reading at binding. */
 export function createMemoryPolicy(

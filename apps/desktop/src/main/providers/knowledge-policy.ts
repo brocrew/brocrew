@@ -1,8 +1,3 @@
-import type { InstructionInputs, SessionLaunchRead } from './instruction-types'
-
-export interface InstructionPolicy {
-  readonly given: import('./given-policy').GivenPolicy
-  read(inputs: InstructionInputs): SessionLaunchRead
-  workspaceFile?(root: string): string
-  readonly bundleLeaf: string
-}
+import type { InstructionPolicy as PortablePolicy } from '@brobot2/runtime/provider-module'
+import type { DesktopProviderValues } from './desktop-values'
+export type InstructionPolicy = PortablePolicy<DesktopProviderValues>
