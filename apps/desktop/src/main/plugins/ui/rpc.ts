@@ -157,9 +157,9 @@ export class PluginUiRpc {
       const answer = await Promise.race([perform(), timeout, cancellation])
       if (!this.live() || abort.signal.aborted) throw new Error(PLUGIN_UI_UNAVAILABLE)
       return this.data(answer)
-    } catch {
+    } catch (error) {
       if (input.method === 'subscribe') this.unsubscribe(input.requestId, abort)
-      throw new Error(PLUGIN_UI_UNAVAILABLE)
+      throw error
     } finally {
       clearTimeout(timer)
       if (canceled) abort.signal.removeEventListener('abort', canceled)

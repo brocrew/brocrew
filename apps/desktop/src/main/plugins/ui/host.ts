@@ -37,8 +37,8 @@ export function installPluginUiRpc(ipc: Pick<IpcMain, 'handle'>): void {
         return { ok: false, error: PLUGIN_UI_UNAVAILABLE }
       try {
         return { ok: true, data: await view.rpc.invoke(input.packet) }
-      } catch {
-        return { ok: false, error: PLUGIN_UI_UNAVAILABLE }
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) }
       }
     },
   )

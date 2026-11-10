@@ -272,6 +272,14 @@ describe('the actual isolated host wiring', () => {
     await last.view.close()
     expect(last.detached).toHaveBeenCalledOnce()
   })
+  it('returns the actual peer error message through the plugin IPC reply', async () => {
+    const f = await host(async () => { throw new Error('Fictional package read failed.') })
+    const generation = String(f.contents.preferences.additionalArguments).split('=')[1]
+    expect(await handler()(
+      { sender: f.contents, senderFrame: f.contents.mainFrame },
+      { generation, packet: { channel: PLUGIN_UI_CHANNEL, method: 'read', requestId: 'read-error', payload: {}, configRevision: 0 } },
+    )).toEqual({ ok: false, error: 'Fictional package read failed.' })
+  })
   it('rechecks the actual document after a peer await before replying', async () => {
     let changeDocument = () => {}
     const f = await host(async () => {

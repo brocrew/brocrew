@@ -18,7 +18,7 @@ const ANSWER_WITHIN = {
   client: 180_000,
   server: process.platform === 'win32' ? 180_000 : 30_000,
 } as const
-/** Private person-control transport. No endpoints, tokens or raw errors are returned as diagnostics. */
+/** Private person-control transport carrying failure codes and actual error messages. */
 export class PersonChannel {
   private input = ''
   private sent = 0
@@ -111,12 +111,15 @@ export class PersonChannel {
                   'network',
                   'download-stalled',
                   'package-invalid',
-                ]),
+                ]).optional(),
+                message: z.string().optional(),
               })
               .safeParse(packet.value)
-            waiter.reject(
-              new PluginSupervisorError(cause.success ? cause.data.pluginRefusal : 'unavailable'),
+            const error = new PluginSupervisorError(
+              cause.success ? cause.data.pluginRefusal ?? 'unavailable' : 'unavailable',
             )
+            if (cause.success && cause.data.message !== undefined) error.message = cause.data.message
+            waiter.reject(error)
           }
         } else {
           if (++this.incoming > 8) throw new Error('unavailable')
@@ -138,8 +141,9 @@ export class PersonChannel {
                   kind: 'reply',
                   id: packet.id,
                   ok: false,
-                  value:
-                    this.reportRefusals() &&
+                  value: {
+                    message: error instanceof Error ? error.message : String(error),
+                    ...(this.reportRefusals() &&
                     error instanceof PluginSupervisorError &&
                     [
                       'policy-refused',
@@ -150,7 +154,8 @@ export class PersonChannel {
                       'package-invalid',
                     ].includes(error.code)
                       ? { pluginRefusal: error.code }
-                      : null,
+                      : {}),
+                  },
                 })
               },
             )
