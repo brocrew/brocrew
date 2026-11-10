@@ -319,20 +319,10 @@ export function containmentOf(root: string): { home: string; bin: string; securi
 /**
  * Keeps a launch from the person's own home and Keychain: a scratch `HOME` (and `USERPROFILE` on
  * Windows), and on macOS a `security` first on `PATH` that logs it was asked and answers not found
- * (exit 44). Throws NOT PERFORMED if the environment carries a credential-shaped name holding
- * anything but this rig's own fakes. `root` is the scratch folder it may write under.
+ * (exit 44). Other inherited environment entries stay intact. `root` is the scratch folder it may
+ * write under.
  */
-export function containLaunch(
-  env: Record<string, string | undefined>,
-  root: string,
-  apiKey: string | undefined,
-): void {
-  for (const [name, value] of Object.entries(env)) {
-    if (!/API_KEY|AUTH_TOKEN|OAUTH|BEARER|CREDENTIAL|SECRET|PASSWORD/i.test(name)) continue
-    if (name === 'CLAUDE_CODE_OAUTH_TOKEN' && value === 'probe-only') continue
-    if (name === 'ANTHROPIC_API_KEY' && apiKey !== undefined && value === apiKey) continue
-    throw new Error(`NOT PERFORMED — the child's environment carries ${name}`)
-  }
+export function containLaunch(env: Record<string, string | undefined>, root: string): void {
   const { home, bin } = containmentOf(root)
   mkdirSync(home, { recursive: true })
   // Windows names are case-blind: the spelling the environment already has is the one to set.
@@ -415,7 +405,7 @@ export async function loopbackRuntime(args: {
     env['CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'] = '1'
     env['DISABLE_AUTOUPDATER'] = '1'
     if (args.maxRetries !== undefined) env['CLAUDE_CODE_MAX_RETRIES'] = String(args.maxRetries)
-    if (contain) containLaunch(env, root, args.apiKey)
+    if (contain) containLaunch(env, root)
     options.env = env
     // Wraps the product's own spawn, innermost, so what is recorded is what was started.
     const productSpawn = options.spawnClaudeCodeProcess

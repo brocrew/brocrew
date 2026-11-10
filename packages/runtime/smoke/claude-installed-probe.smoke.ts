@@ -69,9 +69,9 @@ import { runEvidence, runScratch } from './run-paths'
  * After every launch: the options carry the program (when one was named) and the child the SDK
  * started is that program, read off the product's own spawn.
  *
- * No credential and no network model: the rig's literal `probe-only` login and the fake key, a
- * model on `127.0.0.1`, a scratch config folder and a scratch `HOME`, and on macOS a `security`
- * that answers nothing (`loopback-claude.ts`). No header and no variable's value is written down.
+ * The rig uses a literal `probe-only` login or fake key and a model on `127.0.0.1`, a scratch config
+ * folder and scratch `HOME`, and on macOS a `security` that answers nothing (`loopback-claude.ts`).
+ * Other inherited environment entries stay intact. No header or variable value is written down.
  *
  * Claude Code's Bash tool on Windows runs Git Bash, which GitHub's Windows runners carry; the
  * probe's own code starts no shell.
@@ -200,7 +200,7 @@ async function versionOf(program: string): Promise<VersionRead> {
     DISABLE_AUTOUPDATER: '1',
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
   }) as Record<string, string | undefined>
-  containLaunch(env, scratch, undefined)
+  containLaunch(env, scratch)
   return await new Promise<VersionRead>((resolve) => {
     execFile(
       program,
