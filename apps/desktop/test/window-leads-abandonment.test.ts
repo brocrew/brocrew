@@ -148,8 +148,7 @@ it('a long-ledger reopen abandons its native scan at the grace and the next wind
       }),
     )
   }
-  const heartbeat = setInterval(() => {
-    const at = performance.now()
+  const sampleHeartbeat = (at = performance.now()): void => {
     const gap = at - last
     if (gap > mainGapMs) {
       mainGapMs = gap
@@ -158,7 +157,7 @@ it('a long-ledger reopen abandons its native scan at the grace and the next wind
       largestGapEndedAtMs = at - measuredFrom
     }
     last = at
-  }, 10)
+  }
   try {
     markPhase('resume')
     const began = performance.now()
@@ -170,8 +169,18 @@ it('a long-ledger reopen abandons its native scan at the grace and the next wind
     expect(pagesAtGrace).toBeGreaterThan(0)
     markPhase('routes-read')
     const queuedAt = performance.now()
-    const answer = await reader.read({ kind: 'routes' })
-    queuedMs = performance.now() - queuedAt
+    // Measure only this read, including its final gap even if no interval callback ran.
+    last = queuedAt
+    const heartbeat = setInterval(sampleHeartbeat, 10)
+    let answer: WindowReadResult
+    try {
+      answer = await reader.read({ kind: 'routes' })
+    } finally {
+      const at = performance.now()
+      clearInterval(heartbeat)
+      queuedMs = at - queuedAt
+      sampleHeartbeat(at)
+    }
     pagesAfterGrace = Atomics.load(pages, 0) - pagesAtGrace
     expect(answer.kind).toBe('routes')
     markPhase('native-lead-settlement')
@@ -182,7 +191,6 @@ it('a long-ledger reopen abandons its native scan at the grace and the next wind
     expect(mainGapMs).toBeLessThan(250)
     bodySucceeded = true
   } finally {
-    clearInterval(heartbeat)
     const result = {
       ledgerRows,
       pageRows: WINDOW_READ_BOUNDS.leadPageRows,
