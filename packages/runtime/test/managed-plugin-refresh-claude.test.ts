@@ -40,7 +40,10 @@ it.each([false, true])(
       }),
       [Symbol.asyncIterator]: () => frames[Symbol.asyncIterator](),
     }
-    const raw = new ClaudeRuntime(() => query, async () => true)
+    const raw = new ClaudeRuntime(
+      () => query,
+      async () => true,
+    )
     const open = raw.start.bind(raw)
     raw.start = async (options) => {
       const handle = await open(options)
@@ -71,11 +74,10 @@ it.each([false, true])(
     await vi.waitFor(() => {
       const discoveries = observations.filter((event) => event.discovery)
       expect(discoveries.map((event) => event.discovery!.server)).toEqual(
-        failed ? [initial.name] : [initial.name, added.name],
+        [initial.name, added.name],
       )
-      expect(discoveries.map((event) => event.servers.map((server) => server.name))).toEqual(
-        failed ? [[initial.name]] : [[initial.name, added.name], [initial.name, added.name]],
-      )
+      expect(discoveries.map((event) => event.servers)).toEqual([[], []])
+      expect(discoveries.every((event) => event.discovery!.route === null)).toBe(true)
     })
   },
 )
@@ -276,7 +278,7 @@ it.each([false, true])(
       }
     await handle.send('fictional recovered tool call')
     if (changed) {
-      expect(mcpServerStatus).not.toHaveBeenCalled()
+      expect(mcpServerStatus).toHaveBeenCalledOnce()
       expect(reconnectMcpServer).not.toHaveBeenCalled()
     } else {
       expect(mcpServerStatus).toHaveBeenCalled()
