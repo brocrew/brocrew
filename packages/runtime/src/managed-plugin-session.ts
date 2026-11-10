@@ -55,7 +55,7 @@ type ManagedPluginLaunchObservation = {
   readonly provider: string
   readonly stage: 'initial-read' | 'before-send-read' | 'provider-discovery' | 'provider-launch'
   readonly outcome:
-    'configured' | 'empty' | 'failed' | 'discovered' | 'unavailable' | 'timeout' | 'cancelled'
+    'configured' | 'empty' | 'failed' | 'discovered' | 'unavailable' | 'timeout' | 'cancelled' | 'unknown'
   readonly servers: readonly Pick<ManagedPluginMcpServer, 'name' | 'url' | 'pluginId'>[]
   readonly pending?: readonly string[]
   readonly off?: readonly string[]
@@ -116,6 +116,7 @@ export function withManagedPluginAttachments(
     options: StartOptions | ResumeOptions,
     ref?: NonNullable<SessionHandle['ref']>,
   ): Promise<SessionHandle> {
+    let closed = false
     let launchId = ''
     try {
       launchId = randomUUID().replaceAll('-', '')
@@ -123,6 +124,7 @@ export function withManagedPluginAttachments(
       /* A diagnostic identity is not a launch requirement. */
     }
     function observe(event: Omit<ManagedPluginLaunchObservation, 'launch' | 'provider'>) {
+      if (closed) return
       try {
         source.observe?.({ ...event, launch: launchId, provider: runtime.provider })
       } catch {
@@ -196,7 +198,7 @@ export function withManagedPluginAttachments(
         observe({
           stage: 'provider-discovery',
           outcome: discovery.outcome,
-          servers,
+          servers: discovery.route === undefined ? servers : discovery.route === null ? [] : [discovery.route],
           discovery,
         })
     let currentDiscoveryObserver = discoveryObserver(attachment.servers)
@@ -249,8 +251,7 @@ export function withManagedPluginAttachments(
       )
     }
     if (unavailable) noteUnavailable(unavailable)
-    let closed = false,
-      generation = 0,
+    let generation = 0,
       pending: AbortController | undefined
     let pendingSend: Promise<void> | undefined
     let closing: Promise<void> | undefined

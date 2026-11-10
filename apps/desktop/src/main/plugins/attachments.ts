@@ -60,6 +60,7 @@ export class WorkspacePluginAttachments {
     let closed = false
     return {
       observe: (event) => {
+        if (closed) return
         const provider = providerSchema.safeParse(event.provider)
         const detail = {
           launch: event.launch,
@@ -70,14 +71,14 @@ export class WorkspacePluginAttachments {
         } as const
         if (event.discovery) {
           const server = event.servers.find((one) => one.name === event.discovery!.server)
-          if (server)
-            trace.emit('launch-discovery', {
+          trace.emit('launch-discovery', {
               ...detail,
-              server: server.name,
-              plugin: server.pluginId,
-              attachmentRoute: server.url,
-              discoveredTools: [...event.discovery.tools].sort(),
-              discoveredCount: event.discovery.tools.length,
+              server: event.discovery.server,
+              ...(server ? { plugin: server.pluginId, attachmentRoute: server.url } : {}),
+              ...(event.discovery.outcome === 'unknown' || event.discovery.tools === undefined ? {} : {
+                discoveredTools: [...event.discovery.tools].sort(),
+                discoveredCount: event.discovery.tools.length,
+              }),
             })
         } else {
           trace.emit('launch-attachment', {

@@ -746,6 +746,7 @@ export class ClaudeSessionHandle implements SessionHandle {
     servers: readonly ManagedPluginMcpServer[],
   ) => NonNullable<Options['mcpServers']>
   private managedPluginGeneration = 0
+  private attemptedManagedPluginNames: readonly string[] = []
   configurePluginRefresh(build: NonNullable<ClaudeSessionHandle['pluginRefresh']>): void {
     this.pluginRefresh = build
   }
@@ -775,6 +776,7 @@ export class ClaudeSessionHandle implements SessionHandle {
     const generation = ++this.managedPluginGeneration
     const query = this.query
     const next = servers.map((server) => ({ ...server }))
+    this.attemptedManagedPluginNames = next.map(({ name }) => name)
     try {
       if (!query?.setMcpServers || !this.pluginRefresh)
         throw new Error('Plugin unavailable. Try again.')
@@ -806,9 +808,52 @@ export class ClaudeSessionHandle implements SessionHandle {
       )
         throw new Error('Plugin unavailable. Try again.')
       this.managedPluginMcp = next
+      this.observeRefreshedPlugins(query, generation, next)
     } catch {
       throw new Error('Plugin unavailable. Try again.')
     }
+  }
+  private observeRefreshedPlugins(
+    query: ClaudeQuery,
+    generation: number,
+    servers: readonly ManagedPluginMcpServer[],
+  ): void {
+    const offered = servers.map(({ name, url, pluginId }) => ({
+      name,
+      url,
+      ...(pluginId === undefined ? {} : { pluginId }),
+    }))
+    // This inventory read never joins refresh, Send or close.
+    void (async () => {
+      try {
+        if (!query.mcpServerStatus) return
+        const rows = await query.mcpServerStatus()
+        if (!Array.isArray(rows)) return
+        for (const route of offered) {
+          if (
+            this.query !== query ||
+            this.managedPluginGeneration !== generation ||
+            this.isShuttingDown
+          )
+            return
+          const matches = rows.filter(
+            (row) => row.name === route.name && row.config?.type === 'http' && row.config.url === route.url,
+          )
+          const row = matches.length === 1 ? matches[0] : undefined
+          const tools = row?.status === 'connected' && Array.isArray(row.tools)
+            ? row.tools.map(({ name }) => name)
+            : undefined
+          observeManagedPlugins(this.managedPluginObserver, {
+            server: route.name,
+            route: row ? route : null,
+            ...(tools === undefined ? {} : { tools }),
+            outcome: tools !== undefined ? 'discovered' : row?.status === 'failed' || row?.status === 'disabled' ? 'unavailable' : 'unknown',
+          })
+        }
+      } catch {
+        /* Best-effort SDK inventory only. */
+      }
+    })()
   }
   private query: ClaudeQuery | null = null
 
@@ -968,17 +1013,24 @@ export class ClaudeSessionHandle implements SessionHandle {
       })
       .map((server) => ({ name: server.name, status: server.status }))
 
-    for (const { name } of this.managedPluginMcp) {
-      const connected = namedServers.find((server) => server.name === name)?.status === 'connected'
+    const managedNames = new Set([
+      ...this.managedPluginMcp.map(({ name }) => name),
+      ...this.attemptedManagedPluginNames,
+    ])
+    for (const name of managedNames) {
+      const status = namedServers.find((server) => server.name === name)?.status
+      const connected = status === 'connected' && Array.isArray(tools)
+      const unavailable = status === 'failed' || status === 'disabled'
       const prefix = `mcp__${name}__`
       observeManagedPlugins(this.managedPluginObserver, {
         server: name,
-        tools: connected
+        ...(connected || unavailable ? { tools: connected
           ? namedTools
               .filter((tool) => tool.startsWith(prefix))
               .map((tool) => tool.slice(prefix.length))
-          : [],
-        outcome: connected ? 'discovered' : 'unavailable',
+          : [] } : {}),
+        outcome: connected ? 'discovered' : unavailable ? 'unavailable' : 'unknown',
+        ...(this.managedPluginGeneration === 0 ? {} : { route: null }),
       })
     }
     if (!Array.isArray(tools)) return
