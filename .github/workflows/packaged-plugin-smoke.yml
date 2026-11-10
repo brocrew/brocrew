@@ -56,3 +56,12 @@ jobs:
         run: pnpm --filter @brobot2/desktop ${{ matrix.script }} --dir -c.extraMetadata.version=0.2.9 --publish never
       - name: Call Chrome and describe WhatsApp through the built service
         run: node scripts/packaged-plugin-service-check.mjs "${{ matrix.resources }}" "$RUNNER_TEMP/smoke-plugins"
+      - name: Keep the Windows service failure evidence
+        if: failure() && runner.os == 'Windows'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-plugin-smoke-windows-failure-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-evidence
+          if-no-files-found: warn
+          retention-days: 14
