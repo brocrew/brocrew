@@ -105,12 +105,7 @@ import {
 // sentences and two readers over them, and imports NOTHING. See `refusals.ts` below for what makes
 // a shared import expensive.
 
-import {
-  knownRefusal,
-  providerErrorSentence,
-  refusalSentence,
-  turnFailureDetail,
-} from './provider-error'
+import { providerErrorSentence, turnFailureDetail } from './provider-error'
 import type { ActedBy } from '../../../shared/who-did-it'
 // ⚑ **405 · a value import, and a cheap one.** `shared/refusals.ts` holds three strings and one
 // `includes` — see `a-value-import-from-shared-costs-the-renderer-135kb`'s lesson for what makes a
@@ -3895,13 +3890,10 @@ function foldEvent(
       // member. Absence of a cause is handled first and separately, so `default` here really is
       // unreachable and a new `ErrorCause` is a BUILD failure rather than a sentence on screen. Same
       // guard, same reason, as the `Record` in `assistant-error.ts`.
-      const refusal = knownRefusal(event.refusal)
-      if (refusal !== null) {
-        // 🔴 **A refusal the adapter RECOGNISED is said from its values, never from the provider's
-        // advice** (680, R28c) — see {@link refusalSentence}. The provider's sentence is on
-        // `event.message`, kept in the ledger and printed by the Events tab (085's split), and
-        // remembered as `raw` so a later restatement of it is not drawn a second time.
-        const shown = refusalSentence(refusal)
+      const presentation = event.presentation?.message
+      if (typeof presentation === 'string' && presentation !== '') {
+        // Display words come from the provider boundary; raw diagnostics still identify repeats.
+        const shown = presentation
         notice(state, event.fatal ? 'error' : 'warn', shown)
         state.lastError = { raw: event.message, shown }
         if (event.fatal) markTerminal(state, NOTHING_WAITS_FOR_THIS_ANSWER)

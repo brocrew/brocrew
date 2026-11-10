@@ -216,7 +216,7 @@ async function aPersonChecksAgain(publishChange = true): Promise<void> {
     await Promise.all([props.readVersions(), check(probe)])
   }
   if (probe && provider === props.provider && auth.value?.state === 'usable')
-    noticeSays('Claude sign-in works.', false)
+    noticeSays(descriptor.value?.signIn.manualProbeSuccess ?? 'Sign-in works.', false)
   if (cardOpen && provider === props.provider && auth.value?.state === 'usable') {
     if (publishChange) emit('authChanged', DEFAULT_PROFILE_ID)
     await refreshConnectedModels()

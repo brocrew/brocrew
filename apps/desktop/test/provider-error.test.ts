@@ -1,5 +1,6 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
+import { eventForDisplay } from '../src/main/providers/claude/transcripts'
 
 import {
   TURN_FAILED,
@@ -34,7 +35,7 @@ function notices(state: TranscriptState): string[] {
 }
 
 function feed(state: TranscriptState, ...events: TranscriptEvent[]): TranscriptState {
-  for (const event of events) applyEvent(state, event)
+  for (const event of events) applyEvent(state, eventForDisplay(event))
   return state
 }
 
@@ -251,6 +252,47 @@ describe('what a person reads when a turn fails', () => {
     )
     expect(state.ended).toBe(true)
     expect(notices(state)).toEqual(['the provider process died'])
+  })
+})
+
+describe('supplied error presentation', () => {
+  it('renders fictional remedy words unchanged and keeps the raw diagnostic for repeats', () => {
+    const state = feed(
+      createTranscript(),
+      {
+        type: 'error',
+        message: ENVELOPE,
+        fatal: false,
+        presentation: { message: 'Fable needs a different workspace. Open Fable settings.' },
+      },
+      { type: 'error', message: `turn failed: ${ENVELOPE}`, fatal: false },
+    )
+    expect(notices(state)).toEqual(['Fable needs a different workspace. Open Fable settings.'])
+    expect(state.lastError?.raw).toBe(ENVELOPE)
+    expect(state.ended).toBe(false)
+  })
+
+  it('keeps fatal ending semantics when the supplied words are opaque', () => {
+    const state = feed(createTranscript(), {
+      type: 'error',
+      message: 'fictional provider diagnostic',
+      fatal: true,
+      presentation: { message: 'Choose a workspace in Fable.' },
+    })
+    expect(notices(state)).toEqual(['Choose a workspace in Fable.'])
+    expect(state.ended).toBe(true)
+  })
+
+  it('uses generic diagnostic rendering when no display words were supplied', () => {
+    for (const presentation of [undefined, { message: '' }]) {
+      const state = feed(createTranscript(), {
+        type: 'error',
+        message: ENVELOPE,
+        fatal: false,
+        presentation,
+      })
+      expect(notices(state)).toEqual([SENTENCE])
+    }
   })
 })
 

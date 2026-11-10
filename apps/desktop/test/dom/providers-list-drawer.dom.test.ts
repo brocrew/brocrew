@@ -197,6 +197,39 @@ describe('the Providers list opens the existing controls in one drawer', () => {
       "Use this Mac's Fable sign-in for all agents",
     )
   })
+  it('uses supplied success words for a fictional provider’s manual check', async () => {
+    const check = window.api.runtime.checkProviderAuth
+    const asked = vi.fn<typeof check>(async (request) =>
+      (request.provider as string) === 'fable'
+        ? { state: 'usable', login: 'account', expiresAt: null }
+        : check(request),
+    )
+    window.api.runtime.checkProviderAuth = asked
+    const descriptor = {
+      ...PROVIDER_DESCRIPTORS[0],
+      id: 'fable',
+      displayName: 'Fable',
+      debugOnly: false,
+      signIn: {
+        ...PROVIDER_DESCRIPTORS[0].signIn,
+        manualProbe: true,
+        manualProbeSuccess: 'Fable is ready to answer.',
+      },
+    }
+    const m = screen({ descriptors: [descriptor] })
+    await settle()
+    row(m, 'fable').click()
+    await settle()
+    const button = Array.from(m.q('provider-card').querySelectorAll('button')).find(
+      (item) => item.textContent?.trim() === 'Check again',
+    )!
+    expect(button).toBeDefined()
+    button.click()
+    await settle()
+    expect(asked.mock.calls.some(([request]) => request.probe === true)).toBe(true)
+    expect(m.q('provider-card').textContent).toContain('Fable is ready to answer.')
+    expect(m.q('provider-card').textContent).not.toContain('Claude sign-in works.')
+  })
   it('opens the reused card and only that provider’s kept rules, then restores focus on Escape', async () => {
     const check = vi.spyOn(window.api.runtime, 'checkProviderAuth')
     const key = vi.spyOn(window.api.runtime, 'apiKeyStatus')

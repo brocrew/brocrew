@@ -1,5 +1,3 @@
-import type { ProviderRefusal } from '@brobot2/runtime'
-
 /**
  * ⛔ **The sentence inside a machine envelope, and the turn's own ending told once** (246 §1).
  *
@@ -158,53 +156,6 @@ function sentenceInEnvelope(message: string): string | null {
 export function turnFailureDetail(message: string): string | null {
   if (message === TURN_FAILED) return ''
   if (message.startsWith(TURN_FAILED_PREFIX)) return message.slice(TURN_FAILED_PREFIX.length)
-  return null
-}
-
-/**
- * 🔴 **680 · a refusal the adapter RECOGNISED, as a line a person can act on** (PM ruling R28c).
- *
- * A model-version refusal can be resolved by updating the installed Claude Code or choosing
- * a supported model. Do not repeat advice about an unrelated desktop app as this app's remedy.
- *
- * ⚠️ **Every value is the wire's**: the model and the version this app runs are what the CLI announced
- * in that turn's own `system/init`, and the floor is the one the provider's sentence names — none of
- * them is a constant here. The provider's whole sentence stays on the event's `message` for the
- * ledger and the Events tab (085's split). ⛔ **An exhaustive switch**, so a second kind of refusal
- * is a build failure here rather than a blank notice.
- */
-export function refusalSentence(refusal: ProviderRefusal): string {
-  switch (refusal.is) {
-    case 'model-needs-a-newer-cli':
-      return (
-        `${refusal.model} needs Claude Code ${refusal.needs} or newer, and this app runs Claude ` +
-        `Code ${refusal.runs}. Update Claude Code, or choose another model for this conversation.`
-      )
-    case 'reply-cut-at-its-output-limit':
-      // ⚑ The CLI's own words tell the reader to set `CLAUDE_CODE_MAX_OUTPUT_TOKENS` — a variable of
-      // a child this app spawns with an allow-listed environment. What is true, and all of it.
-      return `The reply was cut off at its output limit of ${refusal.limit} tokens.`
-  }
-}
-
-/**
- * ⛔ **A stored or imported row is read as a member, never trusted** (680's review) — the same rule
- * `transcript.ts` applies to every replayed field. A ledger or a `.brobot` bundle from a later build
- * can carry a kind this build does not know, and a hand-edited one can carry anything; either is
- * `null` here, and the reader is shown the provider's own sentence instead (R28b).
- */
-export function knownRefusal(value: unknown): ProviderRefusal | null {
-  if (!isRecord(value)) return null
-  const text = (key: string): boolean => typeof value[key] === 'string'
-  if (value['is'] === 'model-needs-a-newer-cli' && text('model') && text('needs') && text('runs'))
-    return {
-      is: 'model-needs-a-newer-cli',
-      model: value['model'] as string,
-      needs: value['needs'] as string,
-      runs: value['runs'] as string,
-    }
-  if (value['is'] === 'reply-cut-at-its-output-limit' && text('limit'))
-    return { is: 'reply-cut-at-its-output-limit', limit: value['limit'] as string }
   return null
 }
 
