@@ -1,5 +1,5 @@
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -51,8 +51,8 @@ import { everythingOverTheWire } from './lib/the-wire'
  *     - 🔴 a word from an earlier start is gone the moment the next start, or a reopen, is asked;
  *     - ⚑ controls that hold on `main`: a refusal with no word; a Cancel pressed here; a superseded
  *       start; the sheet's refusal, which is the sheet's and carries no word to the launcher.
- *  - **§2 · the screen** — `RuntimeScreen` is mounted by no test, so the hop from the store to the
- *    launcher is read where it is written, as `718` pinned the sheet's tag.
+ *  - The store-to-launcher hop is exercised through actual RuntimeScreen in
+ *    `runtime-screen-behaviour.dom.test.ts`.
  *  - **§3 · the real wire** — the renderer's store over main's own `executeRuntimeCommand` and a real
  *    `RuntimeHost` (`host-renderer-agreement.test.ts`' shape): main's zod takes the ask, and the word
  *    main's own classifier chose is the one the store keeps.
@@ -67,7 +67,6 @@ import { everythingOverTheWire } from './lib/the-wire'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const RENDERER = join(here, '../src/renderer/src')
 
 /** ⚑ The launcher's word — `null` on a store without the ref, which is `main`'s. */
 const wordOf = (store: RendererStore): LaunchRefusal | null =>
@@ -310,33 +309,6 @@ describe('§1 · `716` F-1 — the store asks main why, and keeps the word besid
     expect(heard).toEqual([SAID.machine])
     expect(store.launchError.value).toBeNull()
     expect(wordOf(store)).toBeNull()
-  })
-})
-
-/* ================================================================ §2 · the screen */
-
-describe('§2 · the screen hands the launcher the word — read where it is written', () => {
-  const screen = readFileSync(join(RENDERER, 'components/RuntimeScreen.vue'), 'utf8')
-
-  /** One component tag, from its opening line to its own `/>` line — `718`'s reading of the sheet's. */
-  const tagOf = (opening: string, close: string): string => {
-    const from = screen.indexOf(opening)
-    expect(from, `no ${opening.trim()} in RuntimeScreen`).toBeGreaterThan(-1)
-    expect(screen.indexOf(opening, from + 1), `a second ${opening.trim()}`).toBe(-1)
-    const to = screen.indexOf(close, from)
-    expect(to).toBeGreaterThan(from)
-    return screen.slice(from, to)
-  }
-
-  /**
-   * 🔴 **RED on `main`**, whose `<NewConversation>` was handed the sentence and nothing else — so
-   * however the store kept the word, the launcher's check could not read it.
-   */
-  it('🔴 `<NewConversation>` is bound to `store.launchRefusal`, beside the sentence it pairs with', () => {
-    const tag = tagOf('<NewConversation\n', '\n        />')
-    expect(tag).toContain(':error="store.launchError.value"')
-    expect(tag).toContain(':refused-as="store.launchRefusal.value"')
-    expect(screen.split(':refused-as=')).toHaveLength(2)
   })
 })
 
