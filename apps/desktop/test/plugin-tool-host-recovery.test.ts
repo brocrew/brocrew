@@ -29,11 +29,7 @@ it.each(['chrome', 'whatsapp'] as const)(
     await f.controller.install(f.handle, plugin)
     const old = f.controller.agentAttachments(f.local.sink.workspaceId)[0]!
     const proof = vi.fn()
-    const pending = f.controller.restartPluginTools(
-      plugin,
-      runIds[0]!,
-      proof,
-    )
+    const pending = f.controller.restartPluginTools(plugin, runIds[0]!, proof)
     await entered.promise
     expect(f.starts()).toBe(1)
     expect(proof).not.toHaveBeenCalled()

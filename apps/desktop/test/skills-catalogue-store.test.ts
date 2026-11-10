@@ -10,11 +10,7 @@ import {
   verifyBuiltInSkills,
   type VerifiedBuiltInSkills,
 } from '../src/main/skills/built-in-catalogue'
-import {
-  SqliteSkillCatalogue,
-  SkillCatalogueError,
-  skillAlias,
-} from '../src/main/skills/catalogue-store'
+import { SqliteSkillCatalogue, SkillCatalogueError } from '../src/main/skills/catalogue-store'
 import { launchSkillSelections } from '../src/main/skills/launch-selection'
 import { BUILT_IN_SKILL_NAMES } from '../src/shared/built-in-skills'
 import type { SkillDraft } from '../src/shared/skills-catalogue'
