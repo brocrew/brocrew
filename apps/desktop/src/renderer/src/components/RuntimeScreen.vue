@@ -141,7 +141,6 @@ import {
   onMounted,
   onUnmounted,
   ref,
-  shallowRef,
   watch,
   watchEffect,
 } from 'vue'
