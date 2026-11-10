@@ -102,7 +102,8 @@
       "profileScoped": false,
       "accountIsSignIn": false,
       "changeWords": "this computer has moved on to a different one since — a renewal counts",
-      "manualProbe": true
+      "manualProbe": true,
+      "manualProbeSuccess": "Claude sign-in works."
     },
     "usageWindows": ["5-hour", "weekly"],
     "commandPrefix": "/",

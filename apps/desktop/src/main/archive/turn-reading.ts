@@ -1,4 +1,4 @@
-import type { AsSentPart, TurnAsSent, WhatTheRecordLeavesOut } from '../../shared/turn-as-sent'
+import type { AsSentPart, WhatTheRecordLeavesOut } from '../../shared/turn-as-sent'
 
 export interface TurnAsked {
   /**
@@ -24,7 +24,7 @@ export interface TurnAsked {
  * takes a context message — `true`, `false`, or `null`: this build holds no snapshot of it.
  */
 export type { TurnReadingOptions } from '@brobot2/runtime/provider-module'
-import type { TurnReadingOptions, TurnReading as PortableTurnReading } from '@brobot2/runtime/provider-module'
+import type { TurnReading as PortableTurnReading } from '@brobot2/runtime/provider-module'
 import type { DesktopProviderValues } from '../providers/desktop-values'
 export type TurnReading = PortableTurnReading<DesktopProviderValues>
 
