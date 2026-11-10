@@ -35,7 +35,7 @@ function notices(state: TranscriptState): string[] {
 }
 
 function feed(state: TranscriptState, ...events: TranscriptEvent[]): TranscriptState {
-  for (const event of events) applyEvent(state, eventForDisplay(event))
+  for (const event of events) applyEvent(state, event)
   return state
 }
 
@@ -311,7 +311,7 @@ describe('the version floor, said so a person can act on it', () => {
     const state = feed(
       createTranscript(),
       { type: 'user_turn', text: 'hello' },
-      { type: 'error', message: NOTICE, fatal: false, refusal: REFUSAL },
+      eventForDisplay({ type: 'error', message: NOTICE, fatal: false, refusal: REFUSAL }),
     )
     expect(notices(state)).toEqual([
       'claude-opus-5-5[1m] needs Claude Code 2.1.280 or newer, and this app runs Claude Code ' +
@@ -335,7 +335,7 @@ describe('the version floor, said so a person can act on it', () => {
     const said = notices(
       feed(
         createTranscript(),
-        { type: 'error', message: NOTICE, fatal: false, refusal: REFUSAL },
+        eventForDisplay({ type: 'error', message: NOTICE, fatal: false, refusal: REFUSAL }),
         { type: 'error', message: `turn failed: ${NOTICE}`, fatal: false },
       ),
     )
@@ -346,12 +346,15 @@ describe('the version floor, said so a person can act on it', () => {
     const cut =
       "API Error: Claude's response exceeded the 32000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable."
     const said = notices(
-      feed(createTranscript(), {
-        type: 'error',
-        message: cut,
-        fatal: false,
-        refusal: { is: 'reply-cut-at-its-output-limit', limit: '32000' },
-      }),
+      feed(
+        createTranscript(),
+        eventForDisplay({
+          type: 'error',
+          message: cut,
+          fatal: false,
+          refusal: { is: 'reply-cut-at-its-output-limit', limit: '32000' },
+        }),
+      ),
     )
     expect(said).toEqual(['The reply was cut off at its output limit of 32000 tokens.'])
     expect(said.join('\n')).not.toContain('CLAUDE_CODE_MAX_OUTPUT_TOKENS')
@@ -366,7 +369,10 @@ describe('the version floor, said so a person can act on it', () => {
         fatal: false,
         refusal,
       } as unknown as TranscriptEvent
-      expect(notices(feed(createTranscript(), event)), JSON.stringify(refusal)).toEqual([NOTICE])
+      expect(
+        notices(feed(createTranscript(), eventForDisplay(event))),
+        JSON.stringify(refusal),
+      ).toEqual([NOTICE])
     }
   })
 })
