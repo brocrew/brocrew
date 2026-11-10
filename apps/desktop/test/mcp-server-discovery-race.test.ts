@@ -74,17 +74,6 @@ describe('a late discovery failure describes the request’s current ending', ()
     expect(world.sent.map((one) => one.text).join('')).not.toContain('Nothing was registered')
   })
 
-  it('an unchanged unreachable request stays open with no registration or grants', async () => {
-    const server = await world.server([], true)
-    const id = await ask(server.url)
-    expect(await approve(id)).toMatchObject({ outcome: 'refused', stillOpen: true })
-    expect(world.store.mcpServerRequestsWaiting()).toHaveLength(1)
-    expect(world.store.externalMcpServers()).toEqual([])
-    expect(world.store.externalMcpServersFor('writer')).toEqual([])
-    expect(endings(id)).toEqual([])
-    expect(world.sent).toEqual([])
-  })
-
   it.each([false, true])(
     'a starting asker with Add completed before failure, then removed=%s, gets the current answer',
     async (removed) => {

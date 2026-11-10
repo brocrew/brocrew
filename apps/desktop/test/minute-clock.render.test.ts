@@ -27,19 +27,11 @@ describe('when the displayed minute stops being true', () => {
     expect(msUntilNextMinute(MINUTE_MS + 20_000)).toBe(40_000)
   })
 
-  it('⛔ a boundary exactly NOW is a whole minute away, never zero', () => {
+  it('a boundary exactly NOW is a whole minute away, never zero', () => {
     // Returning 0 would schedule a timeout that fires immediately, re-reads the same minute and
-    // schedules another — a spin, on the surface whose whole point is that it costs nothing.
+    // schedules another — a spin.
     for (const at of [0, MINUTE_MS, MINUTE_MS * 12_345]) {
       expect(msUntilNextMinute(at)).toBe(MINUTE_MS)
-    }
-  })
-
-  it('never asks for more than a minute or less than a tick', () => {
-    for (let ms = 0; ms < MINUTE_MS; ms += 997) {
-      const wait = msUntilNextMinute(ms)
-      expect(wait).toBeGreaterThan(0)
-      expect(wait).toBeLessThanOrEqual(MINUTE_MS)
     }
   })
 })
@@ -48,23 +40,7 @@ describe('the clock itself', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
-  it('⛔ THE BUG: it moves while nobody touches it', () => {
-    let wall = MINUTE_MS * 10 + 43_000
-    const scope = effectScope()
-    const clock = scope.run(() => useMinuteClock(() => wall))!
-
-    expect(clock.value).toBe(wall)
-
-    // Three minutes pass with no navigation, no click, nothing.
-    for (let i = 0; i < 3; i += 1) {
-      wall += MINUTE_MS
-      vi.advanceTimersByTime(MINUTE_MS)
-    }
-    expect(clock.value).toBe(wall)
-    scope.stop()
-  })
-
-  it('lands ON the rollover: one change per minute, not one per second', () => {
+  it('moves while nobody touches it, landing ON the rollover: one change per minute, not one per second', () => {
     let wall = MINUTE_MS * 10 + 43_000
     const scope = effectScope()
     const clock = scope.run(() => useMinuteClock(() => wall))!

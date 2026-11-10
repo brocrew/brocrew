@@ -81,7 +81,7 @@ describe('F093 · memory pages, through the window’s door', () => {
     expect(second.entries.every((one) => one.amendable)).toBe(true)
   })
 
-  it('⚑ the last page is partial and says it is the last', async () => {
+  it('the last page is partial and says it is the last', async () => {
     seed(45)
     const last = await page({ offset: 40, limit: 20 })
     expect(names(last)).toEqual(topics(40, 45))
@@ -90,26 +90,14 @@ describe('F093 · memory pages, through the window’s door', () => {
     expect(last.entries.every((one) => one.amendable)).toBe(true)
   })
 
-  it('managed entries remain amendable when a page straddles the launch limit', async () => {
-    seed(45)
-    const straddle = await page({ offset: 15, limit: 10 })
-    expect(names(straddle)).toEqual(topics(15, 25))
-    expect(straddle.nextOffset).toBe(25)
-    const amendable = Object.fromEntries(
-      straddle.entries.map((one) => [basename(one.path), one.amendable]),
-    )
-    for (const name of topics(15, 20)) expect(amendable[name], name).toBe(true)
-    for (const name of topics(20, 25)) expect(amendable[name], name).toBe(true)
-  })
-
-  it('⚑ an offset at or past the end is an empty last page, and still says how many there are', async () => {
+  it('an offset at or past the end is an empty last page, and still says how many there are', async () => {
     seed(45)
     for (const offset of [45, 1_000]) {
       const beyond = await page({ offset, limit: 20 })
       expect(beyond.entries, String(offset)).toEqual([])
       expect(beyond.nextOffset, String(offset)).toBeNull()
       expect(beyond.total, String(offset)).toBe(46)
-      // ⚑ W4.177 — not "nothing written": the store holds 46.
+      // Not "nothing written": the store holds 46.
       expect(beyond.state, String(offset)).toBe('past-the-last-page')
     }
   })

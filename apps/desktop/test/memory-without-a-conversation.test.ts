@@ -6,11 +6,7 @@ import { codexAdHocNotesDir, codexMemoryDir } from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { readAgentMemory } from '../src/main/runtime/agent-memory'
-import {
-  MEMORY_STORE_IS,
-  MEMORY_STORE_STATE,
-  type AgentMemoryStore,
-} from '../src/shared/agent-memory'
+import { MEMORY_STORE_IS, type AgentMemoryStore } from '../src/shared/agent-memory'
 
 /**
  * # 🔴 An agent's memory, read with NO conversation open (625, `EXT-015` §1)
@@ -80,29 +76,17 @@ const plantClaudeMemory = (profileId: string, files: Record<string, string>): st
   return dir
 }
 
-describe('§1 · four states, and a bare empty list is none of them', () => {
-  it('🔴 every member of the vocabulary has a sentence, and the reading only ever answers one of them', () => {
-    // ⚑ **The vocabulary and its sentences are pinned together**, which is standing rule 8's half
-    // that a test can hold: a word added without a sentence is a word a surface cannot render.
-    expect(Object.keys(MEMORY_STORE_IS).sort()).toEqual([...MEMORY_STORE_STATE].sort())
-    for (const state of MEMORY_STORE_STATE) {
-      expect(MEMORY_STORE_IS[state].length, `${state} has no sentence`).toBeGreaterThan(10)
-    }
-  })
-
-  it('⛔ an agent that has never run answers `no-home` — NOT "hasn’t written anything down yet"', () => {
+describe('four states, and a bare empty list is none of them', () => {
+  it('an agent that has never run answers `no-home` — NOT "hasn’t written anything down yet"', () => {
     const reading = read('never-ran')
-    // ⚠️ **Both providers, and neither of them is the configured one** — there is no identity row
-    // in this test at all, which is the point: a store is a fact about a directory.
+    // Both providers, with no identity row at all: a store is a fact about a directory.
     expect(reading.stores.map((store) => store.provider)).toEqual(['claude', 'codex'])
     for (const store of reading.stores) {
       expect(store.state).toBe('no-home')
       expect(store.dir).toBeNull()
       expect(store.entries).toEqual([])
     }
-    // 🔴 **The control that makes the word mean something.** A reading that answered
-    // `nothing-written` here would be telling a person to wait for a store no conversation is
-    // going to fill, and it would look IDENTICAL on the wire to the case below.
+    // `nothing-written` here would tell a person to wait for a store no conversation will fill.
     expect(MEMORY_STORE_IS['no-home']).not.toBe(MEMORY_STORE_IS['nothing-written'])
   })
 

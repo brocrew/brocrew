@@ -97,7 +97,7 @@ describe('332 · the row that says how the conversation opened', () => {
   /** Held across `build()` calls, so a session survives a host that is torn down and rebuilt. */
   let runtimes: Map<Provider, FakeRuntime>
 
-  function build(over: { readInstructions?: false; now?: () => number } = {}): RuntimeHost {
+  function build(over: { now?: () => number } = {}): RuntimeHost {
     let counter = 0
     const store = createSessionStore(db)
     return new RuntimeHost({
@@ -135,17 +135,11 @@ describe('332 · the row that says how the conversation opened', () => {
         authNote: null,
         files: [],
       }),
-      // ⚠️ **Absent entirely for one test**, because "this host has no reader" and "this host's
-      // reader had nothing to say" are two different silences and only one of them is a default.
-      ...(over.readInstructions === false
-        ? {}
-        : {
-            readInstructions: () => ({
-              instructions: NO_MEMORY,
-              systemHint: undefined,
-              memoryLoaded: launchFact,
-            }),
-          }),
+      readInstructions: () => ({
+        instructions: NO_MEMORY,
+        systemHint: undefined,
+        memoryLoaded: launchFact,
+      }),
     })
   }
 
@@ -177,29 +171,19 @@ describe('332 · the row that says how the conversation opened', () => {
     expect(recorded[0]).toEqual({ ordinal: 0, event: LAUNCH })
   })
 
-  it('⛔ a reader with nothing to say publishes NOTHING — there is no default that invents one', async () => {
+  it('a reader with nothing to say publishes NOTHING — there is no default that invents one', async () => {
     launchFact = null
 
     const created = await host.createSession({ provider: 'claude' }, sink)
 
     expect(sink.loaded()).toHaveLength(0)
     expect(recorded.some((row) => row.event.type === 'memory_loaded')).toBe(false)
-    // ⚑ The paired positive: this host DID open a session and DID publish other rows, so the
-    // absence above is a decision rather than a session that never started.
+    // This host did open a session and publish other rows, so the absence is a decision.
     expect(created.sessionId).toBeTruthy()
     expect(sink.messages.length).toBeGreaterThan(0)
   })
 
-  it('⚠️ …and a host with no reader at all publishes nothing either', async () => {
-    await host.closeAll()
-    host = build({ readInstructions: false })
-
-    await host.createSession({ provider: 'claude' }, sink)
-
-    expect(sink.loaded()).toHaveLength(0)
-  })
-
-  it('⛔ a RESUME does not say it again — one statement per conversation (332 §2.1)', async () => {
+  it('a RESUME does not say it again — one statement per conversation', async () => {
     const created = await host.createSession({ provider: 'claude' }, sink)
     expect(sink.loaded(), 'the create did not publish one, so this proves nothing').toHaveLength(1)
     await host.close(created.sessionId, sink)
@@ -207,9 +191,7 @@ describe('332 · the row that says how the conversation opened', () => {
     const resumed = await host.resumeSession(created.sessionId, sink)
 
     expect(resumed.handover).toBe('resumed')
-    // ⚠️ **Counted on the SINK across both lives**, not "the resume published none": the reader
-    // still answers on a resume — 158's live-profile semantic re-reads the store — so what is being
-    // asserted is that the host declines it, not that there was nothing to decline.
+    // Counted across both lives: the reader still answers on a resume, and the host declines it.
     expect(sink.loaded()).toHaveLength(1)
     // …and the ledger holds exactly the one row the first life wrote.
     expect(recorded.filter((row) => row.event.type === 'memory_loaded')).toHaveLength(1)

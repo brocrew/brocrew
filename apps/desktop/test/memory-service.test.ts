@@ -87,9 +87,8 @@ function deferred() {
   return { promise, resolve }
 }
 async function create(overrides: Partial<Inputs> = {}): Promise<Service> {
-  const factory = Reflect.get(memory, 'createMemoryService')
-  expect(factory, 'durable memory service').toBeTypeOf('function')
-  const service = await (factory as (inputs: Inputs) => Promise<Service>)({
+  const factory = memory.createMemoryService as unknown as (inputs: Inputs) => Promise<Service>
+  const service = await factory({
     store,
     inputsOf: (slug) => ({ profileId: slug, homesRoot: homes, homeOf: () => home(slug) }),
     now: () => clock++,

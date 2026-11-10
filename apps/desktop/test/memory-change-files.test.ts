@@ -14,36 +14,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { claudeAutoMemoryDir } from '@brobot2/runtime/claude'
 import { codexAdHocNotesDir, codexMemoryDir } from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
-import * as memory from '../src/main/runtime/agent-memory'
-import type { AgentMemoryInputs, MemoryWriteSeams } from '../src/main/runtime/agent-memory'
+import {
+  removeMemoryEntry,
+  restoreMemoryEntry,
+  type AgentMemoryInputs,
+  type MemoryFileRestoration,
+} from '../src/main/runtime/agent-memory'
 import type { MemoryAmendment } from '../src/shared/agent-memory'
 
-interface Result {
-  ok: boolean
-  reason?: string
-  entry?: string
-  textBefore?: string | null
-  textAfter?: string | null
-}
-interface Selection extends AgentMemoryInputs {
-  provider: Provider
-  entry: string
-  confirmed: boolean
-  check: () => void
-}
-interface Restoration extends AgentMemoryInputs {
-  source: MemoryAmendment
-  check: () => void
-  confirmed: boolean
-}
-interface Seams extends MemoryWriteSeams {
-  beforeMemoryUnlink?: () => void
-}
-interface Api {
-  remove: (inputs: Selection, seams?: Seams) => Result
-  restore: (inputs: Restoration, seams?: Seams) => Promise<Result>
-  undo: (inputs: Restoration, seams?: Seams) => Result
-}
 const saved = 'Saved text.\r\nCafé.\n'
 let root: string
 let homesRoot: string
@@ -66,21 +44,12 @@ const source = (provider: Provider, text = saved): MemoryAmendment => ({
   at: 1000,
 })
 const check = () => {}
-const restoring = (provider: Provider, text = saved): Restoration => ({
+const restoring = (provider: Provider, text = saved): MemoryFileRestoration => ({
   ...inputs(),
   source: source(provider, text),
   check,
   confirmed: true,
 })
-function api(): Api {
-  const names = ['removeMemoryEntry', 'restoreMemoryEntry', 'undoMemoryRestoration']
-  for (const name of names) expect(Reflect.get(memory, name), name).toBeTypeOf('function')
-  return {
-    remove: Reflect.get(memory, names[0]!) as Api['remove'],
-    restore: Reflect.get(memory, names[1]!) as Api['restore'],
-    undo: Reflect.get(memory, names[2]!) as Api['undo'],
-  }
-}
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'memory-files-'))
   homesRoot = join(root, 'homes')
@@ -96,30 +65,30 @@ describe('memory changes preserve the selected text without overwriting recreate
     async (provider) => {
       expect(
         (
-          await api().restore({
+          await restoreMemoryEntry({
             ...restoring(provider),
             source: { ...source(provider), act: 'corrected', textAfter: 'edited' },
           })
         ).ok,
       ).toBe(false)
       expect(existsSync(path(provider))).toBe(false)
-      expect((await api().restore(restoring(provider))).ok).toBe(true)
+      expect((await restoreMemoryEntry(restoring(provider))).ok).toBe(true)
       expect(readFileSync(path(provider))).toEqual(Buffer.from(saved))
       if (process.platform !== 'win32') expect(statSync(path(provider)).mode & 0o777).toBe(0o600)
-      expect((await api().restore(restoring(provider))).ok).toBe(false)
+      expect((await restoreMemoryEntry(restoring(provider))).ok).toBe(false)
       expect(readFileSync(path(provider))).toEqual(Buffer.from(saved))
     },
   )
   it('supports whole memory files past the smaller saved-method body limit', async () => {
     const text = 'A long saved note.\n'.repeat(2000)
     expect(Buffer.byteLength(text)).toBeGreaterThan(16 * 1024)
-    expect((await api().restore(restoring('claude', text))).ok).toBe(true)
+    expect((await restoreMemoryEntry(restoring('claude', text))).ok).toBe(true)
   })
   it('refuses a recreated target and actual cancellation during stage preparation', async () => {
     const entry = path('claude')
     expect(
       (
-        await api().restore(restoring('claude'), {
+        await restoreMemoryEntry(restoring('claude'), {
           beforeStageCreate: () => writeFileSync(entry, 'recreated'),
         })
       ).ok,
@@ -129,7 +98,7 @@ describe('memory changes preserve the selected text without overwriting recreate
     let current = true
     expect(
       (
-        await api().restore(
+        await restoreMemoryEntry(
           {
             ...restoring('claude'),
             check: () => {
@@ -147,7 +116,6 @@ describe('memory changes preserve the selected text without overwriting recreate
     expect(existsSync(entry)).toBe(false)
   })
   it('never creates into another profile, a moved root or a pipeline directory', async () => {
-    const restore = api().restore
     const pipeline = join(codexMemoryDir(homeOf('codex')), 'raw_memories.md')
     for (const [provider, entry] of [
       ['claude', path('claude', 'wren')],
@@ -155,13 +123,18 @@ describe('memory changes preserve the selected text without overwriting recreate
       ['claude', join(root, 'moved', 'note.md')],
     ] as const) {
       expect(
-        (await restore({ ...restoring(provider), source: { ...source(provider), entry } })).ok,
+        (
+          await restoreMemoryEntry({
+            ...restoring(provider),
+            source: { ...source(provider), entry },
+          })
+        ).ok,
       ).toBe(false)
       expect(existsSync(entry)).toBe(false)
     }
     writeFileSync(pipeline, saved)
     expect(
-      api().remove({
+      removeMemoryEntry({
         ...inputs(),
         provider: 'codex',
         entry: pipeline,
@@ -171,14 +144,16 @@ describe('memory changes preserve the selected text without overwriting recreate
     ).toBe(false)
     expect(readFileSync(pipeline, 'utf8')).toBe(saved)
     const wrongRoot = join(root, 'missing-homes')
-    expect((await restore({ ...restoring('claude'), homesRoot: wrongRoot })).ok).toBe(false)
+    expect((await restoreMemoryEntry({ ...restoring('claude'), homesRoot: wrongRoot })).ok).toBe(
+      false,
+    )
     expect(existsSync(wrongRoot)).toBe(false)
   })
   it('never writes through a linked memory file into the file it leads to', async () => {
     const outside = join(root, 'outside.md')
     writeFileSync(outside, 'outside')
     symlinkSync(outside, path('claude'))
-    expect((await api().restore(restoring('claude'))).ok).toBe(false)
+    expect((await restoreMemoryEntry(restoring('claude'))).ok).toBe(false)
     expect(readFileSync(outside, 'utf8')).toBe('outside')
     rmSync(path('claude'))
     rmSync(folder('claude'), { recursive: true })
@@ -186,14 +161,14 @@ describe('memory changes preserve the selected text without overwriting recreate
     mkdirSync(elsewhere)
     symlinkSync(elsewhere, folder('claude'), process.platform === 'win32' ? 'junction' : 'dir')
     // A memory folder the person linked elsewhere is used where it leads.
-    expect((await api().restore(restoring('claude'))).ok).toBe(true)
+    expect((await restoreMemoryEntry(restoring('claude'))).ok).toBe(true)
     expect(readFileSync(outside, 'utf8')).toBe('outside')
   })
   it('refuses invalid UTF8 or oversized files instead of saving an incomplete before image', async () => {
     const entry = path('claude')
     writeFileSync(entry, Buffer.from([0xff]))
     expect(
-      api().remove({
+      removeMemoryEntry({
         ...inputs(),
         provider: 'claude',
         entry,
@@ -203,7 +178,7 @@ describe('memory changes preserve the selected text without overwriting recreate
     ).toBe(false)
     expect(readFileSync(entry)).toEqual(Buffer.from([0xff]))
     rmSync(entry)
-    expect((await api().restore(restoring('claude', 'x'.repeat(65537)))).ok).toBe(false)
+    expect((await restoreMemoryEntry(restoring('claude', 'x'.repeat(65537)))).ok).toBe(false)
     expect(existsSync(entry)).toBe(false)
   })
 })

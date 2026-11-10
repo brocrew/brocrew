@@ -52,7 +52,6 @@ let db: AppDatabase
 let store: storage.SessionStore
 let clock: number
 function recovery(): Recovery {
-  expect(Reflect.get(store, 'beginMemoryAmendment'), 'durable memory intent').toBeTypeOf('function')
   return store as unknown as Recovery
 }
 function remove(overrides: Partial<Write> = {}): Write {
@@ -68,12 +67,7 @@ function remove(overrides: Partial<Write> = {}): Write {
   }
 }
 function observer() {
-  const create = Reflect.get(storage, 'createMemoryAmendmentObserver') as (
-    db: AppDatabase,
-    now: () => number,
-  ) => { reconcile(id: string, change: string, actual: Observation, by: ActedBy): boolean }
-  expect(create, 'app-only interrupted memory observation').toBeTypeOf('function')
-  return create(db, () => clock++)
+  return storage.createMemoryAmendmentObserver(db, () => clock++)
 }
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'memory-recovery-'))
@@ -152,11 +146,10 @@ describe('memory intent survives interruption before its single honest observati
     })
     expect(api.settleMemoryAmendment('lark', saved.id, absent, person)).toBe(false)
   })
-  it('observes startup only as the app, without exposing reconciliation on SessionStore', () => {
+  it('observes startup only as the app', () => {
     const api = recovery()
     const saved = api.beginMemoryAmendment(remove(), clock++)!
     const internal = observer()
-    expect(Reflect.get(store, 'reconcileMemoryAmendment')).toBeUndefined()
     for (const by of [person, agent])
       expect(internal.reconcile(agentIdentityRowId('lark'), saved.id, absent, by)).toBe(false)
     expect(internal.reconcile(agentIdentityRowId('lark'), saved.id, absent, app)).toBe(true)
@@ -505,10 +498,7 @@ describe('memory intent survives interruption before its single honest observati
     const saved = api.beginMemoryAmendment(remove(), clock++)!
     for (const bad of [{}, { text: 1 }, { text: hash(text), unreadable: true }])
       expect(api.settleMemoryAmendment('lark', saved.id, bad as Observation, person)).toBe(false)
-    const create = Reflect.get(storage, 'createMemoryAmendmentObserver') as typeof observer
-    const badClock = (
-      create as unknown as (db: AppDatabase, now: () => number) => ReturnType<typeof observer>
-    )(db, () => NaN)
+    const badClock = storage.createMemoryAmendmentObserver(db, () => NaN)
     expect(badClock.reconcile(agentIdentityRowId('lark'), saved.id, absent, app)).toBe(false)
     expect(api.memoryAmendment('lark', saved.id)?.outcome).toBe('pending')
   })

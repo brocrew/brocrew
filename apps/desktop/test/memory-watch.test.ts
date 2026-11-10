@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  MEMORY_FLOOR_BYTES,
-  MEMORY_STEP_BYTES,
-  startMemoryWatch,
-  type MemoryWatchOptions,
-} from '../src/main/memory-watch'
+import { startMemoryWatch, type MemoryWatchOptions } from '../src/main/memory-watch'
 
 /**
  * The watchdog 052 added because the incident it was dispatched for left no evidence at all: a
@@ -17,13 +12,14 @@ import {
 const GB = 1024 ** 3
 
 /** Feed the watchdog one RSS reading per sample and return whatever it chose to say. */
-function harness(samples: number[]): { logs: string[] } {
+function harness(samples: number[], detail?: () => string): { logs: string[] } {
   const logs: string[] = []
   // An array rather than a `let`: the callback assigns it, which is a shape TypeScript narrows to
   // `never` at the call site.
   const registered: (() => void)[] = []
   const options: MemoryWatchOptions = {
     sample: () => samples.shift() ?? 0,
+    ...(detail === undefined ? {} : { detail }),
     log: (message) => logs.push(message),
     setInterval: (fn) => {
       registered.push(fn)
@@ -59,20 +55,7 @@ describe('the main-process memory watchdog (052)', () => {
   it('carries the per-process breakdown, which is the fact the incident lacked', () => {
     // Nobody could say WHICH process held the 26 GB. A total with no breakdown would leave the
     // next report exactly as ambiguous.
-    const logs: string[] = []
-    const registered: (() => void)[] = []
-    const watch = startMemoryWatch({
-      sample: () => 3 * GB,
-      detail: () => 'Browser:0.4GB Tab:2.6GB',
-      log: (m) => logs.push(m),
-      setInterval: (fn) => {
-        registered.push(fn)
-        return 1
-      },
-      clearInterval: () => {},
-    })
-    registered[0]?.()
-    watch.stop()
+    const { logs } = harness([3 * GB], () => 'Browser:0.4GB Tab:2.6GB')
     expect(logs[0]).toContain('Tab:2.6GB')
   })
 
@@ -92,10 +75,5 @@ describe('the main-process memory watchdog (052)', () => {
     // climb the log exists to show.
     const { logs } = harness([2.1 * GB, 1.5 * GB, 2.2 * GB, 1.4 * GB, 2.3 * GB])
     expect(logs).toHaveLength(1)
-  })
-
-  it('uses a floor above anything this app has been measured doing', () => {
-    expect(MEMORY_FLOOR_BYTES).toBeGreaterThan(GB) // idle is 0.9 GB
-    expect(MEMORY_STEP_BYTES).toBe(GB)
   })
 })

@@ -10,22 +10,12 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import * as library from '../src/main/saved-method-library'
-import type { MethodLibraryItem } from '../src/shared/saved-method-library'
+import {
+  captureSavedMethodDeletion,
+  listSavedMethodLibrary,
+} from '../src/main/saved-method-library'
+import type { MethodDeleteSelection, MethodLibraryItem } from '../src/shared/saved-method-library'
 
-interface Image {
-  bytes: Buffer
-  mode: number
-}
-interface Plan {
-  target: string
-  files: readonly { name: string; before: Image | null; after: Buffer | null }[]
-  check(): void
-}
-interface Selection {
-  confirmed: boolean
-  key: string
-}
 let root: string
 let homesRoot: string
 let folder: string
@@ -33,8 +23,8 @@ const bytes = Buffer.from([0xff, 0, 0x0d, 0x0a])
 const line = '- Review | During review | verified 2026-10-21 | review.md'
 const other = '- Check | Before saving | verified 2026-10-20 | other.md'
 const inputs = () => ({ folder, homesRoot })
-function selection(name = 'review.md'): Selection {
-  const listed = library.listSavedMethodLibrary(inputs(), 1000)
+function selection(name = 'review.md'): MethodDeleteSelection {
+  const listed = listSavedMethodLibrary(inputs(), 1000)
   const item = listed.items.find((item: MethodLibraryItem) => item.name === name)!
   expect(item).toBeDefined()
   return {
@@ -42,13 +32,8 @@ function selection(name = 'review.md'): Selection {
     key: item.key,
   }
 }
-function capture(said = selection()): Plan {
-  const fn = Reflect.get(library, 'captureSavedMethodDeletion') as (
-    inputs: { folder: string; homesRoot: string },
-    selection: Selection,
-  ) => Plan
-  expect(fn, 'fresh confirmed deletion planning').toBeTypeOf('function')
-  return fn(inputs(), said)
+function capture(said = selection()) {
+  return captureSavedMethodDeletion(inputs(), said)
 }
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'method-delete-plan-'))
@@ -71,7 +56,6 @@ describe('a method delete is planned from the confirmed current inventory', () =
     expect(plan.files[0]?.after).toEqual(
       Buffer.from(`# Saved\r\n\r\nmalformed | review.md\n${other}\nend without newline`),
     )
-    expect(plan.files[1]?.before?.bytes).toEqual(bytes)
     expect(plan.files[1]?.before?.bytes).toEqual(bytes)
     expect(plan.files[1]?.after).toBeNull()
     plan.check()

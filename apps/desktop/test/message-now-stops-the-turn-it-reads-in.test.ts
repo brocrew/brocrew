@@ -137,26 +137,19 @@ describe('message now · a message or an answer can stop the running turn', () =
     await host.close(id, window)
   }
 
-  /** ⚑ The sentence a call answers with, beside what it structures. */
-  const sentenceOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<string> => {
+  /** The whole answer of a call: its sentence and what it structures. */
+  const answerOn = async (toolset: AgentToolset, name: ToolName, args: Record<string, unknown>) => {
     const tool = toolset.tools.find((one) => one.name === name)
     if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).text
+    return tool.call(args)
   }
 
   const callOn = async (
     toolset: AgentToolset,
     name: ToolName,
     args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  ): Promise<Record<string, unknown>> =>
+    (await answerOn(toolset, name, args)).structured as Record<string, unknown>
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
@@ -311,27 +304,35 @@ describe('message now · a message or an answer can stop the running turn', () =
       expect(read).toContain('anything not named there still runs')
     })
 
-    it('⚑ the receipt’s sentence states the intent and no timing, and the idle one says nothing was interrupted', async () => {
+    it('the receipt’s sentence states the intent and no timing, and an idle conversation needs no stop', async () => {
       const { ali, adaTools, aliHandle } = await aChainOfThree()
-      const idle = await sentenceOn(adaTools, 'message_agent', {
+      const idle = await answerOn(adaTools, 'message_agent', {
         agent: ali,
         text: 'a note while nothing runs',
         kind: 'note',
         interrupt: true,
       })
-      expect(idle).toContain(
+      expect(idle.structured).toMatchObject({
+        outcome: 'ok',
+        asked_to_stop: false,
+        not_stopped_because: 'not-needed',
+      })
+      expect(idle.text).toContain(
         'No turn was running that needed stopping, so nothing was interrupted.',
       )
+      expect(ledger(ali).some((event) => event.type === 'work_interrupted')).toBe(false)
 
       await makeItWork(aliHandle)
-      const running = await sentenceOn(adaTools, 'message_agent', {
-        agent: ali,
-        text: 'a note while it runs',
-        kind: 'note',
-        interrupt: true,
-      })
+      const running = (
+        await answerOn(adaTools, 'message_agent', {
+          agent: ali,
+          text: 'a note while it runs',
+          kind: 'note',
+          interrupt: true,
+        })
+      ).text
       expect(running).toContain('need not wait for that work to finish')
-      // ⚑ F084 — the stopped turn ended inside the wait, so the receipt says what its stop ended.
+      // The stopped turn ended inside the wait, so the receipt says what its stop ended.
       expect(running).toContain('The stop ended none of its commands.')
       // The stop's own sentence (after the hold's), which promises when nothing happens.
       expect(running.slice(running.indexOf('The turn '))).not.toMatch(
@@ -339,7 +340,7 @@ describe('message now · a message or an answer can stop the running turn', () =
       )
     })
 
-    it('⚑ …and the control: the same message without interrupt stops nothing and carries no such line', async () => {
+    it('…and the control: the same message without interrupt stops nothing and carries no such line', async () => {
       const { ali, adaTools, aliHandle } = await aChainOfThree()
       await makeItWork(aliHandle)
       const said = await callOn(adaTools, 'message_agent', {
@@ -355,21 +356,7 @@ describe('message now · a message or an answer can stop the running turn', () =
       for (const words of handedToTheProvider(ali)) expect(words).not.toContain(STOP_LINE)
     })
 
-    it('⛔ a conversation that is idle needs no stop, and the receipt says nothing was interrupted', async () => {
-      const { ali, adaTools } = await aChainOfThree()
-      const said = await callOn(adaTools, 'message_agent', {
-        agent: ali,
-        text: 'a note for an agent with nothing running',
-        kind: 'note',
-        interrupt: true,
-      })
-      expect(said.outcome, JSON.stringify(said)).toBe('ok')
-      expect(said.asked_to_stop).toBe(false)
-      expect(said.not_stopped_because).toBe('not-needed')
-      expect(ledger(ali).some((event) => event.type === 'work_interrupted')).toBe(false)
-    })
-
-    it('⛔ an agent that is not below the sender is refused, nothing is sent, and the refusal says how to send it plainly', async () => {
+    it('an agent that is not below the sender is refused, nothing is sent, and the refusal says how to send it plainly', async () => {
       const { ada, ali, aliHandle, siblingProfile } = await aChainOfThree()
       await makeItWork(aliHandle)
       // Ali is Ada's child: Ali may not interrupt UP the chain.

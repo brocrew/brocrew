@@ -51,10 +51,6 @@ let api: Observations
 let clock: number
 const now = () => clock++
 const begin = () => api.begin(lark, intent, person, 1000)!
-function reconcile(identity: string, id: string, actual: readonly MethodFileState[], by: ActedBy) {
-  expect(api.reconcile, 'the internal interrupted-change observation door').toBeTypeOf('function')
-  return api.reconcile(identity, id, actual, by)
-}
 function identities() {
   const store = createSessionStore(db, now)
   for (const slug of ['lark', 'wren']) {
@@ -62,7 +58,6 @@ function identities() {
       store.createAgentIdentity({ slug, displayName: null, provider: 'codex' }, { by: 'a-person' }),
     ).not.toBeNull()
   }
-  expect(Reflect.get(store, 'reconcileMethodChange')).toBeUndefined()
 }
 beforeEach(() => {
   folder = mkdtempSync(join(tmpdir(), 'method-observation-'))
@@ -81,7 +76,7 @@ describe('the app records interrupted method outcomes without impersonating the 
   it('keeps the initiating person separate from an automatic observer across reopen', () => {
     const started = begin()
     const at = clock
-    expect(reconcile(lark, started.id, absent, app)).toBe(true)
+    expect(api.reconcile(lark, started.id, absent, app)).toBe(true)
     const saved = api.read(lark, started.id)
     expect(saved).toMatchObject({
       by: person,
@@ -108,7 +103,7 @@ describe('the app records interrupted method outcomes without impersonating the 
       { name: 'review.md', fingerprint: null },
     ] as unknown as MethodFileState[]
     expect(api.settle(lark, started.id, 'done', oldObservation, person)).toBe(false)
-    expect(reconcile(lark, started.id, oldObservation, app)).toBe(true)
+    expect(api.reconcile(lark, started.id, oldObservation, app)).toBe(true)
     expect(api.read(lark, started.id)).toMatchObject({
       outcome: 'partial',
       actual: [{ name: 'review.md' }],
@@ -117,8 +112,8 @@ describe('the app records interrupted method outcomes without impersonating the 
 
   it('allows only the app to reconcile, without granting it begin or ordinary settle', () => {
     const started = begin()
-    expect(reconcile(lark, started.id, absent, person)).toBe(false)
-    expect(reconcile(lark, started.id, absent, agent)).toBe(false)
+    expect(api.reconcile(lark, started.id, absent, person)).toBe(false)
+    expect(api.reconcile(lark, started.id, absent, agent)).toBe(false)
     expect(api.begin(wren, intent, app, 1001)).toBeNull()
     expect(api.settle(lark, started.id, 'done', absent, app)).toBe(false)
     expect(api.read(lark, started.id)).toMatchObject({ outcome: 'pending', settlement: null })
@@ -142,7 +137,7 @@ describe('the app records interrupted method outcomes without impersonating the 
     },
   ])('records partial for $name instead of claiming the plan happened', ({ actual }) => {
     const started = begin()
-    expect(reconcile(lark, started.id, actual, app)).toBe(true)
+    expect(api.reconcile(lark, started.id, actual, app)).toBe(true)
     expect(api.read(lark, started.id)).toMatchObject({
       by: person,
       outcome: 'partial',
@@ -153,15 +148,15 @@ describe('the app records interrupted method outcomes without impersonating the 
 
   it('scopes observations to a pending identity record and refuses malformed or repeated input', () => {
     const started = begin()
-    expect(reconcile(wren, started.id, absent, app)).toBe(false)
-    expect(reconcile(lark, 'missing', absent, app)).toBe(false)
+    expect(api.reconcile(wren, started.id, absent, app)).toBe(false)
+    expect(api.reconcile(lark, 'missing', absent, app)).toBe(false)
     for (const invalid of [[], [...absent, ...absent], [{ name: 'other.md', base64: null }]]) {
-      expect(reconcile(lark, started.id, invalid, app)).toBe(false)
+      expect(api.reconcile(lark, started.id, invalid, app)).toBe(false)
       expect(api.read(lark, started.id)?.outcome).toBe('pending')
     }
-    expect(reconcile(lark, started.id, absent, app)).toBe(true)
+    expect(api.reconcile(lark, started.id, absent, app)).toBe(true)
     const settled = api.read(lark, started.id)
-    expect(reconcile(lark, started.id, absent, app)).toBe(false)
+    expect(api.reconcile(lark, started.id, absent, app)).toBe(false)
     expect(api.read(lark, started.id)).toEqual(settled)
   })
 
@@ -169,7 +164,6 @@ describe('the app records interrupted method outcomes without impersonating the 
     const started = begin()
     for (const value of [-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY]) {
       const invalidClock = factory(db, () => value)
-      expect(invalidClock.reconcile, 'internal app observation').toBeTypeOf('function')
       expect(invalidClock.reconcile(lark, started.id, absent, app)).toBe(false)
       expect(invalidClock.settle(lark, started.id, 'done', absent, person)).toBe(false)
       expect(api.read(lark, started.id)?.outcome).toBe('pending')

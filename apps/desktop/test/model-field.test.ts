@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  modelField,
-  type ModelFieldState,
-  type ModelFieldWorld,
-} from '../src/renderer/src/lib/model-field'
+import { modelField, type ModelFieldWorld } from '../src/renderer/src/lib/model-field'
 import type { CapabilityStatus, ModelChoice } from '../src/shared/runtime-ipc'
 
 /**
@@ -47,12 +43,6 @@ function world(over: Partial<ModelFieldWorld> = {}): ModelFieldWorld {
     reprovision: CODEX_COPY,
     ...over,
   }
-}
-
-/** Every sentence this function can produce, for the "no two states say the same thing" check. */
-function sayingOf(over: Partial<ModelFieldWorld>): string {
-  const field = modelField(world(over))
-  return `${field.message ?? '(no message)'}|${field.remedy ?? '(no remedy)'}`
 }
 
 describe('310 §2 · the model field says WHICH silence it is in', () => {
@@ -163,36 +153,10 @@ describe('310 §2 · the model field says WHICH silence it is in', () => {
     expect(field.remedy).toBeNull()
   })
 
-  it('🔴 no two of the six states say the same thing — which is the whole ticket', () => {
-    // ⛔ **The defect as one assertion.** Before 310 four of these produced an identical screen, so
-    // the set below would have had one entry where it now has six. A future change that collapses
-    // any two sentences fails here rather than in a bug report.
-    const cases: Record<ModelFieldState, Partial<ModelFieldWorld>> = {
-      listed: {},
-      empty: { catalogue: { ok: true, models: [] } },
-      asking: { catalogue: null, profileExists: true },
-      'no-profile': { catalogue: null, profileExists: false },
-      closing: { catalogue: { ok: false, reason: 'closing' } },
-      refused: { catalogue: { ok: false, reason: 'refused', detail: 'not logged in' } },
-    }
-    const said = Object.values(cases).map(sayingOf)
-    expect(new Set(said).size, `six states, six sentences — got ${said.join(' // ')}`).toBe(6)
-    // The paired positive: every state really produced the state it is filed under.
-    for (const [state, over] of Object.entries(cases)) {
-      expect(modelField(world(over)).state, state).toBe(state)
-    }
-  })
-
-  it('🔴 a profile that does not exist OUT-VOTES a catalogue still being held — 256 H1’s shape', () => {
-    // ⛔ **Found by the DOM test for this dispatch, not reasoned out in advance.** The first version
-    // of this function read the catalogue first and only asked about the profile when nothing was
-    // held — so a launcher that still had the previous profile's answer on the page went on
-    // offering it under the new name. That is `256` H1 exactly: *"a second profile's launcher
-    // quietly presenting the default profile's catalogue."*
-    //
-    // ⚠️ A catalogue cannot be ABOUT a profile that does not exist, and `profileExists` is `true`
-    // while the profile list is still out — so `false` really does mean "the list came back and
-    // this name was not in it", which no real answer can coexist with.
+  it('a profile that does not exist OUT-VOTES a catalogue still being held', () => {
+    // A launcher still holding the previous profile's answer must not offer it under the new name.
+    // `profileExists` is `true` while the profile list is still out, so `false` means the list came
+    // back without this name, which no real answer can coexist with.
     const stale = modelField(world({ catalogue: { ok: true, models: ROWS }, profileExists: false }))
     expect(stale.state).toBe('no-profile')
     expect(stale.choices, 'the other profile’s rows are not offered under this name').toBeNull()

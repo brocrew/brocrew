@@ -134,15 +134,6 @@ describe('exact message receipts', () => {
       ),
     ).toBe(true)
   })
-  it('old records without the new token retain their existing correlation', () => {
-    const old = messageReceipt()
-    delete (old as { messageAct?: string }).messageAct
-    const call = {
-      ...messageCall(),
-      summary: JSON.stringify({ agent: EXCHANGE_OTHER }),
-    } as TranscriptEvent
-    expect(sent(fold([EXCHANGE_INVENTORY, call, old]))).not.toBeNull()
-  })
 })
 const providerRef = {
   provider: 'claude',

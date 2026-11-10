@@ -21,7 +21,6 @@ import {
   type RuntimeEventSink,
 } from '../src/main/runtime/runtime-host'
 import { WINDOW_CALLER_PREFIX } from '../src/main/runtime/window-caller'
-import type { AgentMemoryAmended } from '../src/shared/agent-memory'
 
 // This fixture also compiles before the host adopts the existing durable service.
 let root: string
@@ -140,13 +139,10 @@ describe('the window host uses the durable memory service', () => {
     expect(removed?.done).toBe(true)
     if (!removed?.done) throw new Error('Expected a removal')
     expect(existsSync(entry)).toBe(false)
-    const undo: unknown = Reflect.get(host, 'undoAgentMemory')
-    expect(undo, 'person memory Undo').toBeTypeOf('function')
-    const restored = (await Reflect.apply(
-      undo as (input: unknown, by: RuntimeEventSink) => Promise<AgentMemoryAmended | null>,
-      host,
-      [{ profileId: 'lark', sourceId: removed.amendment.id, confirmed: true }, sink],
-    )) as AgentMemoryAmended | null
+    const restored = await host.undoAgentMemory(
+      { profileId: 'lark', sourceId: removed.amendment.id, confirmed: true },
+      sink,
+    )
     expect(restored?.done).toBe(true)
     expect(restored?.done && restored.amendment.by).toEqual({ who: 'a-person' })
     expect(readFileSync(entry, 'utf8')).toBe(text)

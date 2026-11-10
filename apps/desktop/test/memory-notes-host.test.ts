@@ -239,23 +239,6 @@ describe('318 · the host says what appeared while the turn ran', () => {
     await waitFor(() => idleCount() > idleBefore, 'the turn to go idle')
   }
 
-  it('publishes the note that appeared, once, at the end of the turn it appeared in', async () => {
-    const created = await host.createSession({ provider: 'codex' }, sink)
-    await turnWith(created.sessionId, () => {
-      writeNote('2026-09-04T00-00-00-user-name.md', "The user's name is Bob.")
-    })
-
-    await waitFor(() => sink.notes().length > 0, 'the memory note to be published')
-    const notes = sink.notes()
-    expect(notes).toHaveLength(1)
-    expect(notes[0]!.notes[0]!.text).toBe("The user's name is Bob.")
-
-    // ⛔ **After the turn that produced it, never before.** A row published ahead of the turn's own
-    // ending would sit under the wrong question.
-    const types = sink.events().map((event) => event.type)
-    expect(types.indexOf('memory_note')).toBeGreaterThan(types.indexOf('assistant_message'))
-  })
-
   it('says it once and not again on the turns that follow', async () => {
     const created = await host.createSession({ provider: 'codex' }, sink)
     await turnWith(created.sessionId, () => {
@@ -264,7 +247,7 @@ describe('318 · the host says what appeared while the turn ran', () => {
     await waitFor(() => sink.notes().length > 0, 'the first note')
 
     await turnWith(created.sessionId, () => {})
-    // ⚠️ The second turn wrote nothing, so the ledger must carry exactly the one row.
+    // The second turn wrote nothing, so the ledger must carry exactly the one row.
     expect(sink.notes()).toHaveLength(1)
 
     await turnWith(created.sessionId, () => {

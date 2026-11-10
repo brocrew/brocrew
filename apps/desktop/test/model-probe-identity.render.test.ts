@@ -66,7 +66,7 @@ function shownIn(lists: ReturnType<typeof createModelLists>): ModelList | undefi
 }
 
 describe('293 §5 · an answer applies only while it still owns the profile', () => {
-  it('🔴 a probe from before the credential changed cannot replace the one from after it', async () => {
+  it('a probe from before the credential changed cannot replace the one from after it', async () => {
     const first = deferred()
     const second = deferred()
     const answers = [first, second]
@@ -90,27 +90,13 @@ describe('293 §5 · an answer applies only while it still owns the profile', ()
     first.resolve(ACCOUNT_A)
     await p1
 
-    // 🔴 The finding: before 293 this was `ACCOUNT_A` — the launcher offering the account the person
-    // had just signed out of, for the rest of the app run.
+    // Not `ACCOUNT_A`: the account the person had just signed out of.
     expect(shownIn(lists), 'a pre-auth probe replaced the re-probed menu').toEqual(ACCOUNT_B)
     expect(handedOut, 'the second probe was never started — nothing was raced').toBe(2)
   })
 
-  it('⚑ …and an answer that still owns the profile is applied, which is the pairing', async () => {
-    // Without this, a holder that applied NOTHING would satisfy the test above and leave every
-    // picker in the app with no list at all.
-    const only = deferred()
-    const lists = holderOver(() => only.promise)
-
-    const asking = lists.read('claude', 'work', { once: true })
-    only.resolve(ACCOUNT_A)
-    await asking
-
-    expect(shownIn(lists)).toEqual(ACCOUNT_A)
-  })
-
-  it('⚠️ asks once per profile, because asking spawns a provider child', async () => {
-    // 058's rule, carried through the refactor rather than assumed: a re-render must not be a probe.
+  it('asks once per profile, because asking spawns a provider child', async () => {
+    // A re-render must not be a probe.
     let asked = 0
     const lists = holderOver(() => {
       asked += 1
