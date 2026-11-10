@@ -387,10 +387,10 @@ try {
   for (let index = 0; index < 2; index++) {
     const turn = { index, phase: 'creating-conversation', steps: [] }
     summary.fixture.turns.push(turn)
-    let expected
+    const prompt = `Fictional rehearsal ${index}: café ☕`
     const sessionId = await fixtureWithKeyRecovery(
       () =>
-        startLocalModelTurn(cdpA, `Fictional rehearsal ${index}: café ☕`, {
+        startLocalModelTurn(cdpA, prompt, {
           sessionId: turn.sessionId,
           answerARefusal: true,
           record: (phase, facts) => {
@@ -399,8 +399,6 @@ try {
             turn.steps.push({ phase, ...facts })
             if (phase === 'conversation-created' || phase === 'conversation-resumed') {
               turn.sessionId = facts.sessionId
-              expected = model.nextResponseId()
-              turn.expectedResponseId = expected
               passed('fixture-conversation-created', facts)
             }
             if (phase === 'turn-sent') passed('fixture-turn-sent', facts)
@@ -419,15 +417,15 @@ try {
     conversations.push(sessionId)
     turn.phase = 'awaiting-response'
     await waitFor(async () => {
-      turn.history = await localModelTurnFacts(cdpA, sessionId, expected)
+      turn.history = await localModelTurnFacts(cdpA, sessionId, prompt)
       turn.modelResponseCompleted = model.requests.some(
-        (one) => one.responseId === expected && one.completed,
+        (one) => one.responseId === turn.history.responseId && one.completed,
       )
       return turn.history.responseRecorded && turn.modelResponseCompleted
     }, `A local-model turn recorded (turn ${index}; see fixture progress)`)
     turn.phase = 'response-recorded'
-    turn.responseId = expected
-    passed('fixture-response-recorded', { sessionId, responseId: expected })
+    turn.responseId = turn.history.responseId
+    passed('fixture-response-recorded', { sessionId, responseId: turn.responseId })
   }
   for (const sessionId of conversations)
     await cdpA.evaluate(
@@ -692,14 +690,13 @@ try {
       read.checkAutomatically
     )
   }, 'B does not offer itself or change update settings')
-  let resumedResponse
+  const resumedPrompt = 'Fictional turn after the guided update'
   await fixtureWithKeyRecovery(
     () =>
-      startLocalModelTurn(cdpSecond, 'Fictional turn after the guided update', {
+      startLocalModelTurn(cdpSecond, resumedPrompt, {
         sessionId: conversations[0],
-        record: (phase, facts) => {
+        record: (_phase, facts) => {
           summary.fixture.sessionId = facts.sessionId ?? null
-          if (phase === 'conversation-resumed') resumedResponse = model.nextResponseId()
         },
       }),
     {
@@ -712,13 +709,13 @@ try {
       marker: values['marker-b'],
     },
   )
-  await waitFor(
-    () =>
-      cdpSecond.evaluate(
-        `return JSON.stringify(await window.api.runtime.latestHistory({sessionId:${JSON.stringify(conversations[0])}})).includes(${JSON.stringify(resumedResponse)})`,
-      ),
-    'B resumes A through local model',
-  )
+  await waitFor(async () => {
+    const history = await localModelTurnFacts(cdpSecond, conversations[0], resumedPrompt)
+    return (
+      history.responseRecorded &&
+      model.requests.some((one) => one.responseId === history.responseId && one.completed)
+    )
+  }, 'B resumes A through local model')
   passed('second-b-start-no-copy-no-self-offer-and-local-resume', {
     copies: copiesAfterFirst,
     replies: model.requests.filter((one) => one.responseId !== null).length,
