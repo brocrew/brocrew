@@ -290,7 +290,7 @@ describe('§4 · Waiting on you draws it as its own group, with its door', () =>
 /* -------------------------------------------------------------- §5 · the rail's badge */
 
 describe('§5 · the rail’s badge counts it', () => {
-  it('the screen adds it to what the badge counts, and the rail draws that number', () => {
+  it('the screen adds it to what the badge counts, and the rail draws that number', async () => {
     // ⚑ That sum, over a module holding one piece waiting on a reply and nothing else, is the
     // badge the rail draws.
     supply({ walked: walkOf([aPieceWaiting()]), lastLookAnswered: true })
