@@ -1,3 +1,8 @@
+import {
+  MIGRATIONS_FOLDER as MIGRATIONS,
+  MIGRATION_JOURNAL as JOURNAL,
+  BUILD_LINEAGE as THE_BUILDS,
+} from './lib/migration-journal'
 import Database from 'better-sqlite3'
 import { createHash } from 'node:crypto'
 import {
@@ -16,7 +21,6 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { openDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'
@@ -32,18 +36,6 @@ import {
 } from '../../src/main/recovery/database-facts'
 import { nodeFs, type RecoveryFs } from '../../src/main/recovery/files'
 
-const here = dirname(fileURLToPath(import.meta.url))
-const MIGRATIONS = join(here, '../../src/main/db/migrations')
-
-interface JournalEntry {
-  when: number
-  tag: string
-}
-const JOURNAL = JSON.parse(readFileSync(join(MIGRATIONS, 'meta', '_journal.json'), 'utf8')) as {
-  entries: JournalEntry[]
-}
-/** The `when` of every migration this build carries, oldest first. */
-const THE_BUILDS = JOURNAL.entries.map((entry) => entry.when)
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const POSIX = process.platform !== 'win32'
 

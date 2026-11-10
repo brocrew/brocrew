@@ -1,3 +1,8 @@
+import {
+  MIGRATIONS_FOLDER as MIGRATIONS,
+  MIGRATION_JOURNAL as JOURNAL,
+  BUILD_LINEAGE as THE_BUILDS,
+} from './lib/migration-journal'
 import Database from 'better-sqlite3'
 import { createHash, randomUUID } from 'node:crypto'
 import {
@@ -18,7 +23,6 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { openDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'
@@ -60,21 +64,6 @@ import { APP_STATE_FILES } from '../../src/main/recovery/state-files'
 import type { CheckpointDeletion } from '../../src/main/recovery/checkpoint-deletion'
 import { checkTheCopyHere } from '../helpers/check-the-copy-here'
 
-const here = dirname(fileURLToPath(import.meta.url))
-const MIGRATIONS = join(here, '../../src/main/db/migrations')
-
-interface JournalEntry {
-  idx: number
-  version: string
-  when: number
-  tag: string
-  breakpoints: boolean
-}
-const JOURNAL = JSON.parse(readFileSync(join(MIGRATIONS, 'meta', '_journal.json'), 'utf8')) as {
-  entries: JournalEntry[]
-}
-/** The `when` of every migration this build carries, oldest first. */
-const THE_BUILDS = JOURNAL.entries.map((entry) => entry.when)
 const LATEST = THE_BUILDS[THE_BUILDS.length - 1] ?? 0
 /** A migration later than any this build carries. */
 const A_LATER_ONE = LATEST + 86_400_000

@@ -1,7 +1,8 @@
+import { MIGRATIONS_FOLDER, BUILD_LINEAGE } from './migration-journal'
+export { MIGRATIONS_FOLDER, BUILD_LINEAGE } from './migration-journal'
 import { UNFLUSHED } from './recovery-files'
 import type { TranscriptEvent } from '../../../src/shared/conversation-events'
 import { createHash, randomUUID } from 'node:crypto'
-import { readFileSync } from 'node:fs'
 import {
   copyFile,
   cp,
@@ -16,8 +17,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { openDatabase, type AppDatabase } from '../../../src/main/db/connection'
 import { applyMigrations } from '../../../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../../../src/main/db/session-store'
@@ -75,18 +75,6 @@ import { checkTheCopyHere } from '../../helpers/check-the-copy-here'
  * copy. A database one migration newer is this build's with one more migration recorded, as a newer
  * build leaves it; its tables are unchanged, since no build carries that migration.
  */
-
-const here = dirname(fileURLToPath(import.meta.url))
-
-/** The app's own migrations folder. */
-export const MIGRATIONS_FOLDER = join(here, '../../../src/main/db/migrations')
-
-/** Each migration this build carries (its journal `when`), oldest first. */
-export const BUILD_LINEAGE: readonly number[] = (
-  JSON.parse(readFileSync(join(MIGRATIONS_FOLDER, 'meta', '_journal.json'), 'utf8')) as {
-    entries: { when: number }[]
-  }
-).entries.map((entry) => entry.when)
 
 const HOUR_MS = 3_600_000
 const DAY_MS = 24 * HOUR_MS
