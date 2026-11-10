@@ -1,6 +1,5 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
-import type { SessionSnapshot } from '../lib/session-store'
-import type { SessionStore } from '../lib/session-store'
+import type { SessionSnapshot, SessionStore } from '../lib/session-store'
 
 /**
  * Which surface is on screen, and who is allowed to change it (095).

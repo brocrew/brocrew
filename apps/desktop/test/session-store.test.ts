@@ -12,10 +12,7 @@ import { createSessionStore, overTheWire } from '../src/renderer/src/lib/session
 import { NOT_REACHED_THIS_WINDOW } from '../src/renderer/src/lib/session-record'
 import { createAttachmentBook, draftKey } from '../src/renderer/src/lib/drafts'
 import { sessionPanel } from '../src/renderer/src/lib/session-panel'
-import {
-  type OutgoingQuestion,
-  type TranscriptState,
-} from '../src/renderer/src/lib/transcript'
+import type { OutgoingQuestion, TranscriptState } from '../src/renderer/src/lib/transcript'
 import { WINDOW_MAX_EVENTS } from '../src/renderer/src/lib/transcript-window'
 import { RETITLE_SAID } from '../src/shared/piece-called'
 import type {
