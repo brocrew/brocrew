@@ -1451,7 +1451,8 @@ describe('attachment filenames are quoted losslessly', () => {
   it('still reports a relative path as relative and a missing absolute path as missing', async () => {
     const relative = await classifyHandedPath('notes\u001b[2K.md', dir)
     expect(relative).toEqual({
-      refusal: 'that is not a full path, so there is no saying what it points at: notes\u001b[2K.md',
+      refusal:
+        'that is not a full path, so there is no saying what it points at: notes\u001b[2K.md',
       gone: false,
     })
     expect(await classifyHandedPath(join(dir, 'missing'), dir)).toEqual({
