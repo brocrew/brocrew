@@ -63,12 +63,13 @@ const NOT_READ_MARK = '?'
 
 /** The provider's reading for a window; one the provider named a bucket for is not the window. */
 function readingIn(
-  readings: readonly { readonly reading: ProviderUsageReading; readonly window: UsageWindowDetails }[],
+  readings: readonly {
+    readonly reading: ProviderUsageReading
+    readonly window: UsageWindowDetails
+  }[],
   word: string,
 ): ProviderUsageReading | null {
-  return (
-    readings.find((one) => one.window.word === word && !one.window.hasBucket)?.reading ?? null
-  )
+  return readings.find((one) => one.window.word === word && !one.window.hasBucket)?.reading ?? null
 }
 
 /** "28% · resets in 3 h 12 min"; "was 95% · reset 2 days ago" once the window has reset. */
