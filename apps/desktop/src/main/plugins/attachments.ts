@@ -1,4 +1,4 @@
-import { attachmentTraceId, createRouteAdmissionTrace } from './route-admission-trace'
+import { createRouteAdmissionTrace } from './route-admission-trace'
 import { randomUUID, createHash } from 'node:crypto'
 import { z } from 'zod'
 import { providerSchema } from '@brobot2/shared'
@@ -53,12 +53,9 @@ export class WorkspacePluginAttachments {
   ) {}
   agent(occupied: readonly string[]): ManagedPluginAttachmentSource {
     const incarnation = randomUUID()
-    const incarnationId = attachmentTraceId(incarnation, 'incarnation', '')
     const trace = createRouteAdmissionTrace((event) => this.owner.recordTrace?.(event))({
-      incarnation: incarnationId,
+      incarnation,
     })
-    const id = (kind: 'route' | 'server' | 'tool' | 'plugin', value: string) =>
-      attachmentTraceId(incarnation, kind, value)
     const input = { workspaceId: this.workspaceId, incarnation, occupied: [...occupied] }
     let closed = false
     return {
@@ -76,26 +73,26 @@ export class WorkspacePluginAttachments {
           if (server)
             trace.emit('launch-discovery', {
               ...detail,
-              server: id('server', server.name),
-              plugin: server.pluginId ? id('plugin', server.pluginId) : undefined,
-              attachmentRoute: id('route', server.url),
-              discoveredTools: event.discovery.tools.map((tool) => id('tool', tool)).sort(),
+              server: server.name,
+              plugin: server.pluginId,
+              attachmentRoute: server.url,
+              discoveredTools: [...event.discovery.tools].sort(),
               discoveredCount: event.discovery.tools.length,
             })
         } else {
           trace.emit('launch-attachment', {
             ...detail,
             serverCount: event.servers.length,
-            pending: event.pending?.map((plugin) => id('plugin', plugin)),
-            off: event.off?.map((plugin) => id('plugin', plugin)),
+            pending: event.pending,
+            off: event.off,
             unknown: event.unknown,
           })
           for (const server of event.servers)
             trace.emit('launch-attachment', {
               ...detail,
-              server: id('server', server.name),
-              plugin: server.pluginId ? id('plugin', server.pluginId) : undefined,
-              attachmentRoute: id('route', server.url),
+              server: server.name,
+              plugin: server.pluginId,
+              attachmentRoute: server.url,
             })
         }
       },
