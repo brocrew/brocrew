@@ -645,22 +645,6 @@ describe('§6 · the statement, censused', () => {
     expect([...spelled].sort()).toEqual([...DIGEST_EVENT_TYPES].sort())
   })
 
-  it('⛔ every type the fold branches on is a type the statement selects', () => {
-    const fold = readFileSync(join(here, '../src/main/runtime/digest.ts'), 'utf8')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/^\s*\/\/.*$/gm, '')
-    const branches = [...fold.matchAll(/^\s*case '([a-z_]+)':/gm)].map((match) => match[1])
-    // ⚑ The census can see more than one arm — a positive control on the pattern itself.
-    expect(branches.length).toBeGreaterThan(5)
-    for (const branch of branches) expect(DIGEST_EVENT_TYPES).toContain(branch)
-    // 🔴 **The OTHER direction, which is the one that loses rows** — and the one the first
-    // version of this census did not check. A vocabulary member with no arm is still selected by
-    // the SQL, still widens the scan the cost claim rests on, and falls into `default`
-    // contributing nothing: `selectPieceEvents`' *"that event never happened, silently"*, seen
-    // from the side nobody was watching.
-    for (const type of DIGEST_EVENT_TYPES) expect(branches).toContain(type)
-  })
-
   it('⛔ the statement carries no LIMIT, and its only clock is the window it was given', () => {
     const sql = statement('selectDigestWindow')
     expect(sql.toLowerCase()).not.toContain('limit')

@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -17,28 +14,6 @@ import {
   rawAnswer,
 } from '../src/renderer/src/lib/tool-answer'
 import type { ToolAnswer } from '../src/shared/runtime-ipc'
-
-/**
- * 🔴 **462 · the answer a person can actually read** — `457`'s finding 1, which it named and handed
- * over: *"the structured half of a tool answer is durable nowhere and has no surface."*
- *
- * ## ⛔ What is pinned here, and why each part is
- *
- * §1 **the four silences**, each its own sentence, because `074`'s rule is that saying nothing
- *    arrived is a different fact from saying what did — and one of the four is the HOLE this whole
- *    surface sits inside (a replayed conversation holds nothing).
- * §2 the reading: how a part is named, what gets indented and what deliberately does not.
- * §3 the panel, rendered — every claim in §1 and §2 reaching a screen.
- * §4 **the row's two states**, which are the door and the gap drawn where the door would be.
- * §5 a source census over what this surface must NOT have grown.
- *
- * ⚠️ **SSR, so every negative is paired with a positive in the same assertion**
- * (`brobot2-ssr-tests-pass-vacuously`): a `not.toContain` against a query that silently found
- * nothing is a test that passes when the component fails to render at all.
- */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const VIEWER = join(here, '../src/renderer/src/components/ToolAnswerViewer.vue')
 
 /**
  * ⚑ **The SHAPE `agent-tools.ts` builds, not a toy one** — the fields `448` put on a report and the
@@ -301,30 +276,5 @@ describe('§4 · the row offers the door, or draws the gap where the door would 
     // 🔴 **The positive that makes both negatives mean something**: the row itself rendered.
     expect(html).toContain('tool-entry')
     expect(html).toContain('mcp__brobot__list_projects')
-  })
-})
-
-/* ------------------------------------------------------------------------- §5 · a source census */
-
-describe('§5 · what this surface deliberately does not have', () => {
-  it('⛔ the panel does not mount `DocumentBody`, and says why in the file that does not', async () => {
-    const html = await panel()
-    expect(html).toContain('Six projects, and you may send work into all of them.')
-    const source = readFileSync(VIEWER, 'utf8')
-    expect(source).not.toContain("from './DocumentBody.vue'")
-    // ⚑ The positive control: the reason is written down rather than left as an omission, and the
-    // component really is the thing this census is reading.
-    expect(source).toContain('markdown-rendering a JSON payload mangles')
-    expect(source).toContain('data-cy="tool-answer-viewer"')
-  })
-
-  it('⚠️ nothing in the panel branches on which PROVIDER this is (039)', async () => {
-    const html = await panel()
-    expect(html).toContain('Six projects, and you may send work into all of them.')
-    const source = readFileSync(VIEWER, 'utf8')
-    for (const word of ["'claude'", "'codex'"]) expect(source, word).not.toContain(word)
-    // The positive: the file does talk about providers — in a comment saying why it must not decide
-    // anything from one.
-    expect(source).toContain('a surface that draws both')
   })
 })

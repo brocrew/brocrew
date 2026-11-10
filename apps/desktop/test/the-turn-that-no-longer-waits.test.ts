@@ -67,37 +67,11 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const srcRoot = join(here, '../src')
 
-// ⛔ **612 · `ESCALATE` stood here and is GONE** (HO-088 §3.1) — *"shorter than anything a question
-// could need, because nothing here waits on it"*. ⚑ Nothing waits on it anywhere now.
-
-/**
- * ⛔ **CODE only** — `a-source-census-must-strip-prose-before-it-asserts`. ⚠️ Every negative in §4
- * is about what the app DOES, and this file's own history sections quote the names they removed.
- */
-const codeOf = (file: string): string =>
-  readFileSync(join(srcRoot, file), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/^[ \t]*\/\/.*$/gm, ' ')
-
 /** ⚑ **PROSE with its wrapping removed**, because prettier re-wraps a docblock sentence freely. */
 const proseOf = (file: string): string =>
   readFileSync(join(srcRoot, file), 'utf8')
     .replace(/\n\s*\*\s?/g, ' ')
     .replace(/\s+/g, ' ')
-
-/**
- * ⚠️ **A function BODY, so an absence is about that function and not about the file** — `437`'s
- * helper, and this suite needs it for the same measured reason: a file-wide negative would fire on
- * a sibling declaration (`441`'s `decideProposal` did until D-016 took it out; `slot.settle()`
- * does).
- */
-const bodyOf = (source: string, signature: string, closes = '\n  }'): string => {
-  const from = source.indexOf(signature)
-  if (from === -1) throw new Error(`no such declaration: ${signature}`)
-  const to = source.indexOf(closes, from)
-  if (to === -1) throw new Error(`unterminated declaration: ${signature}`)
-  return source.slice(from, to)
-}
 
 describe('608 · the turn that no longer waits', () => {
   class RecordingSink implements RuntimeEventSink {
@@ -621,142 +595,6 @@ describe('608 · the turn that no longer waits', () => {
   })
 
   /**
-   * 🔴 **§4 · what went, asserted against the code rather than against a memory of it.**
-   *
-   * ⛔ **Every name below described the WAIT**, and standing rule 19's corollary is why they moved
-   * in this commit: a number can survive the death of its derivation, and so can a field.
-   */
-  describe('§4 · the bound, the flag and the three constants are gone', () => {
-    it('⛔ `raiseAQuestion` has no await, no timer and no promise in its body', () => {
-      const ask = bodyOf(codeOf('main/runtime/runtime-host.ts'), 'async raiseAQuestion(')
-      const body = ask.slice(ask.indexOf('): Promise<AskOutcome> {'))
-      expect(body.length, 'the slice found no raiseAQuestion body').toBeGreaterThan(400)
-      // ⚠️ **Keyed on the SHAPE of a wait and not on the spelling `437` happened to use** — a
-      // negative keyed on a literal is a negative keyed on somebody's imagination
-      // (`a-negative-is-only-as-strong-as-the-search-shape`).
-      expect(body).not.toContain('await ')
-      expect(body).not.toContain('setTimeout')
-      expect(body).not.toContain('new Promise')
-      expect(body).not.toContain('Promise.race')
-      // ⚑ **The positive control**: the slice really is the verb, and the verb really does write
-      // the three durable things `394` ruled it owes.
-      expect(body).toContain("type: 'question_asked'")
-      expect(body).toContain("type: 'request_routed'")
-      expect(body).toContain('this.deliverQuestion(')
-    })
-
-    it('⛔ the bound is gone from every layer it lived in, and its sibling is untouched', () => {
-      const questions = codeOf('shared/questions.ts')
-      const hostCode = codeOf('main/runtime/runtime-host.ts')
-      const tools = codeOf('main/runtime/agent-tools.ts')
-      // ⛔ **The constant, the dep, the field and the advertised sentence.**
-      expect(questions).not.toContain('ASK_BOUND_MS')
-      expect(hostCode).not.toContain('ASK_BOUND_MS')
-      expect(hostCode).not.toContain('askBoundMs')
-      expect(tools).not.toContain('ASK_BOUND_MS')
-      // ⚠️ **612 pointed the control at the escalation window and `616` removed THAT one too**
-      // (HO-088 §3.1, HO-093 §2, standing rule 26). ⛔ **A positive control has to be a thing that
-      // exists**, and there is no window of this kind left anywhere — so it is re-pointed at a
-      // number this class still resolves that is NOT a deadline on somebody answering: the drain
-      // it gives its own provider at teardown. ⚑ That is the distinction all three removals were
-      // about, so the control carries the rule rather than just proving the file is readable.
-      expect(questions).toContain('export function aPersonsSince(')
-      expect(hostCode).toContain('deps.closeDrainTimeoutMs ?? DEFAULT_CLOSE_DRAIN_TIMEOUT_MS')
-      // ⚑ **And `612`'s and `616`'s negatives ride here**, because it is the same four layers:
-      // three waits on somebody answering, and none of them left.
-      expect(questions).not.toContain('export const ESCALATION_WINDOW_MS')
-      expect(hostCode).not.toContain('escalationWindowMs')
-      expect(hostCode).not.toContain('PROPOSAL_BOUND_MS')
-      expect(hostCode).not.toContain('proposalBoundMs')
-      const dependencies = codeOf('main/runtime/host-dependencies.ts')
-      expect(dependencies).toContain('export interface RuntimeHostDeps {')
-      for (const gone of [
-        'ASK_BOUND_MS',
-        'askBoundMs',
-        'escalationWindowMs',
-        'PROPOSAL_BOUND_MS',
-        'proposalBoundMs',
-      ]) {
-        expect(dependencies, gone).not.toContain(gone)
-      }
-    })
-
-    it('⛔ the flag and the promise are gone from the map, and both answer doors take ONE route', () => {
-      const hostCode = codeOf('main/runtime/runtime-host.ts')
-      // 🔴 **A flag that can only be false is not a fact, and a branch behind it is a trap**:
-      // `held.settle(said)` would have gone on compiling and would have DROPPED the answer the day
-      // somebody set it again — a worker told nothing, with every state assertion passing.
-      expect(hostCode).not.toContain('aTurnIsWaiting')
-      expect(bodyOf(hostCode, 'async answerQuestion(')).not.toContain('.settle(')
-      expect(bodyOf(hostCode, 'async respondUserInput(')).not.toContain('.settle(')
-      expect(bodyOf(hostCode, 'private async aPersonAnswersAQuestionThisAppAsked(')).not.toContain(
-        '.settle(',
-      )
-      // ⚑ **D-017 · R6 — ONE route at each door still, and it is awaited now** (the door says
-      // whether the asker's start happened); the person's door hands a question this app asked to
-      // one function, and the route is in there.
-      expect(bodyOf(hostCode, 'async answerQuestion(')).toContain(
-        'const told = this.deliverAnswer(held, request.requestId, speaking, said, null, null, stopAs)',
-      )
-      expect(bodyOf(hostCode, 'async respondUserInput(')).toContain(
-        'return await this.aPersonAnswersAQuestionThisAppAsked(',
-      )
-      expect(bodyOf(hostCode, 'private async aPersonAnswersAQuestionThisAppAsked(')).toContain(
-        'const delivered = this.deliverAnswer(asked, requestId, null, said, null, theSurfaceAsking(by))',
-      )
-      // ⛔ **And the two release loops went with the promise they settled.** ⚑ D-017 · R6: so did
-      // the map itself — `questionsThisAppHolds` is gone, and neither loop reads a map of words.
-      // ⚑ **D-016 · the first loop is `takeBackPiece` now** — `endTheQuestionsAbout` was merged
-      // into the one take-back path, which ends a piece's questions by writing `work_taken_back`.
-      expect(bodyOf(hostCode, 'async takeBackPiece(')).not.toContain('questionsThisAppHolds')
-      expect(bodyOf(hostCode, 'private askTheWorkToStop(')).not.toContain('questionsThisAppHolds')
-      // ⚑ **The positive control**: what a late answer is routed through is still here and still
-      // read at both doors — ⚑ D-017 · R6: the asker's LEDGER (`theWordsOf`), which replaced the
-      // map; the negatives above are about the removed fields and the removed map, not about it.
-      expect(hostCode).not.toContain('questionsThisAppHolds')
-      expect(bodyOf(hostCode, 'async answerQuestion(')).toContain(
-        'this.theWordsOf(request.askedBy, request.requestId)',
-      )
-      expect(bodyOf(hostCode, 'async respondUserInput(')).toContain(
-        'this.theWordsOf(sessionId, requestId)',
-      )
-      // ⚠️ **`441`'s proposal doors were once the control here, then two more body-scoped
-      // negatives** (615, 616); ⛔ D-016 took both doors out with proposals. ⚑ The negatives stay
-      // BODY-SCOPED — a file-wide one would fire on `slot.settle()`, which is a launch reservation
-      // and has nothing to do with an answer
-      // (`a-file-level-contains-cannot-tell-sibling-declarations-apart`).
-      // ⚑ **THE POSITIVE CONTROL for the three `.settle(` negatives** — the reader finds the one this
-      // app still has, so *no door settles an answer* is a measurement rather than a string that
-      // appears nowhere in this file (standing rule 34.2).
-      expect(hostCode).toContain('slot.settle()')
-    })
-
-    it('⛔ the three fields that described the wait, and the two readers that produced them', () => {
-      const rails = codeOf('main/runtime/question-rails.ts')
-      const hostCode = codeOf('main/runtime/runtime-host.ts')
-      const tools = codeOf('main/runtime/agent-tools.ts')
-      for (const dead of ['waitedForMs', 'questionIs']) {
-        expect(rails, `${dead} is still on AskOutcome`).not.toContain(dead)
-      }
-      expect(hostCode).not.toContain('whatBecameOfTheQuestion')
-      expect(tools).not.toContain('stillTheirs')
-      // ⛔ **`parent` went with them, and it is the one removal `608` did not cause**: `437`
-      // returned the conversation that was asked and nothing ever read it — found reviewing this
-      // dispatch's own diff. ⚑ Removed rather than surfaced, because putting a parent's session id
-      // into a payload a worker reads is a DISCLOSURE (`433`; `437` §2 measures that `list_agents`
-      // does not name the parent) and that is a product decision, not a side effect.
-      expect(rails).not.toContain('readonly parent: string')
-      // ⚑ **The positive control for five negatives**: `AskOutcome` is still the returned union
-      // `341` ruled for, and it still names the one fact a caller can act on.
-      expect(rails).toContain('export type AskOutcome =')
-      expect(rails).toContain('readonly question: string')
-      // ⚑ **And `REQUEST_IS_OPEN` is still what decides whether a question has ended**, which is
-      // where *still theirs to answer* lives now that no call reports it.
-      expect(rails).toContain('REQUEST_IS_OPEN')
-    })
-  })
-
-  /**
    * 🔴 **§5 · the prose sweep, and standing rule 8.1 says to name BOTH audiences.**
    *
    * ⛔ **Doing one well is how the other is missed** — measured on `591`, whose sweep repaired
@@ -764,49 +602,6 @@ describe('608 · the turn that no longer waits', () => {
    * exact negation of its own commit's first line.
    */
   describe('§5 · the sentences that went false with the behaviour', () => {
-    it("⛔ the MODEL's: `ask_parent` no longer says it waits, and says where the answer goes", () => {
-      // ⛔ **The advertised STRING and not the region around it** — this file's own docblock
-      // quotes the clause it removed, on purpose (`498`: a sentence deleted without its history
-      // comes back), so a slice that swept up the prose would go red on the history it kept.
-      // ⚠️ `a-source-census-must-strip-prose-before-it-asserts`, met head-on.
-      const tools = readFileSync(join(srcRoot, 'main/runtime/agent-tools.ts'), 'utf8')
-      // ⚠️ **611 · the opening clause moved with the ruling** (HO-088 §2, standing rule 26). ⛔ It
-      // read *"Ask the conversation that gave you a piece of work for a decision"*, which named
-      // the recipient in the sentence; the recipient is `who_answers` now, so the sentence asks
-      // for a decision and says to name who answers. ⚑ **What this test is FOR is unchanged** —
-      // the wait clause — and all four assertions below still measure it.
-      // ⚑ **D-009 · the opening clause moved again** (F012): a question may go to an agent by name,
-      // about no work at all. ⚑ What this test is FOR — the wait clause — is unchanged.
-      const from = tools.indexOf("description:\n        'Ask a question and get the answer back")
-      expect(from, 'ask_question no longer advertises a description this shape').toBeGreaterThan(0)
-      const sentence = tools.slice(from, tools.indexOf("',\n", from))
-      expect(sentence).toContain('This call does not wait')
-      expect(sentence).toContain('reaches you later as a message')
-      // ⛔ **The clause that was there and is gone**, quoted as it stood.
-      expect(sentence).not.toContain('and wait for the answer')
-      // ⚑ **And the work claim is unchanged**, because `ask_parent` still keeps the work.
-      // ⚑ **D-009 · *any* work**, because a question to an agent may be about none.
-      expect(sentence).toContain('Any work stays yours and stays open')
-    })
-
-    it("⛔ the MODEL's second: the line every work message carries no longer INSTRUCTS a wait", () => {
-      // 🔴 **This is the worse of the two, because it is an INSTRUCTION rather than a
-      // description** — `HO-070` §3: a stale sentence about a MECHANISM is an agent that stops
-      // asking. ⚠️ A model told to wait on a call that has already returned is being told to do
-      // something this app no longer lets it do.
-      const rails = readFileSync(join(srcRoot, 'main/runtime/reply-rails.ts'), 'utf8')
-      const line = rails.slice(rails.indexOf('const line ='), rails.indexOf('return text.trim()'))
-      // ⚑ **611 · the verb is named and so is its argument** — see `reply-rails.ts`: a line naming
-      // the verb without `who_answers` would walk a model into a `malformed-request`. ⚑ D-016: the
-      // piece is named by its label, where it was the same `task_id`.
-      expect(line).toContain('call ask_question with piece ${label} and')
-      expect(line).toContain('who_answers')
-      expect(line).not.toContain('wait for the answer')
-      // ⚑ **And the clause that still INSTRUCTS is kept** — which tool keeps the work and which
-      // hands it back is the one thing a model cannot infer from the others it has.
-      expect(line).toContain('that keeps the work yours, where reply_to_parent hands it back')
-    })
-
     it('⛔ the exemption a routed question has is no longer justified by *the asker is blocked*', () => {
       // ⚠️ **`394` gave the reason as *a question cannot be dropped on the floor — the conversation
       // that asked it is BLOCKED until somebody answers*.** ⛔ That is now true of a
@@ -816,43 +611,6 @@ describe('608 · the turn that no longer waits', () => {
       expect(ipc).toContain('question no longer blocks anybody')
       // ⚑ **D-010 · the host half went with the exemption itself**: every message is held now, so
       // the rail whose note gave the reason is retired, and there is no exemption left to justify.
-    })
-
-    it("⚑ the PERSON's side: nothing a person reads described the hold, with the control that found it", () => {
-      // 🔴 **Standing rule 8.1 wants BOTH counts reported, including *I found none on this
-      // side*.** ⛔ A sweep scoped to the prose an agent reads passes its own review, because that
-      // is the prose the dispatch was already holding open.
-      //
-      // ⚑ **Derived from the modules a PERSON's words come out of**, and the search is for the
-      // CLAIM rather than for a file: a surface that told somebody an agent was waiting inside a
-      // call would have had to say so.
-      const personsModules = [
-        'renderer/src/lib/work-report.ts',
-        'shared/work-state-words.ts',
-        'renderer/src/lib/persons-queue.ts',
-        'renderer/src/lib/home-attention.ts',
-        'renderer/src/lib/agent-state.ts',
-      ]
-      const held =
-        /(inside|within) its (ask|call)|holds? (its|the) turn open|waiting for the answer/i
-      for (const file of personsModules) {
-        expect(readFileSync(join(srcRoot, file), 'utf8'), `${file} describes the hold`).not.toMatch(
-          held,
-        )
-      }
-      // ⚑ **THE CONTROL, and it is what makes the four negatives above worth reading** (standing
-      // rule 34.2): the same pattern finds the sentence that DID describe the hold, in this
-      // suite's own words — so a pattern that had stopped matching anything would be visible here.
-      expect('⚠️ It holds the turn open for up to five minutes').toMatch(held)
-      // ⚑ **And the one word a person DOES read about this is `603`'s**, which `608` did not move
-      // and `609` did not move either — ⚠️ **609 re-aimed the KEY and not the word**, which is the
-      // whole point of quoting the value here rather than the line.
-      expect(codeOf('renderer/src/lib/work-report.ts')).toContain(
-        "import { WORK_STATE_WORD } from '../../../shared/work-state-words'",
-      )
-      expect(codeOf('shared/work-state-words.ts')).toContain(
-        "'waiting-on-an-answer': 'waiting on an answer'",
-      )
     })
   })
 

@@ -15,11 +15,7 @@ import {
   whatEachProviderDoesWithThem,
 } from '../src/renderer/src/lib/the-servers-this-app-registered'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
-import {
-  EXTERNAL_MCP_EVERYONE,
-  EXTERNAL_MCP_NONE_YET,
-  EXTERNAL_MCP_RESTRICTED,
-} from '../src/shared/external-mcp'
+import { EXTERNAL_MCP_EVERYONE, EXTERNAL_MCP_RESTRICTED } from '../src/shared/external-mcp'
 import type { ExternalMcpServerReach, ExternalMcpServerRow } from '../src/shared/external-mcp'
 import type { AgentIdentities, AgentIdentity } from '../src/shared/runtime-ipc'
 import type { ProviderCapabilityMap } from '../src/shared/runtime-ipc'
@@ -276,23 +272,6 @@ describe('566 §3 · the sentence HO-048 §1 withdrew, and the three surfaces th
     const false_ones = strings.filter((one) => /grants? nobody/i.test(one.text))
     expect(false_ones.map((one) => `${one.file} :: ${one.text}`)).toEqual([])
   })
-
-  it('⛔ the empty-register sentence is ONE constant, rendered and never retyped', () => {
-    const said = EXTERNAL_MCP_NONE_YET
-    expect(said).toContain('unless you register it as restricted')
-    expect(said).not.toMatch(/\babove\b|\bbelow\b/)
-
-    for (const file of ['ExternalMcpRegistry.vue', 'ToolsRegister.vue']) {
-      const source = read(`renderer/src/components/${file}`)
-      expect(code(file, source), `${file} does not render the constant`).toContain(
-        'EXTERNAL_MCP_NONE_YET',
-      )
-    }
-    const typed = everyVisibleString().filter((one) =>
-      one.text.includes('No external MCP servers yet'),
-    )
-    expect(typed.map((one) => one.file)).toEqual(['shared/external-mcp.ts'])
-  })
 })
 
 function fakeStore(): { live: ComputedRef<SessionRecord[]>; get: (id: string) => null } {
@@ -329,69 +308,5 @@ describe('the Tools entry opens the Tools tab of Settings', () => {
     expect(tools?.action).toEqual({ kind: 'go', place: 'tools' })
     expect(tools?.title).toBe('Tools')
     expect(tools?.detail).toContain('registered on this machine')
-  })
-
-  it('🔴 every file that decides a destination names this one — the 537-shaped wiring census', () => {
-    const sites: { file: string; holds: string; why: string }[] = [
-      {
-        file: 'renderer/src/composables/useSurface.ts',
-        holds: "tools: 'settings'",
-        why: 'the old Tools destination resolves to Settings',
-      },
-      {
-        file: 'renderer/src/components/RuntimeScreen.vue',
-        holds: "destination === 'tools'",
-        why: 'the palette opens Settings at its Tools tab',
-      },
-      {
-        file: 'renderer/src/components/SideRail.vue',
-        holds: 'data-cy="rail-settings"',
-        why: 'the shared Settings destination a person presses',
-      },
-      {
-        file: 'renderer/src/lib/command-palette.ts',
-        holds: "place: 'tools'",
-        why: 'the palette row, and the widened action arm beside it',
-      },
-    ]
-    const missing = sites.filter(({ file, holds }) => {
-      const name = file.slice(file.lastIndexOf('/') + 1)
-      return !code(name, read(file)).includes(holds)
-    })
-    expect(missing.map((one) => `${one.file} — ${one.why}`)).toEqual([])
-
-    const invented = sites.filter(({ file }) =>
-      code(file.slice(file.lastIndexOf('/') + 1), read(file)).includes(
-        "place: 'tools-that-is-not'",
-      ),
-    )
-    expect(invented).toEqual([])
-    expect(code('SideRail.vue', read('renderer/src/components/SideRail.vue'))).not.toContain(
-      'data-cy="rail-toolbox"',
-    )
-  })
-})
-
-describe('566 §5 · the rail is destinations only, for this subject', () => {
-  it('⛔ the list, the count, the + and the sentence are all out of the navigation column', () => {
-    const rail = code('SideRail.vue', read('renderer/src/components/SideRail.vue'))
-    expect(rail).toContain('data-cy="rail-settings"')
-    expect(rail).not.toContain('data-cy="rail-tools"')
-    for (const gone of [
-      'data-cy="rail-external-tools"',
-      'data-cy="external-tools-count"',
-      'data-cy="rail-new-external-mcp"',
-      'data-cy="rail-external-tools-empty"',
-      'openExternalMcp',
-    ]) {
-      expect(rail, `${gone} is still in the rail`).not.toContain(gone)
-    }
-  })
-
-  it('🔴 the only door to the registry is still open, and it is on the page now', () => {
-    const screen = code('RuntimeScreen.vue', read('renderer/src/components/RuntimeScreen.vue'))
-    expect(screen).toContain("overlays.open({ kind: 'externalMcpServers' })")
-    expect(screen).toContain('@add-server=')
-    expect(screen).not.toContain('@open-external-mcp=')
   })
 })

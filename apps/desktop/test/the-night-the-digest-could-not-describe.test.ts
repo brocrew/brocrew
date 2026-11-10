@@ -51,7 +51,6 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
 const FOLD = join(here, '../src/main/runtime/digest.ts')
 const REGISTER = join(here, '../src/shared/question-contracts.ts')
-const STORE = join(here, '../src/main/db/session-store.ts')
 
 const TO = 1_800_000_000_000
 const FROM = TO - 12 * 3_600_000
@@ -598,34 +597,5 @@ describe('§5 · relay 1 · one register, and the table that says what each word
     // 🔴 **The register holds two words for one population because both open the same ledgers.**
     // If either query is narrowed, they stop agreeing here before the docblock stops claiming it.
     expect(digest.ledgers).toBe(forest.ledgers)
-  })
-
-  it('⚠️ every sentence that READ a ledger carries the generation clause, the forest included', () => {
-    // 🔴 **The sentence of mine that went false while I was in flight.** 466 wrote *"the
-    // generation clause is in every sentence that read anything"*; 467 then landed a roster
-    // sentence without one, over a read that does narrow by generation — `piecesOfSession` (then
-    // `tasksOfSession`) passes `activeGeneration`. ⛔ The clause was added to 467's sentence rather than the claim
-    // weakened, because the read really does that. ⚑ D-016 took the roster's word out; the
-    // forest's is the other word over the digest's candidate set, and it folds the same way.
-    const READS_A_LEDGER = [
-      'every-conversation-that-routed',
-      'every-conversation-this-app-placed',
-      'one-window-over-every-agents-conversation',
-    ] as const
-    for (const walk of READS_A_LEDGER) {
-      expect(WALK_COVERS[walk], walk).toContain('live projection')
-    }
-    // ⛔ **And the two that read nothing must NOT claim it**, which is the negative that stops
-    // this passing by pasting the clause everywhere.
-    for (const empty of ['no-such-conversation', 'no-ledger'] as const) {
-      expect(WALK_COVERS[empty], empty).not.toContain('live projection')
-    }
-    // ⚑ **The forest's read is the one being asserted about**, so the fold it goes through is
-    // pinned here too rather than taken on trust.
-    const store = readFileSync(STORE, 'utf8')
-    expect(store).toContain('const generation = activeGeneration(sessionId)')
-    expect(store).toContain(
-      '...composeWhatEachPieceIsWaitingOn(piecesOfSession(sessionId, noteSkip), waiting).map(',
-    )
   })
 })

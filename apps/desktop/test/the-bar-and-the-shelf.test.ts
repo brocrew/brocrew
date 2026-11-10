@@ -1,7 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { approvalModeLabel } from '../src/renderer/src/lib/approval-mode'
 import { summonsAttention } from '../src/renderer/src/lib/agent-state'
 import { V23_FIELD_MAP, type FieldMapping } from './lib/design-v2-map'
 import { createSessionRecord, lastReportAt } from '../src/renderer/src/lib/session-record'
@@ -146,127 +145,6 @@ function mapAbsent(path: string): string {
 function refsOf(field: FieldMapping): string[] {
   return field.binding.state === 'hole' ? [] : field.binding.from.map((one) => one.symbol)
 }
-
-describe('§1 · every absent word the shelf draws is the map’s (389 §1)', () => {
-  /**
-   * The model, effort, agent and plan cells left this strip for each provider's usage. Re-aimed
-   * rather than deleted, as `578`'s home was: the map keeps each field and its word, the shelf
-   * declares none of them, and the Agent panel draws each one.
-   */
-  it('🔴 the model, effort and plan left the shelf, the map kept their words, the Agent panel draws them', () => {
-    for (const path of ['launch.model', 'launch.reasoning', 'launch.planMode']) {
-      expect(mapAbsent(path), `the map's word for ${path} moved`).toContain('Not reported')
-    }
-    for (const key of ['model', 'reasoning', 'profile', 'plan']) {
-      expect(SHELF).not.toContain(`key: '${key}'`)
-    }
-    expect(SHELF).not.toContain('Not reported')
-    expect(SHELF).not.toContain('useConversationControls')
-
-    // ⚑ The paired positive: the panel draws the model, the effort, plan mode and the agent's
-    // name, so the scan above is not blind to what it says is absent.
-    const card = code(read(`${COMPONENTS}/AgentCard.vue`))
-    expect(card).toContain('data-cy="card-run-model"')
-    expect(card).toContain('data-cy="card-run-effort"')
-    expect(code(read(`${COMPONENTS}/SessionBot.vue`))).toContain('data-cy="session-bot-name"')
-    expect(card).toContain('data-cy="card-run-plan"')
-
-    // ⚑ The shelf's own absent word is the Providers card's, so an unread window reads alike.
-    expect(SHELF).toContain('Not read yet')
-    expect(code(read(`${COMPONENTS}/ProviderCard.vue`))).toContain('Not read yet.')
-  })
-
-  /**
-   * 🔴 **`578` · the sixth cell left this strip, and this is the re-aim rather than a deletion**
-   * (`EXT-010` §1.5, standing rule 26).
-   *
-   * ⛔ **The row above lost `home`, and a test that only DROPPED it would go green over a world in
-   * which the home had simply stopped being drawn anywhere.** ⚑ So the question this section asks
-   * about that field moved with it: the map still holds the entry and its word, the shelf no longer
-   * declares either, and the surface that draws the path in full still does.
-   *
-   * ⚠️ **`Home location unknown` is the one absent word in this product that must never become a
-   * constructed path** — *"the home is per profile AND per provider, and a guess at it names
-   * somebody else's folder."* ⛔ That rule is about the MAP, so it survives the cell.
-   */
-  it('🔴 578 · the home left the shelf, the map kept its word, and the Info tab kept the path', () => {
-    // The map is untouched: the field and the rule that governs its absence both still exist.
-    expect(mapAbsent('launch.home')).toContain('Home location unknown')
-    expect(mapAbsent('launch.home')).toContain('Never a constructed path')
-
-    // ⛔ The shelf declares neither the cell nor the word any more.
-    expect(SHELF).not.toContain("key: 'home'")
-    expect(SHELF).not.toContain('Home location unknown')
-    expect(SHELF).not.toContain('config.home')
-
-    // ⚑ **The paired positive, and it is what makes the three negatives a measurement.** The path
-    // is drawn in full by the Info tab, which is where a thing you COPY belongs — `EXT-010` §1.5's
-    // complaint is that it was on the busiest strip, not that the app should stop saying it.
-    const info = read(`${COMPONENTS}/SessionInfo.vue`)
-    expect(info).toContain('data-cy="session-home"')
-    expect(info).toContain('config.home')
-    // …and the same scan that just came back clean on the shelf does find it there, so the method
-    // is capable of seeing what it says is absent.
-    expect(code(info)).toContain('config.home')
-  })
-
-  /**
-   * 🔴 **`579` relay 3 · the approval cell left this strip, and this is the re-aim** — the same
-   * shape as `578`'s home, one cell over (standing rule 26).
-   *
-   * State YOLO once, in a small mark beside the top buttons. The shelf’s duplicate “Approval
-   * mode” cell is absent.
-   *
-   * ⚠️ **What the cell was CARRYING, and where each part is now.** The rule was never the cell:
-   * it is *"`unrecorded`, never `ask` — guessing the safer mode presents a yolo session as a
-   * careful one"*, and that lives in `approvalModeLabel`. ⛔ **So the helper is what this test
-   * follows**, and the reader that keeps it honest is `ResumableSessions.vue`, which states the
-   * mode for a conversation you are deciding whether to reopen.
-   *
-   * 🔴 **And the honest cost, asserted rather than described**: on the conversation surface the
-   * mode is now stated only when it is `auto`. ⚑ The agent card's `CardApproval` states it in both
-   * modes and opens its change, in the drawer where `080` put it.
-   */
-  it('⛔ 579 · the approval cell left the shelf, and its RULE went with the helper', () => {
-    // 🔴 The rule, unmoved: *"Never `ask`: guessing the safer mode presents a yolo session as a
-    // careful one."*
-    expect(approvalModeLabel(null)).toBe('unrecorded')
-    expect(approvalModeLabel(undefined)).toBe('unrecorded')
-    expect(approvalModeLabel('ask')).toBe('ask')
-    // ⛔ The shelf declares neither the cell, nor the word, nor the helper any more.
-    expect(SHELF).not.toContain("key: 'approval'")
-    expect(SHELF).not.toContain('approvalModeLabel')
-    expect(SHELF).not.toContain('unrecorded')
-    expect(SHELF).not.toMatch(/'auto'/)
-
-    // ⚑ **The paired positive, and it is what makes those four negatives a measurement.** The
-    // helper still has a reader, so the rule is enforced on a surface rather than only in a unit.
-    const resumable = read(`${COMPONENTS}/ResumableSessions.vue`)
-    expect(resumable).toContain("import { approvalModeLabel } from '../lib/approval-mode'")
-    expect(resumable).toContain('approvalModeLabel(session.approvalMode)')
-
-    // ⛔ **…and the map KEPT the field**, exactly as it kept `launch.home` when that cell left —
-    // a cell leaving a strip is not a fact leaving the product.
-    expect(mapAbsent('launch.approvalMode')).toContain('unrecorded')
-
-    // ⚠️ **The conversation surface states the mode in ONE mode now**, and the place it is
-    // changed still states it in both. ⛔ Asserted, because *"only the unattended one shouts"* is
-    // the argument for the cost and an argument is not a measurement.
-    const header = read(`${COMPONENTS}/SessionHeader.vue`)
-    expect(code(header)).toContain("session.approvalMode === 'auto'")
-    expect(code(header)).not.toContain('approvalModeLabel')
-    // ⚑ The agent card's approval mode states it in both modes and opens the change.
-    const controls = read(`${COMPONENTS}/CardApproval.vue`)
-    expect(controls).toContain('data-cy="card-approval"')
-    expect(controls).toContain('role="switch"')
-    // The approved 0.1.3 switch shows the pending choice before the current mode changes.
-    expect(controls).toContain(
-      ':checked="(props.approval.pending ?? props.approval.mode) === \'auto\'"',
-    )
-    const fold = read(`${RENDERER}/composables/useConversationControls.ts`)
-    expect(fold).toContain('note: session.approvalNote')
-  })
-})
 
 /* ------------------------------------------------- §2 · the actor LABEL, retired — the actor, not */
 

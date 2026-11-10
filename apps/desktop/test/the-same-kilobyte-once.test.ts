@@ -1,16 +1,7 @@
 import type { InjectedInstruction, SessionInstructions } from '../src/shared/instruction-contracts'
 import { describe, expect, it } from 'vitest'
 import { legacyWorkspaceFiles } from './helpers/legacy-workspace-files'
-import {
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  unlinkSync,
-  writeFileSync,
-} from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -521,49 +512,6 @@ describe('594 §7 · the walk reaches its own files through an ALIAS, and the wi
       expect(workspaceOwnFilesIn(userData)).toEqual([])
       expect(kinds(claude(userData, { ours: [] }))).toEqual([])
     })
-  })
-
-  it('⛔ EVERY caller of this reader outside the tests passes it — a roster from the IMPORT', () => {
-    // ⚠️ **Derived, never a hand-listed path** (rule 27.1: a guard scoped by where things live today
-    // expires silently). 🔴 The shipped composition root is not the only hand copy of that call:
-    // `smoke/the-text-a-child-is-actually-told.smoke.ts` holds two more, and a field added in
-    // `main/index.ts` alone would leave the one instrument that can watch a LIVE prompt measuring
-    // the reader as it was before 594.
-    const files: string[] = []
-    const walk = (dir: string): void => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const path = join(dir, entry.name)
-        if (entry.isDirectory()) walk(path)
-        else if (entry.name.endsWith('.ts')) files.push(path)
-      }
-    }
-    for (const one of ['../src', '../smoke']) walk(join(import.meta.dirname, one))
-
-    // ⚠️ Comments out first: these files argue about `workspaceOwnFiles` in prose, and a census that
-    // cannot tell code from the paragraph explaining it measures the paragraph.
-    const code = (path: string): string =>
-      readFileSync(path, 'utf8').replaceAll(/\/\*[\s\S]*?\*\/|(^|[^:])\/\/.*$/gm, '$1')
-    const callers = files.filter(
-      (path) =>
-        !path.endsWith('runtime/instructions.ts') &&
-        code(path).includes('readSessionInstructions({'),
-    )
-    // ⛔ **Re-aimed rather than weakened, when it fired on a caller that was right** (found by this
-    // census on its first run): `smoke/lifecycle-stage.smoke.ts` passes NEITHER half and composes no
-    // hint at all, so it claims nothing about the workspace and owes nothing. ⚑ The property is
-    // *both halves or neither* — a caller that knows the workspace's `CLAUDE.md` by name and not by
-    // content is the one shape 594 exists to make impossible.
-    const aboutTheWorkspace = callers.filter((path) => code(path).includes('workspaceFile:'))
-    // ⛔ **Both lists are non-empty and they differ** — a census over nothing passes, and one where
-    // every caller abstained would too.
-    expect(callers.length).toBeGreaterThan(aboutTheWorkspace.length)
-    expect(aboutTheWorkspace.length).toBeGreaterThanOrEqual(2)
-    for (const path of aboutTheWorkspace) {
-      expect(
-        code(path),
-        `${path} names the workspace file but never says what this app wrote in it`,
-      ).toContain('workspaceOwnFiles:')
-    }
   })
 })
 

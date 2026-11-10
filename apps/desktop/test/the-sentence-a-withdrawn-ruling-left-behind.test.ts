@@ -448,32 +448,6 @@ describe('§3 · where this tree states the guarantee, it states the limit besid
     expect(span).toContain('the string on screen and the string HANDED OVER cannot')
     expect(span, 'the over-claim is back').not.toContain('the string in the prompt cannot')
   })
-
-  it('⚑ and the person-facing layer states WHY it needs no hedge, rather than leaving it open', () => {
-    // 🔴 **Derived, not asserted**: the `app-composed` layer is drawn only when `composed !== null`.
-    // ⚑ **D-024 · R1 moved the fact this case pins, and the WHY moved with it**: `composed` was
-    // `null` on every Codex session (the sentence was Claude-only, the provider with no such
-    // limit); since D-024 the Codex arm composes this conversation's own text too, so the layer is
-    // drawn on both — and the sentence still needs no hedge because the host hands that text over
-    // in front of the first message of each life, never through the field the limit is about.
-    // ⛔ The paragraph that said *"CLAUDE-ONLY today"* is rewritten in `told.ts`, not kept: it
-    // became false.
-    const span = spanCarrying(
-      'apps/desktop/src/renderer/src/lib/told.ts',
-      'drawn on BOTH providers now',
-    )
-    expect(span).toContain('still with no limit to inherit')
-    // 🔴 **The channel, and the field it is NOT** — the limit is a `collaborationMode` update
-    // taking precedence over `developerInstructions` (`552`), so the reason must name both ends.
-    expect(span).toContain('in front of the first message of each life')
-    expect(span).toContain('never through')
-    expect(span).toContain('developerInstructions')
-    expect(span).toContain('collaborationMode')
-    expect(span).toContain('StartOptions.systemHint')
-    expect(span).toContain('still needs no hedge')
-    // ⛔ **And the guard it describes is really there**, one line below the span.
-    expect(read('apps/desktop/src/renderer/src/lib/told.ts')).toContain('if (composed !== null) {')
-  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

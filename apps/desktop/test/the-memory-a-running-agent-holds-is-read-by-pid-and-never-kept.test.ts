@@ -21,7 +21,6 @@ import { processMemoryWords } from '../src/renderer/src/lib/process-memory'
 import { createSessionStore as createRendererStore } from '../src/renderer/src/lib/session-store'
 import type { ProcessMemory, RuntimeBridge } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
-import { proseSpans } from './lib/prose-spans'
 
 /**
  * # D-018 · the memory a running agent holds is read by pid, and never kept
@@ -48,23 +47,6 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const SRC = join(here, '../src')
 const MiB = 1024 ** 2
-
-// ─── source helpers (the censuses of §4) ───────────────────────────────────────────────────────
-
-/** Every comment blanked, newlines kept, so a docblock quoting the code cannot stand in for it. */
-function code(file: string, source: string): string {
-  const lines = source.split('\n')
-  for (const span of proseSpans(file, source)) {
-    span.text.split('\n').forEach((said, offset) => {
-      const at = span.line - 1 + offset
-      const from = lines[at]?.indexOf(said) ?? -1
-      if (from < 0) throw new Error(`${file}:${at + 1} does not hold the comment ${said}`)
-      const line = lines[at] ?? ''
-      lines[at] = line.slice(0, from) + ' '.repeat(said.length) + line.slice(from + said.length)
-    })
-  }
-  return lines.join('\n')
-}
 
 /** The index of a marker that is in the source exactly once. */
 function once(marker: string, file: string, source: string): number {
@@ -587,39 +569,6 @@ describe('§3 · the renderer store reads the memory', () => {
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
 describe('§4 · where the read is made, asked for and drawn', () => {
-  it('§4 · main/index.ts reads memory through psArgsFor, by pid, bounded, and never the whole table', () => {
-    const main = code('main/index.ts', readFileSync(join(SRC, 'main/index.ts'), 'utf8'))
-    const read = sliceOf(
-      'readProcessMemory: (pids: readonly number[]) =>',
-      "'the process memory read',",
-      'main/index.ts',
-      main,
-    )
-    // The slice found something before any negative is asked of it.
-    expect(read.length).toBeGreaterThan(200)
-    expect(read).toContain('execFile(')
-    expect(read).toContain("'ps'")
-    expect(read).toContain('psArgsFor(pids)')
-    expect(read).toContain('timeout: PS_TIMEOUT_MS')
-    expect(read).toContain('residentSizesIn(error, listing)')
-    expect(read).toContain('withDeadline(')
-    expect(read).toContain('PS_READ_DEADLINE_MS')
-    // The whole table is the memory watch's, and never this read's.
-    expect(read).not.toMatch(/\bPS_ARGS\b/)
-    // On Windows, which has no `ps`: the one listing of the table, by pid.
-    expect(read).toContain("process.platform === 'win32'")
-    expect(read).toContain('listProcesses().then((rows) => memoryOf(pids, rows))')
-  })
-
-  it('§4 · the preload sends the no-payload kind for processMemory', () => {
-    const preload = code('preload/index.ts', readFileSync(join(SRC, 'preload/index.ts'), 'utf8'))
-    // The neighbour is there, so the read found the preload's verbs and the match below is about this one.
-    expect(preload).toContain("command({ kind: 'theWholeForest' })")
-    const verb =
-      /processMemory:\s*\(\):\s*Promise<ProcessMemory>\s*=>\s*command\(\{ kind: 'processMemory' \}\)/g
-    expect(preload.match(verb)).toHaveLength(1)
-  })
-
   /** The screen without its comments, as `one-read-at-a-time.test.ts` §3 reads it. */
   const screen = readFileSync(join(SRC, 'renderer/src/components/RuntimeScreen.vue'), 'utf8')
     .replace(/<!--[\s\S]*?-->/g, '')

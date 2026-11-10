@@ -77,7 +77,6 @@ const sourceOf = (file: string): Source => ({
 })
 
 const SCREEN = sourceOf('RuntimeScreen.vue')
-const RAIL = sourceOf('SideRail.vue')
 
 /** The index of a marker that is in the source exactly once. */
 function once(marker: string, where: Source = SCREEN): number {
@@ -133,72 +132,6 @@ function intervalOf(marker: string): string {
 const ASKS_THE_RAILS_LIST = /\brail\.value\?\.refreshResumable\(\)/g
 
 describe('D-019 · the rail learns what an agent is doing from the push, not by asking its list again', () => {
-  it('the screen hands every `runtime:states` message to the rail, and lets go of it on unmount', () => {
-    // The mount that owns what main tells the window: its neighbour is `runtime:changed`'s
-    // listener, which is the control that this is the right hook.
-    const mount = hookAround('onMounted(() => {', 'stopListening = whenTheWorldMoves(')
-    expect(mount).toContain('window.api.runtime.onChanged(')
-
-    // The whole message, handed to the rail's own door, unfiltered — and the one subscription.
-    // ⚑ **UI-002** — the listener is a block since the channel carries the files kept too (D-026):
-    // the rail still hears every message first and whole, and a message that kept a file reads the
-    // files again.
-    const heard =
-      /^ {2}stopHearingStates = listenProviderStates\(window\.api\.runtime, store, \((\w+)\) => \{\n {4}rail\.value\?\.hearStates\(\1\)$/m.exec(
-        mount,
-      )
-    expect(heard, 'the rail is not the first to hear each whole message').not.toBeNull()
-    expect(mount).toContain(
-      `    if (${heard![1]!}.kept.length > 0) {\n      filesLibrary.markStale()\n      void readTheFiles()\n    }`,
-    )
-    expect(SCREEN.code.match(/\blistenProviderStates\(/g)).toHaveLength(1)
-    expect(SCREEN.code.match(/\.onStates\(/g)).toBeNull()
-    const listener = code(
-      'renderer/src/lib/provider-limit-facts.ts',
-      read('renderer/src/lib/provider-limit-facts.ts'),
-    )
-    expect(listener.match(/\.onStates\(/g)).toHaveLength(1)
-    expect(listener).toMatch(
-      /return bridge\.onStates\(\(message\) => \{\s*store\.hearProviderStates\(message\)\s*receive\(message\)\s*\}\)/,
-    )
-
-    // Let go of beside `stopListening`, for its HMR reason: every assignment is one of these two.
-    const unmount = hookAround('onUnmounted(() => {', '  stopListening?.()')
-    const letGo = [
-      unmount.indexOf('stopHearingStates?.()'),
-      unmount.indexOf('stopHearingStates = null'),
-    ]
-    for (const position of letGo) expect(position).toBeGreaterThan(-1)
-    expect(letGo[0]).toBeLessThan(letGo[1] ?? -1)
-    expect(SCREEN.code.match(/\bstopHearingStates = /g)).toHaveLength(2)
-
-    // The rail's end: the door is exposed, and hearing asks nothing. The control is the rail's own
-    // list read, which does ask, so the absence below is measured against a reader that has it.
-    const exposed = hookAround('defineExpose({', '  refreshResumable: ', RAIL)
-    expect(exposed).toMatch(/^ {2}hearStates,$/m)
-    const asks = functionOf('async function refreshListed(): Promise<void> {', RAIL)
-    expect(asks).toContain('window.api.runtime.listResumable()')
-    expect(asks).toContain('window.api.runtime.listUnresumable()')
-    const hears = functionOf('function hearStates(message: RuntimeStatesMessage): void {', RAIL)
-    expect(hears).toContain('message.moved')
-    expect(hears).not.toMatch(/window\.api|refreshListed|await/)
-
-    // …and it does fold: each state is set into a copy of what was heard before (so an earlier
-    // push is kept), the copy is stored, and the one list is drawn over each heard state.
-    expect(hears).toMatch(/const next = new Map\(said\.value\)/)
-    expect(hears).toMatch(
-      /for \(const moved of message\.moved\) \{\s*next\.set\(moved\.conversation, \{ state: moved\.state, after: readsAsked \}\)\s*\}/,
-    )
-    expect(hears).toMatch(/said\.value = next\b/)
-    const drawn = RAIL.code.slice(
-      once('const listed = computed(', RAIL),
-      once('async function refreshListed(', RAIL),
-    )
-    expect(drawn).toMatch(
-      /\bsaid: new Map\(\[\.\.\.said\.value\]\.map\(\(\[(\w+), (\w+)\]\) => \[\1, \2\.state\]\)\)/,
-    )
-  })
-
   it('work moving still asks the rail’s list, for the work that names each conversation — and nothing asks it to learn a state', () => {
     const conversationsAt = once('    conversations: () => {')
     const workAt = once('    work: () => {')

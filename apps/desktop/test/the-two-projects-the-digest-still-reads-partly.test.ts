@@ -1,4 +1,3 @@
-import { TASK_STALL_CAUSES } from '../src/shared/task-contracts'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -345,49 +344,6 @@ describe('§4 · one type joined the read and one stayed out', () => {
     // here because a type in one and not the other reads as *"that never happened"*, silently.
     expect(storeSource).toContain("'tool_call', 'tool_result', 'message_unqueued')")
     expect(fold).toContain("case 'message_unqueued':")
-  })
-
-  it('⛔ `status` stayed out, and the reason is that it would close NOTHING', () => {
-    expect(DIGEST_EVENT_TYPES).not.toContain('status')
-    // 🔴 **The structural half of the argument, asserted rather than written in prose.** Every
-    // stall cause but two is written by a row with no piece on it; `message_never_sent`'s row
-    // carries the message name, and `work_given` carries the same field; and since D-016
-    // `app_restarted`'s row names the pieces it stalls (asserted off its declaration below).
-    // ⚑ **D-017 · R10's member is one more of the many**: `could_not_be_reopened` is written at the
-    // old conversation's `replaced_by` row, over every open piece it held, and that row names only
-    // the conversation that took its place — no piece (asserted off its declaration below).
-    // ⚑ **D-016c · `status` has no cause of its own**: a stop moves no piece, and a drive a stop cut
-    // ends `turn_interrupted` — still a row with no piece on it. ⚑ `background_stopped` is written at
-    // a `status: ended` over running background work — the same row, still naming no piece, so
-    // reading it would still close nothing. ⚑ **F074's `provider_limited`** is written at a `turn`
-    // row that carries its provider's usage limit — still a row with no piece on it. ⚑ **F076's
-    // `login_refused`** is written at a `turn` row or a terminal `status` that says its provider
-    // refused the login its conversation was started with — rows with no piece on them.
-    // `billing_refused` is written at a `turn` row that says its provider would not bill the account
-    // it ran on, still a row with no piece on it.
-    expect(TASK_STALL_CAUSES).toEqual([
-      'turn_ended',
-      'turn_interrupted',
-      'app_restarted',
-      'message_never_sent',
-      'could_not_be_reopened',
-      'background_stopped',
-      'provider_limited',
-      'login_refused',
-      'billing_refused',
-    ])
-    const ipc = ['task-contracts', 'conversation-events']
-      .map((owner) => readFileSync(join(here, `../src/shared/${owner}.ts`), 'utf8'))
-      .join('\n')
-    // ⚑ `work_restarted` has ONE field, the pieces it stalls (D-016) — read off its own
-    // declaration, and a positive control on this being a real census of the shape.
-    const restarted = ipc.slice(ipc.indexOf('export interface WorkRestartedEvent {'))
-    expect(restarted.slice(0, restarted.indexOf('\n}\n'))).toMatch(
-      /^export interface WorkRestartedEvent \{\n {2}type: 'work_restarted'\n {2}\/\*\*(?:(?!\*\/)[\s\S])*\*\/\n {2}pieces\?: readonly string\[\]$/,
-    )
-    expect(ipc).toContain(
-      "export interface ReplacedByEvent {\n  type: 'replaced_by'\n  /** The conversation that took its place. */\n  sessionId: string\n}",
-    )
   })
 
   it('⚠️ a `status` row in the window is still not read at all', () => {

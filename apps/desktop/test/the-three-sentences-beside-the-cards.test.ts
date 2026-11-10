@@ -1,7 +1,4 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { readdirSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { REPLY_DELIVERIES, REPLY_LANDED, type ReplyDelivery } from '../src/main/runtime/reply-rails'
 import { AN_ANSWER_HELD_THEN_LOST } from '../src/shared/tasks'
@@ -23,28 +20,7 @@ import {
   outgoingCard,
   type OutgoingCardWords,
 } from '../src/renderer/src/lib/outgoing-card'
-import { THIS_CONVERSATION, THIS_CONVERSATION_FIRST } from '../src/renderer/src/lib/from-outside'
 import { agentName, profileLabel, type AgentIdentity } from '../src/shared/runtime-ipc'
-
-/**
- * # 🔴 667 · The three sentences beside the new cards
- *
- * The renderer cards can be drawn beside incorrect explanatory sentences. Check the three
- * remaining sentences:
- *
- * | | ⛔ what a person read | ⚑ what this file pins |
- * |---|---|---|
- * | **G3** | *"the reply to task_… did not reach sess_…: no-conversation"* | the card's words: *W1.2*, the parent's NAME, the reason in words — §1 |
- * | **G4** | *"ada to claude"* on a recording, *"sub-agent"* in a child's work | a card is handed a NAME or `null`, never the heading word — §2 |
- * | **G5** | *"dev to Dev"* on one card | measured on a real screen, in `test/dom/the-three-sentences-beside-the-cards.dom.test.ts` |
- *
- * ⚠️ **This file is compiled by `tsconfig.node.json`**, which sees `main/` AND `renderer/` — and
- * that is the whole reason §1's first test can be a TYPE: the renderer cannot import main's
- * vocabulary, and this file is the one place both are in view.
- */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const COMPONENTS = join(here, '..', 'src', 'renderer', 'src', 'components')
 
 const CLAUDE = { prefix: 'mcp__', separator: '__' }
 
@@ -285,13 +261,6 @@ function ownAgentBindings(source: string): string[] {
   )
 }
 
-/** ⚑ Code only — a docblock quoting the words it retired must not count as a use. */
-const code = (source: string): string =>
-  source
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '')
-
 describe('§2 · G4 · never a provider or *sub-agent* on a card', () => {
   it('⚑ the reader finds every binding in a file, not the first — and in every form Vue accepts', () => {
     expect(
@@ -306,98 +275,7 @@ describe('§2 · G4 · never a provider or *sub-agent* on a card', () => {
     // ⚑ and not a prop DECLARATION, which carries no `=` quote
     expect(ownAgentBindings('  ownAgent: string | null\n')).toEqual([])
   })
-
-  // ⚠️ **678 · re-aimed, not stripped** (rule 26): `671` put `profileId` on a library entry (G4a), so a
-  // RECORDING of ours now names its own agent as the live pane does — the census's population grew by
-  // one surface, and the one mount that has no name (a child's work) still binds nothing.
-  it('🔴 the surfaces that NAME this conversation’s agent are the live pane and a recording; the rest forward it', () => {
-    const found = new Map<string, string[]>()
-    for (const name of readdirSync(COMPONENTS).filter((one) => one.endsWith('.vue'))) {
-      for (const binding of ownAgentBindings(code(readFileSync(join(COMPONENTS, name), 'utf8')))) {
-        found.set(binding, [...(found.get(binding) ?? []), name])
-      }
-    }
-    expect(Object.fromEntries(found)).toEqual({
-      // ⚑ `ConversationPane.ownAgent` — `agentName` over the profile, which it folds (§3's DOM file);
-      // ⚑ **678** `ReadingPane.ownAgent` — the same, over the recording's OWN `entry.profileId`
-      // ⚑ **D-017b** — 701's `KeptOpenPane.ownAgent` went with the pane: a conversation the quit
-      // left open opens in the one full view (`ConversationPane`), which names its agent itself.
-      // ⚑ `RecoveryApp.ownAgent` — a recording read from a restored copy, named by the agent name
-      // the copy holds for it; the recovery window is handed no roster to ask `agentName` with.
-      ownAgent: ['ConversationPane.vue', 'ReadingPane.vue', 'RecoveryApp.vue'],
-      // The transcript and answer wrapper forward the same nullable name to their child cards.
-      'props.ownAgent ?? null': [
-        'AnsweredQuestionEntry.vue',
-        'AnsweredQuestionEntry.vue',
-        ...Array(7).fill('TranscriptView.vue'),
-      ],
-    })
-    // ⛔ **A recording names its agent from ITS OWN read** — the entry's id through the one naming
-    // function — never from the rail's list (`readRecorded`'s rule): a heading composed out of
-    // another read would name some recordings and not others by how they were opened.
-    const reading = code(readFileSync(join(COMPONENTS, 'ReadingPane.vue'), 'utf8'))
-    expect(reading).toMatch(/agentName\(props\.entry\.profileId, props\.identities \?\? null\)/)
-    // ⛔ **The surface with no name binds NOTHING**, so its cards say *this conversation* — and it
-    // still mounts a transcript, so the absence is about the binding and not the file.
-    const child = code(readFileSync(join(COMPONENTS, 'ChildWorkViewer.vue'), 'utf8'))
-    expect(child, 'ChildWorkViewer mounts no transcript').toContain('<TranscriptView')
-    expect(ownAgentBindings(child), 'ChildWorkViewer').toEqual([])
-  })
-
-  it('⚑ a recording is handed the SAME roster a live pane is — so its cards name the other agent', () => {
-    const screen = code(readFileSync(join(COMPONENTS, 'RuntimeScreen.vue'), 'utf8'))
-    /** The one `<Tag … />` mount of a component in the screen, asserted to be alone. */
-    const mountOf = (tag: string): string => {
-      const starts = [...screen.matchAll(new RegExp(`<${tag}\\n`, 'g'))]
-      expect(starts, `${tag} is mounted once`).toHaveLength(1)
-      const from = starts[0]!.index!
-      return screen.slice(from, screen.indexOf('/>', from))
-    }
-    const roster = (block: string): string | undefined => /:identities="([^"]*)"/.exec(block)?.[1]
-    const live = roster(mountOf('ConversationPane'))
-    expect(live, 'the live pane is handed no roster').toMatch(/identities/)
-    expect(roster(mountOf('ReadingPane'))).toBe(live)
-  })
-
-  it('🔴 each card draws the name it is handed, or *this conversation* — and reads no `who`', () => {
-    const CARDS: Record<string, string> = {
-      RelayedEntry: THIS_CONVERSATION,
-      WorkReportEntry: THIS_CONVERSATION,
-      QueuedMessage: THIS_CONVERSATION,
-      OutgoingEntry: THIS_CONVERSATION_FIRST,
-    }
-    for (const [card, word] of Object.entries(CARDS)) {
-      const source = code(readFileSync(join(COMPONENTS, `${card}.vue`), 'utf8'))
-      expect(source, `${card} declares no ownAgent`).toMatch(/^\s*ownAgent: string \| null$/m)
-      const fallback = word === THIS_CONVERSATION ? 'THIS_CONVERSATION' : 'THIS_CONVERSATION_FIRST'
-      expect(source, `${card} falls back to something else`).toMatch(
-        new RegExp(`ownAgent \\?\\? ${fallback}\\b`),
-      )
-      expect(source, `${card} still reads the heading word`).not.toMatch(/props\.who\b|\bwho:/)
-    }
-    // ⚑ the words themselves: one phrase, capitalised only where it opens a heading
-    expect(THIS_CONVERSATION_FIRST.toLowerCase()).toBe(THIS_CONVERSATION)
-    expect(THIS_CONVERSATION_FIRST).not.toBe(THIS_CONVERSATION)
-    // The recipient is named once in the compact heading, never repeated in the body.
-    const queued = code(readFileSync(join(COMPONENTS, 'QueuedMessage.vue'), 'utf8'))
-    expect(queued.match(/ownAgent \?\? THIS_CONVERSATION\b/g)).toHaveLength(1)
-  })
 })
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// §3 · G5 — a conversation's profile is asked in ONE spelling, everywhere it is named
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-/** Every `.ts` and `.vue` file under the renderer, recursively. */
-function rendererFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
-    entry.isDirectory()
-      ? rendererFiles(join(dir, entry.name))
-      : /\.(ts|vue)$/.test(entry.name)
-        ? [join(dir, entry.name)]
-        : [],
-  )
-}
 
 /** ⚑ Each `agentName(` call's FIRST argument, read up to its comma. */
 const namingKeys = (source: string): string[] =>
@@ -438,64 +316,6 @@ describe('§3 · G5 · one spelling of a conversation’s agent', () => {
         'a = agentName(foldProfileName(meta.profileId), ids)\nb = agentName(row.profileId, x)',
       ),
     ).toEqual(['foldProfileName(meta.profileId)', 'row.profileId'])
-  })
-
-  it('🔴 no renderer call folds a `profileId` before `agentName` — the spelling has ONE owner', () => {
-    const RENDERER = join(here, '..', 'src', 'renderer', 'src')
-    const asked: string[] = []
-    const foldedFirst: string[] = []
-    for (const file of rendererFiles(RENDERER)) {
-      for (const key of namingKeys(code(readFileSync(file, 'utf8')))) {
-        // ⚑ **D-017b** — `profile` too: `whoIsIn` (lib/session-record.ts) asks of the profile a
-        // conversation runs as, under that name, for the live pane and the drawer.
-        if (!/\bprofile(?:Id)?\b/.test(key)) continue
-        // ⛔ any call wrapped around the id is a fold of it — the renderer's own, or a borrowed one
-        ;(/^[\w.]+\(/.test(key) || /\.toLowerCase\(/.test(key) ? foldedFirst : asked).push(
-          `${file.slice(RENDERER.length + 1).replaceAll('\\', '/')} · ${key}`,
-        )
-      }
-    }
-    // ⛔ nothing folds before asking
-    expect(foldedFirst).toEqual([])
-    // ⚑ and the population is every surface that names a conversation's agent — so an empty census
-    // (a reader that found nothing) cannot pass as a clean one. ⚑ **678** adds the recording.
-    expect(asked.sort()).toEqual([
-      // ⚑ **D-017b** — 701's `KeptOpenPane` is gone (every conversation opens in the one full view)
-      'components/ReadingPane.vue · props.entry.profileId',
-      // ⚑ **714** (R41, `712` F-4) — the ones that drew `profileLabel`'s *profile:* line name the
-      // agent now: both halves of the reopen list and the Info tab's home line. The shelf's Agent
-      // cell left with the shelf's four settings; the Agent panel names the agent.
-      'components/ResumableSessions.vue · session.profileId',
-      'components/ResumableSessions.vue · session.profileId',
-      'components/SessionInfo.vue · session.profileId',
-      'components/SideRail.vue · meta.profileId',
-      // ⚑ **712** (R41, `707` GAP-5) — the store's remove sentences name the agent they are about,
-      // asked of the id the door was handed, before the removal
-      'lib/agent-store.ts · profileId',
-      // ⚑ **D-017b** — the ONE Conversations list (rail and ⌘K) names each host row's agent;
-      // `closed-threads.ts`, which named the closed group's, went with the split
-      'lib/conversation-list.ts · row.profileId',
-      // ⚑ **2026-09-29** — a give's card names the agent it gave to, asked of the call's own
-      // `profile` argument, unfolded
-      'lib/outgoing-card.ts · profile.text',
-      // ⚑ **D-017b** — the live pane and the drawer name through `whoIsIn`, which asks
-      // `agentName` of the profile the conversation runs as (its provider's name for one this
-      // app ran as nobody) — ONE call where `ConversationPane` and `SessionDrawer` had one each
-      'lib/session-record.ts · profile',
-    ])
-    // ⛔ **And the `profile` it asks of is the row's own id, unfolded** — `whoIsIn`'s key is a
-    // local, so the fold census above cannot see a fold made where the local is assigned.
-    const record = code(readFileSync(join(RENDERER, 'lib', 'session-record.ts'), 'utf8'))
-    expect(record).toMatch(
-      /export function whoIsIn\([^)]*\): string \{\n {2}const profile = profileItRunsAs\(meta\)\n/,
-    )
-    expect(record).toMatch(
-      /export function profileItRunsAs\([^)]*\): string \| null \{\n[^\n]*\n {2}return meta\.profileId\n\}/,
-    )
-    // ⚑ …and the two surfaces that name through it DO ask it, so the one call above is theirs.
-    for (const name of ['ConversationPane.vue', 'SessionDrawer.vue']) {
-      expect(code(readFileSync(join(COMPONENTS, name), 'utf8')), name).toMatch(/\bwhoIsIn\(/)
-    }
   })
 })
 

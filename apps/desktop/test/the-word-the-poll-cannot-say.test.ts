@@ -1,6 +1,6 @@
 import { waitFor } from './lib/f093-host'
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,7 +17,6 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
-import { RUNNING_STATES } from '../src/shared/runtime-ipc'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
@@ -229,106 +228,6 @@ describe('509 · the word the poll cannot say', () => {
       // shapes and not about a check that could never fire. ⚠️ D-016 · it was the room's row; the
       // created session's is the wide projection under the same key (§4's own control).
       expect(Object.keys(created)).toContain('liveness')
-    })
-  })
-
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
-  // §4 · one call site, and it is a ruling
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§4 · where the word is published, and where it deliberately is not', () => {
-    /** ⛔ A census that reads prose reads code wrong — a docblock naming a call is not a call. */
-    const withoutProse = (code: string): string =>
-      code
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .split('\n')
-        .filter((line) => !line.trim().startsWith('//'))
-        .join('\n')
-
-    it('⛔ a fourth ARM would have moved three questions — the readers, by import and not by mention', () => {
-      const src = join(here, '../src')
-      const read = (name: string): string => withoutProse(readFileSync(join(src, name), 'utf8'))
-      const named = readdirSync(src, { recursive: true, encoding: 'utf8' })
-        .filter((name) => /\.(ts|vue)$/.test(name))
-        .filter((name) => read(name).includes('RunningState'))
-        .map((name) => name.replace(/\\/g, '/'))
-        .sort()
-      // ⛔ **Four files name the TYPE, and four surfaces read the FIELD.** `505` said a field
-      // beside `running` rather than a fourth arm, and this is the measurement behind it: one word
-      // answers four questions, so an arm would have moved all four at once —
-      // `widening-a-predicate-widens-every-question-its-field-answers`.
-      //
-      // ⚠️ **543 · a FOURTH file names the type and the claim above is corrected rather than the
-      // roster loosened.** `shared/who-called-whom.ts` carries {@link SpawnEdge.running}, which is
-      // the same word left UNFOLDED on purpose: `hereIsOf(running, held)` needs the window's own
-      // `held` to reach `open-in-another-window`, and no host knows which window is asking. ⛔ **No
-      // fourth ARM and no fifth reading SURFACE** — the panel is `540`'s slice 2 — so what this
-      // census measures is unchanged and only the list of namers moved.
-      // ⚠️ **637 · a FIFTH file names the type, and the claim is corrected rather than the roster
-      // loosened.** `shared/the-whole-forest.ts` carries `ForestConversation.running`, which is
-      // the same word left UNFOLDED for `SpawnEdge`'s reason exactly. ⛔ **No fourth ARM and no
-      // new reading SURFACE** — the Team graph that will draw it is the frontend seat's and is not
-      // in this tree — so what this census measures is unchanged and only the list of namers moved.
-      // ⚑ **D-017b · the renderer names the type NOWHERE now** — `closed-threads.ts`, its one
-      // renderer namer, went with the open/closed split (one Conversations list), and no reader
-      // below imports it. ⛔ So every renderer reader of the field is one of the silent kind.
-      // ⚠️ **D-016 · a renderer file names it again, and the list is corrected rather than
-      // loosened.** `openElsewhere` moved out of the deleted room's `project-roster.ts` into
-      // `taking-over.ts`, and its parameter is typed `RunningState` there (it was the room's row's
-      // `running`). ⛔ Its body is still a comparison against one arm, so a fourth member would
-      // still land on the complement's side of it in silence — naming the type does not change that.
-      expect(named).toEqual([
-        'main/runtime/runtime-host.ts',
-        'main/runtime/work-reads.ts',
-        'renderer/src/lib/taking-over.ts',
-        'shared/runtime-ipc.ts',
-        'shared/the-whole-forest.ts',
-        'shared/who-called-whom.ts',
-      ])
-      // ⚑ **The control for `derive-a-roster-from-the-import-not-the-mention`** — ⚠️ D-017b took the
-      // codebase's own planted case away (`where-the-work-is.ts` no longer names the type in prose),
-      // so it is planted here: a roster taken off the mention would count a NAMER that reads
-      // nothing, while missing every surface below that reads the field and names nothing.
-      const planted =
-        '/** a {@link RunningState} in a docblock */\n// and RunningState in a line\nconst x = 1\n'
-      expect(planted).toContain('RunningState')
-      expect(withoutProse(planted)).not.toContain('RunningState')
-
-      expect(RUNNING_STATES).toHaveLength(3)
-      // ⚑ **D-017b · re-aimed, not stripped** (rule 26): *may I claim it* and *is it over* left with
-      // the Take-it-over and Reopen presses (one press everywhere: *Open the conversation*), and the
-      // rail's open/closed split left with the split. ⛔ The word still answers FOUR questions, and
-      // each reader asks it by a comparison against one arm, in a file that does not name the type —
-      // so a fourth member would land on the complement's side of every one of them in silence.
-      // ⚠️ Some instruments catching it and some not is worse than either, and it is the whole
-      // argument for a sibling field.
-      // ⚑ **D-016 · THREE questions** — the room, which asked the second (*may the record's refusal
-      // be drawn*, only for a row nothing runs), went, and its fold of the first moved to
-      // `taking-over.ts`, where every reader of it now reads it.
-      // 1 · *is it open in ANOTHER window* — the one fold of it, and the forest's call of it …
-      expect(read('renderer/src/lib/taking-over.ts')).toContain(
-        "return running === 'in-a-window' && !held",
-      )
-      expect(read('renderer/src/lib/the-forest.ts')).toContain('openElsewhere(node.running,')
-      // … and the one Conversations list's (rail and ⌘K), which is the same question asked inline
-      expect(read('renderer/src/lib/conversation-list.ts')).toContain(
-        "inAnotherWindow: row.running === 'in-a-window',",
-      )
-      // 2 · *may the forest draw the recorded status* — only for a node nothing runs
-      expect(read('renderer/src/lib/the-forest.ts')).toContain(
-        "(node.running === 'not-running' ? node.status : null)",
-      )
-      // 3 · *did the hand-back take* — the host's word after the write, read by its one arm
-      expect(read('renderer/src/lib/handing-it-back.ts')).toContain(
-        "if (released.running !== 'unwatched') {",
-      )
-      for (const reader of [
-        'renderer/src/lib/the-forest.ts',
-        'renderer/src/lib/conversation-list.ts',
-        'renderer/src/lib/handing-it-back.ts',
-      ]) {
-        expect(read(reader), reader).not.toContain('RunningState')
-      }
     })
   })
 

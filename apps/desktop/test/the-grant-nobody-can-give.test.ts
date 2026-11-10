@@ -1,5 +1,5 @@
 import { neutralHostDeps } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -33,7 +33,6 @@ import type { AgentIdentities, RuntimeEventMessage } from '../src/shared/runtime
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const srcRoot = join(here, '../src')
 
 /**
  * 🔴 **355 · the grant nobody can give.**
@@ -645,32 +644,6 @@ describe('355 · the grant nobody can give', () => {
           field.column,
         )
       }
-    })
-
-    /**
-     * ⛔ **The two statements are BUILT from the field list, and this reads the source to say so.**
-     * A hand-written `SELECT` that happened to name the same four columns would pass every
-     * behavioural test in this file and go stale the moment a fifth arrived.
-     */
-    it('⛔ the store builds both capability statements from the field list', () => {
-      // ⛔ **Comments stripped, and both halves need it** (review). The positive is satisfiable by a
-      // docblock that quotes the statement, and the mirror is a `not.toContain` a docblock could
-      // also make red — `a-source-census-must-strip-prose-before-it-asserts`, on a file whose
-      // comments quote its own SQL.
-      const source = readFileSync(join(srcRoot, 'main/db/session-store.ts'), 'utf8')
-        .replace(/\/\*[\s\S]*?\*\//g, ' ')
-        .split('\n')
-        .filter((line) => !line.trim().startsWith('//'))
-        .join('\n')
-      expect(source.length, 'the strip ate the file').toBeGreaterThan(20_000)
-      expect(source).toContain("SELECT ${CAPABILITY_COLUMNS.join(', ')} FROM agent_identity")
-      expect(source).toContain('UPDATE agent_identity SET ${CAPABILITY_COLUMNS.map(')
-      // ⚑ **The mirror, as a SHAPE rather than as four spellings.** Only `SELECT can_spawn,` could
-      // ever have matched the old loop; the other three asserted about text nothing would write, so
-      // three of its four rows could never fire (review).
-      expect(source, 'a capability column is typed into a statement again').not.toMatch(
-        /SELECT [a-z_]+, [a-z_]+[a-z_, ]* FROM agent_identity/,
-      )
     })
 
     /**

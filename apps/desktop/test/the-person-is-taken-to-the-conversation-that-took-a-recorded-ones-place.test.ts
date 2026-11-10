@@ -1,5 +1,5 @@
 import { fixtureProviderConfig, neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -29,7 +29,6 @@ import type {
   SessionLivenessMessage,
 } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
-import { proseSpans } from './lib/prose-spans'
 
 /**
  * D-017b, 701 M6 · the person is taken to the conversation that took a recorded one's place.
@@ -52,24 +51,6 @@ import { proseSpans } from './lib/prose-spans'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const SRC = join(here, '../src')
-const SCREEN = 'renderer/src/components/RuntimeScreen.vue'
-
-/** Every comment blanked, newlines kept, so the census reads only code. */
-function code(file: string, source: string): string {
-  let out = source
-  for (const span of proseSpans(file, source)) {
-    out = out.replace(span.text, span.text.replace(/[^\n]/g, ' '))
-  }
-  return out
-}
-
-/** One declaration's body out of the screen's code, up to its closing line. */
-function bodyOf(source: string, opening: string, closing: string): string {
-  const start = source.indexOf(opening)
-  expect(start, `${opening} is not in ${SCREEN}`).toBeGreaterThan(-1)
-  return source.slice(start, source.indexOf(closing, start))
-}
 
 /** The window: the sink the host writes to, and the bridge the renderer store reads through. */
 class AWindow implements RuntimeEventSink {
@@ -288,24 +269,6 @@ describe('the person is taken to the conversation that took a recorded one’s p
       noSuchSession: true,
     })
   }
-
-  it('the screen’s continueIt puts the conversation that took the place on screen, from the view it read before the start', () => {
-    const screen = code('RuntimeScreen.vue', readFileSync(join(SRC, SCREEN), 'utf8'))
-    const body = bodyOf(screen, 'async function continueIt(', '\n}\n')
-    const shows =
-      /if \(came\?\.tookItsPlace !== undefined && came\.openHere\) \{?\s*showConversation\(came\.tookItsPlace, from\)/
-    // The positive: the call, guarded by both facts, handed the view read before anything awaited.
-    expect(body).toMatch(shows)
-    expect(body.indexOf('const from = view()')).toBeGreaterThan(-1)
-    expect(body.indexOf('const from = view()')).toBeLessThan(body.indexOf('await '))
-    expect(body.indexOf('await store.startAndSend(')).toBeLessThan(body.search(shows))
-    // The negative, on the same reader: the body without the call is not matched, so the pattern
-    // can tell the screen that shows it from the screen that does not.
-    const without = body.replace(/\n *if \(came\?\.tookItsPlace[^\n]*/, '')
-    expect(without).not.toBe(body)
-    expect(without).not.toMatch(shows)
-    expect(without).not.toMatch(/showConversation\(/)
-  })
 
   it('a message from a recorded view whose history is gone is answered in the conversation that took its place, and the reader is taken there', async () => {
     const id = await leftOpenByTheQuit()

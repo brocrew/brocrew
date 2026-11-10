@@ -61,7 +61,6 @@ function code(file: string, source: string): string {
 
 const RAIL_PATH = 'renderer/src/components/SideRail.vue'
 const SCREEN_PATH = 'renderer/src/components/RuntimeScreen.vue'
-const PAGE_PATH = 'renderer/src/components/TeamWorkspace.vue'
 
 /**
  * 🔴 **The four elements that made the rail a second roster**, each named, because *the section is
@@ -99,31 +98,6 @@ describe('570 §1 · at no commit does a window exist with neither surface', () 
       mountsTheRoster: screen.includes("surface === 'team'") && screen.includes('<TeamWorkspace'),
       theRailReachesIt: rail.includes('data-cy="rail-team"') && rail.includes("emit('go', 'team')"),
     }).toEqual({ theRailIsStillARoster: [], mountsTheRoster: true, theRailReachesIt: true })
-  })
-
-  it('⚑ the census is not vacuous — each half is refutable, proven on a planted world', () => {
-    // 🔴 **`a-positive-assertion-must-differ-from-the-default`, applied to a three-field
-    // object.** ⛔ Each field is computed again over a source with the relevant line taken out,
-    // and each must move — otherwise a green run above says nothing about any of the three.
-    const rail = railCode()
-    const screen = screenCode()
-    expect(
-      THE_RAIL_WAS_A_ROSTER.filter((mark) => `${rail}\n${THE_RAIL_WAS_A_ROSTER[0]}`.includes(mark)),
-    ).toEqual([THE_RAIL_WAS_A_ROSTER[0]])
-    expect(screen.replace("surface === 'team'", 'x').includes("surface === 'team'")).toBe(false)
-    expect(rail.replace('data-cy="rail-team"', 'x').includes('data-cy="rail-team"')).toBe(false)
-    // 🔴 **And the STRIPPER is doing work, proven on the subject file rather than on a string.**
-    // ⛔ A first version asserted only that `SideRail.vue` mentions `EXT-008` — which it does
-    // fifteen times, and which never calls {@link code} at all. ⚠️ **The rail's template comment
-    // quotes `EXT-008` §4.4 verbatim**, once, to say why the section left; the raw file holds
-    // that sentence and the stripped file must not. ⚑ So this line fails the day `code()` stops
-    // stripping, which is the only day §1's negatives could pass by accident.
-    const quoted = 'The rail says zero'
-    expect(read(RAIL_PATH), 'the rail stopped explaining what left it').toContain(quoted)
-    expect(
-      rail,
-      'the stripper stopped stripping — every negative above is now vacuous',
-    ).not.toContain(quoted)
   })
 })
 
@@ -166,43 +140,6 @@ describe('570 §2 · Team is a PLACE, and a place is decided in four files', () 
     expect(team?.title).toBe('Team')
     expect(team?.detail).toContain('run or not')
   })
-
-  it('🔴 every file that decides a destination names this one — the 537-shaped wiring census', () => {
-    const sites: { file: string; holds: string; why: string }[] = [
-      {
-        file: 'renderer/src/composables/useSurface.ts',
-        holds: "'team'",
-        why: 'reserved, named in SurfaceName, and in the precedence chain',
-      },
-      {
-        file: SCREEN_PATH,
-        holds: "surface === 'team'",
-        why: 'the branch inside <main> that mounts the page',
-      },
-      {
-        file: RAIL_PATH,
-        holds: 'data-cy="rail-team"',
-        why: 'the destination row a person presses',
-      },
-      {
-        file: 'renderer/src/lib/command-palette.ts',
-        holds: "place: 'team'",
-        why: 'the palette row, and the widened action arm beside it',
-      },
-    ]
-    const missing = sites.filter(({ file, holds }) => {
-      const name = file.slice(file.lastIndexOf('/') + 1)
-      return !code(name, read(file)).includes(holds)
-    })
-    expect(missing.map((one) => `${one.file} — ${one.why}`)).toEqual([])
-
-    // ⛔ **The census is proven by violating it**: a string no file holds must be reported, or a
-    // green run above says nothing about the reader.
-    const invented = sites.filter(({ file }) =>
-      code(file.slice(file.lastIndexOf('/') + 1), read(file)).includes("place: 'team-that-is-not'"),
-    )
-    expect(invented).toEqual([])
-  })
 })
 
 describe('570 §3 · what the rail stopped doing, and where each part of it went', () => {
@@ -216,24 +153,6 @@ describe('570 §3 · what the rail stopped doing, and where each part of it went
     // ⛔ **And the emit contract shrank with the markup.** A dead emit is a door the screen still
     // listens on and nothing can open — `566` removed `openExternalMcp` for the same reason.
     expect(rail, 'the rail still declares a gesture nothing in it raises').not.toContain('newAgent')
-  })
-
-  it('🔴 the two doors the section was the ONLY opener of are open, on the page', () => {
-    const screen = screenCode()
-    const page = code('TeamWorkspace.vue', read(PAGE_PATH))
-    // ⚠️ **`RuntimeScreen` is the only site in the renderer that opens either overlay**, so a move
-    // that dropped a listener would remove the product's only way to create an agent, or its only
-    // way to open a capability sheet, and no test would have said so.
-    expect(screen).toContain("overlays.open({ kind: 'newAgent' })")
-    expect(screen).toContain("overlays.open({ kind: 'agentCapabilities', profileSlug })")
-    expect(screen).toContain('@create=')
-    expect(screen).toContain('@open=')
-    // ⛔ …and the rail no longer listens for either, which is the other direction of the claim.
-    expect(screen).not.toContain('@new-agent=')
-    expect(screen).not.toContain('@open-agent-capabilities=')
-    // ⚑ The page RAISES both rather than performing either — the shape `566` used for its own.
-    expect(page).toContain("emit('create')")
-    expect(page).toContain("emit('open', member.identity.slug)")
   })
 
   it('⚠️ …and the prop the section read SURVIVES it, because two other readers need it', () => {

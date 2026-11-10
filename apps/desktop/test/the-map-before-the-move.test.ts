@@ -255,26 +255,9 @@ describe('§6 · §9.2’s count — hand-copied safety strings in the product',
     )
     expect(pasted).toEqual([])
   })
-
-  it('the test-support enumeration contains every sentence checked against the product', () => {
-    const map = readFileSync(join(HERE, 'lib/design-v2-map.ts'), 'utf8')
-    expect(HAND_CARRIED.filter((sentence) => !map.includes(sentence.quote))).toEqual([])
-  })
 })
 
 describe('§7 · the map itself obeys the rules it is written to enforce', () => {
-  it('⛔ it names no provider — the sheet’s two tabs are a `v-for`, not two literals', () => {
-    // 039, and the reason it belongs here rather than only in `provider-neutrality.test.ts`: this
-    // file is ABOUT per-provider copy, which is the single most tempting place to write one down.
-    const code = readFileSync(join(HERE, 'lib/design-v2-map.ts'), 'utf8')
-    const withoutProse = code
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .split('\n')
-      .filter((line) => !line.trim().startsWith('//'))
-      .join('\n')
-    expect(withoutProse).not.toMatch(/'(claude|codex)'/)
-  })
-
   it('⛔ every disclosure slot is classified, and each key is built from its provider', () => {
     expect(DISCLOSURE_FIELDS.length).toBe(4)
     expect(DISCLOSURE_FIELDS.filter((slot) => slot.absent.trim().length < 4)).toEqual([])

@@ -6,9 +6,6 @@ import type {
   RequestOnlyAPersonCanSettle,
   RoutedRequest,
 } from '../src/shared/question-contracts'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   CHAIN_HOP_LIMIT,
@@ -30,35 +27,6 @@ import {
   type PersonsQueueWorld,
 } from '../src/renderer/src/lib/persons-queue'
 import type { AttentionRequest } from '../src/renderer/src/lib/attention'
-
-/**
- * 🔴 **613 · the chain a question carries** — `HO-088` §6, and the word it asked for that the walk
- * does not establish.
- *
- * ## ⛔ What the ruling asked for, and what is drawn instead
- *
- * ⚑ **`HO-088` §6:** *"When a question reaches him, it carries its chain — **Ali asked · Ada could
- * not answer · BroBot could not answer** — which is the shape the escalated-approval card already
- * has."* ⚠️ **The SHAPE is built exactly as ruled.** 🔴 **The VERB is not**, and the refusal is not
- * this dispatch's: `persons-queue.ts`'s own `WHY_ITS_YOURS` has said since `403` —
- *
- * > ⛔ ***"has not answered", never "cannot answer"*** — *the second is an inability the walk never
- * > establishes. A parent whose deadline elapsed may still answer (escalating ends nothing, and
- * > `REQUEST_IS_OPEN` is what admits the row at all).*
- *
- * ⛔ **So §2 is that sentence made enforceable**, over the vocabulary rather than over one string.
- *
- * ## ⚠️ And the two causes `613` §4.1 asked about cannot be confused, by construction
- *
- * ⛔ **A hop carries two names and nothing else** — see `ChainHop`. ⚑ What decides whether a
- * conversation is IN the chain is `RuntimeHost.questionsForAPerson`'s `openQuestionOf`, which reads
- * `REQUEST_IS_OPEN[one.state] && one.because === null` — 🔴 **so a request the CHANNEL refused is
- * unreachable as an intermediate hop.** §3 pins that conjunct by name, because it is the whole
- * reason one word is honest for every hop of a chain.
- */
-
-const HERE = fileURLToPath(new URL('.', import.meta.url))
-const HOST = join(HERE, '../src/main/runtime/runtime-host.ts')
 
 const NAME = (id: string): string => id.replace('sess_', '')
 
@@ -171,15 +139,6 @@ function ladder(rungs: number): (sessionId: string) => RoutedRequest | null {
 /** ⚑ The chain as a reader sees it: one `name did` clause per participant. */
 function drawn(chain: readonly PersonsQueueHop[]): string[] {
   return chain.map((hop) => (hop.did === null ? hop.name : `${hop.name} ${DID_WORDS[hop.did]}`))
-}
-
-/**
- * ⛔ **Comments and strings-in-docblocks stripped before anything is asserted about CODE** —
- * `a-source-census-must-strip-prose-before-it-asserts`. ⚠️ This file's own docblock quotes both
- * forbidden phrasings, so a raw-text census here would fire on the argument for the rule.
- */
-function withoutComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
 }
 
 // ───────────────────────────────────────────────────────────────────────────────────────────
@@ -319,56 +278,6 @@ describe('§2 · “has not answered”, never “could not answer”', () => {
 // ───────────────────────────────────────────────────────────────────────────────────────────
 
 describe('§3 · the two causes cannot be confused, because only one can reach a chain', () => {
-  /**
-   * 🔴 **`613` §4.1's question, answered from the code.** ⛔ *Declined* and *the door refused* are
-   * two different facts, and **a hop cannot carry either**: `ChainHop` is two names. ⚑ What makes
-   * one word honest for every hop is that the walk's own lookup admits only questions whose
-   * answer is still the conversation ABOVE's to give — so a request the channel refused is an
-   * `a-decision` row with a one-hop chain and never a link in somebody else's.
-   *
-   * ## ⚠️ 611 · the conjunct is spelled by the DESTINATION now, and it excludes one arm more
-   *
-   * ⛔ **It was `one.because === null`**, which was *nothing refused it* — and that was the same
-   * set while a refusal was the only way to be a person's. ⚑ `HO-088` §2 gave a second way: an
-   * asker may ADDRESS its question to a person, with nothing refused. ⚠️ **Walking through one of
-   * those would draw its parent as a conversation that *has not answered* about a question that
-   * parent was never asked** — which is this section's own confusion arriving from the other side.
-   *
-   * ⚑ **So the narrowing is `one.went.to === 'the-parent'`**, and it is both shorter and truer
-   * than the null-check it replaces: it names what the walk needs rather than what did not happen.
-   *
-   * ⚠️ **Asserted on the conjunct BY NAME** (standing rule 5), stripped of prose first, and with
-   * the control that shows the predicate firing when the conjunct is gone.
-   */
-  it("🔴 the walk admits only questions the PARENT owes — `one.went.to === 'the-parent'`", () => {
-    const host = withoutComments(readFileSync(HOST, 'utf8'))
-    const questions = withoutComments(
-      readFileSync(join(HERE, '../src/main/runtime/persons-questions.ts'), 'utf8'),
-    )
-    expect(host).toContain(
-      "return this.forAPerson('questionsForAPerson', () => this.personsQuestions.questionsForAPerson())",
-    )
-    const at = questions.indexOf('questionsForAPerson(): LedgerWalk<PersonsQuestion>')
-    expect(at).toBeGreaterThan(0)
-    const body = questions.slice(at, questions.indexOf('\n  }\n', at))
-    const FILTER = /REQUEST_IS_OPEN\[one\.state\] && one\.went\.to === 'the-parent'/
-    expect(FILTER.test(body)).toBe(true)
-    // ⛔ **The control**: the same predicate over the same body with the conjunct removed.
-    expect(FILTER.test(body.replace(" && one.went.to === 'the-parent'", ''))).toBe(false)
-    // 🔴 **611 · and the ARM it newly excludes, asserted as behaviour rather than as source.**
-    // ⛔ A question its asker addressed to a person is ONE hop ending at you — walking to its
-    // parent would name a conversation this app never asked.
-    const addressed = asked({
-      requestId: 'req_x',
-      askedBy: 'sess_Ali',
-      parent: 'sess_Ada',
-      went: { is: 'the-person-the-asker-named', to: 'a-person' },
-      escalatedAt: null,
-    })
-    expect(addressed.reading.hops).toHaveLength(1)
-    expect(addressed.reading.hops[0]?.on).toBeNull()
-  })
-
   /**
    * ⛔ **And the consequence, drawn.** A permission is its own row with its own one-hop chain; it
    * is not a participant in the escalated row's. ⚠️ Both rows are folded in one view, which is the

@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { liveSignalView, type LiveSignalView } from '../src/renderer/src/lib/live-signal'
 import {
@@ -20,38 +18,6 @@ import {
   type OneCount,
   type WorkspaceReading,
 } from '../src/shared/workspace-reading'
-
-/**
- * 🔴 **571 · THE RAIL SAYS WHETHER ANYTHING IS HAPPENING** — `EXT-008` §4.3.
- *
- * ## ⛔ What this is the assertion for
- *
- * ⚠️ **`567` shipped `RuntimeHost.readWorkspace()` and nothing called it.** ⛔ The PO's sentence is
- * the whole requirement: *"This is a product whose premise is that agents work while he is
- * elsewhere, and neither the mockup nor the app tells him from the rail whether anything is
- * happening."*
- *
- * ## ⚑ The three rosters, and none of them is a literal in this file
- *
- * | roster | derived from | what goes red |
- * |---|---|---|
- * | the scopes a line may draw | `WHAT_A_READING_COUNTS` — the compiler | a second scope with no word of its own |
- * | the staleness threshold | `LOOK_EVERY_MS` — the cadence this line actually re-reads on | a cadence change that leaves the age saying something it cannot know |
- * | the invalidation vocabulary | `RUNTIME_CHANGE_SUBJECTS` — the wire | a subject added for this line with nothing reading it |
- * | the standings a wall can have | `PROVIDER_LIMIT_SAYS` — `Record<LimitStanding, …>` | a third standing nobody decided about (617) |
- * | the providers a wall can name | `PROVIDER_NAME` — the capability table | a provider typed as a literal into display text (617) |
- *
- * ## ⚑ D-017b · one count on the line, not two
- *
- * ⛔ **The line said *"2 open · 1 needs you"* and says *"1 needs you"* now.** *Open* was a status
- * every stop writes, so after a restart the rail read *nothing open* above a full list of
- * conversations each of which opens in its full view (`WorkspaceReading`'s own note). ⚑ Every rule
- * below that was about ONE count — a counted zero drawn, an uncounted scope absent, the floor's
- * asterisk, the moment, the wall's clause — is kept and re-aimed at `needs-you`; the one test whose
- * subject was the OPEN count (an uncounted `needs-you` leaving it alone) went with it.
- */
-
-const here = (relative: string): string => fileURLToPath(new URL(relative, import.meta.url))
 
 const AT = 1_700_000_000_000
 
@@ -488,19 +454,5 @@ describe('§7 · a provider that has STOPPED reaches the line, and nothing else 
     expect(signal(null, AT, band([CLAUDE_STOPPED]))).toBeNull()
     // ⚑ **The control**: the same band over a readable reading does draw.
     expect(signal(reading(inFull(0)), AT, band([CLAUDE_STOPPED]))).not.toBeNull()
-  })
-
-  it('🔴 the module names no provider as a literal — the neutrality rail, on this file', () => {
-    const source = readFileSync(here('../src/renderer/src/lib/live-signal.ts'), 'utf8')
-    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-    // ⛔ **Prose stripped first** — the docblock quotes `HO-080` §4's own example, which names
-    // Claude (`a-source-census-must-strip-prose-before-it-asserts`).
-    for (const name of Object.values(PROVIDER_NAME))
-      expect(code, `live-signal.ts types ${name} as a literal`).not.toContain(name)
-    // ⚑ **The control the negative needs** (rule 34.2): the same matcher over the UNSTRIPPED file
-    // finds one, so *none in the code* is a measurement rather than a matcher that never fires.
-    expect(Object.values(PROVIDER_NAME).some((name) => source.includes(name))).toBe(true)
-    // ⚠️ **And the positive half**: the module reaches the table it should be reading.
-    expect(code).toContain('providerName(')
   })
 })

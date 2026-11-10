@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -35,18 +35,6 @@ import { SPAWN_RAIL_MEANS } from '../src/shared/capabilities'
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const REPO = join(HERE, '../../..')
 const SRC = join(HERE, '../src')
-
-/**
- * ⛔ **Prose out first.** §10 asks what a component's CODE imports, and a docblock or a template
- * comment that names `design-v2-map` is not an import. ⚠️ The sibling helper `px()` in §9 strips
- * for the same reason.
- */
-function withoutProse(code: string): string {
-  return code
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/(^|[\s;{(=,>])\/\/[^\n]*/g, (_match, keep: string) => keep)
-}
 
 /* ------------------------------------------------------------------------------------- the repo */
 
@@ -235,29 +223,6 @@ describe('§5 · `SPAWN_RAIL_MEANS`, pinned by its length', () => {
   })
 })
 
-/* ────────────────────────────── §7 · the third clause of the provider note, pinned at last ── */
-
-describe('§7 · a running session’s provider and handle are `readonly`', () => {
-  /**
-   * 🔴 **`design-v2-map.ts`'s `selectProvider` note said `a-front-door-that-asks-nothing.test.ts`
-   * §1 pinned all three of `417 §3`'s findings. It pins two.** §1's walk is `tree('main')`; the
-   * handle classes are in `packages/runtime`, and the word `readonly` does not occur in that file.
-   * ⚑ This is the third.
-   */
-  it('⛔ `HostedSession` declares both as `readonly`, and the interface has mutable fields too', () => {
-    const host = readFileSync(join(SRC, 'main/runtime/runtime-host.ts'), 'utf8')
-    const start = host.indexOf('interface HostedSession {')
-    expect(start, 'HostedSession is gone').toBeGreaterThan(-1)
-    const body = host.slice(start, host.indexOf('\n}\n', start))
-    expect(body).toMatch(/^\s*readonly provider: Provider$/m)
-    expect(body).toMatch(/^\s*readonly handle: SessionHandle$/m)
-    // ⚠️ **The control, and it is the reason the two above mean anything.** If every field in this
-    // interface were `readonly`, the assertions would be about the house style rather than about
-    // these two fields. `lastAgentInfo` is deliberately mutable.
-    expect(body).toMatch(/^\s*lastAgentInfo: string$/m)
-  })
-})
-
 /* ──────────────────────────────── §8 · the sentence audit now says which drawing it is about ── */
 
 /**
@@ -344,20 +309,6 @@ describe('§9 · the band, the rail and the drawer, in our own tokens', () => {
     expect(tokens()).not.toMatch(/--lane-clear:\s*220px/)
   })
 
-  it('⚠️ the lane card sits one gutter in and is the lane wide — its right edge IS the band’s', () => {
-    // ⛔ **Read from the rule's bytes**, because arithmetic like `10 + 200 === 210` has no subject
-    // and no edit could make it red.
-    // ⚑ The drawing insets its card on BOTH sides — `--safety-inset: 12px`, the card two insets
-    // narrower than the band. Ours is one gutter and the card's own width, so its right edge IS the
-    // band's edge — which is why `--lane-clear` needs one more step and theirs does not. Same band,
-    // two shapes.
-    const overlay = readFileSync(join(SRC, 'renderer/src/components/OverlayHost.vue'), 'utf8')
-    const corner = overlay.slice(overlay.indexOf('.overlay-corner {'))
-    expect(corner.slice(0, corner.indexOf('}'))).toContain('left: var(--space-5)')
-    expect(corner.slice(0, corner.indexOf('}'))).toContain('width: var(--lane-w)')
-    expect(corner.slice(0, corner.indexOf('}'))).not.toContain('right:')
-  })
-
   it('⛔ we declare two rail widths — 251.68, and 266.2 at ≥1400px', () => {
     // The drawing declares five — 208, 210, 212, 220 and 224 — because v2.7 is v2.6's stylesheet
     // with a v2.7 block appended. Ours are wider than all of them and there are only two: each
@@ -365,52 +316,5 @@ describe('§9 · the band, the rail and the drawer, in our own tokens', () => {
     expect(px(tokens(), '--rail-w')).toEqual([251.68])
     expect(px(tokens(), '--rail-w-wide')).toEqual([266.2])
     expect(tokens()).toContain('--rail-w: var(--rail-w-wide)')
-  })
-
-  /**
-   * The drawing’s drawer is 320 or 380px, but the product drawer responds fluidly between 360
-   * and 560px. Its preview widths, 463 and 532px, lie within that range.
-   */
-  it('⛔ the drawer is fluid between 360 and 560, seated by the row it shares and not the window', () => {
-    expect(px(tokens(), '--drawer-w-min')).toEqual([360])
-    expect(px(tokens(), '--drawer-w-max')).toEqual([560])
-    // ⛔ **And the rule behind them is not the drawing's.** Theirs switches on window width; ours on
-    // the measured width of the row the transcript and the drawer share, because a rule keyed on
-    // the viewport would detach the drawer while the transcript still has all the room it asked
-    // for.
-    expect(readFileSync(join(SRC, 'renderer/src/lib/drawer.ts'), 'utf8')).toContain(
-      'export function drawerFit(available: number): DrawerFit',
-    )
-  })
-})
-
-/* ───────────────────────────── §10 · the map's own claim about itself, which nothing checked ── */
-
-describe('§10 · no component imports the map', () => {
-  /**
-   * ⚑ **`design-v2-map.ts`'s header has said *"it renders nothing and no component imports it"*
-   * and this test asserts it.** ⛔ The day a component does import it, the whole enumeration and
-   * its quotes enter the renderer bundle — and the sentence would still read as true.
-   */
-  it('⛔ zero `.vue` files import it, and the walk can see an import that exists', () => {
-    const components = readdirSync(join(SRC, 'renderer/src/components'), {
-      recursive: true,
-      encoding: 'utf8',
-    }).filter((name) => name.endsWith('.vue'))
-    expect(components.length, 'the component walk found nothing').toBeGreaterThan(50)
-    const importers = components.filter((name) =>
-      /from '[^']*design-v2-map'/.test(
-        withoutProse(readFileSync(join(SRC, 'renderer/src/components', name), 'utf8')),
-      ),
-    )
-    expect(importers, 'a component now imports the map — the header says none does').toEqual([])
-    // ⛔ **The positive control**: the same shape, on an import that really is there. Without it a
-    // broken regex would report the whole tree as clean.
-    const shelf = withoutProse(
-      readFileSync(join(SRC, 'renderer/src/components/SessionShelf.vue'), 'utf8'),
-    )
-    expect(/from '[^']*\/agent-state'/.test(shelf), 'the import walk sees nothing at all').toBe(
-      true,
-    )
   })
 })

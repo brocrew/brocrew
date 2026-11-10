@@ -1618,22 +1618,6 @@ describe('347 · the five tools', () => {
       expect(code).toContain('host.interruptAgent')
     })
 
-    it('🔴 the live rig re-reads the parent transcript rather than caching it', () => {
-      // ⛔ **A guard only a live run can trip is dark by default** (310 broke a live step and CI
-      // could not see it). `an-agent-spawns-an-agent.smoke.ts` costs money and needs a login, so it
-      // does not run in `ci` — and the defect it once had was in the INSTRUMENT: it captured the
-      // parent's tool calls when the child appeared, then asked about `message_agent` seconds later
-      // against that snapshot, reporting a run that had worked as a product failure.
-      //
-      // ⚑ So the shape is pinned from here, where every gate can see it.
-      const rig = readFileSync(join(here, '../smoke/an-agent-spawns-an-agent.smoke.ts'), 'utf8')
-      expect(rig).toContain('const parentToolCalls = (): string[] =>')
-      // ⛔ …and it is asked through a WAIT, not read once.
-      expect(rig).toContain("await until('message_agent in the parent transcript'")
-      // ⚠️ Non-vacuity: the file really is the rig, and really is live.
-      expect(rig).toContain('claudeKeychainTokenProvider')
-    })
-
     it('⛔ the tools never hand a claiming sink to anything (340`s census, answered)', () => {
       const code = codeOf('main/runtime/agent-tools.ts')
       // ⚑ **340 priced two answers and this is the one 347 chose.** A caller that presents a

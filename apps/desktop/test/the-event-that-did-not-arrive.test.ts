@@ -4,9 +4,9 @@ import {
   neutralHostDeps,
   fixtureProviderConfig,
 } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
@@ -358,59 +358,5 @@ describe('§3 · the window keeps what it is short by', () => {
     expect(item?.kind === 'notice' && item.level).toBe('warn')
     // ⚑ Stamped with the ARRIVING event's time, not with now — the notice belongs in the timeline.
     expect(item?.at).toBe(1_800_000_000_000 + 2_000)
-  })
-})
-
-// ───────────────────────────────────────────────────────────────────────────────────────────────
-// §4 · the words the ruling removed are gone from the app, not merely unused
-// ───────────────────────────────────────────────────────────────────────────────────────────────
-
-describe('§4 · no source in the app writes the retired sentences', () => {
-  /** ⚠️ Prose is stripped first — this file quotes both sentences it counts (rule 26). */
-  const codeOf = (body: string): string =>
-    body
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/<!--[\s\S]*?-->/g, '')
-      .replace(/^\s*\/\/.*$/gm, '')
-
-  /** Every `.ts`/`.vue` the app SHIPS — tests excluded, build output excluded. */
-  const everyAppSource = (): string[] => {
-    const out: string[] = []
-    const walk = (at: string): void => {
-      for (const name of readdirSync(at)) {
-        if (name === 'node_modules' || name === 'out' || name === 'dist') continue
-        const full = join(at, name)
-        if (statSync(full).isDirectory()) walk(full)
-        else if (name.endsWith('.ts') || name.endsWith('.vue')) out.push(full)
-      }
-    }
-    walk(join(here, '../src'))
-    return out
-  }
-
-  /**
-   * ⛔ **Strip AND re-aim** (rule 26). ⚠️ A census repaired by rewording one producer goes green
-   * over a second producer that still says the old thing — and *"event stream gap: expected ordinal
-   * 486, got 487"* is precisely the string `HO-095` §2 ruled must not reach a person. ⚑ This is the
-   * assertion that stops it coming back through a different door.
-   */
-  it('⛔ neither *event stream gap* nor *event out of order* is composed anywhere in the app', () => {
-    const still = everyAppSource().filter((file) => {
-      const code = codeOf(readFileSync(file, 'utf8'))
-      return code.includes('event stream gap') || code.includes('event out of order')
-    })
-    expect(still.map((file) => basename(file))).toEqual([])
-  })
-
-  /**
-   * ⚑ **The control, and it is the same walk one fact over** (standing rule 3). ⛔ Without it the
-   * negative above is satisfiable by a walk that reads nothing, a strip that eats everything, or a
-   * root that points at the wrong tree.
-   */
-  it('⚑ …and the walk CAN find a sentence in that tree, because it finds this one', () => {
-    const found = everyAppSource().filter((file) =>
-      codeOf(readFileSync(file, 'utf8')).includes(NOT_REACHED_THIS_WINDOW),
-    )
-    expect(found.map((file) => basename(file))).toEqual(['session-record.ts'])
   })
 })

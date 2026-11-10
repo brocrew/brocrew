@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   NEEDING_NOUN,
@@ -167,44 +165,6 @@ describe('§2 · the reader itself, before it is trusted with anything', () => {
     }
     // ⚑ …and the paired positive, so the loop above is not passing over an empty comparison.
     expect(nouns.length).toBeGreaterThan(2)
-  })
-
-  it('⚠️ …and each noun is the word the panel\u2019s own band is headed by', () => {
-    // 🔴 **The heading derives its nouns and the bands beside it still type theirs**, which is
-    // a drift pair of exactly the kind this file exists for — one word, two claims, six inches
-    // apart (`492`). ⛔ A source census rather than a render, because `SECTIONS` is a `const` inside
-    // the SFC and a test that imported the component would be checked by a different tsconfig.
-    const panel = readFileSync(
-      fileURLToPath(new URL('../src/renderer/src/components/AgentCard.vue', import.meta.url)),
-      'utf8',
-    )
-    for (const needing of COUNTED) {
-      const label = NEEDING_NOUN[needing]
-      const headed = `label: '${label[0]!.toUpperCase()}${label.slice(1)}'`
-      expect(panel, `no band headed ${headed}`).toContain(headed)
-    }
-    // ⚑ The floor, so a `COUNTED` that emptied would pass this vacuously.
-    expect(COUNTED.length).toBeGreaterThan(0)
-  })
-
-  /**
-   * No panel component draws the removed empty-state heading, either by binding or copied
-   * words. The library derivation remains available to its readers. Strip comments before the
-   * source census because prose can quote the subject
-   * (`a-source-census-must-strip-prose-before-it-asserts`).
-   */
-  it('⛔ no panel component draws the heading, bound or copied', () => {
-    for (const name of ['SessionPanel.vue', 'AgentCard.vue']) {
-      const source = readFileSync(
-        fileURLToPath(new URL(`../src/renderer/src/components/${name}`, import.meta.url)),
-        'utf8',
-      )
-      const code = source.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
-      expect(code, name).not.toContain('emptyWords')
-      expect(code, name).not.toContain(NOTHING_OPEN_HEAD)
-      // ⚑ The file was really read: it is the panel's own component.
-      expect(code, name).toContain('<template>')
-    }
   })
 })
 

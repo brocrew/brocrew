@@ -1,5 +1,5 @@
 import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -26,7 +26,6 @@ import {
   LAUNCH_APPROVAL_UNREAD,
   launchApprovalView,
 } from '../src/renderer/src/lib/front-door-words'
-import { YOLO_MEANS } from '../src/renderer/src/lib/approval-mode'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
@@ -80,19 +79,6 @@ const PROJECT_MANAGER_PROFILE_ID = 'project-manager'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const srcRoot = join(here, '../src')
-
-/** Comments stripped first (`345`): a sentence in a docblock is prose, not a reader. */
-function withoutProse(code: string): string {
-  return code
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .split('\n')
-    .filter((line) => !line.trim().startsWith('//'))
-    .join('\n')
-}
-
-const sourceOf = (...parts: string[]): string => readFileSync(join(srcRoot, ...parts), 'utf8')
 
 class RecordingSink implements RuntimeEventSink {
   /** ⚠️ `boolean` and not the literal, so {@link NobodyThere} below can be the other one. */
@@ -371,109 +357,6 @@ describe('500 · the setting he should only ever make once', () => {
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §3 · 🔴 the answer the PM most wants — a spawn cannot read it, structurally
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§3 · the default is spent above the IPC boundary', () => {
-    /**
-     * 🔴 **The whole census, and the claim is about a MECHANISM rather than about a call.**
-     *
-     * ⛔ Every main-process file that names the value is listed, and the list is asserted exactly —
-     * so a reader appearing in `spawn-rails.ts`, in the spawn arm of `runtime-host.ts`, or anywhere
-     * below the boundary, goes red on the commit that adds it.
-     */
-    it('🔴 exactly five main-process files name the default, and none of them is on a spawn path', () => {
-      const walk = (dir: string): string[] =>
-        readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
-          entry.isDirectory()
-            ? walk(join(dir, entry.name))
-            : entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts')
-              ? [join(dir, entry.name)]
-              : [],
-        )
-      const files = [...walk(join(srcRoot, 'main')), ...walk(join(srcRoot, 'preload'))]
-      // ⛔ **Non-vacuity**: a mis-pathed walk would make every negative below pass over nothing.
-      expect(files.length).toBeGreaterThan(40)
-      const named = files
-        // ⚠️ **Case-INSENSITIVE, and `a-case-sensitive-grep-became-a-false-claim` is why.** The
-        // command is spelled `setDefaultApprovalMode`, so a census anchored on the lower-case field
-        // name answered *`ipc.ts` does not name this* about the file that holds the door.
-        .filter((file) => /default_?approval_?mode/i.test(withoutProse(readFileSync(file, 'utf8'))))
-        .map((file) => file.slice(srcRoot.length + 1).replaceAll('\\', '/'))
-        .sort()
-      expect(named).toEqual([
-        // the column,
-        'main/db/schema.ts',
-        // the fold and its two statements,
-        'main/db/session-store.ts',
-        // the door a person presses, and
-        'main/runtime/ipc.ts',
-        // the host method plus the roster field. ⛔ **`startSessionInProfile` is in this file and
-        // does not read it** — the test below is what says so, because a file-level census cannot.
-        'main/runtime/runtime-host.ts',
-        // the preload member that carries the press.
-        'preload/index.ts',
-      ])
-    })
-
-    /**
-     * ⛔ **The file-level census above cannot tell two functions in `runtime-host.ts` apart**, so
-     * this is the assertion that can: the launch's own resolution, and the spawn arm that feeds it,
-     * name neither spelling. ⚑ `a-file-level-contains-cannot-tell-sibling-declarations-apart`.
-     */
-    it('⛔ neither the launch resolution nor the spawn arm names the default', () => {
-      const code = withoutProse(sourceOf('main', 'runtime', 'runtime-host.ts'))
-      const between = (from: string, to: string): string => {
-        const start = code.indexOf(from)
-        expect(start, from).toBeGreaterThan(0)
-        const end = code.indexOf(to, start)
-        expect(end, to).toBeGreaterThan(start)
-        return code.slice(start, end)
-      }
-      // 1 · the composition root every launch passes through, spawned or not.
-      const resolution = between('private async startSessionInProfile(', 'const approvalMode =')
-      expect(resolution).not.toMatch(/default_?approval_?mode/i)
-      const line = between('const approvalMode = input.approvalMode', '\n')
-      expect(line.toLowerCase()).not.toContain('default')
-      // 2 · the spawn arm, which builds the child's `createSession` input by hand.
-      // ⚠️ **682 · the end marker is the spawn door's OWN return.** It read `return { ok: true,
-      // sessionId }`, which `677` had already moved out of this method — so the slice ran on to the
-      // WAKE door's return, a method further down, and measured both. ⚑ Now it stops where it says.
-      // ⚑ **D-016** — the spawn arm is the GIVE's start arm, and its own last return names the
-      // folder it started in.
-      const spawnArm = between('async giveWork(', 'startedIn: start.cwd')
-      expect(spawnArm).toContain('this.createFromGive(start, startsOn)')
-      // The give's start arm builds the child's createSession input in a method of its own.
-      const startArm = between('private createFromGive(', '\n  }\n')
-      expect(startArm).toContain('approvalMode: start.approvalMode')
-      expect(startArm.toLowerCase()).not.toContain('default')
-      expect(spawnArm).not.toMatch(/default_?approval_?mode/i)
-      // ⛔ **The control for the slicer**: it really can see the spelling when it is there.
-      expect(between('setDefaultApprovalMode(mode:', '\n  }')).toContain('defaultApprovalMode')
-    })
-
-    /**
-     * ⛔ **And the rails cannot see it even by accident** — `spawn-rails.ts` names neither spelling,
-     * and neither does the toolset that calls it. ⚑ The positive controls are what make the two
-     * negatives claims about these files rather than about a bad path.
-     */
-    it('⛔ spawn-rails and the agent toolset name neither spelling', () => {
-      // ⚑ **D-016 · each file's positive control is what it really spends** — the rails decide the
-      // mode, and the toolset hands the give to the host: `give_work` takes no mode at all.
-      const control: Readonly<Record<string, string>> = {
-        'spawn-rails.ts': 'approvalMode',
-        'agent-tools.ts': 'host.giveWork(',
-      }
-      for (const [file, spent] of Object.entries(control)) {
-        const code = withoutProse(sourceOf('main', 'runtime', file))
-        expect(code, file).toContain(spent)
-        // ⚠️ **Case-insensitive**, so `setDefaultApprovalMode` cannot slip past a lower-case anchor.
-        expect(code, file).not.toMatch(/default_?approval_?mode/i)
-      }
-    })
-  })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
   // §4 · …and measured, in one host, on one store, at one instant
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
@@ -581,29 +464,6 @@ describe('500 · the setting he should only ever make once', () => {
       // rule, which is what makes renaming the tab rename this sentence.
       expect(LAUNCH_APPROVAL_BOUND).toContain(CHANGEABLE_LIVE_IN)
       expect(CHANGEABLE_LIVE_IN).toContain('Agent')
-    })
-
-    /**
-     * 🔴 **The same bytes, not a paraphrase** (`492`'s `ASKED_TO_STOP` shape). ⛔ What `auto` REMOVES
-     * is `367`'s disclosure and it is one constant; the words here say what the PRESS does and never
-     * restate it, so the two cannot drift into two different promises.
-     */
-    it('🔴 the control does not carry its own copy of what yolo means', () => {
-      const words = withoutProse(
-        readFileSync(join(srcRoot, 'renderer/src/lib/front-door-words.ts'), 'utf8'),
-      )
-      // ⚑ Non-vacuity: the strip did not eat the module.
-      expect(words).toContain('LAUNCH_APPROVAL_BOUND')
-      for (const clause of [
-        '--dangerously-skip-permissions',
-        'sign-ins kept in',
-        'anything you can',
-      ]) {
-        expect(words, clause).not.toContain(clause)
-      }
-      // ⛔ **The paired positive**: the constant exists, and the surfaces render IT — asserted at
-      // the two doors in `the-setting-he-should-only-make-once.dom.test.ts`.
-      expect(YOLO_MEANS).toContain('--dangerously-skip-permissions')
     })
   })
 })

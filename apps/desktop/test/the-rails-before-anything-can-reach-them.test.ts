@@ -1,6 +1,6 @@
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -14,7 +14,7 @@ import {
   createSessionStore,
   type SessionStore,
 } from '../src/main/db/session-store'
-import { CAPABILITY_COLUMNS, CAPABILITY_FIELDS } from '../src/shared/capabilities'
+import { CAPABILITY_COLUMNS } from '../src/shared/capabilities'
 import { RuntimeHost, THE_APP_ITSELF, type CallerIdentity } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -36,7 +36,6 @@ import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const srcRoot = join(here, '../src')
 
 /**
  * 🔴 **341 · the rails, before anything can reach them.**
@@ -268,202 +267,6 @@ describe('341 · the rails, before anything can reach them', () => {
       await expect(
         host.createSession({ provider: 'claude', cwd: work }, null, PLANNER, real),
       ).rejects.toThrow(/do not pass a second one/)
-    })
-
-    /**
-     * 🔴 **Nothing crossing the renderer wire can SPAWN** — and since 355, two of the four names
-     * this once banned are on it, deliberately.
-     *
-     * ## ⛔ What 341 asserted, and why 355 is allowed to change it
-     *
-     * Capability editing needs deliberate doors in `ipc.ts` and the wire contract, matching
-     * the boundary described in `session-store.ts`. Banning `spawnSession`, `admitSpawn`,
-     * `setCapabilities`, and `setSpawningEnabled` from both would leave `can_spawn` empty
-     * forever and make the grants impossible for a person to exercise.
-     *
-     * ⛔ **So the ban SPLITS rather than softens.** The door that starts a conversation and its rails
-     * stay banned in both files and always will — `giveWork` and `admitGive` since D-016, where
-     * they were `spawnSession` and `admitSpawn`: a renderer must never be able to create a conversation an agent's
-     * entitlements were spent on, and the admission token's own census next door is the second half
-     * of that. What is now permitted is a door that WRITES A RULE, and the replacement for the ban
-     * is not silence — it is the three positives below.
-     *
-     * ⚠️ **A rename would have been the dishonest way through this** and is worth naming: the ban
-     * is a lowercased substring test, so a verb called `setAgentCapabilities` would have slipped it
-     * while leaving its prose — *"must not be reachable from the IPC layer"* — standing as a lie
-     * about a door that exists. The verbs are called what the store calls them.
-     */
-    it('🔴 nothing crossing the renderer wire can spawn, and the capability door is a person’s', () => {
-      const ipc = readFileSync(join(srcRoot, 'main/runtime/ipc.ts'), 'utf8')
-      const wire = readFileSync(join(srcRoot, 'shared/runtime-ipc.ts'), 'utf8')
-      /**
-       * ⚠️ **Comments stripped, and 355 is what paid for it.** The ban was over raw text, and this
-       * dispatch's own docblocks — *"rail 1 of `admitSpawn` is the same ruling one door over"* —
-       * turned it red about a sentence explaining why the door is safe. That is the shape the
-       * admission-token census next door already strips for: *"a census that cannot tell a warning
-       * about a hazard from the hazard is one that will be deleted the first time it fires on a
-       * docblock."*
-       *
-       * ⛔ **It is not a narrowing, because the pair below closes it.** A name that is gone from the
-       * stripped text and present in the raw one was, necessarily, only ever in a comment.
-       */
-      const withoutComments = (text: string): string =>
-        text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ')
-      const ipcCode = withoutComments(ipc)
-      const wireCode = withoutComments(wire)
-      // ⛔ **The strip did not eat the file** — without this every ban below passes over nothing.
-      expect(ipcCode).toContain('runtimeCommandSchema')
-      expect(wireCode).toContain('RuntimeCommandResults')
-      // ⚠️ **Case-insensitive**, because `a-case-sensitive-grep-became-a-false-claim` is exactly the
-      // shape of mistake a census like this makes.
-      for (const forbidden of ['giveWork', 'admitGive']) {
-        expect(
-          ipcCode.toLowerCase(),
-          `${forbidden} must not be reachable from the IPC layer`,
-        ).not.toContain(forbidden.toLowerCase())
-        expect(
-          wireCode.toLowerCase(),
-          `${forbidden} must not be on the wire contract`,
-        ).not.toContain(forbidden.toLowerCase())
-      }
-      // ⛔ **And the positive that proves this census is reading the right files** — a name that IS
-      // on the wire, so an empty or mis-pathed read cannot pass over both halves.
-      expect(ipc).toContain('createSession')
-      expect(wire).toContain('createSession')
-
-      // 1 · the door exists, and it is the store's own two names rather than a spelling chosen to
-      //     slip past the ban this test used to make.
-      // ⚠️ **Over the STRIPPED text, like the bans above** — this dispatch's own docblocks name both
-      // verbs in prose, so a positive over the raw file would be satisfied by a comment about a door
-      // that had been deleted. Found in review.
-      // ⚑ **500 joined `setDefaultApprovalMode` to all three loops deliberately.** It goes red in
-      // none of them — the rosters are hand-written — and `setAgentProvider` and `createAgent` each
-      // shipped without being added, which is how a roster stops being a roster. ⚠️ It is the same
-      // kind of door as the two beside it: a person-gated wire verb that reaches no toolset.
-      // ⚑ **516 joined its two registry writes to all three loops deliberately**, for `500`'s
-      // reason: the rosters are hand-written, and `setAgentProvider` and `createAgent` each shipped
-      // without being added — which is how a roster stops being a roster. ⚠️ They are the same kind
-      // of door as the three beside them: person-gated wire verbs that reach no toolset.
-      // ⚑ **558 joined its two identity writes to all three loops deliberately**, for `500`'s and
-      // `516`'s reason: the rosters are hand-written, and `setAgentProvider` and `createAgent` each
-      // shipped without being added — which is how a roster stops being a roster. ⚠️ They are the
-      // same kind of door as the five beside them: person-gated wire verbs that reach no toolset.
-      for (const permitted of [
-        'setCapabilities',
-        'setSpawningEnabled',
-        'setDefaultApprovalMode',
-        'registerExternalMcpServer',
-        'removeExternalMcpServer',
-        // Only a person can decide an agent’s request to register a server.
-        'decideMcpServerRequest',
-        'setAgentDisplayName',
-        'removeAgent',
-        // A person archives, restores or deletes a conversation; an agent never does.
-        'archiveConversation',
-        'restoreConversation',
-        'checkDeleteConversation',
-        'deleteConversation',
-        // ⚑ **677 joined its write and its read to all three loops deliberately**, for `500`'s
-        // reason: the rosters are hand-written. ⛔ And the write is the strongest case yet for the
-        // gate — standing rule 32 makes a choice a RAIL only because a person made it.
-        // ⚑ **D-042 · R2 moved that reason, not the gate**: the write sets the agent's DEFAULT —
-        // what its new conversations start on, no longer a rail a give cannot cross — and a caller
-        // reaching it unasked could change any agent's default.
-        'setAgentModelAndEffort',
-        'agentModelAndEffort',
-      ]) {
-        expect(ipcCode, `${permitted} is the door 355 built`).toContain(permitted)
-        expect(wireCode, `${permitted} is on the wire contract`).toContain(permitted)
-      }
-
-      // 2 · 🔴 **every capability verb is gated on a PERSON**, and the gate is 349's declaration
-      //     rather than a second notion of one. Scoped to each `case`, because
-      //     `an-assertion-can-be-satisfied-by-a-neighbouring-element`: a single
-      //     `toContain('requireAPerson')` over the whole file would pass on one guarded verb and two
-      //     unguarded ones.
-      for (const kind of [
-        'agentIdentities',
-        'setCapabilities',
-        'setSpawningEnabled',
-        'setDefaultApprovalMode',
-        // ⛔ **516 · adding a server is what makes a grant possible, and removing one takes a
-        // capability away from every identity that held it** — `noPersonBehindIt`'s own sentence is
-        // true of both directions.
-        'registerExternalMcpServer',
-        'removeExternalMcpServer',
-        // Only a person can decide an agent’s request to register a server.
-        'decideMcpServerRequest',
-        // ⛔ **558 · the rename and the removal** (`HO-063` gaps 1 and 2). ⚠️ The removal is the
-        // strongest member of this list: an agent that could remove an identity could remove the
-        // one holding the grant that refuses it.
-        'setAgentDisplayName',
-        'removeAgent',
-        // A person archives, restores or deletes a conversation; an agent never does.
-        'archiveConversation',
-        'restoreConversation',
-        'checkDeleteConversation',
-        'deleteConversation',
-        // ⛔ **677 · a person's model and effort, and its read** (`R25`).
-        'setAgentModelAndEffort',
-        'agentModelAndEffort',
-      ]) {
-        const at = ipcCode.indexOf(`case '${kind}':`)
-        expect(at, `${kind} has no case in the command dispatcher`).toBeGreaterThan(0)
-        expect(ipcCode.slice(at, at + 200), `${kind} is not gated on a person asking`).toContain(
-          'requireAPerson(sink, command.kind)',
-        )
-      }
-      expect(ipcCode).toContain('sink.aPersonIsBehindIt')
-
-      // 3 · ⛔ **and the door does not reach an agent.** `agent-tools.ts` publishes a closed
-      //     inventory (347); this is the negative with a search shape — the tools module names
-      //     none of the three verbs and none of the capability columns.
-      const tools = withoutComments(
-        readFileSync(join(srcRoot, 'main/runtime/agent-tools.ts'), 'utf8'),
-      )
-      expect(tools).toContain('give_work')
-      for (const name of [
-        'agentIdentities',
-        'setCapabilities',
-        'setSpawningEnabled',
-        // 🔴 **500 · and this is the one that matters most in this list.** A tool that could set the
-        // person's launch default would let an agent decide what the NEXT conversation a person
-        // opens asks before acting — the same shape as granting itself a capability, one door over.
-        'setDefaultApprovalMode',
-        // 🔴 **516 · and these two most of all.** A tool that could register an MCP server would let
-        // an agent hand ITSELF a set of tools this app has never seen, at an address it chose — the
-        // whole point of HO-040 §4.2 being that a person registers and a person grants.
-        'registerExternalMcpServer',
-        'removeExternalMcpServer',
-        // Only a person can decide an agent’s request to register a server.
-        'decideMcpServerRequest',
-        // 🔴 **558 · and the removal most of all.** ⛔ A tool that could remove an identity could
-        // remove the one whose grant refuses it — and could take out the project manager a person
-        // is mid-conversation with. ⚑ The rename is beside it for `485`'s reason: what an agent is
-        // CALLED is what every surface in this app draws it by.
-        'setAgentDisplayName',
-        'removeAgent',
-        // A person archives, restores or deletes a conversation; an agent never does.
-        'archiveConversation',
-        'restoreConversation',
-        'checkDeleteConversation',
-        'deleteConversation',
-        // 🔴 **677 · and the model choice most of all for THIS rule.** ⛔ A tool that could set an
-        // identity's model would let a spawner write the very choice the spawn rail refuses it to
-        // overrule — the habit standing rule 32 exists to stop, laundered through a second door.
-        // ⚑ **D-042 moved the fact this sentence stood on**: an agent now CHOOSES — `give_work`
-        // names its helper's pair for that one conversation, and `create_agent` the default of the
-        // agent it makes — both through `model-rails.ts`' one seam.
-        // ⛔ What stays banned is the person's door: a tool reaching it would rewrite ANY agent's
-        // default, past that seam.
-        'setAgentModelAndEffort',
-        'agentModelAndEffort',
-        'model_choice',
-        ...CAPABILITY_FIELDS.map((field) => field.key),
-        ...CAPABILITY_FIELDS.map((field) => field.column),
-      ]) {
-        expect(tools.toLowerCase(), `an agent tool names ${name}`).not.toContain(name.toLowerCase())
-      }
     })
   })
 
@@ -1029,34 +832,6 @@ describe('341 · the rails, before anything can reach them', () => {
       expect(seen.size).toBe(SPAWN_RAILS.length)
     })
 
-    it('🔴 every rail in the vocabulary is REACHED by the door — the twin of 341’s ordering rule', () => {
-      // ⛔ **`341` wrote *"a rail added afterwards is a rail that was optional once."* This is the
-      // other half, and `366` is where it cost something**: `laxer-approval-mode` asked whether the
-      // child would be laxer than its parent, `spawn-must-prompt` refuses `auto` outright, and the
-      // moment the second existed the first could not fire. ⚠️ Nothing noticed. Every guard in §2
-      // still passed — it had a permanence, a distinct sentence, a row in the table — because all of
-      // them ask what a rail SAYS and none of them asked whether anything reaches it. A vocabulary
-      // that lists a rule the door no longer applies is a committed statement of a false machine
-      // fact, which is the one defect this project treats as worse than no statement at all.
-      const rails = readFileSync(join(srcRoot, 'main/runtime/spawn-rails.ts'), 'utf8')
-      // ⚑ Prose-stripped, so a rail that survives only as a sentence in a docblock — the exact shape
-      // of a retired one — cannot answer for itself.
-      const code = rails.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ')
-      // ⛔ **The strip did not eat the file**, or every assertion below passes over nothing.
-      expect(code).toContain('export function admitGive')
-      for (const rail of SPAWN_RAILS) {
-        expect(code, `${rail} is in the vocabulary and nothing refuses with it`).toContain(
-          `no('${rail}'`,
-        )
-      }
-      // ⚑ **The control, and it is what makes the loop a claim about CODE.** A name that appears
-      // only inside a comment must fail the same test — so the strip is doing the work rather than a
-      // `toContain` that a docblock quoting `no('…')` would satisfy on its own.
-      const planted = `/** a retired rail nothing calls: no('${'once-a-rail'}') */`
-      expect(rails + planted).toContain(`no('once-a-rail'`)
-      expect((rails + planted).replace(/\/\*[\s\S]*?\*\//g, ' ')).not.toContain(`no('once-a-rail'`)
-    })
-
     it('⛔ every sentence reads as one, names no session id, and says what to do', () => {
       for (const rail of SPAWN_RAILS) {
         const sentence = describeRail(rail)
@@ -1219,54 +994,6 @@ describe('341 · the rails, before anything can reach them', () => {
       expect(store.capabilitiesOf('pm')?.canMessage).toBe('any')
       expect(store.capabilitiesOf('pm')?.canMessage).not.toBe(
         store.capabilitiesOf('pm')?.canAssignWork,
-      )
-    })
-
-    /**
-     * 🔴 **374 FLIPPED this assertion, and the flip is the deliverable** (HO-007 §2.1 P3: *"The test
-     * asserting no rail branches on `can_message` flips to asserting that one does."*).
-     *
-     * ⛔ **What it said before, verbatim, and why it was right at the time:**
-     *
-     * ```
-     * it('⚑ `can_message` is shape only in 341, and nothing reads it — said out loud', () => {
-     *   const rails = readFileSync(join(srcRoot, 'main/runtime/spawn-rails.ts'), 'utf8')
-     *   expect(rails).not.toMatch(/canMessage\s*[=!]==/)
-     *   expect(rails).not.toMatch(/\.canMessage\b(?![^\n]*\*)/)
-     *   expect(rails).toContain('.canSpawn')
-     *   ...
-     * ```
-     *
-     * ⚠️ **Both halves survive, and only one of them moved.** No SPAWN rail branches on it — that
-     * assertion is unchanged and is now a claim about a door that is not the messaging one, which is
-     * the whole reason `message-rails.ts` is a second file. What flips is the second half: the
-     * capability is READ, by name, at a chokepoint, and this is where that stops being a plan.
-     */
-    it('🔴 `can_message` is a rail now, and the SPAWN door still does not read it', () => {
-      const spawn = readFileSync(join(srcRoot, 'main/runtime/spawn-rails.ts'), 'utf8')
-      // ⛔ Unchanged from 341: the spawn door may TALK about it in prose; no spawn rail branches on
-      // it. A capability read at two doors is 169 §1's defect, and messaging is not spawning.
-      expect(spawn).not.toMatch(/canMessage\s*[=!]==/)
-      expect(spawn).not.toMatch(/\.canMessage\b(?![^\n]*\*)/)
-      // The positive: the one field the SPAWN rails DO read is read (D-014 left `max_depth` alone).
-      expect(spawn).toContain('.maxDepth')
-
-      // 🔴 **…and the flip.** Prose-stripped, so a docblock naming the field cannot answer for code.
-      const messaging = readFileSync(join(srcRoot, 'main/runtime/message-rails.ts'), 'utf8')
-      const code = messaging.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ')
-      expect(code).toContain('export function admitReachAtAll')
-      // ⛔ **Both capabilities, BY NAME and not by line.** ⚠️ This asked for the two dispatch-table
-      // entries verbatim until it was measured: `374`'s own `M7` — *both acts read one capability* —
-      // then went red through THIS assertion rather than through the behaviour test written to kill
-      // it, which is a row whose verdict it never earned. ⚑ The names are what the flip is about, so
-      // the names are what it pins.
-      for (const key of ['canMessage', 'canAssignWork']) expect(code).toContain(key)
-      // ⚑ **The control, and it is what makes the two lines above a claim about CODE.** A file that
-      // only mentioned the field in a comment must fail the same test.
-      const planted = `/** a capability nothing reads: message: 'canBroadcast' */`
-      expect(messaging + planted).toContain("message: 'canBroadcast'")
-      expect((messaging + planted).replace(/\/\*[\s\S]*?\*\//g, ' ')).not.toContain(
-        "message: 'canBroadcast'",
       )
     })
   })

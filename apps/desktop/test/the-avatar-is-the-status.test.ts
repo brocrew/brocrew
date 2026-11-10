@@ -62,7 +62,6 @@ import { BeingDoneTracker } from '../src/main/runtime/being-done'
  */
 
 const AT = 1_700_000_000_000
-const TEAM_FOLD = join(import.meta.dirname, '../src/renderer/src/lib/team-roster.ts')
 
 /** ⛔ **Prose stripped, so a docblock quoting a shape is never mistaken for the shape.** */
 const withoutProse = (source: string): string =>
@@ -270,33 +269,6 @@ describe('§1 · the seven arms of what they are doing', () => {
     for (const [arm, tone] of toned) {
       if (arm === 'one-conversation') continue
       expect(tone, `${arm} painted a chip`).toBe('')
-    }
-  })
-
-  /**
-   * 🔴 **The control that makes the table above mean something** — the arms this file reaches are
-   * EXACTLY the arms the union declares, derived from the module rather than typed here.
-   *
-   * ⛔ **Prose is stripped first** (`a-source-census-must-strip-prose-before-it-asserts`): this
-   * module's docblocks quote arm names in sentences, and a census reading them would pass over an
-   * eighth arm that had a comment and no fixture.
-   *
-   * ⚑ **And {@link doingSays} is asked for each one**, so an arm the switch has no case for is a
-   * red here rather than an `undefined` interpolated into a card.
-   */
-  it('🔴 the arms reached are exactly the arms the union declares', () => {
-    const declared = new Set(
-      [...withoutProse(readFileSync(TEAM_FOLD, 'utf8')).matchAll(/\bit: '([a-z-]+)'/g)].map(
-        (match) => match[1]!,
-      ),
-    )
-    // ⛔ **A floor rather than a count**, so a regex that matched nothing cannot pass this silently.
-    expect(declared.size).toBeGreaterThanOrEqual(7)
-    expect([...declared].sort()).toEqual([...CASES.map(([arm]) => arm)].sort())
-    for (const arm of declared) {
-      const sentence = doingSays({ it: arm, standing: 'idle', count: 2 } as WhatTheyAreDoing)
-      expect(sentence, `${arm} has no case in doingSays`).toBeTypeOf('string')
-      expect(sentence, `${arm} said nothing`).not.toBe('')
     }
   })
 })

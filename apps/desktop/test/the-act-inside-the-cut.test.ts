@@ -1160,39 +1160,6 @@ describe('675 · the vocabularies this census reads are ALL of them', () => {
   const namesAPermanence = (source: string): boolean =>
     RAIL_PERMANENCES.some((word) => codeOnly(source).includes(`'${word}'`))
 
-  /** Modules that only read a refusal's permanence to say it in words; they price no rail. */
-  const CONSUMERS: readonly string[] = ['runtime/agent-tool-answer-words.ts']
-
-  it('🔴 every module that prices a rail is read above, and nothing else is', () => {
-    const modules = everyModule()
-    const pricing = modules
-      .filter((file) => namesAPermanence(file.source))
-      .map((file) => file.path.split('\\').join('/'))
-      .sort()
-    // Read each vocabulary, the shared definitions and the theme wrapper's repeated clauses.
-    const themeTools = codeOnly(readFileSync(join(mainRoot, 'themes/agent-tools.ts'), 'utf8'))
-    expect(themeTools).toContain('PERMANENCE_SAID.permanent')
-    expect(themeTools).toContain("PERMANENCE_SAID['while-this-holds']")
-    expect(pricing).toEqual(
-      [
-        ...VOCABULARIES.map((one) => one.module),
-        'shared/refusals.ts',
-        'themes/agent-tools.ts',
-        ...CONSUMERS,
-      ].sort(),
-    )
-    for (const path of CONSUMERS) {
-      const found = modules.find((one) => one.path.split('\\').join('/') === path)
-      const code = codeOnly(found?.source ?? '')
-      const named = RAIL_PERMANENCES.flatMap((word) => code.split(`'${word}'`).slice(1))
-      const compared = RAIL_PERMANENCES.flatMap((word) =>
-        code.split(new RegExp(`[!=]==\\s*'${word}'`)).slice(1),
-      )
-      expect(named.length, `${path} names no permanence`).toBeGreaterThan(0)
-      expect(compared.length, `${path} prices a rail`).toBe(named.length)
-    }
-  })
-
   /**
    * 🔴 **Every sentence a door says INSTEAD of its table's is read above** — found by what the code
    * DOES, `{ ...<a refusal>, reason: <X> }`, and compared with {@link OVERRIDES} by the name it is

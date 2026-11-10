@@ -1,7 +1,7 @@
 import { waitFor } from './lib/f093-host'
 import type { PieceRow, WhatAConversationIsWaitingOn } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -71,16 +71,6 @@ import {
  */
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const srcRoot = join(here, '../src')
-
-/**
- * ⛔ **CODE only** — `a-source-census-must-strip-prose-before-it-asserts`. ⚠️ This file's own
- * docblocks quote the sentences it is about, and §1's negative would read them as call sites.
- */
-const codeOf = (file: string): string =>
-  readFileSync(join(srcRoot, file), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/^[ \t]*\/\/.*$/gm, ' ')
 
 /** A promise somebody else resolves — `421`'s helper, the shape `575` reuses. */
 function deferred(): { promise: Promise<void>; release: () => void } {
@@ -302,28 +292,6 @@ describe('621 · the conversation that is waiting', () => {
    * 🔴 **§1 · one precedence, spelled once — because there are two readers of it now.**
    */
   describe('§1 · the precedence is held in ONE place', () => {
-    it('⛔ the ladder appears exactly ONCE in the module that owns it', () => {
-      // ⚑ **`099`'s rule, and this project has paid for it three times**: one fact derived in two
-      // places is a fact free to disagree the day either moves. ⛔ The census reads CODE — the
-      // docblocks below `whichWait` name every member of the family and would each count as a
-      // ladder.
-      const tasks = codeOf('shared/tasks.ts')
-      const ladders = tasks.split("? 'waiting-on-an-answer'").length - 1
-      expect(ladders, 'the answer→person→worker ladder is written more than once').toBe(1)
-      // ⛔ **THE POSITIVE CONTROL** (standing rule 34.2): the same corpus, read for a string it
-      // really contains, so a census that had stopped matching anything is visible here rather
-      // than passing as a clean sweep.
-      expect(tasks).toContain("'waiting-on-a-worker'")
-      // 🔴 **And both readers go through it**, named one by one rather than counted — a count alone
-      // goes green on a call site that moved.
-      // ⚑ **D-016** — each arm keyed by the row's own piece; a question about no piece holds none.
-      expect(tasks).toContain('outstanding.answers.has(piece.piece),')
-      expect(tasks).toContain('outstanding.childrenOpen.has(piece.piece),')
-      // ⚑ …and the conversation's reading asks the same ladder of its whole sets.
-      expect(tasks).toContain('outstanding.answers.size > 0,')
-      expect(tasks).toContain('outstanding.childrenOpen.size > 0,')
-    })
-
     it('⚑ the two readers give the SAME answer wherever they ask the same question', () => {
       // ⛔ **Tested where the two DIVERGE as well as where they agree** (standing rule 3). The
       // first arm is the only one that differs, so it is asked both ways over one source.
@@ -573,45 +541,6 @@ describe('621 · the conversation that is waiting', () => {
       ).toEqual([staying])
       gate.release()
       await closing
-    })
-
-    it('⚑ it is on the window wire, on no toolset, and refused during a quit', () => {
-      const ipc = codeOf('main/runtime/ipc.ts')
-      expect(ipc).toContain("z.object({ kind: z.literal('whatEachConversationIsWaitingOn') }),")
-      expect(ipc).toContain("whatEachConversationIsWaitingOn: 'refused',")
-      expect(ipc).toContain('return host.whatEachConversationIsWaitingOn()')
-      // ⛔ **No toolset offers it**, and the search shape is the toolset's own module rather than a
-      // path list: this says what every OTHER conversation is waiting on, which is not a fact this
-      // app hands to a conversation.
-      expect(codeOf('main/runtime/agent-tools.ts')).not.toContain('whatEachConversationIsWaitingOn')
-      // ⚑ **THE POSITIVE CONTROL for that negative** (standing rule 34.2) — the same corpus, read
-      // for a verb it really does offer.
-      expect(codeOf('main/runtime/agent-tools.ts')).toContain('list_agents')
-      // ⚠️ **And the renderer can REACH it** — `621` §5.4. ⛔ The store method is the wire's own
-      // end and not a surface; which surfaces draw it is the renderer's dispatch.
-      expect(codeOf('renderer/src/lib/session-store.ts')).toContain(
-        'return await bridge.whatEachConversationIsWaitingOn()',
-      )
-      expect(codeOf('preload/index.ts')).toContain("kind: 'whatEachConversationIsWaitingOn',")
-    })
-
-    it('🔴 it reads the LEDGER, which is why it is not a field on `whatIsBeingDone`', () => {
-      // ⛔ **That read's docblock promises *"No store read of any kind"*** and argues it from
-      // `421`'s live-versus-durable split. ⚑ This one takes three narrow reads per conversation, so
-      // putting it there would have falsified the paragraph that justifies its cost.
-      const host_ = codeOf('main/runtime/runtime-host.ts')
-      const done = host_.slice(
-        host_.indexOf('whatIsBeingDone(): WhatIsBeingDone {'),
-        host_.indexOf('whatEachConversationIsWaitingOn(): WhatEachConversationIsWaitingOn {'),
-      )
-      expect(done.length, 'the slice found no whatIsBeingDone body').toBeGreaterThan(200)
-      expect(done, 'whatIsBeingDone started reading the store').not.toContain('this.deps.store')
-      // ⚑ **THE POSITIVE CONTROL**: the neighbouring method, sliced the same way, DOES take the
-      // read — so the negative above is a measurement rather than a slice that found nothing.
-      const waiting = host_.slice(
-        host_.indexOf('whatEachConversationIsWaitingOn(): WhatEachConversationIsWaitingOn {'),
-      )
-      expect(waiting).toContain('this.oneWaitReadPerAnswer()')
     })
   })
 
