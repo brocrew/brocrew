@@ -2,10 +2,10 @@ import { FakeRuntime, type FakeProviderSessions } from '@brobot2/runtime'
 import type { FakeSessionHandle, StartOptions, ResumeOptions, SessionRef } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 
-export class HandleKeepingRuntime extends FakeRuntime {
+export class StartHandleKeepingRuntime extends FakeRuntime {
   constructor(
     provider: Provider,
-    private readonly handles: FakeSessionHandle[],
+    protected readonly handles: FakeSessionHandle[],
     sessions: FakeProviderSessions,
   ) {
     super(provider, { sessions })
@@ -15,6 +15,9 @@ export class HandleKeepingRuntime extends FakeRuntime {
     this.handles.push(handle)
     return handle
   }
+}
+
+export class HandleKeepingRuntime extends StartHandleKeepingRuntime {
   override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
     const handle = await super.resume(ref, options)
     this.handles.push(handle)

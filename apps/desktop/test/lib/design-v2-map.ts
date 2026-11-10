@@ -147,7 +147,6 @@ const AGENT_STORE = `${LIB}/agent-store.ts`
  * pointer used to name — has no reader left and is gone with it.
  */
 const PROFILE_WORDS = `${LIB}/profile-words.ts`
-const STATUS_PROJECTION = `${LIB}/status-projection.ts`
 
 const ref = (module: string, symbol: string): SourceRef => ({ module, symbol })
 
@@ -212,8 +211,6 @@ const CONVERSATION: readonly FieldMapping[] = [
         ref(AGENT_STATE, 'DOINGS'),
         ref(AGENT_STATE, 'BEINGS'),
         ref(AGENT_STATE, 'NEEDINGS'),
-        ref(STATUS_PROJECTION, 'v23StateOf'),
-        ref(STATUS_PROJECTION, 'V23_HOLES'),
       ],
       note: '🔴 **The lossiest field in the map. `384 §1.2` SETTLED it — the view model keeps the three facets, and this field is a PROJECTION of them, computed at the moment of drawing and never the only thing on screen.** `status-projection.ts` is the decision and `one-word-and-what-it-drops.test.ts` measures its cost over the whole facet space. ⛔ **Two of the product’s nine words have no word in v2.3 at all — `background` and `scheduled` — and BOTH have a control behind them**, which is why the projection returns `null` there rather than picking the nearest lie.** v2.3 has ONE status from a flat twelve-word list. The product has `SessionStatus` (five) crossed with three INDEPENDENT facets — what the agent is DOING, what it IS, and what it NEEDS FROM YOU — which `035` split apart on purpose and `378` warned against re-collapsing: *"do not use a single busy badge or broad amber status for everything."* ⛔ A single `status` cannot say *working AND waiting on a permission*, which is the exact pair the composer-freeze rule turns on.',
     },

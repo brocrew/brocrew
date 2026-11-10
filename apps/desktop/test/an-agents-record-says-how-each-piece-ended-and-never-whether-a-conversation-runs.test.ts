@@ -1,3 +1,4 @@
+import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { waitFor } from './lib/f093-host'
 import {
@@ -23,39 +24,12 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type {
-  AgentToolset,
-  ApprovalMode,
-  FakeSessionHandle,
-  ResumeOptions,
-  SessionRef,
-  StartOptions,
-} from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
+import type { AgentToolset, ApprovalMode, FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handles: FakeSessionHandle[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(options)
-    this.handles.push(handle)
-    return handle
-  }
-  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
-    const handle = await super.resume(ref, options)
-    this.handles.push(handle)
-    return handle
-  }
-}
 
 interface Answer {
   readonly structured: Record<string, unknown>

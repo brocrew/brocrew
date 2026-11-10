@@ -1,35 +1,35 @@
-import { waitFor } from './lib/f093-host'
-import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type {
-  AgentToolset,
-  ApprovalMode,
-  FakeSessionHandle,
-  ResumeOptions,
-  SessionRef,
-  StartOptions,
-} from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { howTheRulesBegin } from '../src/shared/own-instructions'
-import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
+import { waitFor } from './lib/f093-host'
 import {
   RecordingSink,
   syntheticProviderHome,
   neutralHostDeps,
   fixtureProviderConfig,
 } from './lib/host-fixture'
+
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+
+import { FakeProviderSessions } from '@brobot2/runtime'
+import type { AgentToolset, ApprovalMode, FakeSessionHandle } from '@brobot2/runtime'
+import type { Provider } from '@brobot2/shared'
+
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { howTheRulesBegin } from '../src/shared/own-instructions'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
+
+import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+
+import { type AppDatabase, openDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
+import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { resourcesRoot } from '../src/main/resources/resources'
+
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 /**
  * 🔴 **F009 · what an agent has done, read when a caller chooses whom to give work to** —
  * `list_profiles` naming a profile, measured on a real host with the fake runtime.
@@ -53,26 +53,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handles: FakeSessionHandle[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(options)
-    this.handles.push(handle)
-    return handle
-  }
-  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
-    const handle = await super.resume(ref, options)
-    this.handles.push(handle)
-    return handle
-  }
-}
 
 /** The conversation a person is behind: the sink a window hands the host. */
 /** What a tool answered: the payload a model parses and the sentence it reads. */
