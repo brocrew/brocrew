@@ -13,6 +13,9 @@ inputs:
   artifact_name:
     required: true
     description: Artifact name
+  released:
+    default: '0'
+    description: Whether this distribution is built by the release workflow
 outputs:
   artifact_id:
     description: Artifact ID
@@ -45,6 +48,7 @@ runs:
     - name: Build and package (app stapled before dmg and updater zip)
       shell: bash
       env:
+        BROCREW_RELEASE_BUILD: ${{ inputs.released }}
         CSC_LINK: ${{ env.MAC_CERT_P12_BASE64 }}
         CSC_KEY_PASSWORD: ${{ env.MAC_CERT_P12_PASSWORD }}
       run: |

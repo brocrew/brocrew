@@ -120,6 +120,7 @@ jobs:
       - name: Build and package (NSIS, x64)
         shell: bash
         env:
+          BROCREW_RELEASE_BUILD: '1'
           WINDOWS_SIGNING_ENABLED: ${{ steps.signing.outputs.enabled }}
           ES_USERNAME: ${{ secrets.ES_USERNAME }}
           ES_PASSWORD: ${{ secrets.ES_PASSWORD }}
@@ -199,6 +200,7 @@ jobs:
           owner: ${{ needs.plan.outputs.owner }}
           repo: ${{ needs.plan.outputs.name }}
           artifact_name: release-macos-${{ github.run_attempt }}
+          released: '1'
         env:
           MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
           MAC_CERT_P12_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
