@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import { callOn } from './helpers/call-agent-tool'
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import type { AgentState } from '../src/shared/agent-state-contracts'
@@ -79,14 +80,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 const IDLE = 7_654_321
 /** The host's own default: one minute. */
 const ONE_MINUTE = 60_000
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /**
  * A stretch of the event loop long enough for everything a provider row starts to have run: five
