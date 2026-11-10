@@ -983,11 +983,25 @@ export function buildToolDefs(): ToolDef[] {
                     }),
             ])
             dropPending(tab, download)
-            return saveDownload(deps, tab.profile, download, ms, startedAt, (file) => {
-              savedFile = file
-            }, typeof a.timeoutMs === 'number' ? ms : undefined)
+            return saveDownload(
+              deps,
+              tab.profile,
+              download,
+              ms,
+              startedAt,
+              (file) => {
+                savedFile = file
+              },
+              typeof a.timeoutMs === 'number' ? ms : undefined,
+            )
           }
-          return deps.browser.captureDownloads(tab.profile, page, save, () => savedFile, () => deps.activity?.('download-received'))
+          return deps.browser.captureDownloads(
+            tab.profile,
+            page,
+            save,
+            () => savedFile,
+            () => deps.activity?.('download-received'),
+          )
         })
         return withNotes(value, notes)
       },
@@ -1025,13 +1039,27 @@ export function buildToolDefs(): ToolDef[] {
             }))
           dropPending(tab, download)
           return deps.browser.operate(tab.profile, () =>
-            saveDownload(deps, tab.profile, download, ms, startedAt, (file) => {
-              savedFile = file
-            }, typeof a.timeoutMs === 'number' ? ms : undefined),
+            saveDownload(
+              deps,
+              tab.profile,
+              download,
+              ms,
+              startedAt,
+              (file) => {
+                savedFile = file
+              },
+              typeof a.timeoutMs === 'number' ? ms : undefined,
+            ),
           )
         }
         return {
-          json: await deps.browser.captureDownloads(tab.profile, tab.page, save, () => savedFile, () => deps.activity?.('download-received')),
+          json: await deps.browser.captureDownloads(
+            tab.profile,
+            tab.page,
+            save,
+            () => savedFile,
+            () => deps.activity?.('download-received'),
+          ),
         }
       },
     },
@@ -1078,7 +1106,12 @@ export function buildToolDefs(): ToolDef[] {
             await deps.browser.usePage(t.profile, t.page)
             deps.tabs.resolve(t.id, generationOf(deps))
             usableProfile(deps, t.profile)
-            return fetchToDisk(deps, t.page.context(), target, typeof a.timeoutMs === 'number' ? ms : undefined)
+            return fetchToDisk(
+              deps,
+              t.page.context(),
+              target,
+              typeof a.timeoutMs === 'number' ? ms : undefined,
+            )
           }),
         }
       },
@@ -1250,7 +1283,8 @@ async function fetchToDisk(
   ms: number | undefined,
 ): Promise<Record<string, unknown>> {
   const explicit = ms === undefined ? undefined : AbortSignal.timeout(ms)
-  const signal = explicit && deps.signal ? AbortSignal.any([explicit, deps.signal]) : explicit ?? deps.signal
+  const signal =
+    explicit && deps.signal ? AbortSignal.any([explicit, deps.signal]) : (explicit ?? deps.signal)
   let url = start
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const cookie = (await ctx.cookies(url)).map((c) => `${c.name}=${c.value}`).join('; ')
@@ -1391,7 +1425,9 @@ async function saveDownload(
     throw new ToolError('the download failed')
   let tmp: string | null
   try {
-    tmp = await (completionMs === undefined ? download.path() : raceTimeout(download.path(), completionMs))
+    tmp = await (completionMs === undefined
+      ? download.path()
+      : raceTimeout(download.path(), completionMs))
     checkToolAuthorization(deps)
   } catch (e) {
     await deps.browser.cancelPrivateDownload?.(profile, download).catch(() => undefined)
@@ -1468,7 +1504,11 @@ export function createAgentChromeTools(deps: ToolDeps): ToolHandler[] {
       try {
         const args = parseArgs(def.spec, rawArgs)
         ms = typeof args.timeoutMs === 'number' ? args.timeoutMs : undefined
-        const out = await def.run(args, { ...deps, signal: context.signal, activity: context.activity })
+        const out = await def.run(args, {
+          ...deps,
+          signal: context.signal,
+          activity: context.activity,
+        })
         if ('image' in out) {
           return {
             content: [

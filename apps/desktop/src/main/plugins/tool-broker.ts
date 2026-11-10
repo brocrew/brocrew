@@ -1,4 +1,8 @@
-import { pluginToolActivityStages, type PluginCallDiagnostic, type PluginToolFailureReason } from './tool-diagnostics'
+import {
+  pluginToolActivityStages,
+  type PluginCallDiagnostic,
+  type PluginToolFailureReason,
+} from './tool-diagnostics'
 import { randomUUID } from 'node:crypto'
 import { collidingToolNames, externalMcpNameRefusal } from '../../shared/external-mcp'
 import { pluginSha256 } from './package-digests'
@@ -48,7 +52,13 @@ const failureCodes = new Set<BrokerFailure>([
 const errorCodes = new WeakMap<object, BrokerFailure>()
 export class PluginBrokerError extends Error {
   readonly code: BrokerFailure
-  constructor(code: BrokerFailure, readonly tool?: string, readonly callCause?: BrokerCallCause, dispatched = true, completionKnown = false) {
+  constructor(
+    code: BrokerFailure,
+    readonly tool?: string,
+    readonly callCause?: BrokerCallCause,
+    dispatched = true,
+    completionKnown = false,
+  ) {
     code = failureCodes.has(code) ? code : 'invalid'
     super(
       tool
@@ -56,9 +66,9 @@ export class PluginBrokerError extends Error {
           ? `Tool ${tool} was not started: ${code}.`
           : completionKnown
             ? `Tool ${tool} failed: ${callCause ?? code}.`
-          : callCause === 'stalled' || code === 'deadline'
-            ? `Tool ${tool} took too long; completion is unknown. The operation may still be running.`
-            : `Tool ${tool} failed: ${callCause ?? code}; completion is unknown.`
+            : callCause === 'stalled' || code === 'deadline'
+              ? `Tool ${tool} took too long; completion is unknown. The operation may still be running.`
+              : `Tool ${tool} failed: ${callCause ?? code}; completion is unknown.`
         : code === 'busy'
           ? 'Plugin busy. Try again.'
           : 'Plugin unavailable. Try again.',
@@ -270,7 +280,13 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
     }
   }
   function callState(job: Job, state: PluginCallDiagnostic['state']): PluginCallDiagnostic {
-    return Object.freeze({ callId: job.callId, tool: job.name, startedAt: job.startedAtIso, lastStage: job.lastStage, state })
+    return Object.freeze({
+      callId: job.callId,
+      tool: job.name,
+      startedAt: job.startedAtIso,
+      lastStage: job.lastStage,
+      state,
+    })
   }
   function retain(job: Job): void {
     if (job.quiet || uncertain.has(job)) return
@@ -600,9 +616,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
           ? [...q.actors.values()].reduce((n, jobs) => n + jobs.length, 0)
           : 0
         if (
-          count +
-            uncertain.size +
-            (active && !uncertain.has(active) ? 1 : 0) >=
+          count + uncertain.size + (active && !uncertain.has(active) ? 1 : 0) >=
             PLUGIN_BROKER_LIMITS.total ||
           workspaceCount >= PLUGIN_BROKER_LIMITS.workspace ||
           (q?.actors.get(actor.key)?.length ?? 0) >= PLUGIN_BROKER_LIMITS.agent
@@ -777,7 +791,9 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
         queued: count,
         executing: active !== undefined,
         awaitingQuiescence: uncertain.size > 0 || (active?.cancelling === true && !active.quiet),
-        unknownCalls: Object.freeze([...uncertain].map((job) => callState(job, 'completion-unknown'))),
+        unknownCalls: Object.freeze(
+          [...uncertain].map((job) => callState(job, 'completion-unknown')),
+        ),
       }),
   })
 }

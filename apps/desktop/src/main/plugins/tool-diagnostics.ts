@@ -63,8 +63,13 @@ export type PluginToolDiagnostic = ((
   detail?: PluginDiagnosticDetail,
 ) => void) & { pending?(stage: PluginFailureStage): void }
 export const pluginToolActivityStages = [
-  'browser-ready', 'page-ready', 'page-response', 'page-loaded',
-  'screenshot-captured', 'download-received', 'download-saved',
+  'browser-ready',
+  'page-ready',
+  'page-response',
+  'page-loaded',
+  'screenshot-captured',
+  'download-received',
+  'download-saved',
 ] as const
 export interface PluginCallDiagnostic {
   callId: string

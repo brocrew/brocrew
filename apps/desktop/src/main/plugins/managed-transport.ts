@@ -378,12 +378,18 @@ export async function openManagedPluginRoute(
             )
             const parsed = CallToolResultSchema.safeParse(result)
             if (!parsed.success) report('result-invalid')
-            return parsed.success ? parsed.data : textReply(`Tool ${tool.name} returned an invalid result.`)
+            return parsed.success
+              ? parsed.data
+              : textReply(`Tool ${tool.name} returned an invalid result.`)
           } catch (error) {
             // The broker audit records its own closed failure code.
-            return textReply(error instanceof PluginBrokerError
-              ? error.tool ? error.message : new PluginBrokerError(error.code, tool.name, undefined, false).message
-              : `Tool ${tool.name} failed; completion is unknown.`)
+            return textReply(
+              error instanceof PluginBrokerError
+                ? error.tool
+                  ? error.message
+                  : new PluginBrokerError(error.code, tool.name, undefined, false).message
+                : `Tool ${tool.name} failed; completion is unknown.`,
+            )
           }
         })
         const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })

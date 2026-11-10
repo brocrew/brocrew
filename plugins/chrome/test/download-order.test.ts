@@ -248,7 +248,10 @@ it('reports owned advancing bytes and lets a default download outlast the action
     await flush()
     for (const receivedBytes of [5, 5, 4, 11])
       f.session.emit('Browser.downloadProgress', {
-        guid: 'activity-guid', receivedBytes, totalBytes: 11, state: 'inProgress',
+        guid: 'activity-guid',
+        receivedBytes,
+        totalBytes: 11,
+        state: 'inProgress',
       })
     expect(stages).toEqual(['page-ready', 'download-received', 'download-received'])
     f.page.emit('download', download)
@@ -261,7 +264,14 @@ it('reports owned advancing bytes and lets a default download outlast the action
     { tabId: f.tabId, url: 'https://fictional.invalid/fresh.txt' },
     { activity: (stage) => stages.push(stage) },
   )
-  void pending.then(() => { ended = true }, () => { ended = true })
+  void pending.then(
+    () => {
+      ended = true
+    },
+    () => {
+      ended = true
+    },
+  )
   try {
     await ready.promise
     await vi.advanceTimersByTimeAsync(20_000)

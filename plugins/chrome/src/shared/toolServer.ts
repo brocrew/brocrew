@@ -6,7 +6,14 @@ import {
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
 export class PublicToolError extends Error {}
-export type ToolActivity = 'browser-ready' | 'page-ready' | 'page-response' | 'page-loaded' | 'screenshot-captured' | 'download-received' | 'download-saved'
+export type ToolActivity =
+  | 'browser-ready'
+  | 'page-ready'
+  | 'page-response'
+  | 'page-loaded'
+  | 'screenshot-captured'
+  | 'download-received'
+  | 'download-saved'
 export interface ToolContext extends Record<string, unknown> {
   signal?: AbortSignal
   activity?: (stage: ToolActivity) => void
@@ -29,10 +36,7 @@ export type ToolResult = {
 }
 export interface ToolHandler {
   definition: ToolDefinition
-  execute(
-    args: Record<string, unknown>,
-    context: ToolContext,
-  ): ToolResult | Promise<ToolResult>
+  execute(args: Record<string, unknown>, context: ToolContext): ToolResult | Promise<ToolResult>
 }
 export interface StaticResource {
   uri: string
@@ -74,10 +78,12 @@ export function createToolServer(options: ToolServerOptions): Server {
         activity(stage) {
           const progressToken = request.params._meta?.progressToken
           if (active && !extra.signal.aborted && progressToken !== undefined)
-            void extra.sendNotification({
-              method: 'notifications/progress',
-              params: { progressToken, progress: ++progress, message: stage },
-            }).catch(() => undefined)
+            void extra
+              .sendNotification({
+                method: 'notifications/progress',
+                params: { progressToken, progress: ++progress, message: stage },
+              })
+              .catch(() => undefined)
         },
       })
     } catch (err: unknown) {

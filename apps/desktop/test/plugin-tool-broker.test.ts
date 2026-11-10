@@ -89,7 +89,11 @@ class Server {
       },
     }
   }
-  tool = (request: BrokerRequest, signal: AbortSignal, onprogress?: (progress: BrokerProgress) => void) => this.start('tool', request, signal, onprogress)
+  tool = (
+    request: BrokerRequest,
+    signal: AbortSignal,
+    onprogress?: (progress: BrokerProgress) => void,
+  ) => this.start('tool', request, signal, onprogress)
   admin = (request: BrokerRequest, signal: AbortSignal) => this.start('admin', request, signal)
   finish(index: number, value: BrokerValue = { done: true }) {
     this.calls[index]!.result.resolve({ ok: true, value })
@@ -507,7 +511,11 @@ describe('independent transport calls', () => {
   })
   it('retains only a known activity stage and clears its visible record on positive host exit', async () => {
     const exited = deferred<void>()
-    const h = setup((options) => ({ ...options, hostExited: exited.promise, server: { ...options.server, independentToolCalls: true } }))
+    const h = setup((options) => ({
+      ...options,
+      hostExited: exited.promise,
+      server: { ...options.server, independentToolCalls: true },
+    }))
     const pending = h.call()
     await tick()
     h.server.calls[0]!.onprogress?.({ progress: 1, message: 'fictional-page-title' })
@@ -515,37 +523,64 @@ describe('independent transport calls', () => {
     h.server.calls[0]!.result.resolve({ ok: false, cause: 'stalled' })
     h.server.calls[0]!.quiet.reject(new Error('unproved'))
     await expect(pending).rejects.toMatchObject({ code: 'downstream' })
-    expect(h.broker.status().unknownCalls).toEqual([expect.objectContaining({ tool: 'read_page', lastStage: 'screenshot-captured', state: 'completion-unknown', startedAt: expect.any(String) })])
+    expect(h.broker.status().unknownCalls).toEqual([
+      expect.objectContaining({
+        tool: 'read_page',
+        lastStage: 'screenshot-captured',
+        state: 'completion-unknown',
+        startedAt: expect.any(String),
+      }),
+    ])
     expect(JSON.stringify(h.audit)).not.toContain('fictional-page-title')
     exited.resolve()
     await tick()
     expect(h.broker.status().unknownCalls).toEqual([])
     expect(h.broker.owner.hasCompletionProof()).toBe(true)
   })
-  it.each(['reply-first', 'proof-first'])('releases a successful reply with rejected proof (%s)', async (order) => {
-    const h = setup((options) => ({ ...options, server: { ...options.server, independentToolCalls: true } }))
-    let outcome: unknown
-    void h.call().then((value) => { outcome = value }, (error) => { outcome = error })
-    await tick()
-    const call = h.server.calls[0]!
-    if (order === 'reply-first') call.result.resolve({ ok: true, value: 'remote reply' })
-    else call.quiet.reject(new Error('close failed'))
-    await tick()
-    if (order === 'reply-first') call.quiet.reject(new Error('close failed'))
-    else call.result.resolve({ ok: true, value: 'remote reply' })
-    await tick()
-    expect(outcome).toMatchObject({ message: expect.stringContaining('completion is unknown') })
-    expect(h.broker.status()).toMatchObject({ available: true, executing: false, awaitingQuiescence: true })
-    const second = h.call()
-    await tick()
-    expect(h.server.calls).toHaveLength(2)
-    h.server.finish(1)
-    await second
-    h.broker.owner.invalidate()
-    expect(h.broker.owner.hasCompletionProof()).toBe(false)
-  })
+  it.each(['reply-first', 'proof-first'])(
+    'releases a successful reply with rejected proof (%s)',
+    async (order) => {
+      const h = setup((options) => ({
+        ...options,
+        server: { ...options.server, independentToolCalls: true },
+      }))
+      let outcome: unknown
+      void h.call().then(
+        (value) => {
+          outcome = value
+        },
+        (error) => {
+          outcome = error
+        },
+      )
+      await tick()
+      const call = h.server.calls[0]!
+      if (order === 'reply-first') call.result.resolve({ ok: true, value: 'remote reply' })
+      else call.quiet.reject(new Error('close failed'))
+      await tick()
+      if (order === 'reply-first') call.quiet.reject(new Error('close failed'))
+      else call.result.resolve({ ok: true, value: 'remote reply' })
+      await tick()
+      expect(outcome).toMatchObject({ message: expect.stringContaining('completion is unknown') })
+      expect(h.broker.status()).toMatchObject({
+        available: true,
+        executing: false,
+        awaitingQuiescence: true,
+      })
+      const second = h.call()
+      await tick()
+      expect(h.server.calls).toHaveLength(2)
+      h.server.finish(1)
+      await second
+      h.broker.owner.invalidate()
+      expect(h.broker.owner.hasCompletionProof()).toBe(false)
+    },
+  )
   it('counts active admin work together with uncertain and queued calls', async () => {
-    const h = setup((options) => ({ ...options, server: { ...options.server, independentToolCalls: true } }))
+    const h = setup((options) => ({
+      ...options,
+      server: { ...options.server, independentToolCalls: true },
+    }))
     for (let i = 0; i < 63; i++) {
       const call = h.call()
       await tick()
@@ -557,7 +592,9 @@ describe('independent transport calls', () => {
     const admin = tracked(h.broker.person.call(h.person, 'open_window', {}))
     await tick()
     let refused = false
-    void h.call().catch((error) => { refused = error.code === 'busy' })
+    void h.call().catch((error) => {
+      refused = error.code === 'busy'
+    })
     await tick()
     expect(refused).toBe(true)
     h.server.finish(63)
@@ -576,7 +613,8 @@ describe('independent transport calls', () => {
     h.server.calls[0]!.result.resolve({ ok: false, cause: 'stalled' })
     await expect(first).rejects.toMatchObject({
       code: 'downstream',
-      message: 'Tool read_page took too long; completion is unknown. The operation may still be running.',
+      message:
+        'Tool read_page took too long; completion is unknown. The operation may still be running.',
     })
     await tick()
     const second = h.call()
@@ -585,13 +623,26 @@ describe('independent transport calls', () => {
     h.server.finish(1)
     await second
     expect(h.broker.status()).toMatchObject({ available: true, awaitingQuiescence: true })
-    expect(h.audit).toContainEqual(expect.objectContaining({ call: expect.objectContaining({ tool: 'read_page', state: 'completion-unknown', lastStage: 'unknown', startedAt: expect.any(String) }) }))
+    expect(h.audit).toContainEqual(
+      expect.objectContaining({
+        call: expect.objectContaining({
+          tool: 'read_page',
+          state: 'completion-unknown',
+          lastStage: 'unknown',
+          startedAt: expect.any(String),
+        }),
+      }),
+    )
     h.broker.owner.invalidate()
     expect(h.broker.owner.hasCompletionProof()).toBe(false)
     exited.resolve()
     await tick()
     expect(h.broker.owner.hasCompletionProof()).toBe(true)
-    expect(h.audit).toContainEqual(expect.objectContaining({ call: expect.objectContaining({ tool: 'read_page', state: 'host-exited' }) }))
+    expect(h.audit).toContainEqual(
+      expect.objectContaining({
+        call: expect.objectContaining({ tool: 'read_page', state: 'host-exited' }),
+      }),
+    )
   })
   it('bounds retained uncertainty with the existing total capacity', async () => {
     const h = setup((options) => ({
@@ -623,7 +674,8 @@ describe('deadline, cancellation and independent quiescence proof', () => {
     await tick()
     await expect(first).rejects.toMatchObject({
       code: 'deadline',
-      message: 'Tool read_page took too long; completion is unknown. The operation may still be running.',
+      message:
+        'Tool read_page took too long; completion is unknown. The operation may still be running.',
     })
     expect(h.server.calls[0]!.signal.aborted).toBe(true)
     expect(h.server.calls[0]!.cancels).toBe(1)
@@ -649,11 +701,19 @@ describe('deadline, cancellation and independent quiescence proof', () => {
     h.clock.advance(1000)
     await tick()
     await expect(queued).rejects.toMatchObject({ code: expect.any(String) })
-    expect(h.broker.status()).toMatchObject({ available: true, executing: false, awaitingQuiescence: true })
+    expect(h.broker.status()).toMatchObject({
+      available: true,
+      executing: false,
+      awaitingQuiescence: true,
+    })
     expect(h.server.calls).toHaveLength(1)
     h.server.calls[0]!.quiet.resolve()
     await tick()
-    expect(h.broker.status()).toMatchObject({ available: true, executing: false, awaitingQuiescence: false })
+    expect(h.broker.status()).toMatchObject({
+      available: true,
+      executing: false,
+      awaitingQuiescence: false,
+    })
   })
   it('a normal result plus quiescence releases the slot unchanged', async () => {
     const h = setup()
@@ -746,7 +806,10 @@ describe('secret-free failures and diagnostics', () => {
     const h = setup()
     h.server.startError = new Error(secret)
     const error = (await h.call().catch((e: unknown) => e)) as PluginBrokerError
-    expect(error).toMatchObject({ code: 'unavailable', message: 'Tool read_page failed: unavailable; completion is unknown.' })
+    expect(error).toMatchObject({
+      code: 'unavailable',
+      message: 'Tool read_page failed: unavailable; completion is unknown.',
+    })
     expect(String(error.stack)).not.toContain(secret)
     expect(JSON.stringify(h.audit)).not.toContain(secret)
     const rejected = setup()

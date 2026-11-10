@@ -388,7 +388,10 @@ export function createLifecycleAgentBridge(options: {
             hostExited: hostExitProof,
             audit(event) {
               if (event.call)
-                reportPluginToolFailure(report, 'call-state', { ...event.call, hostRun: view.runId })
+                reportPluginToolFailure(report, 'call-state', {
+                  ...event.call,
+                  hostRun: view.runId,
+                })
               if (event.event === 'unavailable' || event.event === 'refused')
                 reportPluginToolFailure(report, event.reason ?? event.code ?? 'unavailable')
               try {

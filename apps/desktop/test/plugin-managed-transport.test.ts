@@ -88,7 +88,11 @@ it('keeps the same route usable after an SDK idle timeout without claiming remot
   await vi.advanceTimersByTimeAsync(60_001)
   await expect(pending).resolves.toMatchObject({
     isError: true,
-    content: [{ text: 'Tool echo took too long; completion is unknown. The operation may still be running.' }],
+    content: [
+      {
+        text: 'Tool echo took too long; completion is unknown. The operation may still be running.',
+      },
+    ],
   })
   expect(f.broker.status().available).toBe(true)
   expect(f.broker.owner.hasCompletionProof()).toBe(false)
@@ -147,16 +151,24 @@ it('releases dispatch after a real downstream reply when client close fails', as
     return Promise.reject(new Error('fictional close failure'))
   })
   try {
-    await expect(client.callTool({ name: 'echo', arguments: { profile: 'fern' } })).resolves.toMatchObject({
+    await expect(
+      client.callTool({ name: 'echo', arguments: { profile: 'fern' } }),
+    ).resolves.toMatchObject({
       isError: true,
       content: [{ text: 'Tool echo failed: downstream; completion is unknown.' }],
     })
-    expect(f.broker.status()).toMatchObject({ available: true, executing: false, awaitingQuiescence: true })
+    expect(f.broker.status()).toMatchObject({
+      available: true,
+      executing: false,
+      awaitingQuiescence: true,
+    })
   } finally {
     close.mockRestore()
     await unclosed?.close()
   }
-  await expect(client.callTool({ name: 'other', arguments: { profile: 'fern' } })).resolves.toMatchObject({ content: [{ text: PLUGIN_MARKER }] })
+  await expect(
+    client.callTool({ name: 'other', arguments: { profile: 'fern' } }),
+  ).resolves.toMatchObject({ content: [{ text: PLUGIN_MARKER }] })
   expect(f.broker.status().unknownCalls).toHaveLength(1)
 })
 describe('authenticated broker boundaries', () => {
