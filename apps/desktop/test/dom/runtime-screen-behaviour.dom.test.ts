@@ -25,6 +25,8 @@ import type {
   ProcessMemory,
   RuntimeBridge,
   ResumedSession,
+  CreatedSession,
+  RefusedLaunch,
 } from '../../src/shared/runtime-ipc'
 import type { ResolvedMessageLink } from '../../src/renderer/src/lib/message-links'
 import { idlePanel } from './sub-agents-idle-fixture'
@@ -128,6 +130,10 @@ const runtime = {
     turnAligned: true,
   })),
   startAndSend: vi.fn(),
+  createSession: vi.fn<
+    (input: Parameters<RuntimeBridge['createSession']>[0]) => Promise<CreatedSession | RefusedLaunch>
+  >(),
+  cancelLaunch: vi.fn<RuntimeBridge['cancelLaunch']>(),
   stopLooking: vi.fn(async () => {}),
   send: vi.fn(),
   resume: vi.fn(),
@@ -176,6 +182,8 @@ beforeEach(() => {
       expiresAt: null,
     }
   vi.clearAllMocks()
+  runtime.createSession.mockReset()
+  runtime.cancelLaunch.mockReset().mockResolvedValue(true)
   runtime.resolveLink.mockReset()
   runtime.latestHistory.mockReset()
   changeListeners.clear()
@@ -590,6 +598,7 @@ afterEach(() => {
   sessions.dispose()
   vi.useRealTimers()
   useOverlays().close()
+  for (const toast of useOverlays().toasts.value) useOverlays().dismiss(toast.id)
   localStorage.clear()
 })
 
@@ -773,6 +782,128 @@ function deferred<T>() {
   })
   return { promise, resolve }
 }
+
+async function launchFromAgentSheet(words: string) {
+  const answer = deferred<CreatedSession | RefusedLaunch>()
+  runtime.createSession.mockReturnValueOnce(answer.promise)
+  const listeners = runtime.onEvent.mock.calls.length
+  const m = mount(RuntimeScreen, {})
+  useOverlays().open({ kind: 'startAsAgent', profileSlug: 'editor' })
+  await expect.poll(() => m.all('start-as-agent').length).toBe(1)
+  const sheet = m.q('start-as-agent')
+  const input = sheet.querySelector<HTMLTextAreaElement>('[data-cy="prompt-input"]')!
+  input.value = words
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  const send = sheet.querySelector<HTMLButtonElement>('[data-cy="send-prompt"]')!
+  await expect.poll(() => send.disabled).toBe(false)
+  send.click()
+  await expect.poll(() => runtime.createSession.mock.calls.length).toBe(1)
+  await expect.poll(() => m.all('cancel-launch').length).toBe(1)
+  expect(runtime.onEvent).toHaveBeenCalledTimes(listeners)
+  return { m, answer, input }
+}
+
+it('keeps the launching sheet busy, says its refusal once and returns its typed words', async () => {
+  const words = 'Read the fictional draft before editing it.'
+  const { m, answer, input } = await launchFromAgentSheet(words)
+  const overlay = useOverlays().overlay.value
+  expect(m.all('start-as-agent-error')).toHaveLength(0)
+  answer.resolve({ refused: { reason: 'launch', said: 'The fictional launch was refused.' } })
+  await expect.poll(() => m.all('cancel-launch').length).toBe(0)
+  await expect.poll(() => input.value).toBe(words)
+  expect(useOverlays().overlay.value).toBe(overlay)
+  expect(m.all('start-as-agent-error')).toHaveLength(1)
+  expect(m.q('start-as-agent-error').textContent).toBe('The fictional launch was refused.')
+  expect(
+    m.all('toast').filter((toast) => toast.textContent?.includes('fictional launch')),
+  ).toHaveLength(0)
+  expect(runtime.cancelLaunch).not.toHaveBeenCalled()
+})
+
+it('does not give a same-agent replacement the old launch busy state or late refusal', async () => {
+  const { m, answer } = await launchFromAgentSheet('Words belonging to the old sheet.')
+  useOverlays().open({ kind: 'startAsAgent', profileSlug: 'editor' })
+  const replacement = useOverlays().overlay.value
+  await expect.poll(() => m.all('cancel-launch').length).toBe(0)
+  expect(runtime.cancelLaunch).not.toHaveBeenCalled()
+  answer.resolve({ refused: { reason: 'launch', said: 'The replaced launch was refused.' } })
+  await expect.poll(() =>
+    m.all('toast').filter((toast) =>
+      toast.textContent?.includes('The replaced launch was refused.'),
+    ).length,
+  ).toBe(1)
+  expect(useOverlays().overlay.value).toBe(replacement)
+  expect(m.all('start-as-agent')).toHaveLength(1)
+  expect(m.all('start-as-agent-error')).toHaveLength(0)
+  expect(m.all('cancel-launch')).toHaveLength(0)
+  expect(runtime.cancelLaunch).not.toHaveBeenCalled()
+})
+
+it('closing a replacement does not cancel the launch owned by the replaced sheet', async () => {
+  const { m, answer } = await launchFromAgentSheet('The old sheet owns this launch.')
+  useOverlays().open({ kind: 'startAsAgent', profileSlug: 'editor' })
+  await expect.poll(() => m.all('cancel-launch').length).toBe(0)
+  m.q('close-overlay').click()
+  await expect.poll(() => m.all('overlay-host').length).toBe(0)
+  expect(runtime.cancelLaunch).not.toHaveBeenCalled()
+  answer.resolve({ refused: { reason: 'launch', said: 'The unowned launch was refused.' } })
+  await expect.poll(() =>
+    m.all('toast').filter((toast) =>
+      toast.textContent?.includes('The unowned launch was refused.'),
+    ).length,
+  ).toBe(1)
+  expect(useOverlays().overlay.value).toBeNull()
+  expect(runtime.cancelLaunch).not.toHaveBeenCalled()
+})
+
+it.each(['cancel-launch', 'close-overlay'] as const)(
+  'cancels the owned launch through %s without reporting a cancelled refusal',
+  async (control) => {
+    const { m, answer, input } = await launchFromAgentSheet('Keep these words if I cancel.')
+    const key = runtime.createSession.mock.calls[0]![0].launchKey
+    expect(key).toEqual(expect.any(String))
+    m.q(control).click()
+    await expect.poll(() => runtime.cancelLaunch.mock.calls.length).toBe(1)
+    expect(runtime.cancelLaunch).toHaveBeenCalledWith({ launchKey: key })
+    answer.resolve({ refused: { reason: 'cancelled', said: 'The launch was cancelled.' } })
+    await expect.poll(() => sessions.isPlacing()).toBe(false)
+    await nextTick()
+    expect(m.all('start-as-agent-error')).toHaveLength(0)
+    expect(
+      m.all('toast').filter((toast) => toast.textContent?.includes('launch was cancelled')),
+    ).toHaveLength(0)
+    if (control === 'close-overlay') {
+      expect(useOverlays().overlay.value).toBeNull()
+      expect(m.all('overlay-host')).toHaveLength(0)
+    } else {
+      expect(m.all('start-as-agent')).toHaveLength(1)
+      expect(input.value).toBe('Keep these words if I cancel.')
+    }
+  },
+)
+
+it('closes the launching sheet before the parent continues into the opened conversation', async () => {
+  const { m, answer } = await launchFromAgentSheet('Read this in the opened conversation.')
+  const send = vi.spyOn(sessions, 'send').mockImplementation(async () => {
+    expect(useOverlays().overlay.value).toBeNull()
+    return true
+  })
+  try {
+    answer.resolve({ ...META, sessionId: 'sheet-opened' })
+    await expect.poll(() => send.mock.calls.length).toBe(1)
+    expect(send).toHaveBeenCalledWith(
+      'sheet-opened',
+      'Read this in the opened conversation.',
+      'now',
+      [],
+    )
+    await expect.poll(() => m.all('conversation-pane').length).toBe(1)
+    expect(m.all('overlay-host')).toHaveLength(0)
+    expect(runtime.cancelLaunch).not.toHaveBeenCalled()
+  } finally {
+    send.mockRestore()
+  }
+})
 
 async function panelScreen(withSecond = false) {
   runtime.attachOpen.mockResolvedValueOnce([
