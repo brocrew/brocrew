@@ -114,7 +114,7 @@ async function settle() {
 }
 
 describe.each(actions)('$name pending bookkeeping', (action) => {
-  it('keeps one pending press through refresh, its payload/result, and clears a prior result on retry', async () => {
+  it('keeps one press and its payload/result through refresh and retry', async () => {
     const queue = createPersonsQueue()
     const held = deferred()
     const doors = doorsFor(held)
@@ -180,12 +180,14 @@ describe.each(actions)('$name pending bookkeeping', (action) => {
   it('cleans up a rejected call without converting it into a domain result', async () => {
     const original = Promise.prototype.finally
     const endings: Promise<unknown>[] = []
-    const observed = vi.spyOn(Promise.prototype, 'finally').mockImplementation(function (this: Promise<unknown>, onFinally) {
-      const ending = original.call(this, onFinally)
-      void ending.catch(() => {})
-      endings.push(ending)
-      return ending
-    })
+    const observed = vi
+      .spyOn(Promise.prototype, 'finally')
+      .mockImplementation(function (this: Promise<unknown>, onFinally) {
+        const ending = original.call(this, onFinally)
+        void ending.catch(() => {})
+        endings.push(ending)
+        return ending
+      })
     try {
       const queue = createPersonsQueue()
       const held = deferred()
