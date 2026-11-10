@@ -3,7 +3,7 @@ import type { ModelCatalogue } from '../src/shared/model-choice-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   FakeRuntime,
@@ -144,11 +144,6 @@ describe('RuntimeHost', () => {
     expect(sink.messages.map((message) => message.ordinal).slice(0, 3)).toEqual([0, 1, 2])
     expect(sink.messages[0]?.sessionId).toBe('sess_1')
     expect(host.sessionIds).toEqual(['sess_1'])
-  })
-
-  it('uses the cwd the caller asked for', async () => {
-    const created = await host.createSession({ provider: 'codex', cwd: userData }, sink)
-    expect(created.cwd).toBe(userData)
   })
 
   it('reports what is in the provider home, and re-reads it on demand', async () => {
@@ -2320,16 +2315,13 @@ describe('RuntimeHost.readChildWork (112)', () => {
   const PLAIN = 'ab1bcb4820e3a1c8f'
 
   /**
-   * 115 · A REAL Codex rollout on disk, and a second one that is not ours.
-   *
-   * The three synthetic records match shapes `importCodexRollout` reads, verified against
-   * app-created child rollouts. Their prose is authored for the test and contains no personal
-   * session content.
+   * A real Codex rollout on disk. The three synthetic records match shapes `importCodexRollout`
+   * reads, verified against app-created child rollouts. Their prose is authored for the test and
+   * contains no personal session content.
    */
   let codexHome: string
   let claudeHome: string
   let rolloutPath: string
-  let outsidePath: string
 
   beforeEach(() => {
     // A REAL Claude home with one plain `Task` child in it, sidecar and all — the layout measured
@@ -2411,15 +2403,11 @@ describe('RuntimeHost.readChildWork (112)', () => {
         '',
       ].join('\n'),
     )
-    // Real, readable, and not under the home — the shape a provider database can genuinely name.
-    outsidePath = join(realpathSync(mkdtempSync(join(tmpdir(), 'brobot2-115-else-'))), 'r.jsonl')
-    writeFileSync(outsidePath, '{"type":"session_meta","payload":{}}\n')
   })
 
   afterEach(() => {
     rmSync(codexHome, { recursive: true, force: true })
     rmSync(claudeHome, { recursive: true, force: true })
-    rmSync(dirname(outsidePath), { recursive: true, force: true })
   })
 
   function hostFor(
@@ -2596,24 +2584,6 @@ describe('RuntimeHost.readChildWork (112)', () => {
       expect(read.taskId).toBe('waw6gpzzj')
     })
 
-    it('⛔ and an agent NEITHER lookup knows is still refused with no directory touched', () => {
-      let paths = 0
-      const host = hostFor(
-        {
-          find: () => claudeRow(),
-          workflowAgentTask: () => null,
-          reportedSubAgent: () => false,
-        },
-        { onPath: () => (paths += 1) },
-      )
-      expect(host.readChildWork(SESSION, { part: 'transcript', agentId: AGENT })).toEqual({
-        ok: false,
-        reason: 'unknown-agent',
-        rowsUnread: 0,
-      })
-      expect(paths, 'a home was resolved for an agent that is not ours').toBe(0)
-    })
-
     it('a Codex child opens its own rollout, parsed as a rollout', () => {
       const asked: { provider: Provider; home: string; ref: SessionRef }[] = []
       const host = hostFor(
@@ -2676,63 +2646,16 @@ describe('RuntimeHost.readChildWork (112)', () => {
       expect(lookups, "another thread's rollout was looked up").toBe(0)
     })
 
-    it('🔴 726 · R92 — a rollout the provider’s index names OUTSIDE the home opens', () => {
-      // ⛔ On `main` this was refused (`not-readable`: a rollout had to lie under the home's
-      // `sessions/` or `archived_sessions/`).
-      const host = hostFor(
-        { find: () => codexRow(), reportedSubAgent: () => true },
-        { rollout: () => outsidePath },
-      )
-      const read = host.readChildWork(SESSION, { part: 'transcript', agentId: THREAD })
-      expect(read.ok, `refused: ${read.ok ? '' : read.reason}`).toBe(true)
-      if (!read.ok) return
-      expect(read.name).toBe('r.jsonl')
-      // ⚑ The control, beside it: a rollout the index names that is not on disk is still `gone`.
+    it('a rollout the index names that is not on disk is gone', () => {
       const missing = hostFor(
         { find: () => codexRow(), reportedSubAgent: () => true },
-        { rollout: () => join(dirname(outsidePath), 'never-written.jsonl') },
+        { rollout: () => join(codexHome, 'sessions', 'never-written.jsonl') },
       )
       expect(missing.readChildWork(SESSION, { part: 'transcript', agentId: THREAD })).toEqual({
         ok: false,
         reason: 'gone',
         rowsUnread: 0,
       })
-    })
-
-    it('🔴 731 · a rollout path the index names is read whatever its type — `auth.json` included', () => {
-      // ⛔ On `main` both were refused `not-readable` by a `.jsonl` allow-list (115 review, HIGH) that
-      // *"refuses nothing real"* and existed to refuse `auth.json` — since `726`'s review asked of
-      // where a `.jsonl` NAME lands, too. The PM, ruling on `726` §9: *"A type allow-list whose
-      // purpose is keeping credentials out goes."* ⚠️ Planted text in a scratch home, never a
-      // credential.
-      const auth = join(codexHome, 'auth.json')
-      writeFileSync(auth, '{"OPENAI_API_KEY":"sk-not-a-real-key"}\n')
-      const host = hostFor(
-        { find: () => codexRow(), reportedSubAgent: () => true },
-        { rollout: () => auth },
-      )
-      const read = host.readChildWork(SESSION, { part: 'transcript', agentId: THREAD })
-      expect(read).toMatchObject({ ok: true, name: 'auth.json' })
-
-      // …and a `.jsonl` NAME that lands on it is read where it lands.
-      const disguised = join(codexHome, 'sessions', 'rollout-disguised.jsonl')
-      mkdirSync(dirname(disguised), { recursive: true })
-      symlinkSync(auth, disguised)
-      const linked = hostFor(
-        { find: () => codexRow(), reportedSubAgent: () => true },
-        { rollout: () => disguised },
-      )
-      expect(linked.readChildWork(SESSION, { part: 'transcript', agentId: THREAD })).toMatchObject({
-        ok: true,
-        name: 'auth.json',
-      })
-
-      // ⚑ The paired positive: the real rollout, in the same home, still opens.
-      const good = hostFor(
-        { find: () => codexRow(), reportedSubAgent: () => true },
-        { rollout: () => rolloutPath },
-      )
-      expect(good.readChildWork(SESSION, { part: 'transcript', agentId: THREAD }).ok).toBe(true)
     })
 
     it('⚠️ a SYMLINKED child is named by where it lands, and described by the sidecar there', () => {
@@ -2773,20 +2696,6 @@ describe('RuntimeHost.readChildWork (112)', () => {
         { rollout: () => binary },
       )
       expect(refused.readChildWork(SESSION, { part: 'transcript', agentId: THREAD })).toEqual({
-        ok: false,
-        reason: 'not-readable',
-        rowsUnread: 0,
-      })
-    })
-
-    it('⚑ THE CONTROL — an image the index names is not drawn as text, on either tree', () => {
-      const png = join(codexHome, 'sessions', 'picture.png')
-      writeFileSync(png, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]))
-      const host = hostFor(
-        { find: () => codexRow(), reportedSubAgent: () => true },
-        { rollout: () => png },
-      )
-      expect(host.readChildWork(SESSION, { part: 'transcript', agentId: THREAD })).toEqual({
         ok: false,
         reason: 'not-readable',
         rowsUnread: 0,

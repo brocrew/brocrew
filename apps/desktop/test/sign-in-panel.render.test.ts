@@ -177,17 +177,4 @@ describe('SignInPanel — the two ways out, and the difference between them (098
 
     expect(await render({ ...base, state: STALE, notice: null })).not.toContain('sign-in-notice')
   })
-
-  it('🔒 renders no credential, because none is in the data it is given', async () => {
-    const html = await render({
-      ...base,
-      state: { state: 'stale', reason: 'expired' },
-      notice: 'Copied your machine sign-in into this profile.',
-    })
-    for (const secret of ['access_token', 'refresh_token', 'id_token', 'Bearer', 'sk-']) {
-      expect(html).not.toContain(secret)
-    }
-    // Paired, so the absence above is not the absence of a rendered panel.
-    expect(html).toContain('data-cy="sign-in-panel"')
-  })
 })

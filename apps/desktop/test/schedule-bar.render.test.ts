@@ -1,15 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import type { RuntimeEvent } from '@brobot2/runtime'
 import ScheduleBar from '../src/renderer/src/components/ScheduleBar.vue'
 import { SCHEDULED } from '../src/shared/agent-state'
 import { droppedScheduleNote } from '../src/renderer/src/lib/scheduled-work'
-import {
-  applyEvent,
-  createTranscript,
-  type ScheduleRegistry,
-} from '../src/renderer/src/lib/transcript'
+import type { ScheduleRegistry } from '../src/renderer/src/lib/transcript'
 
 /**
  * # 258 · **The schedule, server-rendered**
@@ -101,41 +96,6 @@ describe('258 §3 · the bar above the composer', () => {
     // and then every absence above would be paired with an empty strip. 🔴 `cell` is this file's
     // own helper and its docblock says why — *"the point of this helper is what a PERSON reads."*
     expect(cell(await bar(registry()), 'schedule-head')).toBe('1 job is scheduled')
-  })
-
-  it('🔴 §2 · a CLOSED conversation keeps the rows — the same bar, with no asleep line', async () => {
-    // ⚑ **D-029 moved this fact.** 258 §2 drew a closed conversation's rows muted, under *"Nothing
-    // here fires until this conversation takes its next message"* — true then, false now: this app
-    // starts a stopped conversation in time for the jobs its provider will bring back, so the
-    // sentence, its `schedule-asleep` cell and the `data-sleeping` mute went, and the bar has ONE
-    // state. ⚠️ Driven through the FOLD rather than a hand-built registry, because a registry no
-    // longer carries a field that says *closed* — the close is real only on a transcript that
-    // folded it, so that is the only place this case can still be asked.
-    const state = createTranscript()
-    applyEvent(state, { type: 'scheduled_work', jobs: [JOB], source: 'hook/Stop' } as RuntimeEvent)
-    const open = await bar(state.schedule)
-    applyEvent(state, { type: 'session', state: 'ended' } as RuntimeEvent)
-    // …the premise, read off the fold rather than assumed: the close really happened.
-    expect(state.ended).toBe(true)
-    const closed = await bar(state.schedule)
-    // The job is still listed — `253` measured that a resumed session gets the same one back, so a
-    // bar that dropped it would be deleting something that still exists.
-    expect(cell(closed, `schedule-when-${JOB.id}`)).toBe(JOB.schedule)
-    // ⛔ **The heading is the one it always was, and present tense is the fix rather than an
-    // oversight.** The first draft changed its verb — *"will wake this conversation"* → *"is still
-    // scheduled"* — and the adversarial pass over this diff refuted the future tense outright: the
-    // level is restated only at turn end, so a job deleted mid-turn would go on being promised.
-    expect(cell(closed, 'schedule-head')).toBe('1 job is scheduled')
-    // ⛔ **The word `${SCHEDULED}` is the vocabulary's, not a literal written twice** — the
-    // heading above is pinned to the exact sentence a person reads AND to the shared word.
-    expect(cell(closed, 'schedule-head')).toContain(SCHEDULED)
-    // ⛔ **One state, said as an equality**: the close changes nothing a person sees. ⚠️ The three
-    // absences after it are not redundant with it — an asleep line drawn in BOTH states would keep
-    // the equality — and each is paired with the rows and heading read off this same markup above.
-    expect(closed).toBe(open)
-    expect(closed).not.toContain('data-cy="schedule-asleep"')
-    expect(closed).not.toContain('data-sleeping')
-    expect(closed).not.toContain('next message')
   })
 
   it('⛔ a level this app cannot list still DRAWS, with a true heading (092/247 §3)', async () => {

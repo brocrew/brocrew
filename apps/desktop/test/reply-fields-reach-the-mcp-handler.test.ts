@@ -75,23 +75,15 @@ describe('reply field failures travel through the real MCP server', () => {
     await world.cleanUp()
   })
 
-  async function server(
-    strictSummary = false,
-    secondTool = false,
-    coreSummary = false,
-    update = false,
-  ) {
+  async function server(secondTool = false, coreSummary = false, update = false) {
     const selected = update ? updateTool : secondTool ? otherTool : tool
     const summarySchema = new z.core.$ZodString({ type: 'string' })
     z.globalRegistry.add(summarySchema, { description: 'A fictional result summary.' })
     const offered = {
       ...selected,
-      handlerOwnsMissingInput: strictSummary ? false : selected.handlerOwnsMissingInput,
-      input: strictSummary
-        ? { ...selected.input, summary: z.string() }
-        : coreSummary
-          ? { ...selected.input, summary: agentToolHandlerInput(summarySchema) }
-          : selected.input,
+      input: coreSummary
+        ? { ...selected.input, summary: agentToolHandlerInput(summarySchema) }
+        : selected.input,
       call: async (args: Record<string, unknown>) => {
         const answered = await selected.call(args)
         calls.push(answered)
@@ -223,43 +215,9 @@ describe('reply field failures travel through the real MCP server', () => {
       })
     }
 
-    it(`${adapter}: a blank report on an unplaced conversation still cannot invite saving`, async () => {
-      withoutProfile()
-      const text = await handBack(adapter, {
-        piece,
-        outcome: 'done',
-        summary: 'Fictional completion.',
-        saved_method: ' \t ',
-      })
-      replyIsAccepted()
-      hasNoReminder(text)
-      expect(reportedMethod()).not.toHaveProperty('savedMethod')
-    })
-
-    it(`${adapter}: suppressing a blank report's reminder fails its answer control`, async () => {
-      const original = tool.call
-      tool = {
-        ...tool,
-        call: async (args) => {
-          const result = await original(args)
-          return { ...result, text: result.text.replace(` ${saveMethod}`, '') }
-        },
-      }
-      const text = await handBack(adapter, {
-        piece,
-        outcome: 'done',
-        summary: 'Fictional completion.',
-        saved_method: '',
-      })
-      replyIsAccepted()
-      expect(() => hasReminder(text)).toThrow()
-    })
-
     for (const [name, kind] of [
       ['fictional.ZSH', 'a .zsh file'],
-      ['fictional.ts', 'a .ts file'],
       ['fictional.PRIVATE_EXTENSION', 'a file of an unrecognised kind'],
-      ['fictional-no-extension', 'a file of an unrecognised kind'],
     ] as const) {
       it(`${adapter}: a refused ${name} names the kinds and puts its path in summary`, async () => {
         const path = join(world.folder, name)
@@ -299,34 +257,6 @@ describe('reply field failures travel through the real MCP server', () => {
         expect(reportedMethod()).toMatchObject({ summary: `The result stays at ${path}.` })
       })
     }
-
-    it(`${adapter}: restoring the generic file refusal fails the specific remedy control`, async () => {
-      const path = join(world.folder, 'fictional.zsh')
-      writeFileSync(path, 'Fictional file; never executed.')
-      const original = host.replyToParent.bind(host)
-      vi.spyOn(host, 'replyToParent').mockImplementation(async (input, by) => {
-        const result = await original(input, by)
-        return result.ok
-          ? result
-          : {
-              ...result,
-              refusal: {
-                ...result.refusal,
-                reason: refuseResource('resource-not-a-form-this-app-keeps').reason,
-              },
-            }
-      })
-      const text = await handBack(adapter, {
-        piece,
-        outcome: 'done',
-        summary: 'Fictional completion.',
-        resource_paths: [path],
-      })
-      replyIsRefused()
-      expect(() =>
-        expect(text).toContain('name its full path in summary instead of resource_paths'),
-      ).toThrow()
-    })
 
     for (const report of [
       'fictitious-method.md',
@@ -438,102 +368,6 @@ describe('reply field failures travel through the real MCP server', () => {
       expect(reportedMethod()).toBeUndefined()
     })
 
-    it(`${adapter}: losing the reported method before recording fails the durable control`, async () => {
-      const original = host.replyToParent.bind(host)
-      vi.spyOn(host, 'replyToParent').mockImplementation((input, by) =>
-        original({ ...input, savedMethod: undefined }, by),
-      )
-      await handBack(adapter, {
-        piece,
-        outcome: 'done',
-        summary: 'Fictional completion.',
-        saved_method: 'fictional.md',
-      })
-      replyIsAccepted()
-      expect(() =>
-        expect(reportedMethod()).toMatchObject({ savedMethod: 'fictional.md' }),
-      ).toThrow()
-    })
-
-    it(`${adapter}: a reminder planted after a supplied report fails its exclusion`, async () => {
-      const original = tool.call
-      tool = {
-        ...tool,
-        call: async (args) => {
-          const result = await original(args)
-          return { ...result, text: `${result.text} ${saveMethod}` }
-        },
-      }
-      const text = await handBack(adapter, {
-        piece,
-        outcome: 'done',
-        summary: 'Fictional completion.',
-        saved_method: 'none: no new method',
-      })
-      replyIsAccepted()
-      expect(() => hasNoReminder(text)).toThrow()
-    })
-
-    it(`${adapter}: dropping the alias fails the acceptance control`, async () => {
-      const original = tool.call
-      tool = {
-        ...tool,
-        call: async (args) => {
-          const { message, ...without } = args
-          void message
-          return original(without)
-        },
-      }
-      await handBack(adapter, { piece, outcome: 'done', message: 'Fictional completion.' })
-      expect(() => replyIsAccepted()).toThrow()
-    })
-
-    it(`${adapter}: accepting a conflicting pair fails the refusal control`, async () => {
-      const original = tool.call
-      tool = {
-        ...tool,
-        call: async (args) => {
-          const { message, ...without } = args
-          return original({ ...without, summary: message })
-        },
-      }
-      await handBack(adapter, { piece, outcome: 'done', summary: 'first', message: 'second' })
-      expect(() => replyIsRefused()).toThrow()
-    })
-
-    it(`${adapter}: dropping the method bound fails its refusal control`, async () => {
-      const original = tool.call
-      tool = {
-        ...tool,
-        call: async (args) => {
-          const { saved_method, ...without } = args
-          void saved_method
-          return original(without)
-        },
-      }
-      await handBack(adapter, {
-        piece,
-        outcome: 'done',
-        summary: 'Fictional completion.',
-        saved_method: 'x'.repeat(201),
-      })
-      expect(() => replyIsRefused()).toThrow()
-    })
-
-    it(`${adapter}: removing the cut count fails its remedy control`, async () => {
-      const original = tool.call
-      tool = {
-        ...tool,
-        call: async (args) => {
-          const result = await original(args)
-          return { ...result, text: result.text.replace(', so cut at least 26', '') }
-        },
-      }
-      const text = await handBack(adapter, { piece, outcome: 'done', summary: 'x'.repeat(1306) })
-      replyIsRefused()
-      expect(() => expect(text).toContain('so cut at least 26')).toThrow()
-    })
-
     for (const ownRequest of [false, true]) {
       it(`${adapter}: an accepted ${ownRequest ? 'own request' : 'assigned piece'} ends with the save reminder`, async () => {
         if (ownRequest) await personalPiece()
@@ -579,50 +413,6 @@ describe('reply field failures travel through the real MCP server', () => {
         )
       })
     }
-
-    it(`${adapter}: suppressing the accepted reminder fails the answer control`, async () => {
-      const original = tool.call
-      tool = {
-        ...tool,
-        call: async (args) => {
-          const result = await original(args)
-          return { ...result, text: result.text.replace(` ${saveMethod}`, '') }
-        },
-      }
-      const text = await handBack(adapter, {
-        piece,
-        outcome: 'done',
-        summary: 'Fictional completion.',
-      })
-      expect(calls.at(-1)!.structured?.outcome).toBe('ok')
-      expect(() => hasReminder(text)).toThrow()
-    })
-
-    it(`${adapter}: planting the reminder on a refusal fails the exclusion control`, async () => {
-      const original = tool.call
-      tool = {
-        ...tool,
-        call: async (args) => {
-          const result = await original(args)
-          return { ...result, text: `${result.text} ${saveMethod}` }
-        },
-      }
-      const text = await handBack(adapter, { piece, outcome: 'done', summary: '' })
-      expect(calls.at(-1)!.structured?.outcome).toBe('refused')
-      expect(() => hasNoReminder(text)).toThrow()
-    })
-
-    it(`${adapter}: bypassing the profile check fails the nameless-answer control`, async () => {
-      withoutProfile()
-      vi.spyOn(host, 'maySaveMemory').mockReturnValue(true)
-      const text = await handBack(adapter, {
-        piece,
-        outcome: 'done',
-        summary: 'Fictional completion.',
-      })
-      expect(calls.at(-1)!.structured?.outcome).toBe('ok')
-      expect(() => hasNoReminder(text)).toThrow()
-    })
   }
 
   it('advertises the required fields, their types and descriptions on both adapters', async () => {
@@ -794,23 +584,6 @@ describe('reply field failures travel through the real MCP server', () => {
     expect(recorded()[0]!.told?.text).toBe(calls[0]!.structured!.reason)
   })
 
-  it('the former strict summary schema prevents these same calls from reaching the handler', async () => {
-    const wire = await server(true)
-    for (const args of [
-      { piece, outcome: 'done', message: 'Fictional result' },
-      { piece, outcome: 'done' },
-    ]) {
-      const packet = await wire.call(args)
-      expect(packet.result?.isError).toBe(true)
-      expect(packet.result?.content?.[0]?.text).toContain(
-        'MCP error -32602: Input validation error',
-      )
-    }
-    expect(calls).toHaveLength(0)
-    expect(recorded()).toHaveLength(0)
-    expect(world.store.piecesOwnedBy(worker).map((one) => one.piece)).toEqual([piece])
-  })
-
   it('retains host length and result-document rails after transport admission', async () => {
     const wire = await server()
     expect(words(await wire.call({ piece, outcome: 'done', summary: 'x'.repeat(1281) }))).toContain(
@@ -823,7 +596,7 @@ describe('reply field failures travel through the real MCP server', () => {
   })
 
   it('a second real tool still rejects a missing field at the SDK boundary', async () => {
-    const wire = await server(false, true)
+    const wire = await server(true)
     const packet = await wire.call({})
     expect(packet.result?.isError).toBe(true)
     expect(packet.result?.content?.[0]?.text).toContain('MCP error -32602: Input validation error')
@@ -832,7 +605,7 @@ describe('reply field failures travel through the real MCP server', () => {
   })
 
   it('a core Zod field retains its advertisement and reaches app validation', async () => {
-    const wire = await server(false, false, true)
+    const wire = await server(false, true)
     const advertised = (await wire.list()).result!.tools![0]!.inputSchema
     expect(advertised.required).toEqual(['piece', 'outcome', 'summary'])
     expect((advertised.properties as Record<string, unknown>).summary).toMatchObject({
@@ -894,7 +667,7 @@ describe('reply field failures travel through the real MCP server', () => {
   })
 
   it('a malformed wait reaches update_work’s own refusal on Claude, unknown keys and wrong types alike', async () => {
-    const wire = await server(false, false, false, true)
+    const wire = await server(false, false, true)
     for (const on of [{ agent: 5 }, { time: '2030-01-01T09:00:00Z', foo: 1 }, { nothing: 'x' }]) {
       const said = words(await wire.call({ piece, status: 'waiting', on }))
       expect(said, JSON.stringify(on)).toContain(

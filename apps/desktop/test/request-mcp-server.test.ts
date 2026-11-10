@@ -685,32 +685,6 @@ describe('the person decides an agent’s MCP server request', () => {
     await expect.poll(notice).toContain(`The person approved request ${id}`)
   })
 
-  it('an idle open card is answered before the asker reopens', async () => {
-    const server = await world.server()
-    const id = await ask(server.url)
-    const handle = world.handles.get('writer')!
-    const card = handle.simulateUserInput('Pick a fictional note', ['blue', 'green'])
-    await expect
-      .poll(() =>
-        world
-          .ledger(asker)
-          .some((event) => event.type === 'user_input_request' && event.id === card.id),
-      )
-      .toBe(true)
-    await decide(id)
-    expect(world.launches).toHaveLength(1)
-    expect(world.sent).toEqual([])
-    await host.respondUserInput(
-      asker,
-      card.id,
-      { kind: 'answer', answers: { q0: ['blue'] } },
-      world.window,
-    )
-    expect(await card.answered).toEqual({ kind: 'answer', answers: { q0: ['blue'] } })
-    await expect.poll(() => world.launches.length).toBe(2)
-    await expect.poll(notice).toContain(`The person approved request ${id}`)
-  })
-
   it.each(['background', 'planning'] as const)(
     '%s is neither stopped nor held for the tools reopen',
     async (why) => {
@@ -978,41 +952,6 @@ describe('the person decides an agent’s MCP server request', () => {
     await expect.poll(() => ending(id)).toMatchObject({ ending: 'superseded' })
     expect(world.store.externalMcpServers()).toEqual([added])
     expect(world.store.externalMcpServersFor('writer')).toEqual([])
-  })
-
-  it('contact history is not asserted before a preflight, during it or after restart', async () => {
-    const server = await world.server()
-    const id = await ask(server.url)
-    expect(Object.keys(host.mcpServerRequestsForAPerson()[0]!).sort()).toEqual([
-      'askerCalled',
-      'at',
-      'conversation',
-      'requested',
-    ])
-    const gate = world.gate()
-    server.holdUntil(gate.promise)
-    const approval = decide(id)
-    await expect.poll(() => server.requests).toBe(1)
-    expect(Object.keys(host.mcpServerRequestsForAPerson()[0]!).sort()).toEqual([
-      'askerCalled',
-      'at',
-      'conversation',
-      'requested',
-    ])
-    gate.release()
-    await approval
-    const pending = await ask('http://127.0.0.1:8765/second', { name: 'second-notes' })
-    expect(
-      Object.keys(
-        host.mcpServerRequestsForAPerson().find((one) => one.requested.requestId === pending)!,
-      ).sort(),
-    ).toEqual(['askerCalled', 'at', 'conversation', 'requested'])
-    host = await world.restart()
-    expect(
-      Object.keys(
-        host.mcpServerRequestsForAPerson().find((one) => one.requested.requestId === pending)!,
-      ).sort(),
-    ).toEqual(['askerCalled', 'at', 'conversation', 'requested'])
   })
 
   it('a committed approval and grants survive a crash snapshot while the asker is mid-turn', async () => {

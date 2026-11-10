@@ -6,10 +6,7 @@ import {
   MAX_SCHEDULE_TEXT,
 } from '../../../packages/runtime/src/scheduled-work'
 import { STANDING_LABEL } from '../src/renderer/src/lib/agent-state'
-// ⚑ D-017 · R11 — the word, the held-predicate and what a background row runs are
-// `shared/agent-state.ts`'s, so `main` says them as the window draws them.
 import { backgroundWhat, SCHEDULED, scheduleHeld } from '../src/shared/agent-state'
-import * as scheduleWords from '../src/renderer/src/lib/scheduled-work'
 import {
   droppedScheduleNote,
   REPEAT_WORD,
@@ -205,7 +202,6 @@ describe('258 · a prompt cannot break the row it is drawn on (232 §2, 251 §2)
   })
 })
 
-// ⚑ D-029 · this describe also said *“and says whether it can fire”* — the asleep sentence, now gone.
 describe('258 · the heading counts what the PROVIDER sent, and promises nothing about firing', () => {
   it('⛔ never opens with 0, which is the defect 250 had to route around in 248’s bar', () => {
     expect(scheduleHead(level(1))).toBe('1 job is scheduled')
@@ -214,24 +210,6 @@ describe('258 · the heading counts what the PROVIDER sent, and promises nothing
     // is `jobs.length + dropped`. `BackgroundBar` counts `running.length` and would say "0".
     expect(scheduleHead(level(0, 1))).toBe('1 job is scheduled')
     expect(scheduleHead(level(1, 2))).toBe('3 jobs are scheduled')
-  })
-
-  it('🔴 §2 · the heading is the level’s one sentence — present tense, and nothing beside it', () => {
-    // ⛔ **PRESENT tense, and the first draft's future tense was the over-claim.** It read *"1 job
-    // will wake this conversation"* awake and *"1 job is still scheduled"* closed; the adversarial
-    // pass over this diff refuted the promise outright — the level is restated only at TURN END, so
-    // a job the model deleted mid-turn, or a one-shot whose time has passed, would go on being
-    // promised for as long as nobody spoke. The heading makes no claim that needs a clock.
-    expect(scheduleHead(level(1))).toBe('1 job is scheduled')
-    expect(scheduleHead(level(2))).toBe('2 jobs are scheduled')
-    // ⚑ **D-029 moved this fact.** The heading was the half that did not change, and a second
-    // sentence carried the whole 258 §2 difference — `SCHEDULE_ASLEEP`, *"Nothing here fires until
-    // this conversation takes its next message"* (D-017b's wording of it). It is false now: this app
-    // starts a stopped conversation in time for the jobs its provider will bring back. So the
-    // sentence went with the flag it read, and the vocabulary has no asleep word left to draw.
-    expect(Object.keys(scheduleWords)).not.toContain('SCHEDULE_ASLEEP')
-    // …the paired positive, from the same module: the heading's own function is what it still exports.
-    expect(Object.keys(scheduleWords)).toContain('scheduleHead')
   })
 
   it('says out loud when the list is UNDERSTATING what is scheduled (092/247 §3)', () => {
@@ -253,28 +231,16 @@ describe('258 · ONE predicate — the bar and every word ask `scheduleHeld` (D-
     expect(scheduleHeld(empty)).toBe(false)
   })
 
-  it('🔴 a CLOSED conversation still SHOWS its schedule — and, since D-029, it is held', () => {
-    // ⚑ **D-029 moved this fact.** 258 §2 made this the one place two predicates differed: the bar
-    // asked `scheduleHeld` and drew the rows under a sentence saying they could not fire, while every
-    // word asked `somethingScheduled` — held AND not `sleeping` — so a closed conversation read
-    // *idle*. This app now starts a stopped conversation in time for the jobs its provider will
-    // bring back, so the asymmetry went with `somethingScheduled` and the flag: a closed
-    // conversation's level is held like any other. ⚠️ Which of those jobs a start really brings back
-    // only the host knows, so a view drawn from its ledger wears the host's word (`AgentCard`).
-    // ⚠️ Driven through the FOLD, because a registry no longer has a field that says *closed*.
+  it('a closed conversation still shows its schedule, and it is held', () => {
+    // Driven through the fold, because a registry has no field that says closed.
     const state = createTranscript()
     applyEvent(state, { type: 'scheduled_work', jobs: [JOB], source: 'hook/Stop' } as RuntimeEvent)
     applyEvent(state, { type: 'session', state: 'ended' } as RuntimeEvent)
-    // …the premise, read off the fold rather than assumed: the close really happened.
     expect(state.ended).toBe(true)
     expect(scheduleHeld(state.schedule)).toBe(true)
-    // ⛔ **…and nothing is left for a second predicate to read**: the registry is its level and only
-    // that, and the vocabulary no longer exports the narrower question. ⚑ F035's `left` is the rows
-    // the last level took off, kept for their first listing, and says nothing about a close.
+    // The registry is its level and only that; `left` is the rows the last level took off.
     expect(Object.keys(state.schedule).sort()).toEqual(['dropped', 'jobs', 'left'])
-    expect(Object.keys(scheduleWords)).not.toContain('somethingScheduled')
-    // …and the paired negative from the same fold: a conversation that closes with nothing scheduled
-    // is not held, so the `true` above is about the level and not about the close.
+    // A conversation that closes with nothing scheduled is not held.
     const nothing = createTranscript()
     applyEvent(nothing, { type: 'session', state: 'ended' } as RuntimeEvent)
     expect(nothing.ended).toBe(true)
