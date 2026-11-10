@@ -7,6 +7,7 @@ import SettingsScreen, {
 import { useAttentionSignals } from '../../src/renderer/src/composables/useAttentionSignals'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 import type { AgentIdentities, RuntimeBridge } from '../../src/shared/runtime-ipc'
+import { STORAGE_PART_IDS, type StorageBridge, type CacheClearState } from '../../src/shared/storage'
 import { providersBridge } from '../../look/fixtures/providers'
 import { themesBridge } from '../../look/fixtures/themes'
 import { mount, unmountAll } from './harness'
@@ -26,8 +27,11 @@ const identities: AgentIdentities = {
   externalMcpServers: [],
 }
 
+const cacheListeners = new Set<(state: CacheClearState | null) => void>()
+
 afterEach(() => {
   unmountAll()
+  expect(cacheListeners.size).toBe(0)
   Reflect.deleteProperty(window, 'api')
   useAttentionSignals().value = true
   computer.platform = 'MacIntel'
@@ -39,8 +43,27 @@ async function settings(
   logging?: NonNullable<Window['api']['logging']>,
 ) {
   providersBridge()
+  let cacheState: CacheClearState | null = null
   window.api = {
     ...window.api,
+    storage: {
+      measure: async () => ({ totalBytes: 0, freeBytes: 0, measuredAt: 1, partial: false,
+        parts: STORAGE_PART_IDS.map((id) => ({ id, bytes: 0, partial: false })) }),
+      children: async (location) => ({ location, entries: [], smallerCount: 0, smallerBytes: 0, totalBytes: 0, partial: false }),
+      reveal: async () => ({ ok: true }),
+      clearCache: async () => {
+        const operation = { id: (cacheState?.id ?? 0) + 1, status: 'complete' as const }
+        cacheState = operation
+        for (const onState of cacheListeners) onState(operation)
+        return { ok: true, operation }
+      },
+      watchCacheClear: (onState) => {
+        cacheListeners.add(onState)
+        onState(cacheState)
+        return () => { cacheListeners.delete(onState) }
+      },
+      pruneBackups: async () => ({ ok: true }),
+    } satisfies StorageBridge,
     logging: logging ?? {
       getLogging: async () => ({
         debug: false,
