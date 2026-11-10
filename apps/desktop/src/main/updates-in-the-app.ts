@@ -29,26 +29,13 @@ import {
   type Updates,
 } from './updates'
 
-/**
- * Updates, wired to Electron: electron-updater checks the release feed and downloads the Windows
- * installer; the Mac's disk image is downloaded and checked in `guided-update.ts`. Every rule is
- * `updates.ts`'s. A development build, or a packaged one with no `app-update.yml`, never checks.
- */
+declare const __BROCREW_RELEASE_BUILD__: boolean | undefined
 
-/**
- * Other feeds replace the updater's per-install rollout ID with the same value on every computer.
- * The public website provider removes that header altogether.
- */
 const NOBODY_IN_PARTICULAR = { 'x-user-staging-id': '00000000-0000-0000-0000-000000000000' }
 
 export function startUpdates(options: {
-  /**
-   * Electron's `app`, handed in: only `index.ts` may hold it, because it pins the data folder before
-   * anything reads it, and the modules it imports run first.
-   */
   readonly app: App
   readonly host: RuntimeHost
-  /** A hidden launch (every test and smoke): its own settings, and no Finder window. */
   readonly hidden: boolean
 }): Updates & { drain(): Promise<void> } {
   const { app } = options
@@ -62,12 +49,10 @@ export function startUpdates(options: {
 
   let loaded: Promise<AppUpdater> | null = null
   let publicFeed: UpdateFeedRoute | null = null
-  /** The updater once loaded: an installer is started from a `quit` listener, which cannot wait. */
   let updater: AppUpdater | null = null
   const theUpdater = (): Promise<AppUpdater> => {
     loaded ??= import('electron-updater').then(async (exported) => {
       const autoUpdater = theAutoUpdaterOf(exported)
-      // Nothing downloads or installs unless the person chooses (`updates.ts`).
       autoUpdater.autoDownload = false
       autoUpdater.autoInstallOnAppQuit = false
       autoUpdater.allowDowngrade = false
@@ -77,6 +62,11 @@ export function startUpdates(options: {
       publicFeed = publicUpdateFeed({
         feed,
         version: app.getVersion(),
+        qa:
+          typeof __BROCREW_RELEASE_BUILD__ === 'undefined' ||
+          !__BROCREW_RELEASE_BUILD__ ||
+          process.env.GITHUB_ACTIONS === 'true' ||
+          process.env.BROCREW_QA === '1',
         mayUseWebsite: () =>
           websiteUpdatesEnabled(readUpdateSettings(settings.file, settings.defaults)),
       })
@@ -95,13 +85,7 @@ export function startUpdates(options: {
     return loaded
   }
 
-  /**
-   * The installer starts from `quit`, after the ordinary teardown, as electron-updater's own
-   * install-on-quit does: started earlier, it would stop BroCrew's processes while they close. It
-   * reopens BroCrew on the workspace it was running (`reopen-after-update.ts`).
-   */
   let installOnTheWayOut = false
-  /** The installer electron-updater downloaded and checked: what a waiting PowerShell runs. */
   let installer: string | null = null
   const userData = app.getPath('userData')
   const wayBack = theWayBack(
@@ -118,7 +102,6 @@ export function startUpdates(options: {
     console.info(
       `updates: installing ${installer}, then reopening BroCrew with --user-data-dir=${wayBack.folder}`,
     )
-    // If this start fails, electron-updater's own start still brings BroCrew back.
     try {
       const pid = startTheInstaller({ installer, folder: wayBack.folder, env: process.env })
       if (pid === undefined) throw new Error('the installer did not start')
@@ -177,7 +160,6 @@ export function startUpdates(options: {
       if (image === null) throw new Error(`release ${found.version} has no disk image for the Mac`)
       let path = openedThisRun.get(found.version)
       if (path === undefined || !existsSync(path)) {
-        // A hidden launch puts nothing in anybody's Downloads: its own data folder keeps it.
         const folder = options.hidden
           ? join(app.getPath('userData'), 'updates')
           : app.getPath('downloads')
@@ -210,7 +192,6 @@ export function startUpdates(options: {
         openedThisRun.set(found.version, path)
       }
       guidedDownloads.signal.throwIfAborted()
-      // A hidden launch opens nothing on anybody's screen.
       if (!options.hidden) {
         const failure = await shell.openPath(path)
         if (failure !== '')
@@ -230,7 +211,6 @@ export function startUpdates(options: {
       timer.unref()
       return () => clearTimeout(timer)
     },
-    // Each send guarded on its own: a window on its way out throws.
     publish: (snapshot) => {
       for (const window of BrowserWindow.getAllWindows()) {
         try {
@@ -245,7 +225,6 @@ export function startUpdates(options: {
     log: (line) => console.info(line),
   })
 
-  // Any quit ends the updates, so a waiting restart is not installed while the app closes.
   const stop = (): void => {
     guidedDownloads.abort()
     updates.stop()

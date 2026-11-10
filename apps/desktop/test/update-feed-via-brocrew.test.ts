@@ -11,6 +11,7 @@ import type { App } from 'electron'
 import type { CancellationToken } from 'electron-updater/out/types'
 import type { NsisUpdater } from 'electron-updater'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import config from '../electron.vite.config'
 import { startUpdates } from '../src/main/updates-in-the-app'
 
 const fake = vi.hoisted(() => ({
@@ -24,7 +25,6 @@ vi.mock('../src/main/update-settings', async (importOriginal) => {
   return {
     ...actual,
     writeUpdateSettings(...args: Parameters<typeof actual.writeUpdateSettings>) {
-      // Simulate the updater's platform, but keep real disk IO on the host platform.
       const simulatedPlatform = process.platform
       Object.defineProperty(process, 'platform', { value: fake.hostPlatform })
       try {
@@ -239,6 +239,10 @@ async function start(
 }
 
 beforeEach(() => {
+  vi.stubGlobal('__BROCREW_RELEASE_BUILD__', true)
+  vi.stubEnv('GITHUB_ACTIONS', undefined)
+  vi.stubEnv('BROCREW_QA', undefined)
+  vi.stubEnv('BROCREW_SKIP_UPDATE_CHECK', undefined)
   root = mkdtempSync(join(tmpdir(), 'fictional-update-feed-'))
   resources = Object.getOwnPropertyDescriptor(process, 'resourcesPath')
   platform = Object.getOwnPropertyDescriptor(process, 'platform')
@@ -259,6 +263,8 @@ afterEach(async () => {
   updates = undefined
   vi.useRealTimers()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
   if (resources) Object.defineProperty(process, 'resourcesPath', resources)
   else Reflect.deleteProperty(process, 'resourcesPath')
   if (platform) Object.defineProperty(process, 'platform', platform)
@@ -266,6 +272,73 @@ afterEach(async () => {
 })
 
 describe('the public update feed', () => {
+  it.each([
+    { name: 'unreleased package', released: false, ci: undefined, override: undefined, qa: true },
+    { name: 'unstamped package', released: undefined, ci: undefined, override: undefined, qa: true },
+    { name: 'released package', released: true, ci: undefined, override: undefined, qa: false },
+    { name: 'CI checking a released package', released: true, ci: 'true', override: undefined, qa: true },
+    { name: 'explicit QA launch', released: true, ci: undefined, override: '1', qa: true },
+    { name: 'ordinary release launch', released: true, ci: 'false', override: '0', qa: false },
+  ])('labels actual requests for $name', async ({ released, ci, override, qa }) => {
+    vi.stubGlobal('__BROCREW_RELEASE_BUILD__', released)
+    vi.stubEnv('GITHUB_ACTIONS', ci)
+    vi.stubEnv('BROCREW_QA', override)
+    await start()
+    expect((await updates!.checkNow()).state.kind).toBe('available')
+    expect(asked).toHaveLength(1)
+    expect(asked[0]!.url.origin + asked[0]!.url.pathname).toBe('https://brocrew.app/update/latest.yml')
+    expect([...asked[0]!.url.searchParams]).toEqual([
+      ['v', INSTALLED],
+      ...(qa ? [['qa', 'verification']] : []),
+    ])
+    expect(asked[0]!.url.searchParams.getAll('qa')).toHaveLength(qa ? 1 : 0)
+  })
+
+  it.each(['win32', 'darwin'] as const)('keeps QA on website rechecks and downloads: %s', async (on) => {
+    vi.stubGlobal('__BROCREW_RELEASE_BUILD__', false)
+    await start(on)
+    expect((await updates!.checkNow()).state.kind).toBe('available')
+    expect((await updates!.download()).state.kind).toBe('ready')
+    expect(asked.some((row) => row.download)).toBe(true)
+    for (const row of asked) {
+      expect(row.url.origin).toBe('https://brocrew.app')
+      expect(row.url.searchParams.getAll('qa')).toEqual(['verification'])
+      expect(row.url.searchParams.getAll('v')).toEqual([INSTALLED])
+    }
+  })
+
+  it.each(['win32', 'darwin'] as const)('keeps QA off GitHub fallback downloads: %s', async (on) => {
+    vi.stubGlobal('__BROCREW_RELEASE_BUILD__', false)
+    await start(on)
+    primaryError = Object.assign(new Error('offline'), { code: 'ECONNREFUSED' })
+    expect((await updates!.checkNow()).state.kind).toBe('available')
+    expect((await updates!.download()).state.kind).toBe('ready')
+    const website = asked.filter((row) => row.url.origin === 'https://brocrew.app')
+    expect(website.length).toBeGreaterThan(0)
+    expect(website.every((row) => row.url.searchParams.get('qa') === 'verification')).toBe(true)
+    const github = asked.filter((row) => row.url.origin === 'https://github.com')
+    expect(github.some((row) => row.download)).toBe(true)
+    expect(github.every((row) => row.url.searchParams.getAll('qa').length === 0)).toBe(true)
+  })
+
+  it('skips the request even for an unreleased CI QA launch', async () => {
+    vi.stubGlobal('__BROCREW_RELEASE_BUILD__', false)
+    vi.stubEnv('GITHUB_ACTIONS', 'true')
+    vi.stubEnv('BROCREW_QA', '1')
+    vi.stubEnv('BROCREW_SKIP_UPDATE_CHECK', '1')
+    await start()
+    await updates!.checkNow()
+    expect(asked).toEqual([])
+  })
+
+  it.each([undefined, '0', '1'])('stamps release provenance only when requested by the build: %s', (flag) => {
+    vi.stubEnv('BROCREW_RELEASE_BUILD', flag)
+    const built = (config as unknown as (env: { command: string; mode: string }) => {
+      main: { define: Record<string, string> }
+    })({ command: 'build', mode: 'production' })
+    expect(built.main.define.__BROCREW_RELEASE_BUILD__).toBe(flag === '1' ? 'true' : 'false')
+  })
+
   it('sends no requests with automatic checks switched off, at launch or a day later', async () => {
     vi.useFakeTimers()
     await start('win32', false)

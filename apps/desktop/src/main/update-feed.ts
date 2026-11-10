@@ -16,12 +16,10 @@ type UpdateInfo = Awaited<ReturnType<GenericProvider['getLatestVersion']>>
 type RuntimeOptions = ConstructorParameters<typeof GenericProvider>[2]
 type ProviderOptions = Extract<Parameters<AppUpdater['setFeedURL']>[0], { provider: 'custom' }>
 
-/** The website currently serves only stable manifests. Manual checks with the switch off use GitHub. */
 export function websiteUpdatesEnabled(settings: UpdateSettings): boolean {
   return settings.checkAutomatically && settings.channel === 'stable'
 }
 
-/** Availability failures can use GitHub; an answer that cannot be trusted must remain a refusal. */
 function unavailable(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false
   const { statusCode, code, message } = error as {
@@ -47,7 +45,6 @@ function unavailable(error: unknown): boolean {
 const REFUSED = 'the update information is invalid; nothing was downloaded'
 class WebsiteDisabled extends Error {}
 
-/** The public release only ships these named files; a proxy cannot choose another app or path. */
 function validate(info: UpdateInfo, platform: RuntimeOptions['platform']): void {
   if (
     !info ||
@@ -89,13 +86,13 @@ export interface UpdateFeedRoute {
   downloadUrl(version: string, file: string): string
 }
 
-/** Keeps other generic/private feeds and feedless test builds on their existing path. */
 export function publicUpdateFeed(options: {
   readonly feed: ReleaseFeed | null
   readonly version: string
+  readonly qa?: boolean
   readonly mayUseWebsite: () => boolean
 }): UpdateFeedRoute | null {
-  const { feed, version, mayUseWebsite } = options
+  const { feed, version, mayUseWebsite, qa = false } = options
   const github = { provider: 'github', owner: 'brocrew', repo: 'brocrew' } as const
   if (
     !(
@@ -109,6 +106,7 @@ export function publicUpdateFeed(options: {
     return null
   const websiteUrl = new URL(WEBSITE)
   websiteUrl.searchParams.set('v', version)
+  if (qa) websiteUrl.searchParams.set('qa', 'verification')
   const website = { provider: 'generic', url: websiteUrl.href } as const
   let selected: ReleaseFeed = github
 
@@ -131,9 +129,9 @@ export function publicUpdateFeed(options: {
     if (mayUseWebsite()) {
       url.search = ''
       url.searchParams.set('v', version)
+      if (qa) url.searchParams.set('qa', 'verification')
       return { ...result, path: url.pathname + url.search }
     }
-    // The switch can change after URLs were resolved, while a blockmap or download is waiting.
     const name = decodeURIComponent(url.pathname.slice('/update/'.length))
     const release =
       /^BroCrew-Setup-(.+)-x64\.exe(?:\.blockmap)?$/.exec(name)?.[1] ??
@@ -160,7 +158,6 @@ export function publicUpdateFeed(options: {
       super({ ...website, useMultipleRangeRequest: false }, updater, runtime)
       this.github = new GitHubProvider(github, updater, runtime)
       this.platform = runtime.platform
-      // This executor also sends full downloads and blockmaps after their URLs have been resolved.
       const createRequest = runtime.executor.createRequest.bind(runtime.executor)
       runtime.executor.createRequest = (request: MetadataRequest, callback) => {
         const observed = request[RESPONSE_STATUS]
@@ -196,8 +193,6 @@ export function publicUpdateFeed(options: {
         cancellation.cancel()
       }, 60_000)
       try {
-        // The updater copies these options on redirects. Keep status with this request only,
-        // before its JSON error-body parser can discard it, and strip the marker before native I/O.
         const request: MetadataRequest = this.createRequestOptions(url, headers)
         request[RESPONSE_STATUS] = observed
         return await this.executor.request(request, cancellation)
@@ -266,7 +261,10 @@ export function publicUpdateFeed(options: {
     downloadUrl(releaseVersion, file) {
       const source = mayUseWebsite() ? selected : github
       const url = new URL(downloadUrlOf(source, releaseVersion, file))
-      if (source.provider === 'generic') url.searchParams.set('v', version)
+      if (source.provider === 'generic') {
+        url.searchParams.set('v', version)
+        if (qa) url.searchParams.set('qa', 'verification')
+      }
       return url.href
     },
   }
