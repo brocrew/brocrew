@@ -85,7 +85,10 @@ export function createPrivatePluginPort(options: {
         cancellation.abort()
         if (!connected) void client?.close().catch(() => report('transport-close-failed'))
       }
-      const reportError = (error: unknown, phase: Parameters<PluginToolDiagnostic>[0]): BrokerCallCause => {
+      const reportError = (
+        error: unknown,
+        phase: Parameters<PluginToolDiagnostic>[0],
+      ): BrokerCallCause => {
         report(phase)
         // Transport exceptions may contain page data. Only these closed causes may be retained.
         try {
@@ -101,8 +104,7 @@ export function createPrivatePluginPort(options: {
           } else if (code === 'ECONNREFUSED') {
             report('transport-connection-refused')
             return 'connection-failed'
-          }
-          else if (
+          } else if (
             code === 'ETIMEDOUT' ||
             code === 'UND_ERR_CONNECT_TIMEOUT' ||
             code === -32001 ||
@@ -113,8 +115,7 @@ export function createPrivatePluginPort(options: {
           } else if (value?.name === 'AbortError') {
             report('transport-aborted')
             return 'cancelled'
-          }
-          else if (code === 401 || code === 403) report('transport-auth-refused')
+          } else if (code === 401 || code === 403) report('transport-auth-refused')
         } catch {
           /* Never inspect or stringify an arbitrary error further. */
         }
@@ -157,11 +158,15 @@ export function createPrivatePluginPort(options: {
           })
           await client.connect(transport)
           connected = true
-          const reply = await client.callTool({ name: request.name, arguments: request.input }, undefined, {
-            signal: cancellation.signal,
-            resetTimeoutOnProgress: true,
-            onprogress: (progress) => onprogress?.(progress),
-          })
+          const reply = await client.callTool(
+            { name: request.name, arguments: request.input },
+            undefined,
+            {
+              signal: cancellation.signal,
+              resetTimeoutOnProgress: true,
+              onprogress: (progress) => onprogress?.(progress),
+            },
+          )
           natural = true
           if (cancelled || signal.aborted) {
             report('cancelled')

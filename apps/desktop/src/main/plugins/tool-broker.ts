@@ -49,7 +49,13 @@ export class PluginBrokerError extends Error {
   readonly code: BrokerFailure
   constructor(code: BrokerFailure, tool?: string, cause?: BrokerCallCause) {
     code = failureCodes.has(code) ? code : 'invalid'
-    super(tool ? `Tool ${tool} failed: ${cause ?? code}.` : code === 'busy' ? 'Plugin busy. Try again.' : 'Plugin unavailable. Try again.')
+    super(
+      tool
+        ? `Tool ${tool} failed: ${cause ?? code}.`
+        : code === 'busy'
+          ? 'Plugin busy. Try again.'
+          : 'Plugin unavailable. Try again.',
+    )
     this.name = 'PluginBrokerError'
     this.code = code
     errorCodes.set(this, code)
@@ -277,8 +283,13 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
             : 'call-deadline'
           : undefined,
       )
-      job.reject(new PluginBrokerError(code, independent(job) ? job.name : undefined,
-        job.reply?.ok === false ? job.reply.cause : undefined))
+      job.reject(
+        new PluginBrokerError(
+          code,
+          independent(job) ? job.name : undefined,
+          job.reply?.ok === false ? job.reply.cause : undefined,
+        ),
+      )
     } else job.resolve(value ?? null)
   }
   function remove(job: Job): void {
@@ -332,7 +343,8 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
       if (!job.quiet) return
       if (clock.now() >= job.proofUntil) unavailable(job.operation, 'proof-timeout')
       finished(job)
-    } else if (!independent(job) && clock.now() >= job.startedAt + PLUGIN_BROKER_LIMITS.callMs) stop(job, 'deadline')
+    } else if (!independent(job) && clock.now() >= job.startedAt + PLUGIN_BROKER_LIMITS.callMs)
+      stop(job, 'deadline')
     else if (independent(job) && job.reply?.ok === false) stop(job, 'downstream')
     else if (job.quiet && job.reply) {
       if (!valid(job)) answer(job, undefined, 'unauthorized')

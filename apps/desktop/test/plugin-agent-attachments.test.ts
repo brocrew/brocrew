@@ -67,6 +67,42 @@ function failingProof() {
   return { proof, fail }
 }
 describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, inert server', () => {
+  it('keeps routes and the host after an independent tool fails without completion proof', async () => {
+    const recover = vi.fn(async () => {})
+    const f = await live({ recoverChromeHost: recover })
+    const original = await f.binding()
+    const result = deferred<never>(), quiet = deferred<void>()
+    let first = true
+    f.binding.mockResolvedValueOnce({
+      ...original,
+      server: Object.assign({}, original.server, {
+        independentToolCalls: true,
+        tool() {
+          if (!first) return original.server.tool()
+          first = false
+          f.call()
+          return { result: result.promise, quiescent: quiet.promise, cancel() {} }
+        },
+      }),
+    })
+    const owner = lease(), req = request(f.local.sink.workspaceId)
+    const [before] = await f.bridge.routes(owner, req)
+    const starts = f.starts()
+    const client = await connected(before!)
+    const pending = client.callTool({ name: 'echo', arguments: {} })
+    await vi.waitFor(() => expect(f.call).toHaveBeenCalledOnce())
+    quiet.reject(new Error('unknown remote completion'))
+    result.reject(new Error('stalled call'))
+    expect(await pending).toMatchObject({ isError: true })
+    expect(await client.callTool({ name: 'echo', arguments: {} })).toMatchObject({
+      content: [{ text: 'fictional fern' }],
+    })
+    const [after] = await f.bridge.routes(owner, req)
+    expect(after).toEqual(before)
+    expect(f.starts()).toBe(starts)
+    expect(recover).not.toHaveBeenCalled()
+    expect(f.diagnostic).not.toHaveBeenCalledWith('chrome', 'recovery-host-started')
+  })
   it.each(['idle', 'active'] as const)(
     'recovers after a positive unexpected exact-host exit with an %s broker',
     async (mode) => {

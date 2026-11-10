@@ -276,7 +276,7 @@ it('records a closed connect-failure reason without arguments, credentials or ra
       },
       new AbortController().signal,
     )
-    await expect(execution.result).resolves.toEqual({ ok: false })
+    await expect(execution.result).resolves.toEqual({ ok: false, cause: 'connection-failed' })
     await expect(execution.quiescent).rejects.toThrow()
     expect(reasons).toContain('transport-connect-failed')
     expect(reasons).toContain('transport-connection-reset')

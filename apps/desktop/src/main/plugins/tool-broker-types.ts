@@ -52,7 +52,8 @@ export interface BrokerRequest {
   readonly resources: readonly ResourceUse[]
 }
 export type BrokerReply =
-  { readonly ok: true; readonly value: BrokerValue } | { readonly ok: false; readonly cause?: BrokerCallCause }
+  | { readonly ok: true; readonly value: BrokerValue }
+  | { readonly ok: false; readonly cause?: BrokerCallCause }
 export type BrokerCallCause = 'stalled' | 'cancelled' | 'connection-failed' | 'downstream'
 export interface BrokerProgress {
   readonly progress: number
@@ -69,7 +70,11 @@ export interface PluginExecution {
 export interface BrokerServer {
   /** The transport owns idle timeouts; failed calls release dispatch without proving completion. */
   readonly independentToolCalls?: boolean
-  tool(request: BrokerRequest, signal: AbortSignal, onprogress?: (progress: BrokerProgress) => void): PluginExecution
+  tool(
+    request: BrokerRequest,
+    signal: AbortSignal,
+    onprogress?: (progress: BrokerProgress) => void,
+  ): PluginExecution
   admin(request: BrokerRequest, signal: AbortSignal): PluginExecution
 }
 export interface BrokerClock {
