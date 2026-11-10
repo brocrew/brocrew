@@ -85,8 +85,12 @@ describe('Team workspace fold and door', () => {
   it('keeps both arrow axes, wrap and focus on the selected team tab', async () => {
     const view = mount(TeamWorkspace, { agents, store })
     for (const [key, destination] of [
-      ['ArrowDown', 'forest'], ['ArrowUp', 'roster'], ['ArrowLeft', 'profile-graph'],
-      ['ArrowRight', 'roster'], ['End', 'profile-graph'], ['Home', 'roster'],
+      ['ArrowDown', 'forest'],
+      ['ArrowUp', 'roster'],
+      ['ArrowLeft', 'profile-graph'],
+      ['ArrowRight', 'roster'],
+      ['End', 'profile-graph'],
+      ['Home', 'roster'],
     ]) {
       const on = view.host.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')!
       const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
