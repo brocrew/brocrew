@@ -39,7 +39,6 @@ import type {
   Settings,
 } from '@anthropic-ai/claude-agent-sdk'
 import type { SessionStatus } from '@brobot2/shared'
-import { handOverApiKey } from './api-key-handover'
 import {
   type ClaudeChildWitness,
   spawnClaudeChild,
@@ -2557,8 +2556,6 @@ export class ClaudeRuntime implements AgentRuntime {
   private readonly spawnChild: SpawnChild
   private readonly apiKeyProvider: ClaudeApiKeyProviderAsync | undefined
 
-  private readonly launchKeys = new WeakMap<Options, string>()
-
   private readonly platform: NodeJS.Platform
 
   private readonly program: string | undefined
@@ -2609,8 +2606,8 @@ export class ClaudeRuntime implements AgentRuntime {
     }
   }
 
-  private spawnWitness(options: Options): ClaudeChildWitness {
-    return watchClaudeChild(this.spawnChild, this.launchKeys.get(options))
+  private spawnWitness(): ClaudeChildWitness {
+    return watchClaudeChild(this.spawnChild)
   }
 
   async start(opts: StartOptions): Promise<SessionHandle> {
@@ -2670,7 +2667,7 @@ export class ClaudeRuntime implements AgentRuntime {
       handle.askedForUltracode()
     }
 
-    const child = this.spawnWitness(options)
+    const child = this.spawnWitness()
     options.spawnClaudeCodeProcess = child.spawn
 
     const launchedAs = randomUUID()
@@ -2713,7 +2710,7 @@ export class ClaudeRuntime implements AgentRuntime {
     const kept = await keptRulesForALaunch(context.providerHome, null, context.signal)
     const options = this.listOptionsFor(context.providerHome, kept, auth)
 
-    options.spawnClaudeCodeProcess = this.spawnWitness(options).spawn
+    options.spawnClaudeCodeProcess = this.spawnWitness().spawn
     const probe = this.queryOrWhyNot({ prompt: neverSends(), options })
 
     let closing: Promise<void> | null = null
@@ -2770,7 +2767,7 @@ export class ClaudeRuntime implements AgentRuntime {
     kept: KeptRuleLists,
     auth?: { key: string | null; login?: string | null },
   ): Options {
-    const { additions, piped } = this.childEnvAdditions(providerHome, auth)
+    const { additions } = this.childEnvAdditions(providerHome, auth)
     const options: Options = {
       env: buildChildEnv(additions, process.env, this.platform),
       strictMcpConfig: true,
@@ -2782,7 +2779,6 @@ export class ClaudeRuntime implements AgentRuntime {
         ...managedTranscriptSettings(providerHome, this.managedProviderHomesRoot),
       },
     }
-    if (piped !== null) this.launchKeys.set(options, piped)
     return options
   }
 
@@ -2857,7 +2853,7 @@ export class ClaudeRuntime implements AgentRuntime {
       handle.noteBuiltInSkills(options.builtInSkills)
       handle.noteSharedSkills(options.sharedSkillsRoot)
 
-      child = this.spawnWitness(built)
+      child = this.spawnWitness()
       const resumeOptions: Options = {
         ...built,
         resume: ref.sessionId,
@@ -2918,7 +2914,7 @@ export class ClaudeRuntime implements AgentRuntime {
 
     const { cwd, providerHome } = confinement
 
-    const { additions, piped, onAKey } = this.childEnvAdditions(providerHome, auth)
+    const { additions, onAKey } = this.childEnvAdditions(providerHome, auth)
     const injected = additions.CLAUDE_CODE_OAUTH_TOKEN
     if (injected) handle.noteLaunchCredential(credentialFingerprint(injected))
     if (onAKey) handle.noteLaunchedOnAKey()
@@ -2990,7 +2986,6 @@ export class ClaudeRuntime implements AgentRuntime {
       ...(systemHint ? { append: systemHint } : {}),
       snapshot: false,
     }
-    if (piped !== null) this.launchKeys.set(options, piped)
     handle.launchSettings = claudeLaunchSettings(options, handle.approval.effective)
     return options
   }
@@ -3000,8 +2995,6 @@ export class ClaudeRuntime implements AgentRuntime {
     auth?: { key: string | null; login?: string | null },
   ): {
     additions: Record<string, string>
-    piped: string | null
-
     onAKey: boolean
   } {
     if (!providerHome) {
@@ -3018,9 +3011,8 @@ export class ClaudeRuntime implements AgentRuntime {
 
     const apiKey = auth?.key ?? null
     if (apiKey !== null && apiKey !== '') {
-      const handover = handOverApiKey(apiKey, this.platform)
-      Object.assign(additions, handover.env)
-      return { additions, piped: handover.descriptor, onAKey: true }
+      additions.ANTHROPIC_API_KEY = apiKey
+      return { additions, onAKey: true }
     }
 
     const token = auth?.login !== undefined ? auth.login : this.authTokenProvider?.()
@@ -3031,6 +3023,6 @@ export class ClaudeRuntime implements AgentRuntime {
 
       additions.CLAUDE_CODE_OAUTH_TOKEN = token
     }
-    return { additions, piped: null, onAKey: false }
+    return { additions, onAKey: false }
   }
 }

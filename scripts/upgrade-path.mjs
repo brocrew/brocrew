@@ -819,11 +819,7 @@ if (claudePort !== null) {
 }
 
 /**
- * On Windows, BroBot hands a saved key to Claude Code as the host that manages its provider, and
- * Claude Code then ignores the endpoint any settings file names, managed ones included
- * (`CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST`, Anthropic's environment-variable reference). It still
- * takes a proxy and an extra certificate authority from its environment, which BroBot passes on.
- * So the app is started there with a proxy of this run's own that opens a tunnel to
+ * On Windows the app is started with a proxy of this run's own that opens a tunnel to
  * `api.anthropic.com` only, ends it in a certificate signed by the run's own authority, made by
  * the workflow, and answers with the same scripted model. Every other host is refused, and each
  * tunnel asked for is kept as evidence.

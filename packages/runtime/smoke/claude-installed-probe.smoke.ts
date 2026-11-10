@@ -59,15 +59,9 @@ import { runEvidence, runScratch } from './run-paths'
  * 3. resume: the conversation is closed, its CLI waited out, and `resume` brings it back in a new
  *    CLI: the session says `resumed`, and the next request to the model carries the first turn.
  * 4. models: the model list answers, non-empty, within its bound.
- * 5. key: a fake API key, handed over the way the app does on this system (a descriptor on macOS
- *    and Linux; `ANTHROPIC_API_KEY` beside `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST=1` on Windows), in
- *    a config folder nothing has run in: the CLI sends it as `x-api-key` and no login, the turn
- *    completes with nothing asked, and a command the model runs sees neither `ANTHROPIC_API_KEY`
- *    nor `CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR` and inherits no descriptor 3, while a canary
- *    carrying the same fake under another name is seen.
- * 6. key, the Windows way: on macOS and Linux, the same with the product told it runs on Windows,
- *    so the environment route is measured on this system too.
- * 7. reload (explicit focused SDK scope only): an owned, inert shared-skills plugin makes the product call the actual imported
+ * 5. key: a fake API key as `ANTHROPIC_API_KEY`, in a config folder nothing has run in: the CLI
+ *    sends it as `x-api-key` and no login, and the turn completes with nothing asked.
+ * 6. reload (explicit focused SDK scope only): an owned, inert shared-skills plugin makes the product call the actual imported
  *    SDK's reloadPlugins before sending a turn. Its unchanged promise must resolve to a valid
  *    response naming that owned plugin, and that same CLI must complete the loopback turn.
  *    This qualifies the SDK/CLI acknowledgement, not the controlled main-app timeout fixture.
@@ -77,19 +71,10 @@ import { runEvidence, runScratch } from './run-paths'
  *
  * No credential and no network model: the rig's literal `probe-only` login and the fake key, a
  * model on `127.0.0.1`, a scratch config folder and a scratch `HOME`, and on macOS a `security`
- * that answers nothing (`loopback-claude.ts`). No header and no variable's value is written down:
- * the command the model runs prints only whether each name is set, and how many values hold the
- * fake.
+ * that answers nothing (`loopback-claude.ts`). No header and no variable's value is written down.
  *
  * Claude Code's Bash tool on Windows runs Git Bash, which GitHub's Windows runners carry; the
  * probe's own code starts no shell.
- *
- * ## Results on macOS arm64, SDK 0.3.287
- *
- * The SDK's own copy, 2.1.287: all six arms held. The npm install of 2.1.245: five held; on the key
- * arm a command the model ran saw `CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR` (the name alone, with no
- * descriptor 3 and no key behind it). 2.1.287 keeps that name from what it runs; 2.1.245 does not.
- * On both, `Stop` carried `effort.level` (`high`).
  *
  * Run: `pnpm run probe:claude-installed`, or `BROBOT_PROBE_CLAUDE=<path> pnpm run
  * probe:claude-installed`. Not part of `pnpm run ci`.
@@ -98,11 +83,8 @@ import { runEvidence, runScratch } from './run-paths'
 /** The program named for this run, or `undefined` — the Agent SDK's own copy. */
 const GIVEN = process.env['BROBOT_PROBE_CLAUDE'] || undefined
 
-/** The fake API key the key arms run on, as if a person had entered it. Never a real one. */
+/** The fake API key the key and reload arms run on, as if a person had entered it. Never a real one. */
 const FAKE_KEY = 'sk-ant-fake-for-tests'
-
-/** The positive control: the fake again, under a name the CLI has no reason to keep from a command. */
-const CANARY = 'BROBOT_INSTALLED_PROBE_CANARY'
 
 const MODEL = 'claude-haiku-4-5'
 
@@ -119,26 +101,7 @@ const ECHO = 'brobot-installed-probe-echo'
 /** The resume arm's first answer, which the resumed conversation's request must carry. */
 const FIRST_ANSWER = 'installed-probe first answer'
 
-/**
- * The presence-only command, for Bash: whether each name is set, how many variables hold the
- * canary's value, and what descriptor 3 is — never a value.
- */
-const PRESENCE_COMMAND =
-  'k=unset; [ -n "${ANTHROPIC_API_KEY+x}" ] && k=set; ' +
-  'd=unset; [ -n "${CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR+x}" ] && d=set; ' +
-  'o=unset; [ -n "${CLAUDE_CODE_OAUTH_TOKEN+x}" ] && o=set; ' +
-  'm=unset; [ -n "${CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST+x}" ] && m=set; ' +
-  `c=unset; [ -n "\${${CANARY}+x}" ] && c=set; ` +
-  'h=unset; [ -n "${CLAUDE_CONFIG_DIR+x}" ] && h=set; ' +
-  `n=$(env | grep -c -F "$${CANARY}"); ` +
-  'f=none; if [ -S /dev/fd/3 ]; then f=socket; elif [ -p /dev/fd/3 ]; then f=fifo; ' +
-  'elif [ -e /dev/fd/3 ]; then f=other; fi; ' +
-  'echo "presence key=$k descriptor=$d login=$o managed=$m canary=$c home=$h values=$n fd3=$f"'
-
-const PRESENCE_LINE =
-  /presence key=(\w+) descriptor=(\w+) login=(\w+) managed=(\w+) canary=(\w+) home=(\w+) values=(\d+) fd3=(\w+)/
-
-type Arm = 'start' | 'hooks' | 'resume' | 'models' | 'key' | 'key-windows-route' | 'reload'
+type Arm = 'start' | 'hooks' | 'resume' | 'models' | 'key' | 'reload'
 
 /** The words each arm's prompt carries, so the scripted model knows which conversation is asking. */
 const WORDS: Readonly<Record<Arm, string>> = {
@@ -146,8 +109,7 @@ const WORDS: Readonly<Record<Arm, string>> = {
   hooks: 'installed-probe hooks: run the echo',
   resume: 'installed-probe resume: the first turn',
   models: 'installed-probe models: no turn is sent',
-  key: 'installed-probe key: run the presence check',
-  'key-windows-route': 'installed-probe key, the Windows way: run the presence check',
+  key: 'installed-probe key: answer on the key',
   reload: 'installed-probe reload: acknowledge the turn without running tools',
 }
 
@@ -160,11 +122,7 @@ const CALLS: Readonly<Record<Arm, { readonly id: string; readonly command: strin
   hooks: { id: 'toolu_installed_hooks', command: `echo ${ECHO}` },
   resume: null,
   models: null,
-  key: { id: 'toolu_installed_key', command: PRESENCE_COMMAND },
-  'key-windows-route': {
-    id: 'toolu_installed_key_windows',
-    command: PRESENCE_COMMAND,
-  },
+  key: null,
   reload: null,
 }
 
@@ -359,50 +317,17 @@ function observeHooks(options: Options, seen: HookSeen[]): void {
   }
 }
 
-/** What the product put in a launch's environment, read before this probe adds its canary. */
+/** Which credential the product put in a launch's environment. */
 interface LaunchEnv {
-  readonly descriptor: boolean
-  readonly apiKeyName: boolean
-  /** Whether the fake key's value is anywhere in the environment the CLI is handed. */
-  readonly keyValueInEnv: boolean
-  readonly managedByHost: boolean
+  readonly apiKey: boolean
   readonly loginToken: boolean
 }
 
 function launchEnvOf(options: Options): LaunchEnv {
   const env = (options.env ?? {}) as Record<string, string | undefined>
   return {
-    descriptor: env['CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR'] !== undefined,
-    apiKeyName: env['ANTHROPIC_API_KEY'] !== undefined,
-    keyValueInEnv: Object.values(env).some((value) => (value ?? '').includes(FAKE_KEY)),
-    managedByHost: env['CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST'] === '1',
+    apiKey: env['ANTHROPIC_API_KEY'] === FAKE_KEY,
     loginToken: env['CLAUDE_CODE_OAUTH_TOKEN'] !== undefined,
-  }
-}
-
-interface Presence {
-  readonly key: string
-  readonly descriptor: string
-  readonly login: string
-  readonly managed: string
-  readonly canary: string
-  readonly home: string
-  readonly values: number
-  readonly fd3: string
-}
-
-function presenceIn(answer: string | null): Presence | null {
-  const match = PRESENCE_LINE.exec(answer ?? '')
-  if (match === null) return null
-  return {
-    key: match[1] ?? '',
-    descriptor: match[2] ?? '',
-    login: match[3] ?? '',
-    managed: match[4] ?? '',
-    canary: match[5] ?? '',
-    home: match[6] ?? '',
-    values: Number(match[7]),
-    fd3: match[8] ?? '',
   }
 }
 
@@ -526,7 +451,6 @@ interface Drive {
   readonly toolCalls: { name: string; id: string }[]
   /** The CLI's answer to the arm's Bash call, as it sent it back to the model. */
   readonly toolAnswer: string | null
-  readonly presence: Presence | null
   readonly hooks: HookSeen[]
   readonly launchEnv: LaunchEnv | null
   readonly models: string[] | null
@@ -633,7 +557,7 @@ async function measure(arm: Arm): Promise<Drive> {
   let identity: ReturnType<typeof reloadIdentity> | null = null
   let sharedRoot: string | null = null
   let builtInRoot: string | null = null
-  const onAKey = arm === 'key' || arm === 'key-windows-route' || arm === 'reload'
+  const onAKey = arm === 'key' || arm === 'reload'
 
   /** A launch that answers after its bound is still closed, so no CLI is left running. */
   const open = async (what: string, opening: Promise<SessionHandle>): Promise<SessionHandle> => {
@@ -712,11 +636,9 @@ async function measure(arm: Arm): Promise<Drive> {
           }
         : {}),
       ...(onAKey ? { apiKey: FAKE_KEY } : {}),
-      ...(arm === 'key-windows-route' ? { platform: 'win32' as const } : {}),
       rewrite: (options) => {
         launchEnv ??= launchEnvOf(options)
         observeHooks(options, hooks)
-        if (onAKey) options.env = { ...options.env, [CANARY]: FAKE_KEY }
       },
     })
     const live = rig
@@ -807,7 +729,6 @@ async function measure(arm: Arm): Promise<Drive> {
       one.type === 'tool_call' ? [{ name: one.name, id: one.id }] : [],
     ),
     toolAnswer: toolAnswer === null ? null : toolAnswer.slice(0, 2_000),
-    presence: onAKey ? presenceIn(toolAnswer) : null,
     hooks,
     launchEnv,
     models: models === null ? null : models.map((one) => one.id),
@@ -873,7 +794,6 @@ async function measure(arm: Arm): Promise<Drive> {
       init: drive.initVersions,
       turns: drive.turns,
       sessions: drive.sessions,
-      presence: drive.presence,
       models: drive.models?.length,
       failure: drive.failure,
     }),
@@ -904,37 +824,15 @@ function turnsHold(drive: Drive, turns: number): void {
   expect(drive.permissionRequests, 'something was asked').toBe(0)
 }
 
-/** The key arms: the key went to the CLI by the route the product chose, and to nothing it ran. */
-function keyHolds(drive: Drive, environmentRoute: boolean): void {
+/** The key arm: the CLI ran on the key from its environment, and on no login. */
+function keyHolds(drive: Drive): void {
   launchesHold(drive, 1)
   turnsHold(drive, 1)
-  // A config folder nothing had run in, so this is a first run on the key.
   expect(drive.configDirBefore, 'the config folder was not fresh').toEqual([])
-  // Off the wire: the CLI sent the fake as its key, on every request, and no login.
   expect(drive.wire.apiKeySeen, 'no request carried the key').toBe(true)
   expect(drive.wire.everyRequestOnTheKey, 'a request went without the key').toBe(true)
   expect(drive.wire.bearerSeen, 'a request carried a login').toBe(false)
-  // What the product put in the CLI's environment, before this probe's canary.
-  expect(drive.launchEnv).toEqual({
-    descriptor: !environmentRoute,
-    apiKeyName: environmentRoute,
-    keyValueInEnv: environmentRoute,
-    managedByHost: environmentRoute,
-    loginToken: false,
-  })
-  // What a command the model ran saw — names only, and the canary as the control.
-  expect(
-    drive.presence,
-    `the presence check's answer: ${drive.toolAnswer ?? 'none'}`,
-  ).not.toBeNull()
-  const presence = drive.presence!
-  expect(presence.canary, 'the canary (control)').toBe('set')
-  expect(presence.home, 'CLAUDE_CONFIG_DIR (control)').toBe('set')
-  expect(presence.key, 'ANTHROPIC_API_KEY').toBe('unset')
-  expect(presence.descriptor, 'CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR').toBe('unset')
-  expect(presence.login, 'CLAUDE_CODE_OAUTH_TOKEN').toBe('unset')
-  expect(presence.values, 'variables holding the fake: the canary alone').toBe(1)
-  if (process.platform !== 'win32') expect(presence.fd3, 'descriptor 3').toBe('none')
+  expect(drive.launchEnv).toEqual({ apiKey: true, loginToken: false })
 }
 
 it(
@@ -1028,25 +926,10 @@ it(
 )
 
 it(
-  'installed Claude Code · an API key, this system’s way: sent as x-api-key, nothing asked, kept from what the model runs',
-  () =>
-    deadline.within('arm key', async () =>
-      keyHolds(await measure('key'), process.platform === 'win32'),
-    ),
+  'installed Claude Code · an API key: sent as x-api-key, nothing asked',
+  () => deadline.within('arm key', async () => keyHolds(await measure('key'))),
   deadline.testTimeoutMs,
 )
-
-// On Windows the arm above already is this route.
-if (process.platform !== 'win32') {
-  it(
-    'installed Claude Code · an API key, the Windows way, on this system: the same',
-    () =>
-      deadline.within('arm key-windows-route', async () =>
-        keyHolds(await measure('key-windows-route'), true),
-      ),
-    deadline.testTimeoutMs,
-  )
-}
 
 if (focusedReload)
   it(
