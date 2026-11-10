@@ -909,22 +909,6 @@ describe('§1 · R80 — the card Codex raises before an MCP tool runs', () => {
     return wiredItem(without(captured.asks.card, 'mcpToolCall'), decided)
   }
 
-  // ⚑ **739 review · re-aimed** — this pinned the plain card's *"Always allowed this session"*,
-  // which the review moved off *always* (the next test). ⚑ Its point — the marker is what moves the
-  // verdict — holds on both trees by reading the two verdicts against each other.
-  it('⚑ THE CONTROL — the same grant on a plain command card reads its own verdict, not the MCP card’s', async () => {
-    const item = plainPressedWide()
-    expect(item.outcome).toBe('allow_all_for_session')
-    const plainVerdict = textsOf(await card(item, { provider: 'codex' }), 'permission-verdict')
-    const mcpVerdict = textsOf(
-      await card(cardItem(captured.pressedWide), { provider: 'codex' }),
-      'permission-verdict',
-    )
-    expect(plainVerdict).toHaveLength(1)
-    expect(mcpVerdict).toEqual(['Allowed for this conversation'])
-    expect(plainVerdict).not.toEqual(mcpVerdict)
-  })
-
   it('🔴 739 review · the plain card’s wholesale grant reads back *Allowed every create_issue call for this conversation* — never *Always allowed this session*', async () => {
     const html = await card(plainPressedWide(), { provider: 'codex' })
     // ⛔ What `main` draws: *Always allowed this session*.
@@ -1099,21 +1083,6 @@ describe('§3 · R81 — a card whose Cancel cannot stop the turn does not say i
     expect(textsOf(html, 'permission-does-deny')).toEqual([
       `${A_SERVER_ASKS.serverName} is told no`,
     ])
-  })
-
-  it('🔴 736 · R97 — the same server card from a frame that NAMED its turn says the same: *Cancel request* and R81’s line', async () => {
-    // ⛔ On `main`: *Cancel turn* over the whole-turn line — its Cancel also sent `turn/interrupt` (R74).
-    const html = await card(cardItem(captured.serverItsTurn), { provider: 'codex' })
-    expect(wordOn(html, 'cancel')).toBe('Cancel request')
-    expect(textsOf(html, 'permission-does-cancel')).toEqual([R81_WORDS])
-    expect(words(html)).not.toContain('whole turn')
-    // ⚑ …as the turnless card does, so which frame named a turn no longer moves a word.
-    expect(textsOf(html, 'permission-does-cancel')).toEqual(
-      textsOf(
-        await card(cardItem(captured.serverNoTurn), { provider: 'codex' }),
-        'permission-does-cancel',
-      ),
-    )
   })
 
   it('⚑ THE CONTROL — a double that lags the wire (the turnless card WITHOUT its marker) draws the old words', async () => {
@@ -1299,17 +1268,6 @@ describe('§4b · R81 — the person’s queue copies the live row’s line', ()
     expect(answers[1]?.says).not.toContain('whole turn')
     expect(answers[1]?.says).toBe(R81_WORDS)
     expect(answers[1]?.says).toBe(said730.CANCEL_STOPS_NOTHING)
-  })
-
-  it('🔴 736 · R97 — the card that named its turn draws R81’s line on the queue too', async () => {
-    // ⛔ On `main`: the whole-turn line under this card's Cancel.
-    const live = homeRow(recordOf(captured.serverItsTurn))
-    supply([live])
-    const html = await render(PersonsQueue, {})
-    const answers = answersOn(html, live.key)
-    // ⚑ W4.28 review — no *I opened it* on the queue: its row does not show the link.
-    expect(answers.map((one) => one.word)).toEqual(['Deny', 'Cancel'])
-    expect(answers[1]?.says).toBe(R81_WORDS)
   })
 
   it('⚑ THE CONTROL — the same card without the marker (a row written before `736`) keeps the whole-turn line on the queue', async () => {

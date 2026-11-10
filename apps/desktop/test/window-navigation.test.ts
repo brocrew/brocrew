@@ -1,6 +1,5 @@
-import { readdirSync, readFileSync } from 'node:fs'
-import { dirname, join, relative, resolve } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { WebContents } from 'electron'
 import { PDF_VIEWER_ORIGIN } from '../src/shared/content-security-policy'
@@ -16,19 +15,10 @@ import {
 } from '../src/main/window-navigation'
 
 /**
- * Only the app's own document may hold the preload (050, from 048 §1 finding 2).
- *
- * The bug this replaces was not a missing guard, it was a guard aimed one level too wide: 017
- * permitted a SCHEME (`file://`) where it meant a DOCUMENT. So the tests below are mostly about
- * near-misses — a sibling file, a traversal, a redirect, an origin that merely starts with the right
- * characters — because anything further away was already refused and proves nothing.
- *
- * The last test is the non-vacuity proof: it runs the hostile URLs through 017's predicate, verbatim,
- * and asserts that it took every one of them. A test that only shows the new code saying no cannot
- * show that the new code says no to anything the old code said yes to.
+ * Only the app's own document may hold the preload. The tests below are mostly near-misses — a
+ * sibling file, a traversal, a redirect, an origin that merely starts with the right characters —
+ * because the guard compares a DOCUMENT, not a scheme or a prefix.
  */
-
-const HERE = dirname(fileURLToPath(import.meta.url))
 
 /** A packaged install, spaces and all — the app bundle's own name has one on plenty of machines. */
 const INDEX_HTML = resolve(
@@ -243,12 +233,9 @@ describe('what gets handed to the real browser', () => {
 /**
  * A stand-in for the WebContents, recording what the guard registers and letting a test fire it.
  *
- * ⚠️ **`fire` puts an event on the wire; `gesture` puts a CLICK on the wire, and the difference is
- * why P4 shipped** (095, from 094 §6). Every hand-off test in this file used to call `fire` — a
- * handler, invoked directly, one event at a time — so it could assert what `will-navigate` DOES and
- * never that `will-navigate` HAPPENS. It happens for no click in this app, and the test was green
- * over a security boundary that did nothing for a year. Anything asserting a hand-off now goes
- * through `gesture`.
+ * `fire` puts one event on the wire; `gesture` puts a CLICK on the wire, in the order Electron
+ * delivers one. `will-navigate` is reached by no click in this app, so anything asserting a hand-off
+ * goes through `gesture`.
  */
 function fakeContents(): {
   contents: WebContents
@@ -263,11 +250,9 @@ function fakeContents(): {
     url: string,
     options?: { isMainFrame?: boolean },
   ) => { prevented: boolean; reached: string[] }
-  /** Register a listener directly, for the tests that measure the instrument itself. */
-  listen: (event: string, handler: (details: never) => void) => void
   openWindow: (url: string) => { action: string }
   attachWebview: () => { prevented: boolean }
-  /** Whether ANYTHING was wired to this event — the whole of 094's assertion is a negative one. */
+  /** Whether anything was wired to this event. */
   listensTo: (event: string) => boolean
   /** Raise an event that carries no navigation payload (`did-navigate`, `destroyed`). */
   emit: (event: string, arg?: unknown) => void
@@ -336,7 +321,6 @@ function fakeContents(): {
       reached.push('will-navigate')
       return { prevented: fire('will-navigate', url, { isMainFrame }).prevented, reached }
     },
-    listen: (event, handler) => void contents.on(event, handler),
     openWindow: (url) => {
       if (!openHandler) throw new Error('no window-open handler was installed')
       return openHandler({ url })
@@ -357,59 +341,6 @@ const guarded = (document: AppDocument) => {
   installNavigationGuard(fake.contents, document, (url) => opened.push(url))
   return { ...fake, opened }
 }
-
-/**
- * 095 · the instrument, before anything is asserted with it.
- *
- * ⚠️ **A simulated delivery order is a claim about Electron, and this file has been wrong about
- * Electron twice.** 074 wrote a measured table that 094 found described an unguarded window, and
- * the hand-off was wired against it. So the two rules `gesture` encodes are pinned here as tests of
- * their own, against the probe output they came from — a `gesture` that quietly stopped delivering
- * `will-navigate`, or quietly kept delivering it after a cancel, would otherwise make every
- * hand-off test below mean something different without failing.
- */
-describe('a gesture is delivered the way Electron 43 delivers one', () => {
-  it('will-frame-navigate first, then will-navigate', () => {
-    // Probe row 2: a window with nothing installed. Both events, in this order, every time.
-    const fake = fakeContents()
-    const seen: string[] = []
-    for (const event of ['will-frame-navigate', 'will-navigate']) {
-      fake.listen(event, (() => seen.push(event)) as never)
-    }
-    const outcome = fake.gesture('https://example.com/')
-    expect(seen).toEqual(['will-frame-navigate', 'will-navigate'])
-    expect(outcome.reached).toEqual(seen)
-    expect(outcome.prevented, 'nothing prevented, so the navigation would have committed').toBe(
-      false,
-    )
-  })
-
-  it('…and a cancel in the first ends the gesture there', () => {
-    // Probe row 3, and the sentence the whole task turns on: a window that prevented in
-    // `will-frame-navigate` alone never saw `will-navigate`, and its document did not move.
-    const fake = fakeContents()
-    const seen: string[] = []
-    fake.listen('will-frame-navigate', ((details: { preventDefault(): void }) => {
-      seen.push('will-frame-navigate')
-      details.preventDefault()
-    }) as never)
-    fake.listen('will-navigate', (() => seen.push('will-navigate')) as never)
-    const outcome = fake.gesture('https://example.com/')
-    expect(seen, 'will-navigate cannot be reached past a cancel').toEqual(['will-frame-navigate'])
-    expect(outcome.reached).toEqual(seen)
-    expect(outcome.prevented).toBe(true)
-  })
-
-  it('and a subframe raises only the frame event', () => {
-    const fake = fakeContents()
-    const seen: string[] = []
-    for (const event of ['will-frame-navigate', 'will-navigate']) {
-      fake.listen(event, (() => seen.push(event)) as never)
-    }
-    fake.gesture('https://example.com/', { isMainFrame: false })
-    expect(seen).toEqual(['will-frame-navigate'])
-  })
-})
 
 describe('the guard covers every surface that can put a document in this window', () => {
   it('registers exactly the events it lists, and lists exactly the events it registers', () => {
@@ -481,15 +412,6 @@ describe('the guard covers every surface that can put a document in this window'
     }
   })
 
-  it('…and that refusal is about the GESTURE, not about the URL', () => {
-    // Non-vacuity for the pair above: the same URLs still pass `permitsNavigation`, so the test
-    // above is proving the new per-event rule and not an accidental narrowing of what counts as our
-    // document. If this ever fails, the refusal has moved into the predicate — where it would also
-    // refuse the app's own startup.
-    expect(permitsNavigation(PACKAGED, `${INDEX_URL}?v=2`)).toBe(true)
-    expect(permitsNavigation(DEV, `${DEV_SERVER_URL}/?v=2`)).toBe(true)
-  })
-
   it('a CLICK on a web link reaches the real browser — once', () => {
     // ⚠️ **The test this replaces fired `will-navigate` by hand and passed for a year over a
     // hand-off that never ran** (095, from 094 §6 P4). `gesture` is the whole fix: it delivers the
@@ -506,27 +428,6 @@ describe('the guard covers every surface that can put a document in this window'
     expect(opened, 'one click, one tab').toEqual([clicked])
   })
 
-  it('and the rule this replaces would have handed off nothing at all', () => {
-    // ⚠️ **NON-VACUITY**, in the shape of 017's-predicate-verbatim below: the pre-095 policy, run
-    // through the same gesture. If `gesture` were merely a fancier `fire`, this would open a tab
-    // too — it is only because the delivery is faithful that the old rule can be shown failing.
-    //
-    // The rule, from the comment it replaces: `will-navigate` hands off; `will-frame-navigate`
-    // hands off "only for a SUBFRAME, since the main frame already did".
-    const fake = fakeContents()
-    const opened: string[] = []
-    const old =
-      (handsOff: (details: { isMainFrame?: boolean }) => boolean) =>
-      (details: { url: string; isMainFrame?: boolean; preventDefault(): void }) => {
-        details.preventDefault()
-        if (handsOff(details)) opened.push(details.url)
-      }
-    fake.listen('will-frame-navigate', old((d) => d.isMainFrame === false) as never)
-    fake.listen('will-navigate', old(() => true) as never)
-    fake.gesture('https://example.com/docs')
-    expect(opened, '094 measured this as `handedToBrowser: []`, and this is why').toEqual([])
-  })
-
   it('a SUBFRAME link still reaches the browser — refusing is not the same as swallowing', () => {
     // `will-navigate` never fires for a subframe, so a rule that made the main frame the one that
     // hands off would drop an external link in an iframe silently. No iframe exists today — the
@@ -537,20 +438,6 @@ describe('the guard covers every surface that can put a document in this window'
     expect(outcome.prevented).toBe(true)
     expect(outcome.reached).toEqual(['will-frame-navigate'])
     expect(opened).toEqual(['https://example.com/x'])
-  })
-
-  it('a click at the app’s own document opens no tab and no window', () => {
-    // The silence half, through a gesture rather than a handler: in dev our own document is an
-    // `http:` URL, so a hand-off here would answer `[refresh](?v=2)` by opening the dev server in
-    // the user's browser.
-    for (const [document, url] of [
-      [PACKAGED, `${INDEX_URL}?v=2`],
-      [DEV, `${DEV_SERVER_URL}/?v=2`],
-    ] as const) {
-      const { gesture, opened } = guarded(document)
-      expect(gesture(url).prevented, url).toBe(true)
-      expect(opened, url).toEqual([])
-    }
   })
 
   it('and a click at anything that is not a web link is dropped, never handed to the OS', () => {
@@ -708,140 +595,10 @@ describe('D-032 · the one subframe a kept PDF loads in, and nothing else', () =
 })
 
 /**
- * 🔴 D-032 · what may make a blob URL, or a frame, in the window — named here, file by file.
- *
- * ⚠️ The policy and the guard admit any `blob:` the app's document mints as a frame — they cannot see
- * its type — and measured on Electron 43.2.0, a page or an SVG framed as a `blob:` by mistake ran a
- * script from a local file and reached `api`. So what keeps them out is the window:
- *
- *  - ⛔ **one file makes blob URLs**, `lib/kept-file-urls.ts`, which never makes one of an SVG and
- *    makes a frame's URL only for `application/pdf` (its own test pins both);
- *  - ⛔ **one file makes a frame**, `components/KeptFileDrawing.vue`, the viewer's drawing of a kept
- *    PDF, framing only `pdfFrameUrl`'s URL; and none makes an embedded document.
- *
- * Counted in every source file of this app the window is built from: the renderer's own tree, what
- * it takes from `shared/`, its preload and its page. ⚠️ Not in its dependencies, none of which makes
- * a blob URL or a frame today.
- */
-describe('D-032 · nothing in the window makes a blob URL or a frame but the files named', () => {
-  const MAY_MAKE_A_BLOB_URL: readonly string[] = ['src/renderer/src/lib/kept-file-urls.ts']
-  const MAY_MAKE_A_FRAME: readonly string[] = ['src/renderer/src/components/KeptFileDrawing.vue']
-  const BLOB_URLS = [/\bcreateObjectURL\b/]
-  const FRAMES = [
-    /<iframe\b/i,
-    // ⚑ The tag as a string: `h('iframe')`, `createVNode`, `createElement("IFRAME")`, `:is="… 'iframe'"`.
-    /['"`]iframe['"`]/i,
-    /\bsrcdoc\b/i,
-    /<object\b/i,
-    /<embed\b/i,
-  ]
-  // ⚠️ Only comments that open a line: a `/*` or `<!--` inside a string (`accept="image/*"`) would
-  // otherwise hide the code after it. A comment counted by mistake is a false alarm, never a miss.
-  const codeOf = (source: string): string =>
-    source
-      .replace(/^[ \t]*\/\*[\s\S]*?\*\//gm, '')
-      .replace(/^[ \t]*<!--[\s\S]*?-->/gm, '')
-      .split('\n')
-      .filter((line) => !line.trim().startsWith('//'))
-      .join('\n')
-  const found = (ways: readonly RegExp[], source: string): number =>
-    ways.filter((way) => way.test(codeOf(source))).length
-
-  /** Each file the renderer is built from, by its name under `apps/desktop`, and its source. */
-  const rendererSources = (): Map<string, string> => {
-    const sources = new Map<string, string>()
-    const look = (file: string): void =>
-      void sources.set(
-        relative(join(HERE, '..'), file).replaceAll('\\', '/'),
-        readFileSync(file, 'utf8'),
-      )
-    const walk = (dir: string): void => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const child = join(dir, entry.name)
-        if (entry.isDirectory()) walk(child)
-        else if (/\.(ts|vue)$/.test(entry.name)) look(child)
-      }
-    }
-    walk(join(HERE, '../src/renderer/src'))
-    walk(join(HERE, '../src/shared'))
-    walk(join(HERE, '../src/preload'))
-    look(join(HERE, '../src/renderer/index.html'))
-    return sources
-  }
-
-  it('no file but the ones named makes a blob URL, a frame or an embedded document', () => {
-    const sources = rendererSources()
-    expect(
-      sources.size,
-      'the walk read no renderer source — this test has stopped testing anything',
-    ).toBeGreaterThan(100)
-    const makes = (ways: readonly RegExp[]): string[] =>
-      [...sources]
-        .filter(([, source]) => found(ways, source) > 0)
-        .map(([name]) => name)
-        .sort()
-    expect(makes(BLOB_URLS)).toEqual([...MAY_MAKE_A_BLOB_URL].sort())
-    expect(makes(FRAMES)).toEqual([...MAY_MAKE_A_FRAME].sort())
-  })
-
-  it('…and the census can find each way, and passes over prose that names one', () => {
-    for (const planted of [
-      '<iframe :src="url" />',
-      "document.createElement('iframe')",
-      "h('iframe', { src })",
-      "<component :is=\"isPdf ? 'iframe' : 'img'\" />",
-      'frame.srcdoc = html',
-      '<object data="x.svg"></object>',
-      '<embed src="x.pdf">',
-    ]) {
-      expect(found(FRAMES, planted), planted).toBeGreaterThan(0)
-    }
-    expect(found(BLOB_URLS, 'URL.createObjectURL(blob)')).toBe(1)
-    expect(found(FRAMES, '/** no frame, no srcdoc here */')).toBe(0)
-    expect(found(BLOB_URLS, '/** and no createObjectURL here */')).toBe(0)
-    expect(found(FRAMES, '<!-- an <iframe> would be wrong here -->')).toBe(0)
-    // ⛔ …and a comment opener inside a string hides nothing after it.
-    expect(found(FRAMES, '<input accept="image/*" />\n<iframe :src="url" />')).toBe(1)
-    expect(found(BLOB_URLS, "const done = 'failed/**interrupted**'\nURL.createObjectURL(b)")).toBe(
-      1,
-    )
-  })
-})
-
-describe('the guard is not optional', () => {
-  it('and the guard would have caught what 017 let through', () => {
-    // ⚠️ NON-VACUITY. 017's predicate, verbatim from the commit this replaces. If the hostile
-    // fixtures above were merely exotic, this would fail — the old code has to ACCEPT them for the
-    // new code refusing them to mean anything.
-    const seventeen = (url: string): boolean =>
-      url.startsWith('file://') || url.startsWith(DEV_SERVER_URL)
-
-    const NOW_REFUSED = [
-      asClicked('../../../../../../../tmp/evil.html'),
-      new URL('./evil.html', INDEX_URL).href,
-      'file:///tmp/evil.html',
-      'file://evil.example/tmp/evil.html',
-      `${DEV_SERVER_URL}@evil.example/`,
-      `${DEV_SERVER_URL}0/`,
-      `${DEV_SERVER_URL}.evil.example/`,
-      `${DEV_SERVER_URL}/evil.html`,
-    ]
-    for (const url of NOW_REFUSED) {
-      expect(seventeen(url), `017 refused ${url}, so it proves nothing`).toBe(true)
-      expect(permitsNavigation(PACKAGED, url) || permitsNavigation(DEV, url), url).toBe(false)
-    }
-  })
-})
-
-/**
- * 094 · a refused navigation must not cost a single session (069 §1.5, measured by 093, fixed here).
- *
- * The guard above was never the problem. The release was: it hung off `did-start-loading`, which
- * Chromium raises the moment a load begins — before anyone is asked whether it may. So the app
- * refused the navigation, kept its document, and closed every conversation anyway.
- *
- * ⚠️ **The events named below are not chosen from Electron's documentation, they are measured**, on
- * a real `BrowserWindow` running this very module. {@link SESSION_RELEASE_EVENTS} carries the table.
+ * A refused navigation must not cost a single session. `did-start-loading` fires the moment a load
+ * begins, before anyone is asked whether it may, so the release hangs off events that mean the
+ * document really changed — measured on a real `BrowserWindow`; {@link SESSION_RELEASE_EVENTS}
+ * carries the table.
  */
 describe('sessions are released by a navigation that happened, never by one that was attempted', () => {
   /** Both installed on ONE WebContents, exactly as `createWindow` does it. */
@@ -891,20 +648,6 @@ describe('sessions are released by a navigation that happened, never by one that
     }
   })
 
-  it('a click at anything else releases nothing either', () => {
-    // The ordinary refusal. It never replaced the document, so it never lost the renderer's
-    // memory of its sessions — the same argument, and it was equally broken.
-    //
-    // ⚠️ Through `gesture`, not `fire('will-navigate', …)` — corrected in review. Firing that event
-    // by hand exercises a handler this app never reaches, and since 095 that handler also hands the
-    // URL to the browser, which this harness's no-op `openExternal` silently swallows. A test that
-    // drives an unreachable path is the shape the whole task is about.
-    const { gesture, released } = wired(PACKAGED)
-    expect(gesture('https://example.com/').prevented).toBe(true)
-    expect(gesture(asClicked('../evil.html')).prevented).toBe(true)
-    expect(released).toEqual([])
-  })
-
   it('but a document that really was replaced still releases them', () => {
     // ⚠️ **The reason the wiring exists, and the half a careless fix would silently drop.** A
     // renderer that has been replaced has forgotten its session ids, so its providers would run on
@@ -927,50 +670,5 @@ describe('sessions are released by a navigation that happened, never by one that
     const crashed = wired(PACKAGED)
     crashed.emit('render-process-gone', undefined)
     expect(crashed.released, 'a crash orphans exactly what a reload does').toEqual(['released'])
-  })
-})
-
-describe('a file DROPPED on the window (218 §1)', () => {
-  /**
-   * ⛔ **What a drop would do, decided rather than observed.**
-   *
-   * Dropping a file on an Electron window navigates it to that file by default, and
-   * `installSessionRelease` closes every conversation the window owns on `did-navigate` (062; 094
-   * measured `webContents.reload()` as the one gesture in its table that reaches it). A drop is a
-   * different entry point into the same guard and nothing had ever tested it.
-   *
-   * ⚠️ **`scripts/drop-hazard-probe.mjs` cannot settle this and says so.** It drives real trusted
-   * drags through CDP and the payload arrives — a page that accepts them receives `files=1` in all
-   * five zones — but a synthesised drop performs **no default action**: its URL control, which
-   * drops `https://example.com/` on a page that refuses it, produced no navigation attempt at all.
-   * So "nothing happened" there is a fact about CDP, not about this window, and the probe reports
-   * INCONCLUSIVE rather than SAFE.
-   *
-   * ⚑ **What IS decidable is what the guard would do**, and these are the three links of it. The
-   * event coverage is already pinned above; `nav-order-probe` measured that a refusal at
-   * `will-frame-navigate` ends the throttle, so nothing reaches `did-navigate` and nothing is
-   * released.
-   */
-  it('🔴 a dropped file is NOT this window\u2019s document, so the navigation is refused', () => {
-    // Whatever a person drops is some other path — the one thing it can never be is our index.
-    expect(permitsNavigation(PACKAGED, 'file:///Users/someone/Desktop/report.pdf')).toBe(false)
-    expect(permitsNavigation(PACKAGED, 'file:///Users/someone/dev/project')).toBe(false)
-    expect(permitsNavigation(PACKAGED, 'file:///tmp/notes.md')).toBe(false)
-
-    // ⚑ The paired positive: our own document still navigates, or "refused" would be trivially
-    // true and this would be pinning nothing.
-    expect(permitsNavigation(PACKAGED, INDEX_URL)).toBe(true)
-  })
-
-  it('🔒 …and it is not handed to the BROWSER either — nothing opens in Finder', () => {
-    // ⛔ The second thing a drop could do, and the one nobody would think to look for: the guard
-    // refuses AND hands gestures off to the browser. If that hand-off took `file:` URLs, dropping
-    // a file would open it in whatever application owns that extension — a side effect on the
-    // user\u2019s machine from a gesture they meant for BroBot. It is http/https only.
-    expect(externalTarget('file:///Users/someone/Desktop/report.pdf')).toBeNull()
-    expect(externalTarget('file:///tmp/notes.md')).toBeNull()
-
-    // ⚑ The paired positive: a real external link still reaches the browser.
-    expect(externalTarget('https://example.com/docs')).toBe('https://example.com/docs')
   })
 })

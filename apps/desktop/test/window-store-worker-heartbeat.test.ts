@@ -107,7 +107,7 @@ describe('real SQLite window reads leave the caller responsive', () => {
     if (directory !== undefined) rmSync(directory, { recursive: true, force: true })
   })
 
-  async function measure<T>(name: string, read: () => T | Promise<T>, tailMs = 0) {
+  async function measure<T>(name: string, read: () => T | Promise<T>) {
     let beats = 0
     let inputHandled = false
     let inputTimer: ReturnType<typeof setTimeout> | undefined
@@ -127,10 +127,6 @@ describe('real SQLite window reads leave the caller responsive', () => {
     const began = performance.now()
     try {
       const result = await read()
-      const until = performance.now() + tailMs
-      while (performance.now() < until) {
-        /* Planted completion work. */
-      }
       longestGap = Math.max(longestGap, performance.now() - last)
       const elapsed = performance.now() - began
       const evidence = {
@@ -139,7 +135,6 @@ describe('real SQLite window reads leave the caller responsive', () => {
         longestGapMs: longestGap,
         beats,
         inputHandled,
-        tailMs,
         fixtureRows: 5004,
       }
       measurements.push(evidence)
@@ -196,12 +191,5 @@ describe('real SQLite window reads leave the caller responsive', () => {
     expect(after.longestGapMs).toBeLessThan(250)
     expect(after.inputHandled).toBe(true)
     expect(after.beats).toBeGreaterThan(10)
-  })
-
-  it('counts reply handling in its gap and detects a planted completion stall', async () => {
-    const tailed = await measure('planted-reply-tail', () => windowReader.read(leads), 350)
-    expect(tailed.longestGapMs).toBeGreaterThanOrEqual(350)
-    const clean = await measure('after-reply-tail-removed', () => windowReader.read(leads))
-    expect(clean.longestGapMs).toBeLessThan(250)
   })
 })

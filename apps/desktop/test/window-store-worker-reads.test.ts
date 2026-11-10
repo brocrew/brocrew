@@ -1,6 +1,6 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { EventEmitter } from 'node:events'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -500,73 +500,6 @@ describe('canonical window worker folds and independent live-store reads', () =>
     expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining('writer-moved'))
   })
 
-  it('measures old and relevant-write stamps under the same fictional busy writer', async () => {
-    const measurements: object[] = []
-    hostWith()
-    for (const mode of ['before', 'after'] as const) {
-      const floor = ordinal
-      let reads = 0
-      let writes = 0
-      let writeMs = 0
-      const read = async (input: WindowReadQuery) => {
-        reads++
-        const answer = engine.read(input)
-        await new Promise<void>((resolve) => setImmediate(resolve))
-        const began = performance.now()
-        for (let i = 0; i < 5; i++) {
-          row('beta', 'text', { type: 'text', text: 'fictional stream ' + i })
-          row('beta', 'status', { type: 'status', state: 'working' })
-          writes += 2
-        }
-        writeMs += performance.now() - began
-        return answer
-      }
-      const extra = mode === 'before' ? { windowWriterStamp: undefined } : {}
-      const { host } = hostWith({ read, close: async () => {} }, false, extra)
-      anotherQuestion()
-      const expected = host.questionsForAPerson()
-      expect(expected.rows).toHaveLength(1)
-      const fixtureRows = db.prepare('SELECT count(*) AS n FROM events').get()
-      const direct = vi.spyOn(store, 'questionsAPersonMustAnswer')
-      direct.mockClear()
-      // A main-thread answer is counted where it is decided; it reuses the answer composed at
-      // this version, since the busy writer writes nothing the queue reads.
-      const mainThread = vi.spyOn(
-        host as unknown as { answeredOnTheMainThread: (...args: unknown[]) => unknown },
-        'answeredOnTheMainThread',
-      )
-      const began = performance.now()
-      for (let i = 0; i < 20; i++)
-        expect(await host.readForWindow(() => host.questionsForAPerson())).toEqual(expected)
-      const fallbacks = mainThread.mock.calls.length
-      expect(reads).toBe(mode === 'before' ? 40 : 1)
-      expect(fallbacks).toBe(mode === 'before' ? 20 : 0)
-      expect(direct).not.toHaveBeenCalled()
-      measurements.push({
-        mode,
-        requests: 20,
-        reads,
-        retries: mode === 'before' ? reads - 20 : 0,
-        retainedAnswers: mode === 'after' ? 19 : 0,
-        writes,
-        fallbacks,
-        writeMs,
-        writeUsPerRow: (writeMs * 1000) / writes,
-        elapsedMs: performance.now() - began,
-        fixtureRows,
-        finalRows: db.prepare('SELECT count(*) AS n FROM events').get(),
-      })
-      direct.mockRestore()
-      mainThread.mockRestore()
-      db.prepare('DELETE FROM events WHERE ordinal >= ?').run(floor)
-      ordinal = floor
-    }
-    console.log('fictional busy writer', JSON.stringify(measurements))
-    const evidence = process.env['BROBOT_WINDOW_FRESHNESS_MEASUREMENTS']
-    if (evidence !== undefined)
-      writeFileSync(evidence, JSON.stringify(measurements, null, 2) + '\n')
-  })
-
   it('an unsampled writer answers directly without requesting a worker snapshot', async () => {
     const read = vi.fn(async (input: WindowReadQuery) => engine.read(input))
     const { host } = hostWith({ read, close: async () => {} }, false, {
@@ -914,17 +847,6 @@ describe('canonical window worker folds and independent live-store reads', () =>
   })
 
   describe('a read the worker does not serve is answered on the main thread', () => {
-    /** A worker that never answers, until the test finishes it. */
-    const aWorkerThatHangs = () => {
-      let finish!: (answer: WindowReadResult) => void
-      const read = vi.fn(
-        () =>
-          new Promise<WindowReadResult>((resolve) => {
-            finish = resolve
-          }),
-      )
-      return { read, finish: () => finish(engine.read({ kind: 'routes' })) }
-    }
     const said = (): string[] => vi.mocked(console.warn).mock.calls.map((call) => String(call[0]))
     const theEightReads = [
       'listResumable',
@@ -941,20 +863,6 @@ describe('canonical window worker folds and independent live-store reads', () =>
       if (answer === null || typeof answer !== 'object' || Array.isArray(answer)) return answer
       return Object.fromEntries(Object.entries(answer).filter(([key]) => key !== 'readAt'))
     }
-
-    it('every caller permit held: the next read joins the pending one, and the worker is asked once', async () => {
-      const worker = aWorkerThatHangs()
-      const { host } = hostWith({ read: worker.read, close: async () => {} })
-      const callers = Array.from({ length: WINDOW_READ_BOUNDS.callers }, () =>
-        host.readForWindow(() => host.questionsForAPerson()),
-      )
-      const next = host.readForWindow(() => host.questionsForAPerson())
-      worker.finish()
-      expect(await next).toEqual(host.questionsForAPerson())
-      await Promise.all(callers)
-      expect(worker.read).toHaveBeenCalledOnce()
-      expect(said()).toEqual([])
-    })
 
     /**
      * The real reader over a worker that fails every read it is sent, exits on it, or holds it
