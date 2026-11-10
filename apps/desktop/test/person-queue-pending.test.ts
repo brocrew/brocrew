@@ -129,7 +129,7 @@ describe.each(actions)('$name pending bookkeeping', (action) => {
     held.resolve(action.answer)
     await settle()
     expect(action.cards(queue)).toMatchObject([{ pending: false, said: action.said }])
-    if (action.name === 'to-do') expect(action.cards(queue)[0].taken).toBe(true)
+    if (action.name === 'to-do') expect(action.cards(queue)).toMatchObject([{ taken: true }])
     const retry = deferred()
     supply(queue, doorsFor(retry))
     action.invoke(queue)
@@ -139,7 +139,7 @@ describe.each(actions)('$name pending bookkeeping', (action) => {
     expect(action.cards(queue)).toMatchObject([
       { pending: false, said: 'The host refused this action.' },
     ])
-    if (action.name === 'to-do') expect(action.cards(queue)[0].taken).toBe(false)
+    if (action.name === 'to-do') expect(action.cards(queue)).toMatchObject([{ taken: false }])
   })
 
   it('does nothing without its domain door', () => {
