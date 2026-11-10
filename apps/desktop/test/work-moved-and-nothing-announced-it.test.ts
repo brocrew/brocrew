@@ -15,6 +15,7 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { DEFAULT_PROFILE_ID, type RuntimeChangeMessage } from '../src/shared/runtime-ipc'
 import { waitFor } from './lib/f093-host'
+import { callOn } from './helpers/call-tool'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import {
   RecordingSink,
@@ -22,7 +23,6 @@ import {
   fixtureProviderConfig,
   neutralHostDeps,
 } from './lib/host-fixture'
-import { callOn } from './helpers/call-tool'
 
 /**
  * An act that moves work announces `work`, so a window re-reads without waiting for its poll.

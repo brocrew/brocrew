@@ -505,8 +505,8 @@ describe('transcript fold', () => {
       },
       provider_commands: {
         type: 'provider_commands',
-        commands: [{ name: 'compact', description: 'Free up context' }],
         prefix: '/',
+        commands: [{ name: 'compact', description: 'Free up context' }],
         source: 'initializationResult',
       },
       memory_recall: {

@@ -31,10 +31,10 @@ import { AN_ASK_RIDES_ON, derivePieces } from '../src/shared/tasks'
 import { exchangePreviewLines } from '../src/shared/last-exchange'
 import { pieceLine, theConversationCalled } from '../src/shared/piece-called'
 import {
+  fixtureProviderConfig,
+  neutralHostDeps,
   RecordingSink,
   syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
 } from './lib/host-fixture'
 
 /**
