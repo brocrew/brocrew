@@ -203,21 +203,9 @@ describe('the liveness fold carries the queue, EMPTY included', () => {
     return r
   }
 
-  it('applies a newly queued message', () => {
-    const r = record()
-    acceptLiveness(r, {
-      ...liveness,
-      queued: [{ id: 'msg_a', kind: 'work', text: 'waiting on you', since: 5 }],
-    })
-    expect(r.meta?.queued).toMatchObject([{ text: 'waiting on you' }])
-  })
-
   it('applies the EMPTY list when the queue empties — the update a truthiness test would swallow', () => {
-    // ⚠️ This is the assertion the whole `!== undefined` guard exists for. ⛔ **`394` made the
-    // empty value `[]` rather than `null`, and that is what makes the guard MORE necessary rather
-    // than less**: `null` is at least falsy in the same way `undefined` is, while `[]` is truthy —
-    // so a `if (liveness.queued)` written today would look like it worked, apply the empty list, and
-    // then swallow the genuinely-absent case instead. Both are asserted here.
+    // The `!== undefined` guard: `[]` is truthy, so a truthiness check would apply it and then
+    // swallow the genuinely-absent case below instead.
     const r = record()
     acceptLiveness(r, {
       ...liveness,
@@ -239,9 +227,8 @@ describe('the liveness fold carries the queue, EMPTY included', () => {
     expect(r.meta?.queued).toMatchObject([{ text: 'still waiting' }])
   })
 
-  it('🔴 394 · keeps the mailbox in ORDER, and a question waits beside the work', () => {
-    // ⛔ **Order is a fact** (`394` §5). The wire carries delivery order, so a surface reading the
-    // head is reading what goes next — and `RuntimeScreen`'s Cancel names that one.
+  it('applies a newly queued mailbox in ORDER, and a question waits beside the work', () => {
+    // The wire carries delivery order, so a surface reading the head is reading what goes next.
     const r = record()
     acceptLiveness(r, {
       ...liveness,
@@ -250,9 +237,9 @@ describe('the liveness fold carries the queue, EMPTY included', () => {
         { id: 'msg_b', kind: 'question', text: 'sess_2 is waiting on an answer', since: 7 },
       ],
     })
-    expect(r.meta?.queued?.map((one) => [one.id, one.kind])).toEqual([
-      ['msg_a', 'work'],
-      ['msg_b', 'question'],
+    expect(r.meta?.queued?.map((one) => [one.id, one.kind, one.text])).toEqual([
+      ['msg_a', 'work', 'do this next'],
+      ['msg_b', 'question', 'sess_2 is waiting on an answer'],
     ])
   })
 })

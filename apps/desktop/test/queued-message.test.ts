@@ -77,6 +77,27 @@ async function waitFor(predicate: () => boolean, what: string, timeoutMs = 2_000
   throw new Error(`timed out waiting for ${what}`)
 }
 
+const bound = <T extends object>(target: T, prop: string | symbol): unknown => {
+  const value = Reflect.get(target, prop) as unknown
+  return typeof value === 'function' ? value.bind(target) : value
+}
+
+/** A `FakeRuntime` whose session handles answer a prop through `override` when it returns one. */
+function fakeWithHandles(
+  override: (handle: Awaited<ReturnType<AgentRuntime['start']>>, prop: string | symbol) => unknown,
+): (provider: Provider) => AgentRuntime {
+  return (provider) =>
+    new Proxy(new FakeRuntime(provider), {
+      get(target, prop) {
+        if (prop !== 'start') return bound(target, prop)
+        return async (opts: Parameters<AgentRuntime['start']>[0]) => {
+          const handle = await target.start(opts)
+          return new Proxy(handle, { get: (h, p) => override(h, p) ?? bound(h, p) })
+        }
+      },
+    }) as AgentRuntime
+}
+
 describe('a message sent while a turn is running (077)', () => {
   let userData: string
   let host: RuntimeHost
@@ -180,33 +201,12 @@ describe('a message sent while a turn is running (077)', () => {
       .events()
       .filter((event): event is Extract<TranscriptEvent, { type: T }> => event.type === type)
 
+  const turnStates = (): string[] => eventsOfType('turn').map((turn) => turn.state)
+
   /**
-   * ⛔ **A host whose flush can be held open at a NAMED suspension** — after the provider has taken
-   * the message, or before it ever gets there.
-   *
-   * ⚠️ **The gate is on the RESUMPTION, and that is the whole of what makes these tests real**
-   * (found writing 234 §1's). `runFlush` does `await session.handle.send(…)` and then publishes; the
-   * defect lives in the gap between that promise RESOLVING and the continuation running, which is
-   * an ordinary microtask boundary — `finalize` reaches `abandonQueued` synchronously from the
-   * pump's `finally`, so either can go first.
-   *
-   * ⛔ **Gating BEFORE the inner send measured nothing.** The first version held the call itself, so
-   * by the time it was released the teardown had closed the handle, the send threw, `runFlush`
-   * caught it and published nothing at all — and the test passed with the fix REMOVED. ⚑ Held
-   * after, the message really has gone to the provider and the continuation really does try to say
-   * so, which is the interleaving the ledger's contradictory pair came from.
-   *
-   * ⛔ **And the arrival is a HANDSHAKE, not a sleep** (found in review). {@link flushInFlight} used
-   * to wait on a status count and then sleep 50 ms; the count was wrong by one — `FakeRuntime`
-   * emits `working` when the card is ANSWERED, before the turn ends — so the sleep was the only
-   * thing getting the flush into position. ⚠️ **A sleep that lost would have degraded the race test
-   * silently to vacuous**: the pre-existing re-check returns, nothing is published, and the
-   * assertion still passes with the fix removed. `reached` resolves between the inner call and the
-   * gate, so the test stands exactly where it says it stands.
-   *
-   * ⚑ **`checkSignIn` is the second gate, and it holds the flush BEFORE the handover** — inside
-   * `assertSignInCurrent`, which is the only other place `runFlush` suspends long enough to matter.
-   * It is what makes "the message never left" a state a test can be in.
+   * A host whose flush can be held open at a named suspension: after the provider has taken the
+   * message (`arm`, gated on the send's resumption, not the call), or before the handover
+   * (`armGate`, inside `checkSignIn`). Each `reached…` promise is a handshake, never a sleep.
    */
   function gatedSendHost(): {
     runtime: RuntimeHost
@@ -216,7 +216,7 @@ describe('a message sent while a turn is running (077)', () => {
     armGate: () => void
     releaseGate: () => void
     reachedGate: Promise<void>
-    /** ⛔ Every text HANDED to the provider, recorded before the call (234 §1, run 1's `M2`). */
+    /** Every text handed to the provider, recorded before the call. */
     sends: string[]
     /** Make the handover throw — the one path `handingOver`'s `finally` is load-bearing on. */
     failSends: () => void
@@ -239,64 +239,44 @@ describe('a message sent while a turn is running (077)', () => {
     let armed = false
     let gateArmed = false
     let failing = false
-    const runtime = buildHost((provider) => {
-      const inner = new FakeRuntime(provider)
-      const bind = <T extends object>(target: T, prop: string | symbol): unknown => {
-        const value = Reflect.get(target, prop) as unknown
-        return typeof value === 'function' ? value.bind(target) : value
-      }
-      return new Proxy(inner, {
-        get(target, prop) {
-          if (prop !== 'start') return bind(target, prop)
-          return async (opts: Parameters<AgentRuntime['start']>[0]) => {
-            const handle = await target.start(opts)
-            return new Proxy(handle, {
-              get(h, p) {
-                if (p === 'send') {
-                  return async (text: string) => {
-                    // ⛔ **Recorded BEFORE the call** (234 §1, from run 1's `M2` survivor). The claim
-                    // a test needs is *"the provider was handed this"*, and that is true the moment
-                    // the call is made — including against a handle teardown has already closed,
-                    // where the call throws. Recorded after, the row could not be killed.
-                    sends.push(withoutWhatThisAppAdds(text))
-                    if (failing) {
-                      try {
-                        throw new Error('the provider would not take it')
-                      } finally {
-                        // ⚑ **A macrotask, and that is the point rather than a duration**: every
-                        // microtask the throw schedules — `runFlush`'s inner `finally`, its `catch`,
-                        // and the `.finally` that clears `session.flushing` — drains before a
-                        // timeout fires. So this resolves exactly once the flush has unwound.
-                        setTimeout(() => failed.open(), 0)
-                      }
-                    }
-                    const sent = await h.send(text)
-                    if (armed) {
-                      sendReached.open()
-                      await sendGate.promise
-                    }
-                    return sent
-                  }
-                }
-                // ⚠️ `FakeRuntime` has no `checkSignIn` of its own, and `assertSignInCurrent` calls
-                // it optionally — so supplying one here is what creates the suspension. `false` is
-                // "the sign-in is current", which is the answer that lets the flush carry on.
-                if (p === 'checkSignIn') {
-                  return async () => {
-                    if (gateArmed) {
-                      signInReached.open()
-                      await signInGate.promise
-                    }
-                    return false
-                  }
-                }
-                return bind(h, p)
-              },
-            })
+    const runtime = buildHost(
+      fakeWithHandles((h, p) => {
+        if (p === 'send') {
+          return async (text: string) => {
+            // Recorded before the call: the provider was handed this the moment the call is made,
+            // even against a handle teardown has already closed, where the call throws.
+            sends.push(withoutWhatThisAppAdds(text))
+            if (failing) {
+              try {
+                throw new Error('the provider would not take it')
+              } finally {
+                // A macrotask: every microtask the throw schedules drains before it fires, so this
+                // resolves exactly once the flush has unwound.
+                setTimeout(() => failed.open(), 0)
+              }
+            }
+            const sent = await h.send(text)
+            if (armed) {
+              sendReached.open()
+              await sendGate.promise
+            }
+            return sent
           }
-        },
-      }) as AgentRuntime
-    })
+        }
+        // `FakeRuntime` has no `checkSignIn` of its own, so supplying one creates the suspension.
+        // `false` is "the sign-in is current", which lets the flush carry on.
+        if (p === 'checkSignIn') {
+          return async () => {
+            if (gateArmed) {
+              signInReached.open()
+              await signInGate.promise
+            }
+            return false
+          }
+        }
+        return undefined
+      }),
+    )
     return {
       runtime,
       arm: () => {
@@ -421,37 +401,13 @@ describe('a message sent while a turn is running (077)', () => {
   })
 
   it('the flush asks the HANDLE, not just the event that woke it (acc. 6, defence in depth)', async () => {
-    // ⚠️ **Written because a mutation survived.** The test above proves a queued message does not
-    // reach an open card — but it proves it via the EVENT KEY: no `status: idle` is emitted while a
-    // card is open, so `flushQueued` is never called and the guard inside it is never run. Deleting
-    // that guard left every assertion green, which means the second door was untested and a
-    // refactor could have removed it silently.
-    //
-    // So this pins the guard itself: the handle is made to report a non-idle status at the exact
-    // moment the `status: idle` event is delivered. The two disagreeing is the whole case the guard
-    // exists for, and it is the only way to reach it from outside.
+    // The test above never reaches the guard inside `flushQueued`, because no `status: idle` is
+    // emitted while a card is open. Here the handle reports a non-idle status at the moment the
+    // `status: idle` event is delivered, which is the only way to reach that guard from outside.
     const pin: { value: SessionStatus | null } = { value: null }
-    const pinned = buildHost((provider) => {
-      const inner = new FakeRuntime(provider)
-      const bind = <T extends object>(target: T, prop: string | symbol): unknown => {
-        const value = Reflect.get(target, prop) as unknown
-        return typeof value === 'function' ? value.bind(target) : value
-      }
-      return new Proxy(inner, {
-        get(target, prop) {
-          if (prop !== 'start') return bind(target, prop)
-          return async (opts: Parameters<AgentRuntime['start']>[0]) => {
-            const handle = await target.start(opts)
-            return new Proxy(handle, {
-              get(h, p) {
-                if (p === 'status') return () => pin.value ?? h.status()
-                return bind(h, p)
-              },
-            })
-          }
-        },
-      }) as AgentRuntime
-    })
+    const pinned = buildHost(
+      fakeWithHandles((h, p) => (p === 'status' ? () => pin.value ?? h.status() : undefined)),
+    )
 
     try {
       const created = await pinned.createSession({ provider: 'claude' }, sink)
@@ -500,48 +456,22 @@ describe('a message sent while a turn is running (077)', () => {
   })
 
   it('interrupt-and-send does not let the queued message JUMP the interrupt (found in review)', async () => {
-    // ⚠️ **The bug this pins was real and high severity.** `interrupt()` terminalizes the running
-    // turn, which emits `status: idle` — the very signal the flush waits for — on a microtask that
-    // lands before `sendInterrupting` resumes. So the queued message started its own turn first,
-    // `waitForIdle` then saw `working` again, and the replacement went second: two turns from a
-    // button that means "instead of", in the wrong order.
-    // ⚠️ **`FakeRuntime` cannot reproduce this on its own, and the difference is the bug.** Its
-    // `interrupt()` only sets a flag — the turn terminalizes later, from `driveTurn`'s continuation,
-    // so `status: idle` is delivered AFTER `sendInterrupting` has already resumed and started its
-    // own turn, and the handle-status guard turns the flush away. The real Claude adapter calls
-    // `machine.completeTurn('interrupted')` SYNCHRONOUSLY inside `interrupt()`
-    // (claude-runtime.ts:1382), so the idle lands while the session really is idle and the flush
-    // fires. Modelled here by holding `interrupt()` open until the terminal has been delivered,
-    // which is the ordering the real adapter produces.
-    const claudeOrdering = buildHost((provider) => {
-      const inner = new FakeRuntime(provider)
-      const bind = <T extends object>(target: T, prop: string | symbol): unknown => {
-        const value = Reflect.get(target, prop) as unknown
-        return typeof value === 'function' ? value.bind(target) : value
-      }
-      return new Proxy(inner, {
-        get(target, prop) {
-          if (prop !== 'start') return bind(target, prop)
-          return async (opts: Parameters<AgentRuntime['start']>[0]) => {
-            const handle = await target.start(opts)
-            return new Proxy(handle, {
-              get(h, p) {
-                if (p !== 'interrupt') return bind(h, p)
-                return async () => {
-                  await h.interrupt()
-                  // Yield until the terminal has actually been delivered, so the caller resumes to
-                  // the same world the Claude adapter's caller resumes to.
-                  for (let i = 0; i < 40 && h.status() !== 'idle'; i += 1) {
-                    await new Promise((resolve) => setTimeout(resolve, 5))
-                  }
-                  await new Promise((resolve) => setTimeout(resolve, 5))
-                }
-              },
-            })
-          }
-        },
-      }) as AgentRuntime
-    })
+    // The real Claude adapter terminalizes the turn synchronously inside `interrupt()`, so its
+    // `status: idle` lands before `sendInterrupting` resumes. `FakeRuntime` only sets a flag, so
+    // `interrupt()` is held open here until the terminal has been delivered.
+    const claudeOrdering = buildHost(
+      fakeWithHandles((h, p) =>
+        p === 'interrupt'
+          ? async () => {
+              await h.interrupt()
+              for (let i = 0; i < 40 && h.status() !== 'idle'; i += 1) {
+                await new Promise((resolve) => setTimeout(resolve, 5))
+              }
+              await new Promise((resolve) => setTimeout(resolve, 5))
+            }
+          : undefined,
+      ),
+    )
     host = claudeOrdering
 
     const id = await busySession()
@@ -549,51 +479,24 @@ describe('a message sent while a turn is running (077)', () => {
 
     await host.sendInterrupting(id, 'no, do THIS', sink)
 
-    // 🔴 **D-027 · R2 moved where the replacement goes: it JOINS what waits** (`itJoinsWhatWaits`)
-    // — held last, and sent with the waiting message as ONE turn, oldest first, by the flush the
-    // press lets go of in its `finally`. ⚑ That flush is still an await away when
-    // `sendInterrupting` resolves, so the turn is waited for rather than assumed.
+    // The replacement joins what waits: sent with the waiting message as ONE turn, oldest first,
+    // by a flush that is still an await away when `sendInterrupting` resolves.
     await waitFor(() => eventsOfType('user_turn').length === 2, 'the one turn the press let go of')
-    // ⚠️ **Strict and ordered.** Unmutated this reads exactly these two; with the hold removed the
-    // second reads `'the one that was waiting'` alone — the queued message having started its own
-    // turn off the idle that our own interrupt produced, ahead of the words that were to join it.
     expect(eventsOfType('user_turn').map((event) => event.text)).toEqual([
       'the first thing',
       'the one that was waiting\n\nno, do THIS',
     ])
-
-    // …and it was HELD, not discarded: the user never cancelled it, so it went — ⚑ D-027 · in the
-    // turn they asked for, as its FIRST part, the order they were held in. This is the positive
-    // half — without it the assertion above would also pass against a host that joined the words
-    // into anything at all.
     expect(eventsOfType('user_turn')[1]?.parts?.map((part) => part.text)).toEqual([
       'the one that was waiting',
       'no, do THIS',
     ])
-    const cards = (): string[] =>
-      sink
-        .events()
-        .filter(
-          (event): event is Extract<TranscriptEvent, { type: 'permission_request' }> =>
-            event.type === 'permission_request',
-        )
-        .map((event) => event.id)
-    // The replacement turn parks on a card of its OWN, which arrives a hop after `sendInterrupting`
-    // resolves. Taking the last card without waiting picks up the INTERRUPTED turn's, which is
-    // already settled — a `.at(-1)` that reads as "the newest" and is not.
+    const cards = (): string[] => eventsOfType('permission_request').map((event) => event.id)
+    // The replacement turn parks on a card of its own, which arrives a hop after
+    // `sendInterrupting` resolves; the last card before that is the interrupted turn's.
     await waitFor(() => cards().some((cardId) => cardId !== 'turn_1_perm'), 'the new turn’s card')
     const card = cards().find((cardId) => cardId !== 'turn_1_perm')
     await host.respondPermission(id, card!, { outcome: 'allow' }, sink)
-    // ⚑ **D-027 · and nothing is left for the turn after it**: the held message went inside the
-    // turn they asked for, so that turn's end sends nothing more — where, before D-027, it sent the
-    // held message as a third turn. Its end is waited for, then the loop is given real chances.
-    const turnStates = (): string[] =>
-      sink
-        .events()
-        .filter(
-          (event): event is Extract<TranscriptEvent, { type: 'turn' }> => event.type === 'turn',
-        )
-        .map((turn) => turn.state)
+    // Nothing is left for the turn after it: its end sends no third turn.
     await waitFor(() => turnStates().includes('completed'), 'the joined turn to end')
     for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setTimeout(resolve, 5))
     expect(eventsOfType('user_turn')).toHaveLength(2)
@@ -604,7 +507,6 @@ describe('a message sent while a turn is running (077)', () => {
   })
 
   describe('a held stop word, taken back and the turn stopped as one press', () => {
-    const turnStates = (): string[] => eventsOfType('turn').map((turn) => turn.state)
     const stopsAsked = (): number =>
       eventsOfType('user_command').filter((row) => row.command === 'interrupted').length
 
@@ -762,46 +664,10 @@ describe('a message sent while a turn is running (077)', () => {
   })
 
   /**
-   * ⚠️ **The paired positive, and without it the test above is satisfied by a host that abandons
-   * everything.** Same gate, same suspension, nothing closed — the flush owns the ending and says
-   * `sent`, exactly as it does when nobody is racing it.
-   */
-  it('⚑ …and with nobody racing it, the same suspended flush still says `sent` (234 §1)', async () => {
-    const gated = gatedSendHost()
-    try {
-      await flushInFlight(gated, 'nobody is racing this one')
-      gated.release()
-      await waitFor(
-        () => eventsOfType('user_turn').some((event) => event.text === 'nobody is racing this one'),
-        'the gated send completing',
-      )
-      expect(eventsOfType('message_unqueued').map((event) => event.reason)).toEqual(['sent'])
-    } finally {
-      gated.release()
-      await gated.runtime.closeAll()
-    }
-  })
-
-  /**
-   * # ⛔ The detail says what we do NOT know, and only where we do not know it (234 §1)
-   *
-   * `abandoned` renders as a sentence about the conversation ending, and it did — but a reader
-   * would take it to mean the message never left, and when the handover was under way it may have.
-   *
-   * ⛔ **THREE states, because two of them cannot tell the fix from the bug** (found by the
-   * adversarial pass over this dispatch's own diff). The first version read `session.flushing`,
-   * which is set before `runFlush`'s FIRST await and spans two suspensions that precede the
-   * handover — so the uncertain sentence was attached to messages that provably never reached
-   * `handle.send`, and a test with only the after-send and never-flushed cases passed either way.
-   * ⚑ The middle case below is the one that discriminates.
-   *
-   * ⚑ **D-017 · R3 — and only the FIRST state ends now.** A Close is a stop, and a stop ends nothing
-   * it held: a message that never reached the provider is handed on to the conversation's next
-   * start, so the middle and last states write no ending at all at the Close — which is a sharper
-   * version of *"no doubt invented"*: nothing is said about them because nothing happened to them.
-   * ⚠️ **This file's store is `NULL_SESSION_STORE`**, so there is no recording to start again from
-   * and the start for them fails; `the-message-that-has-no-name.test.ts` measures the start that
-   * delivers them.
+   * Three states at a Close. Only a message mid-handover ends, as `abandoned` with a detail saying
+   * it may have left. One held at the gate before the handover, or never flushed, is handed on to
+   * the next start and gets no ending. The middle state is the one that tells a check on
+   * `session.flushing` apart from a check on the handover itself.
    */
   it('🔴 mid-handover is abandoned and says it may have left; mid-GATE and never-flushed are handed on, not ended', async () => {
     // 1 · after the handover — the message really is with the provider, and we say so.
@@ -948,33 +814,9 @@ describe('a message sent while a turn is running (077)', () => {
   })
 
   /**
-   * ⚑ **D-017 · R3 — a Close is a STOP, and a stop ends nothing it held.** This read *"a
-   * conversation that ends underneath it records the message as ABANDONED"*. ⛔ A Close no longer
-   * ends the conversation, so the message gets no ending here: it is handed on to the next start,
-   * which sends it first. ⚑ What stays true of acc. 5: it is never sent into the conversation that
-   * is stopping, and nobody is told it was cancelled. ⚠️ `NULL_SESSION_STORE` has no recording to
-   * start again from — the start that delivers it is `the-message-that-has-no-name.test.ts`'.
-   */
-  it('a conversation that stops underneath it hands the message on — no ending, never sent into the stop (acc. 5)', async () => {
-    const id = await busySession()
-    await host.queueMessage(id, 'this goes at the next start', sink)
-
-    await host.close(id, sink)
-    await settled()
-
-    expect(eventsOfType('message_unqueued')).toEqual([])
-    expect(eventsOfType('user_turn').map((event) => event.text)).not.toContain(
-      'this goes at the next start',
-    )
-  })
-
-  /**
-   * ⚑ **D-017 · R1 — *still closing* is never a refusal.** A send or a queue that arrives during
-   * teardown waits out the stop and starts the conversation again; a start that fails is a delivery
-   * failure with ITS true reason. ⚠️ **This file's store is `NULL_SESSION_STORE`**, so the true
-   * reason here is that there is no recording to start again from — which is what makes the
-   * refusal measurable at all. ⛔ Never *still closing*, and nothing is held in the ledger of the
-   * conversation that was stopping.
+   * *Still closing* is never a refusal: a send or a queue during teardown waits out the stop and
+   * starts again. With `NULL_SESSION_STORE` there is no recording to start from, so the start fails
+   * with that reason.
    */
   it('a send or a queue arriving during teardown waits out the stop, and a start that fails says its own true reason (acc. 7)', async () => {
     const id = await busySession()
@@ -1023,16 +865,7 @@ describe('a message sent while a turn is running (077)', () => {
 
     await host.sendInterrupting(id, 'stop that, do this instead', sink)
 
-    // `sendInterrupting` resolves once the handle reports idle; the `turn` event describing HOW it
-    // ended reaches the sink through the pump, which is a separate hop. Asserting straight after the
-    // await reads an empty list and fails against a correct host.
-    const turnStates = (): string[] =>
-      sink
-        .events()
-        .filter(
-          (event): event is Extract<TranscriptEvent, { type: 'turn' }> => event.type === 'turn',
-        )
-        .map((turn) => turn.state)
+    // The `turn` event reaches the sink through the pump, a hop after `sendInterrupting` resolves.
     await waitFor(() => turnStates().includes('interrupted'), 'the interrupted turn terminal')
 
     expect(turnStates()).toContain('interrupted')

@@ -98,33 +98,20 @@ describe('238 · one identity per home, in the database (208 H1)', () => {
       store.create({ id, provider: 'claude', cwd: dir, approvalMode: 'ask', profileId })
     }
 
-    it('🔴 two spellings are ONE identity, not two', () => {
+    it('two spellings are ONE identity, and the free string keeps every spelling', () => {
       start('sess_upper', 'Developer')
       start('sess_lower', 'developer')
 
       expect(identities()).toEqual([{ id: agentIdentityRowId('developer'), slug: 'developer' }])
-      // ⛔ The defect, stated as its inverse: before 238 these were two identities — one per
-      // spelling — over one directory.
       expect(sessions().map((row) => [row.id, row.agent_identity_id])).toEqual([
         ['sess_lower', agentIdentityRowId('developer')],
         ['sess_upper', agentIdentityRowId('developer')],
       ])
-    })
-
-    it('⚑ …and the free string keeps every spelling, because it is the DIRECTORY name', () => {
-      start('sess_upper', 'Developer')
-      start('sess_lower', 'developer')
-
-      // ⚠️ The half that must NOT fold. `resumeSession` derives the home from this column, so
-      // folding it would send a session to a directory it never ran in — 149's failure shape.
+      // The half that must NOT fold: `resumeSession` derives the home from this column.
       expect(sessions().map((row) => row.profile_id)).toEqual(['developer', 'Developer'])
     })
 
-    // ⚑ **D-016 · *the CURRENT session answers for either spelling* went with `currentSessionFor`**,
-    // which no product code called; the fold it measured is the identity's, and the case above and
-    // the one below still measure it.
-
-    it('⛔ …and the identity NAMES itself in the folded form, however it was spelled', () => {
+    it('…and the identity NAMES itself in the folded form, however it was spelled', () => {
       start('sess_upper', 'Developer')
       expect(store.identityOf('sess_upper')).toEqual({ profileSlug: 'developer' })
     })

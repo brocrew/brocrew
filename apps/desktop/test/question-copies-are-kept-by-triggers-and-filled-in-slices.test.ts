@@ -210,26 +210,8 @@ describe('question copies are kept by triggers and filled in slices', () => {
     expect(slice).toMatchObject({ state: 'filled', visited: 50, matched: 0 })
   })
 
-  it('a slice stops at its byte bound, counted in bytes and not characters', () => {
+  it('a slice stops at its byte bound, counted in bytes, and reads no ledger row past it', () => {
     const wide = '😀'.repeat(20_000) // 80,000 bytes, 40,000 code units, 20,000 characters
-    for (let i = 0; i < 10; i++)
-      row(
-        'alpha',
-        JSON.stringify({
-          type: 'question_asked',
-          requestId: `w${String(i)}`,
-          passedUpFrom: 'x',
-          wide,
-        }),
-      )
-    const slice = store.fillQuestionCopies(200, 256 * 1024)
-    expect(slice.state).toBe('filled')
-    // 256 KiB is passed by the fourth row of about 80 KB, and by no more.
-    expect(slice.visited).toBe(4)
-  })
-
-  it('a slice reads ledger rows one at a time, and reads none past its byte bound', () => {
-    const wide = '😀'.repeat(20_000)
     for (let i = 0; i < 10; i++)
       row(
         'alpha',
@@ -267,6 +249,8 @@ describe('question copies are kept by triggers and filled in slices', () => {
       })
     })
     const slice = store.fillQuestionCopies(200, 256 * 1024)
+    expect(slice.state).toBe('filled')
+    // 256 KiB is passed by the fourth row of about 80 KB, and by no more.
     expect(slice.visited).toBe(4)
     expect(read).toBe(4)
   })

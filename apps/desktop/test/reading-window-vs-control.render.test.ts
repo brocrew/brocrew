@@ -155,11 +155,28 @@ const paneProps = (record: SessionRecord): Record<string, unknown> => ({
   handing: createAttachmentBook().handing(draftKey('sess_1')),
 })
 
+/** A draft owner with nothing typed or sent yet. */
+function drafts(): (id: string) => RequestDraft {
+  const record = { requests: new Map() } as { requests: Map<string, RequestDraft> }
+  return (id) => requestDraft(record as Parameters<typeof requestDraft>[0], id)
+}
+
+/** An open record whose reading window and control projection are separate, both empty. */
+function openRecord(): SessionRecord {
+  const record = createSessionRecord('sess_1')
+  record.meta = META
+  record.phase = 'open'
+  record.control = createTranscript()
+  record.tail = tailWindow([])
+  return record
+}
+
+const renderPane = (record: SessionRecord): Promise<string> =>
+  renderToString(createSSRApp({ render: () => h(ConversationPane as never, paneProps(record)) }))
+
 describe('a card renders from the record, not from itself', () => {
   it('shows a typed answer against two different folds of the same request', async () => {
-    const record = { requests: new Map() } as { requests: Map<string, RequestDraft> }
-    const draftFor = (id: string): RequestDraft =>
-      requestDraft(record as Parameters<typeof requestDraft>[0], id)
+    const draftFor = drafts()
     draftFor('req_q').answers.set('q0', 'GREEN')
 
     const before = await render(fold(0, question('req_q')), draftFor)
@@ -179,20 +196,14 @@ describe('a card renders from the record, not from itself', () => {
   it('leaves the Answer button disabled when nothing has been typed', async () => {
     // Non-vacuity for the pair above: without it, a card that never disables Answer at all would
     // satisfy them, and the draft would be proving nothing.
-    const record = { requests: new Map() } as { requests: Map<string, RequestDraft> }
-    const draftFor = (id: string): RequestDraft =>
-      requestDraft(record as Parameters<typeof requestDraft>[0], id)
-
-    const html = await render(fold(0, question('req_empty')), draftFor)
+    const html = await render(fold(0, question('req_empty')), drafts())
 
     expect(buttonTag(html, 'user-input-answer')).toContain('disabled')
     expect(html).not.toContain('selected')
   })
 
   it('keeps an already-submitted decision unclickable across a re-fold', async () => {
-    const record = { requests: new Map() } as { requests: Map<string, RequestDraft> }
-    const draftFor = (id: string): RequestDraft =>
-      requestDraft(record as Parameters<typeof requestDraft>[0], id)
+    const draftFor = drafts()
     // What `session-store.respondPermission` writes before it awaits anything.
     draftFor('req_p').sent = true
 
@@ -214,11 +225,7 @@ describe('a card renders from the record, not from itself', () => {
   it('offers the buttons when nothing has been sent — so the guard above is doing the work', async () => {
     // Non-vacuity: without it, a card that rendered every button disabled for an unrelated reason
     // would satisfy the test above and nobody would ever be able to answer anything.
-    const record = { requests: new Map() } as { requests: Map<string, RequestDraft> }
-    const draftFor = (id: string): RequestDraft =>
-      requestDraft(record as Parameters<typeof requestDraft>[0], id)
-
-    const html = await render(fold(0, permissionRequest('req_open')), draftFor)
+    const html = await render(fold(0, permissionRequest('req_open')), drafts())
 
     expect(buttonTag(html, 'permission-allow')).not.toBe('')
     expect(buttonTag(html, 'permission-allow')).not.toContain('disabled')
@@ -229,17 +236,11 @@ describe('a card renders from the record, not from itself', () => {
     // projection holds the live tail with an unanswered card in it. Forked by hand rather than by
     // paging back through 5,000 synthetic events — `reading-window-vs-control.test.ts` pays for the
     // real gesture; this one only has to prove which of the two the pane reads.
-    const record = createSessionRecord('sess_1')
-    record.meta = META
-    record.phase = 'open'
-    record.control = createTranscript()
-    record.tail = tailWindow([])
+    const record = openRecord()
     applyEvent(record.control, permissionRequest('req_far'))
     applyEvent(record.control, { type: 'status', state: 'working' })
 
-    const html = await renderToString(
-      createSSRApp({ render: () => h(ConversationPane as never, paneProps(record)) }),
-    )
+    const html = await renderPane(record)
 
     // Frozen, and the card it is frozen on is nowhere on screen.
     expect(html).toMatch(
@@ -249,25 +250,17 @@ describe('a card renders from the record, not from itself', () => {
   })
 
   it('draws the stop the control projection holds, even though the page the reader is on does not', async () => {
-    const record = createSessionRecord('sess_1')
-    record.meta = META
-    record.phase = 'open'
-    record.control = createTranscript()
-    record.tail = tailWindow([])
+    const record = openRecord()
     // The page the reader scrolled back to caught the agent mid-turn…
     applyEvent(record.transcript, { type: 'status', state: 'working' })
     // …and the live tail has since stopped.
     applyEvent(record.control, { type: 'status', state: 'ended' })
 
-    const html = await renderToString(
-      createSSRApp({ render: () => h(ConversationPane as never, paneProps(record)) }),
-    )
+    const html = await renderPane(record)
 
     // The pane reads CONTROL: the host's raw word, still on `data-status`, is the stop.
     expect(html).toContain('data-status="ended"')
-    // ⚑ **D-017b · and a person reads the one state, never a process word** (`05` rule 5): it
-    // used to say *Ended* here. It says `Idle` — not the page's `Working`, which is what reading
-    // the reading window would have drawn.
+    // A person reads `Idle`, never a process word, and not the page's `Working`.
     expect(html).toContain('data-standing="idle"')
     expect(html).not.toContain('data-standing="working"')
     expect(html).not.toContain('Ended')

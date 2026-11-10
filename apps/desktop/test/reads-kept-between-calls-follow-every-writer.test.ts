@@ -379,6 +379,11 @@ describe('the provider walls, kept between reads', () => {
     expect(store.readAheadProviderWalls(NOW, 0)).toBe(true)
   })
 
+  const queued = () =>
+    (db.prepare('SELECT count(*) AS n FROM temp.provider_wall_added').get() as { n: number }).n
+  const queueReads = () =>
+    ran.filter((sql) => sql.includes('JOIN main.events e ON e.rowid = a.event_row')).length
+
   it('rows written after the read-ahead is done are taken in by the read-ahead, a slice at a time', () => {
     conversation('a')
     walled('a')
@@ -391,8 +396,6 @@ describe('the provider walls, kept between reads', () => {
         NOW - HOUR + n,
       )
     }
-    const queueReads = () =>
-      ran.filter((sql) => sql.includes('JOIN main.events e ON e.rowid = a.event_row')).length
     ran.length = 0
     let steps = 0
     while (!store.readAheadProviderWalls(NOW, 0)) steps += 1
@@ -424,8 +427,6 @@ describe('the provider walls, kept between reads', () => {
     })()
     walled('a', SEVEN_DAY, NOW - 30 * 60_000)
     expect(store.providerLimitsSeen(NOW).rows).toHaveLength(2)
-    const queued = () =>
-      (db.prepare('SELECT count(*) AS n FROM temp.provider_wall_added').get() as { n: number }).n
     expect(queued()).toBe(0)
     ran.length = 0
     expect(wrapped.providerLimitsSeen(NOW).rows).toHaveLength(2)
@@ -459,10 +460,6 @@ describe('the provider walls, kept between reads', () => {
     expect(seen).toEqual(readAgain((fresh) => fresh.providerLimitsSeen(NOW, changed)))
   })
 
-  const queued = () =>
-    (db.prepare('SELECT count(*) AS n FROM temp.provider_wall_added').get() as { n: number }).n
-  const queueReads = () =>
-    ran.filter((sql) => sql.includes('JOIN main.events e ON e.rowid = a.event_row')).length
   const timeouts = (count: number) =>
     db.transaction(() => {
       for (let n = 0; n < count; n++) {
@@ -901,26 +898,23 @@ describe('a giver’s receipts, carried forward', () => {
     expect(wholeReceiptReads()).toBe(1)
   })
 
-  it('a piece closed in plain SQL below its newest row is named as a fresh read names it', () => {
-    const { giver, piece } = aStalledPiece()
-    const before = store.workThatNames('holder')
-    expect(before?.ended).toBeUndefined()
-    // The holder's last row, rewritten in place: its newest ordinal does not move.
-    db.prepare(
-      `UPDATE events SET type = 'work_closed', payload = ?
-        WHERE session_id = 'holder' AND ordinal = (SELECT max(ordinal) FROM events WHERE session_id = 'holder')`,
-    ).run(JSON.stringify({ type: 'work_closed', piece, by: giver }))
-    const after = store.workThatNames('holder')
-    expect(after?.ended).toBeDefined()
-    expect(after).toEqual(readAgain((fresh) => fresh.workThatNames('holder')))
-  })
-
+  /** The holder's last row, rewritten in place: its newest ordinal does not move. */
   const closeTheLastRow = (on: AppDatabase, piece: string, giver: string): void => {
     on.prepare(
       `UPDATE events SET type = 'work_closed', payload = ?
         WHERE session_id = 'holder' AND ordinal = (SELECT max(ordinal) FROM events WHERE session_id = 'holder')`,
     ).run(JSON.stringify({ type: 'work_closed', piece, by: giver }))
   }
+
+  it('a piece closed in plain SQL below its newest row is named as a fresh read names it', () => {
+    const { giver, piece } = aStalledPiece()
+    const before = store.workThatNames('holder')
+    expect(before?.ended).toBeUndefined()
+    closeTheLastRow(db, piece, giver)
+    const after = store.workThatNames('holder')
+    expect(after?.ended).toBeDefined()
+    expect(after).toEqual(readAgain((fresh) => fresh.workThatNames('holder')))
+  })
 
   it('a piece closed by another connection below its newest row is named as a fresh read names it', () => {
     const { giver, piece } = aStalledPiece()

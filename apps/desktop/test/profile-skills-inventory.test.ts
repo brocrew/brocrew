@@ -117,24 +117,14 @@ describe('the profile Skills inventory uses the real delivery policy', () => {
     })
     expect(readAccess!({ capabilitiesOf }, 'missing-agent')).toBeNull()
     expect(capabilitiesOf.mock.calls).toEqual([['quill'], ['brobot'], ['missing-agent']])
-  })
-
-  it('reads both real creation reach values from the main store', () => {
-    const readAccess = Reflect.get(discoveryModule, 'profileSkillAccess') as
-      | undefined
-      | ((
-          store: { capabilitiesOf(profile: string): { canCreateAgents: string } | null },
-          profile: string,
-        ) => Access | null)
-    expect(readAccess).toBeTypeOf('function')
     for (const reach of ['none', 'any'] as const) {
-      const capabilitiesOf = vi.fn(() => ({ canCreateAgents: reach }))
-      expect(readAccess!({ capabilitiesOf }, 'QuIll')).toEqual({
+      const reachOf = vi.fn(() => ({ canCreateAgents: reach }))
+      expect(readAccess!({ capabilitiesOf: reachOf }, 'QuIll')).toEqual({
         profileId: 'quill',
         canCreateAgents: reach === 'any',
         isCoordinator: false,
       })
-      expect(capabilitiesOf).toHaveBeenCalledExactlyOnceWith('quill')
+      expect(reachOf).toHaveBeenCalledExactlyOnceWith('quill')
     }
   })
 

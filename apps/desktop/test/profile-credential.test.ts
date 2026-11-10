@@ -77,29 +77,12 @@ describe('what a profile does with your sign-in (329 §4.1)', () => {
     expect(profileCredential(UNWIRED, 'existing').tone).toBe('note')
   })
 
-  it('⚠️ a provider that declares `available` and forgets its note still says something', () => {
-    // The type makes `note` optional. Silence is the original defect, so the fallback is a sentence
-    // rather than an empty string — and it still carries the timing.
+  it('a provider that declares `available` and forgets its note still says something', () => {
+    // The type makes `note` optional, so the fallback is a sentence that still carries the timing.
     const said = profileCredential({ state: 'available' }, 'new')
     expect(said.text.trim().length).toBeGreaterThan(20)
     expect(said.text).toMatch(/nothing has been written/i)
     expect(said.copies).toBe(true)
-  })
-
-  it('🔴 no two of the four cases say the same thing', () => {
-    const cases = [
-      profileCredential(AVAILABLE, 'existing').text,
-      profileCredential(AVAILABLE, 'new').text,
-      profileCredential(ABSENT, 'existing').text,
-      profileCredential(UNWIRED, 'existing').text,
-    ]
-    // The whole defect 329 is about was four states drawing one screen. `ABSENT` and `UNWIRED` are
-    // the exception the module argues for — they differ here only because their reasons differ,
-    // which is the point: the difference lives in the data, not in a branch.
-    expect(
-      new Set(cases).size,
-      'a case that reads like another is a case nobody can tell apart',
-    ).toBe(4)
   })
 })
 

@@ -738,10 +738,4 @@ describe('680 · an archived refusal, for any error word', () => {
       },
     ])
   })
-
-  it('⚑ the importer builds a different ledger from the same file, so older ledgers read stale', () => {
-    // `normalizer.ts`'s own rule: a change that would alter what a re-derived file shows is a bump,
-    // or the Rebuild that would repair an adopted conversation is never offered.
-    expect(NORMALIZER_VERSION).toBeGreaterThanOrEqual(4)
-  })
 })

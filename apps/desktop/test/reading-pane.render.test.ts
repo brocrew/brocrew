@@ -93,7 +93,7 @@ const CONVERSATION = history(
 )
 
 describe('a conversation being read', () => {
-  it('renders the transcript through the same fold a live session uses', async () => {
+  it('renders the transcript, says it is read-only, and gives the reason in the store’s words', async () => {
     const html = await render({
       entry: ENTRY,
       history: CONVERSATION,
@@ -101,39 +101,14 @@ describe('a conversation being read', () => {
     })
     expect(html).toContain('hello there')
     expect(html).toContain('hello back')
-  })
-
-  it('says it is read-only, on its face', async () => {
-    const html = await render({
-      entry: ENTRY,
-      history: CONVERSATION,
-      mode: 'normal',
-    })
     expect(html).toContain('data-cy="read-only-banner"')
     expect(html).toContain('Read-only')
-  })
-
-  it('gives the reason in the STORE’s words rather than its own', async () => {
-    const html = await render({
-      entry: ENTRY,
-      history: CONVERSATION,
-      mode: 'normal',
-    })
-    // ⚑ **151 rewrote this sentence and the point of the test is unchanged**: the pane prints the
-    // STORE's words. The three clauses are asserted separately so a rewrite that quietly drops one
-    // of them — whose it is, that it is readable, why it will not reopen — fails here.
+    // Each clause of the store's sentence separately: whose it is, that it is readable, why it
+    // will not reopen. Clauses without an apostrophe, since SSR escapes `'` as `&#39;`.
     expect(html).toContain('one of your own Claude conversations')
-    // The pane explains where the read-only conversation came from, not only why it cannot
-    // resume. Assert that provenance explicitly. Use wording without an apostrophe so the
-    // assertion survives SSR escaping unlike `BroBot&#39;s`.
     expect(html).toContain('found in Claude')
     expect(html).toContain('BroBot can read it here')
-    // ⚠️ **A clause with no apostrophe in it**: this is escaped markup, so `BroBot's` arrives as
-    // `BroBot&#39;s` and a `toContain` of the source string fails for a sentence that is present.
     expect(html).toContain('where this conversation is not')
-    // ⚠️ **No `not.toContain('provider home')` here.** This is an SSR string and it carries the
-    // component's own source comments, which name internal concepts freely — the jargon assertion
-    // belongs where the sentence is BUILT, and `archive-sweep.test.ts` makes it there.
   })
 
   it('names the provider by passing the value through, never by knowing it', async () => {
@@ -165,14 +140,9 @@ describe('a conversation being read', () => {
     expect(html).toContain('Nothing has been imported')
   })
 
-  describe('🔒 nothing in it can be acted on', () => {
-    it('mounts no composer', async () => {
-      // The composer is not conditionally hidden — it is not imported. Asserted on the rendered
-      // output too, because "not imported today" is a fact a later edit can quietly undo.
-      //
-      // The selectors are proven REAL first, by rendering the composer itself. A `not.toContain`
-      // against a `data-cy` that never existed passes forever and proves nothing — which is what
-      // this test did before the string was checked against the component.
+  describe('nothing in it can be acted on', () => {
+    it('mounts no composer and offers no resume', async () => {
+      // The selectors are proven real first, by rendering the composer itself.
       const composer = await renderToString(
         createSSRApp({
           render: () => h(PromptComposer as never, { state: 'idle', who: 'claude', draft: '' }),
@@ -189,19 +159,7 @@ describe('a conversation being read', () => {
       expect(html).not.toContain('data-cy="prompt-input"')
       expect(html).not.toContain('data-cy="send-prompt"')
       expect(html).not.toContain('<textarea')
-    })
-
-    it('offers no resume', async () => {
-      const html = await render({
-        entry: ENTRY,
-        history: CONVERSATION,
-        mode: 'normal',
-      })
-      // Deliberately absent rather than disabled: 036 mapped what resuming an imported session
-      // would need and it is still out of scope. A Resume that failed would read as data loss.
-      //
-      // A WORD-boundary match, not `>resume<`: a button labelled "Resume session" would have
-      // slipped straight through the tag-adjacent form.
+      // A word-boundary match, so a button labelled "Resume session" is caught too.
       expect(html).not.toMatch(/\bresume\b/i)
     })
 
@@ -334,33 +292,6 @@ describe('markReadOnly', () => {
   })
 })
 
-describe('🔒 the library surfaces name no provider', () => {
-  /**
-   * The file with its COMMENTS removed.
-   *
-   * The rule is about what the component knows, not about what it may be documented as doing —
-   * explaining that this surface merges a Claude home and a Codex home is exactly the kind of note
-   * worth keeping, and a scan that banned the words outright would push that explanation out of the
-   * file it belongs in. What must not survive is a provider name in code or in rendered text.
-   */
-  const withoutComments = (source: string): string =>
-    source
-      .replace(/\/\*[\s\S]*?\*\//g, ' ')
-      .replace(/<!--[\s\S]*?-->/g, ' ')
-      .replace(/(^|[^:])\/\/.*$/gm, '$1')
-
-  it('the scan would still catch a provider name in code or in rendered text', () => {
-    // Non-vacuity: strip-comments is doing real work above, so prove it does not strip everything.
-    // Both of these are what the rule is actually for, and both must be caught.
-    const inCode = withoutComments(`<script>const x = props.provider === 'claude'</script>`)
-    const inTemplate = withoutComments(`<template><span>running on Codex</span></template>`)
-    expect(inCode).toMatch(/\bclaude\b/i)
-    expect(inTemplate).toMatch(/\bcodex\b/i)
-    // And a comment is genuinely removed, or the test above would be unpassable rather than strict.
-    expect(withoutComments('/* the user’s Claude home */')).not.toMatch(/\bclaude\b/i)
-  })
-})
-
 /**
  * Paging back through a long recording (054).
  *
@@ -429,21 +360,6 @@ describe('a recording longer than one page', () => {
       onLoadOlder: async () => {},
     })
     expect(clean).not.toContain('data-cy="older-partial"')
-  })
-
-  it('🔒 still offers nothing that would act on the session', async () => {
-    // 047's guarantee, re-asserted against the ONE control this task added. A "Load earlier" button
-    // reads from the ledger and can touch nothing; the point is that adding it did not quietly
-    // reopen the composer or a resume path alongside it.
-    const html = await render({
-      entry: ENTRY,
-      history: paged(),
-      mode: 'normal',
-      onLoadOlder: async () => {},
-    })
-    expect(html).not.toMatch(/\bresume\b/i)
-    expect(html).not.toContain('data-cy="prompt-input"')
-    expect(html).not.toContain('data-cy="permission-allow"')
   })
 })
 

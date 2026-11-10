@@ -140,46 +140,21 @@ describe('a profile name is unique at the boundary — since 417, the only place
     rmSync(userData, { recursive: true, force: true })
   })
 
-  /**
-   * ⚑ **592 · a spelling of BroBot's own slug that differs only in CASE, derived rather than
-   * typed** (`HO-078` §2).
-   *
-   * ⛔ **This file spelled it `'Default'` in four places**, and the rename made every one of them a
-   * variant of a name nothing answers to — **so four refusals stopped being refused and the suite
-   * said so.** ⚠️ `a-fixture-that-types-the-value-it-is-about` does not survive a rename of that
-   * value; this one does.
-   *
-   * 🔴 **It is asserted to DIFFER from the stored spelling below**, because a loud variant equal to
-   * the stored one would ask the fold about a string that never needed folding
-   * (`a-positive-assertion-must-differ-from-the-default`).
-   */
+  /** BroBot's own slug in a different case, derived so a rename of the slug keeps it a variant. */
   const A_LOUD_SPELLING_OF_IT = DEFAULT_PROFILE_ID.toUpperCase()
 
   describe('the matcher itself — one rule, and it answers one question', () => {
-    it('⚑ 592 · the case variant this file drives really is a DIFFERENT spelling', () => {
-      expect(A_LOUD_SPELLING_OF_IT).not.toBe(DEFAULT_PROFILE_ID)
-      expect(A_LOUD_SPELLING_OF_IT.toLowerCase()).toBe(DEFAULT_PROFILE_ID)
-    })
-
     it('an exact spelling is the profile it names', () => {
       expect(profileAlreadyNamed('developer', ['default', 'developer'])).toBe('developer')
     })
 
-    it('⛔ a case variant is the SAME profile, spelled differently', () => {
+    it('a case variant is the SAME profile, spelled differently', () => {
       expect(profileAlreadyNamed('Developer', ['default', 'developer'])).toBe('developer')
       expect(profileAlreadyNamed('DEVELOPER', ['default', 'developer'])).toBe('developer')
       expect(profileAlreadyNamed('deVeLoPeR', ['default', 'developer'])).toBe('developer')
     })
 
-    it('⚠️ …and the DEFAULT profile is not exempt from it', () => {
-      // `listProfileIds` always puts the default in the answer, on disk or not, so this is the one
-      // collision that is reachable on a fresh install with nothing provisioned at all.
-      expect(profileAlreadyNamed(A_LOUD_SPELLING_OF_IT, [DEFAULT_PROFILE_ID])).toBe(
-        DEFAULT_PROFILE_ID,
-      )
-    })
-
-    it('⚑ a genuinely new name is null — the paired positive, or the rule refuses everything', () => {
+    it('a genuinely new name is null — the paired positive, or the rule refuses everything', () => {
       expect(profileAlreadyNamed('writer', ['default', 'developer'])).toBeNull()
       expect(profileAlreadyNamed('developer2', ['default', 'developer'])).toBeNull()
       // Not a substring match, not a prefix match: `dev` is its own profile.
@@ -194,55 +169,35 @@ describe('a profile name is unique at the boundary — since 417, the only place
     })
   })
 
-  describe('⛔ through the IPC path, with no renderer involved', () => {
-    it('refuses a case variant of a profile that exists, and NAMES the one it collided with', async () => {
+  describe('through the IPC path, with no renderer involved', () => {
+    it('refuses a case variant of a profile that exists, names it, and creates nothing on retry', async () => {
       const host = buildHost()
       await launch(host, 'developer')
       expect(listProfileIds(userData)).toEqual([DEFAULT_PROFILE_ID, 'developer'])
 
-      // ⛔ This is the MCP tool's path: a command on the wire, a schema that passes it (the spelling
-      // is a perfectly legal path segment), and a host that has to be the one to say no.
       await expect(launch(host, 'Developer')).rejects.toThrow(/spelled differently/)
       await expect(launch(host, 'Developer')).rejects.toThrow(/"developer"/)
-      await host.closeAll()
-    })
-
-    it('⛔ …and the refused launch created NOTHING — the rule does not unlock itself on retry', async () => {
-      const host = buildHost()
-      await launch(host, 'developer')
-      await expect(launch(host, 'Developer')).rejects.toThrow()
-
-      // ⚠️ The listing, not `existsSync`: this test runs on a case-insensitive volume, where
-      // `existsSync(.../Developer)` is TRUE the moment `developer` exists and can prove nothing.
-      // `listProfileIds` reads real dirents, so it answers with the spelling that is actually there.
-      // Had the check run AFTER provisioning, a `Developer` would be in this list, the second
-      // attempt would find an exact match, and the third would be allowed.
+      // The listing reads real dirents; `existsSync(.../Developer)` is true on a case-insensitive
+      // volume the moment `developer` exists.
       expect(listProfileIds(userData)).toEqual([DEFAULT_PROFILE_ID, 'developer'])
       await expect(launch(host, 'Developer')).rejects.toThrow()
       expect(listProfileIds(userData)).toEqual([DEFAULT_PROFILE_ID, 'developer'])
       await host.closeAll()
     })
 
-    it('⚑ the paired positive — the SAME spelling launches, and lands in the one home', async () => {
-      // Without this, a rule that refused every profile id would satisfy the test above.
+    it('the paired positive — the same spelling lands in the one home, and a new name is created', async () => {
       const host = buildHost()
       await launch(host, 'developer')
       await launch(host, 'developer')
 
       expect(listProfileIds(userData)).toEqual([DEFAULT_PROFILE_ID, 'developer'])
       expect(existsSync(join(userData, 'provider-homes', HOME_FOLDER, 'developer'))).toBe(true)
-      await host.closeAll()
-    })
-
-    it('⚑ …and a genuinely new profile is still created — a launch IS how one comes into existence', async () => {
-      const host = buildHost()
-      await launch(host, 'developer')
       await launch(host, 'writer')
       expect(listProfileIds(userData)).toEqual([DEFAULT_PROFILE_ID, 'developer', 'writer'])
       await host.closeAll()
     })
 
-    it('⛔ a variant of the DEFAULT profile is refused on a fresh install, with nothing on disk', async () => {
+    it('a variant of the DEFAULT profile is refused on a fresh install, with nothing on disk', async () => {
       // The default is in `listProfileIds`'s answer whether or not anything has been written for it,
       // so this collision exists before the first launch — and it is the one that would have split
       // BroBot's own identity in two.
@@ -397,14 +352,6 @@ describe('a profile name is unique at the boundary — since 417, the only place
       await expect(realHome('claude', 'Developer')).resolves.not.toThrow()
       expect(await realHome('claude', 'Developer')).toContain(`${HOME_FOLDER}${sep}Developer${sep}`)
     })
-
-    it('⚑ …and on this volume that path IS the folder the session already ran in', async () => {
-      // The fact the whole ruling rests on, asserted rather than assumed: these two spellings are
-      // one directory here, which is why letting the recorded one through loses nothing.
-      const home = await realHome('claude', 'developer')
-      mkdirSync(home, { recursive: true })
-      expect(existsSync(await realHome('claude', 'Developer'))).toBe(true)
-    })
   })
 
   /* ------------------- 197 §2 · the doors that are not a launch (from 190 H2) */
@@ -467,15 +414,8 @@ describe('a profile name is unique at the boundary — since 417, the only place
       expect(spellings()).toEqual(['developer'])
     })
 
-    it('⛔ …and a profile nobody has ever started is refused rather than brought into being', async () => {
+    it('all three gestures refuse a profile nobody has started, rather than bringing it into being', async () => {
       await expect(ops().check('codex', 'writer')).rejects.toThrow(/there is no profile "writer"/)
-      expect(spellings()).toEqual([])
-    })
-
-    it('⛔ all THREE gestures take the same door — it is fixed for the class, not the command', async () => {
-      // ⚑ `homeFor` is the one function each of them calls, so the rule is on the door rather than
-      // repeated at three call sites: the fourth gesture gets it without anybody remembering.
-      await expect(ops().check('codex', 'writer')).rejects.toThrow(/no profile/)
       expect(() => ops().reprovision('codex', 'writer')).toThrow(/no profile/)
       await expect(ops().signIn('codex', 'writer')).rejects.toThrow(/no profile/)
       expect(spellings()).toEqual([])

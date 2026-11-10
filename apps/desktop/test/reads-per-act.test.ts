@@ -281,13 +281,7 @@ function aSlowRead() {
   return { read, reads: () => started, finishAll }
 }
 
-/**
- * ⚑ **Which reader each subject fires, as `RuntimeScreen`'s arms fire them** — pinned against the
- * screen's source below, so this table cannot quietly differ from the component nothing mounts.
- *
- * ⚑ **D-016 deleted the room** (the project workspace and its reader `readTheRoom`), so the
- * `conversations` arm fires two coalesced readers where it fired three.
- */
+/** Which reader each subject fires, as `RuntimeScreen`'s arms fire them. */
 const ARMS: Record<RuntimeChangeSubject, readonly ('workspace' | 'forest')[]> = {
   conversations: ['workspace', 'forest'],
   work: ['forest'],

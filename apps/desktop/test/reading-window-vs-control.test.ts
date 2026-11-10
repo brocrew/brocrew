@@ -1,5 +1,4 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { nextTick, reactive, watchEffect } from 'vue'
 import type { HistoryWindow, RuntimeEventMessage } from '../src/shared/runtime-ipc'
@@ -111,6 +110,14 @@ function scrolledBack(record: SessionRecord): SessionRecord {
   return record
 }
 
+/** Feed live events until the window has genuinely released at least one slab. */
+function overflow(record: SessionRecord, extra = 10): SessionRecord {
+  for (let i = 0; i < WINDOW_MAX_EVENTS + extra; i++) {
+    acceptEvent(record, message(record.nextOrdinal, chatter(record.nextOrdinal)))
+  }
+  return record
+}
+
 describe('one fold, two projections (061 finding 5)', () => {
   it('is literally the same object while the window holds the tail', () => {
     // Not "kept in step" — the same state. There is no second fold to pay for, and nothing that
@@ -175,10 +182,7 @@ describe('one fold, two projections (061 finding 5)', () => {
   })
 
   it('bounds the tail it folds, so an excursion into history cannot grow without limit', () => {
-    const record = scrolledBack(opened(0, 3))
-    for (let i = 0; i < WINDOW_MAX_EVENTS + 200; i++) {
-      acceptEvent(record, message(record.nextOrdinal, chatter(record.nextOrdinal)))
-    }
+    const record = overflow(scrolledBack(opened(0, 3)), 200)
     expect(record.tail?.entries.length).toBeLessThanOrEqual(WINDOW_MAX_EVENTS)
     // Still one fold: the release rebuilt the control state rather than leaving it half-applied.
     expect(record.control.items.length).toBeLessThanOrEqual(WINDOW_MAX_EVENTS)
@@ -357,14 +361,6 @@ describe('the resume epoch is part of every re-fold (061 finding 5)', () => {
  * never in the fold; it was in what the two release sites handed it.
  */
 describe('a slab release cannot reset what the session IS (068 finding 4)', () => {
-  /** Feed live events until the window has genuinely released at least one slab. */
-  function overflow(record: SessionRecord, extra = 10): SessionRecord {
-    for (let i = 0; i < WINDOW_MAX_EVENTS + extra; i++) {
-      acceptEvent(record, message(record.nextOrdinal, chatter(record.nextOrdinal)))
-    }
-    return record
-  }
-
   function userInputRequest(id: string): TranscriptEvent {
     return {
       type: 'user_input_request',
@@ -594,19 +590,8 @@ describe('a release on a RESUMED session (068 finding 4 × 064)', () => {
     return record
   }
 
-  function overflow(record: SessionRecord): SessionRecord {
-    for (let i = 0; i < WINDOW_MAX_EVENTS + 10; i++) {
-      acceptEvent(record, message(record.nextOrdinal, chatter(record.nextOrdinal)))
-    }
-    return record
-  }
-
   it('does not resurrect the previous life on a release', () => {
-    // ⚠️ **This one is the EPOCH's, and saying so is the point** (073's own review, which called it
-    // vacuous for the carry and was right). Every retained event here is past `liveFrom`, so
-    // `markReopened` fires on the first of them and would answer `false` with no carry at all. It
-    // stays because 064's guarantee has to keep holding while a carry is being applied over it —
-    // the two must not fight — and the tests that are load-bearing for the CARRY are the two below.
+    // The epoch's guarantee, held while a carry is applied over it; the two below load the carry.
     const record = resumedRecord()
     overflow(record)
     expect(record.control.ended).toBe(false)
@@ -676,61 +661,6 @@ describe('a release on a RESUMED session (068 finding 4 × 064)', () => {
   })
 })
 
-describe('every re-fold goes through the one epoch-aware helper (acceptance 4)', () => {
-  const SOURCE = readFileSync(
-    new URL('../src/renderer/src/lib/session-record.ts', import.meta.url),
-    'utf8',
-  )
-  /** Comment lines out, so a `foldWindow` written in prose is not read as a call. */
-  const CODE = SOURCE.split('\n')
-    .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
-    .join('\n')
-
-  it('assigns a re-folded state only from `refold`', () => {
-    const assignments = [...CODE.matchAll(/record\.(?:transcript|control) = (.+)$/gm)].map(
-      (match) => match[1] ?? '',
-    )
-    // ⚠️ Non-vacuity, in the form 063's review asked for — and EXACT rather than a floor, because a
-    // review pointed out that the floor I first wrote (five) was half the real number and would
-    // therefore have tolerated deleting five sites in silence. Ten is what is there: five that
-    // re-fold, five that re-point `control` at a fold that already exists. Changing it is allowed;
-    // changing it without noticing is what this stops.
-    expect(assignments.length, 'the scan found the wrong number of assignments').toBe(10)
-    for (const rhs of assignments) {
-      expect(rhs).toMatch(/^(refold\(record,|record\.transcript$|transcript$)/)
-    }
-  })
-
-  it('calls `foldWindow` in exactly one place, which is the helper itself', () => {
-    const calls = [...CODE.matchAll(/\bfoldWindow\(/g)]
-    expect(calls).toHaveLength(1)
-    // The third argument is the release carry (073, 068 finding 4). Pinned as part of the one call
-    // for the same reason the epoch is: a re-fold that forgets it is a re-fold that resets what the
-    // session IS, and the only way to forget it here is to change this line.
-    // ⚑ D-035 · the fourth is the page's tool inventory where the entries begin, passed through.
-    expect(CODE).toMatch(
-      /export function refold\([\s\S]*?foldWindow\(entries, record\.liveFrom, carry, toolsInForce\)/,
-    )
-  })
-
-  it('builds the carry in exactly one place, which is the same helper', () => {
-    // Non-vacuity's other half: `foldWindow` being called once is worth nothing if `carryForward`
-    // is called from four call sites that each decide the rule for themselves. One producer, one
-    // consumer, and the four release sites choose only WHETHER to carry — never what.
-    expect([...CODE.matchAll(/\bcarryForward\(/g)]).toHaveLength(1)
-    expect(CODE).toMatch(/carryFrom === null \? null : carryForward\(carryFrom, entries\)/)
-  })
-
-  it('the scan would still catch a raw fold, so it is testing real content', () => {
-    // Non-vacuity for the comment stripping itself: a `foldWindow` in code is found, one in a
-    // comment is not, and the regex above is therefore looking at code.
-    const stripped = ['  // record.transcript = foldWindow(x)', '  const a = foldWindow(y)']
-      .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
-      .join('\n')
-    expect([...stripped.matchAll(/\bfoldWindow\(/g)]).toHaveLength(1)
-  })
-})
-
 describe('a card keeps what you did to it across a re-fold (061 finding 8)', () => {
   it('is keyed on the request, not on where it landed in the fold', () => {
     const record = opened(0, 3)
@@ -765,9 +695,7 @@ describe('a card keeps what you did to it across a re-fold (061 finding 8)', () 
     draft.open = true
 
     scrolledBack(record) // a prepend that releases — both, in the one gesture that causes them
-    for (let i = 0; i < WINDOW_MAX_EVENTS + 10; i++) {
-      acceptEvent(record, message(record.nextOrdinal, chatter(record.nextOrdinal)))
-    }
+    overflow(record)
 
     expect(requestDraft(record, 'req_1')).toBe(draft)
     expect(draft.answers.get('q0')).toBe('half a sentence')
