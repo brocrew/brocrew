@@ -1,3 +1,4 @@
+import { callOn } from './helpers/call-agent-tool'
 import type { QuestionAskedEvent, RequestRoutedEvent } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -149,16 +150,6 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   /** The words a model reads, and the payload beside them. */

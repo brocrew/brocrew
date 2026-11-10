@@ -1,3 +1,4 @@
+import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -17,7 +18,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import {
@@ -234,15 +234,6 @@ describe('652 · a resume that needs no window', () => {
     const last = handed.toolsets.at(-1)
     if (last === undefined) throw new Error('no toolset was handed to that launch')
     return last
-  }
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
   /** An identity exists only once a person has run a conversation as it — 341 criterion 12. */
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {

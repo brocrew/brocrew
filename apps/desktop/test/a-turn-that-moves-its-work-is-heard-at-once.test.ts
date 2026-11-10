@@ -1,3 +1,4 @@
+import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -7,7 +8,6 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime, SessionMachine } from '@brobot2/runtime'
 import type {
-  AgentToolset,
   FakeSessionHandle,
   ResumeOptions,
   RuntimeEvent,
@@ -20,7 +20,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
@@ -244,16 +244,6 @@ describe('D-033 · a turn that moves a piece of work is heard by every window at
       window,
     )
     return sessionId
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const controlsOf = (handle: FakeSessionHandle) => {

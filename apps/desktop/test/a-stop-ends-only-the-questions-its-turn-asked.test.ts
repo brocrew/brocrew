@@ -1,3 +1,4 @@
+import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
 import type { RequestState } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -13,7 +14,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { ToolName } from '../src/main/runtime/agent-tools'
 import { theQuestionsAStopEnded } from '../src/main/runtime/turn-origin'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
@@ -130,16 +130,6 @@ describe('a stop ends only the questions its turn asked, and tells the asker', (
       window,
     )
     return sessionId
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const theToolsetJustHandedOut = (): AgentToolset => {

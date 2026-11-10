@@ -1,3 +1,4 @@
+import { callOn } from './helpers/call-agent-tool'
 import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -137,16 +138,6 @@ describe('629 · a stop reaches down the whole chain', () => {
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const ledger = (sessionId: string): TranscriptEvent[] =>

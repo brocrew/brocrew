@@ -1,3 +1,4 @@
+import { callOn } from './helpers/call-agent-tool'
 import { neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
@@ -248,16 +249,6 @@ describe('692 · a restart keeps what was open', () => {
   const crashAndRelaunch = (): void => {
     store = createSessionStore(db, tick)
     host = buildHost()
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   /** ⚑ The TEXT a model reads, beside the payload `callOn` returns. */

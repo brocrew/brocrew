@@ -1,3 +1,4 @@
+import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
 import { MAILBOX_KINDS } from '../src/shared/conversation-events'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -23,7 +24,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { TOOL_NAMES, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { TOOL_NAMES, agentToolsFor } from '../src/main/runtime/agent-tools'
 import {
   QUESTION_RAILS,
   questionPermanenceOf,
@@ -191,16 +192,6 @@ describe('394 · a question finds a person, and a permission never travels', () 
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   /** ⛔ Built the way a launch builds it, against the CURRENT host — `393`'s rule, and §5 needs it. */

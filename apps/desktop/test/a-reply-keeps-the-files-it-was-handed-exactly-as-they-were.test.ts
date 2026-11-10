@@ -1,3 +1,4 @@
+import { callOn } from './helpers/call-agent-tool'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { navigationReply } from './helpers/navigation-reply'
 import { conversationLink, agentLink, pieceLink } from '../src/shared/links'
@@ -28,7 +29,7 @@ import type { WorkSearchReader } from '../src/main/db/work-search-reader'
 import type { WorkSearchPage } from '../src/shared/work-search'
 import { workSearchQuery, clippedWorkText } from '../src/shared/work-search'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { keepResource, resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { CAPABILITY_FIELDS, MAX_CAPABILITY_COUNT } from '../src/shared/capabilities'
@@ -143,16 +144,6 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   /** The toolset a session's calls are driven through, built the way the launch builds it. */

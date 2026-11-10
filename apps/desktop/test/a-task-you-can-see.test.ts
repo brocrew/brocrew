@@ -1,3 +1,4 @@
+import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
 import { TASK_STATES } from '../src/shared/task-contracts'
 import type { TaskState } from '../src/shared/task-contracts'
@@ -21,7 +22,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { type CallerIdentity } from './helpers/giver-notice-host'
-import { agentCallerId, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
 import {
@@ -187,16 +188,6 @@ describe('379 · a task you can see', () => {
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const theToolsetJustHandedOut = (): AgentToolset => {

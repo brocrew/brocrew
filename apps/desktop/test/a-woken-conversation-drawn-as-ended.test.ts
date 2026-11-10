@@ -1,3 +1,4 @@
+import { callOn } from './helpers/call-agent-tool'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -12,7 +13,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { createSessionStore as createRendererStore } from '../src/renderer/src/lib/session-store'
 import type { SessionStore as RendererStore } from '../src/renderer/src/lib/session-store'
@@ -289,16 +290,6 @@ describe('653 · a woken conversation drawn as ended', () => {
     ledger.events(sessionId).map((entry) => entry.event)
   const cardsOn = (sessionId: string): string[] =>
     events(sessionId).flatMap((event) => (event.type === 'permission_request' ? [event.id] : []))
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
 
   /**
    * ⛔ A PM a person opened, and a worker its give started — both in `mode` (D-016: a conversation a

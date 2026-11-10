@@ -1,3 +1,4 @@
+import { callOn } from './helpers/call-agent-tool'
 import { fixtureProviderConfig, neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -13,7 +14,6 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
 /**
@@ -98,16 +98,6 @@ describe('M77 · a second answer to an already-answered question', () => {
     const last = handed.at(-1)
     if (last === undefined) throw new Error('no toolset was handed out')
     return last
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const bringIntoBeing = async (profileId: string): Promise<void> => {
