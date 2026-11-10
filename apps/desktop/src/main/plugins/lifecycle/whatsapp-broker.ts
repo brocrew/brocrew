@@ -2,7 +2,7 @@ import type { PluginToolDiagnostic } from '../tool-diagnostics'
 import type { BrokerInput, BrokerOptions } from '../tool-broker'
 import { createPrivatePluginPort } from '../managed-transport'
 import { admittedPluginTools } from './broker-inventory'
-import type { PluginLifecycleController } from './controller'
+import type { AgentAttachmentView } from './contracts'
 
 export const whatsappBrokerToolNames = Object.freeze([
   'list_chats',
@@ -20,7 +20,7 @@ export const whatsappBrokerResourceId = 'whatsapp'
  * own fixed words; the binding only claims the account for reading or for sending.
  */
 export async function whatsappBrokerBinding(
-  view: ReturnType<PluginLifecycleController['agentAttachments']>[number],
+  view: AgentAttachmentView,
   refused: () => void | Promise<void>,
   diagnostic?: PluginToolDiagnostic,
 ) {

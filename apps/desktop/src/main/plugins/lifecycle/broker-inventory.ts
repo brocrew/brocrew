@@ -1,11 +1,11 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import type { PluginLifecycleController } from './controller'
+import type { AgentAttachmentView } from './contracts'
 import { managedPluginFailure, type PluginFailureStage } from '@brobot2/runtime/plugin-failure'
 import type { PluginToolDiagnostic } from '../tool-diagnostics'
 
 export async function admittedPluginTools(
-  view: ReturnType<PluginLifecycleController['agentAttachments']>[number],
+  view: AgentAttachmentView,
   names: ReadonlySet<string>,
   refused: () => void | Promise<void>,
   diagnostic?: PluginToolDiagnostic,
