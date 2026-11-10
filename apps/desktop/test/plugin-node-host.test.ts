@@ -801,6 +801,44 @@ process.exit(24);
       cause: 'stop',
     })
   }, 15000)
+  it('saves exit evidence before a failing stderr diagnostic write', async () => {
+    const copied = join(root, 'stderr-write-failure-resources')
+    await cp(resources, copied, { recursive: true })
+    const receipts = join(copied, 'plugin-host', 'receipts.mjs')
+    await writeFile(
+      receipts,
+      (await readFile(receipts, 'utf8'))
+        .replace('openSync, writeFileSync', 'existsSync, openSync, writeFileSync')
+        .replace(
+          '  const temporary =',
+          `  if (name === 'stderr.json') {
+    writeFileSync(join(root, 'stderr-write-order.json'), JSON.stringify({ exitSaved: existsSync(join(root, 'exit.json')) }));
+    throw Object.assign(new Error('fictional diagnostic disk full'), { code: 'ENOSPC' });
+  }
+  const temporary =`,
+        ),
+    )
+    const injected = await preparePluginNodeRuntime({
+      resourcesRoot: copied,
+      durableRoot: join(root, 'stderr-write-failure-runtimes'),
+    })
+    const host = createPluginNodeHost({
+      root: join(root, 'stderr-write-failure-host'),
+      runtime: injected,
+    })
+    hosts.push(host)
+    const child = await host.start(fixture(source))
+    await child.ready()
+    expect(await child.stop()).toEqual({ exited: true })
+    expect(
+      JSON.parse(await readFile(resolve(child.receiptPath, '..', 'stderr-write-order.json'), 'utf8')),
+    ).toEqual({ exitSaved: true })
+    expect(JSON.parse(await readFile(child.receiptPath, 'utf8'))).toMatchObject({
+      exited: true,
+      cause: 'stop',
+    })
+    expect(child.startupDiagnostic?.()).toBeUndefined()
+  }, 15000)
   it('retains stderr and the actual exit when a server announces failed over IPC', async () => {
     const { host } = await context()
     const child = await host.start(
