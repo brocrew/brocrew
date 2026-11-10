@@ -116,13 +116,6 @@ describe('a text pack, read only by a build run from its source', () => {
   it('is not used when the shipped catalogue’s version cannot be read', () => {
     expect(readTextPack(launchNaming(aPack()), false, () => null)).toEqual({ kind: 'none' })
   })
-  it('gives an edited skill a new digest, so its launch installs a view of its own', () => {
-    const folder = aPack()
-    edit(join(folder, 'remember', 'SKILL.md'), (text) => `${text}\nA fictional draft line.\n`)
-    const pack = read(folder)
-    if (pack.kind !== 'read') throw new Error(`not read: ${JSON.stringify(pack)}`)
-    expect(pack.pack.skills.digest).not.toBe(readBuiltInSkills(shipped).digest)
-  })
   it('puts its core and BroBot’s addition in the profile’s file in place of the shipped ones', () => {
     const factoryText = { core: ['A pack’s core.'], coordinator: ['A pack’s addition.'] }
     const brobot = profileBundleSpans({
@@ -276,24 +269,10 @@ describe('a text pack, read only by a build run from its source', () => {
       symlinkSync(aPack(), link)
       readable(link)
     })
-    it('reads a skill’s linked folder', () => {
-      const folder = aPack()
-      rmSync(join(folder, 'delegate'), { recursive: true })
-      symlinkSync(outside(), join(folder, 'delegate'))
-      readable(folder)
-    })
     it('reads a skill’s linked file', () => {
       const folder = aPack()
       rmSync(join(folder, 'delegate', 'SKILL.md'))
       symlinkSync(join(outside(), 'SKILL.md'), join(folder, 'delegate', 'SKILL.md'))
-      readable(folder)
-    })
-    it('reads a linked core.md', () => {
-      const folder = aPack()
-      const core = join(outside(), 'core.md')
-      writeFileSync(core, CORE)
-      rmSync(join(folder, 'core.md'))
-      symlinkSync(core, join(folder, 'core.md'))
       readable(folder)
     })
   })

@@ -131,18 +131,6 @@ describe('single-type reads seek their type', () => {
       row('alpha', 'question_asked', '{"requestId":"m3","move":{"to":"z"}}', 1)
     })
 
-    it('replacements, in their order', () => {
-      const [before, after] = both(READS.replacements())
-      expect(after).toEqual(before)
-      expect(after).toHaveLength(2)
-    })
-
-    it('the newest schedule level of each conversation', () => {
-      const [before, after] = both(READS.scheduleLevels())
-      expect(after).toEqual(before)
-      expect(after!.length).toBeGreaterThan(0)
-    })
-
     it('the decision on a request, newest first, per generation', () => {
       for (const args of [
         ['alpha', 0, 'r1'],

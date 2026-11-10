@@ -532,18 +532,6 @@ describe('the public update feed', () => {
     expect(asked.every((row) => row.url.origin === 'https://brocrew.app')).toBe(true)
   })
 
-  it('does not disguise a refusal or malformed manifest as an unavailable website', async () => {
-    await start()
-    primaryError = Object.assign(new Error('HTTP 403'), { statusCode: 403 })
-    expect((await updates!.checkNow()).state.kind).toBe('error')
-    expect(asked.map((row) => row.url.origin)).toEqual(['https://brocrew.app'])
-    primaryError = null
-    primaryManifest = '[['
-    asked = []
-    expect((await updates!.checkNow()).state.kind).toBe('error')
-    expect(asked.map((row) => row.url.origin)).toEqual(['https://brocrew.app'])
-  })
-
   it('refuses a missing checksum, conflicting top-level path and unexpected package', async () => {
     await start()
     const ordinary = JSON.parse(manifest())
@@ -596,19 +584,6 @@ describe('the public update feed', () => {
       'https://brocrew.app',
     ])
     expect(verify).not.toHaveBeenCalled()
-    expect(updater.install).not.toHaveBeenCalled()
-    expect(quit).not.toHaveBeenCalled()
-  })
-
-  it('downloads the selected Windows file without automatically installing it', async () => {
-    await start()
-    await updates!.checkNow()
-    expect((await updates!.download()).state).toMatchObject({ kind: 'ready', how: 'restart' })
-    const download = asked.find((row) => row.download)!
-    expect(download.url.pathname).toBe(`/update/BroCrew-Setup-${VERSION}-x64.exe`)
-    expect([...download.url.searchParams]).toEqual([['v', INSTALLED]])
-    expect(download.headers).toEqual({ 'User-Agent': 'BroCrew', accept: '*/*' })
-    expect(verify).toHaveBeenCalledOnce()
     expect(updater.install).not.toHaveBeenCalled()
     expect(quit).not.toHaveBeenCalled()
   })

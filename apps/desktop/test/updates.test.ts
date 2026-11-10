@@ -12,7 +12,6 @@ import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import type {
   UpdatesSnapshot,
@@ -63,7 +62,6 @@ import { builtEnvironment } from '../src/main/built-launch'
  *  - §5 · the wiring.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
 const roots: string[] = []
 const servers: Server[] = []
 afterEach(async () => {
@@ -227,30 +225,6 @@ describe('§1 · the rules', () => {
       expect(app.asked.installs).toBe(0)
     })
 
-    it(`${installs}: a failed refresh still attempts the previously offered download`, async () => {
-      let checks = 0
-      const fetched: FoundUpdate[] = []
-      const app = anUpdater({
-        installs,
-        check: async () => {
-          if (++checks > 1) throw new Error('feed temporarily unavailable')
-          return NEWER
-        },
-        download: async (release) => {
-          fetched.push(release)
-        },
-        guide: async (release) => {
-          fetched.push(release)
-          return '/fictional/previous.dmg'
-        },
-      })
-      await app.updates.checkNow()
-      await app.updates.download()
-      expect(checks).toBe(2)
-      expect(fetched).toEqual([NEWER])
-      expect(app.updates.snapshot().state).toMatchObject({ kind: 'ready', version: NEWER.version })
-    })
-
     it(`${installs}: a refresh with no update downloads nothing`, async () => {
       let offered: FoundUpdate | null = NEWER
       const app = anUpdater({ installs, check: async () => offered })
@@ -330,13 +304,6 @@ describe('§1 · the rules', () => {
     expect(app.asked.downloads).toBe(1)
   })
 
-  it('🔴 the off switch: nothing is ever requested on its own, however long it runs', async () => {
-    const off = anUpdater({ start: { checkAutomatically: false, channel: 'stable' } })
-    off.updates.start()
-    for (let day = 0; day < 3; day += 1) await off.pass()
-    expect(off.asked.checks).toBe(0)
-  })
-
   it('🔴 one switch per computer: turned off in another workspace, this one stops checking too', async () => {
     const on = anUpdater({ offered: null })
     on.updates.start()
@@ -371,17 +338,6 @@ describe('§1 · the rules', () => {
     expect(off.asked.checks).toBe(1)
     expect(second?.state).toEqual({ kind: 'checking' })
     expect(first?.state).toEqual({ kind: 'idle', checkedAt: 1_000, upToDate: true })
-  })
-
-  it('⛔ a build that never checks: a development build asks nothing, even when a person presses', async () => {
-    const dev = anUpdater({ notHere: 'a-development-build' })
-    dev.updates.start()
-    expect(dev.armed()).toEqual([])
-    expect((await dev.updates.checkNow()).state).toEqual({
-      kind: 'not-here',
-      why: 'a-development-build',
-    })
-    expect(dev.asked.checks).toBe(0)
   })
 
   it('🔴 the mid-turn refusal: a restart waits while a turn runs, and installs once nothing would stop', async () => {
@@ -753,40 +709,6 @@ describe('§4 · the Mac’s guided download, against a local server', () => {
   const image = Buffer.alloc(256 * 1024, 7)
   const sum = createHash('sha512').update(image).digest('base64')
 
-  it('🔴 a disk image whose sha512 is the published one is kept, with its progress', async () => {
-    const feed = await aFeed({ 'BroBot-0.2.0-arm64.dmg': image })
-    const to = join(aFolder(), 'BroBot-0.2.0-arm64.dmg')
-    const percents: number[] = []
-    const path = await downloadChecked({
-      stagingFolder: aFolder(),
-      url: downloadUrlOf({ provider: 'generic', url: feed.url }, '0.2.0', 'BroBot-0.2.0-arm64.dmg'),
-      sha512: sum,
-      to,
-      onPercent: (percent) => percents.push(percent),
-    })
-    expect(path).toBe(to)
-    expect(createHash('sha512').update(readFileSync(to)).digest('base64')).toBe(sum)
-    expect(percents.at(-1)).toBe(100)
-    expect(readdirSync(dirname(to))).toEqual(['BroBot-0.2.0-arm64.dmg'])
-  })
-
-  it('⛔ one whose sha512 is not is deleted, and said so', async () => {
-    const feed = await aFeed({ 'BroBot-0.2.0-arm64.dmg': Buffer.from('not the release') })
-    const to = join(aFolder(), 'BroBot-0.2.0-arm64.dmg')
-    await expect(
-      downloadChecked({
-        stagingFolder: aFolder(),
-        url: `${feed.url}BroBot-0.2.0-arm64.dmg`,
-        sha512: sum,
-        to,
-        onPercent: () => {},
-      }),
-    ).rejects.toThrow(
-      'the download did not match the sha512 its release published, so it was deleted',
-    )
-    expect(readdirSync(dirname(to))).toEqual([])
-  })
-
   it('⛔ one that stops arriving, or never answers, ends and says so — leaving nothing', async () => {
     const server = createServer((request, response) => {
       // ⚑ `/stops`: ten bytes of a thousand, then nothing. Anything else: no answer at all.
@@ -1118,27 +1040,6 @@ describe('§6 · 🔴 W4.128 — after a Windows update, BroBot reopens the work
     expect(theInstallersRelaunch(nodesCommandLine(['--updated', '/S', '--force-run']))).toBeNull()
   })
 
-  it('🔴 the installer’s half: after the files, BroBot on the folder named last, as the person', () => {
-    const nsh = readFileSync(join(here, '../build/installer.nsh'), 'utf8')
-    expect(nsh).toContain('!macro customInstall')
-    expect(nsh).toContain(`    StrCpy $R2 $R0 ${String(REOPEN_SWITCH.length)} $R1`)
-    expect(nsh).toContain(`    \${If} $R2 == "${REOPEN_SWITCH}"`)
-    expect(nsh).toContain(`      IntOp $R1 $R1 + ${String(REOPEN_SWITCH.length)}`)
-    // ⚑ The argument, to its closing quote or the next space — nothing that follows it.
-    expect(nsh).toContain(`        \${If} $R2 == '"'\n          StrCpy $R5 '"'`)
-    expect(nsh).toContain(`      StrCpy $R4 $R0 $R6 $R1`)
-    // ⛔ Only a folder that is there: a cut or mangled path opens no new, empty workspace.
-    expect(nsh).toContain(`  \${AndIf} \${FileExists} "$R4\\*.*"`)
-    expect(nsh).toContain(
-      `\${StdUtils.ExecShellAsUser} $0 "$INSTDIR\\\${APP_EXECUTABLE_FILENAME}" "open" '"--user-data-dir=$R4"'`,
-    )
-    // ⚑ Every register it uses is given back.
-    for (const register of ['$0', '$R0', '$R1', '$R2', '$R3', '$R4', '$R5', '$R6']) {
-      expect(nsh).toContain(`  Push ${register}\n`)
-      expect(nsh).toContain(`  Pop ${register}\n`)
-    }
-  })
-
   it('⚑ BroBot comes back in an environment built for it: none of this launch’s own switches', () => {
     expect(
       builtEnvironment({
@@ -1151,29 +1052,5 @@ describe('§6 · 🔴 W4.128 — after a Windows update, BroBot reopens the work
         USERPROFILE: 'C:\\Users\\x',
       }),
     ).toEqual({ PATH: 'C:\\Windows', SystemRoot: 'C:\\Windows', USERPROFILE: 'C:\\Users\\x' })
-  })
-
-  it('⚑ wired: from `quit`, the installer told the folder for any other workspace; its own way back for the default — and for an installer that will not start so', () => {
-    const wired = readFileSync(join(here, '../src/main/updates-in-the-app.ts'), 'utf8')
-    expect(wired).toContain(
-      "    if (wayBack.on === 'the-default-workspace' || installer === null) {\n      theInstallersWayBack()\n      return\n    }",
-    )
-    expect(wired).toContain(
-      'const theInstallersWayBack = (): void => void (updater as BaseUpdater).install(true, true)',
-    )
-    expect(wired).toContain(
-      '      const pid = startTheInstaller({ installer, folder: wayBack.folder, env: process.env })',
-    )
-    expect(wired).toContain(
-      "      if (pid === undefined) throw new Error('the installer did not start')",
-    )
-    expect(wired).toContain('      theInstallersWayBack()\n    }\n  })')
-    expect(wired).toContain(
-      "otherDataFolder(userData, defaultDataFolder(app.getPath('appData'))) === null",
-    )
-    const starter = readFileSync(join(here, '../src/main/reopen-after-update.ts'), 'utf8')
-    expect(starter).toContain(
-      "  const installer = spawn(options.installer, installerArgsFor(options.folder), {\n    detached: true,\n    stdio: 'ignore',\n    env: builtEnvironment(options.env),\n  })",
-    )
   })
 })

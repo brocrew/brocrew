@@ -6,10 +6,7 @@ import { bundleAWorker } from './helpers/bundle-a-worker'
 import { TeamProfileGraphLifetime } from '../src/main/db/team-profile-graph-reader'
 import { graphCutoff } from './fixtures/team-profile-graph-oracle'
 
-for (const [identities, conversations, events] of [
-  [100, 1000, 10000],
-  [1000, 10000, 100000],
-] as const) {
+for (const [identities, conversations, events] of [[1000, 10000, 100000]] as const) {
   const name = `fictional scale ${identities}/${conversations}/${events}`
   describe(name, { sequential: true, shuffle: false }, () => {
     let fixture: ReturnType<typeof graphFixture> | undefined

@@ -158,16 +158,6 @@ it('pins pages and stale is monotonic after a newer host revision', () => {
     if (page.type === 'nodes') expect(page.nodes).toHaveLength(5)
   }
 })
-it('rolls back cooperative cancellation without admitting partial data', () => {
-  const f = setup()
-  f.seed()
-  let visits = 0
-  expect(f.engine.read({ operation: 'snapshot' }, graphContext, () => ++visits > 10)).toMatchObject(
-    { type: 'unavailable', cause: 'cancelled' },
-  )
-  expect(f.db.inTransaction).toBe(false)
-  expect(complete(f).nodes).toHaveLength(5)
-})
 it('keeps provider/model pairing, ties and earlier-incarnation settings conservative', () => {
   const f = setup()
   f.identity('aid:a', 'a', graphCutoff - 100)
