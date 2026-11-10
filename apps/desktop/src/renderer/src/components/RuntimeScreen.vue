@@ -170,12 +170,7 @@ import type {
   ConfigFileResult,
   SessionPathTarget,
 } from '../../../shared/runtime-ipc'
-import {
-  agentName,
-  DEFAULT_PROFILE_ID,
-  HELD_ELSEWHERE,
-  PROVIDER_NAME,
-} from '../../../shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, HELD_ELSEWHERE, PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import { useAgentStore } from '../composables/useAgentStore'
 import { providerForALaunch, providersNotChosenIn } from '../lib/agent-store'
 import { NO_LAUNCH_CHOICES, type LaunchChoices } from '../lib/launch-choices'
@@ -183,7 +178,6 @@ import { pickInAConversation, type PickedModel } from '../lib/model-lists'
 import { useModelLists } from '../composables/useModelLists'
 import { useProfileSignIn } from '../composables/useProfileSignIn'
 import { providerReady, readyProvider } from '../lib/provider-models'
-import { conversationsToReopen, type AConversationToReopen } from '../lib/reopening'
 import { oneReadAtATime } from '../lib/one-read-at-a-time'
 import { handedBackSays } from '../lib/handing-it-back'
 import {
@@ -197,9 +191,6 @@ import { limitsDisplayLane, type LimitsDisplayState } from '../lib/limits-displa
 import { profileItRunsAs, readableError } from '../lib/session-record'
 import { takeBackThrough } from '../lib/take-back'
 import { useSpawnSafety } from '../lib/spawn-safety'
-import AgentSectionsSheet from './AgentSectionsSheet.vue'
-import CapabilitiesSheet from './CapabilitiesSheet.vue'
-import ExternalMcpRegistry from './ExternalMcpRegistry.vue'
 import {
   forgetPersistentPreference,
   usePersistentChoice,
@@ -259,7 +250,6 @@ import type { TheWholeForest } from '../../../shared/the-whole-forest'
 import { forestView } from '../lib/the-forest'
 import { ROSTER_EVERY_MS } from '../lib/team-roster'
 import { refusedToOpen } from '../lib/taking-over'
-import { afterAPlacedLaunch } from '../lib/placed-launch'
 import { THE_COMPACT_COMMAND } from '../lib/compaction-offer'
 import { type WorkGivenOutReading } from '../lib/work-given-out'
 import { theWorkAPersonGave } from '../lib/working-together'
@@ -277,7 +267,7 @@ import {
 } from '../lib/recent-activity'
 import { useLastSeen } from '../composables/useLastSeen'
 import type { WorkspaceReading } from '../../../shared/workspace-reading'
-import { useOverlays, type Overlay } from '../lib/overlay-store'
+import { useOverlays } from '../lib/overlay-store'
 import { useSessionStore } from '../composables/useSessionStore'
 import { LAUNCHER, useSurface } from '../composables/useSurface'
 
@@ -295,19 +285,17 @@ import MessageLinks from './MessageLinks.vue'
 import LinkedHistory from './LinkedHistory.vue'
 import type { ResolvedMessageLink } from '../lib/message-links'
 import { resolveMessageLink } from '../lib/runtime-message-links'
-import DeleteConversation from './DeleteConversation.vue'
 import IconSprite from './IconSprite.vue'
 import NewConversation from './NewConversation.vue'
 import { createLaunchGuard, saveFirstApproval } from '../lib/first-approval'
-import OverlayHost, { provideOverlayLayer } from './OverlayHost.vue'
+import { provideOverlayLayer } from './OverlayHost.vue'
+import RuntimeOverlaySheets, { type SheetStart } from './RuntimeOverlaySheets.vue'
 import { createPlaceHistory, type HistoryEntry, type Place } from '../lib/place-history'
 import { aDialogIsOpen } from '../lib/a-dialog-is-open'
 import { conversationTitle } from '../lib/conversation-list'
 import { platformHere } from '../lib/this-computer'
 import { provideMainTab, type MainTab } from '../composables/useMainTab'
 import { providePlaceNavigator } from '../composables/usePlaceNavigator'
-import NewAgent from './NewAgent.vue'
-import StartAsAgent from './StartAsAgent.vue'
 import ReadingPane from './ReadingPane.vue'
 import SessionLibrary from './SessionLibrary.vue'
 import SideRail from './SideRail.vue'
@@ -1279,134 +1267,10 @@ const frontDoorProvider = computed<Provider>(() =>
   ),
 )
 
-/**
- * 🔴 **The same resolution, for an identity that is not BroBot** (423 relay 1).
- *
- * ⛔ **One function, two doors, and the second is what makes the first observable.** Nothing a
- * person can press writes `default`'s provider on an app that has run a conversation — see
- * {@link frontDoorProvider} — so until this door existed, `providerForALaunch`'s first term could
- * only fire in one state. ⚑ **An identity a person CREATED can say what it runs on**, and this is
- * where that answer is spent: create `archivist` on Claude, open a conversation as it, and it runs
- * on Claude while the front door goes on running on the frame's own fallback.
- *
- * ⚠️ **A function and not a computed**, because the argument is the overlay's and changes with it;
- * the roster it reads is reactive, so the sheet's sentence still follows a create underneath it.
- */
-function providerForAgent(profileSlug: string): Provider {
-  return providerForALaunch(agentStore.identities.value, profileSlug, DEFAULT_PROVIDER)
-}
+/** The sheet owns its presentation; both launch doors still use the same start operation. */
+const startFromSheet: SheetStart = (input, firstMessage, attachments, told) =>
+  start(input, firstMessage, attachments, 'sheet', told)
 
-/**
- * ⚑ **What the Team card calls this identity** (626) — `providerForAgent`'s shape one question over.
- *
- * ⛔ **`agentName` and not a name composed here**, because it is the SAME derivation `team-roster.ts`
- * uses for `member.heading`: the sheet a person opens from a card must not call the agent something
- * the card did not. ⚠️ Resolved on every render from the live roster rather than snapshotted onto
- * the overlay member, which is that member's own rule.
- */
-function agentHeadingFor(profileSlug: string): string {
-  // ⚠️ **The inner list, which is what `team-roster.ts` passes too** — `AgentIdentities` is the
-  // whole reading and carries `use`, the folders and the registry beside the rows.
-  return agentName(profileSlug, agentStore.identities.value?.identities ?? null)
-}
-
-/**
- * 🔴 **Start a conversation that was PLACED** (423 relay 1) — the second door's landing.
- *
- * ⛔ **`start` itself, and not a second flow.** Everything that makes a launch a launch — the
- * roster re-read, the profile re-read, the first message going through `store.send` — is that
- * function's, and a copy here would be the second implementation `013` spent a dispatch removing
- * from the composer.
- *
- * ## 🔴 718 · `710` F-9 — the refusal is drawn where the person pressed
- *
- * ⛔ **This closed the sheet UNCONDITIONALLY, before the launch was asked**, on the claim that the
- * refusal *"is shown where every other launch failure is shown"*. ⚠️ Traced, that place is
- * `NewConversation` alone (`store.launchError`), which is not on screen while a person starts a
- * conversation from a Team card — so a refused start showed NOWHERE, and the words typed into the
- * sheet went with it (`firstMessageBelongsTo` hands them to the launcher's slot, and only for a
- * cancelled launch). ⚑ Now the sheet stays up while its launch runs — the composer's own `starting`
- * state and Cancel ({@link SessionStore.isPlacing}) — and closes only when the conversation OPENS.
- * A refusal lands in the sheet, as `store.placedError`, with the words back in its box.
- *
- * ⚠️ **A sheet no longer on screen has nowhere to draw it.** Closing one cancels its launch
- * ({@link closeOverlay}), so what reaches this is a sheet REPLACED by another overlay while its launch
- * ran — and its refusal is said in the window-wide notice instead, `100`'s *a refusal is SAID, not
- * swallowed*. The decision is {@link afterAPlacedLaunch}'s, as data. ⛔ Compared by the overlay OBJECT the press
- * came from ({@link placedFrom}), so a sheet opened afresh afterwards — even for the same agent — is
- * not mistaken for the one that asked, and shows neither its `starting` nor its refusal.
- * ⚑ **The refusal is THIS launch's own** (`told.refused`, `forLaunch`'s rule since `718`'s review):
- * a later sheet's launch cannot inherit it, and it is said once.
- */
-function startPlaced(
-  input: CreateSessionInput,
-  firstMessage: string,
-  attachments: HandedPath[],
-): void {
-  const sheet = overlays.overlay.value
-  placedFrom.value = sheet
-  const stillThere = (): boolean => sheet !== null && overlays.overlay.value === sheet
-  let refusal: string | null = null
-  void start(input, firstMessage, attachments, 'sheet', {
-    opened: () => {
-      if (afterAPlacedLaunch({ kind: 'opened' }, stillThere()).close) overlays.close()
-    },
-    refused: (sentence) => {
-      refusal = sentence
-    },
-  }).then(() => {
-    if (refusal === null) return
-    const { notice } = afterAPlacedLaunch({ kind: 'refused', sentence: refusal }, stillThere())
-    if (notice !== null) overlays.notify(notice)
-  })
-}
-/**
- * ⚑ **718 · the sheet the last placed launch was pressed in** — so the store's ONE sheet launch
- * and ONE sheet refusal ({@link SessionStore.isPlacing}, `placedError`) are drawn only by the
- * sheet that asked for them. See {@link startPlaced}.
- */
-const placedFrom = shallowRef<unknown>(null)
-const placedHere = computed(
-  () => placedFrom.value !== null && placedFrom.value === overlays.overlay.value,
-)
-
-/**
- * 🔴 **718 · closing the StartAsAgent sheet while its launch runs CANCELS that launch** (`718`'s
- * second review round).
- *
- * ⛔ **The sheet is that launch's only Cancel, and the only surface that can draw its refusal or
- * hand its words back.** Closed — its ×, Esc, or a press on the backdrop — the launch ran on with
- * nothing anywhere that could stop it (a fresh sheet is not the one that asked, so it offers no
- * Cancel), and a refusal then took the typed words with it. ⚑ So closing it means what a person
- * closing a sheet that says *starting* means: never mind. `102`'s rule makes a cancel say nothing.
- * ⚠️ A launch that answered first still opens its conversation — the close lost that race — and a
- * refusal that did is said by {@link startPlaced}, as ever.
- *
- * ⛔ **Every overlay closes through here**, so the rule cannot be skipped by a way of closing that
- * forgot it; for any other overlay {@link placedHere} is false and this is `overlays.close()`.
- */
-function closeOverlay(): void {
-  if (placedHere.value && store.isPlacing()) void store.cancelPlaced()
-  overlays.close()
-}
-
-/** What a screen reader calls the open sheet: the words its own title shows. */
-function overlayLabel(overlay: Overlay): string {
-  switch (overlay.kind) {
-    case 'newAgent':
-      return 'New agent'
-    case 'externalMcpServers':
-      return 'External tools'
-    case 'agentSections':
-      return 'Agent knowledge'
-    case 'agentCapabilities':
-      return agentHeadingFor(overlay.profileSlug)
-    case 'startAsAgent':
-      return `New conversation as ${agentHeadingFor(overlay.profileSlug)}`
-    case 'deleteConversation':
-      return 'Delete a conversation'
-  }
-}
 const notice = ref<string | null>(null)
 
 const info = ref<AppInfo | null>(null)
@@ -1790,7 +1654,7 @@ function restoreRefused(slot: string, text: string, attachments: HandedPath[]): 
 
 /**
  * ⚑ **718 · what {@link start} tells the surface that pressed** — the sheet's two moments
- * ({@link startPlaced}): the conversation opened, or THIS launch was refused, in the host's words.
+ * ({@link RuntimeOverlaySheets}): the conversation opened, or THIS launch was refused, in the host's words.
  */
 interface LaunchTold {
   navigated?(): void
@@ -1897,33 +1761,6 @@ async function start(
   })
   if (home === 'conversation') restoreRefused(draftKey(sessionId), firstMessage, attachments)
 }
-
-/**
- * 🔴 **What this window has open as one identity** (470, HO-028 §3) — the grant sheet's offer.
- *
- * ⛔ **Here and not in the sheet**, which is {@link providerForAgent}'s rule on a second value: a
- * surface that re-derived it could disagree with the rail about which conversations are open, and
- * the two are one press apart.
- *
- * ⚠️ **`store.live` is what THIS WINDOW holds** — a conversation the host is running that this
- * window never opened is not in it, and `running` on the wire is per-host, so the sheet is told to
- * treat an empty list as *nothing to offer* and never as *nothing is running*. See
- * {@link AConversationToReopen}.
- *
- * ⚑ **A computed, and LAZY is what makes it affordable.** {@link conversationsToReopen} walks each
- * open conversation's fold through `sessionPanel`, which is a pass over its items — so it is read
- * in exactly one place, inside the overlay branch that draws this sheet, and a window with no
- * grant sheet open never evaluates it at all. ⛔ **A function would repeat that walk on every
- * render of this screen**, which is every event any open conversation receives; the computed
- * repeats it only when one of those folds actually moves. ⚠️ The guard is what keeps the
- * dependency from being taken while another overlay is up.
- */
-const openAsForSheet = computed<readonly AConversationToReopen[]>(() => {
-  const overlay = overlays.overlay.value
-  if (overlay === null || overlay.kind !== 'agentCapabilities') return []
-  // ⚑ **678 · no longer which of them is the selected one** — R26: every draft survives the reopen.
-  return conversationsToReopen(store.live.value, overlay.profileSlug)
-})
 
 /**
  * 🔴 **Hand the open conversation back to nobody** (523 — `519` item 3, HO-045 §1).
@@ -4329,79 +4166,15 @@ onUnmounted(() => {
       />
 
       <!-- One overlay at a time, over everything. Its chrome is real even where its confirms are not. -->
-      <OverlayHost
-        v-if="overlays.overlay.value"
-        :label="overlayLabel(overlays.overlay.value)"
-        @close="closeOverlay()"
-      >
-        <!-- 🔴 **An agent being brought into being** (423). ⛔ It writes an `agent_identity` row — the
-             gesture `417` deleted and `419` built every layer of but this one. ⚠️ **Every overlay in
-             this chain is named rather than a `v-else`**: the union is exhaustive here, so a kind
-             added without a branch draws nothing and is visible immediately, rather than opening
-             somebody else's sheet. -->
-        <NewAgent v-if="overlays.overlay.value.kind === 'newAgent'" @close="overlays.close()" />
-        <!-- Edit the external_mcp_server rows resolved at launch. Agent grants are configured
-             separately on CapabilitiesSheet. -->
-        <ExternalMcpRegistry
-          v-else-if="overlays.overlay.value.kind === 'externalMcpServers'"
-          @close="overlays.close()"
-        />
-        <!-- 🔴 **626 · the popup's second door, hosted here rather than in `TeamWorkspace`.**
-             ⛔ **Deliberately NOT a local `OverlayHost` on that page**: `a-stop-a-modal-cannot-cover`
-             §3 censuses the host components precisely so a fifth one does not appear without anybody
-             deciding it should, and this sheet needs nothing that host does not already give it.
-             ⚑ **The name is resolved HERE, live, from the roster this screen already holds** — the
-             overlay member carries a slug and never a snapshot. -->
-        <AgentSectionsSheet
-          v-else-if="overlays.overlay.value.kind === 'agentSections'"
-          :profile-slug="overlays.overlay.value.profileSlug"
-          :agent-name="agentHeadingFor(overlays.overlay.value.profileSlug)"
-          :store="agentStore"
-          @close="overlays.close()"
-          @settings="
-            () => {
-              overlays.close()
-              openSettings('skills')
-            }
-          "
-        />
-        <CapabilitiesSheet
-          v-else-if="overlays.overlay.value.kind === 'agentCapabilities'"
-          :profile-slug="overlays.overlay.value.profileSlug"
-          :runs-on="providerForAgent(overlays.overlay.value.profileSlug)"
-          :capabilities="capabilities"
-          :open-as="openAsForSheet"
-          @close="overlays.close()"
-          @start-conversation="(slug) => overlays.open({ kind: 'startAsAgent', profileSlug: slug })"
-          @reopen="(sessionId) => void reopenForGrant(sessionId)"
-        />
-        <!-- 🔴 **The app's SECOND launch door** (423 relay 1). ⛔ It is the one HO-023 §2 named — *"a
-             new conversation is with BroBot; every other session is placed somewhere"* — and it exists because `424` measured that after `417` merges, every
-             conversation a person can open is BroBot's, in the workspace, and so is everything it
-             spawns. ⚑ The provider is RESOLVED here, from the identity it opens, so this sheet's
-             sentence and its payload are one value. -->
-        <StartAsAgent
-          v-else-if="overlays.overlay.value.kind === 'startAsAgent'"
-          :profile-slug="overlays.overlay.value.profileSlug"
-          :provider="providerForAgent(overlays.overlay.value.profileSlug)"
-          :default-approval-mode="frontDoorApproval"
-          :capabilities="capabilities"
-          :busy="placedHere && store.isPlacing()"
-          :error="placedHere ? store.placedError.value : null"
-          @start="startPlaced"
-          @cancel="void store.cancelPlaced()"
-          @close="closeOverlay()"
-        />
-        <!-- The confirmation before a delete: it reads what would go, and a person ticks each part. -->
-        <DeleteConversation
-          v-else-if="overlays.overlay.value.kind === 'deleteConversation'"
-          :key="overlays.overlay.value.sessionId"
-          :session-id="overlays.overlay.value.sessionId"
-          @close="closeOverlay()"
-          @archived="archivedFromTheSheet"
-          @deleted="deletedFromTheSheet"
-        />
-      </OverlayHost>
+      <RuntimeOverlaySheets
+        :capabilities="capabilities"
+        :default-approval-mode="frontDoorApproval"
+        :start="startFromSheet"
+        @settings="openSettings"
+        @reopen="(sessionId) => void reopenForGrant(sessionId)"
+        @archived="archivedFromTheSheet"
+        @deleted="deletedFromTheSheet"
+      />
 
       <ToastStack />
 

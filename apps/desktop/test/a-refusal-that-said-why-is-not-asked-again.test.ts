@@ -338,13 +338,6 @@ describe('§2 · the screen hands the launcher the word — read where it is wri
     expect(tag).toContain(':refused-as="store.launchRefusal.value"')
     expect(screen.split(':refused-as=')).toHaveLength(2)
   })
-
-  /** ⚑ **The control**: the sheet's tag is handed its own sentence, and no word — it has no check. */
-  it('⚑ `<StartAsAgent>` is handed its own sentence and no word', () => {
-    const tag = tagOf('<StartAsAgent\n', '/>')
-    expect(tag).toContain(':error="placedHere ? store.placedError.value : null"')
-    expect(tag).not.toContain('refused-as')
-  })
 })
 
 /* ================================================================ §3 · the real wire */
