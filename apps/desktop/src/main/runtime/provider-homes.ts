@@ -82,7 +82,7 @@ export function deriveProviderHome(userData: string, identity: ProviderHomeIdent
 }
 
 /** The folder of a profile's saved methods, beside its provider homes. */
-export const SAVED_METHODS_FOLDER = 'runbooks'
+const SAVED_METHODS_FOLDER = 'runbooks'
 
 /** Where a profile keeps its saved methods, shared by its Claude and Codex homes. Pure. */
 export function savedMethodsFolder(userData: string, profileId: string): string {

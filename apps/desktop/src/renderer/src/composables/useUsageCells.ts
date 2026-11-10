@@ -59,7 +59,7 @@ export interface UsageCell {
 export const TOTALS: ReadonlySet<string> = new Set(['agents', 'memory'])
 
 /** What not read yet is, in the title bar's line. */
-export const NOT_READ_MARK = '?'
+const NOT_READ_MARK = '?'
 
 /** The provider's reading for a window; one the provider named a bucket for is not the window. */
 function readingIn(

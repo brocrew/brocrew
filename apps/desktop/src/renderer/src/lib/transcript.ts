@@ -961,13 +961,13 @@ export const REOPENED_FOR_WHAT_WAITED =
  * the app, and a person's own send or Reopen, which opens the one in its place — so the line says
  * both.
  */
-export const REPLACED_BY_A_NEW_CONVERSATION =
+const REPLACED_BY_A_NEW_CONVERSATION =
   'This conversation could not be reopened, so a new conversation of the same agent took its ' +
   'place — with the agent’s memory, not this history. What is sent to this one goes there, and ' +
   'reopening this one opens that one.'
 
 /** ⚑ **D-017 · R10 — and the new one's first line** ({@link ReplacesEvent}), the other end. */
-export const TOOK_THE_PLACE_OF_ONE =
+const TOOK_THE_PLACE_OF_ONE =
   'This conversation took the place of one of the same agent’s that could not be reopened. It has ' +
   'the agent’s memory, not that conversation’s history.'
 
@@ -1587,7 +1587,7 @@ export function appendUserMessage(
  *
  * This go-ahead currently carries no attachments: `endPlanMode` publishes only text and attribution. If paths are added later, this item and its component must display them. `app-authored-turn.test.ts` checks the absence on the event so that contract change becomes visible.
  */
-export function appendAppTurn(state: TranscriptState, text: string): void {
+function appendAppTurn(state: TranscriptState, text: string): void {
   state.items.push({ kind: 'continuation', id: nextId(state, 'continuation'), text })
   state.changes.turn += 1
 }
@@ -1616,7 +1616,7 @@ export function appendAppNotice(state: TranscriptState, text: string, notice: st
  * provider really received it, and `045` opens a turn row from the event underneath it. A reader
  * that treated it as chrome would show work with no visible cause.
  */
-export function appendWorkReport(
+function appendWorkReport(
   state: TranscriptState,
   text: string,
   report: WorkReport,
@@ -1646,7 +1646,7 @@ export function appendWorkReport(
  * piece one agent gives another is the turn the whole of that work happens under, so a scope axis
  * that did not count it would file every file the child touched under the previous prompt.
  */
-export function appendRelayedTurn(
+function appendRelayedTurn(
   state: TranscriptState,
   text: string,
   /**

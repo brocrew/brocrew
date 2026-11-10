@@ -65,11 +65,8 @@ import type {
 export type {
   ProfileReport,
   ProfileReading,
-  RulesOnARecord,
   WhoStartedIt,
   ConversationOnARecord,
-  WhoGaveIt,
-  PieceOnARecord,
 } from './agent-records'
 import {
   terminalFor,
@@ -89,7 +86,6 @@ import {
   type ProviderLimitDisclosure,
   type SessionEnding,
 } from './session-disclosures'
-export { aRefusedLoginStoppedText } from './session-disclosures'
 export type { WhatAFailedTurnWasFor } from './session-disclosures'
 import {
   aWordOfThePlanners,
@@ -117,14 +113,12 @@ import {
 export type {
   WhoseConversation,
   AgentsListed,
-  ArchivedAgent,
   ArchivedListed,
   PieceOnTheCard,
   StoppedOnAPerson,
   AgentCard,
 } from './agent-directory'
-export { wordsOutsideTheText, wordsInTheText } from './kept-file-search'
-export type { FindFilesAsked, FoundIn, FoundFile, FoundFiles, TextHolds } from './kept-file-search'
+export type { FindFilesAsked, FoundFile, FoundFiles } from './kept-file-search'
 import {
   THE_APP_ITSELF,
   mayControl,
@@ -147,7 +141,6 @@ import {
 export {
   THE_APP_ITSELF,
   mayControl,
-  mayClaim,
   mayHandBack,
   mayCommand,
   mayInterruptDownTheChain,
@@ -447,7 +440,7 @@ import type {
   ServiceAtAGive,
   WhatItRunsOn,
 } from './spawn-rails'
-export type { GiveOutcome, SpawnRefusal } from './spawn-rails'
+export type { GiveOutcome } from './spawn-rails'
 import { agentIdentityRowId, foldProfileName } from '../db/identity'
 import { LinkAnswers, type ReadLinkAnswer } from './link-answers'
 import type { Exchange, ReceivedInATurn, TranscriptTurn } from '../../shared/last-exchange'
@@ -3282,16 +3275,16 @@ function asItIsDrawn(piece: PieceRow): string {
 }
 
 /** ⚑ **F009 · the most of an agent's conversations its record lists**, newest activity first. */
-export const CONVERSATIONS_ON_A_RECORD = 10
+const CONVERSATIONS_ON_A_RECORD = 10
 
 /** ⚑ **F009 · the most of an agent's pieces its record lists**, the newest given first. */
-export const PIECES_ON_A_RECORD = 10
+const PIECES_ON_A_RECORD = 10
 
 /** ⚑ **F009 · the most of the files an agent made its record lists**, newest first. */
-export const FILES_ON_A_RECORD = 5
+const FILES_ON_A_RECORD = 5
 
 /** ⚑ **F009 · the most of its standing rules' first line an agent's record quotes.** */
-export const RULES_BEGIN_CHARS = 200
+const RULES_BEGIN_CHARS = 200
 
 /**
  * Read an agent's record when `list_profiles` names it. The record helps the caller choose whom to call and is not preloaded into conversation context.

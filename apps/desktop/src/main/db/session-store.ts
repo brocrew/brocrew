@@ -200,8 +200,6 @@ import { TURN_AUTHORSHIP_KEYS } from '../../shared/runtime-ipc'
 import { REPLY_SUMMARY_LIMIT } from '../runtime/reply-rails'
 import { MAX_TURN_PARTS, USER_TURN_PART_KEYS } from '../../shared/runtime-ipc'
 import { MEMORY_NOTES_PER_EVENT, MEMORY_NOTE_TEXT_CAP } from '../../shared/runtime-ipc'
-
-export type { DerivedState, LedgerStatus }
 import type { AppDatabase, AppStatement } from './connection'
 import {
   ROOTS_SCOPE,
@@ -287,30 +285,23 @@ import {
 import { formOfName, MAX_RESOURCES_PER_REPLY, type ResourceRole } from '../../shared/documents'
 import { workFileGroup } from '../../shared/work-file-groups'
 
-export type SpawnedConversation = Omit<SpawnEdge, 'running'>
+type SpawnedConversation = Omit<SpawnEdge, 'running'>
 
 export type ForestedConversation = Omit<
   ForestConversation,
   'running' | 'standsInFor' | 'inItsPlace'
 >
 
-export type ForestedNode = ForestedConversation | ForestTask
+type ForestedNode = ForestedConversation | ForestTask
 
-export interface ConversationBinding {
+interface ConversationBinding {
   /** Always present when this app holds the row — the column is `NOT NULL`. */
   readonly provider: Provider
   readonly identity: string | null
 }
 
-export type {
-  CapabilityGrant,
-  CapabilityEdit,
-  CapabilityKey,
-  CapabilityOrigin,
-  CapabilityOrigins,
-  ProfileCapabilities,
-} from '../../shared/capabilities'
-export { CAPABILITY_FIELDS, DEFAULT_CAPABILITIES } from '../../shared/capabilities'
+export type { ProfileCapabilities } from '../../shared/capabilities'
+export { DEFAULT_CAPABILITIES } from '../../shared/capabilities'
 
 export interface OpenTurn {
   readonly id: string
@@ -398,7 +389,7 @@ export type KeptFilesAsked =
 export type KeptFilesPaged =
   Extract<KeptFilesAsked, { readonly scope: 'tree' }> | { readonly scope: 'everywhere' }
 
-export interface KeptFilesFrom {
+interface KeptFilesFrom {
   readonly olderThan: string | null
   readonly limit: number
 }
@@ -412,7 +403,7 @@ export interface GivenInput {
   readonly bytes: number
 }
 
-export interface GivenPiece {
+interface GivenPiece {
   /** `work_<uuid>`, minted by the host (`newWorkId`) before it is sent or written. */
   readonly piece: string
   readonly parent: string
@@ -505,7 +496,7 @@ export interface LiveSessionRow {
   reasoningEffort: string | null
 }
 
-export interface AdoptedSessionRecord {
+interface AdoptedSessionRecord {
   id: string
   provider: Provider
   /** The provider's own id, which becomes the ref resume reattaches from. */
@@ -520,7 +511,7 @@ export interface AdoptedSessionRecord {
   child?: ChildDescent
 }
 
-export interface UnresumableSession {
+interface UnresumableSession {
   sessionId: string
   provider: Provider
   cwd: string
@@ -582,7 +573,7 @@ export interface SessionSnapshot {
   ledger: { ordinal: number; event: TranscriptEvent; at: number }[]
 }
 
-export interface LedgerWindowQuery {
+interface LedgerWindowQuery {
   /** How many turns to take, counting back. At least one is always taken when one exists. */
   turns: number
   maxEvents: number
@@ -590,7 +581,7 @@ export interface LedgerWindowQuery {
 }
 
 /** One page of a session's ledger, and enough to ask for the page before it. */
-export interface LedgerWindow {
+interface LedgerWindow {
   entries: PersistedEvent[]
   from: number
   /** Whether any event exists below `from`. The cursor's "there is more", read rather than guessed. */
@@ -863,12 +854,12 @@ interface GenerationRow {
   failure: string | null
 }
 
-export const MAX_SCHEDULE_EVIDENCE_ROWS = 2_000
+const MAX_SCHEDULE_EVIDENCE_ROWS = 2_000
 
 export const MAX_SCHEDULE_HISTORY_WALKED = 20_000
 
 /** What {@link SessionStore.scheduleEvidenceRows} gives. */
-export interface ScheduleEvidenceRead {
+interface ScheduleEvidenceRead {
   /** The rows, oldest first. */
   readonly rows: readonly ScheduleEvidenceRow[]
   readonly cut: boolean
@@ -2109,7 +2100,7 @@ export interface RecordedTurn {
   blockedAt: number | null
 }
 
-export type TurnEndReason = TurnEnding
+type TurnEndReason = TurnEnding
 
 function parseBound(stored: number | null, fallback: number): number {
   if (stored === null) return fallback

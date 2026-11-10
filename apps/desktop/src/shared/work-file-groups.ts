@@ -9,7 +9,6 @@ export const WORK_FILE_GROUP_WORDS: Readonly<Record<WorkFileGroup, string>> = {
   attachments: 'Attachments',
   working: 'Working files',
 }
-export const MAIN_RESULT_WORDS = 'Main result'
 
 export function workFileGroup(
   file: { readonly role: ResourceRole; readonly form: DocumentForm | null },

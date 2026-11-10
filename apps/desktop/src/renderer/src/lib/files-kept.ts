@@ -187,21 +187,12 @@ export function treeFileGroups(
   })
 }
 
-/** The other pieces that kept a file, in a row's words: "Also kept on W1.1.1, W1.1.2." */
-export const ALSO_KEPT_ON = 'Also kept on'
-
 /** ⚑ **How many files the tree holds** — distinct bytes, the Files tab's count (`07`: 11 kept, 8 files). */
 export function distinctFiles(files: readonly KeptFile[]): number {
   return new Set(files.map((file) => file.sha256)).size
 }
 
-/** ⚑ The Files tab's three filters (`07` §2 item 3). */
-export const FILE_FILTERS = [
-  { id: 'all', label: 'All' },
-  { id: 'made', label: 'Made' },
-  { id: 'input', label: 'Inputs' },
-] as const
-export type FileFilter = (typeof FILE_FILTERS)[number]['id']
+export type FileFilter = 'all' | 'made' | 'input'
 
 /**
  * ⚑ **The files under one filter, by their role** — filtered BEFORE they are grouped, so where a
@@ -209,12 +200,6 @@ export type FileFilter = (typeof FILE_FILTERS)[number]['id']
  */
 export function filtered(files: readonly KeptFile[], filter: FileFilter): readonly KeptFile[] {
   return filter === 'all' ? files : files.filter((file) => file.role === filter)
-}
-
-/** ⚑ What a filter that leaves nothing says — ⛔ never *no files*, which the tree does not claim. */
-export const NONE_UNDER: Readonly<Record<Exclude<FileFilter, 'all'>, string>> = {
-  made: 'Nothing on this work was made yet — only inputs were handed over.',
-  input: 'No inputs were handed over on this work.',
 }
 
 /** ⚑ Who added a file, in a row's words — ⛔ `null` is a person, and the person is *you*. */

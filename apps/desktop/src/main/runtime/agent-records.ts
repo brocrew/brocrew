@@ -124,7 +124,7 @@ export interface ConversationOnARecord {
  * ⚑ **F009 · who gave a piece of an agent's record**: a person — work its holder took on for them —
  * the caller itself, or another conversation, named by its own piece above this one (F033).
  */
-export type WhoGaveIt =
+type WhoGaveIt =
   | { readonly is: 'a-person' }
   | { readonly is: 'you' }
   | { readonly is: 'an-agent'; readonly conversation: string; readonly called: string }

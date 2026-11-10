@@ -748,7 +748,7 @@ export type CapabilityEdit = {
  * is a change to those parsing functions whose exact bodies `341`'s mutation table measures — its
  * own dispatch, and it is written up in this one's response.
  */
-export type CapabilityOrigin =
+type CapabilityOrigin =
   /** The column is NULL. This row has chosen nothing and follows the ruled default. */
   | 'default'
   /** The column holds something. What the rails do with it is {@link CapabilityField.narrowest}'s

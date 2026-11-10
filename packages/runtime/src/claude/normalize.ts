@@ -2000,7 +2000,7 @@ function textParts(content: unknown): readonly string[] {
   return parts
 }
 
-export function summarizeToolInput(name: string, input: unknown): string {
+function summarizeToolInput(name: string, input: unknown): string {
   if (isRecord(input)) {
     const command = input['command']
     if (typeof command === 'string') return truncate(command)

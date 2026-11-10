@@ -108,7 +108,7 @@ export interface VisibleConversation {
 }
 
 /** One archived conversation a caller may reach: its card, and when it was archived (epoch ms). */
-export interface ArchivedAgent {
+interface ArchivedAgent {
   readonly card: AgentCard
   readonly archivedAt: number
 }
