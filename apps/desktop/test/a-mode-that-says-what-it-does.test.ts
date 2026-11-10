@@ -33,7 +33,9 @@ describe('every provider declares what this mode does, and the two answers diffe
     const claude = declaredNote('claude')
     expect(claude).toMatch(/nothing is sandboxed in either mode/i)
     expect(claude).toMatch(/card/i)
-    expect(claude, 'the note names no app path check').not.toMatch(/check left|shell command|refus/i)
+    expect(claude, 'the note names no app path check').not.toMatch(
+      /check left|shell command|refus/i,
+    )
     expect(claude, 'Claude is never started with a Codex sandbox mode').not.toContain(
       'danger-full-access',
     )
