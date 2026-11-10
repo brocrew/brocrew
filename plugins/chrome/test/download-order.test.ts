@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { BrowserContext, Page } from 'playwright-core'
 import { FakeDownload, harness } from './fakes.js'
-import { buildToolDefs } from '../src/tools/index.js'
+import { buildToolDefs, createAgentChromeTools } from '../src/tools/index.js'
 import { ChromeBrowser } from '../src/browser/chromeBrowser.js'
 const fixtures: ReturnType<typeof harness>[] = []
 const routedBrowsers: ChromeBrowser[] = []
@@ -230,6 +230,51 @@ it('releases a fresh claim after saving that same download', async () => {
   expect(f.session.send).not.toHaveBeenCalledWith('Browser.cancelDownload', {
     guid: 'fresh-guid',
   })
+})
+
+it('reports owned advancing bytes and lets a default download outlast the action budget', async () => {
+  const f = await routed()
+  const file = path.join(f.stage, 'activity-guid')
+  const download = new FakeDownload('fresh.txt', Buffer.from('fresh bytes'), file)
+  const ready = Promise.withResolvers<void>()
+  const saved = Promise.withResolvers<string>()
+  download.path = () => {
+    ready.resolve()
+    return saved.promise
+  }
+  const stages: string[] = []
+  f.page.goto = vi.fn(async () => {
+    f.begin('activity-guid')
+    await flush()
+    for (const receivedBytes of [5, 5, 4, 11])
+      f.session.emit('Browser.downloadProgress', {
+        guid: 'activity-guid', receivedBytes, totalBytes: 11, state: 'inProgress',
+      })
+    expect(stages).toEqual(['page-ready', 'download-received', 'download-received'])
+    f.page.emit('download', download)
+    return { status: () => 200 }
+  })
+  const tool = createAgentChromeTools(f.h.deps).find((one) => one.definition.name === 'download')!
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  let ended = false
+  const pending = tool.execute(
+    { tabId: f.tabId, url: 'https://fictional.invalid/fresh.txt' },
+    { activity: (stage) => stages.push(stage) },
+  )
+  void pending.then(() => { ended = true }, () => { ended = true })
+  try {
+    await ready.promise
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(ended).toBe(false)
+    f.complete('activity-guid')
+    saved.resolve(file)
+    await pending
+    expect(stages.at(-1)).toBe('download-saved')
+  } finally {
+    saved.resolve(file)
+    vi.useRealTimers()
+    await pending.catch(() => undefined)
+  }
 })
 
 it('keeps a user download when the wait times out before receiving its event', async () => {
