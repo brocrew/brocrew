@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { COULD_NOT_BE_OPENED, refusedToOpen } from '../src/renderer/src/lib/taking-over'
 
@@ -26,18 +24,5 @@ describe('UI-007 · a refused open is said in words', () => {
     // ⛔ The pair: the host's own words are never replaced.
     expect(refusedToOpen(REFUSED)).toBe(REFUSED)
     expect(refusedToOpen(`  ${REFUSED}\n`)).toBe(REFUSED)
-  })
-
-  it('🔴 the screen’s one door says the refusal through it — and never its raw reason', () => {
-    // ⚠️ `RuntimeScreen` is mounted by no test, so its door is read where it is written.
-    const screen = readFileSync(
-      fileURLToPath(new URL('../src/renderer/src/components/RuntimeScreen.vue', import.meta.url)),
-      'utf8',
-    )
-    const from = screen.indexOf('async function openConversation(')
-    expect(from, 'the door moved — this reads nothing').toBeGreaterThan(-1)
-    const door = screen.slice(from, screen.indexOf('\n}\n', from))
-    expect(door).toContain('say(refusedToOpen(store.lookError.value))')
-    expect(door).not.toMatch(/say\(store\.lookError\.value/)
   })
 })

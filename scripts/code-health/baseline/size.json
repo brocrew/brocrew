@@ -112,7 +112,6 @@
   "apps/desktop/test/dom/runtime-screen-behaviour.dom.test.ts": 1362,
   "apps/desktop/test/dom/session-tools.dom.test.ts": 1489,
   "apps/desktop/test/dom/the-first-picture-of-who-called-whom.dom.test.ts": 1729,
-  "apps/desktop/test/every-assertion-that-reads-clipped-text.test.ts": 1941,
   "apps/desktop/test/every-identity-he-has.test.ts": 1220,
   "apps/desktop/test/export-session.test.ts": 1256,
   "apps/desktop/test/finished-and-finished-with-a-question.test.ts": 1155,

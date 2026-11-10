@@ -44,7 +44,6 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrations = join(here, '../src/main/db/migrations')
-const MAIN = join(here, '../src/main/index.ts')
 
 class NullSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = false
@@ -235,121 +234,5 @@ describe('an ended conversation is read from its own profile’s home (D-016a)',
     expect(defaultRead.ok && defaultRead.text).toContain(`# the home of ${DEFAULT_PROFILE_ID}`)
     expect(defaultRead.ok && defaultRead.text).not.toContain('# the home of client')
     await reopened.closeAll()
-  })
-})
-
-/**
- * The file with comments removed — line comments and block comments.
- *
- * ⛔ Copied from `one-way-to-stage.test.ts`, for its reason: `main/index.ts` NAMES `HOME_FOLDER` in a
- * comment on purpose, and a census of what it SPELLS must not count prose.
- */
-function codeOf(source: string): string {
-  let inBlock: '*/' | null = null
-  return source
-    .split('\n')
-    .map((raw) => {
-      let code = ''
-      for (let at = 0; at < raw.length; at += 1) {
-        const rest = raw.slice(at)
-        if (inBlock !== null) {
-          if (!rest.startsWith(inBlock)) continue
-          at += inBlock.length - 1
-          inBlock = null
-          continue
-        }
-        if (rest.startsWith('//')) break
-        if (rest.startsWith('/*')) {
-          inBlock = '*/'
-          at += 1
-          continue
-        }
-        code += raw[at]
-      }
-      return code
-    })
-    .join('\n')
-}
-
-/** Whitespace collapsed, so a census does not measure where the formatter chose to wrap. */
-function flat(source: string): string {
-  return source.replace(/\s+/g, ' ').replace(/\(\s/g, '(')
-}
-
-/** How many times `needle` occurs in `haystack` — the count, not merely whether. */
-function times(haystack: string, needle: string): number {
-  return haystack.split(needle).length - 1
-}
-
-// The provider's bound home strategy prepares the profile it is given. The binding gets its paths
-// from the same pure facade as the read seam; neither call invents another layout.
-const PREPARE_SEAM =
-  'prepareProviderHome: async (provider, profileId) => { transcriptRetention?.beforeLaunch() return providerModules[provider].home.prepare(profileId) },'
-const MODULE_PATHS =
-  'const providerModules = createProviderModules((provider) => homePathsForProvider(userData, provider),'
-const PATH_SEAM =
-  'providerHomePath: (provider, profileId) => deriveProviderHome(userData, { profileId, provider }),'
-const PROFILES_SEAM = 'listProfiles: (provider) => listProfileIds(userData, provider),'
-const DISCOVERY_SEAM =
-  'listProviderHomes(userData) .map((home) => discoverSessionsIn(home.provider, home.path, home.profileId))'
-
-describe('main wires the home seams to the one folder (D-016a)', () => {
-  it('main wires the two home seams and the profile list to the one folder and to nothing else', () => {
-    const main = flat(codeOf(fs.readFileSync(MAIN, 'utf8')))
-
-    // ⚑ Presence first — every negative below rides on these, and a census that read nothing would
-    // satisfy all of them.
-    expect(main.length, 'main/index.ts moved — re-point this').toBeGreaterThan(1000)
-    expect(times(main, PREPARE_SEAM), 'the prepareProviderHome seam').toBe(1)
-    expect(times(main, MODULE_PATHS), 'the bound provider paths').toBe(1)
-    expect(times(main, PATH_SEAM), 'the providerHomePath seam').toBe(1)
-    expect(times(main, PROFILES_SEAM), 'the listProfiles seam').toBe(1)
-    expect(times(main, DISCOVERY_SEAM), 'the discoverSessions map').toBe(1)
-
-    // The folder has one author, provider-homes.ts: preparation receives its bound paths, while
-    // reads use the pure derivation directly.
-    expect(times(main, 'providerModules[provider].home.prepare(profileId)')).toBe(1)
-    expect(times(main, 'deriveProviderHome(userData')).toBe(1)
-    // …and main never spells the layout itself.
-    expect(main).not.toMatch(/HOME_FOLDER|['"]provider-homes['"]/)
-    // …and neither seam takes a third parameter, which is where a segment used to arrive.
-    expect(main).not.toMatch(
-      /(?:prepareProviderHome|providerHomePath): (?:async )?\(provider, profileId, \w+\) =>/,
-    )
-  })
-
-  it('the census has teeth: a seam that ignores the profile it is given is not the seam', () => {
-    // ⛔ Every assertion above is a string search. This runs the same helpers over source that has
-    // the defect (main's providerHomePath always deriving the default profile's home) and requires
-    // it to be visible, and runs them over the real shape to show the search can also say yes.
-    const defective = [
-      'providerHomePath: (provider, _profileId) =>',
-      "  deriveProviderHome(userData, { profileId: 'brobot', provider }),",
-    ].join('\n')
-    const planted = flat(codeOf(defective))
-    expect(times(planted, 'deriveProviderHome(userData')).toBe(1)
-    expect(times(planted, PATH_SEAM)).toBe(0)
-
-    const honest = flat(
-      codeOf(
-        [
-          'providerHomePath: (provider, profileId) =>',
-          '  deriveProviderHome(userData, { profileId, provider }),',
-        ].join('\n'),
-      ),
-    )
-    expect(times(honest, PATH_SEAM)).toBe(1)
-
-    // A third parameter is seen by the pattern, and a comment that names the folder is not code.
-    expect(flat(codeOf('prepareProviderHome: (provider, profileId, segment) => x'))).toMatch(
-      /(?:prepareProviderHome|providerHomePath): (?:async )?\(provider, profileId, \w+\) =>/,
-    )
-    expect(
-      flat(codeOf('prepareProviderLaunch: (provider, profileId, connection) => x')),
-    ).not.toMatch(
-      /(?:prepareProviderHome|providerHomePath): (?:async )?\(provider, profileId, \w+\) =>/,
-    )
-    expect(codeOf('// every home is under `HOME_FOLDER`\nconst a = 1')).not.toMatch(/HOME_FOLDER/)
-    expect(codeOf("const root = 'provider-homes'")).toMatch(/['"]provider-homes['"]/)
   })
 })

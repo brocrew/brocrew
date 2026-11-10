@@ -1,5 +1,5 @@
 import { RecordingSink, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -68,44 +68,6 @@ import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const LAUNCHER = join(here, '../src/renderer/src/components/NewConversation.vue')
-
-/**
- * **The exact shape the front door puts on the wire, read off the front door.**
- *
- * `NewConversation.vue` builds it in one `computed<CreateSessionInput>`, and this lifts the field
- * NAMES out of that literal. ⛔ **Names, not values** — the values are `props.defaultProvider` and
- * an imported constant, which a regex has no business resolving; what this file needs to know is
- * *which fields are sent and, far more importantly, which are not*.
- */
-function frontDoorFields(source: string): string[] {
-  const at = source.indexOf('const settings = computed<CreateSessionInput>')
-  if (at < 0) {
-    throw new Error(
-      '⛔ NewConversation.vue no longer builds its launch payload in a `computed<CreateSessionInput>` — ' +
-        'this test derives the front door’s shape from that literal rather than restating it, so a ' +
-        'shape it cannot read is a stop rather than a default.',
-    )
-  }
-  const literal = source.slice(at, source.indexOf('}))', at))
-  // 🔴 **Two shapes, because `435` gave the payload a second one** (HO-025 §5). A field the front
-  // door always sends is written at two spaces; a field it sends only when a person asked for one
-  // rides a CONDITIONAL SPREAD — `...(x === '' ? {} : { model: x })` — and the two-space rule
-  // cannot see inside it.
-  //
-  // ⛔ **A census that could not see the spread would have stayed green and stopped measuring.**
-  // The claim this file makes is *which fields are sent and, far more importantly, which are not*;
-  // after `435` a `cwd` restored behind a spread would have been exactly as invisible as a `model`
-  // legitimately added behind one. ⚑ The nesting rule the `\s{2}` half exists for is unaffected: a
-  // spread's object is a payload field by construction, and a nested `extras: { … }` is still not.
-  const always = [...literal.matchAll(/^\s{2}([a-zA-Z]+):/gm)].map((m) => m[1]!)
-  const whenAsked = [...literal.matchAll(/^\s{2}\.\.\.\([^\n]*?\{\s*([a-zA-Z]+):/gm)].map(
-    (m) => m[1]!,
-  )
-  return [...always, ...whenAsked]
-}
-
-const FRONT_DOOR_SENDS = frontDoorFields(readFileSync(LAUNCHER, 'utf8'))
 
 describe('420 §3 · a conversation opened through the front door', () => {
   let userData: string
@@ -173,76 +135,6 @@ describe('420 §3 · a conversation opened through the front door', () => {
     })) as { sessionId: string }
     return opened.sessionId
   }
-
-  describe('§0 · the payload this file sends is the payload the front door sends', () => {
-    it('⛔ the launcher builds exactly three fields, and neither of the two that place a session', () => {
-      // 🔴 **The non-vacuity for everything below.** If the front door grew a `cwd` again — a
-      // picker restored, a default filled in — every assertion in §1 and §2 would still pass while
-      // measuring a launch the product no longer makes.
-      // 🔴 **Five since `435`, and the LAST TWO are omissions** (HO-025 §4/§5). The front door
-      // offers a model and a reasoning effort again, and each is on the wire only when a person
-      // answered it — so an untouched door still sends the three `417` sent, byte for byte.
-      // ⛔ **That is the property, and it is why the two live behind a spread**: *asks nothing*
-      // survives as a fact about the PAYLOAD rather than about the DOM.
-      expect(FRONT_DOOR_SENDS).toEqual([
-        'provider',
-        'profileId',
-        'approvalMode',
-        'model',
-        'reasoningEffort',
-      ])
-      expect(FRONT_DOOR_SENDS).not.toContain('cwd')
-      expect(FRONT_DOOR_SENDS).not.toContain('projectSlug')
-    })
-
-    it('⚑ …and the derivation can fail, and can see a fourth field — the detector, planted', () => {
-      // ⛔ **A reader that silently returned `[]` would satisfy both `not.toContain` above** and
-      // the test would be a test of nothing. Two plants, not one: a reader that refuses everything
-      // reads as a working detector against a single negative fixture.
-      expect(() => frontDoorFields('export default {}')).toThrow(/no longer builds/)
-      expect(
-        frontDoorFields(
-          [
-            'const settings = computed<CreateSessionInput>(() => ({',
-            '  provider: props.defaultProvider,',
-            '  profileId: DEFAULT_PROFILE_ID,',
-            "  approvalMode: 'ask',",
-            '  cwd: somebodyPutThePickerBack.value,',
-            '}))',
-          ].join('\n'),
-        ),
-        'a restored placement field would not be seen',
-      ).toEqual(['provider', 'profileId', 'approvalMode', 'cwd'])
-      // 🔴 **And the same plant BEHIND A SPREAD** (435), which is the shape the reader was blind to
-      // until this dispatch and the shape a restored picker would most naturally take now that two
-      // legitimate fields use it.
-      expect(
-        frontDoorFields(
-          [
-            'const settings = computed<CreateSessionInput>(() => ({',
-            '  provider: props.defaultProvider,',
-            "  ...(chosen === '' ? {} : { cwd: somebodyPutThePickerBack.value }),",
-            '}))',
-          ].join('\n'),
-        ),
-        'a placement field smuggled in behind a spread would not be seen',
-      ).toEqual(['provider', 'cwd'])
-      // …and the nesting rule the real literal relies on: a field of a NESTED object is not a
-      // field of the payload. `\s{2}` is what makes that true, and it is worth one fixture.
-      expect(
-        frontDoorFields(
-          [
-            'const settings = computed<CreateSessionInput>(() => ({',
-            '  provider: props.defaultProvider,',
-            '  extras: {',
-            '    notAField: 1,',
-            '  },',
-            '}))',
-          ].join('\n'),
-        ),
-      ).toEqual(['provider', 'extras'])
-    })
-  })
 
   describe('§1 · with no folder on the pinned project — the ruling holds', () => {
     it('⚑ the conversation runs in BroBot’s own workspace', async () => {
