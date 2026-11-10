@@ -301,14 +301,27 @@ describe('memory intent survives interruption before its single honest observati
         const rows = () =>
           saved.prepare('SELECT * FROM identity_memory_amendment ORDER BY seq').all()
         const originalRows = rows()
-        const schema = () =>
-          saved
+        const schema = (database = saved) =>
+          database
             .prepare(
               "SELECT name, sql FROM sqlite_master WHERE tbl_name='identity_memory_amendment' ORDER BY name",
             )
             .all()
-        const originalSchema = schema()
+        const columns = () => saved.prepare('PRAGMA table_info(identity_memory_amendment)').all()
+        const foreignKeys = () =>
+          (saved.prepare('PRAGMA foreign_key_list(identity_memory_amendment)').all() as {
+            table: string; from: string; to: string; on_update: string; on_delete: string; match: string
+          }[]).map((key) => ({
+            table: key.table, from: key.from, to: key.to,
+            on_update: key.on_update, on_delete: key.on_delete, match: key.match,
+          })).sort((a, b) => a.from.localeCompare(b.from))
+        const originalColumns = columns()
+        const originalForeignKeys = foreignKeys()
         applyMigrations(saved, migrations)
+        expect(columns()).toEqual(originalColumns)
+        expect(foreignKeys()).toEqual(originalForeignKeys)
+        const upgradedSchema = schema()
+        expect(upgradedSchema).toEqual(schema(db))
         let api = storage.createSessionStore(saved, () => clock++)
         for (const outcome of ['done', 'partial', 'unchanged']) {
           expect(api.memoryAmendment('lark', `old-${outcome}`)).toMatchObject({
@@ -332,7 +345,7 @@ describe('memory intent survives interruption before its single honest observati
         applyMigrations(saved, migrations)
         api = storage.createSessionStore(saved, () => clock++)
         expect(rows()).toEqual(originalRows)
-        expect(schema()).toEqual(originalSchema)
+        expect(schema()).toEqual(upgradedSchema)
         expect(saved.prepare('SELECT * FROM __drizzle_migrations ORDER BY id').all()).toEqual(
           writtenJournal,
         )
@@ -380,7 +393,7 @@ describe('memory intent survives interruption before its single honest observati
         saved.close()
         saved = openDatabase(file)
         expect(rows()).toEqual(settledRows)
-        expect(schema()).toEqual(originalSchema)
+        expect(schema()).toEqual(upgradedSchema)
         expect(saved.prepare('PRAGMA foreign_key_check').all()).toEqual([])
       } finally {
         saved.close()

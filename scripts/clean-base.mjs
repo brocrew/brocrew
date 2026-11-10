@@ -72,7 +72,7 @@ const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
  */
 // Rules provenance, seen state and saved method recovery live in the database being removed.
 // Compatibility connection entries are recreated; personal defaults and credential rows are removed.
-const MIGRATIONS = 29
+const MIGRATIONS = 30
 
 const FLAGS = new Set([
   '--dry-run',

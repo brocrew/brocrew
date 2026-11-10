@@ -41,6 +41,8 @@ import {
   userInputQuestionSchema,
 } from './permission'
 import { sessionRefSchema } from './session-ref'
+import { providerRefusalSchema } from './provider-refusal'
+export type { ProviderRefusal } from './provider-refusal'
 
 /**
  * The provider-neutral `RuntimeEvent` taxonomy — the normalized stream both
@@ -866,49 +868,6 @@ const statusEventSchema = z.object({
  */
 const errorCauseSchema = z.enum(['auth', 'auth_stale'])
 export type ErrorCause = z.infer<typeof errorCauseSchema>
-
-/**
- * 🔴 **A refusal the adapter RECOGNISED, as values a surface can say something true and doable
- * with** (680, PM ruling R28c).
- *
- * ⚑ **The worked case, measured on the product's own `ClaudeRuntime` (680 §1):** at SDK 0.3.218 a
- * turn on `claude-opus-5-5[1m]` came back as the CLI's notice *"API Error: 400 Claude Code 2.1.218
- * does not support this model; version 2.1.280 or newer is required. Run 'claude update', or update
- * the Claude desktop app, then try again."* ⛔ **Every word is true and the advice cannot work here**:
- * `claude update` and the desktop app change the person's OWN Claude Code, never the one this app
- * spawns from its own package. What works is the conversation's own setting — the same session,
- * moved to `claude-opus-5[1m]`, answered.
- *
- * ⚠️ **Values, never a sentence**, for {@link errorCauseSchema}'s reason: the provider's words stay
- * on `message` verbatim (085's split), and a surface renders its own line from these. `model` and
- * `runs` are what the CLI announced in that turn's own `system/init` — never a constant — and
- * `needs` is the floor the notice itself names. A notice this adapter does not recognise carries no
- * `refusal`, and the surface shows the provider's sentence (R28b): advice is never guessed. ⚑ Two
- * kinds, each a notice that ended a turn with advice this app cannot take: the floor, and a reply
- * cut at its output limit (see the second arm).
- */
-const providerRefusalSchema = z.discriminatedUnion('is', [
-  z.object({
-    is: z.literal('model-needs-a-newer-cli'),
-    /** The model the refused turn asked for, as the CLI announced it. */
-    model: z.string(),
-    /** The oldest Claude Code the provider says can run it. */
-    needs: z.string(),
-    /** The Claude Code this app spawned for that turn, as it announced itself. */
-    runs: z.string(),
-  }),
-  /**
-   * ⚑ **The CLI cut a reply at its output limit** (680's review): its notice tells the reader to set
-   * `CLAUDE_CODE_MAX_OUTPUT_TOKENS`, an environment variable of a child this app spawns with an
-   * allow-listed environment — advice that cannot be taken here, so it is recognised and not shown.
-   */
-  z.object({
-    is: z.literal('reply-cut-at-its-output-limit'),
-    /** The output-token maximum the CLI says the reply exceeded. */
-    limit: z.string(),
-  }),
-])
-export type ProviderRefusal = z.infer<typeof providerRefusalSchema>
 
 /** A recoverable or fatal error. Cancellation is NOT fatal (001 §Q7). */
 const errorEventSchema = z.object({

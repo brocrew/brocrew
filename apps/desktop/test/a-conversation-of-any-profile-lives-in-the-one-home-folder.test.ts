@@ -1,13 +1,5 @@
 import { neutralHostDeps } from './lib/host-fixture'
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import * as fs from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -66,11 +58,11 @@ describe('a credential gesture is keyed by the home it writes (D-016a)', () => {
   let userData: string
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-one-folder-key-'))
+    userData = fs.mkdtempSync(join(tmpdir(), 'brobot2-one-folder-key-'))
   })
 
   afterEach(() => {
-    rmSync(userData, { recursive: true, force: true })
+    fs.rmSync(userData, { recursive: true, force: true })
   })
 
   /** The real ops over a deliberately absent codex binary, so nothing is ever launched. */
@@ -90,23 +82,23 @@ describe('a credential gesture is keyed by the home it writes (D-016a)', () => {
       join(userData, 'provider-homes', 'default', 'brobot', 'codex'),
     )
     // Asking is a NAME, not a provisioning: nothing was made, not even the managed root.
-    expect(existsSync(join(userData, 'provider-homes'))).toBe(false)
+    expect(fs.existsSync(join(userData, 'provider-homes'))).toBe(false)
     // An id that is not a path segment names no home at all, so it names no key either.
     expect(() => ops().credentialHome('codex', 'a/b')).toThrow(/invalid profileId/)
 
     // The paired positive: the gesture that REALLY provisions, against a profile that exists,
     // writes the directory the key named — so the key a gesture is admitted under and the place it
     // writes are one place in the one folder, and nothing else appeared beside it.
-    mkdirSync(join(userData, 'provider-homes', 'default', 'developer', 'claude'), {
+    fs.mkdirSync(join(userData, 'provider-homes', 'default', 'developer', 'claude'), {
       recursive: true,
     })
     const key = ops().credentialHome('codex', 'developer')
-    expect(existsSync(key)).toBe(false)
+    expect(fs.existsSync(key)).toBe(false)
     await ops()
       .check('codex', 'developer')
       .catch(() => undefined)
-    expect(existsSync(key)).toBe(true)
-    expect(readdirSync(join(userData, 'provider-homes'))).toEqual(['default'])
+    expect(fs.existsSync(key)).toBe(true)
+    expect(fs.readdirSync(join(userData, 'provider-homes'))).toEqual(['default'])
   })
 })
 
@@ -169,13 +161,13 @@ describe('an ended conversation is read from its own profile’s home (D-016a)',
   /** Lay down a `config.toml` that says whose home it is in, so a read can be told apart by text. */
   function furnish(profileId: string): string {
     const home = join(dir, 'provider-homes', 'default', profileId, 'codex')
-    mkdirSync(home, { recursive: true })
-    writeFileSync(join(home, 'config.toml'), `# the home of ${profileId}\n`)
+    fs.mkdirSync(home, { recursive: true })
+    fs.writeFileSync(join(home, 'config.toml'), `# the home of ${profileId}\n`)
     return home
   }
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-one-folder-ended-'))
+    dir = fs.mkdtempSync(join(tmpdir(), 'brobot2-one-folder-ended-'))
     db = openDatabase(join(dir, 'brobot2.sqlite'))
     applyMigrations(db, migrations)
     store = createSessionStore(db)
@@ -185,7 +177,7 @@ describe('an ended conversation is read from its own profile’s home (D-016a)',
 
   afterEach(() => {
     db.close()
-    rmSync(dir, { recursive: true, force: true })
+    fs.rmSync(dir, { recursive: true, force: true })
   })
 
   it("an ended conversation's files are read from the home of the profile its row records, in the one folder", async () => {
@@ -303,7 +295,7 @@ const DISCOVERY_SEAM =
 
 describe('main wires the home seams to the one folder (D-016a)', () => {
   it('main wires the two home seams and the profile list to the one folder and to nothing else', () => {
-    const main = flat(codeOf(readFileSync(MAIN, 'utf8')))
+    const main = flat(codeOf(fs.readFileSync(MAIN, 'utf8')))
 
     // ⚑ Presence first — every negative below rides on these, and a census that read nothing would
     // satisfy all of them.
@@ -321,7 +313,7 @@ describe('main wires the home seams to the one folder (D-016a)', () => {
     // …and main never spells the layout itself.
     expect(main).not.toMatch(/HOME_FOLDER|['"]provider-homes['"]/)
     // …and neither seam takes a third parameter, which is where a segment used to arrive.
-    expect(main).not.toMatch(/\(provider, profileId, \w+\) =>/)
+    expect(main).not.toMatch(/(?:prepareProviderHome|providerHomePath): (?:async )?\(provider, profileId, \w+\) =>/)
   })
 
   it('the census has teeth: a seam that ignores the profile it is given is not the seam', () => {
@@ -348,7 +340,10 @@ describe('main wires the home seams to the one folder (D-016a)', () => {
 
     // A third parameter is seen by the pattern, and a comment that names the folder is not code.
     expect(flat(codeOf('prepareProviderHome: (provider, profileId, segment) => x'))).toMatch(
-      /\(provider, profileId, \w+\) =>/,
+      /(?:prepareProviderHome|providerHomePath): (?:async )?\(provider, profileId, \w+\) =>/,
+    )
+    expect(flat(codeOf('prepareProviderLaunch: (provider, profileId, connection) => x'))).not.toMatch(
+      /(?:prepareProviderHome|providerHomePath): (?:async )?\(provider, profileId, \w+\) =>/,
     )
     expect(codeOf('// every home is under `HOME_FOLDER`\nconst a = 1')).not.toMatch(/HOME_FOLDER/)
     expect(codeOf("const root = 'provider-homes'")).toMatch(/['"]provider-homes['"]/)

@@ -256,7 +256,6 @@ export {
   AuthUnavailableError,
   type AuthHealth,
   type ProviderSetup,
-  type SetupPlatform,
   type ReprovisionOutcome,
 } from './internal/auth'
 

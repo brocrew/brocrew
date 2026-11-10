@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@brobot2/runtime": "workspace:*"
+    "@brobot2/shared": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

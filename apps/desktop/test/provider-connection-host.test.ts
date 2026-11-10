@@ -5,14 +5,14 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { Provider, ProviderConnection } from '@brobot2/shared'
+import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { resolveProviderConnection } from '../src/main/db/provider-connections'
 import { createCodexModule } from '../src/main/providers/codex/index'
 import { ApiKeys } from '../src/main/runtime/api-keys'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost, type RuntimeEventSink, type RuntimeHostDeps } from '../src/main/runtime/runtime-host'
 
 let db: AppDatabase
 const saved = new Set<Provider>()
@@ -86,8 +86,8 @@ function fixture() {
   Reflect.set(deps, 'connectionFor', connectionFor)
   const revision = vi.fn((provider: Provider) => state.revisionOf?.(provider) ?? state.revision)
   Reflect.set(deps, 'connectionRevision', revision)
-  const prepared = vi.fn(
-    async (provider: Provider, profile: string, _connection?: ProviderConnection) => ({
+  const prepared = vi.fn<NonNullable<RuntimeHostDeps['prepareProviderLaunch']>>(
+    async (provider: Provider, profile: string) => ({
       home: await prepare(provider, profile),
       runtime: create(provider),
     }),

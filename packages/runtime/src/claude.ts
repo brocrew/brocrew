@@ -1,8 +1,6 @@
 export { FileEdits } from './claude/file-edits'
 
-export { ClaudeMemoryStore } from './claude/memory-store'
-
-export { assistantErrorWords, isCredentialFailure } from './claude/assistant-error'
+export { assistantErrorWords } from './claude/assistant-error'
 
 export { THE_CLIS_OWN_MODEL } from './claude/provider-refusal'
 
@@ -30,12 +28,7 @@ export {
   claudeVersionTheSdkShips,
 } from './claude/claude-binary'
 
-export {
-  spawnClaudeChild,
-  watchClaudeChild,
-  type ClaudeChildWitness,
-  type SpawnChild,
-} from './claude/claude-child'
+export { spawnClaudeChild } from './claude/claude-child'
 
 export { persistedRulesFile } from './claude/persisted-rules'
 

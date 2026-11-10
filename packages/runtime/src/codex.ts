@@ -12,13 +12,11 @@ export {
 
 export {
   changeCodexKeyInHome,
-  CodexLogin,
   probeCodexAuthInHome,
   startCodexLogin,
   type CodexKeyChange,
   type CodexKeyOutcome,
   type CodexLoginOutcome,
-  type CodexLoginStart,
 } from './codex/codex-login'
 
 export {
@@ -47,37 +45,26 @@ export { CODEX_PROTOCOL_VERSION } from './codex/protocol-version'
 export { removeStaleCodexPermissionConfig } from './codex/stale-permission-config'
 
 export {
-  CODEX_MEMORY_PROVENANCE,
   CODEX_MEMORY_SETTINGS,
   ensureCodexMemoryConfig,
   mergeCodexMemoryConfig,
-  type CodexMemoryConfigOutcome,
-  type CodexMemoryConfigResult,
-  type CodexMemoryMerge,
-  type CodexMemorySetting,
 } from './codex/memory-config'
 
 export {
-  CODEX_AD_HOC_NOTES,
-  CODEX_MEMORY_INDEX,
   CODEX_MEMORY_PIPELINE_FILES,
   CODEX_MEMORY_STORE_FILES,
   CODEX_MEMORY_SUMMARY,
-  CODEX_RAW_MEMORIES,
-  CODEX_ROLLOUT_SUMMARIES,
   codexAdHocNotesDir,
   codexMemoryDir,
   codexMemoryIndex,
   codexMemorySummary,
-  type CodexMemoryReach,
-  type CodexMemoryStoreFile,
 } from './codex/memory-store'
 
 export { CODEX_THREAD_START_CLAIMS, CODEX_CONFIG_LAYOUT } from './codex/configuration'
 
 export { CODEX_TOOL_NAMING } from './codex/tool-naming'
 
-export { nativeAccountTag, isNativeAccountTag } from './codex/account-identity'
+export { isNativeAccountTag } from './codex/account-identity'
 
 export {
   NoCodexSignInOnThisComputerError,

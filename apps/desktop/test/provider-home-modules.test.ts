@@ -1,4 +1,3 @@
-import type { CodexKeyChange } from '@brobot2/runtime/codex'
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -161,7 +160,7 @@ for (const available of [true, false]) {
         saved = null
         return selected
       })
-      const change = vi.fn(async (_home: string, _change: CodexKeyChange) => ({
+      const change = vi.fn(async () => ({
         ok: true as const,
         authMethod: 'apikey',
       }))

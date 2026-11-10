@@ -1,3 +1,4 @@
+import { signInObservation } from '../src/main/providers/claude/sign-in-observation'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import type { PieceRow } from '../src/shared/task-contracts'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -105,9 +106,13 @@ describe('§1b · a refused sign-in this app replaces by itself says so', () => 
   })
 
   it('Claude keeps the conversation and asks for a renewed machine sign-in', () => {
-    expect(errorOf(started('claude'), REFUSED(false))).toBe(
+    expect(errorOf(started('claude'), signInObservation(REFUSED(false)) as RuntimeEvent)).toBe(
       'Claude rejected the current machine sign-in. Sign in again to continue this conversation. Its transcript is kept. It carries on without its “Allow for this conversation” approvals or anything that was running in the background.',
     )
+  })
+
+  it('an older error without the adapter observation keeps the recorded generic notice', () => {
+    expect(errorOf(started('claude'), REFUSED(false))).toBe(TODAY)
   })
 
   it('Codex without the replacement fact keeps its existing sentence', () => {

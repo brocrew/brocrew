@@ -17,11 +17,7 @@ import {
   type SessionRef,
   type StartOptions,
 } from '@brobot2/runtime'
-import {
-  CodexRefusedItsSignInError,
-  codexCopyIdentityIn,
-  type CodexCopyIdentity,
-} from '@brobot2/runtime/codex'
+import { CodexRefusedItsSignInError, codexCopyIdentityIn } from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -47,6 +43,8 @@ import { neutralHostDeps } from './lib/host-fixture'
 // Fictional sign-ins are compared by digest so failures never print their contents.
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
+
+type CopiedSignIn = ReturnType<typeof codexCopyIdentityIn>
 
 const digestOf = (bytes: string | Buffer): string =>
   createHash('sha256').update(bytes).digest('hex').slice(0, 16)
@@ -117,7 +115,7 @@ class StandInCodex extends FakeRuntime {
     this.openTurn = null
     end?.answer()
   }
-  private taken(providerHome: string): CodexCopyIdentity | null {
+  private taken(providerHome: string): CopiedSignIn {
     const beganOn = codexCopyIdentityIn(providerHome)
     const held = signInAt(join(providerHome, 'auth.json'))
     this.starts.push(held)
@@ -132,7 +130,7 @@ class StandInCodex extends FakeRuntime {
     this.asItStarts()
     return beganOn
   }
-  private kept(handle: FakeSessionHandle, beganOn: CodexCopyIdentity | null): FakeSessionHandle {
+  private kept(handle: FakeSessionHandle, beganOn: CopiedSignIn): FakeSessionHandle {
     const inside = handle as unknown as {
       machine: {
         beginTurn(): number | null

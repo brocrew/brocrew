@@ -35,7 +35,7 @@ describe('provider transcript and discovery policies have one owner', () => {
     'archive/native-file.ts',
     'archive/session-reader.ts',
     'archive/turn-as-sent.ts',
-    'child-work.ts',
+    'child-work-file.ts',
     'conversation-files.ts',
     'transcript-retention-files.ts',
     'runtime/schedule-evidence.ts',

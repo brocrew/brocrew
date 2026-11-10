@@ -8,11 +8,8 @@ import { ClaudeRuntime, claudeProjectDirName } from '@brobot2/runtime/claude'
 import { FakeRuntime, parseSessionRef } from '@brobot2/runtime'
 import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { discoverCodexSessions } from '../src/main/providers/codex/discovery'
-import {
-  discoverSessionsIn,
-  type ChildDescent,
-  type Discovery,
-} from '../src/main/adopt/discover-sessions'
+import { discoverSessionsIn } from '../src/main/adopt/discover-sessions'
+import type { ChildDescent, Discovery } from '../src/main/adopt/discovery-types'
 import { nativeTranscriptPath } from '../src/main/archive/native-file'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

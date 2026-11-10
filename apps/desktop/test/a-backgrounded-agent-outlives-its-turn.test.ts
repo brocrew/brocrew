@@ -1,6 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { agentToolsFor, type AgentToolHost } from '../src/main/runtime/agent-tools'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -87,10 +86,9 @@ describe('695 · R35 — a Stop spares the card of an agent the level still list
  * absence of the sentence that said it did not.
  */
 describe('695 · R35 — what interrupt_agent tells the model about background work', () => {
-  const source = readFileSync(
-    join(__dirname, '..', 'src', 'main', 'runtime', 'agent-tools.ts'),
-    'utf8',
-  )
+  const source = agentToolsFor({} as AgentToolHost, 'fictional-stop-description').tools.find(
+    (tool) => tool.name === 'interrupt_agent',
+  )!.description
 
   it('says the turn’s work is thrown away and the background work keeps running', () => {
     // ⚑ **720 · `709` F-9 — the sentence now ASKS, and says where to read what happened.** Since R43

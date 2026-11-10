@@ -1,4 +1,5 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { SystemSubtype, NonContentMessageType, StreamEventType, BlockDeltaType } from './message-types'
 import {
   MAX_USAGE_WINDOWS,
   wrapUnknown,
@@ -28,25 +29,6 @@ import {
   type WorkflowAgent,
   type WorkflowPhase,
 } from '../workflow-run'
-
-/** Every `subtype` the SDK's `system` messages carry — the source for {@link systemCategory}. */
-type SystemSubtype = Extract<SDKMessage, { type: 'system' }>['subtype']
-
-/** SDK message types with no content mapping — the source for {@link messageTypeCategory}. */
-type NonContentMessageType = Exclude<
-  SDKMessage['type'],
-  'assistant' | 'user' | 'stream_event' | 'system' | 'result'
->
-
-/**
- * The partial-stream frame types, taken from the SDK's own union rather than restated (063), so
- * the exhaustive switches below track the pinned SDK instead of a hand-copied list.
- */
-type StreamEventType = Extract<SDKMessage, { type: 'stream_event' }>['event']['type']
-type BlockDeltaType = Extract<
-  Extract<SDKMessage, { type: 'stream_event' }>['event'],
-  { type: 'content_block_delta' }
->['delta']['type']
 
 /**
  * Normalize one Claude Agent SDK message into **content** `RuntimeEvent`s only:

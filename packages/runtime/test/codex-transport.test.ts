@@ -357,7 +357,9 @@ describe('the transport spawn environment is required, not defaulted (063)', () 
   })
 
   it('is not advertised as public API — the sanitizing factory is', () => {
-    const index = read('../src/index.ts')
+    const root = read('../src/index.ts')
+    const index = read('../src/codex.ts')
+    expect(root).not.toMatch(/SpawnCodexTransport|createSpawnTransportFactory/)
     expect(index, 'the raw spawning class is internal now').not.toMatch(
       /^\s*SpawnCodexTransport,$/m,
     )

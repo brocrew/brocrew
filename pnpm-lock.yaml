@@ -160,9 +160,9 @@ importers:
 
   packages/orchestration:
     dependencies:
-      '@brobot2/runtime':
+      '@brobot2/shared':
         specifier: workspace:*
-        version: link:../runtime
+        version: link:../shared
     devDependencies:
       typescript:
         specifier: ^5.9.3

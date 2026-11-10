@@ -13,12 +13,10 @@ import {
   codexAuthHealth,
   provisionCodexAuth,
 } from '../src/codex'
-import {
-  buildChildEnv,
-  provisionProviderHome,
-  type RuntimeEvent,
-  type SessionHandle,
-} from '../src/index'
+import { buildChildEnv } from '../src/internal/child-env'
+import { provisionProviderHome } from '../src/internal/provider-home'
+import type { RuntimeEvent } from '../src/events'
+import type { SessionHandle } from '../src/runtime'
 import { claudeKeychainTokenProvider } from '../src/claude'
 import { bundledCodexBinary, bundledCodexTransportFactory } from './bundled-codex'
 import { runEvidence, runScratch } from './run-paths'

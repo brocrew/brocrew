@@ -114,8 +114,13 @@ export function projectBuild(config, entry, appData, browser) {
   )
   entry = replace(
     entry,
-    'providerModules[provider].createRuntime(connectionId)',
+    'providerModules[provider].createRuntime()',
     `/* ${GATE_BUILD_MARKER} */ new PackagedGateRuntime(provider, ${JSON.stringify(path.dirname(appData))})`,
+  )
+  entry = replace(
+    entry,
+    'return providerModules[provider].prepareLaunch(profileId, connection)',
+    `/* ${GATE_BUILD_MARKER} */ return Promise.resolve({ home: preparePackagedGateHome(${JSON.stringify(path.dirname(appData))}, userData, provider, profileId), runtime: new PackagedGateRuntime(provider, ${JSON.stringify(path.dirname(appData))}) })`,
   )
   entry = replace(
     entry,

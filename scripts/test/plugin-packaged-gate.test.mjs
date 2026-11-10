@@ -105,6 +105,8 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     expect(projected.entry).toContain('const providerModules = createProviderModules(')
     expect(projected.entry).toContain('new PackagedGateRuntime(provider, "/private/tmp/fictional")')
     expect(projected.entry).not.toContain('providerModules[provider].createRuntime(')
+    expect(projected.entry).not.toContain('providerModules[provider].prepareLaunch(')
+    expect(projected.entry.match(/new PackagedGateRuntime\(/g)).toHaveLength(2)
     expect(projected.entry).not.toContain('providerModules[provider].home.prepare(profileId)')
     expect(projected.entry).toContain('fixtureSource: "/private/tmp/fictional/a/repo-fixture"')
     expect(projected.entry).toContain('browserExecutable: "/private/tmp/fictional/browser"')
@@ -136,7 +138,8 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       ).toThrow('Build anchor changed')
     for (const anchor of [
       '    loginRenewal: providerAuth.loginRenewal,\n',
-      'providerModules[provider].createRuntime(connectionId)',
+      'providerModules[provider].createRuntime()',
+      'return providerModules[provider].prepareLaunch(profileId, connection)',
       'return providerModules[provider].home.prepare(profileId)',
     ]) {
       expect(entry.split(anchor)).toHaveLength(2)

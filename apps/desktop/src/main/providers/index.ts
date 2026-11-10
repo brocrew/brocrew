@@ -213,7 +213,6 @@ import { metadata as codexMetadata } from './codex/registration'
 
 export {
   legacyAccountRecordFormat,
-  AN_ACCOUNT_ID,
   providerAccountsFile,
   readKeptAccounts,
   writeKeptAccounts,

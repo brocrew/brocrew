@@ -1,5 +1,4 @@
 export {
-  AN_ACCOUNT_ID,
   providerAccountsFile,
   readKeptAccounts,
   writeKeptAccounts,
