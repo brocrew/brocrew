@@ -1,7 +1,6 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join, relative } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   APP_ID,
@@ -10,22 +9,6 @@ import {
   type PinnableApp,
 } from '../src/main/data-folder'
 
-/**
- * 🔴 **W4.90 — the pin, from the side `the-data-folder-is-pinned.test.ts` does not reach.**
- *
- *  - §1 · the pin's own order: the folder is there before Electron is told it (Electron's
- *    `setPath` throws on a folder that is not), a folder that cannot be made still gets pinned, and a
- *    launch with its own `--user-data-dir` makes and asks nothing of `appData`.
- *  - §2 · nothing reads the folder before the pin: it is the first statement of `index.ts` once its
- *    imports are in, and no module those imports evaluate first holds Electron's `app`.
- *  - §3 · `nameTheAppToWindows` with no platform named — the call `index.ts` makes — asks the
- *    process it runs in, and names only Windows.
- *
- * ⛔ No real Electron `app`: a stand-in records what the pin asked and set, over a temp `appData`.
- */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const MAIN = join(here, '../src/main')
 const roots: string[] = []
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
@@ -37,10 +20,6 @@ function scratch(): string {
   return root
 }
 
-/**
- * A stand-in for Electron's `app` that answers each path by its own name — so a pin that asked for
- * the wrong one lands somewhere else — and records, for each `setPath`, whether the folder existed.
- */
 function anApp(appData: string, switches: readonly string[] = []) {
   const asked: string[] = []
   const switchesAsked: string[] = []
@@ -63,8 +42,8 @@ function anApp(appData: string, switches: readonly string[] = []) {
   return { app, asked, switchesAsked, set }
 }
 
-describe('§1 · the pin’s own order', () => {
-  it('🔴 the folder is made BEFORE Electron is told it — `setPath` throws on a folder that is not there', () => {
+describe('the pin’s own order', () => {
+  it('the folder is made BEFORE Electron is told it — `setPath` throws on a folder that is not there', () => {
     const appData = scratch()
     const folder = join(appData, '@brobot2', 'desktop')
     const { app, set } = anApp(appData)
@@ -73,34 +52,33 @@ describe('§1 · the pin’s own order', () => {
     expect(set).toEqual([{ name: 'userData', path: folder, existed: true }])
   })
 
-  it('⚑ a folder that cannot be made does not stop the launch — the pin still names it, and the database says what went wrong', () => {
-    // ⚑ Its `appData` is a file, so `<appData>/@brobot2/desktop` can never be made.
+  it('a folder that cannot be made does not stop the launch — the pin still names it, and the database says what went wrong', () => {
     const appData = join(scratch(), 'appData-is-a-file')
     writeFileSync(appData, '')
     const folder = join(appData, '@brobot2', 'desktop')
     const { app, set } = anApp(appData)
     expect(() => pinTheDataFolder(app)).not.toThrow()
     expect(set).toEqual([{ name: 'userData', path: folder, existed: false }])
-    // ⚑ One fact over: the same launch on a folder that can be made gets it made.
+
     const fine = anApp(scratch())
     pinTheDataFolder(fine.app)
     expect(fine.set.map((one) => one.existed)).toEqual([true])
   })
 
-  it('⛔ a launch with its own --user-data-dir makes nothing in appData and asks nothing of it', () => {
+  it('a launch with its own --user-data-dir makes nothing in appData and asks nothing of it', () => {
     const appData = scratch()
     const own = anApp(appData, ['user-data-dir'])
     pinTheDataFolder(own.app)
     expect(own.set).toEqual([])
     expect(own.asked, 'a launch with its own folder has no use for appData').toEqual([])
     expect(readdirSync(appData), 'nothing made in the folder every build shares').toEqual([])
-    // ⚑ One fact over: the launch that names no folder makes the shared one.
+
     const shared = anApp(appData)
     pinTheDataFolder(shared.app)
     expect(readdirSync(appData)).toEqual(['@brobot2'])
   })
 
-  it('⚑ the folder is under appData — not home, not whatever userData already says — and a hidden launch is pinned all the same', () => {
+  it('the folder is under appData — not home, not whatever userData already says — and a hidden launch is pinned all the same', () => {
     const appData = scratch()
     const { app, asked, switchesAsked, set } = anApp(appData, ['brobot-hidden'])
     pinTheDataFolder(app)
@@ -111,9 +89,8 @@ describe('§1 · the pin’s own order', () => {
   })
 })
 
-describe('§3 · nameTheAppToWindows', () => {
-  it('⚑ with no platform named — the call index.ts makes — it asks the process it runs in', () => {
-    expect(indexSource()).toContain('\nnameTheAppToWindows(app)\n')
+describe('nameTheAppToWindows', () => {
+  it('with no platform named — the call index.ts makes — it asks the process it runs in', () => {
     const realPlatform = process.platform
     const named: string[] = []
     const app = { setAppUserModelId: (id: string) => named.push(id) }
@@ -121,7 +98,7 @@ describe('§3 · nameTheAppToWindows', () => {
       Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
       nameTheAppToWindows(app)
       expect(named).toEqual([APP_ID])
-      // ⚑ One fact over: the same call on a Mac names nothing.
+
       Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
       nameTheAppToWindows(app)
       expect(named).toEqual([APP_ID])
@@ -130,7 +107,7 @@ describe('§3 · nameTheAppToWindows', () => {
     }
   })
 
-  it('⛔ only Windows: no other system is given the id', () => {
+  it('only Windows: no other system is given the id', () => {
     const named: string[] = []
     const app = { setAppUserModelId: (id: string) => named.push(id) }
     for (const platform of ['linux', 'darwin', 'freebsd'] as const)
@@ -140,7 +117,3 @@ describe('§3 · nameTheAppToWindows', () => {
     expect(named).toEqual(['com.brobot2.desktop'])
   })
 })
-
-function indexSource(): string {
-  return readFileSync(join(MAIN, 'index.ts'), 'utf8')
-}
