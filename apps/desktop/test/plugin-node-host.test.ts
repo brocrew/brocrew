@@ -307,7 +307,10 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     const { host, home } = await context()
     const body = source
       .replaceAll('BROCREW_CHROME_', 'BROCREW_FICTIONAL_ORCHID_')
-      .replace(" if (req.url === '/v1/profiles') return res.end(JSON.stringify({profiles:[]}));", '')
+      .replace(
+        " if (req.url === '/v1/profiles') return res.end(JSON.stringify({profiles:[]}));",
+        '',
+      )
     const child = await host.start(fixture(body, '/mcp', false, 'fictional-orchid'))
     const ready = await child.ready()
     const facts = await (
