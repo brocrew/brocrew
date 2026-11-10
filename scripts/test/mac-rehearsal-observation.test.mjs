@@ -251,6 +251,107 @@ describe('entrypoint native-prefix bindings', () => {
     })
 })
 
+it('keeps seed error bodies and model receipts when either diagnostic is unavailable', async () => {
+  const source = ts.createSourceFile(
+    'mac-signed-upgrade.mjs',
+    readFileSync(new URL('../mac-signed-upgrade.mjs', import.meta.url), 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  )
+  const failure = source.statements.find((node) => ts.isTryStatement(node)).catchClause
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+  for (const unavailable of [null, 'history', 'model']) {
+    const summary = {}
+    const original = new Error('fictional seed timed out')
+    const turn = {
+      phase: 'turn-sent',
+      steps: [{ phase: 'conversation-created', sessionId: 'fictional-session' }],
+    }
+    const history = {
+      entries: [
+        { event: { type: 'error', message: 'fixture endpoint refused the request' } },
+        { event: { type: 'assistant_message', text: 'fictional provider diagnostic' } },
+      ],
+      hasOlder: false,
+    }
+    const model = {
+      log: ['POST /v1/responses'],
+      requests: [{ responseId: 'fictional-response', completed: false }],
+    }
+    const files = new Map()
+    const cdp = {
+      evaluate: vi.fn(async (body) => {
+        if (!body.includes('latestHistory')) return { set: true, inUse: true }
+        if (unavailable === 'history') throw new Error('history unavailable')
+        return new AsyncFunction('window', body)({
+          api: {
+            runtime: {
+              latestHistory: async (input) => {
+                expect(input).toEqual({ sessionId: 'fictional-session' })
+                return history
+              },
+            },
+          },
+        })
+      }),
+    }
+    const run = new AsyncFunction(
+      'error',
+      'summary',
+      'console',
+      'process',
+      'model',
+      'writeFile',
+      'join',
+      'evidenceRoot',
+      'evidence',
+      'active',
+      'currentWorkspace',
+      'run',
+      'screenshot',
+      failure.block.getText(source),
+    )
+    const exit = {}
+    const capture = vi.fn()
+    await run(
+      original,
+      summary,
+      { error: vi.fn() },
+      exit,
+      model,
+      async (path, text) => {
+        if (unavailable === 'model' && path.endsWith('model-failure.json'))
+          throw new Error('model evidence unavailable')
+        files.set(path, JSON.parse(text))
+      },
+      join,
+      '/evidence',
+      '/evidence/Default',
+      { stage: 'a', cdp },
+      { fixture: { turns: [turn] } },
+      vi.fn(),
+      capture,
+    )
+    expect(summary.success).toBe(false)
+    expect(summary.failure).toBe(original.stack)
+    expect(exit.exitCode).toBe(1)
+    expect(capture).toHaveBeenCalledOnce()
+    if (unavailable === 'model')
+      expect(summary.modelDiagnosticFailure).toContain('model evidence unavailable')
+    else expect(files.get(join('/evidence', 'model-failure.json'))).toEqual(model)
+    if (unavailable === 'history')
+      expect(summary.historyDiagnosticFailure).toContain('history unavailable')
+    else
+      expect(files.get(join('/evidence/Default', 'a-history-failure.json'))).toEqual({
+        stage: 'a',
+        sessionId: 'fictional-session',
+        turn,
+        history,
+      })
+  }
+})
+
 it('uses the Updates control and reaches Download from offered or checking state', async () => {
   const source = ts.createSourceFile(
     'mac-signed-upgrade.mjs',

@@ -19,6 +19,14 @@
       "types": "./src/internal/provider-home.ts",
       "default": "./src/internal/provider-home.ts"
     },
+    "./managed-plugin-mcp": {
+      "types": "./src/managed-plugin-mcp.ts",
+      "default": "./src/managed-plugin-mcp.ts"
+    },
+    "./managed-plugin-session": {
+      "types": "./src/managed-plugin-session.ts",
+      "default": "./src/managed-plugin-session.ts"
+    },
     "./plugin-failure": {
       "types": "./src/managed-plugin-failure.ts",
       "default": "./src/managed-plugin-failure.ts"

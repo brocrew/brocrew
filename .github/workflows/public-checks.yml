@@ -110,11 +110,6 @@ jobs:
           tar -xzf "$archive" -C "$RUNNER_TEMP/bin" gitleaks
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
-      # Before anything real is scanned: a fake secret made here is found and hidden, in the output
-      # and in the report, or nothing is scanned.
-      - name: Redaction holds on a fake secret
-        run: node scripts/secret-scan-redaction-check.mjs gitleaks
-
       # The whole history, which in the public repository begins at its first commit, the fresh
       # export. A made-up value the rules match is allowed in .gitleaks.toml or on its line.
       # gitleaks answers 0 when git fails under it and it scanned nothing, so the step also

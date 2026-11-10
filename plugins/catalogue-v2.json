@@ -5,30 +5,30 @@
       "id": "chrome",
       "name": "Chrome",
       "description": "Lets agents use Google Chrome with its own separate profiles: read pages, use sites and save downloads.",
-      "version": "0.1.11",
+      "version": "0.1.12",
       "authors": [
         "brocrew"
       ],
       "minAppVersion": "0.1.35",
-      "sourceCommit": "f0a3561d11880d4961652b2d0364dc5a6a84c401",
+      "sourceCommit": "1e8de5be8a310b286d51e2b9d67de78682044887",
       "targets": [
         {
           "os": "darwin",
           "cpu": "arm64",
-          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.11/chrome-darwin-arm64.tar.gz",
-          "sha256": "4b33641510a8788521742ee3174820cb446edc58d1e347fcbe61dd89fa361398",
-          "bytes": 3609428,
+          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.12/chrome-darwin-arm64.tar.gz",
+          "sha256": "2ceae64e6726b17a77cc8f1426eaf2d6f1fc1801d1f6c0e3b4c209896c175dfd",
+          "bytes": 3606944,
           "compression": "tar.gz",
-          "manifestSha256": "3df82373aba4318c6e5124eea7bc9a20ec5d976de7c649e8ceda9cbdd906eaa8"
+          "manifestSha256": "a724f43b568d0c98aa2e18cdf3fb1108ca1e3412d54a06f56da4b8ee710d5d53"
         },
         {
           "os": "win32",
           "cpu": "x64",
-          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.11/chrome-win32-x64.tar.gz",
-          "sha256": "7d3536f4dde623b852edb56a76a86e79f008c29894b86f5cf05dcd1250efb7c9",
-          "bytes": 4373453,
+          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.12/chrome-win32-x64.tar.gz",
+          "sha256": "ab5ab216ec6d4c9e00709e95d6b2b72c87866f95a5bf374a8a4803032ecc2cb8",
+          "bytes": 4370926,
           "compression": "tar.gz",
-          "manifestSha256": "4a85d0aa37e9b90f21a03270755eb291fce53d6f1edf700f23398840a819dc81"
+          "manifestSha256": "844e392ad3766329838b2b69b3af257a0f62239c2c478e96c5c62347b706878b"
         }
       ]
     },
@@ -36,30 +36,30 @@
       "id": "whatsapp",
       "name": "WhatsApp",
       "description": "Lets agents read your WhatsApp chats when you allow it, and send to the groups you choose.",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "authors": [
         "brocrew"
       ],
       "minAppVersion": "0.1.7",
-      "sourceCommit": "ca64de2dd71c766574fe1d815a5b069c0d2949c7",
+      "sourceCommit": "1e8de5be8a310b286d51e2b9d67de78682044887",
       "targets": [
         {
           "os": "darwin",
           "cpu": "arm64",
-          "url": "https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.5/whatsapp-darwin-arm64.tar.gz",
-          "sha256": "92ce7dbc2be463c79ef2618b3c93e4aa21e2f9523788d5dac7644508f3e7a065",
-          "bytes": 7842390,
+          "url": "https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.6/whatsapp-darwin-arm64.tar.gz",
+          "sha256": "4785064c6b8d502591ac81db7bd6e11b71bee86de678497ede519c1cf9dbc328",
+          "bytes": 7806720,
           "compression": "tar.gz",
-          "manifestSha256": "8dfac5d3b601f6eedf5afa8e5e4af9921143f568124f040ebd08bd1d52ada465"
+          "manifestSha256": "2c0a01c9d6347d843f1e3186d47c38c7a87ba870bf3ba302cc4a742bb312f45d"
         },
         {
           "os": "win32",
           "cpu": "x64",
-          "url": "https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.5/whatsapp-win32-x64.tar.gz",
-          "sha256": "fb457dbc19cba748cf49e6dea59eaf9899c927e94c633689f889d41ba8d67641",
-          "bytes": 8229597,
+          "url": "https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.6/whatsapp-win32-x64.tar.gz",
+          "sha256": "beaf87838f2caf5e22502f44870232bb97b4fea86916a7ff33035d882af5728b",
+          "bytes": 8203323,
           "compression": "tar.gz",
-          "manifestSha256": "cacbcf35f6cf96361d9b0948ca154683823449117a3f92feb5e0430ab3aedb67"
+          "manifestSha256": "1f64f0fb8121d2038a208c8f6159defb52fb6f4d1e6e728f605ae5faa4a9e88a"
         }
       ]
     }

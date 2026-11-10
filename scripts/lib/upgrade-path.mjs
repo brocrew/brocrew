@@ -810,19 +810,21 @@ export function keychainAttributes(printed) {
   return { service, account, created: date('cdat'), modified: date('mdat') }
 }
 
+/** The app's refusal of a provider whose saved key it can't read (`SAVED_KEY_UNREADABLE`). */
+const SAVED_KEY_UNREADABLE = 'Saved key can’t be read, save it again in Settings.'
+
 /**
- * What became of a turn on the saved key after the upgrade, and whether that passes on `os`.
+ * What became of a turn on the saved key after the upgrade, and whether that passes.
  *
- * Answered by the model, every request on the fixture key, passes anywhere. A request that reached
- * the model with another key, or none, fails whatever else happened.
+ * Answered by the model, every request on the fixture key, passes. A request that reached the
+ * model with another key, or none, fails whatever else happened.
  *
- * On a Mac one more outcome passes: macOS did not hand the saved key over, with nobody to ask. It
- * is told from any other failure by all of these together: the START was refused (not the
- * message), the model was never asked, the app's words are its own for a saved key it cannot read,
- * said within a minute, and afterwards the app's status of the key (`keyStatus`) is saved, not in
- * use and unreadable. A wrong key, a failed send or a provider's error is none of that.
+ * The candidate never opens a key an earlier version sealed, so one more outcome passes: the START
+ * was refused (not the message), the model was never asked, the words are the app's own for a
+ * saved key it can't read, said within a minute, and the app's status of the key (`keyStatus`) is
+ * saved, not in use and unreadable. A wrong key, a failed send or a provider's error is none of that.
  */
-export function turnOutcome(turn, os, keyStatus) {
+export function turnOutcome(turn, keyStatus) {
   const posts = turn.requests.filter((one) => one.method === 'POST')
   if (posts.some((one) => one.auth !== 'expected')) {
     return { outcome: 'asked-the-model-without-the-key', ok: false }
@@ -833,18 +835,17 @@ export function turnOutcome(turn, os, keyStatus) {
       ? { outcome: 'answered', ok: true }
       : { outcome: 'answered-without-asking-the-model', ok: false }
   }
-  const notHandedOver =
+  const cantBeRead =
     turn.refusedAt === 'start' &&
     posts.length === 0 &&
     turn.refusedAfterMs < 60_000 &&
-    /can[’']t read the API key saved for/i.test(turn.refused) &&
+    turn.refused.includes(SAVED_KEY_UNREADABLE) &&
     keyStatus?.set === true &&
     keyStatus.inUse === false &&
     keyStatus.readState === 'unreadable'
-  return {
-    outcome: notHandedOver ? 'the-saved-key-was-not-handed-over' : 'refused',
-    ok: os === 'mac' && notHandedOver,
-  }
+  return cantBeRead
+    ? { outcome: 'the-saved-key-cannot-be-read', ok: true }
+    : { outcome: 'refused', ok: false }
 }
 
 /**
@@ -881,9 +882,6 @@ export const LAUNCH_SETUP_PROVIDERS = [
   { provider: 'codex', name: 'Codex' },
 ]
 
-/** Where the window remembers that a person closed the setup at launch: `'true'` once they did. */
-export const LAUNCH_SETUP_DISMISSED_KEY = 'brobot2.providerSetupDismissed'
-
 /** The standings of a provider's program that stop its setup: the app's `A_STANDING_WARNS`. */
 export const A_STANDING_STOPS_SETUP = {
   tested: false,
@@ -896,13 +894,13 @@ export const A_STANDING_STOPS_SETUP = {
 /**
  * Whether a provider is ready, by the app's own rule for its setup (`isReady`,
  * `renderer/src/lib/provider-setup-steps.ts`), from what the window reads: the program's version
- * and standing, what there is to install, the sign-in, and whether a saved key was refused. `null`
- * while a fact the rule needs has not been read.
+ * and standing, what there is to install, the sign-in, and whether a saved key was refused or can't
+ * be read. `null` while a fact the rule needs has not been read.
  *
  * A program the app carries, or a provider with nothing to set up outside the app (`setup` null),
  * has no install to pass: only its sign-in counts.
  */
-export function providerReady({ version, setup, auth, keyRefused }) {
+export function providerReady({ version, setup, auth, keyRefused, keyUnreadable }) {
   const program = version?.program
   if (setup !== null && program?.from !== 'carried') {
     if (version === null || version === undefined) return null
@@ -910,43 +908,25 @@ export function providerReady({ version, setup, auth, keyRefused }) {
     if (A_STANDING_STOPS_SETUP[program.standing] === true) return false
   }
   if (auth === null || auth === undefined) return null
+  if (keyUnreadable === true) return false
   if (auth.state !== 'usable') return false
   return !(auth.login === 'api-key' && keyRefused === true)
 }
 
 /**
- * Which provider's setup the app opens by itself at a start, from `facts` (one per provider, in
- * {@link LAUNCH_SETUP_PROVIDERS}' order): none once a person closed it (`dismissed`), else the first
- * provider that is not ready. `undecided` when a fact is missing: the app opens nothing until every
- * provider's readiness is known.
+ * Whether the app goes to Settings → Providers by itself at a start (`ProviderSetupAtLaunch.vue`):
+ * only when no provider is ready. It opens no dialog. `undecided` while a fact is missing; while a
+ * sign-in says `unknown` the app decides nothing, so nothing is due.
  */
-export function launchSetupExpected(dismissed, facts) {
+export function launchSetupExpected(facts) {
   const ready = facts.map((one) => ({ provider: one.provider, ready: providerReady(one) }))
-  if (dismissed) return { opens: null, ready, undecided: false }
-  if (ready.some((one) => one.ready === null)) return { opens: null, ready, undecided: true }
-  const first = ready.find((one) => one.ready === false)
-  return {
-    opens:
-      first === undefined
-        ? null
-        : (LAUNCH_SETUP_PROVIDERS.find((one) => one.provider === first.provider) ?? null),
-    ready,
-    undecided: false,
+  if (facts.some((one) => one.auth?.state === 'unknown')) {
+    return { opensProviders: false, ready, undecided: false }
   }
-}
-
-/**
- * Whether the app's own dialogs at a start are exactly what is due: the setup for `opens` and
- * nothing else, or none at all. A dialog is the setup for a provider when it is named for it and
- * holds that provider's setup.
- */
-export function dialogsAreAsDue(open, opens) {
-  if (opens === null) return open.length === 0
-  return (
-    open.length === 1 &&
-    open[0].label === `Set up ${opens.name}` &&
-    open[0].provider === opens.provider
-  )
+  if (ready.some((one) => one.ready === null)) {
+    return { opensProviders: false, ready, undecided: true }
+  }
+  return { opensProviders: ready.every((one) => one.ready === false), ready, undecided: false }
 }
 
 /**
@@ -959,22 +939,11 @@ export function lastResortStop(log) {
 }
 
 /**
- * The limit a Mac run passes with when macOS handed the saved key to nobody: said wherever the
- * result is, so a green run is never read as the key working.
- */
-export const SAVED_KEY_LIMIT =
-  'after the upgrade macOS did not hand over the saved key (it asks a person first), and this run does not show the key working once they answer or enter it again'
-
-/**
  * The limit a run passes with when no agent's process was alive at the moment its window was asked
  * what runs (`whatRunsIsSaid`): nothing was measured, and a green run does not say otherwise.
  */
 export const NOTHING_RAN_LIMIT =
   'no agent’s process was running when the window was asked what runs, so this run does not show what the app says of a running agent’s memory'
-
-/** The second limit such a Mac run passes with: how the app closed while macOS was asking. */
-export const CLOSE_LIMIT =
-  'with macOS still asking, each close ended by the app’s own last-resort stop of the process, after its data was closed'
 
 /** A run's result in one line: failed, passed, or passed with each limit it passed with. */
 export function resultLine({ failures, knownLimits }) {
@@ -985,9 +954,8 @@ export function resultLine({ failures, knownLimits }) {
 }
 
 /** What was due of the app's setup at one start, in a few words. */
-function launchSetupSaid({ due, dismissed }) {
-  if (due !== null) return `due for ${due}, which is not ready on this computer`
-  return dismissed ? 'none due: a person closed it before' : 'none due: every provider is ready'
+function launchSetupSaid({ opensProviders }) {
+  return opensProviders ? 'Settings → Providers, as no provider is ready' : 'nothing opened'
 }
 
 /** A run as its job's summary shows it: the result first, then what it stands on. */

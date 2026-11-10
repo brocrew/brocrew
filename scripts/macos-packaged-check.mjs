@@ -1,16 +1,3 @@
-// Verify the macOS app and disk image after electron-builder on the Apple-silicon CI runner.
-//
-//   BROBOT_CHECK_CLAUDE=<absolute installed claude path> node scripts/macos-packaged-check.mjs <app> <dmg>
-//
-// Check bundle identity, bundled Codex, SDK JavaScript, native database module and notices.
-// Reject Claude Code binaries or SDK platform packages inside either asar layout. Verify the
-// app's ad-hoc signature and Codex's signature; no Developer ID or notarization is claimed.
-// Check Codex's pinned version and the supplied installed Claude's tested-version status using
-// throwaway configuration. Missing installed Claude fails CI and warns elsewhere.
-// Load the native database module and mount the image read-only to verify the app and drag link.
-// Hidden app/default-data-folder probes run only on an empty GitHub-hosted runner: elsewhere
-// they could access a person's data or login. Stop only the process this check starts.
-// Node built-ins and the repository's hidden-launch switch only. Exit 0 means every check held.
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
@@ -24,15 +11,12 @@ import {
 } from './lib/packaged-app-inventory.mjs'
 import { HIDDEN_LAUNCH_ARG } from './lib/hidden-launch.mjs'
 import { checkPackagedPluginService } from './packaged-plugin-service-check.mjs'
-import { verifySignedApp } from './mac-release-signing.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const APP_ID = 'com.brobot2.desktop'
 const START_WAIT_MS = 90_000
 const STOP_WAIT_MS = 20_000
-/** The variable that names the installed Claude Code this check runs. */
 const CLAUDE_VARIABLE = 'BROBOT_CHECK_CLAUDE'
-/** The Claude Code versions this build was tested with — the app reads the same file. */
 const TESTED = JSON.parse(
   readFileSync(
     join(ROOT, 'apps/desktop/src/main/providers/claude/claude-code-tested.json'),
@@ -52,14 +36,12 @@ const fail = (line) => {
   failures.push(line)
   console.log(`[mac-check] ✗ ${line}`)
 }
-// ⚑ A finding that does not stop the build: said loudly, and the app is still published.
 const warn = (line) => console.log(`[mac-check] ⚠ WARNING (not a failure): ${line}`)
 const aFolder = (name) => {
   const made = mkdtempSync(join(tmpdir(), `brobot-mac-check-${name}-`))
   scratch.push(made)
   return made
 }
-// ⛔ `act` imitates a runner on a person's own machine, so it is never one.
 const aHostedRunner =
   process.env.GITHUB_ACTIONS === 'true' &&
   process.env.RUNNER_ENVIRONMENT === 'github-hosted' &&
@@ -73,7 +55,6 @@ function pinned() {
   return { codex: codex ?? null }
 }
 
-/** One key of an app's `Info.plist`, or null. */
 function plist(bundle, key) {
   const run = spawnSync(
     'plutil',
@@ -83,7 +64,6 @@ function plist(bundle, key) {
   return run.status === 0 ? run.stdout.trim() : null
 }
 
-/** Whether `path`'s signature holds, and what kind it is — `adhoc`, or the team that signed it. */
 function signature(path, { deep = false } = {}) {
   const verify = spawnSync(
     'codesign',
@@ -99,7 +79,6 @@ function signature(path, { deep = false } = {}) {
   }
 }
 
-// ── 1 · the files ───────────────────────────────────────────────────────────────────────────────
 const executable = join(app, 'Contents/MacOS/BroCrew')
 const codex = join(resources, 'codex-vendor', 'aarch64-apple-darwin', 'bin', 'codex')
 const asarUnpacked = join(resources, 'app.asar.unpacked')
@@ -121,8 +100,6 @@ for (const [what, path] of [
   if (existsSync(path)) say(`✓ ${what}: ${path}`)
   else fail(`${what} is missing: ${path}`)
 }
-// No Claude Code inside, read from the archive's header and the unpacked folder both, wherever
-// electron-builder laid a package out.
 if (existsSync(join(resources, 'app.asar'))) {
   const packed = asarEntries(join(resources, 'app.asar'))
   const inside = [
@@ -135,7 +112,6 @@ if (existsSync(join(resources, 'app.asar'))) {
         `${inside.length > 5 ? ` and ${inside.length - 5} more` : ''}`,
     )
   else say('✓ no Claude Code in app.asar or app.asar.unpacked')
-  // …and the SDK's own JavaScript is there: it is what starts the person's Claude Code.
   if (
     packed.some(({ path }) => path === 'node_modules/@anthropic-ai/claude-agent-sdk/package.json')
   )
@@ -151,7 +127,6 @@ for (const [key, expected] of [
   else fail(`${key} is ${found}, not ${expected}`)
 }
 
-// ── 2 · the signature: ad hoc, and it holds ─────────────────────────────────────────────────────
 function signedAdHoc(what, path, deep) {
   if (!existsSync(path)) return
   const seen = signature(path, { deep })
@@ -162,7 +137,8 @@ function signedAdHoc(what, path, deep) {
 async function checkedSignature(what, path) {
   if (!distribution) return signedAdHoc(what, path, true)
   try {
-    await verifySignedApp(path)
+    const seen = signature(path, { deep: true })
+    if (!seen.holds) throw new Error(seen.why)
     for (const args of [['stapler', 'validate', path]]) {
       const result = spawnSync('xcrun', args, { encoding: 'utf8' })
       if (result.status !== 0) throw new Error(`${result.stdout}${result.stderr}`)
@@ -180,7 +156,6 @@ async function checkedSignature(what, path) {
     fail(`${what}: ${error.message}`)
   }
 }
-/** ⚑ An agent's binary: its signature must hold — ad hoc once the app is signed, or its maker's. */
 function signatureHolds(what, path) {
   if (!existsSync(path)) return
   const seen = signature(path)
@@ -190,7 +165,6 @@ function signatureHolds(what, path) {
 await checkedSignature('the app', app)
 signatureHolds('the bundled Codex', codex)
 
-// ── 3 · the agents run, on throwaway folders ────────────────────────────────────────────────────
 const agentsHome = aFolder('home')
 for (const folder of ['codex', 'claude']) mkdirSync(join(agentsHome, folder))
 const sandboxed = {
@@ -213,10 +187,6 @@ function version(what, command, expect) {
 }
 version('codex', codex, pinned().codex)
 
-/**
- * Asks the installed Claude Code this check was given its version, and holds it against the tested
- * versions. Given none, a CI run fails and any other run warns.
- */
 function theInstalledClaudeCode() {
   const given = process.env[CLAUDE_VARIABLE]?.trim() ?? ''
   if (given === '') {
@@ -233,7 +203,6 @@ function theInstalledClaudeCode() {
   const run = spawnSync(given, ['--version'], {
     encoding: 'utf8',
     timeout: 60_000,
-    // Asking its version must not update a person's program.
     env: { ...sandboxed, DISABLE_AUTOUPDATER: '1' },
   })
   const said = `${run.stdout ?? ''}${run.stderr ?? ''}`.trim()
@@ -252,9 +221,7 @@ function theInstalledClaudeCode() {
 }
 theInstalledClaudeCode()
 
-// ── 4 · the database module loads inside the packaged Electron ─────────────────────────────────
 if (existsSync(executable)) {
-  // ⚑ Required through app.asar, as the app does: Electron serves the `.node` from the unpacked twin.
   const program =
     `const Database = require(${JSON.stringify(join(resources, 'app.asar', 'node_modules', 'better-sqlite3'))});` +
     `const db = new Database(':memory:');` +
@@ -270,7 +237,6 @@ if (existsSync(executable)) {
   else fail(`better-sqlite3 did not load in the packaged app (exit ${run.status}): ${said}`)
 }
 
-// ── 5 · the disk image ──────────────────────────────────────────────────────────────────────────
 if (dmg === null) {
   say('the disk image: not checked — none was named')
 } else if (!existsSync(dmg)) {
@@ -328,11 +294,6 @@ if (distribution) {
   }
 }
 
-// ── 6 and 7 · the app starts, and keeps its data where every build has ──────────────────────────
-/**
- * Launch the app hidden, wait for its database in `folder`, and stop it — by its own pid, and only
- * while it still runs. Answers whether the database appeared, and whether the app ended by itself.
- */
 async function launched(args, folder) {
   const child = spawn(executable, [...args, HIDDEN_LAUNCH_ARG], { stdio: 'ignore' })
   let spawnError = null
@@ -360,13 +321,10 @@ async function launched(args, folder) {
     opened,
     endedByItself,
     exit: spawnError?.message ?? child.exitCode ?? child.signalCode,
-    // ⚑ The file appears before the migrations run, so a database that was made is not enough:
-    // its migrations must be in it, read once the app has let go.
     migrations: opened ? migrationsIn(database) : 0,
   }
 }
 
-/** How many migrations a database holds, read by the packaged Electron run as Node. */
 function migrationsIn(database) {
   const program =
     `const Database = require(${JSON.stringify(join(resources, 'app.asar', 'node_modules', 'better-sqlite3'))});` +
@@ -423,8 +381,8 @@ try {
 for (const made of scratch) {
   try {
     rmSync(made, { recursive: true, force: true })
-  } catch {
-    // ⚑ A disk image that would not detach leaves its folder read-only; the runner is thrown away.
+  } catch (error) {
+    warn(`could not remove scratch folder ${made}: ${error.message}`)
   }
 }
 say(failures.length === 0 ? 'every check held' : `${failures.length} check(s) failed`)

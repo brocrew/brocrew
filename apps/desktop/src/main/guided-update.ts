@@ -1,34 +1,17 @@
-import { createHash } from 'node:crypto'
-import {
-  closeSync,
-  constants,
-  createReadStream,
-  createWriteStream,
-  existsSync,
-  openSync,
-  readFileSync,
-  read,
-  write,
-  linkSync,
-  lstatSync,
-  readdirSync,
-  unlinkSync,
-  rmSync,
-  type WriteStream,
-} from 'node:fs'
-import { basename, extname, join } from 'node:path'
-import { finished } from 'node:stream/promises'
-import { aStagingName, createFreshFile } from '@brobot2/runtime/provider-home'
+import { createHash, randomUUID } from 'node:crypto'
+import { constants, createWriteStream, existsSync, readFileSync } from 'node:fs'
+import { copyFile, rm } from 'node:fs/promises'
+import { dirname, extname, join } from 'node:path'
+import { Readable, Transform } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
+import type { ReadableStream as WebReadableStream } from 'node:stream/web'
+import { load } from 'js-yaml'
 import type { FoundUpdate, ReleaseFile } from './updates'
 
 /**
- * 🔴 **W4.109 · B1 — the Mac's update, guided**: an app signed ad hoc cannot replace itself (its
- * designated requirement is its own hash, so Squirrel.Mac refuses every new build), so BroBot
- * downloads the disk image, checks it against the sha512 its release published, and opens it for
- * the person to drag into Applications.
- *
- * ⚑ Electron-free: the feed is read from the app's own `app-update.yml`, and the download takes any
- * `fetch`, so a throwaway local server stands in for GitHub in the tests.
+ * The Mac's update, guided: an app signed ad hoc cannot replace itself, so BroCrew downloads the
+ * disk image, checks it against the sha512 its release published, and opens it for the person to
+ * drag into Applications.
  */
 
 /**
@@ -46,23 +29,14 @@ export type ReleaseFeed =
 
 /** The feed `app-update.yml` names, or null when it names none this can read. */
 export function readFeed(text: string): ReleaseFeed | null {
-  const field = (key: string): string | null => {
-    const value = new RegExp(`^${key}: ?(.*)$`, 'm').exec(text)?.[1]?.trim()
-    return value === undefined || value === '' ? null : value.replace(/^['"]|['"]$/g, '')
+  const read: unknown = load(text)
+  if (typeof read !== 'object' || read === null) return null
+  const { provider, owner, repo, url, private: isPrivate } = read as Record<string, unknown>
+  if (provider === 'github' && typeof owner === 'string' && typeof repo === 'string') {
+    if (owner === '' || repo === '') return null
+    return isPrivate === true ? { provider, owner, repo, private: true } : { provider, owner, repo }
   }
-  const provider = field('provider')
-  if (provider === 'github') {
-    const owner = field('owner')
-    const repo = field('repo')
-    if (owner === null || repo === null) return null
-    return field('private') === 'true'
-      ? { provider, owner, repo, private: true }
-      : { provider, owner, repo }
-  }
-  if (provider === 'generic') {
-    const url = field('url')
-    return url === null ? null : { provider, url }
-  }
+  if (provider === 'generic' && typeof url === 'string' && url !== '') return { provider, url }
   return null
 }
 
@@ -72,7 +46,7 @@ export function feedOfTheApp(appUpdateYml: string): ReleaseFeed | null {
   return readFeed(readFileSync(appUpdateYml, 'utf8'))
 }
 
-/** Where a file of a release is downloaded from. ⚑ GitHub's releases are tagged `v<version>`. */
+/** Where a file of a release is downloaded from. GitHub's releases are tagged `v<version>`. */
 export function downloadUrlOf(feed: ReleaseFeed, version: string, file: string): string {
   if (feed.provider === 'github') {
     return `https://github.com/${feed.owner}/${feed.repo}/releases/download/v${encodeURIComponent(version)}/${encodeURIComponent(file)}`
@@ -83,7 +57,7 @@ export function downloadUrlOf(feed: ReleaseFeed, version: string, file: string):
 /**
  * The token a private GitHub feed is read with, by electron-updater's own rule: only when the build
  * says the feed is private, from `GH_TOKEN`, else `GITHUB_TOKEN`. Null for every other feed, and for
- * a private one with no token, which is then read as a public one. ⚑ A `token:` in the file, which
+ * a private one with no token, which is then read as a public one. A `token:` in the file, which
  * electron-updater would also take, is never read here: no build writes one, and a release's check
  * refuses it.
  */
@@ -98,7 +72,7 @@ const GITHUB_API = 'https://api.github.com'
 /**
  * Where a file of a release on a private GitHub feed is downloaded from: GitHub's API names the
  * release's file and hands out a short-lived address for it, which is then fetched without the
- * token. ⛔ The token goes to `api.github.com` and nowhere else, whatever address the API names, and
+ * token. The token goes to `api.github.com` and nowhere else, whatever address the API names, and
  * no error repeats it: a request that fails is said in fixed words, because what `fetch` throws can
  * quote the request's headers.
  */
@@ -153,352 +127,106 @@ export function diskImageOf(found: FoundUpdate): ReleaseFile | null {
   return found.files.find((file) => file.url.endsWith('.dmg')) ?? null
 }
 
-/** A file's sha512, as release files publish it: base64. ⚑ Read as a stream, never whole. */
-export async function sha512Of(file: string, signal?: AbortSignal): Promise<string> {
-  const stream = createReadStream(file, { signal })
-  const hash = createHash('sha512')
-  for await (const chunk of stream) hash.update(chunk as Buffer)
-  return hash.digest('base64')
-}
-
-const DOWNLOAD_CHANGED = 'the download changed before it could be saved. Try the update again.'
-const DOWNLOAD_KEPT =
-  'the saved download did not pass its check. It was left in Downloads; you can delete it. Try the update again.'
-
-/** Read the stored bytes through the held descriptor, without closing or changing its position. */
-async function checkedStage(
-  fd: number,
-  signal: AbortSignal,
-  progress: () => void,
-): Promise<{ hash: string }> {
-  const hash = createHash('sha512')
-  const buffer = Buffer.allocUnsafe(256 * 1024)
-  let position = 0
-  for (;;) {
-    signal.throwIfAborted()
-    const count = await new Promise<number>((resolve, reject) => {
-      read(fd, buffer, 0, buffer.length, position, (error, count) => {
-        if (error !== null) reject(error)
-        else resolve(count)
-      })
-    })
-    if (count === 0) break
-    hash.update(buffer.subarray(0, count))
-    progress()
-    position += count
-  }
-  signal.throwIfAborted()
-  return { hash: hash.digest('base64') }
-}
-
-/** Copy through the held files, including short writes, without reopening either pathname. */
-async function copyOpened(
-  from: number,
-  to: number,
-  signal: AbortSignal,
-  progress: () => void,
-): Promise<void> {
-  const buffer = Buffer.allocUnsafe(256 * 1024)
-  let position = 0
-  for (;;) {
-    signal.throwIfAborted()
-    const count = await new Promise<number>((resolve, reject) => {
-      read(from, buffer, 0, buffer.length, position, (error, count) => {
-        if (error !== null) reject(error)
-        else resolve(count)
-      })
-    })
-    if (count === 0) return
-    let written = 0
-    while (written < count) {
-      signal.throwIfAborted()
-      const length = await new Promise<number>((resolve, reject) => {
-        write(to, buffer, written, count - written, position + written, (error, length) => {
-          if (error !== null) reject(error)
-          else resolve(length)
-        })
-      })
-      if (length === 0)
-        throw new Error('The staged download could not be copied: write returned zero bytes.')
-      written += length
-      progress()
-    }
-    position += count
-  }
-}
-
-/** Publish only at an unused name; an error never removes anything from the destination folder. */
-async function placeDownload(
-  partial: string,
-  to: string,
-  checkedFd: number,
-  signal: AbortSignal,
-  placed: (name: string) => void,
-  progress: () => void,
-): Promise<{ name: string; fd: number; close: boolean }> {
-  const extension = extname(to)
-  const stem = to.slice(0, to.length - extension.length)
-  let collision: unknown
-  for (let number = 0; number < 100; number += 1) {
-    const name = number === 0 ? to : `${stem} (${number})${extension}`
-    signal.throwIfAborted()
-    try {
-      linkSync(partial, name)
-      placed(name)
-      return { name, fd: checkedFd, close: false }
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      if (code === 'EEXIST') {
-        collision = error
-        continue
-      }
-      if (code !== 'EXDEV') throw error
-    }
-    let writer: number
-    try {
-      writer = createFreshFile(name)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-      collision = error
-      continue
-    }
-    placed(name)
-    let writing: number | null = writer
-    let verifying: number | null = null
-    try {
-      verifying = openSync(name, constants.O_RDONLY)
-      await copyOpened(checkedFd, writer, signal, progress)
-      closeSync(writer)
-      writing = null
-      const fd = verifying
-      verifying = null
-      return { name, fd, close: true }
-    } finally {
-      try {
-        if (writing !== null) closeSync(writing)
-      } finally {
-        if (verifying !== null) closeSync(verifying)
-      }
-    }
-  }
-  throw collision
-}
-
-/** Clear only direct files and links left in private staging; never descend through a link. */
-export function clearUpdateStaging(userData: string): void {
-  const updates = join(userData, 'updates')
-  const staging = join(updates, 'staging')
-  try {
-    for (const folder of [updates, staging]) {
-      const entry = lstatSync(folder)
-      if (entry.isSymbolicLink() || !entry.isDirectory()) return
-    }
-    for (const name of readdirSync(staging)) {
-      const path = join(staging, name)
-      try {
-        const entry = lstatSync(path)
-        if (entry.isFile() || entry.isSymbolicLink()) unlinkSync(path)
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
-          console.warn('BroCrew could not clear update staging:', error)
-      }
-    }
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
-      console.warn('BroCrew could not clear update staging:', error)
-  }
-}
-
-/** A download that receives nothing for this long has stalled, and ends. */
-export const DOWNLOAD_STALLS_AFTER_MS = 60_000
+const STALLS_AFTER_MS = 60_000
 
 /**
- * Download into private staging and check its stored bytes before placing it.
- * An existing regular file with the right checksum is reused; otherwise it is kept and the
- * download takes an unused numbered name. A stalled or cancelled download removes only its private partial.
+ * Download into private staging, check the bytes against the release's sha512 as they arrive, then
+ * copy the image to an unused name beside `to`. Nothing reaches `to`'s folder unless it matched.
  */
 export async function downloadChecked(options: {
   readonly url: string
   readonly sha512: string
   readonly to: string
-  /** An existing folder owned by the app, never the shared destination folder. */
   readonly stagingFolder: string
   readonly onPercent: (percent: number) => void
-  readonly fetch?: typeof globalThis.fetch
+  readonly fetch?: (url: string, init: RequestInit) => Promise<Response>
   readonly stallsAfterMs?: number
   readonly signal?: AbortSignal
 }): Promise<string> {
   const { url, sha512, to, onPercent } = options
-  options.signal?.throwIfAborted()
-  let alreadyChecked = false
-  try {
-    alreadyChecked = existsSync(to) && (await sha512Of(to, options.signal)) === sha512
-  } catch {
-    options.signal?.throwIfAborted()
-    // A linked or unreadable destination stays untouched; the download gets another name.
-  }
-  options.signal?.throwIfAborted()
-  if (alreadyChecked) {
-    onPercent(100)
-    options.signal?.throwIfAborted()
-    return to
-  }
-  const stallsAfterMs = options.stallsAfterMs ?? DOWNLOAD_STALLS_AFTER_MS
-  const controller = new AbortController()
-  let interrupt: (why: unknown) => void = () => {}
-  const interrupted = new Promise<never>((_resolve, reject) => (interrupt = reject))
-  interrupted.catch(() => {})
-  const stop = (why: unknown): void => {
-    interrupt(why)
-    controller.abort(why)
-  }
-  const cancel = (): void => stop(options.signal?.reason)
-  options.signal?.addEventListener('abort', cancel, { once: true })
-  if (options.signal?.aborted) cancel()
+  const stallsAfterMs = options.stallsAfterMs ?? STALLS_AFTER_MS
+  const stalled = new Error(
+    `the download stalled: no progress for ${String(Math.round(stallsAfterMs / 1000))} s`,
+  )
+  const idle = new AbortController()
+  const signal =
+    options.signal === undefined ? idle.signal : AbortSignal.any([options.signal, idle.signal])
   let timer: ReturnType<typeof setTimeout> | undefined
-  let waitingForDisk = false
   const watch = (): void => {
     clearTimeout(timer)
-    if (controller.signal.aborted || waitingForDisk) return
-    timer = setTimeout(() => {
-      stop(
-        new Error(
-          `the download stalled: no progress for ${String(Math.round(stallsAfterMs / 1000))} s`,
-        ),
-      )
-    }, stallsAfterMs)
+    timer = setTimeout(() => idle.abort(stalled), stallsAfterMs)
   }
-  const orStopped = <T>(waiting: Promise<T>): Promise<T> => {
-    controller.signal.throwIfAborted()
-    return Promise.race([waiting, interrupted])
+  const failure = (error: unknown): unknown => {
+    if (options.signal?.aborted === true) return options.signal.reason
+    if (idle.signal.aborted) return stalled
+    console.warn(`updates: downloading ${url.split('?')[0]!} failed: ${String(error)}`)
+    return new Error('the download could not be completed')
   }
-  const diskWork = async <T>(work: Promise<T>): Promise<T> => {
-    waitingForDisk = true
-    clearTimeout(timer)
-    try {
-      return await work
-    } finally {
-      waitingForDisk = false
-      watch()
-    }
-  }
-  const partial = `${aStagingName(join(options.stagingFolder, basename(to)))}.partial`
-  let stageCreated = false
-  let placed: string | null = null
-  let checkedFd: number | null = null
-  let unclaimedWriter: number | null = null
-  let placedFd: number | null = null
-  let out: WriteStream | null = null
-  let written: Promise<void> | null = null
-  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
+  const partial = join(options.stagingFolder, `${randomUUID()}.partial`)
   watch()
   try {
-    controller.signal.throwIfAborted()
-    const response = await orStopped(
-      (options.fetch ?? globalThis.fetch)(url, { redirect: 'follow', signal: controller.signal }),
-    )
-    watch()
+    const response = await (options.fetch ?? globalThis.fetch)(url, {
+      signal,
+      credentials: 'omit',
+      headers: { 'user-agent': 'BroCrew' },
+    }).catch((error: unknown) => {
+      throw failure(error)
+    })
     if (!response.ok || response.body === null) {
+      await response.body?.cancel()
       throw new Error(`the download answered ${String(response.status)}`)
     }
-    reader = response.body.getReader()
-    controller.signal.addEventListener(
-      'abort',
-      () => void reader?.cancel(controller.signal.reason).catch(() => {}),
-      { once: true },
-    )
-    const fd = createFreshFile(partial)
-    unclaimedWriter = fd
-    stageCreated = true
-    checkedFd = openSync(partial, constants.O_RDONLY)
-    out = createWriteStream('', { fd, autoClose: true })
-    unclaimedWriter = null
-    // Observe write errors while waiting for the network, too.
-    written = finished(out)
-    void written.catch(stop)
     const total = Number(response.headers.get('content-length') ?? 0)
     const hash = createHash('sha512')
     let received = 0
-    for (;;) {
-      const { done, value } = await orStopped(reader.read())
-      if (done) break
-      watch()
-      hash.update(value)
-      if (!out.write(value, () => watch())) {
-        const writing = out
-        await diskWork(
-          orStopped(new Promise<void>((resolve) => writing.once('drain', () => resolve()))),
-        )
+    const checking = new Transform({
+      transform(chunk: Uint8Array, _encoding, done) {
         watch()
-      }
-      received += value.byteLength
-      if (total > 0) onPercent(Math.min(99, (received / total) * 100))
-    }
-    watch()
-    out.end()
-    await diskWork(orStopped(written))
-    watch()
+        hash.update(chunk)
+        received += chunk.byteLength
+        if (total > 0) onPercent(Math.min(99, (received / total) * 100))
+        done(null, chunk)
+      },
+    })
+    await pipeline(
+      Readable.fromWeb(response.body as WebReadableStream<Uint8Array>),
+      checking,
+      createWriteStream(partial, { flags: 'wx' }),
+      { signal },
+    ).catch((error: unknown) => {
+      throw failure(error)
+    })
+    clearTimeout(timer)
     if (hash.digest('base64') !== sha512) {
       throw new Error(
         'the download did not match the sha512 its release published, so it was deleted',
       )
     }
-    controller.signal.throwIfAborted()
-    const checked = await diskWork(checkedStage(checkedFd, controller.signal, watch))
-    if (checked.hash !== sha512) throw new Error(DOWNLOAD_CHANGED)
-    const publication = await diskWork(
-      placeDownload(
-        partial,
-        to,
-        checkedFd,
-        controller.signal,
-        (name) => {
-          placed = name
-        },
-        watch,
-      ),
-    )
-    if (publication.close) placedFd = publication.fd
-    // The destination may be a new copy. Check its own stored bytes before handing it to Finder.
-    const landed = await diskWork(checkedStage(publication.fd, controller.signal, watch))
-    if (landed.hash !== sha512) throw new Error(DOWNLOAD_CHANGED)
+    const landed = await copyBeside(partial, to)
     onPercent(100)
-    controller.signal.throwIfAborted()
-    rmSync(partial, { force: true })
-    stageCreated = false
-    return publication.name
-  } catch (error) {
-    controller.abort(error)
-    if (out !== null) {
-      out.destroy()
-      await written?.catch(() => {})
-    }
-    if (placed !== null) {
-      const kept = new Error(`${DOWNLOAD_KEPT} ${placed}: ${String(error)}`, { cause: error })
-      if (error instanceof Error && error.name !== 'Error') kept.name = error.name
-      throw kept
-    }
-    if (error instanceof Error && error.name === 'AbortError') throw error
-    throw new Error(`${to}: ${String(error)}`, { cause: error })
+    return landed
   } finally {
     clearTimeout(timer)
-    options.signal?.removeEventListener('abort', cancel)
+    await rm(partial, { force: true })
+  }
+}
+
+/** Copy to `to`, or to `name (1).dmg` and so on: an existing file is never replaced. */
+async function copyBeside(from: string, to: string): Promise<string> {
+  const extension = extname(to)
+  const stem = to.slice(0, to.length - extension.length)
+  for (let number = 0; number < 100; number += 1) {
+    const name = number === 0 ? to : `${stem} (${String(number)})${extension}`
     try {
-      reader?.releaseLock()
-    } finally {
-      try {
-        if (stageCreated) rmSync(partial, { force: true })
-      } finally {
-        try {
-          if (placedFd !== null) closeSync(placedFd)
-        } finally {
-          try {
-            if (checkedFd !== null) closeSync(checkedFd)
-          } finally {
-            if (unclaimedWriter !== null) closeSync(unclaimedWriter)
-          }
-        }
-      }
+      await copyFile(from, name, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE)
+      return name
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') continue
+      // COPYFILE_EXCL means this name was created by this copy, so a partial copy is ours to remove.
+      await rm(name, { force: true })
+      console.warn(`updates: saving ${name} failed: ${String(error)}`)
+      throw new Error(`the download could not be saved to ${dirname(to)}`, { cause: error })
     }
   }
+  throw new Error(`the download could not be saved to ${dirname(to)}`)
 }

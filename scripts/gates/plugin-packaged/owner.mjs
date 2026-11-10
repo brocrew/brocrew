@@ -20,7 +20,6 @@ import {
   stderrFrames,
   printAppStderr,
 } from './diagnostics.mjs'
-import { readIntegrity } from './integrity.mjs'
 import { readOwned } from './journey.mjs'
 import { safeVariant, safeSelection, safeMatrixReceipt, requireSelection } from './matrix.mjs'
 import { closedFrames } from './diagnostics.mjs'
@@ -325,7 +324,6 @@ export async function run(control, node22, pnpm) {
       'scripts/test/plugin-packaged-plugin-state.test.mjs',
       'scripts/test/plugin-packaged-page-state.test.mjs',
       'scripts/test/plugin-packaged-environment.test.mjs',
-      'scripts/test/plugin-packaged-integrity.test.mjs',
       'scripts/test/plugin-packaged-matrix.test.mjs',
     ])
     await start(
@@ -379,13 +377,6 @@ export async function run(control, node22, pnpm) {
     } catch (error) {
       summary = report()
       failure ??= failureFor('owner', error)
-    }
-    if (fs.existsSync(path.join(root, 'integrity.json'))) {
-      try {
-        summary.integrity = readIntegrity(root)
-      } catch (error) {
-        failure ??= failureFor('app-integrity', error)
-      }
     }
     if (fs.existsSync(path.join(root, 'probe-matrix.json'))) {
       try {

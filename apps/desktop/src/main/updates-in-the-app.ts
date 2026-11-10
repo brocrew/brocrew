@@ -1,5 +1,5 @@
 import { ipcMain } from './app-ipc'
-import { mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { BrowserWindow, net, shell } from 'electron'
 import type { App } from 'electron'
@@ -8,7 +8,6 @@ import { UPDATES_CHANNELS, type UpdateChannel } from '../shared/updates'
 import { shownVersion } from './build-identity'
 import { defaultDataFolder } from './data-folder'
 import {
-  clearUpdateStaging,
   diskImageOf,
   downloadChecked,
   downloadUrlOf,
@@ -31,14 +30,9 @@ import {
 } from './updates'
 
 /**
- * 🔴 **W4.109 · B1 — updates, wired to Electron**: electron-updater asks the release feed and
- * downloads the Windows installer; the Mac's disk image is downloaded and checked here
- * (`guided-update.ts`); the host says what a restart would stop. Every rule is `updates.ts`'s.
- *
- * ⚑ A development build never checks (`app.isPackaged`), and neither does a packaged one built
- * with no release feed (no `app-update.yml`: the hand-out builds of `windows.yml` and `macos.yml`).
- * ⚑ electron-updater is loaded only when a check is first made, so a build that never checks never
- * loads it.
+ * Updates, wired to Electron: electron-updater checks the release feed and downloads the Windows
+ * installer; the Mac's disk image is downloaded and checked in `guided-update.ts`. Every rule is
+ * `updates.ts`'s. A development build, or a packaged one with no `app-update.yml`, never checks.
  */
 
 /**
@@ -58,7 +52,7 @@ export function startUpdates(options: {
   readonly hidden: boolean
 }): Updates & { drain(): Promise<void> } {
   const { app } = options
-  clearUpdateStaging(app.getPath('userData'))
+  rmSync(join(app.getPath('userData'), 'updates', 'staging'), { recursive: true, force: true })
   const feed = app.isPackaged ? feedOfTheApp(join(process.resourcesPath, 'app-update.yml')) : null
   const settings = updateSettingsOf({
     appData: app.getPath('appData'),
@@ -73,7 +67,7 @@ export function startUpdates(options: {
   const theUpdater = (): Promise<AppUpdater> => {
     loaded ??= import('electron-updater').then(async (exported) => {
       const autoUpdater = theAutoUpdaterOf(exported)
-      // ⛔ Nothing downloads or installs unless the person chooses (`updates.ts`).
+      // Nothing downloads or installs unless the person chooses (`updates.ts`).
       autoUpdater.autoDownload = false
       autoUpdater.autoInstallOnAppQuit = false
       autoUpdater.allowDowngrade = false
@@ -102,16 +96,9 @@ export function startUpdates(options: {
   }
 
   /**
-   * 🔴 **The installer starts once this app has shut down, never before** (found in the second
-   * review). Started first — `quitAndInstall` — it would find BroBot still closing its
-   * conversations, wait a second, and stop every process under its folder, the providers' too.
-   * So the restart is an ordinary quit (`app-lifetime.ts`: conversations closed, archive drained,
-   * database closed), and the installer is started from `quit`, the last event there is — where
-   * electron-updater's own install-on-quit starts it, synchronously.
-   *
-   * 🔴 **W4.128 — and BroBot comes back on the workspace it was running** (`reopen-after-update.ts`):
-   * the default workspace as the installer starts it (`--force-run`); any other folder as the
-   * installer starts it when BroBot names the folder (`build/installer.nsh`).
+   * The installer starts from `quit`, after the ordinary teardown, as electron-updater's own
+   * install-on-quit does: started earlier, it would stop BroCrew's processes while they close. It
+   * reopens BroCrew on the workspace it was running (`reopen-after-update.ts`).
    */
   let installOnTheWayOut = false
   /** The installer electron-updater downloaded and checked: what a waiting PowerShell runs. */
@@ -123,7 +110,6 @@ export function startUpdates(options: {
   )
   app.on('quit', () => {
     if (!installOnTheWayOut || updater === null) return
-    // ⚑ Windows' updater is electron-updater's NSIS one, whose `install` starts the installer.
     const theInstallersWayBack = (): void => void (updater as BaseUpdater).install(true, true)
     if (wayBack.on === 'the-default-workspace' || installer === null) {
       theInstallersWayBack()
@@ -132,9 +118,7 @@ export function startUpdates(options: {
     console.info(
       `updates: installing ${installer}, then reopening BroCrew with --user-data-dir=${wayBack.folder}`,
     )
-    // ⛔ An installer that cannot be started this way is no reason to leave the person with
-    // nothing: electron-updater's own start, and its way back on the default workspace, is still a
-    // BroBot that comes back.
+    // If this start fails, electron-updater's own start still brings BroCrew back.
     try {
       const pid = startTheInstaller({ installer, folder: wayBack.folder, env: process.env })
       if (pid === undefined) throw new Error('the installer did not start')
@@ -146,6 +130,7 @@ export function startUpdates(options: {
 
   const guidedDownloads = new AbortController()
   const pendingGuides = new Set<Promise<string>>()
+  const openedThisRun = new Map<string, string>()
   const updates = createUpdates({
     version: shownVersion(app.getVersion(), app.isPackaged),
     notHere: !app.isPackaged ? 'a-development-build' : feed === null ? 'no-release-feed' : null,
@@ -155,6 +140,7 @@ export function startUpdates(options: {
       write: (chosen) => writeUpdateSettings(settings.file, chosen),
     },
     check: async (channel: UpdateChannel): Promise<FoundUpdate | null> => {
+      if (process.env.BROCREW_SKIP_UPDATE_CHECK === '1') return null
       const autoUpdater = await theUpdater()
       autoUpdater.allowPrerelease = channel === 'beta'
       const result = await autoUpdater.checkForUpdates()
@@ -189,46 +175,42 @@ export function startUpdates(options: {
       if (feed === null) throw new Error('this build has no release feed')
       const image = diskImageOf(found)
       if (image === null) throw new Error(`release ${found.version} has no disk image for the Mac`)
-      // ⚑ A hidden launch puts nothing in anybody's Downloads: its own data folder keeps it.
-      const folder = options.hidden
-        ? join(app.getPath('userData'), 'updates')
-        : app.getPath('downloads')
-      mkdirSync(folder, { recursive: true })
-      const stagingFolder = join(app.getPath('userData'), 'updates', 'staging')
-      mkdirSync(stagingFolder, { recursive: true, mode: 0o700 })
-      const token = privateFeedToken(feed, process.env)
-      const url =
-        publicFeed !== null
-          ? publicFeed.downloadUrl(found.version, image.url)
-          : token === null || feed.provider !== 'github'
-            ? downloadUrlOf(feed, found.version, image.url)
-            : await privateDownloadUrlOf({ feed, version: found.version, file: image.url, token })
-      guidedDownloads.signal.throwIfAborted()
-      const pending = downloadChecked({
-        url,
-        sha512: image.sha512,
-        signal: guidedDownloads.signal,
-        to: join(folder, basename(image.url)),
-        stagingFolder,
-        onPercent,
-        // ⚑ Its own user agent: Electron's carries this BroCrew's version, and a download says no
-        // more than a check does (electron-updater's say `electron-builder`).
-        fetch: ((input: string, init?: RequestInit) =>
-          net.fetch(publicFeed?.downloadUrl(found.version, image.url) ?? input, {
-            ...init,
-            ...(publicFeed === null ? {} : { credentials: 'omit' as const }),
-            headers: { 'user-agent': 'BroCrew' },
-          })) as typeof fetch,
-      })
-      pendingGuides.add(pending)
-      let path: string
-      try {
-        path = await pending
-      } finally {
-        pendingGuides.delete(pending)
+      let path = openedThisRun.get(found.version)
+      if (path === undefined || !existsSync(path)) {
+        // A hidden launch puts nothing in anybody's Downloads: its own data folder keeps it.
+        const folder = options.hidden
+          ? join(app.getPath('userData'), 'updates')
+          : app.getPath('downloads')
+        mkdirSync(folder, { recursive: true })
+        const stagingFolder = join(app.getPath('userData'), 'updates', 'staging')
+        mkdirSync(stagingFolder, { recursive: true })
+        const token = privateFeedToken(feed, process.env)
+        const url =
+          publicFeed !== null
+            ? publicFeed.downloadUrl(found.version, image.url)
+            : token === null || feed.provider !== 'github'
+              ? downloadUrlOf(feed, found.version, image.url)
+              : await privateDownloadUrlOf({ feed, version: found.version, file: image.url, token })
+        guidedDownloads.signal.throwIfAborted()
+        const pending = downloadChecked({
+          url,
+          sha512: image.sha512,
+          signal: guidedDownloads.signal,
+          to: join(folder, basename(image.url)),
+          stagingFolder,
+          onPercent,
+          fetch: (address, init) => net.fetch(address, init),
+        })
+        pendingGuides.add(pending)
+        try {
+          path = await pending
+        } finally {
+          pendingGuides.delete(pending)
+        }
+        openedThisRun.set(found.version, path)
       }
       guidedDownloads.signal.throwIfAborted()
-      // ⚑ A hidden launch opens nothing on anybody's screen.
+      // A hidden launch opens nothing on anybody's screen.
       if (!options.hidden) {
         const failure = await shell.openPath(path)
         if (failure !== '')
@@ -248,7 +230,7 @@ export function startUpdates(options: {
       timer.unref()
       return () => clearTimeout(timer)
     },
-    // ⚠️ Each send guarded on its own, as `index.ts` does: a window on its way out throws.
+    // Each send guarded on its own: a window on its way out throws.
     publish: (snapshot) => {
       for (const window of BrowserWindow.getAllWindows()) {
         try {
@@ -263,8 +245,7 @@ export function startUpdates(options: {
     log: (line) => console.info(line),
   })
 
-  // ⛔ Any quit ends the updates: a restart that waits is not installed by a look that answers
-  // while the app is closing.
+  // Any quit ends the updates, so a waiting restart is not installed while the app closes.
   const stop = (): void => {
     guidedDownloads.abort()
     updates.stop()

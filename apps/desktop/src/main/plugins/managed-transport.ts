@@ -1,7 +1,7 @@
 import { reportPluginToolFailure, type PluginToolDiagnostic } from './tool-diagnostics'
 import { PluginBrokerError } from './tool-broker'
 import type { RouteAdmissionTrace } from './route-admission-trace'
-import { randomBytes, timingSafeEqual } from 'node:crypto'
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createServer, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -13,7 +13,7 @@ import {
   CallToolResultSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
-import type { ManagedPluginMcpServer } from '@brobot2/runtime'
+import type { ManagedPluginMcpServer } from '@brobot2/runtime/managed-plugin-mcp'
 import type {
   BrokerAgent,
   BrokerInput,
@@ -116,9 +116,7 @@ export function createPrivatePluginPort(options: {
           }
           client = new Client({ name: 'brocrew-plugin-broker', version: '1' })
           client.onerror = (error) => {
-            // Closing a completed per-call client aborts its idle SSE reader. That
-            // local teardown callback is not a failed tool call. Catch still reports
-            // call failures; close() rejection below retains its separate diagnostic.
+            // Closing a completed client aborts its idle SSE reader.
             if (!closingAfterReply)
               reportError(error, connected ? 'transport-call-failed' : 'transport-connect-failed')
           }
@@ -218,7 +216,7 @@ export async function openManagedPluginRoute(
     { maxHeaderSize: 8192, requestTimeout: 15_000, headersTimeout: 10_000 },
     (req, res) => {
       void (async () => {
-        const request = trace?.fresh('request')
+        const request = trace ? randomUUID() : undefined
         const supplied = Buffer.from(req.headers.authorization ?? '')
         if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
           trace?.emit('http-bearer-refused', { condition: 'bearer' }, request)
@@ -371,22 +369,15 @@ export async function openManagedPluginRoute(
     http.listen(0, '127.0.0.1', resolve)
   })
   const url = `http://127.0.0.1:${(http.address() as AddressInfo).port}/mcp`
-  // Reuse the inventory already admitted above; observation does not rediscover or authorize.
-  try {
-    if (trace?.aliases.incarnation)
+  if (trace) {
+    trace.context.route = url
+    if (trace.context.incarnation)
       trace.emit('route-configured', {
-        attachmentRoute: trace.attachmentId('route', url),
-        server: trace.attachmentId('server', name),
-        configuredTools: offered
-          .flatMap((tool) => {
-            const id = trace.attachmentId('tool', tool.name)
-            return id ? [id] : []
-          })
-          .sort(),
+        attachmentRoute: url,
+        server: name,
+        configuredTools: offered.map((tool) => tool.name).sort(),
         configuredCount: offered.length,
       })
-  } catch {
-    /* Diagnostic only. */
   }
   return {
     server: Object.freeze({
@@ -400,9 +391,7 @@ export async function openManagedPluginRoute(
         trace?.emit('route-close-start')
         const closed = new Promise<void>((resolve) => http.close(() => resolve()))
         broker.owner.revoke(agent)
-        // Revocation answers the old caller immediately. Let that fixed failure
-        // reach its HTTP response before closing the MCP transport. This bounded
-        // local flush grants no remote completion or host-exit authority.
+        // Flush the refusal before closing the transport.
         let grace: ReturnType<typeof setTimeout> | undefined
         try {
           await Promise.race([

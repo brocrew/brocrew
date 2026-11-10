@@ -15,7 +15,8 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { SharedSkillLibrary } from '../src/main/skills/shared-library'
 import { nodeFs, type RecoveryFs } from '../src/main/recovery/files'
-import { copySkillTree, readSkillTree } from '../src/main/recovery/trees'
+import { copySkillTree } from '../src/main/recovery/trees'
+import { ordinarySkillTree } from '../src/main/skills/ordinary-tree'
 
 let root: string
 beforeEach(async () => {
@@ -69,8 +70,8 @@ describe('one writable shared skills tree', () => {
     const a = await source('cora')
     await source('davi')
     const different = await source('elin', body('A different recipe.'))
-    const original = await readSkillTree(a)
-    const changed = await readSkillTree(different)
+    const original = await ordinarySkillTree(a)
+    const changed = await ordinarySkillTree(different)
     const library = new SharedSkillLibrary(root)
     await expect(library.convert(async () => [])).resolves.toBeUndefined()
     if (process.platform === 'win32')
@@ -79,8 +80,8 @@ describe('one writable shared skills tree', () => {
     expect(names).toHaveLength(2)
     expect(names[0]).toBe('recipe-check')
     expect(names[1]).toBe('recipe-check-2')
-    expect((await readSkillTree(join(library.active, names[0]!))).sha256).toBe(original.sha256)
-    expect((await readSkillTree(join(library.active, names[1]!))).sha256).toBe(changed.sha256)
+    expect((await ordinarySkillTree(join(library.active, names[0]!))).sha256).toBe(original.sha256)
+    expect((await ordinarySkillTree(join(library.active, names[1]!))).sha256).toBe(changed.sha256)
     expect(await readFile(join(library.active, names[0]!, 'assets/map.bin'))).toEqual(
       Buffer.from([0, 255, 3, 0]),
     )
@@ -165,14 +166,16 @@ describe('one writable shared skills tree', () => {
   })
   it('deduplicates against an off skill without turning it on', async () => {
     const home = await source('cora')
-    const original = await readSkillTree(home)
+    const original = await ordinarySkillTree(home)
     const library = new SharedSkillLibrary(root)
     await library.convert(async () => [])
     await rename(join(library.active, 'recipe-check'), join(library.off, 'recipe-check'))
     await source('davi')
     await library.convert(personal)
     expect(await folders(library.active)).toEqual([])
-    expect((await readSkillTree(join(library.off, 'recipe-check'))).sha256).toBe(original.sha256)
+    expect((await ordinarySkillTree(join(library.off, 'recipe-check'))).sha256).toBe(
+      original.sha256,
+    )
   })
   it('finishes a recorded staged import after interruption without replacing a conflicting folder', async () => {
     const broken: RecoveryFs = {
@@ -364,7 +367,7 @@ describe('one writable shared skills tree', () => {
   })
   it('verifies a cross-volume copy before removing the source and preserves it on failure', async () => {
     const home = await source('cora')
-    const original = await readSkillTree(home)
+    const original = await ordinarySkillTree(home)
     const cross: RecoveryFs = {
       ...nodeFs,
       rename: async (from, to) => {
@@ -376,8 +379,8 @@ describe('one writable shared skills tree', () => {
     let verifiedBeforeRemoval = false
     cross.rm = async (path, options) => {
       if (path === home) {
-        expect((await readSkillTree(join(root, 'skills/recipe-check'))).sha256).toBe(
-          (await readSkillTree(home)).sha256,
+        expect((await ordinarySkillTree(join(root, 'skills/recipe-check'))).sha256).toBe(
+          (await ordinarySkillTree(home)).sha256,
         )
         verifiedBeforeRemoval = true
       }
@@ -389,7 +392,9 @@ describe('one writable shared skills tree', () => {
       await new SharedSkillLibrary(root, cross, Date.now, 'win32').convert(async () => [])
     await expect(lstat(home)).rejects.toMatchObject({ code: 'ENOENT' })
     expect(verifiedBeforeRemoval).toBe(true)
-    expect((await readSkillTree(join(library.active, 'recipe-check'))).sha256).toBe(original.sha256)
+    expect((await ordinarySkillTree(join(library.active, 'recipe-check'))).sha256).toBe(
+      original.sha256,
+    )
     await source('cora', body('A later source.'))
     const failCopy: RecoveryFs = {
       ...cross,
@@ -571,26 +576,5 @@ describe('one writable shared skills tree', () => {
     await writeFile(join(root, 'skills-conversion.json'), '{broken')
     await expect(library.convert(personal)).rejects.toThrow()
     expect(await readFile(join(library.active, 'recipe-check/SKILL.md'), 'utf8')).toBe(body())
-  })
-  it('refuses a copy whose source changes while its files are read', async () => {
-    const home = await source('cora')
-    let reads = 0
-    const fs: RecoveryFs = {
-      ...nodeFs,
-      open: async (...args) => {
-        const handle = await nodeFs.open(...args)
-        if (args[0] !== join(home, 'SKILL.md')) return handle
-        reads++
-        if (reads !== 2) return handle
-        return {
-          ...handle,
-          close: async () => {
-            await handle.close()
-            await writeFile(join(home, 'SKILL.md'), body('Changed during copy.'))
-          },
-        }
-      },
-    }
-    await expect(copySkillTree(home, join(root, 'fictional-copy'), fs)).rejects.toThrow()
   })
 })

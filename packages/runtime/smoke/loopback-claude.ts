@@ -39,7 +39,7 @@ import { provisionProviderHome } from '../src/internal/provider-home'
  * `BROBOT_PROBE_CLAUDE=<absolute path>` (or `program`) hands the runtime that program, as the app
  * hands it the one it found; the runtime, not this rig, sets `pathToClaudeCodeExecutable`. So any
  * probe on this rig runs unchanged against an installed Claude Code:
- * `BROBOT_PROBE_CLAUDE=/opt/homebrew/bin/claude pnpm run probe:token-reach`. A program named this
+ * `BROBOT_PROBE_CLAUDE=/opt/homebrew/bin/claude pnpm run probe:claude-installed`. A program named this
  * way is contained by default ({@link containLaunch}): a scratch `HOME`, and on macOS a `security`
  * that answers nothing, so it reads neither the person's home nor their Keychain. Each launch's
  * spawn is recorded ({@link SpawnSeen}), so a probe can say which program ran.
@@ -330,7 +330,6 @@ export function containLaunch(
   for (const [name, value] of Object.entries(env)) {
     if (!/API_KEY|AUTH_TOKEN|OAUTH|BEARER|CREDENTIAL|SECRET|PASSWORD/i.test(name)) continue
     if (name === 'CLAUDE_CODE_OAUTH_TOKEN' && value === 'probe-only') continue
-    if (name === 'CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR' && /^\d+$/.test(value ?? '')) continue
     if (name === 'ANTHROPIC_API_KEY' && apiKey !== undefined && value === apiKey) continue
     throw new Error(`NOT PERFORMED — the child's environment carries ${name}`)
   }
@@ -370,8 +369,6 @@ export async function loopbackRuntime(args: {
   readonly maxRetries?: number
   /** A fake API key for the product to run on, as if a person had entered it. Never a real one. */
   readonly apiKey?: string
-  /** Whose way of handing over that key the product takes (`handOverApiKey`); this Mac's by default. */
-  readonly platform?: NodeJS.Platform
   /**
    * The Claude Code program the product runs, by absolute path — `BROBOT_PROBE_CLAUDE` when that is
    * set; absent, the SDK's own copy.
@@ -413,15 +410,8 @@ export async function loopbackRuntime(args: {
       throw new Error('NOT PERFORMED — CLAUDE_SECURESTORAGE_CONFIG_DIR would unscope the Keychain')
     }
     env['ANTHROPIC_BASE_URL'] = `http://127.0.0.1:${args.port}`
-    // ⚑ A launch that runs on an API key carries its descriptor, or on the Windows route the key
-    // itself, not a login: adding one here would hand the CLI two credentials and measure the wrong
-    // one.
-    if (
-      env['CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR'] === undefined &&
-      env['ANTHROPIC_API_KEY'] === undefined
-    ) {
-      env['CLAUDE_CODE_OAUTH_TOKEN'] = 'probe-only'
-    }
+    // A launch on an API key gets no login too, or the CLI would hold two credentials.
+    if (env['ANTHROPIC_API_KEY'] === undefined) env['CLAUDE_CODE_OAUTH_TOKEN'] = 'probe-only'
     env['CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'] = '1'
     env['DISABLE_AUTOUPDATER'] = '1'
     if (args.maxRetries !== undefined) env['CLAUDE_CODE_MAX_RETRIES'] = String(args.maxRetries)
@@ -564,7 +554,7 @@ export async function loopbackRuntime(args: {
     undefined,
     undefined,
     apiKey === undefined ? undefined : () => apiKey,
-    args.platform,
+    undefined,
     undefined,
     program,
   )

@@ -67,7 +67,6 @@ assert(
 clean()
 const lockSha256 = hashFile(join(cwd, 'pnpm-lock.yaml'))
 step(args.pnpm, ['install', '--frozen-lockfile', '--store-dir', join(root, 'pnpm-store')])
-step(process.execPath, ['scripts/check-no-plugin-gate-inputs.mjs'])
 step(process.execPath, ['scripts/prepare-plugin-node.mjs'])
 step(args.pnpm, ['--filter', '@brobot2/desktop', 'build'])
 step(args.pnpm, [

@@ -1,4 +1,4 @@
-// The testers' upgrade path, on a GitHub-hosted runner: a published release installed as a person
+// 695-visible: this checks person-like starts on a GitHub-hosted runner: a release installed as a person
 // installs it, fictional data made by that beta through its own window, the candidate installed
 // over it by hand, and the candidate's first and second starts checked against what the beta left.
 // Run by `.github/workflows/upgrade-path.yml`:
@@ -8,18 +8,14 @@
 //     --source-sha <sha> --evidence <dir> [--beta-registry packaged|legacy]
 // Public builds use the packaged registry. An older build with the legacy contract must name it.
 //
-// 695-visible: both apps start as a person starts them, window and all, because that start is what
-// this checks; it runs only on a GitHub-hosted runner, never on anyone's machine.
-//
 // It installs software and stops the BroBot processes it started, so it refuses to run anywhere but
 // a GitHub-hosted runner of brocrew/brocrew with no BroBot installed and no BroBot data. Nothing
 // reaches a provider: the Codex key is fictional and the model is a local scripted server, which
 // answers only a request that carries that key. Exit 0 only when every check held and every piece
 // of evidence was kept.
 //
-// The candidate must carry the app's whole window: at a start it opens its setup for a provider
-// that is not ready, and on a runner, which has no Claude Code, that setup is due and its absence
-// fails the check.
+// The candidate must carry the app's whole window: at a start with no provider ready it goes to
+// Settings → Providers, and opens no dialog of its own.
 //
 // What it does not show is listed in its summary (`outsideThisCheck`): the prompt a Mac shows for
 // a file a browser downloaded, the in-app update buttons, and anything only a tester's own machine
@@ -54,11 +50,9 @@ import {
   buildLineage,
   canonicalRow,
   CHECKPOINT_LINE,
-  CLOSE_LIMIT,
   contains,
   copiesSince,
   credentialSeen,
-  dialogsAreAsDue,
   FAIL_LINE,
   historyOf,
   keptTables,
@@ -68,7 +62,6 @@ import {
   isPublishedRelease,
   jobSummary,
   lastResortStop,
-  LAUNCH_SETUP_DISMISSED_KEY,
   NOTHING_RAN_LIMIT,
   LAUNCH_SETUP_PROVIDERS,
   packagingNames,
@@ -85,7 +78,6 @@ import {
   resultLine,
   rowsPreserved,
   CONNECTION_UPGRADE_DEFAULTS,
-  SAVED_KEY_LIMIT,
   APP_NAMES_BEFORE,
   keychainAttributes,
   keychainEntryFor,
@@ -224,7 +216,6 @@ const summary = {
     'the in-app update buttons',
     'an install folder a tester chose, or another Windows user',
     'what macOS itself asks: its windows are outside the app’s (a picture of the whole screen is kept)',
-    'on a Mac, whether the saved key opens once a person answers macOS: nobody answers it here',
   ],
   // What a passing run passed with, said beside its result: a green run is never the whole story.
   knownLimits: [],
@@ -715,10 +706,6 @@ const heldClaudeAnswers = []
 const tellsOfTheCrashJob = (body) =>
   userTextsIn(body).some((one) => one.includes(CRASH_JOB_PROMPT) && one.includes(DUE_WHILE_STOPPED))
 
-/** What the result says on a Mac whose candidate cannot open the key the beta saved. */
-const CLAUDE_START_LIMIT =
-  'starts not shown on the Mac: the Keychain does not hand the beta’s saved Anthropic key to the candidate with nobody to ask'
-
 /** What the candidate says of a job whose time it cannot know. */
 const TIME_NOT_KNOWN_WORDS = 'runs at a time this app cannot tell'
 
@@ -819,11 +806,7 @@ if (claudePort !== null) {
 }
 
 /**
- * On Windows, BroBot hands a saved key to Claude Code as the host that manages its provider, and
- * Claude Code then ignores the endpoint any settings file names, managed ones included
- * (`CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST`, Anthropic's environment-variable reference). It still
- * takes a proxy and an extra certificate authority from its environment, which BroBot passes on.
- * So the app is started there with a proxy of this run's own that opens a tunnel to
+ * On Windows the app is started with a proxy of this run's own that opens a tunnel to
  * `api.anthropic.com` only, ends it in a certificate signed by the run's own authority, made by
  * the workflow, and answers with the same scripted model. Every other host is refused, and each
  * tunnel asked for is kept as evidence.
@@ -900,6 +883,9 @@ async function launch(stage, port) {
       join(evidence, `${stage}.stdout.log`),
       '--stderr',
       log,
+      ...(process.env.BROCREW_SKIP_UPDATE_CHECK === '1'
+        ? ['--env', 'BROCREW_SKIP_UPDATE_CHECK=1']
+        : []),
       installedExe,
       '--args',
       ...debugging,
@@ -1081,7 +1067,6 @@ async function launchSetupFacts() {
        said(window.api.runtime.checkProviderAuth({ provider: 'codex', profileId: 'brobot' })),
      ])
      return {
-       dismissed: localStorage.getItem(${JSON.stringify(LAUNCH_SETUP_DISMISSED_KEY)}),
        versions,
        setup,
        keys: { claude: claudeKey, codex: codexKey },
@@ -1092,73 +1077,55 @@ async function launchSetupFacts() {
   const key = (provider) => read.keys[provider]?.answer
   return {
     read,
-    dismissed: read.dismissed === 'true',
     // As the window puts them together: no answer about what to install is "main does not say",
-    // and a key counts as refused only when it is saved and a request on it was refused.
+    // a key counts as refused only when it is saved and a request on it was refused, and as
+    // unreadable when it is saved and not in use.
     facts: LAUNCH_SETUP_PROVIDERS.map(({ provider }) => ({
       provider,
       version: read.versions.answer?.[provider] ?? null,
       setup: read.setup.answer == null ? undefined : read.setup.answer[provider],
       auth: read.auth[provider]?.answer ?? null,
       keyRefused: key(provider)?.set === true && key(provider)?.refusedForBilling !== undefined,
+      keyUnreadable: key(provider)?.set === true && key(provider)?.inUse === false,
     })),
   }
 }
 
 /**
- * The app's own dialogs at a start. None is due but one: its setup at launch, which opens by itself
- * for the first provider that is not ready on this computer, unless a person closed it before. So
- * the facts that setup reads are read first, the window is given the time that read takes, and then
- * it must show exactly what is due: that setup and nothing else, or no dialog at all. A setup that
- * opened is closed as a person closes it, and the window must then show none.
+ * The window at a start: one ordinary window, no recovery window, and no dialog of the app's own.
+ * When no provider is ready the app goes to Settings → Providers by itself, so the facts that rule
+ * reads are read first, and the window is given the time that read takes.
  */
 async function dialogsAtAStart(stage, into) {
-  const { read, dismissed, facts } = await launchSetupFacts()
-  const due = launchSetupExpected(dismissed, facts)
-  into.launchSetup = { dismissed, read, ready: due.ready, due: due.opens?.provider ?? null }
+  const { read, facts } = await launchSetupFacts()
+  const due = launchSetupExpected(facts)
+  into.launchSetup = { read, ready: due.ready, opensProviders: due.opensProviders }
   check(
     !due.undecided,
     `${stage}: the app answered what its setup at launch reads, for each provider`,
     { read, ready: due.ready },
   )
-  // The window asked first, so its own answers are in by now; this is what it then takes to draw.
-  const open = await (due.opens === null
-    ? sleep(5_000).then(dialogsNow)
-    : until(
-        async () => {
-          const now = await dialogsNow()
-          return now.some((one) => one.provider === due.opens.provider) ? now : null
-        },
-        60_000,
-        500,
-      ).then((seen) => seen ?? dialogsNow()))
+  const providersShown = () =>
+    running.cdp.evaluate(
+      `return document.querySelector('[data-cy=settings-screen]') !== null &&
+         document.querySelector('[data-cy=settings-tab-providers]')?.getAttribute('aria-selected') === 'true'`,
+    )
+  const shown = await (due.opensProviders
+    ? until(async () => ((await providersShown()) ? true : null), 60_000, 500).then(Boolean)
+    : sleep(5_000).then(providersShown))
+  const open = await dialogsNow()
   const pages = await pagesNow()
   const ordinary =
     pages.filter((url) => url.endsWith('/index.html')).length === 1 &&
     !pages.some((url) => url.includes('recovery'))
   into.launchSetup.opened = open
+  into.launchSetup.providersShown = shown
   check(
-    ordinary && dialogsAreAsDue(open, due.opens),
-    due.opens === null
-      ? `${stage}: one ordinary window, no recovery window, and no dialog of the app's own`
-      : `${stage}: one ordinary window, no recovery window, and no dialog of the app's own but its setup for ${due.opens.name}, which is not ready on this computer`,
-    { due: due.opens, dismissed, ready: due.ready, open, pages },
-  )
-  if (!open.some((one) => one.provider !== null)) return
-  await screenshot(`${stage.replaceAll(' ', '-')}-setup.png`)
-  const pressed = await closeTheSetup()
-  const left = await until(async () => ((await dialogsNow()).length === 0 ? [] : null), 15_000, 500)
-  into.launchSetup.rememberedAsClosed = await running.cdp.evaluate(
-    `return localStorage.getItem(${JSON.stringify(LAUNCH_SETUP_DISMISSED_KEY)}) === 'true'`,
-  )
-  check(
-    pressed && left !== null && into.launchSetup.rememberedAsClosed,
-    `${stage}: closing that setup left the ordinary window with no dialog, and the window remembers it`,
-    {
-      pressed,
-      open: left ?? (await dialogsNow()),
-      remembered: into.launchSetup.rememberedAsClosed,
-    },
+    ordinary && open.length === 0 && shown === due.opensProviders,
+    due.opensProviders
+      ? `${stage}: one ordinary window on Settings → Providers, as no provider is ready, no recovery window, and no dialog of the app's own`
+      : `${stage}: one ordinary window, no recovery window, no dialog of the app's own, and not sent to Settings`,
+    { opensProviders: due.opensProviders, ready: due.ready, shown, open, pages },
   )
 }
 
@@ -1794,12 +1761,26 @@ async function turn(sessionId, text, { resume, seenBy = modelSeen, answerOf = an
   return { answer, ...outcome, requests: seenBy.slice(asked), probes }
 }
 
-/** Saves the fictional Anthropic key through the window, as a person does on the Claude card. */
-const saveTheClaudeKey = () =>
+/** Saves a fictional key through the window, as a person does on the provider's card. */
+const saveTheKey = (provider, key) =>
   running.cdp.evaluate(
-    `return await window.api.runtime.setApiKey({ provider: 'claude', key: ${JSON.stringify(CLAUDE_FIXTURE_KEY)} }).then((one) => ({ set: one?.set, inUse: one?.inUse, refused: one?.refused ?? null })).catch((e) => ({ threw: String(e) }))`,
+    `return await window.api.runtime.setApiKey({ provider: ${JSON.stringify(provider)}, key: ${JSON.stringify(key)} }).then((one) => ({ set: one?.set, inUse: one?.inUse, refused: one?.refused ?? null })).catch((e) => ({ threw: String(e) }))`,
     240_000,
   )
+/** Whether a key save was accepted: saved, not refused, nothing thrown. */
+const savedCleanly = (saved) =>
+  saved?.set === true && saved.refused === null && saved.threw === undefined
+
+/** What the app recorded in `schedule-attempts.json` for one conversation, or why it is unread. */
+function scheduleAttemptsOf(conversation) {
+  try {
+    return JSON.parse(readFileSync(join(data, 'schedule-attempts.json'), 'utf8'))?.conversations?.[
+      conversation
+    ]
+  } catch (error) {
+    return { unread: String(error) }
+  }
+}
 
 /** What the app recorded of a conversation, kept as evidence when a turn was not answered. */
 const historyTail = (sessionId) =>
@@ -1877,10 +1858,10 @@ function jobWordsIn(sessionId) {
 }
 
 /**
- * Windows: the candidate's own conversation makes a one-shot a minute or two ahead and the app is
- * closed. Once its minute has passed, a launch starts the conversation at once to say so; the
- * model holds that start's request, and the app is ended while the turn waits. The launch after it
- * must make no second start, and the words must have been said once.
+ * Windows, once the key is saved again: the candidate's own conversation makes a one-shot a minute
+ * or two ahead and the app is closed. Once its minute has passed, a launch starts the conversation
+ * at once to say so; the model holds that start's request, and the app is ended while the turn
+ * waits. The launch after it must make no second start, and the words must have been said once.
  */
 async function aCrashMidStart(into) {
   await launch('candidate-crash-made', 9343)
@@ -1929,12 +1910,12 @@ async function aCrashMidStart(into) {
   into.atTheCrash = jobWordsIn(sessionId)
   await crash('the crash, mid-turn')
 
-  await launch('candidate-after-the-crash', 9345)
+  await launch('candidate-after-the-mid-start-crash', 9348)
   await bridge('after the crash')
   // A start of the app's own is made at once at a launch, five seconds apart at most for a few.
   await sleep(45_000)
   const again = claudeSeen.filter(
-    (one) => one.stage === 'candidate-after-the-crash' && one.crashJob,
+    (one) => one.stage === 'candidate-after-the-mid-start-crash' && one.crashJob,
   )
   check(
     again.length === 0,
@@ -1951,8 +1932,10 @@ async function aCrashMidStart(into) {
   )
   into.startLines = {
     told: linesOf('candidate-crash-told', `starting ${sessionId} for its scheduled jobs`).length,
-    after: linesOf('candidate-after-the-crash', `starting ${sessionId} for its scheduled jobs`)
-      .length,
+    after: linesOf(
+      'candidate-after-the-mid-start-crash',
+      `starting ${sessionId} for its scheduled jobs`,
+    ).length,
   }
   check(
     into.startLines.told === 1 && into.startLines.after === 0,
@@ -1961,66 +1944,166 @@ async function aCrashMidStart(into) {
   )
 }
 
-/**
- * A Mac whose candidate cannot read the beta's saved key: the start owed to the beta's Claude
- * conversation waits for the key. The app is ended while it waits; the launch after it reads the
- * key once and waits again, tries nothing on a timer, and the words stay held, unsaid.
- */
-/** The first words of the Claude conversation a Mac candidate starts on a key it saved itself. */
+/** The first words of the Claude conversation the candidate starts on a key saved again. */
 const NEW_KEY_TEXT = 'A fictional Claude conversation, started after a key was saved again'
 
+/** The words each conversation of the beta's is sent once its key is saved again. */
+const AFTER_THE_KEY_TEXT = 'A fictional turn after the key was saved again'
+
 /**
- * On the Mac, a Claude start as a new person makes one. The checks above keep the beta's key, which
- * the Keychain does not hand to the candidate with nobody to ask, so no candidate Claude turn reaches
- * Claude Code there. Here the beta's sealing entry is forgotten, as on a Mac that never ran the beta;
- * the candidate saves the fictional key itself, starts a new Claude conversation and is answered by
- * the scripted model. The beta's own conversation is not carried on.
+ * The keys saved again, as a person does after the refusal: the candidate saves the fictional
+ * Codex and Anthropic keys itself, then each of the beta's conversations carries on and a new
+ * Claude conversation starts, every turn answered by the scripted model on the key, with no
+ * sign-in.
  */
-async function aNewClaudeStart(into) {
-  const { service, account } = keychainEntryFor(candidateAppName)
-  spawnSync('/usr/bin/security', ['delete-generic-password', '-s', service, '-a', account], {
-    encoding: 'utf8',
-    timeout: 30_000,
-  })
-  into.keychainBefore = keychainEntries()
-  check(
-    into.keychainBefore.length === 0,
-    'a new Claude start: the beta’s sealing entry is gone from the runner’s Keychain',
-    into.keychainBefore,
-  )
+async function theKeySavedAgain(into, conversations, claude) {
+  const { claudeConversation, claudeDueConversation } = claude
   await launch('candidate-new-key', 9347)
-  await bridge('a new Claude start')
-  into.saved = await saveTheClaudeKey()
+  await bridge('the key saved again')
+  into.codexSaved = await saveTheKey('codex', FIXTURE_KEY)
   check(
-    into.saved?.set === true && into.saved.refused === null && into.saved.threw === undefined,
-    'a new Claude start: the candidate saved the fictional Anthropic key itself, and was not refused',
-    into.saved,
+    savedCleanly(into.codexSaved),
+    'the key saved again: the candidate saved the fictional Codex key, and was not refused',
+    into.codexSaved,
   )
-  const created = await running.cdp
-    .evaluate(
-      "return await window.api.runtime.createSession({ provider: 'claude', approvalMode: 'auto' })",
-      240_000,
-    )
-    .catch((error) => ({ threw: String(error) }))
-  if (
+  into.codex = []
+  for (const sessionId of conversations) {
+    const carried = await turn(sessionId, AFTER_THE_KEY_TEXT, { resume: true })
+    const judged = turnOutcome(carried, null)
+    into.codex.push({ sessionId, ...judged, ...carried })
     check(
-      typeof created?.sessionId === 'string',
-      'a new Claude start: the candidate started a Claude conversation',
-      { created },
-    )
-  ) {
-    const made = await claudeTurn(created.sessionId, NEW_KEY_TEXT, { resume: false })
-    into.turn = { sessionId: created.sessionId, ...made }
-    if (made.answer === null) into.turn.history = await historyTail(created.sessionId)
-    check(
-      made.answer !== null && made.requests.some((one) => one.auth === 'expected'),
-      `a new Claude start: the candidate’s Claude Code reached the scripted model on the key it saved, ${CLAUDE_ROUTE}, and the turn was answered`,
-      { refused: made.refused, requests: made.requests },
+      judged.outcome === 'answered',
+      `the key saved again: the candidate carried on conversation ${sessionId}, answered on the key`,
+      { ...judged, ...carried },
     )
   }
-  await quit('a new Claude start')
+  if (claudePort !== null) {
+    into.claudeSaved = await saveTheKey('claude', CLAUDE_FIXTURE_KEY)
+    check(
+      savedCleanly(into.claudeSaved),
+      'the key saved again: the candidate saved the fictional Anthropic key, and was not refused',
+      into.claudeSaved,
+    )
+    // Saving the key lets the start the app owes go at once: it is let finish before this run
+    // sends anything, and what it said is checked.
+    const owed =
+      claude.stamped && claudeDueConversation !== null ? claudeDueConversation : claudeConversation
+    if (owed !== null) await theOwedStartOnTheKey(into, owed, claude)
+    if (claudeConversation !== null) {
+      // The app's own start left that conversation open; any other is resumed.
+      const carried = await claudeTurn(claudeConversation, AFTER_THE_KEY_TEXT, {
+        resume: owed !== claudeConversation,
+      })
+      into.claude = { sessionId: claudeConversation, ...carried }
+      if (carried.answer === null) into.claude.history = await historyTail(claudeConversation)
+      check(
+        turnOutcome(carried, null).outcome === 'answered',
+        `the key saved again: the candidate’s Claude Code reached the scripted model, ${CLAUDE_ROUTE}, and carried the beta’s Claude conversation on`,
+        { refused: carried.refused, requests: carried.requests },
+      )
+    }
+    const created = await running.cdp
+      .evaluate(
+        "return await window.api.runtime.createSession({ provider: 'claude', approvalMode: 'auto' })",
+        240_000,
+      )
+      .catch((error) => ({ threw: String(error) }))
+    if (
+      check(
+        typeof created?.sessionId === 'string',
+        'the key saved again: the candidate started a new Claude conversation',
+        { created },
+      )
+    ) {
+      const made = await claudeTurn(created.sessionId, NEW_KEY_TEXT, { resume: false })
+      into.newClaude = { sessionId: created.sessionId, ...made }
+      if (made.answer === null) into.newClaude.history = await historyTail(created.sessionId)
+      check(
+        made.answer !== null && made.requests.some((one) => one.auth === 'expected'),
+        `the key saved again: the new Claude conversation reached the scripted model, ${CLAUDE_ROUTE}, and the turn was answered`,
+        { refused: made.refused, requests: made.requests },
+      )
+    }
+  }
+  await quit('the key saved again')
 }
 
+/**
+ * Once the Anthropic key is saved again, the start the app owes `owed` is made by itself: its held
+ * words are said once, the model is sent them and answers. From a beta that does not stamp its
+ * receipts, the words and the app's own record also name each job whose time it cannot know.
+ */
+async function theOwedStartOnTheKey(into, owed, { stamped, jobIds }) {
+  const noticesNow = () => {
+    try {
+      return jobNoticesIn(readDatabase(data).tables.events, owed)
+    } catch {
+      return null
+    }
+  }
+  const said = await until(
+    () => ((noticesNow()?.said.length ?? 0) > 0 ? true : null),
+    180_000,
+    2_000,
+  )
+  const answered = await until(
+    async () => {
+      for (const seen of claudeSeen) {
+        if (seen.stage !== 'candidate-new-key' || seen.method !== 'POST') continue
+        if (seen.auth !== 'expected' || seen.notices.length === 0) continue
+        const recorded = await running.cdp.evaluate(
+          `return JSON.stringify(await window.api.runtime.latestHistory({ sessionId: ${JSON.stringify(owed)} })).includes(${JSON.stringify(claudeAnswerText(seen.id))})`,
+        )
+        if (recorded) return seen
+      }
+      return null
+    },
+    180_000,
+    2_000,
+  )
+  const notices = noticesNow()
+  into.owed = { conversation: owed, notices, toldIn: answered?.id ?? null }
+  check(
+    said === true &&
+      notices?.queued.length === 1 &&
+      notices.said.length === 1 &&
+      notices.said[0] === notices.queued[0] &&
+      answered !== null &&
+      answered.notices.some((text) => text.includes(notices.said[0].slice(0, 200))),
+    'the key saved again: the start the app owed was made by itself, said its held words once, and the model was sent them and answered',
+    into.owed,
+  )
+  if (stamped || notices === null) return
+  const listed = new Map(notices.appJobs.map((job) => [job.id, job.notStarted]))
+  check(
+    listed.size === 2 &&
+      listed.get(jobIds.repeating) === 'time-not-known' &&
+      listed.get(jobIds.oneShot) === 'time-not-known' &&
+      !listed.has(jobIds.cancelled),
+    'once its one start was made, the candidate lists the beta’s repeating job and its one-shot as jobs whose time it cannot know, not started again, and not the job the beta cancelled',
+    { listed: notices.appJobs, ids: jobIds },
+  )
+  const words = notices.said[0] ?? ''
+  check(
+    words.includes(CLAUDE_JOBS.repeating.prompt) &&
+      words.includes(CLAUDE_JOBS.oneShot.prompt) &&
+      !words.includes(CLAUDE_JOBS.cancelled.prompt),
+    'its words name the repeating job and the one-shot, and not the job the beta cancelled',
+    { words },
+  )
+  into.owed.attempts = scheduleAttemptsOf(owed)
+  check(
+    Object.values(into.owed.attempts?.notStartedSaid ?? {}).includes('time-not-known'),
+    'the candidate’s record of what it did says it told the conversation it cannot know that job’s time',
+    into.owed.attempts,
+  )
+}
+
+/**
+ * The start owed to the beta's Claude conversation waits for the key. The app is ended while it
+ * waits; the launch after it reads the key once and waits again, tries nothing on a timer, and the
+ * words stay held, unsaid.
+ */
 async function aCrashWhileTheKeyIsAwaited(into, claudeConversation) {
   const waits = `${claudeConversation}'s start for its scheduled jobs waits until its saved claude key is saved again or removed`
   const retried = `could not start ${claudeConversation} for its scheduled jobs, and tries again in`
@@ -2184,15 +2267,8 @@ try {
       workspace: summary.betaApp?.workspace,
     },
   )
-  const keyed = await running.cdp.evaluate(
-    `return await window.api.runtime.setApiKey({ provider: 'codex', key: ${JSON.stringify(FIXTURE_KEY)} }).then((one) => ({ set: one?.set, inUse: one?.inUse, refused: one?.refused ?? null })).catch((e) => ({ threw: String(e) }))`,
-    240_000,
-  )
-  must(
-    keyed.set === true && keyed.refused === null && keyed.threw === undefined,
-    'the beta saved the fictional Codex key, and was not refused',
-    keyed,
-  )
+  const keyed = await saveTheKey('codex', FIXTURE_KEY)
+  must(savedCleanly(keyed), 'the beta saved the fictional Codex key, and was not refused', keyed)
   const conversations = []
   const betaAnswers = {}
   for (const text of [
@@ -2227,9 +2303,9 @@ try {
   /** The beta's second Claude conversation, whose one-shot comes due while the app is closed. */
   let claudeDueConversation = null
   if (claudePort !== null) {
-    const claudeKeyed = await saveTheClaudeKey()
+    const claudeKeyed = await saveTheKey('claude', CLAUDE_FIXTURE_KEY)
     check(
-      claudeKeyed.set === true && claudeKeyed.refused === null && claudeKeyed.threw === undefined,
+      savedCleanly(claudeKeyed),
       'the beta saved the fictional Anthropic key, and was not refused',
       claudeKeyed,
     )
@@ -2763,14 +2839,6 @@ try {
         `at its first open, the candidate held its words about that job once (${JOB_NOTICE})`,
         notices,
       )
-      if (os === 'windows') {
-        const start = summary.claude.firstOpen?.starts?.claude
-        check(
-          notices.said.length === 1 && start?.started === 1 && start.outcome === 'told',
-          'at its first open, the candidate started the Claude conversation by itself, once, and told it the job’s time is one it cannot know',
-          { notices, start },
-        )
-      }
     } else {
       // A beta that stamps its receipts: the candidate knows both jobs' times, and owes nothing
       // at the first open.
@@ -2809,14 +2877,6 @@ try {
         : 'at its first open, the candidate held words once for the second conversation’s one-shot: its time is one it cannot know',
       due,
     )
-    if (os === 'windows') {
-      const start = summary.claude.firstOpen?.starts?.due
-      check(
-        due.said.length === 1 && start?.started === 1 && start.outcome === 'told',
-        'at its first open, the candidate started the second conversation by itself, once, and said them',
-        { due, start },
-      )
-    }
   }
   const keptRows = rowsPreserved(
     keptTables(before.tables),
@@ -2905,16 +2965,16 @@ try {
       )
     }
     wholeScreen('screen-after-the-turns.png')
-    // What the app says of the key once conversations have started on it is part of the verdict
-    // on each turn: a refusal counts as macOS withholding the key only if the app says so too.
+    // The candidate never opens a key the beta sealed: a refusal passes only in the app's own
+    // words for that, with its status of the key saying so too.
     const keyStatus = await observeTheSavedKey('second start, after the turns')
     for (const carried of carriedOn) {
-      const judged = turnOutcome(carried, os, keyStatus)
+      const judged = turnOutcome(carried, keyStatus)
       summary.secondStart.turns.push({ ...judged, ...carried })
       check(
         judged.ok,
-        judged.outcome === 'the-saved-key-was-not-handed-over'
-          ? `macOS did not hand the saved key over with nobody to ask, and the app refused to start conversation ${carried.sessionId} in its own words for that, within a minute, without asking the model`
+        judged.outcome === 'the-saved-key-cannot-be-read'
+          ? `the candidate refused to start conversation ${carried.sessionId} on the key the beta sealed, in its own words, within a minute, without asking the model or falling back to a sign-in`
           : `the candidate carried on conversation ${carried.sessionId}, answered on the key the beta saved`,
         { ...judged, ...carried, keyStatus },
       )
@@ -2928,11 +2988,8 @@ try {
         keyStatus,
       )
     }
-    if (turns.some((one) => one.ok && one.outcome === 'the-saved-key-was-not-handed-over')) {
-      summary.knownLimits.push(SAVED_KEY_LIMIT)
-    }
-    // The candidate has the beta's name, so it seals with the beta's Keychain entry: once it has
-    // asked for the key, that entry is still the only one, as the beta left it.
+    // The candidate never opens the key the beta sealed: the beta's Keychain entry is still the
+    // only one, as the beta left it.
     if (os === 'mac' && betaEntry !== null && betaEntry.appName === candidateAppName) {
       const entries = keychainEntries()
       summary.keychain.afterTheCandidateAskedForTheKey = entries
@@ -2942,7 +2999,7 @@ try {
           entries[0].account === betaEntry.account &&
           entries[0].created === betaEntry.created &&
           entries[0].modified === betaEntry.modified,
-        `the candidate seals with the beta’s Keychain entry ("${betaEntry.service}", account "${betaEntry.account}"), and made no other`,
+        `the beta’s Keychain entry ("${betaEntry.service}", account "${betaEntry.account}") is as the beta left it, and the candidate made no other`,
         { before: betaEntry, now: entries },
       )
     }
@@ -2961,18 +3018,18 @@ try {
       if (carried.answer === null) {
         summary.claude.candidate.history = await historyTail(claudeConversation)
       }
-      const reached =
-        carried.answer !== null && carried.requests.some((one) => one.auth === 'expected')
-      if (os === 'windows') {
-        check(
-          reached,
-          `the candidate’s Claude Code reached the scripted model, ${CLAUDE_ROUTE}, and carried the Claude conversation on`,
-          { refused: carried.refused, requests: carried.requests },
-        )
-      } else {
-        summary.claude.candidate.notShown =
-          'macOS did not hand the beta’s saved key over with nobody to ask, as for Codex'
-      }
+      const claudeKey = await running.cdp.evaluate(
+        "return await window.api.runtime.apiKeyStatus({ provider: 'claude' }).catch(() => null)",
+      )
+      const judged = turnOutcome(carried, claudeKey)
+      summary.claude.candidate.judged = judged
+      check(
+        judged.ok,
+        judged.outcome === 'the-saved-key-cannot-be-read'
+          ? 'the candidate refused to start the Claude conversation on the Anthropic key the beta sealed, in its own words, within a minute, without asking the model or falling back to a sign-in'
+          : `the candidate’s Claude Code reached the scripted model, ${CLAUDE_ROUTE}, and carried the Claude conversation on`,
+        { ...judged, refused: carried.refused, requests: carried.requests, claudeKey },
+      )
     }
     const [shown] = conversations
     await railLists('second start', theBetasConversations(), theBetasConversationsSaid())
@@ -3006,61 +3063,13 @@ try {
   }
   if (claudeConversation !== null) {
     const notices = jobNoticesIn(afterSecond.tables.events, claudeConversation)
-    const attemptsFile = join(data, 'schedule-attempts.json')
-    let attempts = null
-    try {
-      attempts = JSON.parse(readFileSync(attemptsFile, 'utf8'))?.conversations?.[claudeConversation]
-    } catch (error) {
-      attempts = { unread: String(error) }
-    }
-    summary.claude.afterAll = { notices, attempts }
+    summary.claude.afterAll = { notices, attempts: scheduleAttemptsOf(claudeConversation) }
     if (!stamped()) {
-      const toldOnce =
-        notices.queued.length === 1 &&
-        notices.said.length === 1 &&
-        notices.said[0] === notices.queued[0]
-      const carriedTo = claudeSeen.filter(
-        (one) =>
-          one.auth === 'expected' &&
-          typeof notices.said[0] === 'string' &&
-          one.notices.some((text) => text.includes(notices.said[0].slice(0, 200))),
+      check(
+        notices.queued.length === 1 && notices.said.length === 0,
+        'the candidate held its words about that job once, unsaid, for a start that waits for the key to be saved again',
+        notices,
       )
-      if (os === 'windows') {
-        check(
-          toldOnce && carriedTo.length >= 1,
-          'over every start, the candidate held and said its words about that job once, and the model was sent them',
-          { notices, toldIn: carriedTo.map((one) => one.stage) },
-        )
-        const listed = new Map(notices.appJobs.map((job) => [job.id, job.notStarted]))
-        check(
-          listed.size === 2 &&
-            listed.get(claudeJobIds.repeating) === 'time-not-known' &&
-            listed.get(claudeJobIds.oneShot) === 'time-not-known' &&
-            !listed.has(claudeJobIds.cancelled),
-          'once its one start was made, the candidate lists the beta’s repeating job and its one-shot as jobs whose time it cannot know, not started again, and not the job the beta cancelled',
-          { listed: notices.appJobs, ids: claudeJobIds },
-        )
-        const words = notices.said[0] ?? ''
-        check(
-          words.includes(CLAUDE_JOBS.repeating.prompt) &&
-            words.includes(CLAUDE_JOBS.oneShot.prompt) &&
-            !words.includes(CLAUDE_JOBS.cancelled.prompt),
-          'its words name the repeating job and the one-shot, and not the job the beta cancelled',
-          { words },
-        )
-        check(
-          Object.values(attempts?.notStartedSaid ?? {}).includes('time-not-known'),
-          'the candidate’s record of what it did says it told the conversation it cannot know that job’s time',
-          attempts,
-        )
-      } else {
-        check(
-          notices.queued.length === 1 && notices.said.length === 0,
-          'the candidate held its words about that job once, for a start the Keychain did not allow',
-          notices,
-        )
-        summary.knownLimits.push(CLAUDE_START_LIMIT)
-      }
     } else {
       check(
         notices.queued.length === 0 &&
@@ -3074,22 +3083,11 @@ try {
   if (claudeDueConversation !== null) {
     const due = jobNoticesIn(afterSecond.tables.events, claudeDueConversation)
     summary.claude.dueAfterAll = due
-    if (os === 'windows') {
-      check(
-        due.queued.length === 1 && due.said.length === 1 && due.said[0] === due.queued[0],
-        'over every start, the candidate held and said its words about the second conversation’s one-shot once',
-        due,
-      )
-    } else {
-      check(
-        due.queued.length === 1 && due.said.length === 0,
-        'the candidate held its words about the second conversation’s one-shot once, for a start the Keychain did not allow',
-        due,
-      )
-      if (!summary.knownLimits.includes(CLAUDE_START_LIMIT)) {
-        summary.knownLimits.push(CLAUDE_START_LIMIT)
-      }
-    }
+    check(
+      due.queued.length === 1 && due.said.length === 0,
+      'the candidate held its words about the second conversation’s one-shot once, unsaid, for a start that waits for the key to be saved again',
+      due,
+    )
   }
   const stillKept = rowsPreserved(
     keptTables(before.tables),
@@ -3126,30 +3124,34 @@ try {
   )
   besideKept('after the second start', besideBefore)
 
-  // ── 11 · a crash while the app starts a conversation for its jobs, then a launch after it ───
+  // ── 11 · a crash while the start owed to a conversation waits for the key ─────────────────
   if (claudeConversation !== null) {
     summary.crash = {}
     await phase('the crash', () =>
-      os === 'windows'
-        ? aCrashMidStart(summary.crash)
-        : aCrashWhileTheKeyIsAwaited(
-            summary.crash,
-            stamped() && claudeDueConversation !== null
-              ? claudeDueConversation
-              : claudeConversation,
-          ),
+      aCrashWhileTheKeyIsAwaited(
+        summary.crash,
+        stamped() && claudeDueConversation !== null ? claudeDueConversation : claudeConversation,
+      ),
     )
   }
 
-  // ── 12 · on the Mac, a Claude conversation a new person starts, on a key the candidate saves ──
-  if (os === 'mac' && claudePort !== null) {
-    summary.newClaudeStart = {}
-    await phase('a new Claude start', () => aNewClaudeStart(summary.newClaudeStart))
+  // ── 12 · the keys saved again: the beta's conversations carry on, and a new one starts ──────
+  summary.keySavedAgain = {}
+  await phase('the key saved again', () =>
+    theKeySavedAgain(summary.keySavedAgain, conversations, {
+      claudeConversation,
+      claudeDueConversation,
+      stamped: stamped(),
+      jobIds: claudeJobIds,
+    }),
+  )
+
+  // ── 13 · on Windows, a crash while the app starts a conversation for its jobs ──────────────
+  if (os === 'windows' && claudeConversation !== null) {
+    summary.crashMidStart = {}
+    await phase('the crash mid-start', () => aCrashMidStart(summary.crashMidStart))
   }
 
-  // How each start closed. With macOS still asking for the key the process does not leave by
-  // itself, and the app stops it once its data is closed: said beside the result, not passed over.
-  const keyWithheld = summary.knownLimits.includes(SAVED_KEY_LIMIT)
   for (const [stage, start] of [
     ['candidate-first', summary.firstStart],
     ['candidate-second', summary.secondStart],
@@ -3157,13 +3159,9 @@ try {
     const log = join(evidence, `${stage}.log`)
     const stopped = existsSync(log) ? lastResortStop(readFileSync(log, 'utf8')) : null
     start.stoppedByItsLastResortAfterMs = stopped
-    if (stopped !== null && keyWithheld) {
-      if (!summary.knownLimits.includes(CLOSE_LIMIT)) summary.knownLimits.push(CLOSE_LIMIT)
-    } else {
-      check(stopped === null, `${stage}: the app's process left by itself when it closed`, {
-        stoppedByItsLastResortAfterMs: stopped,
-      })
-    }
+    check(stopped === null, `${stage}: the app's process left by itself when it closed`, {
+      stoppedByItsLastResortAfterMs: stopped,
+    })
   }
 
   exitCode = summary.failures.length === 0 ? 0 : 1

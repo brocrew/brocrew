@@ -200,8 +200,6 @@ jobs:
           repo: ${{ needs.plan.outputs.name }}
           artifact_name: release-macos-${{ github.run_attempt }}
         env:
-          MAC_EXPECTED_TEAM_ID: ${{ vars.MAC_EXPECTED_TEAM_ID }}
-          MAC_EXPECTED_SIGNING_AUTHORITY: ${{ vars.MAC_EXPECTED_SIGNING_AUTHORITY }}
           MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
           MAC_CERT_P12_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}

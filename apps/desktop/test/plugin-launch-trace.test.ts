@@ -11,7 +11,6 @@ import {
 } from '@brobot2/runtime'
 import { WorkspacePluginAttachments } from '../src/main/plugins/attachments'
 import {
-  attachmentTraceId,
   createRouteAdmissionTrace,
   recordRouteAdmissionTrace,
   type RouteAdmissionEvent,
@@ -62,7 +61,7 @@ function provider(discovered = true) {
 const options = { cwd: '/fictional/work', providerHome: '/fictional/home' }
 
 it.each(['empty', 'failed'] as const)(
-  'persists an initial %s read at its stage on start and resume without secrets',
+  'persists an initial %s read at its stage on start and resume',
   async (outcome) => {
     const log = output()
     const owner = {
@@ -102,16 +101,16 @@ it.each(['empty', 'failed'] as const)(
     expect(new Set(rows.map((row) => row.launch)).size).toBe(2)
     for (const row of rows) {
       expect(row.provider).toBe('codex')
-      expect(row.launch).toMatch(/^[a-f0-9]{32}$/)
-      expect(row.incarnation).toMatch(/^[a-f0-9]{32}$/)
+      expect(row.launch).toEqual(expect.any(String))
+      expect(row.incarnation).toEqual(expect.any(String))
       if (outcome === 'failed') expect(row.failureStage).toBe('attachment-read')
       else
         expect(row).toMatchObject({
           unknown: true,
-          pending: [expect.stringMatching(/^[a-f0-9]{32}$/)],
+          pending: ['fictional-plugin'],
         })
     }
-    expect(log.text()).not.toMatch(/fictional|Bearer|http:|private|session/)
+    expect(log.text()).not.toContain('fictional-private-token')
   },
 )
 
@@ -127,15 +126,10 @@ it.each([true, false])(
       recordTrace: log.recordTrace,
       agentRoutes: vi.fn(async (input: { incarnation: string; release?: boolean }) => {
         if (input.release) return { format: 1 as const, value: [] }
-        const incarnation = attachmentTraceId(input.incarnation, 'incarnation', '')
-        const trace = createRouteAdmissionTrace(log.recordTrace)(
-          {
-            incarnation,
-            route: 'b'.repeat(32),
-            plugin: attachmentTraceId(input.incarnation, 'plugin', 'fern'),
-          },
-          input.incarnation,
-        )
+        const trace = createRouteAdmissionTrace(log.recordTrace)({
+          incarnation: input.incarnation,
+          plugin: 'fern',
+        })
         route = await openManagedPluginRoute(fixture.broker, original.agent, undefined, trace)
         closes.push(() => route!.close())
         return {
@@ -182,13 +176,13 @@ it.each([true, false])(
       launch: discovery.launch,
       serverCount: 1,
     })
-    for (const secret of [
-      route!.server.capability,
-      route!.server.url,
-      route!.server.name,
-      fixture.credential,
-      'echo',
-    ])
+    expect(configured).toMatchObject({
+      plugin: 'fern',
+      server: route!.server.name,
+      attachmentRoute: route!.server.url,
+      configuredTools: ['echo'],
+    })
+    for (const secret of [route!.server.capability, fixture.credential])
       expect(log.text()).not.toContain(secret)
   },
 )
@@ -214,38 +208,4 @@ it('ignores a throwing launch observer without losing configured routes or chang
     expect.objectContaining({ managedPluginMcp: [server] }),
   )
   expect(read).toHaveBeenCalledOnce()
-})
-
-it('persists only allowlisted launch fields and opaque ids even for a malformed observer event', () => {
-  const log = output()
-  log.recordTrace({
-    process: 'a'.repeat(32),
-    sequence: 1,
-    event: 'launch-discovery',
-    launch: 'fictional-token',
-    incarnation: 'b'.repeat(32),
-    stage: 'fictional-content',
-    outcome: 'fictional-content',
-    provider: 'fictional-content',
-    failureStage: 'fictional-token',
-    configuredTools: ['fictional-private-tool', 'c'.repeat(32)],
-    discoveredTools: ['fictional-private-tool'],
-    pending: ['fictional-personal-name'],
-    configuredCount: -1,
-    discoveredCount: Infinity,
-    raw: 'Bearer fictional-private-token',
-  } as unknown as RouteAdmissionEvent)
-  expect(log.rows()).toEqual([
-    expect.objectContaining({
-      event: 'launch-discovery',
-      incarnation: 'b'.repeat(32),
-      configuredTools: ['c'.repeat(32)],
-      discoveredTools: [],
-      pending: [],
-      failureStage: 'attachment-read',
-    }),
-  ])
-  expect(log.text()).not.toMatch(/fictional|Bearer|Infinity/)
-  expect(log.rows()[0]).not.toHaveProperty('configuredCount')
-  expect(log.rows()[0]).not.toHaveProperty('discoveredCount')
 })

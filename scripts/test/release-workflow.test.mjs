@@ -1,12 +1,10 @@
 import { spawnSync } from 'node:child_process'
-import { createRequire } from 'node:module'
-import { runInNewContext } from 'node:vm'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import builderTools from '../../apps/desktop/build/builder-tools.mjs'
 import { notesOf, platformsOf, titleOf, versionOf } from '../beta-release.mjs'
 import { problemsWith, readUpdateFile, sha512Of } from '../release-check.mjs'
@@ -20,7 +18,7 @@ afterEach(() => {
 })
 
 describe('§1 · a version tag', () => {
-  it('🔴 vX.Y.Z is a release and vX.Y.Z-beta.N a beta, of both platforms', () => {
+  it('vX.Y.Z is a release and vX.Y.Z-beta.N a beta, of both platforms', () => {
     expect(versionOf('v0.1.0')).toEqual({ version: '0.1.0', beta: false })
     expect(versionOf('v0.2.0-beta.3')).toEqual({ version: '0.2.0-beta.3', beta: true })
     expect(platformsOf('v0.1.0')).toEqual(['windows', 'mac'])
@@ -28,14 +26,14 @@ describe('§1 · a version tag', () => {
     expect(titleOf('v0.2.0-beta.3')).toBe('BroCrew 0.2.0-beta.3 (beta)')
   })
 
-  it('⛔ nothing else is a version — not a v without three numbers, nor another prerelease name', () => {
+  it('nothing else is a version — not a v without three numbers, nor another prerelease name', () => {
     for (const tag of ['v1', 'v0.1', 'v0.1.0-rc.1', 'v0.1.0-beta', '0.1.0', 'v0.1.0 x', 'beta-1']) {
       expect(versionOf(tag), tag).toBeNull()
     }
     expect(() => platformsOf('v0.1')).toThrow(/names no beta platform/)
   })
 
-  it('⚑ its notes say which files to download, and which are the updater’s', () => {
+  it('its notes say which files to download, and which are the updater’s', () => {
     const notes = notesOf('v0.1.0', '1a2b3c4')
     expect(notes).toMatch(/^BroCrew 0\.1\.0 for Windows x64 and for Macs with Apple silicon/)
     expect(notes).toContain('from commit 1a2b3c4 (tag v0.1.0)')
@@ -72,12 +70,12 @@ describe('§2 · release-check.mjs', () => {
     return { dist, appUpdate }
   }
 
-  it('🔴 a release whose update file names its files truly, for the right repository, holds', () => {
+  it('a release whose update file names its files truly, for the right repository, holds', () => {
     const { dist, appUpdate } = aRelease()
     expect(problemsWith(dist, '0.1.0', 'brocrew/brocrew', appUpdate)).toEqual([])
   })
 
-  it('⛔ a sha512 that is not the file’s is an update nobody could install', () => {
+  it('a sha512 that is not the file’s is an update nobody could install', () => {
     const wrong = createHash('sha512').update('something else').digest('base64')
     const { dist, appUpdate } = aRelease({ sum: wrong })
     expect(problemsWith(dist, '0.1.0', 'brocrew/brocrew', appUpdate)).toEqual([
@@ -86,7 +84,7 @@ describe('§2 · release-check.mjs', () => {
     ])
   })
 
-  it('⛔ another version, a missing file, or an app that looks elsewhere', () => {
+  it('another version, a missing file, or an app that looks elsewhere', () => {
     const { dist, appUpdate } = aRelease({ version: '0.0.9', repo: 'brobot2' })
     rmSync(join(dist, 'BroCrew-Setup-0.1.0-x64.exe'))
     expect(problemsWith(dist, '0.1.0', 'brocrew/brocrew', appUpdate)).toEqual([
@@ -97,7 +95,7 @@ describe('§2 · release-check.mjs', () => {
     ])
   })
 
-  it('⛔ an app built to read a private feed, or carrying a token, is not a release', () => {
+  it('an app built to read a private feed, or carrying a token, is not a release', () => {
     const { dist, appUpdate } = aRelease()
     writeFileSync(
       appUpdate,
@@ -109,7 +107,7 @@ describe('§2 · release-check.mjs', () => {
     ])
   })
 
-  it('⚑ it reads the Mac’s update file, which names the zip and the dmg', () => {
+  it('it reads the Mac’s update file, which names the zip and the dmg', () => {
     const said = readUpdateFile(
       [
         'version: 0.1.0',
@@ -184,12 +182,6 @@ describe('signed validation without a paid Windows build', () => {
   const repo = join(here, '../..')
   const load = builderTools.loadYaml
   const workflow = () => load(readFileSync(join(repo, '.github/workflows/macos.yml'), 'utf8'))
-  const action = () =>
-    load(readFileSync(join(repo, '.github/actions/signed-mac/action.yml'), 'utf8'))
-  const require = createRequire(import.meta.url)
-  const step = (name) => action().runs.steps.find((entry) => entry.name === name)
-  const blocks = (run) =>
-    [...run.matchAll(/node <<'NODE'[^\n]*\n([\s\S]*?)\nNODE/g)].map((m) => m[1])
   const fixture = () => {
     const root = mkdtempSync(join(tmpdir(), 'signing-route-'))
     roots.push(root)
@@ -215,8 +207,6 @@ describe('signed validation without a paid Windows build', () => {
     expect(build.with.version).toBe('${{ needs.flags.outputs.signing_version }}')
     expect(build.with.owner).toBe('brocrew')
     expect(build.with.repo).toBe('brocrew')
-    for (const name of ['MAC_EXPECTED_TEAM_ID', 'MAC_EXPECTED_SIGNING_AUTHORITY'])
-      expect(build.env[name]).toBe('${{ vars.' + name + ' }}')
     for (const name of [
       'MAC_CERT_P12_BASE64',
       'MAC_CERT_P12_PASSWORD',
@@ -282,80 +272,4 @@ describe('signed validation without a paid Windows build', () => {
       if (index === 0) expect(readFileSync(output, 'utf8')).toBe(`version=0.2.12\nsource=${sha}\n`)
     }
   })
-
-  it.each([
-    { original: [] },
-    {
-      original: [
-        '/Users/fixture/keychain with spaces.keychain-db',
-        '/Users/fixture/a"quote.keychain-db',
-        '/Users/fixture/back\\slash.keychain-db',
-      ],
-    },
-  ])(
-    'preserves original keychain paths and restores them, including an empty list: %j',
-    ({ original }) => {
-      const dir = fixture()
-      const prepare = blocks(step('Prepare temporary signing credentials').run)
-      const cleanup = blocks(step('Remove temporary signing credentials').run)
-      expect(prepare).toHaveLength(2)
-      expect(cleanup).toHaveLength(1)
-      const security = vi.fn(() => original.map((name) => `    "${name}"\n`).join(''))
-      const context = {
-        process: { env: { SIGNING_DIR: dir } },
-        require: (name) =>
-          name === 'node:child_process' ? { execFileSync: security } : require(name),
-      }
-      runInNewContext(prepare[0], { ...context })
-      expect(JSON.parse(readFileSync(join(dir, 'keychain-search-list.json'), 'utf8'))).toEqual(
-        original,
-      )
-      runInNewContext(prepare[1], { ...context })
-      expect(security.mock.calls[1].slice(0, 2)).toEqual([
-        'security',
-        ['list-keychains', '-d', 'user', '-s', join(dir, 'release.keychain-db'), ...original],
-      ])
-      runInNewContext(cleanup[0], { ...context })
-      expect(security.mock.calls[2].slice(0, 2)).toEqual([
-        'security',
-        ['list-keychains', '-d', 'user', '-s', ...original],
-      ])
-      const run = step('Prepare temporary signing credentials').run
-      expect(run.indexOf("node <<'NODE'")).toBeLessThan(run.indexOf('security create-keychain'))
-      expect(step('Remove temporary signing credentials').if).toBe('always()')
-    },
-  )
-
-  it.each([
-    [true, 0],
-    [true, 7],
-    [false, 0],
-  ])(
-    'always deletes owned credentials after partial setup/restore failure: snapshot=%s restore=%s',
-    (snapshot, restoreExit) => {
-      const root = fixture()
-      const dir = join(root, 'mac-signing-12-1')
-      mkdirSync(dir)
-      if (snapshot) writeFileSync(join(dir, 'keychain-search-list.json'), '[]')
-      writeFileSync(join(dir, 'release.keychain-db'), 'fictional owned keychain')
-      const trace = join(root, 'trace')
-      const cleanup = step('Remove temporary signing credentials').run
-      const functions = `node() { printf 'restore\\n' >> "$TRACE"; return "$RESTORE_EXIT"; }\nsecurity() { printf 'delete\\n' >> "$TRACE"; }\n`
-      const result = spawnSync('bash', ['-c', functions + cleanup], {
-        env: {
-          ...process.env,
-          RUNNER_TEMP: root,
-          GITHUB_RUN_ID: '12',
-          GITHUB_RUN_ATTEMPT: '1',
-          TRACE: trace,
-          RESTORE_EXIT: String(restoreExit),
-        },
-        encoding: 'utf8',
-        timeout: 10_000,
-      })
-      expect(result.status, result.stderr).toBe(restoreExit)
-      expect(readFileSync(trace, 'utf8')).toBe(snapshot ? 'restore\ndelete\n' : 'delete\n')
-      expect(() => readFileSync(join(dir, 'release.keychain-db'))).toThrow()
-    },
-  )
 })

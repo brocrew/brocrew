@@ -28,6 +28,10 @@ Operate one release at a time: approve only the newest run, so an older run cann
 ## Settings this relies on
 
 - `windows-signing`: the four eSigner secrets, restricted to `v*` tags.
-- `mac-signing`: `MAC_CERT_P12_BASE64`, `MAC_CERT_P12_PASSWORD`, `APPLE_API_KEY_P8`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`, `MAC_EXPECTED_TEAM_ID` and `MAC_EXPECTED_SIGNING_AUTHORITY`, restricted to `v*` tags.
+- `mac-signing`: `MAC_CERT_P12_BASE64`, `MAC_CERT_P12_PASSWORD`, `APPLE_API_KEY_P8`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`, restricted to `v*` tags.
 - `release`: one required reviewer, administrator bypass off, restricted to `v*` tags.
 - `RELEASE_REPO`, when set, must name this repository.
+
+The signed Mac action maps `MAC_CERT_P12_BASE64` to electron-builder's `CSC_LINK` and `MAC_CERT_P12_PASSWORD` to `CSC_KEY_PASSWORD`. It writes `APPLE_API_KEY_P8` to a temporary `.p8` file named by `APPLE_API_KEY`, with `APPLE_API_KEY_ID` and `APPLE_API_ISSUER` passed unchanged. electron-builder imports the certificate, signs and notarizes the app before making the updater ZIP, signs the DMG, and writes the blockmaps and `latest-mac.yml`. A DMG completion hook submits and staples the disk image and refreshes its blockmap before builder writes the update metadata.
+
+On the first tagged release after changing signing, check that the app and the app extracted from the updater ZIP pass `codesign --verify --deep --strict`, `stapler validate` and Gatekeeper assessment. Check the DMG's signature, staple and Gatekeeper assessment, and that `release-check.mjs` accepts the final files. Download the DMG on a normal Mac and open the installed app; confirm an existing signed installation accepts the update and keeps its data. The draft must retain all eight files above, with `latest-mac.yml` naming the ZIP and DMG at their final sizes and hashes.

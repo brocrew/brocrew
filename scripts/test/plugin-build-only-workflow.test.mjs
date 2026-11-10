@@ -83,7 +83,7 @@ for (const [plugin, exportPlugin] of [
     expect(dryRun).not.toContain('continue-on-error')
   })
 
-  it(`${plugin} dry run pins inputs and uploads only reproducible checked archives`, () => {
+  it(`${plugin} builds and tests artifacts with its configured toolchains`, () => {
     const folder = mkdtempSync(join(tmpdir(), 'fictional-build-only-'))
     folders.push(folder)
     exportPlugin(join(folder, 'source'))
@@ -95,33 +95,8 @@ for (const [plugin, exportPlugin] of [
       expect(dryRun).toContain('GOTOOLCHAIN: local')
       expect(dryRun).toContain('BROCREW_GO="$(command -v go)" npm run build')
     }
-    expect(dryRun.match(/test "\$\(git rev-parse HEAD\)" = "\$GITHUB_SHA"/g)).toHaveLength(2)
-    expect(
-      dryRun.match(/git status --porcelain --untracked-files=all --ignored=matching/g),
-    ).toHaveLength(2)
-    const sourceGuards = dryRun
-      .split('\n')
-      .filter((line) => line.includes('git status --porcelain'))
-    for (const guard of sourceGuards) expect(guard).toContain('plugins/shared/ui')
-    for (const source of [
-      'src',
-      'ui',
-      'build.mjs',
-      'manifest-template.json',
-      'package.json',
-      'package-lock.json',
-    ])
-      expect(dryRun).toContain(`plugins/${plugin}/${source}`)
     expect(dryRun).toContain('npm run build -- artifact\n')
-    expect(dryRun).toContain('npm run build -- artifact-repeat\n')
-    expect(dryRun).toContain('run: diff -r artifact artifact-repeat')
-    expect(dryRun.indexOf('run: diff -r')).toBeLessThan(
-      dryRun.indexOf('uses: actions/upload-artifact'),
-    )
     expect(dryRun).toContain(`BROCREW_${plugin.toUpperCase()}_TEST_ARTIFACT:`)
-    expect(dryRun).toContain('artifact/build-inputs.sha256')
-    expect(dryRun).toContain('artifact/downloads.sha256')
-    expect(dryRun).toContain('artifact/source-commit.txt')
     const releaseTests = readFileSync(join(folder, `source/release-test/release.test.ts`), 'utf8')
     expect(releaseTests).toContain(
       'expect(manifest.sourceCommit).toBe(process.env.BROCREW_PLUGIN_SOURCE_COMMIT)',

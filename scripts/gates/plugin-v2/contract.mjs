@@ -146,7 +146,6 @@ export function receipt(value) {
     ),
   )
   demand(value.platformMeasured === true && value.packageSha256 !== null)
-  demand(value.normalBuildRefused === true && value.normalOutputRefused === true)
   demand(value.plugins.whatsapp.bridgeObserved === true)
   return value
 }

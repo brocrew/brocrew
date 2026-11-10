@@ -43,7 +43,7 @@ import {
   STATE_FILES,
 } from '../lib/mac-update-test.mjs'
 import { rememberWorkspace, workspaceListFile } from '../../apps/desktop/src/main/workspaces.ts'
-import { readSkillTree } from '../../apps/desktop/src/main/recovery/trees.ts'
+import { ordinarySkillTree } from '../../apps/desktop/src/main/skills/ordinary-tree.ts'
 
 import { SCRIPTED_MODEL, codexConfigFor } from '../lib/update-rehearsal-app.mjs'
 
@@ -303,7 +303,7 @@ test('Mac evidence and recovery verification use the recovery writer tree digest
     const { manifest, files, expected } = checkpoint()
     // Obtain manifest values from the production reader, independently of the harness helper.
     for (const name of ['skills', 'skills-off']) {
-      const { bytes, sha256 } = await readSkillTree(join(root, name))
+      const { bytes, sha256 } = await ordinarySkillTree(join(root, name))
       Object.assign(
         manifest.files.find((one) => one.name === name),
         { present: true, bytes, sha256 },
@@ -324,7 +324,7 @@ test('Mac evidence and recovery verification use the recovery writer tree digest
     assert.throws(() =>
       verifyCheckpoint(manifest, { ...files, 'skills-off': damaged['skills-off'] }, expected),
     )
-    const now = await readSkillTree(join(root, 'skills-off'))
+    const now = await ordinarySkillTree(join(root, 'skills-off'))
     Object.assign(
       manifest.files.find((one) => one.name === 'skills-off'),
       {

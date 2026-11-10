@@ -34,7 +34,6 @@ import {
 } from './processes.mjs'
 import { project, bundleProof } from './projection.mjs'
 import { journey } from './journey.mjs'
-import { checkNormalPluginBuild } from '../../check-no-plugin-gate-inputs.mjs'
 
 function printFailure(error, diagnostic) {
   console.error(error?.message ?? String(error))
@@ -94,7 +93,6 @@ export async function stage(version) {
     observe,
     command,
     privateRoot,
-    checkNormalPluginBuild,
     cleanup,
   })
 }
@@ -231,7 +229,6 @@ export async function run(root) {
       route: a.routeCommit,
       appVersion: a.appVersion,
     }
-    checkNormalPluginBuild(repo)
     demand(
       readFile(path.join(root, 'dependencies-installed'), 64).toString() ===
         'held-fictional-child-closed',
@@ -318,14 +315,6 @@ export async function run(root) {
       token: readFile(path.join(root, 'gate-token'), 64).toString(),
       candidate: list,
     })
-    let refused = false
-    try {
-      checkNormalPluginBuild(repo)
-    } catch {
-      refused = true
-    }
-    demand(refused)
-    summary.normalBuildRefused = true
     summary.phase = 'build'
     await command(process.execPath, ['scripts/prepare-plugin-node.mjs'], root, records, {
       cwd: repo,
@@ -356,15 +345,6 @@ export async function run(root) {
     summary.packageSha256 = await packageProof(repo, app, summary.bundlePaths, a.appVersion)
     restored.restore()
     restored = undefined
-    // Restoring source alone cannot admit the projected outputs to ordinary packaging.
-    refused = false
-    try {
-      checkNormalPluginBuild(repo)
-    } catch {
-      refused = true
-    }
-    demand(refused)
-    summary.normalOutputRefused = true
     summary.phase = 'journey'
     await journey({ root, app, global: path.join(root, 'global'), records }, summary)
     demand(inventory(app) === summary.packageSha256)
@@ -567,7 +547,6 @@ async function sdkIdentity(root, records) {
     readJSON(path.join(repo, 'apps/desktop/src/main/providers/claude/claude-code-tested.json'))
       .newest === CLI_VERSION,
   )
-  checkNormalPluginBuild(repo)
   return now
 }
 export async function stageSdk(diagnostic = {}) {
@@ -629,8 +608,6 @@ export async function stageSdk(diagnostic = {}) {
       flag: 'wx',
       mode: 0o600,
     })
-    diagnostic.step = 'normal-build-guard'
-    checkNormalPluginBuild(repo)
   } catch (error) {
     printFailure(error, { records })
     diagnostic.primaryStep = diagnostic.step

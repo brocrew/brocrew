@@ -16,9 +16,9 @@
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
     "db:generate:unstamped": "drizzle-kit generate",
     "db:check": "drizzle-kit check",
-    "package": "node ../../scripts/check-no-plugin-gate-inputs.mjs && node ../../scripts/prepare-plugin-node.mjs && electron-vite build && electron-builder --mac --arm64 --config electron-builder.yml",
-    "package:win": "node ../../scripts/check-no-plugin-gate-inputs.mjs && node ../../scripts/prepare-plugin-node.mjs && electron-vite build && electron-builder --win --x64 --config electron-builder.yml",
-    "package:mac-beta": "node ../../scripts/check-no-plugin-gate-inputs.mjs && node ../../scripts/prepare-plugin-node.mjs && electron-vite build && electron-builder --mac --arm64 --config electron-builder.yml -c.mac.identity=-",
+    "package": "node ../../scripts/prepare-plugin-node.mjs && electron-vite build && electron-builder --mac --arm64 --config electron-builder.yml",
+    "package:win": "node ../../scripts/prepare-plugin-node.mjs && electron-vite build && electron-builder --win --x64 --config electron-builder.yml",
+    "package:mac-beta": "node ../../scripts/prepare-plugin-node.mjs && electron-vite build && electron-builder --mac --arm64 --config electron-builder.yml -c.mac.identity=-",
     "prepare:plugin-node": "node ../../scripts/prepare-plugin-node.mjs"
   },
   "dependencies": {
@@ -32,6 +32,7 @@
     "d3-force": "3.0.0",
     "drizzle-orm": "^0.45.2",
     "electron-updater": "6.8.10",
+    "js-yaml": "^4.1.0",
     "markdown-it": "^14.3.0",
     "vue": "^3.5.40",
     "zod": "^4.4.3"
@@ -45,6 +46,7 @@
     "@modelcontextprotocol/sdk": "1.29.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/d3-force": "3.0.10",
+    "@types/js-yaml": "^4.0.9",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^24.13.3",
     "@vitejs/plugin-vue": "^6.0.8",

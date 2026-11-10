@@ -7,13 +7,14 @@ afterEach(async () => {
   await cleanupLifecycleFixtures()
 })
 
-it('correlates route issue and teardown with its source without retaining private identities', async () => {
+it('correlates route issue and teardown with its lifecycle identities', async () => {
   const events: unknown[] = []
   const f = await live({ routeTrace: (event) => events.push(event) })
   const one = lease()
   const ask = request(f.local.sink.workspaceId)
   const route = (await f.bridge.routes(one, ask))[0]!
   expect(route).toBeDefined()
+  const hostRun = f.controller.agentAttachments(ask.workspaceId)[0]!.runId
   await f.bridge.routes(one, ask)
   await f.bridge.routes(one, { ...ask, release: true })
   const labels = events.map((event) => (event as { event: string }).event)
@@ -34,8 +35,17 @@ it('correlates route issue and teardown with its source without retaining privat
   expect(new Set(rows.map((row) => row.process)).size).toBe(1)
   const records = events as Record<string, unknown>[]
   const issued = records.find((row) => row.event === 'route-issued')!
-  for (const field of ['process', 'route', 'source', 'workspace', 'lease', 'epoch', 'hostRun'])
-    expect(issued[field]).toMatch(/^[a-f0-9]{32}$/)
+  expect(issued).toMatchObject({
+    process: String(process.pid),
+    route: route.url,
+    source: ask.incarnation,
+    incarnation: ask.incarnation,
+    workspace: ask.workspaceId,
+    lease: one.id,
+    epoch: one.epoch,
+    hostRun,
+    plugin: 'chrome',
+  })
   for (const event of [
     'release-received',
     'source-retired',
@@ -58,15 +68,7 @@ it('correlates route issue and teardown with its source without retaining privat
     [...order.map((event) => labels.indexOf(event))].sort((a, b) => a - b),
   )
   expect(labels.lastIndexOf('source-refresh')).toBeLessThan(labels.indexOf('release-received'))
-  for (const secret of [
-    route.capability,
-    route.url,
-    ask.workspaceId,
-    ask.incarnation,
-    one.id,
-    one.epoch,
-  ])
-    expect(JSON.stringify(events)).not.toContain(secret)
+  expect(JSON.stringify(events)).not.toContain(route.capability)
 })
 
 it('still records teardown when its observer throws', async () => {

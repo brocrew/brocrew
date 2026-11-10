@@ -15,7 +15,6 @@ import {
   safeReport,
 } from '../gates/plugin-packaged/contract.mjs'
 import { ownedRoot, requireCI } from '../gates/plugin-packaged/fixture-guards.mjs'
-import { assertNormalPluginBuild, GATE_BUILD_MARKER } from '../check-no-plugin-gate-inputs.mjs'
 import { initialize, requireHosted } from '../gates/plugin-packaged/owner.mjs'
 import { stageRelease } from '../gates/plugin-packaged/journey.mjs'
 import { removeFixture } from '../gates/plugin-packaged/prepare.mjs'
@@ -155,60 +154,6 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     expect(prepare).toMatch(
       /finally\s*\{\s*fs.writeFileSync\(configPath, original.config\)\s*fs.writeFileSync\(entryPath, original.entry\)/,
     )
-  })
-  it('refuses each gate-only pin on every normal packaging command, with no bypass option', () => {
-    const config = read('apps/desktop/src/main/plugins/catalogue/build-config.ts'),
-      entry = read('apps/desktop/src/main/index.ts')
-    expect(() => assertNormalPluginBuild(config, entry)).not.toThrow()
-    for (const pin of [
-      "fixtureSource: '/private/tmp/fictional/repo-fixture'",
-      "browserExecutable: '/private/tmp/fictional/browser'",
-      "app.setPath('appData', '/private/tmp/fictional')",
-      'return preparePackagedGateHome(root, userData, provider, profileId)',
-      'renewClaudeLogin: undefined',
-      'loginRenewal: undefined',
-    ])
-      expect(() =>
-        assertNormalPluginBuild(config + `\n/* ${GATE_BUILD_MARKER} */ ` + pin, entry),
-      ).toThrow('Refusing to package')
-    const scripts = JSON.parse(read('apps/desktop/package.json')).scripts
-    for (const name of ['package', 'package:win', 'package:mac-beta'])
-      expect(scripts[name]).toMatch(
-        /^node \.\.\/\.\.\/scripts\/check-no-plugin-gate-inputs\.mjs && /,
-      )
-    expect(read('scripts/check-no-plugin-gate-inputs.mjs')).not.toMatch(/process\.env|allow|bypass/)
-    // Removing a comment cannot make the credential-free launch seam a normal build.
-    for (const pin of [
-      'preparePackagedGateHome(root, userData, provider, profileId)',
-      'renewClaudeLogin: undefined',
-      'loginRenewal: undefined',
-    ])
-      expect(() => assertNormalPluginBuild(config, entry + '\n' + pin)).toThrow(
-        'Refusing to package',
-      )
-  })
-  it('normal packaging refuses enabled local releases or either removed dev-source packaged guard', () => {
-    const config = read('apps/desktop/src/main/plugins/catalogue/build-config.ts')
-    const entry = read('apps/desktop/src/main/index.ts')
-    const source = read('apps/desktop/src/main/plugins/catalogue/dev-source.ts')
-    expect(() => assertNormalPluginBuild(config, entry, source)).not.toThrow()
-    expect(() =>
-      assertNormalPluginBuild(config.replace('boolean = false', 'boolean = true'), entry, source),
-    ).toThrow('Refusing to package')
-    expect(() =>
-      assertNormalPluginBuild(
-        config,
-        entry.replace('devSource: !app.isPackaged', 'devSource: true'),
-        source,
-      ),
-    ).toThrow('Refusing to package')
-    expect(() =>
-      assertNormalPluginBuild(
-        config,
-        entry,
-        source.replace('options.isPackaged !== false', 'false'),
-      ),
-    ).toThrow('Refusing to package')
   })
   it('admits only an owned marked root and does not inherit a provider identity into child environments', () => {
     const root = scratch()

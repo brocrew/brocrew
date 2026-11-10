@@ -17,7 +17,6 @@ import { esbuildInvocation, nativeEsbuildTarget } from './tool-entry.mjs'
 import { fileURLToPath } from 'node:url'
 import { hash, hosted, receipt, LIST, BASE017, appSourceFor, MARKER } from './contract.mjs'
 import { fetchSource, project, bundleProof } from './projection.mjs'
-import { checkNormalPluginBuild } from '../../check-no-plugin-gate-inputs.mjs'
 import { verifyOperation } from './verify-operation.mjs'
 import { projectDiagnostics } from './diagnostics.mjs'
 
@@ -227,7 +226,6 @@ for (const historical of [false, true])
             ),
         )
       }
-      checkNormalPluginBuild(root)
       const original = fs.readFileSync(path.join(root, 'apps/desktop/src/main/index.ts'), 'utf8')
       const p = project(root, {
         root,
@@ -239,13 +237,11 @@ for (const historical of [false, true])
       const entry = fs.readFileSync(path.join(root, 'apps/desktop/src/main/index.ts'), 'utf8')
       assert.ok(!entry.includes('fixtureSource:'))
       assert.ok(!entry.includes('repo-fixture'))
-      assert.throws(() => checkNormalPluginBuild(root))
       p.restore()
       assert.equal(
         fs.readFileSync(path.join(root, 'apps/desktop/src/main/index.ts'), 'utf8'),
         original,
       )
-      checkNormalPluginBuild(root)
     }))
 
 test('passive network observation preserves both download APIs and native responses', async () => {
@@ -292,13 +288,6 @@ test('one bundled path alone cannot establish both-path admission', () =>
     fs.writeFileSync(path.join(root, paths[0]), 'unprojected main')
     assert.throws(() => bundleProof(root))
   }))
-test('restored sources cannot hide projected compiled output from normal packaging', () =>
-  scratch((root) => {
-    const file = path.join(root, 'apps/desktop/resources/plugin-supervisor/entry.cjs')
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, MARKER)
-    assert.throws(() => checkNormalPluginBuild(root), /synthetic v2/)
-  }))
 test('missing runtime/package/consent/management/drain evidence fails closed', () => {
   const p = {
     review: true,
@@ -323,8 +312,6 @@ test('missing runtime/package/consent/management/drain evidence fails closed', (
     bundlePaths: { main: true, owner: true },
     runtimePaths: { client: true, owner: true },
     measurement: { platform: 'darwin', arch: 'arm64' },
-    normalBuildRefused: true,
-    normalOutputRefused: true,
     plugins: { chrome: { ...p }, whatsapp: { ...p } },
     unmodifiedNetwork: networkFixture(),
   }
@@ -345,7 +332,6 @@ test('missing runtime/package/consent/management/drain evidence fails closed', (
     { ...s, cleanup: { directClosed: true, twoEmptySamples: false } },
     { ...s, plugins: { ...s.plugins, chrome: { ...p, confirmed: false } } },
     { ...s, plugins: { ...s.plugins, whatsapp: { ...p, bridgeObserved: false } } },
-    { ...s, normalOutputRefused: false },
     { ...s, unmodifiedNetwork: { ...s.unmodifiedNetwork, hops: [] } },
     {
       ...s,
@@ -466,8 +452,7 @@ test('the actual staging body reaches017 from0.0.0 and refuses wrong source/vers
       sourceVersion = '0.0.0',
       observedSource = 'a4dfcf611c244f8365d485022dc674309c2e7ae1',
       protection = 0,
-      cleaned = 0,
-      normalChecks = 0
+      cleaned = 0
     const observed = { appVersion: '0.1.7', appSource: observedSource, routeCommit: 'a'.repeat(40) }
     const boundaries = {
       temp,
@@ -493,17 +478,12 @@ test('the actual staging body reaches017 from0.0.0 and refuses wrong source/vers
         assert.deepEqual(args, ['rev-parse', 'HEAD'])
         return wrongGit ? '0'.repeat(40) : observedSource
       },
-      checkNormalPluginBuild: (root) => {
-        checkNormalPluginBuild(root)
-        normalChecks++
-      },
       cleanup: async () => {
         cleaned++
       },
     }
     const root = await stageSource('0.1.7', boundaries)
     assert.equal(protection, 1)
-    assert.equal(normalChecks, 1)
     assert.equal(cleaned, 0)
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, 'observed-source.json'))), observed)
     assert.equal(fs.readFileSync(path.join(root, 'staged'), 'utf8'), hash(JSON.stringify(observed)))

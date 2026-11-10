@@ -1,8 +1,6 @@
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
-import type { Writable } from 'node:stream'
 import type { SpawnedProcess, SpawnOptions } from '@anthropic-ai/claude-agent-sdk'
-import { API_KEY_DESCRIPTOR } from './api-key-handover'
 
 /**
  * **The Claude CLI child, owned by this app rather than borrowed from the SDK** (233, from 229 H1).
@@ -143,41 +141,19 @@ export interface ClaudeChildWitness {
  */
 const STDERR_TAIL_BYTES = 4096
 
-/**
- * What actually starts the process — injectable so a test can watch one that never exits.
- * `apiKey`, when given, is the person's API key, for the CLI to read from {@link API_KEY_DESCRIPTOR}
- * — given only where the key travels that way (`handOverApiKey`); a spawn that ignores it launches a
- * CLI told to read a descriptor nobody opened, which fails to authenticate rather than leaking
- * anything.
- */
-export type SpawnChild = (options: SpawnOptions, apiKey?: string) => ChildProcess
+/** What actually starts the process — injectable so a test can watch one that never exits. */
+export type SpawnChild = (options: SpawnOptions) => ChildProcess
 
-/**
- * The default: `child_process.spawn`, with `spawnLocalProcess`'s own arguments, on the program the
- * launch named.
- *
- * 🔒 **With an `apiKey`, a fourth pipe carries it, and is closed at once.** The key is written with a
- * newline and the pipe ended, so the CLI's read ends there; nothing else is ever written to it, and
- * the key is in no argument and no environment of this spawn. A child that dies before reading makes
- * the write fail with `EPIPE`, which is its exit's to report, not this pipe's.
- */
-export function spawnClaudeChild(options: SpawnOptions, apiKey?: string): ChildProcess {
+/** The default: `child_process.spawn` with `spawnLocalProcess`'s own arguments. */
+export function spawnClaudeChild(options: SpawnOptions): ChildProcess {
   const { command, args, cwd, env, signal } = options
-  const child = spawn(command, args, {
+  return spawn(command, args, {
     cwd,
     env,
     signal,
-    stdio: apiKey === undefined ? ['pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
   })
-  if (apiKey !== undefined) {
-    // ⚠️ `stdio?.`: a spawn that ran out of descriptors returns before Node assigns `stdio` at all
-    // (see {@link ClaudeChildWitness.spawnFailure}); the witness must still get to hear its errno.
-    const descriptor = child.stdio?.[API_KEY_DESCRIPTOR] as Writable | null | undefined
-    descriptor?.on('error', () => {})
-    descriptor?.end(`${apiKey}\n`)
-  }
-  return child
 }
 
 /**
@@ -202,10 +178,7 @@ export function spawnClaudeChild(options: SpawnOptions, apiKey?: string): ChildP
  * waiting on a session that was never going to start. The witness cannot make a failing spawn
  * succeed and does not pretend to — it only refrains from adding a second way to fail.
  */
-export function watchClaudeChild(
-  spawnChild: SpawnChild = spawnClaudeChild,
-  apiKey?: string,
-): ClaudeChildWitness {
+export function watchClaudeChild(spawnChild: SpawnChild = spawnClaudeChild): ClaudeChildWitness {
   let child: ChildProcess | null = null
   let dead = false
   let settled = false
@@ -232,7 +205,7 @@ export function watchClaudeChild(
 
   return {
     spawn(options: SpawnOptions): SpawnedProcess {
-      const spawned = apiKey === undefined ? spawnChild(options) : spawnChild(options, apiKey)
+      const spawned = spawnChild(options)
       child = spawned
       // 🔴 **The drain, and it is load bearing** — see the note on {@link ClaudeChildWitness}. The
       // SDK cannot read a custom child's stderr, so if this listener is not attached the child
@@ -277,9 +250,8 @@ export function watchClaudeChild(
       })
       // ⚠️ **The double cast is the `stdin`/`stdout` nullability and nothing else.** `SpawnedProcess`
       // requires both streams; `ChildProcess` types them `| null` because they are absent under
-      // other stdio modes. {@link spawnClaudeChild} always asks for the three standard pipes (and a
-      // fourth for an API key), so they are present — the SDK's *"ChildProcess already satisfies
-      // this interface"* holds for this spawn.
+      // other stdio modes. {@link spawnClaudeChild} always asks for the three standard pipes, so they
+      // are present — the SDK's *"ChildProcess already satisfies this interface"* holds for this spawn.
       // ⛔ **Except when the spawn ran out of descriptors** (`EMFILE`/`ENFILE`, 705): Node returns
       // before assigning any of the three. The `?.` on every access above (233, written for the
       // `| null` typing) is what keeps the witness from throwing then — ⚠️ it is load-bearing, not a

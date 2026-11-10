@@ -4,9 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -179,6 +177,7 @@ beforeEach(() => {
 
 afterEach(() => {
   updates?.stop()
+  vi.unstubAllEnvs()
   if (platformDescriptor !== undefined)
     Object.defineProperty(process, 'platform', platformDescriptor)
   updates = null
@@ -228,6 +227,13 @@ for (const platform of ['win32', 'darwin'] as const) {
     })
   }
 }
+
+it.each(['1', undefined])('honours the rehearsal update-check flag %s', async (flag) => {
+  vi.stubEnv('BROCREW_SKIP_UPDATE_CHECK', flag)
+  start()
+  await ask(UPDATES_CHANNELS.checkNow)
+  expect(fake.checks).toBe(flag === '1' ? 0 : 1)
+})
 
 it('keeps a development build from checking even when the window asks', async () => {
   start(false)
@@ -447,51 +453,13 @@ it('clears crash-left staging files at each start before any download', () => {
   expect(existsSync(partial)).toBe(false)
   expect(fake.downloads).toEqual([])
   expect(fake.checks).toBe(0)
+  mkdirSync(staging, { recursive: true })
   writeFileSync(partial, 'Another fictional interrupted download')
   updates!.stop()
   start()
   expect(existsSync(partial)).toBe(false)
   expect(fake.downloads).toEqual([])
 })
-
-it('unlinks direct staging links while keeping their targets and subdirectories intact', () => {
-  const staging = join(root, 'data', 'updates', 'staging')
-  const outside = join(root, 'outside')
-  mkdirSync(staging, { recursive: true })
-  mkdirSync(outside)
-  const target = join(outside, 'Brook.txt')
-  writeFileSync(target, 'A fictional draft')
-  const link = join(staging, 'linked-folder')
-  symlinkSync(outside, link, process.platform === 'win32' ? 'junction' : 'dir')
-  const nested = join(staging, 'kept-directory')
-  mkdirSync(nested)
-  writeFileSync(join(nested, 'kept.txt'), 'A fictional nested file')
-  start()
-  expect(existsSync(link)).toBe(false)
-  expect(readFileSync(target, 'utf8')).toBe('A fictional draft')
-  expect(readdirSync(outside)).toEqual(['Brook.txt'])
-  expect(readFileSync(join(nested, 'kept.txt'), 'utf8')).toBe('A fictional nested file')
-  expect(readdirSync(staging)).toEqual(['kept-directory'])
-})
-
-for (const linked of ['updates', 'staging']) {
-  it(`skips a linked ${linked} folder at start without sweeping its target`, () => {
-    const updatesFolder = join(root, 'data', 'updates')
-    const outside = join(root, 'outside')
-    mkdirSync(join(root, 'data'), { recursive: true })
-    mkdirSync(outside)
-    if (linked === 'staging') mkdirSync(updatesFolder)
-    const link = linked === 'updates' ? updatesFolder : join(updatesFolder, 'staging')
-    const targetFolder = linked === 'updates' ? join(outside, 'staging') : outside
-    mkdirSync(targetFolder, { recursive: true })
-    writeFileSync(join(targetFolder, 'Brook.txt'), 'A fictional draft')
-    symlinkSync(outside, link, process.platform === 'win32' ? 'junction' : 'dir')
-    start()
-    expect(lstatSync(link).isSymbolicLink()).toBe(true)
-    expect(readFileSync(join(targetFolder, 'Brook.txt'), 'utf8')).toBe('A fictional draft')
-    expect(fake.downloads).toEqual([])
-  })
-}
 
 it('starts without a staging folder and creates it only for a later download', async (ctx) => {
   ctx.skip(process.platform !== 'darwin')

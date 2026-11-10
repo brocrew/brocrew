@@ -1,7 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@6.44.1/schema.json",
   "includeEntryExports": true,
-  "ignore": ["scripts/code-health/depcruise.cjs"],
+  "ignore": ["scripts/code-health/depcruise.cjs", "scripts/code-health/depcruise-plugin.mjs"],
   "workspaces": {
     ".": {
       "project": [
@@ -51,7 +51,6 @@
         "scripts/recovery-real-entry-check.mjs",
         "scripts/release-check.mjs",
         "scripts/resume-live-smoke.mjs",
-        "scripts/secret-scan-redaction-check.mjs",
         "scripts/test-dom-in-groups.mjs",
         "scripts/test/mac-update-test.test.mjs",
         "scripts/test/upgrade-path.test.mjs",
@@ -81,8 +80,7 @@
     "apps/desktop": {
       "project": ["**/*.{ts,tsx,js,mjs,cjs,vue,html}"],
       "entry": [
-        // electron-builder loads this hook from the candidate CLI afterSign path.
-        "build/mac-after-sign.cjs",
+        "build/notarize-dmg.mjs",
         "src/main/index.ts",
         "src/main/plugins/supervisor/entry.ts",
         "src/main/plugins/supervisor/sqlite-adapter.ts",

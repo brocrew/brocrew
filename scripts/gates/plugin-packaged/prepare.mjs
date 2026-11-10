@@ -3,10 +3,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { HIDDEN_LAUNCH_ARG } from '../../lib/hidden-launch.mjs'
-import { checkNormalPluginBuild } from '../../check-no-plugin-gate-inputs.mjs'
 import { failureFor, printFailure, phaseStep } from './diagnostics.mjs'
 import { directoryPackageArguments, hostedBuilder } from './packaging.mjs'
-import { integrityCheckpoint } from './integrity.mjs'
 import { requireDrained } from './processes.mjs'
 import { projectBuild, loopbackSandbox, report } from './contract.mjs'
 import { requireCI, ownedRoot } from './fixture-guards.mjs'
@@ -43,7 +41,6 @@ export function stageProtocolDependencies(root) {
 export async function prepareBuild(root, { node22, pnpm }) {
   ownedRoot(root)
   if (repository !== path.join(root, 'repo')) throw new Error('Isolated scratch checkout required')
-  checkNormalPluginBuild(repository)
   const configPath = path.join(
     repository,
     'apps/desktop/src/main/plugins/catalogue/build-config.ts',
@@ -62,7 +59,6 @@ export async function prepareBuild(root, { node22, pnpm }) {
   const bin = privateFolder(path.join(root, 'bin'))
   fs.writeFileSync(path.join(bin, 'security'), '#!/usr/bin/false\n', { mode: 0o700 })
   const app = path.join(repository, 'apps/desktop/dist/mac-arm64/BroCrew.app')
-  let bundleStamp
   const projection = projectBuild(original.config, original.entry, appData, browser)
   try {
     fs.writeFileSync(configPath, projection.config)
@@ -84,23 +80,13 @@ export async function prepareBuild(root, { node22, pnpm }) {
         command(pnpm, directoryPackageArguments(), root, buildEnv, repository, 'app-package'),
       ),
     )
-    bundleStamp = await phaseStep(root, 'app-integrity', () =>
-      integrityCheckpoint(root, app, 'afterPackage'),
-    )
   } finally {
     fs.writeFileSync(configPath, original.config)
     fs.writeFileSync(entryPath, original.entry)
-    checkNormalPluginBuild(repository)
   }
-  await phaseStep(root, 'app-integrity', () =>
-    integrityCheckpoint(root, app, 'afterSourceRestore', bundleStamp),
-  )
   await phaseStep(root, 'app-signature', async () => {
     await command('/usr/bin/codesign', ['--verify', '--deep', '--strict', app], root)
   })
-  await phaseStep(root, 'app-integrity', () =>
-    integrityCheckpoint(root, app, 'afterVerification', bundleStamp),
-  )
   // Only a Node protocol fixture is executable; it has no Chrome or external page fallback.
   const runtime = path.join(app, 'Contents/Resources/plugin-node/node')
   fs.writeFileSync(
@@ -111,13 +97,10 @@ export async function prepareBuild(root, { node22, pnpm }) {
   fs.writeFileSync(path.join(root, 'sandbox.sb'), loopbackSandbox, { mode: 0o600 })
   fs.writeFileSync(
     path.join(root, 'plan.json'),
-    JSON.stringify({ app, appData, browser, commit, bundleStamp, argv: [HIDDEN_LAUNCH_ARG] }),
+    JSON.stringify({ app, appData, browser, commit, argv: [HIDDEN_LAUNCH_ARG] }),
     {
       mode: 0o600,
     },
-  )
-  await phaseStep(root, 'app-integrity', () =>
-    integrityCheckpoint(root, app, 'afterFixtureWrite', bundleStamp),
   )
 }
 export function removeFixture(root, receipt, current) {

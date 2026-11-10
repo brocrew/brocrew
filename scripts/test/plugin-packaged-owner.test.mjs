@@ -151,7 +151,7 @@ describe.skipIf(process.platform === 'win32')(
       }
       fs.writeFileSync(
         path.join(f.root, 'command-failure.json'),
-        JSON.stringify(diagnostics.failureFor('app-integrity', {}, 'assertion')),
+        JSON.stringify(diagnostics.failureFor('app-signature', {}, 'assertion')),
         { mode: 0o600 },
       )
       const launch = f.io.childRun
