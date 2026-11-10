@@ -299,6 +299,3 @@ export interface AdminTab {
   url: string
   title: string
 }
-export interface AdminTabList {
-  tabs: AdminTab[]
-}
