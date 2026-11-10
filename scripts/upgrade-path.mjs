@@ -22,6 +22,7 @@
 // can answer.
 import { spawn, spawnSync } from 'node:child_process'
 import { readStateEntry, SKILL_TREE_NAMES } from './lib/skill-tree-state.mjs'
+import { withMovedFiles } from './lib/moved-state-files.mjs'
 import {
   appendFileSync,
   closeSync,
@@ -86,7 +87,6 @@ import {
   startOrder,
   stateFileNames,
   stateKept,
-  withMovedFiles,
   theCandidateInstaller,
   transcriptsOf,
   turnOutcome,
@@ -1485,12 +1485,12 @@ const describeDatabase = (read) => ({
 const stateFiles = stateFileNames(
   readFileSync(join(REPO, 'apps', 'desktop', 'src', 'main', 'recovery', 'state-files.ts'), 'utf8'),
 )
-function readState(folder = data) {
+function readState(folder = data, tables = {}) {
   const found = {}
   for (const name of stateFiles) {
     if (existsSync(join(folder, name))) found[name] = readStateEntry(join(folder, name))
   }
-  return found
+  return withMovedFiles(found, tables)
 }
 /** Every Codex transcript under the agent's Codex sessions folder. A link there is refused. */
 function codexTranscripts() {
@@ -2922,11 +2922,7 @@ try {
       recordedWith: recordedWith(afterFirst.lineage, candidateLineage),
     },
   )
-  const stateNow = stateKept(
-    stateBefore,
-    withMovedFiles(readState(), afterFirst.tables),
-    stateFiles,
-  )
+  const stateNow = stateKept(stateBefore, readState(data, afterFirst.tables), stateFiles)
   summary.afterFirst.state = stateNow
   check(
     stateNow.lost.length === 0,
@@ -3118,8 +3114,7 @@ try {
   const transcriptsThen = transcriptsKept(transcriptsBefore, { exact: false })
   check(transcriptsThen.length === 0, 'the Codex transcripts only grew', transcriptsThen)
   check(
-    stateKept(stateBefore, withMovedFiles(readState(), afterSecond.tables), stateFiles).lost
-      .length === 0,
+    stateKept(stateBefore, readState(data, afterSecond.tables), stateFiles).lost.length === 0,
     'after the second start, every state file the beta left still says what it said',
   )
   const sinceTheFirstStart = copiesSince(copiesAfterFirst, copies(), args['candidate-version'])
