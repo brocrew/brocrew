@@ -9,6 +9,7 @@ import { clockTime } from '../../src/shared/clock'
 import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
 
 import type { WorkEdge } from '../../src/shared/who-called-whom'
+import { castTheWork } from './cast-reading'
 import { drawnReady } from './drawn'
 import { META, mount, paneProps, record, unmountAll } from './harness'
 import { identities, NOW, workerRows } from './parallel-workers-fixture'
@@ -71,23 +72,7 @@ const given: WorkEdge = {
 }
 
 async function ownPage(on: WaitOn | null, agentName?: string, untyped = false) {
-  const walk = <Row>(rows: Row[], kind: string) =>
-    ({ rows, walk: kind, ledgers: rows.length, rowsUnread: 0 }) as never
-  screenFacts().update({
-    reading: {
-      conversation: META.sessionId,
-      read: {
-        conversation: META.sessionId,
-        parent: null,
-        children: walk([], 'every-conversation-this-one-spawned'),
-        workGivenOut: walk([], 'every-conversation-this-one-gave-work-to'),
-        workTakenIn: walk([given], 'every-piece-of-work-this-one-was-given'),
-        readAt: NOW,
-      },
-      answered: true,
-      atWork: null,
-    },
-  })
+  castTheWork({ took: [given], at: NOW })
   railFacts().update({
     listedConversations: conversationList({
       resumable: [holder(on, agentName, untyped)],

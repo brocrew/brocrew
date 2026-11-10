@@ -44,10 +44,7 @@ afterEach(() => {
   unmountAll()
   // ⛔ **The channel is a window-level singleton**, so a reading left behind would be the next
   // test's premise.
-  screenFacts().update({ reading: null })
-  screenFacts().update({ goTo: null })
-  screenFacts().update({ railSays: null })
-  screenFacts().update({ forest: null })
+  screenFacts().update({ reading: null, goTo: null, railSays: null, forest: null })
 })
 
 const NOW = Date.now()

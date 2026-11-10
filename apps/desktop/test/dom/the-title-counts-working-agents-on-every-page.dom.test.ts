@@ -80,6 +80,17 @@ function mixed() {
     row('stock', 'codex', { is: 'idle' }),
   ]
 }
+/** Gives the cast a forest of these rows and 100 MB of process memory for each. */
+function castTheRows(rows: readonly ResumableSessionInfo[]): void {
+  screenFacts().update({
+    forest: forestOf(
+      rows.map((one) =>
+        conv(one.sessionId, null, { running: one.running, provider: one.provider }),
+      ),
+    ),
+    processMemory: new Map(rows.map((one) => [one.sessionId, 100 * 1024 * 1024])),
+  })
+}
 const expected = '8 agents · 3 working'
 const split = 'Claude 5 (2 working)\nCodex 3 (1 working)'
 const text = (m: Mounted) => (m.q('app-usage').textContent ?? '').trim()
@@ -318,16 +329,7 @@ describe('working counts in the title bar', () => {
 
   it('puts each provider’s working subset in the popup and keeps memory detail', async () => {
     const rows = mixed()
-    screenFacts().update({
-      forest: forestOf(
-        rows.map((one) =>
-          conv(one.sessionId, null, { running: one.running, provider: one.provider }),
-        ),
-      ),
-    })
-    screenFacts().update({
-      processMemory: new Map(rows.map((one) => [one.sessionId, 100 * 1024 * 1024])),
-    })
+    castTheRows(rows)
     const { m } = await windowWith(rows)
     m.q('app-usage').click()
     await nextTick()
@@ -390,16 +392,7 @@ describe('working counts in the title bar', () => {
             ? { is: 'idle' as const }
             : one.state,
       }))
-      screenFacts().update({
-        forest: forestOf(
-          rows.map((one) =>
-            conv(one.sessionId, null, { running: one.running, provider: one.provider }),
-          ),
-        ),
-      })
-      screenFacts().update({
-        processMemory: new Map(rows.map((one) => [one.sessionId, 100 * 1024 * 1024])),
-      })
+      castTheRows(rows)
       const now = Date.now()
       const { m } = await windowWith(rows, [], () => Promise.resolve(rows), {
         claude: [

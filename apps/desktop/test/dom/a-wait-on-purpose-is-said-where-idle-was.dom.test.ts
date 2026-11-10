@@ -16,6 +16,7 @@ import { conversationList } from '../../src/renderer/src/lib/conversation-list'
 import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
 
 import type { WorkEdge } from '../../src/shared/who-called-whom'
+import { castTheWork } from './cast-reading'
 import { assertClippedButTold, assertDrawn, drawnReady } from './drawn'
 import { META, mount, paneProps, record, unmountAll } from './harness'
 import { activity, identities, NOW, store, workerRows } from './parallel-workers-fixture'
@@ -114,23 +115,7 @@ const give = (state: TaskState): WorkEdge => ({
 })
 
 function castFor(state: TaskState, marked: boolean): void {
-  const walk = <Row>(rows: Row[], kind: string) =>
-    ({ rows, walk: kind, ledgers: rows.length, rowsUnread: 0 }) as never
-  screenFacts().update({
-    reading: {
-      conversation: META.sessionId,
-      read: {
-        conversation: META.sessionId,
-        parent: null,
-        children: walk([], 'every-conversation-this-one-spawned'),
-        workGivenOut: walk([give(state)], 'every-conversation-this-one-gave-work-to'),
-        workTakenIn: walk([], 'every-piece-of-work-this-one-was-given'),
-        readAt: NOW,
-      },
-      answered: true,
-      atWork: null,
-    },
-  })
+  castTheWork({ gave: [give(state)], at: NOW })
   railFacts().update({
     listedConversations: conversationList({
       resumable: [holder(marked)],

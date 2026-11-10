@@ -51,12 +51,14 @@ import {
 
 afterEach(() => {
   unmountAll()
-  screenFacts().update({ reading: null })
-  screenFacts().update({ goTo: null })
-  screenFacts().update({ railSays: null })
-  screenFacts().update({ processMemory: new Map() })
-  screenFacts().update({ cardFiles: null })
-  screenFacts().update({ treeFiles: null })
+  screenFacts().update({
+    reading: null,
+    goTo: null,
+    railSays: null,
+    processMemory: new Map(),
+    cardFiles: null,
+    treeFiles: null,
+  })
 })
 
 const NOW = Date.now()

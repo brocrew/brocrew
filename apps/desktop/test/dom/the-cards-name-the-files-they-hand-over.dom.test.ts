@@ -12,6 +12,7 @@ import { clockTime } from '../../src/shared/clock'
 import type { AgentIdentity, KeptFile, ResourceReading } from '../../src/shared/runtime-ipc'
 
 import type { WorkEdge } from '../../src/shared/who-called-whom'
+import { castTheWork } from './cast-reading'
 import { assertClippedButTold, assertDrawn, drawnReady } from './drawn'
 import { META, mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 
@@ -226,23 +227,7 @@ const edge = (label: string, givenAt: number): WorkEdge => ({
 
 /** ⚑ The cast's reading of this conversation: what it gave, and what it was given, and when. */
 function castWith(gave: WorkEdge[], took: WorkEdge[]): void {
-  const walk = <Row>(rows: Row[], kind: string) =>
-    ({ rows, walk: kind, ledgers: rows.length, rowsUnread: 0 }) as never
-  screenFacts().update({
-    reading: {
-      conversation: META.sessionId,
-      read: {
-        conversation: META.sessionId,
-        parent: null,
-        children: walk([], 'every-conversation-this-one-spawned'),
-        workGivenOut: walk(gave, 'every-conversation-this-one-gave-work-to'),
-        workTakenIn: walk(took, 'every-piece-of-work-this-one-was-given'),
-        readAt: AT,
-      },
-      answered: true,
-      atWork: null,
-    },
-  })
+  castTheWork({ gave, took, at: AT })
 }
 
 async function opens(m: Mounted, row: HTMLElement, name: string): Promise<void> {

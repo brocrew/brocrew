@@ -56,9 +56,7 @@ afterEach(() => {
   // ⛔ **The channel is a window-level singleton**, so a reading left behind would be the next
   // test's premise. ⚠️ Reset to the cold state rather than to an empty band — they are different
   // facts and this file asserts about both.
-  screenFacts().update({ reading: null })
-  screenFacts().update({ goTo: null })
-  screenFacts().update({ railSays: null })
+  screenFacts().update({ reading: null, goTo: null, railSays: null })
 })
 
 /** ⚑ A stable instant, so every age below is a fact about the fixture rather than about the clock. */
@@ -249,11 +247,9 @@ async function show(over: Shown) {
             answered: over.answered ?? true,
             atWork: over.atWork ?? null,
           },
-  })
-  screenFacts().update({
     goTo: over.press ? (conversation) => over.press!.push(conversation) : null,
+    railSays: over.rail ?? null,
   })
-  screenFacts().update({ railSays: over.rail ?? null })
   const drawer = mount(
     SessionDrawer as never,
     drawerProps({ identities: over.identities ?? null }),

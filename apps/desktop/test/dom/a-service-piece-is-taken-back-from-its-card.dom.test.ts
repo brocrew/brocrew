@@ -8,6 +8,7 @@ import { TAKE_BACK, takeBackThrough } from '../../src/renderer/src/lib/take-back
 import type { WorkTakenBackByAPerson } from '../../src/shared/piece-called'
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 import type { WorkEdge } from '../../src/shared/who-called-whom'
+import { castTheWork } from './cast-reading'
 import { assertDrawn, drawnReady } from './drawn'
 import {
   expandAgentCards,
@@ -80,23 +81,7 @@ const edge = (mayTakeItBack: boolean): WorkEdge => ({
 })
 
 function castWith(gave: WorkEdge[]): void {
-  const walk = <Row>(rows: Row[], kind: string) =>
-    ({ rows, walk: kind, ledgers: rows.length, rowsUnread: 0 }) as never
-  screenFacts().update({
-    reading: {
-      conversation: META.sessionId,
-      read: {
-        conversation: META.sessionId,
-        parent: null,
-        children: walk([], 'every-conversation-this-one-spawned'),
-        workGivenOut: walk(gave, 'every-conversation-this-one-gave-work-to'),
-        workTakenIn: walk([], 'every-piece-of-work-this-one-was-given'),
-        readAt: AT,
-      },
-      answered: true,
-      atWork: null,
-    },
-  })
+  castTheWork({ gave, at: AT })
 }
 
 afterEach(async () => {
