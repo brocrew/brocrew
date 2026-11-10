@@ -785,9 +785,7 @@ process.exit(24);
     )
     await child.ready()
     expect(await child.stop()).toEqual({ exited: true })
-    const kept = JSON.parse(
-      await readFile(resolve(child.receiptPath, '..', 'stderr.json'), 'utf8'),
-    )
+    const kept = JSON.parse(await readFile(resolve(child.receiptPath, '..', 'stderr.json'), 'utf8'))
     expect(kept).toMatchObject({
       format: 1,
       runId: child.runId,
@@ -831,7 +829,9 @@ process.exit(24);
     await child.ready()
     expect(await child.stop()).toEqual({ exited: true })
     expect(
-      JSON.parse(await readFile(resolve(child.receiptPath, '..', 'stderr-write-order.json'), 'utf8')),
+      JSON.parse(
+        await readFile(resolve(child.receiptPath, '..', 'stderr-write-order.json'), 'utf8'),
+      ),
     ).toEqual({ exitSaved: true })
     expect(JSON.parse(await readFile(child.receiptPath, 'utf8'))).toMatchObject({
       exited: true,
