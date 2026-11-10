@@ -49,7 +49,7 @@ async function bytesIn(root: string): Promise<Record<string, string>> {
   return result
 }
 async function connected(plugin = 'chrome') {
-  const f = await fixture({}, false, plugin)
+  const f = await fixture({}, plugin)
   await f.controller.install(f.handle, plugin)
   const active = f.state.exportActivation().entries[0]!
   const bridge = await servePersonPluginControl({

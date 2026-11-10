@@ -43,7 +43,7 @@ afterEach(async () => {
 })
 
 async function setup(fixedVersion = false, invalidSource?: 'digest' | 'view') {
-  const f = await fixture({}, false, 'whatsapp')
+  const f = await fixture({}, 'whatsapp')
   const chrome = packageFixture({ manifest: { ...f.pkg.manifest, id: 'chrome' } })
   const extra = packageFixture({ manifest: { ...f.pkg.manifest, id: 'fictional-maps' } })
   const original = repoListFor(f.pkg.release, 'Fictional messages')

@@ -13,7 +13,7 @@ The strict UTF-8 JSON manifest rejects duplicate keys and unknown required featu
 | `format`, `id`, `version`, `sourceCommit` | Format 1; lower-case slug ≤64 characters; package version follows Skills’ 1–80-character contract; `(id, version)` identifies a release. |
 | `platforms`, `hostApi`, `toolApi`, `uiApi`, `dataSchema` | Explicit OS/CPU; API ranges use `{major,minMinor,maxMinor,requiredFeatures}` with inclusive bounds. Unknown major/features refuse only the affected attachment/surface; data schema versions are integers. |
 | `archive` (catalogue), `files` (manifest) | The app-admitted repository list pins HTTPS archive URL/size/SHA-256 and `manifestSha256`. Package `plugin.json` inventories payload files by size/digest/type, excluding itself. Limits: catalogue 1 MiB/200 entries; manifest 64 KiB; archive 64 MiB; expansion 256 MiB/10,000 files. |
-| `server`, `skills`, `serviceTemplates`, `ui` | One Node entry with loopback HTTP MCP/admin paths; skills obey the existing store; optional workspace-local service templates; bundled UI entry/assets, RPC method schemas and reviewed text inventory. |
+| `server`, `skills`, `serviceTemplates`, `ui` | One Node entry with loopback HTTP MCP/admin paths; skills is an empty compatibility field; optional workspace-local service templates; bundled UI entry/assets, RPC method schemas and reviewed text inventory. |
 | `permissions`, `dataCompatibility` | Plain capability description, typed resource read/write policy and supported data schemas; never an OS confinement claim. |
 
 Production reads the fixed JSON list in `brocrew/brocrew` over HTTPS and permits only `brocrew` GitHub release archives, checked by SHA-256/size and payload digests before execution/serving. The 2026-10-18 repository trust decision removes signing and key setup from production; plugins come only from the app’s own repositories. A compromised repository or replayed trusted list remains a risk. See `plugin-production.md` for the active list format and source policy.
@@ -58,7 +58,7 @@ Default one executing MCP request per plugin; queue limits are 64 total, eight p
 
 Journal exact person consent and idempotent operation IDs before mutation. Admission requires a committed lifecycle guard, matching global DB activation and a local projection receipt. Prepare states grant no access; recover recorded operations or conditionally compensate only unchanged revisions. Uninstall writes the denying guard first, revokes calls/UI, stops active consumers/children, then removes executables; offline cleanup remains explicitly pending.
 
-Three-stage restore control: **(a)** old workspace snapshot records installation A; **(b)** A is uninstalled and B installed; **(c)** restoring that snapshot must compare A/B, revoke A’s skill origin/choices and old bindings, then ingest B with skills off until explicitly selected. Ordinary updates within A preserve surviving selections and person rules. Reuse the single workspace Skills store, origin-qualified IDs, immutable versions/aliases/limits and revision checks; no second skills catalogue. All-agent tool reach remains the approved global default. Optional service identities/rules/history stay local and are never overwritten.
+Three-stage restore control: **(a)** old workspace snapshot records installation A; **(b)** A is uninstalled and B installed; **(c)** restoring that snapshot must compare A/B, revoke A’s old bindings, then attach B through the current installation. Packaged skills are not supported; existing stored skill data and provenance remain readable. Ordinary updates within A preserve person rules. All-agent tool reach remains the approved global default. Optional service identities/rules/history stay local and are never overwritten.
 
 Global restore drains **all attached workspaces** first, retains the current lifecycle guard and tombstones, restores only compatible state, rotates operational epochs, and rechecks installations before fresh leases. A snapshot cannot resurrect removed A or guess B’s missing metadata/configuration; disable affected plugins for repair. Workspace restore/reset/delete never rewinds global installations or permissions. Preserve concurrent person edits via revision comparisons; conflicts/failed data restore disable rather than overwrite. Stop every writer before backup/migration; refuse irreversible migrations and require tested recovery for reversible ones. No filesystem restore undoes remote effects. Uninstall keeps mutable/credential-bearing data; separate deletion names its recovery-copy scope and excludes the minimal lifecycle guard. Recommend opt-in encrypted backup/export. Windows path/ACL/reparse, verified publication and descendant-ownership checks apply before formats freeze.
 
@@ -95,7 +95,6 @@ Catalogue = { format: 1, entries: [Release] }
 
 File = { path, size, sha256, type: "file" }
 Server = { entry, mcpPath, adminPath }
-Skill = { name, version, path, description, reminder }
 ServiceTemplate = { id, rules, provider: "claude" | "codex", model,
                     effort: string | null, requiredTools: [string] }
 Asset = { path, mime }
@@ -106,7 +105,7 @@ Ui = { entry, assets: [Asset], methodSchemas: {
 Permissions = { description, resources: [{ id, label, read: boolean, write: boolean }] }
 Manifest = { format: 1, id, version, sourceCommit, platforms: [Target],
              hostApi: Api, toolApi: Api | null, uiApi: Api | null, dataSchema,
-             files: [File], server: Server | null, skills: [Skill],
+             files: [File], server: Server | null, skills: [],
              serviceTemplates: [ServiceTemplate], ui: Ui | null,
              permissions: Permissions, dataCompatibility: { minSchema, maxSchema } }
 ```
@@ -115,7 +114,7 @@ Integers are nonnegative safe JSON integers; API majors start at 1. Slugs match 
 
 `Api` requires inclusive `minMinor ≤ maxMinor`; required features are unique slugs, at most 64. The default app support is host/tool/UI 1.0 with no features; callers can supply each support independently. Unknown major, required feature or unsupported minor disables that surface. An incompatible host attachment disables its tools/UI, while the package and compatible metadata remain verified. `toolApi` is null exactly when `server` is null; `uiApi` is null exactly when `ui` is null. Data schema must lie within inclusive `minSchema..maxSchema`. No API negotiation is authority to execute.
 
-Server entry must be an inventoried `.js`, `.mjs` or `.cjs` built file. `mcpPath` and `adminPath` are distinct absolute endpoint paths of at most 200 characters, matching `/(segment/)*segment` with ASCII letters, digits, `_` or `-`. They have no host, port, query, shell command, args or environment. Loopback binding belongs to the later supervisor. Skills are capped at 200, with unique names, name-matching `<name>/SKILL.md`, existing Skills version/description/reminder/body limits and exact name/description frontmatter. Bodies are valid UTF-8 without NUL. This verifies inputs for the existing Skills store; it creates no second store. Service templates are capped at 32 with unique IDs; rules reference inventoried bytes. Model/tool labels are at most 128 characters, effort at most 32, required tools unique and capped at 64. This slice performs no provider or model lookup.
+Server entry must be an inventoried `.js`, `.mjs` or `.cjs` built file. `mcpPath` and `adminPath` are distinct absolute endpoint paths of at most 200 characters, matching `/(segment/)*segment` with ASCII letters, digits, `_` or `-`. They have no host, port, query, shell command, args or environment. Loopback binding belongs to the later supervisor. The required `skills` field stays empty for compatibility with existing archives. Packaged skill declarations are not supported. Service templates are capped at 32 with unique IDs; rules reference inventoried bytes. Model/tool labels are at most 128 characters, effort at most 32, required tools unique and capped at 64. This slice performs no provider or model lookup.
 
 UI assets are nonempty, unique and capped at 1024. Entry must be an admitted `text/html` asset. MIME allowlist: `text/html`, `text/css`, `text/javascript`, `application/json`, PNG/JPEG/WebP/GIF, WOFF/WOFF2. Resource declarations are unique by ID and capped at 128; labels ≤160 characters. Permission description ≤2000 characters. Text inventory has unique IDs, at most 512 texts of ≤2000 characters. These labels reject control characters and unpaired surrogates. Verification does **not** confer copy approval: curated release review must separately approve the package's complete text inventory as section 6 requires. It also does not sandbox JS or validate future runtime confinement.
 

@@ -71,6 +71,34 @@ function add(name: string) {
   catalogue.select(id, `person/${name}`, 'on', revision())
 }
 
+function legacyPlugin(pluginId: string, source: ReturnType<typeof draft>) {
+  const origin = { kind: 'plugin' as const, pluginId }
+  const skillId = `plugin/${pluginId}/${source.name}`
+  const alias = skillAlias(origin, source.name)
+  const versionId = `${skillId}@${hash('1/1')}`
+  const { body, ...declared } = source
+  const metadata = { ...declared, version: '1', origin, alias, requirement: null }
+  db.prepare(
+    'INSERT INTO skill_version (id, skill_id, version_key, metadata, body, sha256, bytes, plugin_id, package_version, package_sha256, package_manifest_sha256, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  ).run(
+    versionId,
+    skillId,
+    '1/1',
+    JSON.stringify(metadata),
+    body,
+    source.sha256,
+    source.bytes,
+    pluginId,
+    '1',
+    hash('fictional package'),
+    hash('fictional package manifest'),
+    1,
+  )
+  db.prepare(
+    'INSERT INTO skill_current (id, alias, current_version, active) VALUES (?, ?, ?, 1)',
+  ).run(skillId, alias, versionId)
+}
+
 describe.each(['claude', 'codex'] as const)(
   'the selected %s launch view in a fictional home',
   (provider) => {
@@ -150,13 +178,7 @@ describe.each(['claude', 'codex'] as const)(
     })
     it('installs more than eight personal/plugin versions under aliases, without editing their sources', async () => {
       for (const name of ['crumb-check', 'oven-check', 'flour-check']) add(name)
-      const plugin = {
-        pluginId: 'recipe-kit',
-        packageVersion: '1',
-        packageSha256: hash('fictional package'),
-        skills: [{ ...draft('timing-check'), version: '1' }],
-      }
-      catalogue.ingestPlugin(plugin, revision())
+      legacyPlugin('recipe-kit', draft('timing-check'))
       catalogue.select(id, 'plugin/recipe-kit/timing-check', 'on', revision())
       const first = await prepare()
       expect(first.context.skills).toHaveLength(12)
@@ -229,16 +251,7 @@ describe.each(['claude', 'codex'] as const)(
             source.sha256 = hash(source.body)
           }
           if (origin === 'person') catalogue.savePersonal(source, revision())
-          else
-            catalogue.ingestPlugin(
-              {
-                pluginId: `recipe-kit-${index}`,
-                packageVersion: '1',
-                packageSha256: hash('fictional recipe package'),
-                skills: [{ ...source, version: '1' }],
-              },
-              revision(),
-            )
+          else legacyPlugin(`recipe-kit-${index}`, source)
           const skillId =
             origin === 'person' ? `person/${name}` : `plugin/recipe-kit-${index}/${name}`
           catalogue.select(id, skillId, 'on', revision())

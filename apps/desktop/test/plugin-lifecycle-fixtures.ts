@@ -40,11 +40,7 @@ export function projection(events: string[] = []) {
   }
   return { sink }
 }
-export async function fixture(
-  change: Partial<LifecycleOptions> = {},
-  includeSkills = false,
-  id = 'chrome',
-) {
+export async function fixture(change: Partial<LifecycleOptions> = {}, id = 'chrome') {
   // POSIX needs short Unix socket paths; Windows uses named pipes and its own temp directory.
   const temp = process.platform === 'win32' ? tmpdir() : '/tmp'
   const parent = realPath(await mkdtemp(join(temp, 'fictional-lifecycle-')))
@@ -59,7 +55,6 @@ export async function fixture(
   stores.push(state)
   const manifest = manifestFor()
   manifest.id = id
-  if (!includeSkills) manifest.skills = []
   manifest.platforms = [
     { os: process.platform as 'darwin' | 'linux', cpu: process.arch as 'arm64' | 'x64' },
   ]

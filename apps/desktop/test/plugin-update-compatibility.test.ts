@@ -54,7 +54,7 @@ function exitable(f: Awaited<ReturnType<typeof fixture>>) {
   }
 }
 async function prepared() {
-  const f = await fixture({}, false, 'whatsapp')
+  const f = await fixture({}, 'whatsapp')
   exitable(f)
   const next = packageFixture({ manifest: { ...f.pkg.manifest, version: '1.0.3' } })
   f.opts.download = async (release) =>
@@ -178,7 +178,7 @@ describe.skipIf(process.platform === 'win32')(
       }
     })
     it('the new client lists and configures under the actual parent owner without offering unsupported verbs', async () => {
-      const f = await fixture({}, false, 'whatsapp')
+      const f = await fixture({}, 'whatsapp')
       exitable(f)
       f.state.close()
       const state = ParentState.open({ root: join(f.root, 'state'), workspaceRoots: [f.workspace] })

@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import type { AppDatabase } from '../db/connection'
 import {
-  PluginSkillBundle,
   SkillDraft,
   SkillOrigin,
   SkillRelease,
@@ -440,89 +439,6 @@ export class SqliteSkillCatalogue implements SkillCatalogue {
         .run(identityId, id, choice.data)
       this.resolve(identityId, { canCreateAgents: true, isCoordinator: true })
       return true
-    })
-  }
-  private deactivate(id: string): boolean {
-    const changed = this.db
-      .prepare('UPDATE skill_current SET active = 0 WHERE id = ? AND active = 1')
-      .run(id).changes
-    const choices = this.db
-      .prepare("UPDATE skill_selection SET choice = 'off' WHERE skill_id = ? AND choice != 'off'")
-      .run(id).changes
-    return changed + choices > 0
-  }
-  ingestPlugin(input: PluginSkillBundle, expectedRevision: number): number {
-    const parsed = PluginSkillBundle.safeParse(input)
-    if (!parsed.success) return refuse('invalid')
-    const bundle = parsed.data
-    const names = new Set(bundle.skills.map((one) => one.name))
-    if (names.size !== bundle.skills.length) return refuse('duplicate-name')
-    for (const release of bundle.skills) checkedSkillDraft(documentOf(release, release.body))
-    const packageManifest = hash(
-      JSON.stringify(
-        [...bundle.skills]
-          .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-          .map((one) => ({
-            name: one.name,
-            description: one.description,
-            reminder: one.reminder,
-            version: one.version,
-            path: one.path,
-            bytes: one.bytes,
-            sha256: one.sha256,
-          })),
-      ),
-    )
-    return this.change(expectedRevision, () => {
-      const pin = this.db
-        .prepare(
-          'SELECT package_sha256, package_manifest_sha256 FROM skill_version WHERE plugin_id = ? AND package_version = ? LIMIT 1',
-        )
-        .get(bundle.pluginId, bundle.packageVersion) as
-        { package_sha256: string; package_manifest_sha256: string } | undefined
-      if (
-        pin &&
-        (pin.package_sha256 !== bundle.packageSha256 ||
-          pin.package_manifest_sha256 !== packageManifest)
-      )
-        return refuse('version-conflict')
-      let changed = false
-      const heads = this.listAll()
-      for (const head of heads)
-        if (
-          head.origin.kind === 'plugin' &&
-          head.origin.pluginId === bundle.pluginId &&
-          !names.has(head.name)
-        )
-          changed = this.deactivate(head.id) || changed
-      for (const release of bundle.skills)
-        changed =
-          this.put(
-            { kind: 'plugin', pluginId: bundle.pluginId },
-            release,
-            { version: bundle.packageVersion, sha256: bundle.packageSha256 },
-            packageManifest,
-          ) || changed
-      return changed
-    })
-  }
-  private listAll(): readonly SkillSummary[] {
-    const all: SkillSummary[] = []
-    for (let offset = 0; offset < SKILL_LIMITS.skills; offset += SKILL_LIMITS.page) {
-      const page = this.list(offset)
-      all.push(...page.items)
-      if (all.length >= page.total) break
-    }
-    return all
-  }
-  revokePlugin(pluginId: string, expectedRevision: number): number {
-    if (!SkillOrigin.safeParse({ kind: 'plugin', pluginId }).success) return refuse('invalid')
-    return this.change(expectedRevision, () => {
-      let changed = false
-      for (const head of this.listAll())
-        if (head.origin.kind === 'plugin' && head.origin.pluginId === pluginId)
-          changed = this.deactivate(head.id) || changed
-      return changed
     })
   }
 }

@@ -15,12 +15,6 @@ export const payload = (): Map<string, Buffer> =>
         '// Inert fixture: no imports, processes, or effects.\nexport const recipe = 1;\n',
       ),
     ],
-    [
-      'bread/SKILL.md',
-      Buffer.from(
-        '---\nname: bread\ndescription: A fictional bread skill.\n---\nCount the loaves.\n',
-      ),
-    ],
     ['rules/baker.md', Buffer.from('Describe fictional bread.')],
     ['ui/index.html', Buffer.from('<!doctype html><title>Fictional bakery</title>')],
   ])
@@ -52,15 +46,7 @@ export function manifestFor(files = payload()): PluginManifest {
     dataSchema: 1,
     files: inventory(files),
     server: { entry: 'dist/recipe.mjs', mcpPath: '/mcp', adminPath: '/admin' },
-    skills: [
-      {
-        name: 'bread',
-        version: '1.0.0',
-        path: 'bread/SKILL.md',
-        description: 'A fictional bread skill.',
-        reminder: 'Count fictional loaves.',
-      },
-    ],
+    skills: [],
     serviceTemplates: [
       {
         id: 'baker',

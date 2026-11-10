@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  PluginSkillBundle,
-  SkillDraft,
-  SkillOrigin,
-  SkillSelection,
-} from '../src/shared/skills-catalogue'
+import { SkillDraft, SkillOrigin, SkillSelection } from '../src/shared/skills-catalogue'
 
 const draft = {
   name: 'recipe-check',
@@ -36,16 +31,5 @@ describe('the shared skill catalogue contract', () => {
     { body: '' },
   ])('refuses malformed declaration %j', (over) => {
     expect(SkillDraft.safeParse({ ...draft, ...over }).success).toBe(false)
-  })
-  it('requires pinned plugin provenance and declares no run command', () => {
-    const bundle = {
-      pluginId: 'recipe-kit',
-      packageVersion: '1',
-      packageSha256: 'b'.repeat(64),
-      skills: [{ ...draft, version: '1' }],
-    }
-    expect(PluginSkillBundle.parse(bundle)).toEqual(bundle)
-    expect(PluginSkillBundle.safeParse({ ...bundle, run: 'fictional-command' }).success).toBe(false)
-    expect(PluginSkillBundle.safeParse({ ...bundle, packageSha256: '' }).success).toBe(false)
   })
 })

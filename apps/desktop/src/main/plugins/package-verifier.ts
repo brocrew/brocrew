@@ -1,4 +1,3 @@
-import { SkillRelease } from '../../shared/skills-catalogue'
 import { PLUGIN_LIMITS, verifyPluginDigest } from './package-digests'
 import { readPluginArchive } from './package-archive'
 import {
@@ -59,13 +58,6 @@ function compatible(range: PluginApiRange | null, support: PluginApiSupport): bo
     range.requiredFeatures.every((feature) => support.features.includes(feature))
   )
 }
-function decoded(bytes: Buffer): string {
-  try {
-    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)
-  } catch {
-    return refusePlugin('invalid')
-  }
-}
 /** Verify catalogue structure and each selected package's bytes. */
 export function createRepoAwarePluginVerifier(options: PluginVerifierOptions) {
   const target = PluginTarget.safeParse(options.target)
@@ -125,33 +117,6 @@ export function createRepoAwarePluginVerifier(options: PluginVerifierOptions) {
             const body = files.get(entry.path)
             if (!body) refusePlugin('digest')
             verifyPluginDigest(body, entry, PLUGIN_LIMITS.expandedBytes)
-          }
-          for (const skill of manifest.skills) {
-            const body = files.get(skill.path)
-            if (!body) refusePlugin('invalid')
-            const parsed = SkillRelease.safeParse({
-              ...skill,
-              body: decoded(body),
-              bytes: body.length,
-              sha256: manifest.files.find((value) => value.path === skill.path)?.sha256,
-            })
-            if (
-              !parsed.success ||
-              [parsed.data.body, parsed.data.description, parsed.data.reminder].some((text) =>
-                text.includes('\0'),
-              )
-            )
-              refusePlugin('invalid')
-            const front = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/
-              .exec(parsed.data.body)?.[1]
-              ?.split(/\r?\n/)
-              .filter((line) => line !== '')
-            if (
-              front?.length !== 2 ||
-              !front.includes(`name: ${skill.name}`) ||
-              !front.includes(`description: ${skill.description}`)
-            )
-              refusePlugin('invalid')
           }
           const host = compatible(manifest.hostApi, support.host)
           const result = Object.freeze({

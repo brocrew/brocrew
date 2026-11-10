@@ -707,7 +707,6 @@ export class PluginLifecycleController {
     install: Installation,
     checked: VerifiedPluginPackage,
   ): Promise<LifecycleRun> {
-    if (checked.manifest.skills.length !== 0) return refuse()
     const prior = this.runs.get(install.pluginId)
     if (prior) {
       if (prior.installId !== install.installId || prior.ended) return pending()
@@ -865,7 +864,6 @@ export class PluginLifecycleController {
               new AbortController().signal,
             )
         const checked = preflight?.checked ?? catalogue.verifyPackage(id, release.version, bytes!)
-        if (checked.manifest.skills.length !== 0) return refuse()
         const state = this.options.state.inspect(),
           before = state.guards.find((one) => one.pluginId === id)
         if (
@@ -1029,7 +1027,6 @@ export class PluginLifecycleController {
             )
         const checked = preflight?.checked ?? catalogue.verifyPackage(id, release.version, bytes!)
         if (
-          checked.manifest.skills.length ||
           checked.manifest.dataSchema !== before.release.dataSchema ||
           before.release.dataSchema < checked.manifest.dataCompatibility.minSchema ||
           before.release.dataSchema > checked.manifest.dataCompatibility.maxSchema

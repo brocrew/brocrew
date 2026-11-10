@@ -53,7 +53,7 @@ describe.skipIf(process.platform === 'win32')('uninstall results over inert peer
   it.each(['confirmed', 'unconfirmed', 'failure', 'timeout', 'absent'] as const)(
     'reports local deletion separately when remote logout is %s',
     async (mode) => {
-      const f = await fixture({}, false, 'whatsapp')
+      const f = await fixture({}, 'whatsapp')
       const exit = deferred<void>()
       const start = f.opts.runtime.start.bind(f.opts.runtime)
       f.opts.runtime.start = async (spec) => ({ ...(await start(spec)), exited: exit.promise })
@@ -89,7 +89,7 @@ describe.skipIf(process.platform === 'win32')('uninstall results over inert peer
   )
 
   it('carries the closed removal outcome through the real person Settings channel', async () => {
-    const f = await fixture({}, false, 'whatsapp')
+    const f = await fixture({}, 'whatsapp')
     await f.controller.detach(f.handle)
     const key = 'a'.repeat(64)
     const bridge = await servePersonPluginControl({
@@ -128,7 +128,7 @@ describe.skipIf(process.platform === 'win32')('uninstall results over inert peer
   })
 
   it('does not turn a failed local deletion into a completed removal', async () => {
-    const f = await fixture({}, false, 'whatsapp')
+    const f = await fixture({}, 'whatsapp')
     await f.controller.install(f.handle, 'whatsapp')
     vi.stubGlobal(
       'fetch',

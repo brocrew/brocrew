@@ -116,7 +116,7 @@ describe.skipIf(process.platform === 'win32')('bounded durable configuration led
   it.each(['chrome', 'whatsapp'])(
     'keeps %s person applies available beyond the old lifetime ceiling',
     async (plugin) => {
-      const f = await fixture({}, false, plugin)
+      const f = await fixture({}, plugin)
       await f.controller.install(f.handle, plugin)
       const active = f.state.exportActivation().entries[0]!
       const bridge = await servePersonPluginControl({

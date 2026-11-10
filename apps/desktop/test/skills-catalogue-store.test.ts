@@ -17,7 +17,7 @@ import {
 } from '../src/main/skills/catalogue-store'
 import { launchSkillSelections } from '../src/main/skills/launch-selection'
 import { BUILT_IN_SKILL_NAMES } from '../src/shared/built-in-skills'
-import type { SkillDraft, PluginSkillBundle } from '../src/shared/skills-catalogue'
+import type { SkillDraft } from '../src/shared/skills-catalogue'
 
 const root = dirname(fileURLToPath(import.meta.url))
 const migrations = join(root, '../src/main/db/migrations')
@@ -45,14 +45,6 @@ function draft(name = 'recipe-check', text = 'Check the fictional ingredients.')
     body,
     bytes: Buffer.byteLength(body),
     sha256: digest(body),
-  }
-}
-function bundle(version = '1', names = ['recipe-check']): PluginSkillBundle {
-  return {
-    pluginId: 'recipe-kit',
-    packageVersion: version,
-    packageSha256: digest(`fictional-package-${version}`),
-    skills: names.map((name) => ({ ...draft(name), version: '1' })),
   }
 }
 function refused(action: () => unknown, code: string) {
@@ -284,75 +276,6 @@ describe('the SQLite skills catalogue', () => {
         .choices.find((one) => one.skill.id === 'person/recipe-check')?.selected,
     ).toBe(false)
   })
-  it('ingests inert pinned plugin skills, revokes without erasure, and never regrants on reinstall', () => {
-    catalogue.ingestPlugin(bundle(), revision())
-    const first = catalogue.detail('plugin/recipe-kit/recipe-check')!
-    expect(first).toMatchObject({
-      defaultEnabled: false,
-      active: true,
-      package: { version: '1', sha256: bundle().packageSha256 },
-    })
-    expect(first.alias).not.toBe(skillAlias({ kind: 'person' }, 'recipe-check'))
-    catalogue.select('aid:recipe-worker', first.id, 'on', revision())
-    catalogue.ingestPlugin(bundle('2'), revision())
-    expect(
-      catalogue
-        .resolve('aid:recipe-worker', capable)
-        .choices.find((one) => one.skill.id === first.id)?.ready,
-    ).toBe(true)
-    catalogue.revokePlugin('recipe-kit', revision())
-    expect(catalogue.detail(first.id)?.active).toBe(false)
-    expect(catalogue.detail(first.id, first.versionId)?.body).toBe(first.body)
-    refused(
-      () => catalogue.select('aid:recipe-worker', first.id, 'on', revision()),
-      'source-unavailable',
-    )
-    catalogue.ingestPlugin(bundle('2'), revision())
-    expect(
-      catalogue
-        .resolve('aid:recipe-worker', capable)
-        .choices.find((one) => one.skill.id === first.id),
-    ).toMatchObject({ selection: 'off', ready: false })
-  })
-  it('pins a whole plugin package, handles omissions and rolls back failed multi-skill ingestion', () => {
-    const first = bundle('1', ['first-check', 'second-check'])
-    catalogue.ingestPlugin(first, revision())
-    const pinnedRevision = revision()
-    catalogue.ingestPlugin({ ...first, skills: [...first.skills].reverse() }, pinnedRevision)
-    expect(revision()).toBe(pinnedRevision)
-    catalogue.select('aid:recipe-worker', 'plugin/recipe-kit/second-check', 'on', revision())
-    const before = catalogue.list()
-    refused(
-      () => catalogue.ingestPlugin({ ...first, packageSha256: 'a'.repeat(64) }, revision()),
-      'version-conflict',
-    )
-    refused(
-      () => catalogue.ingestPlugin(bundle('1', ['first-check']), revision()),
-      'version-conflict',
-    )
-    expect(catalogue.list()).toEqual(before)
-    catalogue.ingestPlugin(bundle('2', ['first-check']), revision())
-    expect(
-      catalogue
-        .resolve('aid:recipe-worker', capable)
-        .choices.find((one) => one.skill.id.endsWith('/second-check')),
-    ).toMatchObject({ selection: 'off', eligible: false, ready: false })
-    const stable = catalogue.list()
-    db.exec(
-      "CREATE TEMP TRIGGER fictional_skill_failure BEFORE INSERT ON skill_version WHEN NEW.skill_id = 'plugin/recipe-kit/third-check' BEGIN SELECT RAISE(ABORT, 'fictional interruption'); END",
-    )
-    expect(() =>
-      catalogue.ingestPlugin(bundle('3', ['first-check', 'third-check']), revision()),
-    ).toThrow('fictional interruption')
-    expect(catalogue.list()).toEqual(stable)
-    expect(
-      db
-        .prepare(
-          "SELECT count(*) AS n FROM skill_version WHERE plugin_id = 'recipe-kit' AND package_version = '3'",
-        )
-        .get(),
-    ).toEqual({ n: 0 })
-  })
   it('two SQLite clients cannot save over each other with an old revision', () => {
     const secondDb = openDatabase(join(folder, 'catalogue.sqlite'))
     try {
@@ -407,17 +330,6 @@ describe('the SQLite skills catalogue', () => {
       expect(launch.skills.some((skill) => skill.id === 'built-in/delegate')).toBe(false)
       expect(launch.skills.some((skill) => skill.id === 'built-in/hand-back')).toBe(true)
     }
-  })
-  it('refuses a bad plugin hash or duplicate declaration before publication', () => {
-    const before = catalogue.list()
-    const bad = bundle('1', ['first-check', 'second-check'])
-    bad.skills[1]!.sha256 = '0'.repeat(64)
-    refused(() => catalogue.ingestPlugin(bad, before.revision), 'hash')
-    refused(
-      () => catalogue.ingestPlugin(bundle('1', ['first-check', 'first-check']), before.revision),
-      'duplicate-name',
-    )
-    expect(catalogue.list()).toEqual(before)
   })
   it('refuses a selection beyond the complete-view bound and rolls the choice back', () => {
     for (let i = 0; i < 56; i++) {

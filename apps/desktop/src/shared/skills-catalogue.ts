@@ -45,14 +45,6 @@ export const SkillRelease = SkillDraft.extend({
 })
 export type SkillRelease = z.infer<typeof SkillRelease>
 
-export const PluginSkillBundle = z.strictObject({
-  pluginId: SkillName,
-  packageVersion: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,79}$/),
-  packageSha256: SkillDigest,
-  skills: z.array(SkillRelease).min(1).max(SKILL_LIMITS.skills),
-})
-export type PluginSkillBundle = z.infer<typeof PluginSkillBundle>
-
 export interface SkillSummary {
   readonly id: string
   readonly origin: SkillOrigin
@@ -122,6 +114,4 @@ export interface SkillCatalogue {
     expectedVersionId?: string | null,
   ): number
   select(identityId: string, id: string, value: SkillSelection, expectedRevision: number): number
-  ingestPlugin(bundle: PluginSkillBundle, expectedRevision: number): number
-  revokePlugin(pluginId: string, expectedRevision: number): number
 }

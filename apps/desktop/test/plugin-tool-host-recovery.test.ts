@@ -71,7 +71,7 @@ it('never recreates a Chrome host or confirms completion after a failed exit pro
 })
 
 it('refuses a stale Chrome run identity and never stops a different plugin', async () => {
-  const f = await fixture({}, false, 'whatsapp')
+  const f = await fixture({}, 'whatsapp')
   let runId = ''
   const start = f.opts.runtime.start.bind(f.opts.runtime)
   f.opts.runtime.start = async (spec) => {

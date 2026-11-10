@@ -18,7 +18,7 @@ afterEach(async () => {
   await cleanupLifecycleFixtures()
 })
 async function generic(kind = 'turn.context.titles') {
-  const f = await fixture({}, false, 'fictional-context')
+  const f = await fixture({}, 'fictional-context')
   const manifest = parsePluginManifest(
     Buffer.from(
       JSON.stringify({

@@ -20,13 +20,13 @@ import {
 const json = (value: unknown) => Buffer.from(JSON.stringify(value))
 describe('unsigned catalogue and package integrity', () => {
   it.each(['tar', 'tar.gz'] as const)(
-    'verifies an inert %s package, including the server, skill, service and UI inventory',
+    'verifies an inert %s package, including the server, service and UI inventory',
     (compression) => {
       const fixture = packageFixture({ compression })
       const result = verified(fixture)
       expect(result.manifest.id).toBe('fictional-bakery')
       expect(result.compatibility).toEqual({ host: true, tools: true, ui: true })
-      expect(result.filePaths).toHaveLength(5)
+      expect(result.filePaths).toHaveLength(4)
       expect(result.readFile('dist/recipe.mjs')).toEqual(
         Uint8Array.from(fixture.files.get('dist/recipe.mjs')!),
       )
@@ -244,7 +244,7 @@ describe('strict catalogue and manifest profiles', () => {
       ui: false,
     })
   })
-  it('accepts skills-only packages with explicit absent server and UI APIs', () => {
+  it('accepts metadata-only packages with explicit absent server and UI APIs', () => {
     const manifest = manifestFor()
     manifest.server = null
     manifest.toolApi = null
@@ -445,7 +445,7 @@ describe('bounded archive extraction without filesystem effects', () => {
   })
 })
 
-describe('payload inventory and existing skill rules', () => {
+describe('payload inventory', () => {
   it('checks the manifest digest even when the archive digest is valid', () => {
     const fixture = packageFixture()
     const catalogue = catalogueBytes({
@@ -492,27 +492,35 @@ describe('payload inventory and existing skill rules', () => {
       Uint8Array.from(Buffer.from(content)),
     )
   })
-  it('refuses a skill whose verified bytes disagree with existing Skills frontmatter or metadata', () => {
+  it('accepts built dependency metadata without scripts, including an empty scripts object', () => {
     const files = payload()
     files.set(
-      'bread/SKILL.md',
-      Buffer.from('---\nname: different\ndescription: A fictional bread skill.\n---\nInert.'),
+      'node_modules/fictional/package.json',
+      Buffer.from('{"name":"fictional","scripts":{}}'),
     )
-    expect(() => verified(packageFixture({ files }))).toThrow(PluginVerificationError)
-    const manifest = manifestFor(payload())
-    manifest.skills[0]!.path = 'ui/index.html'
-    expect(() => verified(packageFixture({ manifest }))).toThrow(PluginVerificationError)
+    expect(() => verified(packageFixture({ files }))).not.toThrow()
   })
-
-  it('keeps the Skills NUL, UTF-8 and byte-size checks', () => {
-    const manifest = manifestFor()
-    manifest.skills[0]!.reminder = 'invalid\0reminder'
-    expect(() => verified(packageFixture({ manifest }))).toThrow(PluginVerificationError)
-    for (const body of [Buffer.from([0xc0, 0xaf]), Buffer.alloc(65_537, 65)]) {
-      const files = payload()
-      files.set('bread/SKILL.md', body)
-      expect(() => verified(packageFixture({ files }))).toThrow(PluginVerificationError)
-    }
+  it('keeps older empty skill declarations valid and rejects nonempty declarations', () => {
+    const files = payload()
+    files.set('bread/SKILL.md', Buffer.from('A fictional packaged document.'))
+    const manifest = manifestFor(files)
+    expect(verified(packageFixture({ files, manifest })).manifest.skills).toEqual([])
+    expect(() =>
+      parsePluginManifest(
+        json({
+          ...manifest,
+          skills: [
+            {
+              name: 'bread',
+              version: '1.0.0',
+              path: 'bread/SKILL.md',
+              description: 'A fictional bread skill.',
+              reminder: 'Count fictional loaves.',
+            },
+          ],
+        }),
+      ),
+    ).toThrow(PluginVerificationError)
   })
   it('checks each file digest independently of an otherwise valid package', () => {
     const files = payload()

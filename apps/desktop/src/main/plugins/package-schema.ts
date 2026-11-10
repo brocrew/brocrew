@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { providerSchema } from '@brobot2/shared'
-import { SkillName, SkillDigest, SkillRelease, SKILL_LIMITS } from '../../shared/skills-catalogue'
+import { SkillName, SkillDigest, SkillRelease } from '../../shared/skills-catalogue'
 import { PLUGIN_LIMITS } from './package-digests'
 import { pluginPackagePath, PluginPackagePaths } from './package-path'
 import { strictPluginJson } from './strict-json'
@@ -100,7 +100,6 @@ const endpoint = z
   .string()
   .max(200)
   .regex(/^\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+$/)
-const skill = SkillRelease.omit({ body: true, bytes: true, sha256: true })
 const asset = z.strictObject({
   path,
   mime: z.enum([
@@ -161,7 +160,7 @@ const manifest = z.strictObject({
   sharedData: z.boolean().optional(),
   files: z.array(file).max(PLUGIN_LIMITS.files - 1),
   server: z.strictObject({ entry: path, mcpPath: endpoint, adminPath: endpoint }).nullable(),
-  skills: z.array(skill).max(SKILL_LIMITS.skills),
+  skills: z.array(z.never()).max(0),
   serviceTemplates: z
     .array(
       z.strictObject({
@@ -340,11 +339,6 @@ export function parsePluginManifest(bytes: Uint8Array): PluginManifest {
       )
         refusePlugin('invalid')
     } else if (result.server !== null) refusePlugin('invalid')
-  }
-  unique(result.skills.map((value) => value.name))
-  for (const entry of result.skills) {
-    reference(entry.path)
-    if (entry.path !== `${entry.name}/SKILL.md`) refusePlugin('path')
   }
   unique(result.serviceTemplates.map((value) => value.id))
   for (const entry of result.serviceTemplates) {

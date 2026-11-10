@@ -125,16 +125,6 @@ describe.skipIf(process.platform === 'win32')(
       const installId = f.state.exportActivation().entries[0]!.installId
       expect(f.controller.admitted(other, 'chrome', installId)).toBe(true)
     })
-    it('refuses declared plugin skills before prepare, staging or process start', async () => {
-      const f = await fixture({}, true)
-      await expect(f.controller.install(f.handle, 'chrome')).rejects.toMatchObject({
-        code: 'unavailable',
-        message: 'Plugin unavailable. Try again.',
-      })
-      expect(f.state.inspect().operations).toEqual([])
-      expect(f.state.inspect().guards).toEqual([])
-      expect(f.starts()).toBe(0)
-    })
     it('a workspace that attaches again is admitted for the current install and writes nothing', async () => {
       const f = await fixture()
       await f.controller.install(f.handle, 'chrome')
@@ -160,7 +150,7 @@ describe.skipIf(process.platform === 'win32')(
     it('logs a WhatsApp plugin out while it runs, then removes its code and its data; Chrome keeps its data', async () => {
       const shown = (events: string[]) =>
         events.filter((one) => /^(log-out|stop$|remove-code$|remove-data)/.test(one))
-      const f = await fixture({}, false, 'whatsapp')
+      const f = await fixture({}, 'whatsapp')
       await f.controller.install(f.handle, 'whatsapp')
       f.events.length = 0
       vi.stubGlobal(
