@@ -227,7 +227,8 @@ export function everythingOverTheWire<T>(stub: T, prefix = 'api', depth = 0): T 
       if (deeper !== member) changed = true
       continue
     }
-    if (NOT_THE_WIRE.has(name)) {
+    // This facade keeps callbacks local and invokes only with its own subscription ID.
+    if (NOT_THE_WIRE.has(name) || where === 'api.storage.watchCacheClear') {
       wrapped[name] = member
       continue
     }

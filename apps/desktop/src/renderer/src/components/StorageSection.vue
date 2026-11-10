@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type {
+  CacheClearState,
   StorageOverview,
   StorageDirectory,
   StorageLocation,
@@ -13,8 +14,23 @@ const overview = ref<StorageOverview | null>(null)
 const directory = ref<StorageDirectory | null>(null)
 const location = ref<StorageLocation | null>(null)
 const loading = ref(false)
-const acting = ref(false)
+const actionBusy = ref(false)
+const cacheState = ref<CacheClearState | null>(null)
+const acting = computed(
+  () =>
+    actionBusy.value ||
+    cacheState.value?.status === 'clearing' ||
+    cacheState.value?.status === 'pending',
+)
 const message = ref('')
+const cacheMessage = ref('')
+const notice = computed(() =>
+  cacheState.value?.status === 'pending'
+    ? 'Still clearing cache…'
+    : cacheState.value?.status === 'clearing'
+      ? 'Clearing cache…'
+      : cacheMessage.value || message.value,
+)
 const workspaceFolders = ref<StorageDirectory | null>(null)
 const foldersLoading = ref(false)
 const revealWord = /win/i.test(platformHere())
@@ -25,8 +41,10 @@ const revealWord = /win/i.test(platformHere())
 let live = true
 let request = 0
 let folderRequest = 0
+let stopCacheWatch: (() => void) | undefined
 onUnmounted(() => {
   live = false
+  stopCacheWatch?.()
   request++
   folderRequest++
 })
@@ -43,14 +61,16 @@ async function measure() {
   directory.value = null
   loading.value = true
   message.value = ''
+  cacheMessage.value = ''
   try {
     const result = await window.api.storage.measure()
     if (!live || mine !== request) return
     overview.value = result
-    if (result.partial)
+    if (result.partial || result.error)
       message.value = result.error
         ? storageError(result.error)
         : 'Some sizes could not be measured.'
+    return { request: mine, complete: !result.partial && !result.error }
   } catch (error) {
     if (live && mine === request) message.value = readableError(error)
   } finally {
@@ -64,6 +84,7 @@ async function open(next: StorageLocation) {
   directory.value = null
   loading.value = true
   message.value = ''
+  cacheMessage.value = ''
   try {
     const result = await window.api.storage.children(next)
     if (!live || mine !== request) return
@@ -79,6 +100,7 @@ async function open(next: StorageLocation) {
   }
 }
 async function reveal(next?: StorageLocation) {
+  cacheMessage.value = ''
   try {
     const result = await window.api.storage.reveal(next)
     if (live && !result.ok) message.value = storageError(result.error)
@@ -86,33 +108,73 @@ async function reveal(next?: StorageLocation) {
     if (live) message.value = readableError(error)
   }
 }
+function acceptCacheClear(state: CacheClearState | null) {
+  if (!live || !state) return
+  const previous = cacheState.value
+  if (
+    previous &&
+    (state.id < previous.id ||
+      (state.id === previous.id &&
+        (previous.status === 'complete' ||
+          previous.status === 'failed' ||
+          previous.status === state.status ||
+          (previous.status === 'pending' && state.status === 'clearing'))))
+  )
+    return
+  cacheState.value = state
+  if (state.status === 'failed') cacheMessage.value = storageError(state.error)
+  if (state.status === 'complete') void cacheCompleted(state.id)
+}
+function forgetFolders() {
+  folderRequest++
+  foldersLoading.value = false
+  workspaceFolders.value = null
+}
+async function cacheCompleted(id: number) {
+  forgetFolders()
+  const measured = await measure()
+  if (
+    live &&
+    measured?.complete &&
+    measured.request === request &&
+    cacheState.value?.id === id &&
+    cacheState.value.status === 'complete' &&
+    !message.value
+  )
+    message.value = 'Cache cleared.'
+}
 async function clearCache() {
-  await cleanStorage('cache')
+  if (acting.value) return
+  actionBusy.value = true
+  cacheMessage.value = ''
+  try {
+    const result = await window.api.storage.clearCache()
+    if (!live) return
+    if (result.ok) acceptCacheClear(result.operation)
+    else message.value = storageError(result.error)
+  } catch (error) {
+    if (live) message.value = readableError(error)
+  } finally {
+    if (live) actionBusy.value = false
+  }
 }
 async function pruneBackups() {
-  await cleanStorage('backups')
-}
-async function cleanStorage(part: 'cache' | 'backups') {
   if (acting.value) return
-  acting.value = true
+  actionBusy.value = true
+  cacheMessage.value = ''
   try {
-    const result = await (part === 'cache'
-      ? window.api.storage.clearCache()
-      : window.api.storage.pruneBackups())
+    const result = await window.api.storage.pruneBackups()
     if (!live) return
     if (!result.ok) {
       message.value = storageError(result.error)
       return
     }
-    folderRequest++
-    foldersLoading.value = false
-    workspaceFolders.value = null
+    forgetFolders()
     await measure()
-    if (part === 'cache' && live && !overview.value?.partial) message.value = 'Cache cleared.'
   } catch (error) {
     if (live) message.value = readableError(error)
   } finally {
-    if (live) acting.value = false
+    if (live) actionBusy.value = false
   }
 }
 async function showFolders(event: Event) {
@@ -145,7 +207,12 @@ function child(base: StorageLocation, name: string): StorageLocation {
 function root(part: StoragePartId): StorageLocation {
   return { part, segments: [] }
 }
-onMounted(measure)
+onMounted(() => {
+  void measure()
+  stopCacheWatch = window.api.storage.watchCacheClear(acceptCacheClear, (error) => {
+    if (live) message.value = readableError(error)
+  })
+})
 </script>
 <template>
   <div class="storage-page" data-cy="storage-page" :aria-busy="loading">
@@ -156,8 +223,8 @@ onMounted(measure)
     <p v-if="loading" class="storage-loading" role="status" data-cy="storage-loading">
       <span class="spinner" aria-hidden="true"></span>Measuring storage…
     </p>
-    <p v-if="message" class="storage-alert" role="status" data-cy="storage-message">
-      {{ message }}
+    <p v-if="notice" class="storage-alert" role="status" data-cy="storage-message">
+      {{ notice }}
     </p>
     <section v-if="overview" class="storage-overview">
       <p class="storage-total">

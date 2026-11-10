@@ -2,6 +2,8 @@ import type { IpcMain, IpcMainInvokeEvent, WebContents } from 'electron'
 import {
   STORAGE_CHANNELS,
   isStorageLocation,
+  type CacheClearReply,
+  type CacheClearState,
   type StorageAction,
   type StorageDirectory,
   type StorageLocation,
@@ -28,19 +30,43 @@ export function registerStorageIpc(
   const watched = new Map<WebContents, () => void>()
   let clearing = false
   let closed = false
-  const bounded = async <T>(pending: Promise<T>): Promise<T> => {
-    let timer: ReturnType<typeof setTimeout> | undefined
-    try {
-      return await Promise.race([
-        pending,
-        new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(() => reject(new Error('Cache operation timed out')), 15_000)
-        }),
-      ])
-    } finally {
-      clearTimeout(timer)
+  let nextCacheClear = 0
+  let cacheClear: CacheClearState | null = null
+  const cacheObservers = new Map<WebContents, { subscriptions: Set<number>; release: () => void }>()
+  const publishCacheClear = (state: CacheClearState): void => {
+    cacheClear = state
+    if (closed) return
+    for (const [sender, observer] of cacheObservers) {
+      try {
+        if (!sender.isDestroyed()) sender.send(STORAGE_CHANNELS.cacheClearChanged, state)
+      } catch {
+        observer.release()
+      }
     }
   }
+  ipc.handle(STORAGE_CHANNELS.watchCacheClear, (event, subscription: number) => {
+    if (closed || !actions.isAppWindow(event)) throw new Error('Storage is unavailable.')
+    const sender = event.sender
+    let observer = cacheObservers.get(sender)
+    if (!observer) {
+      const release = (): void => {
+        sender.removeListener('did-navigate', release)
+        sender.removeListener('render-process-gone', release)
+        sender.removeListener('destroyed', release)
+        cacheObservers.delete(sender)
+      }
+      installSessionRelease(sender, release)
+      observer = { subscriptions: new Set(), release }
+      cacheObservers.set(sender, observer)
+    }
+    observer.subscriptions.add(subscription)
+    return cacheClear
+  })
+  ipc.handle(STORAGE_CHANNELS.unwatchCacheClear, (event, subscription: number) => {
+    const observer = cacheObservers.get(event.sender)
+    observer?.subscriptions.delete(subscription)
+    if (observer?.subscriptions.size === 0) observer.release()
+  })
   const invalid = (): StorageAction => ({ ok: false, error: 'invalid-location' })
   const read = async (event: IpcMainInvokeEvent, request: StorageRequest) => {
     if (closed || !actions.isAppWindow(event))
@@ -115,20 +141,42 @@ export function registerStorageIpc(
       return { ok: false, error: storageReason(error) }
     }
   })
-  ipc.handle(STORAGE_CHANNELS.clearCache, async (event): Promise<StorageAction> => {
+  ipc.handle(STORAGE_CHANNELS.clearCache, async (event): Promise<CacheClearReply> => {
     if (closed || !actions.isAppWindow(event)) return { ok: false, error: 'unavailable' }
     if (clearing) return { ok: false, error: 'busy' }
     clearing = true
+    const id = ++nextCacheClear
+    publishCacheClear({ id, status: 'clearing' })
+    let timer: ReturnType<typeof setTimeout> | undefined
     const pending = Promise.resolve()
       .then(() => actions.clearCache())
-      .finally(() => {
+      .then(
+        (): CacheClearState => ({ id, status: 'complete' }),
+        (error: unknown): CacheClearState => ({
+          id,
+          status: 'failed',
+          error: storageReason(error),
+        }),
+      )
+      .then((state) => {
         clearing = false
+        publishCacheClear(state)
+        return state
       })
     try {
-      await bounded(pending)
-      return { ok: true }
-    } catch (error) {
-      return { ok: false, error: storageReason(error) }
+      const operation = await Promise.race([
+        pending,
+        new Promise<CacheClearState>((resolve) => {
+          timer = setTimeout(() => {
+            const state: CacheClearState = { id, status: 'pending' }
+            publishCacheClear(state)
+            resolve(state)
+          }, 15_000)
+        }),
+      ])
+      return { ok: true, operation }
+    } finally {
+      clearTimeout(timer)
     }
   })
   ipc.handle(STORAGE_CHANNELS.pruneBackups, async (event): Promise<StorageAction> => {
@@ -146,6 +194,7 @@ export function registerStorageIpc(
   })
   return () => {
     closed = true
+    for (const observer of cacheObservers.values()) observer.release()
     service.close()
     for (const unwatch of watched.values()) unwatch()
     watched.clear()

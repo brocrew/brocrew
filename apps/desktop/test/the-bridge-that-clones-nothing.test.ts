@@ -1,7 +1,8 @@
+import { EventEmitter } from 'node:events'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { reactive, ref } from 'vue'
 import { createAgentStore } from '../src/renderer/src/lib/agent-store'
 import { createSessionStore } from '../src/renderer/src/lib/session-store'
@@ -9,7 +10,7 @@ import { DEFAULT_CAPABILITIES, type CapabilityGrant } from '../src/shared/capabi
 import { NOT_THE_WIRE, asTheWireWouldCarry, everythingOverTheWire } from './lib/the-wire'
 import type { AgentIdentities, RuntimeBridge, RuntimeCommandKind } from '../src/shared/runtime-ipc'
 import { storageBridge } from '../src/preload/storage'
-import { STORAGE_CHANNELS } from '../src/shared/storage'
+import { STORAGE_CHANNELS, type CacheClearState } from '../src/shared/storage'
 
 /**
  * # 🔴 The bridge that clones nothing (361)
@@ -768,7 +769,9 @@ function preloadSurface(): Map<string, string> {
   expect(surface.get('storage')).toMatch(/^ {2}storage: storageBridge\(ipcRenderer\),/)
   surface.delete('storage')
   const storage = membersOf(
-    withoutProse(source('src/preload/storage.ts')).replace(/^ {4}(?=\w)/gm, '  '),
+    withoutProse(source('src/preload/storage.ts'))
+      .split('return Object.freeze({')[1]!
+      .replace(/^ {4}(?=\w)/gm, '  '),
   )
   expect([...storage.keys()].sort()).toEqual([
     'children',
@@ -776,6 +779,7 @@ function preloadSurface(): Map<string, string> {
     'measure',
     'pruneBackups',
     'reveal',
+    'watchCacheClear',
   ])
   for (const [name, body] of storage)
     surface.set(`storage.${name}`, body.replaceAll('ipc.invoke', 'ipcRenderer.invoke'))
@@ -810,7 +814,7 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
   const invokes = (body: string): boolean =>
     body.includes('ipcRenderer.invoke') || /(?:^|[^\w.])command\(/.test(body)
 
-  it('every Storage factory method is an invoke member, with no namespace exemption', () => {
+  it('Storage has five payload invokes and one local listener facade with internal ID invokes', () => {
     expect(surface.has('storage')).toBe(false)
     const storage = [...surface].filter(([name]) => name.startsWith('storage.'))
     expect(storage.map(([name]) => name).sort()).toEqual([
@@ -819,16 +823,25 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
       'storage.measure',
       'storage.pruneBackups',
       'storage.reveal',
+      'storage.watchCacheClear',
     ])
-    for (const [name, body] of storage) {
+    const actions = storage.filter(([name]) => name !== 'storage.watchCacheClear')
+    expect(actions).toHaveLength(5)
+    for (const [name, body] of actions) {
       expect(invokes(body), name).toBe(true)
       expect(NOT_THE_WIRE.has(name), name).toBe(false)
     }
+    const watch = surface.get('storage.watchCacheClear')!
+    expect(invokes(watch)).toBe(true)
+    expect(NOT_THE_WIRE.has('storage.watchCacheClear')).toBe(false)
+    expect(NOT_THE_WIRE.has('watchCacheClear')).toBe(false)
   })
 
   it('the real Storage factory carries plain arguments and refuses reactive locations over the wire', async () => {
     const seen: { channel: string; arguments: unknown[] }[] = []
     const bridge = storageBridge({
+      on: vi.fn(),
+      removeListener: vi.fn(),
       invoke: async (channel: string, ...args: unknown[]) => {
         seen.push({ channel, arguments: asTheWireWouldCarry(channel, args) })
         return { ok: true }
@@ -855,6 +868,122 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
       /would not survive ipcRenderer\.invoke/,
     )
     expect(seen).toHaveLength(5)
+  })
+
+  it('keeps cache callbacks local while the real factory clones only numeric subscription IDs', async () => {
+    const events = new EventEmitter()
+    const seen: { channel: string; arguments: unknown[] }[] = []
+    let finish!: (state: CacheClearState | null) => void
+    const snapshot = new Promise<CacheClearState | null>((resolve) => {
+      finish = resolve
+    })
+    const on = vi.fn()
+    on.mockImplementation((channel: string, listener: (...args: unknown[]) => void) => {
+      events.on(channel, listener)
+    })
+    const removeListener = vi.fn()
+    removeListener.mockImplementation((channel: string, listener: (...args: unknown[]) => void) => {
+      events.removeListener(channel, listener)
+    })
+    const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
+      seen.push({ channel, arguments: asTheWireWouldCarry(channel, args) })
+      if (channel === STORAGE_CHANNELS.watchCacheClear) {
+        expect(events.listenerCount(STORAGE_CHANNELS.cacheClearChanged)).toBe(1)
+        return snapshot
+      }
+    })
+    const real = storageBridge({ on, removeListener, invoke })
+    const watch = vi.fn(real.watchCacheClear)
+    const wired = everythingOverTheWire({ storage: { ...real, watchCacheClear: watch } })
+    const onState = vi.fn()
+    const onError = vi.fn()
+    expect(wired.storage.watchCacheClear).toBe(watch)
+    const stop = wired.storage.watchCacheClear(onState, onError)
+    expect(watch).toHaveBeenCalledExactlyOnceWith(onState, onError)
+    expect(typeof stop).toBe('function')
+    const pending: CacheClearState = { id: 1, status: 'pending' }
+    events.emit(STORAGE_CHANNELS.cacheClearChanged, {}, pending)
+    expect(onState).toHaveBeenCalledExactlyOnceWith(pending)
+    expect(onState.mock.calls[0]![0]).toBe(pending)
+    const complete: CacheClearState = { id: 1, status: 'complete' }
+    finish(complete)
+    await invoke.mock.results[0]!.value
+    expect(onState).toHaveBeenLastCalledWith(complete)
+    stop()
+    expect(events.listenerCount(STORAGE_CHANNELS.cacheClearChanged)).toBe(0)
+    events.emit(STORAGE_CHANNELS.cacheClearChanged, {}, pending)
+    expect(onState).toHaveBeenCalledTimes(2)
+    expect(onError).not.toHaveBeenCalled()
+    expect(seen).toEqual([
+      { channel: STORAGE_CHANNELS.watchCacheClear, arguments: [1] },
+      { channel: STORAGE_CHANNELS.unwatchCacheClear, arguments: [1] },
+    ])
+    const location = reactive({ part: 'workspace' as const, segments: ['one'] })
+    await expect(wired.storage.children(location)).rejects.toThrow(
+      /would not survive ipcRenderer\.invoke/,
+    )
+    await expect(wired.storage.reveal(location)).rejects.toThrow(
+      /would not survive ipcRenderer\.invoke/,
+    )
+    expect(seen).toHaveLength(2)
+  })
+
+  it('delivers cache snapshot errors locally and suppresses a snapshot after unsubscribe', async () => {
+    const events = new EventEmitter()
+    const failure = new Error('Snapshot could not be read')
+    let finish!: (state: CacheClearState | null) => void
+    const snapshot = new Promise<CacheClearState | null>((resolve) => {
+      finish = resolve
+    })
+    const seen: { channel: string; arguments: unknown[] }[] = []
+    const on = vi.fn()
+    on.mockImplementation((channel: string, listener: (...args: unknown[]) => void) => {
+      events.on(channel, listener)
+    })
+    const removeListener = vi.fn()
+    removeListener.mockImplementation((channel: string, listener: (...args: unknown[]) => void) => {
+      events.removeListener(channel, listener)
+    })
+    const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
+      seen.push({ channel, arguments: asTheWireWouldCarry(channel, args) })
+      if (channel === STORAGE_CHANNELS.watchCacheClear) {
+        expect(events.listenerCount(STORAGE_CHANNELS.cacheClearChanged)).toBe(1)
+        if (args[0] === 1) throw failure
+        return snapshot
+      }
+    })
+    const real = storageBridge({ on, removeListener, invoke })
+    const wired = everythingOverTheWire({ storage: real })
+    const onState = vi.fn()
+    const onError = vi.fn()
+    const stopError = wired.storage.watchCacheClear(onState, onError)
+    await expect(invoke.mock.results[0]!.value).rejects.toBe(failure)
+    expect(onError).toHaveBeenCalledExactlyOnceWith(failure)
+    expect(onError.mock.calls[0]![0]).toBe(failure)
+    stopError()
+    const stopLate = wired.storage.watchCacheClear(onState, onError)
+    stopLate()
+    finish({ id: 2, status: 'complete' })
+    await invoke.mock.results[2]!.value
+    events.emit(STORAGE_CHANNELS.cacheClearChanged, {}, { id: 2, status: 'complete' })
+    expect(onState).not.toHaveBeenCalled()
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(events.listenerCount(STORAGE_CHANNELS.cacheClearChanged)).toBe(0)
+    expect(seen).toEqual([
+      { channel: STORAGE_CHANNELS.watchCacheClear, arguments: [1] },
+      { channel: STORAGE_CHANNELS.unwatchCacheClear, arguments: [1] },
+      { channel: STORAGE_CHANNELS.watchCacheClear, arguments: [2] },
+      { channel: STORAGE_CHANNELS.unwatchCacheClear, arguments: [2] },
+    ])
+  })
+
+  it('does not pass a same-named callback through outside the exact cache subscription path', async () => {
+    const other = vi.fn<(listener: () => void) => Promise<void>>()
+    const wired = everythingOverTheWire({ other: { watchCacheClear: other } })
+    await expect(wired.other.watchCacheClear(() => {})).rejects.toThrow(
+      /would not survive ipcRenderer\.invoke/,
+    )
+    expect(other).not.toHaveBeenCalled()
   })
 
   it('the separate theme surface classifies each verb and exempts only its subscription', () => {

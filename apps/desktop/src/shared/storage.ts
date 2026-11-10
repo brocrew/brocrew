@@ -54,11 +54,23 @@ export interface StorageDirectory {
 }
 export type StorageAction =
   { readonly ok: true } | { readonly ok: false; readonly error: StorageError }
+export type CacheClearState = { readonly id: number } & (
+  | { readonly status: 'clearing' | 'pending' | 'complete' }
+  | { readonly status: 'failed'; readonly error: StorageError }
+)
+/** An accepted request carries its state; only complete means the cache was cleared. */
+export type CacheClearReply =
+  | { readonly ok: true; readonly operation: CacheClearState }
+  | { readonly ok: false; readonly error: StorageError }
 export interface StorageBridge {
   measure(): Promise<StorageOverview>
   children(location: StorageLocation): Promise<StorageDirectory>
   reveal(location?: StorageLocation): Promise<StorageAction>
-  clearCache(): Promise<StorageAction>
+  clearCache(): Promise<CacheClearReply>
+  watchCacheClear(
+    onState: (state: CacheClearState | null) => void,
+    onError: (error: unknown) => void,
+  ): () => void
   pruneBackups(): Promise<StorageAction>
 }
 export const STORAGE_CHANNELS = {
@@ -67,6 +79,9 @@ export const STORAGE_CHANNELS = {
   reveal: 'storage:reveal',
   clearCache: 'storage:clear-cache',
   pruneBackups: 'storage:prune-backups',
+  watchCacheClear: 'storage:watch-cache-clear',
+  unwatchCacheClear: 'storage:unwatch-cache-clear',
+  cacheClearChanged: 'storage:cache-clear-changed',
 } as const
 
 export function isStorageLocation(value: unknown): value is StorageLocation {

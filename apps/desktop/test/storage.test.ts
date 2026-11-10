@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { EventEmitter } from 'node:events'
 import { Worker } from 'node:worker_threads'
-import type { IpcMain, IpcMainInvokeEvent, WebContents } from 'electron'
+import type { IpcMain, IpcMainInvokeEvent, IpcRenderer, WebContents } from 'electron'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import {
   StorageEngine,
@@ -15,7 +15,7 @@ import {
 import { StorageService } from '../src/main/storage/service'
 import { clearHttpCache, httpCacheFolder } from '../src/main/storage/cache'
 import { registerStorageIpc } from '../src/main/storage/ipc'
-import { STORAGE_CHANNELS, isStorageLocation } from '../src/shared/storage'
+import { STORAGE_CHANNELS, isStorageLocation, type CacheClearState } from '../src/shared/storage'
 import { storageBridge } from '../src/preload/storage'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 
@@ -541,6 +541,7 @@ function harness() {
   } as Pick<IpcMain, 'handle' | 'removeHandler'>
   const sender = Object.assign(new EventEmitter(), {
     isDestroyed: () => false,
+    send: vi.fn(),
   }) as unknown as WebContents
   const event = { sender } as IpcMainInvokeEvent
   return {
@@ -608,7 +609,10 @@ it('cache clear uses only the narrow cache API and preserves unrelated state in 
     reveal,
     isAppWindow: () => true,
   })
-  expect(await h.invoke(STORAGE_CHANNELS.clearCache)).toEqual({ ok: true })
+  expect(await h.invoke(STORAGE_CHANNELS.clearCache)).toEqual({
+    ok: true,
+    operation: { id: 1, status: 'complete' },
+  })
   expect(clear).toHaveBeenCalledExactlyOnceWith()
   expect(run).toHaveBeenCalledExactlyOnceWith({
     kind: 'reveal',
@@ -670,7 +674,10 @@ it('refuses native cache clear when its mapped root is linked or outside the dat
       reveal: () => {},
       isAppWindow: () => true,
     })
-    expect(await h.invoke(STORAGE_CHANNELS.clearCache)).toEqual({ ok: false, error: reason })
+    expect(await h.invoke(STORAGE_CHANNELS.clearCache)).toEqual({
+      ok: true,
+      operation: { id: 1, status: 'failed', error: reason },
+    })
     expect(clear).not.toHaveBeenCalled()
     stop()
   }
@@ -754,7 +761,12 @@ it.each(['did-navigate', 'render-process-gone', 'destroyed'])(
 
 it('the preload forwards only the declared Storage methods and typed locations', async () => {
   const invoke = vi.fn(async () => ({ ok: true }))
-  const bridge = storageBridge({ invoke })
+  const ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'> = {
+    invoke,
+    on: vi.fn(),
+    removeListener: vi.fn(),
+  }
+  const bridge = storageBridge(ipc)
   const location = { part: 'workspace' as const, segments: ['one'] }
   await bridge.measure()
   await bridge.children(location)
@@ -769,4 +781,125 @@ it('the preload forwards only the declared Storage methods and typed locations',
     [STORAGE_CHANNELS.clearCache],
     [STORAGE_CHANNELS.pruneBackups],
   ])
+})
+
+it.each(['complete', 'failed'] as const)(
+  'releases the initial cache wait but retains busy ownership until real %s settlement',
+  async (status) => {
+    vi.useFakeTimers()
+    const h = harness()
+    let resolve!: () => void
+    let reject!: (error: Error) => void
+    const work = new Promise<void>((yes, no) => {
+      resolve = yes
+      reject = no
+    })
+    const clear = vi.fn(() => work)
+    const prune = vi.fn(async () => {})
+    const stop = registerStorageIpc(h.ipc, { close: vi.fn() } as unknown as StorageService, {
+      reveal: () => {},
+      clearCache: clear,
+      pruneBackups: prune,
+      isAppWindow: () => true,
+    })
+    try {
+      expect(await h.invoke(STORAGE_CHANNELS.watchCacheClear, 1)).toBeNull()
+      const reply = h.invoke(STORAGE_CHANNELS.clearCache)
+      await vi.advanceTimersByTimeAsync(15_000)
+      expect(await reply).toEqual({ ok: true, operation: { id: 1, status: 'pending' } })
+      expect(await h.invoke(STORAGE_CHANNELS.clearCache)).toEqual({ ok: false, error: 'busy' })
+      expect(await h.invoke(STORAGE_CHANNELS.pruneBackups)).toEqual({ ok: false, error: 'busy' })
+      expect(clear).toHaveBeenCalledTimes(1)
+      expect(prune).not.toHaveBeenCalled()
+      await h.invoke(STORAGE_CHANNELS.unwatchCacheClear, 1)
+      const sent = vi.mocked(h.sender.send).mock.calls.length
+      if (status === 'complete') resolve()
+      else reject(new Error('fictional late cache error'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(vi.mocked(h.sender.send).mock.calls).toHaveLength(sent)
+      const terminal =
+        status === 'complete' ? { id: 1, status } : { id: 1, status, error: 'unavailable' }
+      expect(await h.invoke(STORAGE_CHANNELS.watchCacheClear, 2)).toEqual(terminal)
+      expect(await h.invoke(STORAGE_CHANNELS.pruneBackups)).toEqual({ ok: true })
+      expect(prune).toHaveBeenCalledTimes(1)
+      expect(await h.invoke(STORAGE_CHANNELS.clearCache)).toEqual({
+        ok: true,
+        operation: { ...terminal, id: 2 },
+      })
+      expect(clear).toHaveBeenCalledTimes(2)
+    } finally {
+      stop()
+    }
+  },
+)
+
+it('cache observers release on navigation without cancelling work or losing the retained outcome', async () => {
+  vi.useFakeTimers()
+  const h = harness()
+  let finish!: () => void
+  const work = new Promise<void>((resolve) => {
+    finish = resolve
+  })
+  const stop = registerStorageIpc(h.ipc, { close: vi.fn() } as unknown as StorageService, {
+    reveal: () => {},
+    clearCache: () => work,
+    pruneBackups: async () => {},
+    isAppWindow: () => true,
+  })
+  try {
+    await h.invoke(STORAGE_CHANNELS.watchCacheClear, 1)
+    await h.invoke(STORAGE_CHANNELS.watchCacheClear, 2)
+    await h.invoke(STORAGE_CHANNELS.unwatchCacheClear, 1)
+    const reply = h.invoke(STORAGE_CHANNELS.clearCache)
+    await vi.advanceTimersByTimeAsync(15_000)
+    await reply
+    expect(h.sender.send).toHaveBeenLastCalledWith(STORAGE_CHANNELS.cacheClearChanged, {
+      id: 1,
+      status: 'pending',
+    })
+    h.sender.emit('did-navigate')
+    const sent = vi.mocked(h.sender.send).mock.calls.length
+    finish()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(vi.mocked(h.sender.send).mock.calls).toHaveLength(sent)
+    expect(await h.invoke(STORAGE_CHANNELS.watchCacheClear, 3)).toEqual({
+      id: 1,
+      status: 'complete',
+    })
+  } finally {
+    stop()
+  }
+  for (const event of ['did-navigate', 'render-process-gone', 'destroyed'])
+    expect(h.sender.listenerCount(event)).toBe(0)
+})
+
+it('the preload listens before reading the cache snapshot and retires late snapshot delivery on unsubscribe', async () => {
+  const events = new EventEmitter()
+  let snapshot!: (value: CacheClearState | null) => void
+  const initial = new Promise<CacheClearState | null>((resolve) => {
+    snapshot = resolve
+  })
+  const ipc = Object.assign(events, {
+    invoke: vi.fn((channel: string) => {
+      if (channel === STORAGE_CHANNELS.watchCacheClear) {
+        expect(events.listenerCount(STORAGE_CHANNELS.cacheClearChanged)).toBe(1)
+        return initial
+      }
+      return Promise.resolve()
+    }),
+  }) as unknown as Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>
+  const bridge = storageBridge(ipc)
+  const seen = vi.fn()
+  const error = vi.fn()
+  const stop = bridge.watchCacheClear(seen, error)
+  events.emit(STORAGE_CHANNELS.cacheClearChanged, {}, { id: 1, status: 'complete' })
+  expect(seen).toHaveBeenCalledExactlyOnceWith({ id: 1, status: 'complete' })
+  stop()
+  snapshot({ id: 1, status: 'pending' })
+  await initial
+  events.emit(STORAGE_CHANNELS.cacheClearChanged, {}, { id: 2, status: 'pending' })
+  expect(seen).toHaveBeenCalledTimes(1)
+  expect(error).not.toHaveBeenCalled()
+  expect(events.listenerCount(STORAGE_CHANNELS.cacheClearChanged)).toBe(0)
+  expect(ipc.invoke).toHaveBeenLastCalledWith(STORAGE_CHANNELS.unwatchCacheClear, 1)
 })

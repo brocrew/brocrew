@@ -3,6 +3,8 @@ import { nextTick } from 'vue'
 import StorageSection from '../../src/renderer/src/components/StorageSection.vue'
 import {
   STORAGE_PART_IDS,
+  type CacheClearState,
+  type CacheClearReply,
   type StorageBridge,
   type StorageOverview,
   type StorageDirectory,
@@ -32,7 +34,14 @@ function setup(over: Partial<StorageBridge> = {}) {
     measure: vi.fn(async () => overview),
     children: vi.fn(async () => directory),
     reveal: vi.fn(async () => ({ ok: true as const })),
-    clearCache: vi.fn(async () => ({ ok: true as const })),
+    clearCache: vi.fn<StorageBridge['clearCache']>(async () => ({
+      ok: true,
+      operation: { id: 1, status: 'complete' },
+    })),
+    watchCacheClear: vi.fn<StorageBridge['watchCacheClear']>((onState) => {
+      onState(null)
+      return () => {}
+    }),
     pruneBackups: vi.fn(async () => ({ ok: true as const })),
     ...over,
   } satisfies StorageBridge
@@ -176,4 +185,250 @@ it('names attachments honestly and shows links without a size or follow action',
   expect(row.textContent).not.toContain('B')
   expect(row.querySelectorAll('a,button')).toHaveLength(0)
   expect(bridge.reveal).not.toHaveBeenCalled()
+})
+
+it('keeps pending cache work busy and applies real completion once despite an older invoke reply', async () => {
+  let update!: (state: CacheClearState | null) => void
+  let reply!: (value: CacheClearReply) => void
+  const unsub = vi.fn()
+  const { m, bridge } = setup({
+    watchCacheClear: (listener) => {
+      update = listener
+      return unsub
+    },
+    clearCache: vi.fn(
+      () =>
+        new Promise<CacheClearReply>((resolve) => {
+          reply = resolve
+        }),
+    ),
+  })
+  await settle()
+  m.q('storage-clear-cache').click()
+  update({ id: 1, status: 'pending' })
+  await settle()
+  expect(m.q('storage-message').textContent).toBe('Still clearing cache…')
+  expect((m.q('storage-prune-backups') as HTMLButtonElement).disabled).toBe(true)
+  m.q('storage-clear-cache').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  m.q('storage-prune-backups').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  expect(bridge.clearCache).toHaveBeenCalledTimes(1)
+  expect(bridge.pruneBackups).not.toHaveBeenCalled()
+  expect(bridge.measure).toHaveBeenCalledTimes(1)
+  update({ id: 1, status: 'complete' })
+  await settle()
+  reply({ ok: true, operation: { id: 1, status: 'pending' } })
+  update({ id: 1, status: 'complete' })
+  update({ id: 1, status: 'clearing' })
+  await settle()
+  expect(m.q('storage-message').textContent).toBe('Cache cleared.')
+  expect(bridge.measure).toHaveBeenCalledTimes(2)
+  expect((m.q('storage-clear-cache') as HTMLButtonElement).disabled).toBe(false)
+  m.unmount()
+  expect(unsub).toHaveBeenCalledTimes(1)
+})
+
+it('shows retained pending and late failure on reopening without applying events to an unmounted Settings page', async () => {
+  let current: CacheClearState = { id: 7, status: 'pending' }
+  const listeners = new Set<(state: CacheClearState | null) => void>()
+  const watch: StorageBridge['watchCacheClear'] = (listener) => {
+    listeners.add(listener)
+    listener(current)
+    return () => {
+      listeners.delete(listener)
+    }
+  }
+  const first = setup({ watchCacheClear: watch })
+  await settle()
+  expect(first.m.q('storage-message').textContent).toBe('Still clearing cache…')
+  first.m.unmount()
+  expect(listeners.size).toBe(0)
+  current = { id: 7, status: 'failed', error: 'unavailable' }
+  const reopened = setup({
+    watchCacheClear: watch,
+    measure: vi.fn(async () => ({ ...overview, partial: true })),
+  })
+  await settle()
+  expect(reopened.m.q('storage-message').textContent).toContain('Storage could not be read.')
+  expect((reopened.m.q('storage-clear-cache') as HTMLButtonElement).disabled).toBe(false)
+  expect(reopened.bridge.clearCache).not.toHaveBeenCalled()
+  expect(reopened.bridge.measure).toHaveBeenCalledTimes(1)
+  expect(first.bridge.measure).toHaveBeenCalledTimes(1)
+})
+
+it('does not let a delayed old cache snapshot or unmounted completion overwrite a newer operation', async () => {
+  let update!: (state: CacheClearState | null) => void
+  const { m, bridge } = setup({
+    watchCacheClear: (listener) => {
+      update = listener
+      return () => {}
+    },
+  })
+  await settle()
+  update({ id: 2, status: 'pending' })
+  update({ id: 1, status: 'failed', error: 'unavailable' })
+  update(null)
+  await settle()
+  expect(m.q('storage-message').textContent).toBe('Still clearing cache…')
+  m.unmount()
+  update({ id: 2, status: 'complete' })
+  await settle()
+  expect(bridge.measure).toHaveBeenCalledTimes(1)
+})
+
+it('reports a real rejection after the pending invoke has returned without measuring or leaving buttons busy', async () => {
+  let update!: (state: CacheClearState | null) => void
+  const { m, bridge } = setup({
+    watchCacheClear: (listener) => {
+      update = listener
+      return () => {}
+    },
+    clearCache: vi.fn<StorageBridge['clearCache']>(async () => ({
+      ok: true,
+      operation: { id: 1, status: 'pending' },
+    })),
+  })
+  await settle()
+  m.q('storage-clear-cache').click()
+  await settle()
+  expect(m.q('storage-message').textContent).toBe('Still clearing cache…')
+  update({ id: 1, status: 'failed', error: 'unavailable' })
+  await settle()
+  expect(m.q('storage-message').textContent).toContain('Storage could not be read.')
+  expect(m.host.textContent).not.toContain('Cache cleared.')
+  expect(bridge.measure).toHaveBeenCalledTimes(1)
+  expect((m.q('storage-clear-cache') as HTMLButtonElement).disabled).toBe(false)
+})
+
+it.each(['missing', 'complete'] as const)(
+  'keeps a rejected cache remeasurement visible when the earlier overview is %s',
+  async (earlier) => {
+    let update!: (state: CacheClearState | null) => void
+    let finishInitial!: (value: StorageOverview) => void
+    let rejectRefresh!: (error: Error) => void
+    const initial = new Promise<StorageOverview>((resolve) => {
+      finishInitial = resolve
+    })
+    const refresh = new Promise<StorageOverview>((_resolve, reject) => {
+      rejectRefresh = reject
+    })
+    if (earlier === 'complete') finishInitial(overview)
+    const measure = vi
+      .fn<StorageBridge['measure']>()
+      .mockReturnValueOnce(initial)
+      .mockReturnValueOnce(refresh)
+    const { m } = setup({
+      measure,
+      watchCacheClear: (listener) => {
+        update = listener
+        return () => {}
+      },
+    })
+    await settle()
+    update({ id: 1, status: 'complete' })
+    rejectRefresh(new Error('Cache remeasurement failed'))
+    await settle()
+    expect(m.q('storage-message').textContent).toContain('Cache remeasurement failed')
+    expect(m.host.textContent).not.toContain('Cache cleared.')
+    finishInitial(overview)
+    await settle()
+    expect(m.q('storage-message').textContent).toContain('Cache remeasurement failed')
+    expect(m.host.textContent).not.toContain('Cache cleared.')
+    expect(measure).toHaveBeenCalledTimes(2)
+  },
+)
+
+it('does not announce cache success after a newer directory request supersedes its refresh', async () => {
+  let update!: (state: CacheClearState | null) => void
+  let finishRefresh!: (value: StorageOverview) => void
+  const refresh = new Promise<StorageOverview>((resolve) => {
+    finishRefresh = resolve
+  })
+  const measure = vi
+    .fn<StorageBridge['measure']>()
+    .mockResolvedValueOnce(overview)
+    .mockReturnValueOnce(refresh)
+  const { m, bridge } = setup({
+    measure,
+    children: vi.fn(async () => ({
+      ...directory,
+      partial: true,
+      error: 'invalid-location' as const,
+    })),
+    watchCacheClear: (listener) => {
+      update = listener
+      return () => {}
+    },
+  })
+  await settle()
+  update({ id: 1, status: 'pending' })
+  await nextTick()
+  expect(m.q('storage-message').textContent).toBe('Still clearing cache…')
+  update({ id: 1, status: 'complete' })
+  await nextTick()
+  const drill = m.host.querySelector<HTMLButtonElement>('button[aria-label="Open Workspace"]')!
+  expect(drill.disabled).toBe(false)
+  drill.click()
+  await settle()
+  expect(bridge.children).toHaveBeenCalledWith({ part: 'workspace', segments: [] })
+  expect(m.q('storage-message').textContent).toContain('This folder is no longer available.')
+  finishRefresh(overview)
+  await settle()
+  expect(m.all('storage-directory')).toHaveLength(1)
+  expect(m.q('storage-message').textContent).toContain('This folder is no longer available.')
+  expect(m.host.textContent).not.toContain('Cache cleared.')
+  expect(measure).toHaveBeenCalledTimes(2)
+})
+
+it.each(['partial', 'rejection'] as const)(
+  'shows a later largest-folders %s instead of retaining cache success',
+  async (outcome) => {
+    const children = vi.fn<StorageBridge['children']>()
+    if (outcome === 'partial') children.mockResolvedValue({ ...directory, partial: true })
+    else children.mockRejectedValue(new Error('Folder measurement failed'))
+    const { m, bridge } = setup({ children })
+    await settle()
+    m.q('storage-clear-cache').click()
+    await settle()
+    expect(m.q('storage-message').textContent).toBe('Cache cleared.')
+    m.host.querySelector<HTMLElement>('details.largest-folders summary')!.click()
+    await settle()
+    expect(children).toHaveBeenCalledTimes(1)
+    expect(m.q('storage-message').textContent).toContain(
+      outcome === 'partial' ? 'Some sizes could not be measured.' : 'Folder measurement failed',
+    )
+    expect(m.host.textContent).not.toContain('Cache cleared.')
+    expect(bridge.measure).toHaveBeenCalledTimes(2)
+  },
+)
+
+it('does not overwrite a folder error that arrives while the accepted cache refresh is still pending', async () => {
+  let update!: (state: CacheClearState | null) => void
+  let finishRefresh!: (value: StorageOverview) => void
+  const refresh = new Promise<StorageOverview>((resolve) => {
+    finishRefresh = resolve
+  })
+  const measure = vi
+    .fn<StorageBridge['measure']>()
+    .mockResolvedValueOnce(overview)
+    .mockReturnValueOnce(refresh)
+  const { m, bridge } = setup({
+    measure,
+    children: vi.fn(async () => ({ ...directory, partial: true })),
+    watchCacheClear: (listener) => {
+      update = listener
+      return () => {}
+    },
+  })
+  await settle()
+  update({ id: 1, status: 'complete' })
+  await nextTick()
+  m.host.querySelector<HTMLElement>('details.largest-folders summary')!.click()
+  await settle()
+  expect(m.q('storage-message').textContent).toBe('Some sizes could not be measured.')
+  finishRefresh(overview)
+  await settle()
+  expect(bridge.children).toHaveBeenCalledTimes(1)
+  expect(m.q('storage-message').textContent).toBe('Some sizes could not be measured.')
+  expect(m.host.textContent).not.toContain('Cache cleared.')
+  expect(measure).toHaveBeenCalledTimes(2)
 })
