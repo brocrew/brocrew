@@ -20,7 +20,7 @@ export const png = (width: number, height: number, bytes = 40_000): AssetFacts =
   height,
   animated: false,
 })
-export const jpeg = (width: number, height: number, bytes = 900_000): AssetFacts => ({
+const jpeg = (width: number, height: number, bytes = 900_000): AssetFacts => ({
   type: 'jpeg',
   bytes,
   width,

@@ -115,13 +115,6 @@ export function filesIn(root: string): Record<string, string> {
   return files
 }
 
-/** `files` without the entries under `folder`. */
-export function without(files: Record<string, string>, folder: string): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(files).filter(([path]) => !path.startsWith(`${folder}/`)),
-  )
-}
-
 /** The step the restore journal on disk names, or null when there is none. */
 export function journalStep(userData: string): string | null {
   const path = journalFile(userData)
