@@ -1406,6 +1406,7 @@ describe('what an agent was given', () => {
   it('refused, in plain words: a conversation not held, a place with no row, and a place before any message', async () => {
     const host = buildHost()
     await expect(host.whatTheModelGot('sess_nobody', 0)).rejects.toThrow(/no record/)
+    await expect(host.whatThisAgentWasGiven('sess_nobody')).rejects.toThrow(/no record/)
     const lead = await open(host, 'claude', 'lead')
     await expect(host.whatTheModelGot(lead, 999_999)).rejects.toThrow(
       'There is no row at that place in this conversation’s record.',

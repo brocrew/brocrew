@@ -296,6 +296,7 @@ describe('an answer that never lands is bounded', () => {
       const parked = park(handle, 'respondUserInput')
       const door = host.respondUserInput(id, card, THIS, window)
       expect(await within(SOON_MS, door)).toEqual({ state: 'resolved', value: UNACKNOWLEDGED })
+      expect(parked.calls).toBe(1)
       expect(decisions(id)).toEqual([])
       await parked.land()
       await letItSettle()

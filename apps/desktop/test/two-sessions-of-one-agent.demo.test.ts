@@ -473,7 +473,7 @@ describe('two sessions of one agent', () => {
       expect((await gives(overThere, 'a second over there')).agent).toBe(mineThere)
     })
 
-    it('and REOPENING one is ungated too — which is the person’s step 4, exactly', async () => {
+    it('reopening a stopped conversation of one identity is ungated — the person’s step 4, exactly', async () => {
       await bringIdentityIntoBeing('worker')
       const parent = await personOpens('pm')
 

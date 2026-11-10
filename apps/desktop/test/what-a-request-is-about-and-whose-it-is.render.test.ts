@@ -147,9 +147,28 @@ describe('which work a queue row says it is about', () => {
         about: { is: 'nothing-recorded-it' },
         work: HOLDING,
       },
+      {
+        requestId: 'req_named_idle',
+        askedBy: 'sess_worker-d',
+        about: { is: 'the-asker-named-it', work: { label: 'W1.9' } },
+        work: [],
+      },
+      {
+        requestId: 'req_ghost_idle',
+        askedBy: 'sess_worker-e',
+        about: { is: 'named-work-nothing-answers-to' },
+        work: [],
+      },
+      {
+        requestId: 'number:2',
+        askedBy: 'sess_worker-f',
+        about: { is: 'nothing-recorded-it' },
+        work: [],
+      },
     ])
     expect(workLines(html)).toEqual([])
     expect(html).toContain('data-cy="persons-queue-row-sess_worker-c:number:1"')
-    expect(cardPieces(html)).toEqual(['W1.3'])
+    expect(html).toContain('data-cy="persons-queue-row-sess_worker-f:number:2"')
+    expect(cardPieces(html)).toEqual(['W1.3', 'W1.9'])
   })
 })

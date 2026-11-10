@@ -406,6 +406,26 @@ describe('the host says who a conversation owes an answer to, and moves the word
     expect(store.whoRoutedToWhom()).toEqual([{ asker: ada, parent: brobot }])
   })
 
+  it('the index names an asker once however often it asked, and leaves out a torn routing row without throwing', async () => {
+    const { brobot, ada, adaTools } = await aGiverWaitingOnAHelper()
+    await adaAsksHerParent(adaTools, 'which schema?')
+    await adaAsksHerParent(adaTools, 'which table?')
+    expect(store.whoRoutedToWhom()).toEqual([{ asker: ada, parent: brobot }])
+
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const top = (
+      db.prepare('SELECT max(ordinal) AS top FROM events WHERE session_id = ?').get(ada) as {
+        top: number
+      }
+    ).top
+    db.prepare(
+      `INSERT INTO events (id, session_id, generation, ordinal, type, payload, created_at)
+       VALUES (?, ?, (SELECT coalesce(max(generation), 0) FROM events WHERE session_id = ?), ?, 'request_routed', ?, ?)`,
+    ).run('evt_torn_routing', ada, ada, top + 1000, '{not json at all', clock)
+    expect(store.whoRoutedToWhom()).toEqual([{ asker: ada, parent: brobot }])
+    warned.mockRestore()
+  })
+
   it('a question the child’s provider raised is owed while the child is parked on it, and not once it is not', async () => {
     const { brobot, ada } = await aGiverWaitingOnAHelper()
     const adaHandle = doubleOf(ada)

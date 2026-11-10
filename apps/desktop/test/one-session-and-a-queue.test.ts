@@ -334,7 +334,7 @@ describe('one session, and the callers who wait', () => {
   })
 
   describe('derived, never remembered', () => {
-    it('the fold is pure, and a row written by an older build reads as work', () => {
+    it('a row written by an older build reads as work', () => {
       const older: PersistedEventInfo[] = [
         {
           ordinal: 1,

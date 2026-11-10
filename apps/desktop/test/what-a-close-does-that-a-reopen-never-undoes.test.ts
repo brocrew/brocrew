@@ -401,7 +401,7 @@ describe('what a close does that a reopen never undoes', () => {
   })
 
   describe('a parent told the conversation had stopped', () => {
-    it('is told ONCE, with the cause the row stands on — and the reopen tells it nothing more', async () => {
+    it('is told ONCE, with the cause the row stands on — and the reopen, or what it reports after, tells it nothing more', async () => {
       const { pm, worker, label } = await aWorkerMidTurn()
       await host.close(worker, window)
       await waitFor(() => toldItWasStopped(pm, label).length === 1, 'the parent told the stop')
@@ -417,6 +417,19 @@ describe('what a close does that a reopen never undoes', () => {
       expect(everythingSaidAbout(pm, label)).toHaveLength(1)
       expect(whatEachReceiptTold(pm, label)).toEqual(['turn_interrupted'])
       expect(store.workReportedTo(pm).has(pieceOf(label))).toBe(true)
+
+      const handle = handles.at(-1)
+      if (handle === undefined) throw new Error('no provider handle was issued')
+      const before = events(worker).filter((event) => event.type === 'status').length
+      handle.simulateThinking({ text: 'thinking it over', redacted: false })
+      await waitFor(
+        () => events(worker).filter((event) => event.type === 'status').length > before,
+        'a status row from the reopened conversation',
+      )
+      await letItSettle()
+
+      expect(toldItWasStopped(pm, label)).toHaveLength(1)
+      expect(everythingSaidAbout(pm, label)).toHaveLength(1)
     })
 
     it('a worker that was ASKING: the Close tells its parent nothing, and so does the reopen', async () => {
