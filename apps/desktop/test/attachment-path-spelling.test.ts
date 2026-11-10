@@ -82,19 +82,22 @@ describe('attachment path spelling', () => {
     },
   )
 
-  it.skipIf(process.platform === 'win32')('uses the canonical path to deduplicate a symlink alias', async () => {
-    const target = join(dir, 'Notes.md')
-    const alias = join(dir, 'alias.md')
-    writeFileSync(target, 'a note')
-    symlinkSync(target, alias)
-    const first = await classifyHandedPath(target, dir)
-    const second = await classifyHandedPath(alias, dir)
-    expect(first).toEqual(second)
-    expect(stageVerdicts([], [first, second])).toEqual({
-      next: [{ path: target, kind: 'file', outsideCwd: false }],
-      refusal: null,
-    })
-  })
+  it.skipIf(process.platform === 'win32')(
+    'uses the canonical path to deduplicate a symlink alias',
+    async () => {
+      const target = join(dir, 'Notes.md')
+      const alias = join(dir, 'alias.md')
+      writeFileSync(target, 'a note')
+      symlinkSync(target, alias)
+      const first = await classifyHandedPath(target, dir)
+      const second = await classifyHandedPath(alias, dir)
+      expect(first).toEqual(second)
+      expect(stageVerdicts([], [first, second])).toEqual({
+        next: [{ path: target, kind: 'file', outsideCwd: false }],
+        refusal: null,
+      })
+    },
+  )
 
   it('preserves path spelling through JSON persistence and draft restore', async () => {
     const attached = names.map((name) => ({
@@ -102,9 +105,7 @@ describe('attachment path spelling', () => {
       kind: 'file' as const,
       outsideCwd: false,
     }))
-    const raw = JSON.parse(
-      JSON.stringify({ drafts: [{ slot: 'new', text: 'look', attached }] }),
-    )
+    const raw = JSON.parse(JSON.stringify({ drafts: [{ slot: 'new', text: 'look', attached }] }))
     expect(savedDraftsFrom(raw)).toEqual(raw)
     const checked: string[] = []
     expect(
