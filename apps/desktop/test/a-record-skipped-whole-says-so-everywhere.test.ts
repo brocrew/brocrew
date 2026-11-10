@@ -24,23 +24,16 @@ import { NOTHING_IT_WAITS_ON } from '../src/shared/tasks'
 
 const NOW = 1_800_000_000_000
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// §1 · rows-unread.ts — the two sentences that compose the count
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-describe('§1 · D-017 R8 · `rows-unread.ts` composes the rows-unread and skipped-ledger sentences', () => {
-  it('unreadSays composes the rows-unread sentence and the D-017 skipped-ledger sentence, and neither survives alone at zero', () => {
+describe('`rows-unread.ts` composes the rows-unread and skipped-ledger sentences', () => {
+  it('unreadSays composes the rows-unread sentence and the skipped-ledger sentence, and neither survives alone at zero', () => {
     expect(unreadSays(0, undefined)).toBeNull()
     expect(unreadSays(0, 0)).toBeNull()
 
-    // ⚑ The rows-only case is its own control: a non-zero rows count with no skip still says
-    // something, byte for byte what `rowsUnreadSays` says on its own.
     expect(unreadSays(2, undefined)).toBe(rowsUnreadSays(2))
     expect(unreadSays(2, undefined)).toBe(
       '2 rows of this app’s record could not be read, so a piece of work may be missing here, or its state may be wrong.',
     )
 
-    // ⛔ The skipped-only case, singular and plural — never "1 conversations’ records".
     expect(unreadSays(0, 1)).toBe(
       '1 conversation’s record could not be read, so a piece of work may be missing here, or its state may be wrong.',
     )
@@ -48,7 +41,6 @@ describe('§1 · D-017 R8 · `rows-unread.ts` composes the rows-unread and skipp
       '3 conversations’ records could not be read, so a piece of work may be missing here, or its state may be wrong.',
     )
 
-    // 🔴 Both at once: the two sentences, joined by exactly one space, rows-sentence first.
     expect(unreadSays(2, 1)).toBe(`${rowsUnreadSays(2)} ${unreadSays(0, 1)}`)
   })
 
@@ -63,11 +55,8 @@ describe('§1 · D-017 R8 · `rows-unread.ts` composes the rows-unread and skipp
       '2 conversations’ records could not be read, so a conversation shown here may be waiting without saying so.',
     )
 
-    // ⚑ Rows-only and skipped-only are each other's control; both-at-once is their composition.
     expect(waitsNotReadSays(1, 1)).toBe(`${waitsUnreadSays(1)} ${waitsNotReadSays(0, 1)}`)
 
-    // ⛔ 685's distinguishing assertion, mirrored: this vocabulary never claims a piece of work may
-    // be missing — only that a conversation shown here may be waiting without saying so.
     for (const said of [
       waitsUnreadSays(1),
       waitsNotReadSays(0, 1),
@@ -80,11 +69,6 @@ describe('§1 · D-017 R8 · `rows-unread.ts` composes the rows-unread and skipp
   })
 })
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// §2 · digest.ts (renderer + main) — torn, gapped, and skipped around
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-/** A Recent activity reading, so what it says can be asked without a database. */
 function activity(
   read: RecentActivityReading['read'],
   lines: RecentActivityReading['lines'] = [],
@@ -104,7 +88,45 @@ const oneLine: RecentActivityReading['lines'] = [
   },
 ]
 
-describe('§2 · D-017 R8 · Recent activity reads a record skipped whole', () => {
+describe('Recent activity reads a record skipped whole', () => {
+  function twoLedgers() {
+    const rowGood: DigestRow = {
+      sessionId: 'sess_good',
+      ordinal: 0,
+      at: NOW,
+      event: {
+        type: 'work_given',
+        piece: 'work_1',
+        label: 'W1.1',
+        parent: 'work_root',
+        givenBy: 'sess_pm',
+        title: 'x',
+        brief: 'x',
+      },
+    }
+    const rowBad: DigestRow = {
+      sessionId: 'sess_bad',
+      ordinal: 0,
+      at: NOW + 1,
+      event: {
+        type: 'work_given',
+        piece: 'work_2',
+        label: 'W1.2',
+        parent: 'work_root',
+        givenBy: 'sess_pm',
+        title: 'x',
+        brief: 'x',
+      },
+    }
+    const read: LedgerWalk<DigestRow> = {
+      walk: 'one-window-over-every-agents-conversation',
+      ledgers: 2,
+      rowsUnread: 0,
+      rows: [rowGood, rowBad],
+    }
+    return { rowGood, read }
+  }
+
   it('a reading is read in part when a whole ledger was skipped, even with zero unread rows', () => {
     const skipped = {
       walk: 'one-window-over-every-agents-conversation',
@@ -115,7 +137,6 @@ describe('§2 · D-017 R8 · Recent activity reads a record skipped whole', () =
     expect(activitySays(activity(skipped, oneLine))).toBe('read-in-part')
     expect(activitySays(activity(skipped))).toBe('read-in-part')
 
-    // ⚑ Paired positive: the same shape with NO `ledgersSkipped` field at all, which reads whole.
     const whole = {
       walk: 'one-window-over-every-agents-conversation',
       ledgers: 4,
@@ -147,7 +168,6 @@ describe('§2 · D-017 R8 · Recent activity reads a record skipped whole', () =
     const saidOne = distil(skippedOne, name).gaps.find((gap) => gap.kind === 'source-skipped')
     expect(saidOne?.says.startsWith('1 conversation’s record could not be read')).toBe(true)
 
-    // ⚑ Paired positive: rowsUnread carries the count instead, and the two gaps do not cross.
     const unreadTwo: LedgerWalk<DigestRow> = {
       walk: 'one-window-over-every-agents-conversation',
       ledgers: 2,
@@ -161,46 +181,11 @@ describe('§2 · D-017 R8 · Recent activity reads a record skipped whole', () =
   })
 
   it('distilSkipping folds around the one conversation whose ledger the fold cannot read, and counts it whole', () => {
-    const rowGood: DigestRow = {
-      sessionId: 'sess_good',
-      ordinal: 0,
-      at: NOW,
-      event: {
-        type: 'work_given',
-        piece: 'work_1',
-        label: 'W1.1',
-        parent: 'work_root',
-        givenBy: 'sess_pm',
-        title: 'x',
-        brief: 'x',
-      },
-    }
-    const rowBad: DigestRow = {
-      sessionId: 'sess_bad',
-      ordinal: 0,
-      at: NOW + 1,
-      event: {
-        type: 'work_given',
-        piece: 'work_2',
-        label: 'W1.2',
-        parent: 'work_root',
-        givenBy: 'sess_pm',
-        title: 'x',
-        brief: 'x',
-      },
-    }
-    const read: LedgerWalk<DigestRow> = {
-      walk: 'one-window-over-every-agents-conversation',
-      ledgers: 2,
-      rowsUnread: 0,
-      rows: [rowGood, rowBad],
-    }
+    const { rowGood, read } = twoLedgers()
     const name = (id: string): string => {
       if (id === 'sess_bad') throw new Error('boom')
       return id.replace('sess_', '')
     }
-    // ⛔ The precondition that makes the isolation path meaningful: the whole-read fold really does
-    // throw on this fixture.
     expect(() => distil(read, name)).toThrow()
 
     const warn = console.warn
@@ -219,15 +204,11 @@ describe('§2 · D-017 R8 · Recent activity reads a record skipped whole', () =
     expect(line).toBeDefined()
     expect(line?.text).toContain('good')
     expect(line?.text).not.toContain('bad')
-    // ⛔ **Not an exact-length check**: rowGood's own piece is legitimately counted by
-    // `work-without-an-ending` too (nothing in this fixture replies to it) — what this pins is that
-    // the SKIP is counted apart from an unread ROW, which `source-unreadable` would be.
     expect(result.distilled.gaps).toContainEqual(
       expect.objectContaining({ kind: 'source-skipped', count: 1 }),
     )
     expect(result.distilled.gaps.map((gap) => gap.kind)).not.toContain('source-unreadable')
 
-    // ⚑ Paired positive: a name() that never throws is a transparent no-op over the ordinary read.
     const neverThrows = (id: string): string => id.replace('sess_', '')
     expect(distilSkipping(read, neverThrows)).toEqual({
       read,
@@ -236,48 +217,8 @@ describe('§2 · D-017 R8 · Recent activity reads a record skipped whole', () =
   })
 
   it('when even an isolated ledger cannot save the fold, distilSkipping gives up on every conversation in the read rather than guessing which one is bad', () => {
-    const rowGood: DigestRow = {
-      sessionId: 'sess_good',
-      ordinal: 0,
-      at: NOW,
-      event: {
-        type: 'work_given',
-        piece: 'work_1',
-        label: 'W1.1',
-        parent: 'work_root',
-        givenBy: 'sess_pm',
-        title: 'x',
-        brief: 'x',
-      },
-    }
-    const rowBad: DigestRow = {
-      sessionId: 'sess_bad',
-      ordinal: 0,
-      at: NOW + 1,
-      event: {
-        type: 'work_given',
-        piece: 'work_2',
-        label: 'W1.2',
-        parent: 'work_root',
-        givenBy: 'sess_pm',
-        title: 'x',
-        brief: 'x',
-      },
-    }
-    const read: LedgerWalk<DigestRow> = {
-      walk: 'one-window-over-every-agents-conversation',
-      ledgers: 2,
-      rowsUnread: 0,
-      rows: [rowGood, rowBad],
-    }
-    // ⛔ Reproduces distilSkipping's documented "a fault only two conversations’ rows reproduce
-    // together" branch: the whole-read attempt throws on its 2nd call (sess_bad), each of the two
-    // per-session isolation retries succeeds alone (calls 3 and 4, so neither is individually
-    // blamed), and the final retry over the still-unfiltered "kept" set throws again on its 6th
-    // call. This test is coupled to distilSkipping's own call order (whole attempt, then per-session
-    // in Set-insertion order, then one retry) — a deliberate trade-off, since fold()'s switch has no
-    // data shape that makes it throw on its own (its default arm is a silent no-op), so a
-    // caller-supplied name() misbehaving is the only realistic trigger.
+    const { read } = twoLedgers()
+    // The whole read and final retry fail; individual ledger retries succeed.
     let calls = 0
     const name = (id: string): string => {
       calls += 1
@@ -303,11 +244,7 @@ describe('§2 · D-017 R8 · Recent activity reads a record skipped whole', () =
   })
 })
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// §3 · every surface a reading of ledgersSkipped reaches
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-describe('§3 · D-017 R8 · every reader that draws a walk’s completeness carries the skip through', () => {
+describe('every reader that draws a walk’s completeness carries the skip through', () => {
   it('a conversation is not read as having given nobody work while one of its ledgers was skipped whole', () => {
     const reading: WorkGivenOutReading = {
       conversation: 'sess_a',
@@ -331,7 +268,6 @@ describe('§3 · D-017 R8 · every reader that draws a walk’s completeness car
     expect(view?.short).toBe(unreadSays(0, 2))
     expect(view?.unread).toBe(0)
 
-    // ⚑ Paired positive: the same reading with `ledgersSkipped` left off entirely.
     const wholeReading: WorkGivenOutReading = {
       conversation: 'sess_a',
       walk: {
@@ -386,8 +322,6 @@ describe('§3 · D-017 R8 · every reader that draws a walk’s completeness car
     })
     expect(view?.gaveOutShort).toBe(unreadSays(0, 2))
 
-    // ⚑ Paired positive: the same shape with `workGivenOut.ledgersSkipped` left off — a genuinely
-    // complete, empty list.
     const wholeRead: WhoCalledWhom = {
       ...read,
       workGivenOut: {
@@ -446,19 +380,12 @@ describe('§3 · D-017 R8 · every reader that draws a walk’s completeness car
     expect(view.coverage.short).toBe(unreadSays(0, 2))
     expect(view.coverage.rowsUnread).toBe(0)
 
-    // ⚑ Paired positive: nothing unread and nothing skipped draws no sentence at all.
     expect(forest(0, undefined).coverage.short).toBeNull()
   })
 })
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// §4 · a conversation whose whole record was skipped waits on nothing this read saw
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-describe('§4 · D-017 R8 · `NOTHING_IT_WAITS_ON`', () => {
+describe('`NOTHING_IT_WAITS_ON`', () => {
   it('NOTHING_IT_WAITS_ON is genuinely nothing — no pending answers, no open children and no person', () => {
-    // ⚑ D-016 · the wait is per piece now: the pieces it asked about, a person, and the pieces with
-    // an open piece given under them — so "nothing" is two empty sets and one false flag.
     expect(NOTHING_IT_WAITS_ON).toEqual({
       answers: new Set(),
       aPerson: false,
