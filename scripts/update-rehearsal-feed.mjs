@@ -52,6 +52,7 @@ export const SANDBOX_FILES = [
   'apps/desktop/src/main/recovery/log-lines.ts',
   'scripts/lib/hidden-launch.mjs',
   'scripts/lib/mac-update-test.mjs',
+  'scripts/lib/moved-state-files.mjs',
   'scripts/lib/skill-tree-state.mjs',
   'scripts/lib/update-rehearsal-app.mjs',
   'scripts/lib/update-rehearsal-data.mjs',
