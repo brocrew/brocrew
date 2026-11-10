@@ -26,27 +26,10 @@ import {
   neutralHostDeps,
 } from './lib/host-fixture'
 
-/**
- * 🔴 **664 · one task, one reading, in every place it is drawn** (`D32`, found by `654`).
- *
- * ⛔ **One task, three places, and until `664` two of them read the RAW fold.** The giver's drawer
- * walks {@link SessionStore.workThisOneGaveOut}, which composes; the receiver's line walks
- * {@link SessionStore.workThisOneWasGiven} and the Team forest folds each conversation's own
- * ledger, and neither did — so a task whose holder is parked on a card a person owes read
- * `waiting-on-a-person` in one place and `working` in the other two.
- *
- * ⚑ **Every reading is taken through the host's own reader** — `whoCalledWhom` for both ends of
- * the band, `theWholeForest` for the forest — over real SQLite and real migrations, and the agent's
- * `list_tasks` and the person's Work tab are read beside them as the two that already agreed.
- *
- * ⚑ **D-016 · a task is a PIECE now** — given with `give_work`, folded by `derivePieces` and
- * composed by `composeWhatEachPieceIsWaitingOn` — and every reading below is keyed by its id.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-describe('664 · one task, one reading, in every place it is drawn', () => {
+describe('one task, one reading, in every place it is drawn', () => {
   let userData: string
   let root: string
   let db: AppDatabase
@@ -124,11 +107,7 @@ describe('664 · one task, one reading, in every place it is drawn', () => {
     throw new Error(`timed out waiting for ${what}`)
   }
 
-  /**
-   * ⚑ **One piece, given by a PM to a worker** — `609`'s own shape, through `give_work` (D-016),
-   * which starts the worker. ⚠️ Its brief is the worker's first turn, and it parks on the card the
-   * Fake raises every turn, which is what makes a PERSON owe it an answer.
-   */
+  /** One piece given by a PM to a worker; the worker parks on a card a person owes. */
   const aTaskGivenOut = async (): Promise<{
     giver: string
     holder: string
@@ -158,11 +137,6 @@ describe('664 · one task, one reading, in every place it is drawn', () => {
     return { giver, holder, piece: piece.piece, surface }
   }
 
-  /**
-   * 🔴 **Every place one task's state is reported, each read through its own reader.** ⚑ The
-   * first three are the ones a PERSON sees; the last two are the ones that already composed and are
-   * read here as the reference, not as the subject.
-   */
   const readingsOf = (
     giver: string,
     holder: string,
@@ -202,18 +176,16 @@ describe('664 · one task, one reading, in every place it is drawn', () => {
     'the agent turn block': WORK_STATE_WORD[state],
   })
 
-  describe('§1 · one task waiting on a person, and the same task once nothing is outstanding', () => {
-    it('🔴 a task whose holder a PERSON owes an answer reads `waiting-on-a-person` in every place', async () => {
+  describe('one task waiting on a person, and the same task once nothing is outstanding', () => {
+    it('a task whose holder a person owes an answer reads `waiting-on-a-person` in every place', async () => {
       const { giver, holder, piece } = await aTaskGivenOut()
-      // ⛔ **The premise, measured rather than assumed**: the raw fold says the work is being done.
-      // ⚑ If it said anything else, every place agreeing below would not be the composition's doing.
       expect(store.piecesOwnedBy(holder).find((one) => one.piece === piece)?.state).toBe('working')
       const before = (db.prepare('SELECT total_changes() AS n').get() as { n: number }).n
       expect(readingsOf(giver, holder, piece)).toEqual(everywhere('waiting-on-a-person'))
       expect((db.prepare('SELECT total_changes() AS n').get() as { n: number }).n).toBe(before)
     })
 
-    it('⚑ THE CONTROL — the same task, card answered and turn over, reads its raw state in every place', async () => {
+    it('the same task, card answered and turn over, reads its raw state in every place', async () => {
       const { giver, holder, piece, surface } = await aTaskGivenOut()
       const card = ledger(holder)
         .filter(
@@ -227,24 +199,14 @@ describe('664 · one task, one reading, in every place it is drawn', () => {
         () => store.piecesOwnedBy(holder).find((one) => one.piece === piece)?.state === 'stalled',
         'the holder’s turn to end',
       )
-      // ⛔ **Nothing is outstanding, so the composition passes the raw row through** — a fold that
-      // tinted every open row would read `waiting-on-a-person` here and fail.
       expect(aPersonOwesAnAnswerIn(store.routedRequestsOf(holder))).toBe(false)
       expect(readingsOf(giver, holder, piece)).toEqual(everywhere('stalled'))
     })
   })
 })
 
-/**
- * ⚠️ **§2 · the price, COUNTED rather than argued** (`664` §3) — a store over a database that
- * records which conversation each questions read was taken for. ⚑ On these walks the questions
- * statement is read only by {@link SessionStore} `whatThisConversationIsWaitingOn` (through
- * `oneWaitReadPerHolder`), so a questions read IS a wait read, and one taken per HOLDER is the bound
- * `walkWorkGivenBy`'s memo already holds. ⚑ **D-016 · re-aimed**: this counted the PROPOSAL read,
- * which went with proposals; the questions read is one of the three that are left, taken once per
- * wait read as that one was.
- */
-describe('664 §2 · one wait read per HOLDER, whatever it holds', () => {
+/** Counts the questions read, which on these walks is the wait read, per conversation. */
+describe('one wait read per holder, whatever it holds', () => {
   let userData: string
   let raw: AppDatabase
   let store: SessionStore
@@ -262,8 +224,6 @@ describe('664 §2 · one wait read per HOLDER, whatever it holds', () => {
     armed = 0
     reads.length = 0
     ordinals.clear()
-    // ⛔ **The one statement counted is found by its SQL**, and `armed` says it was found — a probe
-    // whose pattern matched nothing would count zero reads and pass every bound (rule 34).
     const counted = new Proxy(raw, {
       get(target, property) {
         if (property === 'prepare') {
@@ -302,7 +262,6 @@ describe('664 §2 · one wait read per HOLDER, whatever it holds', () => {
     rmSync(userData, { recursive: true, force: true })
   })
 
-  /** ⚑ **D-016** — a conversation its `parent` started, or a person's (which owns a root). */
   const conversation = (id: string, profileId: string, parentSessionId?: string): string => {
     store.create({
       id,
@@ -322,10 +281,6 @@ describe('664 §2 · one wait read per HOLDER, whatever it holds', () => {
   const append = (id: string, event: TranscriptEvent): void => {
     store.append(id, nextOrdinal(id), event, tick())
   }
-  /**
-   * ⚑ **D-016 · a piece given the way the host gives one** — its number under the giver's root,
-   * then its `work` row and its `work_given` row in the holder's ledger, together.
-   */
   const given = (holder: string, giver: string, piece: string): void => {
     const root = store.rootOf(giver)
     if (root === null) throw new Error(`${giver} owns no root`)
@@ -350,8 +305,7 @@ describe('664 §2 · one wait read per HOLDER, whatever it holds', () => {
     )
   }
 
-  it('⛔ the forest and the receiver’s line read a holder of TWO open rows ONCE, and a conversation holding nothing never', () => {
-    // ⚑ **D-016** — two pieces from its one giver: only a conversation's parent gives it work.
+  it('the forest and the receiver’s line read a holder of two open rows once, and a conversation holding nothing never', () => {
     const one = conversation('sess_giver_one', 'pm')
     const holder = conversation('sess_holder', 'worker', one)
     given(holder, one, 'work_1')
@@ -367,8 +321,6 @@ describe('664 §2 · one wait read per HOLDER, whatever it holds', () => {
     expect(armed, 'the questions read was never prepared through the probe').toBe(1)
 
     const forest = store.everyPlacedConversation(MAX_FOREST_CONVERSATIONS)
-    // ⚑ **The premise that makes the bound a measurement**: TWO open rows, so a lookup asked per
-    // ROW would read twice — and the composition asks per open row.
     expect(
       forest.rows
         .flatMap((node) => (node.node === 'a-task' ? [node.work] : []))
@@ -376,8 +328,6 @@ describe('664 §2 · one wait read per HOLDER, whatever it holds', () => {
         .map((work) => work.piece)
         .sort(),
     ).toEqual(['work_1', 'work_2'])
-    // 🔴 **One read for the holder, none for the giver, which holds nothing** — its root is never
-    // a row (D-016 · R1).
     expect(reads).toEqual([holder])
 
     reads.length = 0
@@ -389,22 +339,11 @@ describe('664 §2 · one wait read per HOLDER, whatever it holds', () => {
     expect(reads).toEqual([])
   })
 
-  /**
-   * 🔴 **671 · R18 — RE-AIMED: what composing costs the forest is now a COUNT, not a blank page.**
-   *
-   * ⛔ **These two tests pinned `664` F1** — one torn row made the whole forest raise, and the Team
-   * page drew *"Nothing has been read about this workspace yet."* ⚑ **The PM took the ruling
-   * (`671` §5): skipped, counted, SAID.** Stripped AND re-aimed (rule 26): each keeps its torn row
-   * and its open work, and asserts the forest ANSWERS and carries the count, where it asserted a
-   * throw. ⚠️ The finished-work controls they carried are gone because the thing they controlled
-   * for — *the forest only raises while work is open* — is no longer a behaviour.
-   */
-  it('🔴 one unparseable assignment elsewhere: the forest ANSWERS while work is open, and counts the row ONCE', () => {
+  it('one unparseable assignment elsewhere: the forest answers while work is open, and counts the row once', () => {
     const giver = conversation('sess_giver', 'pm')
     const holder = conversation('sess_holder', 'worker', giver)
     const elsewhere = conversation('sess_elsewhere', 'worker', giver)
     given(holder, giver, 'work_1')
-    // ⚑ **THE CONTROL, on the same database before anything is torn**: a clean read counts 0.
     expect(store.everyPlacedConversation(MAX_FOREST_CONVERSATIONS).rowsUnread).toBe(0)
     raw
       .prepare(
@@ -413,24 +352,18 @@ describe('664 §2 · one wait read per HOLDER, whatever it holds', () => {
       )
       .run('evt_torn', elsewhere, 900, '{not json', tick())
     const forest = store.everyPlacedConversation(MAX_FOREST_CONVERSATIONS)
-    // ⛔ **ONE** — the forest folds `elsewhere`'s own ledger and meets it there. ⚑ One row, one
-    // count — `RowsUnread`'s whole reason, and D-016's wait reads take their candidates off the
-    // `work` table, which holds no row for a torn one.
     expect(forest.rowsUnread).toBe(1)
-    // ⚑ **…and the work is still drawn, still composed** — a person's surface is not blank.
     expect(
       forest.rows.flatMap((node) => (node.node === 'a-task' ? [node.work.piece] : [])),
     ).toEqual(['work_1'])
     expect(forest.rows.filter((node) => node.node === 'a-conversation')).toHaveLength(3)
   })
 
-  it('🔴 …and one unparseable QUESTION row in a holder’s own ledger: both reads answer, and count it', () => {
+  it('one unparseable question row in a holder’s own ledger: both reads answer, and count it', () => {
     const giver = conversation('sess_giver', 'pm')
     const holder = conversation('sess_holder', 'worker', giver)
     given(holder, giver, 'work_1')
     expect(store.workThisOneWasGiven(holder).rowsUnread).toBe(0)
-    // ⛔ **Only the WAIT READ opens this row** — `selectPieceEvents` does not select
-    // `user_input_request` — so a count here is the composition's count and nothing else's.
     raw
       .prepare(
         `INSERT INTO events (id, session_id, generation, ordinal, type, payload, created_at)
@@ -443,8 +376,6 @@ describe('664 §2 · one wait read per HOLDER, whatever it holds', () => {
     const taken = store.workThisOneWasGiven(holder)
     expect(taken.rowsUnread).toBe(1)
     expect(taken.rows).toHaveLength(1)
-    // ⚑ **THE CONTROL that the count is the wait read's**: once the work has finished, nothing asks
-    // the holder's questions, and the same torn row is met by nobody.
     append(holder, {
       type: 'work_replied',
       piece: 'work_1',

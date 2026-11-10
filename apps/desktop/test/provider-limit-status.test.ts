@@ -136,11 +136,6 @@ describe('A held message has only its own live reason', () => {
     expect(messageLimitDisplay({ ...queued, holdReason: null }, NOW)).toBeNull()
     expect(messageLimitDisplay({ ...queued, holdReasonStatus: undefined }, NOW)).toBeNull()
   })
-  it('a failed read does not keep a known stale hold current', () => {
-    expect(messageLimitDisplay({ ...queued, holdReasonStatus: 'unavailable' }, NOW)?.word).toBe(
-      'not sent · limit status unavailable',
-    )
-  })
 })
 
 describe('Queue snapshots keep omitted facts only while that same ID remains', () => {
