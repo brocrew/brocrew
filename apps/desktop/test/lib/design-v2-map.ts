@@ -634,7 +634,7 @@ const SOURCES: readonly FieldMapping[] = [
       state: 'derived',
       from: [
         ref(INSTRUCTIONS, 'InjectedInstruction'),
-        ref(INSTRUCTIONS, 'InjectedInstructionKind'),
+        ref('apps/desktop/src/shared/injected-instruction-kind.ts', 'InjectedInstructionKind'),
         ref(INSTRUCTIONS, 'RefusedInstruction'),
       ],
       note: '⛔ **Per KIND, and the kinds are enumerated** — eight of them, and the panel already owns a label for each. A caption composed in a template is a ninth source of words for a closed set that already has one.',
