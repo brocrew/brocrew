@@ -1,6 +1,6 @@
-import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { Options } from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it } from 'vitest'
-import { ClaudeRuntime, type ClaudeQuery } from '../src/claude'
+import { ClaudeRuntime } from '../src/claude'
 import { runtimeEventSchema, type RuntimeEvent } from '../src/index'
 import { SessionCrons } from '../src/claude/session-crons'
 import { isProviderWork } from '../src/internal/provider-work'
@@ -10,7 +10,7 @@ import {
   MAX_SCHEDULE_TEXT,
   clipScheduleText,
 } from '../src/scheduled-work'
-import { AsyncQueue } from '../src/internal/async-queue'
+import { FakeQuery } from './fixtures/claude-scheduling-query'
 
 /**
  * **253 · a promise nothing watches** — the schedule this session has made, and what BroBot does
@@ -349,25 +349,6 @@ const init = (sessionId: string, cwd: string) => ({
   session_id: sessionId,
   cwd,
 })
-
-class FakeQuery implements ClaudeQuery {
-  private readonly messages = new AsyncQueue<SDKMessage>()
-  emit(message: Record<string, unknown>): void {
-    this.messages.push(message as unknown as SDKMessage)
-  }
-  end(): void {
-    this.messages.close()
-  }
-  async interrupt(): Promise<unknown> {
-    return undefined
-  }
-  close(): void {
-    this.messages.close()
-  }
-  [Symbol.asyncIterator](): AsyncIterator<SDKMessage> {
-    return this.messages[Symbol.asyncIterator]()
-  }
-}
 
 /**
  * ⛔ **The end-to-end half: the hook is INSTALLED, and what it is handed reaches the stream.**

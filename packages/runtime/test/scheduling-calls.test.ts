@@ -1,9 +1,9 @@
-import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { Options } from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it } from 'vitest'
-import { ClaudeRuntime, type ClaudeQuery } from '../src/claude'
+import { ClaudeRuntime } from '../src/claude'
 import { parseRuntimeEvent, type RuntimeEvent, type ScheduleReceipt } from '../src/index'
 import { SchedulingCalls } from '../src/claude/scheduling-calls'
-import { AsyncQueue } from '../src/internal/async-queue'
+import { FakeQuery } from './fixtures/claude-scheduling-query'
 import { MAX_SCHEDULED_JOBS } from '../src/scheduled-work'
 
 /**
@@ -358,25 +358,6 @@ describe('a scheduling call is kept as it ran', () => {
     }
   })
 })
-
-class FakeQuery implements ClaudeQuery {
-  private readonly messages = new AsyncQueue<SDKMessage>()
-  emit(message: Record<string, unknown>): void {
-    this.messages.push(message as unknown as SDKMessage)
-  }
-  end(): void {
-    this.messages.close()
-  }
-  async interrupt(): Promise<unknown> {
-    return undefined
-  }
-  close(): void {
-    this.messages.close()
-  }
-  [Symbol.asyncIterator](): AsyncIterator<SDKMessage> {
-    return this.messages[Symbol.asyncIterator]()
-  }
-}
 
 describe('the adapter installs the hooks, and a receipt reaches the stream as the call runs', () => {
   it('PreToolUse and PostToolUse are installed beside the guard, and each lets the call go on', async () => {
