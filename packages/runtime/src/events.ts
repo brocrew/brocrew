@@ -874,6 +874,8 @@ const errorEventSchema = z.object({
   type: z.literal('error'),
   message: z.string(),
   fatal: z.boolean(),
+  /** Provider-supplied display words; the diagnostic remains in message. */
+  presentation: z.object({ message: z.string() }).optional(),
   /** Absent is the norm: most errors are just errors. See {@link errorCauseSchema}. */
   cause: errorCauseSchema.optional(),
   signIn: z

@@ -26,6 +26,8 @@ export interface ProviderDescriptor {
     readonly accountIsSignIn: boolean
     readonly changeWords: string
     readonly manualProbe: boolean
+    /** Words supplied after the provider confirms its explicit sign-in check. */
+    readonly manualProbeSuccess?: string
   }
   readonly apiKey: { readonly spendsToken: boolean }
   readonly words: {
@@ -106,6 +108,7 @@ export const PROVIDER_DESCRIPTORS = [
       accountIsSignIn: false,
       changeWords: 'this computer has moved on to a different one since — a renewal counts',
       manualProbe: true,
+      manualProbeSuccess: 'Claude sign-in works.',
     },
     skillReminderPrefix: 'brobot:',
     usageWindows: ['5-hour', 'weekly'],
@@ -167,6 +170,7 @@ export const PROVIDER_DESCRIPTORS = [
       accountIsSignIn: true,
       changeWords: 'its profile has been signed in to another account since',
       manualProbe: false,
+      manualProbeSuccess: undefined,
     },
     skillReminderPrefix: '',
     usageWindows: ['weekly'],

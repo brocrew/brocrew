@@ -63,3 +63,5 @@ export {
   probeClaudeCodeLogin,
   type ClaudeLoginRenewal,
 } from './claude/login-renewal'
+
+export { refusalForDisplay } from './claude/refusal-presentation'

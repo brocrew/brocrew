@@ -1,5 +1,5 @@
 import { splitQualified } from '@brobot2/runtime'
-import { CLAUDE_TOOL_NAMING } from '@brobot2/runtime/claude'
+import { CLAUDE_TOOL_NAMING, refusalForDisplay } from '@brobot2/runtime/claude'
 import { scanRetention } from './retention'
 import { signInObservation } from './sign-in-observation'
 import { filesOf, memoryNotesOf } from './conversation-files'
@@ -9,9 +9,18 @@ import { basename, dirname, join } from 'node:path'
 import { importClaudeTranscript } from './import-transcript'
 import { nativePath, ownsRecord, newestReplyModel } from './native-record'
 import type { TranscriptPolicy } from '../transcript-policy'
+import type { TranscriptEvent } from '../../../shared/conversation-events'
+
+/** Supply the same presentation for live events and older stored rows. */
+export function eventForDisplay(event: TranscriptEvent): TranscriptEvent {
+  const observed = signInObservation(event)
+  if (observed.type !== 'error') return observed
+  const message = refusalForDisplay(observed.refusal)
+  return message === null ? observed : { ...observed, presentation: { message } }
+}
 export const CLAUDE_JSONL = 'claude-jsonl'
 export const transcripts: TranscriptPolicy = {
-  eventForDisplay: signInObservation,
+  eventForDisplay,
   splitToolName: (name) => splitQualified(CLAUDE_TOOL_NAMING, name),
   readEarlierModel: (home, file) => (ownsRecord(home, file) ? newestReplyModel(file) : null),
   keepEarlierReportedEffort: () => true,
