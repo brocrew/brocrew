@@ -1320,6 +1320,33 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
   }
 
   /**
+   * Send one answer to a request and return the words to show for it, or `null` when there are none.
+   *
+   * With no record of the conversation in this window the host is still asked (`forSession` would
+   * answer `!ok` without asking): the asker may be stopped, or running for nobody. There is no card
+   * here to note it on, so the words go back to the caller. With a record, the card is marked sent
+   * before anything is awaited, and the answer or its failure is noted on it.
+   */
+  async function sendAnswer(
+    sessionId: string,
+    requestId: string,
+    ask: () => Promise<ProviderAnswerAck>,
+  ): Promise<string | null> {
+    if (!sessions.has(sessionId)) {
+      try {
+        return whatAnAnswerAckSays(await ask())
+      } catch (cause) {
+        return answerNeverLeftThisWindow(readableError(cause))
+      }
+    }
+    markSent(sessionId, requestId)
+    const { ok, value } = await forSession(sessionId, ask)
+    noteAnswer(sessionId, requestId, ok, value)
+    if (!ok) return answerNeverLeftThisWindow(sessions.get(sessionId)?.error ?? null)
+    return value === undefined ? null : whatAnAnswerAckSays(value)
+  }
+
+  /**
    * Put a refused answer on the card it belongs to, in the words the host used — **and settle the
    * card only if the request is actually gone** (146, from 145 HIGH 1).
    *
@@ -2128,22 +2155,9 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
      * the session error said what went wrong, three paragraphs away from the thing it was about.
      */
     async respondPermission(sessionId, requestId, decision) {
-      if (!sessions.has(sessionId)) {
-        try {
-          return whatAnAnswerAckSays(
-            await bridge.respondPermission({ sessionId, requestId, decision }),
-          )
-        } catch (cause) {
-          return answerNeverLeftThisWindow(readableError(cause))
-        }
-      }
-      markSent(sessionId, requestId)
-      const { ok, value } = await forSession(sessionId, () =>
+      return sendAnswer(sessionId, requestId, () =>
         bridge.respondPermission({ sessionId, requestId, decision }),
       )
-      noteAnswer(sessionId, requestId, ok, value)
-      if (!ok) return answerNeverLeftThisWindow(sessions.get(sessionId)?.error ?? null)
-      return value === undefined ? null : whatAnAnswerAckSays(value)
     },
 
     async decideMoveRequest(sessionId, requestId, decision) {
@@ -2167,24 +2181,9 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
     },
 
     async respondUserInput(sessionId, requestId, response) {
-      // ⚑ **D-017 · R6 — no record here, and the host is still asked** (`forSession` would answer
-      // `!ok` without asking): the asker may be stopped, or running for nobody. ⛔ No card here to
-      // note it on, so the words go back to the caller.
-      if (!sessions.has(sessionId)) {
-        try {
-          const ack = await bridge.respondUserInput({ sessionId, requestId, response })
-          return whatAnAnswerAckSays(ack)
-        } catch (cause) {
-          return answerNeverLeftThisWindow(readableError(cause))
-        }
-      }
-      markSent(sessionId, requestId)
-      const { ok, value } = await forSession(sessionId, () =>
+      return sendAnswer(sessionId, requestId, () =>
         bridge.respondUserInput({ sessionId, requestId, response }),
       )
-      noteAnswer(sessionId, requestId, ok, value)
-      if (!ok) return answerNeverLeftThisWindow(sessions.get(sessionId)?.error ?? null)
-      return value === undefined ? null : whatAnAnswerAckSays(value)
     },
 
     async answerAction(sessionId, requestId, done, note) {
