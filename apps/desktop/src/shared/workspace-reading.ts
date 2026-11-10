@@ -82,7 +82,7 @@ export interface WorkspaceReading {
   readonly readAt: number
   /**
    * 🔴 **How many things only a PERSON can settle were still unsettled at {@link readAt}** — see
-   * {@link WHAT_NEEDS_A_PERSON} for the populations and for the two that are deliberately outside
+   * {@link WhatNeedsAPerson} for the populations and for the two that are deliberately outside
    * it.
    */
   readonly needsYou: OneCount
@@ -147,17 +147,13 @@ export interface WorkspaceReading {
  * holding one would go down on its own, telling a person they had handled something they never
  * touched. ⚑ A person still meets it, in the band `557` built for it.
  */
-const WHAT_NEEDS_A_PERSON = [
-  'a-question',
-  'a-decision',
-  'an-instruction-ask',
-  'a-reply',
+export type WhatNeedsAPerson =
+  | 'a-question'
+  | 'a-decision'
+  | 'an-instruction-ask'
+  | 'a-reply'
   // An agent's request to register an MCP server: nothing is registered until a person approves.
-  'a-server-request',
-] as const
-
-/** One of {@link WHAT_NEEDS_A_PERSON}. */
-export type WhatNeedsAPerson = (typeof WHAT_NEEDS_A_PERSON)[number]
+  | 'a-server-request'
 
 /**
  * ⛔ **The scopes one reading counts** (567) — a closed vocabulary as a value, so *which scope was
@@ -181,10 +177,7 @@ export type WhatAReadingCounts = (typeof WHAT_A_READING_COUNTS)[number]
  * — `LEDGER_WALK_KINDS`' own discipline: *a walk needs a word of its own when no existing word's
  * sentence is TRUE of it.*
  */
-const WHY_NOTHING_WAS_COUNTED = ['no-ledger'] as const
-
-/** One of {@link WHY_NOTHING_WAS_COUNTED}. */
-export type WhyNothingWasCounted = (typeof WHY_NOTHING_WAS_COUNTED)[number]
+export type WhyNothingWasCounted = 'no-ledger'
 
 /** ⚑ **A scope counted whole** — every row it asked about was read. */
 export interface CountTaken {

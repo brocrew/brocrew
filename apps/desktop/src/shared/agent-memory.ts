@@ -81,16 +81,8 @@ import type { ActedBy } from './who-did-it'
  * costs. ⚑ **What forces the question for a THIRD provider is `MEMORY_STORE_IS`' exhaustiveness
  * and the reader table beside it**, not a word standing in the future.
  */
-const MEMORY_STORE_STATE = [
-  'no-home',
-  'nothing-written',
-  'unreadable',
-  'read',
-  'past-the-last-page',
-] as const
-
-/** One of {@link MEMORY_STORE_STATE}. */
-export type MemoryStoreState = (typeof MEMORY_STORE_STATE)[number]
+export type MemoryStoreState =
+  'no-home' | 'nothing-written' | 'unreadable' | 'read' | 'past-the-last-page'
 
 /**
  * ⛔ **What each state MEANS, rendered from the word rather than written beside it** (standing
@@ -226,7 +218,7 @@ export interface AgentMemoryEntry extends InjectedInstruction {
  */
 export interface AgentMemoryStore {
   readonly provider: Provider
-  /** ⛔ One of {@link MEMORY_STORE_STATE} — the field that replaces a bare empty list. */
+  /** ⛔ One of {@link MemoryStoreState} — the field that replaces a bare empty list. */
   readonly state: MemoryStoreState
   /**
    * The store's directory when there is one to name, else `null`.

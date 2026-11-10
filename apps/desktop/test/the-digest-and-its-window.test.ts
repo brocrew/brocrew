@@ -620,7 +620,7 @@ describe('§5 · the window covers what it says and nothing else', () => {
       { type: 'workflow_run', taskId: 'wf_1', source: 'task_progress', agents: [] },
       { type: 'tool_call', id: 'call_1', name: 'brobot__list_agents', summary: 'List agents' },
       { type: 'tool_result', id: 'call_1', summary: 'One agent', ok: true },
-      { type: 'message_unqueued', messageId: 'msg_1', reason: 'sent' },
+      { type: 'message_unqueued', messageId: 'msg_1', reason: 'sent', text: 'Queued message' },
       ...Array.from({ length: 1_001 }, () => ({ type: 'turn', state: 'completed' }) as const),
     ]
     store.atomically(() => {

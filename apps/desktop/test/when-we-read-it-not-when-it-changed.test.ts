@@ -92,6 +92,9 @@ const rowAt = (read: SessionInstructions, path: string): InjectedInstruction => 
  */
 const afterTheClockMoves = (): void => {
   const was = Date.now()
+  for (let spins = 0; Date.now() === was && spins < 10_000_000; spins += 1) {
+    /* spin */
+  }
   expect(Date.now(), 'this machine’s clock did not move').toBeGreaterThan(was)
 }
 

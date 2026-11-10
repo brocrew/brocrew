@@ -46,13 +46,13 @@ import type { ContextReading, RuntimeEvent } from '@brobot2/runtime'
  * ## 🔴 The three honesty rules this shape enforces, each from a rule this project already paid for
  *
  * 1. ⛔ **A conversation that has said NOTHING may not read as `idle`** —
- *    `a-door-that-answers-before-it-can-know`. {@link NOTHING_WAS_SAID}'s first member is that
+ *    `a-door-that-answers-before-it-can-know`. {@link NothingWasSaid}'s first member is that
  *    state, and {@link whatAPlateCanDraw} withholds the recorded status when it holds, so the
  *    faceless ring is what gets drawn.
  * 2. ⛔ **Something this build has no word for may not render as the last word it did have** —
  *    `an-unenumerated-state-counts-as-success`. An activity frame that failed its own schema
  *    arrives as `unknown{degradedFrom:'activity'}` (`235`), and the third member of
- *    {@link NOTHING_WAS_SAID} is what this app says about it: the previous phase is deliberately
+ *    {@link NothingWasSaid} is what this app says about it: the previous phase is deliberately
  *    dropped rather than carried.
  * 3. ⛔ **Say WHEN it was true** — `a-measured-fact-has-a-time-it-becomes-available`.
  *    {@link ConversationAtWork.since} is when the pair above last moved, or a card settled, and
@@ -252,48 +252,16 @@ export type WhatThisAppWasTold =
  * cleared it* and *this provider has never published one at all* — {@link NOTHING_RIGHT_NOW}'s
  * sentence is true of both, and nothing a surface does with them differs.
  */
-const NOTHING_WAS_SAID = [
-  /**
-   * ⛔ **This app is running it and NOT ONE event has arrived on its stream.**
-   *
-   * 🔴 **It is the only member that changes what a surface may draw from its other fields**, and
-   * that is `a-door-that-answers-before-it-can-know` exactly: the recorded status of a conversation
-   * nothing has happened in is `idle`, and `idle` is a claim — *this app is no longer driving a
-   * turn* (`042`) — about a conversation that has never had one. ⚑ {@link whatAPlateCanDraw}
-   * withholds the status here, so the faceless ring is drawn instead of a confident face.
-   */
-  'nothing-has-arrived',
-  /**
-   * ⚑ **Events have arrived and no activity is current** — the ordinary quiet, and the answer for
-   * almost every row almost all of the time.
-   *
-   * ⚠️ **It says nothing about whether a turn is running**, and must not be read as `idle`: that is
-   * the recorded status's question, and `sessionDoing` is where the two meet.
-   */
-  'no-activity-right-now',
-  /**
-   * 🔴 **The last frame that would have said arrived in a shape this build could not read** (235's
-   * `degradedFrom`) — so the previous phase is DROPPED rather than carried.
-   *
-   * ⛔ **`an-unenumerated-state-counts-as-success`, and the reachable instance of it.** A fifth
-   * activity phase, or a malformed one, fails `activityEventSchema` and is replaced with an
-   * `unknown` carrying `degradedFrom: 'activity'`. ⚠️ Holding the old phase through that would let
-   * *doing something I have no word for* render as the last word this app did have, which is the
-   * defect `HO-063` §3 was written about with better spelling.
-   */
-  'a-frame-this-app-could-not-read',
-] as const
+type NothingWasSaid =
+  'nothing-has-arrived' | 'no-activity-right-now' | 'a-frame-this-app-could-not-read'
 
-/** One of {@link NOTHING_WAS_SAID}. */
-type NothingWasSaid = (typeof NOTHING_WAS_SAID)[number]
-
-/** ⚑ **The ordinary quiet, spelled once** — see {@link NOTHING_WAS_SAID}'s second member. */
+/** ⚑ **The ordinary quiet, spelled once** — see {@link NothingWasSaid}'s second member. */
 export const NOTHING_RIGHT_NOW: WhatThisAppWasTold = {
   said: 'nothing',
   because: 'no-activity-right-now',
 }
 
-/** ⚑ **Registered and silent, spelled once** — see {@link NOTHING_WAS_SAID}'s first member. */
+/** ⚑ **Registered and silent, spelled once** — see {@link NothingWasSaid}'s first member. */
 export const NOTHING_HAS_ARRIVED: WhatThisAppWasTold = {
   said: 'nothing',
   because: 'nothing-has-arrived',

@@ -3,11 +3,10 @@ import {
   createPersonsQueue,
   type PersonsQueue,
   type PersonsQueueDoors,
-  type StoppedWorkRow,
 } from '../src/renderer/src/lib/persons-queue'
 import type { TodoRow, WorkEntry } from '../src/renderer/src/lib/work-waits'
 
-const stop: StoppedWorkRow = {
+const stop: Parameters<PersonsQueue['handBack']>[0] = {
   key: 'piece',
   sessionId: 'session',
   label: 'W1.2',
