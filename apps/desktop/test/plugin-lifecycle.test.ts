@@ -31,6 +31,61 @@ afterEach(async () => {
   await cleanupLifecycleFixtures()
 })
 
+function inertRuntime(
+  run: () => { exited: Promise<void>; stop: () => Promise<void> },
+): NonNullable<Parameters<typeof fixture>[0]>['runtime'] {
+  return {
+    previousOwnerClean: async () => true,
+    removeCode: async () => {},
+    async start() {
+      return {
+        runId: randomUUID(),
+        ...run(),
+        ready: async () => ({
+          serverPid: 404941,
+          origin: 'http://127.0.0.1:1',
+          mcp: () => ({ url: '', headers: { Authorization: '' } }),
+          admin: () => ({ url: '', headers: { Authorization: '' } }),
+        }),
+      }
+    },
+  }
+}
+
+async function settings(
+  f: Awaited<ReturnType<typeof fixture>>,
+  serve: Partial<Parameters<typeof servePersonPluginControl>[0]> = {},
+  connect: Partial<Parameters<typeof connectPluginSettings>[0]> = {},
+) {
+  const key = 'a'.repeat(64)
+  const bridge = await servePersonPluginControl({
+    root: f.root,
+    key,
+    controller: f.controller,
+    read: async () => null,
+    ...serve,
+  })
+  const client = await connectPluginSettings({
+    path: bridge.path,
+    personKey: key,
+    root: f.root,
+    target: f.opts.target,
+    catalogue: f.opts.catalogue,
+    projection: projection().sink,
+    propose() {},
+    ...connect,
+  })
+  return {
+    key,
+    bridge,
+    client,
+    async close() {
+      await client.close()
+      await bridge.close()
+    },
+  }
+}
+
 // Global owner-only storage has no Windows backend yet; these are fictional POSIX folders.
 describe.skipIf(process.platform === 'win32')(
   'person plugin lifecycle, inert process peers',
@@ -242,23 +297,7 @@ describe.skipIf(process.platform === 'win32')(
       }
       const f = await fixture({
         now: () => clock,
-        runtime: {
-          previousOwnerClean: async () => true,
-          removeCode: async () => {},
-          async start() {
-            return {
-              runId: randomUUID(),
-              exited: new Promise<void>(() => {}),
-              ready: async () => ({
-                serverPid: 404941,
-                origin: 'http://127.0.0.1:1',
-                mcp: () => ({ url: '', headers: { Authorization: '' } }),
-                admin: () => ({ url: '', headers: { Authorization: '' } }),
-              }),
-              stop: () => stop(),
-            }
-          },
-        },
+        runtime: inertRuntime(() => ({ exited: new Promise<void>(() => {}), stop: () => stop() })),
       })
       await f.controller.install(f.handle, 'chrome')
       await expect(f.controller.uninstall(f.handle, 'chrome')).rejects.toMatchObject({
@@ -308,25 +347,12 @@ describe.skipIf(process.platform === 'win32')(
       let exit!: () => void
       const f = await fixture({
         now: () => clock,
-        runtime: {
-          previousOwnerClean: async () => true,
-          removeCode: async () => {},
-          async start() {
-            return {
-              runId: randomUUID(),
-              exited: new Promise<void>((_, reject) => {
-                exit = () => reject(new Error('fictional unexpected exit'))
-              }),
-              ready: async () => ({
-                serverPid: 404941,
-                origin: 'http://127.0.0.1:1',
-                mcp: () => ({ url: '', headers: { Authorization: '' } }),
-                admin: () => ({ url: '', headers: { Authorization: '' } }),
-              }),
-              stop: async () => {},
-            }
-          },
-        },
+        runtime: inertRuntime(() => ({
+          exited: new Promise<void>((_, reject) => {
+            exit = () => reject(new Error('fictional unexpected exit'))
+          }),
+          stop: async () => {},
+        })),
       })
       await f.controller.install(f.handle, 'chrome')
       exit()
@@ -342,30 +368,19 @@ describe.skipIf(process.platform === 'win32')(
     it('a removal left unfinished never blocks a drain, and the next owner finishes it', async () => {
       let stopFails = true
       const f = await fixture({
-        runtime: {
-          previousOwnerClean: async () => true,
-          removeCode: async () => {},
-          async start() {
-            let exit!: () => void
-            const exited = new Promise<void>((resolve) => {
-              exit = resolve
-            })
-            return {
-              runId: randomUUID(),
-              exited,
-              ready: async () => ({
-                serverPid: 404941,
-                origin: 'http://127.0.0.1:1',
-                mcp: () => ({ url: '', headers: { Authorization: '' } }),
-                admin: () => ({ url: '', headers: { Authorization: '' } }),
-              }),
-              stop: async () => {
-                if (stopFails) throw new Error('fictional unproved exit')
-                exit()
-              },
-            }
-          },
-        },
+        runtime: inertRuntime(() => {
+          let exit!: () => void
+          const exited = new Promise<void>((resolve) => {
+            exit = resolve
+          })
+          return {
+            exited,
+            stop: async () => {
+              if (stopFails) throw new Error('fictional unproved exit')
+              exit()
+            },
+          }
+        }),
       })
       await f.controller.install(f.handle, 'chrome')
       await expect(f.controller.uninstall(f.handle, 'chrome')).rejects.toMatchObject({
@@ -382,23 +397,7 @@ describe.skipIf(process.platform === 'win32')(
     it('trusted drain keeps observing a run whose positive exit arrives after twenty seconds', async () => {
       const exit = deferred<void>()
       const f = await fixture({
-        runtime: {
-          previousOwnerClean: async () => true,
-          removeCode: async () => {},
-          async start() {
-            return {
-              runId: randomUUID(),
-              exited: exit.promise,
-              stop: async () => {},
-              ready: async () => ({
-                serverPid: 404941,
-                origin: 'http://127.0.0.1:1',
-                mcp: () => ({ url: '', headers: { Authorization: '' } }),
-                admin: () => ({ url: '', headers: { Authorization: '' } }),
-              }),
-            }
-          },
-        },
+        runtime: inertRuntime(() => ({ exited: exit.promise, stop: async () => {} })),
       })
       await f.controller.install(f.handle, 'chrome')
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
@@ -462,27 +461,17 @@ describe.skipIf(process.platform === 'win32')(
     it('the Settings seam installs/configures/uninstalls over separate person authority and awaits UI teardown', async () => {
       const f = await fixture()
       await f.controller.detach(f.handle)
-      const key = 'a'.repeat(64)
-      const bridge = await servePersonPluginControl({
-        root: f.root,
-        key,
-        controller: f.controller,
-        read: async () => ({ configRevision: 0, profiles: [], tabs: [] }),
-      })
-      let client: Awaited<ReturnType<typeof connectPluginSettings>> | undefined
-      try {
-        const local = projection(f.events)
-        client = await connectPluginSettings({
-          path: bridge.path,
-          personKey: key,
-          root: f.root,
-          target: f.opts.target,
-          catalogue: f.opts.catalogue,
-          projection: local.sink,
+      const { client, close } = await settings(
+        f,
+        { read: async () => ({ configRevision: 0, profiles: [], tabs: [] }) },
+        {
+          projection: projection(f.events).sink,
           propose: () => {
             throw new Error('not an Apply command')
           },
-        })
+        },
+      )
+      try {
         expect((await client.catalogue())[0]?.state).toBe('Available')
         await client.install('chrome')
         expect((await client.catalogue())[0]?.state).toBe('Running')
@@ -502,8 +491,7 @@ describe.skipIf(process.platform === 'win32')(
         expect(f.events).toContain('remove-code')
         expect((await client.catalogue())[0]?.state).toBe('Available')
       } finally {
-        await client?.close()
-        await bridge.close()
+        await close()
       }
     })
     it.each([true, false, null])(
@@ -516,24 +504,8 @@ describe.skipIf(process.platform === 'win32')(
           return { ...run, ready: async () => ({ ...(await run.ready()), priorityClamped }) }
         }
         await f.controller.detach(f.handle)
-        const key = 'a'.repeat(64)
-        const bridge = await servePersonPluginControl({
-          root: f.root,
-          key,
-          controller: f.controller,
-          read: async () => null,
-        })
-        let client: Awaited<ReturnType<typeof connectPluginSettings>> | undefined
+        const { client, close } = await settings(f)
         try {
-          client = await connectPluginSettings({
-            path: bridge.path,
-            personKey: key,
-            root: f.root,
-            target: f.opts.target,
-            catalogue: f.opts.catalogue,
-            projection: projection().sink,
-            propose: () => {},
-          })
           expect((await client.catalogue())[0]).not.toHaveProperty('priorityClamped')
           await client.install('chrome')
           expect((await client.catalogue())[0]).toMatchObject({
@@ -542,33 +514,16 @@ describe.skipIf(process.platform === 'win32')(
             priorityClamped,
           })
         } finally {
-          await client?.close()
-          await bridge.close()
+          await close()
         }
       },
     )
     it('a Settings call waiting over 30 s for the state lock keeps its channel', async () => {
       const f = await fixture()
       await f.controller.detach(f.handle)
-      const key = 'a'.repeat(64)
-      const bridge = await servePersonPluginControl({
-        root: f.root,
-        key,
-        controller: f.controller,
-        read: async () => null,
-      })
-      let client: Awaited<ReturnType<typeof connectPluginSettings>> | undefined
+      const { client, close } = await settings(f)
       const held = deferred<void>()
       try {
-        client = await connectPluginSettings({
-          path: bridge.path,
-          personKey: key,
-          root: f.root,
-          target: f.opts.target,
-          catalogue: f.opts.catalogue,
-          projection: projection().sink,
-          propose: () => {},
-        })
         // An Install of over 30 s holds the lock while this list waits behind it.
         const holding = f.state.withExclusive(() => held.promise)
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
@@ -580,8 +535,7 @@ describe.skipIf(process.platform === 'win32')(
       } finally {
         held.resolve()
         vi.useRealTimers()
-        await client?.close()
-        await bridge.close()
+        await close()
       }
     })
     it('a person channel lost while its plugin runs ends only that consumer', async () => {
@@ -665,17 +619,6 @@ describe.skipIf(process.platform === 'win32')(
           propose() {},
         }),
       ).rejects.toMatchObject({ code: 'unavailable' })
-    })
-    it('a later uninstall finishes a pending removal whose stop failed', async () => {
-      const f = await fixture()
-      await f.controller.install(f.handle, 'chrome')
-      const operationId = randomUUID()
-      f.failStop()
-      await expect(f.controller.uninstall(f.handle, 'chrome', operationId)).rejects.toThrow()
-      f.failStop(false)
-      await f.controller.uninstall(f.handle, 'chrome', randomUUID())
-      expect(f.state.inspect().pending).toBeNull()
-      expect(f.state.exportActivation().entries).toEqual([])
     })
     it('replayed frames cannot create a second session or operation', async () => {
       const f = await fixture()
@@ -785,28 +728,15 @@ it.skipIf(process.platform === 'win32')(
     let unavailable = false
     const f = await fixture({ toolsUnavailable: () => unavailable })
     await f.controller.install(f.handle, 'chrome')
-    const key = 'b'.repeat(64)
     const restartChrome = vi.fn(async () => {
       unavailable = false
     })
-    const service = await servePersonPluginControl({
-      root: f.root,
-      key,
+    const { key, bridge, client, close } = await settings(f, {
       controller: sharedLifecycleWorkspaces(f.controller),
-      read: async () => null,
       restartChrome,
     })
-    const client = await connectPluginSettings({
-      path: service.path,
-      personKey: key,
-      root: f.root,
-      target: f.opts.target,
-      catalogue: f.opts.catalogue,
-      projection: projection().sink,
-      propose() {},
-    })
     const legacy = await connectPersonPluginControl({
-      path: service.path,
+      path: bridge.path,
       key,
       handle: async () => true,
     })
@@ -842,8 +772,7 @@ it.skipIf(process.platform === 'win32')(
     } finally {
       await legacy.call({ kind: 'detach' })
       legacy.close()
-      await client.close()
-      await service.close()
+      await close()
     }
   },
 )
@@ -886,24 +815,11 @@ it.skipIf(process.platform === 'win32')(
     exit = deferred<void>()
     const controller = await PluginLifecycleController.open(f.opts)
     const failedHandle = await controller.attach(projection().sink)
-    const key = 'b'.repeat(64)
-    const service = await servePersonPluginControl({
-      root: f.root,
-      key,
+    const { key, bridge, client, close } = await settings(f, {
       controller: sharedLifecycleWorkspaces(controller),
-      read: async () => null,
-    })
-    const client = await connectPluginSettings({
-      path: service.path,
-      personKey: key,
-      root: f.root,
-      target: f.opts.target,
-      catalogue: f.opts.catalogue,
-      projection: projection().sink,
-      propose() {},
     })
     const legacy = await connectPersonPluginControl({
-      path: service.path,
+      path: bridge.path,
       key,
       handle: async () => true,
     })
@@ -935,8 +851,7 @@ it.skipIf(process.platform === 'win32')(
     } finally {
       await legacy.call({ kind: 'detach' })
       legacy.close()
-      await client.close()
-      await service.close()
+      await close()
     }
     f.failStop()
     await expect(controller.uninstall(failedHandle, 'chrome')).rejects.toMatchObject({
