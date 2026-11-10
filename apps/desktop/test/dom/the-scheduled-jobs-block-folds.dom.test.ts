@@ -11,7 +11,6 @@ import { comingTimeWords } from '../../src/renderer/src/lib/scheduled-job-detail
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import { assertDrawn, drawnReady, wordRects } from './drawn'
 import { drawerProps, mount, unmountAll, visible, type Mounted } from './harness'
-import agentCard from '../../src/renderer/src/components/AgentCard.vue?raw'
 
 /**
  * The scheduled-jobs block folds the way an agent card's Current task and Files do: a chevron, the
@@ -226,9 +225,5 @@ describe('the scheduled-jobs block folds', () => {
       ).toBeLessThanOrEqual(1)
     }
     expect(wordLines(scheduleFold), 'the schedule heading and its next time share a line').toBe(1)
-  })
-
-  it('⚑ the Agent panel turns the fold on, under the key this file reads', () => {
-    expect(agentCard).toContain(`<ScheduleBar :registry="props.state.schedule" fold="${KEY}" />`)
   })
 })

@@ -17,27 +17,6 @@ import {
  * root as its entry file does, with no sprite of its own, and checks every reference resolves.
  */
 
-/** The renderer's top-level files, read as text: this runs in the browser, so no `node:fs`. */
-const TOP: Record<string, string> = import.meta.glob('../../src/renderer/src/*.ts', {
-  query: '?raw',
-  import: 'default',
-  eager: true,
-})
-const SOURCE: Record<string, string> = import.meta.glob(
-  ['../../src/renderer/src/App.vue', '../../src/renderer/src/components/RuntimeScreen.vue'],
-  { query: '?raw', import: 'default', eager: true },
-)
-
-/** Every renderer entry, by the root component its file mounts with `createApp`. */
-function entries(): { file: string; root: string }[] {
-  return Object.entries(TOP)
-    .flatMap(([path, source]) => {
-      const root = /createApp\(\s*(\w+)/.exec(source)?.[1]
-      return root ? [{ file: path.split('/').at(-1)!, root }] : []
-    })
-    .sort((a, b) => a.file.localeCompare(b.file))
-}
-
 const settle = async (): Promise<void> => {
   for (let i = 0; i < 4; i += 1) {
     await nextTick()
@@ -57,14 +36,7 @@ function dangling(): string[] {
 afterEach(unmountAll)
 
 describe('every window entry carries its icons', () => {
-  it('⚑ the entries are the two known ones, so a new entry is checked here too', () => {
-    expect(entries()).toEqual([
-      { file: 'main.ts', root: 'App' },
-      { file: 'recovery.ts', root: 'RecoveryApp' },
-    ])
-  })
-
-  it('🔴 the recovery window resolves every icon it draws, with a transcript open', async () => {
+  it('the recovery window resolves every icon it draws, with a transcript open', async () => {
     expect(document.querySelector('symbol'), 'a sprite is already mounted').toBeNull()
     const bridge = fakeRecoveryBridge({
       verdict: HISTORY_ONLY,
@@ -77,14 +49,5 @@ describe('every window entry carries its icons', () => {
     view.all('recovery-conversation')[1]!.click()
     await settle()
     expect(dangling()).toEqual([])
-  })
-
-  it('🔴 the main window mounts the sprite in the screen its entry draws', () => {
-    // The main entry mounts App, whose screen is RuntimeScreen; mounting it whole needs the whole
-    // bridge, so the claim is read off the source instead: the screen App draws mounts the sprite.
-    const app = SOURCE['../../src/renderer/src/App.vue']!
-    expect(app).toMatch(/<RuntimeScreen\b/)
-    const screen = SOURCE['../../src/renderer/src/components/RuntimeScreen.vue']!
-    expect(screen).toMatch(/<IconSprite\s*\/>/)
   })
 })

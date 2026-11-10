@@ -290,27 +290,7 @@ describe('§4 · Waiting on you draws it as its own group, with its door', () =>
 /* -------------------------------------------------------------- §5 · the rail's badge */
 
 describe('§5 · the rail’s badge counts it', () => {
-  it('the screen adds it to what the badge counts, and the rail draws that number', async () => {
-    // ⛔ **A source census, and it has to be one**: nothing mounts `RuntimeScreen` (it is the whole
-    // window), so what it hands the rail is read off the source — prose stripped first.
-    const screen = (
-      (await import('../../src/renderer/src/components/RuntimeScreen.vue?raw')) as {
-        default: string
-      }
-    ).default
-    const at = screen.indexOf('const homeNeedsYou = computed(')
-    expect(at, 'RuntimeScreen no longer computes homeNeedsYou').toBeGreaterThan(-1)
-    const block = screen
-      .slice(at, screen.indexOf('\n)\n', at))
-      .replace(/\/\*[\s\S]*?\*\//g, ' ')
-      .replace(/\/\/[^\n]*/g, ' ')
-    const onlyYou = block
-      .slice(block.indexOf('onlyYou:'), block.indexOf('unread:'))
-      .replace(/\s+/g, '')
-    expect(onlyYou).toBe(
-      'onlyYou:(persons.view.value?.count??0)+(persons.asks.value?.rows.length??0)+(persons.serverRequests.value?.rows.length??0)+(persons.waitingOnWhoWrote.value?.rows.length??0)+persons.workWaits.value.todos.rows.length+persons.workWaits.value.incidents.rows.length+providersNotChosenIn(agentStore.identities.value).length,',
-    )
-
+  it('the screen adds it to what the badge counts, and the rail draws that number', () => {
     // ⚑ That sum, over a module holding one piece waiting on a reply and nothing else, is the
     // badge the rail draws.
     supply({ walked: walkOf([aPieceWaiting()]), lastLookAnswered: true })

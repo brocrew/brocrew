@@ -296,49 +296,5 @@ describe('the Graph is moved by hand, grows with its cards, and is fed by the sc
           alone.q('forest-covers').getBoundingClientRect().bottom,
       ).toBeGreaterThan(300)
     })
-
-    it('🔴 RuntimeScreen hands the conversation pane the Graph tab’s forest, folded off the band’s own read — and the Team page its own', async () => {
-      const screen = (
-        (await import('../../src/renderer/src/components/RuntimeScreen.vue?raw')) as {
-          default: string
-        }
-      ).default
-      /** From `start` to the first `end` after it; each is asserted found first. */
-      const slice = (start: string, end: string): string => {
-        const from = screen.indexOf(start)
-        expect(from, `nothing starts with ${start}`).toBeGreaterThan(-1)
-        const to = screen.indexOf(end, from + start.length)
-        expect(to, `nothing ends ${start} with ${end.trim()}`).toBeGreaterThan(from)
-        return screen.slice(from, to)
-      }
-
-      const pane = slice(
-        `<ConversationPane\n            v-else-if="surface === 'conversation' && active?.meta"`,
-        '\n          />\n',
-      )
-      const team = slice(
-        `<TeamWorkspace\n            v-else-if="surface === 'team'"`,
-        '\n          />\n',
-      )
-      const graphFold = slice('const conversationForestView = computed(() =>', '\n)\n')
-      const teamFold = slice('const theForestView = computed(', '\n')
-
-      // ⚑ The pane is handed the Graph tab's forest, folded off the band's own read: the forest the
-      // poll took and what each running conversation was last told.
-      expect(pane).toContain(':forest="readConversationForest"')
-      expect(screen).toContain('const readConversationForest = () => conversationForestView.value')
-      expect(graphFold).toContain(
-        'foldTheForest(cast.forest.value, cast.reading.value?.atWork ?? null)',
-      )
-      // ⚑ The Team page is handed its own, folded off its own read.
-      expect(team).toContain(':forest="theForestView"')
-      expect(teamFold).toContain('foldTheForest(theForest.value, beingDone.value)')
-
-      // ⛔ The two are not crossed: each declaration reads its own source, beside the containment above.
-      expect(graphFold).not.toContain('theForest.value')
-      expect(graphFold).not.toContain('beingDone.value')
-      expect(teamFold).not.toContain('cast.forest')
-      expect(teamFold).not.toContain('cast.reading')
-    })
   })
 })

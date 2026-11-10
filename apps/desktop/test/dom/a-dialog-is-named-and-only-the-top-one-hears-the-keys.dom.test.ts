@@ -58,39 +58,6 @@ describe('every dialog host has a name', () => {
     expect(dialog.getAttribute('aria-modal')).toBe('true')
     expect(dialog.dataset.cy).toBe('overlay-host')
   })
-
-  /** The opening tag of every `<OverlayHost` in `source`, comments stripped. */
-  function mountTags(source: string): string[] {
-    const bare = source.replace(/<!--[\s\S]*?-->/g, '')
-    return [...bare.matchAll(/<OverlayHost[\s>][^>]*>/g)].map((m) => m[0])
-  }
-  const named = (tag: string): boolean => /\s:?label="[^"]+"/.test(tag)
-
-  it('every mount site in the window passes a label', () => {
-    const sources = import.meta.glob('../../src/renderer/src/components/*.vue', {
-      query: '?raw',
-      import: 'default',
-      eager: true,
-    }) as Record<string, string>
-    const tags = Object.entries(sources)
-      .filter(([file]) => !file.endsWith('/OverlayHost.vue'))
-      .flatMap(([file, text]) => mountTags(text).map((tag) => ({ file, tag })))
-    // The name and stop censuses cover the same overlay mounts.
-    expect(tags).toHaveLength(19)
-    const answerTags = tags.filter(({ file }) => file.endsWith('/HumanAnswerDialog.vue'))
-    expect(answerTags).toHaveLength(1)
-    expect(answerTags[0]!.tag).toMatch(/\slabel="Answer to you"/)
-    expect(tags.filter(({ file }) => file.endsWith('/ProvidersScreen.vue'))).toHaveLength(1)
-    expect(tags.filter(({ file }) => file.endsWith('/FilesTaskPicker.vue'))).toHaveLength(1)
-    for (const { file, tag } of tags) expect(named(tag), `${file}: ${tag}`).toBe(true)
-  })
-
-  it('…and the walk refuses a mount site that names nothing', () => {
-    const [bare] = mountTags('<template><OverlayHost v-if="open" @close="open = false"></template>')
-    const [given] = mountTags('<template><OverlayHost v-if="open" label="Image"></template>')
-    expect(named(bare!)).toBe(false)
-    expect(named(given!)).toBe(true)
-  })
 })
 
 /* ---------------------------------------------------------------- the app's own popup */

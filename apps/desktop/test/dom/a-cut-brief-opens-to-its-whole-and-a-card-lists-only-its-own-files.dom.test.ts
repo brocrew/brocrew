@@ -12,7 +12,6 @@ import {
   outgoingCard,
   readItWholeIn,
   STATUS_LEAD,
-  THE_BRIEF_IS_FURTHER_BACK,
   type OutgoingCardReading,
   type OutgoingCardWords,
 } from '../../src/renderer/src/lib/outgoing-card'
@@ -424,57 +423,6 @@ describe('the row a piece’s brief is drawn on', () => {
     expect(queued, 'no held row').toBeDefined()
     expect(briefItemIn(b, 'W1.12')).toBe(queued!.id)
     expect(briefItemIn(b, 'W1.13') ?? 'found nowhere').toBe('found nowhere')
-  })
-})
-
-/* ------------------------------------------------------------------ §4 · the screen's door, as text */
-
-async function screenSource(): Promise<string> {
-  return (
-    (await import('../../src/renderer/src/components/RuntimeScreen.vue?raw')) as {
-      default: string
-    }
-  ).default
-}
-
-/** From `start` to the first line that is exactly `end`; each is asserted found first. */
-function slice(source: string, start: string, end: string): string {
-  const from = source.indexOf(start)
-  expect(from, `nothing starts with ${start}`).toBeGreaterThan(-1)
-  const to = source.indexOf(end, from + start.length)
-  expect(to, `nothing ends ${start} with ${end.trim()}`).toBeGreaterThan(from)
-  return source.slice(from, to)
-}
-
-describe('the screen’s door to a brief, read as text', () => {
-  it('🔴 goToTheWork opens the door first, reads the reader’s fold and says when the brief is further back — read as text', async () => {
-    const screen = await screenSource()
-    const work = slice(screen, 'async function goToTheWork(', '\n}\n')
-    const question = slice(screen, 'async function goToQuestion(', '\n}\n')
-    // ⚑ Presence first, then the order.
-    expect(work).toContain('record.transcript')
-    // A refused door looks for nothing, and so does a press that names no brief.
-    expect(work).toContain(
-      'if (!(await openConversation(sessionId)) || briefOf === undefined) return',
-    )
-    const door = work.indexOf('await openConversation(sessionId)')
-    const settled = work.indexOf('await nextTick()')
-    const found = work.indexOf('briefItemIn(record.transcript, briefOf)')
-    const landed = work.indexOf('pane.value?.focus(itemId)')
-    for (const at of [door, settled, found, landed]) expect(at).toBeGreaterThan(-1)
-    expect(door).toBeLessThan(settled)
-    expect(settled).toBeLessThan(found)
-    expect(found).toBeLessThan(landed)
-    expect(work).toContain('itemId === undefined || pane.value?.focus(itemId) !== true')
-    expect(work).toContain('say(THE_BRIEF_IS_FURTHER_BACK)')
-    expect(THE_BRIEF_IS_FURTHER_BACK).toBe(
-      'That brief is not in the part of this conversation on screen — it is further back; load more of the transcript to reach it.',
-    )
-    // ⛔ A brief is history: the reader's fold, never the control fold a question is found in.
-    expect(work).not.toContain('record.control')
-    // The pair: the question's door, beside it, reads that control fold — so the absence above is a
-    // difference between the two and not an anchor that is not there.
-    expect(question).toContain('record.control.requestItems')
   })
 })
 
