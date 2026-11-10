@@ -16,6 +16,7 @@ import {
 import type { ManagedPluginMcpServer } from '@brobot2/runtime/managed-plugin-mcp'
 import type {
   BrokerAgent,
+  BrokerCallCause,
   BrokerInput,
   BrokerReply,
   BrokerServer,
@@ -45,8 +46,8 @@ function endpoint(raw: string): URL {
     throw new Error(WORDS)
   return url
 }
-function textReply(): { content: { type: 'text'; text: string }[]; isError: true } {
-  return { content: [{ type: 'text', text: WORDS }], isError: true }
+function textReply(message = WORDS): { content: { type: 'text'; text: string }[]; isError: true } {
+  return { content: [{ type: 'text', text: message }], isError: true }
 }
 
 export function createPluginCredential(): string {
@@ -65,10 +66,13 @@ export function createPrivatePluginPort(options: {
   const credential = options.credential
   if (!/^[0-9a-f]{64}$/.test(credential)) throw new Error(WORDS)
   return {
-    tool(request, signal) {
+    independentToolCalls: true,
+    tool(request, signal, onprogress) {
       let client: Client | undefined,
         cancelled = false,
+        connected = false,
         closingAfterReply = false
+      const cancellation = new AbortController()
       let prove!: () => void, unproved!: () => void
       const quiescent = new Promise<void>((resolve, reject) => {
         prove = resolve
@@ -78,9 +82,10 @@ export function createPrivatePluginPort(options: {
       const cancel = () => {
         cancelled = true
         report('cancelled')
-        void client?.close().catch(() => report('transport-close-failed'))
+        cancellation.abort()
+        if (!connected) void client?.close().catch(() => report('transport-close-failed'))
       }
-      const reportError = (error: unknown, phase: Parameters<PluginToolDiagnostic>[0]) => {
+      const reportError = (error: unknown, phase: Parameters<PluginToolDiagnostic>[0]): BrokerCallCause => {
         report(phase)
         // Transport exceptions may contain page data. Only these closed causes may be retained.
         try {
@@ -90,25 +95,33 @@ export function createPrivatePluginPort(options: {
             cause?: { code?: unknown }
           } | null
           const code = value?.cause?.code ?? value?.code
-          if (code === 'ECONNRESET' || code === 'EPIPE' || code === 'UND_ERR_SOCKET')
+          if (code === 'ECONNRESET' || code === 'EPIPE' || code === 'UND_ERR_SOCKET') {
             report('transport-connection-reset')
-          else if (code === 'ECONNREFUSED') report('transport-connection-refused')
+            return 'connection-failed'
+          } else if (code === 'ECONNREFUSED') {
+            report('transport-connection-refused')
+            return 'connection-failed'
+          }
           else if (
             code === 'ETIMEDOUT' ||
             code === 'UND_ERR_CONNECT_TIMEOUT' ||
             code === -32001 ||
             value?.name === 'TimeoutError'
-          )
+          ) {
             report('transport-timeout')
-          else if (value?.name === 'AbortError') report('transport-aborted')
+            return 'stalled'
+          } else if (value?.name === 'AbortError') {
+            report('transport-aborted')
+            return 'cancelled'
+          }
           else if (code === 401 || code === 403) report('transport-auth-refused')
         } catch {
           /* Never inspect or stringify an arbitrary error further. */
         }
+        return 'downstream'
       }
       const result = (async (): Promise<BrokerReply> => {
         let natural = false
-        let connected = false
         try {
           if (signal.aborted) {
             report('cancelled')
@@ -144,7 +157,11 @@ export function createPrivatePluginPort(options: {
           })
           await client.connect(transport)
           connected = true
-          const reply = await client.callTool({ name: request.name, arguments: request.input })
+          const reply = await client.callTool({ name: request.name, arguments: request.input }, undefined, {
+            signal: cancellation.signal,
+            resetTimeoutOnProgress: true,
+            onprogress: (progress) => onprogress?.(progress),
+          })
           natural = true
           if (cancelled || signal.aborted) {
             report('cancelled')
@@ -158,7 +175,7 @@ export function createPrivatePluginPort(options: {
           if (checked.data.isError) report('tool-error')
           return { ok: true, value: checked.data as BrokerValue }
         } catch (error) {
-          reportError(
+          const cause = reportError(
             error,
             cancelled || signal.aborted
               ? 'cancelled'
@@ -166,7 +183,7 @@ export function createPrivatePluginPort(options: {
                 ? 'transport-call-failed'
                 : 'transport-connect-failed',
           )
-          return { ok: false }
+          return { ok: false, cause: cancelled || signal.aborted ? 'cancelled' : cause }
         } finally {
           signal.removeEventListener('abort', cancel)
           let closed = false
@@ -329,7 +346,7 @@ export async function openManagedPluginRoute(
             inputSchema: tool.inputSchema as { type: 'object' },
           })),
         }))
-        mcp.setRequestHandler(CallToolRequestSchema, async (call) => {
+        mcp.setRequestHandler(CallToolRequestSchema, async (call, extra) => {
           const tool = offered.find((one) => one.name === call.params.name)
           if (!tool) {
             report('route-tool-unknown')
@@ -341,13 +358,21 @@ export async function openManagedPluginRoute(
               tool.qualifiedName,
               (call.params.arguments ?? {}) as BrokerInput,
               controller.signal,
+              (progress) => {
+                const progressToken = call.params._meta?.progressToken
+                if (progressToken !== undefined)
+                  void extra.sendNotification({
+                    method: 'notifications/progress',
+                    params: { ...progress, progressToken },
+                  }).catch(() => undefined)
+              },
             )
             const parsed = CallToolResultSchema.safeParse(result)
             if (!parsed.success) report('result-invalid')
             return parsed.success ? parsed.data : textReply()
-          } catch {
+          } catch (error) {
             // The broker audit records its own closed failure code.
-            return textReply()
+            return textReply(error instanceof PluginBrokerError ? error.message : WORDS)
           }
         })
         const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })

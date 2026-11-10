@@ -6,6 +6,8 @@ import type {
   BrokerAgent,
   BrokerAudit,
   BrokerClock,
+  BrokerCallCause,
+  BrokerProgress,
   BrokerFailure,
   BrokerIdentity,
   BrokerInput,
@@ -45,9 +47,9 @@ const failureCodes = new Set<BrokerFailure>([
 const errorCodes = new WeakMap<object, BrokerFailure>()
 export class PluginBrokerError extends Error {
   readonly code: BrokerFailure
-  constructor(code: BrokerFailure) {
+  constructor(code: BrokerFailure, tool?: string, cause?: BrokerCallCause) {
     code = failureCodes.has(code) ? code : 'invalid'
-    super(code === 'busy' ? 'Plugin busy. Try again.' : 'Plugin unavailable. Try again.')
+    super(tool ? `Tool ${tool} failed: ${cause ?? code}.` : code === 'busy' ? 'Plugin busy. Try again.' : 'Plugin unavailable. Try again.')
     this.name = 'PluginBrokerError'
     this.code = code
     errorCodes.set(this, code)
@@ -122,6 +124,7 @@ interface Job {
   execution?: PluginExecution
   quiet: boolean
   cancelSent: boolean
+  readonly onprogress?: (progress: BrokerProgress) => void
   reply?: BrokerReply
 }
 interface Queue {
@@ -207,6 +210,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
     return refuse('invalid')
   const clock = options.clock ?? defaultClock
   const server = {
+    independentToolCalls: options.server.independentToolCalls === true,
     tool: options.server.tool.bind(options.server),
     admin: options.server.admin.bind(options.server),
   }
@@ -221,6 +225,8 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
   let lastWorkspace = ''
   let count = 0
   let active: Job | undefined
+  const uncertain = new Set<Job>()
+  const independent = (job: Job) => job.operation === 'tool' && server.independentToolCalls
   // Retained independently of queue size: a throw after dispatch is not completion.
   let completed = true
   let available = true
@@ -271,7 +277,8 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
             : 'call-deadline'
           : undefined,
       )
-      job.reject(new PluginBrokerError(code))
+      job.reject(new PluginBrokerError(code, independent(job) ? job.name : undefined,
+        job.reply?.ok === false ? job.reply.cause : undefined))
     } else job.resolve(value ?? null)
   }
   function remove(job: Job): void {
@@ -325,7 +332,8 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
       if (!job.quiet) return
       if (clock.now() >= job.proofUntil) unavailable(job.operation, 'proof-timeout')
       finished(job)
-    } else if (clock.now() >= job.startedAt + PLUGIN_BROKER_LIMITS.callMs) stop(job, 'deadline')
+    } else if (!independent(job) && clock.now() >= job.startedAt + PLUGIN_BROKER_LIMITS.callMs) stop(job, 'deadline')
+    else if (independent(job) && job.reply?.ok === false) stop(job, 'downstream')
     else if (job.quiet && job.reply) {
       if (!valid(job)) answer(job, undefined, 'unauthorized')
       else if (!job.reply.ok) answer(job, undefined, 'downstream')
@@ -339,11 +347,13 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
     if (job.cancelSent || !job.execution) return
     job.cancelSent = true
     try {
-      void Promise.resolve(job.execution.cancel()).catch(() =>
-        unavailable(job.operation, 'cancel-failed'),
-      )
+      void Promise.resolve(job.execution.cancel()).catch(() => {
+        if (!independent(job)) unavailable(job.operation, 'cancel-failed')
+        else log('refused', job.operation, 'downstream', 'cancel-failed')
+      })
     } catch {
-      unavailable(job.operation, 'cancel-failed')
+      if (!independent(job)) unavailable(job.operation, 'cancel-failed')
+      else log('refused', job.operation, 'downstream', 'cancel-failed')
     }
   }
   function stop(job: Job, code: BrokerFailure): void {
@@ -355,6 +365,13 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
     answer(job, undefined, code)
     if (job.cancelling) return
     job.cancelling = true
+    if (independent(job)) {
+      if (!job.quiet) uncertain.add(job)
+      job.controller.abort()
+      requestCancel(job)
+      finished(job)
+      return
+    }
     job.offCall()
     job.proofUntil = clock.now() + PLUGIN_BROKER_LIMITS.cancelProofMs
     if (job.quiet) {
@@ -417,7 +434,8 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
     job.startedAt = clock.now()
     active = job
     completed = false
-    job.offCall = clock.after(PLUGIN_BROKER_LIMITS.callMs, () => stop(job, 'deadline'))
+    if (!independent(job))
+      job.offCall = clock.after(PLUGIN_BROKER_LIMITS.callMs, () => stop(job, 'deadline'))
     const request: BrokerRequest = Object.freeze({
       identity: job.actor.identity,
       name: job.name,
@@ -427,7 +445,9 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
     try {
       job.execution =
         job.operation === 'tool'
-          ? server.tool(request, job.controller.signal)
+          ? server.tool(request, job.controller.signal, (progress) => {
+              if (job.state === 'running' && !job.answered) job.onprogress?.(progress)
+            })
           : server.admin(request, job.controller.signal)
       if (
         !job.execution ||
@@ -456,7 +476,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
                       PLUGIN_BROKER_LIMITS.outputBytes,
                     ),
                   }
-                : { ok: false }
+                : { ok: false, cause: reply.ok === false ? reply.cause : undefined }
               settle(job)
             } catch {
               stop(job, 'downstream')
@@ -469,9 +489,16 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
         .then(
           () => {
             job.quiet = true
+            uncertain.delete(job)
+            if (!active && uncertain.size === 0) completed = true
             settle(job)
           },
-          () => unavailable(job.operation, 'proof-rejected'),
+          () => {
+            if (independent(job)) {
+              if (job.state === 'running' && !job.quiet) uncertain.add(job)
+              log('refused', job.operation, 'downstream', 'proof-rejected')
+            } else unavailable(job.operation, 'proof-rejected')
+          },
         )
         .catch(() => unavailable(job.operation, 'proof-rejected'))
     } catch {
@@ -512,6 +539,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
     name: string,
     supplied: BrokerInput,
     signal?: AbortSignal,
+    onprogress?: (progress: BrokerProgress) => void,
   ): Promise<BrokerValue> {
     return new Promise((resolve, reject) => {
       let actor: Actor, copy: BrokerInput
@@ -530,7 +558,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
           ? [...q.actors.values()].reduce((n, jobs) => n + jobs.length, 0)
           : 0
         if (
-          count >= PLUGIN_BROKER_LIMITS.total ||
+          count + uncertain.size >= PLUGIN_BROKER_LIMITS.total ||
           workspaceCount >= PLUGIN_BROKER_LIMITS.workspace ||
           (q?.actors.get(actor.key)?.length ?? 0) >= PLUGIN_BROKER_LIMITS.agent
         )
@@ -564,6 +592,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
         proofUntil: 0,
         quiet: false,
         cancelSent: false,
+        onprogress,
       }
       const cancel = (): void => stop(job, 'cancelled')
       signal?.addEventListener('abort', cancel, { once: true })
@@ -627,6 +656,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
         finished(active)
       }
       completed = true
+      uncertain.clear()
     },
     () => log('refused', 'tool', 'unavailable', 'host-exit-unproven'),
   )
@@ -641,9 +671,10 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
         qualifiedName: string,
         args: BrokerInput,
         signal?: AbortSignal,
+        onprogress?: (progress: BrokerProgress) => void,
       ) {
         const name = published.find((tool) => tool.qualifiedName === qualifiedName)?.name ?? ''
-        return submit(capability, 'agent', 'tool', name, args, signal)
+        return submit(capability, 'agent', 'tool', name, args, signal, onprogress)
       },
     }),
     person: Object.freeze({
@@ -655,7 +686,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
       ) => submit(capability, 'person', 'admin', operation, args, signal),
     }),
     owner: Object.freeze({
-      hasCompletionProof: () => !available && completed && active === undefined,
+      hasCompletionProof: () => !available && completed && active === undefined && uncertain.size === 0,
       attach(workspaceId: string): BrokerWorkspace {
         if (!available || !identifier(workspaceId)) return refuse('unauthorized')
         const existing = workspaces.get(workspaceId)
@@ -695,7 +726,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
         available,
         queued: count,
         executing: active !== undefined,
-        awaitingQuiescence: active?.cancelling === true && !active.quiet,
+        awaitingQuiescence: uncertain.size > 0 || (active?.cancelling === true && !active.quiet),
       }),
   })
 }

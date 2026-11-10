@@ -469,6 +469,48 @@ describe('bounded fair serial queue', () => {
   })
 })
 
+describe('independent transport calls', () => {
+  it('retains unknown completion across later successful calls until exact host exit', async () => {
+    const exited = deferred<void>()
+    const h = setup((options) => ({
+      ...options,
+      hostExited: exited.promise,
+      server: { ...options.server, independentToolCalls: true },
+    }))
+    const first = tracked(h.call())
+    await tick()
+    h.server.calls[0]!.quiet.reject(new Error('unproved'))
+    h.server.calls[0]!.result.resolve({ ok: false, cause: 'stalled' })
+    await expect(first).rejects.toMatchObject({ code: 'downstream', message: expect.stringContaining('stalled') })
+    await tick()
+    const second = h.call()
+    await tick()
+    expect(h.server.calls).toHaveLength(2)
+    h.server.finish(1)
+    await second
+    expect(h.broker.status()).toMatchObject({ available: true, awaitingQuiescence: true })
+    h.broker.owner.invalidate()
+    expect(h.broker.owner.hasCompletionProof()).toBe(false)
+    exited.resolve()
+    await tick()
+    expect(h.broker.owner.hasCompletionProof()).toBe(true)
+  })
+  it('bounds retained uncertainty with the existing total capacity', async () => {
+    const h = setup((options) => ({ ...options, server: { ...options.server, independentToolCalls: true } }))
+    for (let i = 0; i < 64; i++) {
+      const pending = tracked(h.call())
+      await tick()
+      h.server.calls[i]!.result.resolve({ ok: false, cause: 'stalled' })
+      h.server.calls[i]!.quiet.reject(new Error('unproved'))
+      await expect(pending).rejects.toMatchObject({ code: 'downstream' })
+      await tick()
+    }
+    await expect(h.call()).rejects.toMatchObject({ code: 'busy' })
+    expect(h.broker.status().available).toBe(true)
+    expect(h.server.calls).toHaveLength(64)
+  })
+})
+
 describe('deadline, cancellation and independent quiescence proof', () => {
   it('answers an active deadline at 120 seconds but holds the slot until quiescence', async () => {
     const h = setup()

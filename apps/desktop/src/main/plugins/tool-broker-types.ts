@@ -52,7 +52,13 @@ export interface BrokerRequest {
   readonly resources: readonly ResourceUse[]
 }
 export type BrokerReply =
-  { readonly ok: true; readonly value: BrokerValue } | { readonly ok: false }
+  { readonly ok: true; readonly value: BrokerValue } | { readonly ok: false; readonly cause?: BrokerCallCause }
+export type BrokerCallCause = 'stalled' | 'cancelled' | 'connection-failed' | 'downstream'
+export interface BrokerProgress {
+  readonly progress: number
+  readonly total?: number
+  readonly message?: string
+}
 export interface PluginExecution {
   readonly result: Promise<BrokerReply>
   /** Only the trusted transport may resolve this, after execution and its streams have stopped. */
@@ -61,7 +67,9 @@ export interface PluginExecution {
   cancel(): void | Promise<void>
 }
 export interface BrokerServer {
-  tool(request: BrokerRequest, signal: AbortSignal): PluginExecution
+  /** The transport owns idle timeouts; failed calls release dispatch without proving completion. */
+  readonly independentToolCalls?: boolean
+  tool(request: BrokerRequest, signal: AbortSignal, onprogress?: (progress: BrokerProgress) => void): PluginExecution
   admin(request: BrokerRequest, signal: AbortSignal): PluginExecution
 }
 export interface BrokerClock {
@@ -121,6 +129,7 @@ export interface PluginToolBroker {
       qualifiedName: string,
       input: BrokerInput,
       signal?: AbortSignal,
+      onprogress?: (progress: BrokerProgress) => void,
     ): Promise<BrokerValue>
   }
   readonly person: {
