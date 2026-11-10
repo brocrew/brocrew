@@ -14,7 +14,7 @@ function fixture() {
   return { base, sourceCommit: 'a'.repeat(40) }
 }
 
-it('keeps legacy release metadata unchanged without requiring author-bearing package sources', async () => {
+it('keeps legacy release metadata without authors while binding the current app', async () => {
   const options = fixture()
   await assemblePluginRelease({
     id: 'chrome',
@@ -31,13 +31,13 @@ it('keeps legacy release metadata unchanged without requiring author-bearing pac
     fs.readFileSync(path.join(options.base, 'legacy/plugin-list-entry.json'), 'utf8'),
   )
   expect(entry.version).toBe('0.1.2')
-  expect(entry.minAppVersion).toBe('0.0.0')
+  expect(entry.minAppVersion).toBe('0.2.20')
   expect(entry).not.toHaveProperty('authors')
 })
 
 it.each([
-  ['chrome', '0.1.35'],
-  ['whatsapp', '0.1.34'],
+  ['chrome', '0.2.20'],
+  ['whatsapp', '0.2.20'],
 ])('binds %s sharedData archives to paired host %s', async (id, minimum) => {
   for (const sharedData of [true, false]) {
     const options = fixture()
