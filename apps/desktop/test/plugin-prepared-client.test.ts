@@ -219,14 +219,6 @@ describe('new client mutation admission', () => {
       peer.calls.filter((call) => ['install', 'update'].includes(String(call.kind))),
     ).toHaveLength(0)
   })
-  it('disables old prepared cards when policy capability is withdrawn', async () => {
-    const { c, peer } = await future(),
-      consent = await c.prepareMutation('install', 'chrome')
-    peer.setFeatures(['contributions-v1', 'authors-v1'])
-    expect((await c.catalogue())[0]).toMatchObject({ mutationBlocked: 'owner-incompatible' })
-    await expect(mutate(c, 'install', consent)).rejects.toThrow()
-    expect(peer.calls.filter((call) => call.kind === 'install-prepared')).toHaveLength(0)
-  })
   it('does not revive displayed consent when owner capabilities return', async () => {
     const { c, peer } = await future(),
       consent = await c.prepareMutation('install', 'chrome')

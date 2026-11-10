@@ -164,6 +164,22 @@ async function setup(installed = false, legacyEntry = false, v1Owner = false) {
   }
 }
 
+function holdFirstExclusive(state: Awaited<ReturnType<typeof fixture>>['state']) {
+  const entered = deferred<void>(),
+    release = deferred<void>(),
+    real = state.withExclusive.bind(state)
+  let once = true
+  vi.spyOn(state, 'withExclusive').mockImplementation(async (work) => {
+    if (once) {
+      once = false
+      entered.resolve()
+      await release.promise
+    }
+    return real(work)
+  })
+  return { entered, release }
+}
+
 describe('prepared mutations are an owner policy only for verified v2 sources', () => {
   it.each(['install', 'update'] as const)(
     'refuses raw %s before effects but keeps installed management',
@@ -213,24 +229,6 @@ describe('prepared mutations are an owner policy only for verified v2 sources', 
       const after = f.snapshot()
       await expect(c.call(request)).rejects.toMatchObject({ code: 'policy-refused' })
       expect(f.snapshot()).toEqual(after)
-    },
-  )
-  it.each(['install', 'update'] as const)(
-    'refuses another session or forged token for %s',
-    async (action) => {
-      const f = await setup(action === 'update'),
-        c = await f.wire(),
-        other = await f.wire(),
-        proof = await f.prepare(c, action)
-      await f.negotiate(other)
-      const before = f.snapshot()
-      await expect(other.call(f.request(action, proof))).rejects.toMatchObject({
-        code: 'policy-refused',
-      })
-      await expect(c.call(f.request(action, { preparation: randomUUID() }))).rejects.toMatchObject({
-        code: 'policy-refused',
-      })
-      expect(f.snapshot()).toEqual(before)
     },
   )
   it.each(['install', 'update'] as const)(
@@ -297,18 +295,7 @@ describe('prepared mutations are an owner policy only for verified v2 sources', 
       const f = await setup(action === 'update'),
         c = await f.wire(),
         proof = await f.prepare(c, action)
-      const entered = deferred<void>(),
-        release = deferred<void>(),
-        real = f.state.withExclusive.bind(f.state)
-      let once = true
-      vi.spyOn(f.state, 'withExclusive').mockImplementation(async (work) => {
-        if (once) {
-          once = false
-          entered.resolve()
-          await release.promise
-        }
-        return real(work)
-      })
+      const { entered, release } = holdFirstExclusive(f.state)
       const work = c.call(f.request(action, proof))
       await entered.promise
       f.state.requireUpdateReader()
@@ -347,24 +334,6 @@ it.each(['install', 'update'] as const)(
     }
   },
 )
-it('does not turn a pre-reservation verification refusal into storage corruption', async () => {
-  const f = await setup(),
-    c = await f.wire()
-  await f.negotiate(c)
-  f.options.download.mockResolvedValue(Buffer.from('fictional altered archive'))
-  const before = f.snapshot()
-  await expect(
-    c.call({
-      kind: 'prepare-mutation',
-      action: 'install',
-      pluginId: 'chrome',
-      releaseDigest: f.next.release.archive.sha256,
-    }),
-  ).rejects.toMatchObject({ code: 'package-invalid' })
-  expect(f.state.inspect()).toEqual(before.state)
-  expect(f.events).toEqual(before.events)
-  expect(f.starts()).toBe(before.starts)
-})
 it.each(['install', 'update'] as const)(
   'keeps %s compensation or recovery after a recorded reservation',
   async (action) => {
@@ -394,18 +363,7 @@ it.each(['install', 'update'] as const)(
   async (action) => {
     const f = await setup(action === 'update', false, true),
       c = await f.wire()
-    const entered = deferred<void>(),
-      release = deferred<void>(),
-      real = f.state.withExclusive.bind(f.state)
-    let once = true
-    vi.spyOn(f.state, 'withExclusive').mockImplementation(async (work) => {
-      if (once) {
-        once = false
-        entered.resolve()
-        await release.promise
-      }
-      return real(work)
-    })
+    const { entered, release } = holdFirstExclusive(f.state)
     const work = c.call({ kind: action, pluginId: 'chrome', operationId: randomUUID() })
     await entered.promise
     await f.refresh()

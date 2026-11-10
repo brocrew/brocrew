@@ -1,7 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { afterEach, expect, it, vi } from 'vitest'
-import { lstat, readFile, readdir, readlink } from 'node:fs/promises'
-import { join } from 'node:path'
 import { fixture, projection, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 import { packageFixture, catalogueBytes } from './plugin-package-fixtures'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
@@ -10,44 +8,13 @@ import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-c
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { PersonChannel } from '../src/main/plugins/lifecycle/transport'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
+import { disclosureTree } from './plugin-disclosure-fixtures'
 const closers: Array<() => Promise<unknown>> = []
 afterEach(async () => {
   vi.restoreAllMocks()
   for (const close of closers.splice(0).reverse()) await close()
   await cleanupLifecycleFixtures()
 })
-
-async function diskTree(root: string, relative = ''): Promise<Record<string, unknown>> {
-  const result: Record<string, unknown> = {}
-  for (const name of (await readdir(join(root, relative))).sort()) {
-    const key = relative ? `${relative}/${name}` : name
-    // Only these named transient locking files are outside the disk comparison.
-    if (
-      [
-        'state/writer-lock.sqlite',
-        'state/writer-lock.sqlite-wal',
-        'state/writer-lock.sqlite-shm',
-      ].includes(key)
-    )
-      continue
-    const path = join(root, key)
-    const stat = await lstat(path, { bigint: true })
-    const metadata = {
-      mode: Number(stat.mode & 0o777n),
-      dev: stat.dev.toString(),
-      ino: stat.ino.toString(),
-    }
-    if (stat.isDirectory()) {
-      result[key] = { ...metadata, kind: 'directory' }
-      Object.assign(result, await diskTree(root, key))
-    } else if (stat.isFile()) {
-      result[key] = { ...metadata, kind: 'file', sha256: pluginSha256(await readFile(path)) }
-    } else if (stat.isSymbolicLink()) {
-      result[key] = { ...metadata, kind: 'link', target: await readlink(path) }
-    } else result[key] = { ...metadata, kind: stat.isSocket() ? 'socket' : 'other' }
-  }
-  return result
-}
 
 async function setup(installed: boolean) {
   const f = await fixture()
@@ -120,7 +87,7 @@ async function setup(installed: boolean) {
   }
   const snapshot = async () => ({
     state: structuredClone(f.state.inspect()),
-    tree: await diskTree(f.root),
+    tree: await disclosureTree(f.root),
     events: [...f.events],
     starts: f.starts(),
     downloads: options.download.mock.calls.length,
