@@ -381,7 +381,8 @@ try {
 for (const made of scratch) {
   try {
     rmSync(made, { recursive: true, force: true })
-  } catch {
+  } catch (error) {
+    warn(`could not remove scratch folder ${made}: ${error.message}`)
   }
 }
 say(failures.length === 0 ? 'every check held' : `${failures.length} check(s) failed`)

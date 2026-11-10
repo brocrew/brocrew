@@ -145,7 +145,9 @@ describe('every Electron launcher under scripts/', () => {
     expect(showsAWindow(`${made}\nwin.showInactive()`)).toBe(true)
     expect(showsAWindow(`${made}\nconst two = new BrowserWindow({ width: 1 })`)).toBe(true)
     expect(showsAWindow(`${made}\n// it used to be show: true`)).toBe(false)
-    expect(showsAWindow('const MAIN = `\n  new BrowserWindow({\n    show: true,\n  })\n`')).toBe(true)
+    expect(showsAWindow('const MAIN = `\n  new BrowserWindow({\n    show: true,\n  })\n`')).toBe(
+      true,
+    )
     for (const shows of [
       'win.maximize()',
       'win.focus()',
@@ -160,7 +162,9 @@ describe('every Electron launcher under scripts/', () => {
     expect(
       showsAWindow('new BrowserWindow({ webPreferences: { sandbox: true }, show: false })'),
     ).toBe(false)
-    expect(showsAWindow('new BrowserWindow({ webPreferences: { sandbox: true }, width: 1 })')).toBe(true)
+    expect(showsAWindow('new BrowserWindow({ webPreferences: { sandbox: true }, width: 1 })')).toBe(
+      true,
+    )
   })
 
   it('the census can fail — two planted launchers, one silent and one marked (rule 12)', () => {
