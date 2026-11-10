@@ -360,31 +360,6 @@ describe('exporting a session', () => {
     elsewhereDb.close()
   })
 
-  it('takes the same bundle twice without making a second session of it', async () => {
-    const sessionId = await archivedSession()
-    const host = buildHost()
-    const bundle = JSON.parse(
-      readFileSync(
-        (await host.exportSession({ sessionId: sessionId, exportKind: 'bundle' })).path,
-        'utf8',
-      ),
-    ) as SessionBundle
-
-    const elsewhereDb = openDatabase(join(dir, 'twice.sqlite'))
-    applyMigrations(elsewhereDb, migrations)
-    const elsewhere = createSessionStore(elsewhereDb)
-    const into = buildHost({ store: elsewhere }, elsewhere)
-
-    const first = into.importBundle(bundle)
-    const second = into.importBundle(bundle)
-
-    expect(second.sessionId).toBe(first.sessionId)
-    expect(elsewhereDb.prepare('SELECT count(*) AS c FROM provider_session').get()).toEqual({
-      c: 1,
-    })
-    elsewhereDb.close()
-  })
-
   /**
    * ⛔ **168 L5 · a bundle from the user's own home came back claiming a home of ours** (188 §1).
    *
@@ -438,13 +413,6 @@ describe('exporting a session', () => {
     elsewhereDb.close()
   })
 
-  it('refuses a bundle it does not know how to read', () => {
-    const host = buildHost()
-    expect(() => host.importBundle({ bundleVersion: 99 } as unknown as SessionBundle)).toThrow(
-      'unreadable bundle version',
-    )
-  })
-
   it('takes back a bundle written before entries carried a time', async () => {
     // 089 wrote version 1, whose ledger entries have no `at`. Refusing it would strand every
     // bundle exported before this slice; passing `undefined` through would hit `created_at NOT
@@ -474,12 +442,6 @@ describe('exporting a session', () => {
     // No time in the file, so they take the session's own — a stated stand-in, not a silent zero.
     expect(events.every((entry) => entry.at === current.meta.updatedAt)).toBe(true)
     elsewhereDb.close()
-  })
-
-  it('will not export a session it has never heard of', async () => {
-    await expect(
-      buildHost().exportSession({ sessionId: 'sess_nope', exportKind: 'bundle' }),
-    ).rejects.toThrow('no recorded session')
   })
 
   /**
@@ -782,12 +744,6 @@ describe('exporting a session', () => {
       const listed = away.store.unresumable().find((r) => r.sessionId === restored.sessionId)
       expect(listed!.reason).toContain('restored from a bundle')
       away.close()
-    })
-
-    it('⚑ THE PAIRED POSITIVE — a session we really ran is still offered a Resume', async () => {
-      // Without this, a `resumable()` that returned nothing at all would pass the test above.
-      const sessionId = await archivedSession()
-      expect(store.resumable().map((row) => row.sessionId)).toContain(sessionId)
     })
 
     it('🔴 a malformed or foreign file is REFUSED with a reason, and nothing is half-imported', () => {

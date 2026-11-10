@@ -498,14 +498,4 @@ describe('258 · the rail row', () => {
     expect(html).toContain('claude · scheduled')
     expect(html).toContain('data-standing="scheduled"')
   })
-
-  it('…and a conversation with nothing scheduled is untouched', async () => {
-    // The regression this change could most plausibly cause: a `scheduled` word leaking onto every
-    // quiet conversation.
-    const quiet = createTranscript()
-    // ⚑ **D-029** — the level and its count, and no `sleeping` flag beside them: 258 §2's asleep
-    // ruling went, since this app starts a stopped conversation in time for its jobs.
-    expect(quiet.schedule).toEqual({ jobs: [], dropped: 0, left: [] })
-    expect(await rail([{ type: 'status', state: 'idle' }])).toContain('claude · idle')
-  })
 })

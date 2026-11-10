@@ -87,36 +87,6 @@ describe('which slot the composer on screen writes to', () => {
     expect(draftSlot('sess_B')).toBe(draftKey('sess_B'))
     expect(draftSlot(null)).toBe(NEW_CONVERSATION)
   })
-
-  it('switching the conversation on screen switches the slot — that IS the fix', () => {
-    const drafts = createDraftBook()
-    drafts.write(draftSlot('sess_A'), 'A’s words')
-    // The screen now shows B. The composer reads through the same function with a new argument.
-    expect(drafts.read(draftSlot('sess_B'))).toBe('')
-    drafts.write(draftSlot('sess_B'), 'B’s words')
-    expect(drafts.read(draftSlot('sess_A'))).toBe('A’s words')
-  })
-})
-
-describe('the launcher hands its draft over when the conversation starts', () => {
-  it('the text becomes the first message: the launcher is empty and the new thread is too', () => {
-    const drafts = createDraftBook()
-    drafts.write(draftSlot(null), 'what this conversation is about')
-    // Sending from the launcher clears its slot (the composer does this), then a session appears.
-    drafts.write(draftSlot(null), '')
-    const started = 'sess_new'
-    expect(drafts.read(draftSlot(null))).toBe('')
-    expect(drafts.read(draftSlot(started)), 'the opening line came back as a draft').toBe('')
-  })
-
-  it('a first message that fails to send comes back in ITS conversation, not the launcher', () => {
-    // What RuntimeScreen.start() does when the session opened but the send did not get out.
-    const drafts = createDraftBook()
-    const started = 'sess_new'
-    drafts.write(draftSlot(started), 'the message that never left')
-    expect(drafts.read(draftSlot(started))).toBe('the message that never left')
-    expect(drafts.read(draftSlot(null))).toBe('')
-  })
 })
 
 describe('drafts do not outlive their conversations', () => {

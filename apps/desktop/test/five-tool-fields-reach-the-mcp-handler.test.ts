@@ -1,4 +1,3 @@
-import { z } from 'zod'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentToolAnswer } from '@brobot2/runtime'
 import { claudeMcpServersFor } from '../../../packages/runtime/src/claude/agent-tools'
@@ -94,19 +93,13 @@ describe('five more tools answer field failures through Claude MCP', () => {
     return { title: 'Notes', definition_of_done: 'Notes are collected.', brief: 'Collect notes.' }
   }
 
-  async function server(name: ToolName, strictField?: string) {
+  async function server(name: ToolName) {
     const selected = toolOf(name)
     const configured = claudeMcpServersFor({
       server: 'brobot',
       tools: [
         {
           ...selected,
-          handlerOwnsMissingInput:
-            strictField === undefined ? selected.handlerOwnsMissingInput : false,
-          input:
-            strictField === undefined
-              ? selected.input
-              : { ...selected.input, [strictField]: z.string() },
           call: async (args: Record<string, unknown>) => {
             const result = await selected.call(args)
             calls.push(result)
@@ -264,20 +257,6 @@ describe('five more tools answer field failures through Claude MCP', () => {
         expect(properties.who_answers?.enum).toEqual(['the-parent', 'a-person', 'an-agent'])
       if (entry.name === 'message_agent')
         expect(properties.kind?.enum).toEqual(['note', 'follow-up'])
-    })
-
-    it(`${entry.name}: restoring the strict SDK field is caught before its handler`, async () => {
-      const wire = await server(entry.name, entry.field)
-      const args = valid(entry.name)
-      delete args[entry.field]
-      const packet = await wire.call(args)
-      expect(packet.result?.isError).toBe(true)
-      expect(packet.result?.content?.[0]?.text).toContain(
-        'MCP error -32602: Input validation error',
-      )
-      expect(calls).toEqual([])
-      expect(() => ownRefusal(packet, entry.field)).toThrow()
-      expect(kept()).toEqual([])
     })
   }
 

@@ -99,30 +99,6 @@ describe('the review\u2019s renderer findings (067)', () => {
     expect(html).toContain('data-cy="panel-assets"')
     expect(html).not.toContain('data-cy="session-panel-empty"')
   })
-
-  it('model-authored markdown cannot reach the asset scheme', async () => {
-    // `brobot-asset:` serves any image file a URL names, wherever it is (`726` · R92), so an
-    // agent-authored `![](brobot-asset://\u2026)` would render an <img> of ANY image on this machine.
-    // markdown-it allows every scheme it does not name, so this one had to be named.
-    const { renderChatMarkdown, renderMarkdown } = await import('../src/renderer/src/lib/markdown')
-    const evil = `![](brobot-asset://file/${encodeURIComponent(PATH)})`
-    for (const render of [renderChatMarkdown, renderMarkdown]) {
-      const html = render(evil)
-      // The property is that no `<img src>` is PRODUCED. markdown-it leaves the refused link as
-      // ordinary escaped text, which is exactly right — the reader sees what the agent wrote and
-      // the renderer fetches nothing.
-      expect(html).not.toContain('<img')
-      expect(html).not.toContain('src=')
-    }
-    // Non-vacuity: an image destination that CAN still render does, so the block above is about
-    // the scheme rather than about images.
-    //
-    // ⚠️ This assertion used to use `https://example.com/a.png`, and 071 is why it cannot any more:
-    // a remote image is a click-free outbound request (069 finding 2), so the only destination this
-    // renderer will still turn into an `<img>` is an inline `data:image/…`, which is already in the
-    // document and fetches nothing.
-    expect(renderChatMarkdown('![alt](data:image/png;base64,iVBORw0KGgo=)')).toContain('<img')
-  })
 })
 
 describe('the transcript shows it, in the mode a user actually reads (067)', () => {

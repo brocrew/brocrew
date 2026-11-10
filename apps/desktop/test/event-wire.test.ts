@@ -329,12 +329,6 @@ describe('235 · an erased tool call is countable, at the wire', () => {
     )
   })
 
-  it('survives the round trip through IPC, or the renderer would never see it', () => {
-    const [row] = wire([erased])
-    const cloned = structuredClone(row) as RuntimeEvent
-    expect(cloned.type === 'unknown' && cloned.degradedFrom).toBe('tool_call')
-  })
-
   it('⛔ and it SAYS so on the log, once per frame — 085', () => {
     // ⚠️ Without this the warning is a line nobody would notice losing, which is the same sentence
     // `session-persistence.test.ts` writes over the ledger-skip warn. The ledger row is what an

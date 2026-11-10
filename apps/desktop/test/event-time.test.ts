@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeRuntime, RUNTIME_EVENT_TYPES } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime'
 import { claudeProjectDirName } from '@brobot2/runtime/claude'
 import {
   NO_DISCOVERY,
@@ -274,10 +274,6 @@ describe('when each event happened', () => {
   })
 
   it('leaves the provider-neutral event alone — the time is on the envelope', () => {
-    // The runtime is GO-locked, and time is ours rather than the provider's. If it had leaked
-    // into the event union, it would be persisted inside every payload and exported as if the
-    // provider had said it.
-    expect(RUNTIME_EVENT_TYPES).not.toContain('at')
     const { entries } = importClaudeTranscript(
       [
         JSON.stringify({

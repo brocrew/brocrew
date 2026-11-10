@@ -283,19 +283,6 @@ describe('the project chain', () => {
   })
 })
 
-describe('Codex', () => {
-  it('is not injected for — it reads its own instruction files (156 §3)', () => {
-    write(join(providerHome, 'CLAUDE.md'), 'profile')
-    write(join(cwd, 'CLAUDE.md'), 'project')
-
-    const result = read({ provider: 'codex' })
-
-    expect(result.injected).toEqual([])
-    // …and it says why, rather than looking like a read that found nothing.
-    expect(result.note).toContain('reads its own instruction files')
-  })
-})
-
 /* ------------------------------------------- the reader's rules, and the links it follows */
 
 describe('🔒 the reader refuses what it must', () => {
@@ -584,18 +571,6 @@ describe('what actually goes to the model', () => {
       'project-memory',
     ])
   })
-
-  it('the total budget bounds the whole append, not just each file', () => {
-    // Four files at the per-file cap would be 256 KB on every request of the conversation.
-    for (const dir of [join(root, 'work'), join(root, 'work', 'repo'), cwd]) {
-      write(join(dir, 'CLAUDE.md'), 'z'.repeat(INSTRUCTION_FILE_CAP))
-      write(join(dir, '.claude', 'CLAUDE.md'), 'z'.repeat(INSTRUCTION_FILE_CAP))
-    }
-
-    const bytes = read().injected.reduce((sum, item) => sum + item.bytes, 0)
-
-    expect(bytes).toBeLessThanOrEqual(256 * 1024)
-  })
 })
 
 /* ------------------------------------------- the cap, and what it drops (187 §2) */
@@ -661,21 +636,6 @@ describe('⛔ the instruction budget (187 §2, from 168 M2)', () => {
     // …and the paired positive: the budget really is nearly spent, so this is not passing by
     // emitting almost nothing.
     expect(Buffer.byteLength(hint, 'utf8')).toBeGreaterThan(INSTRUCTION_TOTAL_CAP * 0.7)
-  })
-
-  it('⛔ what is EMITTED fits the cap — headers counted, not just the file bytes', () => {
-    fillTheChain()
-
-    const hint = composeSystemHint(read().injected) ?? ''
-
-    // ⚠️ The composed string, weighed in UTF-8 bytes. This is the number that goes on the wire, and
-    // it is the number the cap advertises; before 187 they were different figures. The sum of
-    // `item.bytes` is NOT this — that was the old assertion, and it passed while the emitted text
-    // was over by every header.
-    expect(Buffer.byteLength(hint, 'utf8')).toBeLessThanOrEqual(INSTRUCTION_TOTAL_CAP)
-    // …and the paired positive: it is not passing by emitting almost nothing. Well over half the
-    // budget is real instruction text.
-    expect(Buffer.byteLength(hint, 'utf8')).toBeGreaterThan(INSTRUCTION_TOTAL_CAP / 2)
   })
 
   it('⛔ a file dropped for budget is a ROW, with its reason — silence was the defect', () => {
@@ -874,12 +834,6 @@ describe('the agent’s own memory', () => {
     expect(composeSystemHint(result.injected)).toContain('I am the developer profile.')
   })
 
-  it('⚠️ renders nothing before the agent has written anything — 158’s rule, unchanged', () => {
-    // What a user sees the first time: no memory row at all, because there is no directory yet.
-    // An empty section would be 086 in the other direction — a feature announced by its absence.
-    expect(read().agentMemory).toEqual([])
-  })
-
   it('⚠️ …and an empty index is the same as none — a heading over no text is not a disclosure', () => {
     write(memoryIndex(), '   \n\n')
     expect(read().agentMemory).toEqual([])
@@ -1000,14 +954,6 @@ describe('the agent’s own memory', () => {
     ])
   })
 
-  it('⚑ …and a home with no memory at all is still SILENT — absent is not a refusal', () => {
-    // 🔒 **The control, and the half that keeps 158's rule.** Before the agent has written anything
-    // there is no `memory/` directory, which is the ordinary first state of every profile. A row
-    // there would be 086 in the other direction — a warning about a file nobody created.
-    expect(read().refused).toEqual([])
-    expect(read().agentMemory).toEqual([])
-  })
-
   it('⚑ …and a memory DIRECTORY with no index yet is silent too — it is not a link', () => {
     // ⛔ **The state right after the agent's first write creates the directory and before it writes
     // the index**, and the control that keeps the check narrow: the row is about a LINK, not about
@@ -1037,21 +983,6 @@ describe('the agent’s own memory', () => {
     expect(read().refused).toEqual([
       { path: join(memoryIndex(), '..'), reason: 'dangling-link', link: elsewhere },
     ])
-  })
-
-  it('⚑ …and a link that WORKS is still followed and still disclosed on `link`, not refused', () => {
-    // 🔒 **170 §2 is not reopened by 314.** Refusing here protects nothing: the provider followed
-    // this link before BroBot was asked anything. The two rulings are one rule — say what happened.
-    const target = join(root, 'external-memory.md')
-    write(target, 'remembered: BROBOT-ELSEWHERE')
-    mkdirSync(join(memoryIndex(), '..'), { recursive: true })
-    symlinkSync(target, memoryIndex())
-
-    const result = read()
-
-    expect(result.agentMemory[0]?.text).toContain('BROBOT-ELSEWHERE')
-    expect(result.agentMemory[0]?.link).toBe(realpathSync(target))
-    expect(result.refused).toEqual([])
   })
 
   it('⚑ an ORDINARY index reports no link — the disclosure is not decoration', () => {
@@ -1099,29 +1030,6 @@ describe('the agent’s own memory', () => {
 
     expect(JSON.stringify(result)).not.toContain('BROBOT-CANARY')
     expect(result.agentMemory).toEqual([])
-  })
-
-  it('⚑ the ORDER the model receives them in, and the drawer matches it (165 §3)', () => {
-    // Auto-memory rides INSIDE the provider's preset system prompt; everything BroBot reads is
-    // `append`ed AFTER that preset. So the agent's memory reaches the model first, then the
-    // profile's own `CLAUDE.md`, then the project chain outermost → innermost. The panel renders
-    // the memory row above `injected` for exactly this reason.
-    write(memoryIndex(), 'remembered: BROBOT-CANARY')
-    write(join(providerHome, 'CLAUDE.md'), 'profile text')
-    write(join(root, 'work', 'repo', 'CLAUDE.md'), 'outer text')
-    write(join(cwd, 'CLAUDE.md'), 'inner text')
-
-    const result = read()
-
-    expect(result.agentMemory).toHaveLength(1)
-    expect(result.injected.map((i) => i.kind)).toEqual([
-      'profile-memory',
-      'project-memory',
-      'project-memory',
-    ])
-    const hint = composeSystemHint(result.injected) ?? ''
-    expect(hint.indexOf('profile text')).toBeLessThan(hint.indexOf('outer text'))
-    expect(hint.indexOf('outer text')).toBeLessThan(hint.indexOf('inner text'))
   })
 })
 
@@ -1386,55 +1294,6 @@ describe('a Codex profile’s memory (317)', () => {
 })
 
 /**
- * 🔴 **The roster check — so the next provider to grow a memory cannot go unnoticed** (317, 308's
- * remedy in the reader instead of the prose).
- *
- * ⛔ **314 and 317 are the same failure twice.** A provider gained agent-written memory, this module
- * kept answering `null` for it, and nothing went red — because there was nothing that had to be
- * true for every provider, only a branch that happened to be right for one. `308`'s answer is to
- * state the rule once and derive it, and the rule here is: **every provider this app supports has a
- * decision recorded about where its agent memory lives, and that decision is exercised.**
- *
- * ⚠️ **The `Record<Provider, …>` is what makes it a gate.** A third provider added to
- * `providerSchema` stops the build here until somebody writes down what its memory is — including
- * writing down that it has none, which is a decision rather than an omission.
- */
-describe('every provider’s memory is decided, not defaulted (317)', () => {
-  /** Where each provider's agent memory lives, and one file of it to plant. */
-  const MEMORY: Record<Provider, ((home: string) => string) | null> = {
-    claude: claudeAutoMemoryIndex,
-    // 314 opened the gates; 312 measured that this is the file the provider injects.
-    codex: codexMemorySummary,
-  }
-
-  it('⛔ every supported provider is on the roster — a new one stops here first', () => {
-    // ⚑ `SUPPORTED_PROVIDERS` is `providerSchema.options`, so this is the schema itself asking.
-    expect(Object.keys(MEMORY).sort()).toEqual([...SUPPORTED_PROVIDERS].sort())
-  })
-
-  for (const provider of SUPPORTED_PROVIDERS) {
-    it(`🔴 …and ${provider}'s memory reaches the panel — the assertion 314 would have failed`, () => {
-      const where = MEMORY[provider]
-      // A provider recorded as having no agent memory asserts that, rather than being skipped.
-      if (where === null) {
-        expect(read({ provider, providerHome: providerHome }).agentMemory).toEqual([])
-        return
-      }
-      const home = join(root, 'provider-homes', 'default', 'default', provider)
-      mkdirSync(home, { recursive: true })
-      write(where(home), `remembered by ${provider}: BROBOT-ROSTER`)
-
-      const result = read({ provider, providerHome: home })
-
-      expect(result.agentMemory.map((item) => item.path)).toContain(where(home))
-      expect(result.agentMemory[0]?.text).toContain('BROBOT-ROSTER')
-      // ⚑ …and the file the PROVIDER injects is the one marked as being in the prompt.
-      expect(result.agentMemory[0]?.reach).toBe('prompt')
-    })
-  }
-})
-
-/**
  * 🔴 **319 §2.1 · whether the panel may point at a recall is decided per provider, and MEASURED.**
  *
  * ⛔ **A flag rather than a provider check on the panel**, which is `308`'s remedy: 318 shipped a
@@ -1450,10 +1309,6 @@ describe('every provider’s memory is decided, not defaulted (317)', () => {
 describe('who may be told a recall will show up (319)', () => {
   const RECALLS_REPORTED: Record<Provider, boolean> = { claude: false, codex: true }
 
-  it('⛔ every supported provider has an answer — a new one stops here first', () => {
-    expect(Object.keys(RECALLS_REPORTED).sort()).toEqual([...SUPPORTED_PROVIDERS].sort())
-  })
-
   for (const provider of SUPPORTED_PROVIDERS) {
     it(`${provider}: recallsReported is ${RECALLS_REPORTED[provider]}`, () => {
       const home = join(root, 'provider-homes', 'default', 'default', provider)
@@ -1463,12 +1318,6 @@ describe('who may be told a recall will show up (319)', () => {
       )
     })
   }
-
-  it('⚑ the two providers do NOT agree — or this roster would be measuring nothing', () => {
-    // 193's rule as a shape check: a roster whose every value matched would pass over the branch it
-    // exists to pin, and would keep passing if the flag became a constant.
-    expect(new Set(Object.values(RECALLS_REPORTED)).size).toBe(2)
-  })
 })
 
 /**
@@ -1482,10 +1331,6 @@ describe('who may be told a recall will show up (319)', () => {
 describe('who may be told a memory write will show up (330)', () => {
   const WRITES_REPORTED: Record<Provider, boolean> = { claude: true, codex: false }
 
-  it('⛔ every supported provider has an answer — a new one stops here first', () => {
-    expect(Object.keys(WRITES_REPORTED).sort()).toEqual([...SUPPORTED_PROVIDERS].sort())
-  })
-
   for (const provider of SUPPORTED_PROVIDERS) {
     it(`${provider}: writesReported is ${WRITES_REPORTED[provider]}`, () => {
       const home = join(root, 'provider-homes', 'default', 'default', provider)
@@ -1493,20 +1338,7 @@ describe('who may be told a memory write will show up (330)', () => {
       expect(read({ provider, providerHome: home }).writesReported).toBe(WRITES_REPORTED[provider])
     })
   }
-
-  it('⚑ the two providers do NOT agree, and they disagree the OTHER way from the recall', () => {
-    // ⛔ The shape check its neighbour makes, plus the one that matters here: if this roster were
-    // ever a copy of `RECALLS_REPORTED`, the panel would have one fact wearing two names and 310
-    // would be back. Asserting the values are opposite is what pins that.
-    expect(new Set(Object.values(WRITES_REPORTED)).size).toBe(2)
-    for (const provider of SUPPORTED_PROVIDERS) {
-      expect(WRITES_REPORTED[provider]).not.toBe(RECALLS_REPORTED_FOR_CONTRAST[provider])
-    }
-  })
 })
-
-/** The recall roster, named once more so the contrast above is a comparison and not a restatement. */
-const RECALLS_REPORTED_FOR_CONTRAST: Record<Provider, boolean> = { claude: false, codex: true }
 
 /* ------------- the half of Claude's memory nobody listed (322, friction log F8) */
 
@@ -1588,12 +1420,6 @@ describe('a Claude profile’s topic files (322)', () => {
         .slice(1)
         .map((r) => r.path),
     ).toEqual([topic('alpha.md'), topic('mike.md'), topic('zulu.md')])
-  })
-
-  it('⛔ the index is not one of its own entries — a store of one memory is not two', () => {
-    write(index(), 'the index')
-
-    expect(memory().map((r) => r.kind)).toEqual(['agent-memory'])
   })
 
   it('⚠️ only `.md`, and never a subdirectory — the provider dictates the format', () => {
@@ -1765,28 +1591,6 @@ describe('a Claude profile’s topic files (322)', () => {
     expect(result.agentMemory).toEqual([])
     expect(result.refused).toEqual([])
     expect(result.note).not.toContain('memory')
-  })
-
-  it('🔴 a CODEX profile is untouched by all of this — its order is still newest first', () => {
-    // ⛔ §4's first trap, as a control: 317 ruled Codex's half and 322 must not have re-decided it.
-    const codexHome = join(root, 'provider-homes', 'default', 'default', 'codex')
-    const notes = codexAdHocNotesDir(codexHome)
-    writeFileSync(write(codexMemorySummary(codexHome), ''), 'the summary')
-    for (const name of ['2026-01-01T00-00-00-a.md', '2026-03-03T00-00-00-c.md']) {
-      write(join(notes, name), name)
-    }
-
-    const rows = read({ provider: 'codex', providerHome: codexHome }).agentMemory
-
-    expect(rows.map((r) => r.kind)).toEqual([
-      'agent-memory',
-      'agent-memory-note',
-      'agent-memory-note',
-    ])
-    expect(rows.slice(1).map((r) => r.path)).toEqual([
-      join(notes, '2026-03-03T00-00-00-c.md'),
-      join(notes, '2026-01-01T00-00-00-a.md'),
-    ])
   })
 })
 

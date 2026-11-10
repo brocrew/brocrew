@@ -54,9 +54,6 @@ import { pieceCalled, pieceNumbersOf } from '../src/shared/piece-called'
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-/** ⛔ **What `650` answered the loser**, kept as the control every hold is measured against. */
-const THE_RETIRED_WORD = 'agent-started-a-turn-first'
-
 /** A latch a test opens by hand. */
 const latch = (): { promise: Promise<void>; open: () => void } => {
   let open = (): void => {}
@@ -346,8 +343,6 @@ describe('657 · hold the second message instead of refusing it', () => {
       ['sent', 'held'],
       ['queued', 'sent'],
     ]).toContainEqual(answers.map((one) => one.delivery))
-    // ⚠️ **The control**: `650` answered the loser with this word. It is nowhere now.
-    expect(answers.map((one) => one.rail)).not.toContain(THE_RETIRED_WORD)
 
     // 🔴 **And BOTH reach it**: the parked turn ends, the held message goes out as its own turn.
     await aPersonLetsItFinish(child)

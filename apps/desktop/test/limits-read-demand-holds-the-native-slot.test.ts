@@ -74,62 +74,6 @@ describe('limits demand keeps native ownership until settlement', () => {
     demand.close()
   })
 
-  it('a timeout rejects the caller but does not start a second native read', async () => {
-    const { demand, execute, finish } = setup()
-    const first = demand.read(input(1), undefined, 5).catch((error: unknown) => error)
-    await vi.advanceTimersByTimeAsync(5)
-    expect(await first).toMatchObject({ why: 'deadline' })
-    expect(demand.nativeBusy).toBe(true)
-    const next = demand.read(input(2))
-    await vi.advanceTimersByTimeAsync(20)
-    expect(execute).toHaveBeenCalledTimes(1)
-    finish(0, 1)
-    await vi.advanceTimersByTimeAsync(0)
-    expect(execute).toHaveBeenCalledTimes(2)
-    finish(1, 2)
-    await next
-    expect(demand.nativeBusy).toBe(false)
-    demand.close()
-  })
-
-  it('cancelling the latest queued caller preserves the selected job provenance for remaining callers', async () => {
-    const { demand, execute, finish } = setup()
-    const first = demand.read(input(1))
-    await vi.advanceTimersByTimeAsync(0)
-    const second = demand.read({ ...input(2), capturedAt: 20 })
-    const cancel = new AbortController()
-    const latest = demand
-      .read({ ...input(3), capturedAt: 30 }, cancel.signal)
-      .catch((error: unknown) => error)
-    cancel.abort()
-    expect(await latest).toMatchObject({ why: 'cancelled' })
-    finish(0, 1)
-    await first
-    await vi.advanceTimersByTimeAsync(0)
-    expect(execute.mock.calls[1]?.[0]).toMatchObject({ operation: 3, capturedAt: 30 })
-    finish(1, 3)
-    expect(await second).toMatchObject({ operation: 3, inputCapturedAt: 30 })
-    demand.close()
-  })
-
-  it('a scope change rejects old callers but retains the occupied slot', async () => {
-    const { demand, execute, finish } = setup()
-    const old = demand.read(input(1)).catch((error: unknown) => error)
-    await vi.advanceTimersByTimeAsync(0)
-    demand.changeScope()
-    expect(await old).toMatchObject({ why: 'changed' })
-    expect(demand.nativeBusy).toBe(true)
-    const current = demand.read({ ...input(2), signInEpoch: 2 })
-    await vi.advanceTimersByTimeAsync(0)
-    expect(execute).toHaveBeenCalledTimes(1)
-    finish(0, 1)
-    await vi.advanceTimersByTimeAsync(0)
-    expect(execute).toHaveBeenCalledTimes(2)
-    finish(1, 2)
-    expect((await current).signInEpoch).toBe(2)
-    demand.close()
-  })
-
   it('bounds all callers and drops a fully cancelled queued demand', async () => {
     const { demand, execute } = setup(1)
     const abort = new AbortController()

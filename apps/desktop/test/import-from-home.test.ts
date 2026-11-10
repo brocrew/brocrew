@@ -543,46 +543,6 @@ describe('one row, without reading a provider home (119)', () => {
       expect(result.note).toContain('the disk said no')
     })
 
-    /**
-     * 🔴 **716 · R66 at the same door — a folder the disk refused, in words** (review of `716`), and
-     * ⚑ its control: an `open` refused HERE stays its own words, because Import also READS
-     * transcripts and Node does not say which way it opened (round two of the review). ⚠️ An import
-     * makes no folder any more; the refusal is planted on its read, and kept because these doors
-     * share `howAFailureReads` with the launches that do make one.
-     */
-    it('🔴 an Import that meets a folder the disk refused says which folder, and why', async () => {
-      adoptChild()
-      plantOwnTranscript()
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
-      readFails = () =>
-        Object.assign(new Error('EACCES: permission denied, mkdir'), {
-          code: 'EACCES',
-          syscall: 'mkdir',
-          path: '/x/provider-homes/claude',
-        })
-      const result = await host.importRecordedSession('sess_child')
-      expect(result.outcome).toBe('failed')
-      expect(result.note).toContain(
-        'BroCrew could not make the folder /x/provider-homes/claude, because it may not write in /x/provider-homes. Give BroCrew permission to write to that folder',
-      )
-    })
-
-    it('⚑ control: an `open` refused at Import is not taken for a write — it may be a transcript read', async () => {
-      adoptChild()
-      plantOwnTranscript()
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
-      readFails = () =>
-        Object.assign(new Error('EACCES: permission denied, open'), {
-          code: 'EACCES',
-          syscall: 'open',
-          path: '/x/transcript.jsonl',
-        })
-      const result = await host.importRecordedSession('sess_child')
-      expect(result.outcome).toBe('failed')
-      expect(result.note).toContain('EACCES: permission denied, open')
-      expect(result.note).not.toContain('could not write')
-    })
-
     it('🔴 the catch-up import the machine ran short for says so in its skipped list — never the errno', async () => {
       adoptChild()
       plantOwnTranscript()

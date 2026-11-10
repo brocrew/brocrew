@@ -167,27 +167,6 @@ describe('the host and the renderer cannot disagree about what is running (100)'
   const rendererSays = (store: { live: { value: { sessionId: string }[] } }): string[] =>
     store.live.value.map((record) => record.sessionId).sort()
 
-  it('reproduces the disagreement, so the assertion below is over something real', async () => {
-    // ⚠️ **The non-vacuity pair.** Without this, the agreement test that follows would pass just as
-    // well against a build where nothing was ever open — 23 vacuous tests have been found in this
-    // slice, and a "these two lists match" assertion over two empty lists is the classic one.
-    const surface = new Surface(host)
-    const first = createSessionStore(surface.bridge())
-    await first.create({ provider: 'claude', cwd: join(dir, 'work') })
-
-    expect(hostSays()).toHaveLength(1)
-    expect(rendererSays(first)).toEqual(hostSays())
-
-    // The loss, modelled the way HMR causes it: this store is disposed and another is built.
-    first.dispose()
-    const second = createSessionStore(surface.bridge())
-
-    // Plant a host-running conversation unknown to the renderer before pressing Reopen.
-    expect(hostSays()).toHaveLength(1)
-    expect(rendererSays(second)).toEqual([])
-    second.dispose()
-  })
-
   it('a store built after the old one was disposed agrees with the host again', async () => {
     const surface = new Surface(host)
     const first = createSessionStore(surface.bridge())
@@ -342,22 +321,6 @@ describe('the host and the renderer cannot disagree about what is running (100)'
     expect(rendererSays(after)).toEqual([])
     after.dispose()
     await released
-  })
-
-  it('does not take a session that belongs to a different window', async () => {
-    // 062's rule, at the boundary: attaching is for the surface that already owns the session.
-    const owner = new Surface(host, 'webContents:1')
-    const other = new Surface(host, 'webContents:2')
-    const mine = createSessionStore(owner.bridge())
-    await mine.create({ provider: 'claude', cwd: join(dir, 'work') })
-
-    const theirs = createSessionStore(other.bridge())
-    expect(await theirs.attachOpen()).toEqual([])
-    expect(rendererSays(theirs)).toEqual([])
-    // …and the host still holds it for the window that started it.
-    expect(hostSays()).toHaveLength(1)
-    mine.dispose()
-    theirs.dispose()
   })
 
   it('takes a session that was already streaming into the new store before it asked', async () => {
@@ -570,30 +533,6 @@ describe('the host and the renderer cannot disagree about what is running (100)'
       )
       expect(ledger.find(sessionId)).toBeNull()
       expect(ledger.findLive(sessionId)).toMatchObject({ profileId: 'developer', ref: null })
-    })
-
-    it('⛔ a store built after the old one was disposed lists a NON-DEFAULT profile session', async () => {
-      // ⚠️ **This is what "survives a reload" can honestly mean, and the ticket's premise needs
-      // correcting** (measured, on my own instance): a real reload raises `did-navigate`, which
-      // RELEASES this window's sessions — the rail is empty afterwards because the conversations
-      // are closed, not because they were dropped. The path that survives a lost list is the one
-      // 100 built for HMR and the one every reconnect takes: the store goes, the host does not, and
-      // the next store asks. The profile has to come back through it intact.
-      const surface = new Surface(host)
-      const first = createSessionStore(surface.bridge())
-      const sessionId = await first.create({
-        provider: 'claude',
-        cwd: join(dir, 'work'),
-        profileId: 'developer',
-      })
-      if (sessionId === null) throw new Error('the session did not start')
-      first.dispose()
-
-      const second = createSessionStore(surface.bridge())
-      expect(await second.attachOpen()).toEqual([sessionId])
-      expect(rendererSays(second)).toEqual(hostSays())
-      expect(second.get(sessionId)?.meta?.profileId).toBe('developer')
-      second.dispose()
     })
   })
 

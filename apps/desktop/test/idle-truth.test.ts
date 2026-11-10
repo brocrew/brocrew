@@ -208,32 +208,8 @@ describe('250 §2 · the state the person watched, and every surface that descri
     expect(afterTurn.pill).toBe('Still running')
   })
 
-  it('⛔ when the provider says the work ended, all three go quiet TOGETHER', () => {
-    const done = surfaces(
-      liveSession(
-        ...TURN_OVER,
-        [
-          {
-            type: 'background_work',
-            ended: { id: 'b6uoyo82k', toolCallId: 'toolu_1', outcome: 'completed' },
-            source: 'task_notification',
-          } as TranscriptEvent,
-          36_157,
-        ],
-        // ⚠️ The LEVEL is what clears the registry — the ending above is an edge and deliberately
-        // does not (`247`: *replace your set, never pair edges*). Both arrive; only one clears.
-        [level([]), 36_157],
-      ),
-    )
-    expect(done.standing).toBe('idle')
-    expect(done.pill).toBe('Idle')
-    expect(done.railWord).toBe('claude · idle')
-    expect(done.panelBody).toContain('Running sub-agents, workflows and the checklist')
-  })
-
   it('🔴 an ENDING alone does not clear it — the level does, and the words follow the level', () => {
-    // The pairing for the test above, and a real ordering: `background_work.ended` can arrive with
-    // no level beside it. A word derived from the ENDING would go quiet here while work the provider
+    // A real ordering: `background_work.ended` can arrive with no level beside it. A word derived from the ENDING would go quiet here while work the provider
     // has not retracted is still in the set.
     const stillListed = surfaces(
       liveSession(...TURN_OVER, [

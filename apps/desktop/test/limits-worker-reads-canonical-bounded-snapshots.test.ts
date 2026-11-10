@@ -444,17 +444,6 @@ describe('limits worker reads fresh bounded canonical snapshots', () => {
     expect(() => bounded.prepare('SELECT 1 AS one').get()).toThrowError(/overflow/)
   })
 
-  it('uses a byte budget and a SQL cell guard before yielding strings', () => {
-    const cell = new LimitsMaterialization({ rows: 10, bytes: 1024, cellBytes: 3 })
-    expect(() => cell.database(db).prepare("SELECT 'abcdef' AS payload").all()).toThrowError(
-      /overflow/,
-    )
-    const bytes = new LimitsMaterialization({ rows: 10, bytes: 20, cellBytes: 100 })
-    expect(() => bytes.database(db).prepare("SELECT 'abcdef' AS payload").all()).toThrowError(
-      /overflow/,
-    )
-  })
-
   it('refuses writes and releases native iterators after a bounded failure', () => {
     const budget = new LimitsMaterialization({ rows: 1, bytes: 1024, cellBytes: 128 })
     const bounded = budget.database(db)

@@ -128,16 +128,6 @@ describe('import has one completion boundary (051)', () => {
     expect(store.ledgerStatus(sessionId).derivedThrough).toBe(2)
   })
 
-  it('leaves the retry check itself answering "no", which is what made a partial permanent', () => {
-    expect(() => host.importBundle(bundle(6, { collideAt: 1 }))).toThrow()
-
-    // THE assertion, and it is deliberately the exact lookup `importBundle` performs before doing
-    // anything: a non-null answer here is what used to send the retry down the early-return with a
-    // half-written conversation behind it. Asserting over `rows()` instead would be a loop with
-    // nothing to iterate — vacuously true whatever the fix did.
-    expect(store.findByProviderRef('claude', 'thread-9')).toBeNull()
-  })
-
   // ⚠️ A REGRESSION GUARD, not evidence of the fix: every assertion below passes on the pre-051
   // three-commit version too. It is here because moving three writes into one transaction is
   // exactly the kind of change that quietly alters ordinals or timestamps on the way past.

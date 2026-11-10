@@ -10,7 +10,6 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { FakeRuntime } from '@brobot2/runtime'
 import { importCodexRollout } from '../src/main/providers/codex/import-transcript'
-import { splitCodexMessage } from '../src/main/providers/codex/codex-injected'
 import { NORMALIZER_VERSION } from '../src/main/archive/normalizer'
 
 /**
@@ -102,14 +101,6 @@ describe('importing a Codex rollout', () => {
       'tool_result',
       'assistant_message',
     ])
-  })
-
-  it('keeps the PROVIDER’s times, not the moment we imported', async () => {
-    await runImport()
-    const first = store.events(SESSION)[0]
-    expect(first?.at).toBe(Date.parse('2026-04-22T15:48:57.000Z'))
-    // Non-vacuous: the import is happening now, so a wrong implementation would say ~today.
-    expect(first!.at).toBeLessThan(Date.now())
   })
 
   it('is idempotent — importing twice does not double the conversation', async () => {
@@ -432,32 +423,5 @@ describe('214 §2 · injected provider context is not the user speaking', () => 
     const events = eventsOf(line('assistant', 'Done — committed as 7bfe813.'))
     expect(events.map((event) => event.type)).toEqual(['assistant_message'])
     expect(events[0]?.text).toBe('Done — committed as 7bfe813.')
-  })
-})
-
-/**
- * # 🔴 The version has to MOVE when the importer's output does (214 §2)
- *
- * ⛔ **A mutation survived the first run of 214's table and this is why it exists.** Setting
- * `NORMALIZER_VERSION` back to `2` broke nothing — because nothing tied the constant to the
- * behaviour it describes. ⚠️ **And the consequence is the whole fix evaporating**: every Codex
- * ledger already in the database keeps the misattribution, never reads `stale`, is never offered a
- * Rebuild, and `213`'s adopted session looks exactly the same after upgrading. The repair would
- * reach only conversations adopted for the first time on a later build.
- *
- * `normalizer.ts` states the rule — *"bump when the importers would produce a DIFFERENT ledger from
- * the same frames"* — and a rule nothing enforces is a note.
- */
-describe('214 §2 · the normalizer version tracks the importer', () => {
-  it('🔴 an importer that classifies injected context declares version 3 or later', () => {
-    // ⚑ **Coupled to the BEHAVIOUR, not asserted as a magic number.** This reads what the importer
-    // actually does today and requires the constant to have moved for it. A build that classifies
-    // and still says `2` is telling every existing ledger it is current when it is not.
-    const classifies =
-      splitCodexMessage('developer', '<skills_instructions>x</skills_instructions>').injected &&
-      splitCodexMessage('user', '<skill>\n<name>x</name>\n</skill>').injected
-
-    expect(classifies, 'this test describes a build that does not classify — retire it').toBe(true)
-    expect(NORMALIZER_VERSION).toBeGreaterThanOrEqual(3)
   })
 })

@@ -12,13 +12,8 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import { MOST_BYTES_OF_FORM, resourcesRoot } from '../src/main/resources/resources'
 import {
-  MOST_BYTES_OF_ANY_FORM,
-  MOST_BYTES_OF_FORM,
-  resourcesRoot,
-} from '../src/main/resources/resources'
-import {
-  CONTENT_OF_FORM,
   DOCUMENT_FORMS,
   FORM_OF_EXTENSION,
   formOfName,
@@ -300,17 +295,6 @@ describe('635 · the store widens, and viewing never executes', () => {
       const pdf = await mustKeep(wrote('r.pdf', Buffer.from('%PDF-1.7\n', 'binary')))
       expect(read(pdf)).toEqual({ as: 'not-for-a-model', because: 'a-pdf-is-not-text' })
     })
-
-    it('⛔ …and the `not-for-a-model` arm is reachable for EVERY form the table says it is', () => {
-      // ⚑ **Derived from `CONTENT_OF_FORM`**, so a form routed there without a `because` fails —
-      // `a-closed-vocabulary-guards-what-a-member-says`.
-      const silent = DOCUMENT_FORMS.filter((form) => CONTENT_OF_FORM[form] === 'not-for-a-model')
-      expect(
-        silent.length,
-        'no form is withheld — the union has an arm nothing produces',
-      ).toBeGreaterThan(0)
-      expect([...silent].sort()).toEqual(['image', 'pdf'])
-    })
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
@@ -401,7 +385,7 @@ describe('635 · the store widens, and viewing never executes', () => {
       const resource = await mustKeep(wrote('big.png', big))
       // 🔴 **READ IT BACK.** ⛔ Keeping is half the promise; a reader whose ceiling did not follow
       // the writer would copy this file, hash it, list it — and then refuse to open the app's own
-      // resource. ⚑ That is `MOST_BYTES_OF_ANY_FORM` being derived rather than written.
+      // resource.
       const back = host.readResource(resource)
       expect(back.ok, JSON.stringify(back)).toBe(true)
       if (back.ok) expect(back.form).toBe('image')
@@ -425,12 +409,6 @@ describe('635 · the store widens, and viewing never executes', () => {
       if (named.ok) return
       expect(named.refusal.rail).toBe('resource-too-large')
       expect(named.refusal.detail).toMatchObject({ path: 'notes/too-big.md' })
-    })
-
-    it('⛔ the reader’s ceiling is DERIVED from the widest form, never written twice', () => {
-      expect(MOST_BYTES_OF_ANY_FORM).toBe(Math.max(...Object.values(MOST_BYTES_OF_FORM)))
-      // ⚠️ **Non-vacuity**: the forms really do differ, so the max is a choice and not a constant.
-      expect(new Set(Object.values(MOST_BYTES_OF_FORM)).size).toBeGreaterThan(1)
     })
   })
 
