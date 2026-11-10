@@ -1723,11 +1723,8 @@ describe('the Keychain entry a Mac seals saved keys with', () => {
     const asked = [...runner.matchAll(/spawnSync\('\/usr\/bin\/security', \[([^\]]*)\]/g)].map(
       ([, argv]) => argv,
     )
-    // The second forgets the beta's entry before the Mac's new Claude start; it reads no secret.
-    expect(asked).toEqual([
-      "'find-generic-password', '-s', service",
-      "'delete-generic-password', '-s', service, '-a', account",
-    ])
+    // It reads the entry's attributes only, and leaves the beta's entry as it was.
+    expect(asked).toEqual(["'find-generic-password', '-s', service"])
   })
 })
 
