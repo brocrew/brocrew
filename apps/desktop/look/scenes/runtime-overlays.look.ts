@@ -5,12 +5,14 @@ import {
   installRuntimeScreenFixture,
   disposeRuntimeScreenFixture,
 } from '../../test/dom/runtime-screen-fixture'
-import RuntimeScreen from '../../src/renderer/src/components/RuntimeScreen.vue'
 import { afterEach, expect } from 'vitest'
 import { useOverlays, type Overlay } from '../../src/renderer/src/lib/overlay-store'
 import { LISTED } from '../../test/dom/delete-conversation-fixture'
 import { scene } from '../capture'
 import { wearTheme } from '../fixtures/themes'
+
+// Register the fixture's mocks before loading the root's composable imports.
+const { default: RuntimeScreen } = await import('../../src/renderer/src/components/RuntimeScreen.vue')
 
 const sheets = {
   newAgent: { overlay: { kind: 'newAgent' }, ready: 'new-agent' },

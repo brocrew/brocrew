@@ -19,7 +19,6 @@ import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
 import { chainReading, escalationChain, NOTHING_NAMED_THE_WORK } from '../../src/shared/questions'
 import type { WorkIncident } from '../../src/shared/work-incidents'
-import RuntimeScreen from '../../src/renderer/src/components/RuntimeScreen.vue'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 import { screenFacts, useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
@@ -36,6 +35,9 @@ import { drawnReady } from './drawn'
 import { conv, forestOf, forestDrawn } from './forest-fixture'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { mount, META } from './harness'
+
+// Register the fixture's mocks before loading the root's composable imports.
+const { default: RuntimeScreen } = await import('../../src/renderer/src/components/RuntimeScreen.vue')
 
 beforeEach(installRuntimeScreenFixture)
 
