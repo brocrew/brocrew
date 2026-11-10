@@ -148,6 +148,11 @@ const valueSchema: z.ZodType<PluginValueSchema> = z.lazy(() =>
     maximum: z.number().finite().optional(),
   }),
 )
+export const PluginRemovalSchema = z.strictObject({
+  data: z.enum(['retain', 'delete']),
+  note: PluginActionSchema.shape.note,
+  beforeRemove: z.literal(true).optional(),
+})
 const manifest = z.strictObject({
   format: z.literal(1),
   id: SkillName,
@@ -163,13 +168,7 @@ const manifest = z.strictObject({
   server: z.strictObject({ entry: path, mcpPath: endpoint, adminPath: endpoint }).nullable(),
   skills: z.array(z.never()).max(0),
   action: PluginActionSchema.optional(),
-  removal: z
-    .strictObject({
-      data: z.enum(['retain', 'delete']),
-      note: PluginActionSchema.shape.note,
-      beforeRemove: z.literal(true).optional(),
-    })
-    .optional(),
+  removal: PluginRemovalSchema.optional(),
   serviceTemplates: z
     .array(
       z.strictObject({

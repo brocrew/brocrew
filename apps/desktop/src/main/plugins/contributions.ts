@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { pluginAdapter } from './lifecycle/adapters'
+import { pluginBrokerBinding } from './lifecycle/broker-binding'
 import { verifiedPluginDigest, type VerifiedPluginPackage } from './package-verifier'
 import { hookSupport } from './hooks/definitions'
 import { PluginSupervisorError } from './supervisor/protocol'
@@ -21,9 +22,9 @@ export function pluginContributions(pkg: VerifiedPluginPackage) {
   if (!executor || executor.kind !== 'node') return unavailable()
   return Object.freeze({
     executor: Object.freeze({ ...executor }),
-    tools: manifest.server && pkg.compatibility.tools ? adapter!.broker : null,
+    tools: manifest.server && pkg.compatibility.tools ? pluginBrokerBinding : null,
     configuration: manifest.ui && pkg.compatibility.ui && adapter ? adapter : null,
-    cleanup: adapter?.uninstall ?? null,
+    cleanup: manifest.removal ?? null,
     hooks: Object.freeze((manifest.hooks ?? []).map(hookSupport)),
   })
 }

@@ -6,8 +6,6 @@ import type { PluginToolDiagnostic } from '../tool-diagnostics'
 
 export async function admittedPluginTools(
   view: AgentAttachmentView,
-  names: ReadonlySet<string>,
-  refused: () => void | Promise<void>,
   diagnostic?: PluginToolDiagnostic,
 ) {
   let stage: PluginFailureStage = 'binding-connection'
@@ -49,9 +47,7 @@ export async function admittedPluginTools(
       stage = 'binding-current'
       if (inventory.nextCursor || inventory.tools.length > 256 || !view.current())
         throw new Error('unavailable')
-      const admitted = inventory.tools.filter((tool) => names.has(tool.name))
-      if (admitted.length !== inventory.tools.length) await refused()
-      return { connection, endpoint, credential, admitted }
+      return { connection, endpoint, credential, admitted: inventory.tools }
     })().then(
       (value) => ({ ok: true as const, value }),
       (error: unknown) => ({ ok: false as const, error: managedPluginFailure(error, stage) }),

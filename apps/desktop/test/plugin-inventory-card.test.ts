@@ -65,7 +65,7 @@ it('carries a retry stage and last cause to Settings without changing older card
       },
       propose: () => {},
     })
-    expect(await settings.catalogue()).toEqual([{ ...card, hasRemoteLogout: false }])
+    expect(await settings.catalogue()).toEqual([card])
   } finally {
     await settings?.close()
     channel.close()

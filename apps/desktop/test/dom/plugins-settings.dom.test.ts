@@ -616,14 +616,14 @@ it('keeps phone-removal guidance after uninstall removes the configuration page'
       installed: true,
       state: 'Running',
       uninstallDeletesData: true,
-      hasRemoteLogout: true,
+      uninstallNote: 'If logout cannot be confirmed, check Linked devices on your phone.',
     },
   ])
   const request = f.client.request.bind(f.client)
   f.client.request = async (input) => {
     const answer = await request(input)
     return input.kind === 'uninstall' && answer.ok
-      ? { ...answer, removal: { data: 'deleted' as const, logout: 'unconfirmed' as const } }
+      ? { ...answer, removal: { data: 'deleted' as const, notice: 'Check Linked devices on your phone.' } }
       : answer
   }
   const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })

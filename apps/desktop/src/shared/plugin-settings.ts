@@ -243,7 +243,7 @@ export interface PluginCard {
   /** Installed package is manageable but has no release admitted for this app. */
   updatesUnavailable?: true
   uninstallDeletesData?: boolean
-  hasRemoteLogout?: boolean
+  uninstallNote?: string
   preparationRequired?: true
   mutationBlocked?: PluginMutationBlocked
 }
@@ -281,23 +281,14 @@ export function pluginMutationFailureNotice(cause: PluginMutationFailure): strin
   if (cause === 'package-invalid') return PLUGIN_DISCLOSURE_WORDS.packageInvalid
   return 'Plugin unavailable. Try again.'
 }
-/** Closed uninstall facts; remote removal is never inferred from deleting local data. */
-export interface PluginRemovalOutcome {
-  data: 'deleted'
-  logout: 'confirmed' | 'unconfirmed'
-}
+const RemovalOutcome = z.strictObject({
+  data: z.enum(['deleted', 'retained']),
+  notice: z.string().optional(),
+})
+export type PluginRemovalOutcome = z.infer<typeof RemovalOutcome>
 export function pluginRemovalOutcome(value: unknown): PluginRemovalOutcome | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-  const result = value as Partial<PluginRemovalOutcome>
-  if (
-    Object.keys(value).length !== 2 ||
-    !Object.hasOwn(value, 'data') ||
-    !Object.hasOwn(value, 'logout') ||
-    result.data !== 'deleted' ||
-    (result.logout !== 'confirmed' && result.logout !== 'unconfirmed')
-  )
-    return null
-  return { data: 'deleted', logout: result.logout }
+  const result = RemovalOutcome.safeParse(value)
+  return result.success ? result.data : null
 }
 export interface PluginScreenBounds {
   x: number

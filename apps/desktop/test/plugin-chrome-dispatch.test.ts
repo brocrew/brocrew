@@ -13,7 +13,7 @@ vi.mock('../src/main/plugins/lifecycle/broker-inventory', () => ({
 vi.mock('../src/main/plugins/managed-transport', () => ({
   createPrivatePluginPort: () => ({ tool: downstream.tool, admin: vi.fn() }),
 }))
-import { chromeBrokerBinding } from '../src/main/plugins/lifecycle/chrome-broker'
+import { pluginBrokerBinding } from '../src/main/plugins/lifecycle/broker-binding'
 
 afterEach(() => vi.unstubAllGlobals())
 it.each(['healthy', 'tool-error'] as const)(
@@ -38,19 +38,18 @@ it.each(['healthy', 'tool-error'] as const)(
       cancel: vi.fn(),
     }
     downstream.tool.mockReset().mockReturnValue(execution)
-    const binding = await chromeBrokerBinding({
+    const binding = await pluginBrokerBinding({
       installation: { pluginId: 'chrome' },
       package: {
         compatibility: { tools: true },
         manifest: {
-          permissions: { resources: [{ id: 'browser-profiles', read: true, write: true }] },
+          permissions: { resources: [] },
         },
       },
-    } as unknown as Parameters<typeof chromeBrokerBinding>[0])
+    } as unknown as Parameters<typeof pluginBrokerBinding>[0])
     const request: BrokerRequest = {
       name: 'snapshot',
       input: { tabId: 'fern-tab' },
-      resources: [],
       identity: {
         pluginId: 'chrome',
         installId: 'fixture',

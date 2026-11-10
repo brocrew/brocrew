@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { pluginToolRefusalLog } from '../src/main/plugins/lifecycle/chrome-broker'
+import { pluginToolRefusalLog } from '../src/main/plugins/lifecycle/broker-binding'
 import { captureLog } from './lib/log-file'
 
 it('logs the first tool refusal once and not again for later connections', async () => {

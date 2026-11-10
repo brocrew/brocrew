@@ -7,7 +7,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import * as chromeBinding from '../../../apps/desktop/src/main/plugins/lifecycle/chrome-broker'
+import * as chromeBinding from '../../../apps/desktop/src/main/plugins/lifecycle/broker-binding'
 import { createLifecycleAgentBridge } from '../../../apps/desktop/src/main/plugins/lifecycle/agent-bridge'
 import { Installation } from '../../../apps/desktop/src/main/plugins/state/format'
 import type { LifecycleWorkspace } from '../../../apps/desktop/src/main/plugins/lifecycle/types'
@@ -23,7 +23,7 @@ const artifact = process.env.BROCREW_CHROME_TEST_ARTIFACT
 const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
 async function builtInventory(
   run: (fixture: {
-    view: Parameters<typeof chromeBinding.chromeBrokerBinding>[0]
+    view: Parameters<typeof chromeBinding.pluginBrokerBinding>[0]
     inventory: Awaited<ReturnType<Client['listTools']>>
     inventoryReply(tools: Awaited<ReturnType<Client['listTools']>>['tools']): void
     routes(): Promise<Awaited<ReturnType<ReturnType<typeof createLifecycleAgentBridge>['routes']>>>
@@ -123,7 +123,7 @@ async function builtInventory(
           ),
         onHostChanged: () => () => {},
       },
-      binding: (view, diagnostic) => chromeBinding.chromeBrokerBinding(view, undefined, diagnostic),
+      binding: (view, diagnostic) => chromeBinding.pluginBrokerBinding(view, diagnostic),
     })
     const routes = () =>
       bridge!.routes(
@@ -259,7 +259,7 @@ describe('Chrome release fixture', () => {
     },
     30000,
   )
-  it('binds the complete built author-bearing inventory and pins allowlist parity with no filtered list', async () => {
+  it('binds the complete built author-bearing inventory without a core allowlist', async () => {
     await builtInventory(async ({ view, inventory, agent }) => {
       const advertised = inventory.tools.map((tool) => tool.name).sort()
       expect(advertised).toHaveLength(34)
@@ -270,27 +270,11 @@ describe('Chrome release fixture', () => {
       ).toBeLessThanOrEqual(2000)
       const client = await agent()
       expect((await client.listTools()).tools.map((tool) => tool.name).sort()).toEqual(advertised)
-      const binding = await chromeBinding.chromeBrokerBinding(view)
+      const binding = await chromeBinding.pluginBrokerBinding(view)
       expect(binding.tools.map((tool) => tool.name).sort()).toEqual(advertised)
-      const declared = view.package.manifest.permissions.resources
-      expect(declared.map((resource) => resource.id)).toEqual([
-        chromeBinding.chromeBrokerResourceId,
-      ])
-      expect(binding.resources).toEqual(
-        declared.map(({ id, read, write }) => ({ id, read, write })),
-      )
-      for (const name of ['show_tab', 'hide_tab']) {
-        const prepared = await binding.tools
-          .find((tool) => tool.name === name)!
-          .prepare({ tabId: 't1' })
-        expect(prepared.resources).toEqual([
-          { resource: chromeBinding.chromeBrokerResourceId, key: 't1', mode: 'write' },
-        ])
-      }
       expect(
         (await client.callTool({ name: 'list_browser_profiles', arguments: {} })).isError,
       ).not.toBe(true)
-      expect([...chromeBinding.chromeBrokerToolNames].sort()).toEqual(advertised)
     })
   })
   it.each(['show_tab', 'hide_tab'])(
@@ -313,42 +297,7 @@ describe('Chrome release fixture', () => {
       })
     },
   )
-  it('refuses a missing declared resource and never broadens its read/write permissions', async () => {
-    await builtInventory(async ({ view }) => {
-      const changed = (resources: typeof view.package.manifest.permissions.resources) => ({
-        ...view,
-        package: {
-          ...view.package,
-          manifest: {
-            ...view.package.manifest,
-            permissions: { ...view.package.manifest.permissions, resources },
-          },
-        },
-      })
-      await expect(chromeBinding.chromeBrokerBinding(changed([]))).rejects.toThrow('unavailable')
-      const resource = view.package.manifest.permissions.resources[0]!
-      for (const mode of ['read', 'write'] as const) {
-        const binding = await chromeBinding.chromeBrokerBinding(
-          changed([{ ...resource, [mode]: false }]),
-        )
-        const other = mode === 'read' ? 'write' : 'read'
-        expect(binding.isAllowed({} as never, { resource: resource.id, key: 'fern', mode })).toBe(
-          false,
-        )
-        expect(
-          binding.isAllowed({} as never, { resource: resource.id, key: 'fern', mode: other }),
-        ).toBe(true)
-        expect(
-          binding.isAllowed({} as never, {
-            resource: 'fictional-foreign',
-            key: 'fern',
-            mode: other,
-          }),
-        ).toBe(false)
-      }
-    })
-  })
-  it('drops only an unknown tool while the complete built inventory still reaches agents, with a closed log', async () => {
+  it('admits an added package tool alongside the built inventory', async () => {
     await builtInventory(async ({ inventory, inventoryReply, agent }) => {
       const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
       inventoryReply([
@@ -357,12 +306,9 @@ describe('Chrome release fixture', () => {
       ])
       const client = await agent()
       expect((await client.listTools()).tools.map((tool) => tool.name).sort()).toEqual(
-        inventory.tools.map((tool) => tool.name).sort(),
+        [...inventory.tools.map((tool) => tool.name), 'fictional_unreviewed'].sort(),
       )
-      expect(log.mock.calls).toEqual([['Some plugin tools were refused.']])
-      const refused = await client.callTool({ name: 'fictional_unreviewed', arguments: {} })
-      expect(refused.isError).toBe(true)
-      expect(JSON.stringify(refused)).not.toContain('fictional_unreviewed')
+      expect(log.mock.calls).toEqual([])
     })
   })
   it('lists a credential-bearing definition without a refusal log', async () => {

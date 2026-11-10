@@ -493,15 +493,18 @@ export class PluginLifecycleController {
     if (condition) observeAdmission(observer, { condition })
     return condition === undefined
   }
-  async action(id: string) {
+  private async declarations(id: string) {
     const install = this.current(id)
     if (!install) return undefined
     try {
       const pkg = this.runs.get(id)?.package ?? (await this.vault.load(this.descriptor(install)))
-      return pkg.manifest.action
+      return pkg.manifest
     } catch {
       return undefined
     }
+  }
+  async action(id: string) {
+    return (await this.declarations(id))?.action
   }
   async status(): Promise<{ cards: PluginCard[]; cleanupPending: string[] }> {
     let unfinished: Unfinished | undefined
@@ -526,7 +529,6 @@ export class PluginLifecycleController {
           return {
             id,
             name,
-            uninstallDeletesData: Boolean(pluginAdapter(id)?.uninstall),
             ...(active ? { installedVersion: active.release.version } : {}),
             ...(active &&
             release &&
@@ -596,6 +598,11 @@ export class PluginLifecycleController {
         cleanupPending: [...this.cleanup].sort(),
       }
     })
+    read.cards = await Promise.all(read.cards.map(async (card) => {
+      const removal = (await this.declarations(card.id))?.removal
+      return { ...card, uninstallDeletesData: removal?.data === 'delete',
+        ...(removal ? { uninstallNote: removal.note } : {}) }
+    }))
     this.retryLater(unfinished)
     return read
   }
@@ -1246,12 +1253,9 @@ export class PluginLifecycleController {
       installId: install.installId,
     })
   }
-  /** A running plugin's own clean-up before uninstall, such as logging out of an account. Its failure is not refused:
-   * the plugin's data is deleted below either way. */
-  private async beforeRemoval(id: string): Promise<PluginRemovalOutcome['logout']> {
-    const adapter = pluginAdapter(id),
-      running = this.runs.get(id)
-    if (!adapter?.uninstall || !running || running.ended) return 'unconfirmed'
+  private async beforeRemoval(id: string, removal: Effect['removal']): Promise<string | undefined> {
+    const running = this.runs.get(id)
+    if (!removal?.beforeRemove || !running || running.ended) return removal?.note
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
       const connection = await Promise.race([
@@ -1260,10 +1264,20 @@ export class PluginLifecycleController {
           timer = setTimeout(() => reject(new Error('unavailable')), 5000)
         }),
       ])
-      return await adapter.uninstall(connection, new AbortController().signal)
+      const admin = connection.admin()
+      const response = await fetch(admin.url + '/before-remove', {
+        method: 'POST', redirect: 'error', body: '{}',
+        headers: { ...admin.headers, 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(45_000),
+      })
+      if (!response.ok) {
+        void response.body?.cancel().catch(() => undefined)
+        return removal.note
+      }
+      const reply = z.object({ notice: z.string().optional() }).parse(await response.json())
+      return reply.notice?.trim() ? reply.notice : removal.note
     } catch {
-      // Local deletion can finish even when remote removal was not confirmed.
-      return 'unconfirmed'
+      return removal.note
     } finally {
       clearTimeout(timer)
     }
@@ -1271,8 +1285,13 @@ export class PluginLifecycleController {
   private async finishRemoval(
     effect: Effect,
     install: Installation,
-  ): Promise<PluginRemovalOutcome['logout']> {
-    const logout = await this.beforeRemoval(install.pluginId)
+  ): Promise<PluginRemovalOutcome> {
+    if (effect.removal === undefined) {
+      const pkg = this.runs.get(install.pluginId)?.package ?? await this.vault.load(this.descriptor(install))
+      effect = { ...effect, removal: pkg.manifest.removal ?? null }
+      await this.effects.write(effect)
+    }
+    const notice = await this.beforeRemoval(install.pluginId, effect.removal)
     const results = await Promise.allSettled([
       this.stop(install.pluginId, effect.operationId),
       this.revoke(install),
@@ -1281,11 +1300,11 @@ export class PluginLifecycleController {
       this.cleanup.add(install.pluginId)
       return pending()
     }
-    await this.removeFiles(install, effect.operationId)
-    if (pluginAdapter(install.pluginId)?.uninstall) {
+    if (effect.removal?.data === 'delete') {
       if (!this.options.runtime.removeData) return pending()
       await this.options.runtime.removeData(install.pluginId)
     }
+    await this.removeFiles(install, effect.operationId)
     const state = this.options.state.inspect()
     // The effect is durable first. A crash here still has a pending journal resolution and
     // recovery must finish it; a committed effect alone is never activation/exit authority.
@@ -1303,13 +1322,14 @@ export class PluginLifecycleController {
     this.cleanup.delete(install.pluginId)
     this.startFailures.delete(install.pluginId)
     this.startDiagnostics.delete(install.pluginId)
-    return logout
+    return { data: effect.removal?.data === 'delete' ? 'deleted' : 'retained',
+      ...(notice ? { notice } : {}) }
   }
   private async remove(
     id: string,
     operationId: string,
     compensates: string | null,
-  ): Promise<PluginRemovalOutcome['logout']> {
+  ): Promise<PluginRemovalOutcome> {
     const state = this.options.state.inspect(),
       before = this.current(id)
     if (!before) return refuse()
@@ -1346,7 +1366,7 @@ export class PluginLifecycleController {
     this.workspace(handle)
     if (!idSchema.safeParse(id).success || !z.uuid().safeParse(operationId).success) return refuse()
     let absent = false
-    let logout: PluginRemovalOutcome['logout'] = 'unconfirmed'
+    let outcome: PluginRemovalOutcome | undefined
     const token = this.block(id) // Synchronous denial before the queue, tombstone, or any consumer awaits.
     try {
       await this.withPlugin(id, () =>
@@ -1377,15 +1397,15 @@ export class PluginLifecycleController {
             if (prior.status === 'completed') return
             const effect = await this.effects.read(prior.operation.request.operationId)
             if (!effect || !prior.operation.next) return pending()
-            logout = await this.finishRemoval(effect, prior.operation.next)
+            outcome = await this.finishRemoval(effect, prior.operation.next)
             return
           }
-          logout = await this.remove(id, operationId, null)
+          outcome = await this.remove(id, operationId, null)
         }),
       )
       if (this.blocks.get(id) === token) this.blocks.delete(id)
       this.agentScopeChanged()
-      if (pluginAdapter(id)?.uninstall) return { data: 'deleted', logout }
+      return outcome
     } catch {
       if (absent) {
         if (!this.cleanup.has(id) && this.blocks.get(id) === token) this.blocks.delete(id)

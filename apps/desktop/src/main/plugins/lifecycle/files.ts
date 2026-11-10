@@ -2,6 +2,7 @@ import { constants } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
+import { PluginRemovalSchema } from '../package-schema'
 import { privateChild } from '../node-host-files'
 import { openFileNotThroughALink } from '../private-files'
 import { writeAtomically } from '../../recovery/files'
@@ -16,6 +17,7 @@ export const Effect = z.strictObject({
   action: z.enum(['install', 'update', 'uninstall']),
   phase: z.enum(['prepared', 'committed', 'aborted']),
   offlineCleanup: z.boolean(),
+  removal: PluginRemovalSchema.nullable().optional(),
   compensates: z.uuid().nullable(),
 })
 export type Effect = z.infer<typeof Effect>

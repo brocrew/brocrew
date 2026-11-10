@@ -25,7 +25,6 @@ import type {
   PluginExecution,
   PluginToolBroker,
   PublishedBrokerTool,
-  ResourceUse,
 } from './tool-broker-types'
 export type * from './tool-broker-types'
 
@@ -211,35 +210,18 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
       if (occupied.has(fold(qualifiedName)) || typeof tool.description !== 'string')
         return refuse('invalid')
       return {
+        ...tool,
         namespace,
         qualifiedName,
-        name: tool.name,
-        description: tool.description,
-        inputSchema: tool.inputSchema,
       }
     }),
   )
-  const resources = new Map(
-    options.resources.map((resource) => [resource.id, Object.freeze({ ...resource })]),
-  )
-  if (
-    [...resources.values()].some(
-      (resource) => typeof resource.read !== 'boolean' || typeof resource.write !== 'boolean',
-    )
-  )
-    return refuse('invalid')
-  if (
-    resources.size !== options.resources.length ||
-    [...resources.keys()].some((id) => !identifier(id))
-  )
-    return refuse('invalid')
   const clock = options.clock ?? defaultClock
   const server = {
     independentToolCalls: options.server.independentToolCalls === true,
     tool: options.server.tool.bind(options.server),
     admin: options.server.admin.bind(options.server),
   }
-  const allowed = options.isAllowed
   const audit = options.audit
   const workspaceHandles = new WeakMap<object, Workspace>()
   const actors = new WeakMap<object, Actor>()
@@ -433,42 +415,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
     job.controller.abort()
     requestCancel(job)
   }
-  function claims(job: Job): { input: BrokerInput; resources: readonly ResourceUse[] } {
-    if (job.operation === 'admin') return { input: job.input, resources: [] }
-    const prepared = tools.get(job.name)!.prepare(job.input)
-    if (!Array.isArray(prepared.resources) || prepared.resources.length > 128)
-      return refuse('denied')
-    const normalized = input(prepared.input)
-    const uses = prepared.resources.map((use): ResourceUse => {
-      const { resource, key, mode } = use
-      if (!identifier(resource) || !identifier(key) || (mode !== 'read' && mode !== 'write'))
-        return refuse('denied')
-      return Object.freeze({ resource, key, mode })
-    })
-    for (const use of uses) {
-      const resource = resources.get(use.resource)
-      if (!resource || resource[use.mode] !== true || allowed(job.actor.identity, use) !== true)
-        return refuse('denied')
-    }
-    return { input: normalized, resources: Object.freeze(uses) }
-  }
   function start(job: Job): void {
-    if (job.state !== 'queued') return
-    if (!valid(job)) {
-      drop(job, 'unauthorized')
-      return
-    }
-    if (clock.now() >= job.queuedAt + PLUGIN_BROKER_LIMITS.queueMs) {
-      drop(job, 'deadline')
-      return
-    }
-    let prepared: ReturnType<typeof claims>
-    try {
-      prepared = claims(job)
-    } catch {
-      drop(job, 'denied')
-      return
-    }
     if (job.state !== 'queued') return
     if (!valid(job)) {
       drop(job, 'unauthorized')
@@ -489,8 +436,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
     const request: BrokerRequest = Object.freeze({
       identity: job.actor.identity,
       name: job.name,
-      input: prepared.input,
-      resources: prepared.resources,
+      input: job.input,
     })
     try {
       job.execution =

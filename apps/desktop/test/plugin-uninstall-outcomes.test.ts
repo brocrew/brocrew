@@ -1,76 +1,32 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
-import { logOutBeforeUninstall } from '../src/main/plugins/lifecycle/whatsapp-apply'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
-import {
-  cleanupLifecycleFixtures,
-  deferred,
-  fixture,
-  projection,
-} from './plugin-lifecycle-fixtures'
+import { cleanupLifecycleFixtures, deferred, fixture, projection } from './plugin-lifecycle-fixtures'
 
-const connection = {
-  serverPid: 123,
-  origin: 'http://127.0.0.1:1',
-  mcp: () => ({ url: '', headers: { Authorization: 'Bearer fictional-mcp' } }),
-  admin: () => ({
-    url: 'http://127.0.0.1:1/v1',
-    headers: { Authorization: 'Bearer fictional-admin' },
-  }),
-}
+const note = 'If cleanup cannot be confirmed, check the fictional service.'
+const removal = { data: 'delete' as const, beforeRemove: true as const, note }
 afterEach(async () => {
   vi.unstubAllGlobals()
   await cleanupLifecycleFixtures()
 })
 
-it.each([true, undefined])(
-  'leaves remote logout unconfirmed when the phone removal is %s',
-  async (removeOnPhone) => {
-    let removed = false
-    const fetch = vi.fn(async (url: string) => {
-      if (url.endsWith('/uninstall')) {
-        removed = true
-        return Response.json({})
-      }
-      return Response.json(
-        removed ? { state: 'unlinked', removeOnPhone } : { state: 'linked', removeOnPhone: false },
-      )
-    })
-    vi.stubGlobal('fetch', fetch)
-    await expect(logOutBeforeUninstall(connection, new AbortController().signal)).resolves.toBe(
-      'unconfirmed',
-    )
-    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
-      'http://127.0.0.1:1/v1/status',
-      'http://127.0.0.1:1/v1/uninstall',
-      'http://127.0.0.1:1/v1/status',
-    ])
-  },
-)
-
-describe.skipIf(process.platform === 'win32')('uninstall results over inert peers', () => {
-  it.each(['confirmed', 'unconfirmed', 'failure', 'timeout', 'absent'] as const)(
-    'reports local deletion separately when remote logout is %s',
+describe.skipIf(process.platform === 'win32')('package removal declarations over inert peers', () => {
+  it.each(['notice', 'empty', 'failure', 'timeout', 'absent'] as const)(
+    'keeps actual local deletion separate from cleanup mode %s',
     async (mode) => {
-      const f = await fixture({}, 'whatsapp')
+      const f = await fixture({}, 'whatsapp', { removal })
       const exit = deferred<void>()
       const start = f.opts.runtime.start.bind(f.opts.runtime)
       f.opts.runtime.start = async (spec) => ({ ...(await start(spec)), exited: exit.promise })
       await f.controller.install(f.handle, 'whatsapp')
-      let removed = false
-      const fetch = vi.fn(async (url: string) => {
-        if (mode === 'failure') throw new Error('fictional-private-diagnostic')
+      expect((await f.controller.status()).cards[0]).toMatchObject({
+        uninstallDeletesData: true, uninstallNote: note,
+      })
+      const fetch = vi.fn(async () => {
+        if (mode === 'failure') throw new Error('fictional cleanup failed')
         if (mode === 'timeout') throw new DOMException('fictional deadline', 'TimeoutError')
-        if (url.endsWith('/uninstall')) {
-          removed = true
-          return Response.json({})
-        }
-        return Response.json(
-          removed
-            ? { state: 'unlinked', removeOnPhone: mode !== 'confirmed' }
-            : { state: 'linked', removeOnPhone: false },
-        )
+        return Response.json({ notice: mode === 'notice' ? 'Fictional cleanup completed.' : '' })
       })
       vi.stubGlobal('fetch', fetch)
       if (mode === 'absent') {
@@ -79,45 +35,48 @@ describe.skipIf(process.platform === 'win32')('uninstall results over inert peer
         await vi.waitFor(() => expect(f.events).toContain('revoke'))
       }
       await expect(f.controller.uninstall(f.handle, 'whatsapp')).resolves.toEqual({
-        data: 'deleted',
-        logout: mode === 'confirmed' ? 'confirmed' : 'unconfirmed',
+        data: 'deleted', notice: mode === 'notice' ? 'Fictional cleanup completed.' : note,
       })
       expect(f.events).toContain('remove-data whatsapp')
       expect(f.state.inspect().guards[0]?.phase).toBe('removed')
       if (mode === 'absent') expect(fetch).not.toHaveBeenCalled()
+      else expect(fetch).toHaveBeenCalledWith('/before-remove', expect.objectContaining({ method: 'POST' }))
     },
   )
 
-  it('carries the closed removal outcome through the real person Settings channel', async () => {
-    const f = await fixture({}, 'whatsapp')
+  it.each([undefined, { data: 'retain' as const, note }])(
+    'retains local data when the installed declaration is %j',
+    async (declaration) => {
+      const f = await fixture({}, 'whatsapp', { removal: declaration })
+      await f.controller.install(f.handle, 'whatsapp')
+      const fetch = vi.fn()
+      vi.stubGlobal('fetch', fetch)
+      await expect(f.controller.uninstall(f.handle, 'whatsapp')).resolves.toEqual({
+        data: 'retained', ...(declaration ? { notice: note } : {}),
+      })
+      expect(f.events).not.toContain('remove-data whatsapp')
+      expect(fetch).not.toHaveBeenCalled()
+    },
+  )
+
+  it('carries package wording through the real person Settings channel', async () => {
+    const f = await fixture({}, 'whatsapp', { removal })
     await f.controller.detach(f.handle)
-    const key = 'a'.repeat(64)
     const bridge = await servePersonPluginControl({
-      root: f.root,
-      key,
-      controller: f.controller,
-      read: async () => ({}),
+      root: f.root, key: 'a'.repeat(64), controller: f.controller, read: async () => ({}),
     })
     let client: Awaited<ReturnType<typeof connectPluginSettings>> | undefined
     try {
       client = await connectPluginSettings({
-        path: bridge.path,
-        personKey: key,
-        root: f.root,
-        target: f.opts.target,
-        catalogue: f.opts.catalogue,
-        projection: projection().sink,
-        propose: () => {},
+        path: bridge.path, personKey: 'a'.repeat(64), root: f.root,
+        target: f.opts.target, catalogue: f.opts.catalogue,
+        projection: projection().sink, propose: () => {},
       })
-      expect((await client.catalogue())[0]?.hasRemoteLogout).toBe(true)
       await client.install('whatsapp')
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(async () => Response.json({})),
-      )
+      expect((await client.catalogue())[0]?.uninstallNote).toBe(note)
+      vi.stubGlobal('fetch', vi.fn(async () => Response.json({ notice: 'Fictional service completed cleanup.' })))
       await expect(client.uninstall('whatsapp')).resolves.toEqual({
-        data: 'deleted',
-        logout: 'unconfirmed',
+        data: 'deleted', notice: 'Fictional service completed cleanup.',
       })
       expect((await client.catalogue())[0]?.installed).toBe(false)
       expect(f.state.inspect().pending).toBeNull()
@@ -127,58 +86,31 @@ describe.skipIf(process.platform === 'win32')('uninstall results over inert peer
     }
   })
 
-  it('does not turn a failed local deletion into a completed removal', async () => {
-    const f = await fixture({}, 'whatsapp')
+  it('does not turn failed local deletion into a completed removal and retries its declaration', async () => {
+    const f = await fixture({}, 'whatsapp', { removal })
     await f.controller.install(f.handle, 'whatsapp')
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => Response.json({})),
-    )
-    f.opts.runtime.removeData = async () => {
-      throw new Error('fictional deletion failed')
-    }
-    await expect(f.controller.uninstall(f.handle, 'whatsapp', randomUUID())).rejects.toMatchObject({
-      code: 'cleanup-pending',
-    })
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({})))
+    const removeData = f.opts.runtime.removeData!
+    f.opts.runtime.removeData = async () => { throw new Error('fictional deletion failed') }
+    const operationId = randomUUID()
+    await expect(f.controller.uninstall(f.handle, 'whatsapp', operationId)).rejects.toMatchObject({ code: 'cleanup-pending' })
     expect(f.state.inspect().pending).not.toBeNull()
+    f.opts.runtime.removeData = removeData
+    await expect(f.controller.uninstall(f.handle, 'whatsapp', operationId)).resolves.toEqual({ data: 'deleted', notice: note })
+    expect(f.events).toContain('remove-data whatsapp')
+    expect(f.state.inspect().pending).toBeNull()
   })
-})
-
-it.each([
-  { before: 'never linked', state: 'unlinked', removeOnPhone: false },
-  { before: 'earlier unconfirmed logout', state: 'unlinked', removeOnPhone: true },
-  { before: 'unresolved prior logout', state: 'linked', removeOnPhone: true },
-])('does not turn $before into a remote logout guarantee', async (prior) => {
-  let removed = false
-  const fetch = vi.fn(async (url: string) => {
-    if (url.endsWith('/uninstall')) {
-      removed = true
-      return Response.json({})
-    }
-    return Response.json(removed ? { state: 'unlinked', removeOnPhone: false } : prior)
+  it('keeps the disposition after archive removal when journal completion must be retried', async () => {
+    const f = await fixture({}, 'whatsapp', { removal })
+    await f.controller.install(f.handle, 'whatsapp')
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({})))
+    vi.spyOn(f.state, 'complete').mockImplementationOnce(() => { throw new Error('fictional journal failure') })
+    const operationId = randomUUID()
+    await expect(f.controller.uninstall(f.handle, 'whatsapp', operationId)).rejects.toMatchObject({ code: 'cleanup-pending' })
+    expect(f.events).toContain('remove-code')
+    await expect(f.controller.uninstall(f.handle, 'whatsapp', operationId)).resolves.toEqual({ data: 'deleted', notice: note })
+    expect(f.events.filter((event) => event === 'remove-data whatsapp')).toHaveLength(2)
+    expect(f.state.inspect().pending).toBeNull()
   })
-  vi.stubGlobal('fetch', fetch)
-  await expect(logOutBeforeUninstall(connection, new AbortController().signal)).resolves.toBe(
-    'unconfirmed',
-  )
-  expect(removed).toBe(true)
-})
 
-it('still attempts uninstall when the earlier link state cannot be read', async () => {
-  let removed = false
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string) => {
-      if (url.endsWith('/uninstall')) {
-        removed = true
-        return Response.json({})
-      }
-      if (!removed) throw new Error('fictional status unavailable')
-      return Response.json({ state: 'unlinked', removeOnPhone: false })
-    }),
-  )
-  await expect(logOutBeforeUninstall(connection, new AbortController().signal)).resolves.toBe(
-    'unconfirmed',
-  )
-  expect(removed).toBe(true)
 })

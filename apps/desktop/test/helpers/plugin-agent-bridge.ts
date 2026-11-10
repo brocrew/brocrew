@@ -7,7 +7,6 @@ import { sharedLifecycleWorkspaces } from '../../src/main/plugins/lifecycle/work
 import { fixture } from '../plugin-lifecycle-fixtures'
 import type { WorkspaceLease } from '../../src/main/plugins/supervisor/owner'
 import type { Command } from '../../src/main/plugins/supervisor/protocol'
-import type { BrokerInput } from '../../src/main/plugins/tool-broker'
 import type { ManagedPluginMcpServer } from '@brobot2/runtime'
 
 export const closes: (() => Promise<unknown>)[] = []
@@ -85,22 +84,17 @@ export async function live(
         name: 'echo',
         description: 'Fictional echo',
         inputSchema: { type: 'object' },
-        prepare: (input: BrokerInput) => ({
-          input,
-          resources: [{ resource: 'profiles', key: 'fern', mode: 'read' as const }],
-        }),
+
       },
     ],
-    resources: [{ id: 'profiles', read: true, write: false }],
     adminOperations: [],
-    isAllowed: () => allowed,
     server: {
       tool() {
         call()
         return {
           result: Promise.resolve({
             ok: true as const,
-            value: { content: [{ type: 'text', text: 'fictional fern' }] },
+            value: { content: [{ type: 'text', text: 'fictional fern' }], ...(!allowed ? { isError: true } : {}) },
           }),
           quiescent: Promise.resolve(),
           cancel() {},

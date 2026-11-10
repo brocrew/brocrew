@@ -4,7 +4,7 @@ import { createLifecycleAgentBridge } from '../src/main/plugins/lifecycle/agent-
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { WorkspacePluginAttachments } from '../src/main/plugins/attachments'
 import { fixture, cleanupLifecycleFixtures, deferred } from './plugin-lifecycle-fixtures'
-import type { BrokerInput, BrokerClock } from '../src/main/plugins/tool-broker'
+import type { BrokerClock } from '../src/main/plugins/tool-broker'
 import {
   FakeRuntime,
   withManagedPluginAttachments,
@@ -693,7 +693,7 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     })
     f.allow(false)
     expect(await client.callTool({ name: 'echo', arguments: {} })).toMatchObject({ isError: true })
-    expect(f.call).toHaveBeenCalledOnce()
+    expect(f.call).toHaveBeenCalledTimes(2)
   })
   it('lease revocation ends discovery and calls, with no person/admin authority', async () => {
     const f = await live(),
@@ -792,12 +792,9 @@ it.skipIf(process.platform === 'win32')(
           name: 'echo',
           description: 'Fictional echo',
           inputSchema: { type: 'object' },
-          prepare: (input: BrokerInput) => ({ input, resources: [] }),
         },
       ],
-      resources: [],
       adminOperations: [],
-      isAllowed: () => true,
       server: {
         tool: () => ({
           result: Promise.resolve({

@@ -1,11 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   applyWhatsAppSettings,
-  logOutBeforeUninstall,
   WhatsAppProposal,
 } from '../src/main/plugins/lifecycle/whatsapp-apply'
 import { readWhatsAppConfiguration } from '../src/main/plugins/lifecycle/whatsapp-read'
-import { whatsappBrokerBinding } from '../src/main/plugins/lifecycle/whatsapp-broker'
 import { pluginAdapter } from '../src/main/plugins/lifecycle/adapters'
 import { proposalFor } from '../src/main/plugins/lifecycle/proposals'
 import type { PluginNodeReady } from '../src/main/plugins/node-host'
@@ -74,44 +72,6 @@ describe('fixed person-only WhatsApp settings mapping', () => {
       applyWhatsAppSettings(connection, { action: 'unlink-phone' }, new AbortController().signal),
     ).rejects.toThrow('Plugin unavailable. Try again.')
     expect(fetch).toHaveBeenCalledOnce()
-  })
-})
-
-describe('uninstalling', () => {
-  it('asks the plugin to log out and waits for its answer', async () => {
-    let removed = false
-    const fetch = vi.fn(async (url: string) => {
-      if (url.endsWith('/uninstall')) {
-        removed = true
-        return Response.json({})
-      }
-      return Response.json({ state: removed ? 'unlinked' : 'linked', removeOnPhone: false })
-    })
-    vi.stubGlobal('fetch', fetch)
-    await expect(logOutBeforeUninstall(connection, new AbortController().signal)).resolves.toBe(
-      'confirmed',
-    )
-    expect(fetch).toHaveBeenCalledTimes(3)
-    expect(fetch).toHaveBeenCalledWith(
-      'http://127.0.0.1:1/v1/uninstall',
-      expect.objectContaining({
-        method: 'POST',
-        redirect: 'error',
-        body: '{}',
-        headers: expect.objectContaining({ Authorization: 'Bearer fictional-admin' }),
-      }),
-    )
-    expect(pluginAdapter('whatsapp')?.uninstall).toBeTypeOf('function')
-    expect(pluginAdapter('chrome')?.uninstall).toBeUndefined()
-  })
-  it('reports a log out the plugin did not finish', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response('{}', { status: 504 })),
-    )
-    await expect(logOutBeforeUninstall(connection, new AbortController().signal)).rejects.toThrow(
-      'Plugin unavailable. Try again.',
-    )
   })
 })
 
@@ -197,23 +157,5 @@ describe('the plugin registry', () => {
     expect(pluginAdapter('whatsapp')).toBeDefined()
     expect(pluginAdapter('chrome')).toBeDefined()
   })
-  it('binds tools only for the WhatsApp package that declares its account resource', async () => {
-    const view = (
-      pluginId: string,
-      resources: Array<{ id: string; label: string; read: boolean; write: boolean }>,
-    ) =>
-      ({
-        installation: { pluginId },
-        package: { compatibility: { tools: true }, manifest: { permissions: { resources } } },
-        connection: new Promise(() => undefined),
-        current: () => true,
-      }) as never
-    const account = [{ id: 'whatsapp', label: 'Fictional account', read: true, write: true }]
-    await expect(whatsappBrokerBinding(view('chrome', account), () => undefined)).rejects.toThrow(
-      'unavailable',
-    )
-    await expect(whatsappBrokerBinding(view('whatsapp', []), () => undefined)).rejects.toThrow(
-      'unavailable',
-    )
-  })
+
 })

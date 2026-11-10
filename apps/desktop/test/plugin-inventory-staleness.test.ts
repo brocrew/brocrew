@@ -113,7 +113,7 @@ it.each(
     const remote = peer(method, format)
     const { attachment } = view()
     let outcome: unknown
-    const work = admittedPluginTools(attachment, new Set(['echo']), () => {}).then(
+    const work = admittedPluginTools(attachment).then(
       (value) => (outcome = { value }),
       (error: unknown) => (outcome = { error }),
     )
@@ -142,7 +142,7 @@ it('reports connection refused immediately with the actual connect cause', async
       }),
     ),
   )
-  await expect(admittedPluginTools(view().attachment, new Set(), () => {})).rejects.toMatchObject({
+  await expect(admittedPluginTools(view().attachment)).rejects.toMatchObject({
     pluginStage: 'binding-connect',
     pluginCause: 'connection-refused',
   })
@@ -151,7 +151,7 @@ it('reports connection refused immediately with the actual connect cause', async
 it('ends connection readiness immediately when the exact host exits', async () => {
   const { attachment, exited } = view()
   Object.assign(attachment, { connection: new Promise<never>(() => {}) })
-  const work = admittedPluginTools(attachment, new Set(), () => {})
+  const work = admittedPluginTools(attachment)
   exited.resolve()
   await expect(work).rejects.toMatchObject({
     pluginStage: 'binding-connection',
@@ -162,9 +162,7 @@ it('ends connection readiness immediately when the exact host exits', async () =
 function emptyBinding() {
   return {
     tools: [],
-    resources: [],
     adminOperations: [],
-    isAllowed: () => true,
     server: {
       tool: vi.fn(),
       admin: vi.fn(),

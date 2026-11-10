@@ -211,7 +211,7 @@ describe('authenticated broker boundaries', () => {
     expect(response.status).toBe(401)
     await response.body?.cancel()
   })
-  it('enforces current resource policy and leaves unsupported surfaces absent', async () => {
+  it('preserves package-owned refusal results and leaves unsupported surfaces absent', async () => {
     const f = await fixture(),
       client = await connect(await f.route('willow'))
     f.allow(false)
@@ -220,7 +220,7 @@ describe('authenticated broker boundaries', () => {
     )
     await expect(client.listResources()).rejects.toThrow()
     await expect(client.listPrompts()).rejects.toThrow()
-    expect(f.seen).toEqual([])
+    expect(f.seen).toEqual([{ method: 'tools/call', authenticated: true }])
   })
 })
 
@@ -308,8 +308,7 @@ it('records a closed connect-failure reason without arguments, credentials or ra
         },
         name: 'echo',
         input: { private: 'fictional-private-argument' },
-        resources: [],
-      },
+        },
       new AbortController().signal,
     )
     await expect(execution.result).resolves.toEqual({ ok: false, cause: 'connection-failed' })

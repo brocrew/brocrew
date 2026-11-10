@@ -376,10 +376,10 @@ async function change(kind: 'install' | 'update' | 'uninstall', card: PluginCard
   if (answer.ok && answer.cards) {
     cards.value = answer.cards
     if (kind === 'uninstall' && answer.removal) {
-      removalNotice.value =
-        answer.removal.logout === 'confirmed'
-          ? `${card.name}'s local data was deleted and its device was logged out.`
-          : `${card.name}'s local data was deleted. Logout was not confirmed. Open Linked devices on your phone and remove this device if it is still listed.`
+      removalNotice.value = [
+        `${card.name}'s local data was ${answer.removal.data === 'deleted' ? 'deleted' : 'kept'}.`,
+        answer.removal.notice,
+      ].filter(Boolean).join(' ')
     }
   } else {
     error.value = actionFailure(`${kind} ${card.name}`, answer, guarded)
@@ -796,9 +796,7 @@ onUnmounted(() => {
             Uninstall {{ card.name }} from all workspaces and delete its local data.
           </p>
           <p v-else>Uninstall {{ card.name }} from all workspaces. Its data will be kept.</p>
-          <p v-if="card.hasRemoteLogout">
-            If logout cannot be confirmed, you will need to remove the linked device on your phone.
-          </p>
+          <p v-if="card.uninstallNote">{{ card.uninstallNote }}</p>
           <button
             class="bb-button"
             type="button"

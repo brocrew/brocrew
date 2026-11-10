@@ -35,6 +35,11 @@
     "adminPath": "/v1"
   },
   "skills": [],
+  "removal": {
+    "data": "delete",
+    "beforeRemove": true,
+    "note": "If logout cannot be confirmed, open Linked devices on your phone and remove this device if it is still listed."
+  },
   "action": {
     "id": "restart",
     "kind": "restart",

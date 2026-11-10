@@ -17,39 +17,20 @@ export interface BrokerIdentity extends BrokerBinding {
   readonly kind: 'agent' | 'person'
   readonly incarnation: string
 }
-export interface ResourceUse {
-  readonly resource: string
-  readonly key: string
-  readonly mode: 'read' | 'write'
-}
-export interface PreparedTool {
-  readonly input: BrokerInput
-  readonly resources: readonly ResourceUse[]
-}
 export interface BrokerTool {
   readonly name: string
   readonly description: string
   readonly inputSchema: BrokerInput
-  /** The curated binding validates arguments and names every resource the operation can use. */
-  readonly prepare: (input: BrokerInput) => PreparedTool
+  readonly [field: string]: unknown
 }
-export interface PublishedBrokerTool {
+export interface PublishedBrokerTool extends BrokerTool {
   readonly namespace: string
-  readonly name: string
   readonly qualifiedName: string
-  readonly description: string
-  readonly inputSchema: BrokerInput
-}
-export interface BrokerResource {
-  readonly id: string
-  readonly read: boolean
-  readonly write: boolean
 }
 export interface BrokerRequest {
   readonly identity: BrokerIdentity
   readonly name: string
   readonly input: BrokerInput
-  readonly resources: readonly ResourceUse[]
 }
 export type BrokerReply =
   | { readonly ok: true; readonly value: BrokerValue }
@@ -107,8 +88,6 @@ export interface BrokerOptions {
   readonly occupiedQualifiedNames: readonly string[]
   readonly tools: readonly BrokerTool[]
   readonly adminOperations: readonly string[]
-  readonly resources: readonly BrokerResource[]
-  readonly isAllowed: (identity: BrokerIdentity, use: ResourceUse) => boolean
   readonly server: BrokerServer
   /** Trusted owner proof for the exact retained host and its descendants, never plugin input. */
   readonly hostExited?: Promise<void>

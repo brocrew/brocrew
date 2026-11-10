@@ -107,11 +107,6 @@ export function setup(change: (options: BrokerOptions) => BrokerOptions = (optio
   const clock = new Clock(),
     server = new Server(),
     audit: BrokerAudit[] = []
-  const enabled = new Map<string, Set<'read' | 'write'>>([['fern', new Set(['read', 'write'])]])
-  const prepare = (mode: 'read' | 'write') => (input: BrokerInput) => {
-    if (typeof input.profile !== 'string') throw new Error('fixture input is invalid')
-    return { input, resources: [{ resource: 'profiles', key: input.profile, mode }] }
-  }
   const options: BrokerOptions = {
     binding: { pluginId: 'fictional-browser', installId: 'installation-fern', epoch: 'epoch-one' },
     reservedNamespace: 'fictional-host',
@@ -123,18 +118,14 @@ export function setup(change: (options: BrokerOptions) => BrokerOptions = (optio
         name: 'read_page',
         description: 'Read a fictional page.',
         inputSchema: { type: 'object' },
-        prepare: prepare('read'),
       },
       {
         name: 'write_page',
         description: 'Write a fictional page.',
         inputSchema: { type: 'object' },
-        prepare: prepare('write'),
       },
     ],
     adminOperations: ['enable_profile', 'open_window'],
-    resources: [{ id: 'profiles', read: true, write: true }],
-    isAllowed: (_identity, use) => enabled.get(use.key)?.has(use.mode) === true,
     clock,
     server,
     audit: (event) => audit.push(event),
@@ -146,5 +137,5 @@ export function setup(change: (options: BrokerOptions) => BrokerOptions = (optio
   const name = broker.agent.discover(agent)[0]!.qualifiedName
   const call = (who = agent, input: BrokerInput = { profile: 'fern' }, signal?: AbortSignal) =>
     tracked(broker.agent.call(who, name, input, signal))
-  return { broker, options, clock, server, audit, enabled, ws, agent, person, name, call }
+  return { broker, options, clock, server, audit, ws, agent, person, name, call }
 }

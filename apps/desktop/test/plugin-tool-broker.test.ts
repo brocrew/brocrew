@@ -9,7 +9,7 @@ import type {
   BrokerValue,
   BrokerWorkspace,
 } from '../src/main/plugins/tool-broker'
-import { type Clock, deferred, tick, setup } from './helpers/plugin-tool-broker'
+import { deferred, tick, setup } from './helpers/plugin-tool-broker'
 
 describe('plugin authority and all-agent reach', () => {
   it('publishes a long tool description unchanged and keeps the tool callable', async () => {
@@ -138,57 +138,12 @@ describe('plugin authority and all-agent reach', () => {
   })
 })
 
-describe('current resource policy at execution', () => {
-  it('refuses disabled resources and read-only writes, while keeping discovery available', async () => {
-    const h = setup()
-    h.enabled.set('fern', new Set(['read']))
-    await expect(h.call(h.agent, { profile: 'cedar' })).rejects.toMatchObject({ code: 'denied' })
-    await expect(
-      h.broker.agent.call(h.agent, h.name.replace('read_page', 'write_page'), { profile: 'fern' }),
-    ).rejects.toMatchObject({ code: 'denied' })
-    expect(h.server.calls).toHaveLength(0)
-    expect(h.broker.agent.discover(h.agent)).toHaveLength(2)
-  })
-  it('checks choices after waiting, rather than trusting enqueue-time permission', async () => {
-    const h = setup()
-    const first = h.call()
-    await tick()
-    const queued = h.call()
-    h.enabled.delete('fern')
-    h.server.finish(0)
-    await first
-    await tick()
-    await expect(queued).rejects.toMatchObject({ code: 'denied' })
-    expect(h.server.calls).toHaveLength(1)
-    expect(h.broker.status()).toMatchObject({ queued: 0, executing: false })
-  })
-  it('rechecks a queued request after a person mutation changes its choices', async () => {
-    const h = setup()
-    const first = h.broker.person.call(h.person, 'enable_profile', {})
-    await tick()
-    const pending = h.call()
-    h.enabled.clear()
-    h.server.finish(0)
-    await first
-    await tick()
-    await expect(pending).rejects.toMatchObject({ code: 'denied' })
-    expect(h.server.calls.map((c) => c.operation)).toEqual(['admin'])
-  })
-  it('rejects undeclared resources or modes outside the verified package permissions', async () => {
-    const h = setup((o) => ({
-      ...o,
-      resources: [{ id: 'profiles', read: true, write: false }],
-      isAllowed: () => true,
-    }))
-    await expect(
-      h.broker.agent.call(h.agent, h.name.replace('read_page', 'write_page'), { profile: 'fern' }),
-    ).rejects.toMatchObject({ code: 'denied' })
-    const absent = setup((o) => ({ ...o, resources: [] }))
-    await expect(absent.call()).rejects.toMatchObject({ code: 'denied' })
-    expect(h.server.calls).toHaveLength(0)
-    expect(absent.server.calls).toHaveLength(0)
-  })
-  it('clones queued inputs and freezes execution identity, arguments and resource claims', async () => {
+describe('package inputs at execution', () => {
+
+
+
+
+  it('clones queued inputs and freezes execution identity, and arguments', async () => {
     const h = setup()
     const first = h.call()
     await tick()
@@ -201,10 +156,8 @@ describe('current resource policy at execution', () => {
     await tick()
     const request = h.server.calls[1]!.request
     expect(request.input).toEqual({ profile: 'fern', nested: { title: 'before' } })
-    expect(request.resources).toEqual([{ resource: 'profiles', key: 'fern', mode: 'read' }])
     expect(Object.isFrozen(request.input.nested)).toBe(true)
     expect(Object.isFrozen(request.identity)).toBe(true)
-    expect(Object.isFrozen(request.resources[0])).toBe(true)
     h.server.finish(1)
     await queued
   })
@@ -462,17 +415,7 @@ describe('deadline, cancellation and independent quiescence proof', () => {
     h.server.finish(1)
     await next
   })
-  it('does not start a job if policy evaluation crosses the queue deadline', async () => {
-    const h = setup((o) => ({
-      ...o,
-      isAllowed: () => {
-        ;(o.clock as Clock).time += 120_000
-        return true
-      },
-    }))
-    await expect(h.call()).rejects.toMatchObject({ code: 'deadline' })
-    expect(h.server.calls).toHaveLength(0)
-  })
+
 })
 
 describe('secret-free failures and diagnostics', () => {
@@ -506,15 +449,11 @@ describe('secret-free failures and diagnostics', () => {
     expect(cancel.broker.status().available).toBe(false)
     expect(JSON.stringify(cancel.audit)).not.toContain(secret)
   })
-  it('never puts policy exceptions, identities, arguments or outputs in audit events', async () => {
-    const h = setup((o) => ({
-      ...o,
-      isAllowed: () => {
-        throw new Error(secret)
-      },
-    }))
+  it('keeps execution errors, identities, arguments and outputs out of audit events', async () => {
+    const h = setup()
+    h.server.startError = new Error(secret)
     await expect(h.call(h.agent, { profile: 'fern', payload: secret })).rejects.toMatchObject({
-      code: 'denied',
+      code: 'unavailable',
     })
     expect(JSON.stringify(h.audit)).not.toMatch(
       /fictional-downstream|fern|willow|incarnation|payload/,
@@ -569,20 +508,7 @@ describe('secret-free failures and diagnostics', () => {
 })
 
 describe('revocation and malformed downstream boundaries', () => {
-  it('rechecks authority if the resource callback revokes it synchronously', async () => {
-    let revoke = () => {}
-    const h = setup((o) => ({
-      ...o,
-      isAllowed: () => {
-        revoke()
-        return true
-      },
-    }))
-    revoke = () => h.broker.owner.revoke(h.agent)
-    await expect(h.call()).rejects.toMatchObject({ code: 'unauthorized' })
-    expect(h.server.calls).toHaveLength(0)
-    expect(h.clock.timers.size).toBe(0)
-  })
+
   it('cancels when authority is revoked inside dispatch, before the handle returns', async () => {
     let revoke = () => {}
     const h = setup((o) => ({
@@ -728,22 +654,7 @@ it('attribution copies only installation identity fields from owner metadata', a
   h.server.finish(0)
   await pending
 })
-it('does not dispatch when the caller aborts during preparation', async () => {
-  const signal = new AbortController()
-  const h = setup((o) => ({
-    ...o,
-    isAllowed: () => {
-      signal.abort()
-      return true
-    },
-  }))
-  await expect(h.call(h.agent, { profile: 'fern' }, signal.signal)).rejects.toMatchObject({
-    code: 'cancelled',
-  })
-  expect(h.server.calls).toHaveLength(0)
-  expect(h.broker.status()).toMatchObject({ executing: false, queued: 0 })
-  expect(h.clock.timers.size).toBe(0)
-})
+
 
 it('distinguishes a queue deadline from a dispatched call deadline using fixed reasons', async () => {
   const h = setup()

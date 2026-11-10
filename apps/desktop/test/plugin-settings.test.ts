@@ -447,15 +447,15 @@ it('a page list refreshes the source; update uses its own door and closes config
   expect(f.controller.update).toHaveBeenCalledOnce()
 })
 
-it('keeps only closed local and remote removal facts after uninstall', async () => {
+it('carries package removal wording after uninstall', async () => {
   const f = setup()
   vi.mocked(f.controller.uninstall).mockResolvedValueOnce({
     data: 'deleted',
-    logout: 'unconfirmed',
+    notice: 'Fictional package outcome.',
   } as never)
   expect(await f.call({ kind: 'uninstall', id: 'whatsapp' })).toMatchObject({
     ok: true,
-    removal: { data: 'deleted', logout: 'unconfirmed' },
+    removal: { data: 'deleted', notice: 'Fictional package outcome.' },
   })
 })
 
@@ -463,7 +463,7 @@ it('refuses malformed removal facts without forwarding private reply bytes', asy
   const f = setup()
   vi.mocked(f.controller.uninstall).mockResolvedValueOnce({
     data: 'deleted',
-    logout: 'confirmed',
+    notice: 'Fictional package outcome.',
     diagnostic: 'fictional-private-diagnostic',
   } as never)
   const answer = await f.call({ kind: 'uninstall', id: 'whatsapp' })

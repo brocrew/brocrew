@@ -39,7 +39,7 @@ it.each(['connection', 'connect', 'inventory', 'close'] as const)(
     else sdk[where === 'inventory' ? 'list' : where].mockRejectedValue(error)
     let failure: unknown
     try {
-      await admittedPluginTools(view, new Set(), () => {})
+      await admittedPluginTools(view)
     } catch (error) {
       failure = error
     }
@@ -51,7 +51,7 @@ it.each(['connection', 'connect', 'inventory', 'close'] as const)(
 it('preserves the first failure when client cleanup also rejects', async () => {
   sdk.connect.mockRejectedValue(Object.assign(new Error('private connect'), { code: 'EACCES' }))
   sdk.close.mockRejectedValue(Object.assign(new Error('private close'), { code: 'EIO' }))
-  await expect(admittedPluginTools(fixture(), new Set(), () => {})).rejects.toMatchObject({
+  await expect(admittedPluginTools(fixture())).rejects.toMatchObject({
     pluginStage: 'binding-connect',
     pluginCause: 'io-denied',
   })
@@ -61,7 +61,7 @@ it('classifies the SDK request-timeout code without copying its message', async 
   sdk.list.mockRejectedValue(
     Object.assign(new Error('private SDK body'), { name: 'McpError', code: -32001 }),
   )
-  await expect(admittedPluginTools(fixture(), new Set(), () => {})).rejects.toMatchObject({
+  await expect(admittedPluginTools(fixture())).rejects.toMatchObject({
     pluginStage: 'binding-inventory',
     pluginCause: 'timeout',
   })
@@ -74,17 +74,13 @@ it('lists named tools with their complete definitions in inventory order', async
     inputSchema: { type: 'object' as const, properties: {} },
   }))
   sdk.list.mockResolvedValue({ tools })
-  const refused = vi.fn()
-  const result = await admittedPluginTools(fixture(), new Set(['first', 'second']), refused)
+  const result = await admittedPluginTools(fixture())
   expect(result.admitted).toEqual(tools)
-  expect(refused).not.toHaveBeenCalled()
   expect(sdk.close).toHaveBeenCalledOnce()
 })
-it('keeps named tools when the inventory also contains an unknown name', async () => {
+it('keeps every declared tool including a newly added name', async () => {
   const named = { name: 'echo', inputSchema: { type: 'object' as const } }
   sdk.list.mockResolvedValue({ tools: [named, { ...named, name: 'unknown' }] })
-  const refused = vi.fn()
-  const result = await admittedPluginTools(fixture(), new Set(['echo']), refused)
-  expect(result.admitted).toEqual([named])
-  expect(refused).toHaveBeenCalledOnce()
+  const result = await admittedPluginTools(fixture())
+  expect(result.admitted).toEqual([named, { ...named, name: 'unknown' }])
 })

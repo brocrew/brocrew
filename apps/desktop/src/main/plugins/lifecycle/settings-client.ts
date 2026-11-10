@@ -72,6 +72,7 @@ const Cards = z
       installedVersion: z.string().min(1).max(80).optional(),
       updateVersion: z.string().min(1).max(80).optional(),
       uninstallDeletesData: z.boolean().optional(),
+      uninstallNote: PluginActionSchema.shape.note.optional(),
     }),
   )
   .max(200)
@@ -685,11 +686,8 @@ export async function connectPluginSettings(options: {
           'schema',
         )
       }
-      // Project reviewed local adapter capabilities without expanding the legacy owner wire.
       return cards.map((card) => ({
         ...card,
-        ...(!modern ? { uninstallDeletesData: Boolean(pluginAdapter(card.id)?.uninstall) } : {}),
-        hasRemoteLogout: Boolean(pluginAdapter(card.id)?.uninstall),
         ...(sourceFormat === 2 || blocked ? { preparationRequired: true as const } : {}),
         ...(blocked ? { mutationBlocked: blocked } : {}),
       }))
@@ -790,11 +788,7 @@ export async function connectPluginSettings(options: {
         throw new PluginSupervisorError('unavailable')
       const reply = result[1]
       if (!reply || reply.status !== 'fulfilled') throw new PluginSupervisorError('unavailable')
-      // Legacy owners returned only true; local deletion never proves remote logout.
-      if (reply.value === true) {
-        if (pluginAdapter(pluginId)?.uninstall) return { data: 'deleted', logout: 'unconfirmed' }
-        return
-      }
+      if (reply.value === true) return
       const outcome = pluginRemovalOutcome(reply.value)
       if (!outcome) throw new PluginSupervisorError('unavailable')
       return outcome
