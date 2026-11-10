@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { PluginRemovalOutcome } from '../../../src/shared/plugin-settings'
+import type { PluginRemovalOutcome } from '../plugin-configuration-parent/legacy-settings'
 import { readAdminJson } from '../../../src/main/plugins/lifecycle/admin-read'
 import type { PluginNodeReady } from '../../../src/main/plugins/node-host'
 import { PluginSupervisorError } from '../../../src/main/plugins/supervisor/protocol'

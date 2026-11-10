@@ -1,4 +1,4 @@
-import { proposalFor } from '../../../src/main/plugins/lifecycle/proposals'
+import { proposalFor } from '../plugin-configuration-parent/proposals'
 import { pluginSha256 } from '../../../src/main/plugins/package-digests'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'

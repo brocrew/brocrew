@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { join } from 'node:path'
 import { readdir, readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import { PluginProfileLedger } from '../src/main/plugins/lifecycle/profile-ledger'
+import { PluginProfileLedger as PreviousLedger } from './fixtures/plugin-configuration-parent/profile-ledger'
 import { digest } from '../src/main/plugins/node-host-files'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
@@ -43,7 +44,7 @@ const paths = (root: string, installId = id) => {
 
 async function upgradedFixture(root: string, installId = id) {
   const ledger = new PluginProfileLedger(root)
-  await ledger.reserve(installId, 0, proposal)
+  await new PreviousLedger(root).reserve(installId, 0, proposal)
   const bytes = await readFile(join(paths(root, installId).intents, '00000001.json'))
   const floor = join(root, 'profile-apply', installId + '.floor')
   await unlink(floor)
@@ -67,29 +68,29 @@ describe.skipIf(process.platform === 'win32')('bounded durable configuration led
       const f = await fixture()
       const ledger = await upgradedFixture(f.root)
       for (let revision = 1; revision < 63; revision++)
-        await ledger.reserve(id, revision, proposal, 2)
+        await ledger.reserve(id, revision)
       fault.point = point
-      await expect(ledger.reserve(id, 63, proposal, 2)).rejects.toThrow()
+      await expect(ledger.reserve(id, 63)).rejects.toThrow()
       fault.point = ''
       const reopened = new PluginProfileLedger(f.root)
       expect(await reopened.revision(id)).toBe(64)
-      await expect(reopened.reserve(id, 63, proposal, 2)).rejects.toThrow()
-      await reopened.reserve(id, 64, proposal, 2)
+      await expect(reopened.reserve(id, 63)).rejects.toThrow()
+      await reopened.reserve(id, 64)
       expect(await reopened.revision(id)).toBe(65)
       expect((await readdir(paths(f.root).intents)).length).toBeLessThanOrEqual(64)
       const checkpoint = JSON.parse(
         await readFile(join(paths(f.root).directory, 'checkpoint.json'), 'utf8'),
       )
-      expect(checkpoint).toMatchObject({ format: 2, installId: id, revision: 64 })
+      expect(checkpoint).toMatchObject({ format: 2, installId: id, revision: 65 })
       await rm(paths(f.root).directory, { recursive: true })
       await expect(reopened.revision(id)).rejects.toThrow()
     },
   )
 
-  it('upgrades a full legacy history only after explicit format negotiation', async () => {
+  it('consumes a checkpoint after a full legacy history without resetting revision', async () => {
     const f = await fixture()
     const ledger = new PluginProfileLedger(f.root)
-    await ledger.reserve(id, 0, proposal)
+    await new PreviousLedger(f.root).reserve(id, 0, proposal)
     let previous = digest(await readFile(join(paths(f.root).intents, '00000001.json')))
     for (let revision = 2; revision <= 4096; revision++) {
       const bytes = Buffer.from(
@@ -106,8 +107,8 @@ describe.skipIf(process.platform === 'win32')('bounded durable configuration led
     await unlink(floor)
     await writeFile(floor, '4096', { mode: 0o400 })
     expect(await ledger.revision(id)).toBe(4096)
-    await expect(ledger.reserve(id, 4096, proposal, 1)).rejects.toThrow()
-    await ledger.reserve(id, 4096, proposal, 2)
+    await expect(new PreviousLedger(f.root).reserve(id, 4096, proposal, 1)).rejects.toThrow()
+    await ledger.reserve(id, 4096)
     expect(await ledger.revision(id)).toBe(4097)
     expect((await readdir(paths(f.root).intents)).length).toBeLessThanOrEqual(64)
     expect(JSON.parse(await readFile(floor, 'utf8'))).toMatchObject({ format: 2, revision: 4097 })
@@ -138,7 +139,7 @@ describe.skipIf(process.platform === 'win32')('bounded durable configuration led
       closers.push(() => client.close())
       const screen = await client.screen(plugin)
       await upgradedFixture(f.root, active.installId)
-      const fetch = vi.fn(async () => Response.json({}))
+      const fetch = vi.fn(async () => Response.json({ applied: true }))
       vi.stubGlobal('fetch', fetch)
       const change =
         plugin === 'chrome'

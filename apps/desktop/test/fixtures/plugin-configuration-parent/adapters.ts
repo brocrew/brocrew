@@ -1,15 +1,17 @@
-import type { PluginNodeReady } from '../node-host'
-import { PluginSupervisorError } from '../supervisor/protocol'
+import type { PluginNodeReady } from '../../../src/main/plugins/node-host'
+import { PluginSupervisorError } from '../../../src/main/plugins/supervisor/protocol'
 import { ChromeProposal, applyChromeProfile } from './chrome-apply'
 import { readChromeConfiguration } from './chrome-read'
 import { proposalFor, type PluginProposal } from './proposals'
 import { applyWhatsAppSettings } from './whatsapp-apply'
+import { logOutBeforeUninstall } from '../plugin-delete-parent/whatsapp-apply'
 import { readWhatsAppConfiguration } from './whatsapp-read'
 
 /** Package configuration adapters, until configuration forwarding replaces them. */
 export interface PluginAdapter {
   read(connection: PluginNodeReady, signal: AbortSignal): Promise<unknown>
   apply(connection: PluginNodeReady, proposal: PluginProposal, signal: AbortSignal): Promise<void>
+  uninstall?(connection: PluginNodeReady, signal: AbortSignal): Promise<'confirmed' | 'unconfirmed'>
 }
 const adapters: Readonly<Record<string, PluginAdapter>> = Object.freeze({
   chrome: {
@@ -19,6 +21,7 @@ const adapters: Readonly<Record<string, PluginAdapter>> = Object.freeze({
   },
   whatsapp: {
     read: (connection, signal) => readWhatsAppConfiguration(connection, signal),
+    uninstall: logOutBeforeUninstall,
     apply: (connection, proposal, signal) => applyWhatsAppSettings(connection, proposal, signal),
   },
 })

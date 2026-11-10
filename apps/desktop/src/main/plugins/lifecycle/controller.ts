@@ -22,9 +22,7 @@ import { pluginNodePolicy } from '../node-policy'
 import { newerPluginVersion } from '../catalogue/newer-version'
 import { parseRepoPluginList } from '../catalogue/repo-list'
 import { PluginProfileLedger } from './profile-ledger'
-import { chromeProfileIntent, ChromeProposal } from './chrome-apply'
-import { pluginAdapter } from './adapters'
-import { PluginProposal, proposalFor } from './proposals'
+import { applyPluginConfiguration } from './configuration'
 import { PLUGIN_LIMITS, pluginSha256 } from '../package-digests'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
@@ -1504,7 +1502,7 @@ export class PluginLifecycleController {
   ): Promise<number> {
     return this.withPlugin(id, async () => {
       const screen = this.screen(handle, id)
-      if (!pluginAdapter(id) || screen.installation.installId !== installId) return refuse()
+      if (screen.installation.installId !== installId) return refuse()
       return new PluginProfileLedger(this.options.root).revision(installId, allowLedgerV2)
     })
   }
@@ -1516,16 +1514,11 @@ export class PluginLifecycleController {
       incarnation: string
       revision: number
       proposal: unknown
-      ledgerFormat?: 1 | 2
     },
   ): Promise<void> {
-    const proposal = PluginProposal.parse(input.proposal)
     await this.withPlugin(input.pluginId, async () => {
       const screen = this.screen(handle, input.pluginId)
-      const adapter = pluginAdapter(input.pluginId)
       if (
-        !adapter ||
-        !proposalFor(input.pluginId)?.safeParse(proposal).success ||
         screen.installation.installId !== input.installId ||
         screen.installation.incarnation !== input.incarnation
       )
@@ -1536,16 +1529,12 @@ export class PluginLifecycleController {
       await new PluginProfileLedger(this.options.root).reserve(
         input.installId,
         input.revision,
-        input.pluginId === 'chrome'
-          ? chromeProfileIntent(ChromeProposal.parse(proposal))
-          : proposal,
-        input.ledgerFormat ?? 1,
       )
       const abort = new AbortController()
       this.profileCalls.set(input.pluginId, abort)
       try {
         if (!this.admitted(handle, input.pluginId, input.installId)) return refuse()
-        await adapter.apply(connection, proposal, abort.signal)
+        await applyPluginConfiguration(connection, input.proposal, input.revision, abort.signal)
         if (!this.admitted(handle, input.pluginId, input.installId)) return refuse()
       } finally {
         if (this.profileCalls.get(input.pluginId) === abort)

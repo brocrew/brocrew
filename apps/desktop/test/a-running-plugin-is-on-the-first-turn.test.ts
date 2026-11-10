@@ -15,7 +15,7 @@ import {
 } from '../../../packages/runtime/test/fixtures/codex-protocol'
 import { WorkspacePluginAttachments } from '../src/main/plugins/attachments'
 import { createLifecycleAgentBridge } from '../src/main/plugins/lifecycle/agent-bridge'
-import { requirePluginAdapter } from '../src/main/plugins/lifecycle/adapters'
+import { pluginBrokerBinding } from '../src/main/plugins/lifecycle/broker-binding'
 import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
 import type { WorkspaceLease } from '../src/main/plugins/supervisor/owner'
 import { fixture, deferred, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
@@ -165,11 +165,7 @@ describe.skipIf(process.platform === 'win32')('Running before a fresh session st
             entered.resolve()
             await held.promise
           }
-          return requirePluginAdapter(view.installation.pluginId).broker(
-            view,
-            async () => {},
-            diagnostic,
-          )
+          return pluginBrokerBinding(view, diagnostic)
         },
       })
       cleanup.push(async () => {

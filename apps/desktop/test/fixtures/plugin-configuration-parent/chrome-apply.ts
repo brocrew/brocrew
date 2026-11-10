@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import type { PluginNodeReady } from '../node-host'
-import { PluginSupervisorError } from '../supervisor/protocol'
+import type { PluginNodeReady } from '../../../src/main/plugins/node-host'
+import { PluginSupervisorError } from '../../../src/main/plugins/supervisor/protocol'
 
 const profile = z.string().regex(/^[a-z0-9-]{1,32}$/)
 /** Durable changes understood by earlier owners; destructive page commands are never stored. */

@@ -9,7 +9,7 @@ import { PLUGIN_LIMITS, pluginSha256 } from '../package-digests'
 import { thisMachine } from '../package-schema'
 import { createRepoAwarePluginVerifier } from '../package-verifier'
 import { createSupervisorLifecycle } from './supervisor'
-import { requirePluginAdapter } from './adapters'
+import { readPluginConfiguration } from './configuration'
 import type { PluginSupervisor } from '../supervisor/owner'
 import type { createPluginNodeHost } from '../node-host'
 import type { PluginLifecyclePlan } from '../supervisor/launch-format'
@@ -94,7 +94,7 @@ export async function bootstrapPluginLifecycle(options: {
         reads.set(id, active)
         active.add(abort)
         try {
-          return await requirePluginAdapter(id).read(connection, abort.signal)
+          return await readPluginConfiguration(connection, abort.signal)
         } finally {
           active.delete(abort)
         }

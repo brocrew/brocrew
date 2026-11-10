@@ -1,4 +1,4 @@
-import { PluginProposal } from '../../../src/main/plugins/lifecycle/proposals'
+import { PluginProposal } from '../plugin-configuration-parent/proposals'
 import { createServer, createConnection, type Socket } from 'node:net'
 import { chmod, lstat, unlink } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'

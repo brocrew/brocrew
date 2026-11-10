@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import type { PluginNodeReady } from '../node-host'
-import { PluginSupervisorError } from '../supervisor/protocol'
+import type { PluginNodeReady } from '../../../src/main/plugins/node-host'
+import { PluginSupervisorError } from '../../../src/main/plugins/supervisor/protocol'
 
 export const WHATSAPP_GROUP = z.string().regex(/^[0-9]{5,40}(?:-[0-9]{1,20})?@g\.us$/)
 export const WhatsAppProposal = z.discriminatedUnion('action', [

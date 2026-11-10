@@ -3,7 +3,7 @@ import { pluginNodePolicy } from '../../../src/main/plugins/lifecycle/../node-po
 import { newerPluginVersion } from '../../../src/main/plugins/lifecycle/../catalogue/newer-version'
 import { parseRepoPluginList } from '../../../src/main/plugins/lifecycle/../catalogue/repo-list'
 import { PluginProfileLedger } from './profile-ledger'
-import { pluginAdapter } from '../../../src/main/plugins/lifecycle/./adapters'
+import { pluginAdapter } from '../plugin-configuration-parent/adapters'
 import { PluginProposal, proposalFor } from './proposals'
 import { pluginSha256 } from '../../../src/main/plugins/lifecycle/../package-digests'
 import { randomUUID } from 'node:crypto'
@@ -21,7 +21,7 @@ import type {
   ProjectionReceipt,
   Installation,
 } from './types'
-import type { PluginCard, PluginRemovalOutcome } from '../../../src/main/plugins/lifecycle/../../../shared/plugin-settings'
+import type { PluginCard, PluginRemovalOutcome } from '../plugin-configuration-parent/legacy-settings'
 
 const refuse = (): never => {
   throw new PluginSupervisorError('unavailable')

@@ -17,8 +17,6 @@ import {
   displayedDetailsHash,
 } from '../mutation-disclosure'
 import type { PluginRelease } from '../package-schema'
-import { proposalFor } from './proposals'
-import { pluginAdapter } from './adapters'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import type { PluginSettingsController } from '../settings'
@@ -882,10 +880,8 @@ export async function connectPluginSettings(options: {
             }
           },
           async proposeConfig(payload, revision, _binding, signal) {
-            const schema = proposalFor(pluginId)
-            if (!schema || !current(binding) || applying || signal.aborted)
+            if (!current(binding) || applying || signal.aborted)
               throw new PluginSupervisorError('unavailable')
-            const proposal = schema.parse(payload)
             applying = true
             try {
               // The person's package-screen button press is confirmation; no second dialog.
@@ -895,7 +891,7 @@ export async function connectPluginSettings(options: {
                 installId: installed.installId,
                 incarnation: installed.incarnation,
                 revision,
-                proposal,
+                proposal: payload,
               })
               if (!current(binding) || signal.aborted)
                 throw new PluginSupervisorError('unavailable')

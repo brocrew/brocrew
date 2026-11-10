@@ -41,9 +41,9 @@
       "path": "apps/desktop/src/main/plugins/lifecycle/controller.ts",
       "file": "lifecycle-controller.ts",
       "imports": {
-        "../../../src/main/plugins/lifecycle/profile-ledger": "./profile-ledger",
-        "../../../src/main/plugins/lifecycle/adapters": "./adapters",
-        "../../../src/main/plugins/lifecycle/proposals": "./proposals",
+        "../plugin-configuration-parent/profile-ledger": "./profile-ledger",
+        "../plugin-configuration-parent/adapters": "./adapters",
+        "../plugin-configuration-parent/proposals": "./proposals",
         "../../../src/main/plugins/package-digests": "../package-digests",
         "../../../src/main/plugins/package-verifier": "../package-verifier",
         "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol",
@@ -67,7 +67,7 @@
       "path": "apps/desktop/src/main/plugins/lifecycle/person-control.ts",
       "file": "lifecycle-person-control.ts",
       "imports": {
-        "../../../src/main/plugins/lifecycle/proposals": "./proposals",
+        "../plugin-configuration-parent/proposals": "./proposals",
         "../../../src/main/plugins/node-host-files": "../node-host-files",
         "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol",
         "../../../src/main/plugins/lifecycle/transport": "./transport",
@@ -81,7 +81,7 @@
       "path": "apps/desktop/src/main/plugins/lifecycle/settings-client.ts",
       "file": "lifecycle-settings-client.ts",
       "imports": {
-        "../../../src/main/plugins/lifecycle/proposals": "./proposals",
+        "../plugin-configuration-parent/proposals": "./proposals",
         "../../../src/main/plugins/package-digests": "../package-digests",
         "../../../src/main/plugins/settings": "../settings",
         "../../../src/main/plugins/ui/host": "../ui/host",
@@ -119,7 +119,7 @@
       "path": "apps/desktop/src/main/plugins/lifecycle/profile-ledger.ts",
       "file": "profile-ledger.ts",
       "imports": {
-        "../../../src/main/plugins/lifecycle/proposals": "./proposals",
+        "../plugin-configuration-parent/proposals": "./proposals",
         "../../../src/main/plugins/node-host-files": "../node-host-files",
         "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol"
       }

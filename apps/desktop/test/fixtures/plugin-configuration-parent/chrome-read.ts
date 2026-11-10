@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import type { PluginNodeReady } from '../node-host'
-import { PluginSupervisorError } from '../supervisor/protocol'
-import { readAdminJson } from './admin-read'
+import type { PluginNodeReady } from '../../../src/main/plugins/node-host'
+import { PluginSupervisorError } from '../../../src/main/plugins/supervisor/protocol'
+import { readAdminJson } from '../../../src/main/plugins/lifecycle/admin-read'
 
 const Profile = z.object({
   name: z.string().regex(/^[a-z0-9-]{1,32}$/),

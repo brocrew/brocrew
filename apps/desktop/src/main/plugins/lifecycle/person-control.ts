@@ -1,5 +1,4 @@
 import { PLUGIN_FRAMEWORK_FEATURES } from '../hooks/definitions'
-import { PluginProposal } from './proposals'
 import { createServer, createConnection, type Socket } from 'node:net'
 import { lstat, unlink } from 'node:fs/promises'
 import { randomBytes, randomUUID } from 'node:crypto'
@@ -72,7 +71,7 @@ const Request = z.discriminatedUnion('kind', [
       .int()
       .nonnegative()
       .max(Number.MAX_SAFE_INTEGER - 1),
-    proposal: PluginProposal,
+    proposal: z.unknown(),
   }),
   z.strictObject({ kind: z.literal('detach') }),
 ])
@@ -425,10 +424,7 @@ export async function servePersonPluginControl(options: {
           case 'apply':
             if (!session.ledgerV2 && request.revision > 4095)
               throw new PluginSupervisorError('incompatible')
-            await options.controller.applyProfile(handle, {
-              ...request,
-              ledgerFormat: session.ledgerV2 ? 2 : 1,
-            })
+            await options.controller.applyProfile(handle, request)
             return true
           case 'read': {
             const screen = options.controller.screen(handle, request.pluginId)

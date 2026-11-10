@@ -2,8 +2,6 @@ import { constants } from 'node:fs'
 import { lstat, readdir, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { z } from 'zod'
-import { ChromeLedgerProposal } from './chrome-apply'
-import { WhatsAppProposal } from './whatsapp-apply'
 import {
   digest,
   immutableFile,
@@ -28,15 +26,14 @@ const Checkpoint = z
     previous: Previous,
   })
   .refine((value) => (value.revision === 0) === (value.previous === null))
-// Profile actions stay rollback-readable. Live commands publish only a consumed checkpoint.
-const LedgerProposal = z.union([ChromeLedgerProposal, WhatsAppProposal])
+// Historical commands are opaque; live attempts publish only consumed checkpoints.
 const Intent = z
   .strictObject({
     format: z.union([z.literal(1), z.literal(2)]),
     installId: z.uuid(),
     revision: Revision.refine((value) => value > 0),
     previous: Previous,
-    proposal: LedgerProposal.nullable(),
+    proposal: z.record(z.string(), z.unknown()).nullable(),
   })
   .refine((value) => value.proposal !== null || value.format === 2)
 const TAIL_LIMIT = 16
@@ -219,55 +216,27 @@ export class PluginProfileLedger {
   async revision(installId: string, allowV2 = true): Promise<number> {
     return (await this.state(installId, false, allowV2)).revision
   }
-  async reserve(
-    installId: string,
-    expected: number,
-    input: unknown,
-    format: 1 | 2 = 1,
-  ): Promise<number> {
+  async reserve(installId: string, expected: number): Promise<number> {
     if (!Number.isSafeInteger(expected) || expected < 0) return refuse()
-    const proposal = LedgerProposal.nullable().parse(input),
-      state = await this.state(installId, true, format === 2)
-    if (proposal === null && format !== 2) return refuse()
-    // Keep existing apps able to configure installations until the legacy history is exhausted.
-    if (proposal !== null && format === 2 && !state.hasV2 && expected < 4096) format = 1
-    if (
-      state.revision !== expected ||
-      expected >= (format === 1 ? 4096 : Number.MAX_SAFE_INTEGER) ||
-      !state.location
-    )
+    const state = await this.state(installId, true)
+    if (state.revision !== expected || expected >= Number.MAX_SAFE_INTEGER || !state.location)
       return refuse()
     const { folder, parent } = state.location
-    if (format === 2) {
-      // Existing v2 floors already fence old readers; only the initial upgrade needs this write.
-      if (!state.hasV2) await this.publishFloor(parent, installId, expected, state.previous)
-      // Compact a recovered full prefix before appending, including the old 4096-record format.
-      if (state.records.length >= TAIL_LIMIT) {
-        await this.publishCheckpoint(
-          folder,
-          parent,
-          installId,
-          expected,
-          state.previous,
-          state.records,
-        )
-        state.records.length = 0
-      }
+    if (!state.hasV2) await this.publishFloor(parent, installId, expected, state.previous)
+    if (state.records.length >= TAIL_LIMIT) {
+      await this.publishCheckpoint(folder, parent, installId, expected, state.previous, state.records)
+      state.records.length = 0
     }
     const revision = expected + 1
-    const bytes = Buffer.from(
-      JSON.stringify(
-        Intent.parse({ format, installId, revision, previous: state.previous, proposal }),
-      ),
-    )
-    const name = String(revision).padStart(format === 1 ? 8 : 16, '0') + '.json'
+    const bytes = Buffer.from(JSON.stringify(Intent.parse({
+      format: 2, installId, revision, previous: state.previous, proposal: null,
+    })))
+    const name = String(revision).padStart(16, '0') + '.json'
     await writeAtomically(join(folder, name), bytes)
-    await this.publishFloor(parent, installId, revision, digest(bytes), format)
-    if (format === 2 && (proposal === null || state.records.length + 1 >= TAIL_LIMIT))
-      await this.publishCheckpoint(folder, parent, installId, revision, digest(bytes), [
-        ...state.records,
-        name,
-      ])
+    await this.publishFloor(parent, installId, revision, digest(bytes))
+    await this.publishCheckpoint(folder, parent, installId, revision, digest(bytes), [
+      ...state.records, name,
+    ])
     return revision
   }
 }

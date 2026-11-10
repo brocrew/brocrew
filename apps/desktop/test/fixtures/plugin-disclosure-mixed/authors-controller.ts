@@ -2,9 +2,9 @@ import { createContributionRegistry, pluginContributions } from '../../../src/ma
 import { pluginNodePolicy } from '../../../src/main/plugins/node-policy'
 import { newerPluginVersion } from '../../../src/main/plugins/catalogue/newer-version'
 import { parseRepoPluginList } from '../../../src/main/plugins/catalogue/repo-list'
-import { PluginProfileLedger } from '../../../src/main/plugins/lifecycle/profile-ledger'
-import { pluginAdapter } from '../../../src/main/plugins/lifecycle/adapters'
-import { PluginProposal, proposalFor } from '../../../src/main/plugins/lifecycle/proposals'
+import { PluginProfileLedger } from '../plugin-configuration-parent/profile-ledger'
+import { pluginAdapter } from '../plugin-configuration-parent/adapters'
+import { PluginProposal, proposalFor } from '../plugin-configuration-parent/proposals'
 import { pluginSha256 } from '../../../src/main/plugins/package-digests'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
@@ -21,7 +21,7 @@ import type {
   ProjectionReceipt,
   Installation,
 } from '../plugin-delete-parent/types'
-import type { PluginCard, PluginRemovalOutcome } from '../../../src/shared/plugin-settings'
+import type { PluginCard, PluginRemovalOutcome } from '../plugin-configuration-parent/legacy-settings'
 
 const refuse = (): never => {
   throw new PluginSupervisorError('unavailable')

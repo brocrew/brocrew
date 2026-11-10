@@ -48,7 +48,7 @@ afterEach(async () => {
 })
 
 const program = `
-const {PluginSupervisor,PluginLifecycleController,GlobalPluginState,sharedLifecycleWorkspaces,createLifecycleAgentBridge,servePersonPluginControl,requirePluginAdapter}=require(process.argv[1]);
+const {PluginSupervisor,PluginLifecycleController,GlobalPluginState,sharedLifecycleWorkspaces,createLifecycleAgentBridge,servePersonPluginControl,pluginBrokerBinding}=require(process.argv[1]);
 const {randomUUID}=require('node:crypto');
 const c=JSON.parse(process.argv[2]);
 (async()=>{
@@ -56,7 +56,7 @@ const c=JSON.parse(process.argv[2]);
  const state=GlobalPluginState.open({root:c.root+'/state',workspaceRoots:[c.workspace]});
  const controller=sharedLifecycleWorkspaces(await PluginLifecycleController.open({root:c.root,state,target:c.target,catalogue:{bytes:Buffer.from(c.bytes,'hex')},names:{chrome:'Chrome',whatsapp:'WhatsApp'},deny(){},runtime:{previousOwnerClean:async()=>true,removeCode:async()=>{},removeData:async()=>{},start:async spec=>{let end;const exited=new Promise(resolve=>end=resolve);return {runId:randomUUID(),exited,ready:async()=>({serverPid:404941,origin:c.origin,mcp:()=>({url:c.origin+'/'+spec.package.manifest.id+'/mcp',headers:{Authorization:'Bearer '+c.token}}),admin:()=>({url:c.origin+'/'+spec.package.manifest.id+'/admin',headers:{Authorization:'Bearer '+c.token}})}),stop:async()=>end()}}}}));
  const owner=await PluginSupervisor.start({root:c.root,workspaceRoots:[c.workspace]});
- const agents=createLifecycleAgentBridge({owner,controller,binding:(view,diagnostic)=>requirePluginAdapter(view.installation.pluginId).broker(view,async()=>{},diagnostic)});
+ const agents=createLifecycleAgentBridge({owner,controller,binding:(view,diagnostic)=>pluginBrokerBinding(view,diagnostic)});
  owner.bindAgentBridge(agents);
  const person=await servePersonPluginControl({root:c.root,key:'a'.repeat(64),controller,read:async()=>({})});
  process.on('message',async message=>{if(message==='stop'){await controller.drain();await agents.close();await person.close({endConsumers:true});await owner.shutdown();await owner.closed;state.close();process.send({stopped:true});process.disconnect();}});

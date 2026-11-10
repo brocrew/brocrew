@@ -35,7 +35,7 @@
       "file": "whatsapp-apply.ts",
       "sourceSha256": "4df64e4532e090200e7ab59ebedf66bd5c72ae48a4ec36d3f5354e0ba8ae5cf6",
       "imports": {
-        "../../../src/shared/plugin-settings": "../../../shared/plugin-settings",
+        "../plugin-configuration-parent/legacy-settings": "../../../shared/plugin-settings",
         "../../../src/main/plugins/lifecycle/admin-read": "./admin-read",
         "../../../src/main/plugins/node-host": "../node-host",
         "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol"
@@ -51,7 +51,7 @@
         "../../../src/main/plugins/lifecycle/../catalogue/newer-version": "../catalogue/newer-version",
         "../../../src/main/plugins/lifecycle/../catalogue/repo-list": "../catalogue/repo-list",
         "./profile-ledger": "./profile-ledger",
-        "../../../src/main/plugins/lifecycle/./adapters": "./adapters",
+        "../plugin-configuration-parent/adapters": "./adapters",
         "./proposals": "./proposals",
         "../../../src/main/plugins/lifecycle/../package-digests": "../package-digests",
         "../../../src/main/plugins/lifecycle/../package-verifier": "../package-verifier",
@@ -59,7 +59,7 @@
         "../../../src/main/plugins/lifecycle/./download": "./download",
         "../../../src/main/plugins/lifecycle/./files": "./files",
         "../../../src/main/plugins/lifecycle/./vault": "./vault",
-        "../../../src/main/plugins/lifecycle/../../../shared/plugin-settings": "../../../shared/plugin-settings",
+        "../plugin-configuration-parent/legacy-settings": "../../../shared/plugin-settings",
         "./types": "./types"
       },
       "unsignedApiSha256": "b1789d61f08a8f276241045207549c69eb33604751874352e42862155cdec32b"

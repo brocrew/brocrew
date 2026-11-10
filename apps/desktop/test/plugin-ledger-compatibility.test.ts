@@ -20,10 +20,9 @@ afterEach(async () => {
   await cleanupLifecycleFixtures()
 })
 const id = '11111111-1111-4111-a111-111111111113'
-const proposal = { action: 'create-profile', profile: 'fern' }
 async function seedCheckpoint(root: string, installId = id, revision = 10_000) {
   const ledger = new PluginProfileLedger(root)
-  await ledger.reserve(installId, 0, proposal)
+  await ledger.reserve(installId, 0)
   const parent = join(root, 'profile-apply')
   const directory = join(parent, digest(Buffer.from(installId)))
   const intents = join(directory, 'intents')
@@ -95,7 +94,7 @@ describe.skipIf(process.platform === 'win32')('ledger reader and wire', () => {
     const f = await connected(plugin)
     await seedCheckpoint(f.root, f.active.installId)
     const screen = await f.client.screen(plugin)
-    const fetch = vi.fn(async () => Response.json({}))
+    const fetch = vi.fn(async () => Response.json({ applied: true }))
     vi.stubGlobal('fetch', fetch)
     const read = () => screen.peer.read({}, 0, screen.binding, new AbortController().signal)
     expect(await read()).toMatchObject({ configRevision: 10_000 })
@@ -135,12 +134,12 @@ describe.skipIf(process.platform === 'win32')('ledger reader and wire', () => {
     }
   })
 
-  it('preserves old reader access after the first negotiated save', async () => {
+  it('fences an old format-one reader after a consumed checkpoint without rewriting state', async () => {
     const f = await connected()
     const screen = await f.client.screen('chrome')
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => Response.json({})),
+      vi.fn(async () => Response.json({ applied: true })),
     )
     await screen.peer.proposeConfig(
       { action: 'set-enabled', profile: 'fern', enabled: true },
@@ -148,10 +147,10 @@ describe.skipIf(process.platform === 'win32')('ledger reader and wire', () => {
       screen.binding,
       new AbortController().signal,
     )
-    expect(await new OldLedger(f.root).revision(f.active.installId)).toBe(1)
+    await expect(new OldLedger(f.root).revision(f.active.installId)).rejects.toThrow()
     expect(
       await readFile(join(f.root, 'profile-apply', f.active.installId + '.floor'), 'utf8'),
-    ).toBe('1')
+    ).toContain('"revision":1')
   })
 
   it('closes the person channel when ledger negotiation returns malformed data', async () => {
@@ -209,7 +208,7 @@ describe.skipIf(process.platform === 'win32')('ledger reader and wire', () => {
     const f = await fixture()
     const seeded = await seedCheckpoint(f.root, id, Number.MAX_SAFE_INTEGER)
     expect(await seeded.ledger.revision(id)).toBe(Number.MAX_SAFE_INTEGER)
-    await expect(seeded.ledger.reserve(id, Number.MAX_SAFE_INTEGER, proposal, 2)).rejects.toThrow()
+    await expect(seeded.ledger.reserve(id, Number.MAX_SAFE_INTEGER)).rejects.toThrow()
     expect(await bytesIn(join(f.root, 'profile-apply'))).toEqual({
       [id + '.floor']: seeded.bytes.toString('hex'),
       [digest(Buffer.from(id)) + '/birth']: Buffer.from(id).toString('hex'),

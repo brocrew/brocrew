@@ -3,7 +3,7 @@ import { lstat, open, readdir, rename, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { PluginProposal } from '../../../src/main/plugins/lifecycle/proposals'
+import { PluginProposal } from '../plugin-configuration-parent/proposals'
 import {
   digest,
   immutableFile,

@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import type { PluginNodeReady } from '../node-host'
-import { readAdminJson } from './admin-read'
+import type { PluginNodeReady } from '../../../src/main/plugins/node-host'
+import { readAdminJson } from '../../../src/main/plugins/lifecycle/admin-read'
 import { WHATSAPP_GROUP } from './whatsapp-apply'
 
 const Status = z.object({

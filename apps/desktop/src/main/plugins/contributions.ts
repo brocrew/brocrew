@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { pluginAdapter } from './lifecycle/adapters'
+import { readPluginConfiguration, applyPluginConfiguration } from './lifecycle/configuration'
 import { pluginBrokerBinding } from './lifecycle/broker-binding'
 import { verifiedPluginDigest, type VerifiedPluginPackage } from './package-verifier'
 import { hookSupport } from './hooks/definitions'
@@ -11,7 +11,6 @@ const unavailable = (): never => {
 export function pluginContributions(pkg: VerifiedPluginPackage) {
   if (!verifiedPluginDigest(pkg) || !pkg.compatibility.host) return unavailable()
   const manifest = pkg.manifest
-  const adapter = pluginAdapter(manifest.id)
   const executor =
     manifest.format === 2
       ? manifest.executor
@@ -22,7 +21,8 @@ export function pluginContributions(pkg: VerifiedPluginPackage) {
   return Object.freeze({
     executor: Object.freeze({ ...executor }),
     tools: manifest.server && pkg.compatibility.tools ? pluginBrokerBinding : null,
-    configuration: manifest.ui && pkg.compatibility.ui && adapter ? adapter : null,
+    configuration: manifest.server && manifest.ui && pkg.compatibility.ui
+      ? { read: readPluginConfiguration, apply: applyPluginConfiguration } : null,
     cleanup: manifest.removal ?? null,
     hooks: Object.freeze((manifest.hooks ?? []).map(hookSupport)),
   })

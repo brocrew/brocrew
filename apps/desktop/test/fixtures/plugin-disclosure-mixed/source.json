@@ -5,7 +5,7 @@
     "file": "authors-person-control.ts",
     "imports": {
       "./authors-features": "../hooks/definitions",
-      "../../../src/main/plugins/lifecycle/proposals": "./proposals",
+      "../plugin-configuration-parent/proposals": "./proposals",
       "../../../src/main/plugins/local-endpoint": "../local-endpoint",
       "../../../src/main/plugins/node-host-files": "../node-host-files",
       "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol",
@@ -25,15 +25,15 @@
       "../../../src/main/plugins/node-policy": "../node-policy",
       "../../../src/main/plugins/catalogue/newer-version": "../catalogue/newer-version",
       "../../../src/main/plugins/catalogue/repo-list": "../catalogue/repo-list",
-      "../../../src/main/plugins/lifecycle/profile-ledger": "./profile-ledger",
-      "../../../src/main/plugins/lifecycle/adapters": "./adapters",
-      "../../../src/main/plugins/lifecycle/proposals": "./proposals",
+      "../plugin-configuration-parent/profile-ledger": "./profile-ledger",
+      "../plugin-configuration-parent/adapters": "./adapters",
+      "../plugin-configuration-parent/proposals": "./proposals",
       "../../../src/main/plugins/package-digests": "../package-digests",
       "../../../src/main/plugins/package-verifier": "../package-verifier",
       "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol",
       "../../../src/main/plugins/lifecycle/download": "./download",
       "../../../src/main/plugins/lifecycle/files": "./files",
-      "../../../src/shared/plugin-settings": "../../../shared/plugin-settings",
+      "../plugin-configuration-parent/legacy-settings": "../../../shared/plugin-settings",
       "./authors-vault": "./vault",
       "../plugin-delete-parent/types": "./types"
     }
