@@ -100,6 +100,13 @@ async function finish(why = 'stop') {
   await Promise.all(
     ['auth.json', 'launch.json'].map((name) => rm(join(receiptRoot, name), { force: true })),
   )
+  writeReceipt(receiptRoot, 'exit.json', {
+    ...receipt(),
+    exited,
+    cause,
+    ...(keeper ? { keeperPid: keeper.pid } : {}),
+    ...(keeper && openedMs === null ? { keeperFailure: keeper.reason } : {}),
+  })
   try {
     writeReceipt(receiptRoot, 'stderr.json', {
       format: 1,
@@ -110,15 +117,8 @@ async function finish(why = 'stop') {
       truncated: stderrTruncated,
     })
   } catch {
-    // A diagnostic write must not prevent the exit receipt.
+    // A diagnostic write must not prevent the stopped acknowledgment.
   }
-  writeReceipt(receiptRoot, 'exit.json', {
-    ...receipt(),
-    exited,
-    cause,
-    ...(keeper ? { keeperPid: keeper.pid } : {}),
-    ...(keeper && openedMs === null ? { keeperFailure: keeper.reason } : {}),
-  })
   await new Promise((resolve) => {
     if (!process.connected) return resolve()
     process.send(
