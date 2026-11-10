@@ -121,6 +121,8 @@ export interface FieldMapping {
    --------------------------------------------------------------------------- */
 
 const IPC = 'apps/desktop/src/shared/runtime-ipc.ts'
+const IDENTITIES = 'apps/desktop/src/shared/agent-identity-contracts.ts'
+const CONVERSATION_LISTING = 'apps/desktop/src/shared/conversation-listing-contracts.ts'
 const ATTACHMENTS = 'apps/desktop/src/shared/attachment-contracts.ts'
 const CONVERSATION_EVENTS = 'apps/desktop/src/shared/conversation-events.ts'
 const HUMAN_ANSWERS = 'apps/desktop/src/shared/human-answer-contracts.ts'
@@ -991,7 +993,7 @@ const SAFETY: readonly FieldMapping[] = [
     kind: 'fact',
     binding: {
       state: 'bound',
-      from: [ref(IPC, 'AgentIdentity.slug'), ref(IPC, 'AgentIdentity.displayName')],
+      from: [ref(IDENTITIES, 'AgentIdentity.slug'), ref(IDENTITIES, 'AgentIdentity.displayName')],
     },
     absent: '`No identity selected`.',
   },
@@ -1067,7 +1069,7 @@ const SAFETY: readonly FieldMapping[] = [
   {
     path: 'identities[].id',
     kind: 'fact',
-    binding: { state: 'bound', from: [ref(IPC, 'AgentIdentity.slug')] },
+    binding: { state: 'bound', from: [ref(IDENTITIES, 'AgentIdentity.slug')] },
     absent: '`No identities reported.`',
   },
   {
@@ -1075,7 +1077,7 @@ const SAFETY: readonly FieldMapping[] = [
     kind: 'fact',
     binding: {
       state: 'bound',
-      from: [ref(IPC, 'AgentIdentity.displayName'), ref(IPC, 'DEFAULT_PROFILE_LABEL')],
+      from: [ref(IDENTITIES, 'AgentIdentity.displayName'), ref(IPC, 'DEFAULT_PROFILE_LABEL')],
     },
     absent: 'The slug.',
   },
@@ -1181,7 +1183,7 @@ const RECORDS: readonly FieldMapping[] = [
       from: [
         ref(IPC, 'LibraryEntry.origin'),
         ref(IPC, 'LibraryEntry.unresumableReason'),
-        ref(IPC, 'ResumableSessionInfo'),
+        ref(CONVERSATION_LISTING, 'ResumableSessionInfo'),
       ],
       note: '🔴 **This is where v2.3’s biggest false sentence lives.** The mock’s `kind` is a decorative word; the product’s answer is *whether this record can be reopened*, and it is PER RECORD: `resumeRefusal` / `unresumableReason` are strings the app already writes. See `HAND_CARRIED`.',
     },

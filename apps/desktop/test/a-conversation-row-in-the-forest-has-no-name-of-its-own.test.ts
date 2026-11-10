@@ -42,7 +42,7 @@ import type { ForestConversation } from '../src/shared/the-whole-forest'
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
 const FOREST_SRC = join(here, '../src/shared/the-whole-forest.ts')
-const WIRE_SRC = join(here, '../src/shared/runtime-ipc.ts')
+const IDENTITY_SRC = join(here, '../src/shared/agent-identity-contracts.ts')
 
 /** ⛔ **Prose stripped before anything is read** — a docblock naming a field is not a field. */
 function withoutProse(source: string): string {
@@ -77,7 +77,7 @@ const A_NAME = /display|name|label|title|slug/i
 describe('a conversation row in the forest carries no name of its own', () => {
   describe('§1 · the declaration', () => {
     const forest = withoutProse(readFileSync(FOREST_SRC, 'utf8'))
-    const wire = withoutProse(readFileSync(WIRE_SRC, 'utf8'))
+    const identity = withoutProse(readFileSync(IDENTITY_SRC, 'utf8'))
 
     it('🔴 `ForestConversation` names its identity by ONE field and declares no name beside it', () => {
       const body = bodyOf(forest, 'ForestConversation')
@@ -98,7 +98,7 @@ describe('a conversation row in the forest carries no name of its own', () => {
     it('⚑ the same extractor and pattern DO find a name where one is declared', () => {
       // ⚠️ **The control that plants two** (standing rule 12): an interface on the wire that carries
       // `displayName` beside a slug, read by the same functions and matched by the same pattern.
-      const named = fieldsOf(bodyOf(wire, 'AgentIdentity'))
+      const named = fieldsOf(bodyOf(identity, 'AgentIdentity'))
       expect(named).toContain('slug')
       expect(named).toContain('displayName')
       expect(named.filter((field) => A_NAME.test(field))).toContain('displayName')

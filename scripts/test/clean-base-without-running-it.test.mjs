@@ -362,18 +362,19 @@ describe('§2 · the manifest agrees with the product it is a manifest of', () =
     expect(DEFAULT_PROFILE_LABEL).toBe('BroBot')
     // ⛔ **The id is NOT the label and NOT the home folder**, which is what makes the sentences
     // that use this constant say something rather than repeat a word.
-    expect(shared).toContain("export const DEFAULT_PROFILE_ID = 'brobot'")
+    const profile = code('apps/desktop/src/shared/profile-name.ts')
+    expect(profile).toContain("export const DEFAULT_PROFILE_ID = 'brobot'")
     expect(DEFAULT_PROFILE_LABEL).not.toBe(HOME_FOLDER)
     expect(HOME_FOLDER).toBe('default')
     // ⚑ **And the profile is no longer called `default` anywhere the product decides it** — the
     // one-line fact the two repaired sentences rest on.
-    expect(shared).not.toContain("export const DEFAULT_PROFILE_ID = 'default'")
+    expect(profile).not.toContain("export const DEFAULT_PROFILE_ID = 'default'")
   })
 
   it('the path-segment rule is the one the app validates ids with', () => {
-    const shared = code('apps/desktop/src/shared/runtime-ipc.ts')
-    expect(shared).toContain('export const PATH_SEGMENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/')
-    expect(shared).toContain('export const PATH_SEGMENT_MAX_LENGTH = 64')
+    const profile = code('apps/desktop/src/shared/profile-name.ts')
+    expect(profile).toContain('export const PATH_SEGMENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/')
+    expect(profile).toContain('export const PATH_SEGMENT_MAX_LENGTH = 64')
     expect(PATH_SEGMENT.source).toBe('^[A-Za-z0-9][A-Za-z0-9._-]*$')
     expect(PATH_SEGMENT_MAX).toBe(64)
     expect(PATH_SEGMENT.test('default')).toBe(true)
