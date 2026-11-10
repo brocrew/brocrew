@@ -1,4 +1,4 @@
-import type { ToolItem } from './transcript'
+import type { ToolItem } from './transcript-tool-contracts'
 
 /**
  * ⚑ **Whether a call draws as a card rather than a tool row** — the one question every surface asks

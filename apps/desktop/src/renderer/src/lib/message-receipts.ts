@@ -1,24 +1,8 @@
-import type { OutgoingMessage, ToolItem, TranscriptState } from './transcript'
+import type { MessageJoins } from './message-receipt-contracts'
+export type { MessageJoins } from './message-receipt-contracts'
+import type { OutgoingMessage, ToolItem } from './transcript-tool-contracts'
+import type { TranscriptState } from './transcript-state-contracts'
 
-interface Call {
-  itemId: string | null
-  epoch: number
-  eligible: boolean
-  resultSeen: boolean
-  act: string | null
-}
-interface Receipt {
-  epoch: number
-  words: OutgoingMessage
-}
-export interface MessageJoins {
-  epoch: number
-  calls: Map<string, Call>
-  receipts: Map<string, Receipt>
-  claims: Map<string, Call>
-  poisoned: Set<string>
-  pending: Set<string>
-}
 function index(state: TranscriptState): MessageJoins {
   return (state.messageReceipts ??= {
     epoch: 0,
@@ -35,7 +19,10 @@ function isAct(value: unknown): value is string {
     /^message_act_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value)
   )
 }
-function item(state: TranscriptState, call: Call): ToolItem | undefined {
+function item(
+  state: TranscriptState,
+  call: Parameters<MessageJoins['calls']['set']>[1],
+): ToolItem | undefined {
   const row = state.items.find((one) => one.id === call.itemId)
   return row?.kind === 'tool' ? row : undefined
 }

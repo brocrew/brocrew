@@ -5,7 +5,7 @@ import {
   type ScheduledJob,
 } from '../../../shared/runtime-ipc'
 import { SCHEDULED } from '../../../shared/agent-state'
-import type { ScheduleRegistry } from './transcript'
+import type { ScheduleRegistry } from './transcript-state-contracts'
 
 /**
  * **What this conversation has promised to do LATER, in words** (258, from `253`'s event and `250`'s

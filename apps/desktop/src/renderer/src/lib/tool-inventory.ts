@@ -1,6 +1,6 @@
 import type { DeclaredTool, ToolNaming, ToolParameter } from '../../../shared/runtime-ipc'
 import { fullTime } from './clock'
-import type { ToolRegistry } from './transcript'
+import type { ToolRegistry } from './transcript-state-contracts'
 
 /**
  * **What tools this conversation has, as one reading** (358) — the renderer half.

@@ -1,6 +1,6 @@
 import type { AnsweredQuestion } from '../../../shared/human-answer-contracts'
 
-import type { TranscriptItem } from './transcript'
+import type { TranscriptItem } from './transcript-message-contracts'
 
 export function readAnsweredQuestion(value: unknown): AnsweredQuestion | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined

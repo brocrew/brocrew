@@ -3,7 +3,7 @@ import type { TranscriptEvent } from '../../../shared/conversation-events'
 
 import { humanPromptOf } from '../../../shared/human-turn-answer'
 
-import type { AssistantItem, TranscriptItem } from './transcript'
+import type { AssistantItem, TranscriptItem } from './transcript-message-contracts'
 
 export function startHumanAnswer(
   answers: HumanAnswers,

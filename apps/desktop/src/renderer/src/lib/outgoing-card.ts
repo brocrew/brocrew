@@ -10,7 +10,7 @@ import type {
   OutgoingWords,
   QuestionTool,
   ToolItem,
-} from './transcript'
+} from './transcript-tool-contracts'
 import { workReading, type WorkReading } from './work-report'
 import { workIsWith, type WorkIsWith } from './where-the-work-is'
 import { argumentExcerpt } from './argument-excerpt'

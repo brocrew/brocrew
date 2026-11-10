@@ -1,4 +1,4 @@
-import type { TranscriptItem } from './transcript'
+import type { TranscriptItem } from './transcript-message-contracts'
 import { drawsAsACard } from './draws-as-a-card'
 
 /**
