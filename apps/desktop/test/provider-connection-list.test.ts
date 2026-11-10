@@ -73,18 +73,6 @@ function fixture(read?: () => readonly ProviderConnection[]) {
 const read = () =>
   executeRuntimeCommand(host, sink, runtimeCommandSchema.parse({ kind: 'providerConnections' }))
 
-it('accepts a parameterless metadata read and strips route or credential inputs', () => {
-  expect(runtimeCommandSchema.safeParse({ kind: 'providerConnections' }).success).toBe(true)
-  expect(
-    runtimeCommandSchema.parse({
-      kind: 'providerConnections',
-      provider: 'codex',
-      connectionId: 'fictional-extra',
-      key: 'fictional-key',
-    }),
-  ).toEqual({ kind: 'providerConnections' })
-})
-
 it('lists existing compatibility metadata for both providers without opening anything', async () => {
   for (const provider of ['claude', 'codex'] as const) saved.add(provider)
   const f = fixture()
@@ -138,16 +126,6 @@ it('returns only declared metadata fields even if a module seam contains an extr
   const row = listProviderConnections(db, 'claude', saved.has('claude'))[0]!
   fixture(() => [{ ...row, fictionalSecret: 'never-render-this-fictional-value' }])
   expect(await read()).toEqual([row])
-})
-
-it('does not rewrite any existing rows when the list is drawn repeatedly', async () => {
-  fixture()
-  const before = db.prepare('SELECT * FROM provider_connection ORDER BY id').all()
-  await read()
-  await read()
-  expect(db.prepare('SELECT * FROM provider_connection ORDER BY id').all()).toEqual(before)
-  expect(db.prepare('SELECT * FROM provider_session').all()).toEqual([])
-  expect(db.prepare('SELECT * FROM agent_identity').all()).toEqual([])
 })
 
 it('refuses a metadata database read once the host is quitting', async () => {

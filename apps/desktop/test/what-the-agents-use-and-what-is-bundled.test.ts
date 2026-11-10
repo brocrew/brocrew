@@ -55,16 +55,6 @@ vi.mock('node:child_process', async (importOriginal) => {
   }
 })
 
-/**
- * # ⚑ What the agents use, and which programs this install bundles
- *
- * Landing coverage for the Providers screen's two measured facts. **Resources**: one process listing,
- * summed by the pids this app's adapters hold — never by name — each process counted once, a root that
- * has left the listing not counted. **Versions**: read from what is bundled, once per run; only an ask
- * that failed for a passing reason is asked again; and Codex is run with a home of its own that is
- * removed after, never the person's `~/.codex`.
- */
-
 const row = (pid: number, ppid: number, rssKb: number, cpu: number): ListedProcess => ({
   pid,
   ppid,

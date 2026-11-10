@@ -24,28 +24,8 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
- * 🔴 **D-017 · R6 — an answer a quit cannot lose** (D-017 §3, decision 4's queue case, and the
- * landing agent's own D-009 defect: *"a person can't answer a question that survived a quit"*).
- *
- * ⛔ **Measured on `main`: a question a person is holding for its stopped asker comes back `open`
- * in the queue, and answering it fails** — `unknown session` while the asker is stopped, or, once
- * it is reopened, *"the agent is no longer waiting for an answer to this"* (the PROVIDER's ending,
- * never this app's own). The question then stays open for good, which breaks D-017's decision 4
- * (idle processes are stopped by the app itself, so a question that cannot survive that is a
- * question nobody can ever answer).
- *
- * ⚑ **What this file pins:** a person's answer to a question THIS APP asked reaches its asker like
- * any other message — starting the asker if it is stopped ({@link RuntimeHost.deliverAnswer}), never
- * lost if that start fails (`holdUntilItStarts` writes the words before the start is attempted), not
- * gated on who holds the conversation (R6's `aPersons` clause), and answered exactly once (this
- * app's own ending, {@link A_PERSONS_ANSWER_TO_AN_ENDED_QUESTION}, never the provider's `not-pending`
- * sentence). The last section pins R5's neighbour — a root a delivery started with no window is a
- * person's window to take, and an agent's own child is not.
- *
- * ⚑ **Real host, real SQLite ledger, real migrations, real rails.** The only double is the
- * provider, subclassed to count every launch it was asked for — `a-restart-keeps-what-was-open.test.ts`'s
- * own shape, copied here for its `buildHost`/`CountingRuntime`/`ledger`/`callOn`/`lastToolset` and
- * for `theFourOpen`'s shape of a lead with spawned children.
+ * A person's answer to a question this app asked reaches its asker like any other message:
+ * starting a stopped asker, kept if that start fails, needing no take-over, and taken once.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -59,14 +39,14 @@ class RecordingSink implements RuntimeEventSink {
   sendLiveness(): void {}
 }
 
-/** ⛔ Every provider launch the host asks for, in order — `start` or `resume`. */
+/** Every provider launch the host asks for, in order. */
 interface Launched {
   readonly kind: 'start' | 'resume'
   readonly handle: FakeSessionHandle
 }
 
 class CountingRuntime extends FakeRuntime {
-  /** ⚑ See {@link CountingRuntime.resume} — `null` except inside the one test that sets it. */
+  /** When set, the next resume fails once, as a real adapter reports it. */
   static failTheNextResume: Error | null = null
 
   constructor(
@@ -87,7 +67,6 @@ class CountingRuntime extends FakeRuntime {
     ref: SessionRef,
     options: ResumeOptions,
   ): ReturnType<FakeRuntime['resume']> {
-    // ⚑ **A restart that cannot happen, as a real adapter reports one** — one shot.
     const failure = CountingRuntime.failTheNextResume
     if (failure !== null) {
       CountingRuntime.failTheNextResume = null
@@ -109,7 +88,7 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
   throw new Error(`timed out waiting for ${what}`)
 }
 
-describe('D-017 · an answer a quit cannot lose', () => {
+describe('an answer a quit cannot lose', () => {
   let userData: string
   let root: string
   let db: AppDatabase
@@ -189,7 +168,7 @@ describe('D-017 · an answer a quit cannot lose', () => {
     return row === undefined ? undefined : { running: row.running }
   }
 
-  /** An identity exists only once a person has run a conversation as it (341 criterion 12). */
+  /** An identity exists only once a person has run a conversation as it. */
   const bringIntoBeing = async (profileId: string): Promise<void> => {
     const { sessionId } = await host.createSession(
       { provider: 'claude', profileId, approvalMode: 'ask', cwd: root },
@@ -198,11 +177,7 @@ describe('D-017 · an answer a quit cannot lose', () => {
     await host.close(sessionId, window)
   }
 
-  /**
-   * ⚑ **The incident's shape**: a person's lead in a window, and three agents it spawned —
-   * `a-restart-keeps-what-was-open.test.ts`'s own `theFourOpen`, trimmed to what this file needs.
-   * ⚑ **D-016** — each is started by a give, and holds the piece its brief (its first turn) named.
-   */
+  /** A person's lead in a window, and three agents it gave work to. */
   const theFourOpen = async (): Promise<{
     lead: string
     children: [string, string, string]
@@ -231,12 +206,7 @@ describe('D-017 · an answer a quit cannot lose', () => {
     return { lead, children: [a, b, c], leadTools }
   }
 
-  /**
-   * ⚑ **Has one child ask a person about the work it was given** — the D-009 shape
-   * (`a-restart-keeps-what-was-open.test.ts`'s own `'🔴 D-009 · a QUESTION held for a person comes
-   * back after the quit'`), returning the question's request id off `questionsForAPerson`.
-   * ⚑ **D-016** — the work is the piece {@link theFourOpen}'s give opened.
-   */
+  /** Has one child ask a person about the piece it holds; returns the question's request id. */
   const askedOfAPerson = async (
     asker: string,
     askerTools: AgentToolset,
@@ -260,26 +230,20 @@ describe('D-017 · an answer a quit cannot lose', () => {
     return { piece, requestId: rows[0]!.request.requestId }
   }
 
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §1 · a person answers a question whose asker has stopped
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§1 · the asker has stopped, and a person answers it anyway', () => {
-    it('🔴 a person answers this app’s own question after its asker has stopped, and the asker starts to read it', async () => {
+  describe('the asker has stopped, and a person answers it anyway', () => {
+    it('a person answers this app’s own question after its asker has stopped, and the asker starts to read it', async () => {
       const { children } = await theFourOpen()
       const asker = children[2]
       const askerTools = lastToolset()
       const { requestId } = await askedOfAPerson(asker, askerTools, 'which of the two?')
 
-      // ⛔ **A graceful stop, not an ending** — no quit, no relaunch, just this one conversation's
-      // Close, while its question is still open. ⚠️ A running, unwatched child is nobody's to
-      // close until a window takes it over first — the ordinary ownership rule, untouched by R6.
+      // A running, unwatched child must be taken over by a window before it can be closed.
       host.claimSession(asker, window)
       await host.close(asker, window)
       expect(listed(asker)?.running, 'the premise: the asker has stopped').toBe('not-running')
 
       const before = launched.length
-      // ⚑ **A window that never owned the asker** — R6's whole point is that this is admitted.
+      // A window that never owned the asker.
       const stranger = new RecordingSink('webContents:9')
       const ack = await host.respondUserInput(
         asker,
@@ -289,7 +253,6 @@ describe('D-017 · an answer a quit cannot lose', () => {
       )
       expect(ack, JSON.stringify(ack)).toMatchObject({ outcome: 'taken' })
       expect((ack as { reason?: string }).reason, JSON.stringify(ack)).toBeUndefined()
-      // ⚑ **The asker's provider was started again** — exactly once, for this answer.
       expect(launched.length - before).toBe(1)
       await waitFor(
         () =>
@@ -302,7 +265,7 @@ describe('D-017 · an answer a quit cannot lose', () => {
       expect(request?.state, 'the question is closed').toBe('answered')
     })
 
-    it('⛔ …and when the stopped asker cannot be started again, the answer is kept for it and nothing is lost', async () => {
+    it('when the stopped asker cannot be started again, the answer is kept for it and nothing is lost', async () => {
       const { children } = await theFourOpen()
       const asker = children[2]
       const askerTools = lastToolset()
@@ -318,15 +281,11 @@ describe('D-017 · an answer a quit cannot lose', () => {
         { kind: 'answer', answers: { answer: ['left'] } },
         stranger,
       )
-      // ⚑ **`taken`, still** — the decision is recorded and the question closes even though the
-      // words could not be delivered this moment.
       expect(ack.outcome, JSON.stringify(ack)).toBe('taken')
       const reason = (ack as { reason?: string }).reason
       expect(reason, JSON.stringify(ack)).toBeDefined()
       expect(reason).toContain('The answer is recorded and kept for')
       expect(reason).toContain('It could not be started now')
-      // ⛔ **The words themselves are not lost** — written into the asker's own ledger before the
-      // start that failed was even attempted.
       expect(
         ledger(asker).some(
           (event) => event.type === 'message_queued' && event.text.includes('left'),
@@ -357,23 +316,17 @@ describe('D-017 · an answer a quit cannot lose', () => {
       expect(deliveredAnswer?.type === 'user_turn' && deliveredAnswer.answeredQuestion).toEqual(
         heldAnswer?.authorship.answeredQuestion,
       )
-      // ⚑ **…and the question still closed** — the ending was written before the delivery was tried.
       const request = store.routedRequestsOf(asker).find((one) => one.requestId === requestId)
       expect(request?.state, 'the question is closed even though delivery failed').toBe('answered')
     })
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §2 · no take-over first, and only once
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§2 · answering needs no take-over, and only the first answer lands', () => {
-    it('⚑ a person answers this app’s question without holding the conversation — no take-over first', async () => {
+  describe('answering needs no take-over, and only the first answer lands', () => {
+    it('a person answers this app’s question without holding the conversation — no take-over first', async () => {
       const { children } = await theFourOpen()
       const asker = children[2]
       const askerTools = lastToolset()
-      // ⛔ **Kept RUNNING** — the work given below also parks the asker's own turn on a genuine
-      // PROVIDER card, which is this test's negative control.
+      // Kept running: the asker's own turn also parks on a provider card.
       const { requestId } = await askedOfAPerson(asker, askerTools, 'which of the two?')
       await waitFor(
         () => ledger(asker).some((event) => event.type === 'permission_request'),
@@ -386,7 +339,6 @@ describe('D-017 · an answer a quit cannot lose', () => {
       )
 
       const stranger = new RecordingSink('webContents:9')
-      // ⚑ **The positive**: a window that never touched the asker answers this app's own question.
       const ack = await host.respondUserInput(
         asker,
         requestId,
@@ -394,7 +346,6 @@ describe('D-017 · an answer a quit cannot lose', () => {
         stranger,
       )
       expect(ack, JSON.stringify(ack)).toMatchObject({ outcome: 'taken' })
-      // ⛔ **…and never took the conversation over to do it.**
       expect(listed(asker)?.running).toBe('unwatched')
 
       // The provider's own card is a person's too while no window holds the asker: the same
@@ -405,7 +356,7 @@ describe('D-017 · an answer a quit cannot lose', () => {
       expect(listed(asker)?.running).toBe('unwatched')
     })
 
-    it('⛔ a second answer to a question this app already closed is refused in this app’s own words', async () => {
+    it('a second answer to a question this app already closed is refused in this app’s own words', async () => {
       const { children } = await theFourOpen()
       const asker = children[2]
       const askerTools = lastToolset()
@@ -432,20 +383,15 @@ describe('D-017 · an answer a quit cannot lose', () => {
         reason: A_PERSONS_ANSWER_TO_AN_ENDED_QUESTION.answered,
         stillOpen: false,
       })
-      // ⛔ **This app's own words, never the provider's** — no provider ever held this question.
       expect((refused as { reason: string }).reason).not.toBe(
         'the agent is no longer waiting for an answer to this',
       )
     })
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §3 · R5's neighbour — a root a delivery started with no window, and an agent's own child
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§3 · a person’s window takes a root a delivery started with no window', () => {
-    it('🔴 …and cannot take an agent-spawned child the same way', async () => {
-      // ⚑ **A GIVER**, with a wide enough reach to message a conversation it did not spawn.
+  describe('a person’s window takes a root a delivery started with no window', () => {
+    it('and cannot take an agent-spawned child the same way', async () => {
+      // A giver allowed to message a conversation it did not start.
       await host.createSession(
         { provider: 'claude', profileId: 'giver', approvalMode: 'ask', cwd: root },
         window,
@@ -453,17 +399,14 @@ describe('D-017 · an answer a quit cannot lose', () => {
       const giverTools = lastToolset()
       expect(store.setCapabilities('giver', { canMessage: 'any' })).toBe(true)
 
-      // ⚑ **A ROOT**, built directly (never spawned) and then closed — `spawnedBy` and `commandedBy`
-      // both `null`, the shape `a-restart-keeps-what-was-open.test.ts`'s own `bringIntoBeing` makes.
+      // A root, built directly and then closed.
       const { sessionId: root_ } = await host.createSession(
         { provider: 'claude', profileId: 'a-root', approvalMode: 'ask', cwd: root },
         window,
       )
       await host.close(root_, window)
 
-      // ⚑ **An AGENT's delivery starts it with no window** — a plain note (D-016: a give reaches
-      // only the giver's own child, and a follow-up names a piece the sender gave), which carries
-      // no such wall.
+      // An agent's note starts it with no window.
       const said = await callOn(giverTools, 'message_agent', {
         agent: root_,
         kind: 'note',
@@ -478,18 +421,14 @@ describe('D-017 · an answer a quit cannot lose', () => {
       if (rootCard?.type !== 'permission_request') throw new Error('no card on the root')
       expect(listed(root_)?.running, 'started, with no window').toBe('unwatched')
 
-      // ⚑ **The positive**: a fresh person's window, which never touched it, takes it with no prior
-      // Reopen or claim — the call resolves rather than throwing.
+      // A fresh window takes it with no prior Reopen or claim.
       const fresh = new RecordingSink('webContents:20')
       await expect(
         host.respondPermission(root_, rootCard.id, { outcome: 'allow' }, fresh),
       ).resolves.toMatchObject({ outcome: 'taken' })
 
-      // ⛔ **The negative control, same shape, one fact over**: an ordinary child the GIVER spawned
-      // itself — `spawnedBy` is set, so R5 does not take it over.
+      // An ordinary child the giver started itself is not taken over.
       await bringIntoBeing('a-worker')
-      // ⚑ **D-016 · the give starts this one**, so it is the giver's own child, and its brief is its
-      // first turn.
       const givenToChild = await callOn(giverTools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'a-worker',
@@ -508,7 +447,7 @@ describe('D-017 · an answer a quit cannot lose', () => {
       const childCard = ledger(child).find((event) => event.type === 'permission_request')
       if (childCard?.type !== 'permission_request') throw new Error('no card on the child')
 
-      // A person answers its card from the queue, but R5 does not take it over.
+      // A person answers its card from the queue, but does not take it over.
       await expect(
         host.respondPermission(child, childCard.id, { outcome: 'allow' }, fresh),
       ).resolves.toMatchObject({ outcome: 'taken' })

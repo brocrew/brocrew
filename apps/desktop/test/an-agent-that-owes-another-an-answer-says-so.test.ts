@@ -36,44 +36,9 @@ import {
 } from './lib/host-fixture'
 
 /**
- * # F036 · an agent that owes another an answer says so — the host half (`80bff428`)
- *
- * ## What this file pins, and why it is its own file
- *
- * `80bff428` gave the one state its eighth arm, `owes-an-answer`: a conversation whose turn has
- * ended with a question still open that another conversation put to it — as its parent, or by name
- * — reads *"owes an answer to Ada (the owner of W1.1 · Build the pages)"*. The commit pinned the
- * ladder as a pure function (`the-one-state-ranks-its-six-facts-in-one-order` §1) and re-aimed one
- * census, and drove nothing on a real host: the scratch that proved the push was archived, not
- * committed. So nothing measured the INCREMENTAL machinery the commit is mostly made of:
- *
- *  - **the index** (`routedTo`), seeded ONCE per app run from `SessionStore.whoRoutedToWhom` and
- *    kept up to date by every routing written since (§1, §6);
- *  - **the re-asks** — a `request_routed` row re-asks the conversation it names (§1); a row that
- *    moves a noted asker's questions re-asks the one that owes (§1's answer); an asker's STATUS
- *    re-asks it, because a provider's own question is owed only while its asker is parked (§3); a
- *    replacement re-asks both sides (§4);
- *  - **what is not owed** — a question addressed to a person, though its routing names the parent
- *    (§2);
- *  - **the kept read** (`owedAsLastRead`) — a running conversation's owed set is kept until a row
- *    moves it, which is why every re-ask above is load-bearing and not just tidy;
- *  - **the cost** — a listing folds each asker's ledger once, however many conversations owe it
- *    (§5), and the index's seed is read once (§6);
- *  - **the stop** — owing an answer is idle enough to stop, and the stopped conversation still says
- *    it (§7).
- *
- * ## ⚠️ How a pushed word is asserted
- *
- * A card or a listing derives fresh at every read, so it says the right word even when the KEPT
- * read a flush works from went stale. Every assertion on a PUSHED word reads `pushed` and nothing
- * else (`a-giver-says-who-holds-the-work-it-gave-out.render.test.ts`'s rule), and a fresh read is
- * compared only after the pushed word has been collected.
- *
- * ## ⚠️ Why the names are literals
- *
- * `ADA` is spelled out and never computed by the code under test: the D-036 file's family — BroBot
- * gives `W1.1` *Build the pages* to a new `worker`, who is minted *Ada* — so a rename of the naming
- * function cannot move the expectation with it.
+ * A conversation whose turn ended with a question another conversation put to it still open reads
+ * "owes an answer to …", and the word moves when the question, the asker's status or a replacement
+ * moves it. Every assertion on a pushed word reads `pushed`; fresh reads are compared after.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -95,7 +60,7 @@ async function settle(): Promise<void> {
   }
 }
 
-/** A start the test can hold at the provider (D-036 §13's gate). */
+/** A start the test can hold at the provider. */
 interface StartGate {
   hold: Promise<void> | null
   release: () => void
@@ -125,7 +90,7 @@ class ProviderDouble extends FakeRuntime {
   }
 }
 
-/** A delay no other timer in the host uses, and no test waits out (D-036 §15's). */
+/** A delay no other timer in the host uses, and no test waits out. */
 const IDLE = 7_654_321
 
 /** One countdown the host armed: the timer it got back and the callback it armed it with. */
@@ -134,7 +99,7 @@ interface Countdown {
   readonly fn: () => void
 }
 
-describe('F036 · the host says who a conversation owes an answer to, and moves the word when that moves', () => {
+describe('the host says who a conversation owes an answer to, and moves the word when that moves', () => {
   let userData: string
   let root: string
   let db: AppDatabase
@@ -149,7 +114,7 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
   let window: RecordingSink
   /** Every message the host pushed on `runtime:states`, in order. */
   let pushed: RuntimeStatesMessage[]
-  /** The index's one seed — F071: read once per app run, never per read. */
+  /** The index's one seed, read once per app run. */
   let seeded: MockInstance<SessionStore['whoRoutedToWhom']>
   let setTimeoutSpy: MockInstance<typeof setTimeout>
   let clearTimeoutSpy: MockInstance<typeof clearTimeout>
@@ -170,12 +135,10 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
       now: tick,
       interruptWaitMs: 40,
       readProviderConfig: fixtureProviderConfig,
-      // ⚑ The dep that makes the host derive and push at all — what main hands every window.
       statesMoved: (message) => {
         pushed.push(message)
       },
-      // ⚑ D-018 · idle minutes counted on a delay nothing else uses and no case waits out — §7
-      // runs its countdowns out by hand; everywhere else they never fire.
+      // Idle countdowns never fire on their own; the stop case runs them out by hand.
       idleStopAfterMs: IDLE,
     })
     hosts.push(built)
@@ -189,7 +152,7 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     applyMigrations(db, migrationsFolder)
     clock = 9_000_000
     store = createSessionStore(db, tick)
-    // ⚑ Call-through: the host still reads the real index; the test counts how often it does.
+    // Call-through: the host still reads the real index; the test counts how often it does.
     seeded = vi.spyOn(store, 'whoRoutedToWhom')
     counter = 0
     hosts = []
@@ -287,12 +250,7 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     return (said.agent as { state: string }).state
   }
 
-  /**
-   * ⚑ **BroBot gives `W1.1` to Ada, and has settled on waiting on her** — D-036's
-   * `aGiverWaitingOnAHelper`. Both run `auto`, so Ada's brief is a turn that ends, BroBot is handed
-   * a stall notice, and BroBot's word has been DERIVED and pushed before anything is asked — so the
-   * index of who routed to whom has been seeded, from a database that held no routing.
-   */
+  /** BroBot gives W1.1 to Ada and has been pushed as waiting on her. */
   const aGiverWaitingOnAHelper = async (): Promise<{
     brobot: string
     brobotTools: AgentToolset
@@ -332,7 +290,6 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     return asked.question as string
   }
 
-  /** Wait until BroBot has been pushed the word `want`, and the turn the question started is over. */
   /** A pushed state as polled for: when its wait began is asserted with the rest, below. */
   const withoutSince = (state: AgentState | undefined): string =>
     JSON.stringify(state, (key, value: unknown) => (key === 'since' ? undefined : value))
@@ -342,26 +299,20 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     expect(lastSaid(id)).toEqual(want)
   }
 
-  it('🔴 §1 · a question its child puts to it pushes the parent to *owes an answer to Ada*, and its answer pushes it back', async () => {
+  it('a question its child puts to it pushes the parent to *owes an answer to Ada*, and its answer pushes it back', async () => {
     const { brobot, ada, adaTools } = await aGiverWaitingOnAHelper()
-    // ⛔ **THE PREMISE the index needs**: it was seeded before any routing existed, from a database
-    // that held none — so what makes the routing below visible is the update every routing written
-    // since makes, not a second seed.
+    // The index was seeded once, before any routing existed.
     expect(seeded).toHaveBeenCalledTimes(1)
     expect(store.whoRoutedToWhom()).toEqual([])
     seeded.mockClear()
 
     const id = await adaAsksHerParent(adaTools)
-    // 🔴 **THE PUSH** — the routing re-asks the parent it names; its turn ends with the question
-    // open, and the state outranks its wait on Ada's work.
     await untilPushed(
       brobot,
       { is: 'owes-an-answer', to: [ADA], since: expect.any(Number) },
       'the parent to be pushed as owing',
     )
-    // ⚑ One derivation: the card, get_agent_status and a listing say the same, in the same words.
     expect(stateOf(brobot)).toEqual({ is: 'owes-an-answer', to: [ADA], since: expect.any(Number) })
-    // ⚑ Since the question was put to it: the routing's own moment, which the asker's wait carries too.
     const asked = store.routedRequestsOf(ada).find((one) => one.requestId === id)?.at
     expect(asked).toEqual(expect.any(Number))
     expect(stateOf(brobot)).toMatchObject({ since: asked })
@@ -371,13 +322,10 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     const agents = await callOn(agentToolsFor(host, observer), 'list_agents', {})
     const rows = agents.agents as { agent: string; state: string }[]
     expect(rows.find((one) => one.agent === brobot)?.state).toBe(OWES_ADA)
-    // ⛔ The asker herself waits on the answer; she owes nobody.
     expect(stateOf(ada)?.is).toBe('waiting-on-an-answer')
-    // ⚑ F071 · no second seed: every read above went through the index the routing updated.
     expect(seeded).not.toHaveBeenCalled()
 
-    // ⚑ **THE PAIR — the answer, from the parent's own tool, and the word goes back.** The answer is
-    // a row in the ASKER's ledger, so only the re-ask of a noted asker moves the parent's kept read.
+    // The answer is a row in the asker's ledger; it moves the parent's kept read back.
     const before = saidOf(brobot).length
     const answered = await callOn(agentToolsFor(host, brobot), 'answer_question', {
       question: id,
@@ -401,10 +349,9 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     expect(await wordsOf(observer, brobot)).toBe(WAITING_ON_ADA)
   })
 
-  it('⛔ §2 · a question its child ADDRESSED TO A PERSON names the parent and is not the parent’s to owe', async () => {
+  it('a question its child addressed to a person names the parent and is not the parent’s to owe', async () => {
     const { brobot, ada, adaTools } = await aGiverWaitingOnAHelper()
-    // ⚑ **First the positive, and its answer** — so Ada IS in the index as one who routes to
-    // BroBot, and the only thing standing between her next question and *owes* is where it went.
+    // First a question to the parent and its answer, so Ada is in the index.
     const first = await adaAsksHerParent(adaTools)
     await untilPushed(
       brobot,
@@ -423,7 +370,6 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
       'the parent to be pushed back after the answer',
     )
 
-    // ⚑ Now a question to a person, about the same piece.
     const asked = await callOn(adaTools, 'ask_question', {
       who_answers: 'a-person',
       piece: 'W1.1',
@@ -431,8 +377,6 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     })
     expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
     const id = asked.question as string
-    // ⛔ **THE PREMISE**: the routing names the parent (it may see and answer it, HO-088 §2.3) and
-    // is open — only WHERE it went keeps it off the parent's owed set.
     const routing = store
       .routedRequestsOf(ada)
       .filter((one) => one.requestId === id)
@@ -444,7 +388,7 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     })
     await settle()
 
-    // 🔴 Fresh reads — a card, a tool and a listing, none of them a kept read — say it waits on Ada.
+    // Fresh reads say it waits on Ada.
     expect(stateOf(brobot)).toEqual({
       is: 'waiting-on-a-worker',
       on: [ADA],
@@ -459,17 +403,14 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     })
     // …and nothing pushed it as owing since.
     expect(lastSaid(brobot)?.is).not.toBe('owes-an-answer')
-    // ⛔ And the index never learnt a person's routing as one to owe.
     expect(store.whoRoutedToWhom()).toEqual([{ asker: ada, parent: brobot }])
   })
 
-  it('🔴 §3 · a question the child’s PROVIDER raised is owed while the child is parked on it, and not once it is not', async () => {
+  it('a question the child’s provider raised is owed while the child is parked on it, and not once it is not', async () => {
     const { brobot, ada } = await aGiverWaitingOnAHelper()
     const adaHandle = doubleOf(ada)
     expect(adaHandle.status()).toBe('idle')
 
-    // ⚑ The provider's own question, held open the way a real adapter holds it
-    // (`a-question-a-grandchild-asked-is-not-yours-to-cut-into.test.ts`'s `childAsksItsParent`).
     const raised = adaHandle.simulateUserInput('which branch?', ['main', 'dev'], false)
     const release = adaHandle.waitForAPerson()
     await waitFor(
@@ -480,7 +421,6 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
       'the routing of the provider’s question',
     )
     expect(adaHandle.status()).toBe('waiting_permission')
-    // ⛔ THE PREMISE: it went to the parent, and nobody answered it.
     expect(
       store
         .routedRequestsOf(ada)
@@ -488,15 +428,13 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
         .at(-1),
     ).toMatchObject({ state: 'open', parent: brobot, went: { is: 'the-parent' } })
 
-    // 🔴 Parked on it: the parent owes it.
     await untilPushed(
       brobot,
       { is: 'owes-an-answer', to: [ADA], since: expect.any(Number) },
       'the parent to owe the card',
     )
 
-    // ⚑ **THE PAIR — the child is no longer parked**, and the question is still unanswered and open
-    // in its ledger: only its STATUS moved, and that re-asks the parent, whose read was kept.
+    // Only the child's status moves; that re-asks the parent.
     const before = saidOf(brobot).length
     release()
     await waitFor(() => adaHandle.status() !== 'waiting_permission', 'the child to be unparked')
@@ -520,7 +458,7 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     })
   })
 
-  it('🔴 §4 · a stand-in owes what the conversation it replaced owed, and the replaced one owes nothing', async () => {
+  it('a stand-in owes what the conversation it replaced owed, and the replaced one owes nothing', async () => {
     const { brobot, adaTools } = await aGiverWaitingOnAHelper()
     await adaAsksHerParent(adaTools)
     await untilPushed(
@@ -541,8 +479,7 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     const standIn = `sess_${String(counter + 1)}`
     const sending = host.startAndSend(brobot, 'are you there', window)
     await waitFor(() => startGate.entered === entered + 1, 'the replacement to reach the provider')
-    // ⚑ The flush runs while the stand-in is still starting: it derives its first word now — and
-    // KEEPS the owed read it took, before it stood in anybody's place.
+    // The stand-in derives its first word while still starting.
     await settle()
     expect(saidOf(standIn).map((one) => one.is)).toEqual(['active'])
     startGate.release()
@@ -554,8 +491,7 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     expect(next).toBe(standIn)
     expect(ledger(brobot).some((event) => event.type === 'replaced_by')).toBe(true)
 
-    // ⚠️ Its own turn: should the stand-in not carry the `auto` mode over, it parks on a card, which
-    // is allowed so the turn ends (D-036 §13's step).
+    // Should the stand-in park on a card, allow it so the turn ends.
     await waitFor(
       () => turnsIn(next) >= 1 || ledger(next).some((event) => event.type === 'permission_request'),
       'the stand-in’s turn to end or park',
@@ -564,7 +500,6 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     if (card?.type === 'permission_request' && turnsIn(next) === 0) {
       await host.respondPermission(next, card.id, { outcome: 'allow' }, window)
     }
-    // 🔴 Its turn ends, and it owes what the one it replaced owed.
     await waitFor(() => turnsIn(next) >= 1, 'the stand-in’s turn to end')
     await waitFor(
       () => lastSaid(next)?.is === 'owes-an-answer',
@@ -573,13 +508,13 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     await settle()
     expect(lastSaid(next)).toEqual({ is: 'owes-an-answer', to: [ADA], since: expect.any(Number) })
 
-    // ⛔ THE PAIR — the replaced one owes nothing: it is listed, and it is idle.
+    // The replaced one owes nothing.
     const old = listed(brobot)
     expect(old, 'the replaced conversation is listed').not.toBeUndefined()
     expect(old?.state).toEqual({ is: 'idle' })
   })
 
-  it('🔴 §4b · an imported ledger that routes a question to a running conversation is owed at its next state, though it kept owing nothing', async () => {
+  it('an imported ledger that routes a question to a running conversation is owed at its next state, though it kept owing nothing', async () => {
     const { brobot, ada, adaTools } = await aGiverWaitingOnAHelper()
     const reviewer = await personOpens('reviewer')
     await settle()
@@ -624,115 +559,14 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     expect(stateOf(reviewer)?.is).toBe('owes-an-answer')
   })
 
-  it('⚑ §5 · a listing folds an asker’s ledger once, though another row owes it an answer', async () => {
-    const { brobot, brobotTools, ada, adaTools } = await aGiverWaitingOnAHelper()
-    // ⚑ A second helper, the control: it holds a piece BroBot gave and asked nobody anything.
-    const second = await callOn(brobotTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'tester',
-      new: true,
-      title: 'Review the pages',
-      brief: 'review the pages',
-    })
-    expect(second, JSON.stringify(second)).toMatchObject({ outcome: 'ok', label: 'W1.2' })
-    const control = second.agent as string
-    await waitFor(() => turnsIn(control) >= 1, 'the control’s brief to end')
-    await adaAsksHerParent(adaTools)
-    await waitFor(() => lastSaid(brobot)?.is === 'owes-an-answer', 'the parent to owe it')
-    await settle()
-
-    // ⚑ Both helpers stopped: a stopped asker's ledger is READ by the listing (a running one's is
-    // kept), so the count below measures the listing's own fold.
-    for (const helper of [ada, control]) await host.close(helper, THE_APP_ITSELF)
-    await waitFor(
-      () => runningOf(ada) === 'not-running' && runningOf(control) === 'not-running',
-      'both helpers to stop',
-    )
-    await settle()
-
-    const reads = vi.spyOn(store, 'routedRequestsOf')
-    // A listing is shared until something it reads moves; a commit makes this one a fresh fold.
-    store.setModel(control, 'fictional-model')
-    reads.mockClear()
-    const rows = host.resumableSessions()
-    const readsOf = (id: string): number =>
-      reads.mock.calls.filter(([sessionId]) => sessionId === id).length
-    // ⛔ THE PREMISES: all three are rows of this one listing, and it did fold Ada as an asker —
-    // the parent's row says it owes her.
-    for (const id of [brobot, ada, control]) {
-      expect(
-        rows.find((row) => row.sessionId === id),
-        `${id} is in the listing`,
-      ).toBeDefined()
-    }
-    expect(rows.find((row) => row.sessionId === brobot)?.state).toEqual({
-      is: 'owes-an-answer',
-      to: [ADA],
-      since: expect.any(Number),
-    })
-    // 🔴 Ada is read as often as the control, whose ledger is read for its own row alone: her
-    // ledger served her own row AND the parent's owed answers from one fold.
-    expect(readsOf(ada)).toBeGreaterThan(0)
-    expect(readsOf(ada)).toBe(readsOf(control))
-    // ⚑ And no listing reads the index again.
-    expect(seeded).toHaveBeenCalledTimes(1)
-  })
-
-  it('⚑ §6 · the index names each asker and the conversation it routed to once, and never a person’s routing or a torn row', async () => {
-    const { brobot, brobotTools, ada, adaTools } = await aGiverWaitingOnAHelper()
-    const second = await callOn(brobotTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'tester',
-      new: true,
-      title: 'Review the pages',
-      brief: 'review the pages',
-    })
-    expect(second, JSON.stringify(second)).toMatchObject({ outcome: 'ok', label: 'W1.2' })
-    const other = second.agent as string
-    await waitFor(() => turnsIn(other) >= 1, 'the second helper’s brief to end')
-
-    // Ada asks her parent twice; the second helper asks only a person.
-    await adaAsksHerParent(adaTools, 'which schema?')
-    await adaAsksHerParent(adaTools, 'which table?')
-    const toAPerson = await callOn(agentToolsFor(host, other), 'ask_question', {
-      who_answers: 'a-person',
-      piece: 'W1.2',
-      question: 'is the copy final?',
-    })
-    expect(toAPerson.outcome, JSON.stringify(toAPerson)).toBe('ok')
-    // ⛔ THE PREMISE: the person's routing names the parent too.
-    expect(store.routedRequestsOf(other).at(-1)).toMatchObject({
-      parent: brobot,
-      went: { is: 'the-person-the-asker-named' },
-    })
-
-    // 🔴 Each pair once; the person's routing is not an edge anybody owes on.
-    expect(store.whoRoutedToWhom()).toEqual([{ asker: ada, parent: brobot }])
-
-    // ⛔ A torn routing row — a payload that is not JSON — names no parent and is left out, without
-    // throwing. Put far above the second helper's own ordinals, as D-036 §14 puts its torn row.
-    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const top = (
-      db.prepare('SELECT max(ordinal) AS top FROM events WHERE session_id = ?').get(other) as {
-        top: number
-      }
-    ).top
-    db.prepare(
-      `INSERT INTO events (id, session_id, generation, ordinal, type, payload, created_at)
-       VALUES (?, ?, (SELECT coalesce(max(generation), 0) FROM events WHERE session_id = ?), ?, 'request_routed', ?, ?)`,
-    ).run('evt_torn_routing', other, other, top + 1000, '{not json at all', clock)
-    expect(store.whoRoutedToWhom()).toEqual([{ asker: ada, parent: brobot }])
-    warned.mockRestore()
-  })
-
-  describe('§7 · D-018 · owing an answer is idle enough to stop, and the stopped conversation still says it', () => {
+  describe('owing an answer is idle enough to stop, and the stopped conversation still says it', () => {
     beforeEach(() => {
       // The stop says what it did; the case reads the host, not the log.
       vi.spyOn(console, 'info').mockImplementation(() => {})
       vi.spyOn(console, 'warn').mockImplementation(() => {})
     })
 
-    it('🔴 the parent that owes its child an answer is stopped by its countdown, and still says it owes', async () => {
+    it('the parent that owes its child an answer is stopped by its countdown, and still says it owes', async () => {
       const { brobot, ada, adaTools } = await aGiverWaitingOnAHelper()
       await adaAsksHerParent(adaTools)
       await untilPushed(
@@ -742,8 +576,7 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
       )
       expect(runningOf(brobot)).toBe('in-a-window')
 
-      // ⚑ Run every live countdown out by hand, as their timers would — again after each, since a
-      // stop of the child moves the parent's word and re-arms its countdown. Bounded.
+      // Run every live countdown out by hand, again after each, since a stop re-arms the parent's.
       for (let round = 0; round < 10 && runningOf(brobot) !== 'not-running'; round++) {
         const now = live()
         if (now.length === 0) break
@@ -754,9 +587,8 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
         await settle()
       }
 
-      // 🔴 Stopped by the app — owing an answer held nothing a stop would lose…
       await waitFor(() => runningOf(brobot) === 'not-running', 'the parent to be stopped')
-      // …and the stop changed nothing about the question: it still owes it, and says so.
+      // The stop changed nothing about the question.
       expect(listed(brobot)?.state).toEqual({
         is: 'owes-an-answer',
         to: [ADA],

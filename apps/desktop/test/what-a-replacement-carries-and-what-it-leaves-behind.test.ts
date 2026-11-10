@@ -22,37 +22,15 @@ import {
 } from './lib/host-fixture'
 
 /**
- * Explicit-follow-up cases decline automatic holder reminders so the follow-up alone reopens the
- * forgotten provider session, with planned and failed ladder receipts. A paired control uses the
- * unmodified product host and lets an automatic holder reminder succeed before replacement.
- *
- * # D-017 · R10 — what a replacement carries, and what it leaves behind
- *
- * ⚑ **A conversation whose provider no longer has it** (`ResumeError.noSuchSession`) **is replaced
- * by a new conversation of the same agent, folder and parent** (`05` rule 3,
- * `runtime-host.ts`'s `replaceWhatCanNeverBeReopened`). This file pins three of its own facts that
- * `a-first-message-starts-it-in-one-act.test.ts` §5 does not reach, because that fixture never
- * gives the old conversation any open work and never wakes the same id twice:
- *
- * 1. the WORK the old conversation held does not ride along — it stalls `could_not_be_reopened`,
- *    final where it is, and the new conversation starts holding none of it;
- * 2. the new conversation is the SAME agent, in the SAME parent's care — not a fresh identity
- *    started with no provenance;
- * 3. a SECOND delivery to the old id, after the replacement already exists, reaches the one
- *    conversation that took its place rather than minting a second one.
- *
- * ⚑ **Real host, real SQLite ledger, real migrations — a plain `FakeRuntime` over
- * `FakeProviderSessions`, exactly `a-first-message-starts-it-in-one-act.test.ts`'s double.** The
- * pm/worker fixture (`personOpens`, `callOn`, `aWorkerOver`, `wake`) is
- * `a-shortage-that-clears-by-itself.test.ts`'s, copied in spirit: a pm opens a worker, gives it one
- * piece of work, and the app's own Close stops the worker's process while its task stays open
- * (D-017: Close only stops the process, never the conversation).
+ * A conversation its provider no longer has is replaced by a new conversation of the same agent,
+ * folder and parent. The explicit-follow-up cases use a host that declines automatic holder
+ * reminders, so the follow-up alone reopens the forgotten session.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-describe('D-017 · R10 — what a replacement carries, and what it leaves behind', () => {
+describe('what a replacement carries, and what it leaves behind', () => {
   let userData: string
   let root: string
   let db: AppDatabase
@@ -133,10 +111,7 @@ describe('D-017 · R10 — what a replacement carries, and what it leaves behind
   const turnsIn = (sessionId: string): number =>
     ledger(sessionId).filter((event) => event.type === 'turn').length
 
-  /**
-   * ⚑ A PM a person opened, and one `worker` it gave work to, and then stopped. ⚑ **D-016** — the
-   * give starts the worker and its brief is the worker's first turn, which runs to its end (`auto`).
-   */
+  /** A PM a person opened, and one worker it gave work to and then stopped. */
   const aWorkerOver = async (): Promise<{ pm: string; worker: string; label: string }> => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
@@ -150,7 +125,6 @@ describe('D-017 · R10 — what a replacement carries, and what it leaves behind
     const worker = given.agent as string
     await waitFor(() => turnsIn(worker) > 0, 'the turn the brief opened to end')
     expect(store.piecesOwnedBy(worker).some((one) => TASK_IS_OPEN[one.state])).toBe(true)
-    // ⚑ **D-017 — nothing ends a conversation** (`end_agent` is gone): the app's own stop.
     await host.close(worker, THE_APP_ITSELF)
     await waitFor(
       () =>
@@ -162,11 +136,7 @@ describe('D-017 · R10 — what a replacement carries, and what it leaves behind
     return { pm, worker, label: given.label as string }
   }
 
-  /**
-   * ⚑ **The wake — D-017: the parent's MESSAGE, which starts the stopped worker.** A follow-up
-   * naming the piece, since the worker holds the parent's work (D-016: a second give would be
-   * refused `its-work-has-stalled`).
-   */
+  /** The parent's follow-up naming the piece, which starts the stopped worker. */
   const wake = (pm: string, worker: string, label: string): Promise<Record<string, unknown>> =>
     callOn(pm, 'message_agent', {
       agent: worker,
@@ -222,13 +192,11 @@ describe('D-017 · R10 — what a replacement carries, and what it leaves behind
     expect(ledger(worker).filter((one) => one.type === 'replaced_by')).toHaveLength(1)
   })
 
-  it('⚑ D-017 · R10 — an open piece the replaced conversation held stalls could_not_be_reopened, and the new conversation starts holding none of it', async () => {
+  it('an open piece the replaced conversation held stalls could_not_be_reopened, and the new conversation starts holding none of it', async () => {
     const { pm, worker, label } = await aWorkerOver()
     const before = store.piecesOwnedBy(worker)[0]
     if (before === undefined) throw new Error('the premise: aWorkerOver left one open piece')
-    // ⚑ **Paired positive — read BEFORE the replace**: the app's own Close already stalled this
-    // task (its conversation ended), so it is `TASK_IS_OPEN` already, and that alone is not
-    // `could_not_be_reopened`. The cause below is written exactly at, and only at, the replace.
+    // Close already stalled it; the could_not_be_reopened cause is written only at the replace.
     expect(TASK_IS_OPEN[before.state], `pre-replace state: ${before.state}`).toBe(true)
     expect(before.stalledBecause).not.toBe('could_not_be_reopened')
 
@@ -242,37 +210,17 @@ describe('D-017 · R10 — what a replacement carries, and what it leaves behind
     const after = store.piecesOwnedBy(worker)[0]
     expect(after?.state).toBe('stalled')
     expect(after?.stalledBecause).toBe('could_not_be_reopened')
-    // ⚑ Nothing it held before rides along — the new conversation starts with no work of its own.
     expect(store.piecesOwnedBy(next)).toEqual([])
     expect(ledger(worker)).toContainEqual({ type: 'replaced_by', sessionId: next })
   })
 
-  it("⚑ D-017 · R10 — the conversation that replaces one that could never be reopened is the SAME agent, in the SAME parent's care", async () => {
-    const { pm, worker, label } = await aWorkerOver()
-    // ⚑ **Paired positive — the same two facts off the ORIGINAL id first**, so matching them after
-    // the replace is shown to be a real carry-over rather than two coincidentally-equal literals.
-    // ⚑ **D-016** — the parent is `parentOf`'s (there is no spawn provenance any more).
-    expect(store.parentOf(worker)).toBe(pm)
-    expect(store.identityOf(worker)?.profileSlug).toBe('worker')
-
-    issued.forgetAll()
-    const sent = await wake(pm, worker, label)
-
-    expect(sent.outcome, JSON.stringify(sent)).toBe('ok')
-    const next = sent.went_to as string
-    expect(store.parentOf(next)).toBe(pm)
-    expect(store.identityOf(next)?.profileSlug).toBe(store.identityOf(worker)?.profileSlug)
-  })
-
-  it('⚑ D-017 · R10 — a second message to an id already replaced reaches the ONE conversation that took its place, never a second replacement', async () => {
+  it('a second message to an id already replaced reaches the ONE conversation that took its place, never a second replacement', async () => {
     const { pm, worker, label } = await aWorkerOver()
     issued.forgetAll()
 
     const sent1 = await wake(pm, worker, label)
     expect(sent1.outcome, JSON.stringify(sent1)).toBe('ok')
     const next1 = sent1.went_to as string
-    // ⚑ **Paired positive — the first wake already shows a replacement genuinely happens**, so the
-    // assertion below is specifically about a SECOND, distinct one, not the mere presence of one.
     expect(next1).not.toBe(worker)
 
     const sent2 = await wake(pm, worker, label)

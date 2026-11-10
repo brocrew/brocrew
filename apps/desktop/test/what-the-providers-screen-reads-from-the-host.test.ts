@@ -22,18 +22,6 @@ import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import type { ProvidersChangedMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
-/**
- * # ⚑ What the Providers screen reads from the host: usage, and what the agents use
- *
- * Landing coverage for `providerUsage` / `providerResources` and what feeds them. **Usage** is held in
- * memory from the `provider_usage` readings a conversation's provider sends: the newest per window, a
- * field the provider left out keeping what it last said (a sparse update is not a reset), windows told
- * only when a number MOVED, at most 16 a provider, forgotten when what the provider runs on changes —
- * and a conversation that kept running on the older login no longer feeds it. It is never a row of a
- * conversation and never sent to a window. **Resources** are measured only when asked, from one
- * listing, one at a time, at most every five seconds, and a clock set back is a new sample.
- */
-
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 describe('what the Providers screen reads from the host', () => {
