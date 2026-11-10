@@ -172,7 +172,7 @@ with it inside the archive; a package that ships none says so.
 - `wrappy` 1.0.2 — Copyright (c) Isaac Z. Schlueter and Contributors
 - `zod-to-json-schema` 3.25.2 — Copyright (c) 2020, Stefan Terdell
 
-#### MIT (127)
+#### MIT (128)
 
 - `@babel/helper-string-parser` 7.29.7 — Copyright (c) 2014-present Sebastian McKenzie and other contributors
 - `@babel/helper-validator-identifier` 7.29.7 — Copyright (c) 2014-present Sebastian McKenzie and other contributors
@@ -218,6 +218,7 @@ with it inside the archive; a package that ships none says so.
 - `depd` 2.0.0 — Copyright (c) 2014-2018 Douglas Christopher Wilson
 - `dunder-proto` 1.0.1 — Copyright (c) 2024 ECMAScript Shims
 - `ee-first` 1.1.1 — Copyright (c) 2014 Jonathan Ong me@jongleberry.com
+- `electron-log` 5.4.4 — Copyright (c) 2016 Alexey Prokhorov
 - `electron-updater` 6.8.10 — Copyright (c) 2015 Loopline Systems
 - `encodeurl` 2.0.0 — Copyright (c) 2016 Douglas Christopher Wilson
 - `es-define-property` 1.0.1 — Copyright (c) 2024 Jordan Harband

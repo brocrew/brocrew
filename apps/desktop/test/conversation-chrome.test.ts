@@ -65,7 +65,6 @@ describe('the tab set', () => {
     const icons = [...DRAWER_TABS, ...RESERVED_TABS].map((tab) => tab.icon)
     expect(new Set(icons).size).toBe(icons.length)
   })
-
 })
 
 describe('a remembered tab is validated, never trusted', () => {

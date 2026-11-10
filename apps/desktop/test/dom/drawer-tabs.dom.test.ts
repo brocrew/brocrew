@@ -103,13 +103,13 @@ describe('the drawer shows one body at a time, and a click is what moves it', ()
       expect((view.q(`drawer-tab-${tab.id}`) as HTMLButtonElement).disabled).toBe(true)
     }
   })
-  it('calculates against the drawer’s filtered tabs', async () => {
+  it('navigates the remaining tabs after Events is retired', async () => {
     const hidden = defineComponent({
       setup() {
         const tab = ref<DrawerTab>('open')
         return () =>
           h(SessionDrawer as never, {
-            ...drawerProps({ tab: tab.value, hiddenTabs: ['events', 'work'] }),
+            ...drawerProps({ tab: tab.value }),
             'onUpdate:tab': (next: DrawerTab) => {
               tab.value = next
             },
@@ -120,10 +120,15 @@ describe('the drawer shows one body at a time, and a click is what moves it', ()
     const on = view.q('drawer-tab-open')
     on.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
     await nextTick()
+    const work = view.q('drawer-tab-work')
+    expect(work.getAttribute('aria-selected')).toBe('true')
+    expect(document.activeElement).toBe(work)
+    expect(view.q('drawer-tab-changes').getAttribute('aria-selected')).toBe('false')
+    work.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
+    await nextTick()
     expect(view.q('drawer-tab-changes').getAttribute('aria-selected')).toBe('true')
     expect(document.activeElement).toBe(view.q('drawer-tab-changes'))
     expect(view.all('drawer-tab-events')).toHaveLength(0)
-    expect(view.all('drawer-tab-work')).toHaveLength(0)
   })
   it('every tab mounts its own hooks and none of anyone else’s', async () => {
     const m = mount(Harness, {}, { width: 380, height: 700 })

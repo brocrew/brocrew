@@ -23,3 +23,9 @@ Lines have a timestamp, level, part of the app, message and any named facts, for
 
 Debug mode is saved for each workspace. It controls file detail; the former Events tab and
 in-app debug views have been removed.
+
+The hidden main/renderer probe is `node scripts/renderer-logging-probe.mjs`. Its build and
+Electron dependencies belong to the desktop package; the runner declares the same esbuild version already pinned under Vite.
+The executable smoke entry keeps the same-file, Debug off/on/off and native error-default
+assertions. A host must be able to launch sandboxed Electron; a startup failure provides no
+renderer behavior evidence.
