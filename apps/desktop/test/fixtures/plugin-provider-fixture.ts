@@ -24,7 +24,12 @@ export async function pluginProviderFixture(options: { diagnostic?: PluginToolDi
   const seen: { method: string; authenticated: boolean }[] = []
   const audit: unknown[] = []
   let allowed = true,
-    reply: 'normal' | 'error' | 'tool-error' | 'hold' = 'normal'
+    reply: 'normal' | 'error' | 'tool-error' | 'hold' | 'controlled' = 'normal'
+  let admitted!: () => void
+  const admission = new Promise<void>((resolve) => { admitted = resolve })
+  let complete!: () => void
+  let progress!: (value: number) => Promise<void>
+  let requestedProgress = false
   const transports = new Set<StreamableHTTPServerTransport>()
   const http = createServer((req, res) => {
     const authenticated = req.headers.authorization === `Bearer ${credential}`
@@ -58,8 +63,22 @@ export async function pluginProviderFixture(options: { diagnostic?: PluginToolDi
           },
         ],
       }))
-      server.setRequestHandler(CallToolRequestSchema, async () => {
+      server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
         seen.push({ method: 'tools/call', authenticated })
+        if (reply === 'controlled') {
+          requestedProgress = request.params._meta?.progressToken !== undefined
+          const done = new Promise<void>((resolve) => { complete = resolve })
+          progress = async (value) => {
+            const progressToken = request.params._meta?.progressToken
+            if (progressToken !== undefined)
+              await extra.sendNotification({
+                method: 'notifications/progress',
+                params: { progressToken, progress: value, total: 4, message: `Completed ${value}` },
+              })
+          }
+          admitted()
+          await done
+        }
         if (reply === 'error') throw new Error(credential)
         if (reply === 'hold') await new Promise<void>(() => undefined)
         await new Promise<void>((resolve) => setImmediate(resolve))
@@ -128,6 +147,10 @@ export async function pluginProviderFixture(options: { diagnostic?: PluginToolDi
     credential,
     seen,
     audit,
+    admission,
+    requestedProgress: () => requestedProgress,
+    progress: (value: number) => progress(value),
+    complete: () => complete(),
     allow(value: boolean) {
       allowed = value
     },

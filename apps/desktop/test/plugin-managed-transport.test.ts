@@ -15,6 +15,7 @@ import {
 
 const cleanup: Array<() => Promise<unknown>> = []
 afterEach(async () => {
+  vi.useRealTimers()
   for (const close of cleanup.splice(0).reverse()) await close()
 })
 async function fixture() {
@@ -22,8 +23,11 @@ async function fixture() {
   cleanup.push(() => f.close())
   return f
 }
-async function connect(route: { server: { url: string; capability: string } }) {
-  const client = new Client({ name: 'fictional', version: '1' })
+async function connect(
+  route: { server: { url: string; capability: string } },
+  name = 'fictional',
+) {
+  const client = new Client({ name, version: '1' })
   cleanup.push(() => client.close())
   client.onerror = () => undefined
   await client.connect(
@@ -33,6 +37,64 @@ async function connect(route: { server: { url: string; capability: string } }) {
   )
   return client
 }
+async function caller(f: Awaited<ReturnType<typeof fixture>>) {
+  const route = await f.route('progress-caller')
+  const client = await connect(route, 'progress-caller')
+  return { client, route }
+}
+
+it('completes beyond elapsed deadlines while forwarding actual downstream progress', async () => {
+  const f = await fixture()
+  const { client } = await caller(f)
+  f.reply('controlled')
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  const received: number[] = []
+  let seen!: () => void
+  const pending = client.callTool({ name: 'echo', arguments: { profile: 'fern' } }, undefined, {
+    resetTimeoutOnProgress: true,
+    onprogress: (value) => { received.push(value.progress); seen() },
+  })
+  void pending.catch(() => undefined)
+  await f.admission
+  expect(f.requestedProgress()).toBe(true)
+  for (const value of [1, 2, 3, 4]) {
+    await vi.advanceTimersByTimeAsync(35_000)
+    const notification = new Promise<void>((resolve) => { seen = resolve })
+    await f.progress(value)
+    await notification
+    expect(received).toContain(value)
+  }
+  f.complete()
+  await expect(pending).resolves.toMatchObject({ content: [{ text: PLUGIN_MARKER }] })
+  expect(f.broker.status().available).toBe(true)
+})
+
+it('keeps the same route usable after an SDK idle timeout without claiming remote completion', async () => {
+  const f = await fixture()
+  const { client } = await caller(f)
+  f.reply('controlled')
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  const pending = client.callTool({ name: 'echo', arguments: { profile: 'fern' } }, undefined, {
+    timeout: 180_000,
+  })
+  void pending.catch(() => undefined)
+  await f.admission
+  await vi.advanceTimersByTimeAsync(60_001)
+  await expect(pending).resolves.toMatchObject({
+    isError: true,
+    content: [{ text: expect.stringMatching(/echo.*(stalled|progress|timeout)/i) }],
+  })
+  expect(f.broker.status().available).toBe(true)
+  expect(f.broker.owner.hasCompletionProof()).toBe(false)
+  f.reply('normal')
+  await expect(client.callTool({ name: 'echo', arguments: { profile: 'fern' } })).resolves.toMatchObject({
+    content: [{ text: PLUGIN_MARKER }],
+  })
+  expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(['echo'])
+  f.broker.owner.invalidate()
+  expect(f.broker.owner.hasCompletionProof()).toBe(false)
+  f.complete()
+})
 for (const provider of ['claude', 'codex'] as const) {
   it(`${provider} configuration discovers and calls through an authenticated SSE broker stream`, async () => {
     const f = await fixture(),
