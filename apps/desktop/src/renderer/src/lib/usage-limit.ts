@@ -6,7 +6,7 @@ import {
   type LimitStanding,
   type ProviderCondition,
 } from '../../../shared/provider-limit'
-import { usageWindowWord } from '../../../shared/usage-window'
+import { usageWindowDetails, usageWindowWord } from '../../../shared/usage-window'
 import { agoWords, fullTime } from './clock'
 
 export const UNCONFIRMED_USAGE = 'Not yet confirmed'
@@ -101,22 +101,13 @@ export function resetWords(resetsAt: number | null, now: number): string | null 
     : `reset ${spanWords(now - resetsAt)} ago`
 }
 
-const HOUR = 3_600_000
-const DAY = 24 * HOUR
-
 /**
  * How long a window lasts, read off the same word the reading is named by ({@link limitWord}):
  * *5-hour*, *weekly…*, *daily*, *N-day*, *N-hour*. `null` for a window with no such word, or one
  * whose word names no length (*extra-usage*).
  */
 export function windowLength(window: string): number | null {
-  const word = limitWord(window)
-  if (word === null) return null
-  if (word.startsWith('weekly')) return 7 * DAY
-  if (word === 'daily') return DAY
-  const said = /^(\d+)-(hour|day)$/.exec(word)
-  if (said === null || Number(said[1]) <= 0) return null
-  return Number(said[1]) * (said[2] === 'hour' ? HOUR : DAY)
+  return usageWindowDetails(window).lengthMs
 }
 
 /** How much of a reading's window has gone, beside how much of it is used. */
@@ -212,12 +203,11 @@ export function readingTitle(reading: ProviderUsageReading, now: number): string
  * in the past (*"Weekly limit: was 95% used; it reset 2 days ago."*), never as the window now.
  */
 export function readingSays(reading: ProviderUsageReading, now: number): string {
-  const word = limitWord(reading.window)
-  const bucket = /\(([^)]+)\)\s*$/.exec(reading.window)?.[1]
+  const { word, bucket } = usageWindowDetails(reading.window)
   const named =
     word === null
       ? reading.window
-      : `${word[0]!.toUpperCase()}${word.slice(1)} limit${bucket === undefined ? '' : ` (${bucket})`}`
+      : `${word[0]!.toUpperCase()}${word.slice(1)} limit${bucket === null ? '' : ` (${bucket})`}`
   if (reading.resetsAt !== null && reading.resetsAt <= now) {
     const was =
       reading.usedPercent === null

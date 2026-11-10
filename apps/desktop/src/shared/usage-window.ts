@@ -25,3 +25,34 @@ const CLAUDE_WINDOW: ReadonlyMap<string, string> = new Map([
   ['seven_day_overage_included', 'weekly (extra usage included)'],
   ['overage', 'extra-usage'],
 ])
+
+export interface UsageWindowDetails {
+  readonly word: string | null
+  readonly lengthMs: number | null
+  readonly bucket: string | null
+  /** Parentheses anywhere exclude a reading from the aggregate window's cells. */
+  readonly hasBucket: boolean
+}
+
+/** Display interpretation of a window the provider already named, including kept readings. */
+export function usageWindowDetails(window: string): UsageWindowDetails {
+  const word = usageWindowWord(window)
+  return {
+    word,
+    lengthMs: windowDuration(word),
+    bucket: /\(([^)]+)\)\s*$/.exec(window)?.[1] ?? null,
+    hasBucket: window.includes('('),
+  }
+}
+
+const HOUR = 3_600_000
+const DAY = 24 * HOUR
+
+function windowDuration(word: string | null): number | null {
+  if (word === null) return null
+  if (word.startsWith('weekly')) return 7 * DAY
+  if (word === 'daily') return DAY
+  const said = /^(\d+)-(hour|day)$/.exec(word)
+  if (said === null || Number(said[1]) <= 0) return null
+  return Number(said[1]) * (said[2] === 'hour' ? HOUR : DAY)
+}

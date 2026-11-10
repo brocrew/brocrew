@@ -5,7 +5,7 @@ import {
   type Provider,
   type ProviderUsageReading,
 } from '../../../shared/runtime-ipc'
-import { usageWindowWord } from '../../../shared/usage-window'
+import { usageWindowDetails, type UsageWindowDetails } from '../../../shared/usage-window'
 import type { ForestConversation } from '../../../shared/the-whole-forest'
 import { agoWords, fullTime } from '../lib/clock'
 import { NOT_MEASURED } from '../lib/agent-panel'
@@ -63,12 +63,11 @@ const NOT_READ_MARK = '?'
 
 /** The provider's reading for a window; one the provider named a bucket for is not the window. */
 function readingIn(
-  readings: readonly ProviderUsageReading[],
+  readings: readonly { readonly reading: ProviderUsageReading; readonly window: UsageWindowDetails }[],
   word: string,
 ): ProviderUsageReading | null {
   return (
-    readings.find((one) => usageWindowWord(one.window) === word && !one.window.includes('(')) ??
-    null
+    readings.find((one) => one.window.word === word && !one.window.hasBucket)?.reading ?? null
   )
 }
 
@@ -107,14 +106,20 @@ export function useUsageCells(
 
   /** Each provider's windows, as `[short, reading or null]`, in the order the cells draw them. */
   const windows = computed(() =>
-    PROVIDERS.map((provider) => ({
-      provider,
-      windows: WINDOWS.flatMap(({ word, short }) => {
-        const reading = readingIn(usage.value?.[provider] ?? [], word)
-        if (reading === null && !AWAITED[provider].includes(word)) return []
-        return [{ word, short, reading }]
-      }),
-    })),
+    PROVIDERS.map((provider) => {
+      const readings = (usage.value?.[provider] ?? []).map((reading) => ({
+        reading,
+        window: usageWindowDetails(reading.window),
+      }))
+      return {
+        provider,
+        windows: WINDOWS.flatMap(({ word, short }) => {
+          const reading = readingIn(readings, word)
+          if (reading === null && !AWAITED[provider].includes(word)) return []
+          return [{ word, short, reading }]
+        }),
+      }
+    }),
   )
 
   const usageCells = computed<UsageCell[]>(() => {
