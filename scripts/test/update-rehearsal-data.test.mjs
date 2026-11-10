@@ -247,6 +247,82 @@ describe('what B kept of what A made', () => {
     ])
   })
 
+  it('attributes new life rows and validates explicitly resumed launches', () => {
+    const before = dataOf(aDataFolder())
+    const clone = (one) => ({
+      ...one,
+      tables: structuredClone(one.tables),
+      transcripts: { ...one.transcripts },
+      state: { ...one.state },
+    })
+    const life = (id, since, launched) => ({
+      conversation_id: id,
+      record: JSON.stringify({ since, identity: 'fictional-account', generation: 0, launched }),
+      since,
+    })
+    const launch = (id, ordinal) => ({
+      id: `${id}-launch-${ordinal}`,
+      session_id: id,
+      generation: 0,
+      ordinal,
+      type: 'launched',
+      payload: '{"type":"launched"}',
+    })
+    before.tables.events = before.tables.events.map((row) => ({ ...row, generation: 0 }))
+    before.tables.events.push(launch('s1', 0), launch('s2', 0))
+    before.tables.cut_life = [life('s1', 100, 0), life('s2', 100, 0)]
+    const added = clone(before)
+    added.tables.provider_session.push({ id: 's3' })
+    added.tables.events.push(launch('s3', 0))
+    added.tables.cut_life.push(life('s3', 200, 0))
+    expect(compareData(before, added).problems).toEqual([])
+    const after = clone(before)
+    after.tables.cut_life[0] = life('s1', 200, 3)
+    after.tables.events.push(launch('s1', 3))
+    const goesOn = { goneOn: ['s1'] }
+    expect(compareData(before, after, goesOn).problems).toEqual([])
+    expect(compareData(before, after).problems).not.toEqual([])
+    expect(sameData(before, after)).not.toEqual([])
+    for (const damage of [
+      (one) => one.tables.cut_life.shift(),
+      (one) => (one.tables.cut_life[1] = life('s2', 200, 3)),
+      (one) => (one.tables.cut_life[0].record = '{'),
+      (one) => (one.tables.cut_life[0].since = 201),
+      (one) => (one.tables.cut_life[0] = life('s1', 50, 3)),
+      (one) => (one.tables.cut_life[0].unexpected = true),
+      (one) => {
+        const record = JSON.parse(one.tables.cut_life[0].record)
+        record.identity = 'another-account'
+        one.tables.cut_life[0].record = JSON.stringify(record)
+      },
+      (one) => {
+        const record = JSON.parse(one.tables.cut_life[0].record)
+        record.generation = 1
+        one.tables.cut_life[0].record = JSON.stringify(record)
+      },
+      (one) => {
+        const record = JSON.parse(one.tables.cut_life[0].record)
+        record.unexpected = true
+        one.tables.cut_life[0].record = JSON.stringify(record)
+      },
+      (one) => one.tables.events.pop(),
+      (one) => (one.tables.events.at(-1).session_id = 's2'),
+      (one) => (one.tables.events.at(-1).ordinal = 4),
+      (one) => (one.tables.events.at(-1).type = 'status'),
+      (one) => (one.tables.events.at(-1).id = before.tables.events[0].id),
+      (one) => (one.tables.cut_life[0] = life('s1', 200, 0)),
+      (one) => (one.tables.events[0].payload = '{"text":"changed old event"}'),
+      (one) => {
+        const path = Object.keys(one.transcripts)[0]
+        one.transcripts[path] = Buffer.from('changed old transcript\n')
+      },
+    ]) {
+      const damaged = clone(after)
+      damage(damaged)
+      expect(compareData(before, damaged, goesOn).problems).not.toEqual([])
+    }
+  })
+
   it('⛔ read either way, two readings are the same only when nothing at all was added', () => {
     const folder = aDataFolder()
     const before = dataOf(folder)

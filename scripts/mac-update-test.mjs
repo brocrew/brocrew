@@ -393,6 +393,7 @@ try {
           sessionId: turn.sessionId,
           answerARefusal: true,
           record: (phase, facts) => {
+            summary.fixture.sessionId = facts.sessionId ?? null
             turn.phase = phase
             turn.steps.push({ phase, ...facts })
             if (phase === 'conversation-created' || phase === 'conversation-resumed') {
@@ -695,7 +696,8 @@ try {
     () =>
       startLocalModelTurn(cdpSecond, 'Fictional turn after the guided update', {
         sessionId: conversations[0],
-        record: (phase) => {
+        record: (phase, facts) => {
+          summary.fixture.sessionId = facts.sessionId ?? null
           if (phase === 'conversation-resumed') resumedResponse = model.nextResponseId()
         },
       }),
@@ -736,6 +738,30 @@ try {
   summary.failure = error.stack ?? String(error)
   console.error(summary.failure)
   process.exitCode = 1
+  if (model) {
+    try {
+      await writeFile(
+        join(evidence, 'model-failure.json'),
+        JSON.stringify({ log: model.log, requests: model.requests }, null, 2),
+      )
+    } catch (diagnosticError) {
+      summary.modelDiagnosticFailure = String(diagnosticError)
+    }
+  }
+  if (active?.cdp && summary.fixture?.sessionId) {
+    try {
+      const sessionId = summary.fixture.sessionId
+      const history = await active.cdp.evaluate(
+        `return await window.api.runtime.latestHistory({sessionId:${JSON.stringify(sessionId)}})`,
+      )
+      await writeFile(
+        join(evidence, `${active.stage}-history-failure.json`),
+        JSON.stringify({ stage: active.stage, sessionId, history }, null, 2),
+      )
+    } catch (diagnosticError) {
+      summary.historyDiagnosticFailure = String(diagnosticError)
+    }
+  }
   if (active) {
     try {
       assertOwnedProcess(active, await processInfo(active.pid), app, active.port)

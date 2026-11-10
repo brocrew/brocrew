@@ -256,10 +256,10 @@ describe('entrypoint native-prefix bindings', () => {
     })
 })
 
-it('keeps seed error bodies and model receipts when either diagnostic is unavailable', async () => {
+async function keepsFailureEvidence(harness) {
   const source = ts.createSourceFile(
-    'mac-signed-upgrade.mjs',
-    readFileSync(new URL('../mac-signed-upgrade.mjs', import.meta.url), 'utf8'),
+    harness,
+    readFileSync(new URL(`../${harness}`, import.meta.url), 'utf8'),
     ts.ScriptTarget.Latest,
     true,
     ts.ScriptKind.JS,
@@ -267,7 +267,7 @@ it('keeps seed error bodies and model receipts when either diagnostic is unavail
   const failure = source.statements.find((node) => ts.isTryStatement(node)).catchClause
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
   for (const unavailable of [null, 'history', 'model']) {
-    const summary = {}
+    const summary = { fixture: { sessionId: 'fictional-session' } }
     const original = new Error('fictional seed timed out')
     const turn = {
       phase: 'turn-sent',
@@ -315,10 +315,14 @@ it('keeps seed error bodies and model receipts when either diagnostic is unavail
       'currentWorkspace',
       'run',
       'screenshot',
+      'assertOwnedProcess',
+      'processInfo',
+      'app',
       failure.block.getText(source),
     )
     const exit = {}
     const capture = vi.fn()
+    const evidence = harness === 'mac-signed-upgrade.mjs' ? '/evidence/Default' : '/evidence'
     await run(
       original,
       summary,
@@ -332,11 +336,14 @@ it('keeps seed error bodies and model receipts when either diagnostic is unavail
       },
       join,
       '/evidence',
-      '/evidence/Default',
-      { stage: 'a', cdp },
+      evidence,
+      { pid: 42, stage: 'a', cdp },
       { fixture: { turns: [turn] } },
       vi.fn(),
       capture,
+      vi.fn(),
+      vi.fn(async () => ({ pid: 42 })),
+      '/Applications/BroCrew.app',
     )
     expect(summary.success).toBe(false)
     expect(summary.failure).toBe(original.stack)
@@ -348,14 +355,19 @@ it('keeps seed error bodies and model receipts when either diagnostic is unavail
     if (unavailable === 'history')
       expect(summary.historyDiagnosticFailure).toContain('history unavailable')
     else
-      expect(files.get(join('/evidence/Default', 'a-history-failure.json'))).toEqual({
+      expect(files.get(join(evidence, 'a-history-failure.json'))).toEqual({
         stage: 'a',
         sessionId: 'fictional-session',
-        turn,
+        ...(harness === 'mac-signed-upgrade.mjs' ? { turn } : {}),
         history,
       })
   }
-})
+}
+
+it.each(['mac-signed-upgrade.mjs', 'mac-update-test.mjs'])(
+  'keeps error bodies and model receipts for %s when either diagnostic is unavailable',
+  keepsFailureEvidence,
+)
 
 it('uses Updates and its ordinary Download/mount/Finder path from offered or checking state', async () => {
   const source = ts.createSourceFile(

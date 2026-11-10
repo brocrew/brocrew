@@ -299,6 +299,7 @@ const A_CONVERSATION_MOVES = [
 
 /** The columns a row names a conversation by. */
 const CONVERSATION_COLUMNS = [
+  'conversation_id',
   'session_id',
   'owner_session_id',
   'given_by_session_id',
@@ -315,12 +316,54 @@ const keyOf = (row) => JSON.stringify(row)
 const without = (row, columns) =>
   Object.fromEntries(Object.entries(row).filter(([key]) => !columns.includes(key)))
 
+/** A resumed conversation's latest life must name its newly appended launch. */
+function laterLife(before, after, oldEvents, newEvents) {
+  try {
+    const was = JSON.parse(before.record)
+    const now = JSON.parse(after.record)
+    if (
+      keyOf(without(before, ['record', 'since'])) !== keyOf(without(after, ['record', 'since'])) ||
+      keyOf(without(was, ['since', 'launched'])) !== keyOf(without(now, ['since', 'launched'])) ||
+      typeof was.identity !== 'string' ||
+      was.identity.length === 0 ||
+      !Number.isSafeInteger(was.generation) ||
+      was.generation < 0 ||
+      !Number.isSafeInteger(was.launched) ||
+      was.launched < 0 ||
+      !Number.isSafeInteger(now.launched) ||
+      now.launched <= was.launched ||
+      !Number.isSafeInteger(was.since) ||
+      was.since <= 0 ||
+      !Number.isSafeInteger(now.since) ||
+      now.since <= was.since ||
+      before.since !== was.since ||
+      after.since !== now.since
+    )
+      return false
+    const previous = oldEvents.filter(
+      (row) => row.session_id === before.conversation_id && row.generation === was.generation,
+    )
+    return newEvents.some(
+      (row) =>
+        row.session_id === after.conversation_id &&
+        row.generation === now.generation &&
+        row.ordinal === now.launched &&
+        row.type === 'launched' &&
+        previous.every((one) => row.ordinal > one.ordinal) &&
+        !oldEvents.some((one) => one.id === row.id),
+    )
+  } catch {
+    return false
+  }
+}
+
 /**
  * Every way `after` lost or changed what `before` held. ⛔ Strict: every row and every transcript
  * byte stays exactly as it was. Only the conversations in `goneOn` may grow — new rows of theirs,
- * transcript bytes after theirs, and their own row's time and standing — and new conversations may
- * add rows of their own: a new row is explained only when every conversation it names is one of
- * those. The work counter may move forward only as far as new work was made. Anything else is named.
+ * transcript bytes after theirs, their own row's time and standing, and their latest provider life
+ * tied to an appended launch. New conversations may add rows of their own: a new row is explained
+ * only when every conversation it names is one of those. The work counter may move forward only as
+ * far as new work was made. Anything else is named.
  */
 export function compareData(before, after, { goneOn = [] } = {}) {
   const problems = []
@@ -358,6 +401,13 @@ export function compareData(before, after, { goneOn = [] } = {}) {
           moved &&
           keyOf(without(moved, A_CONVERSATION_MOVES)) === keyOf(without(row, A_CONVERSATION_MOVES))
         ) {
+          take(moved)
+          continue
+        }
+      }
+      if (table === 'cut_life' && growing.has(row.conversation_id)) {
+        const moved = now.find((one) => one.conversation_id === row.conversation_id)
+        if (moved && laterLife(row, moved, before.tables.events ?? [], after.tables.events ?? [])) {
           take(moved)
           continue
         }
