@@ -21,24 +21,32 @@ async function boot() {
   const app = express()
   app.use(express.json())
   registerAdminRoutes(app, {
-    bridge, logger: silentLogger, version: 'fixture',
+    bridge,
+    logger: silentLogger,
+    version: 'fixture',
     settings: createSettingsStore(home),
   })
   const server = createServer(app)
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
-  cleanup.push(() => new Promise<void>((resolve, reject) =>
-    server.close((error) => error ? reject(error) : resolve()),
-  ))
+  cleanup.push(
+    () =>
+      new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      ),
+  )
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('missing test listener')
   const request = async (path = '/before-remove') => {
     const response = await fetch('http://127.0.0.1:' + address.port + '/v1' + path, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
     })
     return {
       status: response.status,
       body: response.headers.get('content-type')?.includes('application/json')
-        ? await response.json() : await response.text(),
+        ? await response.json()
+        : await response.text(),
     }
   }
   return { bridge, request }
@@ -53,27 +61,37 @@ it.each([
   f.bridge.state = prior.state
   const status = f.bridge.status.bind(f.bridge)
   vi.spyOn(f.bridge, 'status').mockImplementation(() => ({
-    ...status(), removeOnPhone: prior.remoteUncertain,
+    ...status(),
+    removeOnPhone: prior.remoteUncertain,
   }))
   const reply = await f.request()
   expect(reply.status).toBe(200)
-  expect(reply.body.notice).toBe(prior.confirmed
-    ? 'WhatsApp’s device was logged out.'
-    : 'Logout was not confirmed. Open Linked devices on your phone and remove this device if it is still listed.')
+  expect(reply.body.notice).toBe(
+    prior.confirmed
+      ? 'WhatsApp’s device was logged out.'
+      : 'Logout was not confirmed. Open Linked devices on your phone and remove this device if it is still listed.',
+  )
   expect(f.bridge.unlinked).toBe(1)
 })
 it('keeps the preceding app response body and waits for local cleanup', async () => {
   const f = await boot()
   expect(await f.request('/uninstall')).toEqual({ status: 200, body: {} })
   let release!: () => void
-  const work = new Promise<void>((resolve) => { release = resolve })
+  const work = new Promise<void>((resolve) => {
+    release = resolve
+  })
   const unlink = vi.spyOn(f.bridge, 'unlink').mockReturnValue(work)
   let settled = false
-  const pending = f.request().then((reply) => { settled = true; return reply })
+  const pending = f.request().then((reply) => {
+    settled = true
+    return reply
+  })
   try {
     await vi.waitFor(() => expect(unlink).toHaveBeenCalledOnce())
     expect(settled).toBe(false)
-  } finally { release() }
+  } finally {
+    release()
+  }
   expect((await pending).status).toBe(200)
 })
 it('returns an HTTP failure if the pending-marker write throws', async () => {

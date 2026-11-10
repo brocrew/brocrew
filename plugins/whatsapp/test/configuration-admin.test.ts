@@ -17,15 +17,19 @@ afterEach(async () => {
 async function boot() {
   const home = mkdtempSync(join(tmpdir(), 'fictional-configuration-'))
   cleanup.push(() => rmSync(home, { recursive: true, force: true }))
-  const bridge = new FakeBridge(), settings = createSettingsStore(home)
+  const bridge = new FakeBridge(),
+    settings = createSettingsStore(home)
   const app = express()
   app.use(express.json())
   registerAdminRoutes(app, { bridge, settings, logger: silentLogger, version: 'fixture' })
   const server = createServer(app)
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
-  cleanup.push(() => new Promise<void>((resolve, reject) =>
-    server.close((error) => error ? reject(error) : resolve()),
-  ))
+  cleanup.push(
+    () =>
+      new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      ),
+  )
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('missing test listener')
   const request = async (path: string, body?: unknown) => {
@@ -35,10 +39,14 @@ async function boot() {
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
     const responseBody = response.headers.get('content-type')?.includes('application/json')
-      ? await response.json() : await response.text()
+      ? await response.json()
+      : await response.text()
     return { status: response.status, body: responseBody }
   }
-  return { bridge, settings, request,
+  return {
+    bridge,
+    settings,
+    request,
     apply: (payload: unknown) => request('/configuration', { payload, configRevision: 0 }),
   }
 }
@@ -51,7 +59,9 @@ it('serves package-owned settings and applies each phone and settings command', 
   await apply('set-group-write', { group: ROWING.jid, enabled: true })
   await apply('refresh-groups')
   expect((await f.request('/configuration')).body).toMatchObject({
-    status: { state: 'linked' }, read: true, prefix: false,
+    status: { state: 'linked' },
+    read: true,
+    prefix: false,
     groups: expect.arrayContaining([expect.objectContaining({ jid: ROWING.jid, canWrite: true })]),
   })
   await apply('unlink-phone')
@@ -63,7 +73,9 @@ it('serves package-owned settings and applies each phone and settings command', 
 it('awaits generic unlink completion while the preceding-app route still accepts asynchronously', async () => {
   const f = await boot()
   let release!: () => void
-  const work = new Promise<void>((resolve) => { release = resolve })
+  const work = new Promise<void>((resolve) => {
+    release = resolve
+  })
   const unlink = vi.spyOn(f.bridge, 'unlink').mockReturnValue(work)
   let settled = false
   const pending = f.apply({ action: 'unlink-phone' }).then((reply) => {
@@ -75,7 +87,9 @@ it('awaits generic unlink completion while the preceding-app route still accepts
     expect(settled).toBe(false)
     expect(await f.request('/unlink', {})).toEqual({ status: 202, body: {} })
     expect(settled).toBe(false)
-  } finally { release() }
+  } finally {
+    release()
+  }
   expect(await pending).toEqual({ status: 200, body: { applied: true } })
 })
 it('rejects invalid package commands and retains actual failures without retries', async () => {
@@ -88,15 +102,21 @@ it('rejects invalid package commands and retains actual failures without retries
   }
   expect((await f.apply({ action: 'link-phone' })).status).toBe(409)
   expect((await f.request('/configuration', { payload: null, configRevision: 0 })).status).toBe(400)
-  const refresh = vi.spyOn(f.bridge, 'refreshGroups').mockRejectedValue(new Error('bridge disconnected'))
+  const refresh = vi
+    .spyOn(f.bridge, 'refreshGroups')
+    .mockRejectedValue(new Error('bridge disconnected'))
   expect(await f.apply({ action: 'refresh-groups' })).toEqual({
-    status: 500, body: { error: 'bridge disconnected' },
+    status: 500,
+    body: { error: 'bridge disconnected' },
   })
   expect(refresh).toHaveBeenCalledOnce()
   expect((await f.request('/configuration')).body).toMatchObject({ status: { state: 'linked' } })
-  const write = vi.spyOn(f.settings, 'setRead').mockImplementation(() => { throw new Error('disk full') })
+  const write = vi.spyOn(f.settings, 'setRead').mockImplementation(() => {
+    throw new Error('disk full')
+  })
   expect(await f.apply({ action: 'set-read', enabled: true })).toEqual({
-    status: 500, body: { error: 'disk full' },
+    status: 500,
+    body: { error: 'disk full' },
   })
   expect(write).toHaveBeenCalledOnce()
 })
@@ -107,7 +127,8 @@ it('lets Express handle a synchronous old-route unlink failure and returns it fr
   })
   expect((await f.request('/unlink', {})).status).toBe(500)
   expect(await f.apply({ action: 'unlink-phone' })).toEqual({
-    status: 500, body: { error: 'pending marker write failed' },
+    status: 500,
+    body: { error: 'pending marker write failed' },
   })
   expect(unlink).toHaveBeenCalledTimes(2)
 })

@@ -150,7 +150,9 @@ describe.skipIf(process.platform === 'win32')(
     it('runs declared cleanup before stopping and deleting data; an undeclared package retains data', async () => {
       const shown = (events: string[]) =>
         events.filter((one) => /^(log-out|stop$|remove-code$|remove-data)/.test(one))
-      const f = await fixture({}, 'whatsapp', { removal: { data: 'delete', note: 'Fictional cleanup.', beforeRemove: true } })
+      const f = await fixture({}, 'whatsapp', {
+        removal: { data: 'delete', note: 'Fictional cleanup.', beforeRemove: true },
+      })
       await f.controller.install(f.handle, 'whatsapp')
       f.events.length = 0
       vi.stubGlobal(

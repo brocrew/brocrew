@@ -146,7 +146,10 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     if (!handle) return fail(res, 400, ADMIN_ERRORS.body)
     res.locals.configuration = true
     try {
-      await handle({ profile, body: action === 'create-profile' ? { ...body, name: profile } : body }, res)
+      await handle(
+        { profile, body: action === 'create-profile' ? { ...body, name: profile } : body },
+        res,
+      )
     } catch (error) {
       fail(res, 500, error instanceof Error ? error.message : String(error))
     }
@@ -192,9 +195,11 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
       before !== undefined &&
       body.allowExtensions !== before.allowExtensions
     if (body.enabled === false || extensionsChanged)
-      await browser.exclusive(name, () => browser.close(name)).catch((error) => {
-        if (res.locals.configuration) throw error
-      })
+      await browser
+        .exclusive(name, () => browser.close(name))
+        .catch((error) => {
+          if (res.locals.configuration) throw error
+        })
     deps.logger.info('profile flags changed', { flags: Object.keys(body) })
     send(res, 200, { profile: view(name) })
   })

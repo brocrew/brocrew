@@ -26,7 +26,8 @@ it('serves the package snapshot and applies profile commands through the same st
   const f = await boot()
   const apply = async (action: string, fields = {}) =>
     expect(await f.apply({ action, profile: 'cedar', ...fields })).toEqual({
-      status: 200, body: { applied: true },
+      status: 200,
+      body: { applied: true },
     })
   await apply('create-profile')
   await apply('set-enabled', { enabled: true })
@@ -38,10 +39,20 @@ it('serves the package snapshot and applies profile commands through the same st
   expect(f.browser.helperTurnedOn).toContain('cedar')
   expect(await f.request('/configuration')).toMatchObject({
     status: 200,
-    body: { profiles: expect.arrayContaining([
-      expect.objectContaining({ name: 'cedar', displayName: 'Cedar account', enabled: true,
-        allowSync: true, allowSettings: true, description: 'Work account', open: true }),
-    ]), tabs: expect.any(Array) },
+    body: {
+      profiles: expect.arrayContaining([
+        expect.objectContaining({
+          name: 'cedar',
+          displayName: 'Cedar account',
+          enabled: true,
+          allowSync: true,
+          allowSettings: true,
+          description: 'Work account',
+          open: true,
+        }),
+      ]),
+      tabs: expect.any(Array),
+    },
   })
   await apply('set-enabled', { enabled: false })
   await apply('delete-profile', { confirm: 'cedar' })
@@ -60,7 +71,9 @@ it('validates package commands and preserves domain failure replies', async () =
   const f = await boot()
   expect((await f.apply({ action: 'unknown', profile: 'fern' })).status).toBe(400)
   expect((await f.apply({ action: 'create-profile', profile: '../cedar' })).status).toBe(400)
-  expect((await f.apply({ action: 'delete-profile', profile: 'fern', confirm: 'cedar' })).status).toBe(400)
+  expect(
+    (await f.apply({ action: 'delete-profile', profile: 'fern', confirm: 'cedar' })).status,
+  ).toBe(400)
   expect((await f.apply({ action: 'helper-on', profile: 'absent' })).status).toBe(404)
   expect((await f.request('/configuration', { payload: {}, configRevision: -1 })).status).toBe(400)
   expect(f.store.get('fern')).toBeDefined()
@@ -69,7 +82,9 @@ it('waits for application and reports a real error after a partial change withou
   const f = await boot()
   f.store.setFlags('fern', { enabled: true })
   let release!: () => void
-  const work = new Promise<void>((resolve) => { release = resolve })
+  const work = new Promise<void>((resolve) => {
+    release = resolve
+  })
   const helper = vi.spyOn(f.browser, 'turnHelperOn').mockReturnValue(work)
   let settled = false
   const pending = f.apply({ action: 'helper-on', profile: 'fern' }).then((reply) => {
@@ -79,11 +94,16 @@ it('waits for application and reports a real error after a partial change withou
   try {
     await vi.waitFor(() => expect(helper).toHaveBeenCalledOnce())
     expect(settled).toBe(false)
-  } finally { release() }
+  } finally {
+    release()
+  }
   expect(await pending).toEqual({ status: 200, body: { applied: true } })
-  const close = vi.spyOn(f.browser, 'close').mockRejectedValueOnce(new Error('browser close failed'))
+  const close = vi
+    .spyOn(f.browser, 'close')
+    .mockRejectedValueOnce(new Error('browser close failed'))
   expect(await f.apply({ action: 'set-enabled', profile: 'fern', enabled: false })).toEqual({
-    status: 500, body: { error: 'browser close failed' },
+    status: 500,
+    body: { error: 'browser close failed' },
   })
   expect(close).toHaveBeenCalledOnce()
   expect((await f.request('/configuration')).body).toMatchObject({

@@ -81,7 +81,9 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
   app.get('/healthz', (_req, res) => send(res, 200, { ok: true, version: deps.version }))
   app.get('/v1/status', (_req, res) => send(res, 200, bridge.status()))
   app.get('/v1/settings', (_req, res) => send(res, 200, view()))
-  app.get('/v1/configuration', (_req, res) => send(res, 200, { status: bridge.status(), ...view() }))
+  app.get('/v1/configuration', (_req, res) =>
+    send(res, 200, { status: bridge.status(), ...view() }),
+  )
   app.post('/v1/configuration', async (req, res) => {
     const { payload, configRevision } = req.body ?? {}
     if (!Number.isSafeInteger(configRevision) || configRevision < 0 || !isRecord(payload))
@@ -130,12 +132,22 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
       ])
       if (!done) return send(res, 504, { error: 'timeout' })
       const after = bridge.status()
-      const confirmed = before.state === 'linked' && before.removeOnPhone === false &&
-        after.state === 'unlinked' && after.removeOnPhone === false
-      send(res, 200, req.path === '/v1/uninstall' ? {} : {
-        notice: confirmed ? 'WhatsApp’s device was logged out.' :
-          'Logout was not confirmed. Open Linked devices on your phone and remove this device if it is still listed.',
-      })
+      const confirmed =
+        before.state === 'linked' &&
+        before.removeOnPhone === false &&
+        after.state === 'unlinked' &&
+        after.removeOnPhone === false
+      send(
+        res,
+        200,
+        req.path === '/v1/uninstall'
+          ? {}
+          : {
+              notice: confirmed
+                ? 'WhatsApp’s device was logged out.'
+                : 'Logout was not confirmed. Open Linked devices on your phone and remove this device if it is still listed.',
+            },
+      )
     } finally {
       clearTimeout(timer)
     }
