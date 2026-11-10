@@ -3,12 +3,14 @@ import { randomBytes } from 'node:crypto'
 import { afterEach, expect, it, vi } from 'vitest'
 import { fixture, projection, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 import { packageFixture } from './plugin-package-fixtures'
-import { settingsPeer, disclosureTree } from './plugin-disclosure-fixtures'
+import {
+  settingsPeer,
+  disclosureTree,
+  expectUnpublishedV2Catalogue,
+} from './plugin-disclosure-fixtures'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
 import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
-import { loadRepoPluginList } from '../src/main/plugins/catalogue/repo-list'
-import { PLUGIN_LIST_V2_URL } from '../src/main/plugins/catalogue/download'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 const fake = vi.hoisted(() => ({ open: vi.fn() }))
 vi.mock('../src/main/plugins/ui/host', () => ({ openPluginConfigurationView: fake.open }))
@@ -57,19 +59,7 @@ it('v2 HTTP404 leaves the real v1 Settings install, update, Configure and UI rep
       events: [...f.events],
       starts: f.starts(),
     }
-    const fetch = vi.fn(async (url: unknown) => {
-      expect(String(url)).toBe(PLUGIN_LIST_V2_URL)
-      return new Response('', { status: 404 })
-    })
-    vi.stubGlobal('fetch', fetch)
-    await expect(
-      loadRepoPluginList({
-        root: f.root,
-        target: f.opts.target,
-        appVersion: '1.0.0',
-        sourceVersion: 2,
-      }),
-    ).rejects.toMatchObject({ state: 'not-published' })
+    await expectUnpublishedV2Catalogue(f.root, f.opts.target)
     expect(await p.call({ kind: 'list' })).toEqual(beforeReply)
     expect({
       state: structuredClone(f.state.inspect()),

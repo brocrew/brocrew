@@ -11,7 +11,21 @@ import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-c
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { registerPluginSettings, type PluginSettingsController } from '../src/main/plugins/settings'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
-import type { PluginRelease } from '../src/main/plugins/package-schema'
+import type { PluginRelease, PluginTarget } from '../src/main/plugins/package-schema'
+import { loadRepoPluginList } from '../src/main/plugins/catalogue/repo-list'
+import { PLUGIN_LIST_V2_URL } from '../src/main/plugins/catalogue/download'
+
+export async function expectUnpublishedV2Catalogue(root: string, target: PluginTarget) {
+  const fetch = vi.fn(async (url: unknown) => {
+    expect(String(url)).toBe(PLUGIN_LIST_V2_URL)
+    return new Response('', { status: 404 })
+  })
+  vi.stubGlobal('fetch', fetch)
+  await expect(
+    loadRepoPluginList({ root, target, appVersion: '1.0.0', sourceVersion: 2 }),
+  ).rejects.toMatchObject({ state: 'not-published' })
+  expect(fetch).toHaveBeenCalledOnce()
+}
 
 export interface ReviewConsent {
   releaseDigest: string

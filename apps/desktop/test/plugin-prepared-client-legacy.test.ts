@@ -4,8 +4,7 @@ import { lstat, readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fixture, projection, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 import { packageFixture } from './plugin-package-fixtures'
-import { loadRepoPluginList } from '../src/main/plugins/catalogue/repo-list'
-import { PLUGIN_LIST_V2_URL } from '../src/main/plugins/catalogue/download'
+import { expectUnpublishedV2Catalogue } from './plugin-disclosure-fixtures'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
 import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
@@ -57,20 +56,7 @@ describe('client mutation policy stays dormant before v2 publication', () => {
     try {
       const cards = await client.catalogue()
       const before = { state: f.state.inspect(), events: [...f.events], tree: await tree(f.root) }
-      const fetch = vi.fn(async (url: unknown) => {
-        expect(String(url)).toBe(PLUGIN_LIST_V2_URL)
-        return new Response('', { status: 404 })
-      })
-      vi.stubGlobal('fetch', fetch)
-      await expect(
-        loadRepoPluginList({
-          root: f.root,
-          target: f.opts.target,
-          appVersion: '1.0.0',
-          sourceVersion: 2,
-        }),
-      ).rejects.toMatchObject({ state: 'not-published' })
-      expect(fetch).toHaveBeenCalledOnce()
+      await expectUnpublishedV2Catalogue(f.root, f.opts.target)
       expect(await client.catalogue()).toEqual(cards)
       expect({ state: f.state.inspect(), events: [...f.events], tree: await tree(f.root) }).toEqual(
         before,
