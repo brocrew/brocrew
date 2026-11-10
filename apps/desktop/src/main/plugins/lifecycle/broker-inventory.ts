@@ -2,7 +2,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { AgentAttachmentView } from './contracts'
 import { managedPluginFailure, type PluginFailureStage } from '@brobot2/runtime/plugin-failure'
-import type { PluginToolDiagnostic } from '../tool-diagnostics'
+import { reportPluginToolFailure, type PluginToolDiagnostic } from '../tool-diagnostics'
 
 export async function admittedPluginTools(
   view: AgentAttachmentView,
@@ -45,8 +45,7 @@ export async function admittedPluginTools(
       // Use the SDK's documented request timeout for initialize and this static tools/list reply.
       const inventory = await client.listTools()
       stage = 'binding-current'
-      if (inventory.nextCursor || inventory.tools.length > 256 || !view.current())
-        throw new Error('unavailable')
+      if (inventory.nextCursor || !view.current()) throw new Error('unavailable')
       return { connection, endpoint, credential, admitted: inventory.tools }
     })().then(
       (value) => ({ ok: true as const, value }),
@@ -54,9 +53,8 @@ export async function admittedPluginTools(
     )
     try {
       await client.close()
-    } catch (error) {
-      // Keep the first failing seam if teardown also fails; neither path admits a binding.
-      if (outcome.ok) throw managedPluginFailure(error, 'binding-close')
+    } catch {
+      reportPluginToolFailure(diagnostic, 'transport-close-failed')
     }
     if (!outcome.ok) throw outcome.error
     return outcome.value

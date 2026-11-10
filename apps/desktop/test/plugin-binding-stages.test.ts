@@ -28,7 +28,7 @@ function fixture() {
     current: vi.fn(() => true),
   } as unknown as Parameters<typeof admittedPluginTools>[0]
 }
-it.each(['connection', 'connect', 'inventory', 'close'] as const)(
+it.each(['connection', 'connect', 'inventory'] as const)(
   'names the actual binding %s failure, excluding its raw body',
   async (where) => {
     const view = fixture()
@@ -83,4 +83,35 @@ it('keeps every declared tool including a newly added name', async () => {
   sdk.list.mockResolvedValue({ tools: [named, { ...named, name: 'unknown' }] })
   const result = await admittedPluginTools(fixture())
   expect(result.admitted).toEqual([named, { ...named, name: 'unknown' }])
+})
+
+it('returns all 257 listed tool definitions without an app count veto', async () => {
+  const tools = Array.from({ length: 257 }, (_, i) => ({
+    name: `tool_${i}`,
+    inputSchema: { type: 'object' as const },
+    annotations: { readOnlyHint: true },
+  }))
+  sdk.list.mockResolvedValue({ tools })
+  const result = await admittedPluginTools(fixture())
+  expect(result.admitted).toEqual(tools)
+  expect(sdk.close).toHaveBeenCalledOnce()
+})
+it('keeps a successful inventory when close and its diagnostic observer fail', async () => {
+  const tool = { name: 'echo', inputSchema: { type: 'object' as const } }
+  sdk.list.mockResolvedValue({ tools: [tool] })
+  sdk.close.mockRejectedValue(new Error('close failed'))
+  const diagnostic = vi.fn(() => {
+    throw new Error('observer failed')
+  })
+  const result = await admittedPluginTools(fixture(), diagnostic)
+  expect(result.admitted).toEqual([tool])
+  expect(diagnostic).toHaveBeenCalledWith('transport-close-failed')
+  expect(sdk.close).toHaveBeenCalledOnce()
+})
+it('still refuses an inventory that requires another page', async () => {
+  sdk.list.mockResolvedValue({ tools: [], nextCursor: 'next' })
+  await expect(admittedPluginTools(fixture())).rejects.toMatchObject({
+    pluginStage: 'binding-current',
+  })
+  expect(sdk.close).toHaveBeenCalledOnce()
 })
