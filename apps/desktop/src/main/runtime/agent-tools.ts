@@ -24,7 +24,7 @@ import type { AgentModelChoice } from '../../shared/model-choice-contracts'
 import {
   providerAuthPolicies,
   legacyStartRefusalWords as A_START_ITS_SIGN_IN_REFUSED,
-} from '../providers/auth-definitions'
+} from '../providers/index'
 import { withNavigationLinks, NAVIGATION_TOOL_NAMES } from './tool-navigation-links'
 import { NAVIGATION_LINKS_DESCRIPTION } from '../../shared/links'
 import { workerLine } from '../worker-readings'
@@ -3288,7 +3288,7 @@ export const A_REFUSED_ROW_SHOWS = 169
  * why: it opens the sentence and is read whole in what a row shows ({@link A_REFUSED_ROW_SHOWS}).
  * `more` follows it, for whoever opens the whole answer.
  */
-export { legacyStartRefusalWords as A_START_ITS_SIGN_IN_REFUSED } from '../providers/auth-definitions'
+export { legacyStartRefusalWords as A_START_ITS_SIGN_IN_REFUSED } from '../providers/index'
 
 /**
  * A start refused because the agent's sign-in, or its Codex settings, could not be used. What a
@@ -6159,7 +6159,9 @@ export function agentToolsFor(
        * names it. ⚠️ The sentence INSTRUCTS rather than describing `can_message` (standing rule 8).
        */
       description:
-        'Send a message to an agent: a note for its information, or a follow-up on a piece of work you gave it, which you name — say which. To give work, use give_work; to ask something and get the answer back, use ask_question. It is held until that agent is free, then delivered with whatever else is held for it, oldest first (a person\u2019s command goes on its own). With interrupt: true, the turn that agent is running is also asked to stop, so that the message need not wait for its work to finish; the agent is told who asked for the stop. On Claude, the command that turn is waiting on ends with it, and work it sent to the background keeps running; on Codex, the command that turn ran last ends with it unless it has used another tool since, and its other commands keep running. Use interrupt only for something the agent must know before it goes on, not for a routine note, and only for an agent you started or one started under it. Says whether the message is held or went straight out, and what became of the stop.',
+        'Send a message to an agent: a note for its information, or a follow-up on a piece of work you gave it, which you name — say which. To give work, use give_work; to ask something and get the answer back, use ask_question. It is held until that agent is free, then delivered with whatever else is held for it, oldest first (a person\u2019s command goes on its own). With interrupt: true, the turn that agent is running is also asked to stop, so that the message need not wait for its work to finish; the agent is told who asked for the stop. ' +
+        theRuleOfAStopForWords(undefined, 'it') +
+        ' Use interrupt only for something the agent must know before it goes on, not for a routine note, and only for an agent you started or one started under it. Says whether the message is held or went straight out, and what became of the stop.',
       /**
        * ⛔ **Advertised against a TYPE, so *documented* and *read* cannot drift apart** (415, HO-021
        * §3). ⚠️ The `satisfies` below fails to compile if this shape and
@@ -6220,7 +6222,9 @@ export function agentToolsFor(
             .boolean()
             .optional()
             .describe(
-              'true also asks the turn that agent is running to stop, so that this message need not wait for its work to finish — a turn can run for hours. Use it only for something the agent must know before it goes on: a change of plan, a request to pause and save where it is. To answer a question it asked you, use answer_question, which asks that turn to stop by default. On Claude, the command that turn is waiting on ends with it, and work it sent to the background keeps running; on Codex, the command that turn ran last ends with it unless it has used another tool since, and its other commands keep running. Its open questions stay open. Only for an agent you started or one started under it. Leave it out for anything that can wait.',
+              'true also asks the turn that agent is running to stop, so that this message need not wait for its work to finish — a turn can run for hours. Use it only for something the agent must know before it goes on: a change of plan, a request to pause and save where it is. To answer a question it asked you, use answer_question, which asks that turn to stop by default. ' +
+                theRuleOfAStopForWords(undefined, 'it') +
+                ' Its open questions stay open. Only for an agent you started or one started under it. Leave it out for anything that can wait.',
             ),
         } satisfies Readonly<Record<keyof MessageAgentArguments, z.ZodType>>).map(
           ([field, schema]) => [field, agentToolHandlerInput(schema)],
@@ -7285,7 +7289,7 @@ export function agentToolsFor(
       description:
         // ⚑ **679 · *the id and the asker*** — what the question's own words hand the caller since
         // `679` (`questionText`); *"the id to quote"* was the whole of it while an id named one question.
-        `Answer a question you are asked — by a conversation you started, or by an agent that asked you by name — or say you cannot, with cannot_answer and why. The app sends you the question, the id to quote and the asked_by beside it; a request that is a person’s to settle is refused by name and no retry will pass. Your own words in one answer, or your reason, may be at most ${String(REPLY_SUMMARY_LIMIT)} units: put anything longer in a file and name its full path. By default an asker you started, or one started under it, reads your answer — or your reason — at once: if it is in the middle of a turn, that turn is ${ASKED_TO_STOP} for it, and no person is asked to approve that. On Claude, the command that turn is waiting on ends with it, and work it sent to the background keeps running; on Codex, the command that turn ran last ends with it unless it has used another tool since, and its other commands keep running. Its other questions stay open. A turn that waits on someone's answer, or that a person's own words started, is not interrupted. Give interrupt: false to let it finish that turn first. Any other asker reads your answer when its running turn ends.`,
+        `Answer a question you are asked — by a conversation you started, or by an agent that asked you by name — or say you cannot, with cannot_answer and why. The app sends you the question, the id to quote and the asked_by beside it; a request that is a person’s to settle is refused by name and no retry will pass. Your own words in one answer, or your reason, may be at most ${String(REPLY_SUMMARY_LIMIT)} units: put anything longer in a file and name its full path. By default an asker you started, or one started under it, reads your answer — or your reason — at once: if it is in the middle of a turn, that turn is ${ASKED_TO_STOP} for it, and no person is asked to approve that. ${theRuleOfAStopForWords(undefined, 'it')} Its other questions stay open. A turn that waits on someone's answer, or that a person's own words started, is not interrupted. Give interrupt: false to let it finish that turn first. Any other asker reads your answer when its running turn ends.`,
       /**
        * 🔴 **486 · the rails are the whole gate** (HO-031 §2.4).
        *
@@ -7335,7 +7339,7 @@ export function agentToolsFor(
             .boolean()
             .optional()
             .describe(
-              `false lets the asker finish the turn it is running before it reads your answer — for an answer it can use later; a turn can run for hours. Left out, or true: an asker you started, or one started under it, has its running turn ${ASKED_TO_STOP} so that it reads your answer now, unless that turn waits on someone's answer or a person's own words started it. On Claude, the command that turn is waiting on ends with it, and work it sent to the background keeps running; on Codex, the command that turn ran last ends with it unless it has used another tool since, and its other commands keep running. Its other questions stay open. Any other asker reads your answer when its running turn ends, whatever this says.`,
+              `false lets the asker finish the turn it is running before it reads your answer — for an answer it can use later; a turn can run for hours. Left out, or true: an asker you started, or one started under it, has its running turn ${ASKED_TO_STOP} so that it reads your answer now, unless that turn waits on someone's answer or a person's own words started it. ${theRuleOfAStopForWords(undefined, 'it')} Its other questions stay open. Any other asker reads your answer when its running turn ends, whatever this says.`,
             ),
           // 🔴 **477 · `satisfies` is the rail here, not a tidy-up** — see
           // {@link AnswerQuestionArguments}. An argument through which a model could name who
@@ -7609,7 +7613,13 @@ export function agentToolsFor(
        * state it is in now.
        */
       description:
-        'Stop what an agent below you is doing right now — one you created, or one that those agents created in turn. Its conversation stays open and it can be given something else. It asks the turn it is in to stop: that turn may end there, throwing away whatever it was part-way through, or it may be finished anyway — once the agent is no longer working, get_agent_status says which, so read it there before you rely on either. The stop also ends commands that turn started: on Claude, the command it is waiting on, while work it sent to the background keeps running; on Codex, every command that turn started, even one it left running. A command an earlier turn left running keeps running. The answer names what the stop ended, once that turn has ended, and what still runs. The agent is not told who stopped it or why — only, the next time it is sent words, which of its commands the stop ended: to stop its turn and tell it why in one act, use message_agent with interrupt.',
+        'Stop what an agent below you is doing right now — one you created, or one that those agents created in turn. Its conversation stays open and it can be given something else. It asks the turn it is in to stop: that turn may end there, throwing away whatever it was part-way through, or it may be finished anyway — once the agent is no longer working, get_agent_status says which, so read it there before you rely on either. The stop also ends commands that turn started: ' +
+        PROVIDER_DESCRIPTORS.map(
+          (descriptor) =>
+            `on ${descriptor.displayName}, ${descriptor.words.interruptActionSummary}`,
+        ).join('; ') +
+        '.' +
+        ' A command an earlier turn left running keeps running. The answer names what the stop ended, once that turn has ended, and what still runs. The agent is not told who stopped it or why — only, the next time it is sent words, which of its commands the stop ended: to stop its turn and tell it why in one act, use message_agent with interrupt.',
       /**
        * 🔴 **486 · a person is asked as well** (HO-031 §2.4).
        *

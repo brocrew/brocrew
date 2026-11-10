@@ -231,12 +231,6 @@ export interface ToolNaming {
   readonly separator: string
 }
 
-/** ⛔ Claude's, measured: `mcp__brobot__spawn_agent` appeared in `system/init.tools`, 5 of 5. */
-export const CLAUDE_TOOL_NAMING: ToolNaming = { prefix: 'mcp__', separator: '__' }
-
-/** ⛔ Codex's, measured by `353`: the five names arrived as `brobot__spawn_agent`, unprefixed. */
-export const CODEX_TOOL_NAMING: ToolNaming = { prefix: '', separator: '__' }
-
 /** How the model must spell one of `server`'s tools, given the provider's own convention. */
 export function qualifyWith(naming: ToolNaming, server: string, tool: string): string {
   return `${naming.prefix}${server}${naming.separator}${tool}`

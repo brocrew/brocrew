@@ -5,13 +5,11 @@ import { query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claud
 import { expect, it } from 'vitest'
 import {
   buildChildEnv,
-  ClaudeRuntime,
-  claudeAutoMemoryDir,
-  claudeKeychainTokenProvider,
   provisionProviderHome,
   type RuntimeEvent,
   type SessionHandle,
 } from '../src/index'
+import { claudeKeychainTokenProvider, ClaudeRuntime, claudeAutoMemoryDir } from '../src/claude'
 
 /**
  * 166 · **Does a developer remember across PROJECTS — and still not across profiles?**

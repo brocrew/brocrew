@@ -1,7 +1,7 @@
 import { realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
-import { createSpawnTransportFactory, type TransportFactory } from '../src/index'
+import { createSpawnTransportFactory, type TransportFactory } from '../src/codex'
 
 export const BUNDLED_CODEX_DESKTOP_MANIFEST = new URL(
   '../../../apps/desktop/package.json',

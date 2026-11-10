@@ -45,8 +45,11 @@ export interface ProviderHomeStrategy {
 export interface ProviderConnectionOperations {
   list(): readonly ProviderConnection[]
   resolve(connectionId?: string | null): ProviderConnection
-  /** A non-secret generation of the existing key service, including changed-back selections. */
-  revision?(): number
+}
+
+export interface PreparedProviderLaunch {
+  readonly home: string
+  readonly runtime: AgentRuntime
 }
 
 export interface ProviderModule {
@@ -60,7 +63,8 @@ export interface ProviderModule {
   readonly skills: import('./skill-policy').SkillPolicy
   readonly keptRules: import('./kept-rule-policy').KeptRulePolicy
   /** A fresh runtime for this launch; the program is resolved only when called. */
-  createRuntime(connectionId?: string | null): AgentRuntime
+  createRuntime(): AgentRuntime
+  prepareLaunch(profileId: string, connection?: ProviderConnection): Promise<PreparedProviderLaunch>
   /** Bound by the desktop composition; legacy runtime-only constructions may omit it. */
   readonly connections?: ProviderConnectionOperations
   readonly home: ProviderHomeStrategy

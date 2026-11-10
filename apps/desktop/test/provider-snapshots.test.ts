@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { claudeVersionTheSdkShips } from '@brobot2/runtime'
+import { claudeVersionTheSdkShips } from '@brobot2/runtime/claude'
 import { CODEX_PROTOCOL_VERSION } from '../../../packages/runtime/src/codex/protocol-version'
 import {
   claudeContextSections,

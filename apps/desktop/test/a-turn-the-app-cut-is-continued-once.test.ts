@@ -13,13 +13,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  FakeProviderSessions,
-  FakeRuntime,
-  FakeSessionHandle,
-  CodexSessionHandle,
-} from '@brobot2/runtime'
-import type { CodexTransport } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime, FakeSessionHandle } from '@brobot2/runtime'
+import { CodexSessionHandle } from '@brobot2/runtime/codex'
+import type { CodexTransport } from '@brobot2/runtime/codex'
 import type { ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
@@ -32,7 +28,7 @@ import {
   readKeptAccounts,
   writeKeptAccounts,
   providerAccountsFile,
-} from '../src/main/provider-accounts-file'
+} from '../src/main/providers/claude/account-record'
 import { usageKeptIn } from '../src/main/provider-usage-file'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -564,18 +560,20 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
   describe('the account, frozen to the life', () => {
     registerFrozenCutAccountCases(accountCases)
 
-    it('a life on a key: the same key is the same account; another key is not', async () => {
+    it('a key without a confirmed account cannot authorize automatic continuation', async () => {
       const a = await aTurnRunsIn({ account: 'none', tag: 'key-a' })
       await now.host.closeAll()
       starts(SOON, { account: 'none', tag: 'key-b' })
       await waitFor(() => typeof stateOf(a) === 'object', 'the cut to end')
-      expect(stateOf(a)).toEqual({ ended: 'not-same-account' })
+      expect(stateOf(a)).toEqual({ ended: 'account-not-known' })
+      expect(continuations(a)).toEqual([])
 
       const b = await aTurnRunsIn({ account: 'none', tag: 'key-a' })
       await now.host.closeAll()
       starts(SOON + 120_000, { account: 'none', tag: 'key-a' })
-      await waitFor(() => continuations(b).length === 1, 'the continuation')
-      expect(stateOf(b)).toBe('sent')
+      await waitFor(() => typeof stateOf(b) === 'object', 'the unknown account decision')
+      expect(stateOf(b)).toEqual({ ended: 'account-not-known' })
+      expect(continuations(b)).toEqual([])
     })
 
     it('⛔ a crash in a life whose account was never known does not take an earlier life’s', async () => {
@@ -1688,26 +1686,27 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
   const aPersonCloses = (id: string): Promise<void> => now.host.close(id, window)
 
   describe('a program that stopped while its turn ran', () => {
-    it('carries on a Codex program cut on the same saved-key revision', async () => {
+    it('leaves a Codex program cut on a saved key for the person to resume', async () => {
       const a = await aTurnRunsIn({ provider: 'codex', savedKeyRevision: 17 })
       itsProgramStops(a)
       await waitFor(() => !running(now, a), 'the saved-key program to end')
-      await waitFor(() => continuations(a).length === 1, 'the saved-key continuation')
-      expect(stateOf(a)).toBe('sent')
+      await waitFor(() => typeof stateOf(a) === 'object', 'the unknown account decision')
+      expect(continuations(a)).toEqual([])
+      expect(stateOf(a)).toEqual({ ended: 'account-not-known' })
+      const sent = await now.host.startAndSend(a, 'continue the work', window)
+      expect('notSent' in sent, JSON.stringify(sent)).toBe(false)
       expect(askedFor(now, a)).toBe(2)
     })
 
     it.each(['quit', 'crash'] as const)(
-      'carries on a Codex saved-key turn after a %s',
+      'does not automatically continue a Codex saved-key turn after a %s',
       async (kind) => {
         const a = await aTurnRunsIn({ provider: 'codex', savedKeyRevision: 17 })
         if (kind === 'quit') await now.host.closeAll()
         starts(SOON, { provider: 'codex', savedKeyRevision: 17 })
-        await waitFor(
-          () => continuations(a).length === 1,
-          'the saved-key continuation after restart',
-        )
-        expect(stateOf(a)).toBe('sent')
+        await waitFor(() => typeof stateOf(a) === 'object', 'the unknown account decision')
+        expect(continuations(a)).toEqual([])
+        expect(stateOf(a)).toEqual({ ended: 'account-not-known' })
       },
     )
 
@@ -1717,7 +1716,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       starts(SOON, { provider: 'codex', savedKeyRevision: 18 })
       await settle()
       expect(continuations(a)).toEqual([])
-      expect(stateOf(a)).toEqual({ ended: 'not-same-account' })
+      expect(stateOf(a)).toEqual({ ended: 'account-not-known' })
     })
 
     it('is started once after the wait, and its words go as that life’s first turn', async () => {

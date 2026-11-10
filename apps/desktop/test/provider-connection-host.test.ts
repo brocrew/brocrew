@@ -5,13 +5,12 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
+import type { Provider, ProviderConnection } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { resolveProviderConnection } from '../src/main/db/provider-connections'
-import { onProviderConnection } from '../src/main/providers'
-import { prepareCodexHome } from '../src/main/providers/codex'
+import { createCodexModule } from '../src/main/providers/codex/index'
 import { ApiKeys } from '../src/main/runtime/api-keys'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 
@@ -56,36 +55,17 @@ function fixture() {
       return home
     },
   )
-  const resolve = (provider: Provider, id?: string | null) => {
-    const connection = resolveProviderConnection(db, {
-      provider,
-      connectionId: id,
-      keySaved: saved.has(provider),
-    })
-    if (
-      id != null &&
-      connection.id !==
-        resolveProviderConnection(db, { provider, keySaved: saved.has(provider) }).id
-    )
-      throw new Error('The selected connection conflicts with the current credential route')
-    return connection
-  }
-  const connectionFor = vi.fn((provider: Provider, id?: string | null) => resolve(provider, id).id)
-  const create = vi.fn((provider: Provider, id?: string | null) =>
-    onProviderConnection(
-      provider,
-      () => {
-        const runtime = new FakeRuntime(provider, { sessions })
-        vi.spyOn(runtime, 'start')
-        vi.spyOn(runtime, 'resume')
-        vi.spyOn(runtime, 'listModels')
-        rawRuntimes.push(runtime)
-        return runtime
-      },
-      (requested) => resolve(provider, requested),
-      id,
-    ),
-  )
+  const resolve = (provider: Provider, id?: string | null) =>
+    resolveProviderConnection(db, { provider, connectionId: id, keySaved: saved.has(provider) })
+  const connectionFor = vi.fn(resolve)
+  const create = vi.fn((provider: Provider) => {
+    const runtime = new FakeRuntime(provider, { sessions })
+    vi.spyOn(runtime, 'start')
+    vi.spyOn(runtime, 'resume')
+    vi.spyOn(runtime, 'listModels')
+    rawRuntimes.push(runtime)
+    return runtime
+  })
   const deps = {
     store,
     ...neutralHostDeps(() => dir),
@@ -104,13 +84,17 @@ function fixture() {
     }),
   }
   Reflect.set(deps, 'connectionFor', connectionFor)
-  Reflect.set(
-    deps,
-    'connectionRevision',
-    (provider: Provider) => state.revisionOf?.(provider) ?? state.revision,
+  const revision = vi.fn((provider: Provider) => state.revisionOf?.(provider) ?? state.revision)
+  Reflect.set(deps, 'connectionRevision', revision)
+  const prepared = vi.fn(
+    async (provider: Provider, profile: string, _connection?: ProviderConnection) => ({
+      home: await prepare(provider, profile),
+      runtime: create(provider),
+    }),
   )
+  Reflect.set(deps, 'prepareProviderLaunch', prepared)
   host = new RuntimeHost(deps)
-  return { store, prepare, create, connectionFor, state, deps, rawRuntimes }
+  return { store, prepare, create, connectionFor, revision, state, deps, rawRuntimes, prepared }
 }
 
 function deferred() {
@@ -121,14 +105,14 @@ function deferred() {
   return { promise, resolve }
 }
 
-it('Codex key consumption during real home preparation cannot launch under changed-back sign-in metadata', async () => {
+it('Codex home preparation uses the once-selected method instead of a newly saved key', async () => {
   const f = fixture()
   const keys = new ApiKeys(dir)
   f.state.revisionOf = (provider) => keys.revision(provider)
   let applied: string | undefined
   const copied = vi.fn()
-  f.prepare.mockImplementation((_provider, profile) =>
-    prepareCodexHome(
+  f.prepared.mockImplementation(async (provider, profile, connection) => {
+    const module = createCodexModule(
       {
         managedRoot: dir,
         defaultProfile: 'fern',
@@ -136,41 +120,47 @@ it('Codex key consumption during real home preparation cannot launch under chang
         profiles: () => ['fern'],
         assertMayOpen: () => {},
       },
-      profile,
       {
-        provisionHome: (_root, home) => {
-          mkdirSync(home, { recursive: true })
-        },
-        provisionCodexAuth: copied,
-        key: {
-          isSaved: () => keys.status('codex').set,
-          current: async () => {
-            await keys.set('codex', 'fictional-willow-key')
-            const key = await keys.current('codex')
-            await keys.remove('codex')
-            return key
+        runtime: { command: () => '/fictional/codex' },
+        home: {
+          provisionHome: (_root, home) => {
+            mkdirSync(home, { recursive: true })
           },
-          change: async (_home, change) => {
-            applied = change.to
-            return { ok: true, authMethod: 'apikey' }
+          provisionCodexAuth: copied,
+          key: {
+            isSaved: () => keys.status('codex').set,
+            current: async () => {
+              await keys.set('codex', 'fictional-willow-key')
+              const key = await keys.current('codex')
+              await keys.remove('codex')
+              return key
+            },
+            change: async (_home, change) => {
+              applied = change.to
+              return { ok: true, authMethod: 'apikey' }
+            },
           },
         },
+        auth: { command: () => '/fictional/codex' },
       },
-    ),
+    )
+    const prepared = await module.prepareLaunch(profile, connection)
+    return { home: prepared.home, runtime: f.create(provider) }
+  })
+  const created = await host.createSession(
+    { provider: 'codex', profileId: 'fern', model: 'fake-codex-a' },
+    sink,
   )
-  await expect(host.createSession({ provider: 'codex', profileId: 'fern' }, sink)).rejects.toThrow(
-    'connection changed',
-  )
-  expect(applied).toBe('the-key')
-  expect(keys.revision('codex')).toBe(2)
-  expect(copied).not.toHaveBeenCalled()
-  expect(f.create).not.toHaveBeenCalled()
-  expect(db.prepare('SELECT connection_id FROM provider_session').all()).toEqual([])
+  expect(applied).toBeUndefined()
+  expect(keys.revision('codex')).toBe(0)
+  expect(copied).toHaveBeenCalled()
+  expect(f.revision).not.toHaveBeenCalled()
+  expect(f.store.connectionOf(created.sessionId)).toBe('codex:sign-in')
 })
 
 for (const provider of ['claude', 'codex'] as const) {
   for (const opening of ['fresh', 'bound resume', 'legacy resume', 'models'] as const) {
-    it(`${provider}: changed-back credentials in the final ${opening} wait refuse before delegation`, async () => {
+    it(`${provider}: a changed-back generation during the final ${opening} wait does not replace the chosen route`, async () => {
       const f = fixture()
       let sessionId: string | undefined
       if (opening !== 'fresh') {
@@ -189,6 +179,8 @@ for (const provider of ['claude', 'codex'] as const) {
           db.prepare('UPDATE provider_session SET connection_id=NULL WHERE id=?').run(sessionId)
         f.rawRuntimes.length = 0
       }
+      f.connectionFor.mockClear()
+      f.revision.mockClear()
       const entered = deferred()
       const released = deferred()
       let calls = 0
@@ -216,17 +208,21 @@ for (const provider of ['claude', 'codex'] as const) {
       f.state.revision += 2
       released.resolve()
       if (opening === 'models') {
-        expect(await pending).toMatchObject({ ok: false, reason: 'refused' })
+        expect(await pending).toMatchObject({ ok: true })
       } else {
-        await expect(pending).rejects.toThrow('connection changed')
+        await expect(pending).resolves.toHaveProperty('sessionId')
       }
-      for (const runtime of f.rawRuntimes) {
-        expect(runtime.start).not.toHaveBeenCalled()
-        expect(runtime.resume).not.toHaveBeenCalled()
-        expect(runtime.listModels).not.toHaveBeenCalled()
-      }
+      expect(f.revision).not.toHaveBeenCalled()
+      expect(
+        f.rawRuntimes.some(
+          (runtime) =>
+            vi.mocked(runtime.start).mock.calls.length > 0 ||
+            vi.mocked(runtime.resume).mock.calls.length > 0 ||
+            vi.mocked(runtime.listModels).mock.calls.length > 0,
+        ),
+      ).toBe(true)
       if (sessionId === undefined) {
-        expect(db.prepare('SELECT id FROM provider_session').all()).toEqual([])
+        expect(db.prepare('SELECT id FROM provider_session').all()).toHaveLength(1)
       } else {
         expect(f.store.connectionOf(sessionId)).toBe(
           opening === 'legacy resume' ? null : `${provider}:sign-in`,
@@ -239,7 +235,11 @@ for (const provider of ['claude', 'codex'] as const) {
     const f = fixture()
     const created = await host.createSession({ provider, profileId: 'fern', cwd: dir }, sink)
     expect(f.connectionFor).toHaveBeenCalledWith(provider)
-    expect(f.create).toHaveBeenCalledWith(provider, `${provider}:sign-in`)
+    expect(f.prepared).toHaveBeenCalledWith(
+      provider,
+      'fern',
+      expect.objectContaining({ id: `${provider}:sign-in`, authMethod: 'sign-in' }),
+    )
     expect(f.store.connectionOf(created.sessionId)).toBe(`${provider}:sign-in`)
     expect(created.providerHome).toBe(join(dir, 'fern', provider))
   })
@@ -261,16 +261,17 @@ for (const provider of ['claude', 'codex'] as const) {
     expect(f.create).not.toHaveBeenCalled()
   })
 
-  it(`${provider}: a key changed and changed back during preparation cannot launch`, async () => {
+  it(`${provider}: a generation changed during preparation does not refuse the native launch`, async () => {
     const f = fixture()
     const prepare = f.prepare.getMockImplementation()!
     f.prepare.mockImplementation((kind, profile) => {
       f.state.revision += 2
       return prepare(kind, profile)
     })
-    await expect(host.createSession({ provider, profileId: 'fern' }, sink)).rejects.toThrow()
-    expect(f.create).not.toHaveBeenCalled()
-    expect(db.prepare('SELECT id FROM provider_session').all()).toEqual([])
+    const created = await host.createSession({ provider, profileId: 'fern' }, sink)
+    expect(f.revision).not.toHaveBeenCalled()
+    expect(f.create).toHaveBeenCalled()
+    expect(f.store.connectionOf(created.sessionId)).toBe(`${provider}:sign-in`)
   })
 
   it(`${provider}: resume retains a recorded binding instead of choosing a newly saved key`, async () => {
@@ -300,6 +301,19 @@ for (const provider of ['claude', 'codex'] as const) {
     expect(resumed.ref).toEqual(created.ref)
     expect(resumed.providerHome).toBe(join(dir, 'fern', provider))
     expect(f.store.connectionOf(created.sessionId)).toBeNull()
-    expect(f.create).toHaveBeenLastCalledWith(provider, `${provider}:api-key`)
+    expect(f.prepared).toHaveBeenLastCalledWith(
+      provider,
+      'fern',
+      expect.objectContaining({ id: `${provider}:api-key`, authMethod: 'api-key' }),
+    )
   })
 }
+
+it('uses the prepared adapter runtime for a start', async () => {
+  const f = fixture()
+  const started = await host.createSession({ provider: 'claude', cwd: dir }, sink)
+  expect(started.sessionId).toBeTruthy()
+  expect(f.prepared).toHaveBeenCalled()
+  expect(f.create.mock.calls.length).toBe(f.prepared.mock.calls.length)
+  expect(f.rawRuntimes.some((runtime) => vi.mocked(runtime.start).mock.calls.length > 0)).toBe(true)
+})

@@ -7,10 +7,8 @@ import {
   ClaudeRuntime,
   claudeAutoMemoryDir,
   claudeKeychainTokenProvider,
-  provisionProviderHome,
-  type RuntimeEvent,
-  type SessionHandle,
-} from '../src/index'
+} from '../src/claude'
+import { provisionProviderHome, type RuntimeEvent, type SessionHandle } from '../src/index'
 
 /**
  * 322 · 🔴 **Which half of a Claude memory store is in the prompt, and which half is not.**

@@ -1,5 +1,6 @@
 import { isAbsolute, join } from 'node:path'
-import { GENERATED_IMAGES_DIRNAME, IMAGE_MEDIA_TYPES } from '@brobot2/runtime'
+import { GENERATED_IMAGES_DIRNAME } from '@brobot2/runtime/codex'
+import { IMAGE_MEDIA_TYPES } from '@brobot2/runtime'
 import type { ResolveImagePath } from '../../archive/transcript-types'
 export function imageResolver(
   threadId: string,

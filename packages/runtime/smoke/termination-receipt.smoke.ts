@@ -2,13 +2,8 @@ import { spawn } from 'node:child_process'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import {
-  ClaudeRuntime,
-  claudeKeychainTokenProvider,
-  provisionProviderHome,
-  type RuntimeEvent,
-  type SessionHandle,
-} from '../src/index'
+import { ClaudeRuntime, claudeKeychainTokenProvider } from '../src/claude'
+import { provisionProviderHome, type RuntimeEvent, type SessionHandle } from '../src/index'
 import { runEvidence, runScratch } from './run-paths'
 
 /**

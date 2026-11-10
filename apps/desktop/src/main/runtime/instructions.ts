@@ -1,5 +1,5 @@
 import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
-import { providerKnowledge } from '../providers/knowledge-definitions'
+import { providerKnowledge } from '../providers/index'
 import type {
   InstructionInputs,
   SessionLaunchRead,
@@ -19,14 +19,6 @@ export {
   AGENTS_OVERRIDE_FILENAME,
   AGENTS_FILENAME,
 } from '../providers/repository-instructions'
-export {
-  INSTRUCTION_FILENAME,
-  INSTRUCTION_DOTDIR,
-  projectInstructionChain,
-  readClaudeAgentMemory,
-  readCodexAgentMemory,
-  adHocNotes,
-} from '../providers/knowledge-definitions'
 
 /**
  * Called on every start AND every resume, deliberately: a launch reads the live profile again.

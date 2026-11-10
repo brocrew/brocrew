@@ -1,6 +1,6 @@
 import type { LedgerWalk } from '../../shared/question-contracts'
 import { SUPPORTED_PROVIDERS } from '@brobot2/shared'
-import { providerDefinitions } from '../providers/definitions'
+import { providerDefinitions } from '../providers/index'
 import { CHANNEL_REFUSAL_SENTENCES } from '@brobot2/runtime'
 import {
   DIGEST_LINE_KINDS,

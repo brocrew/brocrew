@@ -1,4 +1,4 @@
-import { providerKnowledge } from '../providers/knowledge-definitions'
+import { providerKnowledge } from '../providers/index'
 import { join } from 'node:path'
 import { type Provider } from '@brobot2/shared'
 import { SKILL_LIMITS } from '../../shared/skills-catalogue'

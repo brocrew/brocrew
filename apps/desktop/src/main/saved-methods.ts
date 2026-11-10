@@ -12,7 +12,6 @@ import {
 import { parseSavedMethodLine, SAVED_METHODS_INDEX } from './saved-method-index'
 export { SAVED_METHODS_INDEX } from './saved-method-index'
 export { listSavedMethodLibrary, readSavedMethodBody } from './saved-method-library'
-export { createSavedMethodService } from './saved-method-service'
 
 /** The most `index.md` may hold to be read at all; the index sent is bounded far lower. */
 const MOST_INDEX_FILE_BYTES = 64 * 1024

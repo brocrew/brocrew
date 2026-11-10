@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { CodexRefusedItsSignInError } from '@brobot2/runtime'
+import { CodexRefusedItsSignInError } from '@brobot2/runtime/codex'
 import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
 import * as registry from '../src/main/providers'
 
@@ -10,7 +10,7 @@ type HandleFacts = {
 }
 type Identity =
   | { readonly kind: 'account'; readonly account: Account }
-  | { readonly kind: 'tag'; readonly tag: string; readonly launchOnly?: true }
+  | { readonly kind: 'tag'; readonly tag: string }
   | null
   | undefined
 type Notice = {
@@ -88,18 +88,11 @@ describe('provider authentication policy facts', () => {
       account,
     })
     expect(tag).not.toHaveBeenCalled()
-    expect(own.launch({ account: () => null, signInTag: tag })).toEqual({
-      kind: 'tag',
-      tag: 'fictional-launch',
-      launchOnly: true,
-    })
-    expect(own.launch({ signInTag: tag })).toEqual({
-      kind: 'tag',
-      tag: 'fictional-launch',
-      launchOnly: true,
-    })
+    expect(own.launch({ account: () => null, signInTag: tag })).toBeNull()
+    expect(own.launch({ signInTag: tag })).toBeNull()
     expect(own.limit({ account: () => null, signInTag: tag })).toBeNull()
     expect(own.launch({})).toBeNull()
+    expect(tag).not.toHaveBeenCalled()
   })
 
   it('reads only the launched tag for Codex, including on the nonwaiting limit path', () => {
@@ -107,9 +100,9 @@ describe('provider authentication policy facts', () => {
       throw new Error('The tag policy must not ask for account facts')
     })
     for (const read of [policies().codex.identity.launch, policies().codex.identity.limit]) {
-      expect(read({ account, signInTag: () => 'fictional-tag' })).toEqual({
+      expect(read({ account, signInTag: () => 'native-account:fictional-account' })).toEqual({
         kind: 'tag',
-        tag: 'fictional-tag',
+        tag: 'native-account:fictional-account',
       })
       expect(read({ account })).toBeNull()
     }

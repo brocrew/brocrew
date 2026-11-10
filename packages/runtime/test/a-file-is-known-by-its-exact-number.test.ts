@@ -22,7 +22,7 @@ import {
   fallbackSignIn,
   isTheSameCodexCopy,
   replaceARefusedCodexCopy,
-} from '../src/internal/auth'
+} from '../src/codex/auth'
 import {
   isTheSameFile,
   trustProviderHomeAncestry,

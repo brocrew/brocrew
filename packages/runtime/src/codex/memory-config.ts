@@ -1,5 +1,5 @@
-import { CODEX_MEMORY_SETTINGS, type CodexMemorySetting } from '@brobot2/shared'
-export { CODEX_MEMORY_SETTINGS, type CodexMemorySetting } from '@brobot2/shared'
+import { CODEX_MEMORY_SETTINGS, type CodexMemorySetting } from './memory-settings'
+export { CODEX_MEMORY_SETTINGS, type CodexMemorySetting } from './memory-settings'
 import { readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse as parseToml } from 'smol-toml'

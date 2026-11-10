@@ -10,7 +10,7 @@ import {
   type SnapshotCatalogue,
   type SnapshotPart,
 } from '../shared/provider-snapshots'
-import { providerKnowledge } from './providers/knowledge-definitions'
+import { providerKnowledge } from './providers/index'
 
 /**
  * 🔴 **W4.164 · F093 R3 — the bundled providers' own parts, as shipped with this build**: what

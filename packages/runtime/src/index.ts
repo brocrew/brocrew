@@ -127,8 +127,6 @@ export {
   parametersOf,
   qualifyWith,
   splitQualified,
-  CLAUDE_TOOL_NAMING,
-  CODEX_TOOL_NAMING,
   MAX_DECLARED_TOOLS,
   MAX_PUBLISHED_SERVERS,
   MAX_PUBLISHED_TOOLS,
@@ -153,13 +151,6 @@ export {
   type ChildThreadState,
 } from './child-conversation'
 
-export { FileEdits } from './claude/file-edits'
-export { ClaudeMemoryStore } from './claude/memory-store'
-
-export { assistantErrorWords, isCredentialFailure } from './claude/assistant-error'
-
-export { THE_CLIS_OWN_MODEL } from './claude/provider-refusal'
-
 export {
   parseUnifiedDiff,
   foldChanges,
@@ -182,7 +173,6 @@ export {
   type MemoryRecallEntry,
 } from './memory-recall'
 
-export { GENERATED_IMAGES_DIRNAME } from './codex/generated-image'
 export { IMAGE_MEDIA_TYPES, imageMediaType } from './image-media-type'
 
 export {
@@ -249,15 +239,6 @@ export {
   type CapabilityStatus,
   type ProviderCapabilities,
 } from './capabilities'
-export { CLAUDE_CAPABILITIES } from './claude/capabilities'
-
-export {
-  AUTO_MEMORY_INDEX,
-  claudeAutoMemoryDir,
-  claudeAutoMemoryIndex,
-  isClaudeMemoryTopic,
-} from './claude/auto-memory'
-export { CODEX_CAPABILITIES } from './codex/capabilities'
 
 export { buildChildEnv } from './internal/child-env'
 export {
@@ -273,67 +254,13 @@ export {
 
 export {
   AuthUnavailableError,
-  NoCodexSignInOnThisComputerError,
-  CodexRefusedItsSignInError,
-  codexCopyIdentityIn,
-  isTheSameCodexCopy,
-  type CodexCopyIdentity,
-  provisionCodexAuth,
-  replaceARefusedCodexCopy,
-  reprovisionCodexAuth,
-  codexAuthHealth,
-  personalCodexAuthPath,
-  claudeKeychainTokenProvider,
-  claudeKeychainTokenProviderAsync,
-  claudeKeychainTokenProviderForALaunch,
-  claudeAuthHealth,
-  claudeAuthHealthAsync,
-  claudeLoginState,
-  claudeLoginStateWithAKey,
-
-  // Export the one-way digest used to compare launch credentials without exposing the credential.
-  credentialFingerprint,
-  defaultKeychainReader,
-  defaultKeychainReaderAsync,
-  defaultKeychainReaderForALaunch,
-  KEYCHAIN_READ_TIMEOUT_MS,
-  parseClaudeOAuthToken,
   type AuthHealth,
-  type ClaudeApiKeyProvider,
-  type ClaudeApiKeyProviderAsync,
-  type ClaudeAuthTokenProvider,
-  whyNoClaudeLogin,
-  claudeCredentialsFilePath,
-  claudeCredentialsFileReader,
-  claudeCredentialsFileReaderAsync,
-  claudeSetup,
-  claudeCommandIn,
-  claudeLoginNotRenewed,
-  CLAUDE_LOGIN_RENEWED,
   type ProviderSetup,
-  type ClaudeAuthTokenProviderAsync,
-  type ClaudeOAuthToken,
-  type KeychainReader,
-  type KeychainReaderAsync,
-  codexAccountIn,
+  type SetupPlatform,
   type ReprovisionOutcome,
-  type CodexCopySource,
 } from './internal/auth'
 
 export type { SessionAccount } from './session-account'
-
-export {
-  CLAUDE_RENEWAL_ARGS,
-  claudeLoginNeedsRenewal,
-  claudeLoginRenewer,
-  claudeRenewalEnv,
-  renewClaudeCodeLogin,
-  probeClaudeCodeLogin,
-  type ClaudeLoginRenewal,
-  type ARunEnded,
-  type ClaudeRenewalSeams,
-  type RunAProgram,
-} from './internal/claude-login-renewal'
 
 export {
   blocksLaunch,
@@ -344,23 +271,6 @@ export {
   type AuthState,
   type LoginAbsence,
 } from './auth-state'
-export {
-  CODEX_UNAUTHORIZED,
-  CODEX_SIGN_IN_REFUSED_AT_ROUTING,
-  codexAuthStateFrom,
-  isCodexUnauthorized,
-  probeCodexAuth,
-} from './codex/auth-probe'
-export {
-  changeCodexKeyInHome,
-  CodexLogin,
-  probeCodexAuthInHome,
-  startCodexLogin,
-  type CodexKeyChange,
-  type CodexKeyOutcome,
-  type CodexLoginOutcome,
-  type CodexLoginStart,
-} from './codex/codex-login'
 
 export {
   FAKE_PROVIDER_COMMANDS,
@@ -372,36 +282,6 @@ export {
   type FakeRuntimeOptions,
 } from './fake-runtime'
 
-export {
-  ClaudeRuntime,
-  ClaudeSessionHandle,
-  claudeProjectDirName,
-  claudeTranscriptPath,
-  type ClaudeQuery,
-  type QueryFactory,
-} from './claude/claude-runtime'
-
-export {
-  ClaudeUnavailableError,
-  claudeProgramWhereTheSdkLooks,
-  claudeVersionTheSdkShips,
-} from './claude/claude-binary'
-
-export {
-  spawnClaudeChild,
-  watchClaudeChild,
-  type ClaudeChildWitness,
-  type SpawnChild,
-} from './claude/claude-child'
-
-export {
-  CodexRuntime,
-  CodexSessionHandle,
-  createSpawnTransportFactory,
-  type TransportFactory,
-  type CodexLaunchContext,
-} from './codex/codex-runtime'
-export { CODEX_TOOLS_DESCRIPTION } from './codex/agent-tools'
 export type {
   ClaudeLaunchSettingKey,
   CodexLaunchSettingKey,
@@ -410,49 +290,7 @@ export type {
   LaunchSettingValue,
 } from './launch-settings'
 
-export type { CodexTransport, CodexIncoming } from './codex/codex-transport'
-
 export { MAX_SETTINGS_BYTES } from './settings-limits'
-export { persistedRulesFile } from './claude/persisted-rules'
-export { projectLocalSettingsFile } from './claude/local-settings-location'
-export { CODEX_EXEC_POLICY_RULES } from './codex/codex-runtime'
-export {
-  forgetToolApproval,
-  keptToolApprovals,
-  keptToolApprovalsFile,
-  type KeptToolApproval,
-} from './codex/kept-tool-approvals'
-
-export { CODEX_PROTOCOL_VERSION } from './codex/protocol-version'
-
-export { removeStaleCodexPermissionConfig } from './codex/stale-permission-config'
-
-export {
-  CODEX_MEMORY_PROVENANCE,
-  CODEX_MEMORY_SETTINGS,
-  ensureCodexMemoryConfig,
-  mergeCodexMemoryConfig,
-  type CodexMemoryConfigOutcome,
-  type CodexMemoryConfigResult,
-  type CodexMemoryMerge,
-  type CodexMemorySetting,
-} from './codex/memory-config'
-
-export {
-  CODEX_AD_HOC_NOTES,
-  CODEX_MEMORY_INDEX,
-  CODEX_MEMORY_PIPELINE_FILES,
-  CODEX_MEMORY_STORE_FILES,
-  CODEX_MEMORY_SUMMARY,
-  CODEX_RAW_MEMORIES,
-  CODEX_ROLLOUT_SUMMARIES,
-  codexAdHocNotesDir,
-  codexMemoryDir,
-  codexMemoryIndex,
-  codexMemorySummary,
-  type CodexMemoryReach,
-  type CodexMemoryStoreFile,
-} from './codex/memory-store'
 
 export {
   discoverExternalMcpTools,
@@ -484,3 +322,5 @@ export {
   type ManagedPluginAttachment,
 } from './managed-plugin-session'
 export { ManagedPluginFailure } from './managed-plugin-failure'
+
+export type { ProviderConfigLayout, SdkOptionClaim } from './provider-configuration'

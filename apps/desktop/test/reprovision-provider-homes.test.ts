@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { onProviderConnection } from '../src/main/providers/connection-runtime'
 import { resolveProviderConnection } from '../src/main/db/provider-connections'
-import { FakeRuntime, reprovisionCodexAuth } from '@brobot2/runtime'
+import { FakeRuntime, RejectedSessionLaunch } from '@brobot2/runtime'
+import { reprovisionCodexAuth } from '@brobot2/runtime/codex'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
@@ -40,7 +40,7 @@ describe('copying this install’s provider sign-ins', () => {
   let beforeStart: (() => Promise<void>) | undefined
   let beforeResume: (() => Promise<void>) | undefined
   let beforeReturn: (() => Promise<void>) | undefined
-  let connectionRevision: number
+  let refuseReturnedHandle: boolean
   let pluginEnabled: boolean
   let pluginRevision: string
   let replacementCloseFails: boolean
@@ -68,7 +68,7 @@ describe('copying this install’s provider sign-ins', () => {
     beforeStart = undefined
     beforeResume = undefined
     beforeReturn = undefined
-    connectionRevision = 0
+    refuseReturnedHandle = false
     pluginEnabled = false
     pluginRevision = 'a'
     replacementCloseFails = false
@@ -106,8 +106,7 @@ describe('copying this install’s provider sign-ins', () => {
       store: createSessionStore(db),
       ...neutralHostDeps(() => root),
       connectionFor: (provider, connectionId) =>
-        resolveProviderConnection(db, { provider, connectionId, keySaved: false }).id,
-      connectionRevision: () => connectionRevision,
+        resolveProviderConnection(db, { provider, connectionId, keySaved: false }),
       pluginAttachments: {
         agent: () => {
           if (!pluginEnabled) throw new Error('fictional plugins disabled')
@@ -126,48 +125,56 @@ describe('copying this install’s provider sign-ins', () => {
           }
         },
       },
-      createRuntime: (provider, connectionId) =>
-        onProviderConnection(
-          provider,
-          () => ({
-            provider: 'codex',
-            listModels: runtime.listModels.bind(runtime),
-            start: async (options) => {
-              await beforeStart?.()
-              const handle = await runtime.start(options)
-              handle.awaitProcessExit = () => oldProcessExit
-              const close = handle.close.bind(handle)
-              handle.close = async () => {
-                stopped++
-                await close()
-                if (activeCloseFails) throw new Error('fictional active child close failed')
-              }
-              await beforeReturn?.()
-              launches++
-              return handle
-            },
-            resume: async (ref, options) => {
-              await beforeResume?.()
-              if (resumeFails) throw new Error('fictional restart failure')
-              const handle = await runtime.resume(ref, options)
-              if (replacementCloseFails) {
-                const close = handle.close.bind(handle)
-                handle.close = async () => {
-                  await close()
-                  throw new Error('fictional replacement close failed')
-                }
-              }
-              handle.awaitProcessExit = () => oldProcessExit
-              await beforeReturn?.()
-              launches++
-              return handle
-            },
-          }),
-          (requested) =>
-            resolveProviderConnection(db, { provider, connectionId: requested, keySaved: false }),
-          connectionId,
-          () => connectionRevision,
-        ),
+      createRuntime: () => ({
+        provider: 'codex',
+        listModels: runtime.listModels.bind(runtime),
+        start: async (options) => {
+          await beforeStart?.()
+          const handle = await runtime.start(options)
+          handle.awaitProcessExit = () => oldProcessExit
+          const close = handle.close.bind(handle)
+          handle.close = async () => {
+            stopped++
+            await close()
+            if (activeCloseFails) throw new Error('fictional active child close failed')
+          }
+          await beforeReturn?.()
+          launches++
+          if (refuseReturnedHandle) {
+            refuseReturnedHandle = false
+            throw new RejectedSessionLaunch(
+              new Error('fictional native launch refusal'),
+              handle,
+              handle.close(),
+            )
+          }
+          return handle
+        },
+        resume: async (ref, options) => {
+          await beforeResume?.()
+          if (resumeFails) throw new Error('fictional restart failure')
+          const handle = await runtime.resume(ref, options)
+          if (replacementCloseFails) {
+            const close = handle.close.bind(handle)
+            handle.close = async () => {
+              await close()
+              throw new Error('fictional replacement close failed')
+            }
+          }
+          handle.awaitProcessExit = () => oldProcessExit
+          await beforeReturn?.()
+          launches++
+          if (refuseReturnedHandle) {
+            refuseReturnedHandle = false
+            throw new RejectedSessionLaunch(
+              new Error('fictional native launch refusal'),
+              handle,
+              handle.close(),
+            )
+          }
+          return handle
+        },
+      }),
       prepareProviderHome: (_provider, id) => home(id),
       providerHomePath: (_provider, id) => home(id),
       resolveCwd: () => root,
@@ -200,7 +207,7 @@ describe('copying this install’s provider sign-ins', () => {
   })
 
   for (const opening of ['start', 'resume'] as const) {
-    for (const change of ['changed-back', 'cancel', 'timeout'] as const) {
+    for (const change of ['native-refusal', 'cancel', 'timeout'] as const) {
       for (const proof of ['held', 'rejected'] as const) {
         it(`${opening} ${change} keeps a pending sign-in copy behind ${proof} process-exit proof`, async () => {
           const previous =
@@ -245,7 +252,7 @@ describe('copying this install’s provider sign-ins', () => {
             expect(await run()).toMatchObject({ replaced: 2, pending: 1 })
             const cancelling =
               change === 'cancel' ? host.cancelLaunch(launchKey, sink.ownerId) : undefined
-            if (change === 'changed-back') connectionRevision += 2
+            if (change === 'native-refusal') refuseReturnedHandle = true
             if (change === 'timeout') {
               await vi.advanceTimersByTimeAsync(300_000)
               expect(await openingResult).toBe(true)
@@ -323,7 +330,7 @@ describe('copying this install’s provider sign-ins', () => {
       void sending.catch(() => {})
       try {
         await arrived
-        connectionRevision += 2
+        refuseReturnedHandle = true
         release()
         await sending
         await vi.waitFor(() =>
@@ -388,7 +395,7 @@ describe('copying this install’s provider sign-ins', () => {
     void sending.catch(() => {})
     try {
       await arrived
-      connectionRevision += 2
+      refuseReturnedHandle = true
       release()
       await sending
       await vi.waitFor(() =>

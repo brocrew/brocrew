@@ -4,13 +4,11 @@ import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import {
   ClaudeRuntime,
-  claudeKeychainTokenProvider,
-  provisionProviderHome,
   type ClaudeQuery,
   type QueryFactory,
-  type RuntimeEvent,
-  type SessionHandle,
-} from '../src/index'
+  claudeKeychainTokenProvider,
+} from '../src/claude'
+import { provisionProviderHome, type RuntimeEvent, type SessionHandle } from '../src/index'
 
 /**
  * 123 · **Does a burst of work that starts OUTSIDE a turn end with a `result` frame?**

@@ -3,8 +3,8 @@ import { join } from 'node:path'
 import type { AgentRuntime } from '@brobot2/runtime'
 import { providerSchema, type Provider } from '@brobot2/shared'
 import { providerAuthFromHomes } from '../providers'
-import { homeStrategyFor, legacyAuthOperations, runtimeFactoryFor } from '../providers/compat'
-import type { ProviderAuthOps, ProviderHomeSeams, ProviderRuntimeSeams } from '../providers/compat'
+import { homeStrategyFor, legacyAuthOperations, runtimeFactoryFor } from '../providers'
+import type { ProviderAuthOps, ProviderHomeSeams, ProviderRuntimeSeams } from '../providers'
 import type { ProviderHomePaths } from '../providers/module'
 import {
   DEFAULT_PROFILE_ID,
@@ -13,9 +13,7 @@ import {
   profileAlreadyNamed,
 } from '../../shared/runtime-ipc'
 
-export { bringTheCodexKeyTo, prepareOnTheLogin } from '../providers'
-export type { CodexKeySeam, CodexSignIn } from '../providers/codex/types'
-export type { ProviderAuthOps, ProviderHomeSeams, ProviderRuntimeSeams } from '../providers/compat'
+export type { ProviderAuthOps, ProviderHomeSeams, ProviderRuntimeSeams } from '../providers'
 
 /**
  * The app-layer half of provider-home isolation: the runtime owns the *mechanism*

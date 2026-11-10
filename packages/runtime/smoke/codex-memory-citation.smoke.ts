@@ -9,7 +9,7 @@ import { SpawnCodexTransport } from '../src/codex/codex-transport'
 // ⚑ BroBot's OWN normaliser, run over the captured item — so what this app would emit for a cited
 // message is MEASURED here rather than read off the source and asserted in prose.
 import { normalizeNotification } from '../src/codex/normalize'
-import { codexMemoryIndex, codexMemorySummary, ensureCodexMemoryConfig } from '../src/index'
+import { codexMemoryIndex, codexMemorySummary, ensureCodexMemoryConfig } from '../src/codex'
 import { bundledCodexBinary } from './bundled-codex'
 import { runEvidence, runScratch } from './run-paths'
 

@@ -5,4 +5,4 @@ export {
   writeKeptAccounts,
   type KnownAccount,
   type KeptAccounts,
-} from './providers/auth-definitions'
+} from './providers'

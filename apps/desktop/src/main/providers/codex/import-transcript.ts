@@ -1,7 +1,7 @@
 import type { TranscriptEvent } from '../../../shared/conversation-events'
 import type { ResolveImagePath } from '../../archive/transcript-types'
 
-import { FileEdits, wrapUnknown } from '@brobot2/runtime'
+import { wrapUnknown } from '@brobot2/runtime'
 import { splitCodexMessage } from './codex-injected'
 import {
   truncate,
@@ -303,7 +303,7 @@ export function importCodexRollout(
   // 096: Codex's file changes come off `turn/diff/updated`, which is self-contained per line, so
   // there is nothing in flight to carry — an empty registry says exactly that. The field is on the
   // shared shape because both importers return it; only one has state to keep.
-  return { entries, unreadable, lastAt, edits: new FileEdits() }
+  return { entries, unreadable, lastAt, edits: undefined }
 }
 
 /** What a rollout says about itself, from its `session_meta` line. Null when it has none. */

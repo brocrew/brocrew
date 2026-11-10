@@ -61,15 +61,18 @@ describe('startup migrator', () => {
     ).not.toThrow()
   })
 
-  it('rejects a provider outside the CHECK constraint', () => {
+  it('keeps an opaque provider identifier when migrating a fresh database', () => {
     applyMigrations(db, migrationsFolder)
     const now = Date.now()
-    const insertBadProvider = () =>
+    const insertOtherProvider = () =>
       db
         .prepare(
           'INSERT INTO provider_session (id, provider, cwd, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
         )
-        .run('sess_bad', 'gemini', '/tmp', 'idle', now, now)
-    expect(insertBadProvider).toThrow()
+        .run('sess_other', 'fictional', '/fictional', 'idle', now, now)
+    expect(insertOtherProvider).not.toThrow()
+    expect(
+      db.prepare('SELECT provider FROM provider_session WHERE id = ?').get('sess_other'),
+    ).toEqual({ provider: 'fictional' })
   })
 })

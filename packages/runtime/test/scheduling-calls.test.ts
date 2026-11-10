@@ -1,12 +1,7 @@
 import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it } from 'vitest'
-import {
-  ClaudeRuntime,
-  parseRuntimeEvent,
-  type ClaudeQuery,
-  type RuntimeEvent,
-  type ScheduleReceipt,
-} from '../src/index'
+import { ClaudeRuntime, type ClaudeQuery } from '../src/claude'
+import { parseRuntimeEvent, type RuntimeEvent, type ScheduleReceipt } from '../src/index'
 import { SchedulingCalls } from '../src/claude/scheduling-calls'
 import { AsyncQueue } from '../src/internal/async-queue'
 import { MAX_SCHEDULED_JOBS } from '../src/scheduled-work'

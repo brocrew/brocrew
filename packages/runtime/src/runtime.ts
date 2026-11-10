@@ -217,8 +217,6 @@ export type TurnProvenance =
 
 /** One event stream owns lifecycle: working per accepted turn, terminal turn before idle, and frozen state after session end or fatal error. */
 export interface SessionHandle {
-  /** The admitted app connection for this launch; older adapters may not provide attribution. */
-  readonly connectionId?: string
   /** Carry deliveries past retirement; an idle-looking retiring handle cannot accept another turn. */
   isRetiring?(): boolean
   /** Whether this launch's SDK init confirmed the installed skill catalogue. */
@@ -264,7 +262,7 @@ export interface SessionHandle {
   /** Identify the sign-in copy used at launch only when the provider keeps per-profile copies. */
   signInCopyAtLaunch?(): unknown
 
-  /** A one-way tag correlates readings without exposing an account or reading credentials on access. */
+  /** A confirmed noncredential native account, captured at launch without another credential read. */
   signInTag?(): string | null
 
   /** Ask the provider for its account: undefined is unreported and null is no named account. */

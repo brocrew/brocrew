@@ -18,11 +18,9 @@ import { readBuiltInSkills, prepareBuiltInSkills } from '../src/main/skills/prep
 import { launchSkillSelections } from '../src/main/skills/launch-selection'
 import { selectedSkillView } from '../src/main/skills/selected-skill-view'
 import { verifyBuiltInSkills, creationAllowedSkills } from '../src/main/skills/built-in-catalogue'
-import {
-  registerCodexBuiltInSkills,
-  verifyClaudeBuiltInSkills,
-  validateBuiltInSkills,
-} from '../../../packages/runtime/src/built-in-skills'
+import { registerCodexBuiltInSkills } from '../../../packages/runtime/src/codex/built-in-skills'
+import { verifyClaudeBuiltInSkills } from '../../../packages/runtime/src/claude/built-in-skills'
+import { validateBuiltInSkills } from '../../../packages/runtime/src/built-in-skills'
 import type { SkillDetail, SkillGrants } from '../src/shared/skills-catalogue'
 
 const resources = resolve(import.meta.dirname, '../resources/built-in-skills')
@@ -496,9 +494,13 @@ it.each(['claude', 'codex'] as const)(
       selection: { revision: 1, skills },
       isCurrent: () => true,
     })
+    const layout =
+      provider === 'claude'
+        ? { prefix: 'brobot:', directory: 'skills' }
+        : { prefix: '', directory: '' }
     expect(prepared.context.skills).toHaveLength(64)
     expect(prepared.versions).toHaveLength(64)
-    expect(() => validateBuiltInSkills(prepared.context, provider)).not.toThrow()
+    expect(() => validateBuiltInSkills(prepared.context, layout)).not.toThrow()
     const extra = {
       name: `${provider === 'claude' ? 'brobot:' : ''}personal-extra`,
       description: 'A fictional extra skill.',
@@ -512,7 +514,7 @@ it.each(['claude', 'codex'] as const)(
     expect(() =>
       validateBuiltInSkills(
         { ...prepared.context, skills: [...prepared.context.skills, extra] },
-        provider,
+        layout,
       ),
     ).toThrow()
     const before = readdirSync(home)

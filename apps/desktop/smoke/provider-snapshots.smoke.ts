@@ -1,3 +1,4 @@
+import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
 import {
   chmodSync,
   existsSync,
@@ -14,12 +15,9 @@ import { release, tmpdir, type } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
-import {
-  claudeVersionTheSdkShips,
-  CodexRuntime,
-  provisionProviderHome,
-  type AgentRuntime,
-} from '@brobot2/runtime'
+import { claudeVersionTheSdkShips } from '@brobot2/runtime/claude'
+import { CodexRuntime } from '@brobot2/runtime/codex'
+import { provisionProviderHome, type AgentRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { codexAppServerArgs } from '../../../packages/runtime/src/codex/codex-runtime'
 import { buildChildEnv } from '../../../packages/runtime/src/internal/child-env'
@@ -45,7 +43,6 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   brobotWorkspace,
-  CLAUDE_INSTRUCTIONS_FILE,
   ensureWorkspace,
   workspaceOwnFilesIn,
 } from '../src/main/runtime/workspace'

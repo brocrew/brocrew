@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { copyFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { providerAuthPolicies } from '../providers/auth-definitions'
+import { providerAuthPolicies } from '../providers/index'
 import { providerDescriptor, SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
 import type { ApiKeyCheck, ApiKeyStatus } from '../../shared/runtime-ipc'
 import type { SessionStore } from '../db/session-store'
@@ -205,7 +205,7 @@ export function aLoginRunsWithoutAKey(
 }
 
 export { KEY_CHECK_TIMEOUT_MS } from '../providers/key-check'
-export { theCheapestModel } from '../providers/auth-definitions'
+export { theCheapestModel } from '../providers/index'
 
 export async function askTheProvider(
   provider: Provider,

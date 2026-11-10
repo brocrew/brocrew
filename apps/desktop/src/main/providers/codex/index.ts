@@ -10,23 +10,21 @@ import { transcripts } from './transcripts'
 import { discovery } from './discovery'
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { AuthUnavailableError, provisionProviderHome, type AgentRuntime } from '@brobot2/runtime'
 import {
-  AuthUnavailableError,
-  CodexRuntime,
   codexAuthHealth,
-  createSpawnTransportFactory,
-  ensureCodexMemoryConfig,
-  probeCodexAuthInHome,
   personalCodexAuthPath,
   provisionCodexAuth,
   replaceARefusedCodexCopy,
-  provisionProviderHome,
-  removeStaleCodexPermissionConfig,
   reprovisionCodexAuth,
+  CodexRuntime,
+  createSpawnTransportFactory,
+  ensureCodexMemoryConfig,
+  probeCodexAuthInHome,
+  removeStaleCodexPermissionConfig,
   startCodexLogin,
-  type AgentRuntime,
   type TransportFactory,
-} from '@brobot2/runtime'
+} from '@brobot2/runtime/codex'
 import { ApiKeyUnreadableError } from '../api-key-error'
 import { prepareStateHome } from '../home'
 import type {
@@ -149,7 +147,8 @@ export async function prepareCodexHome(
 
   ensureCodexMemoryConfig(home)
 
-  if (seams.key !== undefined && (await bringTheCodexKeyTo(home, seams.key)) === 'the-key') {
+  const key = seams.key
+  if (key !== undefined && (await bringTheCodexKeyTo(home, key)) === 'the-key') {
     return home
   }
 
@@ -236,7 +235,7 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
       const managedRoot = paths.managedRoot
       return await replaceARefusedCodexCopy(home, {
         managedRoot,
-        refused: refused as import('@brobot2/runtime').CodexCopyIdentity,
+        refused: refused as import('@brobot2/runtime/codex').CodexCopyIdentity,
         stillWanted,
         candidates: [
           {
@@ -315,6 +314,29 @@ export function createCodexModule(
     keptRules,
     discovery,
     createRuntime: codexModuleFactory.runtime(seams.runtime),
+    async prepareLaunch(profileId, connection) {
+      const reader = seams.home.key
+      let current: Awaited<ReturnType<CodexKeySeam['current']>>
+      try {
+        current = connection?.authMethod === 'sign-in' ? null : ((await reader?.current()) ?? null)
+        if (connection?.authMethod === 'api-key' && current === null)
+          throw new AuthUnavailableError('codex', 'The selected API key is unavailable')
+      } catch (error) {
+        if (error instanceof ApiKeyUnreadableError)
+          throw new AuthUnavailableError('codex', error.message)
+        throw error
+      }
+      const key =
+        reader === undefined
+          ? undefined
+          : {
+              current: () => current,
+              change: (home: string, change: Parameters<CodexKeySeam['change']>[1]) =>
+                reader.change(home, change),
+            }
+      const home = await prepareCodexHome(paths, profileId, { ...seams.home, key })
+      return { home, runtime: codexRuntime(seams.runtime) }
+    },
     home: codexModuleFactory.home(paths, seams.home),
     auth: codexModuleFactory.auth(paths, seams.auth),
   }

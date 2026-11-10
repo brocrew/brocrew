@@ -1,15 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   CODEX_UNAUTHORIZED,
-  blocksLaunch,
   codexAuthStateFrom,
   CODEX_SIGN_IN_REFUSED_AT_ROUTING,
   isCodexUnauthorized,
-  isUsable,
   probeCodexAuth,
-  type AuthState,
-} from '../src/index'
-import type { CodexIncoming, CodexTransport } from '../src/index'
+} from '../src/codex'
+import { blocksLaunch, isUsable, type AuthState } from '../src/index'
+import type { CodexIncoming, CodexTransport } from '../src/codex'
 
 /**
  * The credential classifier (098), pinned to the payloads the bundled 0.146.0 app-server actually

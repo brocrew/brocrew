@@ -3,13 +3,13 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import Database from 'better-sqlite3'
+import { claudeHomeDescriptions } from '../src/main/providers/claude/discovery'
 import {
-  claudeHomeDescriptions,
   discoverUserHomeSessions,
   userProviderHomePath,
   userProviderHomes,
 } from '../src/main/adopt/user-homes'
-import { claudeProjectDirName } from '@brobot2/runtime'
+import { claudeProjectDirName } from '@brobot2/runtime/claude'
 
 /**
  * The user's own provider homes (Slice 2 · 046) — the one module in the main process that names

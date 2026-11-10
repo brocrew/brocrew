@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ClaudeRuntime, type ClaudeQuery, type RuntimeEvent } from '../src/index'
+import { ClaudeRuntime, type ClaudeQuery } from '../src/claude'
+import { type RuntimeEvent } from '../src/index'
 import { AsyncQueue } from '../src/internal/async-queue'
 
 /**

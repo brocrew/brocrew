@@ -9,19 +9,19 @@ import {
 } from '../../../scripts/lib/personal-home-guard.mjs'
 import {
   ClaudeRuntime,
-  CodexRuntime,
-  claudeKeychainTokenProvider,
-  codexAuthHealth,
-  provisionCodexAuth,
-  provisionProviderHome,
   type ClaudeQuery,
+  type QueryFactory,
+  claudeKeychainTokenProvider,
+} from '../src/claude'
+import {
+  CodexRuntime,
   type CodexIncoming,
   type CodexTransport,
-  type QueryFactory,
-  type RuntimeEvent,
-  type SessionHandle,
   type TransportFactory,
-} from '../src/index'
+  codexAuthHealth,
+  provisionCodexAuth,
+} from '../src/codex'
+import { provisionProviderHome, type RuntimeEvent, type SessionHandle } from '../src/index'
 import { bundledCodexTransportFactory } from './bundled-codex'
 
 /**

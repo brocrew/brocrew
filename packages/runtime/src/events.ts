@@ -917,6 +917,12 @@ const errorEventSchema = z.object({
   fatal: z.boolean(),
   /** Absent is the norm: most errors are just errors. See {@link errorCauseSchema}. */
   cause: errorCauseSchema.optional(),
+  signIn: z
+    .object({
+      state: z.enum(['retrying', 'refused', 'stale']),
+      message: z.string().optional(),
+    })
+    .optional(),
   /** Absent unless the adapter recognised the refusal. See {@link providerRefusalSchema}. */
   refusal: providerRefusalSchema.optional(),
   /**

@@ -4,12 +4,14 @@ import {
   capabilitiesFor,
   childInputRefusal,
   childStatusOf,
-  CodexRuntime,
   type ChildThreadState,
+} from '../src/index'
+import {
+  CodexRuntime,
   type CodexLaunchContext,
   type CodexIncoming,
   type CodexTransport,
-} from '../src/index'
+} from '../src/codex'
 import { AsyncQueue } from '../src/internal/async-queue'
 import { CODEX_PROTOCOL_VERSION } from '../src/codex/protocol-version'
 import { threadStartResponse } from './fixtures/codex-protocol'

@@ -11,7 +11,8 @@ import {
   type Hit,
   type Marker,
 } from '../../../scripts/lib/personal-home-guard.mjs'
-import { codexAuthStateFrom, type AuthState } from '../src/index'
+import { codexAuthStateFrom } from '../src/codex'
+import { type AuthState } from '../src/index'
 import { bundledCodexBinary } from './bundled-codex'
 
 /**

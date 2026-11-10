@@ -3,7 +3,7 @@ import {
   CODEX_MEMORY_STORE_FILES,
   codexAdHocNotesDir,
   codexMemoryDir,
-} from '@brobot2/runtime'
+} from '@brobot2/runtime/codex'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 

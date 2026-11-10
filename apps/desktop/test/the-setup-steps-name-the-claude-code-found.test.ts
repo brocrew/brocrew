@@ -7,16 +7,15 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   AuthUnavailableError,
   FakeProviderSessions,
-  claudeCommandIn,
-  type ClaudeLoginRenewal,
   type FakeSessionHandle,
 } from '@brobot2/runtime'
+import { claudeCommandIn, type ClaudeLoginRenewal } from '@brobot2/runtime/claude'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { prepareOnTheLogin } from '../src/main/providers/claude'
+import { prepareOnTheLogin } from '../src/main/providers/claude/index'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'

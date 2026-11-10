@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { CODEX_PROTOCOL_VERSION, type TransportFactory } from '@brobot2/runtime'
+import { CODEX_PROTOCOL_VERSION, type TransportFactory } from '@brobot2/runtime/codex'
 import {
   BUNDLED_CODEX,
   CodexUnavailableError,
@@ -19,8 +19,8 @@ import {
   resolveCodexBinary,
   resolveCodexProgram,
   type BundledCodex,
-} from '../src/main/runtime/codex-binary'
-import { providerVersionsReader } from '../src/main/runtime/provider-versions'
+} from '../src/main/providers/codex/program'
+import { providerVersionsReader } from '../src/main/providers/index'
 import { createProviderRuntime } from '../src/main/runtime/provider-homes'
 import { readableError } from '../src/renderer/src/lib/session-record'
 

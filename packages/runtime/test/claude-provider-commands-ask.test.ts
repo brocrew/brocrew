@@ -1,13 +1,8 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it } from 'vitest'
 import { AsyncQueue } from '../src/internal/async-queue'
-import {
-  ClaudeRuntime,
-  PROVIDER_COMMAND_PREFIX,
-  type ClaudeQuery,
-  type RuntimeEvent,
-  type SessionHandle,
-} from '../src/index'
+import { ClaudeRuntime, type ClaudeQuery } from '../src/claude'
+import { PROVIDER_COMMAND_PREFIX, type RuntimeEvent, type SessionHandle } from '../src/index'
 
 /**
  * 🔴 **708 · the Claude adapter's half of `R42`'s ask** — *"where the provider has not published its

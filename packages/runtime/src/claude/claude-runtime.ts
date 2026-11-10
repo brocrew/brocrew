@@ -2,24 +2,16 @@ import type { ManagedPluginMcpServer } from '../managed-plugin-mcp'
 import { observeManagedPlugins, type ManagedPluginObserver } from '../managed-plugin-observation'
 import { managedTranscriptSettings } from './app-transcript-retention'
 import { randomUUID } from 'node:crypto'
-import {
-  BUILT_IN_SKILLS_FAILURE,
-  claudeBuiltInSkillOptions,
-  verifyClaudeBuiltInSkills,
-} from '../built-in-skills'
+import { BUILT_IN_SKILLS_FAILURE } from '../built-in-skills'
+import { claudeBuiltInSkillOptions, verifyClaudeBuiltInSkills } from './built-in-skills'
 import { closeSync, existsSync, openSync, readdirSync, readSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { claudeMcpServersFor, forbiddenExternalSpellings } from './agent-tools'
 import type { ExternalMcpReach } from '../external-mcp'
-import {
-  boundInventory,
-  parametersOf,
-  qualifyWith,
-  CLAUDE_TOOL_NAMING,
-  type DeclaredToolset,
-} from '../tool-inventory'
+import { boundInventory, parametersOf, qualifyWith, type DeclaredToolset } from '../tool-inventory'
+import { CLAUDE_TOOL_NAMING } from './tool-naming'
 import { beyondItsRailsOf, type AgentToolset } from '../agent-tools'
 import type {
   AccountInfo,
@@ -101,14 +93,13 @@ import type { LaunchSetting } from '../launch-settings'
 import { sessionAccountFrom, type SessionAccount } from '../session-account'
 import { sessionRefSchema, type SessionRef } from '../session-ref'
 import { AsyncQueue } from '../internal/async-queue'
+import { AuthUnavailableError } from '../internal/auth'
 import {
-  AuthUnavailableError,
   whyNoClaudeLogin,
   type ClaudeApiKeyProviderAsync,
   type ClaudeAuthTokenProvider,
   type ClaudeAuthTokenProviderAsync,
-  credentialFingerprint,
-} from '../internal/auth'
+} from './auth'
 import { buildChildEnv } from '../internal/child-env'
 import {
   assertNotCancelled,
@@ -144,11 +135,8 @@ import {
 } from './normalize'
 import { ToolAnswers, type ToolAnswer } from '../tool-answer'
 import { ClaudeMessageReceipts } from './message-receipts'
-import {
-  boundCommands,
-  CLAUDE_COMMAND_PREFIX,
-  type ProviderCommandAnswer,
-} from '../provider-commands'
+import { boundCommands, type ProviderCommandAnswer } from '../provider-commands'
+import { CLAUDE_COMMAND_PREFIX } from './command-prefix'
 import { wordsForACard } from '../words-on-a-card'
 import { BackgroundTasks } from './background-tasks'
 import { SessionCrons } from './session-crons'
@@ -1645,17 +1633,16 @@ export class ClaudeSessionHandle implements SessionHandle {
     }
   }
 
-  noteLaunchCredential(fingerprint: string): void {
-    this.launchCredential = fingerprint
+  noteLaunchCredential(token: string): void {
+    this.launchCredential = token
   }
 
   noteLaunchedOnAKey(): void {
     this.launchedOnAKey = true
   }
 
-  /** Of the login this session launched with, so a renewed login answers another tag. */
   signInTag(): string | null {
-    return this.launchCredential === null ? null : `credential:${this.launchCredential}`
+    return null
   }
 
   async checkSignIn(): Promise<boolean> {
@@ -1664,7 +1651,7 @@ export class ClaudeSessionHandle implements SessionHandle {
 
     const current = await this.authTokenProviderAsync()
     if (current === null) return false
-    if (credentialFingerprint(current) === this.launchCredential) return false
+    if (current === this.launchCredential) return false
     this._signInSuperseded = true
     return true
   }
@@ -1675,8 +1662,7 @@ export class ClaudeSessionHandle implements SessionHandle {
     }
     try {
       const current = await this.authTokenProviderAsync()
-      if (current !== null && credentialFingerprint(current) === this.launchCredential)
-        return 'auth'
+      if (current !== null && current === this.launchCredential) return 'auth'
     } catch {
       // An unreadable credential cannot prove the rejected token is still current.
     }
@@ -2916,7 +2902,7 @@ export class ClaudeRuntime implements AgentRuntime {
 
     const { additions, onAKey } = this.childEnvAdditions(providerHome, auth)
     const injected = additions.CLAUDE_CODE_OAUTH_TOKEN
-    if (injected) handle.noteLaunchCredential(credentialFingerprint(injected))
+    if (injected) handle.noteLaunchCredential(injected)
     if (onAKey) handle.noteLaunchedOnAKey()
 
     const mcpServers = claudeMcpServersFor(agentTools, externalMcp?.servers ?? [], managedPluginMcp)

@@ -1,13 +1,27 @@
+import { providerDefinitions } from '../src/main/providers'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 
 import {
-  applyEvent,
+  applyEvent as applyDisplayedEvent,
   createTranscript,
   THE_APPS_OWN_WORD,
   type NoticeItem,
 } from '../src/renderer/src/lib/transcript'
 import { visibleItems } from '../src/renderer/src/lib/transcript-mode'
+
+function applyEvent(
+  state: Parameters<typeof applyDisplayedEvent>[0],
+  event: TranscriptEvent,
+): void {
+  const provider = state.ref?.provider
+  applyDisplayedEvent(
+    state,
+    provider === undefined
+      ? event
+      : (providerDefinitions[provider].transcripts.eventForDisplay?.(event) ?? event),
+  )
+}
 
 const retry = (attempt: number): Extract<TranscriptEvent, { type: 'error' }> => ({
   type: 'error',

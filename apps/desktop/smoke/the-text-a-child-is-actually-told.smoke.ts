@@ -1,17 +1,13 @@
+import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import {
-  ClaudeRuntime,
-  CodexRuntime,
-  claudeKeychainTokenProvider,
-  codexAuthHealth,
-  provisionCodexAuth,
-  provisionProviderHome,
-  type AgentRuntime,
-} from '@brobot2/runtime'
+import { ClaudeRuntime, claudeKeychainTokenProvider } from '@brobot2/runtime/claude'
+import { CodexRuntime, codexAuthHealth, provisionCodexAuth } from '@brobot2/runtime/codex'
+
+import { provisionProviderHome, type AgentRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -29,7 +25,6 @@ import {
 import { BUNDLE_LEAF, publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import {
   brobotWorkspace,
-  CLAUDE_INSTRUCTIONS_FILE,
   ensureWorkspace,
   workspaceOwnFilesIn,
 } from '../src/main/runtime/workspace'

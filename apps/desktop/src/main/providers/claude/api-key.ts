@@ -1,5 +1,15 @@
-import { claudeCredentialsFileReader, parseClaudeOAuthToken } from '@brobot2/runtime'
-import { providerDescriptor } from '@brobot2/shared'
+const KEY_CHECK = {
+  issuer: 'Anthropic',
+  checkUrl: 'https://api.anthropic.com/v1/models?limit=100',
+  spendsToken: true,
+  header: 'x-api-key',
+  prefix: '',
+  extraHeaders: {
+    'anthropic-version': '2023-06-01',
+  },
+  windowsLoginNeedsFile: true,
+}
+import { claudeCredentialsFileReader, parseClaudeOAuthToken } from '@brobot2/runtime/claude'
 import type { ApiKeyCheck } from '../../../shared/runtime-ipc'
 import { bodyOf, checkKeyModelList, KEY_CHECK_TIMEOUT_MS, refusedAt, succeeded } from '../key-check'
 
@@ -13,8 +23,7 @@ export function aLoginRunsWithoutAKey(
   platform: NodeJS.Platform = process.platform,
   readClaudeLogin: () => string | null = () => claudeCredentialsFileReader()(),
 ): boolean {
-  if (!providerDescriptor('claude').apiKey.windowsLoginNeedsFile || platform !== 'win32')
-    return true
+  if (!KEY_CHECK.windowsLoginNeedsFile || platform !== 'win32') return true
   try {
     return parseClaudeOAuthToken(readClaudeLogin(), 0) !== null
   } catch {
@@ -62,10 +71,10 @@ function cannotPay(status: number, body: unknown): boolean {
 
 /** The native one-token billing check, after the same no-cost list request. */
 async function checkClaudeKey(key: string, fetchFor: typeof fetch = fetch): Promise<ApiKeyCheck> {
-  const checked = await checkKeyModelList(providerDescriptor('claude').apiKey, key, fetchFor)
+  const checked = await checkKeyModelList(KEY_CHECK, key, fetchFor)
   if ('answer' in checked) return checked.answer
   const { listed, issuer, headers, unreachable } = checked
-  if (!providerDescriptor('claude').apiKey.spendsToken) return { ok: true }
+  if (!KEY_CHECK.spendsToken) return { ok: true }
   const model = theCheapestModel(modelIdsIn(await bodyOf(listed)))
   if (model === null) return { ok: true }
   let asked: Response

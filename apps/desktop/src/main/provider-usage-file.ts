@@ -4,6 +4,13 @@ import { MAX_INSTANT } from '../shared/clock'
 import type { ProviderUsageReading, UsageWindowSeen } from '../shared/runtime-ipc'
 import type { AppDatabase } from './db/connection'
 import { importSideFile, objectIn } from './db/side-file-import'
+import { isRecordedAccountTag } from './providers/index'
+
+/** Existing opaque identities plus legacy tags, which remain distinct from new namespaces. */
+const opaqueTag = (tag: unknown): tag is string =>
+  typeof tag === 'string' &&
+  (isRecordedAccountTag(tag) ||
+    /^(?:[0-9a-f]{32}|(?:credential|account):[0-9a-f]{64}|api-revision:[0-9]+)$/.test(tag))
 
 /** The file older builds kept these readings in, imported once into the `provider_usage_*` tables. */
 export const PROVIDER_USAGE_FILE = 'provider-usage.json'
@@ -116,7 +123,7 @@ export function importProviderUsageFile(database: AppDatabase, userData: string)
                   usedPercent: typeof usedPercent === 'number' ? usedPercent : null,
                   resetsAt: time(resetsAt) ? resetsAt : null,
                   at,
-                  ...(typeof account === 'string' ? { account } : {}),
+                  ...(opaqueTag(account) ? { account } : {}),
                 },
               ]
             : [],
@@ -128,7 +135,7 @@ export function importProviderUsageFile(database: AppDatabase, userData: string)
         ),
       ),
       readOn: Object.fromEntries(
-        SUPPORTED_PROVIDERS.flatMap((p) => (typeof tags[p] === 'string' ? [[p, tags[p]]] : [])),
+        SUPPORTED_PROVIDERS.flatMap((p) => (opaqueTag(tags[p]) ? [[p, tags[p]]] : [])),
       ),
     })
   })

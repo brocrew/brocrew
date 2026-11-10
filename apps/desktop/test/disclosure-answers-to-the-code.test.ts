@@ -2,18 +2,13 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import {
-  CODEX_MEMORY_SETTINGS,
-  mergeCodexMemoryConfig,
-  SUPPORTED_PROVIDERS,
-} from '@brobot2/runtime'
+import { CODEX_MEMORY_SETTINGS, mergeCodexMemoryConfig } from '@brobot2/runtime/codex'
+import { SUPPORTED_PROVIDERS } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import {
-  CLAUDE_SDK_OPTIONS,
-  CODEX_THREAD_START_CLAIMS,
-  readProviderConfig,
-  type SdkOptionClaim,
-} from '../src/main/runtime/provider-config'
+import { CLAUDE_SDK_OPTIONS } from '@brobot2/runtime/claude'
+import { CODEX_THREAD_START_CLAIMS } from '@brobot2/runtime/codex'
+import { readProviderConfig } from '../src/main/runtime/provider-config'
+import { type SdkOptionClaim } from '@brobot2/runtime'
 
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const REPO = join(HERE, '../../..')
@@ -175,7 +170,8 @@ describe('the provider disclosure answers to the adapter (308)', () => {
 
   it('⚠️ the Codex block names the files the code names', () => {
     const owners =
-      read('packages/runtime/src/internal/auth.ts') +
+      read('packages/runtime/src/claude/auth.ts') +
+      read('packages/runtime/src/codex/auth.ts') +
       read('packages/runtime/src/codex/stale-permission-config.ts') +
       read('packages/runtime/src/codex/kept-tool-approvals.ts') +
       read('packages/runtime/src/codex/codex-runtime.ts')

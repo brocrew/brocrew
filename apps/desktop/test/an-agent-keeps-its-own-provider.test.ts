@@ -9,11 +9,10 @@ import {
   AuthUnavailableError,
   FakeProviderSessions,
   FakeRuntime,
-  codexAuthStateFrom,
-  provisionCodexAuth,
   type AgentToolset,
   type StartOptions,
 } from '@brobot2/runtime'
+import { provisionCodexAuth, codexAuthStateFrom } from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

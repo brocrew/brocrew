@@ -18,8 +18,9 @@ import {
   findClaudeProgram,
   updateCommandFor,
   type ClaudeProgramContext,
-} from '../src/main/runtime/claude-program'
-import { claudeAnswer, providerVersionsReader } from '../src/main/runtime/provider-versions'
+} from '../src/main/providers/claude/program'
+import { claudeAnswer } from '../src/main/providers/claude/program-versions'
+import { providerVersionsReader } from '../src/main/providers/index'
 import { A_STANDING_WARNS } from '../src/shared/runtime-ipc'
 
 const versionProgram = vi.hoisted(() => ({

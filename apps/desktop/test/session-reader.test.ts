@@ -12,7 +12,10 @@ import { fileURLToPath } from 'node:url'
 import { existsSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { afterEach, describe, expect, it } from 'vitest'
-import { importCodexRollout, readCodexRolloutMeta } from '../src/main/archive/import-codex'
+import {
+  importCodexRollout,
+  readCodexRolloutMeta,
+} from '../src/main/providers/codex/import-transcript'
 import {
   MAX_WHOLE_TRANSCRIPT_BYTES,
   readTranscript,

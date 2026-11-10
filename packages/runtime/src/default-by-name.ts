@@ -1,18 +1,11 @@
-import { providerValue, type Provider } from '@brobot2/shared'
-import { CLAUDE_DEFAULT_BY_NAME } from './claude/default-by-name'
+import { providerDescriptor, type Provider } from '@brobot2/shared'
 
-/** ⚑ **D-042 · a model and the effort it runs at, both named.** */
 export interface ModelByName {
   readonly model: string
   readonly effort: string
 }
 
-/**
- * 🔴 **D-042 · R1 — a provider's own default, BY NAME, when it can be named without asking** —
- * Claude's {@link CLAUDE_DEFAULT_BY_NAME}; `null` for Codex, whose default is the row its
- * `model/list` marks `isDefault` (`ModelChoice.isDefault`), with that row's own default effort.
- * ⛔ `null` is *read the list*, never *send nothing*.
- */
+/** Null means the provider reports its default through its model list. */
 export function theDefaultByName(provider: Provider): ModelByName | null {
-  return providerValue(provider, { claude: CLAUDE_DEFAULT_BY_NAME, codex: null })
+  return providerDescriptor(provider).defaultModelByName
 }

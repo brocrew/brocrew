@@ -13,8 +13,8 @@ import {
   pathsNaming,
   type Marker,
 } from '../../../scripts/lib/personal-home-guard.mjs'
-import { claudeKeychainTokenProvider, claudeProjectDirName } from '../src/index'
-import type { CodexTransport } from '../src/index'
+import { claudeKeychainTokenProvider, claudeProjectDirName } from '../src/claude'
+import type { CodexTransport } from '../src/codex'
 import { buildChildEnv } from '../src/internal/child-env'
 import { bundledCodexTransportFactory } from './bundled-codex'
 import { runScratch } from './run-paths'

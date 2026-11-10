@@ -1,29 +1,22 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import {
-  FakeProviderSessions,
   FakeRuntime,
   RejectedSessionLaunch,
   ResumeError,
   StoppedBeforeSend,
   withManagedPluginAttachments,
-  type AgentRuntime,
   type SessionHandle,
   type SessionRef,
 } from '@brobot2/runtime'
+import { ClaudeRuntime } from '@brobot2/runtime/claude'
+import { CodexRuntime } from '@brobot2/runtime/codex'
 import type { Provider, ProviderConnection } from '@brobot2/shared'
-import * as providers from '../src/main/providers'
-
-type Bind = (
-  provider: Provider,
-  create: () => AgentRuntime,
-  resolve: (connectionId?: string | null) => ProviderConnection,
-  connectionId?: string | null,
-  revision?: () => number,
-) => AgentRuntime
+import { createProviderModules } from '../src/main/providers'
 
 const handles: SessionHandle[] = []
 afterEach(async () => {
   await Promise.all(handles.splice(0).map((handle) => handle.close()))
+  vi.restoreAllMocks()
 })
 
 function record(provider: Provider, method: 'sign-in' | 'api-key'): ProviderConnection {
@@ -32,96 +25,118 @@ function record(provider: Provider, method: 'sign-in' | 'api-key'): ProviderConn
     provider,
     name: method === 'sign-in' ? 'subscription' : 'API key',
     authMethod: method,
-    credentialSource: method === 'sign-in' ? 'provider-sign-in' : 'provider-api-key',
+    credentialSource: method === 'api-key' ? 'provider-api-key' : 'provider-sign-in',
     baseUrl: null,
     enabled: true,
     contractVersion: 1,
   }
 }
 
-function fixture(provider: Provider, selected?: string | null) {
-  const bind = Reflect.get(providers, 'onProviderConnection') as Bind | undefined
-  expect(bind, 'the registered connection runtime boundary').toBeTypeOf('function')
-  if (!bind) throw new Error('Connection runtime boundary is absent')
-  const state = { current: record(provider, 'sign-in'), revision: 0 }
-  const runtimes: FakeRuntime[] = []
-  const sessions = new FakeProviderSessions()
-  const create = vi.fn(() => {
-    const runtime = new FakeRuntime(provider, { sessions })
-    runtimes.push(runtime)
-    return runtime
+function fixture(provider: Provider) {
+  let current = record(provider, 'sign-in')
+  const resolve = vi.fn(() => current)
+  const key = vi.fn(() => {
+    throw new Error('No credential read in a composition test')
   })
-  const resolve = vi.fn((id?: string | null) => {
-    if (id != null && id !== state.current.id) throw new Error('Connection unavailable')
-    return state.current
-  })
+  const modules = createProviderModules(
+    (one) => ({
+      managedRoot: '/fictional/homes',
+      defaultProfile: 'fern',
+      homeOf: (profile) => `/fictional/${profile}/${one}`,
+      profiles: () => ['fern'],
+      assertMayOpen: () => {},
+    }),
+    {
+      claude: { runtime: { program: () => '/fictional/claude', key }, home: {}, auth: {} },
+      codex: {
+        runtime: { command: () => '/fictional/codex' },
+        home: {},
+        auth: { command: () => '/fictional/codex' },
+      },
+    },
+    () => ({ list: () => [current], resolve }),
+  )
+  const selected = modules[provider].connections!.resolve()
   return {
-    runtime: bind(provider, create, resolve, selected, () => state.revision),
-    state,
-    runtimes,
-    sessions,
-    create,
+    runtime: modules[provider].createRuntime(),
     resolve,
+    key,
+    selected,
+    change: () => {
+      current = record(provider, 'api-key')
+    },
   }
 }
 
 for (const provider of ['claude', 'codex'] as const) {
-  it(`${provider}: binding does no setup, then each legacy launch resolves the current method`, async () => {
+  it(`${provider}: constructs the concrete adapter without a connection runtime wrapper`, () => {
     const f = fixture(provider)
-    expect(f.create).not.toHaveBeenCalled()
-    expect(f.resolve).not.toHaveBeenCalled()
-    const first = await f.runtime.start({
-      cwd: '/fictional/fern',
-      providerHome: '/fictional/fern/state',
-    })
-    handles.push(first)
-    expect(Reflect.get(first, 'connectionId')).toBe(`${provider}:sign-in`)
-    expect('connectionId' in first).toBe(true)
-    f.state.current = record(provider, 'api-key')
-    const second = await f.runtime.start({
-      cwd: '/fictional/willow',
-      providerHome: '/fictional/willow/state',
-    })
-    handles.push(second)
-    expect(Reflect.get(second, 'connectionId')).toBe(`${provider}:api-key`)
-    expect(Reflect.get(first, 'connectionId')).toBe(`${provider}:sign-in`)
-    expect(f.runtimes).toHaveLength(2)
-    expect(first.ref?.cwd).toBe('/fictional/fern')
-    expect(second.ref?.cwd).toBe('/fictional/willow')
+    expect(f.runtime).toBeInstanceOf(provider === 'claude' ? ClaudeRuntime : CodexRuntime)
+    expect(f.resolve).toHaveBeenCalledTimes(1)
+    expect(f.key).not.toHaveBeenCalled()
   })
 
-  it(`${provider}: an explicit unavailable binding refuses before any runtime is created`, async () => {
-    const f = fixture(provider, `${provider}:api-key`)
-    await expect(
-      f.runtime.start({ cwd: '/fictional/fern', providerHome: '/fictional/state' }),
-    ).rejects.toThrow('Connection unavailable')
-    expect(f.create).not.toHaveBeenCalled()
-  })
-
-  it(`${provider}: a fixed binding never falls back after its key is removed`, async () => {
-    const f = fixture(provider, `${provider}:api-key`)
-    f.state.current = record(provider, 'api-key')
-    const handle = await f.runtime.start({
+  it(`${provider}: forwards the original handle and allocation callback after metadata changes`, async () => {
+    const f = fixture(provider)
+    const raw = await new FakeRuntime(provider).start({
       cwd: '/fictional/fern',
       providerHome: '/fictional/state',
     })
-    handles.push(handle)
-    f.state.current = record(provider, 'sign-in')
-    await expect(
-      f.runtime.resume(handle.ref!, { providerHome: '/fictional/state' }),
-    ).rejects.toThrow('Connection unavailable')
-    expect(f.create).toHaveBeenCalledTimes(1)
-    expect(Reflect.get(handle, 'connectionId')).toBe(`${provider}:api-key`)
+    handles.push(raw)
+    const start = vi.spyOn(f.runtime, 'start').mockImplementation(async (options) => {
+      f.change()
+      options.onSessionCreated?.(raw)
+      return raw
+    })
+    const callback = vi.fn()
+    const options = {
+      cwd: '/fictional/fern',
+      providerHome: '/fictional/state',
+      onSessionCreated: callback,
+    }
+    const handle = await f.runtime.start(options)
+    expect(handle).toBe(raw)
+    expect(callback).toHaveBeenCalledExactlyOnceWith(raw)
+    expect(start).toHaveBeenCalledExactlyOnceWith(options)
+    expect(f.resolve).toHaveBeenCalledTimes(1)
+    expect(handle).not.toHaveProperty('connectionId')
+    expect(f.selected.authMethod).toBe('sign-in')
   })
 
-  it(`${provider}: model listing uses the same admission and keeps the agent state context`, async () => {
+  it(`${provider}: forwards model results and native failures without re-resolving metadata`, async () => {
     const f = fixture(provider)
-    await f.runtime.listModels({ providerHome: '/fictional/fern/state' })
-    expect(f.resolve).toHaveBeenCalledTimes(2)
-    expect(f.create).toHaveBeenCalledTimes(1)
+    const models = [{ id: 'fictional-small', label: 'Small' }]
+    const context = { providerHome: '/fictional/state' }
+    const list = vi.spyOn(f.runtime, 'listModels').mockImplementation(async () => {
+      f.change()
+      return models
+    })
+    expect(await f.runtime.listModels(context)).toBe(models)
+    expect(list).toHaveBeenCalledExactlyOnceWith(context)
+    const failure = new Error('fictional native model error')
+    list.mockRejectedValueOnce(failure)
+    await expect(f.runtime.listModels(context)).rejects.toBe(failure)
+    expect(f.resolve).toHaveBeenCalledTimes(1)
   })
 
-  it(`${provider}: cancel before launch does no connection lookup or provider work`, async () => {
+  it(`${provider}: preserves the native typed resume refusal and its thread identity`, async () => {
+    const f = fixture(provider)
+    const ref: SessionRef = {
+      provider,
+      sessionId: 'fictional-old',
+      cwd: '/fictional/original',
+      rotation: 0,
+    }
+    const refusal = new ResumeError(ref, 'fictional missing rollout', { noSuchSession: true })
+    const resume = vi.spyOn(f.runtime, 'resume').mockRejectedValueOnce(refusal)
+    const context = { providerHome: '/fictional/state' }
+    await expect(f.runtime.resume(ref, context)).rejects.toBe(refusal)
+    expect(resume).toHaveBeenCalledExactlyOnceWith(ref, context)
+    expect(refusal.noSuchSession).toBe(true)
+    expect(f.resolve).toHaveBeenCalledTimes(1)
+  })
+
+  it(`${provider}: a pre-cancelled start and foreign transcript stay native pre-launch refusals`, async () => {
     const f = fixture(provider)
     const controller = new AbortController()
     controller.abort()
@@ -132,298 +147,75 @@ for (const provider of ['claude', 'codex'] as const) {
         signal: controller.signal,
       }),
     ).rejects.toThrow()
-    expect(f.resolve).not.toHaveBeenCalled()
-    expect(f.create).not.toHaveBeenCalled()
+    await expect(
+      f.runtime.resume(
+        {
+          provider: provider === 'claude' ? 'codex' : 'claude',
+          sessionId: 'fictional-old',
+          cwd: '/fictional/original',
+          rotation: 0,
+        },
+        { providerHome: '/fictional/state' },
+      ),
+    ).rejects.toBeInstanceOf(ResumeError)
+    expect(f.key).not.toHaveBeenCalled()
   })
 
-  for (const change of ['method', 'cancel', 'changed-back'] as const) {
-    it(`${provider}: ${change} across a launch await closes the child instead of returning false attribution`, async () => {
-      const f = fixture(provider)
-      const raw = new FakeRuntime(provider)
-      const start = raw.start.bind(raw)
-      let release!: () => void
-      let entered!: () => void
-      const arrived = new Promise<void>((resolve) => {
-        entered = resolve
-      })
-      const held = new Promise<void>((resolve) => {
-        release = resolve
-      })
-      const close = vi.fn<() => Promise<void>>()
-      vi.spyOn(raw, 'start').mockImplementation(async (options) => {
-        const handle = await start(options)
-        const original = handle.close.bind(handle)
-        close.mockImplementation(original)
-        handle.close = close
-        handles.push(handle)
-        entered()
-        await held
-        return handle
-      })
-      f.create.mockReturnValue(raw)
-      const controller = new AbortController()
-      const pending = f.runtime.start({
-        cwd: '/fictional/fern',
-        providerHome: '/fictional/state',
-        signal: controller.signal,
-      })
-      await arrived
-      if (change === 'method') f.state.current = record(provider, 'api-key')
-      else if (change === 'cancel') controller.abort()
-      else f.state.revision += 2
-      release()
-      await expect(pending).rejects.toThrow()
-      expect(close).toHaveBeenCalledTimes(1)
-      handles.pop()
-    })
-  }
-
-  it(`${provider}: a model answer is not attributed after a credential revision changed`, async () => {
+  it(`${provider}: preserves an allocated native refusal and actual exit proof without replacement`, async () => {
     const f = fixture(provider)
-    const raw = new FakeRuntime(provider)
-    vi.spyOn(raw, 'listModels').mockImplementation(async () => {
-      f.state.revision++
-      return [{ id: 'fictional-small', label: 'Small' }]
-    })
-    f.create.mockReturnValue(raw)
-    await expect(f.runtime.listModels({ providerHome: '/fictional/state' })).rejects.toThrow()
-  })
-
-  it(`${provider}: concurrent teardown calls own the underlying close exactly once`, async () => {
-    const f = fixture(provider)
-    const handle = await f.runtime.start({
+    const handle = await new FakeRuntime(provider).start({
       cwd: '/fictional/fern',
       providerHome: '/fictional/state',
     })
-    const issued = f.sessions.lookUp(handle.ref!.sessionId)
-    expect(issued).toBeDefined()
-    const innerClose = vi.spyOn(Object.getPrototypeOf(handle), 'close')
+    handles.push(handle)
+    let finish!: () => void
+    const exit = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    Object.defineProperty(handle, 'awaitProcessExit', { value: () => exit })
+    const refused = new RejectedSessionLaunch(
+      new Error('fictional handshake refusal'),
+      handle,
+      handle.close(),
+    )
+    vi.spyOn(f.runtime, 'start').mockImplementation(async (options) => {
+      options.onSessionCreated?.(handle)
+      throw refused
+    })
+    const callback = vi.fn()
     try {
-      await Promise.all([handle.close(), handle.close()])
-      expect(innerClose).toHaveBeenCalledTimes(1)
-    } finally {
-      innerClose.mockRestore()
-    }
-  })
-
-  for (const change of ['revision', 'abort'] as const) {
-    it(`${provider}: retains a privately withheld start allocation after ${change} and handshake rejection`, async () => {
-      const f = fixture(provider)
-      const raw = new FakeRuntime(provider)
-      const start = raw.start.bind(raw)
-      const controller = new AbortController()
-      let finishExit!: () => void
-      const exit = new Promise<void>((resolve) => {
-        finishExit = resolve
-      })
-      vi.spyOn(raw, 'start').mockImplementation(async (options) => {
-        const handle = await start(options)
-        handles.push(handle)
-        Object.defineProperty(handle, 'awaitProcessExit', { configurable: true, value: () => exit })
-        if (change === 'revision') f.state.revision++
-        else controller.abort()
-        options.onSessionCreated?.(handle)
-        await handle.close()
-        throw new Error('fictional rejected handshake')
-      })
-      f.create.mockReturnValue(raw)
-      const callback = vi.fn()
-      const error = await f.runtime
-        .start({
+      await expect(
+        f.runtime.start({
           cwd: '/fictional/fern',
           providerHome: '/fictional/state',
-          signal: controller.signal,
           onSessionCreated: callback,
-        })
-        .catch((error: unknown) => error)
-      try {
-        expect(callback).not.toHaveBeenCalled()
-        expect(error).toBeInstanceOf(RejectedSessionLaunch)
-        const refused = error as RejectedSessionLaunch
-        expect(refused.processExit).toBe(exit)
-        let terminated = false
-        void refused.terminated.then(() => {
-          terminated = true
-        })
-        await Promise.resolve()
-        expect(terminated).toBe(false)
-        finishExit()
-        await refused.terminated
-        expect(terminated).toBe(true)
-      } finally {
-        finishExit()
-      }
-    })
-  }
-
-  for (const withheld of [false, true]) {
-    it(`${provider}: resume rejection ${withheld ? 'retains withheld exit proof' : 'preserves forwarded typed refusal'}`, async () => {
-      const f = fixture(provider)
-      const first = await f.runtime.start({
-        cwd: '/fictional/fern',
-        providerHome: '/fictional/state',
+        }),
+      ).rejects.toBe(refused)
+      expect(callback).toHaveBeenCalledExactlyOnceWith(handle)
+      expect(refused.processExit).toBe(exit)
+      let exited = false
+      void refused.terminated.then(() => {
+        exited = true
       })
-      await first.close()
-      const raw = new FakeRuntime(provider)
-      const refusal = new ResumeError(first.ref!, 'fictional no rollout found', {
-        noSuchSession: true,
-      })
-      let finish!: () => void
-      const exit = new Promise<void>((resolve) => {
-        finish = resolve
-      })
-      vi.spyOn(raw, 'resume').mockImplementation(async (_ref, options) => {
-        const handle = await raw.start({ ...options, cwd: first.ref!.cwd })
-        handles.push(handle)
-        Object.defineProperty(handle, 'awaitProcessExit', { configurable: true, value: () => exit })
-        if (withheld) f.state.revision++
-        options.onSessionCreated?.(handle)
-        await handle.close()
-        throw refusal
-      })
-      f.create.mockReturnValue(raw)
-      const callback = vi.fn()
-      const error = await f.runtime
-        .resume(first.ref!, {
-          providerHome: '/fictional/state',
-          onSessionCreated: callback,
-        })
-        .catch((error: unknown) => error)
-      try {
-        if (withheld) {
-          expect(callback).not.toHaveBeenCalled()
-          expect(error).toBeInstanceOf(RejectedSessionLaunch)
-          expect((error as RejectedSessionLaunch).cause).toBe(refusal)
-          expect((error as RejectedSessionLaunch).processExit).toBe(exit)
-          let terminated = false
-          void (error as RejectedSessionLaunch).terminated.then(() => {
-            terminated = true
-          })
-          await Promise.resolve()
-          expect(terminated).toBe(false)
-          finish()
-          await (error as RejectedSessionLaunch).terminated
-        } else {
-          expect(callback).toHaveBeenCalledTimes(1)
-          expect(error).toBe(refusal)
-          expect((error as ResumeError).noSuchSession).toBe(true)
-        }
-      } finally {
-        finish()
-      }
-    })
-  }
-
-  for (const changed of [false, true]) {
-    it(`${provider}: start callback ${changed ? 'withholds changed binding' : 'owns the same attributed handle'}`, async () => {
-      const f = fixture(provider)
-      const raw = new FakeRuntime(provider)
-      const start = raw.start.bind(raw)
-      const innerClose = vi.fn<() => Promise<void>>()
-      vi.spyOn(raw, 'start').mockImplementation(async (options) => {
-        const handle = await start(options)
-        innerClose.mockImplementation(handle.close.bind(handle))
-        handle.close = innerClose
-        if (changed) f.state.revision++
-        options.onSessionCreated?.(handle)
-        return handle
-      })
-      f.create.mockReturnValue(raw)
-      const callback = vi.fn()
-      const pending = f.runtime.start({
-        cwd: '/fictional/fern',
-        providerHome: '/fictional/state',
-        onSessionCreated: callback,
-      })
-      if (changed) {
-        await expect(pending).rejects.toThrow()
-        expect(callback).not.toHaveBeenCalled()
-        expect(innerClose).toHaveBeenCalledTimes(1)
-      } else {
-        const handle = await pending
-        handles.push(handle)
-        expect(callback).toHaveBeenCalledTimes(1)
-        expect(callback.mock.calls[0]![0]).toBe(handle)
-        expect(Reflect.get(handle, 'connectionId')).toBe(`${provider}:sign-in`)
-      }
-    })
-  }
-
-  for (const changed of [false, true]) {
-    it(`${provider}: resume callback ${changed ? 'withholds changed binding' : 'owns the same attributed handle'}`, async () => {
-      const f = fixture(provider)
-      const first = await f.runtime.start({
-        cwd: '/fictional/fern',
-        providerHome: '/fictional/state',
-      })
-      await first.close()
-      const raw = new FakeRuntime(provider, { sessions: f.sessions })
-      const resume = raw.resume.bind(raw)
-      const innerClose = vi.fn<() => Promise<void>>()
-      vi.spyOn(raw, 'resume').mockImplementation(async (ref, options) => {
-        const handle = await resume(ref, options)
-        innerClose.mockImplementation(handle.close.bind(handle))
-        handle.close = innerClose
-        if (changed) f.state.revision++
-        options.onSessionCreated?.(handle)
-        return handle
-      })
-      f.create.mockReturnValue(raw)
-      const callback = vi.fn()
-      const pending = f.runtime.resume(first.ref!, {
-        providerHome: '/fictional/state',
-        onSessionCreated: callback,
-      })
-      if (changed) {
-        await expect(pending).rejects.toThrow()
-        expect(callback).not.toHaveBeenCalled()
-        expect(innerClose).toHaveBeenCalledTimes(1)
-      } else {
-        const handle = await pending
-        handles.push(handle)
-        expect(callback).toHaveBeenCalledTimes(1)
-        expect(callback.mock.calls[0]![0]).toBe(handle)
-        expect(handle.ref).toEqual(first.ref)
-        expect(Reflect.get(handle, 'connectionId')).toBe(`${provider}:sign-in`)
-      }
-    })
-  }
-
-  for (const changed of [
-    { provider: provider === 'claude' ? 'codex' : 'claude' },
-    { id: 'fictional-extra' },
-    { baseUrl: 'https://fictional.invalid' },
-    { enabled: false },
-    { credentialSource: 'provider-api-key' },
-    { contractVersion: 2 },
-  ]) {
-    it(`${provider}: invalid connection metadata ${JSON.stringify(changed)} cannot open a child`, async () => {
-      const f = fixture(provider)
-      Object.assign(f.state.current, changed)
-      await expect(
-        f.runtime.start({ cwd: '/fictional/fern', providerHome: '/fictional/state' }),
-      ).rejects.toThrow()
-      expect(f.create).not.toHaveBeenCalled()
-    })
-  }
-
-  it(`${provider}: a foreign transcript ref is refused without fallback or a child`, async () => {
-    const f = fixture(provider)
-    const ref: SessionRef = {
-      provider: provider === 'claude' ? 'codex' : 'claude',
-      sessionId: 'fictional-old',
-      cwd: '/fictional/original',
-      rotation: 0,
+      await Promise.resolve()
+      expect(exited).toBe(false)
+      finish()
+      await refused.terminated
+      expect(exited).toBe(true)
+    } finally {
+      finish()
     }
-    await expect(
-      f.runtime.resume(ref, { providerHome: '/fictional/original-state' }),
-    ).rejects.toThrow()
-    expect(f.create).not.toHaveBeenCalled()
   })
 }
 
-it('composed privately withheld start allocation keeps aggregate cleanup pending until actual exit', async () => {
+it('exposes the native recovery capability without lazy factory state', () => {
   const f = fixture('codex')
+  expect(f.runtime.canRecreateMissingUnusedSession).toBe(true)
+  expect(f.runtime).toBeInstanceOf(CodexRuntime)
+  expect(f.resolve).toHaveBeenCalledTimes(1)
+})
+
+it('native start allocation keeps aggregate cleanup pending until actual exit', async () => {
   const raw = new FakeRuntime('codex')
   Object.defineProperty(raw, 'canRecreateMissingUnusedSession', { value: true })
   const start = raw.start.bind(raw)
@@ -442,7 +234,6 @@ it('composed privately withheld start allocation keeps aggregate cleanup pending
     allocations++
     if (allocations === 2) {
       Object.defineProperty(handle, 'awaitProcessExit', { configurable: true, value: () => exit })
-      f.state.revision++
       options.onSessionCreated?.(handle)
       await handle.close()
       throw new Error('fictional refused late handshake')
@@ -453,7 +244,6 @@ it('composed privately withheld start allocation keeps aggregate cleanup pending
     })
     return handle
   })
-  f.create.mockReturnValue(raw)
   let reads = 0
   const route = {
     name: 'plugin-chrome',
@@ -461,7 +251,7 @@ it('composed privately withheld start allocation keeps aggregate cleanup pending
     url: 'http://127.0.0.1:8123/mcp',
     capability: 'a'.repeat(64),
   }
-  const wrapped = withManagedPluginAttachments(f.runtime, {
+  const wrapped = withManagedPluginAttachments(raw, {
     read: async () => ({ revision: String(++reads), servers: reads === 1 ? [] : [route] }),
     close: async () => {},
   })
@@ -488,72 +278,3 @@ it('composed privately withheld start allocation keeps aggregate cleanup pending
     await handle.close()
   }
 })
-
-for (const capability of [true, false, undefined]) {
-  it(`forwards the adapter recovery capability ${String(capability)} without creating runtimes on reads`, async () => {
-    const f = fixture('codex')
-    f.create.mockImplementation(() => {
-      const raw = new FakeRuntime('codex', { sessions: f.sessions })
-      Object.defineProperty(raw, 'canRecreateMissingUnusedSession', { value: capability })
-      return raw
-    })
-    for (let i = 0; i < 3; i++)
-      expect(Reflect.get(f.runtime, 'canRecreateMissingUnusedSession')).toBeUndefined()
-    expect(f.create).toHaveBeenCalledTimes(0)
-    const handle = await f.runtime.start({
-      cwd: '/fictional/capability',
-      providerHome: '/fictional/state',
-    })
-    handles.push(handle)
-    expect(Reflect.get(f.runtime, 'canRecreateMissingUnusedSession')).toBe(capability)
-    await f.runtime.listModels({ providerHome: '/fictional/state' })
-    expect(Reflect.get(f.runtime, 'canRecreateMissingUnusedSession')).toBe(capability)
-    expect(f.create).toHaveBeenCalledTimes(2)
-  })
-}
-
-it('exposes the actual adapter capability after a typed failed resume without extra factory work', async () => {
-  const f = fixture('codex')
-  const raw = new FakeRuntime('codex')
-  Object.defineProperty(raw, 'canRecreateMissingUnusedSession', { value: true })
-  const ref: SessionRef = {
-    provider: 'codex',
-    cwd: '/fictional/capability',
-    sessionId: 'missing',
-    rotation: 0,
-  }
-  vi.spyOn(raw, 'resume').mockRejectedValue(
-    new ResumeError(ref, 'fictional missing', { noSuchSession: true }),
-  )
-  f.create.mockReturnValue(raw)
-  await expect(f.runtime.resume(ref, { providerHome: '/fictional/state' })).rejects.toBeInstanceOf(
-    ResumeError,
-  )
-  expect(Reflect.get(f.runtime, 'canRecreateMissingUnusedSession')).toBe(true)
-  expect(f.create).toHaveBeenCalledTimes(1)
-  f.create.mockImplementation(() => {
-    throw new Error('fictional construction failure')
-  })
-  await expect(f.runtime.listModels({ providerHome: '/fictional/state' })).rejects.toThrow(
-    'fictional construction failure',
-  )
-  expect(Reflect.get(f.runtime, 'canRecreateMissingUnusedSession')).toBeUndefined()
-})
-
-for (const capability of [true, false, undefined]) {
-  it(`concurrent operations on an immutable adapter preserve capability ${String(capability)}`, async () => {
-    const f = fixture('codex')
-    f.create.mockImplementation(() => {
-      const raw = new FakeRuntime('codex', { sessions: f.sessions })
-      Object.defineProperty(raw, 'canRecreateMissingUnusedSession', { value: capability })
-      return raw
-    })
-    const [handle] = await Promise.all([
-      f.runtime.start({ cwd: '/fictional/concurrent', providerHome: '/fictional/state' }),
-      f.runtime.listModels({ providerHome: '/fictional/state' }),
-    ])
-    handles.push(handle)
-    expect(f.create).toHaveBeenCalledTimes(2)
-    expect(Reflect.get(f.runtime, 'canRecreateMissingUnusedSession')).toBe(capability)
-  })
-}

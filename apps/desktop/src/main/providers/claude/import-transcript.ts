@@ -4,13 +4,8 @@ import {
   type ImportedEntry,
   type ImportedTranscript,
 } from '../../archive/transcript-types'
-import {
-  assistantErrorWords,
-  FileEdits,
-  THE_CLIS_OWN_MODEL,
-  wrapUnknown,
-  type RuntimeEvent,
-} from '@brobot2/runtime'
+import { assistantErrorWords, FileEdits, THE_CLIS_OWN_MODEL } from '@brobot2/runtime/claude'
+import { wrapUnknown, type RuntimeEvent } from '@brobot2/runtime'
 
 /**
  * Turn Claude's own transcript records into the entries our ledger holds (088), so an adopted
@@ -57,7 +52,7 @@ type Record_ = Record<string, unknown>
 export function importClaudeTranscript(
   frames: string[],
   fallbackAt: number,
-  carry?: FileEdits,
+  carry?: object,
 ): ImportedTranscript {
   const entries: ImportedEntry[] = []
   let unreadable = 0
@@ -67,7 +62,7 @@ export function importClaudeTranscript(
   // rather than calling it (see the header), so the live path's `file_change` emission did not come
   // along for free. Review found it; the line-at-a-time conformance pass could not, because both
   // sides were silent. Carried in and out for the same reason `lastAt` is — see the field.
-  const edits = carry ?? new FileEdits()
+  const edits = (carry as FileEdits | undefined) ?? new FileEdits()
 
   for (const frame of frames) {
     let record: Record_

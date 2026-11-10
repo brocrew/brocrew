@@ -1,5 +1,4 @@
 import type { TranscriptEvent } from '../../shared/conversation-events'
-import type { FileEdits } from '@brobot2/runtime'
 
 /** One rebuilt entry, and when the provider says it happened. */
 export interface ImportedEntry {
@@ -28,7 +27,7 @@ export interface ImportedTranscript {
    * file change and `parsing in batches is parsing in one call` went red, which is exactly the
    * invariant it was written to protect.
    */
-  edits: FileEdits
+  edits: object | undefined
 }
 
 /** Whether an imported entry is CONVERSATION, as opposed to the file's own bookkeeping. */

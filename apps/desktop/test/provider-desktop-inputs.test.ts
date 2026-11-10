@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { providerRecord } from '@brobot2/shared'
 import * as registry from '../src/main/providers'
-import { claudeAuth } from '../src/main/providers/claude'
-import { LOOK_FOR_THE_INSTALLED_ONE } from '../src/main/runtime/claude-program'
+import { claudeAuth } from '../src/main/providers/claude/index'
+import { LOOK_FOR_THE_INSTALLED_ONE } from '../src/main/providers/claude/program'
 
 type Inputs = Parameters<typeof registry.createProviderModules>[1]
 function inputsFactory(): (...args: unknown[]) => Inputs {

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
-import { providerAuthPolicies } from '../src/main/providers/auth-definitions'
-import { AuthUnavailableError, NoCodexSignInOnThisComputerError } from '@brobot2/runtime'
+import { providerAuthPolicies } from '../src/main/providers/index'
+import { AuthUnavailableError } from '@brobot2/runtime'
+import { NoCodexSignInOnThisComputerError } from '@brobot2/runtime/codex'
 import {
   A_REFUSED_ROW_SHOWS,
   A_START_ITS_SIGN_IN_REFUSED,

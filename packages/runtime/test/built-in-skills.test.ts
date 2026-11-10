@@ -1,13 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { join, win32 } from 'node:path'
-import {
-  claudeBuiltInSkillOptions,
-  isTheSamePath,
-  mayBeTheSamePath,
-  registerCodexBuiltInSkills,
-  verifyClaudeBuiltInSkills,
-  verifyCodexBuiltInSkills,
-} from '../src/built-in-skills'
+import { claudeBuiltInSkillOptions, verifyClaudeBuiltInSkills } from '../src/claude/built-in-skills'
+import { isTheSamePath, mayBeTheSamePath } from '../src/built-in-skills'
+import { registerCodexBuiltInSkills, verifyCodexBuiltInSkills } from '../src/codex/built-in-skills'
 import type { BuiltInSkillsContext } from '../src/runtime'
 
 const names = ['delegate', 'hand-back', 'split-work', 'ask-and-wait', 'remember', 'build-software']

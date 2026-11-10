@@ -30,6 +30,14 @@
     "./plugin-failure": {
       "types": "./src/managed-plugin-failure.ts",
       "default": "./src/managed-plugin-failure.ts"
+    },
+    "./claude": {
+      "types": "./src/claude.ts",
+      "default": "./src/claude.ts"
+    },
+    "./codex": {
+      "types": "./src/codex.ts",
+      "default": "./src/codex.ts"
     }
   },
   "scripts": {

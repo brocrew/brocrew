@@ -2,12 +2,8 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
-import {
-  CodexRuntime,
-  type CodexIncoming,
-  type CodexTransport,
-  type SessionHandle,
-} from '../../../packages/runtime/src/index'
+import type { SessionHandle } from '@brobot2/runtime'
+import { CodexRuntime, type CodexIncoming, type CodexTransport } from '@brobot2/runtime/codex'
 import { AsyncQueue } from '../../../packages/runtime/src/internal/async-queue'
 import { CODEX_PROTOCOL_VERSION } from '../../../packages/runtime/src/codex/protocol-version'
 import {

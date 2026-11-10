@@ -4,10 +4,11 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Database from 'better-sqlite3'
-import { ClaudeRuntime, FakeRuntime, claudeProjectDirName, parseSessionRef } from '@brobot2/runtime'
+import { ClaudeRuntime, claudeProjectDirName } from '@brobot2/runtime/claude'
+import { FakeRuntime, parseSessionRef } from '@brobot2/runtime'
 import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
+import { discoverCodexSessions } from '../src/main/providers/codex/discovery'
 import {
-  discoverCodexSessions,
   discoverSessionsIn,
   type ChildDescent,
   type Discovery,

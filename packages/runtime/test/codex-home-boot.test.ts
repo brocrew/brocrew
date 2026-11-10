@@ -2,13 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  AuthUnavailableError,
-  CodexRuntime,
-  ResumeError,
-  type CodexIncoming,
-  type CodexTransport,
-} from '../src/index'
+import { AuthUnavailableError, ResumeError } from '../src/index'
+import { CodexRuntime, type CodexIncoming, type CodexTransport } from '../src/codex'
 import { AsyncQueue } from '../src/internal/async-queue'
 import {
   CodexHomeBootAbandoned,

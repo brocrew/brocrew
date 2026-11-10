@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { CODEX_TOOLS_DESCRIPTION } from '@brobot2/runtime'
+import { CODEX_TOOLS_DESCRIPTION } from '@brobot2/runtime/codex'
 import { sizesAdded } from '../../../shared/what-this-agent-was-given'
 import { repositoryConventionChain } from '../repository-instructions'
 import type { GivenPolicy } from '../given-policy'
@@ -47,6 +47,7 @@ export const given: GivenPolicy = {
 
 /** A budget attached to persisted native-read records, including records read across providers. */
 export const recordedNativeRead = {
+  matches: (kind: string) => kind === 'read-by-codex',
   mayBeCut: (bytes: number, truncated: boolean) => bytes > CODEX_PROJECT_DOC_BUDGET || truncated,
   why: PAST_CODEX_BUDGET,
 }

@@ -1,4 +1,4 @@
-import { recordedScheduleReceiptProvider } from '../providers/definitions'
+import { recordedScheduleReceiptProvider } from '../providers/index'
 import { createHash } from 'node:crypto'
 import type { ScheduleReceipt } from '@brobot2/runtime'
 import type { ScheduleEvidenceRow } from '../db/session-store'

@@ -6,9 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   A_CHECK_NOT_ANSWERED_SAYS,
   type AuthState,
-  type CodexLoginOutcome,
   type ReprovisionOutcome,
 } from '@brobot2/runtime'
+import { type CodexLoginOutcome } from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
@@ -17,7 +17,8 @@ import {
   signInNotChecked,
   type RuntimeEventSink,
 } from '../src/main/runtime/runtime-host'
-import type { CodexSignIn, ProviderAuthOps } from '../src/main/runtime/provider-homes'
+import type { CodexSignIn } from '../src/main/providers/codex/types'
+import type { ProviderAuthOps } from '../src/main/runtime/provider-homes'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 
 /**

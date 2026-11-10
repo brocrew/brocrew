@@ -1,8 +1,7 @@
 import { closeSync, openSync, readSync, statSync, watch, type FSWatcher } from 'node:fs'
 import { type Provider } from '@brobot2/shared'
-import { FileEdits } from '@brobot2/runtime'
 import type { ImportedEntry, ImportedTranscript } from './transcript-types'
-import { providerDefinitions } from '../providers/definitions'
+import { providerDefinitions } from '../providers/index'
 import { readLines } from './native-file'
 
 /**
@@ -154,8 +153,7 @@ export const MAX_WHOLE_TRANSCRIPT_BYTES = 64 * 1024 * 1024
  */
 export function readTranscript(source: TranscriptSource): ImportedTranscript {
   const size = sizeOf(source.path)
-  if (size === 0)
-    return { entries: [], unreadable: 0, lastAt: source.fallbackAt, edits: new FileEdits() }
+  if (size === 0) return { entries: [], unreadable: 0, lastAt: source.fallbackAt, edits: undefined }
   if (size > MAX_WHOLE_TRANSCRIPT_BYTES) {
     throw new Error(
       `${source.path} is ${size} bytes, over readTranscript's ${MAX_WHOLE_TRANSCRIPT_BYTES}-byte ceiling — ` +

@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SUPPORTED_PROVIDERS } from '@brobot2/shared'
-import { claudeAutoMemoryIndex, codexAdHocNotesDir, codexMemoryDir } from '@brobot2/runtime'
+import { claudeAutoMemoryIndex } from '@brobot2/runtime/claude'
+import { codexAdHocNotesDir, codexMemoryDir } from '@brobot2/runtime/codex'
 import {
   memoryStoreCounts,
   readAgentMemoryPage,

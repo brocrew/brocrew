@@ -10,7 +10,7 @@ import {
   claudeLoginState,
   claudeSetup,
   whyNoClaudeLogin,
-} from '../src/internal/auth'
+} from '../src/claude/auth'
 
 /**
  * # The sign-in command runs the Claude Code BroBot found

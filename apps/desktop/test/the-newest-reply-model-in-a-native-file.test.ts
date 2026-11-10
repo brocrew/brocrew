@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { newestReplyModel } from '../src/main/archive/native-file'
+import { newestReplyModel } from '../src/main/providers/claude/native-record'
 
 /**
  * # 20f1a2a0 · feat(panel): who-called-whom says what each conversation last reported

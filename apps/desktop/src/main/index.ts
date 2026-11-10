@@ -1,9 +1,9 @@
 import { pluginStartupTrace } from './plugins/startup-failure'
 import type { HandedPath } from '../shared/attachment-contracts'
-import { providerSetupServices } from './providers/program-compat'
+import { providerSetupServices } from './providers/index'
 import { setupProcesses } from './provider-setup/process'
 import { registerProviderSetup } from './provider-setup/ipc'
-import { providerKnowledge } from './providers/knowledge-definitions'
+import { providerKnowledge } from './providers/index'
 import { workspaceLaunchMessage } from './workspace-routing'
 import { WorkspacePluginAttachments } from './plugins/attachments'
 import { pluginWorkspaceIdentity } from './plugins/supervisor/client'
@@ -221,7 +221,7 @@ import {
 import { importTurnsTheAppCutFile, turnsTheAppCutIn } from './turns-the-app-cut-file'
 import { providerAccountsFile, readKeptAccounts, writeKeptAccounts } from './provider-accounts-file'
 import { readKeptRules, removeKeptRule, type WhereRulesAreKept } from './kept-rules'
-import startTheLocator from './local-settings-locator.worker?nodeWorker'
+import { startSettingsLocator } from './providers'
 import { settingsLocations } from './settings-locations'
 import { snapshotFor } from './provider-snapshots'
 import { ASSET_SCHEME_PRIVILEGES, installAssetProtocol } from './asset-protocol'
@@ -847,7 +847,6 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
           connectionId,
           keySaved: apiKeys.status(provider).set,
         }),
-      revision: () => apiKeys.revision(provider),
     }),
   )
   const providerAuth = providerAuthFromModules(providerModules)
@@ -934,14 +933,16 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     },
     // Resolve the bundled Codex by absolute path, independent of PATH and the user's installed
     // version. Resolve per launch so a missing binary is reported on the command that needs it.
-    createRuntime: (provider, connectionId) =>
-      providerModules[provider].createRuntime(connectionId),
+    createRuntime: (provider) => providerModules[provider].createRuntime(),
+    prepareProviderLaunch: (provider, profileId, connection) => {
+      transcriptRetention?.beforeLaunch()
+      return providerModules[provider].prepareLaunch(profileId, connection)
+    },
     connectionFor: (provider, connectionId) => {
       const connections = providerModules[provider].connections
       if (!connections) throw new Error('Provider connection services were not bound')
-      return connections.resolve(connectionId).id
+      return connections.resolve(connectionId)
     },
-    connectionRevision: (provider) => apiKeys.revision(provider),
     listConnections: () =>
       Object.values(providerModules).flatMap((module) => module.connections?.list() ?? []),
     // Derive the profile from the session; keep its provider home under `HOME_FOLDER`.
@@ -2777,9 +2778,11 @@ void runAsSoleInstance({
  * must never make the window wait. The worker answers once and ends; one that stops without an
  * answer, or takes longer than git's own timeout for every folder, is a failed refresh.
  */
-function locateOffTheMainThread(folders: readonly string[]): Promise<ReadonlyMap<string, string>> {
+async function locateOffTheMainThread(
+  folders: readonly string[],
+): Promise<ReadonlyMap<string, string>> {
+  const worker = await startSettingsLocator()
   return new Promise((resolve, reject) => {
-    const worker = startTheLocator({})
     let settled = false
     const settle = (then: () => void): void => {
       if (settled) return

@@ -11,16 +11,14 @@ import {
 import { expect, it } from 'vitest'
 import {
   CodexRuntime,
-  claudeKeychainTokenProvider,
-  codexAuthHealth,
-  provisionCodexAuth,
-  provisionProviderHome,
   type CodexIncoming,
   type CodexLaunchContext,
   type CodexTransport,
-  type RuntimeEvent,
-  type SessionHandle,
-} from '../src/index'
+  codexAuthHealth,
+  provisionCodexAuth,
+} from '../src/codex'
+import { claudeKeychainTokenProvider } from '../src/claude'
+import { provisionProviderHome, type RuntimeEvent, type SessionHandle } from '../src/index'
 import { buildChildEnv } from '../src/internal/child-env'
 import { bundledCodexBinary, bundledCodexTransportFactory } from './bundled-codex'
 import { runEvidence, runScratch } from './run-paths'

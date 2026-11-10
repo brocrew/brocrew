@@ -1,4 +1,4 @@
-import { legacySharedSkillProvider } from '../providers/knowledge-definitions'
+import { legacySharedSkillProvider } from '../providers/index'
 import { assertSkillPathsAreReal } from './skill-paths'
 import { flushSkillTree } from './flush-skill-tree'
 import { createHash, randomUUID } from 'node:crypto'

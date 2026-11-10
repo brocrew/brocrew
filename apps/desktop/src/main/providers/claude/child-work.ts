@@ -1,6 +1,7 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
-import { claudeProjectDirName, claudeTranscriptPath, type SessionRef } from '@brobot2/runtime'
+import { claudeProjectDirName, claudeTranscriptPath } from '@brobot2/runtime/claude'
+import { type SessionRef } from '@brobot2/runtime'
 import { readChildFile, MAX_CHILD_WORK_BYTES, type ChildWorkPart } from '../../child-work-file'
 import { realPathOf, type ReadRefusal, type TextFile } from '../../read-text-file'
 import { importClaudeTranscript } from './import-transcript'

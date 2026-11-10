@@ -44,12 +44,9 @@ import {
   composeSystemHint,
   readSessionInstructions,
 } from '../src/main/runtime/instructions'
-import {
-  CLAUDE_INSTRUCTIONS_FILE,
-  CODEX_INSTRUCTIONS_FILE,
-  WORKSPACE_INSTRUCTIONS,
-  workspaceInstructionFiles,
-} from '../src/main/runtime/workspace'
+import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
+import { CODEX_INSTRUCTIONS_FILE } from '../src/main/providers/codex/layout.mjs'
+import { WORKSPACE_INSTRUCTIONS, workspaceInstructionFiles } from '../src/main/runtime/workspace'
 import {
   ASSIGNMENT_REACH_ADMITS,
   CAPABILITY_FIELDS,

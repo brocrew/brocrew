@@ -6,20 +6,20 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { TheCliAnswersInOrder } from '../../../packages/runtime/test/the-cli-answers-in-order'
+import { AuthUnavailableError } from '@brobot2/runtime'
 import {
-  AuthUnavailableError,
   CLAUDE_LOGIN_RENEWED,
-  ClaudeRuntime,
   type ClaudeLoginRenewal,
-} from '@brobot2/runtime'
+  ClaudeRuntime,
+} from '@brobot2/runtime/claude'
 import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { ProviderAuthOps } from '../src/main/providers/auth-operations'
-import { claudeAuth, prepareOnTheLogin } from '../src/main/providers/claude'
-import { claudeLoginRenewer } from '../../../packages/runtime/src/internal/claude-login-renewal'
+import { claudeAuth, prepareOnTheLogin } from '../src/main/providers/claude/index'
+import { claudeLoginRenewer } from '../../../packages/runtime/src/claude/login-renewal'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { createSessionStore as createRendererStore } from '../src/renderer/src/lib/session-store'
 import type { SessionRecord } from '../src/renderer/src/lib/session-record'

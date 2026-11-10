@@ -7,17 +7,19 @@ import { query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claud
 import { expect, it } from 'vitest'
 import {
   CodexRuntime,
-  buildChildEnv,
-  claudeKeychainTokenProvider,
-  codexAuthHealth,
-  provisionCodexAuth,
-  provisionProviderHome,
   type CodexIncoming,
   type CodexLaunchContext,
   type CodexTransport,
+  codexAuthHealth,
+  provisionCodexAuth,
+} from '../src/codex'
+import {
+  buildChildEnv,
+  provisionProviderHome,
   type RuntimeEvent,
   type SessionHandle,
 } from '../src/index'
+import { claudeKeychainTokenProvider } from '../src/claude'
 import { bundledCodexBinary, bundledCodexTransportFactory } from './bundled-codex'
 import { runEvidence, runScratch } from './run-paths'
 

@@ -10,7 +10,11 @@ import { transcripts } from './transcripts'
 import { discovery } from './discovery'
 import {
   AuthUnavailableError,
-  ClaudeRuntime,
+  type AgentRuntime,
+  type AuthHealth,
+  type AuthState,
+} from '@brobot2/runtime'
+import {
   claudeAuthHealthAsync,
   whyNoClaudeLogin,
   claudeKeychainTokenProvider,
@@ -21,11 +25,9 @@ import {
   claudeKeychainTokenProviderAsync,
   claudeLoginState,
   claudeLoginStateWithAKey,
-  type AgentRuntime,
-  type AuthHealth,
-  type AuthState,
   type ClaudeLoginRenewal,
-} from '@brobot2/runtime'
+  ClaudeRuntime,
+} from '@brobot2/runtime/claude'
 import { ApiKeyUnreadableError } from '../api-key-error'
 import { prepareStateHome } from '../home'
 import type { LoginRenewalOperations, LoginRenewalOutcome } from '../auth-types'
@@ -42,10 +44,12 @@ export interface ClaudeRuntimeSeams {
   readonly programFound?: () => string | null
   readonly key?: () => string | null | Promise<string | null>
   readonly managedRoot?: string
+  readonly launchLogin?: () => Promise<string | null>
 }
 export interface ClaudeHomeSeams {
   readonly provisionHome?: ProvisionHome
   readonly health?: () => AuthHealth | Promise<AuthHealth>
+  readonly login?: () => Promise<string | null>
   readonly key?: () => string | null | Promise<string | null>
   readonly programFound?: () => string | null
 }
@@ -66,10 +70,11 @@ function claudeCommandFor(seams: { readonly programFound?: () => string | null }
 async function claudeHealth(
   apiKey: (() => string | null | Promise<string | null>) | undefined,
   command: () => string,
+  login = claudeKeychainTokenProviderForALaunch(),
 ): Promise<AuthHealth> {
   try {
     return await claudeAuthHealthAsync(
-      claudeKeychainTokenProviderForALaunch(),
+      login,
       apiKey === undefined ? undefined : () => apiKey(),
       command,
     )
@@ -104,18 +109,19 @@ export async function prepareOnTheLogin(
 }
 
 export function claudeRuntime(seams: ClaudeRuntimeSeams): AgentRuntime {
+  const key = seams.key
   return new ClaudeRuntime(
     undefined,
     undefined,
     claudeKeychainTokenProvider(),
     claudeKeychainTokenProviderAsync(),
     undefined,
-    seams.key === undefined ? undefined : () => seams.key?.() ?? null,
+    key === undefined ? undefined : () => key() ?? null,
     undefined,
 
     () => whyNoClaudeLogin({ command: claudeCommandFor(seams) }),
     seams.program(),
-    claudeKeychainTokenProviderForALaunch(),
+    seams.launchLogin ?? claudeKeychainTokenProviderForALaunch(),
     seams.managedRoot,
   )
 }
@@ -127,7 +133,8 @@ export async function prepareClaudeHome(
 ): Promise<string> {
   const home = await prepareStateHome(paths, profileId, seams.provisionHome)
 
-  const health = await (seams.health ?? (() => claudeHealth(seams.key, claudeCommandFor(seams))))()
+  const key = seams.key
+  const health = await (seams.health ?? (() => claudeHealth(key, claudeCommandFor(seams))))()
   if (!health.ok) {
     throw new AuthUnavailableError('claude', health.reason ?? 'Claude machine login unavailable')
   }
@@ -251,6 +258,34 @@ export function createClaudeModule(
     keptRules,
     discovery,
     createRuntime: claudeModuleFactory.runtime(seams.runtime),
+    async prepareLaunch(profileId, connection) {
+      let key: string | null
+      try {
+        const readKey = seams.runtime.key ?? seams.home.key
+        key = connection?.authMethod === 'sign-in' ? null : ((await readKey?.()) ?? null)
+        if (connection?.authMethod === 'api-key' && !key)
+          throw new AuthUnavailableError('claude', 'The selected API key is unavailable')
+      } catch (error) {
+        if (error instanceof ApiKeyUnreadableError)
+          throw new AuthUnavailableError('claude', error.message)
+        throw error
+      }
+      const selectedKey = () => key
+      const readLogin = seams.home.login ?? claudeKeychainTokenProviderForALaunch()
+      let login: Promise<string | null> | undefined
+      const selectedLogin = () => (login ??= readLogin())
+      const home = await prepareClaudeHome(paths, profileId, {
+        ...seams.home,
+        key: selectedKey,
+        health:
+          seams.home.health ??
+          (() => claudeHealth(selectedKey, claudeCommandFor(seams.home), selectedLogin)),
+      })
+      return {
+        home,
+        runtime: claudeRuntime({ ...seams.runtime, key: selectedKey, launchLogin: selectedLogin }),
+      }
+    },
     home: claudeModuleFactory.home(paths, seams.home),
     auth: claudeModuleFactory.auth(paths, seams.auth),
   }

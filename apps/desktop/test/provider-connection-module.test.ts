@@ -47,12 +47,7 @@ it('registers connection operations inside modules without probing a program, lo
       expect(operations).toBeDefined()
       expect(operations?.list().map((item) => item.id)).toEqual([`${provider}:sign-in`])
       expect(operations?.resolve().id).toBe(`${provider}:sign-in`)
-      const runtime = Reflect.apply(modules[provider].createRuntime, modules[provider], [
-        `${provider}:api-key`,
-      ])
-      await expect(runtime.listModels({ providerHome: '/fictional/fern/state' })).rejects.toThrow(
-        'connection',
-      )
+      expect(() => operations?.resolve(`${provider}:api-key`)).toThrow('connection')
     }
     expect(sideEffect).not.toHaveBeenCalled()
   } finally {

@@ -16,7 +16,7 @@ import {
   type Hit,
   type Marker,
 } from '../../../scripts/lib/personal-home-guard.mjs'
-import { claudeKeychainTokenProvider, claudeProjectDirName } from '../src/index'
+import { claudeKeychainTokenProvider, claudeProjectDirName } from '../src/claude'
 import { SessionCrons } from '../src/claude/session-crons'
 import type { ScheduledWorkEvent } from '../src/events'
 import { buildChildEnv } from '../src/internal/child-env'

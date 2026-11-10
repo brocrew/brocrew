@@ -4,11 +4,11 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   CodexRuntime,
-  type AgentRuntime,
   type CodexIncoming,
   type CodexLaunchContext,
   type CodexTransport,
-} from '@brobot2/runtime'
+} from '@brobot2/runtime/codex'
+import { type AgentRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { CODEX_PROTOCOL_VERSION } from '../../../../packages/runtime/src/codex/protocol-version'
 import type { ModelListResponse } from '../../../../packages/runtime/src/codex/protocol/v2/ModelListResponse'

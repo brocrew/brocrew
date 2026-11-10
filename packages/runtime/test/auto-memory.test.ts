@@ -10,7 +10,7 @@ import {
   claudeAutoMemoryIndex,
   claudeProjectDirName,
   isClaudeMemoryTopic,
-} from '../src/index'
+} from '../src/claude'
 
 /**
  * **Where the agent's own memory lives, and whether it can be moved** (165, re-decided at 166).

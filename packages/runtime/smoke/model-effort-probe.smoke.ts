@@ -14,7 +14,7 @@ import {
   pathsNaming,
   type Marker,
 } from '../../../scripts/lib/personal-home-guard.mjs'
-import { claudeKeychainTokenProvider, claudeProjectDirName } from '../src/index'
+import { claudeKeychainTokenProvider, claudeProjectDirName } from '../src/claude'
 import { buildChildEnv } from '../src/internal/child-env'
 
 /**

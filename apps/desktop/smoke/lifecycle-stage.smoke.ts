@@ -5,15 +5,10 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { expect, it } from 'vitest'
-import {
-  ClaudeRuntime,
-  CodexRuntime,
-  claudeKeychainTokenProvider,
-  codexAuthHealth,
-  provisionCodexAuth,
-  provisionProviderHome,
-  type AgentRuntime,
-} from '@brobot2/runtime'
+import { ClaudeRuntime, claudeKeychainTokenProvider } from '@brobot2/runtime/claude'
+import { CodexRuntime, codexAuthHealth, provisionCodexAuth } from '@brobot2/runtime/codex'
+
+import { provisionProviderHome, type AgentRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

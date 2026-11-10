@@ -9,16 +9,18 @@ import {
 } from '../../../scripts/lib/personal-home-guard.mjs'
 import {
   CodexRuntime,
-  codexAuthHealth,
   createSpawnTransportFactory,
-  provisionCodexAuth,
-  provisionProviderHome,
   type CodexIncoming,
   type CodexTransport,
+  type TransportFactory,
+  codexAuthHealth,
+  provisionCodexAuth,
+} from '../src/codex'
+import {
+  provisionProviderHome,
   type ReasoningEffort,
   type RuntimeEvent,
   type SessionHandle,
-  type TransportFactory,
 } from '../src/index'
 import { bundledCodexBinary } from './bundled-codex'
 import { runEvidence, runScratch } from './run-paths'

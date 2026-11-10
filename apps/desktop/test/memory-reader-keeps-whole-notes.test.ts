@@ -1,13 +1,10 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
-import { claudeAutoMemoryIndex } from '@brobot2/runtime'
+import { claudeAutoMemoryIndex } from '@brobot2/runtime/claude'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  AGENT_MEMORY_TOTAL_CAP,
-  INSTRUCTION_FILE_CAP,
-  readClaudeAgentMemory,
-} from '../src/main/runtime/instructions'
+import { AGENT_MEMORY_TOTAL_CAP, INSTRUCTION_FILE_CAP } from '../src/main/runtime/instructions'
+import { readClaudeAgentMemory } from '../src/main/providers/claude/memory'
 
 let home: string
 beforeEach(() => {

@@ -8,23 +8,25 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AuthUnavailableError,
-  CodexRuntime,
   FakeProviderSessions,
   FakeRuntime,
   ResumeError,
   StartFailed,
   StartRefused,
-  createSpawnTransportFactory,
   spawnNoWaitClearsOf,
   startFailureOf,
   startRefusalOf,
   type AgentRuntime,
-  type CodexIncoming,
-  type CodexLaunchContext,
-  type CodexTransport,
   type FakeSessionHandle,
   type StartOptions,
 } from '@brobot2/runtime'
+import {
+  CodexRuntime,
+  createSpawnTransportFactory,
+  type CodexIncoming,
+  type CodexLaunchContext,
+  type CodexTransport,
+} from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
 import { CODEX_NAMESPACE_DESCRIPTION_LIMIT } from '../../../packages/runtime/src/codex/agent-tools'
 import {

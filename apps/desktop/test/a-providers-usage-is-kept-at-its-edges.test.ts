@@ -1,5 +1,5 @@
 import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -12,7 +12,12 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
-import { usageKeptIn } from '../src/main/provider-usage-file'
+import {
+  importProviderUsageFile,
+  PROVIDER_USAGE_FILE,
+  usageKeptIn,
+  type KeptUsage,
+} from '../src/main/provider-usage-file'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
 /**
@@ -148,6 +153,52 @@ describe('F096 · a provider’s usage, kept at its edges', () => {
       // ⚑ The control: the same frame again moves nothing, and writes nothing.
       await reading(handle, [{ window: 'seven_day', usedPercent: 11, resetsAt: clock + 2 * WEEK }])
       expect(writes).toBe(2)
+    })
+  })
+
+  describe('recorded account tags imported into SQLite', () => {
+    let dir: string
+    let database: AppDatabase
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), 'brobot2-usage-tags-'))
+      database = openDatabase(join(dir, 'brobot2.sqlite'))
+      applyMigrations(database, migrationsFolder)
+    })
+    afterEach(() => {
+      if (database.open) database.close()
+      rmSync(dir, { recursive: true, force: true })
+    })
+
+    const usageAt = (tag: string): KeptUsage => ({
+      readings: {
+        claude: [],
+        codex: [{ window: 'weekly', usedPercent: 11, resetsAt: null, at: 1_000, account: tag }],
+      },
+      seen: { claude: [], codex: [] },
+      readOn: { codex: tag },
+    })
+
+    it.each([
+      'native-account:fictional/account-G7',
+      'a'.repeat(32),
+      `credential:${'b'.repeat(64)}`,
+      `account:${'c'.repeat(64)}`,
+      'api-revision:17',
+    ])('preserves the exact recorded account tag through import and reopen: %s', (tag) => {
+      const usage = usageAt(tag)
+      writeFileSync(join(dir, PROVIDER_USAGE_FILE), JSON.stringify(usage))
+      importProviderUsageFile(database, dir)
+      expect(usageKeptIn(database).read()).toEqual(usage)
+      database.close()
+      database = openDatabase(join(dir, 'brobot2.sqlite'))
+      expect(usageKeptIn(database).read()).toEqual(usage)
+    })
+
+    it('does not import an empty native account identifier', () => {
+      writeFileSync(join(dir, PROVIDER_USAGE_FILE), JSON.stringify(usageAt('native-account:')))
+      importProviderUsageFile(database, dir)
+      expect(usageKeptIn(database).read().readOn).toBeUndefined()
+      expect(usageKeptIn(database).read().readings.codex[0]?.account).toBeUndefined()
     })
   })
 })

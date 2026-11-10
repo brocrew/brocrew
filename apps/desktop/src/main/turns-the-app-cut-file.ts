@@ -15,8 +15,11 @@ import { importSideFile, objectIn } from './db/side-file-import'
  *
  * `lives` names the account of each conversation's latest life, once known, with that life's own
  * `launched` row: a crash's cut takes it at the next launch only if that row is the newest launch
- * before the cut turn. No email or credential is kept, only account record ids and opaque sign-in
- * or launch-only revisions.
+ * before the cut turn, so that very life opened it. A cut's own `expected` never changes after it is
+ * written.
+ *
+ * Accounts use existing account record IDs or confirmed native account IDs. Historical credential
+ * tags remain readable but cannot prove a match to a newly confirmed account.
  */
 
 /** Why a cut was not, or will not be, continued. */

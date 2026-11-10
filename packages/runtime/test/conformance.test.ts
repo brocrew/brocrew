@@ -8,8 +8,6 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   type AgentRuntime,
   AnswerRefused,
-  ClaudeRuntime,
-  CodexRuntime,
   FakeLaunchGate,
   FakeProviderSessions,
   FakeRuntime,
@@ -17,12 +15,12 @@ import {
   ResumeError,
   TURN_REFUSED,
   TurnInProgress,
-  type CodexIncoming,
-  type CodexTransport,
   type PermissionOutcome,
   type RuntimeEvent,
   type SessionHandle,
 } from '../src/index'
+import { ClaudeRuntime } from '../src/claude'
+import { CodexRuntime, type CodexIncoming, type CodexTransport } from '../src/codex'
 import { AsyncQueue } from '../src/internal/async-queue'
 import { cancelWith } from '../src/internal/bounded'
 import { CODEX_PROTOCOL_VERSION } from '../src/codex/protocol-version'
@@ -211,7 +209,6 @@ interface ContractLedger {
  * heuristic anywhere in that chain — an optional member is a key like any other.
  */
 const CONTRACT_MEMBERS: Record<keyof SessionHandle, string> = {
-  connectionId: 'the admitted app connection for this launch, where attribution is provided',
   isRetiring: 'adapter-initiated teardown before its terminal status arrives',
   builtInSkillsConfirmed:
     'whether SDK init confirmed the installed skill catalogue for this launch',
@@ -229,7 +226,7 @@ const CONTRACT_MEMBERS: Record<keyof SessionHandle, string> = {
   checkSignIn: 'look now, and latch the answer (147/149)',
   signInCopyAtLaunch:
     'the copy of its sign-in its provider program was started on, by what tells one copy from another',
-  signInTag: 'a one-way tag for the sign-in it launched on, or null: reads nothing when asked',
+  signInTag: 'a confirmed native account tag, or null: reads nothing when asked',
   account: 'who its provider says it is signed in as, asked through the provider’s own interface',
   send: 'start a turn',
   carryOn:
@@ -537,8 +534,6 @@ const claudeDriver: Driver = {
     wholesaleGrant: 'standing',
     unattended: 'no-card',
     gaps: {
-      connectionId:
-        'the desktop connection wrapper supplies app attribution; this raw adapter does not choose app connections',
       awaitManagedPlugins:
         'Claude never waits on managed servers before a turn, so there is no set to narrow',
       instructionSources:
@@ -915,8 +910,6 @@ const codexDriver: Driver = {
       'the approval profile rides on `turn/start`, so the SERVER does the not-asking and there is ' +
       'no card for this adapter to suppress (034, measured on the live app-server)',
     gaps: {
-      connectionId:
-        'the desktop connection wrapper supplies app attribution; this raw adapter does not choose app connections',
       isRetiring:
         'Codex has no adapter-initiated closing interval before a terminal status; host-initiated closes carry the host closing state',
       refreshManagedPlugins:
@@ -1060,8 +1053,6 @@ const fakeDriver: Driver = {
     wholesaleGrant: 'standing',
     unattended: 'no-card',
     gaps: {
-      connectionId:
-        'the desktop connection wrapper supplies app attribution; the base Fake does not choose app connections',
       isRetiring:
         'the base Fake has no adapter-initiated retirement; host close and terminal status cover its lifecycle',
       refreshManagedPlugins:
@@ -1677,7 +1668,6 @@ describe('conformance · the gap ledger (186)', () => {
       [
         'fake',
         [
-          'connectionId',
           'isRetiring',
           'refreshManagedPlugins',
           'awaitManagedPlugins',
@@ -1744,7 +1734,6 @@ describe('conformance · the gap ledger (186)', () => {
       [
         'claude',
         [
-          'connectionId',
           'awaitManagedPlugins',
           'instructionSources',
           'signInCopyAtLaunch',
@@ -1777,7 +1766,6 @@ describe('conformance · the gap ledger (186)', () => {
       [
         'codex',
         [
-          'connectionId',
           'isRetiring',
           'refreshManagedPlugins',
           'builtInSkillsConfirmed',

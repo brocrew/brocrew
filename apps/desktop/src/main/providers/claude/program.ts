@@ -3,9 +3,9 @@ import { homedir } from 'node:os'
 import { posix, win32 } from 'node:path'
 import {
   ClaudeUnavailableError,
-  claudeCommandIn,
   claudeProgramWhereTheSdkLooks,
-} from '@brobot2/runtime'
+  claudeCommandIn,
+} from '@brobot2/runtime/claude'
 import type { ProviderProgramFrom, ProviderProgramUpdate } from '../../../shared/runtime-ipc'
 
 /**

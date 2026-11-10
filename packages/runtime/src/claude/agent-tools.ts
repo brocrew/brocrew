@@ -4,7 +4,8 @@ import { z, type ZodRawShape } from 'zod'
 import { agentToolHandlerObject, type AgentToolset } from '../agent-tools'
 import { messageActMetadata } from '../message-act'
 import type { ExternalMcpReach } from '../external-mcp'
-import { CLAUDE_TOOL_NAMING, qualifyWith } from '../tool-inventory'
+import { CLAUDE_TOOL_NAMING } from './tool-naming'
+import { qualifyWith } from '../tool-inventory'
 
 /**
  * ⛔ **Claude's half of the tool asymmetry: an IN-PROCESS MCP server, rebuilt on every query**

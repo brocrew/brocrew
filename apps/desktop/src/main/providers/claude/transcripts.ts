@@ -1,5 +1,7 @@
-import { splitQualified, CLAUDE_TOOL_NAMING } from '@brobot2/runtime'
+import { splitQualified } from '@brobot2/runtime'
+import { CLAUDE_TOOL_NAMING } from '@brobot2/runtime/claude'
 import { scanRetention } from './retention'
+import { signInObservation } from './sign-in-observation'
 import { filesOf, memoryNotesOf } from './conversation-files'
 import { readChild } from './child-work'
 import { readingClaude } from './turn-reading'
@@ -9,6 +11,7 @@ import { nativePath, ownsRecord, newestReplyModel } from './native-record'
 import type { TranscriptPolicy } from '../transcript-policy'
 export const CLAUDE_JSONL = 'claude-jsonl'
 export const transcripts: TranscriptPolicy = {
+  eventForDisplay: signInObservation,
   splitToolName: (name) => splitQualified(CLAUDE_TOOL_NAMING, name),
   readEarlierModel: (home, file) => (ownsRecord(home, file) ? newestReplyModel(file) : null),
   keepEarlierReportedEffort: () => true,

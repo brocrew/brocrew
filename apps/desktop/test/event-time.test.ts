@@ -3,14 +3,15 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeRuntime, RUNTIME_EVENT_TYPES, claudeProjectDirName } from '@brobot2/runtime'
+import { FakeRuntime, RUNTIME_EVENT_TYPES } from '@brobot2/runtime'
+import { claudeProjectDirName } from '@brobot2/runtime/claude'
 import {
   NO_DISCOVERY,
   discoverSessionsIn,
   type Discovery,
 } from '../src/main/adopt/discover-sessions'
 import type { SessionBundle } from '../src/main/archive/export-session'
-import { importClaudeTranscript } from '../src/main/archive/import-claude'
+import { importClaudeTranscript } from '../src/main/providers/claude/import-transcript'
 import { nativeTranscriptPath } from '../src/main/archive/native-file'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

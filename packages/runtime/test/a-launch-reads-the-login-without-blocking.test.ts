@@ -5,7 +5,9 @@ import { join } from 'node:path'
 import type { ChildProcess } from 'node:child_process'
 import type { Options, SpawnOptions } from '@anthropic-ai/claude-agent-sdk'
 import { afterEach, describe, expect, it } from 'vitest'
-import { AuthUnavailableError, ClaudeRuntime, claudeAuthHealthAsync } from '../src/index'
+import { AuthUnavailableError } from '../src/index'
+import { claudeAuthHealthAsync } from '../src/claude'
+import { ClaudeRuntime } from '../src/claude'
 
 /**
  * A Claude launch given a launch reader reads the login with it, without blocking the thread, and

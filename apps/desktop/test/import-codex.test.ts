@@ -9,8 +9,8 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { FakeRuntime } from '@brobot2/runtime'
-import { importCodexRollout } from '../src/main/archive/import-codex'
-import { splitCodexMessage } from '../src/main/archive/codex-injected'
+import { importCodexRollout } from '../src/main/providers/codex/import-transcript'
+import { splitCodexMessage } from '../src/main/providers/codex/codex-injected'
 import { NORMALIZER_VERSION } from '../src/main/archive/normalizer'
 
 /**

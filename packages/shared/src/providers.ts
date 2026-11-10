@@ -1,8 +1,3 @@
-import {
-  CLAUDE_CONFIG_LAYOUT,
-  CODEX_CONFIG_LAYOUT,
-  type ProviderConfigLayout,
-} from './providers/configuration'
 import type { ProviderCapabilities } from './provider-capabilities'
 import type { ProviderConnectionCapabilities } from './provider-connections'
 import { CLAUDE_CAPABILITIES } from './providers/claude-capabilities'
@@ -12,6 +7,7 @@ import { CODEX_CAPABILITIES } from './providers/codex-capabilities'
 export interface ProviderDescriptor {
   readonly id: string
   readonly displayName: string
+  readonly defaultModelByName: { readonly model: string; readonly effort: string } | null
   readonly debugOnly: boolean
   readonly nativeSkills: boolean
   readonly nativePlugins: boolean
@@ -26,30 +22,16 @@ export interface ProviderDescriptor {
   /** The provider's own program, as a conversation's words name it. */
   readonly programName: string
   readonly signIn: {
-    /** Fixed sign-in ports may be shared by the whole machine or reserved per profile. */
-    readonly portScope: 'machine' | 'profile'
     readonly profileScoped: boolean
     /** Whether the sign-in tag already names the account, rather than only its login. */
     readonly accountIsSignIn: boolean
     readonly changeWords: string
     readonly manualProbe: boolean
-    readonly refusalCause: string | null
-    readonly retryPattern: string | null
   }
-  readonly apiKey: {
-    /** The issuer named in the key check's result. */
-    readonly issuer: string
-    /** The free authenticated model-list request sent first. */
-    readonly checkUrl: string
-    /** Anthropic answers the list without credit; its one-token request also checks funding. */
-    readonly spendsToken: boolean
-    readonly header: string
-    readonly prefix: string
-    readonly extraHeaders: Readonly<Record<string, string>>
-    readonly windowsLoginNeedsFile: boolean
-  }
+  readonly apiKey: { readonly spendsToken: boolean }
   readonly words: {
     readonly providerChoice: string
+    readonly interruptActionSummary: string
     readonly interruptSummary: string
     readonly refusedSignIn: 'claude-sign-in' | 'codex-sign-in'
     readonly stopForWords: { readonly beforeName: string; readonly afterName: string }
@@ -60,7 +42,6 @@ export interface ProviderDescriptor {
       readonly saysNotReopened: boolean
     }
   }
-  readonly config: ProviderConfigLayout
   readonly skillReminderPrefix: string
   readonly usageWindows: readonly string[]
   readonly commandPrefix: string
@@ -72,8 +53,6 @@ export interface ProviderDescriptor {
       Record<'ask' | 'auto', readonly ('the-card-before-an-act' | 'the-sandbox-around-an-act')[]>
     >
   }
-  /** Default bounds, before per-host injected timeout overrides. */
-  readonly launch: { readonly freshTimeoutMs: number; readonly resumeTimeoutMs: number }
   readonly limitClearsOnSignInChange: boolean
   readonly toolInstructionsInText: boolean
   readonly identityPreamble: boolean
@@ -84,19 +63,12 @@ export interface ProviderDescriptor {
 export const PROVIDER_DESCRIPTORS = [
   {
     id: 'claude',
-    apiKey: {
-      issuer: 'Anthropic',
-      checkUrl: 'https://api.anthropic.com/v1/models?limit=100',
-      spendsToken: true,
-      header: 'x-api-key',
-      prefix: '',
-      extraHeaders: {
-        'anthropic-version': '2023-06-01',
-      },
-      windowsLoginNeedsFile: true,
-    },
+    defaultModelByName: { model: 'default', effort: 'medium' },
+    apiKey: { spendsToken: true },
     words: {
       refusedSignIn: 'claude-sign-in',
+      interruptActionSummary:
+        'the command it is waiting on, while work it sent to the background keeps running',
       providerChoice: "'claude' runs the conversation through Claude.",
       interruptSummary:
         'the command that turn is waiting on ends with it, and work it sent to the background keeps running',
@@ -126,21 +98,15 @@ export const PROVIDER_DESCRIPTORS = [
     connections: {
       contractVersion: 1,
       authMethods: ['sign-in', 'api-key'],
-      protocol: 'claude-agent-sdk',
-      versionSource: 'sdk',
       additionalConnections: false,
     },
     capabilities: Object.freeze(CLAUDE_CAPABILITIES),
     programName: 'Claude Code',
-    config: CLAUDE_CONFIG_LAYOUT,
     signIn: {
-      portScope: 'profile',
       profileScoped: false,
       accountIsSignIn: false,
       changeWords: 'this computer has moved on to a different one since — a renewal counts',
       manualProbe: true,
-      refusalCause: 'auth',
-      retryPattern: '^claude could not authenticate; retrying\\b',
     },
     skillReminderPrefix: 'brobot:',
     usageWindows: ['5-hour', 'weekly'],
@@ -151,7 +117,6 @@ export const PROVIDER_DESCRIPTORS = [
       grantReach: 'reads',
       protections: { ask: ['the-card-before-an-act'], auto: [] },
     },
-    launch: { freshTimeoutMs: 15_000, resumeTimeoutMs: 15_000 },
     limitClearsOnSignInChange: true,
     toolInstructionsInText: false,
     identityPreamble: false,
@@ -159,17 +124,11 @@ export const PROVIDER_DESCRIPTORS = [
   },
   {
     id: 'codex',
-    apiKey: {
-      issuer: 'OpenAI',
-      checkUrl: 'https://api.openai.com/v1/models',
-      spendsToken: false,
-      header: 'authorization',
-      prefix: 'Bearer ',
-      extraHeaders: {},
-      windowsLoginNeedsFile: false,
-    },
+    defaultModelByName: null,
+    apiKey: { spendsToken: false },
     words: {
       refusedSignIn: 'codex-sign-in',
+      interruptActionSummary: 'every command that turn started, even one it left running',
       providerChoice: "'codex' runs the conversation through Codex.",
       interruptSummary:
         'the command that turn ran last ends with it unless it has used another tool since, and its other commands keep running',
@@ -200,21 +159,15 @@ export const PROVIDER_DESCRIPTORS = [
     connections: {
       contractVersion: 1,
       authMethods: ['sign-in', 'api-key'],
-      protocol: 'codex-app-server',
-      versionSource: 'app-server',
       additionalConnections: false,
     },
     capabilities: Object.freeze(CODEX_CAPABILITIES),
     programName: 'Codex',
-    config: CODEX_CONFIG_LAYOUT,
     signIn: {
-      portScope: 'machine',
       profileScoped: true,
       accountIsSignIn: true,
       changeWords: 'its profile has been signed in to another account since',
       manualProbe: false,
-      refusalCause: null,
-      retryPattern: null,
     },
     skillReminderPrefix: '',
     usageWindows: ['weekly'],
@@ -228,7 +181,6 @@ export const PROVIDER_DESCRIPTORS = [
         auto: [],
       },
     },
-    launch: { freshTimeoutMs: 15_000, resumeTimeoutMs: 60_000 },
     limitClearsOnSignInChange: false,
     toolInstructionsInText: true,
     identityPreamble: true,

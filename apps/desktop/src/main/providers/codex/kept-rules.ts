@@ -5,7 +5,7 @@ import {
   keptToolApprovals,
   keptToolApprovalsFile,
   type KeptToolApproval,
-} from '@brobot2/runtime'
+} from '@brobot2/runtime/codex'
 import type { KeptRule, KeptRulesFile } from '../../../shared/runtime-ipc'
 import { NO_LONGER_KEPT, readSmall, rewrite } from '../kept-rule-io'
 import type { KeptRulePolicy } from '../kept-rule-policy'

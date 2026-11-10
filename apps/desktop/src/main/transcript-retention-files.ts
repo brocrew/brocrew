@@ -17,7 +17,7 @@ export type {
   TranscriptClearBatch,
   ProviderHomeInUse,
 } from './transcript-retention-types'
-import { providerDefinitions } from './providers/definitions'
+import { providerDefinitions } from './providers/index'
 import { SUPPORTED_PROVIDERS } from '@brobot2/shared'
 import type { TranscriptRetention } from '../shared/transcript-retention'
 import { PROVIDER_HOMES_DIRNAME } from './runtime/provider-homes'

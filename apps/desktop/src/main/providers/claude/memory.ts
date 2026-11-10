@@ -1,5 +1,9 @@
 import type { RefusedInstruction } from '../../../shared/instruction-contracts'
-import { claudeAutoMemoryDir, claudeAutoMemoryIndex, isClaudeMemoryTopic } from '@brobot2/runtime'
+import {
+  claudeAutoMemoryDir,
+  claudeAutoMemoryIndex,
+  isClaudeMemoryTopic,
+} from '@brobot2/runtime/claude'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 

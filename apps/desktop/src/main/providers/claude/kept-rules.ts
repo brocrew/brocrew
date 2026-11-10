@@ -1,4 +1,4 @@
-import { persistedRulesFile } from '@brobot2/runtime'
+import { persistedRulesFile } from '@brobot2/runtime/claude'
 import type { KeptRule, KeptRulesFile } from '../../../shared/runtime-ipc'
 import { NO_LONGER_KEPT, readSmall, rewrite } from '../kept-rule-io'
 import type { KeptRulePolicy } from '../kept-rule-policy'

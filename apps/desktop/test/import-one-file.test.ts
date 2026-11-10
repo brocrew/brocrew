@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FileEdits } from '@brobot2/runtime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -14,8 +13,8 @@ import {
   type HomeImportDeps,
 } from '../src/main/archive/import-from-home'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
-import { importClaudeTranscript } from '../src/main/archive/import-claude'
-import { importCodexRollout } from '../src/main/archive/import-codex'
+import { importClaudeTranscript } from '../src/main/providers/claude/import-transcript'
+import { importCodexRollout } from '../src/main/providers/codex/import-transcript'
 
 /**
  * Importing one conversation found in a provider home, read from its file where it is.
@@ -356,7 +355,7 @@ describe('importing one conversation from its file', () => {
       [
         'codex',
         CODEX_FIXTURE,
-        (lines: string[], at: number, carry?: FileEdits) => {
+        (lines: string[], at: number, carry?: object) => {
           void carry
           return importCodexRollout(lines, at)
         },
@@ -367,7 +366,7 @@ describe('importing one conversation from its file', () => {
       const whole = parse(lines, 1_000)
 
       let carried = 1_000
-      let edits: FileEdits | undefined
+      let edits: object | undefined
       const batched = lines.flatMap((line) => {
         const chunk = parse([line], carried, edits)
         carried = chunk.lastAt

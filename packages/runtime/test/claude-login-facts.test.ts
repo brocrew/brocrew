@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { claudeLoginFacts, claudeLoginState, whyNoClaudeLogin } from '../src/internal/auth'
+import { claudeLoginFacts, claudeLoginState, whyNoClaudeLogin } from '../src/claude/auth'
 
 /** The sentence a computer that is not Windows says, which is the one this test runs on. */
 const NO_LOGIN = whyNoClaudeLogin({ platform: 'darwin' })

@@ -26,19 +26,21 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { z } from 'zod'
 import {
   AuthUnavailableError,
-  ClaudeRuntime,
-  ClaudeSessionHandle,
   QUESTION_REQUEST_KEYS,
   askedOfTheChannel,
-  claudeProjectDirName,
   ResumeError,
   type AgentToolset,
-  type ClaudeAuthTokenProvider,
-  type ClaudeQuery,
   type RuntimeEvent,
   type SessionHandle,
   type SessionRef,
 } from '../src/index'
+import { type ClaudeAuthTokenProvider } from '../src/claude'
+import {
+  ClaudeRuntime,
+  ClaudeSessionHandle,
+  claudeProjectDirName,
+  type ClaudeQuery,
+} from '../src/claude'
 import { TODO_TOOLS } from '../src/claude/todo-plan'
 import { MAX_PERMISSION_DETAIL_CHARS, runtimeEventSchema } from '../src/events'
 import { TheCliAnswersInOrder } from './the-cli-answers-in-order'

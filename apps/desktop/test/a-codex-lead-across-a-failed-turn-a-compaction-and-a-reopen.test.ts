@@ -12,7 +12,7 @@ import {
   type CodexIncoming,
   type CodexLaunchContext,
   type CodexTransport,
-} from '@brobot2/runtime'
+} from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
 import { CODEX_PROTOCOL_VERSION } from '../../../packages/runtime/src/codex/protocol-version'
 import {
@@ -45,9 +45,9 @@ import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { readSavedMethods, savedMethodsUseOf } from '../src/main/saved-methods'
+import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
 import {
   brobotWorkspace,
-  CLAUDE_INSTRUCTIONS_FILE,
   ensureWorkspace,
   workspaceOwnFilesIn,
 } from '../src/main/runtime/workspace'

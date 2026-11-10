@@ -14,7 +14,7 @@ import { isAncestor, trustedAnchor, whereItStands } from '../../../../scripts/li
 import { isPastedImageName } from '../shared/runtime-ipc'
 import { PASTED_PART, pastedImagesRoot } from './runtime/pasted-image'
 import { WORKSPACE_DIRNAME } from './runtime/workspace'
-import { workspaceInstructionNames } from './providers/definitions'
+import { providerDefinitions, workspaceInstructionNames } from './providers/index'
 import { insideBySpelling, sameFolder, samePath } from './same-folder'
 import { asStartedOn, BROBOT_FOLDER_SIGNS, forgetWorkspace, isBroBotsFolder } from './workspaces'
 
@@ -312,13 +312,7 @@ async function runsOn(folder: string, context: DeleteContext): Promise<string | 
 /** The anchor's names for the folders it guards, in a person's words. */
 const PLAIN_WORDS: readonly (readonly [string | RegExp, string])[] = [
   ['your home directory', 'your home folder'],
-  ["the machine's conventional Claude home", 'Claude’s own folder'],
-  ["the machine's conventional Codex home", 'Codex’s own folder'],
-  [
-    'the CLAUDE_CONFIG_DIR this shell redirects to',
-    'the folder Claude is set to keep its files in',
-  ],
-  ['the CODEX_HOME this shell redirects to', 'the folder Codex is set to keep its files in'],
+  ...Object.values(providerDefinitions).flatMap((definition) => definition.deletionWords),
   ['the directory this was run from', 'the folder BroCrew runs from'],
   ['is, or contains,', 'is, or holds,'],
   [' contains ', ' holds '],

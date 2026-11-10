@@ -20,7 +20,7 @@ import {
   providerAccountsFile,
   readKeptAccounts,
   writeKeptAccounts,
-} from '../src/main/provider-accounts-file'
+} from '../src/main/providers/claude/account-record'
 import { APP_STATE_FILES, NOT_STATE } from '../src/main/recovery/state-files'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 

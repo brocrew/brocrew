@@ -6,7 +6,7 @@ import { expect, it } from 'vitest'
 // variables; this probe owns its spawn so the run-owned loopback provider's `env_key` is the only
 // extra value the child receives. No credential is copied into the home.
 import { SpawnCodexTransport } from '../src/codex/codex-transport'
-import { ensureCodexMemoryConfig } from '../src/index'
+import { ensureCodexMemoryConfig } from '../src/codex'
 import { bundledCodexBinary } from './bundled-codex'
 import { executionEvidence, offers, type Frame } from './exec-approval-evidence'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'

@@ -2,11 +2,8 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import {
-  claudePartsAsTheModelGotThem,
-  readingATurn,
-  type TurnReadingOptions,
-} from '../src/main/archive/turn-as-sent'
+import { claudePartsAsTheModelGotThem } from '../src/main/providers/claude/turn-reading'
+import { readingATurn, type TurnReadingOptions } from '../src/main/archive/turn-as-sent'
 import { snapshotFor } from '../src/main/provider-snapshots'
 import { takesAContextMessage } from '../src/shared/provider-snapshots'
 import type { AsSentPart, TurnAsSent } from '../src/shared/turn-as-sent'

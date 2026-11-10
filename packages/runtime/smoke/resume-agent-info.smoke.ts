@@ -15,11 +15,13 @@ import {
 } from '../../../scripts/lib/personal-home-guard.mjs'
 import {
   ClaudeRuntime,
-  claudeKeychainTokenProvider,
   claudeProjectDirName,
+  type ClaudeQuery,
+  claudeKeychainTokenProvider,
+} from '../src/claude'
+import {
   provisionProviderHome,
   type AgentInfo,
-  type ClaudeQuery,
   type RuntimeEvent,
   type SessionHandle,
   type SessionRef,

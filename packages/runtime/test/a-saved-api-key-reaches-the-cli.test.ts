@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { ChildProcess } from 'node:child_process'
 import type { Options, SpawnOptions } from '@anthropic-ai/claude-agent-sdk'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ClaudeRuntime } from '../src/index'
+import { ClaudeRuntime } from '../src/claude'
 
 /**
  * A saved API key reaches the Claude CLI as `ANTHROPIC_API_KEY`, as plain Claude Code reads it.

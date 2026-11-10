@@ -2,7 +2,7 @@ import type { SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { expect, it, vi } from 'vitest'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ClaudeSessionHandle, type ClaudeQuery } from '../src/index'
+import { ClaudeSessionHandle, type ClaudeQuery } from '../src/claude'
 import { AsyncQueue } from '../src/internal/async-queue'
 import { watchClaudeChild } from '../src/claude/claude-child'
 

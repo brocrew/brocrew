@@ -80,17 +80,15 @@ vi.mock('node:fs', async (importOriginal) => {
   }
 })
 
+import { AuthUnavailableError, FakeProviderSessions, ResumeError } from '@brobot2/runtime'
 import {
-  AuthUnavailableError,
-  ClaudeRuntime,
-  CodexRuntime,
-  FakeProviderSessions,
-  createSpawnTransportFactory,
-  probeCodexAuthInHome,
   provisionCodexAuth,
   reprovisionCodexAuth,
-  ResumeError,
-} from '@brobot2/runtime'
+  CodexRuntime,
+  createSpawnTransportFactory,
+  probeCodexAuthInHome,
+} from '@brobot2/runtime/codex'
+import { ClaudeRuntime } from '@brobot2/runtime/claude'
 import type { FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'

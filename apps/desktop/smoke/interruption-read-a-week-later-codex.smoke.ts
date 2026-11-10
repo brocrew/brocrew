@@ -6,12 +6,12 @@ import { loadavg } from 'node:os'
 import { expect, it } from 'vitest'
 import {
   CodexRuntime,
-  codexAuthHealth,
-  type AgentRuntime,
   type CodexIncoming,
   type CodexTransport,
   type TransportFactory,
-} from '@brobot2/runtime'
+  codexAuthHealth,
+} from '@brobot2/runtime/codex'
+import { type AgentRuntime } from '@brobot2/runtime'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'

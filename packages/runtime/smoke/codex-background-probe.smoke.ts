@@ -5,15 +5,13 @@ import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import {
   CodexRuntime,
-  codexAuthHealth,
-  provisionCodexAuth,
-  provisionProviderHome,
   type CodexIncoming,
   type CodexLaunchContext,
   type CodexTransport,
-  type RuntimeEvent,
-  type SessionHandle,
-} from '../src/index'
+  codexAuthHealth,
+  provisionCodexAuth,
+} from '../src/codex'
+import { provisionProviderHome, type RuntimeEvent, type SessionHandle } from '../src/index'
 import { bundledCodexBinary, bundledCodexTransportFactory } from './bundled-codex'
 import { runEvidence, runScratch } from './run-paths'
 

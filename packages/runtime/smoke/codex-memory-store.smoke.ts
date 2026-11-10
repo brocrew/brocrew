@@ -6,7 +6,7 @@ import { expect, it } from 'vitest'
 // deliberately not re-exported from the package index (063, from 061 finding 4) because the factory
 // sanitizes the child environment, and this probe needs the loopback provider's `env_key` in it.
 import { SpawnCodexTransport } from '../src/codex/codex-transport'
-import { codexMemoryIndex, codexMemorySummary, ensureCodexMemoryConfig } from '../src/index'
+import { codexMemoryIndex, codexMemorySummary, ensureCodexMemoryConfig } from '../src/codex'
 import { bundledCodexBinary } from './bundled-codex'
 import { runEvidence, runScratch } from './run-paths'
 

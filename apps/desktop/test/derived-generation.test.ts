@@ -11,7 +11,7 @@ import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
 import { NORMALIZER_VERSION } from '../src/main/archive/normalizer'
-import { importCodexRollout } from '../src/main/archive/import-codex'
+import { importCodexRollout } from '../src/main/providers/codex/import-transcript'
 import { linesOf } from './helpers/provider-lines'
 
 /**

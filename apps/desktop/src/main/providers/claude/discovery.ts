@@ -3,7 +3,7 @@ import type { ProtectedPlaceKind } from '../../../shared/work-folders'
 import { closeSync, existsSync, openSync, readSync, readdirSync, statSync } from 'node:fs'
 import { StringDecoder } from 'node:string_decoder'
 import { basename, join } from 'node:path'
-import { claudeProjectDirName } from '@brobot2/runtime'
+import { claudeProjectDirName } from '@brobot2/runtime/claude'
 import {
   EMPTY,
   merge,

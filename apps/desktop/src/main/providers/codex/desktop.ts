@@ -1,4 +1,4 @@
-import { changeCodexKeyInHome, createSpawnTransportFactory } from '@brobot2/runtime'
+import { changeCodexKeyInHome, createSpawnTransportFactory } from '@brobot2/runtime/codex'
 import { resolveCodexProgram, type CodexProgram } from './program'
 import { codexVersionReader } from './program-versions'
 import type { DesktopProviderContext } from '../desktop-context'

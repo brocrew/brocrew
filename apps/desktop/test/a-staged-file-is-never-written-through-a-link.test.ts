@@ -14,7 +14,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
-import { claudeAutoMemoryDir } from '@brobot2/runtime'
+import { claudeAutoMemoryDir } from '@brobot2/runtime/claude'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WindowsCreates } from '../../../packages/runtime/test/fixtures/an-open-that-follows-links'
 import { removeKeptRule } from '../src/main/kept-rules'

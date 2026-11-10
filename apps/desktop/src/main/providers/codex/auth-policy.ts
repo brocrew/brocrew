@@ -7,7 +7,7 @@ import {
   codexCopyIdentityIn,
   isTheSameCodexCopy,
   type CodexCopyIdentity,
-} from '@brobot2/runtime'
+} from '@brobot2/runtime/codex'
 import type {
   IdentityHandle,
   IdentityFact,

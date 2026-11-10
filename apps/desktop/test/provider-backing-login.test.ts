@@ -22,9 +22,13 @@ vi.mock('node:fs', async (original) => ({
   ...(await original<typeof import('node:fs')>()),
   readFileSync: native.read,
 }))
-vi.mock('@brobot2/runtime', async (original) => ({
-  ...(await original<typeof import('@brobot2/runtime')>()),
+vi.mock('@brobot2/runtime/claude', async (original) => ({
+  ...(await original<typeof import('@brobot2/runtime/claude')>()),
   defaultKeychainReaderForALaunch: native.read,
+}))
+
+vi.mock('@brobot2/runtime/codex', async (original) => ({
+  ...(await original<typeof import('@brobot2/runtime/codex')>()),
   probeCodexAuthInHome: native.codex,
 }))
 

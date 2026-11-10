@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ClaudeRuntime, runtimeEventSchema, type RuntimeEvent } from '../src/index'
+import { ClaudeRuntime } from '../src/claude'
+import { runtimeEventSchema, type RuntimeEvent } from '../src/index'
 import { AsyncQueue } from '../src/internal/async-queue'
 import { endsOpenSubAgents, OpenSubAgents } from '../src/internal/open-sub-agents'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'

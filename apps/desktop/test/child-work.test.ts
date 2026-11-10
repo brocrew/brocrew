@@ -18,9 +18,9 @@ import {
   countThinkingBlocks,
   locateChildWork,
   parseClaudeSidecar,
-  readChildFile,
   readChildWork,
-} from '../src/main/child-work'
+} from '../src/main/providers/claude/child-work'
+import { readChildFile } from '../src/main/child-work-file'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'

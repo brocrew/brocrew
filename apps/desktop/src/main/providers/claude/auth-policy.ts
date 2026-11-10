@@ -1,6 +1,6 @@
 import { refusalWords } from './refusal-words'
 import { keyPolicy } from './api-key'
-import { CLAUDE_LOGIN_RENEWED, ClaudeUnavailableError, claudeSetup } from '@brobot2/runtime'
+import { CLAUDE_LOGIN_RENEWED, claudeSetup, ClaudeUnavailableError } from '@brobot2/runtime/claude'
 import type { ProviderAuthPolicy } from '../auth-policy'
 
 export const authPolicy: ProviderAuthPolicy = {
@@ -15,9 +15,7 @@ export const authPolicy: ProviderAuthPolicy = {
     launch(handle) {
       const account = handle.account === undefined ? null : handle.account()
       if (account === undefined) return undefined
-      if (account !== null) return { kind: 'account', account }
-      const tag = handle.signInTag?.() ?? null
-      return tag === null ? null : { kind: 'tag', tag, launchOnly: true }
+      return account === null ? null : { kind: 'account', account }
     },
     limit(handle) {
       const account = handle.account?.()

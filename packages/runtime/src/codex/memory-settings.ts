@@ -1,10 +1,3 @@
-/**
- * One key BroBot writes, and the reason it is written rather than left to a default.
- *
- * ⚑ **This table is the single source.** The file's comments are rendered from it, the merge reads
- * it, and the desktop's provider-config disclosure derives its sentence from it — so the sentence a
- * user reads cannot drift from the keys the app writes. 306's shape: state the rule once.
- */
 export interface CodexMemorySetting {
   /** The TOML table the key lives in. */
   readonly table: string
@@ -16,13 +9,6 @@ export interface CodexMemorySetting {
   readonly why: string
 }
 
-/**
- * 🔴 **312's measured positive, and the two switches it corrected.**
- *
- * The exact configuration that put `memories__list`, `memories__read`, `memories__search` and
- * `memories__add_ad_hoc_note` into a real child's inventory was the first two rows; the last two are
- * written because their defaults are opinions we should be stating, not inheriting.
- */
 export const CODEX_MEMORY_SETTINGS: readonly CodexMemorySetting[] = [
   {
     table: 'features',

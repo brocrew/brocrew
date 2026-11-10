@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import * as methods from '../src/main/saved-methods'
+import * as methods from '../src/main/saved-method-service'
 import * as memory from '../src/main/runtime/agent-memory'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -499,6 +499,7 @@ describe('saved methods change only through a confirmed, recoverable profile ope
   it.runIf(process.platform !== 'win32')(
     'rejects an external chmod and faithfully restores original modes',
     async () => {
+      chmodSync(path('review.md'), 0o640)
       const api = await service()
       const removed = await api.remove('lark', selection(api), person)
       chmodSync(path('index.md'), 0o644)

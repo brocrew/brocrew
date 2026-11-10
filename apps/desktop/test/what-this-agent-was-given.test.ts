@@ -8,15 +8,15 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   boundInventory,
-  CODEX_TOOL_NAMING,
   MAX_COMMAND_TEXT,
-  CODEX_TOOLS_DESCRIPTION,
   FakeRuntime,
   MAX_TOOL_TEXT,
   type FakeSessionHandle,
   type AgentToolset,
   type StartOptions,
 } from '@brobot2/runtime'
+import { CODEX_TOOL_NAMING } from '../../../packages/runtime/src/codex/tool-naming'
+import { CODEX_TOOLS_DESCRIPTION } from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -47,9 +47,9 @@ import {
 } from '../src/shared/what-this-agent-was-given'
 import { profileBundleSpans, thisConversationSpans } from '../src/main/runtime/factory-text'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
+import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
 import {
   brobotWorkspace,
-  CLAUDE_INSTRUCTIONS_FILE,
   ensureWorkspace,
   workspaceOwnFilesIn,
 } from '../src/main/runtime/workspace'

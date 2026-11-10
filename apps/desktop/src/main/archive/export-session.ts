@@ -6,7 +6,7 @@ import type { SessionRef } from '@brobot2/runtime'
 import { type Provider, type SessionStatus } from '@brobot2/shared'
 
 import { readLines } from './native-io'
-import { providerDefinitions } from '../providers/definitions'
+import { providerDefinitions } from '../providers/index'
 
 /**
  * Put a session back out: as the provider's own file, or as one self-contained document (089).

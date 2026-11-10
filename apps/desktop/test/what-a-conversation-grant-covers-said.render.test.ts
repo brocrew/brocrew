@@ -10,12 +10,11 @@ import { renderToString } from 'vue/server-renderer'
 import {
   askedOfTheChannel,
   CHANNEL_REFUSAL_SENTENCES,
-  ClaudeRuntime,
-  CodexRuntime,
-  type ClaudeQuery,
   type PermissionOutcome,
   type RuntimeEvent,
 } from '@brobot2/runtime'
+import { ClaudeRuntime, type ClaudeQuery } from '@brobot2/runtime/claude'
+import { CodexRuntime } from '@brobot2/runtime/codex'
 import { AsyncQueue } from '../../../packages/runtime/src/internal/async-queue'
 import { toWireEvent } from '../src/main/runtime/event-wire'
 import AttentionQueue from '../src/renderer/src/components/AttentionQueue.vue'

@@ -15,7 +15,7 @@ import {
   type Hit,
   type Marker,
 } from '../../../scripts/lib/personal-home-guard.mjs'
-import { claudeKeychainTokenProvider, claudeProjectDirName } from '../src/index'
+import { claudeKeychainTokenProvider, claudeProjectDirName } from '../src/claude'
 import { normalizeMessage } from '../src/claude/normalize'
 import { BackgroundTasks } from '../src/claude/background-tasks'
 import type { RuntimeEvent } from '../src/index'

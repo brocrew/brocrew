@@ -24,13 +24,8 @@ import {
   type Hit,
   type Marker,
 } from '../../../scripts/lib/personal-home-guard.mjs'
-import {
-  buildChildEnv,
-  claudeKeychainTokenProvider,
-  claudeProjectDirName,
-  SessionMachine,
-  type RuntimeEvent,
-} from '@brobot2/runtime'
+import { buildChildEnv, SessionMachine, type RuntimeEvent } from '@brobot2/runtime'
+import { claudeKeychainTokenProvider, claudeProjectDirName } from '@brobot2/runtime/claude'
 import { normalizeMessage } from '../../../packages/runtime/src/claude/normalize'
 import { BackgroundTasks } from '../../../packages/runtime/src/claude/background-tasks'
 import { SubAgentTasks } from '../../../packages/runtime/src/claude/sub-agent-tasks'

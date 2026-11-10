@@ -1,9 +1,8 @@
 import { type Provider } from '@brobot2/shared'
 import type { SessionStore } from '../db/session-store'
-import { FileEdits } from '@brobot2/runtime'
 import { isConversation } from './transcript-types'
 import type { ResolveImagePath } from './transcript-types'
-import { providerDefinitions } from '../providers/definitions'
+import { providerDefinitions } from '../providers/index'
 import type { LineChunk } from './native-file'
 import { NORMALIZER_VERSION } from './normalizer'
 
@@ -159,7 +158,7 @@ export async function deriveLedger(
   let carriedAt = options.fallbackAt
   // The file edits still awaiting a result, carried across batches exactly like `carriedAt`: a
   // `file_change` spans two records, so a batch boundary between them must not drop it.
-  let carriedEdits: FileEdits | undefined
+  let carriedEdits: object | undefined
   let ordinal = 0
   let linesRead = 0
   let sawConversation = false

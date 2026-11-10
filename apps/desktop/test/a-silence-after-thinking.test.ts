@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CanUseTool, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
-import { ClaudeRuntime, type RuntimeEvent } from '@brobot2/runtime'
+import { ClaudeRuntime } from '@brobot2/runtime/claude'
+import { type RuntimeEvent } from '@brobot2/runtime'
 import { TheCliAnswersInOrder } from '../../../packages/runtime/test/the-cli-answers-in-order'
 import { LivenessTracker } from '../src/main/runtime/liveness'
 

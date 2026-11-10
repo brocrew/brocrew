@@ -2,7 +2,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { codexAuthHealth } from '../src/internal/auth'
+import { codexAuthHealth } from '../src/codex/auth'
 
 describe('a Windows child finds its system', () => {
   describe('Codex’s credential file', () => {

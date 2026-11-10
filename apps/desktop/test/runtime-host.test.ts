@@ -22,7 +22,7 @@ import {
 } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { childWorkRoot } from '../src/main/child-work'
+import { childWorkRoot } from '../src/main/providers/claude/child-work'
 import { DEFAULT_PROFILE_ID, NOTHING_TO_SEND } from '../src/shared/runtime-ipc'
 
 import type {

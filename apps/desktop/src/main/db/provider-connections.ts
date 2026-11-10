@@ -76,11 +76,10 @@ export function resolveProviderConnection(
   },
 ): ProviderConnection {
   const { provider, connectionId, keySaved } = selection
+  const currentMethod = keySaved ? 'api-key' : 'sign-in'
   const method =
     connectionId == null
-      ? keySaved
-        ? 'api-key'
-        : 'sign-in'
+      ? currentMethod
       : connectionId === compatibilityConnectionId(provider, 'api-key')
         ? 'api-key'
         : connectionId === compatibilityConnectionId(provider, 'sign-in')
@@ -88,5 +87,7 @@ export function resolveProviderConnection(
           : null
   const record = method === null ? null : compatibilityRecord(db, provider, method, keySaved)
   if (!record) throw new Error('The selected connection is unavailable')
+  if (connectionId != null && method !== currentMethod)
+    throw new Error('The selected connection conflicts with the current credential route')
   return record
 }

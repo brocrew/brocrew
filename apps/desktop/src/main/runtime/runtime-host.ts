@@ -157,10 +157,10 @@ export {
 } from './conversation-caller'
 export type { RuntimeEventSink, CallerIdentity, Caller } from './conversation-caller'
 import type { ProviderHomesReprovision } from '../../shared/runtime-ipc'
-import { providerKnowledge } from '../providers/knowledge-definitions'
-import { legacyAccountRecordFormat, providerAuthPolicies } from '../providers/auth-definitions'
+import { providerKnowledge } from '../providers/index'
+import { legacyAccountRecordFormat, providerAuthPolicies } from '../providers/index'
 import type { IdentityFact, ProviderAuthPolicy } from '../providers/auth-policy'
-import { providerDefinitions } from '../providers/definitions'
+import { providerDefinitions } from '../providers/index'
 import {
   RejectedSessionLaunch,
   StoppedBeforeSend,
@@ -657,7 +657,7 @@ import {
   type LibraryQuery,
 } from '../library/session-library'
 import { deriveLedger, type DeriveOutcome } from '../archive/derive-ledger'
-import type { ResolveImagePath } from '../archive/import-codex'
+import type { ResolveImagePath } from '../archive/transcript-types'
 import {
   EmptyNativeTranscript,
   linesAsRows,
@@ -2975,17 +2975,20 @@ const WHAT_A_REOPEN_ADDS: ReadonlySet<TranscriptEvent['type']> = new Set([
 ])
 
 /** Older provider events receive display metadata without changing their stored form. */
-function transcriptEventForDisplay(event: TranscriptEvent): TranscriptEvent {
-  if (event.type !== 'unknown') return event
-  const provider = SUPPORTED_PROVIDERS.find((one) => one === event.provider)
+function transcriptEventForDisplay(event: TranscriptEvent, owner?: Provider): TranscriptEvent {
+  const provider =
+    event.type === 'unknown' ? SUPPORTED_PROVIDERS.find((one) => one === event.provider) : owner
   return provider === undefined
     ? event
     : (providerDefinitions[provider].transcripts.eventForDisplay?.(event) ?? event)
 }
 
 /** Display metadata travels with a row without changing its saved form or ordinal. */
-function transcriptMessageForDisplay(message: RuntimeEventMessage): RuntimeEventMessage {
-  const event = transcriptEventForDisplay(message.event)
+function transcriptMessageForDisplay(
+  message: RuntimeEventMessage,
+  provider?: Provider,
+): RuntimeEventMessage {
+  const event = transcriptEventForDisplay(message.event, provider)
   return event === message.event ? message : { ...message, event }
 }
 
@@ -5673,7 +5676,7 @@ export class RuntimeHost implements LiveHost {
     this.closeDrainTimeoutMs = deps.closeDrainTimeoutMs ?? DEFAULT_CLOSE_DRAIN_TIMEOUT_MS
     this.interruptWaitMs = deps.interruptWaitMs ?? DEFAULT_INTERRUPT_WAIT_MS
     this.launchTimeouts = providerRecord((provider) => {
-      const defaults = providerDescriptor(provider).launch
+      const defaults = providerDefinitions[provider].launch
       return {
         fresh: deps.launchTimeoutMs ?? defaults.freshTimeoutMs,
         resume: deps.resumeTimeouts?.[provider] ?? deps.launchTimeoutMs ?? defaults.resumeTimeoutMs,
@@ -6676,8 +6679,8 @@ export class RuntimeHost implements LiveHost {
       const record = this.cutsKept.cuts[conversation]
       // ⚑ A newer cut of the conversation is not this one's to settle.
       if (record === undefined || record.noticeId !== noticeId || isFinal(record.state)) return
-      // ⚑ Only ids of one kind are compared: a Claude account named by its email is not told apart
-      // from one named by its launch credential, whose account read may only have failed.
+      // Compare confirmed account identities only within their own namespace. Historical
+      // credential digests are not evidence of the account now launching.
       const idKind = (id: string): string => id.slice(0, id.lastIndexOf(':'))
       const comparable =
         record.expected !== null &&
@@ -7400,11 +7403,8 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * 🔴 **The account a life runs on, as an id compared and never shown** — from what that life was
-   * launched on, so it never changes for that life: the existing persisted account record,
-   * or the runtime's opaque credential/account revision with its own namespace. ⚑ Kept for its conversation once known,
-   * for the next launch to read if a crash cuts this life. ⚑ `null` when it cannot be told within
-   * {@link accountWaitMs}. ⛔ It never rejects.
+   * The confirmed account a life runs on: an existing account record or a native account ID.
+   * Kept for the next launch if a crash cuts this life; null when not known within accountWaitMs.
    */
   private async learnItsIdentity(session: HostedSession): Promise<string | null> {
     let identity: string | null
@@ -7437,7 +7437,7 @@ export class RuntimeHost implements LiveHost {
       const known = this.accountRecordFor(fact.account)
       return known === null ? null : `${provider}:account:${known.id}`
     }
-    return `${provider}:${fact.launchOnly === true ? 'launch-credential' : 'sign-in'}:${fact.tag}`
+    return `${provider}:sign-in:${fact.tag}`
   }
 
   /** An exact recorded account, absent, or ambiguous; never infer it from the latest launch. */
@@ -14276,13 +14276,14 @@ export class RuntimeHost implements LiveHost {
   private showTheWindowsLookingAt(sessionId: string, message: RuntimeEventMessage): void {
     const looking = this.lookingAtItsRecord.get(sessionId)
     if (looking === undefined) return
+    const provider = this.deps.store.recordedOne(sessionId)?.provider
     for (const [owner, { sink }] of looking) {
       if (!sink.alive) {
         looking.delete(owner)
         continue
       }
       try {
-        sink.send(transcriptMessageForDisplay(message))
+        sink.send(transcriptMessageForDisplay(message, provider))
       } catch (error) {
         console.warn(
           `runtime host could not show ${sessionId}'s new row to a window: ${errorMessage(error)}`,
@@ -21202,7 +21203,12 @@ export class RuntimeHost implements LiveHost {
     provider: Provider,
     profileId: string,
     sessionId?: string,
-  ): Promise<{ readonly home: string; readonly loginRenewed: boolean }> {
+    connection?: ProviderConnection,
+  ): Promise<{
+    readonly home: string
+    readonly loginRenewed: boolean
+    readonly runtime?: AgentRuntime
+  }> {
     const barrier = this.homeCopyBarriers.get(profileSignInKey(provider, profileId))
     const launch = sessionId === undefined ? undefined : this.slots.get(sessionId)?.launch
     if (barrier !== undefined) {
@@ -21216,16 +21222,23 @@ export class RuntimeHost implements LiveHost {
     }
     await this.homeCopyJobs.get(profileSignInKey(provider, profileId))
     const renewedForIt = sessionId !== undefined && this.renewedForItsReopen.delete(sessionId)
-    const prepare = (): string | Promise<string> =>
-      this.deps.prepareProviderHome(provider, profileId)
+    let runtime: AgentRuntime | undefined
+    const prepare = async (): Promise<string> => {
+      if (this.deps.prepareProviderLaunch !== undefined) {
+        const prepared = await this.deps.prepareProviderLaunch(provider, profileId, connection)
+        runtime = prepared.runtime
+        return prepared.home
+      }
+      return this.deps.prepareProviderHome(provider, profileId)
+    }
     const renewal = this.deps.loginRenewal?.(provider)
     if (renewal === undefined || this.aKeyIsSaved(provider)) {
-      return { home: await prepare(), loginRenewed: renewedForIt }
+      return { home: await prepare(), loginRenewed: renewedForIt, runtime }
     }
     const prepared = await renewal.prepare(prepare, () =>
       this.withProviderLaunch(renewal.launchLabel, renewal.renew),
     )
-    return { home: prepared.home, loginRenewed: renewedForIt || prepared.loginRenewed }
+    return { home: prepared.home, loginRenewed: renewedForIt || prepared.loginRenewed, runtime }
   }
 
   private async theSkillsForALaunch(
@@ -21298,11 +21311,6 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  private assertConnectionUnchanged(provider: Provider, revision: number | undefined): void {
-    if (revision !== undefined && this.deps.connectionRevision?.(provider) !== revision)
-      throw new Error('The selected connection changed during preparation')
-  }
-
   private runtimeWithPlugins(
     runtime: AgentRuntime,
     provider: Provider,
@@ -21350,16 +21358,14 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **A folder a person or the spawn rails named, else the durable workspace** — `resolveCwd`'s
     // blank branch, which is where every conversation that asked for none runs.
     const cwd = this.deps.resolveCwd(id, input.cwd)
-    const connectionId = recorded
+    const connection = recorded
       ? this.deps.connectionFor?.(input.provider, this.deps.store.connectionOf(id))
       : this.deps.connectionFor?.(input.provider)
-    const connectionRevision = this.deps.connectionRevision?.(input.provider)
-    const { home: providerHome, loginRenewed } = await this.prepareAHome(
-      input.provider,
-      profileId,
-      id,
-    )
-    this.assertConnectionUnchanged(input.provider, connectionRevision)
+    const {
+      home: providerHome,
+      loginRenewed,
+      runtime: preparedRuntime,
+    } = await this.prepareAHome(input.provider, profileId, id, connection)
     // ⛔ **Asked again now the home exists, because the first answer was about a different disk**
     // (265 §4). The claim above covers every creation in THIS host; a variant laid down while we
     // waited — another BroBot tree over the same `userData`, or a person making the directory — is
@@ -21387,10 +21393,7 @@ export class RuntimeHost implements LiveHost {
     // The runtime first: it is made with the program it runs, so a program this computer lacks is
     // refused here in its own words, before a model list is asked whose failure would read as a
     // list that names no model.
-    const rawRuntime =
-      connectionId === undefined
-        ? this.deps.createRuntime(input.provider)
-        : this.deps.createRuntime(input.provider, connectionId)
+    const rawRuntime = preparedRuntime ?? this.deps.createRuntime(input.provider)
     // 🔴 **D-042 · R1 — every start names its model and effort** (024's effort, 038's model): what
     // the caller named, else this agent's default, else the last pair a person picked on this
     // provider, else the provider's own default BY NAME — {@link theSelectedModel}, after the home is
@@ -21467,7 +21470,6 @@ export class RuntimeHost implements LiveHost {
       { provider: input.provider, kind: 'fresh' },
       (startPhases) => {
         if (builtInSkills && !builtInSkills.isCurrent()) throw new Error(BUILT_IN_SKILLS_FAILURE)
-        this.assertConnectionUnchanged(input.provider, connectionRevision)
         const runtime = this.runtimeWithPlugins(rawRuntime, input.provider, profileId)
         return runtime.start({
           startPhases,
@@ -21577,7 +21579,7 @@ export class RuntimeHost implements LiveHost {
           if (recorded) {
             const launched = this.deps.store.firstLaunchOf({
               id,
-              ...(handle.connectionId === undefined ? {} : { connectionId: handle.connectionId }),
+              ...(connection === undefined ? {} : { connectionId: connection.id }),
               model,
               ...(reasoningEffort ? { reasoningEffort } : {}),
               ...(planMode !== undefined ? { planMode } : {}),
@@ -21589,7 +21591,7 @@ export class RuntimeHost implements LiveHost {
           this.deps.store.create({
             id,
             provider: input.provider,
-            ...(handle.connectionId === undefined ? {} : { connectionId: handle.connectionId }),
+            ...(connection === undefined ? {} : { connectionId: connection.id }),
             cwd,
             approvalMode,
             profileId,
@@ -24228,7 +24230,7 @@ export class RuntimeHost implements LiveHost {
       )
     }
     session.sentOrdinal = Math.max(session.sentOrdinal ?? message.ordinal, message.ordinal)
-    session.sink.send(transcriptMessageForDisplay(message))
+    session.sink.send(transcriptMessageForDisplay(message, session.provider))
   }
 
   /**
@@ -29391,12 +29393,9 @@ export class RuntimeHost implements LiveHost {
     // ⚑ A sign-in that belongs to one profile (Codex's) moves that profile's conversations only, and
     // no moment for the whole provider: the other profiles' accounts, limits and usage are as they were.
     const itsProfile = providerDescriptor(provider).signIn.profileScoped ? profileId : undefined
-    // ⚑ **F096 — a life that began no later than the one that saw the change holds the login from
-    // before it**, so its usage is the account before's ({@link readsAnOlderLogin}). ⛔ Decided per
-    // life, never by the moment this app noticed: a life started between the change and the notice
-    // runs on the new login. ⚑ One started between the reporter's start and the change is marked
-    // when it launched on the same login as a life marked here ({@link SessionHandle.signInTag}),
-    // and otherwise by its own turn gate when it next sends ({@link assertSignInCurrent}).
+    // Lives that began no later than the reporter used the previous login. Later lives can match
+    // a confirmed native account tag. Claude has no tag, so its later lives are marked only by
+    // their own turn gate when they next send (assertSignInCurrent).
     const olderLogins = new Set<string>()
     for (const { session } of this.slots.values()) {
       if (
@@ -32007,13 +32006,8 @@ export class RuntimeHost implements LiveHost {
    * received it. ⚑ Windows are told only when a number moved. ⛔ At most {@link MAX_USAGE_WINDOWS}
    * windows a provider.
    *
-   * ⚑ **A reading belongs to the account it was read on** ({@link accountOf}), when that is known
-   * for it and for what is held: a login renewed on the same account keeps its readings, and
-   * another account's never mix with them. ⚑ Otherwise it belongs to the sign-in it was read on
-   * ({@link SessionHandle.signInTag}). Claude's sign-in is the Mac's, so another one's readings are
-   * never held beside it; its tag is of its login, so a renewal reads as another sign-in. ⚑ A Codex
-   * sign-in is its profile's, and Codex's readings are held from every profile, as the provider
-   * reports them; after a restart, the first reading's sign-in settles them all.
+   * A reading belongs to its confirmed account when known. Codex's native account tag survives
+   * token renewals. An unknown account cannot confirm readings kept by an earlier run.
    */
   private takeTheUsage(session: HostedSession, event: ProviderUsageEvent): void {
     const { provider } = session
@@ -35995,6 +35989,7 @@ export class RuntimeHost implements LiveHost {
     sessionId: string,
     options: { before?: number; turns?: number },
   ): HistoryWindow {
+    const provider = this.deps.store.recordedOne(sessionId)?.provider
     const window = this.deps.store.turnWindow(sessionId, {
       turns: options.turns ?? HISTORY_WINDOW_TURNS,
       maxEvents: HISTORY_WINDOW_MAX_EVENTS,
@@ -36010,7 +36005,7 @@ export class RuntimeHost implements LiveHost {
       entries: window.entries.map((entry) => ({
         ordinal: entry.ordinal,
         at: entry.at,
-        event: transcriptEventForDisplay(entry.event),
+        event: transcriptEventForDisplay(entry.event, provider),
         ...(entry.event.type === 'assistant_message'
           ? { humanFinal: humanFinals.get(entry.ordinal) ?? null }
           : {}),
@@ -39029,17 +39024,21 @@ export class RuntimeHost implements LiveHost {
     // that ran short, said in words (`710`, {@link howAFailureReads}); the log keeps the errno.
     if (this.launches.closed) return { ok: false, reason: 'closing' }
     let providerHome: string
-    let connectionId: string | undefined
-    let connectionRevision: number | undefined
+    let preparedRuntime: AgentRuntime | undefined
+    let connection: ProviderConnection | undefined
     try {
-      connectionId = this.deps.connectionFor?.(provider)
-      connectionRevision = this.deps.connectionRevision?.(provider)
+      connection = this.deps.connectionFor?.(provider)
       const preparation = this.launches.open(`${provider} model home preparation`)
       try {
         if (this.deps.beforeProviderLaunch) await this.deps.beforeProviderLaunch()
         preparation.signal.throwIfAborted()
-        providerHome = await this.deps.prepareProviderHome(provider, profileId)
-        this.assertConnectionUnchanged(provider, connectionRevision)
+        if (this.deps.prepareProviderLaunch !== undefined) {
+          const prepared = await this.deps.prepareProviderLaunch(provider, profileId, connection)
+          providerHome = prepared.home
+          preparedRuntime = prepared.runtime
+        } else {
+          providerHome = await this.deps.prepareProviderHome(provider, profileId)
+        }
       } finally {
         this.launches.finish(preparation)
       }
@@ -39060,11 +39059,7 @@ export class RuntimeHost implements LiveHost {
         await this.deps.beforeProviderLaunch()
         launch.signal.throwIfAborted()
       }
-      this.assertConnectionUnchanged(provider, connectionRevision)
-      const runtime =
-        connectionId === undefined
-          ? this.deps.createRuntime(provider)
-          : this.deps.createRuntime(provider, connectionId)
+      const runtime = preparedRuntime ?? this.deps.createRuntime(provider)
       const listing = runtime.listModels({ providerHome, signal: launch.signal })
       // Owned until the probe's own promise settles — both adapters close their child in a
       // `finally`, so that is the nearest thing to a termination receipt a probe has. Handed
@@ -40091,17 +40086,15 @@ export class RuntimeHost implements LiveHost {
     // ⚑ `592` recorded that move deliberately: see `test/session-profile.test.ts`'s *"the path for
     // an omitted profile moved, and only because the SLUG did"*.
     const profileId = row.profileId ?? DEFAULT_PROFILE_ID
-    const connectionId = this.deps.connectionFor?.(
+    const connection = this.deps.connectionFor?.(
       row.provider,
       this.deps.store.connectionOf(sessionId),
     )
-    const connectionRevision = this.deps.connectionRevision?.(row.provider)
-    const { home: providerHome, loginRenewed } = await this.prepareAHome(
-      row.provider,
-      profileId,
-      sessionId,
-    )
-    this.assertConnectionUnchanged(row.provider, connectionRevision)
+    const {
+      home: providerHome,
+      loginRenewed,
+      runtime: preparedRuntime,
+    } = await this.prepareAHome(row.provider, profileId, sessionId, connection)
     // Null only for rows written before the mode was recorded, and for adopted ones we never
     // ran; those resume PROMPTING, which is the safe direction — never the other way round.
     const approvalMode = row.approvalMode ?? 'ask'
@@ -40140,10 +40133,7 @@ export class RuntimeHost implements LiveHost {
     const recordedModel = row.model ?? undefined
     // The runtime first, as a start makes it: a missing program is refused in its own words, never
     // as a list that names no model.
-    const rawRuntime =
-      connectionId === undefined
-        ? this.deps.createRuntime(row.provider)
-        : this.deps.createRuntime(row.provider, connectionId)
+    const rawRuntime = preparedRuntime ?? this.deps.createRuntime(row.provider)
     const selected = await this.theSelectedModel(row.provider, row.profileId, profileId, {
       ...(recordedModel === undefined ? {} : { model: recordedModel }),
       ...(recordedEffort === undefined ? {} : { effort: recordedEffort }),
@@ -40235,7 +40225,6 @@ export class RuntimeHost implements LiveHost {
           ).catch(() => null)
         }
         if (builtInSkills && !builtInSkills.isCurrent()) throw new Error(BUILT_IN_SKILLS_FAILURE)
-        this.assertConnectionUnchanged(row.provider, connectionRevision)
         const runtime = this.runtimeWithPlugins(rawRuntime, row.provider, row.profileId)
         return runtime.resume(row.ref, {
           startPhases,
@@ -42550,7 +42539,7 @@ export class RuntimeHost implements LiveHost {
    * the death did not.
    *
    * ⛔ **Only when the machine login now holds a DIFFERENT valid token** — the handle's own
-   * comparison ({@link SessionHandle.checkSignIn}, by `credentialFingerprint`). The same token, an
+   * private process-local comparison ({@link SessionHandle.checkSignIn}). The same token, an
    * expired or unreadable login: today's stop and today's Reopen, untouched. ⛔ **Never re-sends the
    * failed turn**: a tool step may already have run. The `reopened` row says why, and the
    * transcript draws it as one line.

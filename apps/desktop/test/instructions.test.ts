@@ -11,14 +11,14 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, parse, resolve } from 'node:path'
+import { claudeAutoMemoryIndex } from '@brobot2/runtime/claude'
 import {
-  claudeAutoMemoryIndex,
   codexAdHocNotesDir,
   codexMemoryDir,
   codexMemoryIndex,
   codexMemorySummary,
-  SUPPORTED_PROVIDERS,
-} from '@brobot2/runtime'
+} from '@brobot2/runtime/codex'
+import { SUPPORTED_PROVIDERS } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -27,10 +27,10 @@ import {
   composeSystemHint,
   INSTRUCTION_FILE_CAP,
   INSTRUCTION_TOTAL_CAP,
-  projectInstructionChain,
   readInstructionFile,
   readSessionInstructions,
 } from '../src/main/runtime/instructions'
+import { projectInstructionChain } from '../src/main/providers/claude/instructions'
 
 /**
  * **The memory files a session is launched with** (158).

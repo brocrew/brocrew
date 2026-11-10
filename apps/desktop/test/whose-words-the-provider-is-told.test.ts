@@ -15,8 +15,8 @@ import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import { ClaudeRuntime } from '@brobot2/runtime/claude'
 import {
-  ClaudeRuntime,
   FakeProviderSessions,
   FakeRuntime,
   FakeSessionHandle,

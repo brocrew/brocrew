@@ -13,7 +13,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { claudeAutoMemoryDir } from '@brobot2/runtime'
+import { claudeAutoMemoryDir } from '@brobot2/runtime/claude'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { removeKeptRule } from '../src/main/kept-rules'
 import { amendAgentMemory } from '../src/main/runtime/agent-memory'
