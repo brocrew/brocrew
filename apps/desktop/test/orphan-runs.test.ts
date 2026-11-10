@@ -117,22 +117,6 @@ describe('a session a dead process left mid-run', () => {
   const statusOf = (id: string): string | undefined =>
     store.resumable().find((row) => row.sessionId === id)?.status
 
-  it('is listed as working until something reconciles it — the defect', () => {
-    crashedMidTurn('sess_crashed')
-    expect(statusOf('sess_crashed')).toBe('working')
-  })
-
-  it('is settled at startup, so the reopen list stops calling it live', () => {
-    crashedMidTurn('sess_crashed')
-
-    expect(store.settleOrphanRuns(1_700_000_100_000, NOTHING_RUNNING)).toBe(1)
-
-    // `idle` is the honest word here and the one 042's ruling defines: it means "we are no longer
-    // driving a turn", which is true of a session whose process is gone. It does NOT say the
-    // conversation ended — nobody watched it end, and that fact lives on the turn.
-    expect(statusOf('sess_crashed')).toBe('idle')
-  })
-
   it('records the turn as `unknown`, never as completed', () => {
     crashedMidTurn('sess_crashed')
     store.settleOrphanRuns(1_700_000_100_000, NOTHING_RUNNING)

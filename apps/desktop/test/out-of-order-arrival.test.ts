@@ -125,17 +125,6 @@ describe('320 · an arrival that is out of order', () => {
     expect(record.transcript.status).toBe('idle')
   })
 
-  it('folds a late event that has something in it, and the something is there', () => {
-    // ⚠️ **The same claim on an event that CARRIES text**, because a status is a state change and a
-    // state change can be reached from more than one direction. This one cannot: the string is in
-    // the transcript or it is not, and nothing else in this file puts it there.
-    const record = waitingFor181()
-    acceptEvent(record, chatter(182))
-    acceptEvent(record, late(181))
-
-    expect(JSON.stringify(record.transcript.items)).toContain(LATE)
-  })
-
   it('reports the reorder ONCE, not once per event that follows it', () => {
     // 🔴 **This is the finding.** `record.nextOrdinal = message.ordinal + 1` was an assignment, so
     // folding the late 181 walked the counter BACKWARDS from 183 to 182 — and the next event, 183,

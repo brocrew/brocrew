@@ -1,7 +1,7 @@
 import { waitFor } from './lib/f093-host'
 import { REQUEST_STATES } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -20,7 +20,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
-import { TOOL_NAMES, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { mailboxOf } from '../src/shared/mailbox'
@@ -32,55 +32,10 @@ import {
   neutralHostDeps,
 } from './lib/host-fixture'
 
-/**
- * 🔴 **396 · nothing waits on somebody looking** — Slice 4 S6, and the last build dispatch before X.
- *
- * ## ⛔ One principle, and three findings that turned out to be it
- *
- * > **Whether work happens must never depend on whether anybody is looking at it.**
- *
- *  - **`395` §6** — `RuntimeHost.deliver` called `flushQueued` BELOW `if (!session.sink.alive)
- *    return`, and a spawned session's sink is `NO_SURFACE`, whose `alive` is `false`. **A message
- *    queued to a busy child nobody was watching was never sent.**
- *  - **`394` §6.1** — after a crash a routed request read `open` while the provider that raised it
- *    was gone. **Nothing anywhere was waiting**, and the ledger could not tell a live wait from a
- *    dead one.
- *  - **`394` §6.2** — a question routed to a parent that was not live was never delivered. The
- *    parent, once resumed, had no message and therefore no id, so **it could never answer**.
- *
- * ⚑ **They are one subject, and the repair is made once**: a gate about ATTENTION decides nothing
- * about WORK; a launch WRITES the ending a crash could not; and a reader exists for the question a
- * message could not carry.
- *
- * ## ⚠️ Where the reasoning slipped, quoted because it is the trap
- *
- * `NO_SURFACE`'s own docblock said *"every `if (!sink.alive) return` in this class takes the branch
- * it already takes for a window that has gone, so no existing line had to learn about a new state."*
- * ⛔ **That is true of every line that DELIVERS TO A SURFACE.** The flush is not one — it hands work
- * to a PROVIDER, and it was sitting under a gate about whether anyone was looking. ⚑ §1 puts the
- * hazard on the path the code walks; §6 keeps it there.
- *
- * ## ⛔ The assertions this dispatch DELETED, and it says so out loud
- *
- * ⚠️ **`395` recorded the mailbox defect as a MEASUREMENT rather than a comment** — the same held
- * message going out at once with a window attached and still held with none — precisely so that the
- * day it was repaired the assertion would turn red. ⚑ It did. ⛔ **It was replaced by the opposite
- * claim, never adjusted until it passed**: `the-interruption-that-looks-like-a-fault.test.ts` §5.
- *
- * ⚠️ **`394` did the same for the crash**, under *"after a CRASH the row still reads open"*. ⛔ Also
- * replaced, in `a-question-finds-a-person.test.ts` §5 — and the rail it was the only demonstration
- * of (`the-conversation-that-asked-has-gone`) is kept reachable HERE, in §2, through the one case
- * this sweep must not walk over.
- *
- * ⚑ **Real host, real SQLite, real migrations, real tools, real filesystem.** The only double is the
- * provider.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const mainRoot = join(here, '../src/main')
 
-/** `394`'s double, with the handles kept — a test has to BE the provider to ask like one. */
+/** The provider double, with the handles kept — a test has to BE the provider to ask like one. */
 class ProviderDouble extends FakeRuntime {
   constructor(
     provider: Provider,
@@ -328,100 +283,66 @@ describe('396 · nothing waits on somebody looking', () => {
     )
   }
 
-  const sourceOf = (dir: string, file: string): string => readFileSync(join(dir, file), 'utf8')
-  const codeOnly = (source: string): string =>
-    source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-
-  /**
-   * ⛔ **The body of one method, code only** — `394`'s idiom, so a docblock quoting the line a
-   * dispatch retired cannot satisfy an assertion about the code.
-   */
-  const bodyOf = (source: string, opens: string): string => {
-    const code = codeOnly(source)
-    const at = code.indexOf(opens)
-    expect(at, `${opens} was renamed or removed`).toBeGreaterThan(0)
-    return code.slice(at, code.indexOf('\n  }', at))
+  /** Two notes to the child: the first starts a turn that parks on a card, so the second is held. */
+  const aNoteHeldBehindAnother = async ({
+    pmProfile,
+    worker,
+    pmTools,
+    workerHandle,
+  }: {
+    pmProfile: string
+    worker: string
+    pmTools: AgentToolset
+    workerHandle: FakeSessionHandle
+  }): Promise<void> => {
+    reach(pmProfile, { canMessage: 'any' })
+    const first = await callOn(pmTools, 'message_agent', {
+      agent: worker,
+      text: 'first',
+      kind: 'note',
+    })
+    expect(first.outcome).toBe('ok')
+    await waitFor(() => workerHandle.status() === 'waiting_permission', 'the child to be working')
+    const held = await callOn(pmTools, 'message_agent', {
+      agent: worker,
+      text: 'second',
+      kind: 'note',
+    })
+    expect(held.delivery, JSON.stringify(held)).toBe('queued')
   }
 
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §1 · THE DELIVERABLE — a gate about attention decides nothing about work
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§1 · the flush is not under an attention gate', () => {
-    it('🔴 a message held for a child NOBODY is watching goes out when its turn ends', async () => {
-      // ⛔ **The hazard on the path the code walks** (396 §5): no window, a busy child, a held
-      // message — and the turn ends through the PROVIDER rather than through a person, so no sink is
-      // ever attached. ⚠️ A test that let a window claim the child would pass either way, which is
-      // the shape `395` named when it wrote the defect down.
+  describe('the flush is not under an attention gate', () => {
+    it('a message held for a child NOBODY is watching goes out when its turn ends', async () => {
+      // No window, a busy child, a held message — and the turn ends through the provider rather
+      // than through a person, so no sink is ever attached.
       const { pm, pmProfile, worker, pmTools, workerHandle } = await aPmAndItsWorker()
-      reach(pmProfile, { canMessage: 'any' })
-      // ⚑ **D-016 · two NOTES** — the first starts a turn and parks it, so the second is held. A
-      // note opens nothing, and a follow-up would have to name a piece the child holds.
-      expect(
-        (
-          await callOn(pmTools, 'message_agent', {
-            agent: worker,
-            text: 'first',
-            kind: 'note',
-          })
-        ).outcome,
-      ).toBe('ok')
-      await waitFor(() => workerHandle.status() === 'waiting_permission', 'the child to be working')
-      const held = await callOn(pmTools, 'message_agent', {
-        agent: worker,
-        text: 'second',
-        kind: 'note',
-      })
-      expect(held.delivery, JSON.stringify(held)).toBe('queued')
+      await aNoteHeldBehindAnother({ pmProfile, worker, pmTools, workerHandle })
 
-      // ⚑ **Nobody has ever looked at this conversation**, asserted rather than assumed: the sink a
-      // spawned session carries is `NO_SURFACE`, and no window has claimed it.
+      // Nobody has ever looked at this conversation.
       expect(claimed.has(worker)).toBe(false)
       expect(window.messages.some((one) => one.sessionId === worker)).toBe(false)
 
-      // ⛔ **The turn ends through the PARENT and not through a person**, which is the only ending a
-      // child nobody has claimed can have: `mayAnswerAsAHuman` refuses a commander and refuses the
-      // app, so answering the card would mean attaching a window — the very thing this test must
-      // not do. ⚑ What the flush keys on is `status: 'idle'`, whatever produced it.
+      // The turn ends through the parent: answering the card would mean attaching a window. What
+      // the flush keys on is `status: 'idle'`, whatever produced it.
       await host.interrupt(worker, asPm(pm))
       await waitFor(
         () => mailboxOf(store.events(worker)).some((one) => one.ending === 'sent'),
         'the held message to go out to a child nobody is watching',
       )
       expect(mailboxOf(store.events(worker)).map((one) => one.ending)).toContain('sent')
-      // ⛔ **And still nobody looked** — the premise held for the whole test, so what sent the
-      // message was not a window arriving part-way through it.
+      // …and still nobody looked.
       expect(window.messages.some((one) => one.sessionId === worker)).toBe(false)
     })
 
-    it('🔴 …and when the window that WAS watching has gone — the other half of the same gate', async () => {
-      // ⛔ **`sink.alive` is `false` for two different reasons and the repair has to cover both**: a
-      // spawned child that never had a surface, and a conversation whose window closed. ⚠️ The
-      // second is the one `NO_SURFACE`'s docblock reasoned from — *"the branch it already takes for
-      // a window that has gone"* — so it is the arm that shows the defect was never only about
-      // spawned sessions.
+    it('…and when the window that WAS watching has gone — the other half of the same gate', async () => {
       const { pmProfile, worker, pmTools, workerHandle } = await aPmAndItsWorker()
-      reach(pmProfile, { canMessage: 'any' })
       const ghost = new RecordingSink('webContents:9')
       host.claimSession(worker, ghost)
       claimed.add(worker)
-      // ⚑ **D-016 · two NOTES** — the first starts a turn and parks it, so the second is held. A
-      // note opens nothing, and a follow-up would have to name a piece the child holds.
-      await callOn(pmTools, 'message_agent', { agent: worker, text: 'first', kind: 'note' })
-      await waitFor(() => workerHandle.status() === 'waiting_permission', 'the child to be working')
-      expect(
-        (
-          await callOn(pmTools, 'message_agent', {
-            agent: worker,
-            text: 'second',
-            kind: 'note',
-          })
-        ).delivery,
-      ).toBe('queued')
+      await aNoteHeldBehindAnother({ pmProfile, worker, pmTools, workerHandle })
       const card = await cardOn(worker)
-      // ⚑ **The window goes BEFORE the turn ends**, which is deterministic rather than raced: the
-      // answer is still permitted — `mayAnswerAsAHuman` compares owners and never aliveness — and
-      // every `deliver` after this line takes the dead-sink branch.
+      // The window goes before the turn ends, so every `deliver` after this takes the dead-sink
+      // branch.
       ghost.alive = false
       await host.respondPermission(worker, card, { outcome: 'allow' }, ghost)
       await waitFor(
@@ -430,52 +351,16 @@ describe('396 · nothing waits on somebody looking', () => {
       )
       const seen = ghost.messages.length
       expect(mailboxOf(store.events(worker)).map((one) => one.ending)).toContain('sent')
-      // ⛔ **Nothing reached the departed window**, which is what the gate is still for.
+      // Nothing reached the departed window, which is what the gate is still for.
       expect(ghost.messages.length).toBe(seen)
     })
 
-    it('⛔ …and it still goes out when somebody IS — the control, so this is not a one-sided test', async () => {
-      // ⚑ **The paired positive.** A repair that broke the watched case would pass the test above and
-      // be a worse app than the one it replaced.
+    it('the flush does not overtake the status that triggered it', async () => {
+      // Measured on the wire, because the ledger takes ordinals in order whatever the send order.
       const { pmProfile, worker, pmTools, workerHandle } = await aPmAndItsWorker()
-      reach(pmProfile, { canMessage: 'any' })
-      // ⚑ **D-016 · two NOTES** — the first starts a turn and parks it, so the second is held. A
-      // note opens nothing, and a follow-up would have to name a piece the child holds.
-      await callOn(pmTools, 'message_agent', { agent: worker, text: 'first', kind: 'note' })
-      await waitFor(() => workerHandle.status() === 'waiting_permission', 'the child to be working')
-      expect(
-        (
-          await callOn(pmTools, 'message_agent', {
-            agent: worker,
-            text: 'second',
-            kind: 'note',
-          })
-        ).delivery,
-      ).toBe('queued')
-      await letTheTurnFinish(worker)
-      await waitFor(
-        () => mailboxOf(store.events(worker)).some((one) => one.ending === 'sent'),
-        'the held message to go out to a child somebody is watching',
-      )
-    })
-
-    it('🔴 the flush does not overtake the status that triggered it — `320`’s ordering, kept', async () => {
-      // ⛔ **`395` named this as the hazard of moving the call**: the flush publishes a `user_turn`,
-      // and a `user_turn` published from inside another event's window puts ordinal `N+1` on the
-      // wire before `N` — which is the disorder `320` measured, and which `RuntimeHost.emit` reports
-      // to the console rather than silently repairing.
-      //
-      // ⚑ **Measured on the WIRE and not on the ledger**, because the ledger cannot show it: the
-      // ordinals are taken in order whatever the send order was. This reads the sink.
-      const { pmProfile, worker, pmTools, workerHandle } = await aPmAndItsWorker()
-      reach(pmProfile, { canMessage: 'any' })
       host.claimSession(worker, window)
       claimed.add(worker)
-      // ⚑ **D-016 · two NOTES** — the first starts a turn and parks it, so the second is held. A
-      // note opens nothing, and a follow-up would have to name a piece the child holds.
-      await callOn(pmTools, 'message_agent', { agent: worker, text: 'first', kind: 'note' })
-      await waitFor(() => workerHandle.status() === 'waiting_permission', 'the child to be working')
-      await callOn(pmTools, 'message_agent', { agent: worker, text: 'second', kind: 'note' })
+      await aNoteHeldBehindAnother({ pmProfile, worker, pmTools, workerHandle })
       await letTheTurnFinish(worker)
       await waitFor(
         () => mailboxOf(store.events(worker)).some((one) => one.ending === 'sent'),
@@ -484,18 +369,14 @@ describe('396 · nothing waits on somebody looking', () => {
       const sent = window.messages
         .filter((one) => one.sessionId === worker)
         .map((one) => one.ordinal)
-      // ⚑ **The premise, asserted rather than assumed**: the flush really did publish onto this wire.
+      // The flush really did publish onto this wire.
       expect(sent.length).toBeGreaterThan(4)
       expect([...sent].sort((left, right) => left - right)).toEqual(sent)
     })
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §2 · a launch writes the ending nothing else can
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§2 · the request a crash left open', () => {
-    it('🔴 a launch settles it, and the refusal NAMES the ending rather than the id', async () => {
+  describe('the request a crash left open', () => {
+    it('a launch settles it, and the refusal NAMES the ending rather than the id', async () => {
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
       const asked = await childAsks(worker, workerHandle)
       // ⚑ **The premise**: nothing has ended it, so the ledger reads `open` — which is exactly what
@@ -557,42 +438,22 @@ describe('396 · nothing waits on somebody looking', () => {
       })
     })
 
-    it('⚠️ a second launch writes nothing more — the sweep is idempotent', async () => {
+    it('a second launch writes nothing more — the sweep is idempotent', async () => {
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
       await childAsks(worker, workerHandle)
       const first = buildHost(createSessionStore(db, tick))
       await first.resumeSession(pm, window)
       const afterOne = ledger(worker).filter((event) => event.type === 'request_stranded').length
       expect(afterOne).toBe(1)
-      // ⚑ **The fold is what makes it idempotent**: the second launch folds the row the first wrote
-      // and finds the request closed, so there is nothing open to settle.
+      // The second launch folds the row the first wrote and finds the request closed.
       buildHost(createSessionStore(db, tick))
       expect(ledger(worker).filter((event) => event.type === 'request_stranded').length).toBe(1)
     })
 
-    it('⛔ a request that already ENDED is left alone — a launch settles what is open and nothing else', async () => {
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const asked = await childAsks(worker, workerHandle)
-      // ⚑ Answered through the real door, so the ending is the one the fold reads.
-      expect(
-        await callOn(agentToolsFor(host, pm), 'answer_question', {
-          question: asked.id,
-          answers: [{ part: 'q0', answer: ['main'] }],
-        }),
-      ).toMatchObject({ outcome: 'ok' })
-      expect(store.routedRequestsOf(worker).map((one) => one.state)).toEqual(['answered'])
-
-      buildHost(createSessionStore(db, tick))
-      expect(ledger(worker).some((event) => event.type === 'request_stranded')).toBe(false)
-      expect(store.routedRequestsOf(worker).map((one) => one.state)).toEqual(['answered'])
-    })
-
-    it('⛔ TWO open requests in one conversation are both settled — the control that plants two', async () => {
-      // ⚠️ **Standing rule 12: a census needs a control that plants TWO, not one.** ⛔ The hazard is
-      // exact and it is not about counting: the sweep takes `max(ordinal) + 1` per row, and a
-      // reading hoisted out of the loop would write two rows at ONE ordinal — which
-      // `unique(session_id, generation, ordinal)` refuses, taking the whole transaction down and
-      // leaving a launch that repairs nothing and throws on the way past.
+    it('TWO open requests in one conversation are both settled', async () => {
+      // The sweep takes `max(ordinal) + 1` per row; a reading hoisted out of the loop would write
+      // two rows at one ordinal, which the unique index refuses, and the launch would repair
+      // nothing.
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
       const first = await childAsks(worker, workerHandle, 'which branch?', ['main', 'dev'])
       const second = await childAsks(worker, workerHandle, 'which region?', ['eu', 'us'])
@@ -628,11 +489,7 @@ describe('396 · nothing waits on somebody looking', () => {
     })
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §3 · the question a parent was never told about
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§3 · list_questions', () => {
+  describe('list_questions', () => {
     /**
      * ⛔ **A child that asks while its parent is NOT LIVE** — the whole of `394` §6.2.
      *
@@ -855,12 +712,8 @@ describe('396 · nothing waits on somebody looking', () => {
     })
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §4 · the restart, for all three
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§4 · after the app comes back', () => {
-    it('🔴 the stranding survives a relaunch, because it is a ROW rather than a decision', async () => {
+  describe('after the app comes back', () => {
+    it('the stranding survives a relaunch, because it is a ROW rather than a decision', async () => {
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
       await childAsks(worker, workerHandle)
       const next = buildHost(createSessionStore(db, tick))
@@ -868,24 +721,19 @@ describe('396 · nothing waits on somebody looking', () => {
       const atTheStranding = next.questionsVisibleTo(pm)
       expect(atTheStranding.map((one) => one.state)).toEqual(['stranded'])
 
-      // ⚑ **Derived again from the ledger alone, by a third host** — criterion 14's shape.
+      // Derived again from the ledger alone, by a third host.
       const third = buildHost(createSessionStore(db, tick))
       await third.resumeSession(pm, window)
       expect(third.questionsVisibleTo(pm)).toEqual(atTheStranding)
-      // ⛔ **And the fold agrees when it is handed the raw ledger**, which is the replayed path.
+      // …and the fold agrees when it is handed the raw ledger, which is the replayed path.
       expect(deriveRoutedRequests(worker, store.events(worker)).map((one) => one.state)).toEqual([
         'stranded',
       ])
     })
 
-    it('⛔ a message flushed to an unwatched child is in the ledger the next launch reads', async () => {
+    it('a message flushed to an unwatched child is in the ledger the next launch reads', async () => {
       const { pm, pmProfile, worker, pmTools, workerHandle } = await aPmAndItsWorker()
-      reach(pmProfile, { canMessage: 'any' })
-      // ⚑ **D-016 · two NOTES** — the first starts a turn and parks it, so the second is held. A
-      // note opens nothing, and a follow-up would have to name a piece the child holds.
-      await callOn(pmTools, 'message_agent', { agent: worker, text: 'first', kind: 'note' })
-      await waitFor(() => workerHandle.status() === 'waiting_permission', 'the child to be working')
-      await callOn(pmTools, 'message_agent', { agent: worker, text: 'second', kind: 'note' })
+      await aNoteHeldBehindAnother({ pmProfile, worker, pmTools, workerHandle })
       await host.interrupt(worker, asPm(pm))
       await waitFor(
         () => mailboxOf(store.events(worker)).some((one) => one.ending === 'sent'),
@@ -893,20 +741,18 @@ describe('396 · nothing waits on somebody looking', () => {
       )
       await host.closeAll()
 
-      // ⚑ **The CONSTRUCTOR is the act** — `settleStrandedMessages` runs there and finds nothing to
-      // repair, which is the point: the message has an ending already, and the one it has is `sent`
-      // rather than the `abandoned` a crash writes.
+      // The constructor's sweep finds nothing to repair: the message already ended as `sent`,
+      // not the `abandoned` a crash writes.
       buildHost(createSessionStore(db, tick))
       expect(mailboxOf(store.events(worker)).map((one) => one.ending)).toEqual(['sent'])
     })
 
-    it('⚠️ a question answered through `list_questions` reads `answered` to the next launch', async () => {
+    it('a question answered through `list_questions` reads `answered` to the next launch', async () => {
       const { pm, worker } = await askedThenAnswered()
       const next = buildHost(createSessionStore(db, tick))
       await next.resumeSession(pm, window)
       expect(next.questionsVisibleTo(pm).map((one) => one.state)).toEqual(['answered'])
-      // ⛔ **And the launch did NOT strand it**, which is the interaction between §2 and §3: a
-      // request that was answered is not open, so the sweep passes over it.
+      // …and the launch did not strand it: an answered request is not open.
       expect(ledger(worker).some((event) => event.type === 'request_stranded')).toBe(false)
     })
 
@@ -934,47 +780,8 @@ describe('396 · nothing waits on somebody looking', () => {
     }
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §5 · the censuses
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§5 · the censuses', () => {
-    it('⛔ no timer decides any of this — every ending is derived or written by a launch', () => {
-      // ⚑ **396 §4: *a timeout decides that silence means failure after N seconds — a guess dressed
-      // as a fact*.** ⚠️ The search shape is the three repairs' own code: the store's sweep and the
-      // fold. ⛔ A `setTimeout` in either would be a deadline wearing a derivation's clothes.
-      const sweep = bodyOf(
-        sourceOf(join(mainRoot, 'db'), 'session-store.ts'),
-        'const settleStrandedRequestsTx = db.transaction(',
-      )
-      for (const clockish of ['setTimeout', 'setInterval', 'Date.now', 'performance.now']) {
-        expect(sweep, `${clockish} is in the sweep`).not.toContain(clockish)
-      }
-      const fold = codeOnly(sourceOf(join(here, '../src/shared'), 'questions.ts'))
-      for (const clockish of ['setTimeout', 'setInterval', 'Date.now', 'import(']) {
-        expect(fold, `${clockish} is in the fold`).not.toContain(clockish)
-      }
-      // ⛔ **And the sweep honours `running`** — the half a second host in one process makes true.
-      expect(sweep).toContain('if (running.has(asker.id)) continue')
-    })
-
-    it('⚠️ the published inventory gained exactly one name, and it is the eleventh', () => {
-      // ⛔ **A FIXED index, not `TOOL_NAMES.length - 1`** — *an anchor on a list's last member dies
-      // when anything appends*, which `394` learned from `395` and `395` then did again. ⚑ The claim
-      // is the position, so the position is what is asserted.
-      // ⚑ **D-017 commit 3 · 10 → 9 (the tenth now)**: `end_agent`, published before it, is gone
-      // (nothing ends a conversation); `list_questions` still follows `interrupt_agent`.
-      expect(TOOL_NAMES.indexOf('list_questions')).toBe(9)
-      // Enumerate the full vocabulary explicitly; runtime role lists are checked separately.
-      expect(agentToolsFor(host, 'sess_x', {}, true).tools.map((one) => one.name)).toEqual([
-        ...TOOL_NAMES,
-      ])
-    })
-
-    it('⛔ every request state is reachable or accounted for, and only `open` is answerable', () => {
-      // ⚑ **`stranded` is not a member nothing writes** — §2 reaches it — and this pins the table
-      // the door refuses through, so a rail with its own idea of which states are endings cannot
-      // appear.
+  describe('the request states', () => {
+    it('every request state is reachable or accounted for, and only `open` is answerable', () => {
       expect(REQUEST_STATES.filter((state) => REQUEST_IS_OPEN[state])).toEqual(['open'])
       expect(REQUEST_STATES).toContain('stranded')
       expect(REQUEST_IS_OPEN.stranded).toBe(false)

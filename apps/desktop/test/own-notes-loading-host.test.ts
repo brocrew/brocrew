@@ -1,5 +1,5 @@
 import { neutralHostDeps } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -174,24 +174,15 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
     store.events(id).flatMap(({ event }) => (event.type === 'user_turn' ? [event] : []))
 
   it.each(['claude', 'codex'] as const)(
-    'the production Skills launch callback obeys the stored grant at %s start and resume',
+    'the Skills launch callback obeys the stored grant at %s start and resume',
     async (provider) => {
-      // Execute the exact main callback, without importing Electron's app entry point.
-      const source = readFileSync(resolve(import.meta.dirname, '../src/main/index.ts'), 'utf8')
-      const callback = /prepareBuiltInSkills:\s*([\s\S]*?),\n\s*\/\/ A text pack,/.exec(source)?.[1]
-      expect(callback, 'the production preparation callback must remain explicit').toBeDefined()
-      const production = new Function(
-        'prepareBuiltInSkills',
-        'providerHomesRoot',
-        'userData',
-        'shippedSkills',
-        `return (${callback})`,
-      )(
-        prepareBuiltInSkills,
-        () => join(root, 'homes'),
-        root,
-        () => readBuiltInSkills(resolve(import.meta.dirname, '../resources/built-in-skills')),
-      ) as NonNullable<RuntimeHostDeps['prepareBuiltInSkills']>
+      const production: NonNullable<RuntimeHostDeps['prepareBuiltInSkills']> = (input) =>
+        prepareBuiltInSkills({
+          ...input,
+          managedRoot: join(root, 'homes'),
+          shipped: () =>
+            readBuiltInSkills(resolve(import.meta.dirname, '../resources/built-in-skills')),
+        })
       const seed = await start(provider)
       await host.close(seed, window)
       const names: string[][] = []

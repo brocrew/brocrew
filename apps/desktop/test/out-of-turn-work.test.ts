@@ -279,6 +279,21 @@ describe('the provider working outside a turn (123)', () => {
     await waitFor(() => statuses().at(-1) === 'working', `the burst in ${id}`)
   }
 
+  /** A question card raised inside the burst, with the answer the adapter will give the SDK. */
+  async function aCardInTheBurst(): Promise<{
+    answered: ReturnType<NonNullable<Options['canUseTool']>>
+  }> {
+    if (!canUseTool) throw new Error('the adapter never handed the SDK a canUseTool')
+    const answered = canUseTool(
+      'AskUserQuestion',
+      { questions: [{ question: 'Run another variant?', options: ['yes', 'no'] }] },
+      { toolUseID: 'tu_q', signal: new AbortController().signal } as never,
+    )
+    await waitFor(() => eventsOfType('user_input_request').length > 0, 'the question card')
+    expect(statuses().at(-1)).toBe('waiting_permission')
+    return { answered }
+  }
+
   it('a burst nobody asked for reads as working, and an ordinary turn is unchanged', async () => {
     const id = await afterTheTurnEnded()
     expect(statuses().at(-1), 'nothing is happening yet, and the app says so').toBe('idle')
@@ -387,17 +402,9 @@ describe('the provider working outside a turn (123)', () => {
     expect(STANDING_TONE[busy.standing]).toBe('live')
     expect(busy.pill?.tone ?? 'live').toBe('live')
 
-    // ⚑ **The exception 108 already carved, and it survives.** A card raised in this window IS
-    // waiting on the user, and that one counts — which is only true because the wait count is
-    // published whether or not a turn is open (122).
-    if (!canUseTool) throw new Error('the adapter never handed the SDK a canUseTool')
-    void canUseTool(
-      'AskUserQuestion',
-      { questions: [{ question: 'Run another variant?', options: ['yes', 'no'] }] },
-      { toolUseID: 'tu_q', signal: new AbortController().signal } as never,
-    )
-    await waitFor(() => eventsOfType('user_input_request').length > 0, 'the question card')
-    expect(statuses().at(-1)).toBe('waiting_permission')
+    // A card raised in this window IS waiting on the person, and that one counts — because the
+    // wait count is published whether or not a turn is open.
+    await aCardInTheBurst()
 
     // ⚑ **Derived from the fold, not hand-fed** — so the link from the `user_input_request` this
     // burst just raised to the amber badge is tested rather than asserted by construction.
@@ -419,20 +426,10 @@ describe('the provider working outside a turn (123)', () => {
   })
 
   it('Stop in the out-of-turn CARD state settles the card and gives the composer back', async () => {
-    // ⛔ **The state where the button was DRAWN and did nothing** (122 §11.2). 094 gates the stop
-    // button on `frozen` — a turn parked on a card — and `ConversationPane` reports `frozen` for any
-    // open card, turn or no turn. `interrupt()` then returned on its first line because
-    // `hasActiveTurn` was false.
+    // The stop button is drawn for any open card, turn or no turn, so Stop must work here.
     const id = await afterTheTurnEnded()
     await theBurstBegins(id)
-    if (!canUseTool) throw new Error('the adapter never handed the SDK a canUseTool')
-    const answered = canUseTool(
-      'AskUserQuestion',
-      { questions: [{ question: 'Run another variant?', options: ['yes', 'no'] }] },
-      { toolUseID: 'tu_q', signal: new AbortController().signal } as never,
-    )
-    await waitFor(() => eventsOfType('user_input_request').length > 0, 'the question card')
-    expect(statuses().at(-1)).toBe('waiting_permission')
+    const { answered } = await aCardInTheBurst()
 
     await host.interrupt(id, sink)
 

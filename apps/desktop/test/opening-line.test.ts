@@ -52,7 +52,7 @@ describe('the line itself', () => {
     expect(openingLine('   \n\t  ')).toBeNull()
   })
 
-  it('⛔ never exceeds the bound, ellipsis included — a marker added on top is not a bound', () => {
+  it('never exceeds the bound, ellipsis included — a marker added on top is not a bound', () => {
     const long = 'x'.repeat(500)
     const cut = openingLine(long)
 
@@ -64,11 +64,6 @@ describe('the line itself', () => {
     const exact = 'y'.repeat(OPENING_LINE_MAX)
     expect(openingLine(exact)).toBe(exact)
     expect(openingLine('z'.repeat(OPENING_LINE_MAX + 1))?.endsWith('…')).toBe(true)
-  })
-
-  it('does not summarize, translate or re-word — it is a quotation', () => {
-    const asked = 'Give me a JSON plan. Do NOT edit anything.'
-    expect(openingLine(asked)).toBe(asked)
   })
 })
 

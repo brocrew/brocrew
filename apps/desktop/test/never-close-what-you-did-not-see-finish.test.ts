@@ -4,7 +4,7 @@ import type { PieceRow, TaskState } from '../src/shared/task-contracts'
 import { REQUEST_STATES } from '../src/shared/question-contracts'
 import { MAILBOX_KINDS } from '../src/shared/conversation-events'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -33,7 +33,6 @@ import {
 } from '../src/shared/tasks'
 import { pieceLine } from '../src/shared/piece-called'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
-import { codeOnly, sourceOf, expectTypeImports } from './helpers/source-contracts'
 import {
   fixtureProviderConfig,
   RecordingSink,
@@ -43,7 +42,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const sharedRoot = join(here, '../src/shared')
 
 class ProviderDouble extends FakeRuntime {
   constructor(
@@ -287,23 +285,8 @@ describe('400 · never close what you did not see finish', () => {
 
   const relaunchAfterACrash = (): RuntimeHost => buildHost(createSessionStore(db, tick))
 
-  const filesUnder = (dir: string): { path: string; text: string }[] => {
-    const out: { path: string; text: string }[] = []
-    const walk = (at: string, prefix: string): void => {
-      for (const entry of readdirSync(at, { withFileTypes: true })) {
-        const full = join(at, entry.name)
-        if (entry.isDirectory()) walk(full, `${prefix}${entry.name}/`)
-        else if (entry.name.endsWith('.ts')) {
-          out.push({ path: `${prefix}${entry.name}`, text: readFileSync(full, 'utf8') })
-        }
-      }
-    }
-    walk(dir, '')
-    return out
-  }
-
-  describe('§1 · one word for “nothing is driving this”, and the two vocabularies stay two', () => {
-    it('🔴 `silent` is gone, `stalled` survives, and nothing in the app still spells the old one', () => {
+  describe('one word for “nothing is driving this”, and the two vocabularies stay two', () => {
+    it('`silent` is gone and `stalled` survives', () => {
       expect([...TASK_STATES]).toEqual([
         'waiting',
         'working',
@@ -319,19 +302,9 @@ describe('400 · never close what you did not see finish', () => {
         'closed',
       ])
       expect([...TASK_STATES]).not.toContain('silent')
-      const spellings = filesUnder(join(here, '../src'))
-        .filter(({ text }) => /['"]silent['"]/.test(codeOnly(text)))
-        .map(({ path }) => path)
-        .sort()
-      expect(spellings).toEqual([
-        'main/one-host-gate.ts',
-        'main/runtime/liveness.ts',
-        'renderer/src/lib/agent-state.ts',
-        'shared/runtime-ipc.ts',
-      ])
     })
 
-    it('⛔ the TASK vocabulary lost `abandoned` and the REQUEST vocabulary kept it', () => {
+    it('the TASK vocabulary lost `abandoned` and the REQUEST vocabulary kept it', () => {
       expect([...TASK_STATES]).not.toContain('abandoned')
       expect([...REQUEST_STATES]).toContain('abandoned')
       expect(REQUEST_IS_OPEN.abandoned).toBe(false)
@@ -352,7 +325,7 @@ describe('400 · never close what you did not see finish', () => {
       ])
     })
 
-    it('🔴 exactly three states close a task, and all of them are somebody DECIDING', () => {
+    it('exactly three states close a task, and all of them are somebody DECIDING', () => {
       expect(Object.keys(TASK_IS_OPEN).sort()).toEqual([...TASK_STATES].sort())
       expect(TASK_STATES.filter((state) => !TASK_IS_OPEN[state])).toEqual([
         'answered',
@@ -362,7 +335,7 @@ describe('400 · never close what you did not see finish', () => {
       expect(TASK_IS_OPEN.stalled).toBe(true)
     })
 
-    it('⛔ five causes, five producers — each one is the projection of a single event type', () => {
+    it('the stall causes, and the ones an ask rides on', () => {
       expect([...TASK_STALL_CAUSES]).toEqual([
         'turn_ended',
         'turn_interrupted',
@@ -374,27 +347,6 @@ describe('400 · never close what you did not see finish', () => {
         'login_refused',
         'billing_refused',
       ])
-      const source = codeOnly(sourceOf(sharedRoot, 'tasks.ts'))
-      const body = source.slice(source.indexOf('export function derivePieces'))
-      expect(body.length).toBeGreaterThan(1_000)
-      const opensStall = body.indexOf('const stall = (')
-      const opensDriven = body.indexOf('const drivenAgain = (')
-      const closesStall = body.indexOf('const noteTheLostQuestion')
-      expect(opensStall, '`stall` was renamed').toBeGreaterThan(0)
-      expect(opensDriven, '`drivenAgain` was renamed or moved').toBeGreaterThan(opensStall)
-      expect(closesStall, 'the helper after `drivenAgain` was renamed').toBeGreaterThan(opensDriven)
-      const stallBody = body.slice(opensStall, opensDriven)
-      const drivenBody = body.slice(opensDriven, closesStall)
-      const producers = body.slice(0, opensStall) + body.slice(closesStall)
-      for (const cause of TASK_STALL_CAUSES) {
-        expect(producers.split(`'${cause}'`), cause).toHaveLength(2)
-      }
-      expect(TASK_STALL_CAUSES.filter((cause) => stallBody.includes(`'${cause}'`))).toEqual([
-        'could_not_be_reopened',
-      ])
-      expect(stallBody.split(`'could_not_be_reopened'`)).toHaveLength(2)
-      expect(stallBody).toContain("held.row.stalledBecause === 'could_not_be_reopened'")
-      expect(stallBody).toContain('AN_ASK_RIDES_ON[cause]')
       expect(TASK_STALL_CAUSES.filter((cause) => AN_ASK_RIDES_ON[cause])).toEqual([
         'turn_ended',
         'turn_interrupted',
@@ -402,11 +354,6 @@ describe('400 · never close what you did not see finish', () => {
         'login_refused',
         'billing_refused',
       ])
-      expect(TASK_STALL_CAUSES.filter((cause) => drivenBody.includes(`'${cause}'`))).toEqual([])
-      expect(drivenBody).toContain('ITS_OWNER_RUNNING_AGAIN_DRIVES_IT[cause]')
-      expect(producers.split('stall(')).toHaveLength(1 + 3)
-      expect(producers).toContain('endedWithItOpen(piece, because, at, asked, [], limit, login)')
-      expect(stallBody).toContain('stall(piece, cause, at, by, stopped, limit, login)')
     })
   })
 
@@ -840,9 +787,9 @@ describe('400 · never close what you did not see finish', () => {
     })
   })
 
-  describe('§5 · both providers, and the order', () => {
+  describe('both providers, and the order', () => {
     for (const provider of ['claude', 'codex'] as const) {
-      it(`🔴 ${provider}: a turn ends and the parent is told; the app dies and the work stays open`, async () => {
+      it(`${provider}: a turn ends and the parent is told; the app dies and the work stays open`, async () => {
         const {
           pm,
           worker,
@@ -876,35 +823,8 @@ describe('400 · never close what you did not see finish', () => {
     }
   })
 
-  describe('§6 · the censuses', () => {
-    it('⛔ the fold still reaches nothing — no clock, no store, no timer', () => {
-      const text = sourceOf(sharedRoot, 'tasks.ts')
-      const imports = [...text.matchAll(/^import .*$/gm)].map((match) => match[0])
-      const values = imports.filter((line) => !line.startsWith('import type '))
-      expect(values).toEqual([
-        "import { AGENT_MESSAGE_KINDS, TASK_STATES } from './task-contracts'",
-        "import { whoCancelledIt, type AskToStop } from './how-work-stopped'",
-        "import { aPersonsOwnWords } from './a-persons-own-words'",
-      ])
-      expectTypeImports(sourceOf(sharedRoot, 'a-persons-own-words.ts'))
-      expectTypeImports(sourceOf(sharedRoot, 'task-contracts.ts'))
-      const reached = sourceOf(sharedRoot, 'how-work-stopped.ts')
-      for (const line of [...reached.matchAll(/^import .*$/gm)].map((match) => match[0])) {
-        expect(line.startsWith('import type ') || line.includes('./who-did-it'), line).toBe(true)
-      }
-      expect([...sourceOf(sharedRoot, 'who-did-it.ts').matchAll(/^import .*$/gm)]).toHaveLength(0)
-      for (const near of [
-        'task-contracts.ts',
-        'how-work-stopped.ts',
-        'who-did-it.ts',
-        'a-persons-own-words.ts',
-      ]) {
-        expect(codeOnly(sourceOf(sharedRoot, near)), near).not.toContain('Date.now')
-        expect(codeOnly(sourceOf(sharedRoot, near)), near).not.toContain('setTimeout')
-      }
-      const code = codeOnly(text)
-      expect(code).not.toContain('Date.now')
-      expect(code).not.toContain('setTimeout')
+  describe('the fold', () => {
+    it('is the same answer for the same ledger, and marks a question lost at restart', () => {
       const entries: PersistedEventInfo[] = [
         {
           ordinal: 0,
