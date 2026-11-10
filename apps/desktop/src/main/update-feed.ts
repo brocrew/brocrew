@@ -89,10 +89,10 @@ export interface UpdateFeedRoute {
 export function publicUpdateFeed(options: {
   readonly feed: ReleaseFeed | null
   readonly version: string
-  readonly qa?: boolean
+  readonly qa: boolean
   readonly mayUseWebsite: () => boolean
 }): UpdateFeedRoute | null {
-  const { feed, version, mayUseWebsite, qa = false } = options
+  const { feed, version, mayUseWebsite, qa } = options
   const github = { provider: 'github', owner: 'brocrew', repo: 'brocrew' } as const
   if (
     !(
