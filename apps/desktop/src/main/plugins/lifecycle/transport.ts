@@ -156,7 +156,9 @@ export class PersonChannel {
                       'package-invalid',
                     ].includes(error.code)
                       ? { pluginRefusal: error.code }
-                      : { message: error instanceof Error ? error.message : String(error) },
+                      : error instanceof PluginSupervisorError
+                        ? null
+                        : { message: error instanceof Error ? error.message : String(error) },
                 })
               },
             )

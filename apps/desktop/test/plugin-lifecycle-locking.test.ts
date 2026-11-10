@@ -108,13 +108,16 @@ it('applies WhatsApp and reads status while a Chrome profile request is suspende
   const f = await installedPair()
   const entered = deferred<void>(),
     release = deferred<void>()
-  const fetch = vi.fn(async (url: string) => {
-    if (url.endsWith('/profiles')) {
+  const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+    expect(url).toBe('/configuration')
+    expect(init?.method).toBe('POST')
+    const { payload } = JSON.parse(String(init?.body))
+    if (payload.action === 'create-profile') {
       entered.resolve()
       await release.promise
-      return new Response('{}', { status: 201 })
+      return Response.json({ applied: true })
     }
-    return new Response('{}', { status: 200 })
+    return Response.json({ applied: true })
   })
   vi.stubGlobal('fetch', fetch)
   const chrome = apply(f, 'chrome')
@@ -145,7 +148,7 @@ it('serializes Chrome restart after its profile apply', async () => {
   vi.stubGlobal('fetch', async () => {
     entered.resolve()
     await release.promise
-    return new Response('{}', { status: 201 })
+    return Response.json({ applied: true })
   })
   const applying = apply(f, 'chrome')
   await entered.promise

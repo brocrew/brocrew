@@ -17,6 +17,7 @@ import {
 } from '../src/main/plugins/lifecycle/configuration'
 import {
   cleanupLifecycleFixtures,
+  reopenLifecycleFixture,
   fixture,
   projection,
   deferred,

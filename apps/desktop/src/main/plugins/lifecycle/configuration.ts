@@ -21,6 +21,16 @@ export async function applyPluginConfiguration(
   })
   const reply = await response.json()
   if (!response.ok)
-    throw new Error(reply.error ?? `Plugin configuration failed (${response.status}).`)
-  if (reply.applied !== true) throw new Error('Plugin configuration was not applied.')
+    throw new Error(
+      typeof reply === 'object' && reply !== null && 'error' in reply && reply.error != null
+        ? String(reply.error)
+        : `Plugin configuration failed (${response.status}).`,
+    )
+  if (
+    typeof reply !== 'object' ||
+    reply === null ||
+    !('applied' in reply) ||
+    reply.applied !== true
+  )
+    throw new Error('Plugin configuration was not applied.')
 }

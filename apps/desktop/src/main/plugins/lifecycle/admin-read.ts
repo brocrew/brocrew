@@ -13,7 +13,11 @@ export async function readAdminJson(
   })
   if (!response.ok) {
     const reply = await response.json()
-    throw new Error(reply.error ?? `Plugin configuration read failed (${response.status}).`)
+    throw new Error(
+      typeof reply === 'object' && reply !== null && 'error' in reply && reply.error != null
+        ? String(reply.error)
+        : `Plugin configuration read failed (${response.status}).`,
+    )
   }
   if (!response.body) throw new PluginSupervisorError('unavailable')
   const reader = response.body.getReader()
