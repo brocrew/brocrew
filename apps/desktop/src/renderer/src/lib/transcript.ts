@@ -1123,21 +1123,21 @@ function notice(
   })
 }
 
-function claudeSignInNotice(
+function signInNotice(
   state: TranscriptState,
   text: string,
   detail: string,
   retrying: boolean,
   needsSignIn = false,
 ): void {
-  const previous = state.items.find((item) => item.id === state.lastError?.claudeSignInNotice)
-  const details = previous?.kind === 'notice' ? (previous.claudeSignIn?.details ?? []) : []
+  const previous = state.items.find((item) => item.id === state.lastError?.signInNotice)
+  const details = previous?.kind === 'notice' ? (previous.signIn?.details ?? []) : []
   const item: NoticeItem = {
     kind: 'notice',
     id: previous?.id ?? nextId(state, 'notice'),
     level: retrying ? 'warn' : 'error',
     text,
-    claudeSignIn: {
+    signIn: {
       state: retrying ? 'retrying' : 'refused',
       ...(needsSignIn ? { needsSignIn: true as const } : {}),
       details: [...details, detail],
@@ -1145,18 +1145,18 @@ function claudeSignInNotice(
   }
   if (previous?.kind === 'notice') Object.assign(previous, item)
   else state.items.push(item)
-  state.lastError = { raw: detail, shown: text, claudeSignInNotice: item.id }
+  state.lastError = { raw: detail, shown: text, signInNotice: item.id }
 }
 
 function currentSignInNotice(state: TranscriptState): NoticeItem | null {
-  const item = state.items.find((one) => one.id === state.lastError?.claudeSignInNotice)
-  return item?.kind === 'notice' && item.claudeSignIn ? item : null
+  const item = state.items.find((one) => one.id === state.lastError?.signInNotice)
+  return item?.kind === 'notice' && item.signIn ? item : null
 }
 
 function endSignInRetry(state: TranscriptState, stopped = false): void {
   const item = currentSignInNotice(state)
-  if (item?.claudeSignIn?.state !== 'retrying') return
-  item.claudeSignIn.state = 'ended'
+  if (item?.signIn?.state !== 'retrying') return
+  item.signIn.state = 'ended'
   item.text = stopped ? 'Claude sign-in retry stopped.' : 'Claude sign-in retry ended.'
   item.level = 'info'
 }
@@ -3822,19 +3822,19 @@ function foldEvent(
       // with the reset: the limit is recorded IN the ending, never only among the errors beside it.
       {
         const item = currentSignInNotice(state)
-        if (item?.claudeSignIn) {
-          item.claudeSignIn.details.push(
+        if (item?.signIn) {
+          item.signIn.details.push(
             event.wordOf === 'this-app'
               ? `turn ${event.state} — ${THE_APPS_OWN_WORD}`
               : `turn ${event.state}`,
           )
-          if (event.state === 'completed' && item.claudeSignIn.state === 'retrying') {
+          if (event.state === 'completed' && item.signIn.state === 'retrying') {
             item.text = 'Claude sign-in recovered.'
             item.level = 'info'
-            item.claudeSignIn.state = 'recovered'
+            item.signIn.state = 'recovered'
             return
           }
-          if (event.state === 'failed' && item.claudeSignIn.state === 'refused') return
+          if (event.state === 'failed' && item.signIn.state === 'refused') return
           endSignInRetry(state, event.state === 'interrupted')
         }
       }
@@ -3857,7 +3857,7 @@ function foldEvent(
       if (event.onAKey !== true && (event.cause === 'auth_stale' || event.signIn !== undefined)) {
         const needsSignIn = event.signIn?.state === 'refused'
         const retrying = event.signIn?.state === 'retrying'
-        claudeSignInNotice(
+        signInNotice(
           state,
           event.signIn?.message ?? STALE_AUTH_NOTICE,
           event.message,
@@ -3934,8 +3934,8 @@ function foldEvent(
         // it (`describe-event.ts`), 085's split.
         const ending = turnFailureDetail(event.message)
         if (ending !== null) {
-          if (authNotice?.claudeSignIn && repeatsAuth) {
-            authNotice.claudeSignIn.details.push(event.message)
+          if (authNotice?.signIn && repeatsAuth) {
+            authNotice.signIn.details.push(event.message)
             if (event.fatal) markTerminal(state, NOTHING_WAITS_FOR_THIS_ANSWER)
             return
           }

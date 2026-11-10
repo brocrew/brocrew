@@ -464,7 +464,7 @@ const latestSignInNotice = computed(() => {
   for (let index = props.items.length - 1; index >= 0; index--) {
     const item = props.items[index]
     if (item?.kind === 'user') return null
-    if (item?.kind === 'notice' && item.claudeSignIn?.state === 'refused') return item
+    if (item?.kind === 'notice' && item.signIn?.state === 'refused') return item
   }
   return null
 })

@@ -531,7 +531,7 @@ export interface NoticeItem {
    */
   text: string
   /** Claude retries and the final refusal share one row; diagnostics stay in Details. */
-  claudeSignIn?: {
+  signIn?: {
     state: 'retrying' | 'refused' | 'recovered' | 'ended'
     needsSignIn?: true
     details: string[]

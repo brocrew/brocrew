@@ -51,7 +51,7 @@ describe('Claude sign-in failures', () => {
     applyEvent(state, retry(2))
     expect(notices(state.items)).toHaveLength(1)
     expect(notices(state.items)[0]?.text).toContain('attempt 2/3')
-    expect(notices(state.items)[0]?.claudeSignIn?.state).toBe('retrying')
+    expect(notices(state.items)[0]?.signIn?.state).toBe('retrying')
     applyEvent(state, refused)
     const restated = `turn failed: ${refused.message}`
     applyEvent(state, { type: 'error', message: restated, fatal: false })
@@ -59,7 +59,7 @@ describe('Claude sign-in failures', () => {
     const [notice] = notices(state.items)
     expect(notices(state.items)).toHaveLength(1)
     expect(notice?.id).toBe(id)
-    expect(notice?.claudeSignIn).toEqual({
+    expect(notice?.signIn).toEqual({
       state: 'refused',
       details: [
         retry(1).message,
@@ -79,7 +79,7 @@ describe('Claude sign-in failures', () => {
     expect(notices(state.items)[0]).toMatchObject({
       text: 'Claude sign-in recovered.',
       level: 'info',
-      claudeSignIn: { state: 'recovered' },
+      signIn: { state: 'recovered' },
     })
     expect(visibleItems(state.items)).toHaveLength(0)
   })
@@ -94,8 +94,8 @@ describe('Claude sign-in failures', () => {
       expect(
         visibleItems(state.items).map((item) => (item.kind === 'notice' ? item.text : '')),
       ).toEqual([reason, 'turn failed'])
-      expect(notices(state.items)[0]?.claudeSignIn?.state).toBe('ended')
-      expect(notices(state.items).some((item) => item.claudeSignIn?.state === 'refused')).toBe(
+      expect(notices(state.items)[0]?.signIn?.state).toBe('ended')
+      expect(notices(state.items).some((item) => item.signIn?.state === 'refused')).toBe(
         false,
       )
     },
@@ -105,7 +105,7 @@ describe('Claude sign-in failures', () => {
     const state = transcript()
     applyEvent(state, retry(1))
     applyEvent(state, { type: 'turn', state: 'failed' })
-    expect(notices(state.items)[0]?.claudeSignIn?.state).toBe('ended')
+    expect(notices(state.items)[0]?.signIn?.state).toBe('ended')
     expect(
       visibleItems(state.items).map((item) => (item.kind === 'notice' ? item.text : '')),
     ).toEqual(['turn failed'])
@@ -117,9 +117,9 @@ describe('Claude sign-in failures', () => {
     applyEvent(state, { type: 'turn', state: 'interrupted' })
     expect(notices(state.items)[0]).toMatchObject({
       text: 'Claude sign-in retry stopped.',
-      claudeSignIn: { state: 'ended' },
+      signIn: { state: 'ended' },
     })
-    expect(notices(state.items)[0]?.claudeSignIn?.details).toContain('turn interrupted')
+    expect(notices(state.items)[0]?.signIn?.details).toContain('turn interrupted')
     expect(
       visibleItems(state.items).map((item) => (item.kind === 'notice' ? item.text : '')),
     ).toEqual(['turn interrupted'])
@@ -138,19 +138,19 @@ describe('Claude sign-in failures', () => {
   it('keeps API key and Codex failures on their existing remedies', () => {
     const state = transcript()
     applyEvent(state, { ...refused, onAKey: true })
-    expect(notices(state.items)[0]?.claudeSignIn).toBeUndefined()
+    expect(notices(state.items)[0]?.signIn).toBeUndefined()
     expect(notices(state.items)[0]?.text).toContain('API key')
     const codex = transcript()
     codex.ref = { ...codex.ref!, provider: 'codex' }
     applyEvent(codex, retry(1))
-    expect(notices(codex.items)[0]?.claudeSignIn).toBeUndefined()
+    expect(notices(codex.items)[0]?.signIn).toBeUndefined()
   })
 
   it('marks a rejected current Claude login for sign-in, without Codex launcher advice', () => {
     const state = transcript()
     applyEvent(state, { ...refused, cause: 'auth' })
     const [notice] = notices(state.items)
-    expect(notice?.claudeSignIn).toMatchObject({ state: 'refused', needsSignIn: true })
+    expect(notice?.signIn).toMatchObject({ state: 'refused', needsSignIn: true })
     expect(notice?.text).toContain('Sign in again to continue this conversation')
     expect(notice?.text).not.toContain('Start a new conversation')
   })

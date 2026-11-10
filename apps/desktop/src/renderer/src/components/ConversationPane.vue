@@ -773,11 +773,11 @@ const profileSignIn = computed<ProfileSignIn | null>(() => {
   const profileId = profileItRunsAs(meta)
   return meta && profileId !== null ? useProfileSignIn(meta.provider, profileId) : null
 })
-const claudeSignInRefused = computed(() => {
+const signInRefused = computed(() => {
   for (let index = transcript.value.items.length - 1; index >= 0; index--) {
     const item = transcript.value.items[index]
     if (item?.kind === 'user') return null
-    if (item?.kind === 'notice' && item.claudeSignIn?.state === 'refused') return item.id
+    if (item?.kind === 'notice' && item.signIn?.state === 'refused') return item.id
   }
   return null
 })
@@ -801,7 +801,7 @@ async function signInAgain(): Promise<void> {
   await signInSetup.signIn()
 }
 watch(
-  () => [profileSignIn.value, props.record.error, claudeSignInRefused.value] as const,
+  () => [profileSignIn.value, props.record.error, signInRefused.value] as const,
   ([signIn, error, refused], before) => {
     if (refused !== before?.[2]) signInRenewedFor.value = null
     if (signIn === null || (error === null && !refused)) return
@@ -1962,7 +1962,7 @@ onUnmounted(() => {
           :identities="props.identities ?? null"
           :provider="props.record.meta?.provider ?? null"
           :can-recover-sign-in="
-            claudeSignInRefused !== null &&
+            signInRefused !== null &&
             props.record.phase !== 'closing' &&
             (props.record.meta?.cannotTakeAMessage ?? null) === null &&
             profileSignIn !== null &&
@@ -2031,14 +2031,14 @@ onUnmounted(() => {
           {{ props.record.error }}
         </p>
         <ProviderSetupProgress
-          v-if="claudeSignInRefused && signInTarget === props.record.sessionId"
+          v-if="signInRefused && signInTarget === props.record.sessionId"
           :progress="signInSetup.state.value?.progress ?? ''"
           :auth-url="signInSetup.state.value?.authUrl ?? null"
           :error="signInSetup.error.value"
         />
         <button
           v-if="
-            claudeSignInRefused && signInTarget === props.record.sessionId && signInSetup.busy.value
+            signInRefused && signInTarget === props.record.sessionId && signInSetup.busy.value
           "
           type="button"
           class="bb-button"
@@ -2047,7 +2047,7 @@ onUnmounted(() => {
           Cancel sign-in
         </button>
         <div
-          v-if="profileSignIn && signInNeeded && !claudeSignInRefused"
+          v-if="profileSignIn && signInNeeded && !signInRefused"
           class="pane-sign-in"
           data-cy="pane-sign-in"
         >

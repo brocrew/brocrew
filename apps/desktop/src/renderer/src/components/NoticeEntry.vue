@@ -35,7 +35,7 @@ const props = defineProps<{
 defineEmits<{ signIn: []; retrySignIn: [] }>()
 const expired = computed(
   () =>
-    props.signInExpired || (props.item.claudeSignIn?.needsSignIn === true && !props.signInRenewed),
+    props.signInExpired || (props.item.signIn?.needsSignIn === true && !props.signInRenewed),
 )
 
 /**
@@ -65,7 +65,7 @@ const stopOrAsked = computed(() =>
 )
 /** ⚑ **One function, with the roster** — the fold wrote the same function's roster-less answer. */
 const said = computed(() =>
-  props.item.claudeSignIn?.state === 'refused'
+  props.item.signIn?.state === 'refused'
     ? expired.value
       ? 'Claude sign-in expired.'
       : "Couldn't continue with the old sign-in."
@@ -82,7 +82,7 @@ const told = computed(() => toldClause(props.item.told, props.item.toldInPart ==
     class="notice-entry"
     :class="item.level"
     :data-cy="`notice-${item.level}`"
-    :aria-live="item.claudeSignIn ? 'polite' : undefined"
+    :aria-live="item.signIn ? 'polite' : undefined"
   >
     <span class="dot"></span>
     <!-- ⚠️ **Not `notice-…`**: `[data-cy^="notice-"]` is how every test counts NOTICES, and a child
@@ -101,7 +101,7 @@ const told = computed(() => toldClause(props.item.told, props.item.toldInPart ==
       >{{ said }}<span v-if="told" class="told" data-cy="refusal-told">{{ told }}</span></span
     >
     <button
-      v-if="item.claudeSignIn?.state === 'refused' && canRecoverSignIn"
+      v-if="item.signIn?.state === 'refused' && canRecoverSignIn"
       class="sign-in-action"
       type="button"
       data-cy="claude-sign-in-action"
@@ -110,11 +110,11 @@ const told = computed(() => toldClause(props.item.told, props.item.toldInPart ==
     >
       {{ expired ? 'Sign in again' : 'Retry with current sign-in' }}
     </button>
-    <details v-if="item.claudeSignIn" class="sign-in-details" data-cy="claude-sign-in-details">
+    <details v-if="item.signIn" class="sign-in-details" data-cy="claude-sign-in-details">
       <summary>Details</summary>
       <div class="diagnostics">
-        <p v-if="item.claudeSignIn.state === 'refused'">{{ item.text }}</p>
-        <p v-for="(detail, index) in item.claudeSignIn.details" :key="index">{{ detail }}</p>
+        <p v-if="item.signIn.state === 'refused'">{{ item.text }}</p>
+        <p v-for="(detail, index) in item.signIn.details" :key="index">{{ detail }}</p>
       </div>
     </details>
     <span class="time" :title="fullTime(item.at)">{{ clockTime(item.at) }}</span>

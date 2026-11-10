@@ -518,7 +518,7 @@ export interface TranscriptState {
    * the cause, so it must be free to draw it. That is the direction that shows a fact rather than
    * hides one.
    */
-  lastError: { raw: string; shown: string; claudeSignInNotice?: string } | null
+  lastError: { raw: string; shown: string; signInNotice?: string } | null
   /**
    * ⛔ **What is still running in the background right now** (248) — see {@link BackgroundRegistry}.
    *
