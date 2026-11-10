@@ -364,7 +364,9 @@ describe('writing the clipboard’s picture down (254 §2)', () => {
       if (!('handed' in verdict)) throw new Error('pasted image did not classify')
       expect(verdict.handed.path.startsWith(root)).toBe(true)
       expect(readdirSync(root)).toHaveLength(1)
-      expect(await recheckHandedPaths([verdict.handed], cwd)).toEqual({ paths: [verdict.handed] })
+      expect(await recheckHandedPaths([verdict.handed], cwd)).toEqual({
+        paths: [{ path: verdict.handed.path, kind: 'file', outsideCwd: true }],
+      })
     },
   )
 })
