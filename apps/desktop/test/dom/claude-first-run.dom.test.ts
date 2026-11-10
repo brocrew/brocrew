@@ -417,4 +417,3 @@ it('never lets a late initial idle read erase newer installer progress', async (
   expect(m.q('install-program').hasAttribute('disabled')).toBe(true)
   expect(m.q('install-progress').textContent).toContain('Downloading Claude Code')
 })
-

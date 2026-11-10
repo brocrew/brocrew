@@ -259,7 +259,6 @@ describe('setup feedback follows the latest facts', () => {
     expect(out.runtime.signInProvider).not.toHaveBeenCalled()
   })
 
-
 })
 
 describe('usage readings and recorded warnings are separate evidence', () => {

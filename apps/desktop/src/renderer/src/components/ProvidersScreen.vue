@@ -711,5 +711,4 @@ const runningOf = (provider: Provider) => {
   min-height: 0;
   flex: 1;
 }
-
 </style>
