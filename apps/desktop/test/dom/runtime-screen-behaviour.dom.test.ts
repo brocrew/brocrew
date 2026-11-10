@@ -11,6 +11,7 @@ import {
   agentBookAnswers,
 } from './runtime-screen-fixture'
 import type { PersonsQuestion, RoutedRequest } from '../../src/shared/question-contracts'
+import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { AttentionSignals, ATTENTION_SIGNAL_INTERVAL_MS } from '../../src/main/attention-signals'
@@ -636,6 +637,7 @@ it.each(['launch', 'sign-in'] as const)(
     Object.assign(runtime, { checkProviderAuth: check, modelList: catalogue })
     window.api = { ...previousApi, runtime: runtime as unknown as RuntimeBridge }
     runtime.createSession.mockReturnValueOnce(answer.promise)
+    runtime.profiles.mockResolvedValueOnce([DEFAULT_PROFILE_ID])
     const screen = mount(RuntimeScreen, {})
     try {
       await expect.poll(() => agentStore.loaded.value).toBe(true)
