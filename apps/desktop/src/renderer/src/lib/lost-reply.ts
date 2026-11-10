@@ -1,5 +1,5 @@
 import type { LostReply, UndeliveredReason } from './transcript-message-contracts'
-export type { LostReply, UndeliveredReason } from './transcript-message-contracts'
+export type { UndeliveredReason } from './transcript-message-contracts'
 import { agentName, type AgentIdentity } from '../../../shared/runtime-ipc'
 import { AN_UNNAMED_PARENT } from './outgoing-card'
 

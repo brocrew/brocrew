@@ -1,5 +1,4 @@
 import type { MessageJoins } from './message-receipt-contracts'
-export type { MessageJoins } from './message-receipt-contracts'
 import type { OutgoingMessage, ToolItem } from './transcript-tool-contracts'
 import type { TranscriptState } from './transcript-state-contracts'
 
