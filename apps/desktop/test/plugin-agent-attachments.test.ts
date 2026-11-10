@@ -44,14 +44,18 @@ async function holdToolCall(
   f: Awaited<ReturnType<typeof live>>,
   quiescent: Promise<void> = new Promise(() => {}),
   clock?: BrokerClock,
+  firstOnly = false,
 ) {
   const original = await f.binding()
+  let held = false
   f.binding.mockResolvedValueOnce({
     ...original,
     ...(clock ? { clock } : {}),
     server: {
       ...original.server,
       tool() {
+        if (firstOnly && held) return original.server.tool()
+        held = true
         f.call()
         return { result: new Promise<never>(() => {}), quiescent, cancel() {} }
       },
@@ -428,14 +432,14 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       await expect(close()).resolves.toBeUndefined()
     }
   })
-  it('replaces a failed broker only after positive completion and rotates both live callers', async () => {
+  it('retains both caller routes after a deadline and late positive completion', async () => {
     const f = await live(),
       time = brokerClock()
     let prove!: () => void
     const quiet = new Promise<void>((resolve) => {
       prove = resolve
     })
-    await holdToolCall(f, quiet, time.clock)
+    await holdToolCall(f, quiet, time.clock, true)
     const owner = lease(),
       first = request(f.local.sink.workspaceId),
       second = request(f.local.sink.workspaceId)
@@ -447,12 +451,9 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     time.advance(120000)
     expect(await pending).toMatchObject({ isError: true })
     time.advance(1000)
-    expect((await f.controller.status()).cards[0]).toMatchObject({
-      state: 'Running',
-      toolsUnavailable: true,
-    })
-    expect(await f.bridge.routes(owner, first)).toEqual([])
-    expect(await f.bridge.routes(owner, second)).toEqual([])
+    expect((await f.controller.status()).cards[0]).not.toHaveProperty('toolsUnavailable')
+    expect(await f.bridge.routes(owner, first)).toEqual([beforeFirst])
+    expect(await f.bridge.routes(owner, second)).toEqual([beforeSecond])
     expect(f.binding).toHaveBeenCalledTimes(2)
     prove()
     await new Promise((resolve) => setImmediate(resolve))
@@ -460,15 +461,15 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     expect(freshFirst).toHaveLength(1)
     const freshSecond = await f.bridge.routes(owner, second)
     expect(freshSecond).toHaveLength(1)
-    expect(freshFirst[0]!.capability).not.toBe(beforeFirst!.capability)
-    expect(freshSecond[0]!.capability).not.toBe(beforeSecond!.capability)
+    expect(freshFirst[0]!.capability).toBe(beforeFirst!.capability)
+    expect(freshSecond[0]!.capability).toBe(beforeSecond!.capability)
     for (const route of [freshFirst[0]!, freshSecond[0]!]) {
       const liveClient = await connected(route)
       expect(await liveClient.callTool({ name: 'echo', arguments: {} })).toMatchObject({
         content: [{ text: 'fictional fern' }],
       })
     }
-    expect(f.binding).toHaveBeenCalledTimes(3)
+    expect(f.binding).toHaveBeenCalledTimes(2)
     expect(f.call).toHaveBeenCalledTimes(3)
     expect((await f.controller.status()).cards[0]).not.toHaveProperty('toolsUnavailable')
   })

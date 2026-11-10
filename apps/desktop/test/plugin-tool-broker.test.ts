@@ -60,6 +60,7 @@ class Server {
     onprogress?: (progress: BrokerProgress) => void
   }> = []
   cancelError: unknown
+  onCancel?: () => void
   startError: unknown
   start = (
     operation: 'tool' | 'admin',
@@ -83,6 +84,7 @@ class Server {
       quiescent: call.quiet.promise,
       cancel: () => {
         call.cancels++
+        this.onCancel?.()
         if (this.cancelError) return Promise.reject(this.cancelError)
       },
     }
@@ -475,6 +477,34 @@ describe('bounded fair serial queue', () => {
 })
 
 describe('independent transport calls', () => {
+  it('counts an active call already retained as uncertain only once during cancellation', async () => {
+    const h = setup((options) => ({
+      ...options,
+      server: { ...options.server, independentToolCalls: true },
+    }))
+    for (let i = 0; i < 62; i++) {
+      const pending = h.call()
+      await tick()
+      h.server.calls[i]!.result.resolve({ ok: false, cause: 'stalled' })
+      h.server.calls[i]!.quiet.reject(new Error('unproved'))
+      await expect(pending).rejects.toMatchObject({ code: 'downstream' })
+      await tick()
+    }
+    let admitted: Promise<BrokerValue> | undefined
+    const active = h.call()
+    await tick()
+    h.server.onCancel = () => {
+      h.server.onCancel = undefined
+      admitted = h.call()
+    }
+    h.server.calls[62]!.result.resolve({ ok: false, cause: 'stalled' })
+    await expect(active).rejects.toMatchObject({ code: 'downstream' })
+    await tick()
+    expect(h.server.calls).toHaveLength(64)
+    await expect(h.call()).rejects.toMatchObject({ code: 'busy' })
+    h.server.finish(63)
+    await expect(admitted).resolves.toEqual({ done: true })
+  })
   it('retains only a known activity stage and clears its visible record on positive host exit', async () => {
     const exited = deferred<void>()
     const h = setup((options) => ({ ...options, hostExited: exited.promise, server: { ...options.server, independentToolCalls: true } }))
@@ -1002,8 +1032,9 @@ it('offers replacement authority only after a failed call positively completes',
   h.clock.advance(120000)
   await expect(pending).rejects.toMatchObject({ code: 'deadline' })
   h.clock.advance(1000)
-  expect(h.broker.status()).toMatchObject({ available: false, awaitingQuiescence: true })
+  expect(h.broker.status()).toMatchObject({ available: true, awaitingQuiescence: true })
   expect(h.broker.owner.hasCompletionProof()).toBe(false)
+  h.broker.owner.invalidate()
   h.server.calls[0]!.quiet.resolve()
   await tick()
   expect(h.broker.status()).toMatchObject({ available: false, executing: false })
@@ -1032,5 +1063,5 @@ it('uses positive exact-host exit after a rejected call proof, never a rejected 
   await expect(active).rejects.toThrow()
   other.clock.advance(1000)
   expect(other.broker.owner.hasCompletionProof()).toBe(false)
-  expect(other.broker.status()).toMatchObject({ available: false, awaitingQuiescence: true })
+  expect(other.broker.status()).toMatchObject({ available: true, awaitingQuiescence: true })
 })

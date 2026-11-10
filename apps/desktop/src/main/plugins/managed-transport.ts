@@ -46,7 +46,7 @@ function endpoint(raw: string): URL {
     throw new Error(WORDS)
   return url
 }
-function textReply(message = WORDS): { content: { type: 'text'; text: string }[]; isError: true } {
+function textReply(message: string): { content: { type: 'text'; text: string }[]; isError: true } {
   return { content: [{ type: 'text', text: message }], isError: true }
 }
 
@@ -357,7 +357,7 @@ export async function openManagedPluginRoute(
           const tool = offered.find((one) => one.name === call.params.name)
           if (!tool) {
             report('route-tool-unknown')
-            return textReply()
+            return textReply('The requested plugin tool is not offered.')
           }
           try {
             const result = await broker.agent.call(
@@ -378,7 +378,7 @@ export async function openManagedPluginRoute(
             )
             const parsed = CallToolResultSchema.safeParse(result)
             if (!parsed.success) report('result-invalid')
-            return parsed.success ? parsed.data : textReply()
+            return parsed.success ? parsed.data : textReply(`Tool ${tool.name} returned an invalid result.`)
           } catch (error) {
             // The broker audit records its own closed failure code.
             return textReply(error instanceof PluginBrokerError
