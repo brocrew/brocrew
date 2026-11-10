@@ -1,20 +1,17 @@
-import { randomUUID } from 'node:crypto'
 import { isMainThread } from 'node:worker_threads'
 import {
   closeSync,
   constants,
   fstatSync,
-  fsyncSync,
   lstatSync,
   mkdirSync,
   readFileSync,
-  renameSync,
   unlinkSync,
-  writeFileSync,
   type BigIntStats,
 } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
-import { createFreshFile, openNotThroughALink } from '@brobot2/runtime/provider-home'
+import { stageAtomicWriteSync } from '@brobot2/runtime/atomic-write'
+import { openNotThroughALink } from '@brobot2/runtime/provider-home'
 import { OwnerRecord, PluginSupervisorError, refuse, StopRecord } from './protocol'
 import { isSocketFile, localEndpoint } from '../local-endpoint'
 import {
@@ -182,18 +179,13 @@ export class SupervisorStorage {
   }
   private publish(path: string, text: string): void {
     this.check()
-    const temporary = join(this.folder, `.owner-${randomUUID()}`)
-    const fd = createFreshFile(temporary, 0o600)
+    const stage = stageAtomicWriteSync(path, text)
     try {
-      writeFileSync(fd, text)
-      fsyncSync(fd)
       this.check()
-      renameSync(temporary, path)
-      syncDirectory(this.pins.at(-1)!.fd)
+      stage.commit()
     } finally {
-      closeSync(fd)
       try {
-        unlinkSync(temporary)
+        stage.discard()
       } catch {
         /* only this unpublished temporary file */
       }
