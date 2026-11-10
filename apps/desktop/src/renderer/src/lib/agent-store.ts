@@ -373,6 +373,18 @@ export function createAgentStore(bridge: RuntimeBridge): AgentStore {
     }
   }
 
+  // Keep the saved row visible if the refresh fails; replacing by slug preserves its order.
+  const patchAndRefresh = async (saved: AgentIdentity): Promise<void> => {
+    const held = identities.value
+    if (held !== null) {
+      identities.value = {
+        ...held,
+        identities: held.identities.map((one) => (one.slug === saved.slug ? saved : one)),
+      }
+    }
+    await load()
+  }
+
   return {
     identities,
     loaded,
@@ -396,19 +408,7 @@ export function createAgentStore(bridge: RuntimeBridge): AgentStore {
         if (saved === null) {
           return `There is no agent identity called ${profileId}, so there is nothing to configure. Create it ${WHERE_AGENTS_ARE_CREATED}, or one appears once a conversation has run as it.`
         }
-        // ⛔ **Patched FIRST, then re-read** (review). The write succeeded, so the row this store
-        // holds is now wrong until something replaces it — and a re-read that fails would have left
-        // the rail drawing the pre-save grant under a save that reported success. The patch is what
-        // the database just said; the re-read is for everything else the list carries (the switch,
-        // the other identities, a name that may itself have changed).
-        const held = identities.value
-        if (held !== null) {
-          identities.value = {
-            ...held,
-            identities: held.identities.map((one) => (one.slug === saved.slug ? saved : one)),
-          }
-        }
-        await load()
+        await patchAndRefresh(saved)
         return null
       } catch (error) {
         return sentence(error)
@@ -426,17 +426,7 @@ export function createAgentStore(bridge: RuntimeBridge): AgentStore {
             reason: `There is no agent identity called ${profileId}, so there is nothing to configure. Create it ${WHERE_AGENTS_ARE_CREATED}, or one appears once a conversation has run as it.`,
           }
         }
-        // ⛔ **Patched first, then re-read** — {@link AgentStore.save}'s shape and for its reason: the
-        // write landed, so the row this store holds is wrong until something replaces it, and a
-        // re-read that failed would leave the sheet drawing the old provider under a success.
-        const held = identities.value
-        if (held !== null) {
-          identities.value = {
-            ...held,
-            identities: held.identities.map((one) => (one.slug === saved.slug ? saved : one)),
-          }
-        }
-        await load()
+        await patchAndRefresh(saved)
         // 🔴 **`696` · the door's own field** — what THIS write cleared, and not a re-read of the
         // choice, which another window could have moved since.
         return { ok: true, cleared: saved.modelChoiceCleared }
@@ -454,19 +444,7 @@ export function createAgentStore(bridge: RuntimeBridge): AgentStore {
         if (saved === null) {
           return `There is no agent identity called ${profileId}, so there is nothing to rename.`
         }
-        // ⛔ **Patched first, then re-read** — `chooseProviderFor`'s shape and for its reason: the
-        // write landed, so the row this store holds is wrong until something replaces it, and a
-        // re-read that failed would leave every surface drawing the old name under a success.
-        // ⚑ **The row and not the order**: `ORDER BY slug` does not move when a display name does,
-        // which is what makes patching in place honest here and dishonest for a creation.
-        const held = identities.value
-        if (held !== null) {
-          identities.value = {
-            ...held,
-            identities: held.identities.map((one) => (one.slug === saved.slug ? saved : one)),
-          }
-        }
-        await load()
+        await patchAndRefresh(saved)
         return null
       } catch (error) {
         return sentence(error)
