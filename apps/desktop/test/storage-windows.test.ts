@@ -5,6 +5,10 @@ const disk = vi.hoisted(() => ({
   elapsed: 0,
   entries: new Map<string, { bytes?: number; children?: string[] }>(),
 }))
+vi.mock('node:process', async (original) => {
+  const module = await original<{ default: NodeJS.Process }>()
+  return { ...module, default: { ...module.default, platform: 'win32' } }
+})
 vi.mock('node:path', async (original) => {
   const path = await original<typeof import('node:path')>()
   return { ...path, ...path.win32 }

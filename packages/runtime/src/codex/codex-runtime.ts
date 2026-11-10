@@ -4,8 +4,7 @@ import type { ManagedPluginObserver } from '../managed-plugin-observation'
 import { BUILT_IN_SKILLS_FAILURE } from '../built-in-skills'
 import { registerCodexBuiltInSkills } from './built-in-skills'
 import type { BuiltInSkillsContext, StartPhaseSink } from '../runtime'
-import { realpathSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import type { SessionStatus } from '@brobot2/shared'
 import { resolveGeneratedImage } from './generated-image'
 import { beyondItsRailsOf, type AgentToolset } from '../agent-tools'
@@ -90,7 +89,6 @@ import {
 import { AsyncQueue } from '../internal/async-queue'
 import { AuthUnavailableError, type AuthHealth } from '../internal/auth'
 import {
-  assertCodexSqliteHomeContained,
   codexAccountIn,
   codexAccountInNow,
   CodexRefusedItsSignInError,
@@ -219,15 +217,6 @@ export function createSpawnTransportFactory(command = 'codex'): TransportFactory
 }
 
 const defaultTransport = createSpawnTransportFactory()
-
-/** Canonical absolute path (resolves symlinks like macOS /tmp → /private/tmp), lexical if unresolvable. */
-function canonicalPath(path: string): string {
-  try {
-    return realpathSync(path)
-  } catch {
-    return resolve(path)
-  }
-}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -1964,7 +1953,7 @@ function reportedAgentInfo(model: string | undefined, effort: string | undefined
  *   most 1024 characters"}`, and that envelope was what a person and a giver read.
  * - **The app-server exited before it answered** ({@link CodexExited}): {@link StartFailed}, the
  *   exit's own message for the log. ⚑ A handshake check this adapter refused throws that type itself
- *   (`validateProtocolVersion`, `validateCodexHome`, `validateHandshake`, `validateApprovalProfile`).
+ *   (`validateProtocolVersion`, `validateHandshake`, `validateApprovalProfile`).
  *
  * ⛔ Anything else is returned as it came: a spawn's errno (its readers take the code), a sign-in
  * (`AuthUnavailableError`), this app's own close of the transport (a cancel, a deadline).
@@ -3286,17 +3275,11 @@ export class CodexSessionHandle implements SessionHandle {
     bootSettled?: () => void,
   ): Promise<void> {
     this.machine.markStarting()
-    // Re-attest `sqlite_home` BEFORE any protocol traffic (041; 023 §6). The AUTHORITATIVE check
-    // runs pre-spawn in `CodexRuntime.assertLaunchPreconditions`; this repeat catches a config
-    // written between launch and handshake, and covers a directly-constructed handle (whose
-    // transport this class did not create) without first completing a round-trip.
-    assertCodexSqliteHomeContained(this.providerHome)
     this.startPhase('initialize-sent')
     const initResult = await this.transport.request('initialize', initializeParams())
     this.startPhase('initialized')
     bootSettled?.() // this home's state runtime exists now (180) — release before validating it
     this.validateProtocolVersion(initResult) // fail closed on CLI ↔ vendored-protocol drift (043)
-    this.validateCodexHome(initResult) // fail closed if the child ignored our CODEX_HOME (021)
     this.transport.notify('initialized', {})
     await this.assertCredentialUsable()
     if (this.builtInSkills) {
@@ -3783,32 +3766,6 @@ export class CodexSessionHandle implements SessionHandle {
       `Codex CLI ${reported ?? '(version not reported)'} ≠ vendored protocol ${CODEX_PROTOCOL_VERSION} — ` +
         'regenerate the types (pnpm run protocol:generate) or pin the CLI to the vendored version',
     )
-  }
-
-  /**
-   * Confirm the app-server actually adopted our per-profile `CODEX_HOME` (021,
-   * from 015). The `initialize` response echoes the effective `codexHome`; if it
-   * is present and does NOT canonicalize to the home we launched with, the child
-   * ignored our env (or a host config overrode it) and its state would leak across
-   * profiles — fail closed. Absent (test fakes / older servers) → skip, so the
-   * transport seam stays fake-able without a live process.
-   */
-  private validateCodexHome(response: unknown): void {
-    // Attestation is REQUIRED and fail-closed (027, fixing 023 P1-H): the protocol
-    // mandates `codexHome` in the initialize response, so its absence is a rejection —
-    // never a skipped check that would re-open the fail-open path.
-    const reported = readString(response, 'codexHome')
-    if (!reported) {
-      throw new StartFailed(
-        'codex initialize did not report a codexHome (required for home attestation)',
-      )
-    }
-    if (canonicalPath(reported) !== canonicalPath(this.providerHome)) {
-      throw new StartFailed(
-        `codex did not adopt the profile home: expected ${this.providerHome}, got ${reported}`,
-      )
-    }
-    // (`sqlite_home` is attested pre-spawn and again at the top of `begin()` — see there.)
   }
 
   /**
@@ -6684,42 +6641,12 @@ export class CodexRuntime implements AgentRuntime {
     }
   }
 
-  /**
-   * Everything that must hold BEFORE the app-server is allowed to exist (041, fixing 036 P1-H):
-   * managed auth health (022) and the profile's `sqlite_home` attestation. Pre-fix the SQLite
-   * attestation ran inside `begin()` — i.e. AFTER the spawn and handshake — so a config that
-   * redirects Codex state out of the managed home could already be live before we looked.
-   * The `initialize`-response `codexHome` check (027) stays as the post-start confirmation.
-   */
-  private assertLaunchPreconditions(providerHome: string): void {
-    this.assertAuthHealthy(providerHome)
-    assertCodexSqliteHomeContained(providerHome)
-  }
-
   async start(opts: StartOptions): Promise<SessionHandle> {
-    // Above the preconditions, so a cancelled launch does no work at all — see
-    // {@link ProviderRuntimeContext.signal}.
     assertNotCancelled(opts.signal, 'codex start')
-    // ⛔ **ABOVE the preconditions, and 168 M4 is why it moved** (188 §1). It used to run after
-    // them, and `assertCodexSqliteHomeContained` PARSES this very file: a 157 `config.toml` whose
-    // TOML no longer parses threw `AuthUnavailableError` before the line that would have deleted
-    // it, so the one home that could not launch was also the one home the migration could never
-    // reach — permanently, on every attempt. See {@link removeStaleCodexPermissionConfig} for why
-    // removing before attesting is not a hole: it deletes ONLY a file carrying our own generated
-    // header, an unreadable one is left alone, and a config this app did not write still reaches
-    // the attestation below untouched.
+    // Remove legacy generated settings before applying this launch's memory configuration.
     removeStaleCodexPermissionConfig(opts.providerHome)
-    // ⛔ **The two gates, on EVERY launch and not only on provisioning** (314). A profile created
-    // before this existed has no memory config at all, and there is no migration hook — so the only
-    // place that reaches every home is the place the 157 migration above already stands.
-    //
-    // ⚠️ **Below the stale sweep and above the attestation**, and both halves of that ordering are
-    // load-bearing: merging into a file the line above is about to delete would be work thrown away,
-    // and `assertCodexSqliteHomeContained` parses this very file, so it must see the bytes the child
-    // will. ⚑ It never throws — see {@link ensureCodexMemoryConfig}; a home whose config cannot be
-    // merged launches without memory rather than not launching.
     const memoryConfig = ensureCodexMemoryConfig(opts.providerHome)
-    this.assertLaunchPreconditions(opts.providerHome) // fail closed BEFORE spawning (022 + 041)
+    this.assertAuthHealthy(opts.providerHome)
     // ⛔ **No second app-server may boot on this home while one is still creating its sqlite state**
     // (180). Taken BEFORE the spawn, because the child begins that work the moment it exists.
     //
@@ -6845,7 +6772,7 @@ export class CodexRuntime implements AgentRuntime {
     // same cancel as `start` and `resume`. It was outside every ownership mechanism this app had,
     // for the single reason that every mechanism was about sessions and a probe is not one.
     assertNotCancelled(context.signal, 'codex model list')
-    this.assertLaunchPreconditions(context.providerHome) // same fail-closed as a launch (022 + 041)
+    this.assertAuthHealthy(context.providerHome)
     // ⛔ **The probe is the app-server this race is usually WON by** (180). It boots first — the
     // launcher asks on mount — and the session that follows had nothing but 159 measured
     // milliseconds of luck between it and the same home's half-created sqlite state.
@@ -6945,7 +6872,7 @@ export class CodexRuntime implements AgentRuntime {
       removeStaleCodexPermissionConfig(options.providerHome)
       // Apply the same memory and launch gates on resume as on start so existing profiles receive current configuration before their conversations continue.
       memoryConfig = ensureCodexMemoryConfig(options.providerHome)
-      this.assertLaunchPreconditions(options.providerHome) // fail closed BEFORE spawning (022 + 041)
+      this.assertAuthHealthy(options.providerHome)
       // As in `start` above — 180 for the gate, 202 for the signal it is given.
       phase('boot-gate-entered')
       const settled = sayingTheRelease(

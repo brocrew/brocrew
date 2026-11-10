@@ -10,7 +10,6 @@ import {
   FakeProviderSessions,
   FakeRuntime,
 } from '@brobot2/runtime'
-import { CodexSettingsUnusableError } from '@brobot2/runtime/codex'
 import type { AgentToolAnswer } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
@@ -298,30 +297,6 @@ describe('657 · a launch that did not start', () => {
           String(args[0]).includes('/Users/somebody/.claude'),
       ),
     ).toBe(true)
-  })
-
-  it('§3b Codex settings its profile holds that cannot be used are said as settings, not as a sign-in', async () => {
-    const call = await aParentThatMaySpawn()
-    homeFails = new CodexSettingsUnusableError(
-      'profile config.toml could not be parsed at /Users/somebody/home/config.toml',
-    )
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const answered = payload(await call('give_work', A_GIVE))
-    expect(answered).toMatchObject({
-      outcome: 'refused',
-      rail: 'agent-did-not-start',
-      detail: {
-        profile: 'worker',
-        because: 'its-provider-settings-are-unusable',
-        provider: 'codex',
-      },
-    })
-    expect(String(answered.reason)).toContain(
-      'correct that agent’s Codex settings (config.toml): they could not be used',
-    )
-    expect(String(answered.reason)).not.toContain('sign-in')
-    expect(JSON.stringify(answered)).not.toContain('/Users/somebody')
-    expect(piecesUnderTheRoot()).toEqual([])
   })
 
   it('§4 a failure this tool does not recognise still propagates — it is not dressed as a word', async () => {

@@ -464,8 +464,6 @@ const loginBehindTheKey = computed(() => {
 const keyInUseSays = computed(() => {
   const status = keyStatus.value
   if (status === null) return ''
-  if (status.readState === 'not-checked')
-    return 'Saved. BroCrew will read the key when a conversation starts or you check it works.'
   if (status.unreadableReason === undefined && status.inUse) {
     return loginBehindTheKey.value
       ? `It outranks the sign-in: ${name.value}’s new conversations start on the key.`
@@ -952,9 +950,7 @@ const whatEachPartSays = computed<Record<ProviderPart, string | null>>(() => {
     key:
       keyRefusedSays.value ??
       (keySaid.value?.tone === 'warn' ? keySaid.value.text : null) ??
-      (key?.set === true && !key.inUse && key.readState !== 'not-checked'
-        ? keyInUseSays.value
-        : null),
+      (key?.set === true && !key.inUse ? keyInUseSays.value : null),
     version:
       version === null
         ? null
@@ -1403,11 +1399,7 @@ defineExpose({ beginSetup })
               keyStatus.setAt === null ? '' : `, since ${fullTime(keyStatus.setAt)}`
             }}.
           </p>
-          <p
-            class="line"
-            :class="{ warn: !keyStatus.inUse && keyStatus.readState !== 'not-checked' }"
-            data-cy="provider-key-in-use"
-          >
+          <p class="line" :class="{ warn: !keyStatus.inUse }" data-cy="provider-key-in-use">
             {{ keyInUseSays }}
           </p>
           <div

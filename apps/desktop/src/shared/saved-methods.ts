@@ -18,22 +18,18 @@ export type SavedMethodsRefusal =
   | { readonly kind: 'index-file-too-large' }
   | { readonly kind: 'unreadable' }
 
-/**
- * What one launch was given from its profile's saved methods: where they are, counts, size and a
- * fingerprint, never their text.
- */
+/** What one launch was given from its profile's saved methods. */
 export type SavedMethodsUse =
   | { readonly given: 'none' }
   | {
       readonly given: 'index'
-      /** The profile's saved-methods folder, where the popup reads the index now. */
       readonly folder: string
       readonly methods: number
       /** The index lines left out because they were not in the saved-method form. */
       readonly leftOut: number
       readonly bytes: number
-      /** The SHA-256 of the index as sent. */
-      readonly sha256: string
+      /** The index as sent. */
+      readonly index: string
       readonly readAt: number
     }
   | { readonly given: 'refused'; readonly refusal: SavedMethodsRefusal; readonly readAt: number }
@@ -75,28 +71,5 @@ export function savedMethodsUseSaid(use: SavedMethodsUse, at: (time: number) => 
       return [
         `The saved-methods index was not sent: ${savedMethodsRefusalSaid(use.refusal)}. Read at ${at(use.readAt)}.`,
       ]
-  }
-}
-
-/** The index as the profile's folder holds it now, against the one a launch was sent. */
-export type SavedMethodsNow =
-  | { readonly is: 'same'; readonly index: string }
-  | { readonly is: 'changed'; readonly index: string }
-  | { readonly is: 'gone' }
-  | { readonly is: 'refused'; readonly refusal: SavedMethodsRefusal }
-
-/** The popup's line before the index as it is now, or in place of it. */
-export function savedMethodsNowSaid(now: SavedMethodsNow): string {
-  switch (now.is) {
-    case 'same':
-      return 'Not kept with this record. The index as the folder holds it now, the same as sent:'
-    case 'changed':
-      return now.index === ''
-        ? 'Not kept with this record. The folder’s index lists no methods now.'
-        : 'Not kept with this record. The index as the folder holds it now, changed since this launch:'
-    case 'gone':
-      return 'Not kept with this record, and the folder holds no index now.'
-    case 'refused':
-      return `Not kept with this record, and the index cannot be read now: ${savedMethodsRefusalSaid(now.refusal)}.`
   }
 }

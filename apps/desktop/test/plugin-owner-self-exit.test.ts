@@ -162,10 +162,10 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
         'stage=blocked-write state=failed attempt=1',
       ])
       expect(trace).toContain('stage=blocked-write state=failed attempt=1 errno=EPERM')
-      // Cause logging follows the existing credential formatter and keeps the actual path.
-      expect(trace).not.toContain('fictional-secret')
+      // Cause logging keeps the real error text and path.
+      expect(trace).toContain('fictional-secret')
       expect(trace).toContain(
-        'cause=Error code=EPERM: Bearer [redacted] /fictional/private-owner-path',
+        'cause=Error code=EPERM: Bearer fictional-secret /fictional/private-owner-path',
       )
       const advice = vi.fn()
       const successor = await PluginSupervisor.start({

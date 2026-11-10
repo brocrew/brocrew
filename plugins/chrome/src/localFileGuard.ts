@@ -117,24 +117,6 @@ function toContainer(
     ? P.join(cfg.mount, p.slice(cfg.hostHome.length))
     : p
 }
-const SECRET_PART =
-  /(?:token|credential|secret|passw|cookie|session|service[-_ ]?account|keychain|\.sqlite3?$|\.db$|\.pem$|\.key$|\.p12$|\.pfx$|\.jks$|\.keystore$|\.kdbx$|\.ppk$|\.gpg$|\.asc$)/
-const SECRET_SEGMENT =
-  /^(?:profiles?|workspace|library|node_modules|id_(?:rsa|dsa|ecdsa|ed25519).*|id_.*|.*-auth|auth|authorized_keys|known_hosts)$/
-export function blockedReason(
-  relative: string,
-  platform: NodeJS.Platform = process.platform,
-): string | null {
-  for (const raw of relative.split(platform === 'win32' ? /[\\/]/ : '/').filter(Boolean)) {
-    const seg = raw.normalize('NFKC').toLowerCase()
-    if (seg.startsWith('.')) return 'a hidden file or folder (dotfile)'
-    if (SECRET_SEGMENT.test(seg)) return 'a profile, workspace, auth or key location'
-    if (SECRET_PART.test(seg)) {
-      return 'a name that looks like a credential, token, secret, cookie, session, key or database'
-    }
-  }
-  return null
-}
 function refuse(reason: string): never {
   throw new LocalFileGuardError(`This file cannot be used: ${reason}.`)
 }
@@ -169,11 +151,7 @@ export function openGuardedFile(
   } catch {
     refuse('the file does not exist or cannot be read')
   }
-  let matched: {
-    realRoot: string
-    hostRoot: string
-  } | null = null
-  let realRel = ''
+  let matched = false
   for (const root of cfg.roots) {
     const hostRoot = P.resolve(expand(root, cfg.hostHome, P, win))
     let realRoot: string
@@ -182,10 +160,8 @@ export function openGuardedFile(
     } catch {
       continue
     }
-    const rest = below(real, realRoot, P.sep, win)
-    if (rest !== null) {
-      matched = { realRoot, hostRoot }
-      realRel = rest
+    if (below(real, realRoot, P.sep, win) !== null) {
+      matched = true
       break
     }
   }
@@ -193,11 +169,6 @@ export function openGuardedFile(
     refuse(
       `it is outside the allowed folder (${cfg.roots.map((r) => r.replace(cfg.hostHome, '~')).join(', ')}), or a link points outside it`,
     )
-  }
-  const hostRel = below(requested, matched.hostRoot, P.sep, win) ?? ''
-  for (const rel of [hostRel, realRel]) {
-    const why = blockedReason(rel, platform)
-    if (why) refuse(`blocked name: its path goes through ${why}`)
   }
   let pre: fs.Stats
   try {

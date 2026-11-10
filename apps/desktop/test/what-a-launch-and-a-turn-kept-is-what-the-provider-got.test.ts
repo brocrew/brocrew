@@ -4,25 +4,25 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { classifyHandedPath } from '../src/main/runtime/handed-path'
 import { composeSystemHint } from '../src/main/runtime/instructions'
-import { fingerprintOf, toolsetFingerprint } from '../src/main/runtime/what-this-agent-was-given'
+import { toolsetFingerprint } from '../src/main/runtime/what-this-agent-was-given'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
 import type { WhatALaunchGave } from '../src/shared/what-this-agent-was-given'
 import { F093World, waitFor, type Handed } from './lib/f093-host'
 
 /**
- * # 🔴 F093 · R2 — what a `launched` row and a `user_turn` row keep is EXACTLY what the provider got
+ * # what a `launched` row and a `user_turn` row keep is EXACTLY what the provider got
  *
- * ⚑ The dev's tests read the rows with `toContain`. These compare them with the provider end itself
+ * The dev's tests read the rows with `toContain`. These compare them with the provider end itself
  * (`TheProviderEnd`): the `systemHint` a Claude launch was handed, the text every `send` carried, the
  * toolset a launch was handed, and the files on disk the provider reads itself (Codex).
  *
- * ⛔ `sent` equals the text handed over, character for character — a plain turn, a turn with an
+ * `sent` equals the text handed over, character for character — a plain turn, a turn with an
  * attachment, a turn of several held messages, Codex's first turn with its lead, and a later turn
- * without it. ⛔ A person's `/compact` on Codex hands over no words, and its row keeps no `sent`.
- * ⚑ A reopened conversation's launch keeps its record too (the resume door's own site).
+ * without it. A person's `/compact` on Codex hands over no words, and its row keeps no `sent`.
+ * A reopened conversation's launch keeps its record too (the resume door's own site).
  */
 
-describe('F093 · R2 — kept as the provider got it', () => {
+describe('kept as the provider got it', () => {
   let world: F093World
 
   beforeEach(() => {
@@ -53,7 +53,7 @@ describe('F093 · R2 — kept as the provider got it', () => {
     return index
   }
 
-  it('🔴 Claude: the launch’s record is the system hint it was handed — BroBot’s words verbatim, the rest by the fingerprint of what was sent', async () => {
+  it('Claude: the launch’s record is the system hint it was handed — BroBot’s words verbatim, the rest by the fingerprint of what was sent', async () => {
     const index = seedClaudeMemory('lead')
     const repository = join(world.project, 'CLAUDE.md')
     writeFileSync(repository, 'Repository rule: tabs, never spaces.\n')
@@ -63,30 +63,29 @@ describe('F093 · R2 — kept as the provider got it', () => {
     const hint = hintOf(handed)
     const given = givenOf(lead)
 
-    // ⛔ BroBot's profile file: what was published, what the provider was appended, and the record agree.
+    // BroBot's profile file: what was published, what the provider was appended, and the record agree.
     const profile = given.profileFile
     expect(profile?.refused).toBeNull()
     expect(profile?.text.length).toBeGreaterThan(1_000)
     expect(readFileSync(profile?.path ?? '', 'utf8')).toBe(profile?.text)
     expect(hint.includes(profile?.text ?? '∅')).toBe(true)
-    // ⛔ This conversation's own text is the LAST block of the hint, verbatim.
+    // This conversation's own text is the LAST block of the hint, verbatim.
     expect(given.thisConversation).not.toBeNull()
     expect(hint.endsWith(given.thisConversation?.text ?? '∅')).toBe(true)
-    // ⚑ Every file BroBot keeps in full is in the hint as kept.
+    // Every file kept is in the hint as kept.
     for (const file of given.files) {
-      if (file.text !== undefined) expect(hint.includes(file.text), file.path).toBe(true)
+      if (file.text !== null) expect(hint.includes(file.text), file.path).toBe(true)
     }
-    // ⛔ The repository's file: by fingerprint only, and the fingerprint is of the text that was sent.
+    // The repository's file: its text as it was sent.
     const sentText = readFileSync(repository, 'utf8')
     const kept = given.files.find((one) => one.path === repository)
-    expect(kept?.text).toBeUndefined()
-    expect(kept?.sha256).toBe(fingerprintOf(sentText))
+    expect(kept?.text).toBe(sentText)
     expect(kept?.bytes).toBe(Buffer.byteLength(sentText, 'utf8'))
     expect(hint.includes(sentText)).toBe(true)
-    // ⛔ The memory there at launch, by the fingerprint of its own bytes.
+    // The memory there at launch, with its own text.
     const memory = given.memory.find((one) => one.path.endsWith('MEMORY.md'))
-    expect(memory?.sha256).toBe(fingerprintOf(readFileSync(index, 'utf8')))
-    // ⛔ The tools: the toolset the provider was handed, by its own fingerprint, and their paragraph
+    expect(memory?.text).toBe(readFileSync(index, 'utf8'))
+    // The tools: the toolset the provider was handed, by its own fingerprint, and their paragraph
     // in full.
     const toolset = handed.options.agentTools
     if (toolset === undefined) throw new Error('the launch was handed no toolset')
@@ -97,7 +96,7 @@ describe('F093 · R2 — kept as the provider got it', () => {
       sha256: toolsetFingerprint(toolset),
       instructions: toolset.instructions,
     })
-    // ⛔ The line above each block, as kept: with the texts, they ARE the hint, character for
+    // The line above each block, as kept: with the texts, they ARE the hint, character for
     // character, in the order it was handed.
     const blocks = [
       `${profile?.heading ?? '∅'}\n\n${profile?.text ?? '∅'}`,
@@ -109,7 +108,7 @@ describe('F093 · R2 — kept as the provider got it', () => {
     expect(blocks.join('\n\n')).toBe(hint)
   })
 
-  it('🔴 Claude: a turn’s `sent` is the text its provider was handed, character for character — with an attachment too', async () => {
+  it('Claude: a turn’s `sent` is the text its provider was handed, character for character — with an attachment too', async () => {
     writeFileSync(join(world.project, 'notes.md'), '# notes\n')
     const chosen = await classifyHandedPath(join(world.project, 'notes.md'), world.project)
     if (!('handed' in chosen)) throw new Error('the fixture path did not classify')
@@ -128,14 +127,14 @@ describe('F093 · R2 — kept as the provider got it', () => {
     expect(plain?.text).toBe('please plan the next release')
     expect(plain?.sent).toBe(handed.sends[0])
     expect(plain?.sent).not.toBe(plain?.text)
-    // ⚑ The attachment block is in what was sent; the words alone stay in `text`.
+    // The attachment block is in what was sent; the words alone stay in `text`.
     expect(attached?.text).toBe('read this for me')
     expect(attached?.attachments).toEqual([file])
     expect(attached?.sent).toBe(handed.sends[1])
     expect(attached?.sent).toContain(JSON.stringify(file.path))
   })
 
-  it('🔴 a turn of several held messages keeps the one text that carried them all', async () => {
+  it('a turn of several held messages keeps the one text that carried them all', async () => {
     const host = world.buildHost()
     const lead = await world.open(host, 'claude', 'lead', { approvalMode: 'ask' })
     const handed = world.end.newest()
@@ -160,11 +159,11 @@ describe('F093 · R2 — kept as the provider got it', () => {
     expect(together.sent).toBe(handed.sends[1])
     expect(together.sent).toContain('held one')
     expect(together.sent).toContain('held two')
-    // ⚑ The first turn's own text stayed its own.
+    // The first turn's own text stayed its own.
     expect(world.turnsOf(lead)[0]?.sent).toBe(handed.sends[0])
   })
 
-  it('🔴 Codex: the first turn keeps the lead the launch recorded, exactly; the next keeps no lead; the profile file is the one Codex reads', async () => {
+  it('Codex: the first turn keeps the lead the launch recorded, exactly; the next keeps no lead; the profile file is the one Codex reads', async () => {
     const host = world.buildHost()
     const lead = await world.open(host, 'codex', 'lead')
     const handed = world.end.newest()
@@ -179,21 +178,21 @@ describe('F093 · R2 — kept as the provider got it', () => {
     expect(handed.sends).toHaveLength(2)
     expect(first?.sent).toBe(handed.sends[0])
     expect(second?.sent).toBe(handed.sends[1])
-    // ⛔ The lead in front of the first turn is the recorded per-conversation text, as composed.
+    // The lead in front of the first turn is the recorded per-conversation text, as composed.
     const conversation = given.thisConversation
     if (conversation === null) throw new Error('the launch kept no per-conversation text')
     const lead0 = composeSystemHint([], conversation)
     if (lead0 === undefined) throw new Error('nothing composed')
     expect(handed.sends[0]?.startsWith(lead0)).toBe(true)
     expect(handed.sends[1]?.startsWith(lead0)).toBe(false)
-    // ⛔ Codex reads BroBot's file itself: the record is the file it reads.
+    // Codex reads BroBot's file itself: the record is the file it reads.
     expect(given.placement).toBe('first-message')
     expect(readFileSync(join(world.homeOf('codex', 'lead'), 'AGENTS.override.md'), 'utf8')).toBe(
       given.profileFile?.text,
     )
   })
 
-  it('⛔ Codex: a person’s /compact hands over no words, so its row keeps no `sent`; the next turn keeps its own', async () => {
+  it('Codex: a person’s /compact hands over no words, so its row keeps no `sent`; the next turn keeps its own', async () => {
     world.end.compactsOnCodex = true
     const host = world.buildHost()
     const lead = await world.open(host, 'codex', 'lead')
@@ -213,7 +212,7 @@ describe('F093 · R2 — kept as the provider got it', () => {
     expect(world.turnsOf(lead)[1]?.sent).toBe(handed.sends[0])
   })
 
-  it('⚑ a reopened conversation’s launch keeps its own record, and it is what the resumed provider was handed', async () => {
+  it('a reopened conversation’s launch keeps its own record, and it is what the resumed provider was handed', async () => {
     const host = world.buildHost()
     const lead = await world.open(host, 'claude', 'lead')
     await host.close(lead, world.window)
@@ -229,7 +228,7 @@ describe('F093 · R2 — kept as the provider got it', () => {
     const toolset = resumed.options.agentTools
     if (toolset === undefined) throw new Error('the resume was handed no toolset')
     expect(given.tools.sha256).toBe(toolsetFingerprint(toolset))
-    // ⚑ And the read describes THAT launch.
+    // And the read describes THAT launch.
     const read = await host.whatThisAgentWasGiven(lead)
     expect(read.launch).toMatchObject({ recorded: true, running: true })
     expect(read.files[0]?.textIs).toBe('as-launched')

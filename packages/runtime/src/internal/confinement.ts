@@ -1,4 +1,5 @@
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { isInside as isWithin } from '@brobot2/shared/paths'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { realResolve } from './real-path'
 
 /**
@@ -29,29 +30,6 @@ export interface SessionConfinement {
   readonly cwd: string
   /** This session's own provider home — the plans and memory directories live under it. */
   readonly providerHome: string
-}
-
-/**
- * Is `path` at or inside `root`?
- *
- * ⚠️ **Equality counts here**: the root itself is inside it. (Until `726` · R92 two other copies of
- * this idiom — `asset-protocol.ts` and `generated-image.ts`, each asking "is this file inside the
- * directory I serve" — deliberately left equality out; R92 removed both of those roots.)
- *
- * `relative` rather than `startsWith`, for the reason every copy recorded: `/a/b-evil` has `/a/b`
- * as a string prefix and is somewhere else entirely.
- *
- * ⚠️ **Exported since 330, and what travels with it is the COMPARISON and not a ruling.**
- * `ClaudeMemoryStore` asks the same question of the same kind of pair — does this resolved path fall
- * inside this resolved root — to decide what a row SAYS rather than what a call may do.
- * ⛔ **`writesOnlyWithin` (removed by `728`) was deliberately not what it reused**: that predicate
- * carried one caller's policy (refuse on any stray string, grant only on a declared target, a scan
- * cap), and a label built on it would have inherited a permission's fail-closed edges as claims
- * about memory.
- */
-export function isWithin(root: string, path: string): boolean {
-  const rel = relative(root, path)
-  return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))
 }
 
 /** Longest string worth testing as a path. macOS `PATH_MAX` is 1024; this is generous of it. */
@@ -195,3 +173,5 @@ export function attestedRoot(derived: string): string | null {
   if (parent === null || real === null) return null
   return real === join(parent, basename(absolute)) ? absolute : null
 }
+
+export { isWithin }

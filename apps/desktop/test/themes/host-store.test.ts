@@ -982,7 +982,7 @@ describe('active selection and watched changes', () => {
     let inspected = false
     await writeActiveTheme(fixture.userData, 'next', {
       rename: async (from, to) => {
-        expect(String(from)).toMatch(/active-theme\.json\.[0-9]+\.[a-f0-9-]+\.tmp$/)
+        expect(String(from)).toMatch(/active-theme\.json\.[0-9a-f]{12}\.tmp$/)
         expect(String(to)).toBe(join(fixture.userData, ACTIVE_THEME_FILE))
         expect(JSON.parse(await readFile(from, 'utf8'))).toEqual({ theme: 'next' })
         expect(JSON.parse(await readFile(to, 'utf8'))).toEqual({ theme: 'defined' })

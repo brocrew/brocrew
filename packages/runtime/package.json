@@ -11,6 +11,10 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./atomic-write": {
+      "types": "./src/atomic-write.ts",
+      "default": "./src/atomic-write.ts"
+    },
     "./provider-home": {
       "types": "./src/internal/provider-home.ts",
       "default": "./src/internal/provider-home.ts"

@@ -85,10 +85,11 @@ export async function chromeBrokerBinding(
   const resources = view.package.manifest.permissions.resources
   const profiles = resources.find((one) => one.id === chromeBrokerResourceId)
   if (!profiles) throw new Error('unavailable')
-  const { endpoint, credential, adminCredential, admitted } = await admittedPluginTools(
+  const { endpoint, credential, admitted } = await admittedPluginTools(
     view,
     names,
     refused,
+    diagnostic,
   )
   return {
     tools: admitted.map((tool) => {
@@ -141,7 +142,6 @@ export async function chromeBrokerBinding(
     server: createPrivatePluginPort({
       url: endpoint.url,
       credential,
-      privateCredentials: [adminCredential],
       diagnostic,
     }),
   } satisfies Omit<

@@ -29,10 +29,11 @@ export async function whatsappBrokerBinding(
   const resources = view.package.manifest.permissions.resources
   const account = resources.find((one) => one.id === whatsappBrokerResourceId)
   if (!account) throw new Error('unavailable')
-  const { endpoint, credential, adminCredential, admitted } = await admittedPluginTools(
+  const { endpoint, credential, admitted } = await admittedPluginTools(
     view,
     names,
     refused,
+    diagnostic,
   )
   return {
     tools: admitted.map((tool) => ({
@@ -64,7 +65,6 @@ export async function whatsappBrokerBinding(
     server: createPrivatePluginPort({
       url: endpoint.url,
       credential,
-      privateCredentials: [adminCredential],
       diagnostic,
     }),
   } satisfies Omit<

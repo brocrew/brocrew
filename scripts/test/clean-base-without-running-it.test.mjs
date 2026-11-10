@@ -159,6 +159,8 @@ describe('§1 · the source census — a new durable write under userData must n
       "'updates', 'staging'",
       // ⚑ **W4.131 · A2** — a hidden launch's own list of workspaces. REMOVED (`WORKSPACES`).
       "'workspaces.json'",
+      // The API keys a person saved. REMOVED: a fresh install has none (`LEDGER`).
+      'API_KEYS_FILE',
       // The conversations a person archived, removed with the ledger whose rows they name (`LEDGER`).
       'ARCHIVED_FILE',
       // The workspace's recovery copies, removed with the ledger they copy (`RECOVERY`).
@@ -254,6 +256,7 @@ describe('§1 · the source census — a new durable write under userData must n
       'sign-in-changes.json',
       'schedule-attempts.json',
       'profile-execution.json',
+      'api-keys.json',
       'turns-the-app-cut.json',
       'start-attempts.jsonl',
       'start-attempts.1.jsonl',
@@ -322,10 +325,10 @@ describe('§2 · the manifest agrees with the product it is a manifest of', () =
       'const PASTED_IMAGE_NAME = /^pasted-[0-9a-f]{32}\\.png$/',
     )
     expect(code('apps/desktop/src/main/runtime/pasted-image.ts')).toContain(
-      'const PASTED_PART = /^pasted-[0-9a-f]{32}\\.png\\.[0-9a-f]{12}\\.part$/',
+      'const PASTED_PART = /^pasted-[0-9a-f]{32}\\.png\\.[0-9a-f]{12}\\.(?:part|tmp)$/',
     )
     expect(PASTED_IMAGE_NAME.source).toBe('^pasted-[0-9a-f]{32}\\.png$')
-    expect(PASTED_PART.source).toBe('^pasted-[0-9a-f]{32}\\.png\\.[0-9a-f]{12}\\.part$')
+    expect(PASTED_PART.source).toBe('^pasted-[0-9a-f]{32}\\.png\\.[0-9a-f]{12}\\.(?:part|tmp)$')
     // ⚑ Positive and negative, because a pattern that matched nothing would pass the pair above.
     expect(PASTED_IMAGE_NAME.test('pasted-0123456789abcdef0123456789abcdef.png')).toBe(true)
     expect(PASTED_IMAGE_NAME.test('pasted-0123456789abcdef0123456789abcde.png')).toBe(false)
@@ -521,17 +524,22 @@ describe('§9 · the module defaults, for a caller that does not pass options', 
   })
 
   it('⚑ W4.120 · a hidden launch’s update settings and a write a kill left go with the updater’s files — and the name is the product’s own', () => {
-    expect(code('apps/desktop/src/main/update-settings.ts')).toContain(
-      'const temporary = `${file}.${String(process.pid)}.tmp`',
+    expect(code('apps/desktop/src/main/update-settings.ts')).toContain('writeAtomicallySync(file,')
+    expect(UPDATE_SETTINGS_PART.source).toBe(
+      '^update-settings\\.json\\.(?:\\d+|[0-9a-f]{12})\\.tmp$',
     )
-    expect(UPDATE_SETTINGS_PART.source).toBe('^update-settings\\.json\\.\\d+\\.tmp$')
     const userData = plantUserData(fixture(), { profiles: HIS_PROFILES })
     writeFileSync(join(userData, 'update-settings.json'), '{"updates":{}}')
     writeFileSync(join(userData, 'update-settings.json.4242.tmp'), '{"upd')
+    writeFileSync(join(userData, 'update-settings.json.aabbccddeeff.tmp'), '{"upd')
     const plan = planCleanBase(
       trustedAnchor(userData, { repoRoot: REPO, home: fixture(), env: {} }),
     )
-    for (const rel of ['update-settings.json', 'update-settings.json.4242.tmp']) {
+    for (const rel of [
+      'update-settings.json',
+      'update-settings.json.4242.tmp',
+      'update-settings.json.aabbccddeeff.tmp',
+    ]) {
       expect(plan.actions).toContainEqual({ rel, expect: 'file', why: UPDATES })
     }
   })
@@ -611,16 +619,15 @@ describe('§10c · W4.172 · the moments each provider’s sign-in changed', () 
 
 describe('§10b · W4.131 · a workspace’s name and a hidden launch’s list', () => {
   it('⚑ go with the workspace’s files, a write a kill left too — and the pattern is the product’s own', () => {
-    expect(code('apps/desktop/src/main/workspaces.ts')).toContain(
-      'const temporary = `${file}.${String(process.pid)}.tmp`',
-    )
-    expect(WORKSPACES_PART.source).toBe('^workspaces?\\.json\\.\\d+\\.tmp$')
+    expect(code('apps/desktop/src/main/workspaces.ts')).toContain('writeAtomicallySync(file,')
+    expect(WORKSPACES_PART.source).toBe('^workspaces?\\.json\\.(?:\\d+|[0-9a-f]{12})\\.tmp$')
     const userData = plantUserData(fixture(), { profiles: HIS_PROFILES })
     for (const name of [
       'workspace.json',
       'workspaces.json',
       'workspace.json.4242.tmp',
       'workspaces.json.4242.tmp',
+      'workspaces.json.aabbccddeeff.tmp',
     ]) {
       writeFileSync(join(userData, name), '{}')
     }
@@ -632,6 +639,7 @@ describe('§10b · W4.131 · a workspace’s name and a hidden launch’s list',
       'workspaces.json',
       'workspace.json.4242.tmp',
       'workspaces.json.4242.tmp',
+      'workspaces.json.aabbccddeeff.tmp',
     ]) {
       expect(plan.actions).toContainEqual({ rel, expect: 'file', why: WORKSPACES })
     }
@@ -681,6 +689,8 @@ describe('§11 · ⛔ 539 · the signs a nested userData is recognised by', () =
       'schedule-attempts.json',
       // Any program with profiles may keep how they run in a file of this name.
       'profile-execution.json',
+      // Any program may keep API keys in a file of this name.
+      'api-keys.json',
       // Any program may keep the turns it cut in a file of this name.
       'turns-the-app-cut.json',
       // Any program may time its own starts in files of these names.

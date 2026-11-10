@@ -1,9 +1,8 @@
 import type { ApiKeyStatus } from '../../../shared/runtime-ipc'
 
-/** A key is saved and this computer can't read it; one not yet read is not that. */
+/** A key is saved and can't be used. */
 export function keyCantBeRead(status: ApiKeyStatus | null | undefined): boolean {
-  if (status == null || !status.set || status.readState === 'not-checked') return false
-  return status.readState === 'unreadable' || !status.inUse
+  return status?.set === true && !status.inUse
 }
 
 /**

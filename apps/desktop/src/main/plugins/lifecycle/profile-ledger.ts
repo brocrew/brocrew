@@ -1,7 +1,6 @@
 import { constants } from 'node:fs'
-import { lstat, readdir, rename, unlink } from 'node:fs/promises'
+import { lstat, readdir, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { ChromeLedgerProposal } from './chrome-apply'
 import { WhatsAppProposal } from './whatsapp-apply'
@@ -15,6 +14,7 @@ import {
 } from '../node-host-files'
 import { openFileNotThroughALink, pinDirectory } from '../private-files'
 import { PluginSupervisorError } from '../supervisor/protocol'
+import { writeAtomically } from '../../recovery/files'
 const Previous = z
   .string()
   .regex(/^[a-f0-9]{64}$/)
@@ -40,12 +40,11 @@ const Intent = z
   })
   .refine((value) => value.proposal !== null || value.format === 2)
 const TAIL_LIMIT = 16
+const TEMPORARY = /^(?:\.new-[a-f0-9-]{36}|\d{8,16}\.json\.[a-f0-9]{12}\.tmp)$/
 const refuse = (): never => {
   throw new PluginSupervisorError('unavailable')
 }
-/** Owner's lifecycle exclusive gate is mandatory for every read/reserve. This kept-current journal
- * is excluded from workspace/global activation restores. A consumed intent is never auto-replayed.
- */
+// Reads and reservations run under the owner's per-plugin lifecycle gate.
 export class PluginProfileLedger {
   constructor(private readonly root: string) {}
   private async location(installId: string, create: boolean) {
@@ -125,7 +124,7 @@ export class PluginProfileLedger {
       revision = checkpoint?.revision ?? 0
     let floorSeen = !floor || (floor.revision === revision && floor.previous === previous)
     for (const name of await readdir(location.folder)) {
-      if (!/^\.new-[a-f0-9-]{36}$/.test(name)) continue
+      if (!TEMPORARY.test(name)) continue
       const path = join(location.folder, name)
       const handle = await openFileNotThroughALink(path, constants.O_RDONLY | constants.O_NONBLOCK)
       try {
@@ -137,7 +136,7 @@ export class PluginProfileLedger {
       await unlink(path)
     }
     const names = (await readdir(location.folder))
-      .filter((name) => !/^\.new-[a-f0-9-]{36}$/.test(name))
+      .filter((name) => !TEMPORARY.test(name))
       .sort((a, b) => Number(a.slice(0, -5)) - Number(b.slice(0, -5)))
     if (names.length > 4096) return refuse()
     const seen = new Set<number>(),
@@ -181,21 +180,12 @@ export class PluginProfileLedger {
     previous: string | null,
     format: 1 | 2 = 2,
   ) {
-    const stage = join(parent, '.floor-' + randomUUID()),
-      pin = pinDirectory(parent)
     const bytes = Buffer.from(
       format === 1
         ? String(revision)
         : JSON.stringify(Checkpoint.parse({ format: 2, installId, revision, previous })),
     )
-    try {
-      await immutableFile(stage, bytes)
-      await rename(stage, join(parent, installId + '.floor'))
-      pin.sync()
-    } finally {
-      await unlink(stage).catch(() => undefined)
-      pin.close()
-    }
+    await writeAtomically(join(parent, installId + '.floor'), bytes)
   }
   private async prune(folder: string, names: readonly string[]) {
     const pin = pinDirectory(folder)
@@ -219,23 +209,10 @@ export class PluginProfileLedger {
   ) {
     // A checkpoint can only consume a prefix already protected by its durable replay floor.
     await this.publishFloor(parent, installId, revision, previous)
-    const directory = dirname(folder),
-      pin = pinDirectory(directory),
-      held = pin.held(),
-      stage = join(directory, '.checkpoint-' + randomUUID())
     const bytes = Buffer.from(
       JSON.stringify(Checkpoint.parse({ format: 2, installId, revision, previous })),
     )
-    try {
-      await immutableFile(stage, bytes)
-      const now = await lstat(directory, { bigint: true })
-      if (now.dev !== held.dev || now.ino !== held.ino || now.isSymbolicLink()) return refuse()
-      await rename(stage, join(directory, 'checkpoint.json'))
-      pin.sync()
-    } finally {
-      await unlink(stage).catch(() => undefined)
-      pin.close()
-    }
+    await writeAtomically(join(dirname(folder), 'checkpoint.json'), bytes)
     // Publication and directory sync precede every deletion. Interrupted pruning is resumable.
     await this.prune(folder, records)
   }
@@ -283,26 +260,14 @@ export class PluginProfileLedger {
         Intent.parse({ format, installId, revision, previous: state.previous, proposal }),
       ),
     )
-    const pin = pinDirectory(folder)
-    const held = pin.held()
-    const stage = join(folder, '.new-' + randomUUID()),
-      name = String(revision).padStart(format === 1 ? 8 : 16, '0') + '.json'
-    try {
-      await immutableFile(stage, bytes)
-      const now = await lstat(folder, { bigint: true })
-      if (now.dev !== held.dev || now.ino !== held.ino || now.isSymbolicLink()) return refuse()
-      await rename(stage, join(folder, name))
-      pin.sync() // Positive durable intent BEFORE any downstream effect.
-      await this.publishFloor(parent, installId, revision, digest(bytes), format)
-      if (format === 2 && (proposal === null || state.records.length + 1 >= TAIL_LIMIT))
-        await this.publishCheckpoint(folder, parent, installId, revision, digest(bytes), [
-          ...state.records,
-          name,
-        ])
-    } finally {
-      await unlink(stage).catch(() => undefined)
-      pin.close()
-    }
+    const name = String(revision).padStart(format === 1 ? 8 : 16, '0') + '.json'
+    await writeAtomically(join(folder, name), bytes)
+    await this.publishFloor(parent, installId, revision, digest(bytes), format)
+    if (format === 2 && (proposal === null || state.records.length + 1 >= TAIL_LIMIT))
+      await this.publishCheckpoint(folder, parent, installId, revision, digest(bytes), [
+        ...state.records,
+        name,
+      ])
     return revision
   }
 }

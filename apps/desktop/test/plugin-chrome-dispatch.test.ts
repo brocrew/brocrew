@@ -7,7 +7,6 @@ vi.mock('../src/main/plugins/lifecycle/broker-inventory', () => ({
     connection: { admin: () => ({ url: 'http://127.0.0.1:8123/v1', headers: {} }) },
     endpoint: { url: 'http://127.0.0.1:8123/mcp' },
     credential: 'a'.repeat(64),
-    adminCredential: 'b'.repeat(64),
     admitted: [],
   }),
 }))

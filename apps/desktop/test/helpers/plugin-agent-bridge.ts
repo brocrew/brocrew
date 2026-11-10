@@ -1,13 +1,27 @@
 import { vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { createLifecycleAgentBridge } from '../../src/main/plugins/lifecycle/agent-bridge'
 import { sharedLifecycleWorkspaces } from '../../src/main/plugins/lifecycle/workspaces'
 import { fixture } from '../plugin-lifecycle-fixtures'
 import type { WorkspaceLease } from '../../src/main/plugins/supervisor/owner'
 import type { Command } from '../../src/main/plugins/supervisor/protocol'
 import type { BrokerInput } from '../../src/main/plugins/tool-broker'
+import type { ManagedPluginMcpServer } from '@brobot2/runtime'
 
 export const closes: (() => Promise<unknown>)[] = []
+export async function connected(route: ManagedPluginMcpServer) {
+  const client = new Client({ name: 'fictional-willow', version: '1' })
+  client.onerror = () => {}
+  closes.push(() => client.close())
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(route.url), {
+      requestInit: { headers: { Authorization: `Bearer ${route.capability}` } },
+    }),
+  )
+  return client
+}
 export const request = (
   workspaceId: string,
   incarnation = randomUUID(),
@@ -65,8 +79,7 @@ export async function live(
   const controller = sharedLifecycleWorkspaces(f.controller)
   const person = await controller.attach(f.local.sink)
   await controller.install(person, 'chrome')
-  let valid = true,
-    allowed = true
+  let allowed = true
   const revoked = new Set<string>()
   const call = vi.fn()
   const binding = vi.fn(async () => ({
@@ -104,7 +117,7 @@ export async function live(
   const diagnostic = vi.fn()
   const bridge = createLifecycleAgentBridge({
     controller,
-    owner: { valid: (id) => valid && !revoked.has(id) },
+    owner: { valid: (id) => !revoked.has(id) },
     binding,
     diagnostic,
     ...bridgeChange,
@@ -122,9 +135,6 @@ export async function live(
     revokeLease: (one: WorkspaceLease) => {
       revoked.add(one.id)
       bridge.revoke(one)
-    },
-    setValid: (v: boolean) => {
-      valid = v
     },
     allow: (v: boolean) => {
       allowed = v

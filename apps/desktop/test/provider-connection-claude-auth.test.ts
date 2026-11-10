@@ -107,14 +107,10 @@ function moduleOn(key: () => string | null | Promise<string | null>) {
 for (const operation of ['start', 'resume', 'models'] as const) {
   for (const method of ['sign-in', 'api-key'] as const) {
     it(`Claude ${operation}: keeps the selected ${method} method when the saved key changes during its read`, async () => {
-      const store = createSessionStore(db)
-      const keys = new ApiKeys(store, {
-        available: () => true,
-        seal: (key) => Buffer.from(key).toString('base64'),
-        open: (sealed) => Buffer.from(sealed, 'base64').toString(),
-      })
+      createSessionStore(db)
+      const keys = new ApiKeys(dir)
       if (method === 'api-key') await keys.set('claude', 'fictional-fern-key')
-      const connection = resolveProviderConnection(db, { provider: 'claude' })
+      const connection = resolveProviderConnection(db, { provider: 'claude', keySaved: keys.status('claude').set })
       const home = join(dir, 'claude')
       mkdirSync(home)
       const query = new Query()
@@ -122,7 +118,7 @@ for (const operation of ['start', 'resume', 'models'] as const) {
       const readKey = vi.fn(async () => {
         if (method === 'sign-in') await keys.set('claude', 'fictional-willow-key')
         const key = await keys.read('claude')
-        keys.remove('claude')
+        await keys.remove('claude')
         return key
       })
       const { runtime } = await moduleOn(readKey).prepareLaunch('fictional-profile', connection)
@@ -154,15 +150,11 @@ for (const operation of ['start', 'resume', 'models'] as const) {
   }
 
   it(`Claude ${operation}: a selected API key that disappears does not fall back to a login`, async () => {
-    const store = createSessionStore(db)
-    const keys = new ApiKeys(store, {
-      available: () => true,
-      seal: (key) => Buffer.from(key).toString('base64'),
-      open: (sealed) => Buffer.from(sealed, 'base64').toString(),
-    })
+    createSessionStore(db)
+    const keys = new ApiKeys(dir)
     await keys.set('claude', 'fictional-fern-key')
-    const connection = resolveProviderConnection(db, { provider: 'claude' })
-    keys.remove('claude')
+    const connection = resolveProviderConnection(db, { provider: 'claude', keySaved: keys.status('claude').set })
+    await keys.remove('claude')
     const home = join(dir, 'claude')
     mkdirSync(home)
     const pending = moduleOn(() => keys.read('claude')).prepareLaunch(
@@ -182,7 +174,7 @@ for (const method of ['sign-in', 'api-key'] as const) {
     const readKey = vi.fn(async () => saved)
     const readLogin = vi.fn(async () => 'fictional-login')
     const connection = {
-      ...resolveProviderConnection(db, { provider: 'claude' }),
+      ...resolveProviderConnection(db, { provider: 'claude', keySaved: method === 'api-key' }),
       authMethod: method,
     }
     const module = createClaudeModule(

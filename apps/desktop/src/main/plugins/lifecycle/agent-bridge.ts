@@ -1,7 +1,6 @@
 import {
   attachmentTraceId,
   createRouteAdmissionTrace,
-  observeAdmission,
   type RouteAdmissionSink,
 } from '../route-admission-trace'
 import {
@@ -11,7 +10,11 @@ import {
 } from '../tool-diagnostics'
 import { randomUUID } from 'node:crypto'
 import type { ManagedPluginMcpServer } from '@brobot2/runtime'
-import { managedPluginFailure, pluginFailureReason } from '@brobot2/runtime/plugin-failure'
+import {
+  managedPluginFailure,
+  pluginFailureReason,
+  type PluginFailureStage,
+} from '@brobot2/runtime/plugin-failure'
 import {
   createPluginToolBroker,
   type BrokerOptions,
@@ -149,6 +152,7 @@ export function createLifecycleAgentBridge(options: {
   const stopping = new Map<string, Promise<Entry>>()
   const entries = new Map<string, Promise<Entry>>()
   const bindingFailures = new WeakMap<Promise<Entry>, PluginToolFailureDetail>()
+  const bindingStages = new Map<string, { stage: PluginFailureStage }>()
   const liveEntries = new Map<string, Entry>()
   const failedRoutes = new Map<string, string>()
   const overflowFailures = new Set<string>()
@@ -159,20 +163,25 @@ export function createLifecycleAgentBridge(options: {
   const failedAttachments = new Set<string>()
   // The last known stage and cause behind each plugin's unavailable tools, in fixed words only.
   const lastCause = new Map<string, string>()
-  const diagnostic =
-    (id: string): PluginToolDiagnostic =>
-    (reason, detail) => {
-      if (detail) lastCause.set(id, `${detail.stage}: ${detail.cause}`)
-      else if (/failed|unproven|rejected|timeout|capacity|collision|rate-limited/.test(reason))
-        lastCause.set(id, reason)
-      if (lastCause.size > 256) lastCause.delete(lastCause.keys().next().value!)
-      try {
-        if (detail) options.diagnostic?.(id, reason, detail)
-        else options.diagnostic?.(id, reason)
-      } catch {
-        /* Observers grant no authority. */
-      }
-    }
+  const diagnostic = (
+    id: string,
+    pending?: (stage: PluginFailureStage) => void,
+  ): PluginToolDiagnostic =>
+    Object.assign(
+      (reason: Parameters<PluginToolDiagnostic>[0], detail?: PluginToolFailureDetail) => {
+        if (detail) lastCause.set(id, `${detail.stage}: ${detail.cause}`)
+        else if (/failed|unproven|rejected|timeout|capacity|collision|rate-limited/.test(reason))
+          lastCause.set(id, reason)
+        if (lastCause.size > 256) lastCause.delete(lastCause.keys().next().value!)
+        try {
+          if (detail) options.diagnostic?.(id, reason, detail)
+          else options.diagnostic?.(id, reason)
+        } catch {
+          /* Observers grant no authority. */
+        }
+      },
+      { pending },
+    )
   const routes = new Map<string, Route>()
   const rebuilding = new Set<string>()
   const recoveries = new Map<Entry, Promise<boolean>>()
@@ -192,6 +201,7 @@ export function createLifecycleAgentBridge(options: {
     const entry = entries.get(id)
     entries.delete(id)
     entryIdentities.delete(id)
+    bindingStages.delete(id)
     cancelWarmups((one) => one.pluginId === id)
     liveEntries.delete(id)
     rebuilding.delete(id)
@@ -365,7 +375,11 @@ export function createLifecycleAgentBridge(options: {
         work = undefined
       }
       if (!work) {
-        const report = diagnostic(id)
+        const progress = { stage: 'binding-connection' as PluginFailureStage }
+        bindingStages.set(id, progress)
+        const report = diagnostic(id, (stage) => {
+          if (bindingStages.get(id) === progress) progress.stage = stage
+        })
         work = options.binding(view, report).then((binding) => {
           if (!view.current() || closed || (versions.get(id) ?? 0) !== version)
             throw new Error('unavailable')
@@ -401,22 +415,6 @@ export function createLifecycleAgentBridge(options: {
             hostToolNames: [],
             occupiedNamespaces: [],
             occupiedQualifiedNames: [],
-            isAllowed: (who, use) => {
-              let active = false
-              try {
-                active = options.controller.withAgentScope(who.workspaceId, (scope, current) =>
-                  scope.entries.some(
-                    (item) =>
-                      item.is === 'admitted' &&
-                      item.view.installation.installId === view.installation.installId &&
-                      current(item.view),
-                  ),
-                )
-              } catch {
-                /* An unreadable admission is unavailable, as with standalone views. */
-              }
-              return active && binding.isAllowed(who, use)
-            },
           })
           const entry: Entry = {
             identity,
@@ -428,6 +426,7 @@ export function createLifecycleAgentBridge(options: {
           }
           held.entry = entry
           liveEntries.set(id, entry)
+          if (bindingStages.get(id) === progress) bindingStages.delete(id)
           return entry
         })
         entries.set(id, work)
@@ -435,6 +434,7 @@ export function createLifecycleAgentBridge(options: {
         const bindingWork = work
         void bindingWork.catch((error) => {
           if (entries.get(id) === bindingWork) entries.delete(id)
+          if (bindingStages.get(id) === progress) bindingStages.delete(id)
           const failure = managedPluginFailure(error, 'route-binding')
           const detail = {
             stage: failure.pluginStage,
@@ -468,32 +468,7 @@ export function createLifecycleAgentBridge(options: {
           },
           request.incarnation,
         )
-        const route = await openRoute(
-          entry.broker,
-          agent,
-          (observer) => {
-            if (closed) {
-              observeAdmission(observer, { condition: 'bridge-closed' })
-              return false
-            }
-            if (!options.owner.valid(lease.id, lease.epoch)) {
-              observeAdmission(observer, { condition: 'lease-invalid' })
-              return false
-            }
-            if (!view.current(observer)) return false
-            if (retired.has(caller)) {
-              observeAdmission(observer, { condition: 'incarnation-retired' })
-              return false
-            }
-            if (entries.get(id) !== work) {
-              observeAdmission(observer, { condition: 'entry-replaced' })
-              return false
-            }
-            return true
-          },
-          diagnostic(id),
-          trace,
-        )
+        const route = await openRoute(entry.broker, agent, diagnostic(id), trace)
         trace.emit('route-issued')
         track(route)
         if (!live() || !entry.broker.status().available) {
@@ -830,6 +805,9 @@ export function createLifecycleAgentBridge(options: {
       retired.add(caller)
       sourceTrace(lease, request).emit('source-retired')
       cancelWarmups((one) => one.caller === caller)
+      for (const item of routes.values())
+        if (item.lease.id === lease.id && item.incarnation === request.incarnation)
+          void closeRoute(item.route).catch(() => undefined)
     }
     if (!request.release && (waiting >= 64 || retired.size >= 4096)) {
       reportPluginToolFailure(diagnostic('host'), 'attachment-capacity')
@@ -911,8 +889,20 @@ export function createLifecycleAgentBridge(options: {
         rebuilding.has(id) ||
         overflowFailures.has(id) ||
         liveEntries.get(id)?.broker.status().available === false ||
-        [...failedRoutes.values()].includes(id)
+        [...failedRoutes].some(
+          ([key, plugin]) =>
+            plugin === id &&
+            ![...warmups.values()].some(
+              (one) => !one.cancelled && !one.settled && `${one.caller}:${id}` === key,
+            ),
+        )
       )
+    },
+    toolsPending(id: string): string | undefined {
+      const pending = [...warmups.values()].some(
+        (one) => one.pluginId === id && !one.cancelled && !one.settled,
+      )
+      return pending ? (bindingStages.get(id)?.stage ?? 'route-open') : undefined
     },
     /** Why this plugin's tools are unavailable, as `stage: cause` or a fixed reason, if known. */
     toolsCause(id: string): string | undefined {

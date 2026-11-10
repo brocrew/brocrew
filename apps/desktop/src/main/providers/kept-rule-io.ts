@@ -1,22 +1,14 @@
+import { writeAtomicallySync } from '@brobot2/runtime/atomic-write'
 import {
   closeSync,
   constants,
-  fchmodSync,
   fstatSync,
   openSync,
   readSync,
   realpathSync,
-  renameSync,
-  unlinkSync,
   writeFileSync,
-  writeSync,
 } from 'node:fs'
-import {
-  MAX_SETTINGS_BYTES,
-  aStagingName,
-  createFreshFile,
-  isStillTheFileOpened,
-} from '@brobot2/runtime'
+import { MAX_SETTINGS_BYTES, isStillTheFileOpened } from '@brobot2/runtime'
 export const NO_LONGER_KEPT = 'That rule is no longer kept there.'
 
 type Read =
@@ -59,14 +51,6 @@ function readAll(fd: number, size: number): string {
   return buffer.subarray(0, read).toString('utf8')
 }
 
-/**
- * The file rewritten from what it holds now, keeping its permissions: staged under a fresh name and
- * renamed over it, so a reader never sees half of it.
- *
- * A link the person made — the file's own or its folder's — is followed: the file it leads to is the
- * one rewritten, and the link stays. A file with a second name (a hard link) is written in place,
- * so every name keeps the same text.
- */
 export function rewrite(
   file: string,
   change: (text: string) => string,
@@ -95,23 +79,5 @@ export function rewrite(
     writeFileSync(real, next)
     return
   }
-  file = real
-  const staged = aStagingName(file)
-  const out = createFreshFile(staged)
-  try {
-    try {
-      writeSync(out, next)
-      fchmodSync(out, mode)
-    } finally {
-      closeSync(out)
-    }
-    renameSync(staged, file)
-  } catch (error) {
-    try {
-      unlinkSync(staged)
-    } catch {
-      // best effort — the reason below is what matters
-    }
-    throw error
-  }
+  writeAtomicallySync(real, next, { mode })
 }

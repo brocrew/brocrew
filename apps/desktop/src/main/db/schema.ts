@@ -126,7 +126,7 @@ export const providerModelSetting = sqliteTable('provider_model_setting', {
 export const providerApiKey = sqliteTable('provider_api_key', {
   /** The provider the key is for — `claude` or `codex`. */
   provider: text('provider').primaryKey(),
-  /** The key, encrypted by `safeStorage`, base64. Never the key in the clear. */
+  /** Keys earlier versions sealed with `safeStorage`. Nothing reads them: keys live in api-keys.json. */
   sealed: text('sealed').notNull(),
   updatedAt: integer('updated_at').notNull(),
 })

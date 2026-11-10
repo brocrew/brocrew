@@ -19,7 +19,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { ApiKeys, aLoginRunsWithoutAKey, type KeyCipher } from '../src/main/runtime/api-keys'
+import { ApiKeys, aLoginRunsWithoutAKey } from '../src/main/runtime/api-keys'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { theStallAndItsAsk } from '../src/main/runtime/reply-rails'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -293,13 +293,6 @@ class ProviderDouble extends FakeRuntime {
   }
 }
 
-/** A stand-in for `safeStorage`: the "sealed" key is the fake value with a prefix. */
-const CIPHER: KeyCipher = {
-  available: () => true,
-  seal: (key) => `sealed:${key}`,
-  open: (sealed) => sealed.slice('sealed:'.length),
-}
-
 describe('§4 · Providers stops calling the key ready, until a turn or a check on it works', () => {
   let userData: string
   let db: AppDatabase
@@ -321,7 +314,7 @@ describe('§4 · Providers stops calling the key ready, until a turn or a check 
     store = createSessionStore(db)
     // The first key is saved at 1, before every life the host starts (its clock is the real one).
     keySavedAt = 1
-    keys = new ApiKeys(store, CIPHER, () => keySavedAt)
+    keys = new ApiKeys(userData, () => keySavedAt)
     checkSays = { ok: true }
     checksStarted = 0
     handles = []

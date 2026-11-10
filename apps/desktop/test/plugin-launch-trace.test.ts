@@ -136,13 +136,7 @@ it.each([true, false])(
           },
           input.incarnation,
         )
-        route = await openManagedPluginRoute(
-          fixture.broker,
-          original.agent,
-          () => true,
-          undefined,
-          trace,
-        )
+        route = await openManagedPluginRoute(fixture.broker, original.agent, undefined, trace)
         closes.push(() => route!.close())
         return {
           format: 2 as const,

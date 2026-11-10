@@ -237,6 +237,7 @@ describe.skipIf(process.platform === 'win32')(
       await writeFile(join(intents, '.new-11111111-1111-4111-a111-111111111111'), '', {
         mode: 0o400,
       })
+      await writeFile(join(intents, '00000002.json.abcdef123456.tmp'), 'partial')
       expect(await ledger.revision(id)).toBe(1)
       expect(await readdir(intents)).toEqual(['00000001.json'])
       await rm(directory, { recursive: true })

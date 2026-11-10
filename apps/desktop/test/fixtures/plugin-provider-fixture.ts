@@ -19,16 +19,12 @@ export function noPrivateCredential(value: unknown, secret: string): void {
     return item
   })
 }
-export async function pluginProviderFixture(
-  options: { extraPrivateCredential?: string; diagnostic?: PluginToolDiagnostic } = {},
-) {
+export async function pluginProviderFixture(options: { diagnostic?: PluginToolDiagnostic } = {}) {
   const credential = createPluginCredential()
   const seen: { method: string; authenticated: boolean }[] = []
   const audit: unknown[] = []
   let allowed = true,
-    reply:
-      'normal' | 'secret' | 'metadata-secret' | 'key-secret' | 'error' | 'tool-error' | 'hold' =
-      'normal'
+    reply: 'normal' | 'error' | 'tool-error' | 'hold' = 'normal'
   const transports = new Set<StreamableHTTPServerTransport>()
   const http = createServer((req, res) => {
     const authenticated = req.headers.authorization === `Bearer ${credential}`
@@ -71,21 +67,11 @@ export async function pluginProviderFixture(
           content: [
             {
               type: 'text',
-              text:
-                reply === 'secret'
-                  ? (options.extraPrivateCredential ?? credential)
-                  : reply === 'tool-error'
-                    ? 'Error: window operation timed out'
-                    : PLUGIN_MARKER,
+              text: reply === 'tool-error' ? 'Error: window operation timed out' : PLUGIN_MARKER,
             },
           ],
           ...(reply === 'tool-error' ? { isError: true } : {}),
-          _meta:
-            reply === 'metadata-secret'
-              ? { nested: [{ value: `Fictional ${credential}` }] }
-              : reply === 'key-secret'
-                ? { [credential]: true }
-                : { fixture: true },
+          _meta: { fixture: true },
         }
       })
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
@@ -132,7 +118,6 @@ export async function pluginProviderFixture(
       url,
       credential,
       diagnostic: options.diagnostic,
-      privateCredentials: options.extraPrivateCredential ? [options.extraPrivateCredential] : [],
     }),
     audit: (event) => audit.push(event),
   })

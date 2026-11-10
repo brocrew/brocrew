@@ -128,9 +128,7 @@ it('a log write failure does not replace the original startup failure or prevent
 it('retains a split first stderr line and real child exit through wrappers into the same log text', async () => {
   const stderr = Object.assign(new EventEmitter(), { unref: vi.fn() })
   const child = { stderr, exitCode: null as number | null, signalCode: null }
-  const snapshot = observePluginSupervisorLaunch(child as unknown as ChildProcess, [
-    'fictional-capability',
-  ])
+  const snapshot = observePluginSupervisorLaunch(child as unknown as ChildProcess)
   stderr.emit('data', Buffer.from('Error: fictional bridge could not bind; personKey=fictional-'))
   stderr.emit('data', Buffer.from('capability\nsecond private stack line'))
   child.exitCode = 17
@@ -139,7 +137,7 @@ it('retains a split first stderr line and real child exit through wrappers into 
   expect(diagnostic).toEqual({
     exitCode: 17,
     signal: null,
-    stderr: 'Error: fictional bridge could not bind; personKey=[redacted]',
+    stderr: 'Error: fictional bridge could not bind; personKey=fictional-capability',
   })
   expect(PluginStartupDiagnosticSchema.safeParse(diagnostic).success).toBe(true)
   expect(stderr.unref).toHaveBeenCalledOnce()
@@ -151,15 +149,16 @@ it('retains a split first stderr line and real child exit through wrappers into 
   await recordPluginStartupFailure(root, 'service-start', wrapped)
   const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
   expect(log).toContain(pluginStartupDiagnosticNotice(diagnostic))
-  expect(log).not.toContain('fictional-capability')
+  expect(log).toContain('fictional-capability')
   expect(diagnostic.stderr).not.toContain('second private stack line')
   expect(log).toContain('second private stack line')
 })
 it('does not invent a child exit or stderr at an attachment timeout and bounds escaped text', () => {
-  const snapshot = observePluginSupervisorLaunch(
-    { exitCode: null, signalCode: null, stderr: null } as unknown as ChildProcess,
-    [],
-  )
+  const snapshot = observePluginSupervisorLaunch({
+    exitCode: null,
+    signalCode: null,
+    stderr: null,
+  } as unknown as ChildProcess)
   expect(pluginStartupDiagnostic(snapshot())).toEqual({
     exitCode: null,
     signal: null,
@@ -168,18 +167,16 @@ it('does not invent a child exit or stderr at an attachment timeout and bounds e
   expect(pluginStartupDiagnosticNotice(pluginStartupDiagnostic(snapshot())!)).toBe(
     'Exit code not reported. No stderr was reported.',
   )
-  expect(
-    pluginStartupStderr('\u001b[31mError: denied token=fictional-token\u202e' + 'x'.repeat(2000)),
-  ).toBe('Error: denied token=[redacted]')
+  expect(pluginStartupStderr('\u001b[31mError: denied token=fictional-token\u202e')).toBe(
+    'Error: denied token=fictional-token',
+  )
   expect(pluginStartupStderr('x'.repeat(2000))).toHaveLength(512)
 })
 
 it('keeps the real multiline startup error after a loader preamble in Settings and the log', async () => {
   const stderr = Object.assign(new EventEmitter(), { unref: vi.fn() })
   const child = { stderr, exitCode: 1, signalCode: null }
-  const snapshot = observePluginSupervisorLaunch(child as unknown as ChildProcess, [
-    'fictional-key',
-  ])
+  const snapshot = observePluginSupervisorLaunch(child as unknown as ChildProcess)
   stderr.emit('data', Buffer.from('node:internal/modules/cjs/loader:2142\n  throw error;\n'))
   stderr.emit('data', Buffer.from(' '.repeat(5000)))
   stderr.emit('data', Buffer.from("\nError: Cannot find module 'fictional-missing-module'\n"))
@@ -198,13 +195,16 @@ it('keeps the real multiline startup error after a loader preamble in Settings a
   expect(log).toContain("Error: Cannot find module 'fictional-missing-module'")
   expect(log).toContain('Require stack:\n- /fictional/service/entry.cjs')
   expect(log).toContain('at startup (entry.cjs:12:3)')
-  expect(log).not.toContain('fictional-key')
+  expect(log).toContain('fictional-key')
 })
 
-it('redacts a capability split by terminal escapes before display normalization', () => {
-  const capability = 'abcd1234'.repeat(8)
-  const escaped = capability.match(/.{16}/g)!.join('\u001b[0m')
-  expect(pluginStartupStderr(`Error: ${escaped}`, [capability])).toBe('Error: [redacted]')
+it('keeps hashes and credential-shaped error text while stripping terminal escapes', () => {
+  const hash = 'abcd1234'.repeat(8)
+  const escaped = hash.match(/.{16}/g)!.join('\u001b[0m')
+  const message = `Error: ${escaped} Bearer fictional-key token=fictional-token`
+  expect(pluginStartupStderr(message)).toBe(
+    `Error: ${hash} Bearer fictional-key token=fictional-token`,
+  )
   const bounded = pluginStartupStderr('x'.repeat(511) + '😀')!
   expect(bounded).toBe('x'.repeat(511) + '…')
   expect(PluginStartupDiagnosticSchema.shape.stderr.safeParse(bounded).success).toBe(true)
@@ -218,7 +218,7 @@ it('drains stderr after exit before retaining the failure, within the original l
       destroyed: false,
     })
     const child = { stderr, exitCode: 17, signalCode: null }
-    const snapshot = observePluginSupervisorLaunch(child as unknown as ChildProcess, [])
+    const snapshot = observePluginSupervisorLaunch(child as unknown as ChildProcess)
     let settled = false
     const draining = snapshot.drainUntil(performance.now() + 100).then(() => {
       settled = true
@@ -230,10 +230,10 @@ it('drains stderr after exit before retaining the failure, within the original l
     await draining
     expect(pluginStartupDiagnostic(snapshot())?.stderr).toBe('Error: fictional late pipe failure')
     expect(pluginStartupDiagnostic(snapshot())?.exitCode).toBe(17)
-    const stuck = observePluginSupervisorLaunch(
-      { ...child, stderr: new EventEmitter() } as unknown as ChildProcess,
-      [],
-    )
+    const stuck = observePluginSupervisorLaunch({
+      ...child,
+      stderr: new EventEmitter(),
+    } as unknown as ChildProcess)
     const timed = stuck.drainUntil(performance.now() + 100)
     await vi.advanceTimersByTimeAsync(100)
     await timed
@@ -243,7 +243,7 @@ it('drains stderr after exit before retaining the failure, within the original l
   }
 })
 
-it('catalogue logs include stage and bounded sanitized nested causes only on that path', async () => {
+it('catalogue logs include stage and bounded nested causes only on that path', async () => {
   const root = await mkdtemp(join(tmpdir(), 'fictional-catalogue-cause-'))
   roots.push(root)
   vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -259,7 +259,8 @@ it('catalogue logs include stage and bounded sanitized nested causes only on tha
   expect(log).toContain('stage=rpc')
   expect(log).toContain('owner-invalidated')
   expect(log).toContain('broker closed')
-  expect(log).not.toMatch(/fictional-token|fictional-password/)
+  expect(log).toContain('token=fictional-token')
+  expect(log).toContain('password=fictional-password')
   expect(log).not.toContain(String.fromCharCode(27))
   expect(log.length).toBeLessThan(1024)
   await recordPluginStartupFailure(root, 'connection', original)

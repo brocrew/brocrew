@@ -1,25 +1,20 @@
-import { randomBytes } from 'node:crypto'
+import { writeAtomicallySync } from '../atomic-write'
 import {
   type BigIntStats,
   type Stats,
   closeSync,
   constants as fsConstants,
-  linkSync,
   lstatSync,
   fstatSync,
   openSync,
   readFileSync,
   realpathSync,
-  renameSync,
-  rmSync,
   statSync,
   unlinkSync,
-  writeSync,
 } from 'node:fs'
 import { lstat, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, join, resolve, sep } from 'node:path'
-import { parse as parseToml } from 'smol-toml'
+import { dirname, join } from 'node:path'
 import { AuthUnavailableError, type AuthHealth, type ReprovisionOutcome } from '../internal/auth'
 import {
   type TrustedAncestry,
@@ -28,23 +23,13 @@ import {
   trustProviderHomeAncestry,
   withProviderHomeLock,
 } from '../internal/provider-home'
-import { realResolve } from '../internal/real-path'
 import { transientSetupFailureOf } from '../runtime'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-/**
- * A Codex profile whose `config.toml` cannot be attested, so it is refused before Codex runs. Its own
- * class, because a person fixes the settings, not the sign-in.
- */
-export class CodexSettingsUnusableError extends AuthUnavailableError {
-  constructor(message: string) {
-    super('codex', message)
-    this.name = 'CodexSettingsUnusableError'
-  }
-}
+
 
 /**
  * No Codex sign-in for a profile to copy at its first start: this computer has none, and BroBot's
@@ -323,26 +308,10 @@ async function provisionCodexAuthLocked(
         if (transientSetupFailureOf(error) !== null) throw error
         throw new AuthUnavailableError('codex', `personal Codex auth.json not found at ${source}`)
       }
-
-      // Unique, unguessable temp created with O_CREAT|O_EXCL|O_WRONLY|O_NOFOLLOW: a
-      // pre-existing temp OR a symlink at that path makes the create FAIL (ELOOP/EEXIST)
-      // instead of redirecting the credential bytes to another file.
-      const tmp = join(providerHome, `.auth.json.tmp-${randomBytes(12).toString('hex')}`)
-      const flags =
-        fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW
       // ⛔ **Immediately before the bytes exist anywhere**, not only before the lock (293 §1). This
       // is the last instruction that can still refuse; after it a credential is on some disk.
       ancestry?.verify()
-      const fd = openSync(tmp, flags, 0o600)
-      try {
-        writeSync(fd, data)
-        // No-clobber atomic install: hard-link the temp to the dest; `link` fails EEXIST
-        // if a dest appeared concurrently rather than overwriting it.
-        linkSync(tmp, dest)
-      } finally {
-        closeSync(fd)
-        rmSync(tmp, { force: true }) // dest keeps the inode alive
-      }
+      writeAtomicallySync(dest, data, { exclusive: true })
     },
     { verify: ancestry?.verify },
   )
@@ -424,23 +393,8 @@ export async function replaceARefusedCodexCopy(
           }
         }
         if (fresh === null) return 'not-tried'
-        const tmp = join(providerHome, `.auth.json.tmp-${randomBytes(12).toString('hex')}`)
-        const flags =
-          fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW
         ancestry.verify()
-        const fd = openSync(tmp, flags, 0o600)
-        try {
-          try {
-            writeSync(fd, fresh.bytes)
-          } finally {
-            closeSync(fd)
-          }
-
-          renameSync(tmp, dest)
-        } catch (error) {
-          rmSync(tmp, { force: true })
-          throw error
-        }
+        writeAtomicallySync(dest, fresh.bytes)
         return fresh.from
       },
       { verify: ancestry.verify },
@@ -540,22 +494,7 @@ export async function reprovisionCodexAuth(
     const existing = destStat?.isFile() ? readOrNull(dest) : null
     if (existing && existing.equals(data)) return 'unchanged'
 
-    const tmp = join(providerHome, `.auth.json.tmp-${randomBytes(12).toString('hex')}`)
-    const flags =
-      fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW
-    const fd = openSync(tmp, flags, 0o600)
-    try {
-      try {
-        writeSync(fd, data)
-      } finally {
-        closeSync(fd) // closed on the throwing path too — no descriptor outlives this block
-      }
-
-      renameSync(tmp, dest) // atomic REPLACE — the one difference from the copy-once path
-    } catch (error) {
-      rmSync(tmp, { force: true }) // a failed install leaves no half-written credential behind
-      throw error
-    }
+    writeAtomicallySync(dest, data)
     return 'replaced'
   })
 }
@@ -654,118 +593,13 @@ function codexRefreshedAt(text: string): number | null {
   return Number.isFinite(at) ? at : null
 }
 
-/** The `sqlite_home` key as a REAL TOML parser resolves it, whatever spelling the file used. */
-const SQLITE_HOME_KEY = 'sqlite_home'
 
-/** A thrown value as text, for a fail-closed diagnostic. */
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
-/**
- * Every `sqlite_home` value declared anywhere in a parsed `config.toml`, with the dotted path it
- * was found at (048, fixing 044 P1-H).
- *
- * Deliberately conservative: a `sqlite_home` under ANY table still counts. The managed home's
- * config is app-owned, so a stray occurrence is worth attesting rather than assuming a scope that
- * would let state escape. Values are collected as `unknown` so a non-string (the key present but
- * not a path) fails closed at the caller instead of being coerced.
- */
-function collectSqliteHomeDeclarations(
-  node: unknown,
-  path: string[] = [],
-): { at: string; value: unknown }[] {
-  if (typeof node !== 'object' || node === null) return []
-  if (Array.isArray(node))
-    return node.flatMap((item, i) => collectSqliteHomeDeclarations(item, [...path, String(i)]))
-  const found: { at: string; value: unknown }[] = []
-  for (const [key, value] of Object.entries(node)) {
-    const here = [...path, key]
-    if (key === SQLITE_HOME_KEY) found.push({ at: here.join('.'), value })
-    else found.push(...collectSqliteHomeDeclarations(value, here))
-  }
-  return found
-}
 
-/**
- * Attest that the profile home won't redirect Codex SQLite state OUT of the home (048, fixing
- * 044 P1-H; from 041 / 027 / 023 §6). We pin `CODEX_SQLITE_HOME=<providerHome>` in the spawn env,
- * but the official Codex config schema lets a `config.toml` `sqlite_home` override it.
- *
- * **Parsed with a real TOML parser.** The previous hand-rolled line scanner stripped surrounding
- * quotes but did not decode basic-string ESCAPES, so `"sqlite_home"` — which a conformant
- * parser resolves to `sqlite_home` — slipped past attestation, and the real Codex CLI then wrote
- * its SQLite state outside the managed home. TOML has too many equivalent spellings (bare,
- * `"quoted"`, `'literal'`, escaped, dotted, table-scoped) for a scanner to chase one at a time;
- * parsing gives us the same key resolution the provider itself performs.
- *
- * **Called BEFORE the transport spawns** (see `CodexRuntime.start`/`resume`, plus a re-check
- * before the first `initialize`) — a rejected declaration must never launch the app-server.
- *
- * Fails closed on: a malformed config (parse error — including TOML's own duplicate-key error),
- * more than one declaration anywhere in the document, a non-string or empty value, and a path
- * that is not contained in the home. Containment is checked on the **REAL** path (symlinks
- * resolved), because `sqlite_home = "inside-link"` is lexically inside the home while
- * `inside-link` may symlink anywhere.
- *
- * ⛔ **…and on a path that cannot be canonicalized at all** (183, from 182 H1). This function held
- * a SECOND COPY of the climb that finding was written about, with the same hole:
- * `sqlite_home = "bait"` where `<home>/bait` links to a file that is not there yet threw from
- * `realpathSync` exactly like a directory nobody had created, so it canonicalized back to
- * `<realHome>/bait`, passed containment, and let the real Codex CLI write its SQLite state through
- * the link. ⚑ **§2's caller audit is what surfaced it** — fixing the reported instance and leaving
- * its twin is how 170 came to fix three repros and leave the class open. One implementation now:
- * {@link realResolve}.
- */
-export function assertCodexSqliteHomeContained(providerHome: string): void {
-  const configPath = join(providerHome, 'config.toml')
-  let content: string
-  try {
-    content = readFileSync(configPath, 'utf8')
-  } catch {
-    return // no config → nothing can redirect
-  }
 
-  let parsed: unknown
-  try {
-    parsed = parseToml(content)
-  } catch (error) {
-    // A config we cannot parse is a config we cannot attest — never launch on a guess.
-    throw new CodexSettingsUnusableError(
-      `profile config.toml could not be parsed, so sqlite_home cannot be attested (failing closed): ${errorText(error)}`,
-    )
-  }
 
-  const declarations = collectSqliteHomeDeclarations(parsed)
-  if (declarations.length === 0) return // no override → nothing can redirect
-  if (declarations.length > 1) {
-    throw new CodexSettingsUnusableError(
-      `profile config.toml declares sqlite_home ${declarations.length} times (${declarations
-        .map((d) => d.at)
-        .join(', ')}); which one applies is ambiguous (failing closed)`,
-    )
-  }
-  const { at, value } = declarations[0]!
-  if (typeof value !== 'string' || value === '') {
-    throw new CodexSettingsUnusableError(
-      `profile config.toml ${at} is not a usable path (${JSON.stringify(value)}) (failing closed)`,
-    )
-  }
-  // Canonicalize BOTH sides: a symlinked home must compare against its own real path too.
-  const home = realResolve(providerHome)
-  const target = realResolve(resolve(providerHome, value))
-  if (home === null || target === null) {
-    throw new CodexSettingsUnusableError(
-      `config ${at} cannot be canonicalized — something on the way to it is a link that leads ` +
-        `nowhere, so where Codex would write cannot be established (failing closed): ${value}`,
-    )
-  }
-  if (target !== home && !target.startsWith(home + sep)) {
-    throw new CodexSettingsUnusableError(
-      `config ${at} redirects Codex state out of the profile home: ${value} → ${target}`,
-    )
-  }
-}
+
+
 
 /** `lstat` or null (path missing) — never throws for a missing path. */
 function statOrNull(path: string): Stats | null {

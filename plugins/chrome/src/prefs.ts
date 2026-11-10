@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import { privateFolder } from './privatePaths.js'
 import path from 'node:path'
 import { ToolError } from './toolError.js'
-import { PRIVATE } from './privateModes.js'
+import { writeAtomicallySync } from '../../shared/atomic-file.js'
 export type SettingKind = 'bool' | 'languages' | 'content'
 export const SETTINGS: Readonly<Record<string, SettingKind>> = {
   'download.prompt_for_download': 'bool',
@@ -102,7 +102,5 @@ export function writeSetting(
   setPath(root, key, value)
   for (const also of ALSO_WRITTEN[key] ?? []) setPath(root, also, value)
   privateFolder(profileDir, path.dirname(file), true)
-  const tmp = path.join(path.dirname(file), `.Preferences.${process.pid}.${Date.now()}.tmp`)
-  fs.writeFileSync(tmp, JSON.stringify(root), { mode: PRIVATE.file })
-  fs.renameSync(tmp, file)
+  writeAtomicallySync(file, JSON.stringify(root))
 }

@@ -103,7 +103,7 @@ describe('a kept rule removed', () => {
   it('🔴 a link put at its staged name as it is made sends nothing outside', () => {
     const file = aSettingsFile()
     const target = join(outside, 'staged')
-    aLinkAsItIsMade((path) => path.startsWith(`${realpathSync(file)}.brobot-`), target)
+    aLinkAsItIsMade((path) => path.startsWith(`${realpathSync(file)}.`), target)
 
     expect(remove(file)).toMatchObject({ removed: false })
 
@@ -127,9 +127,9 @@ describe('a file the workspace is given', () => {
 
   it('🔴 a link put at its staged name as it is made sends nothing outside', () => {
     const target = join(outside, 'staged')
-    aLinkAsItIsMade((path) => path.startsWith(join(root, `.${NAME}.brobot-`)), target)
+    aLinkAsItIsMade((path) => path.startsWith(join(root, `${NAME}.`)), target)
 
-    expect(() => publishOwnFile(root, NAME, 'THE WORKSPACE’S OWN\n')).toThrow(/could not stage/)
+    expect(() => publishOwnFile(root, NAME, 'THE WORKSPACE’S OWN\n')).toThrow(/could not put/)
 
     expect(creates.swapped).toBe(true)
     expect(bytesAt(target)).toBe(0)
@@ -175,7 +175,10 @@ describe('a memory entry corrected, its stage beside it as on macOS and Linux', 
   it('🔴 a link put at its staged name as it is made sends nothing outside', async () => {
     const note = aNote()
     const target = join(outside, 'staged')
-    aLinkAsItIsMade((path) => basename(path).startsWith('.note.md.brobot-'), target)
+    aLinkAsItIsMade(
+      (path) => basename(path).startsWith('note.md.') && path.endsWith('.tmp'),
+      target,
+    )
 
     const outcome = await correct(note)
 
@@ -194,7 +197,7 @@ describe('a kept resource', () => {
     const kept = join(root, 'resources')
     const target = join(outside, 'part')
     aLinkAsItIsMade(
-      (path) => basename(path).startsWith(`.${SHA256}.`) && path.endsWith('.part'),
+      (path) => path.startsWith(join(kept, SHA256, 'report.md.')) && path.endsWith('.tmp'),
       target,
     )
 

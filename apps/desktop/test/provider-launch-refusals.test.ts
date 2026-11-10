@@ -2,11 +2,10 @@ import { aLaunchThatDidNotStart } from '../src/main/runtime/agent-tools'
 import { describe, expect, it } from 'vitest'
 import { AuthUnavailableError } from '@brobot2/runtime'
 import {
-  CodexSettingsUnusableError,
   NoCodexSignInOnThisComputerError,
 } from '@brobot2/runtime/codex'
 import { ClaudeUnavailableError } from '@brobot2/runtime/claude'
-import { providerAuthPolicies } from '../src/main/providers/auth-definitions'
+import { providerAuthPolicies } from '../src/main/providers/index'
 import { CodexUnavailableError } from '../src/main/providers/codex/program'
 import { whyALaunchWasRefused } from '../src/main/runtime/launch-refusal'
 
@@ -29,23 +28,21 @@ describe('provider-owned native launch facts', () => {
     expect(read(new Error('ClaudeUnavailableError'))).toBeNull()
   })
 
-  it('keeps an unusable Codex profile distinct from its unavailable program', () => {
+  it('keeps a missing Codex sign-in distinct from its unavailable program', () => {
     const read = classifier('codex')
-    expect(read(new CodexSettingsUnusableError('fictional unusable profile'))).toBe('profile')
     expect(read(new NoCodexSignInOnThisComputerError('fictional missing copy'))).toBe('no-copy')
     expect(read(new CodexUnavailableError('fictional unavailable program'))).toBe('program')
     expect(read(new ClaudeUnavailableError('fictional other program'))).toBeNull()
     expect(read(new AuthUnavailableError('codex', 'fictional unavailable login'))).toBeNull()
-    expect(read(new Error('CodexSettingsUnusableError'))).toBeNull()
+    expect(read(new Error('NoCodexSignInOnThisComputerError'))).toBeNull()
   })
 
   it.each([
-    [new CodexSettingsUnusableError('fictional unusable profile'), 'launch'],
     [new AuthUnavailableError('codex', 'fictional unavailable login'), 'sign-in'],
     [new AuthUnavailableError('claude', 'fictional unavailable login'), 'sign-in'],
     [new ClaudeUnavailableError('fictional unavailable program'), 'program'],
     [new CodexUnavailableError('fictional unavailable program'), 'program'],
-    [new Error('CodexSettingsUnusableError: fictional prose only'), null],
+    [new Error('NoCodexSignInOnThisComputerError: fictional prose only'), null],
   ])('keeps the existing shared refusal answer %#', (error, expected) => {
     expect(whyALaunchWasRefused(error)).toBe(expected)
   })

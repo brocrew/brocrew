@@ -79,7 +79,7 @@ it('records a resolved key choice after the saved key changes, without repeating
     'fictional-key',
     1,
   )
-  const selected = resolveProviderConnection(db, { provider: 'claude' })
+  const selected = resolveProviderConnection(db, { provider: 'claude', keySaved: true })
   db.prepare('DELETE FROM provider_api_key WHERE provider=?').run('claude')
   create('fictional-resolved-key', selected.id)
   expect(store.connectionOf('fictional-resolved-key')).toBe(selected.id)

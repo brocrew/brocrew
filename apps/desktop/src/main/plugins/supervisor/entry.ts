@@ -51,8 +51,7 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
       })
     },
     traceDrain: (event) => recordDrainTrace(config.root, event),
-    // Keep the blocked record and the fence until this process is actually dead. The next
-    // owner rechecks durable run receipts under the unchanged fence before it can start.
+    // Exit with the lock held so the next owner rechecks run receipts before starting.
     onBlockedWithoutProcesses: () => process.exit(0),
   })
   const host = createPluginNodeHost({
@@ -67,9 +66,7 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
       error instanceof Error && error.name !== 'ZodError'
         ? error.message
         : 'Invalid plugin service configuration'
-    console.error(
-      pluginStartupStderr(message, [config.lifecycle?.personKey ?? '']) ?? 'Plugin service failed',
-    )
+    console.error(pluginStartupStderr(message) ?? 'Plugin service failed')
   }
   const stop = async () => {
     if (await owner.shutdown()) {

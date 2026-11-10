@@ -39,7 +39,6 @@ const reasons = [
   'transport-call-failed',
   'transport-close-failed',
   'response-limit',
-  'credential-in-result',
   'result-invalid',
   'tool-error',
   'binding-failed',
@@ -65,10 +64,10 @@ export interface PluginToolFailureDetail {
   /** The real messages of the errors behind it, outermost first. */
   reason?: string
 }
-export type PluginToolDiagnostic = (
+export type PluginToolDiagnostic = ((
   reason: PluginToolFailureReason,
   detail?: PluginToolFailureDetail,
-) => void
+) => void) & { pending?(stage: PluginFailureStage): void }
 const allowed = new Set<string>(reasons)
 /** Diagnostics are observers, never execution or ownership authority. */
 export function reportPluginToolFailure(

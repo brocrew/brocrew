@@ -1,6 +1,5 @@
 import { spawn } from 'node:child_process'
 import type { AuthState } from '../auth-state'
-import { createHash } from 'node:crypto'
 import { mkdirSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -318,13 +317,6 @@ export async function renewClaudeCodeLogin(
   return 'ran'
 }
 
-/** A one-way name for a login's access token, to know a login again without keeping it. */
-function fingerprintOf(raw: string | null): string {
-  return createHash('sha256')
-    .update(tokenOf(raw)?.token ?? '', 'utf8')
-    .digest('hex')
-}
-
 /**
  * One renewal at a time for the whole app: starts that find the login expired together wait for the
  * same run. A provider rejection can request the same renewal before local expiry. It renewed only
@@ -350,7 +342,8 @@ export function claudeLoginRenewer(
         : !claudeLoginNeedsRenewal(before, Date.now())
     )
       return 'not-needed'
-    if (fingerprintOf(before) === notRenewed) return 'not-renewed'
+    const token = tokenOf(before)?.token ?? ''
+    if (token === notRenewed) return 'not-renewed'
     let ran: 'ran' | 'not-installed'
     try {
       ran = await renewClaudeCodeLogin(seams)
@@ -359,7 +352,7 @@ export function claudeLoginRenewer(
       console.warn(
         `Claude Code could not be run to renew its login: ${error instanceof Error ? error.name : 'an error'}`,
       )
-      notRenewed = fingerprintOf(before)
+      notRenewed = token
       return 'not-renewed'
     }
     if (ran === 'not-installed') return 'not-installed'
@@ -370,7 +363,7 @@ export function claudeLoginRenewer(
       return 'renewed'
     }
     console.warn('Claude Code ran without replacing the login BroCrew could not use.')
-    notRenewed = fingerprintOf(before)
+    notRenewed = token
     return 'not-renewed'
   }
   return function renew(reason?: 'rejected'): Promise<ClaudeLoginRenewal> {

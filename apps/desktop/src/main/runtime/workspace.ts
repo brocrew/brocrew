@@ -1,3 +1,4 @@
+import { writeAtomicallySync } from '@brobot2/runtime/atomic-write'
 import { workspaceInstructionNames } from '../providers/workspace-layout.mjs'
 import {
   type Stats,
@@ -7,13 +8,11 @@ import {
   lstatSync,
   mkdirSync,
   readSync,
-  renameSync,
   statSync,
   unlinkSync,
-  writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
-import { aStagingName, createFreshFile, openNotThroughALink } from '@brobot2/runtime/provider-home'
+import { openNotThroughALink } from '@brobot2/runtime/provider-home'
 
 export const WORKSPACE_DIRNAME = 'brobot-workspace'
 
@@ -132,44 +131,12 @@ export function publishOwnFile(
   where = 'the BroCrew workspace',
 ): void {
   const path = join(dir, name)
-  const staged = aStagingName(join(dir, `.${name}`))
-  let fd: number
   try {
-    // A name nobody knows, made new: nothing planted at it can send the write somewhere else.
-    fd = createFreshFile(staged)
+    writeAtomicallySync(path, content)
   } catch (cause) {
-    throw new Error(`could not stage ${path}: ${errno(cause) ?? String(cause)}`, { cause })
-  }
-  // ⛔ **Every exit from here removes the staging file it made.** A first draft closed the
-  // descriptor in a `finally` and let a failed WRITE — a full disk — propagate with the empty
-  // staged file still sitting in the agent's working directory, once per launch. Found reading this
-  // diff back rather than by a test, because no test fills a disk.
-  const discard = (cause: unknown, message: string): never => {
-    try {
-      unlinkSync(staged)
-    } catch {
-      // best effort: leaving one staging file behind is better than losing the real error
-    }
-    throw new Error(message, { cause })
-  }
-  try {
-    writeFileSync(fd, content)
-  } catch (cause) {
-    discard(cause, `could not write ${path}: ${errno(cause) ?? String(cause)}`)
-  } finally {
-    try {
-      closeSync(fd)
-    } catch {
-      // the content is already written; a failed close is not a failed publish
-    }
-  }
-  try {
-    renameSync(staged, path)
-  } catch (cause) {
-    discard(
-      cause,
-      `could not put ${name} in ${where} — something else is at ${path} ` +
-        `(${errno(cause) ?? String(cause)})`,
+    throw new Error(
+      `could not put ${name} in ${where}: ${path} (${errno(cause) ?? String(cause)})`,
+      { cause },
     )
   }
 }

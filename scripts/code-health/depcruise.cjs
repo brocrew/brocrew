@@ -60,7 +60,7 @@ module.exports = {
       name: 'plugins-not-to-desktop-or-other-plugins',
       severity: 'error',
       from: { path: '^plugins/([^/]+)/' },
-      to: { path: '^(apps|plugins)/', pathNot: '^plugins/$1/' },
+      to: { path: '^(apps|plugins)/', pathNot: '^plugins/(?:$1|shared)/' },
     },
     {
       name: 'production-not-to-tests',

@@ -101,8 +101,7 @@ async function stopAndProveChild(
     .catch((error) => {
       failed('child-stop', error)
     })
-  // Even a rejected exit witness still runs the descendant check. Wait for an actual exit
-  // before probing a healthy child so a process still shutting down is not counted as a leak.
+  // Probe descendants after exit, including when its witness rejects.
   const descendantsGone = exited.then(() =>
     Promise.resolve()
       .then(() => child.descendantsGone())
@@ -278,7 +277,7 @@ export class PluginSupervisor {
         state: 'failed',
         attempt: 1,
         errno: drainWriteErrno(error),
-        cause: pluginFailureCause(error, [this.record.key]),
+        cause: pluginFailureCause(error),
       })
     }
     clearInterval(this.timer)
@@ -351,8 +350,7 @@ export class PluginSupervisor {
           )
           return
         }
-        // This connection stays open for the app's life. Its close is the app ending.
-        // It still counts toward the 64 accepted connections; real apps hold one each.
+        // Each app holds one connection until it exits.
         clearTimeout(deadline)
         lease.held = true
         this.held.add(socket)
@@ -490,10 +488,7 @@ export class PluginSupervisor {
     if (!lease || lease.workspace !== command.workspace || lease.generation !== command.generation)
       refuse()
     if (command.kind === 'renew') {
-      // The next renewal, or the last one again when its reply was lost. The fresh challenge
-      // proves a retry is not a captured packet; an older counter, or another renewal under
-      // the last counter, is refused. A renew without a renewal, as a client without
-      // RENEW_RETRY sends it, can only be the next counter.
+      // Retry the last renewal only when its challenge matches.
       const retry =
         command.renewal !== undefined &&
         command.counter === lease.counter &&
@@ -558,8 +553,7 @@ export class PluginSupervisor {
     this.children.add(child)
     // Retain the witness until drain: parent exit alone is not descendant-exit proof.
   }
-  /** Reserve the drain barrier before an asynchronous host can start a child. */
-  /** Trusted in-process controller only, not an IPC command. */
+  /** Reserve the drain barrier before starting a child. */
   acceptsStarts(): boolean {
     this.expire()
     return this.record.phase === 'accepting' && this.leases.size > 0
@@ -576,8 +570,7 @@ export class PluginSupervisor {
         },
         (error) => {
           this.traceFailure('child-start', error)
-          // A rejected asynchronous start is not evidence that it left no descendant behind.
-          // Keep this negative proof after the settled promise leaves the pending set.
+          // A rejected start may have left descendants behind.
           this.startFailed = true
           this.fail()
           refuse('cleanup-pending')
@@ -612,8 +605,7 @@ export class PluginSupervisor {
         return Promise.all(
           [...this.children].map(async (child) => ({
             inProcess: child.inProcess === true,
-            // A consumer timeout is not exit proof. Only actual process death can end its work,
-            // and self-exit still requires separate positive proof for every physical child.
+            // A timeout cannot prove that the consumer or its children exited.
             proven:
               child.inProcess === true
                 ? (await bounded(
@@ -635,18 +627,13 @@ export class PluginSupervisor {
       ) {
         this.trace({ stage: 'child-proofs', state: 'failed' })
         this.fail()
-        // A failed consumer can leave this process's own async work unresolved. Do not unlock
-        // and let a successor overlap it. Only process death ends that work and releases the OS
-        // fence. Every physical child must still supply its exact exit and descendant proof.
-        // A rejected/unfinished start or an unknown physical witness never reaches this seam.
+        // Exit with the lock held so unfinished consumer work cannot overlap a successor.
         if (
           this.options.onBlockedWithoutProcesses &&
           !this.startFailed &&
           result?.every((child) => child.inProcess || child.proven)
         ) {
-          // No physical child is left, so nothing can overlap a successor. fail() tried the
-          // blocked record once and traced any failure; the record only advises the next start,
-          // which recovers any record that isn't stopped. The OS lock ends with this process.
+          // No child remains; exiting releases the lock for recovery.
           this.options.onBlockedWithoutProcesses()
         }
         return false
@@ -655,8 +642,7 @@ export class PluginSupervisor {
       this.trace({ stage: 'server.close', state: 'waiting' })
       await new Promise<void>((resolve) => this.server!.close(() => resolve()))
       this.trace({ stage: 'server.close', state: 'complete' })
-      // The proofs already arrived. The stopped record only advises the next start, which
-      // recovers any record that isn't stopped, so one try is enough; a failure is traced.
+      // Recovery handles a failed stopped-record write; trace it once.
       try {
         this.trace({ stage: 'stopped-write', state: 'waiting', attempt: 1 })
         this.storage.write({ ...this.record, phase: 'stopped' })
@@ -667,7 +653,7 @@ export class PluginSupervisor {
           state: 'failed',
           attempt: 1,
           errno: drainWriteErrno(error),
-          cause: pluginFailureCause(error, [this.record.key]),
+          cause: pluginFailureCause(error),
         })
       }
       clearInterval(this.timer)
@@ -691,7 +677,7 @@ export class PluginSupervisor {
     )
   }
   private traceFailure(stage: DrainTrace['stage'], error: unknown): void {
-    this.trace({ stage, state: 'failed', cause: pluginFailureCause(error, [this.record.key]) })
+    this.trace({ stage, state: 'failed', cause: pluginFailureCause(error) })
   }
   private trace(event: DrainTrace): void {
     try {

@@ -1,19 +1,18 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { writeAtomicallySync } from '@brobot2/runtime/atomic-write'
+import { isInside } from '@brobot2/shared/paths'
+import { createHash } from 'node:crypto'
 import {
   closeSync,
   constants,
   fstatSync,
-  linkSync,
   mkdirSync,
   openSync,
   readSync,
   readdirSync,
   realpathSync,
-  rmSync,
   statSync,
-  writeFileSync,
 } from 'node:fs'
-import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 
 export const WORKSPACE_LIST_REFUSAL = "BroCrew couldn't read its list of workspaces."
 export const WORKSPACE_POLICY_FILE = 'workspace-policy.json'
@@ -163,19 +162,8 @@ export function canonicalWorkspacePath(folder: string): string {
 }
 
 export function withinWorkspace(folder: string, root: string): boolean {
-  const folded = (path: string): string => {
-    const absolute = resolve(path)
-    return process.platform === 'win32' || process.platform === 'darwin'
-      ? absolute.toLowerCase()
-      : absolute
-  }
-  const inside = (folder: string, root: string): boolean => {
-    const one = folded(folder),
-      other = folded(root)
-    return one === other || one.startsWith(other.endsWith(sep) ? other : `${other}${sep}`)
-  }
   return (
-    inside(folder, root) || inside(canonicalWorkspacePath(folder), canonicalWorkspacePath(root))
+    isInside(root, folder) || isInside(canonicalWorkspacePath(root), canonicalWorkspacePath(folder))
   )
 }
 
@@ -227,19 +215,15 @@ export function claimPackagedWorkspace(appData: string, folder: string): void {
   if (!routingPath(path)) return routingFailure('owner-path-invalid', root, path)
   const file = join(root, `${ownerKey(path)}.json`)
   if (readRoutingFile(file)) return
-  const temporary = `${file}.${randomUUID()}.tmp`
   try {
-    writeFileSync(temporary, JSON.stringify({ version: 1, path }), { flag: 'wx', mode: 0o600 })
     try {
-      linkSync(temporary, file)
+      writeAtomicallySync(file, JSON.stringify({ version: 1, path }), { exclusive: true })
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
     }
   } catch (error) {
     if (error instanceof WorkspaceRoutingError) throw error
     return routingFailure('owner-write-failed', file, path, error)
-  } finally {
-    rmSync(temporary, { force: true })
   }
 }
 

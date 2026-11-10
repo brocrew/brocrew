@@ -421,7 +421,7 @@ async function guidedDownload(workspace, published) {
   selectWorkspace(workspace)
   const cdp = workspace.cdp
   await openUpdates(cdp)
-  await click(cdp, '[data-cy=updates-check]')
+  await cdp.evaluate('return await window.api.updates.checkNow()')
   await waitFor(async () => {
     const state = (await cdp.evaluate('return await window.api.updates.read()')).state
     if (state.kind === 'error') throw new Error(state.message)

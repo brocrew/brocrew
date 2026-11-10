@@ -8,27 +8,25 @@ import type { ProviderSnapshot } from './provider-snapshots'
 import type { TurnAsSent } from './turn-as-sent'
 
 import type { ActedBy } from './who-did-it'
-import type { SavedMethodsNow, SavedMethodsUse } from './saved-methods'
+import type { SavedMethodsUse } from './saved-methods'
 import type { TextPackUse } from './text-pack'
 import type { InstructionSpan, WhoseText } from './whose-text'
 
 /**
- * 🔴 **Everything an agent was given, as one read** — the agent-input popup's contract.
- *
- * ⚑ **Two halves.** {@link WhatALaunchGave} is what a launch KEEPS on its `launched` row: BroBot's own
- * words in full, everything else by fingerprint. {@link WhatThisAgentWasGiven} is what the window
- * READS: that record, with the files and memory read now beside it, the tools in full, and sizes.
+ * Everything an agent was given, as one read. {@link WhatALaunchGave} is what a launch keeps on its
+ * `launched` row; {@link WhatThisAgentWasGiven} is what the window reads: that record, with the files
+ * and memory read now beside it, the tools in full, and sizes.
  */
 
-/** ⚑ Characters, words, and tokens as an estimate: characters ÷ 4, rounded. */
+/** Characters, words, and tokens as an estimate: characters ÷ 4, rounded. */
 export interface PartSize {
   readonly characters: number
   readonly words: number
-  /** ⚠️ An estimate — characters ÷ 4. Drawn with "≈". */
+  /** An estimate — characters ÷ 4. Drawn with "≈". */
   readonly tokens: number
 }
 
-/** ⚑ The size of one text. */
+/** The size of one text. */
 export function sizeOf(text: string): PartSize {
   const trimmed = text.trim()
   return {
@@ -38,7 +36,7 @@ export function sizeOf(text: string): PartSize {
   }
 }
 
-/** ⚑ The sizes of several parts, added. */
+/** The sizes of several parts, added. */
 export function sizesAdded(parts: readonly PartSize[]): PartSize {
   return parts.reduce(
     (sum, one) => ({
@@ -55,7 +53,7 @@ export type GivenOrigin =
   'brobot' | 'a-person' | 'an-agent' | 'a-repository' | 'the-provider' | 'unknown'
 
 /**
- * ⚑ A file Codex reads itself, which BroBot did not send it: a repository's own `AGENTS.md` — as
+ * A file Codex reads itself, which BroBot did not send it: a repository's own `AGENTS.md` — as
  * Codex reported it at launch, or, with no launch record, as its discovery would find it now.
  */
 export type GivenFileKind = InjectedInstructionKind | 'read-by-codex'
@@ -69,36 +67,30 @@ export type GivenTextIs = 'as-launched' | 'read-now' | 'composed-now' | 'unreada
 /** How a section was made. */
 export type GivenMade = 'shipped' | 'own-instructions' | 'own-notes' | 'composed-at-launch'
 
-// ── what a launch keeps (R2), on its `launched` row ───────────────────────────────────────────────
+// ── what a launch keeps, on its `launched` row ──────────────────────────────────────────────────
 
-/** ⚑ One file a launch saw, kept by fingerprint — and in full only when BroBot wrote it. */
+/** One file a launch saw, with its text as the agent was given it. */
 export interface GivenRecordFile {
   readonly path: string
   readonly kind: GivenFileKind
   readonly bytes: number
-  /** ⚑ sha256 of the text the agent was given; `null` when it could not be read at launch. */
-  readonly sha256: string | null
+  /** `null` when it could not be read at launch, or the record is from a build that kept no text. */
+  readonly text: string | null
   readonly truncated: boolean
-  /** ⚑ Only for BroBot's own files (the workspace's): their text, as launched. */
-  readonly text?: string
-  /** ⚑ The line the model read above it ({@link GivenFile.heading}), where BroBot put one. */
+  /** The line the model read above it ({@link GivenFile.heading}), where BroBot put one. */
   readonly heading?: string
 }
 
-/** ⚑ One memory file a launch saw, by fingerprint only: the agent's words are not BroBot's. */
+/** One memory file a launch saw, with its text then. */
 export interface GivenRecordMemory {
   readonly path: string
   readonly kind: InjectedInstructionKind
   readonly bytes: number
-  readonly sha256: string
+  /** `null` on a record from a build that kept no text. */
+  readonly text: string | null
 }
 
-/**
- * 🔴 **What one launch gave its agent, kept with the launch** (`LaunchedEvent.given`, F093 · R2).
- *
- * ⛔ **BroBot's own words in full; nobody else's.** A repository's files and the agent's memory are
- * kept by path and fingerprint, so the ledger learns nothing it did not hold before.
- */
+/** What one launch gave its agent, kept with the launch (`LaunchedEvent.given`). */
 export interface WhatALaunchGave {
   readonly builtInSkills?: GivenBuiltInSkills
   /** The text pack this launch read in place of the shipped texts, or could not use. */
@@ -116,7 +108,7 @@ export interface WhatALaunchGave {
     readonly sections: readonly InstructionSpan[]
     /** The plain reason it was not published (someone else's file at its name), else `null`. */
     readonly refused: string | null
-    /** ⚑ The line the model read above it ({@link GivenFile.heading}), where BroBot put one. */
+    /** The line the model read above it ({@link GivenFile.heading}), where BroBot put one. */
     readonly heading?: string
   } | null
   /** The own-instructions version the launch used, or `null` when there was none. */
@@ -127,7 +119,7 @@ export interface WhatALaunchGave {
   readonly thisConversation: {
     readonly text: string
     readonly sections: readonly InstructionSpan[]
-    /** ⚑ The line the model read above it ({@link GivenText.heading}). */
+    /** The line the model read above it ({@link GivenText.heading}). */
     readonly heading?: string
   } | null
   /** Every other instruction file, in the order the model reads them. */
@@ -135,7 +127,7 @@ export interface WhatALaunchGave {
   /** The memory files there at launch. */
   readonly memory: readonly GivenRecordMemory[]
   /**
-   * BroBot's tools at launch, by fingerprint: the full definitions are the build's. ⚑ Their
+   * BroBot's tools at launch, by fingerprint: the full definitions are the build's. Their
    * paragraph ({@link GivenTools.instructions}) in full, where there was one.
    */
   readonly tools: {
@@ -196,7 +188,7 @@ export interface GivenSection {
 export interface GivenVersion {
   readonly version: number
   readonly whoWroteIt: WhoWroteIt
-  /** ⚑ `WROTE_IT_MEANS`, e.g. "you wrote this". */
+  /** `WROTE_IT_MEANS`, e.g. "you wrote this". */
   readonly whoWroteItMeans: string
   readonly by: ActedBy
   readonly writtenAt: number
@@ -218,7 +210,7 @@ export interface GivenFile {
   readonly kind: GivenFileKind
   readonly origin: GivenOrigin
   readonly madeAutomatically: boolean
-  /** ⚑ One plain sentence on who makes it and when. */
+  /** One plain sentence on who makes it and when. */
   readonly originSays: string
   readonly reach: GivenReach
   /** `null` when it cannot be read now. */
@@ -233,7 +225,7 @@ export interface GivenFile {
   /** The plain reason this app did not send it, else `null`. */
   readonly refused: string | null
   /**
-   * ⚑ **W4.177 — the line the model read just above this file's text**, a blank line apart from it:
+   * The line the model read just above this file's text, a blank line apart from it:
    * on Claude, `Contents of <path> (<what the model is told it is>):`, and in front of the first file
    * BroBot's preamble too (*"Codebase and user instructions are shown below…"*). Absent when BroBot
    * put no line above it: a file it did not send, or one Codex read itself (Codex frames its files
@@ -254,7 +246,7 @@ export interface GivenText {
   readonly sections: readonly GivenSection[]
   readonly size: PartSize
   /**
-   * ⚑ **W4.177 — the line the model read just above it**, a blank line apart:
+   * The line the model read just above it, a blank line apart:
    * *"Composed by BroBot for this conversation at this launch:"*, on both providers.
    */
   readonly heading?: string
@@ -346,8 +338,8 @@ export interface GivenMemoryEntry {
   /** `null` when the launch did not see it, or is not recorded. */
   readonly changedSinceLaunch: boolean | null
   /**
-   * `as-launched` when the text read now has the fingerprint its launch kept, so it is the text the
-   * launch gave; else `read-now`. Always set by the read.
+   * `as-launched` when the text read now is the text its launch kept; else `read-now`. Always set by
+   * the read.
    */
   readonly textIs?: 'as-launched' | 'read-now'
   readonly amendable: boolean
@@ -375,7 +367,7 @@ export interface GivenMemory {
 }
 
 /**
- * ⚑ **The provider's own parts (R3)** — what the bundled provider puts in front of its model on its
+ * **The provider's own parts** — what the bundled provider puts in front of its model on its
  * own, as this build captured it for the conversation's model (`shared/provider-snapshots.ts`).
  */
 export interface GivenProviderParts {
@@ -473,19 +465,19 @@ export interface GivenTotals {
   readonly otherFiles: PartSize
   /**
    * BroBot's tool definitions in full, with the sentence they are declared under where one is sent
-   * ({@link GivenTools.namespace}): what the model gets once it has every one of them. ⚠️ Not what
+   * ({@link GivenTools.namespace}): what the model gets once it has every one of them. Not what
    * {@link total} counts for them — that is {@link toolsInEveryRequest}.
    */
   readonly tools: PartSize
   /**
-   * ⚑ **BroBot's tools as {@link total} counts them**: the full definitions ({@link tools}) when the
+   * **BroBot's tools as {@link total} counts them**: the full definitions ({@link tools}) when the
    * provider hands them over in every request — Codex, Claude without its tool search, or Claude
    * before it has said how it hands them over — and their names alone when Claude loads each one
    * only on request (`tools.deferral.kind` is `names-until-loaded`).
    */
   readonly toolsInEveryRequest: PartSize
   /**
-   * ⚑ **Other servers' tools as {@link total} counts them** — the person's own servers, never
+   * **Other servers' tools as {@link total} counts them** — the person's own servers, never
    * BroBot's: on Claude with its tool search, their names, which every request carries; on Codex,
    * nothing, since it finds them with its own tool search. `null` when that cannot be counted, with
    * {@link otherServersToolsWhy}: Claude has not reported its tool list yet, or hands those tools
@@ -516,15 +508,13 @@ export interface GivenTotals {
   readonly contextWindowWhy: string | null
 }
 
-/** 🔴 **F093 · the agent-input popup's one read.** */
+/** The agent-input popup's one read. */
 export interface WhatThisAgentWasGiven {
   readonly builtInSkills?: GivenBuiltInSkills
   /** {@link WhatALaunchGave.textPack}. */
   readonly textPack?: TextPackUse
   /** {@link WhatALaunchGave.savedMethods}. */
   readonly savedMethods?: SavedMethodsUse
-  /** The saved-methods index as the profile's folder holds it now, read for this view. */
-  readonly savedMethodsNow?: SavedMethodsNow
   readonly sessionId: string
   readonly provider: Provider
   readonly profileId: string | null
@@ -538,7 +528,7 @@ export interface WhatThisAgentWasGiven {
   readonly tools: GivenTools
   readonly externalServers: readonly GivenExternalServer[]
   readonly memory: GivenMemory
-  /** The provider's own parts (R3), from the snapshot this build carries for its model. */
+  /** The provider's own parts, from the snapshot this build carries for its model. */
   readonly providerParts: GivenProviderParts
   /** The launch's settings that change what the provider sends its model. Always set by the read. */
   readonly launchSettings?: GivenLaunchSettings
@@ -547,7 +537,7 @@ export interface WhatThisAgentWasGiven {
   readonly size: GivenTotals
 }
 
-// ── one message as the model got it (C9 d) ───────────────────────────────────────────────────────
+// ── one message as the model got it ───────────────────────────────────────────────────────
 
 /** Where a part sat in what the model got. */
 export type ModelGotWhere =
@@ -560,14 +550,14 @@ export type ModelGotWhere =
   | 'first-message'
   /**
    * In an earlier message: of this launch — on Codex, this conversation's lead, sent again after a
-   * compaction or after a first turn Codex never began — or (W4.179) of an earlier launch, whose
+   * compaction or after a first turn Codex never began — or of an earlier launch, whose
    * lead a reopened Codex thread still holds. The part's title says which.
    */
   | 'an-earlier-message'
   /** In this message. */
   | 'this-message'
 
-/** ⚑ One part of what the model got, from BroBot's own records (R2). */
+/** One part of what the model got, from BroBot's own records. */
 export interface ModelGotPart {
   readonly where: ModelGotWhere
   /** A file's kind, this conversation's own text, or the message itself. */
@@ -583,18 +573,18 @@ export interface ModelGotPart {
   readonly why: string | null
   readonly size: PartSize | null
   /**
-   * ⚑ **W4.177 — the line the model read just above this part's text**, a blank line apart from it:
+   * The line the model read just above this part's text, a blank line apart from it:
    * on Claude, a file's `Contents of <path> (…):` line, with BroBot's preamble in front of the first
    * file — so the parts in the system prompt, each as its heading and its text, are BroBot's whole
-   * appended text (a file kept by fingerprint only has its heading and no text). Absent where BroBot
+   * appended text. Absent where BroBot
    * put no line above it; this conversation's own part already begins with its line.
    */
   readonly heading?: string
 }
 
 /**
- * 🔴 **F093 · C9 d — one message as the model got it**: BroBot's parts in the order the model read
- * them, each with where it sat, and the provider's own record of the turn (R1).
+ * One message as the model got it: BroBot's parts in the order the model read
+ * them, each with where it sat, and the provider's own record of the turn.
  */
 export interface WhatTheModelGot {
   readonly sessionId: string
@@ -621,15 +611,15 @@ export interface WhatTheModelGot {
   readonly firstOfItsLaunch: boolean | null
   readonly parts: readonly ModelGotPart[]
   /**
-   * R1 · the turn as the provider kept it in its own record — the message, and what it added
+   * the turn as the provider kept it in its own record — the message, and what it added
    * beside it, in the order the model got them ({@link TurnAsSent}) — or why it could not be read.
    */
   readonly providersRecord: TurnAsSent
   /**
    * Whether the provider's own record of the message is the same text BroBot kept as handed over
    * (`sent`); `null` when either is missing, or when the message carried a file, which each provider
-   * records in its own way (an image reads `[an image]` in Claude Code's). ⚑ **It reads `true` or
-   * `null`, never `false`** (W4.172): the provider's record finds a message only by that exact text.
+   * records in its own way (an image reads `[an image]` in Claude Code's). **It reads `true` or
+   * `null`, never `false`** (): the provider's record finds a message only by that exact text.
    */
   readonly providerKeptTheSameText: boolean | null
 }

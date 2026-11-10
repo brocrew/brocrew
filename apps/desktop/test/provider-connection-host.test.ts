@@ -15,6 +15,7 @@ import { ApiKeys } from '../src/main/runtime/api-keys'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 
 let db: AppDatabase
+const saved = new Set<Provider>()
 let dir: string
 let host: RuntimeHost
 const sink: RuntimeEventSink = {
@@ -26,6 +27,7 @@ const sink: RuntimeEventSink = {
 }
 
 beforeEach(() => {
+  saved.clear()
   dir = mkdtempSync(join(tmpdir(), 'brocrew-connections-'))
   db = openDatabase(':memory:')
   applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations'))
@@ -54,7 +56,7 @@ function fixture() {
     },
   )
   const resolve = (provider: Provider, id?: string | null) =>
-    resolveProviderConnection(db, { provider, connectionId: id })
+    resolveProviderConnection(db, { provider, connectionId: id, keySaved: saved.has(provider) })
   const connectionFor = vi.fn(resolve)
   const create = vi.fn((provider: Provider) => {
     const runtime = new FakeRuntime(provider, { sessions })
@@ -105,11 +107,7 @@ function deferred() {
 
 it('Codex home preparation uses the once-selected method instead of a newly saved key', async () => {
   const f = fixture()
-  const keys = new ApiKeys(f.store, {
-    available: () => true,
-    seal: (key) => Buffer.from(key).toString('base64'),
-    open: (sealed) => Buffer.from(sealed, 'base64').toString(),
-  })
+  const keys = new ApiKeys(dir)
   f.state.revisionOf = (provider) => keys.revision(provider)
   let applied: string | undefined
   const copied = vi.fn()
@@ -134,7 +132,7 @@ it('Codex home preparation uses the once-selected method instead of a newly save
             current: async () => {
               await keys.set('codex', 'fictional-willow-key')
               const key = await keys.current('codex')
-              keys.remove('codex')
+              await keys.remove('codex')
               return key
             },
             change: async (_home, change) => {
@@ -284,11 +282,7 @@ for (const provider of ['claude', 'codex'] as const) {
       `${provider}:sign-in`,
       created.sessionId,
     )
-    db.prepare('INSERT INTO provider_api_key(provider,sealed,updated_at) VALUES(?,?,?)').run(
-      provider,
-      'fictional-sealed',
-      1,
-    )
+    saved.add(provider)
     f.prepare.mockClear()
     f.create.mockClear()
     await expect(host.resumeSession(created.sessionId, sink)).rejects.toThrow()
@@ -302,11 +296,7 @@ for (const provider of ['claude', 'codex'] as const) {
     const created = await host.createSession({ provider, profileId: 'fern' }, sink)
     await host.close(created.sessionId, sink)
     db.prepare('UPDATE provider_session SET connection_id=NULL WHERE id=?').run(created.sessionId)
-    db.prepare('INSERT INTO provider_api_key(provider,sealed,updated_at) VALUES(?,?,?)').run(
-      provider,
-      'fictional-sealed',
-      1,
-    )
+    saved.add(provider)
     const resumed = await host.resumeSession(created.sessionId, sink)
     expect(resumed.ref).toEqual(created.ref)
     expect(resumed.providerHome).toBe(join(dir, 'fern', provider))

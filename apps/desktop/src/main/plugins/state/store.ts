@@ -167,6 +167,7 @@ export class GlobalPluginState {
     const read = frozen({
       sequence: state.sequence,
       pendingPlugin: pendingPlugin(state),
+      pending: state.pending,
       guardIds: [...state.guards.keys()],
       installations,
     })
@@ -190,6 +191,7 @@ export interface WorkspaceAdmission {
   readonly sequence: number
   /** The plugin a pending operation is changing, '*' for one that names none, or null. */
   readonly pendingPlugin: string | null
+  readonly pending: Readonly<Operation> | null
   readonly guardIds: readonly string[]
   readonly installations: readonly ActivationSnapshot['entries'][number][]
 }

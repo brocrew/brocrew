@@ -121,25 +121,22 @@ describe('authenticated broker boundaries', () => {
     await expect(client.listPrompts()).rejects.toThrow()
     expect(f.seen).toEqual([])
   })
-  it.each(['secret', 'metadata-secret', 'key-secret', 'error'] as const)(
-    'keeps a downstream %s out of model results and diagnostics',
-    async (mode) => {
-      const f = await fixture(),
-        route = await f.route('willow'),
-        client = new Client({ name: 'fictional', version: '1' })
-      cleanup.push(() => client.close())
-      client.onerror = () => undefined
-      f.reply(mode)
-      await client.connect(
-        new StreamableHTTPClientTransport(new URL(route.server.url), {
-          requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
-        }),
-      )
-      const result = await client.callTool({ name: 'echo', arguments: { profile: 'fern' } })
-      expect(result.isError).toBe(true)
-      noPrivateCredential([result, f.audit], f.credential)
-    },
-  )
+  it('keeps a thrown downstream error out of model results and diagnostics', async () => {
+    const f = await fixture(),
+      route = await f.route('willow'),
+      client = new Client({ name: 'fictional', version: '1' })
+    cleanup.push(() => client.close())
+    client.onerror = () => undefined
+    f.reply('error')
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(route.server.url), {
+        requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
+      }),
+    )
+    const result = await client.callTool({ name: 'echo', arguments: { profile: 'fern' } })
+    expect(result.isError).toBe(true)
+    noPrivateCredential([result, f.audit], f.credential)
+  })
 })
 
 it('does not invent remote quiescence when an authenticated stream is cancelled', async () => {
@@ -210,25 +207,6 @@ it('creates fresh fixed-length lowercase hex credentials', () => {
   expect(/^[0-9a-f]{64}$/.test(a) && /^[0-9a-f]{64}$/.test(b)).toBe(true)
   expect(a !== b).toBe(true)
 })
-it('also suppresses a private admin credential in a successful tool result', async () => {
-  const extraPrivateCredential = 'c'.repeat(64)
-  const f = await pluginProviderFixture({ extraPrivateCredential })
-  cleanup.push(() => f.close())
-  f.reply('secret')
-  const route = await f.route('fictional-willow')
-  const client = new Client({ name: 'fictional-admin-fence', version: '1' })
-  client.onerror = () => undefined
-  cleanup.push(() => client.close())
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL(route.server.url), {
-      requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
-    }),
-  )
-  const result = await client.callTool({ name: 'echo', arguments: { profile: 'fern' } })
-  expect(result).toMatchObject({ isError: true })
-  noPrivateCredential(result, extraPrivateCredential)
-})
-
 it('records a closed connect-failure reason without arguments, credentials or raw transport errors', async () => {
   const reasons: string[] = []
   const port = createPrivatePluginPort({

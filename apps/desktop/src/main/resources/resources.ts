@@ -1,5 +1,7 @@
+import { writeAtomicallySync } from '@brobot2/runtime/atomic-write'
+import { isInside as within } from '@brobot2/shared/paths'
 import { refusalReason } from '../../shared/refusals'
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import {
   closeSync,
   constants,
@@ -8,12 +10,9 @@ import {
   mkdirSync,
   readSync,
   realpathSync,
-  renameSync,
-  unlinkSync,
-  writeSync,
 } from 'node:fs'
-import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { createFreshFile, openNotThroughALink } from '@brobot2/runtime'
+import { basename, isAbsolute, join, resolve, sep } from 'node:path'
+import { openNotThroughALink } from '@brobot2/runtime'
 import type { RailPermanence, RefusalRemedy } from '../../shared/refusals'
 import {
   CONTENT_OF_FORM,
@@ -244,12 +243,6 @@ export function sha256Hex(bytes: Buffer): string {
   return createHash('sha256').update(bytes).digest('hex')
 }
 
-/** At or inside `root`. `relative`, never `startsWith`: `/a/b-evil` is not inside `/a/b`. */
-function within(root: string, path: string): boolean {
-  const rel = relative(root, path)
-  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
-}
-
 /**
  * 🔴 **The file an agent offered, resolved** (380 §2.2; `726` · R92) — absolute as given, relative
  * against the offering conversation's own folder, which is a resolution base and never a bound.
@@ -435,22 +428,6 @@ const SHA256_HEX = /^[0-9a-f]{64}$/
 /** Why the bytes could not be kept — the caller's word, carried in its refusal's detail. */
 export type KeepProblem = 'write-failed' | 'something-else-is-at-that-name'
 
-/**
- * 🔴 **Put these bytes where this app keeps them** — `<root>/<sha256>/<name>`.
- *
- * ⚑ **Written to a temporary name in `root`, then renamed into place**, so a reader never meets a
- * half-written file at the kept name: the temporary name is random and made new
- * ({@link createFreshFile}), so a link planted there fails the create rather than writing somewhere
- * else, on Windows too.
- *
- * ⚑ **The same bytes already there is a success** — two replies handing in one file keep one copy,
- * and the second is told the truth. ⛔ **Something ELSE there is a refusal and is never replaced**:
- * a kept file is an identity other rows point at, and replacing it would change what they name.
- *
- * ⛔ **The hash directory is asked with `lstat` before anything is renamed into it** (521): a symlink
- * standing at `<root>/<sha256>` would carry the rename out of the tree, and a `mkdir` that answered
- * `EEXIST` about it would say nothing.
- */
 export function keepResource(
   root: string,
   offered: { readonly bytes: Buffer; readonly sha256: string; readonly name: string },
@@ -460,7 +437,6 @@ export function keepResource(
   }
   const folder = join(root, offered.sha256)
   const kept = join(folder, offered.name)
-  const temporary = join(root, `.${offered.sha256}.${randomBytes(8).toString('hex')}.part`)
   try {
     mkdirSync(root, { recursive: true, mode: 0o700 })
     try {
@@ -475,32 +451,10 @@ export function keepResource(
     const already = readOwnFile(kept)
     if (already.ok && sha256Hex(already.bytes) === offered.sha256) return { ok: true }
     if (somethingStandsAt(kept)) return { ok: false, problem: 'something-else-is-at-that-name' }
-    writeOwn(temporary, offered.bytes)
-    renameSync(temporary, kept)
+    writeAtomicallySync(kept, offered.bytes)
     return { ok: true }
   } catch {
-    discard(temporary)
     return { ok: false, problem: 'write-failed' }
-  }
-}
-
-/** Write bytes at a path this app owns, through a descriptor rather than through a name. */
-function writeOwn(path: string, bytes: Buffer): void {
-  const fd = createFreshFile(path)
-  try {
-    let written = 0
-    while (written < bytes.length) written += writeSync(fd, bytes, written)
-  } finally {
-    closeSync(fd)
-  }
-}
-
-/** Best effort: a temporary file left behind is harmless, and nothing reads it. */
-function discard(path: string): void {
-  try {
-    unlinkSync(path)
-  } catch {
-    // nothing there, or nothing we can do about it
   }
 }
 

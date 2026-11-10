@@ -186,6 +186,12 @@ export const MANIFEST = Object.freeze([
     source: 'main/profile-execution-file.ts (profileExecutionFile)',
   },
   {
+    name: 'api-keys.json',
+    expect: 'file',
+    why: LEDGER,
+    source: 'main/runtime/api-keys.ts (API_KEYS_FILE)',
+  },
+  {
     name: 'turns-the-app-cut.json',
     expect: 'file',
     why: LEDGER,
@@ -241,7 +247,7 @@ export const MANIFEST = Object.freeze([
   },
 ])
 
-export const ACTIVE_THEME_PART = /^active-theme\.json\.\d+\.[0-9a-f-]{36}\.tmp$/
+export const ACTIVE_THEME_PART = /^active-theme\.json\.(?:\d+\.[0-9a-f-]{36}|[0-9a-f]{12})\.tmp$/
 
 /**
  * 🔴 **744 · the private name one drafts save is written to before it is renamed into place** —
@@ -251,34 +257,15 @@ export const ACTIVE_THEME_PART = /^active-theme\.json\.\d+\.[0-9a-f-]{36}\.tmp$/
  */
 export const DRAFTS_PART = /^drafts\.json\.[0-9a-f]{12}\.part$/
 
-/**
- * The name one write of a hidden launch's update settings goes to before it is renamed into place —
- * `<file>.<pid>.tmp`, in `apps/desktop/src/main/update-settings.ts`. ⚠️ A kill inside a write leaves
- * one: it is the updater's, and goes with the updater's files.
- */
-export const UPDATE_SETTINGS_PART = /^update-settings\.json\.\d+\.tmp$/
+export const UPDATE_SETTINGS_PART = /^update-settings\.json\.(?:\d+|[0-9a-f]{12})\.tmp$/
 
-/**
- * The name one write of a workspace's Dock label goes to before it is renamed into place —
- * `<file>.<pid>.<uuid>.tmp`, from `writeWorkspaceFile` in `apps/desktop/src/main/themes/state.ts`.
- * ⚠️ A kill inside a write leaves one: it goes with the workspace's files.
- */
-export const DOCK_LABEL_PART = /^dock-label\.json\.\d+\.[0-9a-f-]{36}\.tmp$/
-export const TRANSCRIPT_RETENTION_PART = /^transcript-retention\.json\.\d+\.[0-9a-f-]{36}\.tmp$/
+export const DOCK_LABEL_PART = /^dock-label\.json\.(?:\d+\.[0-9a-f-]{36}|[0-9a-f]{12})\.tmp$/
+export const TRANSCRIPT_RETENTION_PART =
+  /^transcript-retention\.json\.(?:\d+\.[0-9a-f-]{36}|[0-9a-f]{12})\.tmp$/
 
-/**
- * The name one write of a workspace's name, or of a hidden launch's list, goes to before it is
- * renamed into place — `<file>.<pid>.tmp`, in `apps/desktop/src/main/workspaces.ts`. ⚠️ A kill
- * inside a write leaves one: it goes with the workspace's files.
- */
-export const WORKSPACES_PART = /^workspaces?\.json\.\d+\.tmp$/
+export const WORKSPACES_PART = /^workspaces?\.json\.(?:\d+|[0-9a-f]{12})\.tmp$/
 
-/**
- * The name one write of the kept usage readings, or of the account they were read on, goes to
- * before it is renamed into place — `<file>.<pid>.tmp`, in `apps/desktop/src/main/provider-usage-file.ts`
- * and `provider-accounts-file.ts`. ⚠️ A kill inside a write leaves one: it goes with the readings.
- */
-export const PROVIDER_USAGE_PART = /^provider-(?:usage|accounts)\.json\.\d+\.tmp$/
+export const PROVIDER_USAGE_PART = /^provider-(?:usage|accounts)\.json\.(?:\d+|[0-9a-f]{12})\.tmp$/
 
 /**
  * W4.172 · the name one write of the sign-in changes goes to before it is renamed into place —
@@ -300,6 +287,12 @@ export const SCHEDULE_ATTEMPTS_PART = /^schedule-attempts\.json\.\d+\.tmp$/
  * leaves one: it goes with the ledger whose profiles and conversations it names.
  */
 export const PROFILE_EXECUTION_PART = /^profile-execution\.json\.\d+\.tmp$/
+
+/**
+ * A write of the saved API keys in progress, or a keys file that couldn't be read and was set aside
+ * when a key was saved, in `apps/desktop/src/main/runtime/api-keys.ts`. Both go with the keys.
+ */
+const API_KEYS_PART = /^api-keys\.json\.(?:[0-9a-f]{12}\.tmp|unreadable-\d+)$/
 
 /**
  * What a folder or profile directory under `provider-homes/` may be named.
@@ -351,8 +344,7 @@ export const HOME_LOCK = /^(claude|codex)\.lock(\.stale-\d+-\d+)?$/
 
 /** The finished clipboard copy — `shared/runtime-ipc.ts:3141`, character for character. */
 export const PASTED_IMAGE_NAME = /^pasted-[0-9a-f]{32}\.png$/
-/** The half-written one — `main/runtime/pasted-image.ts:139-140`, character for character. */
-export const PASTED_PART = /^pasted-[0-9a-f]{32}\.png\.[0-9a-f]{12}\.part$/
+export const PASTED_PART = /^pasted-[0-9a-f]{32}\.png\.[0-9a-f]{12}\.(?:part|tmp)$/
 
 /** The credential kept by default: a regular file at exactly this mode, or the run refuses. */
 export const CODEX_AUTH = 'auth.json'
@@ -945,6 +937,10 @@ export function planCleanBase(anchor, { dropExports = false, keepAuth = false } 
       continue
     }
     if (PROFILE_EXECUTION_PART.test(entry.name)) {
+      actions.push({ rel: entry.name, expect: 'file', why: LEDGER })
+      continue
+    }
+    if (API_KEYS_PART.test(entry.name)) {
       actions.push({ rel: entry.name, expect: 'file', why: LEDGER })
       continue
     }

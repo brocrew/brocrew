@@ -248,9 +248,7 @@ describe('exporting a session', () => {
         `${name}'s file for this conversation is empty, so there is nothing to export.`,
       )
       expect(readFileSync(good.path)).toEqual(bytes)
-      expect(readdirSync(dirname(good.path)).filter((name) => name.includes('.partial-'))).toEqual(
-        [],
-      )
+      expect(readdirSync(dirname(good.path)).filter((name) => name.endsWith('.tmp'))).toEqual([])
     },
   )
 
@@ -600,7 +598,7 @@ describe('exporting a session', () => {
       expect(JSON.parse(readFileSync(second.path, 'utf8')).raw.frames.length).toBe(
         fixture.text.split('\n').filter(Boolean).length,
       )
-      expect(readdirSync(dirname(second.path)).filter((n) => n.includes('.partial-'))).toEqual([])
+      expect(readdirSync(dirname(second.path)).filter((n) => n.endsWith('.tmp'))).toEqual([])
     })
 
     it('a FIRST export that fails still leaves nothing wearing the export name', async () => {
@@ -618,7 +616,7 @@ describe('exporting a session', () => {
       ).rejects.toThrow('unreadable')
 
       expect(existsSync(target)).toBe(false)
-      expect(readdirSync(dirname(target)).filter((n) => n.includes('.partial-'))).toEqual([])
+      expect(readdirSync(dirname(target)).filter((n) => n.endsWith('.tmp'))).toEqual([])
     })
 
     it('⚠️ the scratch file is never something a provider or our own discovery would read', async () => {

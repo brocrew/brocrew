@@ -2,7 +2,7 @@ import type { TranscriptEvent } from '../../../shared/conversation-events'
 import type { ResolveImagePath } from '../../archive/transcript-types'
 
 import { wrapUnknown } from '@brobot2/runtime'
-import { codexMessageAsKept, splitCodexMessage } from './codex-injected'
+import { splitCodexMessage } from './codex-injected'
 import {
   truncate,
   type ImportedEntry,
@@ -149,35 +149,18 @@ function outputSummary(payload: Record_): string {
 function lineEvents(payload: Record_): TranscriptEvent[] {
   switch (payload['type']) {
     case 'message': {
-      // The saved methods' lines in this app's own lead are the agent's words, which no record keeps.
-      const message = codexMessageAsKept(payload)
-      const text = messageText(message['content'])
+      const text = messageText(payload['content'])
       if (!text) return []
-      // Role decides WHOSE words these are, and getting it wrong is the one unrecoverable error
-      // here: an environment block Codex injects is not something the user typed.
-      if (message['role'] === 'assistant') return [{ type: 'assistant_message', text }]
-      // ⛔ **This used to end here, with a `user_turn` for EVERY non-assistant role** (214 §2, from
-      // 213 finding 2). The comment that stood in this spot predicted the defect and shipped it
-      // anyway: *"the test is `role !== 'assistant'`, so EVERY role Codex ever adds — and every role
-      // a writer of this file invents — speaks in the user's name by default."* Measured on 120 real
-      // rollouts, that is 822 `developer` lines plus 704 injected `user` ones: **1,526 messages
-      // rendered as "You (per the transcript)"** ahead of a one-line prompt.
-      //
-      // ⚑ **`splitCodexMessage` decides; this only spends its answer** — and it spends it the way
-      // `import-claude.ts` has since 074: the harness's words are `unknown{echo}`, which is out of
-      // both transcript modes and whole in the Events tab, and the person's words are the user turn.
-      const parts = splitCodexMessage(message['role'], text)
+
+      if (payload['role'] === 'assistant') return [{ type: 'assistant_message', text }]
+
+      const parts = splitCodexMessage(payload['role'], text)
       const events: TranscriptEvent[] = []
-      // The WHOLE line as `raw`, not the preamble alone: Events shows what the file holds, and a
-      // trimmed copy there would be this importer editing the record it exists to carry. Only the
-      // saved methods' lines are kept out of it, as above.
+
       if (parts.injected) {
-        events.push(wrapUnknown('codex', message, 'echo', 'injected context') as TranscriptEvent)
+        events.push(wrapUnknown('codex', payload, 'echo', 'injected context') as TranscriptEvent)
       }
-      // Marked for the same reason the Claude importer marks its own (074, from 069 §2.4): this
-      // file is the only source, and a file inside a provider home is writable by anything that
-      // reaches it. The mark says *a file claimed this*; the split above says *and this part of it
-      // was not even claimed of you*.
+
       if (parts.said !== null) {
         events.push({ type: 'user_turn', text: parts.said, attribution: 'provider_transcript' })
       }

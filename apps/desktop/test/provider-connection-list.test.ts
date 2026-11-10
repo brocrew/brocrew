@@ -11,6 +11,7 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { executeRuntimeCommand, runtimeCommandSchema } from '../src/main/runtime/ipc'
 
 let db: AppDatabase
+const saved = new Set<'claude' | 'codex'>()
 let host: RuntimeHost
 const sink: RuntimeEventSink = {
   ownerId: 'fictional-window',
@@ -20,6 +21,7 @@ const sink: RuntimeEventSink = {
   sendLiveness: () => {},
 }
 beforeEach(() => {
+  saved.clear()
   db = openDatabase(':memory:')
   applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations'))
 })
@@ -39,7 +41,11 @@ function fixture(read?: () => readonly ProviderConnection[]) {
     read ??
       (() =>
         ['claude', 'codex'].flatMap((provider) =>
-          listProviderConnections(db, provider as 'claude' | 'codex'),
+          listProviderConnections(
+            db,
+            provider as 'claude' | 'codex',
+            saved.has(provider as 'claude' | 'codex'),
+          ),
         )),
   )
   const deps = {
@@ -80,16 +86,11 @@ it('accepts a parameterless metadata read and strips route or credential inputs'
 })
 
 it('lists existing compatibility metadata for both providers without opening anything', async () => {
-  for (const provider of ['claude', 'codex'])
-    db.prepare('INSERT INTO provider_api_key(provider,sealed,updated_at) VALUES(?,?,?)').run(
-      provider,
-      'fictional-sealed',
-      1,
-    )
+  for (const provider of ['claude', 'codex'] as const) saved.add(provider)
   const f = fixture()
   const expected = [
-    ...listProviderConnections(db, 'claude'),
-    ...listProviderConnections(db, 'codex'),
+    ...listProviderConnections(db, 'claude', saved.has('claude')),
+    ...listProviderConnections(db, 'codex', saved.has('codex')),
   ]
   expect(await read()).toEqual(expected)
   expect(expected).toHaveLength(4)
@@ -102,19 +103,15 @@ it('lists existing compatibility metadata for both providers without opening any
 it('does not invent a saved-key connection or retain one after its key is removed', async () => {
   fixture()
   expect(await read()).toEqual([
-    ...listProviderConnections(db, 'claude'),
-    ...listProviderConnections(db, 'codex'),
+    ...listProviderConnections(db, 'claude', saved.has('claude')),
+    ...listProviderConnections(db, 'codex', saved.has('codex')),
   ])
-  db.prepare('INSERT INTO provider_api_key(provider,sealed,updated_at) VALUES(?,?,?)').run(
-    'claude',
-    'fictional-sealed',
-    1,
-  )
+  saved.add('claude')
   expect(await read()).toEqual([
-    ...listProviderConnections(db, 'claude'),
-    ...listProviderConnections(db, 'codex'),
+    ...listProviderConnections(db, 'claude', saved.has('claude')),
+    ...listProviderConnections(db, 'codex', saved.has('codex')),
   ])
-  db.prepare('DELETE FROM provider_api_key').run()
+  saved.clear()
   expect(await read()).toHaveLength(2)
 })
 
@@ -134,11 +131,11 @@ it('does not expose an extra endpoint or a changed compatibility endpoint', asyn
     'https://fictional.invalid',
     'claude:sign-in',
   )
-  expect(await read()).toEqual(listProviderConnections(db, 'codex'))
+  expect(await read()).toEqual(listProviderConnections(db, 'codex', saved.has('codex')))
 })
 
 it('returns only declared metadata fields even if a module seam contains an extra value', async () => {
-  const row = listProviderConnections(db, 'claude')[0]!
+  const row = listProviderConnections(db, 'claude', saved.has('claude'))[0]!
   fixture(() => [{ ...row, fictionalSecret: 'never-render-this-fictional-value' }])
   expect(await read()).toEqual([row])
 })

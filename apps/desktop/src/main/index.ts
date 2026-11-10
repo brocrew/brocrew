@@ -66,7 +66,6 @@ import {
   nativeImage,
   powerMonitor,
   protocol,
-  safeStorage,
   session,
   shell,
 } from 'electron'
@@ -202,12 +201,7 @@ import {
   providerAuthFromModules,
   providerVersionsFromModules,
 } from './providers'
-import {
-  readSavedMethods,
-  savedMethodsLinesOf,
-  savedMethodsUseOf,
-  withTheLinesSent,
-} from './saved-methods'
+import { readSavedMethods, savedMethodsUseOf } from './saved-methods'
 import { createSavedMethodService } from './saved-method-service'
 import { createMethodChangeStore } from './db/method-changes'
 import {
@@ -215,7 +209,7 @@ import {
   stageKnowledgeFile,
   sweepKnowledgeStages,
 } from './runtime/agent-memory'
-import { ApiKeys, askTheProvider, safeStorageCipher } from './runtime/api-keys'
+import { ApiKeys, askTheProvider } from './runtime/api-keys'
 import { listProcesses, memoryOf } from './runtime/process-listing'
 import { providerUsageFile, readKeptUsage, writeKeptUsage } from './provider-usage-file'
 import { readKeptAttempts, scheduleAttemptsFile, writeKeptAttempts } from './schedule-attempts-file'
@@ -780,9 +774,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
       personsOwn: SUPPORTED_PROVIDERS.map((provider) => userProviderHomePath(provider)),
     }
   }
-  // 🔒 **The API keys a person enters, sealed by `safeStorage`** — read on every launch, so a key
-  // set, replaced or removed applies to the next one (`api-keys.ts`).
-  const apiKeys = new ApiKeys(store, safeStorageCipher(safeStorage))
+  const apiKeys = new ApiKeys(userData, Date.now, store)
   // Quit cancels native provider service work without leaving a renewal child behind.
   const stopProviderServices = new AbortController()
   app.once('will-quit', () => stopProviderServices.abort())
@@ -840,8 +832,13 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
       },
     }),
     (provider) => ({
-      list: () => listProviderConnections(database, provider),
-      resolve: (connectionId) => resolveProviderConnection(database, { provider, connectionId }),
+      list: () => listProviderConnections(database, provider, apiKeys.status(provider).set),
+      resolve: (connectionId) =>
+        resolveProviderConnection(database, {
+          provider,
+          connectionId,
+          keySaved: apiKeys.status(provider).set,
+        }),
     }),
   )
   const providerAuth = providerAuthFromModules(providerModules)
@@ -1082,9 +1079,6 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
           ? undefined
           : readSavedMethods(savedMethodsFolder(userData, context.profileSlug), Date.now())
       const launchContext = savedMethods === undefined ? context : { ...context, savedMethods }
-      // The text is composed as every record keeps it; only the model is sent the index's lines.
-      const savedMethodsLines =
-        savedMethods === undefined ? null : savedMethodsLinesOf(savedMethods)
       const composed = profileBundleSpans(
         pack.kind === 'read' ? { ...context, factoryText: factoryTextOf(pack.pack) } : context,
         provider,
@@ -1117,21 +1111,9 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
       })
       return {
         instructions: read.instructions,
-        // Use the reader's composed text, shared with the panel, instead of composing it again.
-        // The reader selects its channel: Claude's system prompt or Codex's first-message lead.
-        systemHint:
-          read.systemHint === null
-            ? undefined
-            : withTheLinesSent(read.systemHint, savedMethodsLines),
-        ...(read.firstTurnLead === null
-          ? {}
-          : { firstTurnLead: withTheLinesSent(read.firstTurnLead, savedMethodsLines) }),
-        ...(savedMethodsLines === null ? {} : { savedMethodsLines }),
-        // Carry the launch row from the same read. The host publishes `MemoryLoadedEvent` only for
-        // a create; retaining the same shape on resume does not publish another row.
+        systemHint: read.systemHint ?? undefined,
+        ...(read.firstTurnLead === null ? {} : { firstTurnLead: read.firstTurnLead }),
         memoryLoaded: read.memoryLoaded,
-        // Keep the profile file and its composition context in the launch record, including on Codex,
-        // where the provider reads the file itself.
         profileFile: read.profileFile,
         ...(savedMethods === undefined ? {} : { savedMethods: savedMethodsUseOf(savedMethods) }),
         ...(pack.kind === 'none'

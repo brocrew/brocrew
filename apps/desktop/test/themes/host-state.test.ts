@@ -1,4 +1,4 @@
-import { readFile, rename, writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { APP_STATE_FILES, NOT_STATE } from '../../src/main/recovery/state-files'
@@ -29,20 +29,20 @@ it('keeps the current workspace choice during database recovery and classifies t
   )
 })
 
-it('a replaced writer temporary is left alone when the commit fails', async () => {
+it('a failed commit removes its temporary and preserves the previous choice', async () => {
   await writeActiveTheme(fixture.userData, 'classic')
-  let replaced: string | undefined
+  let temporary: string | undefined
   await expect(
     writeActiveTheme(fixture.userData, 'defined', {
       rename: async (source) => {
-        replaced = source.toString()
-        await rename(source, `${replaced}.original`)
-        await writeFile(source, 'a different file')
+        temporary = source.toString()
+        expect(await readFile(source, 'utf8')).toBe('{"theme":"defined"}\n')
         throw new Error('fictional failed commit')
       },
     }),
   ).rejects.toThrow('fictional failed commit')
-  expect(await readFile(replaced!, 'utf8')).toBe('a different file')
+  expect(temporary).toBeDefined()
+  await expect(readFile(temporary!, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
   expect(await readFile(join(fixture.userData, ACTIVE_THEME_FILE), 'utf8')).toBe(
     '{"theme":"classic"}\n',
   )

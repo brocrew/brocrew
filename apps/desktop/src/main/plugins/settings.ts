@@ -183,6 +183,7 @@ export function registerPluginSettings(
               'installed',
               'priorityClamped',
               'toolsUnavailable',
+              'toolsPending',
               'toolsCause',
               'canRestart',
               'installedVersion',
@@ -204,8 +205,12 @@ export function registerPluginSettings(
               PluginStartupDiagnosticSchema.safeParse(card.startupDiagnostic).success)) &&
           (card.toolsUnavailable === undefined ||
             (card.state === 'Running' && card.toolsUnavailable === true)) &&
+          (card.toolsPending === undefined ||
+            (card.state === 'Running' &&
+              typeof card.toolsPending === 'string' &&
+              /^[a-z][a-z0-9-]{0,63}$/.test(card.toolsPending))) &&
           (card.toolsCause === undefined ||
-            ((card.toolsUnavailable === true || card.state === 'Installed') &&
+            ((card.toolsUnavailable === true || card.toolsPending || card.state === 'Installed') &&
               typeof card.toolsCause === 'string' &&
               /^[a-z][a-z0-9-]{0,63}(?:: [a-z][a-z0-9-]{0,63})?$/.test(card.toolsCause))) &&
           (card.canRestart === undefined ||

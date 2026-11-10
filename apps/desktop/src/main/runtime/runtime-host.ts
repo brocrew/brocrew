@@ -242,13 +242,6 @@ import type { AnsweredQuestion } from '../../shared/human-answer-contracts'
 import { CurrentProviderLimitFacts, type CurrentFact } from './current-provider-limit-facts'
 import type { SkillLaunchSelection } from '../skills/launch-selection'
 import type { PreparedBuiltInSkills } from '../skills/prepare-built-in-skills'
-import {
-  holdsTheLines,
-  withTheLinesKept,
-  withTheLinesKeptIn,
-  withTheLinesSent,
-  type SavedMethodsLines,
-} from '../saved-methods'
 import type { TextPackRead } from '../skills/text-pack'
 import type {
   AgentRuntime,
@@ -2207,33 +2200,13 @@ interface HostedSession {
    * sections that changed since its Codex thread got it (`codex-lead.ts`).
    */
   firstTurnLeadIs: LeadInFront['is']
-  /**
-   * ⚑ **W4.179 — the lead the last hand-over put in front of its words**, for its turn's row
-   * (`user_turn.lead`), or `null`; taken with {@link wordsJustHandedOver}.
-   */
+
   leadJustHandedOver: LeadInFront | null
-  /**
-   * 🔴 **D-039 · what this life's first turn carries, kept for the life** — the value
-   * {@link firstTurnLead} starts as, and is set back to when it is owed again. ⚑ Never sent itself.
-   */
+
   readonly lifeLead: string | null
-  /**
-   * The saved-methods index's lines this life sends, and the form its rows keep them in, or `null`:
-   * a row keeps no line of them ({@link withTheLinesKept}).
-   */
-  readonly savedMethodsLines: SavedMethodsLines | null
-  /**
-   * 🔴 **F093 · R2 — what this life's launch gave its agent**, as its `launched` row keeps it, or
-   * `null` when the launch had no instruction reader.
-   */
+
   readonly launchGave: WhatALaunchGave | null
-  /**
-   * 🔴 **F093 · R2 — the whole text of the last hand-over, as the provider got it**, or `null` when
-   * the last one handed over no words (a person's `/compact` on Codex). ⚑ Written in the hand-over's
-   * own synchronous step, and taken by the turn's row ({@link publishOurs}) only for exactly the
-   * words it framed ({@link wordsItWasHandedFor}) — the row lands after the adapter's `send`
-   * settles, and another door can hand over in between.
-   */
+
   wordsJustHandedOver: string | null
   /**
    * ⚑ **F093 · R2 — whose words {@link wordsJustHandedOver} framed**: the words of each message the
@@ -10888,8 +10861,8 @@ export class RuntimeHost implements LiveHost {
       this.stateMayHaveMoved(conversation)
       return
     }
-    // ⛔ Refused because its saved key could not be read: no retry on a timer, which would read the
-    // key again and again — the system may ask the person each time.
+    // Refused because its saved key can't be used: it waits for the key to be saved again, removed
+    // or moved, rather than failing again on a timer.
     const provider = this.startable(conversation)?.provider
     if (provider !== undefined && this.itsSavedKeyCannotBeRead(provider)) {
       this.waitForItsKey(conversation, wakeUp, provider, error)
@@ -21600,11 +21573,7 @@ export class RuntimeHost implements LiveHost {
       ...(instructions?.firstTurnLead === undefined
         ? {}
         : { firstTurnLead: instructions.firstTurnLead }),
-      ...(instructions?.savedMethodsLines === undefined
-        ? {}
-        : { savedMethodsLines: instructions.savedMethodsLines }),
-      // Recorded BEFORE the pump starts: the first event can arrive synchronously, and
-      // its ledger row references this session.
+
       onRegistered: (registered) => {
         this.record(registered, () => {
           if (recorded) {
@@ -22664,19 +22633,11 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /**
-   * 🔴 **W4.179 — what a reopened Codex thread still owes of this conversation's own text** — read
-   * from its record: nothing when the thread holds every section as this launch composed it, only
-   * the sections that changed otherwise, and the whole when it holds none or its record cannot say
-   * (`codex-lead.ts`). ⛔ Claude is never asked: its text is its system prompt, replaced at every
-   * launch. ⚠️ A store or a launch that cannot say leaves the whole owed, as before.
-   */
   private theLeadAReopenOwes(
     sessionId: string,
     provider: Provider,
     launchGave: WhatALaunchGave | null,
     reopenedThreadLeads: readonly ThreadLeadRow[] | null,
-    lines?: SavedMethodsLines,
   ): { leadOwed?: { readonly text: string; readonly is: LeadInFront['is'] } | null } {
     const composed = launchGave?.thisConversation ?? null
     const rows = this.deps.store.threadLeadRows
@@ -22689,10 +22650,9 @@ export class RuntimeHost implements LiveHost {
     try {
       if (reopenedThreadLeads === null) return {}
       const held = whatTheThreadHolds(leadRowsFrom(reopenedThreadLeads), Infinity)
-      // Both sides are records, so the index is in its kept form; the model is sent its lines.
       const owed = theLeadOwed(held, composed)
       return {
-        leadOwed: owed === null ? null : { ...owed, text: withTheLinesSent(owed.text, lines) },
+        leadOwed: owed,
       }
     } catch (error) {
       console.warn(
@@ -23204,17 +23164,15 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /** ⚑ {@link withWhatThisLifeOwes}'s composition: what a stop ended, and the life's lead, in front. */
   private withWhatThisLifeStillOwes(session: HostedSession, said: string): string {
-    // ⚑ **F084 · and, in front of the turn after a stop, what that stop ended** — said once.
     const words = this.withWhatItsLastStopEnded(session, said)
     const lead = session.firstTurnLead
     if (lead === null) return words
     session.firstTurnLead = null
-    // ⚑ **W4.179 — which lead, for its turn's row** ({@link HostedSession.leadJustHandedOver}).
+
     session.leadJustHandedOver = {
       is: session.firstTurnLeadIs,
-      chars: withTheLinesKept(lead, session.savedMethodsLines).length,
+      chars: lead.length,
     }
     return `${lead}\n\n${words}`
   }
@@ -23999,17 +23957,13 @@ export class RuntimeHost implements LiveHost {
         session.pendingTurnBlock = null
       }
       if (sent !== undefined && event.sent === undefined) {
-        // The row keeps no line of the saved-methods index, only its kept form.
-        const kept = withTheLinesKept(sent, session.savedMethodsLines)
-        event.sent = kept
-        // ⚑ **W4.179 — and the lead in front of it**, which a later life reads back.
-        // ⛔ Only when the text handed over opens with one: a lead taken by a send that never landed
-        // is no fact about this row.
+        event.sent = sent
+
         const lead = session.leadJustHandedOver
         if (
           lead !== null &&
-          lead.chars <= kept.length &&
-          kept.startsWith(LEADS_OPEN_WITH) &&
+          lead.chars <= sent.length &&
+          sent.startsWith(LEADS_OPEN_WITH) &&
           event.lead === undefined
         ) {
           event.lead = lead
@@ -31823,7 +31777,7 @@ export class RuntimeHost implements LiveHost {
   async removeApiKey(provider: Provider): Promise<ApiKeyChanged> {
     const keys = this.deps.apiKeys
     if (!keys) return this.apiKeyStatus(provider)
-    keys.remove(provider)
+    await keys.remove(provider)
     this.keyChanges.set(provider, (this.keyChanges.get(provider) ?? 0) + 1)
     this.keyRefusedForBilling.delete(provider)
     const notice = await this.bringTheKeyToItsHomes(provider)
@@ -40370,17 +40324,8 @@ export class RuntimeHost implements LiveHost {
         ? {}
         : {
             firstTurnLead: instructions.firstTurnLead,
-            ...this.theLeadAReopenOwes(
-              sessionId,
-              row.provider,
-              launchGave,
-              reopenedThreadLeads,
-              instructions.savedMethodsLines,
-            ),
+            ...this.theLeadAReopenOwes(sessionId, row.provider, launchGave, reopenedThreadLeads),
           }),
-      ...(instructions?.savedMethodsLines === undefined
-        ? {}
-        : { savedMethodsLines: instructions.savedMethodsLines }),
     })
     // ⛔ **The row stops saying `ended`, because this conversation is running again** (179).
     //
@@ -41385,9 +41330,7 @@ export class RuntimeHost implements LiveHost {
        * a compaction ({@link HostedSession.lifeLead}).
        */
       leadOwed?: { readonly text: string; readonly is: LeadInFront['is'] } | null
-      /** {@link HostedSession.savedMethodsLines}. Absent ⇒ none. */
-      savedMethodsLines?: SavedMethodsLines
-      /** ⚑ **F093 · R2** — {@link HostedSession.launchGave}. Absent ⇒ none. */
+
       launchGave?: WhatALaunchGave | null
       onRegistered?: (session: HostedSession) => void
     },
@@ -41459,10 +41402,9 @@ export class RuntimeHost implements LiveHost {
           : (options.leadOwed?.text ?? null),
       firstTurnLeadIs: options.leadOwed?.is ?? 'whole',
       leadJustHandedOver: null,
-      // ⚑ **D-039** — see {@link HostedSession.lifeLead}.
+
       lifeLead: options.firstTurnLead ?? null,
-      savedMethodsLines: options.savedMethodsLines ?? null,
-      // ⚑ **F093 · R2** — see {@link HostedSession.launchGave} and its two neighbours.
+
       launchGave: options.launchGave ?? null,
       wordsJustHandedOver: null,
       wordsItWasHandedFor: [],
@@ -43629,17 +43571,6 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /**
-   * A provider's event with the saved-methods index's lines this life sends in their kept form, in
-   * any string it holds, before it is recorded or shown: a provider can reflect back the text it was
-   * sent (Codex's `userMessage`), and no row keeps the lines ({@link HostedSession.savedMethodsLines}).
-   */
-  private withoutTheIndexLines(session: HostedSession, event: RuntimeEvent): RuntimeEvent {
-    const lines = session.savedMethodsLines
-    if (lines === null || !holdsTheLines(event, lines)) return event
-    return withTheLinesKeptIn(event, lines) as RuntimeEvent
-  }
-
   private deliver(session: HostedSession, given: RuntimeEvent): void {
     // ⛔ **Before `observe`, and before the ordinal is taken** (293 §3). A stale yield must not move
     // the liveness of a finalized session either, and an ordinal handed out here is an ordinal the
@@ -43654,12 +43585,8 @@ export class RuntimeHost implements LiveHost {
     }
     if (given.type === 'session' || given.type === 'error' || given.type === 'turn')
       this.recordLimitAccount(session)
-    const event = this.withoutTheIndexLines(
-      session,
-      this.sayingARefusedCopyIsReplaced(session, given),
-    )
-    // Observed before it is sent, so the renderer can never see an event that
-    // contradicts the liveness shown next to it.
+    const event = this.sayingARefusedCopyIsReplaced(session, given)
+
     session.liveness.observe(event)
     // A fragment a later event states whole: proof the provider is working, and nothing to keep.
     if (event.type === 'unknown' && event.passing === true) return

@@ -1,5 +1,6 @@
 import type { TranscriptEvent } from '../../shared/conversation-events'
-import { closeSync, mkdirSync, openSync, renameSync, rmSync, writeSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
+import { writeAtomically } from '@brobot2/runtime/atomic-write'
 import { dirname } from 'node:path'
 import type { SessionRef } from '@brobot2/runtime'
 import { type Provider, type SessionStatus } from '@brobot2/shared'
@@ -149,87 +150,12 @@ export type BetweenBatches = () => Promise<void>
 
 const yieldToLoop: BetweenBatches = () => new Promise((resolve) => setImmediate(resolve))
 
-/**
- * Distinguishes one export in flight from another in the same directory. A counter and the pid,
- * because two windows of one app share a pid and two apps do not share a counter.
- */
-let partialCounter = 0
-
-/**
- * ⚠️ **Never `.jsonl` or `.json`.** A native export lands INSIDE a provider's own project directory
- * — that is what makes it resumable — so a scratch file wearing the provider's extension is a file
- * `discoverSessionsIn` and the provider's own reader would both offer as a conversation.
- */
-function partialPathFor(path: string): string {
-  return `${path}.partial-${process.pid}-${++partialCounter}`
-}
-
-/**
- * Append `text` and keep going. A tiny seam so both writers below share one file handle discipline:
- * the handle is closed on the way out whatever happens, and a partially written export is removed
- * rather than left looking like a complete one.
- *
- * ## ⛔ It writes a scratch file and RENAMES it (207 M3)
- *
- * It used to open `path` itself with `'w'`, which truncates. Exporting the same session twice is
- * ordinary — the pathname is deterministic, `<sessionId>.brobot-session.json` — so the second call
- * destroyed the first export's bytes in its first syscall, before reading a single row. If it then
- * failed, the `catch` below deleted that same pathname: **a command classified as a read removed a
- * good file it did not write.** 207 reached it through a second WINDOW (`exportSession` takes no
- * sink, so a non-owner can start one), but no second window is needed — one person pressing Export
- * twice on a session whose provider file has since gone unreadable is the whole reproduction.
- *
- * The rename is what makes it safe rather than merely later: `rename(2)` within a directory is
- * atomic, so the previous export is either wholly the old one or wholly the new one, and two
- * exports racing on one pathname end as one of the two files rather than as their interleaving.
- *
- * ⚠️ **A crash still leaves something behind, and it is a better something.** Before, the wreckage
- * wore the export's own name and opened cleanly; now it is `…partial-<pid>-<n>`, which no reader in
- * this app or either provider will offer as a session, and which does not displace the good file.
- */
 async function writeStreamed(
   path: string,
-  write: (append: (text: string) => void) => Promise<void>,
+  write: (append: (text: string) => Promise<void>) => Promise<void>,
 ): Promise<string> {
   mkdirSync(dirname(path), { recursive: true })
-  const partial = partialPathFor(path)
-  const fd = openSync(partial, 'w')
-  try {
-    await write((text) => {
-      // ⚠️ `writeSync` is ONE `write(2)` and returns how many bytes it managed — it does not loop.
-      // On a regular file a short write means the filesystem stopped accepting bytes, and the
-      // disk filling up mid-export is exactly the case this whole function is shaped around. Not
-      // looping here would silently truncate the file and return normally, which is the one
-      // outcome worse than throwing: the `catch` below would never run and the wreckage would be
-      // left behind wearing a complete export's name. Looping turns it into the ENOSPC it is.
-      const buffer = Buffer.from(text, 'utf8')
-      for (let written = 0; written < buffer.length;) {
-        written += writeSync(fd, buffer, written, buffer.length - written)
-      }
-    })
-  } catch (error) {
-    // A half-written file is worse than no file: it opens, it looks like an export, and its
-    // truncation is only visible to whoever reads the end of it.
-    //
-    // The handle is closed first — deleting a file we still hold open is a race we do not need —
-    // but in a `finally`, because `close(2)` can ITSELF fail with EIO when dirty pages cannot be
-    // flushed, and a full disk is precisely the failure this path exists for. Written as two bare
-    // statements, that throw would skip the delete and leave the wreckage behind.
-    //
-    // ⛔ **`partial`, and never `path`** (207 M3). This call created `partial`; it did not create
-    // whatever is at `path`, and removing a file because our own write failed is how the previous
-    // export was destroyed by the next one's error.
-    try {
-      closeSync(fd)
-    } finally {
-      rmSync(partial, { force: true })
-    }
-    throw error
-  }
-  // Closed BEFORE the rename, not after: the bytes have to be the file's before anything can be
-  // asked to read it under its real name.
-  closeSync(fd)
-  renameSync(partial, path)
+  await writeAtomically(path, write)
   return path
 }
 
@@ -255,7 +181,7 @@ export async function writeNativeExport(
   let count = 0
   await writeStreamed(path, async (append) => {
     for await (const row of eachRow(frames, batch, betweenBatches)) {
-      append(`${row.frame}\n`)
+      await append(`${row.frame}\n`)
       count += 1
     }
     if (count === 0) throw new EmptyNativeTranscript()
@@ -286,31 +212,29 @@ export async function writeBundleExport(
   const between = batches.betweenBatches ?? yieldToLoop
 
   await writeStreamed(path, async (append) => {
-    append('{\n')
-    append(`  "bundleVersion": ${JSON.stringify(BUNDLE_VERSION)},\n`)
-    append(`  "meta": ${atDepth(source.meta, 2)},\n`)
-    append('  "raw": {\n')
-    append(`    "format": ${JSON.stringify(source.format)},\n`)
-    append('    "frames": [')
+    await append('{\n')
+    await append(`  "bundleVersion": ${JSON.stringify(BUNDLE_VERSION)},\n`)
+    await append(`  "meta": ${atDepth(source.meta, 2)},\n`)
+    await append('  "raw": {\n')
+    await append(`    "format": ${JSON.stringify(source.format)},\n`)
+    await append('    "frames": [')
     for await (const row of eachRow(source.frames, batches.frames ?? EXPORT_FRAME_BATCH, between)) {
-      append(`${frames === 0 ? '' : ','}\n      ${JSON.stringify(row.frame)}`)
+      await append(`${frames === 0 ? '' : ','}\n      ${JSON.stringify(row.frame)}`)
       frames += 1
     }
-    // `[]` on one line when empty, exactly as `JSON.stringify` writes an empty array. No comma:
-    // `frames` is the last key of `raw`, and the comma belongs to the line that closes `raw` below.
-    append(frames === 0 ? ']\n' : '\n    ]\n')
-    append('  },\n')
-    append('  "ledger": [')
+    await append(frames === 0 ? ']\n' : '\n    ]\n')
+    await append('  },\n')
+    await append('  "ledger": [')
     for await (const row of eachRow(
       source.ledger,
       batches.ledger ?? EXPORT_LEDGER_BATCH,
       between,
     )) {
-      append(`${ledgerEntries === 0 ? '' : ','}\n    ${atDepth(row, 4)}`)
+      await append(`${ledgerEntries === 0 ? '' : ','}\n    ${atDepth(row, 4)}`)
       ledgerEntries += 1
     }
-    append(ledgerEntries === 0 ? ']\n' : '\n  ]\n')
-    append('}\n')
+    await append(ledgerEntries === 0 ? ']\n' : '\n  ]\n')
+    await append('}\n')
   })
 
   return { path, frames, ledgerEntries }

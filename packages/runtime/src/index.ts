@@ -242,7 +242,6 @@ export {
 
 export { buildChildEnv } from './internal/child-env'
 export {
-  aStagingName,
   createFreshFile,
   isStillTheFileOpened,
   openNotThroughALink,

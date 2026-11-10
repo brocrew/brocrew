@@ -80,7 +80,6 @@ export { CODEX_TOOL_NAMING } from './codex/tool-naming'
 export { nativeAccountTag, isNativeAccountTag } from './codex/account-identity'
 
 export {
-  CodexSettingsUnusableError,
   NoCodexSignInOnThisComputerError,
   CodexRefusedItsSignInError,
   codexCopyIdentityIn,

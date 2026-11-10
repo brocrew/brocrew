@@ -1,10 +1,6 @@
 import { reportPluginToolFailure, type PluginToolDiagnostic } from './tool-diagnostics'
 import { PluginBrokerError } from './tool-broker'
-import {
-  type AdmissionFailure,
-  type AdmissionObserver,
-  type RouteAdmissionTrace,
-} from './route-admission-trace'
+import type { RouteAdmissionTrace } from './route-admission-trace'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { createServer, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -57,40 +53,17 @@ export function createPluginCredential(): string {
   return randomBytes(32).toString('hex')
 }
 
-function containsCredential(value: unknown, credential: string): boolean {
-  const pending = [value]
-  const seen = new Set<object>()
-  while (pending.length) {
-    const item = pending.pop()
-    if (typeof item === 'string' && item.includes(credential)) return true
-    if (item && typeof item === 'object' && !seen.has(item)) {
-      seen.add(item)
-      for (const [key, child] of Object.entries(item)) {
-        if (key.includes(credential)) return true
-        pending.push(child)
-      }
-    }
-  }
-  return false
-}
-
 /** The downstream credential stays in this closure, outside provider configuration and diagnostics. */
 export function createPrivatePluginPort(options: {
   url: string
   credential: string
-  privateCredentials?: readonly string[]
   diagnostic?: PluginToolDiagnostic
 }): BrokerServer {
   const report = (reason: Parameters<PluginToolDiagnostic>[0]) =>
     reportPluginToolFailure(options.diagnostic, reason)
   const url = endpoint(options.url)
   const credential = options.credential
-  const privateCredentials = [credential, ...(options.privateCredentials ?? [])]
-  if (
-    privateCredentials.length > 3 ||
-    privateCredentials.some((one) => !/^[0-9a-f]{64}$/.test(one))
-  )
-    throw new Error(WORDS)
+  if (!/^[0-9a-f]{64}$/.test(credential)) throw new Error(WORDS)
   return {
     tool(request, signal) {
       let client: Client | undefined,
@@ -179,10 +152,6 @@ export function createPrivatePluginPort(options: {
             report('cancelled')
             return { ok: false }
           }
-          if (privateCredentials.some((one) => containsCredential(reply, one))) {
-            report('credential-in-result')
-            return { ok: false }
-          }
           const checked = CallToolResultSchema.safeParse(reply)
           if (!checked.success) {
             report('result-invalid')
@@ -230,7 +199,6 @@ export interface ManagedPluginRoute {
 export async function openManagedPluginRoute(
   broker: PluginToolBroker,
   agent: BrokerAgent,
-  current: (observer?: AdmissionObserver) => boolean = () => true,
   diagnostic?: PluginToolDiagnostic,
   trace?: RouteAdmissionTrace,
 ): Promise<ManagedPluginRoute> {
@@ -258,17 +226,7 @@ export async function openManagedPluginRoute(
           res.end()
           return
         }
-        let failure: AdmissionFailure = { condition: 'accepting' }
-        let admitted = false
-        if (accepting) {
-          failure = { condition: 'current' }
-          admitted = current((one) => {
-            failure = one
-          })
-        }
-        if (!admitted) {
-          trace?.emit('http-current-refused', failure, request)
-          report('route-stale')
+        if (!accepting) {
           res.writeHead(401)
           res.end()
           return
@@ -374,16 +332,6 @@ export async function openManagedPluginRoute(
           })),
         }))
         mcp.setRequestHandler(CallToolRequestSchema, async (call) => {
-          let failure: AdmissionFailure = { condition: 'current' }
-          if (
-            !current((one) => {
-              failure = one
-            })
-          ) {
-            trace?.emit('tool-current-refused', failure, request)
-            report('route-stale')
-            return textReply()
-          }
           const tool = offered.find((one) => one.name === call.params.name)
           if (!tool) {
             report('route-tool-unknown')

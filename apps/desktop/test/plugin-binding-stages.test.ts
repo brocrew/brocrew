@@ -24,7 +24,6 @@ function fixture() {
         url: 'http://127.0.0.1:8123/mcp',
         headers: { Authorization: `Bearer ${'a'.repeat(64)}` },
       }),
-      admin: () => ({ headers: { Authorization: `Bearer ${'b'.repeat(64)}` } }),
     }),
     current: vi.fn(() => true),
   } as unknown as Parameters<typeof admittedPluginTools>[0]
@@ -66,4 +65,26 @@ it('classifies the SDK request-timeout code without copying its message', async 
     pluginStage: 'binding-inventory',
     pluginCause: 'timeout',
   })
+})
+
+it('lists named tools with their complete definitions in inventory order', async () => {
+  const tools = ['second', 'first'].map((name) => ({
+    name,
+    description: 'a'.repeat(64),
+    inputSchema: { type: 'object' as const, properties: {} },
+  }))
+  sdk.list.mockResolvedValue({ tools })
+  const refused = vi.fn()
+  const result = await admittedPluginTools(fixture(), new Set(['first', 'second']), refused)
+  expect(result.admitted).toEqual(tools)
+  expect(refused).not.toHaveBeenCalled()
+  expect(sdk.close).toHaveBeenCalledOnce()
+})
+it('keeps named tools when the inventory also contains an unknown name', async () => {
+  const named = { name: 'echo', inputSchema: { type: 'object' as const } }
+  sdk.list.mockResolvedValue({ tools: [named, { ...named, name: 'unknown' }] })
+  const refused = vi.fn()
+  const result = await admittedPluginTools(fixture(), new Set(['echo']), refused)
+  expect(result.admitted).toEqual([named])
+  expect(refused).toHaveBeenCalledOnce()
 })

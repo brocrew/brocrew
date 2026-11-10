@@ -99,7 +99,7 @@ export function createPluginSupervisorLauncher(options: {
           ? { ...windowsSystemEnvironment(), USERPROFILE: root, TEMP: temporary, TMP: temporary }
           : { HOME: root, PATH: '/usr/bin:/bin', LC_ALL: 'C' },
       })
-      diagnostic = observePluginSupervisorLaunch(child, [config.lifecycle?.personKey ?? ''])
+      diagnostic = observePluginSupervisorLaunch(child)
       let failed = false
       let spawnError: Error | undefined
       child.once('error', (error) => {

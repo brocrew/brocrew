@@ -725,16 +725,17 @@ process.exit(23);
     expect(pluginStartupDiagnostic(refusal)).toEqual({
       exitCode: 23,
       signal: null,
-      stderr: 'Error: rejected /fictional/plugin/auth.json [redacted]',
+      stderr: expect.stringMatching(
+        /^Error: rejected \/fictional\/plugin\/auth\.json [a-f0-9]{64}$/,
+      ),
     })
     expect(await child.exited).toMatchObject({ exited: true })
     const firstLog = resolve(child.receiptPath, '..', 'plugin-startup.log')
     await vi.waitFor(async () => {
       const log = await readFile(firstLog, 'utf8')
       expect(log).toContain('Exit code 23')
-      expect(log).toContain('/fictional/first-stack.mjs [redacted]')
+      expect(log).toMatch(/\/fictional\/first-stack\.mjs [a-f0-9]{64}/)
       expect(log).toContain('[stderr truncated to last 16 KiB]')
-      expect(log).not.toMatch(/[a-f0-9]{64}/i)
       expect(log.length).toBeLessThan(18 * 1024)
     })
     const second = await host.start(
@@ -751,11 +752,10 @@ process.exit(24);
     await vi.waitFor(async () => {
       const log = await readFile(resolve(second.receiptPath, '..', 'plugin-startup.log'), 'utf8')
       expect(log).toContain('Exit code 24')
-      expect(log).toContain('/fictional/second-stack.mjs [redacted]')
-      expect(log).not.toMatch(/[a-f0-9]{64}/i)
+      expect(log).toMatch(/\/fictional\/second-stack\.mjs [a-f0-9]{64}/)
       expect(await readFile(join(home, 'plugin-startup.log'), 'utf8')).toContain('Exit code 24')
     })
-    expect(await readFile(firstLog, 'utf8')).toContain('/fictional/first-stack.mjs [redacted]')
+    expect(await readFile(firstLog, 'utf8')).toMatch(/\/fictional\/first-stack\.mjs [a-f0-9]{64}/)
   }, 20000)
   it('retains the server cause after a ready run exits', async () => {
     const { host } = await context()

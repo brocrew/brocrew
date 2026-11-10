@@ -1,6 +1,7 @@
+import { writeAtomically } from '@brobot2/runtime/atomic-write'
 import type { PastedImage } from '../../shared/attachment-contracts'
-import { createHash, randomBytes } from 'node:crypto'
-import { mkdir, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdir, readdir, stat, unlink } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import {
   MAX_PASTED_IMAGE_BYTES,
@@ -144,8 +145,7 @@ function onTheRoot<T>(work: () => Promise<T>): Promise<T> {
 /** The directory BroBot writes pasted images into — and the only one {@link sweepPastedImages} touches. */
 export const PASTED_IMAGES_DIRNAME = 'pasted-images'
 
-/** The private name a write goes to before it is renamed into place — see {@link writePastedImage}. */
-export const PASTED_PART = /^pasted-[0-9a-f]{32}\.png\.[0-9a-f]{12}\.part$/
+export const PASTED_PART = /^pasted-[0-9a-f]{32}\.png\.[0-9a-f]{12}\.(?:part|tmp)$/
 
 /**
  * ⛔ **How long an unsent paste survives.**
@@ -278,21 +278,7 @@ async function writeOne(root: string, png: Buffer, cwd: string): Promise<Dropped
   const path = join(root, pastedImageName(createHash('sha256').update(png).digest('hex')))
   try {
     await mkdir(root, { recursive: true })
-    // 🔴 **Written to a private name and RENAMED into place** (found reviewing the fix that made the
-    // name a digest). ⚠️ **`writeFile(…, {flag:'wx'})` creates the file at `open` and fills it
-    // afterwards**, so a second paste of the same picture — two presses, or two windows — took the
-    // `EEXIST` branch while the first was still writing, and handed the agent a path to a partial
-    // file. ⛔ **Worse, content addressing made that permanent**: a truncated file left by a crash or
-    // a full disk matched every future paste of that screenshot forever.
-    //
-    // ⚑ **`rename` is atomic**, so the name only ever appears on a COMPLETE file, and the bytes it
-    // replaces are identical to the bytes replacing them — the name is their digest. It also makes
-    // the mtime *last used* for free: the file that ends up at `path` is the one just written, so
-    // re-pasting an old screenshot cannot stage something the sweep is about to remove, and no
-    // separate `utimes` (or its own failure mode) is needed.
-    const part = `${path}.${randomBytes(6).toString('hex')}.part`
-    await writeFile(part, png)
-    await rename(part, path)
+    await writeAtomically(path, png)
   } catch (error) {
     return {
       refusal:

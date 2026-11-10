@@ -106,7 +106,7 @@ describe('copying this install’s provider sign-ins', () => {
       store: createSessionStore(db),
       ...neutralHostDeps(() => root),
       connectionFor: (provider, connectionId) =>
-        resolveProviderConnection(db, { provider, connectionId }),
+        resolveProviderConnection(db, { provider, connectionId, keySaved: false }),
       pluginAttachments: {
         agent: () => {
           if (!pluginEnabled) throw new Error('fictional plugins disabled')

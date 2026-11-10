@@ -1,39 +1,5 @@
 import type { AsSentPart, TurnAsSent, WhatTheRecordLeavesOut } from '../../shared/turn-as-sent'
-/**
- * 🔴 **W4.164 · F093 R1 — reading one turn out of a provider's own file, a line at a time.**
- *
- * The turn is the message BroBot handed over, found by **the exact text it handed over** — the
- * ledger's `user_turn.sent` (F093 R2), which each provider keeps as it got it: a message's text
- * blocks are that text, character for character, and nothing else is ({@link textOf}). ⚑ Which of
- * the messages with that text it is: each earlier message of this provider conversation (`life`)
- * with the same text takes the first record its own rule finds, in order, and the turn is the next
- * one its rule finds ({@link TurnAsked.before}); a `/clear`, or a new thread, starts again. ⛔ W4.172 ·
- * never by words inside a message: those found a message that only quoted them. On both rules, the
- * saved methods' lines in this app's Codex lead are compared as the ledger keeps them
- * (`codexMessageAsKept`).
- *
- * ⚑ **A turn this app read from the provider's record itself** — a conversation adopted from a
- * provider's home, whose ledger was read from that record — is found by the text its importer took
- * from that record, by the importer's own rule: Claude Code's string content as it is, Codex's message
- * text split from what Codex put around it (`import-claude.ts`, `import-codex.ts`). Exact too.
- *
- * ⚑ **Each provider keeps its turn its own way**:
- *  - **Claude Code**: the message is a `user` record; its reminders and context follow it as
- *    `attachment` records, each with the text it was rendered as (`rendered`) and its role
- *    (`renderedRole`): one in the user's role went at the head of the message. One in the system's
- *    went in the context message after it, unwrapped, on a model that takes one, and at the head of
- *    the message, wrapped, on a model that takes none (Haiku) — which this reader asks of the model
- *    the turn's answer names ({@link TurnReadingOptions.hasAContextMessage}). Until the model's answer.
- *  - **Codex**: a turn runs from `task_started` to `task_complete`; its messages to the model are
- *    `response_item` messages — each content block as sent — up to the model's first output. Its
- *    base prompt is in the file's `session_meta`, in front of every request.
- *
- * ⛔ **A record this build does not know is kept raw**, never dropped, and so is one it knows is
- * sent but cannot render; what the provider keeps for itself (a queue, a cost, a token count) is
- * named and marked not sent.
- */
 
-/** Which turn: the message with this text, after the earlier ones, in the provider conversation `life`. */
 export interface TurnAsked {
   /**
    * Which text: the text BroBot handed over for the turn, exactly (`user_turn.sent`), or — for a

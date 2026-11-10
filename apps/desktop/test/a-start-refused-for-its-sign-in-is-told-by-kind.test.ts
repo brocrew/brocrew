@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
-import { providerAuthPolicies } from '../src/main/providers/auth-definitions'
+import { providerAuthPolicies } from '../src/main/providers/index'
 import { AuthUnavailableError } from '@brobot2/runtime'
 import { NoCodexSignInOnThisComputerError } from '@brobot2/runtime/codex'
 import {

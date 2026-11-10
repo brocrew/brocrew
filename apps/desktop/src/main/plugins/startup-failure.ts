@@ -13,21 +13,8 @@ import type { ChildProcess } from 'node:child_process'
 import { PluginSupervisorError, ownerDiagnosticLine, type Refusal } from './supervisor/protocol'
 import { managedPluginFailure, ManagedPluginFailure } from '@brobot2/runtime/plugin-failure'
 
-function redactPluginStartupText(text: string, secrets: readonly string[]): string {
-  // Strip terminal escapes before matching secrets, so normalization cannot reveal one.
+export function pluginStartupStderr(text: string): string | null {
   text = text.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[a-zA-Z]`, 'g'), '')
-  for (const secret of secrets) if (secret) text = text.split(secret).join('[redacted]')
-  return text
-    .replace(/Bearer\s+[^\s]+/gi, 'Bearer [redacted]')
-    .replace(
-      /((?:token|secret|password|personKey|authorization)["']?\s*[:=]\s*["']?)[^\s"',;]+/gi,
-      '$1[redacted]',
-    )
-    .replace(/[a-f0-9]{32,}/gi, '[redacted]')
-}
-/** Keep one error line, excluding launch capabilities and terminal control characters. */
-export function pluginStartupStderr(text: string, secrets: readonly string[] = []): string | null {
-  text = redactPluginStartupText(text, secrets)
   const line =
     text
       .split(/\r?\n/)
@@ -44,8 +31,9 @@ export function pluginStartupStderr(text: string, secrets: readonly string[] = [
   return PluginStartupDiagnosticSchema.shape.stderr.safeParse(bounded).success ? bounded : null
 }
 
-export function pluginStartupOutput(text: string, secrets: readonly string[]): string {
-  return redactPluginStartupText(text, secrets)
+export function pluginStartupOutput(text: string): string {
+  return text
+    .replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[a-zA-Z]`, 'g'), '')
     .replace(/[\p{Cc}\p{Cs}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, (one) =>
       one === '\n' ? '\n' : ' ',
     )
@@ -54,11 +42,7 @@ export function pluginStartupOutput(text: string, secrets: readonly string[]): s
 }
 
 /** One bounded cause chain for local diagnostic logs: each error's real message, plus its stage. */
-export function pluginFailureCause(
-  error: unknown,
-  secrets: readonly string[] = [],
-  seen = new Set<unknown>(),
-): string {
+export function pluginFailureCause(error: unknown, seen = new Set<unknown>()): string {
   const lines: string[] = []
   for (let depth = 0; depth < 6 && error != null && !seen.has(error); depth++) {
     seen.add(error)
@@ -81,14 +65,13 @@ export function pluginFailureCause(
         const label = `${name}${code ? ` code=${code}` : ''}${stage ? ` detail=${stage}` : ''}${origin}`
         const line = pluginStartupStderr(
           `${label ? `${label}: ` : ''}${message.replace(/\r?\n/g, ' ')}`,
-          secrets,
         )
         if (line) lines.push(line)
       }
       // An aggregate names each of its failures; then the chain continues through its cause.
       if (error instanceof AggregateError)
         for (const one of error.errors.slice(0, 4)) {
-          const each = seen.has(one) ? '' : pluginFailureCause(one, secrets, seen)
+          const each = seen.has(one) ? '' : pluginFailureCause(one, seen)
           if (each) lines.push(each)
         }
       error = typeof error === 'object' ? (error as Error).cause : undefined
@@ -100,7 +83,6 @@ export function pluginFailureCause(
   return (
     pluginStartupStderr(
       lines.map((line) => line.slice(0, budget).replace(/[\uD800-\uDBFF]$/, '')).join(' <- '),
-      secrets,
     ) ?? 'Unknown failure'
   )
 }
@@ -142,7 +124,7 @@ export function pluginStartupDiagnostic(error: unknown): PluginStartupDiagnostic
   return undefined
 }
 /** Keep the stderr tail and its real error line without keeping Electron alive. */
-export function observePluginSupervisorLaunch(child: ChildProcess, secrets: readonly string[]) {
+export function observePluginSupervisorLaunch(child: ChildProcess) {
   let stderr = ''
   let firstLine: string | undefined
   let errorLine: string | undefined
@@ -151,8 +133,8 @@ export function observePluginSupervisorLaunch(child: ChildProcess, secrets: read
     stderr += typeof chunk === 'string' ? chunk : decoder.write(chunk)
     const first = stderr.match(/[^\r\n]*\S[^\r\n]*\r?\n/)?.[0]
     const error = stderr.match(/^[\w.]*Error(?:\s*\[[^\]\n]+\])?:[^\n]*\n/m)?.[0]
-    if (first) firstLine ??= pluginStartupStderr(first, secrets) ?? undefined
-    if (error) errorLine ??= pluginStartupStderr(error, secrets) ?? undefined
+    if (first) firstLine ??= pluginStartupStderr(first) ?? undefined
+    if (error) errorLine ??= pluginStartupStderr(error) ?? undefined
     stderr = stderr.slice(-16 * 1024)
   })
   let ended = !child.stderr || child.stderr.readableEnded || child.stderr.destroyed
@@ -174,10 +156,10 @@ export function observePluginSupervisorLaunch(child: ChildProcess, secrets: read
       {
         exitCode: child.exitCode !== null && child.exitCode < 0 ? null : child.exitCode,
         signal: child.signalCode,
-        stderr: pluginStartupStderr(errorLine ?? firstLine ?? stderr, secrets),
+        stderr: pluginStartupStderr(errorLine ?? firstLine ?? stderr),
       },
       undefined,
-      pluginStartupOutput(stderr, secrets),
+      pluginStartupOutput(stderr),
     )
   return Object.assign(snapshot, {
     async drainUntil(deadline: number): Promise<void> {
@@ -330,7 +312,7 @@ export async function recordPluginReviewFailure(
     `${new Date().toISOString()} action=${action} stage=${stage} code=${code} cause=${cause}\n`,
   )
 }
-/** Retain one bounded, readable failure. Only the bounded child diagnostic and recognized errno cross this boundary. */
+/** Retain one bounded, readable failure. */
 export async function recordPluginStartupFailure(
   root: string | undefined,
   reason: PluginUnavailableReason,

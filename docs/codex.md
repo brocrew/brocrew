@@ -15,7 +15,7 @@ OpenAI bills what your agents use to the account the key belongs to, at its stan
 
 ## Where the key lives
 
-- **In BroCrew's own data:** BroCrew encrypts the key with Electron's `safeStorage`. On macOS the encryption key is kept in your Keychain. BroCrew's database holds only the encrypted key.
+- **In BroCrew's own data:** in `api-keys.json` in BroCrew's data folder, readable only by your user account.
 - **In each Codex profile:** each agent profile has its own Codex folder in BroCrew's data folder, `~/Library/Application Support/@brobot2/desktop/provider-homes/`. BroCrew logs that folder in with your key through Codex's own login. Codex then keeps the key in that folder's `auth.json`, readable only by your macOS user.
 
 ## What BroCrew does with it

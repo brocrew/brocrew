@@ -125,13 +125,13 @@ describe('the layer a provider-reported file belongs to (356 §3)', () => {
     )
   })
 
-  it('⚠️ case is compared exactly — a differently-spelled home claims nothing', () => {
-    // On APFS these name one directory and `realpath` does not canonicalise case, so the two
-    // spellings really do both occur. Failing toward `unknown` is a sentence the panel can print;
-    // case-folding would make the label depend on the volume the app happens to be installed on.
+  it('compares home and project case according to the platform', () => {
     expect(
       instructionScope('/HOMES/default/codex/AGENTS.md', { providerHome: HOME, cwd: CWD }),
-    ).toBe('unknown')
+    ).toBe(process.platform === 'darwin' || process.platform === 'win32' ? 'profile' : 'unknown')
+    expect(instructionScope('/WORK/checkout/AGENTS.md', { providerHome: HOME, cwd: CWD })).toBe(
+      process.platform === 'darwin' || process.platform === 'win32' ? 'project' : 'unknown',
+    )
   })
 })
 

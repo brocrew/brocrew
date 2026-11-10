@@ -339,7 +339,6 @@ export function createPluginNodeHost(options: {
     /** The guardian's last 16 KiB of stderr, the cause when it dies before its plugin is ready. */
     let guardianStderr = ''
     let serverDiagnostic: PluginStartupDiagnostic | undefined
-    const secrets = [mcpToken, adminToken, hookToken]
     const child: ChildProcess = fork(runtime.guardian, [join(run, 'launch.json')], {
       execPath: runtime.node,
       execArgv: [],
@@ -456,8 +455,7 @@ export function createPluginNodeHost(options: {
         const diagnostic = PluginStartupDiagnosticSchema.safeParse({
           exitCode: value.exitCode,
           signal: value.signal,
-          stderr:
-            typeof value.stderr === 'string' ? pluginStartupStderr(value.stderr, secrets) : null,
+          stderr: typeof value.stderr === 'string' ? pluginStartupStderr(value.stderr) : null,
         })
         if (diagnostic.success) {
           serverDiagnostic = diagnostic.data
@@ -465,7 +463,6 @@ export function createPluginNodeHost(options: {
             typeof value.stderrOutput === 'string'
               ? value.stderrOutput
               : String(value.stderr ?? ''),
-            secrets,
           )
           const failure = new PluginSupervisorLaunchFailure(
             serverDiagnostic,
@@ -493,8 +490,7 @@ export function createPluginNodeHost(options: {
       ) {
         checking = true
         const origin = `http://127.0.0.1:${value.port}`
-        // The server has loaded both capabilities before announcing its listener.
-        // Retain them only in this host's closures, never on disk for its lifetime.
+        // The server loaded its capabilities before announcing its listener.
         void rm(join(run, 'auth.json'), { force: true })
           .then(() => {
             if (stopped) throw new PluginHostError('ready')
@@ -575,7 +571,7 @@ export function createPluginNodeHost(options: {
       finished = true
       stopped = true
       clearTimeout(timer)
-      const said = pluginStartupStderr(guardianStderr, secrets)
+      const said = pluginStartupStderr(guardianStderr)
       ready.reject(
         serverDiagnostic
           ? new PluginSupervisorLaunchFailure(serverDiagnostic)
@@ -588,9 +584,7 @@ export function createPluginNodeHost(options: {
                 ),
             }),
       )
-      // A guardian crash is not an exit receipt; independently clean the groups already admitted.
-      // On Windows that is the guardian's whole tree, its job keeper and the server's children
-      // included: only a reading that finds none of it running is proof.
+      // A guardian crash still requires cleanup of its admitted process groups.
       const clean =
         proof ||
         (windows
@@ -601,7 +595,7 @@ export function createPluginNodeHost(options: {
               recordDrainTrace(root, {
                 stage: 'group-cleanup',
                 state: 'failed',
-                cause: pluginFailureCause(cause, secrets),
+                cause: pluginFailureCause(cause),
               })
             })))
       await Promise.all(
@@ -657,7 +651,7 @@ export function createPluginNodeHost(options: {
           recordDrainTrace(root, {
             stage: 'group-cleanup',
             state: 'failed',
-            cause: pluginFailureCause(error, secrets),
+            cause: pluginFailureCause(error),
           })
           return false
         }

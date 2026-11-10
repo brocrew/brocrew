@@ -993,12 +993,9 @@ export interface SessionStore extends OwnNotesStore {
   addHandAddedModel(provider: Provider, model: string, at: number): readonly string[]
   deleteHandAddedModel(provider: Provider, model: string, at: number): readonly string[]
   lastPicked(provider: Provider): ModelAndEffort | null
+  hasSealedApiKey(provider: Provider): boolean
+  forgetSealedApiKey(provider: Provider): void
   aPersonPicked(provider: Provider, pair: ModelAndEffort, at: number): void
-  keptApiKey(provider: Provider): { readonly sealed: string; readonly setAt: number } | null
-  /** 🔒 Keep a provider's sealed API key, replacing any before it. A person's act only. */
-  keepSealedApiKey(provider: Provider, sealed: string, at: number): void
-  /** 🔒 Forget a provider's API key — answers whether there was one. A person's act only. */
-  forgetApiKey(provider: Provider): boolean
   conversationsPerIdentity(): readonly IdentityHistory[]
   removeAgentIdentity(profileSlug: string): boolean
   spawnPolicy(): { spawningEnabled: boolean }
@@ -1418,11 +1415,8 @@ export const NULL_SESSION_STORE: SessionStore = {
   deleteHandAddedModel: () => [],
   lastPicked: () => null,
   aPersonPicked: () => {},
-  keptApiKey: () => null,
-  keepSealedApiKey: () => {
-    throw new Error('there is no database to keep the API key in')
-  },
-  forgetApiKey: () => false,
+  hasSealedApiKey: () => false,
+  forgetSealedApiKey: () => {},
   conversationsPerIdentity: () => [],
   removeAgentIdentity: () => false,
   spawnPolicy: () => ({ spawningEnabled: false }),
@@ -2387,19 +2381,6 @@ export function createSessionStore(
       return next
     },
   )
-  // --- a person's API keys, sealed, one row per provider ---
-  let apiKeyStatements: { read: AppStatement; write: AppStatement; forget: AppStatement } | null =
-    null
-  const apiKeySql = (): NonNullable<typeof apiKeyStatements> =>
-    (apiKeyStatements ??= {
-      read: db.prepare(`SELECT sealed, updated_at FROM provider_api_key WHERE provider = ?`),
-      write: db.prepare(
-        `INSERT INTO provider_api_key (provider, sealed, updated_at) VALUES (?, ?, ?)
-         ON CONFLICT (provider) DO UPDATE SET
-           sealed = excluded.sealed, updated_at = excluded.updated_at`,
-      ),
-      forget: db.prepare(`DELETE FROM provider_api_key WHERE provider = ?`),
-    })
   let spawnStatements: {
     readCapabilities: AppStatement
     writeCapabilities: AppStatement
@@ -7164,22 +7145,16 @@ export function createSessionStore(
     lastPicked(provider) {
       return modelListOf(provider).lastPicked
     },
+    hasSealedApiKey(provider) {
+      return (
+        db.prepare('SELECT 1 FROM provider_api_key WHERE provider = ?').get(provider) !== undefined
+      )
+    },
+    forgetSealedApiKey(provider) {
+      db.prepare('DELETE FROM provider_api_key WHERE provider = ?').run(provider)
+    },
     aPersonPicked(provider, pair, at) {
       writeTheList(provider, (held) => ({ ...held, lastPicked: pair }), at)
-    },
-
-    keptApiKey(provider) {
-      const row = apiKeySql().read.get(provider) as
-        { sealed: string; updated_at: number } | undefined
-      return row === undefined || row.sealed === ''
-        ? null
-        : { sealed: row.sealed, setAt: row.updated_at }
-    },
-    keepSealedApiKey(provider, sealed, at) {
-      apiKeySql().write.run(provider, sealed, at)
-    },
-    forgetApiKey(provider) {
-      return apiKeySql().forget.run(provider).changes > 0
     },
 
     conversationsPerIdentity() {

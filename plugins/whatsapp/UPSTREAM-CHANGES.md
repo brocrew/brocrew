@@ -22,6 +22,6 @@ Rewritten as the Node server's tools: `list_chats`, `read_messages`, `search_mes
 ## Source project's additions
 
 - **Group sending limits** (five per group in ten minutes, twenty an hour, the same message once an hour) and the 🤖 start of each message, from its Python group tools, now in the Node server. The allowlist is the person's "Can write" switches instead of labels.
-- **File typing and archive checks** (`sniff.go`, `archive.go`) are copied with their tests. The largest document is 100 MB instead of 2 GB.
+- **File typing** (`sniff.go`) is copied with its tests; archives are typed by their bytes, not by the names inside. The largest document is 100 MB instead of 2 GB.
 - **The bridge's own limiter** (forty an hour, two seconds apart) and bounded media transport are copied.
 - **Not ported:** drafts, the security code sent to another messenger, the notify-me tool, its panels, its container build.

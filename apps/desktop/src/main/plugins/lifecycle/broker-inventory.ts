@@ -2,52 +2,56 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { PluginLifecycleController } from './controller'
 import { managedPluginFailure, type PluginFailureStage } from '@brobot2/runtime/plugin-failure'
+import type { PluginToolDiagnostic } from '../tool-diagnostics'
 
-/**
- * The plugin's tools that a binding may offer: only reviewed names, and none whose definition carries
- * either of the plugin's credentials. Anything else is refused without hiding the reviewed tools.
- */
 export async function admittedPluginTools(
   view: ReturnType<PluginLifecycleController['agentAttachments']>[number],
   names: ReadonlySet<string>,
   refused: () => void | Promise<void>,
+  diagnostic?: PluginToolDiagnostic,
 ) {
   let stage: PluginFailureStage = 'binding-connection'
+  const progress = (next: PluginFailureStage) => {
+    stage = next
+    try {
+      diagnostic?.pending?.(stage)
+    } catch {
+      /* A stage observer cannot fail the binding. */
+    }
+  }
+  const exited =
+    view.exited?.then(
+      () => {
+        throw Object.assign(new Error('Plugin host exited'), { code: 'process-exited' })
+      },
+      () => new Promise<never>(() => {}),
+    ) ?? new Promise<never>(() => {})
   try {
-    const connection = await view.connection
+    progress('binding-connection')
+    const connection = await Promise.race([view.connection, exited])
     stage = 'binding-current'
     if (!view.current()) throw new Error('unavailable')
     stage = 'binding-endpoint'
     const endpoint = connection.mcp()
     const credential = endpoint.headers.Authorization.slice('Bearer '.length)
-    const adminCredential = connection.admin().headers.Authorization.slice('Bearer '.length)
     const client = new Client({ name: 'brocrew-plugin-inventory', version: '1' })
     client.onerror = () => undefined
     const outcome = await (async () => {
-      stage = 'binding-connect'
+      progress('binding-connect')
       await client.connect(
         new StreamableHTTPClientTransport(new URL(endpoint.url), {
           requestInit: { headers: endpoint.headers, redirect: 'error' },
-          fetch: (url, init) =>
-            fetch(url, {
-              ...init,
-              redirect: 'error',
-              signal: AbortSignal.timeout(1500),
-            }),
         }),
       )
-      stage = 'binding-inventory'
-      const inventory = await client.listTools(undefined, { timeout: 1500 })
+      progress('binding-inventory')
+      // Use the SDK's documented request timeout for initialize and this static tools/list reply.
+      const inventory = await client.listTools()
       stage = 'binding-current'
       if (inventory.nextCursor || inventory.tools.length > 256 || !view.current())
         throw new Error('unavailable')
-      const admitted = inventory.tools.filter(
-        (tool) =>
-          names.has(tool.name) &&
-          ![credential, adminCredential].some((one) => JSON.stringify(tool).includes(one)),
-      )
+      const admitted = inventory.tools.filter((tool) => names.has(tool.name))
       if (admitted.length !== inventory.tools.length) await refused()
-      return { connection, endpoint, credential, adminCredential, admitted }
+      return { connection, endpoint, credential, admitted }
     })().then(
       (value) => ({ ok: true as const, value }),
       (error: unknown) => ({ ok: false as const, error: managedPluginFailure(error, stage) }),

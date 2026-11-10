@@ -1,4 +1,5 @@
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { writeAtomicallySync } from '@brobot2/runtime/atomic-write'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { UpdateChannel } from '../shared/updates'
 
@@ -58,13 +59,6 @@ export function readUpdateSettings(file: string, defaults: UpdateSettings): Upda
   }
 }
 
-/**
- * Write the settings, keeping whatever else the file holds. ⚑ Written beside it and renamed, so a
- * reader never sees half a file. ⚑ **Each process writes its own temporary file**, so two writers —
- * workspaces beside one computer's file, or two launches the one-host gate let through — can lose a
- * write but never tear one. A write that fails takes its temporary file with it; one a kill leaves
- * is named so a reset knows it (`scripts/lib/clean-base.mjs`' `UPDATE_SETTINGS_PART`).
- */
 export function writeUpdateSettings(file: string, settings: UpdateSettings): void {
   let rest: Record<string, unknown> = {}
   try {
@@ -76,12 +70,5 @@ export function writeUpdateSettings(file: string, settings: UpdateSettings): voi
     // No file yet, or one that is not JSON: it is replaced.
   }
   mkdirSync(dirname(file), { recursive: true })
-  const temporary = `${file}.${String(process.pid)}.tmp`
-  try {
-    writeFileSync(temporary, `${JSON.stringify({ ...rest, updates: settings }, null, 2)}\n`)
-    renameSync(temporary, file)
-  } catch (error) {
-    rmSync(temporary, { force: true })
-    throw error
-  }
+  writeAtomicallySync(file, `${JSON.stringify({ ...rest, updates: settings }, null, 2)}\n`)
 }

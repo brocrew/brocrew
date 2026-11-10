@@ -1,5 +1,6 @@
+import { isInside } from '@brobot2/shared/paths'
 import { statSync } from 'node:fs'
-import { resolve, sep } from 'node:path'
+import { resolve } from 'node:path'
 
 /**
  * Whether two paths are one folder — the questions a data folder is compared by (`launch-
@@ -21,14 +22,13 @@ export function samePath(
   return folded(a, platform) === folded(b, platform)
 }
 
-/** Whether `path` is inside `folder` by their spelling alone ({@link folded}). ⚑ Touches no disk. */
+/** Whether the path is strictly below the folder, by spelling. */
 export function insideBySpelling(
   path: string,
   folder: string,
   platform: NodeJS.Platform = process.platform,
 ): boolean {
-  const outer = folded(folder, platform)
-  return folded(path, platform).startsWith(outer.endsWith(sep) ? outer : `${outer}${sep}`)
+  return isInside(folder, path, { orSame: false, platform })
 }
 
 /**

@@ -25,6 +25,7 @@ const Request = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('list-tool-health') }),
   z.strictObject({ kind: z.literal('list-tool-cause') }),
   z.strictObject({ kind: z.literal('list-startup-diagnostic') }),
+  z.strictObject({ kind: z.literal('list-tool-starting') }),
   z.strictObject({ kind: z.literal('features') }),
   z.strictObject({ kind: z.literal('restart-chrome') }),
   z.strictObject({ kind: z.literal('mutation-policy'), catalogueDigest: Hex }),
@@ -278,6 +279,7 @@ export async function servePersonPluginControl(options: {
                 ...PLUGIN_FRAMEWORK_FEATURES,
                 'tool-health-v1',
                 'tool-cause-v1',
+                'tool-starting-v1',
                 'startup-diagnostic-v1',
                 'download-progress-v1',
                 ...(options.restartChrome ? ['chrome-recovery-v1'] : []),
@@ -307,6 +309,7 @@ export async function servePersonPluginControl(options: {
                 delete legacy.startupDiagnostic
                 delete legacy.toolsUnavailable
                 delete legacy.toolsCause
+                delete legacy.toolsPending
                 return legacy
               })
           case 'list-tool-health':
@@ -318,6 +321,7 @@ export async function servePersonPluginControl(options: {
                 delete health.unavailableReason
                 delete health.startupDiagnostic
                 delete health.toolsCause
+                delete health.toolsPending
                 return health
               })
           case 'list-tool-cause':
@@ -327,9 +331,20 @@ export async function servePersonPluginControl(options: {
                 const legacy = { ...card }
                 delete legacy.unavailableReason
                 delete legacy.startupDiagnostic
+                delete legacy.toolsPending
+                if (!legacy.toolsUnavailable && legacy.state === 'Running') delete legacy.toolsCause
                 return legacy
               })
           case 'list-startup-diagnostic':
+            return (await options.controller.status()).cards
+              .filter((card) => visible(card.id))
+              .map((card) => {
+                const legacy = { ...card }
+                delete legacy.toolsPending
+                if (!legacy.toolsUnavailable && legacy.state === 'Running') delete legacy.toolsCause
+                return legacy
+              })
+          case 'list-tool-starting':
             return (await options.controller.status()).cards.filter((card) => visible(card.id))
           case 'restart-chrome':
             if (!options.restartChrome || !visible('chrome'))

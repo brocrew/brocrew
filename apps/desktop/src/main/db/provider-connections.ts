@@ -17,16 +17,11 @@ interface ConnectionRow {
   contract_version: number
 }
 
-/** Only metadata is inspected; the existing key service remains the sole credential reader. */
-function hasSavedKey(db: AppDatabase, provider: Provider): boolean {
-  return db.prepare('SELECT 1 FROM provider_api_key WHERE provider = ?').get(provider) !== undefined
-}
-
 function compatibilityRecord(
   db: AppDatabase,
   provider: Provider,
   method: ConnectionAuthMethod,
-  keySaved?: boolean,
+  keySaved: boolean,
 ): ProviderConnection | null {
   const row = db
     .prepare(
@@ -46,7 +41,7 @@ function compatibilityRecord(
     !row.name.trim()
   )
     return null
-  if (method === 'api-key' && !(keySaved ?? hasSavedKey(db, provider))) return null
+  if (method === 'api-key' && !keySaved) return null
   return {
     id: row.id,
     provider,
@@ -60,9 +55,13 @@ function compatibilityRecord(
 }
 
 /** No probe, setup or directory access; additional rows remain unavailable until qualified. */
-export function listProviderConnections(db: AppDatabase, provider: Provider): ProviderConnection[] {
+export function listProviderConnections(
+  db: AppDatabase,
+  provider: Provider,
+  keySaved: boolean,
+): ProviderConnection[] {
   return (['sign-in', 'api-key'] as const).flatMap((method) => {
-    const record = compatibilityRecord(db, provider, method)
+    const record = compatibilityRecord(db, provider, method, keySaved)
     return record ? [record] : []
   })
 }
@@ -70,14 +69,18 @@ export function listProviderConnections(db: AppDatabase, provider: Provider): Pr
 /** Omitted legacy choices keep today's key precedence, rather than freezing it at migration. */
 export function resolveProviderConnection(
   db: AppDatabase,
-  selection: { readonly provider: Provider; readonly connectionId?: string | null },
+  selection: {
+    readonly provider: Provider
+    readonly connectionId?: string | null
+    readonly keySaved: boolean
+  },
 ): ProviderConnection {
-  const { provider, connectionId } = selection
-  const keySaved = hasSavedKey(db, provider)
-  const currentMethod = keySaved ? 'api-key' : 'sign-in'
+  const { provider, connectionId, keySaved } = selection
   const method =
     connectionId == null
-      ? currentMethod
+      ? keySaved
+        ? 'api-key'
+        : 'sign-in'
       : connectionId === compatibilityConnectionId(provider, 'api-key')
         ? 'api-key'
         : connectionId === compatibilityConnectionId(provider, 'sign-in')
@@ -85,7 +88,5 @@ export function resolveProviderConnection(
           : null
   const record = method === null ? null : compatibilityRecord(db, provider, method, keySaved)
   if (!record) throw new Error('The selected connection is unavailable')
-  if (connectionId != null && method !== currentMethod)
-    throw new Error('The selected connection conflicts with the current credential route')
   return record
 }

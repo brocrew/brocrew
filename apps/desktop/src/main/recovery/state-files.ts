@@ -144,6 +144,10 @@ export const NOT_STATE: readonly NotState[] = [
     why: "Each provider's own folders, which hold its sign-in and its own transcripts; never copied or restored.",
   },
   {
+    name: 'api-keys.json*',
+    why: 'The API keys a person saved, kept in this one file and never copied; a restore leaves them as they are.',
+  },
+  {
     name: 'provider-accounts.json',
     why:
       'The Claude account this computer was last signed in to, with its email, which is kept in ' +

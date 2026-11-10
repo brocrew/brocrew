@@ -17,9 +17,9 @@ export function filesCodexWouldRead(cwd: string): string[] {
 
 const CODEX_PROJECT_DOC_BUDGET = 32 * 1024
 
-/** ⚑ W4.177 — why, for a Codex file the model may have got only part of, or none of. */
+/** Why a Codex file the model may have got only part of, or none of, is not shown. */
 const PAST_CODEX_BUDGET =
-  'This app keeps this file by its fingerprint only, since BroCrew did not write it, and Codex reads at most 32 KiB of a folder’s AGENTS files in all, so the model may have got only part of this one, or none of it. The agent’s popup shows the file as it is now.'
+  'Codex reads at most 32 KiB of a folder’s AGENTS files in all, so the model may have got only part of this one, or none of it. The agent’s popup shows the file as its launch read it.'
 
 export const given: GivenPolicy = {
   nativeFiles: filesCodexWouldRead,

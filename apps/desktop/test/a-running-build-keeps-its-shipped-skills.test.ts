@@ -1,15 +1,7 @@
-import {
-  cpSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
-import { tmpdir } from 'node:os'
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
+import { scratchFolders } from './helpers/scratch-folders'
 import { skillDigest } from '../src/main/skills/built-in-catalogue'
 import {
   keptShippedSkills,
@@ -23,15 +15,7 @@ import {
  */
 
 const shipped = resolve(import.meta.dirname, '../resources/built-in-skills')
-const folders: string[] = []
-afterEach(() => {
-  for (const folder of folders.splice(0)) rmSync(folder, { recursive: true, force: true })
-})
-const scratch = (name: string): string => {
-  const folder = mkdtempSync(join(realpathSync(tmpdir()), `${name}-`))
-  folders.push(folder)
-  return folder
-}
+const scratch = scratchFolders()
 /** The shipped folder copied, as a build's source tree holds it. */
 const aShippedFolder = (): string => {
   const folder = scratch('shipped-skills')

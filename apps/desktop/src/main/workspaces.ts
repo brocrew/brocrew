@@ -1,3 +1,5 @@
+import { writeAtomicallySync } from '@brobot2/runtime/atomic-write'
+import { isInside } from '@brobot2/shared/paths'
 import { PACKAGED_WORKSPACE_LIST } from './workspace-routing'
 import {
   packagedWorkspaceIsForbidden,
@@ -10,13 +12,12 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
-import { basename, dirname, join, resolve, sep } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import type { WorkspaceFolderVerdict, WorkspaceRow, WorkspaceState } from '../shared/workspaces'
 import {
   DATA_FOLDER,
@@ -120,21 +121,9 @@ function readToRewrite(file: string): ListRow[] {
   return rowsOf(said)
 }
 
-/**
- * Write `content` to `file` whole: through a temporary file of this process's own, renamed over it,
- * so two writers can lose a change but never tear the file; one that fails takes its temporary
- * file with it.
- */
 function writeWhole(file: string, content: string): void {
   mkdirSync(dirname(file), { recursive: true })
-  const temporary = `${file}.${String(process.pid)}.tmp`
-  try {
-    writeFileSync(temporary, content)
-    renameSync(temporary, file)
-  } catch (error) {
-    rmSync(temporary, { force: true })
-    throw error
-  }
+  writeAtomicallySync(file, content)
 }
 
 /** A temporary file a write left (a kill inside it) is taken away after this long. */
@@ -145,7 +134,7 @@ function writeWorkspaceList(file: string, workspaces: readonly ListRow[], now: n
   const name = basename(file)
   try {
     for (const entry of readdirSync(dirname(file))) {
-      if (!entry.startsWith(`${name}.`) || !/\.\d+\.tmp$/.test(entry)) continue
+      if (!entry.startsWith(`${name}.`) || !/\.(?:\d+|[0-9a-f]{12})\.tmp$/.test(entry)) continue
       const left = join(dirname(file), entry)
       if (now - statSync(left).mtimeMs > STALE_TEMPORARY_MS) rmSync(left, { force: true })
     }
@@ -233,9 +222,9 @@ function isNothingOfAnyones(entry: string): boolean {
     entry === 'Thumbs.db' ||
     entry === 'desktop.ini' ||
     entry === WORKSPACE_FILE ||
-    /^workspace\.json\.\d+\.tmp$/.test(entry) ||
+    /^workspace\.json\.(?:\d+|[0-9a-f]{12})\.tmp$/.test(entry) ||
     entry === 'active-theme.json' ||
-    /^active-theme\.json\.\d+\.[0-9a-f-]+\.tmp$/.test(entry)
+    /^active-theme\.json\.(?:\d+\.[0-9a-f-]+|[0-9a-f]{12})\.tmp$/.test(entry)
   )
 }
 
@@ -525,5 +514,5 @@ export async function workspaceRows(options: {
 export function isWithin(path: string, folder: string): boolean {
   const inner = onTheDisk(resolve(path))
   const outer = onTheDisk(resolve(folder))
-  return inner === outer || inner.startsWith(outer.endsWith(sep) ? outer : `${outer}${sep}`)
+  return isInside(outer, inner)
 }
