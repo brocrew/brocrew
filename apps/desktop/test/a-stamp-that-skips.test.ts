@@ -19,8 +19,8 @@ const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/m
 type Entry = { idx: number; version: string; when: number; tag: string; breakpoints: boolean }
 type Journal = { version: string; dialect: string; entries: Entry[] }
 
-const journal = (): Journal =>
-  JSON.parse(readFileSync(join(migrationsFolder, 'meta', '_journal.json'), 'utf8')) as Journal
+const journal = (folder = migrationsFolder): Journal =>
+  JSON.parse(readFileSync(join(folder, 'meta', '_journal.json'), 'utf8')) as Journal
 
 const skippable = (stamps: readonly number[]): readonly number[] =>
   stamps.filter((when, at) => at > 0 && when <= (stamps[at - 1] ?? 0))
@@ -93,7 +93,7 @@ describe('a stamp that skips', () => {
 
   describe('the disk and the journal describe the same tree', () => {
     const disagreements = (folder: string): string[] => {
-      const one = JSON.parse(readFileSync(join(folder, 'meta', '_journal.json'), 'utf8')) as Journal
+      const one = journal(folder)
       const onDisk = readdirSync(folder)
         .filter((name) => name.endsWith('.sql'))
         .map((name) => name.slice(0, -'.sql'.length))
