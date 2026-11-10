@@ -53,6 +53,7 @@ describe('the plugin host on Windows, by its platform seams', () => {
     expect(isWithinOrSame('C:\\Users\\Fern\\Data', 'D:\\Users\\Fern\\Data', 'win32')).toBe(false)
     expect(isWithinOrSame('/fictional/data', '/fictional/data/plugins', 'darwin')).toBe(true)
     expect(isWithinOrSame('/fictional/data', '/fictional/other', 'darwin')).toBe(false)
+    expect(isWithinOrSame('/fictional/data', '/fictional/data-p1', 'darwin')).toBe(false)
     expect(isWithinOrSame('/fictional/data', '/Fictional/data/plugins', 'darwin')).toBe(false)
   })
   it('accepts only drive-letter paths on Windows, never a share or a device path', () => {
