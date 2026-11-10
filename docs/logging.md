@@ -3,7 +3,9 @@
 BroCrew writes one log file per workspace, `logs/brocrew.log` in its data folder, using
 [electron-log 5.4.4](https://github.com/megahertz/electron-log). The plugin service, which runs as its
 own process, writes `service.log` in the plugin root. Settings > General > Debug mode shows both
-paths.
+paths. Main and renderer messages use the same app file through electron-log’s built-in renderer bridge.
+Renderer console calls, uncaught errors and unhandled rejections use that bridge; Debug mode
+filters their detail at the same file transport.
 
 - Errors, warnings and info lines are always written.
 - Console warnings/errors are copied to the file. Uncaught exceptions and default unhandled

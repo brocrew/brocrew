@@ -1,3 +1,4 @@
+import './lib/logging'
 import { createApp } from 'vue'
 import RecoveryApp from './components/RecoveryApp.vue'
 import { keepTheMacZone } from './lib/local-zone'

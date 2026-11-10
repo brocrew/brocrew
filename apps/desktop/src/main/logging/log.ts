@@ -1,4 +1,4 @@
-import log from 'electron-log/node'
+import log from 'electron-log'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 

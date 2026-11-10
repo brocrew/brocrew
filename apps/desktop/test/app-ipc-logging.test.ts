@@ -61,6 +61,6 @@ it('returns successful results unchanged and records their detail only in Debug 
   setDebug(true)
   expect(listener(event)).toBe(result)
   const [, line] = await log.lines(2)
-  expect(line).toContain('[debug] (ipc) app:fictional-save')
+  expect(line).toMatch(/\[debug\] \(ipc\)\s+app:fictional-save/)
   expect(line).toContain('ms:')
 })

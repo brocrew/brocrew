@@ -1,3 +1,4 @@
+import electronLog from 'electron-log/main'
 import { pluginStartupTrace } from './plugins/startup-failure'
 import type { HandedPath } from '../shared/attachment-contracts'
 import { providerSetupServices } from './providers/index'
@@ -2361,6 +2362,7 @@ function start(ownership: HostGateVerdict): void {
   // Only the one app on this data may change which agents are services.
   soleAtThisLaunch = ownership === 'sole'
   openLog(appLogFile(app.getPath('userData')))
+  electronLog.initialize()
   debugChoiceRead = readDebugChoice(app.getPath('userData')).then(setDebug)
   // Presence is for the workspace chooser and deletion check; it does not decide ownership.
   void publishWorkspacePresence(app.getPath('userData')).catch((error: unknown) =>

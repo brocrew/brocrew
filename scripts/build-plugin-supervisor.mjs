@@ -21,6 +21,9 @@ export async function buildPluginSupervisor(
       {
         name: 'standalone-node-sqlite',
         setup(builder) {
+          builder.onResolve({ filter: /^electron-log$/ }, () => ({
+            path: req.resolve('electron-log/node'),
+          }))
           builder.onResolve({ filter: /^better-sqlite3$/ }, () => ({
             path: resolve(root, 'apps/desktop/src/main/plugins/supervisor/sqlite-adapter.ts'),
           }))
