@@ -504,53 +504,75 @@ it.each(keyboardSheets)(
         agentModelAndEffort: async () => null,
       }
       const previous = Object.getOwnPropertyDescriptors(runtime)
-      Object.assign(runtime, answers)
-      const m = mount(RuntimeScreen, {}, { width: 1200, height: 800 })
+      const previousApi = window.api
+      const previousAgentStore = agentStore
       try {
-        wearTheme('defined')
-        await expect.poll(() => agentStore.loaded.value).toBe(true)
-        m.q('rail-team').click()
-        await expect.poll(() => m.all('team-create').length).toBe(1)
-        const opener = m.q('team-create')
-        opener.focus()
-        expect(document.activeElement).toBe(opener)
-        // Supply each real sheet payload through the root's existing overlay store.
-        useOverlays().open(overlay)
-        await expect.poll(() => m.all(ready).length).toBe(1)
-        const host = m.q('overlay-host')
-        expect(host.parentElement).toBe(m.q('overlay-layer'))
-        expect(m.q('overlay-layer').children).toHaveLength(1)
-        const bounds = m.q(ready).getBoundingClientRect()
-        console.info(
-          'S04_OVERLAY_GEOMETRY',
-          JSON.stringify({ sheet: ready, viewport, bounds: bounds.toJSON() }),
-        )
-        expect(bounds.width).toBeGreaterThan(250)
-        expect(bounds.height).toBeGreaterThan(100)
-        expect(bounds.left).toBeGreaterThanOrEqual(0)
-        expect(bounds.top).toBeGreaterThanOrEqual(0)
-        expect(bounds.right).toBeLessThanOrEqual(window.innerWidth)
-        expect(bounds.bottom).toBeLessThanOrEqual(window.innerHeight)
-        await expect.poll(() => host.contains(document.activeElement)).toBe(true)
-        const first = m.q('close-overlay')
-        const last = m.q('overlay-spawning')
-        first.focus()
-        overlayKey('Tab', true)
-        expect(document.activeElement).toBe(last)
-        overlayKey('Tab')
-        expect(document.activeElement).toBe(first)
-        overlayKey('Escape')
-        await expect.poll(() => m.all('overlay-host').length).toBe(0)
-        expect(useOverlays().overlay.value).toBeNull()
-        expect(opener.isConnected).toBe(true)
-        expect(document.activeElement).toBe(opener)
+        Object.assign(runtime, answers)
+        window.api = { ...previousApi, runtime: runtime as unknown as RuntimeBridge }
+        replaceFixtureAgentStore(createAgentStore(window.api.runtime))
+        const m = mount(RuntimeScreen, {}, { width: 1200, height: 800 })
+        try {
+          wearTheme('defined')
+          await expect.poll(() => agentStore.loaded.value).toBe(true)
+          m.q('rail-team').click()
+          await expect.poll(() => m.all('team-create').length).toBe(1)
+          const opener = m.q('team-create')
+          opener.focus()
+          expect(document.activeElement).toBe(opener)
+          // Supply each real sheet payload through the root's existing overlay store.
+          useOverlays().open(overlay)
+          await expect.poll(() => m.all(ready).length).toBe(1)
+          if (overlay.kind === 'agentSections' || overlay.kind === 'agentCapabilities') {
+            await expect.poll(() => m.all('own-instructions-read-at').length).toBe(1)
+            expect(m.all('own-instructions-unreadable')).toHaveLength(0)
+          }
+          if (overlay.kind === 'agentCapabilities') {
+            await expect.poll(() => m.all('agent-model-loading').length).toBe(0)
+            expect(m.all('agent-model-unreadable')).toHaveLength(0)
+          }
+          if (overlay.kind === 'deleteConversation') {
+            await expect.poll(() => m.all('delete-reading').length).toBe(0)
+            expect(m.q('delete-title').textContent).toBe(`Delete ${LISTED.name}?`)
+            expect(m.all('delete-refusal')).toHaveLength(0)
+          }
+          const host = m.q('overlay-host')
+          expect(host.parentElement).toBe(m.q('overlay-layer'))
+          expect(m.q('overlay-layer').children).toHaveLength(1)
+          const bounds = m.q(ready).getBoundingClientRect()
+          console.info(
+            'S04_OVERLAY_GEOMETRY',
+            JSON.stringify({ sheet: ready, viewport, bounds: bounds.toJSON() }),
+          )
+          expect(bounds.width).toBeGreaterThan(250)
+          expect(bounds.height).toBeGreaterThan(100)
+          expect(bounds.left).toBeGreaterThanOrEqual(0)
+          expect(bounds.top).toBeGreaterThanOrEqual(0)
+          expect(bounds.right).toBeLessThanOrEqual(window.innerWidth)
+          expect(bounds.bottom).toBeLessThanOrEqual(window.innerHeight)
+          await expect.poll(() => host.contains(document.activeElement)).toBe(true)
+          const first = m.q('close-overlay')
+          const last = m.q('overlay-spawning')
+          first.focus()
+          overlayKey('Tab', true)
+          expect(document.activeElement).toBe(last)
+          overlayKey('Tab')
+          expect(document.activeElement).toBe(first)
+          overlayKey('Escape')
+          await expect.poll(() => m.all('overlay-host').length).toBe(0)
+          expect(useOverlays().overlay.value).toBeNull()
+          expect(opener.isConnected).toBe(true)
+          expect(document.activeElement).toBe(opener)
+        } finally {
+          m.unmount()
+        }
       } finally {
-        m.unmount()
         for (const key of Object.keys(answers)) {
           const descriptor = previous[key]
           if (descriptor) Object.defineProperty(runtime, key, descriptor)
           else Reflect.deleteProperty(runtime, key)
         }
+        window.api = previousApi
+        replaceFixtureAgentStore(previousAgentStore)
       }
     } finally {
       await page.viewport(viewportBefore.width, viewportBefore.height)
