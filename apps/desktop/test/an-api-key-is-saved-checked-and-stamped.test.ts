@@ -52,7 +52,7 @@ const readTheFile = (): { keys: Record<string, { key: string; setAt: number }> }
   JSON.parse(readFileSync(fileOf(), 'utf8'))
 
 describe('whyNotAKey', () => {
-  it('🔴 accepts a key as a provider shows it, and refuses what no key is', () => {
+  it('accepts a key as a provider shows it, and refuses what no key is', () => {
     expect(whyNotAKey(KEY)).toBeNull()
     expect(whyNotAKey(`  ${KEY}\n`)).toBeNull()
     expect(whyNotAKey('')).toContain('Enter the key')
@@ -64,7 +64,7 @@ describe('whyNotAKey', () => {
     expect(whyNotAKey('a'.repeat(API_KEY_MAX_LENGTH))).toBeNull()
   })
 
-  it('⛔ never quotes what it refuses', () => {
+  it('never quotes what it refuses', () => {
     for (const bad of ['sk secret words', 'sk-ünïcode-secret', 'x'.repeat(600)]) {
       expect(whyNotAKey(bad)).not.toContain(bad.slice(0, 8))
     }
@@ -84,7 +84,7 @@ describe('ApiKeys', () => {
     expect(keys.status('codex').setAt).toBeGreaterThan(second)
   })
 
-  it('🔴 keeps a key in a file only the person can read, trims it, and tells the window no key', async () => {
+  it('keeps a key in a file only the person can read, trims it, and tells the window no key', async () => {
     const keys = new ApiKeys(userData, () => 1234)
     expect(keys.status('claude')).toEqual({
       provider: 'claude',
@@ -113,7 +113,7 @@ describe('ApiKeys', () => {
     expect(keys.status('codex')).not.toHaveProperty('aCheckSpendsAToken')
   })
 
-  it('⚑ a second key replaces the first, at the clock’s moment', async () => {
+  it('a second key replaces the first, at the clock’s moment', async () => {
     let now = 10
     const keys = new ApiKeys(userData, () => now)
     await keys.set('codex', 'sk-first')
@@ -122,13 +122,13 @@ describe('ApiKeys', () => {
     expect(await keys.current('codex')).toEqual({ key: 'sk-second', setAt: 20 })
   })
 
-  it('⛔ a key that is refused is not kept', async () => {
+  it('a key that is refused is not kept', async () => {
     const keys = new ApiKeys(userData)
     expect(await keys.set('claude', 'has space')).toContain('no spaces')
     expect(existsSync(fileOf())).toBe(false)
   })
 
-  it('⚑ remove says whether there was a key, and a removed key is no key', async () => {
+  it('remove says whether there was a key, and a removed key is no key', async () => {
     const keys = new ApiKeys(userData)
     expect(await keys.remove('claude')).toBe(false)
     await keys.set('claude', KEY)
@@ -137,14 +137,14 @@ describe('ApiKeys', () => {
     expect(keys.status('claude').set).toBe(false)
   })
 
-  it('🔴 two providers saved in the same tick both keep their key', async () => {
+  it('two providers saved in the same tick both keep their key', async () => {
     const keys = new ApiKeys(userData)
     await Promise.all([keys.set('claude', KEY), keys.set('codex', 'sk-codex-fern')])
     expect(await keys.read('claude')).toBe(KEY)
     expect(await keys.read('codex')).toBe('sk-codex-fern')
   })
 
-  it('🔴 a keys file that can’t be read stops both starts, is left as it is, and a save sets it aside', async () => {
+  it('a keys file that can’t be read stops both starts, is left as it is, and a save sets it aside', async () => {
     writeFileSync(fileOf(), '{ not json', { mode: 0o600 })
     const keys = new ApiKeys(userData, () => 77)
     for (const provider of ['claude', 'codex'] as const) {
@@ -167,7 +167,7 @@ describe('ApiKeys', () => {
 })
 
 it.skipIf(process.platform === 'win32')(
-  '🔴 a save over an unreadable file that can’t be written leaves that file in place, still refusing',
+  'a save over an unreadable file that can’t be written leaves that file in place, still refusing',
   async () => {
     writeFileSync(fileOf(), '{ not json', { mode: 0o600 })
     const keys = new ApiKeys(userData, () => 77)
@@ -180,7 +180,7 @@ it.skipIf(process.platform === 'win32')(
   },
 )
 
-it('🔴 a key an earlier version sealed is never opened: its start refuses in plain words until it is saved again or removed', async () => {
+it('a key an earlier version sealed is never opened: its start refuses in plain words until it is saved again or removed', async () => {
   const sealed = new Set(['claude', 'codex'])
   const store = {
     hasSealedApiKey: (provider: string) => sealed.has(provider),
@@ -199,7 +199,7 @@ it('🔴 a key an earlier version sealed is never opened: its start refuses in p
   expect(sealed.size).toBe(0)
 })
 
-it('⚑ a key saved again outranks a sealed row the save did not get to clear', async () => {
+it('a key saved again outranks a sealed row the save did not get to clear', async () => {
   const store = { hasSealedApiKey: () => true, forgetSealedApiKey: () => {} }
   const keys = new ApiKeys(userData, () => 5, store)
   expect(await keys.set('codex', KEY)).toBeNull()
@@ -212,7 +212,7 @@ describe('askTheProvider', () => {
     vi.fn(async () => ({ status }) as Response) as unknown as typeof fetch &
       ReturnType<typeof vi.fn>
 
-  it('🔴 asks Anthropic’s free list of models with the key in x-api-key, and OpenAI’s with a bearer', async () => {
+  it('asks Anthropic’s free list of models with the key in x-api-key, and OpenAI’s with a bearer', async () => {
     const claude = answering(200)
     expect(await askTheProvider('claude', KEY, claude)).toEqual({ ok: true })
     const [claudeUrl, claudeInit] = (claude as unknown as ReturnType<typeof vi.fn>).mock.calls[0]!
@@ -230,7 +230,7 @@ describe('askTheProvider', () => {
     expect(codexInit.headers).toEqual({ authorization: `Bearer ${KEY}` })
   })
 
-  it('⛔ every answer is a sentence in BroBot’s own words, and none holds the key', async () => {
+  it('every answer is a sentence in BroBot’s own words, and none holds the key', async () => {
     const said: string[] = []
     for (const status of [401, 403, 429, 500]) {
       const answer = await askTheProvider('claude', KEY, answering(status))
@@ -246,7 +246,7 @@ describe('askTheProvider', () => {
     for (const sentence of said) expect(sentence).not.toContain(KEY)
   })
 
-  it('🔴 a connection that fails says it could not reach the provider — and not what the failure said', async () => {
+  it('a connection that fails says it could not reach the provider — and not what the failure said', async () => {
     const down = vi.fn(async () => {
       throw new Error(`getaddrinfo ENOTFOUND while sending ${KEY}`)
     }) as unknown as typeof fetch
@@ -271,7 +271,7 @@ describe('askTheProvider', () => {
           : ({ status, json: async () => body } as unknown as Response),
       ) as unknown as typeof fetch & ReturnType<typeof vi.fn>
 
-    it('🔴 Claude: one one-token request on the newest Haiku the list names, and a funded key says so', async () => {
+    it('Claude: one one-token request on the newest Haiku the list names, and a funded key says so', async () => {
       const fetched = listThenAnswer(200)
       expect(await askTheProvider('claude', KEY, fetched)).toEqual({
         ok: true,
@@ -287,7 +287,7 @@ describe('askTheProvider', () => {
       expect(fetched).toHaveBeenCalledTimes(2)
     })
 
-    it('🔴 a balance with no credit, a 402 or a billing error: the account can’t pay', async () => {
+    it('a balance with no credit, a 402 or a billing error: the account can’t pay', async () => {
       for (const [status, body] of [
         [
           400,
@@ -305,7 +305,7 @@ describe('askTheProvider', () => {
       }
     })
 
-    it('⚑ control: another refusal of the request is not read as the account', async () => {
+    it('control: another refusal of the request is not read as the account', async () => {
       const answer = await askTheProvider(
         'claude',
         KEY,
@@ -314,13 +314,13 @@ describe('askTheProvider', () => {
       expect(answer).toEqual({ ok: false, reason: expect.stringContaining('answered 400') })
     })
 
-    it('⚑ Codex is asked for its list only', async () => {
+    it('Codex is asked for its list only', async () => {
       const fetched = listThenAnswer(200)
       expect(await askTheProvider('codex', KEY, fetched)).toEqual({ ok: true })
       expect(fetched).toHaveBeenCalledTimes(1)
     })
 
-    it('⚑ the model is read from the list: the newest Haiku, else the newest model, else none', () => {
+    it('the model is read from the list: the newest Haiku, else the newest model, else none', () => {
       expect(theCheapestModel(['claude-opus-9', 'claude-haiku-9', 'claude-haiku-8'])).toBe(
         'claude-haiku-9',
       )
@@ -357,13 +357,13 @@ describe('bringTheCodexKeyTo', () => {
     return { seam, changes }
   }
 
-  it('🔴 with no key and no stamp the home keeps its copied login, and Codex is not asked', async () => {
+  it('with no key and no stamp the home keeps its copied login, and Codex is not asked', async () => {
     const { seam, changes } = aSeam(() => null)
     expect(await bringTheCodexKeyTo(home, seam)).toBe('its-login')
     expect(changes).not.toHaveBeenCalled()
   })
 
-  it('🔴 a key logs the home in once, stamps WHEN it was saved (never the key), and a second look changes nothing', async () => {
+  it('a key logs the home in once, stamps WHEN it was saved (never the key), and a second look changes nothing', async () => {
     const { seam, changes } = aSeam(() => ({ key: KEY, setAt: 500 }))
     expect(await bringTheCodexKeyTo(home, seam)).toBe('the-key')
     expect(changes).toHaveBeenCalledTimes(1)
@@ -375,7 +375,7 @@ describe('bringTheCodexKeyTo', () => {
     expect(changes).toHaveBeenCalledTimes(1)
   })
 
-  it('⛔ the stamp stands only while the home still holds a login: a stamp over no auth.json logs in again', async () => {
+  it('the stamp stands only while the home still holds a login: a stamp over no auth.json logs in again', async () => {
     const { seam, changes } = aSeam(() => ({ key: KEY, setAt: 500 }))
     await bringTheCodexKeyTo(home, seam)
     rmSync(join(home, 'auth.json'))
@@ -383,7 +383,7 @@ describe('bringTheCodexKeyTo', () => {
     expect(changes).toHaveBeenCalledTimes(2)
   })
 
-  it('🔴 a key saved again (a later moment) logs the home in again, with the new one', async () => {
+  it('a key saved again (a later moment) logs the home in again, with the new one', async () => {
     let setAt = 500
     let key = 'sk-first'
     const { seam, changes } = aSeam(() => ({ key, setAt }))
@@ -395,7 +395,7 @@ describe('bringTheCodexKeyTo', () => {
     expect(stamp()).toEqual({ setAt: 900 })
   })
 
-  it('🔴 a removed key logs the home out, drops the stamp, and hands the home back to its copied login', async () => {
+  it('a removed key logs the home out, drops the stamp, and hands the home back to its copied login', async () => {
     let held: { key: string; setAt: number } | null = { key: KEY, setAt: 500 }
     const { seam, changes } = aSeam(() => held)
     await bringTheCodexKeyTo(home, seam)
@@ -408,7 +408,7 @@ describe('bringTheCodexKeyTo', () => {
     expect(changes).toHaveBeenCalledTimes(2)
   })
 
-  it('⛔ a login that fails refuses in BroBot’s words and stamps nothing — never a quiet fallback', async () => {
+  it('a login that fails refuses in BroBot’s words and stamps nothing — never a quiet fallback', async () => {
     const failing = aSeam(
       () => ({ key: KEY, setAt: 500 }),
       async () => ({ ok: false, reason: 'Codex did not start.' }),
@@ -430,7 +430,7 @@ describe('bringTheCodexKeyTo', () => {
     expect(existsSync(join(home, STAMP))).toBe(false)
   })
 
-  it('⛔ a logout that fails keeps the stamp, so the next launch tries it again', async () => {
+  it('a logout that fails keeps the stamp, so the next launch tries it again', async () => {
     let held: { key: string; setAt: number } | null = { key: KEY, setAt: 500 }
     let logoutWorks = false
     const { seam } = aSeam(
@@ -456,7 +456,7 @@ describe('bringTheCodexKeyTo', () => {
     expect(existsSync(join(home, STAMP))).toBe(false)
   })
 
-  it('🔴 a saved key that can’t be used refuses the launch in its own words, and asks Codex nothing', async () => {
+  it('a saved key that can’t be used refuses the launch in its own words, and asks Codex nothing', async () => {
     const { seam, changes } = aSeam(() => {
       throw new ApiKeyUnreadableError('codex')
     })
@@ -470,7 +470,7 @@ describe('bringTheCodexKeyTo', () => {
     await expect(bringTheCodexKeyTo(home, broken)).rejects.toThrow(TypeError)
   })
 
-  it('🔴 changes to ONE home run one at a time, in the order they were asked — and a failure does not block the next', async () => {
+  it('changes to ONE home run one at a time, in the order they were asked — and a failure does not block the next', async () => {
     const order: string[] = []
     const gate: { release: () => void } = { release: () => {} }
     let first = true
@@ -510,7 +510,7 @@ describe('bringTheCodexKeyTo', () => {
     expect(stamp()).toEqual({ setAt: 2 })
   })
 
-  it('⚑ two homes do not wait for each other', async () => {
+  it('two homes do not wait for each other', async () => {
     const other = mkdtempSync(join(tmpdir(), 'brobot2-codexkey-other-'))
     try {
       let release: () => void = () => {}
@@ -553,7 +553,7 @@ describe('prepareProviderHome with a key', () => {
     ...extra,
   })
 
-  it('🔴 a Codex home logged in with the key copies no login, and returns at once', async () => {
+  it('a Codex home logged in with the key copies no login, and returns at once', async () => {
     const copied = vi.fn()
     const { seam, changes } = (() => {
       const changes = vi.fn(async (home: string): Promise<CodexKeyOutcome> => {
@@ -575,7 +575,7 @@ describe('prepareProviderHome with a key', () => {
     expect(existsSync(join(home, 'brobot-api-key-login.json'))).toBe(true)
   })
 
-  it('⚑ …and with no key, the copied login is laid down as before', async () => {
+  it('…and with no key, the copied login is laid down as before', async () => {
     const copied = vi.fn()
     const seam: CodexKeySeam = { current: () => null, change: vi.fn() }
     await prepareProviderHome(
@@ -587,7 +587,7 @@ describe('prepareProviderHome with a key', () => {
     expect(seam.change).not.toHaveBeenCalled()
   })
 
-  it('🔴 a Claude launch with a key set needs no login; one whose key can’t be used refuses, never falling back', async () => {
+  it('a Claude launch with a key set needs no login; one whose key can’t be used refuses, never falling back', async () => {
     await expect(
       prepareProviderHome(
         userData,

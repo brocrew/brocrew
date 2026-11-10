@@ -16,19 +16,12 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 
-/**
- * 🔴 **W4.109 · B1 — what a restart of this app would stop**, read by the updater before it
- * installs: an update never installs mid-turn.
- *
- * ⚑ The stream the host folds is pushed by the test, one event at a time (`575`'s `pushable`), so
- * a message can be on its way into a turn while the provider has said nothing — the case the
- * second review found missing: the provider still says idle, and a restart would cut the turn.
- */
+/** What a restart of this app would stop, read by the updater so an update never installs mid-turn. */
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-/** A handle whose stream this test pushes into (`575`'s). */
+/** A handle whose stream this test pushes into. */
 function pushable(handle: SessionHandle): {
   readonly handle: SessionHandle
   push: (event: RuntimeEvent) => void
@@ -74,7 +67,7 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
 const WORKING = { type: 'status', state: 'working' } as RuntimeEvent
 const IDLE = { type: 'status', state: 'idle' } as RuntimeEvent
 
-describe('W4.109 · B1 · what a restart of this app would stop', () => {
+describe('what a restart of this app would stop', () => {
   let userData: string
   let db: AppDatabase
   let store: SessionStore
@@ -147,15 +140,14 @@ describe('W4.109 · B1 · what a restart of this app would stop', () => {
     )
   }
 
-  it('⚑ a conversation at rest is not listed: a restart would stop nothing', async () => {
+  it('a conversation at rest is not listed: a restart would stop nothing', async () => {
     await open()
     expect(host.whatARestartWouldStop()).toEqual([])
   })
 
-  it('🔴 a message on its way into a turn is a turn running, before its provider says so', async () => {
+  it('a message on its way into a turn is a turn running, before its provider says so', async () => {
     const one = await open()
     await host.send(one, 'do the thing', window)
-    // ⚑ The provider has said nothing yet: the host's own turn is what is open.
     expect(host.whatARestartWouldStop()).toEqual([
       expect.objectContaining({ conversation: one, turnRunning: true }),
     ])

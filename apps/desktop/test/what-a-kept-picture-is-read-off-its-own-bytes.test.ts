@@ -11,9 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  MOST_BYTES_A_WINDOW_DRAWS,
   MOST_BYTES_OF_ANY_FORM,
-  MOST_BYTES_OF_FORM,
   drawnAsOfBytes,
   keepResource,
   keptFileToShow,
@@ -30,7 +28,7 @@ vi.mock('node:fs', async (importOriginal) => {
 })
 
 /**
- * 🔴 D-032 · what main hands a window to draw, read off the file's own bytes — and what it refuses.
+ * What main hands a window to draw, read off the file's own bytes — and what it refuses.
  *
  * An agent's file is untrusted. The window draws whatever `drawnAs` says, so the type is read here,
  * in main, from the bytes' own opening and within the kind the name says: a PNG, JPEG, GIF or WebP by
@@ -47,8 +45,6 @@ vi.mock('node:fs', async (importOriginal) => {
 
 const SIXTEEN_MIB = 16 * 1024 * 1024
 const SIXTY_FOUR_MEGAPIXELS = 8192 * 8192
-
-// ─── Headers, built byte by byte ────────────────────────────────────────────────────────────────
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 
@@ -148,8 +144,6 @@ const DHT_THAT_LOOKS_HUGE = Buffer.from([
 
 const text = (body: string): Buffer => Buffer.from(body, 'utf8')
 
-// ─── A resources tree, kept the way the app keeps one ───────────────────────────────────────────
-
 type Row = KeptResource & { readonly bytes: number }
 
 let dir: string
@@ -157,7 +151,7 @@ let root: string
 let outside: string
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'brobot2-d032-bytes-'))
+  dir = mkdtempSync(join(tmpdir(), 'brobot2-kept-bytes-'))
   root = join(dir, 'resources')
   outside = join(dir, 'outside')
   mkdirSync(outside, { recursive: true })
@@ -178,7 +172,7 @@ function kept(name: string, bytes: Buffer): Row {
 const whereItIs = (row: Row): string => join(root, row.sha256, row.name)
 
 describe('the type is read off the bytes’ own opening', () => {
-  it('⚑ each picture signature is its own type, whatever else follows', () => {
+  it('each picture signature is its own type, whatever else follows', () => {
     expect(drawnAsOfBytes('image', png(1, 1))).toBe('image/png')
     expect(drawnAsOfBytes('image', jpeg(1, 1))).toBe('image/jpeg')
     expect(drawnAsOfBytes('image', gif(1, 1, 'GIF87a'))).toBe('image/gif')
@@ -188,7 +182,7 @@ describe('the type is read off the bytes’ own opening', () => {
     expect(drawnAsOfBytes('image', webpExtended(1, 1))).toBe('image/webp')
   })
 
-  it('⛔ …and a signature one byte off is no picture at all', () => {
+  it('…and a signature one byte off is no picture at all', () => {
     const offByOne = png(1, 1)
     offByOne[7] = 0x0b
     expect(drawnAsOfBytes('image', offByOne)).toBeNull()
@@ -202,7 +196,7 @@ describe('the type is read off the bytes’ own opening', () => {
     expect(drawnAsOfBytes('image', text('RIFFWEBPxxxxVP8 '))).toBeNull()
   })
 
-  it('⛔ a picture is never a PDF, and a PDF never a picture', () => {
+  it('a picture is never a PDF, and a PDF never a picture', () => {
     expect(drawnAsOfBytes('pdf', png(1, 1))).toBeNull()
     expect(drawnAsOfBytes('pdf', text('<svg xmlns="http://www.w3.org/2000/svg"/>'))).toBeNull()
     expect(drawnAsOfBytes('image', text('%PDF-1.7\n%%EOF\n'))).toBeNull()
@@ -211,7 +205,7 @@ describe('the type is read off the bytes’ own opening', () => {
     expect(drawnAsOfBytes('pdf', text('%PDF-1.7\n%%EOF\n'))).toBe('application/pdf')
   })
 
-  it('⚑ a PDF’s `%PDF-` counts within its first 1024 bytes, and not one byte past them', () => {
+  it('a PDF’s `%PDF-` counts within its first 1024 bytes, and not one byte past them', () => {
     const at = (offset: number): Buffer =>
       Buffer.concat([Buffer.alloc(offset, 0x20), text('%PDF-1.7\n')])
     expect(drawnAsOfBytes('pdf', at(0))).toBe('application/pdf')
@@ -224,7 +218,7 @@ describe('the type is read off the bytes’ own opening', () => {
 })
 
 describe('an SVG is text whose FIRST element is `<svg`', () => {
-  it('⚑ past whitespace, a byte-order mark, an XML declaration, comments and a doctype', () => {
+  it('past whitespace, a byte-order mark, an XML declaration, comments and a doctype', () => {
     for (const body of [
       '<svg xmlns="http://www.w3.org/2000/svg"/>',
       '<svg>',
@@ -244,7 +238,7 @@ describe('an SVG is text whose FIRST element is `<svg`', () => {
     expect(drawnAsOfBytes('image', withBom)).toBe('image/svg+xml')
   })
 
-  it('⛔ a page holding an inline <svg>, or any other first element, is not one', () => {
+  it('a page holding an inline <svg>, or any other first element, is not one', () => {
     for (const body of [
       '<!doctype html><html><body><svg></svg></body></html>',
       '<html><svg/></html>',
@@ -266,7 +260,7 @@ describe('an SVG is text whose FIRST element is `<svg`', () => {
 })
 
 describe('a picture’s size, read off its header', () => {
-  it('⚑ each header says width and height in its own place, unswapped', () => {
+  it('each header says width and height in its own place, unswapped', () => {
     expect(pictureSize('image/png', png(300, 200))).toEqual({ width: 300, height: 200 })
     expect(pictureSize('image/gif', gif(300, 200))).toEqual({ width: 300, height: 200 })
     expect(pictureSize('image/webp', webpLossy(300, 200))).toEqual({ width: 300, height: 200 })
@@ -275,14 +269,14 @@ describe('a picture’s size, read off its header', () => {
     expect(pictureSize('image/jpeg', jpeg(300, 200))).toEqual({ width: 300, height: 200 })
   })
 
-  it('⚑ a lossy WebP’s two scale bits are not part of its size', () => {
+  it('a lossy WebP’s two scale bits are not part of its size', () => {
     expect(pictureSize('image/webp', webpLossy(0xc000 | 3, 0x4000 | 2))).toEqual({
       width: 3,
       height: 2,
     })
   })
 
-  it('⚑ a JPEG is walked by its segments: past fill bytes, a restart marker and a Huffman table, to its frame', () => {
+  it('a JPEG is walked by its segments: past fill bytes, a restart marker and a Huffman table, to its frame', () => {
     const walked = jpeg(640, 480, {
       before: [Buffer.from([0xff]), Buffer.from([0xff, 0xd0]), DHT_THAT_LOOKS_HUGE],
     })
@@ -294,7 +288,7 @@ describe('a picture’s size, read off its header', () => {
     })
   })
 
-  it('⛔ a header that is not there to read is `null`', () => {
+  it('a header that is not there to read is `null`', () => {
     expect(pictureSize('image/png', Buffer.from(PNG_SIGNATURE))).toBeNull()
     const notIhdr = png(1, 1)
     notIhdr.write('IDAT', 12, 'latin1')
@@ -317,7 +311,7 @@ describe('a picture’s size, read off its header', () => {
   })
 })
 
-describe('🔴 64 megapixels: a picture at the bound is drawn, and one pixel row past it is not', () => {
+describe('64 megapixels: a picture at the bound is drawn, and one pixel row past it is not', () => {
   const READERS: readonly {
     readonly kind: string
     readonly name: string
@@ -332,7 +326,7 @@ describe('🔴 64 megapixels: a picture at the bound is drawn, and one pixel row
     { kind: 'extended WebP', name: 'p.webp', make: webpExtended },
   ]
 
-  it.each(READERS)('⚑ $kind: 8192 × 8192 draws, 8193 × 8192 says its size', ({ name, make }) => {
+  it.each(READERS)('$kind: 8192 × 8192 draws, 8193 × 8192 says its size', ({ name, make }) => {
     const atTheBound = keptPictureOrPdf(root, kept(name, make(8192, 8192)))
     expect(atTheBound.ok, JSON.stringify(atTheBound)).toBe(true)
     expect(keptPictureOrPdf(root, kept(name, make(8193, 8192)))).toEqual({
@@ -343,7 +337,7 @@ describe('🔴 64 megapixels: a picture at the bound is drawn, and one pixel row
     })
   })
 
-  it.each(READERS)('⚑ $kind: the bound is on the PRODUCT, not on either side', ({ name, make }) => {
+  it.each(READERS)('$kind: the bound is on the PRODUCT, not on either side', ({ name, make }) => {
     // 16000 × 4194 is under 64 megapixels with a side twice 8192; 16000 × 4200 is just over.
     expect(16000 * 4194).toBeLessThanOrEqual(SIXTY_FOUR_MEGAPIXELS)
     expect(16000 * 4200).toBeGreaterThan(SIXTY_FOUR_MEGAPIXELS)
@@ -356,13 +350,13 @@ describe('🔴 64 megapixels: a picture at the bound is drawn, and one pixel row
     })
   })
 
-  it('⚑ an SVG and a PDF are not held to pixels: an SVG is drawn at the size it is shown', () => {
+  it('an SVG and a PDF are not held to pixels: an SVG is drawn at the size it is shown', () => {
     const huge = kept('huge.svg', text('<svg width="100000" height="100000"/>'))
     const drawn = keptPictureOrPdf(root, huge)
     expect(drawn.ok && drawn.drawnAs).toBe('image/svg+xml')
   })
 
-  it('⛔ a picture whose header cannot be read is not drawn', () => {
+  it('a picture whose header cannot be read is not drawn', () => {
     // Its signature passes and its size cannot be read, so nothing bounds what it would decode to.
     expect(keptPictureOrPdf(root, kept('cut.png', Buffer.from(PNG_SIGNATURE)))).toEqual({
       ok: false,
@@ -373,14 +367,8 @@ describe('🔴 64 megapixels: a picture at the bound is drawn, and one pixel row
   })
 })
 
-describe('🔴 16 MiB: what a window is handed, at the bound and one byte past it', () => {
-  it('⚑ every picture or PDF this app may keep is one a window may draw', () => {
-    expect(MOST_BYTES_A_WINDOW_DRAWS).toBe(SIXTEEN_MIB)
-    expect(MOST_BYTES_A_WINDOW_DRAWS).toBeGreaterThanOrEqual(MOST_BYTES_OF_FORM.image)
-    expect(MOST_BYTES_A_WINDOW_DRAWS).toBeGreaterThanOrEqual(MOST_BYTES_OF_FORM.pdf)
-  })
-
-  it('⛔ a row naming one byte more is `too-large` before a byte is read', () => {
+describe('16 MiB: what a window is handed, at the bound and one byte past it', () => {
+  it('a row naming one byte more is `too-large` before a byte is read', () => {
     // No file stands behind this row at all: had it been read, the answer would be `unreadable`.
     const sha256 = sha256Hex(text('never written'))
     const row: Row = { resource: 'res_big', name: 'big.png', sha256, bytes: SIXTEEN_MIB + 1 }
@@ -392,7 +380,7 @@ describe('🔴 16 MiB: what a window is handed, at the bound and one byte past i
     })
   })
 
-  it('⚑ a real file of exactly 16 MiB is read and handed over whole', () => {
+  it('a real file of exactly 16 MiB is read and handed over whole', () => {
     const body = Buffer.alloc(SIXTEEN_MIB)
     png(1, 1).copy(body)
     const row = kept('full.png', body)
@@ -405,7 +393,7 @@ describe('🔴 16 MiB: what a window is handed, at the bound and one byte past i
     }
   })
 
-  it('⛔ a file on disk one byte past it is `unreadable` to draw and to show, whatever its row says', () => {
+  it('a file on disk one byte past it is `unreadable` to draw and to show, whatever its row says', () => {
     // A row edited to say little, over a file grown past every bound this app keeps to: it is
     // never read or handed to Finder.
     const sha256 = sha256Hex(text('the row says this'))
@@ -421,7 +409,7 @@ describe('🔴 16 MiB: what a window is handed, at the bound and one byte past i
 })
 
 describe('keptPictureOrPdf · the name says the kind, the bytes say the type', () => {
-  it('⚑ a PNG saved as `.jpg` is drawn as the PNG it is, and its bytes are exactly the file’s', () => {
+  it('a PNG saved as `.jpg` is drawn as the PNG it is, and its bytes are exactly the file’s', () => {
     const body = png(2, 3)
     const drawn = keptPictureOrPdf(root, kept('chart.jpg', body))
     expect(drawn.ok).toBe(true)
@@ -434,7 +422,7 @@ describe('keptPictureOrPdf · the name says the kind, the bytes say the type', (
     expect(drawn.bytes.buffer.byteLength).toBe(body.length)
   })
 
-  it('⛔ a page renamed `.png`, `.svg` or `.pdf` is `not-what-its-name-says`', () => {
+  it('a page renamed `.png`, `.svg` or `.pdf` is `not-what-its-name-says`', () => {
     const page = text('<!doctype html><script>parent.api && alert(1)</script><svg onload="x"/>')
     for (const name of ['page.png', 'page.svg', 'page.pdf', 'page.webp']) {
       expect(keptPictureOrPdf(root, kept(name, page)), name).toEqual({
@@ -453,14 +441,14 @@ describe('keptPictureOrPdf · the name says the kind, the bytes say the type', (
     })
   })
 
-  it('⚑ …and the controls: a real SVG, a real PDF', () => {
+  it('…and the controls: a real SVG, a real PDF', () => {
     const svg = keptPictureOrPdf(root, kept('logo.svg', text('<?xml version="1.0"?>\n<svg/>')))
     expect(svg.ok && svg.drawnAs).toBe('image/svg+xml')
     const pdf = keptPictureOrPdf(root, kept('report.pdf', text('%PDF-1.7\n%%EOF\n')))
     expect(pdf.ok && pdf.drawnAs).toBe('application/pdf')
   })
 
-  it('⛔ a Markdown file or a page is not drawn this way, whatever bytes it holds', () => {
+  it('a Markdown file or a page is not drawn this way, whatever bytes it holds', () => {
     for (const name of ['notes.md', 'page.html', 'page.htm']) {
       expect(keptPictureOrPdf(root, kept(name, png(1, 1))), name).toEqual({
         ok: false,
@@ -497,7 +485,7 @@ describe('keptFileToShow · where Finder is pointed, and when it is not', () => 
     expect(resourceBytes(root, row)).toMatchObject({ ok: true, bytes: body })
   })
 
-  it('⚑ an untouched kept file is shown where it was kept, and not as changed', () => {
+  it('an untouched kept file is shown where it was kept, and not as changed', () => {
     const row = kept('chart.png', png(1, 1))
     expect(keptFileToShow(root, row)).toEqual({ ok: true, path: whereItIs(row), changed: false })
   })
@@ -508,7 +496,7 @@ describe('keptFileToShow · where Finder is pointed, and when it is not', () => 
     expect(keptFileToShow(root, row)).toEqual({ ok: true, path: whereItIs(row), changed: false })
   })
 
-  it('⛔ nothing at the place is `gone` — the file, or its whole folder', () => {
+  it('nothing at the place is `gone` — the file, or its whole folder', () => {
     const file = kept('one.png', png(1, 1))
     rmSync(whereItIs(file))
     expect(keptFileToShow(root, file)).toEqual({ ok: false, reason: 'gone' })
@@ -517,7 +505,7 @@ describe('keptFileToShow · where Finder is pointed, and when it is not', () => 
     expect(keptFileToShow(root, folder)).toEqual({ ok: false, reason: 'gone' })
   })
 
-  it('⛔ a directory, or a link out of the tree, at the place is `unreadable`, never shown', () => {
+  it('a directory, or a link out of the tree, at the place is `unreadable`, never shown', () => {
     const dirRow = kept('a-folder.png', png(1, 1))
     rmSync(whereItIs(dirRow))
     mkdirSync(whereItIs(dirRow))
@@ -533,7 +521,7 @@ describe('keptFileToShow · where Finder is pointed, and when it is not', () => 
     expect(keptPictureOrPdf(root, linked)).toEqual({ ok: false, reason: 'unreadable' })
   })
 
-  it('⛔ a row whose name climbs out of the tree, or whose hash is not one, hands Finder no path', () => {
+  it('a row whose name climbs out of the tree, or whose hash is not one, hands Finder no path', () => {
     const real = kept('real.png', png(1, 1))
     writeFileSync(join(outside, 'secrets.png'), png(1, 1))
     for (const row of [

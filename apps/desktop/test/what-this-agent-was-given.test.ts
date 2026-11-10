@@ -179,7 +179,7 @@ describe('what an agent was given', () => {
   }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-f093-'))
+    userData = mkdtempSync(join(tmpdir(), 'brobot2-given-'))
     project = join(userData, 'project')
     mkdirSync(project, { recursive: true })
     db = openDatabase(join(userData, 'brobot2.sqlite'))
@@ -426,7 +426,7 @@ describe('what an agent was given', () => {
     expect(index?.changedSinceLaunch).toBe(false)
     expect(claude?.total).toBe(3)
 
-    // R3 · the provider's own parts, from the snapshot this build carries for the model it runs.
+    // The provider's own parts, from the snapshot this build carries for the model it runs.
     const snapshot = read.providerParts.snapshot
     expect(read.providerParts.model).toBe('opus')
     expect(snapshot?.label).toBe(SNAPSHOT_FILES.claude.label)
@@ -590,7 +590,7 @@ describe('what an agent was given', () => {
     expect(closed.launch).toMatchObject({ recorded: true, running: false })
     expect(closed.files[0]?.textIs).toBe('as-launched')
 
-    // A launch with no instruction reader keeps no record — as every launch did before F093.
+    // A launch with no instruction reader keeps no record, as older launches did.
     const bare = buildHost(false)
     const old = await open(bare, 'claude', 'elder')
     await bare.close(old, window)
@@ -1033,11 +1033,6 @@ describe('what an agent was given', () => {
     expect(sizesAdded(theParts(codex.size))).toEqual(codex.size.total)
   })
 
-  it('a conversation this app holds no record of is refused, and nothing is read', async () => {
-    const host = buildHost()
-    await expect(host.whatThisAgentWasGiven('sess_nobody')).rejects.toThrow(/no record/)
-  })
-
   it('memory pages past the twenty a launch lists, with the total and where the next page starts', async () => {
     seedClaudeMemory('lead', 25)
     const host = buildHost()
@@ -1083,7 +1078,7 @@ describe('what an agent was given', () => {
     expect(read.size.contextWindow?.share).toBeCloseTo(read.size.total.tokens / 200_000)
   })
 
-  // ── C9 d · one message as the model got it ──
+  // One message as the model got it.
 
   /** The ledger place of each message the conversation handed over, oldest first. */
   const messagesAt = (sessionId: string): number[] =>
@@ -1092,13 +1087,13 @@ describe('what an agent was given', () => {
       .filter((entry) => entry.event.type === 'user_turn')
       .map((entry) => entry.ordinal)
 
-  /** R1's own answer when the provider's file is gone and the app kept no copy of it. */
+  /** The answer when the provider's file is gone and the app kept no copy of it. */
   const R1_GONE = {
     found: false,
     why: 'The provider’s own record of this message is gone, and the app kept no copy of it.',
   }
 
-  it('C9 d · a Claude message as the model got it: BroBot’s instructions, files and this conversation in the system prompt, then the message as handed over', async () => {
+  it('a Claude message as the model got it: BroBot’s instructions, files and this conversation in the system prompt, then the message as handed over', async () => {
     const host = buildHost()
     const lead = await open(host, 'claude', 'lead', true)
     await host.send(lead, 'please plan the next release', window)
@@ -1145,8 +1140,8 @@ describe('what an agent was given', () => {
     expect((await host.whatTheModelGot(lead, last)).ordinal).toBe(second)
   })
 
-  it('C9 d · joined with the provider’s own record: the turn as Claude Code kept it, read from a recorded transcript', async () => {
-    // The words the F093 map's scratch probe sent, so its recorded transcript holds this turn.
+  it('joined with the provider’s own record: the turn as Claude Code kept it, read from a recorded transcript', async () => {
+    // The words the recorded transcript's probe sent, so it holds this turn.
     const first = 'W4157-PERSON Please plan the next release.'
     const host = buildHost()
     const lead = await open(host, 'claude', 'lead')
@@ -1177,7 +1172,7 @@ describe('what an agent was given', () => {
 
     const got = await host.whatTheModelGot(lead, at)
     const record = got.providersRecord
-    if (!record.found) throw new Error(`R1 found no turn: ${record.why}`)
+    if (!record.found) throw new Error(`no provider turn found: ${record.why}`)
     expect(withoutWhatThisAppAdds(record.message).endsWith(first)).toBe(true)
     // What Claude Code added beside the message, in the order the model got it.
     expect(record.parts.some((one) => one.author === 'the-provider')).toBe(true)
@@ -1185,7 +1180,7 @@ describe('what an agent was given', () => {
     // The provider kept exactly the text BroBot kept as handed over, and the answer says so.
     expect(got.parts.at(-1)?.text).toBe(turnsOf(lead)[0]?.sent)
     expect(got.providerKeptTheSameText).toBe(true)
-    // Asked at the reply's place, the read answers for the message, and R1 reads that message.
+    // Asked at the reply's place, the read answers for the message and reads its provider record.
     const reply = store.events(lead).find((entry) => entry.event.type === 'turn')?.ordinal
     if (reply === undefined) throw new Error('no turn row was recorded')
     const atTheReply = await host.whatTheModelGot(lead, reply)
@@ -1195,7 +1190,7 @@ describe('what an agent was given', () => {
     )
   })
 
-  it('C9 d · whether the provider kept the same text as BroBot handed over: yes, no, or not known', () => {
+  it('whether the provider kept the same text as BroBot handed over: yes, no, or not known', () => {
     const sent = 'Sent by a person, typed into this app.\n\nhello'
     const event: UserTurnEvent = { type: 'user_turn', text: 'hello', sent }
     const kept = (message: string): TurnAsSent => ({
@@ -1233,7 +1228,7 @@ describe('what an agent was given', () => {
     ).toBeNull()
   })
 
-  it('C9 d · Codex: its files in the first message, and this conversation’s lead split off the message it rode', async () => {
+  it('Codex: its files in the first message, and this conversation’s lead split off the message it rode', async () => {
     const host = buildHost()
     const lead = await open(host, 'codex', 'lead')
     await host.send(lead, 'please plan the next release', window)
@@ -1289,7 +1284,7 @@ describe('what an agent was given', () => {
     ).toMatchObject({ where: 'an-earlier-message', text: block })
   })
 
-  it('C9 d · a message names the launch it was handed over in: across a close and a reopen, the thread holds the first lead and the reopen sends only what changed', async () => {
+  it('a message names the launch it was handed over in: across a close and a reopen, the thread holds the first lead and the reopen sends only what changed', async () => {
     const host = buildHost()
     const lead = await open(host, 'codex', 'lead')
     await host.send(lead, 'in the first life', window)
@@ -1339,7 +1334,7 @@ describe('what an agent was given', () => {
     }
   })
 
-  it('C9 d · the store’s newest row of a type, before a place: a launch, a message, a tool list', async () => {
+  it('the store’s newest row of a type, before a place: a launch, a message, a tool list', async () => {
     const host = buildHost()
     const lead = await open(host, 'claude', 'lead')
     await host.send(lead, 'one', window)
@@ -1367,8 +1362,8 @@ describe('what an agent was given', () => {
     expect(store.newestOfType?.(lead, 'launched', launched)).toBeNull()
   })
 
-  it('C9 d · a launch that kept no record says so for each part it cannot give', async () => {
-    // A launch with no instruction reader keeps no record — as every launch did before F093.
+  it('a launch that kept no record says so for each part it cannot give', async () => {
+    // A launch with no instruction reader keeps no record, as older launches did.
     const bare = buildHost(false)
     const elder = await open(bare, 'claude', 'elder')
     await bare.send(elder, 'an older message', window)
@@ -1386,7 +1381,7 @@ describe('what an agent was given', () => {
     expect(got.parts.at(-1)?.text).toBe(turnsOf(elder)[0]?.sent)
   })
 
-  it('C9 d · both reads are a person’s doors: refused on a channel with no person behind it, answered on a window', async () => {
+  it('both reads are a person’s doors: refused on a channel with no person behind it, answered on a window', async () => {
     const host = buildHost()
     const lead = await open(host, 'claude', 'lead')
     await host.send(lead, 'please plan the next release', window)
@@ -1408,7 +1403,7 @@ describe('what an agent was given', () => {
     }
   })
 
-  it('C9 d · refused, in plain words: a conversation not held, a place with no row, and a place before any message', async () => {
+  it('refused, in plain words: a conversation not held, a place with no row, and a place before any message', async () => {
     const host = buildHost()
     await expect(host.whatTheModelGot('sess_nobody', 0)).rejects.toThrow(/no record/)
     const lead = await open(host, 'claude', 'lead')

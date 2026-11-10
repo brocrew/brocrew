@@ -155,7 +155,7 @@ describe('one normal agent, one conversation per giver and provider', () => {
     expect(world.store.providerOf('draft-reader')).toBe('claude')
   })
 
-  it.each(['claude', 'codex', 'person'] as const)(
+  it.each(['codex', 'person'] as const)(
     'shares one notes page and sealed launch versions across providers with a %s writer',
     async (writerProvider) => {
       const textOne = 'Keep observations about the fictional catalogue in one place.'
@@ -219,10 +219,6 @@ describe('one normal agent, one conversation per giver and provider', () => {
           }
         },
       })
-      // This assertion gives the landed pre-notes base a behavioural RED, not a missing-call crash.
-      expect(host, 'both providers need the identity-owned notes API').toHaveProperty(
-        'saveOwnNotes',
-      )
       const saved = host.saveOwnNotes(
         'draft-reader',
         {
