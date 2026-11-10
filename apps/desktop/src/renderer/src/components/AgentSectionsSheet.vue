@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tabDestination } from '../lib/tab-destination'
 import { ref, useId, watch } from 'vue'
 import OwnInstructions from './OwnInstructions.vue'
 import OwnNotes from './OwnNotes.vue'
@@ -32,16 +33,7 @@ watch(
 )
 function move(event: KeyboardEvent) {
   const index = tabs.findIndex((tab) => tab.key === selected.value)
-  const next =
-    event.key === 'ArrowRight'
-      ? (index + 1) % tabs.length
-      : event.key === 'ArrowLeft'
-        ? (index + tabs.length - 1) % tabs.length
-        : event.key === 'Home'
-          ? 0
-          : event.key === 'End'
-            ? tabs.length - 1
-            : null
+  const next = tabDestination(event.key, index, tabs.length)
   if (next === null) return
   event.preventDefault()
   selected.value = tabs[next]!.key

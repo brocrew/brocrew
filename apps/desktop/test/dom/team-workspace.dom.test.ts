@@ -82,6 +82,26 @@ afterEach(unmountAll)
 beforeEach(() => vi.clearAllMocks())
 
 describe('Team workspace fold and door', () => {
+  it('keeps both arrow axes, wrap and focus on the selected team tab', async () => {
+    const view = mount(TeamWorkspace, { agents, store })
+    for (const [key, destination] of [
+      ['ArrowDown', 'forest'], ['ArrowUp', 'roster'], ['ArrowLeft', 'profile-graph'],
+      ['ArrowRight', 'roster'], ['End', 'profile-graph'], ['Home', 'roster'],
+    ]) {
+      const on = view.host.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')!
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+      on.dispatchEvent(event)
+      await nextTick()
+      expect(event.defaultPrevented).toBe(true)
+      const target = view.q(`team-tab-${destination}`)
+      expect(target.getAttribute('aria-selected')).toBe('true')
+      expect(document.activeElement).toBe(target)
+      expect(view.host.querySelectorAll('[role="tab"][tabindex="0"]')).toHaveLength(1)
+    }
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    view.q('team-tab-roster').dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+  })
   it('renders literal slug fallback, never-run history, provider absence, and orphan folders', () => {
     const mounted = mount(TeamWorkspace, { agents, store })
     expect(mounted.q('team-workspace').textContent).toContain('BroBot')

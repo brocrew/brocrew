@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tabDestination } from '../lib/tab-destination'
 import { computed, ref } from 'vue'
 import AgentBookButton from './AgentBookButton.vue'
 import type { AgentIdentities } from '../../../shared/runtime-ipc'
@@ -141,17 +142,10 @@ const strip = ref<HTMLElement | null>(null)
  */
 function steer(event: KeyboardEvent, at: number): void {
   const keys = TEAM_VIEWS.map((one) => one.key)
-  const to =
-    event.key === 'ArrowRight' || event.key === 'ArrowDown'
-      ? (at + 1) % keys.length
-      : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
-        ? (at - 1 + keys.length) % keys.length
-        : event.key === 'Home'
-          ? 0
-          : event.key === 'End'
-            ? keys.length - 1
-            : -1
-  if (to < 0) return
+  const keyPressed =
+    event.key === 'ArrowDown' ? 'ArrowRight' : event.key === 'ArrowUp' ? 'ArrowLeft' : event.key
+  const to = tabDestination(keyPressed, at, keys.length)
+  if (to === null || to < 0) return
   event.preventDefault()
   const key = keys[to]
   if (key === undefined) return

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tabDestination } from '../lib/tab-destination'
 import type { WhatAPickBecame } from '../../../shared/model-choice-contracts'
 import type { AgentState } from '../../../shared/agent-state-contracts'
 
@@ -328,22 +329,8 @@ const strip = ref<HTMLElement | null>(null)
  * The template raises the change, so only a person's gesture ever selects a tab.
  */
 function steer(event: KeyboardEvent, at: number): DrawerTab | null {
-  const last = tabs.value.length - 1
-  const to =
-    event.key === 'ArrowRight'
-      ? at === last
-        ? 0
-        : at + 1
-      : event.key === 'ArrowLeft'
-        ? at === 0
-          ? last
-          : at - 1
-        : event.key === 'Home'
-          ? 0
-          : event.key === 'End'
-            ? last
-            : -1
-  const next = tabs.value[to]
+  const to = tabDestination(event.key, at, tabs.value.length, 'edge')
+  const next = to === null ? undefined : tabs.value[to]
   if (!next) return null
   event.preventDefault()
   strip.value?.querySelector<HTMLElement>(`[data-cy="drawer-tab-${next.id}"]`)?.focus()
