@@ -25,6 +25,7 @@ import type { PanelAsset, PanelEntry, SessionPanel as SessionPanelView } from '.
 import type { TranscriptState } from '../lib/transcript'
 import { isVisibleIn, type TranscriptMode } from '../lib/transcript-mode'
 import { panelWords } from '../lib/latest-words'
+import { briefsOf } from '../lib/piece-briefs'
 
 import HumanAnswerDialog from './HumanAnswerDialog.vue'
 import type { CastTask } from '../lib/working-together'
@@ -216,20 +217,7 @@ const hasOpenTask = computed(
   () => root.value !== null || (props.tasks?.some((one) => one.piece.open) ?? false),
 )
 
-/**
- * ⚑ **Each piece's brief, by its label** — the words that gave it, which arrived in this
- * conversation as the turn that opened it (`RelayedItem.opened`). ⛔ Only where this window holds
- * the transcript, and the newest words for a label win: a new brief replaces the old.
- */
-const briefs = computed(() => {
-  const found = new Map<string, string>()
-  for (const item of props.state.items) {
-    const label = item.kind === 'relayed' ? item.opened?.label : undefined
-    if (label !== undefined && item.kind === 'relayed' && item.text.trim() !== '')
-      found.set(label, item.text.trim())
-  }
-  return found
-})
+const briefs = computed(() => briefsOf(props.state))
 
 /**
  * Show the latest words and their age beside the plate only when this window holds the transcript. See `latest-words.ts`.

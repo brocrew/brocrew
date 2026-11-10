@@ -4,6 +4,7 @@ import { computed, ref } from 'vue'
 import type { WorkThatNamesIt } from '../../../shared/piece-called'
 import type { TranscriptState } from '../lib/transcript'
 import type { CastTask } from '../lib/working-together'
+import { briefsOf } from '../lib/piece-briefs'
 import TaskList from './TaskList.vue'
 
 /**
@@ -59,16 +60,7 @@ const shownRoot = computed(() =>
 )
 const found = computed(() => shownTasks.value.length + (shownRoot.value ? 1 : 0))
 
-/** ⚑ Each piece's brief, by its label — the words that gave it, newest winning. */
-const briefs = computed(() => {
-  const byLabel = new Map<string, string>()
-  for (const item of props.state.items) {
-    const label = item.kind === 'relayed' ? item.opened?.label : undefined
-    if (label !== undefined && item.kind === 'relayed' && item.text.trim() !== '')
-      byLabel.set(label, item.text.trim())
-  }
-  return byLabel
-})
+const briefs = computed(() => briefsOf(props.state))
 </script>
 
 <template>

@@ -17,6 +17,7 @@ import { formatTokens, groupTokens, percentText } from './context-meter'
 import { panelWords } from './latest-words'
 import { FOR_A_PERSON } from './outgoing-card'
 import { basenameOf } from './paths'
+import { briefsOf } from './piece-briefs'
 import { processMemoryWords } from './process-memory'
 import type { TranscriptState } from './transcript'
 import {
@@ -381,17 +382,6 @@ export function agentPanel(input: AgentPanelInput): AgentPanel {
             : null,
     },
   }
-}
-
-/** ⚑ Each piece's brief, by its label — the relayed message that opened it (`AgentCard`'s rule). */
-function briefsOf(state: TranscriptState): ReadonlyMap<string, string> {
-  const found = new Map<string, string>()
-  for (const item of state.items) {
-    if (item.kind !== 'relayed') continue
-    const label = item.opened?.label
-    if (label !== undefined && item.text.trim() !== '') found.set(label, item.text.trim())
-  }
-  return found
 }
 
 function taskOf(one: CastTask, briefs: ReadonlyMap<string, string>): AgentPanelTask {
