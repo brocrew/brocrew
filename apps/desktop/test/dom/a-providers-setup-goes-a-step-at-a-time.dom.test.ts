@@ -1,3 +1,4 @@
+import { memoryStorage } from './memory-storage'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick, type Component } from 'vue'
@@ -13,6 +14,7 @@ import type {
   RuntimeBridge,
   AuthState,
   CapabilityStatus,
+  Provider,
   ProviderCapabilityMap,
   ProviderProgram,
   ProviderProgramStanding,
@@ -42,20 +44,6 @@ const settled = async (): Promise<void> => {
   for (let i = 0; i < 6; i += 1) {
     await new Promise((resolve) => setTimeout(resolve, 0))
     await nextTick()
-  }
-}
-
-const memoryStorage = (): Storage => {
-  const kept = new Map<string, string>()
-  return {
-    get length() {
-      return kept.size
-    },
-    clear: () => kept.clear(),
-    getItem: (key: string) => kept.get(key) ?? null,
-    key: (index: number) => [...kept.keys()][index] ?? null,
-    removeItem: (key: string) => void kept.delete(key),
-    setItem: (key: string, value: string) => void kept.set(key, String(value)),
   }
 }
 

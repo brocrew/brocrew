@@ -1,3 +1,4 @@
+import { memoryStorage } from './memory-storage'
 import type { AgentState } from '../../src/shared/agent-state-contracts'
 import type {
   AskedQuestion,
@@ -125,20 +126,6 @@ const keydown = (box: HTMLElement, init: KeyboardEventInit): KeyboardEvent => {
 }
 
 /** ⚑ This file's own `localStorage`, for the rail's fold (the dom project shares one origin). */
-const memoryStorage = (): Storage => {
-  const kept = new Map<string, string>()
-  return {
-    get length() {
-      return kept.size
-    },
-    clear: () => kept.clear(),
-    getItem: (key: string) => kept.get(key) ?? null,
-    key: (index: number) => [...kept.keys()][index] ?? null,
-    removeItem: (key: string) => void kept.delete(key),
-    setItem: (key: string, value: string) => void kept.set(key, String(value)),
-  }
-}
-
 let storage: Storage
 
 beforeEach(() => {

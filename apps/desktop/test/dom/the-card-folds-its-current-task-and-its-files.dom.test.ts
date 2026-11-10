@@ -1,3 +1,4 @@
+import { memoryStorage } from './memory-storage'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { userEvent } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -16,20 +17,6 @@ import { META, drawerProps, mount, unmountAll, visible, type Mounted } from './h
  */
 
 /** This file's own storage: the dom project runs files side by side on one origin. */
-const memoryStorage = (): Storage => {
-  const kept = new Map<string, string>()
-  return {
-    get length() {
-      return kept.size
-    },
-    clear: () => kept.clear(),
-    getItem: (key: string) => kept.get(key) ?? null,
-    key: (index: number) => [...kept.keys()][index] ?? null,
-    removeItem: (key: string) => void kept.delete(key),
-    setItem: (key: string, value: string) => void kept.set(key, String(value)),
-  }
-}
-
 let storage: Storage
 
 beforeEach(() => {

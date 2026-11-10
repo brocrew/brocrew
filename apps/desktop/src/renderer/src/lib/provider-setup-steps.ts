@@ -33,7 +33,7 @@ export interface SetupFacts {
 }
 
 /** Whether there is a program to install and keep updated: not for a copy this app carries. */
-export function hasAProgramToInstall(facts: SetupFacts): boolean {
+function hasAProgramToInstall(facts: SetupFacts): boolean {
   if (facts.setup === null) return false
   return facts.version?.program?.from !== 'carried'
 }
