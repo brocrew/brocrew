@@ -341,12 +341,6 @@ const voiceActive = voice.active
 const voicePhase = voice.phase
 const voiceError = voice.error
 const voiceSettingsPane = voice.settingsPane
-const voiceRemaining = voice.remaining
-/** The countdown beside the mic while it listens, as minutes and seconds. */
-const voiceCountdown = computed(
-  () =>
-    `${Math.floor(voiceRemaining.value / 60)}:${String(voiceRemaining.value % 60).padStart(2, '0')}`,
-)
 /** The reason Send can't go, the first of the caller's, or `null` when it can. */
 const blockedWords = computed(() => props.blocked[0]?.words ?? null)
 
@@ -1468,12 +1462,6 @@ defineExpose({
             <rect x="9" y="2" width="6" height="12" rx="3" />
             <path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8" />
           </svg>
-          <span
-            v-if="voicePhase === 'listening'"
-            class="voice-countdown"
-            data-cy="voice-countdown"
-            >{{ voiceCountdown }}</span
-          >
         </button>
         <template v-if="busyChoices">
           <button
@@ -1689,19 +1677,11 @@ defineExpose({
   color: var(--muted);
   cursor: pointer;
 }
-/* Listening: the mic is the one lit control, and it counts down to the automatic stop. */
+/* Listening: the mic is the one lit control until the person stops it. */
 .voice-button.listening {
-  width: auto;
-  padding: 0 var(--space-4);
   border-color: var(--accent-solid-bg);
   background: var(--accent-solid-bg);
   color: var(--accent-ink);
-  gap: var(--space-2);
-}
-.voice-countdown {
-  font-size: var(--type-caption);
-  font-variant-numeric: tabular-nums;
-  font-weight: var(--fw-semibold);
 }
 .voice-button:disabled {
   opacity: 0.45;

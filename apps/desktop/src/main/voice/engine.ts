@@ -91,7 +91,9 @@ export function runVoiceHelper(
           }
           phase = next
           announced = true
-          bound(next === 'permission' ? 120_000 : next === 'listening' ? 52_000 : 15_000)
+          // Listening lasts until the person stops or cancels; only waits on the system are bounded.
+          if (next === 'listening') clearTimeout(deadline)
+          else bound(next === 'permission' ? 120_000 : 15_000)
           state(next)
         } else if (
           typeof value.text === 'string' &&

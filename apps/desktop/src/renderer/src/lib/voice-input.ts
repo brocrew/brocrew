@@ -1,6 +1,5 @@
 import { computed, onBeforeUnmount, ref, watch, type Ref } from 'vue'
 import {
-  VOICE_CAPTURE_SECONDS,
   VOICE_ERRORS,
   appendDictation,
   isVoiceSettingsPane,
@@ -20,19 +19,12 @@ export function useVoiceInput(options: {
   const error = computed(() => (failure.value ? VOICE_ERRORS[failure.value] : ''))
   /** The System Settings pane that fixes the current error, if one does. */
   const settingsPane = computed(() => (isVoiceSettingsPane(failure.value) ? failure.value : null))
-  const remaining = ref(VOICE_CAPTURE_SECONDS)
   const version = ref(0)
   const active = computed(() => phase.value !== 'idle' && phase.value !== 'error')
   let current: { id: string; identity: object; release: () => void } | undefined
-  let ticker: ReturnType<typeof setInterval> | undefined
-  const clearTicker = (): void => {
-    clearInterval(ticker)
-    ticker = undefined
-  }
   const cancel = (): void => {
     const request = current
     current = undefined
-    clearTicker()
     phase.value = 'idle'
     request?.release()
     if (request) void options.bridge?.cancel(request.id).catch(() => undefined)
@@ -42,21 +34,12 @@ export function useVoiceInput(options: {
     if (!bridge?.supported || active.value || !options.allowed()) return
     version.value += 1
     failure.value = null
-    remaining.value = VOICE_CAPTURE_SECONDS
     phase.value = 'permission'
     const request = { id: crypto.randomUUID(), identity: options.identity(), release: () => {} }
     current = request
     request.release = bridge.onState((state) => {
       if (current !== request || state.id !== request.id) return
       phase.value = state.phase
-      clearTicker()
-      if (state.phase === 'listening') {
-        const until = Date.now() + VOICE_CAPTURE_SECONDS * 1_000
-        ticker = setInterval(() => {
-          remaining.value = Math.max(0, Math.ceil((until - Date.now()) / 1_000))
-          if (remaining.value === 0) stop()
-        }, 200)
-      }
     })
     try {
       const result = await bridge.start(request.id)
@@ -78,14 +61,12 @@ export function useVoiceInput(options: {
       request.release()
       if (current === request) {
         current = undefined
-        clearTicker()
       }
     }
   }
   function stop(): void {
     if (!current || phase.value !== 'listening') return
     phase.value = 'transcribing'
-    clearTicker()
     void options.bridge?.stop(current.id).catch(() => cancel())
   }
   function dismiss(): void {
@@ -111,7 +92,6 @@ export function useVoiceInput(options: {
     phase,
     error,
     settingsPane,
-    remaining,
     active,
     version,
     start,

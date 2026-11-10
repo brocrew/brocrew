@@ -81,12 +81,11 @@ async function click(el: HTMLElement) {
   await nextTick()
 }
 
-it('records, shows a countdown, preserves live edits and requires a fresh Send', async () => {
+it('records, preserves live edits and requires a fresh Send', async () => {
   const c = composer()
   await click(c.m.q('voice-mic'))
   expect(c.m.q('voice-status').textContent).toContain('Waiting for permission')
   await c.phase('listening')
-  expect(c.m.q('voice-countdown').textContent).toBe('0:50')
   c.draft.value = 'Keep my edited draft'
   await nextTick()
   expect((c.m.q('send-prompt') as HTMLButtonElement).disabled).toBe(true)
@@ -185,21 +184,6 @@ it('keeps Send dark when the composer reports a blocker over a typed draft', asy
   await nextTick()
   expect((c.m.q('send-prompt') as HTMLButtonElement).disabled).toBe(true)
   expect(c.m.q('send-blocked').textContent).toContain('This conversation is closing')
-})
-
-it('counts down and asks the core to stop at fifty seconds', async () => {
-  vi.useFakeTimers()
-  const c = composer()
-  await click(c.m.q('voice-mic'))
-  await c.phase('listening')
-  await vi.advanceTimersByTimeAsync(25_000)
-  await nextTick()
-  expect(c.m.q('voice-countdown').textContent).toBe('0:25')
-  await vi.advanceTimersByTimeAsync(25_000)
-  await nextTick()
-  expect(c.bridge.stop).toHaveBeenCalledOnce()
-  expect(c.m.q('voice-status').textContent).toContain('Transcribing')
-  expect(c.send).not.toHaveBeenCalled()
 })
 
 it('requires a fresh Send when an earlier Send was waiting for an attachment', async () => {

@@ -136,11 +136,10 @@ describe('the native pipe', () => {
     child.emit('close', null)
     expect(await session.result).toEqual({ ok: false, error: 'protocol' })
   })
-  it('bounds permission wait, capture and finalization independently', async () => {
+  it('bounds permission wait and finalization independently', async () => {
     vi.useFakeTimers()
     for (const [phases, duration] of [
       [[], 120000],
-      [['permission', 'listening'], 52000],
       [['permission', 'listening', 'transcribing'], 15000],
     ] as const) {
       const { child, session, frame } = fakeChild()

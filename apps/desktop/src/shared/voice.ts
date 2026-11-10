@@ -7,7 +7,6 @@ export const VOICE_CHANNELS = {
 } as const
 
 export type VoicePhase = 'permission' | 'listening' | 'transcribing'
-export const VOICE_CAPTURE_SECONDS = 50
 export const VOICE_ERRORS = {
   unavailable: 'Voice input could not start. Restart BroCrew and try again.',
   busy: 'Voice input is already in use. Stop it in the other window first.',

@@ -10,8 +10,6 @@ final class LocalVoice {
     private var tapped = false
     private var listening = false
     private var ended = false
-    private var silence: DispatchWorkItem?
-    private var limit: DispatchWorkItem?
     private var finalLimit: DispatchWorkItem?
     private var transcript = Transcript()
 
@@ -26,8 +24,6 @@ final class LocalVoice {
         audio.stop()
         if tapped { audio.inputNode.removeTap(onBus: 0); tapped = false }
         listening = false
-        silence?.cancel()
-        limit?.cancel()
     }
 
     private func finish(error: String? = nil, text: String? = nil) {
@@ -83,11 +79,6 @@ final class LocalVoice {
                     self.finish(text: self.transcript.text)
                 } else if error != nil {
                     self.deliver(orElse: "recognition")
-                } else if result != nil && self.listening {
-                    self.silence?.cancel()
-                    let silence = DispatchWorkItem { self.stop() }
-                    self.silence = silence
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: silence)
                 }
             }
         }
@@ -113,9 +104,6 @@ final class LocalVoice {
         listening = true
         emit(["state": "listening"])
         recognize(request)
-        let timeout = DispatchWorkItem { self.stop() }
-        limit = timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + 50, execute: timeout)
     }
 
     private func speechPermission() {
