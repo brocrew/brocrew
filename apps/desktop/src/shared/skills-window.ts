@@ -43,7 +43,7 @@ export const SkillsRequest = z.discriminatedUnion('operation', [
   }),
 ])
 export type SkillsRequest = z.infer<typeof SkillsRequest>
-export interface ImportedSkill {
+interface ImportedSkill {
   readonly name: string
   readonly description: string
   readonly body: string
