@@ -14,12 +14,8 @@ export type HostGateVerdict =
   | 'unknown'
 
 /**
- * How long a listener or the first question may take before it times out.
- *
- * ⚠️ **A gate with no timeout is a startup that can hang**, which is worse than the two-host window
- * it exists to close: a connect to a listener whose backlog is full neither succeeds nor fails.
- * Generous by the standard of a local socket — the answer is a single write from a process on this
- * machine — and short by the standard of a person watching an icon bounce.
+ * Bound listener startup and presence queries: a full socket backlog can leave a connection
+ * pending indefinitely.
  */
 const ANSWER_MS = 1500
 
@@ -30,20 +26,10 @@ const RETRY_ANSWER_MS = 3000
 const holding = new Set<Server>()
 
 /**
- * Where the listener lives, per `userData`.
- *
- * ⚠️ **Per `userData` and not global**, which is the rule `198` §1 measured the whole feature
- * against: every live smoke launches its own app with its own `--user-data-dir`, and a gate that
- * was global would break every instrument in this repository on the first run.
- *
- * ⛔ **A Windows pipe is not a file**, so it takes a name derived from the directory rather than a
- * path inside it. The hash is short and non-cryptographic in purpose — it only has to distinguish
- * two directories on one machine.
- *
- * A POSIX socket path has a length limit ({@link socketPathMax}). A folder too long for
- * `one-host.sock` inside it keeps its gate in {@link OutsideGates}' folder instead, so a long
- * workspace path still has a working gate. Either way the folder is read as it is on the disk, so
- * two spellings of one folder (a link to it, say) find one gate.
+ * One presence endpoint per data folder keeps separate workspaces and test profiles independent.
+ * Windows uses a pipe name derived from the directory; its digest only distinguishes directories.
+ * POSIX resolves directory aliases and uses {@link OutsideGates} when the socket path would exceed
+ * {@link socketPathMax}, so long workspace paths still have a reachable endpoint.
  */
 export function hostGatePath(
   userData: string,
@@ -55,12 +41,9 @@ export function hostGatePath(
 }
 
 /**
- * Where the gates of folders too long for one inside them live, and how that place is checked.
- *
- * The folder is in this user's home as the user database records it, never read from the
- * environment: two launches on one folder that disagree about `HOME` or `TMPDIR` would otherwise
- * find two gates, and both answer `sole`. Socket kind, liveness and the protocol decide whether
- * another host is present; filesystem ownership does not supply that answer.
+ * External sockets use the home from the OS user database so launches with different HOME or
+ * TMPDIR values still find the same endpoint. Socket kind, liveness and the protocol identify
+ * presence; filesystem ownership does not supply that answer.
  */
 export interface OutsideGates {
   /** `~/Library/Caches/brobot2-gates` on macOS, `~/.cache/brobot2-gates` elsewhere. */
@@ -70,7 +53,7 @@ export interface OutsideGates {
   readonly stat: (path: string) => GateEntry
 }
 
-/** What a gate reads of a folder or a name it is about to trust. */
+/** Filesystem facts used to locate a presence socket. */
 type GateEntry = Pick<Stats, 'uid' | 'mode' | 'isDirectory' | 'isSocket'>
 
 /**
@@ -191,22 +174,19 @@ type Answer =
   | { kind: 'token'; token: string }
   /** Nothing is there. On POSIX that means the path is an artefact of a process that has gone. */
   | { kind: 'silent' }
-  /** It neither answered nor refused. ⛔ Undecidable, so the caller must fail open. */
+  /** No definite presence answer. */
   | { kind: 'unclear' }
 
 /**
  * Listen at `path`, answering every caller with `token`.
  *
- * ⛔ **The `error` handler is PERMANENT, not `once`.** A listening server that emits `error` with
- * nothing attached throws out of the event loop, and this one lives for the whole life of the
- * process — so a transient accept failure would take the app down on behalf of a gate whose worst
- * legitimate outcome is doing nothing.
+ * Keep the error handler attached for the listener's lifetime: an unhandled accept error would
+ * otherwise terminate the process after startup has settled.
  */
 function listen(path: string, token: string): Promise<Server | 'in-use' | 'failed'> {
   return new Promise((resolve) => {
     const server = createServer((socket) => {
-      // ⚠️ `end`, so the socket is written to AND closed. A connection left open would accumulate
-      // one file descriptor per launch that ever asked.
+      // Close after replying so repeated presence queries do not accumulate open descriptors.
       socket.end(token)
       socket.on('error', () => {})
     })
@@ -249,8 +229,7 @@ function askOnce(path: string, timeoutMs: number): Promise<Answer | { kind: 'tim
     timer.unref()
     socket.setEncoding('utf8')
     socket.on('data', (chunk: string) => (said += chunk))
-    // ⚑ A connection that opened and said NOTHING is not a BroBot: something else has this name,
-    // and taking it from them is not ours to do.
+    // A listener that closes without identifying itself leaves presence unknown.
     socket.on('end', () =>
       settle(said === '' ? { kind: 'unclear' } : { kind: 'token', token: said }),
     )
@@ -365,14 +344,13 @@ function letGoAtExit(path: string): void {
   heldOutside.set(path, ours)
 }
 
-/** Remove a name, and say whether it is gone — a failure here is a reason to fail open. */
+/** Remove a socket name and report whether it is gone. */
 function tidy(path: string): boolean {
   try {
     unlinkSync(path)
     return true
   } catch (error) {
-    // Already gone is the outcome we wanted; anything else is a permission or a mount we should
-    // not be arguing with at startup.
+    // An absent socket is already clean; other filesystem failures leave cleanup unsuccessful.
     return (error as NodeJS.ErrnoException).code === 'ENOENT'
   }
 }

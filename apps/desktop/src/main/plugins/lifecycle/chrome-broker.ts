@@ -2,7 +2,7 @@ import type { PluginToolDiagnostic } from '../tool-diagnostics'
 import { admittedPluginTools } from './broker-inventory'
 import type { BrokerInput, BrokerOptions } from '../tool-broker'
 import { createPrivatePluginPort } from '../managed-transport'
-import type { PluginLifecycleController } from './controller'
+import type { AgentAttachmentView } from './contracts'
 import { join } from 'node:path'
 import { immutableFile } from '../node-host-files'
 
@@ -76,7 +76,7 @@ const reads = new Set([
 ])
 /** The curated Chrome package owns live enabled-profile, tab and settings checks at execution. */
 export async function chromeBrokerBinding(
-  view: ReturnType<PluginLifecycleController['agentAttachments']>[number],
+  view: AgentAttachmentView,
   refused: () => void | Promise<void> = () => console.warn(refusalMessage),
   diagnostic?: PluginToolDiagnostic,
 ) {
