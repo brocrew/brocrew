@@ -132,6 +132,8 @@ describe('§1 · the source census — a new durable write under userData must n
     expect([...found].sort()).toEqual([
       "'brobot2.sqlite'",
       "'exports'",
+      // The app's log file, in `logs` (`WORKSPACE`).
+      "'logs', 'brocrew.log'",
       "'one-host.sock'",
       // ⚑ The account the usage readings were read on. REMOVED with them (`USAGE`).
       "'provider-accounts.json'",
@@ -165,13 +167,11 @@ describe('§1 · the source census — a new durable write under userData must n
       // ⚑ **744's unsent drafts** (R100) — removed with the ledger their slots name (`DRAFTS`).
       'SAVED_DRAFTS_FILE',
       'SCHEDULE_ATTEMPTS_FILE',
+      // The Debug mode choice, `logging.json` (`WORKSPACE`).
+      'SETTINGS_FILE',
       'SHARED_SKILLS_DIRNAME',
       'SIGN_IN_CHANGES_FILE',
       'SKILLS_CONVERSION_FILE',
-      // Each launch's timing, and the file it is moved to once full. REMOVED with the ledger whose
-      // conversations they time (`LEDGER`).
-      'START_ATTEMPTS_FILE',
-      'START_ATTEMPTS_OLDER_FILE',
       // A hidden launch's theme library is reset with its workspace.
       'THEME_LIBRARY_FOLDER',
       'TRANSCRIPT_RETENTION_FILE',
@@ -210,11 +210,6 @@ describe('§1 · the source census — a new durable write under userData must n
     )
     expect(code('apps/desktop/src/main/worker-piece-folder.ts')).toContain(
       "export const WORKER_OUTPUT_DIRNAME = 'worker-output'",
-    )
-    const startAttempts = code('apps/desktop/src/main/start-attempts-log.ts')
-    expect(startAttempts).toContain("export const START_ATTEMPTS_FILE = 'start-attempts.jsonl'")
-    expect(startAttempts).toContain(
-      "export const START_ATTEMPTS_OLDER_FILE = 'start-attempts.1.jsonl'",
     )
     const layout = code('apps/desktop/src/main/recovery/layout.ts')
     expect(layout).toContain("export const DATABASE_FILE = 'brobot2.sqlite'")
@@ -648,6 +643,9 @@ describe('§11 · ⛔ 539 · the signs a nested userData is recognised by', () =
       'dock-label.json',
       'transcript-retention.json',
       'themes',
+      // Any program may keep a choice of its own in a file of this name, or a folder of logs.
+      'logging.json',
+      'logs',
       'resources',
       'drafts.json',
       // Any program may keep a list of what it archived in a file of this name.

@@ -442,7 +442,7 @@ describe('§6 · the pane’s header and plate say who holds the work, and the c
     markup(ConversationPane, {
       record: openRecord(),
       mode: 'chat' as const,
-      debug: false,
+
       drawerOpen: true,
       drawerTab: 'open' as const,
       models: null,
@@ -480,7 +480,7 @@ describe('§6 · the pane’s header and plate say who holds the work, and the c
         canOpen: false,
         panel: sessionPanel(record.control),
         state: record.control,
-        mode: 'normal',
+
         ...(agentState === undefined ? {} : { agentState }),
       })
     }

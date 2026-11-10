@@ -110,7 +110,7 @@ describe('unreadableSelectorIn — a check that cannot run must not look like on
       `document.querySelector('[data-cy="session-cwd"]')`,
       `document.querySelectorAll('[data-cy^=drawer-tab-]')`,
       `card.querySelector('[data-cy^=permission-allow], [data-cy=permission-deny]')`,
-      `[...document.querySelectorAll('[data-cy=event-log] li')]`,
+      `[...document.querySelectorAll('[data-cy=session-info] dl')]`,
       `document.querySelector('[data-cy=changes-row-src/main.ts]')`,
       `return document.title`,
     ]) {
@@ -121,11 +121,11 @@ describe('unreadableSelectorIn — a check that cannot run must not look like on
   it('the walk REFUSES an unreadable read rather than skipping it', () => {
     const built = `document.querySelector('[data-cy=' + path + ']')`
     // Whatever tab it is on: the answer does not depend on one, which is the point.
-    for (const tab of ['events', 'changes', null]) {
+    for (const tab of ['work', 'changes', null]) {
       expect(tabFlowViolation(tab, built), String(tab)).toContain('builds a hook name at runtime')
     }
     // …and the marked wide read is still the one way out, so the escape hatch has not moved.
-    expect(tabFlowViolation('events', `// ${WIDE_READ_MARK}\n${built}`)).toBeNull()
+    expect(tabFlowViolation('work', `// ${WIDE_READ_MARK}\n${built}`)).toBeNull()
   })
 })
 
@@ -181,11 +181,11 @@ describe('tabFlowViolation — the rule', () => {
   })
 
   // THE test this whole item exists for: the shape of 093's twenty-one steps.
-  it('fails a read of an Info hook while sitting on Events', () => {
-    const violation = tabFlowViolation('events', readCwd)
+  it('fails a read of an Info hook while sitting on Work', () => {
+    const violation = tabFlowViolation('work', readCwd)
     expect(violation).toContain('session-cwd')
     expect(violation).toContain('info')
-    expect(violation).toContain('the drawer is on events')
+    expect(violation).toContain('the drawer is on work')
     expect(violation).toContain("ensureTab(cdp, 'info')")
   })
 
@@ -194,7 +194,7 @@ describe('tabFlowViolation — the rule', () => {
   })
 
   it('says nothing about a read that names no drawer hook', () => {
-    expect(tabFlowViolation('events', `return document.querySelectorAll('li').length`)).toBeNull()
+    expect(tabFlowViolation('work', `return document.querySelectorAll('li').length`)).toBeNull()
     expect(
       tabFlowViolation(null, `return Boolean(document.querySelector('[data-cy=drawer-tabs]'))`),
     ).toBeNull()
@@ -202,7 +202,7 @@ describe('tabFlowViolation — the rule', () => {
 
   it('names every offending hook, not just the first', () => {
     const violation = tabFlowViolation(
-      'events',
+      'work',
       `return [document.querySelector('[data-cy=session-cwd]'),
                document.querySelector('[data-cy=changes-files]')].filter(Boolean).length`,
     )
@@ -216,16 +216,16 @@ describe('tabFlowViolation — the rule', () => {
     const wide = `
       return {
         cwd: Boolean(document.querySelector('[data-cy=session-cwd]')),
-        log: Boolean(document.querySelector('[data-cy=event-log]')),
+        log: Boolean(document.querySelector('[data-cy=session-info]')),
       }
     `
-    expect(tabFlowViolation('events', `// ${WIDE_READ_MARK}\n${wide}`)).toBeNull()
-    expect(tabFlowViolation('events', wide)).toContain('session-cwd')
+    expect(tabFlowViolation('work', `// ${WIDE_READ_MARK}\n${wide}`)).toBeNull()
+    expect(tabFlowViolation('work', wide)).toContain('session-cwd')
   })
 
   it('fires on a family hook the same way it fires on a named one', () => {
     expect(
-      tabFlowViolation('events', `document.querySelector('[data-cy=changes-row-a.ts]')`),
+      tabFlowViolation('work', `document.querySelector('[data-cy=changes-row-a.ts]')`),
     ).toContain('changes')
   })
 
@@ -260,7 +260,7 @@ describe('tabFlowViolation — the rule', () => {
     for (const hook of onTheTab) {
       const read = `document.querySelector('[data-cy=${hook}]')`
       // …refused from anywhere else,
-      expect(tabFlowViolation('events', read), hook).toContain('info')
+      expect(tabFlowViolation('work', read), hook).toContain('info')
       // …and permitted from the tab that mounts it. Without this half the assertion above would
       // pass over a table that answered "info" to everything.
       expect(tabFlowViolation('info', read), hook).toBeNull()
@@ -374,7 +374,7 @@ describe('assertTabFlow — the piece Cdp.evaluate calls', () => {
   }
 
   it('does not even ask which tab it is on when no drawer hook is named', async () => {
-    const page = pageOn('events')
+    const page = pageOn('work')
     await assertTabFlow(`return document.title`, page.read)
     // The round trip is skipped entirely — this is what keeps the ordinary read unchanged.
     expect(page.asked).toEqual([])
@@ -390,7 +390,7 @@ describe('assertTabFlow — the piece Cdp.evaluate calls', () => {
   })
 
   it('throws the walk’s own message when the read is on the wrong tab', async () => {
-    const page = pageOn('events')
+    const page = pageOn('work')
     await expect(
       assertTabFlow(`document.querySelector('[data-cy=session-cwd]')`, page.read),
     ).rejects.toThrow(/tab-flow: this step reads \[data-cy=session-cwd\]/)
@@ -398,7 +398,7 @@ describe('assertTabFlow — the piece Cdp.evaluate calls', () => {
 
   it('throws when the drawer is shut', async () => {
     await expect(
-      assertTabFlow(`document.querySelector('[data-cy=event-log]')`, pageOn(null).read),
+      assertTabFlow(`document.querySelector('[data-cy=session-info]')`, pageOn(null).read),
     ).rejects.toThrow(/the drawer is SHUT/)
   })
 
@@ -406,7 +406,7 @@ describe('assertTabFlow — the piece Cdp.evaluate calls', () => {
     // ⚠️ The expression is a string evaluated in a page, so nothing typechecks it. Run it against a
     // hand-built DOM shaped like the strip and check it returns the ACTIVE tab rather than the
     // first one — a `find` on the wrong predicate would pass every test above and be wrong live.
-    const buttons = ['open', 'info', 'events'].map((id, i) => ({
+    const buttons = ['open', 'info', 'work'].map((id, i) => ({
       dataset: { active: String(i === 2), cy: `drawer-tab-${id}` },
       getAttribute: () => `drawer-tab-${id}`,
     }))
@@ -414,7 +414,7 @@ describe('assertTabFlow — the piece Cdp.evaluate calls', () => {
     const answer = new Function('document', `return (() => { ${ACTIVE_TAB_EXPRESSION} })()`)(
       document,
     )
-    expect(answer).toBe('events')
+    expect(answer).toBe('work')
     // …and shut, which is the state that has its own message.
     expect(
       new Function('document', `return (() => { ${ACTIVE_TAB_EXPRESSION} })()`)({

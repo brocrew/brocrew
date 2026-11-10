@@ -71,7 +71,7 @@ function header(named: WorkThatNamesIt, retitle?: (title: string) => Promise<str
   return mount(SessionHeader, {
     session: CLAIMED,
     status: 'idle',
-    debug: false,
+
     facets: { doing: 'idle' as const, being: 'live' as const },
     named,
     ...(retitle ? { retitle } : {}),

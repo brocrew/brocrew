@@ -86,8 +86,7 @@ function pane(fold: (state: ReturnType<typeof createTranscript>) => void) {
   fold(record.transcript)
   return {
     record,
-    mode: 'normal' as const,
-    debug: false,
+
     drawerOpen: false,
     drawerTab: 'open' as const,
     draft: '',

@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { PluginSupervisor } from '../../src/main/plugins/supervisor/owner'
 import { SupervisorStorage } from '../../src/main/plugins/supervisor/storage'
 import { recordDrainTrace } from '../../src/main/plugins/supervisor/drain-trace'
+import { openLog, serviceLogFile } from '../../src/main/logging/log'
 
 const [root, workspace, mode, fault] = process.argv.slice(2) as [string, string, string, string?]
 const write = SupervisorStorage.prototype.write
@@ -33,11 +34,12 @@ const revocations = new Promise<void>((resolve) => {
 let rejectStart: ((error: Error) => void) | undefined
 let starting: Promise<unknown> | undefined
 
+openLog(serviceLogFile(root), { console: false, sync: true })
 const owner = await PluginSupervisor.start({
   root,
   workspaceRoots: [workspace],
   drainWithin: 100,
-  traceDrain: (event) => recordDrainTrace(root, event),
+  traceDrain: recordDrainTrace,
   revoke: async () => {
     if (mode === 'start-failure' || mode === 'revoke-hung') await revocations
   },

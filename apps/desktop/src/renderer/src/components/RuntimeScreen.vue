@@ -217,8 +217,6 @@ import {
   type AttentionRequest,
 } from '../lib/attention'
 import { DEFAULT_TAB, isDrawerTab, type DrawerTab } from '../lib/drawer'
-import { hiddenDrawerTabs, offeredTab } from '../lib/developer-views'
-import { useDebugMode } from '../composables/useDebugMode'
 import {
   attachmentsNotRestored,
   createDraftBook,
@@ -290,7 +288,6 @@ import type { WaitingOnWhoWrote } from '../../../shared/waiting-on-who-wrote'
 import type { InstructionAskWaiting } from '../../../shared/own-instructions'
 import type { AnswerAck } from '../../../shared/runtime-ipc'
 import type { FirstMessageCameTo, LaunchDoor, SendIntent } from '../lib/session-store'
-import type { TranscriptMode } from '../lib/transcript-mode'
 import { createWindow, openAt, prependPage, type WindowState } from '../lib/transcript-window'
 import AppTitleBar from './AppTitleBar.vue'
 import ConversationPane from './ConversationPane.vue'
@@ -1569,11 +1566,6 @@ async function refreshProfiles(): Promise<void> {
  */
 
 /**
- * Digest first: lifecycle noise and provider chatter are hidden until asked for, and the raw
- * event stream comes with the asking.
- */
-const debug = usePersistentToggle('brobot2.debugMode', false)
-/**
  * ⛔ **The reading light is not a preference any more (344), and this line is what makes that true
  * on a machine that already has one.**
  *
@@ -1611,19 +1603,6 @@ forgetPersistentPreference('brobot2.chatLightTheme')
  */
 const drawerOpen = usePersistentToggle('brobot2.drawerOpen', true)
 const drawerTab = usePersistentChoice<DrawerTab>('brobot2.drawerTab', DEFAULT_TAB, isDrawerTab)
-/**
- * ⚑ **W4.13 · debug mode** — off, the developer views are not offered, and a panel on one (now, or
- * kept from a run with it on) moves to the panel's default tab.
- */
-const debugMode = useDebugMode()
-const hiddenTabs = computed(() => hiddenDrawerTabs(debugMode.value))
-watch(
-  [drawerTab, hiddenTabs],
-  ([tab, hidden]) => {
-    drawerTab.value = offeredTab(tab, hidden)
-  },
-  { immediate: true },
-)
 
 /**
  * Unsent text, one slot per conversation (019). It lives HERE because the composer is handed a
@@ -1791,8 +1770,6 @@ watch(
   },
   { immediate: true },
 )
-
-const mode = computed<TranscriptMode>(() => (debug.value ? 'debug' : 'normal'))
 
 function say(message: string): void {
   notice.value = message
@@ -4206,7 +4183,6 @@ onUnmounted(() => {
             :entry="reading.entry"
             :identities="agentStore.identities.value?.identities ?? null"
             :history="reading.history"
-            :mode="mode"
             :on-read-resource="readResourceForAnySurface"
             :on-draw-resource="store.drawResource"
             :on-reveal-resource="store.revealResource"
@@ -4218,11 +4194,8 @@ onUnmounted(() => {
             ref="pane"
             :record="active"
             :forest="readConversationForest"
-            :mode="mode"
-            :debug="debug"
             :drawer-open="drawerOpen"
             :drawer-tab="drawerTab"
-            :hidden-drawer-tabs="hiddenTabs"
             :pick-model="pickModelForActive"
             :capabilities="capabilities"
             :work="work"
@@ -4278,9 +4251,8 @@ onUnmounted(() => {
             @set-approval-mode="(mode) => activeId && store.setApprovalMode(activeId, mode)"
             @set-session-setting="(body) => activeId && store.setSessionSetting(activeId, body)"
             @end-plan-mode="(text) => activeId && store.endPlanMode(activeId, text)"
-            @toggle-debug="debug = !debug"
             @toggle-drawer="drawerOpen = !drawerOpen"
-            @update:drawer-tab="(tab) => (drawerTab = offeredTab(tab, hiddenTabs))"
+            @update:drawer-tab="(tab) => (drawerTab = tab)"
             @show-instructions="
               () => {
                 // 318 §2.3. **Set, never toggled**: the conversation is asking for a specific screen,
@@ -4314,7 +4286,6 @@ onUnmounted(() => {
             :busy="frontDoorLaunch.busy.value || store.isLaunching()"
             :error="store.launchError.value"
             :refused-as="store.launchRefusal.value"
-            :debug="debug"
             :draft="drafts.read(draftSlot(null))"
             :handing="drafts.paths.handing(draftSlot(null))"
             :default-provider="frontDoorProvider"
@@ -4331,7 +4302,6 @@ onUnmounted(() => {
             @start="startFromFrontDoor"
             @cancel="store.cancelLaunch()"
             @update:draft="(text) => drafts.write(draftSlot(null), text)"
-            @toggle-debug="debug = !debug"
           />
         </main>
       </div>

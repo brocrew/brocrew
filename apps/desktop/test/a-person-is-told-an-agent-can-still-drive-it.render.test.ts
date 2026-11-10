@@ -104,7 +104,7 @@ const header = (session: CreatedSession): Promise<string> =>
         h(SessionHeader as never, {
           session,
           status: 'idle',
-          debug: false,
+
           facets: { doing: 'idle' as const, being: 'live' as const },
         }),
     }),
@@ -119,7 +119,7 @@ const controls = (session: CreatedSession): Promise<string> =>
           session,
           state: createTranscript(),
           shown: createTranscript(),
-          mode: 'normal',
+
           window: createWindow(),
           sessionRef: null,
           status: 'idle',

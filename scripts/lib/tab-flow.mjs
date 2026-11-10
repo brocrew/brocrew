@@ -9,7 +9,7 @@
  */
 
 /** Every drawer tab id, in strip order — the same list `lib/drawer.ts` builds the strip from. */
-export const DRAWER_TABS = ['open', 'events', 'info', 'changes', 'work']
+export const DRAWER_TABS = ['open', 'info', 'changes', 'work']
 
 /**
  * Which tab owns which drawer-BODY hook.
@@ -146,22 +146,6 @@ export const TAB_OF_HOOK = {
   'card-approval': 'open',
   'card-approval-panel': 'open',
   'card-pick-became': 'open',
-  // events — the raw stream
-  'event-stream': 'events',
-  'event-log': 'events',
-  // …and what the list says about ITSELF (237 §1). ⚑ The completeness fact rides on `event-log` as
-  // data attributes, so a step asking whether it read the whole session needs no new hook — but the
-  // sentence a PERSON reads is its own element, and a step that quoted it off the wrong tab would
-  // find `null` and report against an absence it had caused (097's class).
-  'event-log-note': 'events',
-  'event-log-reach': 'events',
-  // …and 526's split of that note into a FACT and an EXPLANATION. ⛔ The reach sentence above is
-  // outside the disclosure on purpose — `ui-live-smoke.mjs` refuses the run unless it says *whole
-  // ledger* in words, and a fold that could swallow it would be 237 §1's defect rebuilt as a
-  // gesture. ⚑ These two are the trigger and the body it opens; both are always mounted (`v-show`),
-  // so the walk finds them on the Events tab whichever way the disclosure is standing.
-  'event-log-why': 'events',
-  'event-log-explanation': 'events',
   // info (076)
   'session-info': 'info',
   // 529 · `HO-050` §1.2 — *Controls are things you press. Info is things you read.* Both of

@@ -3025,7 +3025,7 @@ try {
     const drawn = await until(
       () =>
         running.cdp.evaluate(
-          `return [...document.querySelectorAll('[data-cy=event-stream], [data-cy=reading-pane], [data-cy=conversation-pane]')].some((one) => (one.innerText ?? '').includes(${JSON.stringify(answerText(betaAnswers[shown]))}))`,
+          `return [...document.querySelectorAll('[data-cy=reading-pane], [data-cy=conversation-pane]')].some((one) => (one.innerText ?? '').includes(${JSON.stringify(answerText(betaAnswers[shown]))}))`,
         ),
       120_000,
     )

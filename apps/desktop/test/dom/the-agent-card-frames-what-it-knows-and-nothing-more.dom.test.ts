@@ -73,7 +73,7 @@ const panel = (
     SessionPanel,
     {
       state,
-      mode: 'normal',
+
       facets: { doing: 'idle', being: 'live' },
       who: 'BroBot',
       profile: 'brobot',

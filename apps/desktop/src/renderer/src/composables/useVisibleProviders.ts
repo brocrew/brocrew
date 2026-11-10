@@ -1,8 +1,8 @@
 import { computed } from 'vue'
 import { visibleProviderDescriptors, type ProviderDescriptor } from '@brobot2/shared'
-import { useDebugMode } from './useDebugMode'
+import { usePersistentToggle } from './usePersistentToggle'
 
 export function useVisibleProviders(descriptors?: () => readonly ProviderDescriptor[] | undefined) {
-  const debug = useDebugMode()
+  const debug = usePersistentToggle('brobot2.debugMode', false)
   return computed(() => visibleProviderDescriptors(debug.value, descriptors?.()))
 }

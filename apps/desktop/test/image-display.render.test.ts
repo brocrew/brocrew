@@ -95,7 +95,7 @@ describe('the review\u2019s renderer findings (067)', () => {
     // assets are not in that list.
     const state = withImage({ path: PATH })
     expect(sessionPanel(state).empty).toBe(true)
-    const html = await render(SessionPanel, { state, mode: 'normal' })
+    const html = await render(SessionPanel, { state })
     expect(html).toContain('data-cy="panel-assets"')
     expect(html).not.toContain('data-cy="session-panel-empty"')
   })
@@ -104,7 +104,7 @@ describe('the review\u2019s renderer findings (067)', () => {
 describe('the transcript shows it, in the mode a user actually reads (067)', () => {
   it('renders an image entry through the real fold and the real dispatch table', async () => {
     const state = withImage({ path: PATH, prompt: PROMPT })
-    const html = await render(TranscriptView, { items: state.items, mode: 'normal' })
+    const html = await render(TranscriptView, { items: state.items })
     expect(html).toContain('data-cy="image-entry"')
     expect(html).toContain(`src="${ASSET_SCHEME}://`)
     // NOT the chatter line it used to be. This is the regression that matters: before 067 the same
@@ -116,8 +116,7 @@ describe('the transcript shows it, in the mode a user actually reads (067)', () 
     const state = withImage({ path: PATH })
     const item = state.items[0]!
     expect(item.kind).toBe('image')
-    expect(isVisibleIn('normal', item)).toBe(true)
-    expect(isVisibleIn('debug', item)).toBe(true)
+    expect(isVisibleIn(item)).toBe(true)
   })
 })
 
@@ -133,7 +132,7 @@ describe('the Assets index (067 acceptance 3)', () => {
         prompt: PROMPT,
       },
     ])
-    const html = await render(SessionPanel, { state, mode: 'normal' })
+    const html = await render(SessionPanel, { state })
     expect(html).toContain('data-cy="panel-assets"')
     expect(html).toContain('exec-297ad8c6.png')
   })
@@ -147,7 +146,7 @@ describe('the Assets index (067 acceptance 3)', () => {
   })
 
   it('has no Assets section at all when the session made nothing', async () => {
-    const html = await render(SessionPanel, { state: createTranscript(), mode: 'normal' })
+    const html = await render(SessionPanel, { state: createTranscript() })
     expect(html).not.toContain('data-cy="panel-assets"')
     expect(html).toContain('data-cy="session-panel"')
   })

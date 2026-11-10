@@ -85,12 +85,8 @@ function busySession(): TranscriptState {
 }
 
 describe('the panel renders as a way in, and says so when there is nothing (037)', () => {
-  const render = (
-    state: TranscriptState,
-    mode: 'normal' | 'debug' = 'normal',
-    over: Record<string, unknown> = {},
-  ): Promise<string> =>
-    renderToString(createSSRApp({ render: () => h(SessionPanel, { state, mode, ...over }) }))
+  const render = (state: TranscriptState, over: Record<string, unknown> = {}): Promise<string> =>
+    renderToString(createSSRApp({ render: () => h(SessionPanel, { state, ...over }) }))
 
   it('names each open thing and points it at its transcript item', async () => {
     const state = busySession()
@@ -172,7 +168,7 @@ describe('the panel renders as a way in, and says so when there is nothing (037)
     expect(middle.empty).toBe(false)
 
     for (const [name, state] of Object.entries(states)) {
-      const html = await render(state, 'normal', { facets, who: 'project-manager' })
+      const html = await render(state, { facets, who: 'project-manager' })
       const block = botBlock(html)
       const size = /data-size="(\d+)"/.exec(block)?.[1] ?? ''
       // ⚠️ Stated ABSOLUTELY, one fixture at a time — not by collecting the three and asserting they
@@ -192,7 +188,7 @@ describe('the panel renders as a way in, and says so when there is nothing (037)
     }
 
     // …and the sections are all still under it, in the fixture that has them.
-    const busy = await render(busySession(), 'normal', { facets, who: 'project-manager' })
+    const busy = await render(busySession(), { facets, who: 'project-manager' })
     expect(busy).toContain('data-cy="panel-permissions"')
     expect(busy).toContain('data-cy="panel-questions"')
     expect(busy).not.toContain('data-cy="session-panel-empty"')
@@ -205,7 +201,7 @@ describe('the panel renders as a way in, and says so when there is nothing (037)
     // Assert all three composing axes inside the block. `agent-needing` and `agent-underline`
     // also occur on row marks below, so whole-page `toContain` could pass even if the block
     // drew neither.
-    const html = await render(busySession(), 'normal', {
+    const html = await render(busySession(), {
       facets: { doing: 'tool' as const, being: 'live' as const, needing: 'permission' as const },
       who: 'project-manager',
     })
@@ -238,9 +234,7 @@ describe('the panel renders as a way in, and says so when there is nothing (037)
 
     // Paired, because every assertion above is a presence check: the facets that are ABSENT draw
     // nothing, so these hooks are reporting the props rather than always being there.
-    const bare = botBlock(
-      await render(busySession(), 'normal', { facets: { doing: 'idle' as const } }),
-    )
+    const bare = botBlock(await render(busySession(), { facets: { doing: 'idle' as const } }))
     expect(bare).not.toContain('data-cy="agent-needing"')
     expect(bare).not.toContain('data-being="live"')
     // ⚠️ The underline slot is still THERE and merely unpainted — `visibility`, not `display`, so a
@@ -261,7 +255,7 @@ describe('the panel renders as a way in, and says so when there is nothing (037)
     expect(html).not.toContain('data-cy="session-panel-empty"')
     // Paired: the same state WITH facets does draw it, so the absence above is the `v-if` and not a
     // component that never renders.
-    const withAgent = await render(createTranscript(), 'normal', {
+    const withAgent = await render(createTranscript(), {
       facets: { doing: 'idle' as const },
     })
     expect(withAgent).toContain('data-cy="session-bot"')
@@ -351,7 +345,6 @@ describe('the panel renders as a way in, and says so when there is nothing (037)
     const facets = { facets: { doing: 'idle' as const } }
     const full = await render(
       feed(createTranscript(), reading({ kind: 'proportional', used: 90_000, window: 200_000 })),
-      'normal',
       facets,
     )
     // ⚑ W4.183 · a run-strip item now; its figure drawn, its detail on its title.
@@ -361,7 +354,6 @@ describe('the panel renders as a way in, and says so when there is nothing (037)
     expect(full).toContain(`45% of ${groupTokens(200_000)} tokens`)
     const counted = await render(
       feed(createTranscript(), reading({ kind: 'tokens', used: 90_000 })),
-      'normal',
       facets,
     )
     expect(counted).toContain('window size not reported')
@@ -371,7 +363,7 @@ describe('the panel renders as a way in, and says so when there is nothing (037)
   // ⚑ **W4.208 · the figure is the Context popup's door**, so it is drawn before the first reading
   // too — as an em-dash, never a zero and never a figure made of nothing.
   it('⚑ THE CONTROL — nothing reported, an em-dash and no figure', async () => {
-    const html = await render(createTranscript(), 'normal', { facets: { doing: 'idle' as const } })
+    const html = await render(createTranscript(), { facets: { doing: 'idle' as const } })
     expect(html).toContain('data-cy="session-bot"')
     expect(html).toContain('class="run-item context"')
     expect(html).toMatch(/<strong class="context-figure"[^>]*>—<\/strong>/)
@@ -401,13 +393,11 @@ describe('the panel renders as a way in, and says so when there is nothing (037)
       { type: 'sub_agent', agentId: 'a1', phase: 'started', parentToolCallId: 'call_1' },
     )
     expect(sessionPanel(reachable).agents).toHaveLength(1)
-    expect(await render(reachable, 'debug')).not.toContain('disabled')
-    expect(await render(reachable, 'normal')).not.toContain('disabled')
+    expect(await render(reachable)).not.toContain('disabled')
 
     // It is still LISTED — the panel's job is to say the agent is running — and now unreachable in
     // both views, because the item it would jump to is drawn in neither.
     expect(sessionPanel(superseded).agents).toHaveLength(1)
-    expect(await render(superseded, 'debug')).toContain('disabled')
-    expect(await render(superseded, 'normal')).toContain('disabled')
+    expect(await render(superseded)).toContain('disabled')
   })
 })

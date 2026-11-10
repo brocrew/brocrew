@@ -60,7 +60,7 @@ export function aRecord(results, name) {
 /** Keep the failed launch's drain evidence without replacing its failure or copying its key. */
 export function keepPluginDrainEvidence(root, stage, { evidence, keep, say }) {
   for (const [file, name] of [
-    ['plugin-drain.log', 'drain.log'],
+    ['service.log', 'drain.log'],
     ['supervisor/owner.json', 'owner.json'],
   ]) {
     try {

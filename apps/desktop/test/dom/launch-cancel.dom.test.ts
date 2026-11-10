@@ -24,7 +24,7 @@ afterEach(unmountAll)
 const launcher = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
   busy: false,
   error: null,
-  debug: false,
+
   draft: '',
   defaultProvider: 'claude',
   // ⚑ **The front door's three choices, unanswered** (435) — `NO_LAUNCH_CHOICES` is what an

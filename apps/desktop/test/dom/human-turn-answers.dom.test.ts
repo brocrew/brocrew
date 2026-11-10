@@ -96,7 +96,7 @@ describe('human final answer surfaces', () => {
           panel: sessionPanel(state),
           canOpen: true,
           facets: facetsOfState({ is: 'idle' }),
-          mode: 'normal',
+
           conversation: 's',
           who: 'Fictional agent',
           onNavigate: (id: string) => navigated.push(id),
@@ -147,7 +147,7 @@ describe('human final answer surfaces', () => {
           panel: sessionPanel(state),
           canOpen: true,
           facets: facetsOfState({ is: 'idle' }),
-          mode: 'normal',
+
           conversation: 's',
           onNavigate: (id: string) => navigated.push(id),
         },

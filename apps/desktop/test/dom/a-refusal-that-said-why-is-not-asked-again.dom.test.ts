@@ -132,7 +132,7 @@ function theLauncher(answers: readonly (AuthAnswer | null)[]) {
           busy: busy.value,
           error: error.value,
           ...(refusedAs.value === undefined ? {} : { refusedAs: refusedAs.value }),
-          debug: false,
+
           draft: words.value,
           handing: book.handing(NEW_CONVERSATION),
           defaultProvider: 'codex',

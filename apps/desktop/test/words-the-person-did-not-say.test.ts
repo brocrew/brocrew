@@ -740,7 +740,7 @@ describe('413 · words the person did not say', () => {
       ]).items[0]
       expect(item?.kind).toBe('relayed')
       for (const mode of ['normal', 'debug'] as const) {
-        expect(isVisibleIn(mode, item as TranscriptItem), `hidden in ${mode}`).toBe(true)
+        expect(isVisibleIn(item as TranscriptItem), `hidden in ${mode}`).toBe(true)
       }
     })
 

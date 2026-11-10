@@ -34,8 +34,6 @@ import type { SharedDataOwner } from './shared-data'
 export function productionPluginController() {
   let failure: PluginUnavailableReason = 'service-start'
   let startupDiagnostic: PluginStartupDiagnostic | undefined
-  let diagnosticRoot: string | undefined
-  let diagnosticWrite = Promise.resolve()
   let acceptingBusy:
     { identity: string; since: number; observedAt: number; automaticFailures: number } | undefined
   const failed = (reason: PluginUnavailableReason, error?: unknown) => {
@@ -65,11 +63,7 @@ export function productionPluginController() {
     pluginStartupTrace.failure(reason, error)
     failure = pluginStartupReason(error, reason)
     startupDiagnostic = pluginStartupDiagnostic(error)
-    const root = diagnosticRoot,
-      reasonToKeep = failure
-    diagnosticWrite = diagnosticWrite.then(() =>
-      recordPluginStartupFailure(root, reasonToKeep, error),
-    )
+    recordPluginStartupFailure(failure, error)
   }
   let connected: Awaited<ReturnType<typeof connectPluginSettings>> | undefined
   let entries: readonly PluginInstructionEntry[] | null = null
@@ -539,8 +533,6 @@ export function productionPluginController() {
         let storage: SupervisorStorage | undefined
         try {
           storage = new SupervisorStorage(options.root, [options.workspaceRoot], true)
-          diagnosticRoot = options.root
-          pluginStartupTrace.destination(options.root)
           phase = 'catalogue'
           const devSource = await devPluginSource(options.devSource)
           loadCatalogue = async () => {
@@ -713,8 +705,7 @@ export function productionPluginController() {
               attempt = candidate
               peer = candidate
               const connection = await connectPluginSettings({
-                recordReviewFailure: (...fields) =>
-                  recordPluginReviewFailure(options.root, ...fields),
+                recordReviewFailure: recordPluginReviewFailure,
                 path: join(options.root, 'person-control/person.sock'),
                 personKey,
                 root: options.root,
@@ -814,8 +805,6 @@ export function productionPluginController() {
           await transition
           if (peer) await detach(peer)
         } finally {
-          await diagnosticWrite
-          await pluginStartupTrace.flush()
           personLifetime.abort()
           connected = undefined
           entries = null

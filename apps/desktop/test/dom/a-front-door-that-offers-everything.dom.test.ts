@@ -148,7 +148,7 @@ function open(over: Record<string, unknown> = {}): Door {
         h(NewConversation as Component, {
           busy: false,
           error: null,
-          debug: false,
+
           draft: words.value,
           handing: book.handing(NEW_CONVERSATION),
           defaultProvider: resolved.value,

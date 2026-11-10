@@ -3,21 +3,17 @@ import { admittedPluginTools } from './broker-inventory'
 import type { BrokerInput, BrokerOptions } from '../tool-broker'
 import { createPrivatePluginPort } from '../managed-transport'
 import type { AgentAttachmentView } from './contracts'
-import { join } from 'node:path'
-import { immutableFile } from '../node-host-files'
+import { logWarn } from '../../logging/log'
 
 const refusalMessage = 'Some plugin tools were refused.'
-/** A bounded, credential-free diagnostic survives detached supervisor stdio being ignored. */
-export function pluginToolRefusalLog(root: string): () => Promise<void> {
-  let recorded: Promise<void> | undefined
-  return () =>
-    (recorded ??= immutableFile(
-      join(root, 'plugin-tool-refusals.log'),
-      Buffer.from(refusalMessage + '\n'),
-    ).catch(() => {
-      // A failed diagnostic write cannot take reviewed tools away from an otherwise healthy agent.
-      console.warn(refusalMessage)
-    }))
+/** The first refusal is logged; later ones in the same connection are not repeated. */
+export function pluginToolRefusalLog(): () => void {
+  let recorded = false
+  return () => {
+    if (recorded) return
+    recorded = true
+    logWarn('plugin', refusalMessage)
+  }
 }
 
 export const chromeBrokerToolNames = Object.freeze([

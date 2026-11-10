@@ -7,6 +7,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { captureLog } from '../../../apps/desktop/test/lib/log-file'
 import * as chromeBinding from '../../../apps/desktop/src/main/plugins/lifecycle/chrome-broker'
 import { createLifecycleAgentBridge } from '../../../apps/desktop/src/main/plugins/lifecycle/agent-bridge'
 import { Installation } from '../../../apps/desktop/src/main/plugins/state/format'
@@ -259,18 +260,19 @@ describe('Chrome release fixture', () => {
     },
     30000,
   )
-  it('keeps the closed refusal log readable and bounded across repeated connections', async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fictional-tool-refusal-'))
+  it('logs the first tool refusal once and not again for later connections', async () => {
+    const captured = await captureLog()
     try {
-      const record = chromeBinding.pluginToolRefusalLog(root)
-      await Promise.all([record(), record()])
-      await chromeBinding.pluginToolRefusalLog(root)()
-      expect(fs.readdirSync(root)).toEqual(['plugin-tool-refusals.log'])
-      const file = path.join(root, 'plugin-tool-refusals.log')
-      expect(fs.readFileSync(file, 'utf8')).toBe('Some plugin tools were refused.\n')
-      expect(fs.statSync(file).isFile()).toBe(true)
+      const record = chromeBinding.pluginToolRefusalLog()
+      record()
+      record()
+      chromeBinding.pluginToolRefusalLog()()
+      const lines = await captured.lines(2)
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(await captured.lines(2)).toHaveLength(2)
+      for (const line of lines) expect(line).toContain('Some plugin tools were refused.')
     } finally {
-      fs.rmSync(root, { recursive: true, force: true })
+      await captured.close()
     }
   })
   it('binds the complete built author-bearing inventory and pins allowlist parity with no filtered list', async () => {

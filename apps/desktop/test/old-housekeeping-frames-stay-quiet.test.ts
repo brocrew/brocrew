@@ -27,14 +27,13 @@ describe('F081 · old housekeeping frames stay quiet', () => {
     it(`⚑ ${label}: hidden in normal mode, shown in debug mode`, () => {
       const item = folded(label)
       expect(item).toMatchObject({ kind: 'unknown', category: 'lifecycle', label })
-      expect(isVisibleIn('normal', item)).toBe(false)
-      expect(isVisibleIn('debug', item)).toBe(true)
+      expect(isVisibleIn(item)).toBe(false)
     })
   }
 
   it('⛔ a frame no label names is still an unmodeled card in normal mode', () => {
     const item = folded('something_new')
     expect(item).toMatchObject({ kind: 'unknown', category: 'unrecognized' })
-    expect(isVisibleIn('normal', item)).toBe(true)
+    expect(isVisibleIn(item)).toBe(true)
   })
 })

@@ -43,7 +43,7 @@ export async function checkPackagedPluginService(resources, packages) {
       console.error(`[plugin-service-check] retained ${scratch}`)
       if (process.platform === 'win32' && process.env.RUNNER_TEMP) {
         const evidence = join(process.env.RUNNER_TEMP, 'recovery-evidence', basename(scratch))
-        for (const file of ['plugin-drain.log', 'supervisor/owner.json']) {
+        for (const file of ['service.log', 'supervisor/owner.json']) {
           try {
             await mkdir(join(evidence, dirname(file)), { recursive: true })
             const source = join(scratch, 'p', file)

@@ -273,8 +273,7 @@ const pane = (over: Record<string, unknown> = {}): Promise<string> =>
             { type: 'assistant_message', text: 'Progress confirmed.' },
             { type: 'status', state: 'working' },
           ]),
-          mode: 'normal' as const,
-          debug: false,
+
           drawerOpen: false,
           drawerTab: 'open',
           models: null,
@@ -346,7 +345,7 @@ describe('who is speaking in this conversation', () => {
             session: META,
             state: createTranscript(),
             shown: createTranscript(),
-            mode: 'normal',
+
             window: createWindow(),
             sessionRef: META.ref,
             status: 'working',

@@ -1,4 +1,4 @@
-import { pluginStartupTrace } from '../src/main/plugins/startup-failure'
+import { captureLog } from './lib/log-file'
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { once } from 'node:events'
@@ -501,6 +501,7 @@ const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));`,
     'rechecks a failed cleanup with live group=%s without signalling it',
     async (live) => {
       const { host, home, pidFile } = await context()
+      const captured = await captureLog()
       const child = await host.start(fixture()),
         ready = await child.ready()
       if (live) {
@@ -533,8 +534,9 @@ const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));`,
           const successor = await PluginSupervisor.start(options)
           expect(await successor.shutdown()).toBe(true)
         }
-        const trace = await readFile(join(home, 'plugin-drain.log'), 'utf8')
-        expect(trace).toContain('stage=group-cleanup state=failed')
+        await vi.waitFor(async () => expect(await captured.text()).toContain('group-census'))
+        const trace = await captured.text()
+        expect(trace).toMatch(/group-cleanup.*state: 'failed'/)
         expect(trace).toContain('group-census')
         expect(trace).toContain('EIO')
         const receipt = JSON.parse(await readFile(child.receiptPath, 'utf8'))
@@ -542,6 +544,7 @@ const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));`,
         expect(receipt.runId).toBe(child.runId)
         if (live) expect((await liveGroupMembers(ready.serverPid)).length).toBeGreaterThan(0)
       } finally {
+        await captured.close()
         await stopGroups(new Map([[ready.serverPid, '']]), 0)
       }
     },
@@ -710,7 +713,8 @@ const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));`,
     expect(await readFile(path, 'utf8')).toBe('fictional tampered package')
   }, 15000)
   it('keeps the server error and real exit code when the guardian exits cleanly', async () => {
-    const { host, home } = await context()
+    const { host } = await context()
+    const captured = await captureLog()
     const child = await host.start(
       fixture(`
 import fs from 'node:fs';
@@ -730,13 +734,11 @@ process.exit(23);
       ),
     })
     expect(await child.exited).toMatchObject({ exited: true })
-    const firstLog = resolve(child.receiptPath, '..', 'plugin-startup.log')
     await vi.waitFor(async () => {
-      const log = await readFile(firstLog, 'utf8')
+      const log = await captured.text()
       expect(log).toContain('Exit code 23')
       expect(log).toMatch(/\/fictional\/first-stack\.mjs [a-f0-9]{64}/)
       expect(log).toContain('[stderr truncated to last 16 KiB]')
-      expect(log.length).toBeLessThan(18 * 1024)
     })
     const second = await host.start(
       fixture(`
@@ -750,12 +752,12 @@ process.exit(24);
     expect(pluginStartupDiagnostic(secondFailure)?.exitCode).toBe(24)
     expect(await second.exited).toMatchObject({ exited: true })
     await vi.waitFor(async () => {
-      const log = await readFile(resolve(second.receiptPath, '..', 'plugin-startup.log'), 'utf8')
+      const log = await captured.text()
       expect(log).toContain('Exit code 24')
       expect(log).toMatch(/\/fictional\/second-stack\.mjs [a-f0-9]{64}/)
-      expect(await readFile(join(home, 'plugin-startup.log'), 'utf8')).toContain('Exit code 24')
     })
-    expect(await readFile(firstLog, 'utf8')).toMatch(/\/fictional\/first-stack\.mjs [a-f0-9]{64}/)
+    expect(await captured.text()).toMatch(/\/fictional\/first-stack\.mjs [a-f0-9]{64}/)
+    await captured.close()
   }, 20000)
   it('retains the server cause after a ready run exits', async () => {
     const { host } = await context()
@@ -829,7 +831,7 @@ process.send({ channel: 'brocrew-plugin-node:v1', runId: process.env.BROCREW_PLU
     ).rejects.toThrow('plugin-host-runtime')
   })
   it('refuses modified executable or bootstrap bytes in a kept runtime', async () => {
-    pluginStartupTrace.destination(root)
+    const captured = await captureLog()
     const runtime = await preparePluginNodeRuntime({
       resourcesRoot: resources,
       durableRoot: join(root, 'other-runtimes'),
@@ -838,14 +840,13 @@ process.send({ channel: 'brocrew-plugin-node:v1', runId: process.env.BROCREW_PLU
     await chmod(paths.node, 0o700)
     await writeFile(paths.node, 'fictional replaced node')
     await expect(runtimeFiles(runtime)).rejects.toThrow('plugin-host-runtime')
-    await pluginStartupTrace.flush()
-    pluginStartupTrace.destination(undefined)
-    expect(await readFile(join(root, 'plugin-startup-trace.log'), 'utf8')).toContain(
-      'runtime-files-verify failure',
+    await vi.waitFor(async () =>
+      expect(await captured.text()).toContain('runtime-files-verify failure'),
     )
+    await captured.close()
   })
   it('retries the same runtime after an interrupted private copy without publishing partial bytes', async () => {
-    pluginStartupTrace.destination(root)
+    const captured = await captureLog()
     const durableRoot = join(root, 'interrupted-runtime')
     copyFault.once = true
     await expect(
@@ -862,9 +863,9 @@ process.send({ channel: 'brocrew-plugin-node:v1', runId: process.env.BROCREW_PLU
     expect((await runtimeFiles(retried)).node).toBe(join(durableRoot, retried.id, 'node'))
     expect(await readFile(join(orphan, 'node'), 'utf8')).toBe('partial fictional executable')
     await preparePluginNodeRuntime({ resourcesRoot: resources, durableRoot })
-    await pluginStartupTrace.flush()
-    pluginStartupTrace.destination(undefined)
-    const log = await readFile(join(root, 'plugin-startup-trace.log'), 'utf8')
+    await vi.waitFor(async () => expect(await captured.text()).toContain('runtime-verify end'))
+    const log = await captured.text()
+    await captured.close()
     for (const phase of [
       'runtime-hash end',
       'runtime-copy failure',

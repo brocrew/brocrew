@@ -6,7 +6,6 @@ import ProvidersScreen from '../../src/renderer/src/components/ProvidersScreen.v
 import OverlayHost, { provideOverlayLayer } from '../../src/renderer/src/components/OverlayHost.vue'
 import type { Provider } from '../../src/shared/runtime-ipc'
 import { providersBridge } from '../../look/fixtures/providers'
-import { useDebugMode } from '../../src/renderer/src/composables/useDebugMode'
 import { mount, unmountAll, type Mounted } from './harness'
 
 const NOW = Date.now()
@@ -18,7 +17,7 @@ const settle = async () => {
 }
 beforeEach(() => {
   localStorage.clear()
-  useDebugMode().value = false
+  localStorage.removeItem('brobot2.debugMode')
   providersBridge()
   vi.spyOn(document, 'hasFocus').mockReturnValue(true)
 })
@@ -159,17 +158,21 @@ describe('the Providers list opens the existing controls in one drawer', () => {
       displayName: 'Lumen',
       debugOnly: true,
     }
-    const m = screen({ descriptors: [experiment, ...PROVIDER_DESCRIPTORS] })
+    let m = screen({ descriptors: [experiment, ...PROVIDER_DESCRIPTORS] })
     await settle()
     const ids = () => m.all('provider-row').map((item) => item.getAttribute('data-provider'))
     expect(ids()).toEqual(['claude', 'codex'])
-    useDebugMode().value = true
+    localStorage.setItem('brobot2.debugMode', 'true')
+    m.unmount()
+    m = screen({ descriptors: [experiment, ...PROVIDER_DESCRIPTORS] })
     await settle()
     expect(ids()).toEqual(['claude', 'codex', 'lumen'])
     row(m, 'lumen').click()
     await settle()
     expect(m.q('provider-card').getAttribute('data-provider')).toBe('lumen')
-    useDebugMode().value = false
+    localStorage.removeItem('brobot2.debugMode')
+    m.unmount()
+    m = screen({ descriptors: [experiment, ...PROVIDER_DESCRIPTORS] })
     await settle()
     expect(ids()).toEqual(['claude', 'codex'])
     expect(m.host.querySelector('[data-cy="provider-drawer"]')).toBeNull()

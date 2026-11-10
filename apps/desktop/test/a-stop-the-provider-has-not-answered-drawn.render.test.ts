@@ -232,7 +232,7 @@ describe('§1 · `NoticeEntry` re-says the fold’s facts with the conversation�
 
 describe('§2 · `TranscriptView` hands its notices the provider it draws under', () => {
   const view = (items: TranscriptItem[], over: Record<string, unknown> = {}): Promise<string> =>
-    render(TranscriptView, { items, mode: 'normal', ...over })
+    render(TranscriptView, { items, ...over })
 
   it('🔴 a Codex transcript names Codex on the line — the ask’s own line above it unchanged', async () => {
     const html = await view(folded(started, asked, working, aPersonsAsk, unanswered), {
@@ -520,12 +520,11 @@ describe('§5 · 730 review — the reading pane and the full view hand their tr
     return record
   }
   const reading = (provider: Provider, rows = ROWS): Promise<string> =>
-    render(ReadingPane, { entry: entry(provider), history: page(rows), mode: 'normal' })
+    render(ReadingPane, { entry: entry(provider), history: page(rows) })
   const fullView = (provider: Provider, rows = ROWS): Promise<string> =>
     render(ConversationPane, {
       record: recorded(provider, rows),
-      mode: 'normal',
-      debug: false,
+
       drawerOpen: false,
       drawerTab: 'open',
       draft: '',

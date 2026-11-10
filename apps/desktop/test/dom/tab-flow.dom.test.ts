@@ -175,6 +175,14 @@ const INFO_FIXTURE: CreatedSession = {
  */
 function keptHere(): TranscriptState {
   const state = createTranscript()
+  // ⚑ **Its latest words, so the card draws the bubble** (`card-latest`, `-words`, `-ago`) — the
+  // Events tab's always-drawn hooks left, and the coverage floor below has to be held by the tabs
+  // that remain rather than lowered.
+  applyEvent(
+    state,
+    { type: 'assistant_message', text: 'Fictional latest words.' },
+    1_700_000_000_000,
+  )
   const rule = { kind: 'tool' as const, tool: 'Bash', content: 'make build *' }
   applyEvent(state, {
     type: 'permission_request',

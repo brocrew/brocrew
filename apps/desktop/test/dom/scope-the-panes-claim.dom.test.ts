@@ -117,7 +117,7 @@ describe('602 · what the screen says about a question with no card', () => {
     await page.viewport(420, 300)
     const m = mount(
       SessionPanel,
-      { state: record(ASK_PARENT).transcript, mode: 'normal' as const },
+      { state: record(ASK_PARENT).transcript },
       { width: 380, height: 280 },
     )
     await nextTick()

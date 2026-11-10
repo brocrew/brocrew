@@ -89,7 +89,7 @@ function openLauncher(draft = ''): Mounted {
         h(NewConversation as Component, {
           busy: false,
           error: null,
-          debug: false,
+
           defaultProvider: 'claude',
           // ⚑ **The front door's three choices, unanswered** (435) — `NO_LAUNCH_CHOICES` is what an
           // untouched door holds, and `models: null` is *nobody has answered yet*. Both are required

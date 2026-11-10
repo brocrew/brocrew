@@ -78,7 +78,7 @@ function openFrontDoor(over: Record<string, unknown> = {}): {
         h(NewConversation as Component, {
           busy: false,
           error: null,
-          debug: false,
+
           draft: words.value,
           handing: book.handing(NEW_CONVERSATION),
           defaultProvider: 'codex',

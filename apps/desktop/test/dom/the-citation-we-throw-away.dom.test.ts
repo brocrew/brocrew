@@ -189,8 +189,8 @@ describe('319 §1.3 · silence means no memory was consulted, and never “unkno
 
 describe('319 · the row is in the mode a person reads in', () => {
   it('shows in normal AND in debug — F5 is a person who could not see it', () => {
-    expect(pane([recall()], { mode: 'normal' }).all('memory-recall')).toHaveLength(1)
-    expect(pane([recall()], { mode: 'debug' }).all('memory-recall')).toHaveLength(1)
+    expect(pane([recall()], {}).all('memory-recall')).toHaveLength(1)
+    expect(pane([recall()], {}).all('memory-recall')).toHaveLength(1)
   })
 })
 

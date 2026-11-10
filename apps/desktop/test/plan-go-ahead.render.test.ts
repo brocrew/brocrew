@@ -98,7 +98,7 @@ function pane(
   return {
     record,
     mode: 'chat' as const,
-    debug: false,
+
     drawerOpen: false,
     drawerTab: 'open' as const,
     draft: '',

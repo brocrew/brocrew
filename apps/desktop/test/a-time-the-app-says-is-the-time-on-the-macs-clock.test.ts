@@ -735,7 +735,7 @@ describe('§2 · every time the app says is the Mac’s, in the person’s own l
     const paneHtml = (): Promise<string> =>
       renderToString(
         createSSRApp({
-          render: () => h(pane, { entry, history: history(), mode: 'normal' } as never),
+          render: () => h(pane, { entry, history: history() } as never),
         }),
       )
     /** The date the pane's header says, as its markup carries it (a scoped style adds an attribute). */

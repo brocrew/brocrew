@@ -332,8 +332,7 @@ async function fullView(
         h(ConversationPane as Component, {
           record,
           identities: IDS,
-          mode: 'normal',
-          debug: false,
+
           drawerOpen: false,
           drawerTab: 'open',
           models: null,
@@ -402,7 +401,7 @@ describe('§1 · 692 F-a/F-b — a conversation the quit left open opens in the 
     const { m } = await fullView()
     const reading = mount(
       ReadingPane,
-      { entry: READING_ENTRY, history: history(), mode: 'normal' },
+      { entry: READING_ENTRY, history: history() },
       { width: PANE_WIDTHS[1], height: PANE_H },
     )
     await settle()
@@ -445,7 +444,7 @@ describe('§1 · 692 F-a/F-b — a conversation the quit left open opens in the 
     // is live and offers Allow. Without it, the absence below is satisfied by a card that never draws.
     const live = mount(
       TranscriptView,
-      { items: foldWindow(ENTRIES).items, mode: 'normal' },
+      { items: foldWindow(ENTRIES).items },
       { width: PANE_WIDTHS[1], height: PANE_H },
     )
     await settle()
@@ -501,8 +500,7 @@ describe('§1 · 692 F-a/F-b — a conversation the quit left open opens in the 
       {
         record: store.get(KEPT.sessionId)!,
         identities: IDS,
-        mode: 'normal',
-        debug: false,
+
         drawerOpen: false,
         drawerTab: 'open',
         models: null,

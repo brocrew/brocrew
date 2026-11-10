@@ -97,7 +97,6 @@ describe('a conversation being read', () => {
     const html = await render({
       entry: ENTRY,
       history: CONVERSATION,
-      mode: 'normal',
     })
     expect(html).toContain('hello there')
     expect(html).toContain('hello back')
@@ -115,7 +114,6 @@ describe('a conversation being read', () => {
     const html = await render({
       entry: { ...ENTRY, provider: 'codex' },
       history: CONVERSATION,
-      mode: 'normal',
     })
     expect(html).toContain('codex')
   })
@@ -124,7 +122,6 @@ describe('a conversation being read', () => {
     const html = await render({
       entry: { ...ENTRY, title: '' },
       history: CONVERSATION,
-      mode: 'normal',
     })
     // `parser` is the basename of a real cwd. A summary invented here would be indistinguishable
     // from one a provider wrote, which is the whole reason nothing composes one.
@@ -135,7 +132,6 @@ describe('a conversation being read', () => {
     const html = await render({
       entry: ENTRY,
       history: history(),
-      mode: 'normal',
     })
     expect(html).toContain('Nothing has been imported')
   })
@@ -154,7 +150,6 @@ describe('a conversation being read', () => {
       const html = await render({
         entry: ENTRY,
         history: CONVERSATION,
-        mode: 'normal',
       })
       expect(html).not.toContain('data-cy="prompt-input"')
       expect(html).not.toContain('data-cy="send-prompt"')
@@ -180,7 +175,7 @@ describe('a conversation being read', () => {
       // the selector were misspelled or the card had never rendered at all.
       const offered = await renderToString(
         createSSRApp({
-          render: () => h(TranscriptView as never, { items: live.items, mode: 'debug' }),
+          render: () => h(TranscriptView as never, { items: live.items }),
         }),
       )
       expect(offered).toContain('data-cy="permission-allow"')
@@ -188,7 +183,6 @@ describe('a conversation being read', () => {
       const html = await render({
         entry: ENTRY,
         history: pending,
-        mode: 'debug',
       })
       // Settled with a reason instead of offered as a choice.
       expect(html).toContain('This is a recording')
@@ -323,7 +317,6 @@ describe('a recording longer than one page', () => {
     const html = await render({
       entry: ENTRY,
       history: paged(),
-      mode: 'normal',
       onLoadOlder: async () => {},
     })
     expect(html).toContain('data-cy="load-older"')
@@ -335,7 +328,6 @@ describe('a recording longer than one page', () => {
     const html = await render({
       entry: ENTRY,
       history: CONVERSATION,
-      mode: 'normal',
       onLoadOlder: async () => {},
     })
     expect(html).not.toContain('data-cy="load-older"')
@@ -347,7 +339,6 @@ describe('a recording longer than one page', () => {
     const cut = await render({
       entry: ENTRY,
       history: paged({ turnAligned: false }),
-      mode: 'normal',
       onLoadOlder: async () => {},
     })
     expect(cut).toContain('data-cy="older-partial"')
@@ -356,7 +347,6 @@ describe('a recording longer than one page', () => {
     const clean = await render({
       entry: ENTRY,
       history: paged(),
-      mode: 'normal',
       onLoadOlder: async () => {},
     })
     expect(clean).not.toContain('data-cy="older-partial"')
@@ -378,7 +368,6 @@ describe('the reading pane can say a recording is behind its archive (065)', () 
     render({
       entry: withDerived(derived),
       history: { entries: [], hasOlder: false, turnAligned: true },
-      mode: 'normal',
     })
 
   it('says so for a stale recording, in words that do not read as damage', async () => {

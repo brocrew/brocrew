@@ -778,7 +778,7 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
     // ⚑ **T-002 · `1004 M11`**: at `warn`, so the reading view keeps it: it answers the stop drawn
     // just above it. And the card's own promise is in its words.
     expect(said[0]?.level).toBe('warn')
-    expect(isVisibleIn('normal', said[0]!)).toBe(true)
+    expect(isVisibleIn(said[0]!)).toBe(true)
     expect(REOPENED_ON_A_RENEWED_SIGN_IN).toContain('Nothing was re-sent: send again to carry on.')
 
     // ⛔ **Nothing was re-sent**: the failed turn is the last message a person sent, and the new

@@ -2,7 +2,6 @@
 import type { CapabilityStatus } from '../../../shared/runtime-ipc'
 import type { CompactionFacts } from '../lib/compaction-offer'
 import type { TranscriptState } from '../lib/transcript'
-import type { TranscriptMode } from '../lib/transcript-mode'
 import SessionContext from './SessionContext.vue'
 
 /**
@@ -11,7 +10,7 @@ import SessionContext from './SessionContext.vue'
 const props = defineProps<{
   state: TranscriptState
   shown?: TranscriptState
-  mode: TranscriptMode
+
   provider: string
   capability: CapabilityStatus | null
   conversation: CompactionFacts | null
@@ -42,7 +41,6 @@ const emit = defineEmits<{
       <SessionContext
         :state="props.state"
         :shown="props.shown"
-        :mode="props.mode"
         :provider="props.provider"
         :capability="props.capability"
         :conversation="props.conversation"

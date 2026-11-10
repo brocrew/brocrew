@@ -307,7 +307,7 @@ describe('667 · the three sentences, on a real screen', () => {
       }
       const m = mount(
         ReadingPane,
-        { entry, history: window, mode: 'normal', identities: IDS },
+        { entry, history: window, identities: IDS },
         { width: 1000, height: 900 },
       )
       await settle()
@@ -354,7 +354,7 @@ describe('667 · the three sentences, on a real screen', () => {
       // ⚑ mounted exactly as `ChildWorkViewer` mounts it — `who="sub-agent"`, no `ownAgent`
       const m = mount(
         TranscriptView,
-        { items: state.items, mode: 'normal', who: 'sub-agent' },
+        { items: state.items, who: 'sub-agent' },
         { width: 1000, height: 900 },
       )
       await settle()

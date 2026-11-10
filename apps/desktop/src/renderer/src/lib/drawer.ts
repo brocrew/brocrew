@@ -23,12 +23,6 @@ export const DRAWER_TABS = [
     hint: 'Agent settings, current work and anything waiting for you.',
   },
   {
-    id: 'events',
-    label: 'Events',
-    icon: '#i-activity',
-    hint: 'The raw event stream, unfiltered',
-  },
-  {
     id: 'info',
     label: 'Info',
     icon: '#i-info',

@@ -13,7 +13,6 @@ import { agentName } from '../../../shared/runtime-ipc'
 import { describeDerived } from '../lib/derived-state'
 import { markReadOnly } from '../lib/transcript'
 import { foldWindow, type WindowState } from '../lib/transcript-window'
-import type { TranscriptMode } from '../lib/transcript-mode'
 import { basenameOf } from '../lib/paths'
 import { fullTime } from '../lib/clock'
 import {
@@ -75,7 +74,7 @@ const props = defineProps<{
    * of rules about what a page is, free to drift from the one that gets exercised more.
    */
   history: WindowState
-  mode: TranscriptMode
+
   /**
    * Fetch and prepend the page before the one on screen (054). Absent for a caller that has no
    * paging behind it — a render test, or a conversation held entirely in one page.
@@ -323,7 +322,6 @@ const when = computed(() => fullTime(props.entry.updatedAt))
 
     <TranscriptView
       :items="transcript.items"
-      :mode="props.mode"
       :who="who"
       :provider="props.entry.provider"
       :own-agent="ownAgent"

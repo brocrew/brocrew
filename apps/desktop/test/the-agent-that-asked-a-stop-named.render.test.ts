@@ -536,8 +536,7 @@ const pane = (
   render(ConversationPane, {
     record,
     cwd: '/work',
-    mode: 'normal' as const,
-    debug: false,
+
     drawerOpen: false,
     drawerTab: 'open',
     models: null,
@@ -645,7 +644,7 @@ describe('§4 · the reading pane and the full view of a recorded conversation h
     child: null,
   }
   const reading = (identities: readonly AgentIdentity[] | null): Promise<string> =>
-    render(ReadingPane, { entry, history: page(ROWS), mode: 'normal', identities })
+    render(ReadingPane, { entry, history: page(ROWS), identities })
   /**
    * ⚑ **A conversation drawn from its ledger** — what the store adopts from `bridge.look` when
    * nothing runs it here: the page replayed through the record's one door, the host's recorded
@@ -664,8 +663,7 @@ describe('§4 · the reading pane and the full view of a recorded conversation h
     return render(ConversationPane, {
       record,
       cwd: '/work/checkout',
-      mode: 'normal' as const,
-      debug: false,
+
       drawerOpen: false,
       drawerTab: 'open',
       models: null,

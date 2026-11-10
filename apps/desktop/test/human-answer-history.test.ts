@@ -141,7 +141,7 @@ describe('indexed human answer history', () => {
     openWindow(cold, page)
     page.entries.forEach((row) => acceptEvent(cold, { ...row, sessionId: 's' }))
     for (const record of [live, cold]) {
-      const shown = visibleItems('normal', record.control.items)
+      const shown = visibleItems(record.control.items)
       expect(shown.filter((item) => item.kind === 'assistant').map((item) => item.text)).toEqual([
         'Actual answer',
       ])

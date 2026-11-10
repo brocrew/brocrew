@@ -5,7 +5,6 @@ import type ConversationPane from '../../src/renderer/src/components/Conversatio
 import type { CreatedSession } from '../../src/shared/runtime-ipc'
 import { createSessionRecord, type SessionRecord } from '../../src/renderer/src/lib/session-record'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
-import { createWindow } from '../../src/renderer/src/lib/transcript-window'
 import { createAttachmentBook, draftKey } from '../../src/renderer/src/lib/drafts'
 import type { DrawerFit, DrawerTab } from '../../src/renderer/src/lib/drawer'
 
@@ -514,8 +513,7 @@ export const paneProps = (
 ): MutablePaneProps & Record<string, unknown> => ({
   record: record([permission('req_1'), { type: 'status', state: 'waiting_permission' } as never]),
   cwd: META.cwd,
-  mode: 'normal' as const,
-  debug: false,
+
   // ⚠️ **`false`, to match `conversation-chrome.render.test.ts` exactly.** It was `true` here, and
   // review pointed out that the drift this file's comment above WARNS about had already happened —
   // in the same commit that wrote the warning. Every caller that needs the drawer now says so.
@@ -536,10 +534,7 @@ export const drawerProps = (over: Record<string, unknown> = {}): Record<string, 
   session: META,
   state: createTranscript(),
   shown: createTranscript(),
-  mode: 'normal',
-  // 237 §1: the drawer takes the WINDOW, not its entries — the Events tab has to be able to say
-  // whether what it draws is the whole ledger.
-  window: createWindow(),
+
   sessionRef: META.ref,
   status: 'idle',
   // ⚑ **D-017b** — a conversation this window runs: what is set here reaches it, and it is not drawn

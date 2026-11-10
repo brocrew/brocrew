@@ -107,7 +107,7 @@ describe('scheduled jobs open their full available prompt', () => {
                 state,
                 panel: sessionPanel(state),
                 canOpen: false,
-                mode: 'normal',
+
                 who: 'Bakery',
                 tasks: [],
                 agentState: { is: 'idle' },

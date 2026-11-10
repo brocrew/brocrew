@@ -82,7 +82,7 @@ const LONG_SENTENCE =
 const launcher = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
   busy: false,
   error: null,
-  debug: false,
+
   draft: '',
   defaultProvider: 'codex',
   // ⚑ **The front door's three choices, unanswered** (435) — `NO_LAUNCH_CHOICES` is what an
@@ -218,7 +218,7 @@ describe('the launcher cannot scroll sideways, at any width (101 §2)', () => {
    * asserted at the two widths 101 actually photographed.
    */
   it.each([1200, 1180])('the whole surface, header and all, at %ipx', async (width) => {
-    const m = await open(width, { error: 'the launch did not start', debug: true })
+    const m = await open(width, { error: 'the launch did not start' })
     expect(overflowing(m, 'new-conversation-surface'), `at ${width}px`).toEqual([])
   })
 
@@ -245,7 +245,6 @@ describe('the launcher cannot scroll sideways, at any width (101 §2)', () => {
   it('…and while it is failing, with every note it can show at once', async () => {
     const m = await openWide(400, {
       error: 'codex exited before it started: no such file or directory (cwd)',
-      debug: true,
     })
 
     // ⚑ **417: "every note it can show at once" is now literally three** — the always-on line, the
@@ -443,7 +442,7 @@ describe('the notes are one grammar in two registers (101 §7)', () => {
    *    the framing strip). ⚑ Both halves are gone; there is no surviving surface where a plan tick
    *    and a yolo tick can be combined from one screen.
    *  - *"the debug diagnostic answers for a fold that does not name plan (039)"* — `plan-unavailable`
-   *    and the `debug: true, capabilities: {}` pair. ⚠️ **`debug` is still a prop here**, but it now
+   *    and the `capabilities: {}` pair. ⚠️ **`debug` is still a prop here**, but it now
    *    only reaches `SessionHeader`; this file no longer has a debug-only element of its own.
    *  - *"the Controls pointer drops out when the COLUMN is narrow, not when the window is"* — the
    *    `@container` query over `.defer-toggle .say`. 🔴 **`container-type: inline-size` is still

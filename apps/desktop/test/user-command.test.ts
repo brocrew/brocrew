@@ -360,6 +360,6 @@ describe('the user_command breadcrumb (097)', () => {
     // …and `before` is not zero, so "unchanged" is a statement about a transcript that exists.
     expect(before).toBeGreaterThan(0)
     // Every item that IS there is still visible in normal mode — nothing was hidden to achieve it.
-    expect(state.items.every((item) => isVisibleIn('normal', item))).toBe(true)
+    expect(state.items.every((item) => isVisibleIn(item))).toBe(true)
   })
 })

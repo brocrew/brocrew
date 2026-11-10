@@ -46,7 +46,7 @@ function afterAReset() {
 
 describe('ConversationResetEntry — the seam a `/clear` leaves (199 acceptance 4)', () => {
   it('⛔ draws its own boundary in the READING view, naming the conversation the provider moved to', async () => {
-    const html = await render({ items: afterAReset().items, mode: 'normal', who: 'Claude' })
+    const html = await render({ items: afterAReset().items, who: 'Claude' })
 
     expect(html).toContain('data-cy="reset-boundary"')
     // The two things on the row that are the provider's own, cited rather than asserted.
@@ -61,13 +61,13 @@ describe('ConversationResetEntry — the seam a `/clear` leaves (199 acceptance 
   })
 
   it('…and in debug too — this is not a mode toggle, it is a fact about the conversation', async () => {
-    const html = await render({ items: afterAReset().items, mode: 'debug', who: 'Claude' })
+    const html = await render({ items: afterAReset().items, who: 'Claude' })
     expect(html).toContain('data-cy="reset-boundary"')
     expect(html).toContain('sess-after')
   })
 
   it('says the earlier turns are GONE rather than summarized — the whole difference from a compaction', async () => {
-    const html = await render({ items: afterAReset().items, mode: 'normal', who: 'Claude' })
+    const html = await render({ items: afterAReset().items, who: 'Claude' })
     expect(html).toContain('gone from the model, not summarized')
     // Non-vacuity: the user's own message is on the page, so the reset row was rendered into a real
     // transcript rather than into an empty one that would contain any absence you asked for.

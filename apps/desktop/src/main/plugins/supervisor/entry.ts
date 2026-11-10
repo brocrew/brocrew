@@ -13,6 +13,7 @@ import { checkedSharedDataOwner } from '../shared-data'
 import { previousRunsProvenStopped } from './recovery-proof'
 import { writeRecoveryAdvice } from './recovery-advice'
 import { recordDrainTrace } from './drain-trace'
+import { openLog, serviceLogFile } from '../../logging/log'
 import { PluginSupervisorError, ownerDiagnosticLine } from './protocol'
 
 export async function runPluginSupervisor(configPath: string, expectedDigest: string) {
@@ -20,6 +21,7 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
   if (!/^[a-f0-9]{64}$/.test(expectedDigest) || digest(bytes) !== expectedDigest)
     throw new Error('unavailable')
   const config = LaunchConfig.parse(JSON.parse(bytes.toString('utf8')))
+  openLog(serviceLogFile(config.root), { console: false, sync: true })
   if (config.sharedDataOwner)
     checkedSharedDataOwner(config.sharedDataOwner, join(config.root, 'host'))
 
@@ -50,7 +52,7 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
         },
       })
     },
-    traceDrain: (event) => recordDrainTrace(config.root, event),
+    traceDrain: recordDrainTrace,
     // Exit with the lock held so the next owner rechecks run receipts before starting.
     onBlockedWithoutProcesses: () => process.exit(0),
   })

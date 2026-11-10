@@ -25,7 +25,6 @@ import { fullTime } from '../lib/clock'
 import { handBackOffer } from '../lib/handing-it-back'
 import { basenameOf } from '../lib/paths'
 import { inventoryAsOf, inventorySummary, readInventory } from '../lib/tool-inventory'
-import { LIFECYCLE_TOGGLE_TITLE } from '../lib/transcript-mode'
 import { stillThinkingSays } from '../lib/still-thinking'
 import type { ToolRegistry } from '../lib/transcript'
 import AgentState from './AgentState.vue'
@@ -70,8 +69,7 @@ const props = withDefaults(
     /** The running session, or null for a thread that has not been started. */
     session: CreatedSession | null
     status: SessionStatus | null
-    /** Whether lifecycle notices are shown inline in the conversation (079 §3). */
-    debug: boolean
+
     /**
      * Whether the drawer is showing (080). Optional, and the launcher passes neither this nor
      * `waiting`: there is no conversation yet, so the button that would toggle it is not rendered
@@ -194,7 +192,7 @@ const emit = defineEmits<{
   handBack: []
   /** Open the confirmation that lists what deleting this conversation would remove. */
   delete: []
-  toggleDebug: []
+
   toggleDrawer: []
   openTools: []
 }>()
@@ -805,29 +803,6 @@ const panelToggleName = computed(() =>
       >
         <svg class="icon"><use href="#i-tool" /></svg>
         <span class="count" data-cy="session-tools-count">{{ toolCount }}</span>
-      </button>
-
-      <!-- One meaning since 079 §3: lifecycle notices INLINE in the conversation. It no longer opens
-         anything — the event stream is a tab you open on its own — and the glyph changed with the
-         meaning, from an eye ("reveal the machinery") to marks on a timeline, which is what
-         lifecycle events are.
-
-         ⛔ **This tooltip is unchanged by 211 §4 and that is the finding.** It has named those three
-         things since 079; the FILTER behind it went on showing everything, so turning it on in a
-         Codex planning conversation added 208 `item/plan/delta` markers and made the plan harder to
-         read. `transcript-mode.ts` is what moved. The tooltip is quoted verbatim in
-         `lifecycle-toggle.test.ts`, against the filter, so the two cannot drift again in silence. -->
-      <button
-        class="icon-button"
-        :class="{ on: debug }"
-        type="button"
-        :data-on="debug"
-        :aria-pressed="debug"
-        :title="`${LIFECYCLE_TOGGLE_TITLE} (${debug ? 'on' : 'off'})`"
-        data-cy="toggle-debug-mode"
-        @click="emit('toggleDebug')"
-      >
-        <svg class="icon"><use href="#i-lifecycle" /></svg>
       </button>
 
       <!-- The drawer, and the badge that is the point of it. Attention trace #1: it is OUTSIDE the

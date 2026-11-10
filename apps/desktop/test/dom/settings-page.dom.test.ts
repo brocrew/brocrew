@@ -5,7 +5,6 @@ import SettingsScreen, {
   type SettingsTab,
 } from '../../src/renderer/src/components/SettingsScreen.vue'
 import { useAttentionSignals } from '../../src/renderer/src/composables/useAttentionSignals'
-import { useDebugMode } from '../../src/renderer/src/composables/useDebugMode'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 import type { AgentIdentities, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { providersBridge } from '../../look/fixtures/providers'
@@ -31,15 +30,30 @@ afterEach(() => {
   unmountAll()
   Reflect.deleteProperty(window, 'api')
   useAttentionSignals().value = true
-  useDebugMode().value = false
   computer.platform = 'MacIntel'
 })
 
 async function settings(
   start: SettingsTab = 'providers',
   retention?: NonNullable<Window['api']['transcriptRetention']>,
+  logging?: NonNullable<Window['api']['logging']>,
 ) {
   providersBridge()
+  window.api = {
+    ...window.api,
+    logging: logging ?? {
+      getLogging: async () => ({
+        debug: false,
+        path: '/fictional/app/logs/brocrew.log',
+        servicePath: null,
+      }),
+      setLoggingDebug: async (debug) => ({
+        debug,
+        path: '/fictional/app/logs/brocrew.log',
+        servicePath: null,
+      }),
+    },
+  }
   if (retention) window.api = { ...window.api, transcriptRetention: retention }
   themesBridge('brocrew')
   const store = createAgentStore({ agentIdentities: async () => identities } as RuntimeBridge)
@@ -100,22 +114,68 @@ it('opens Providers by default and moves the existing Settings content between t
   expect(m.all('themes-section')).toHaveLength(0)
 })
 
-it('keeps both General switches bound to the window preferences', async () => {
-  useAttentionSignals().value = true
-  useDebugMode().value = false
+it('keeps attention signals independent of the debug mode preference', async () => {
   const { m } = await settings('general')
+  await vi.waitFor(() =>
+    expect((m.q('debug-mode-switch') as HTMLInputElement).disabled).toBe(false),
+  )
   const attention = m.q('attention-signals-switch') as HTMLInputElement
-  const debug = m.q('debug-mode-switch') as HTMLInputElement
-  expect(attention.checked).toBe(true)
-  expect(debug.checked).toBe(false)
   attention.click()
-  debug.click()
   await nextTick()
   expect(useAttentionSignals().value).toBe(false)
-  expect(useDebugMode().value).toBe(true)
-  expect(m.q('attention-signals').textContent).toContain(
-    'When BroCrew is in the background, bounce the Dock icon once and show the count.',
-  )
+  expect((m.q('debug-mode-switch') as HTMLInputElement).checked).toBe(false)
+})
+
+it('shows the saved choice and the full log path, and saves a change', async () => {
+  const path = '/fictional/very long workspace folder/logs/brocrew.log'
+  const servicePath = '/fictional/plugins/service.log'
+  const setLoggingDebug = vi.fn(async (debug: boolean) => ({ debug, path, servicePath }))
+  const { m } = await settings('general', undefined, {
+    getLogging: async () => ({ debug: true, path, servicePath }),
+    setLoggingDebug,
+  })
+  const toggle = m.q('debug-mode-switch') as HTMLInputElement
+  await vi.waitFor(() => expect(toggle.checked).toBe(true))
+  expect(m.q('log-path').textContent).toContain(path)
+  expect(m.q('log-service-path').textContent).toContain(servicePath)
+  expect(m.q('debug-mode').textContent).toContain('Errors are always logged')
+  toggle.click()
+  await vi.waitFor(() => expect(setLoggingDebug).toHaveBeenCalledWith(false))
+})
+
+it('keeps the switch disabled until the read arrives', async () => {
+  let resolve!: (state: { debug: boolean; path: string; servicePath: null }) => void
+  const answer = new Promise<{ debug: boolean; path: string; servicePath: null }>((done) => {
+    resolve = done
+  })
+  const { m } = await settings('general', undefined, {
+    getLogging: () => answer,
+    setLoggingDebug: vi.fn(),
+  })
+  const toggle = m.q('debug-mode-switch') as HTMLInputElement
+  expect(toggle.disabled).toBe(true)
+  expect(m.all('log-path')).toHaveLength(0)
+  resolve({ debug: false, path: '/fictional/logs/brocrew.log', servicePath: null })
+  await vi.waitFor(() => expect(toggle.disabled).toBe(false))
+  expect(m.all('log-service-path')).toHaveLength(0)
+})
+
+it('retries a failed read and restores the checkbox after a failed save', async () => {
+  const state = { debug: false, path: '/fictional/logs/brocrew.log', servicePath: null }
+  const getLogging = vi
+    .fn()
+    .mockRejectedValueOnce(new Error('read failed'))
+    .mockResolvedValue(state)
+  const setLoggingDebug = vi.fn().mockRejectedValue(new Error('write failed'))
+  const { m } = await settings('general', undefined, { getLogging, setLoggingDebug })
+  await vi.waitFor(() => expect(m.all('log-error')).toHaveLength(1))
+  const toggle = m.q('debug-mode-switch') as HTMLInputElement
+  expect(toggle.disabled).toBe(true)
+  m.q('log-retry').click()
+  await vi.waitFor(() => expect(toggle.disabled).toBe(false))
+  toggle.click()
+  await vi.waitFor(() => expect(m.q('log-error').textContent).toContain('Could not save'))
+  expect(toggle.checked).toBe(false)
 })
 
 it('says the Windows taskbar action on Windows, without changing the switch', async () => {

@@ -14,6 +14,7 @@
  * A declared step is not verified coverage. Report PASS, failure, skipped and unasserted
  * outcomes separately; execution evidence describes the source version actually exercised.
  */
+import { ACTIVE_TRANSCRIPT_HISTORY } from './lib/transcript-evidence.mjs'
 import { execFileSync, spawn } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { createServer } from 'node:net'
@@ -548,7 +549,7 @@ async function resetAfterFailure() {
       `return Boolean(document.querySelector('[data-cy=toggle-session-panel]'))`,
     )
     if (!hasDrawer) return // no conversation on screen: there is no drawer to put anywhere
-    await ensureEventsOpen(mainCdp)
+    await ensureHistoryAvailable(mainCdp)
   } catch (error) {
     console.log(
       `     (the drawer could not be restored after the failure: ` +
@@ -1632,43 +1633,20 @@ const CLICK = (selector) => `
   return true
 `
 
-/**
- * Everything the smoke asserts on, read straight out of the rendered DOM.
- *
- * ⚠️ **EVERY COUNTER BELOW IS EVENTS-TAB-SCOPED, AND READS ZERO — NOT NULL — ANYWHERE ELSE.**
- * `events`, `turns`, `deltas`, `messages`, `permissions`, `tools` and `sessions` are all counted off
- * `[data-cy=event-log] li`, and since 080 that list is mounted only while the drawer is on Events.
- * On any other tab they are a serene `0`, which is indistinguishable from "nothing has happened".
- *
- * That is not theoretical. 093 ran step 18 for the first time since 080 and watched it wait out its
- * full 180-second budget on `now.turns > asked.turns` — `0 > 0` — because 080's own review had
- * added an `ensureTab(cdp, 'controls')` earlier in the step to reach a control that had moved, and
- * took the counters with it. The step was not slow and the app was not broken; the numbers were
- * being read off an unmounted list.
- *
- * So: a step that switches tabs mid-way must come back to Events before it reads a count. The
- * fields that are NOT tab-scoped are marked where they are declared.
- *
- * ⚠️ **This is the ONE read exempted from 097's tab-flow walk**, and the exemption is carried in the
- * template itself so it shows up in a diff. Everywhere else, naming a hook that belongs to another
- * tab is now an error; here it is the design — the snapshot reaches across every tab in one pass and
- * its whole contract is that an absent hook reads as `false`. That contract is also why `eventLog`
- * exists: it is the sentinel that tells a caller whether the counters beside it mean anything, which
- * is the narrow version of the walk this template has had since 093 and keeps.
- */
+/** UI assertions read the normal DOM; event counts use its bounded persisted history page. */
 const SNAPSHOT = `
   // ${WIDE_READ_MARK}
-  const types = [...document.querySelectorAll('[data-cy=event-log] li')].map((li) => li.dataset.type)
+  const history = ${ACTIVE_TRANSCRIPT_HISTORY}
+  const types = history?.entries.map((entry) => entry.event.type) ?? []
   const count = (type) => types.filter((t) => t === type).length
   const openCards = [...document.querySelectorAll('[data-cy=permission-card]')]
     .filter((card) => card.querySelector('[data-cy^=permission-allow], [data-cy=permission-deny]'))
     .map((card) => card.dataset.requestId)
   return {
     // Whether the counters below mean ANYTHING right now. See the warning above the template: off
-    // the Events tab every one of them is 0, which reads exactly like a session that has done
     // nothing. This is the flag that lets a caller tell those two apart instead of waiting out a
     // three-minute budget against a number that can never move.
-    eventLog: Boolean(document.querySelector('[data-cy=event-log]')),
+    historyRead: history !== null,
     events: types.length,
     turns: count('turn'),
     deltas: count('assistant_delta'),
@@ -2651,145 +2629,30 @@ async function ensureInfoOpen(cdp) {
   )
 }
 
-/**
- * Back to the event stream, which is where most of this smoke reads from — `SNAPSHOT` counts
- * `event-log` rows, and they only exist while the Events tab is up.
- */
-async function ensureEventsOpen(cdp) {
-  await ensureTab(cdp, 'events')
+/** Normal UI and its persisted page are observed separately; neither requires a debug view. */
+async function ensureHistoryAvailable(cdp) {
   await waitFor(
-    'the event stream',
-    async () => await cdp.evaluate(`return Boolean(document.querySelector('[data-cy=event-log]'))`),
+    'the normal transcript history',
+    async () =>
+      await cdp.evaluate(`
+    return (${ACTIVE_TRANSCRIPT_HISTORY}) !== null`),
     10_000,
   )
 }
 
-/**
- * ⛔ **What the app's own LEDGER recorded, one event type at a time** (224 §4).
- *
- * ⚠️ **224 §4 is the whole difficulty of this dispatch**: *"the subject never appeared"* and *"the
- * app is broken"* look identical from outside. A step that waits for a `Bash` row and gives up can
- * mean the model never reached for Bash — or that the transcript stopped drawing tool rows. Read off
- * the transcript alone the two are the same absence, and a step that reported `NOT ASSERTED` for
- * both would be the hiding place `193` and `196` exist to close, wearing a new label.
- *
- * ⚑ **So the absence is corroborated from a second READING.** The event log is the unfiltered
- * normalized stream, populated from `RuntimeEvent`s rather than from the transcript projection.
- * `describeEvent` renders a `tool_call` as `${name} · ${id}`, so the name is readable, and a ledger
- * that records a call the transcript never drew is the renderer dropping rows.
- *
- * ⛔ **What this docstring used to claim — *"two INDEPENDENT surfaces"* — was not true, and 230 H1
- * is the correction** (wired here by 237 §1). Both readings run over `record.window.entries`: ONE
- * array, deliberately, so the conversation and this tab share a single bound. ⚠️ **So they cannot
- * disagree about an event neither of them HAS.** The projections differ — that is what still catches
- * a renderer dropping rows — but the underlying set is the same, and it is bounded and can freeze.
- * ⚑ {@link refuseIfLedgerWindowed} is the fact that was missing, and {@link framesErased} is the
- * one question neither reading can answer at all.
- *
- * ⛔ **And it points the other way too**, which is the half that catches a real defect: a ledger that
- * records a call the transcript never drew is the renderer dropping rows, and the steps that use
- * this go RED for it rather than blank.
- *
- * ⚠️ **Events tab only** — like every counter in `SNAPSHOT`. Callers here already `ensureEventsOpen`.
- */
-async function ledgerRows(cdp, type) {
-  const rows = await cdp.evaluate(`
-    const log = document.querySelector('[data-cy=event-log]')
-    if (!log) return null
-    return [...log.querySelectorAll('li')]
-      .filter((li) => li.dataset.type === ${JSON.stringify(type)})
-      .map((li) => (li.querySelector('.rdetail')?.textContent ?? '').trim())`)
-  // ⛔ **An empty ledger and an unmounted one are the same array**, and this is 093's lesson aimed
-  // at the one read where it would be worst: a drawer that had drifted off Events would answer
-  // "the model produced nothing" to every question below, and every step using it would report a
-  // confident blank about a list that was not on screen. `assertCountersVisible` says this for the
-  // counters; the ledger needs it more, because its answer is an ABSENCE either way.
-  if (rows === null) {
-    throw new Error(
-      `the event log is not mounted, so the ${type} events cannot be read at all — call ` +
-        'ensureEventsOpen(cdp) before asking the ledger what arrived (093)',
-    )
-  }
-  return rows
+async function recordedEventsOf(cdp, type) {
+  return await cdp.evaluate(`
+    const history = ${ACTIVE_TRANSCRIPT_HISTORY}
+    if (!history) throw new Error('No normal conversation is selected for the history read.')
+    return history.entries.filter((entry) => entry.event.type === ${JSON.stringify(type)})`)
 }
 
-/**
- * ⛔ **Whether the ledger just read IS the session, or a window onto it** (237 §1, from `230` H1).
- *
- * ⚠️ **`ledgerRows` was believed to be a SECOND surface and it is not.** `record.window.entries` is
- * ONE array serving the transcript and this tab — deliberately, so there is one bound and no second
- * copy to forget — and `SNAPSHOT`'s counters are read off the same `li` set. ⛔ So *"two independent
- * surfaces agree nothing named `Bash` arrived"* was one surface counted three times, and every
- * absence conclusion built on it inherited the array's bound: 2,500 events a page, two pages held,
- * the oldest 1,251 released on event 5,001 — and, more cheaply, the whole list FROZEN while the
- * reader is off the tail.
- *
- * ⚑ **Read off the LIST ITSELF — the same element the rows come from.** A fact on a sibling could
- * describe a different moment; a count from main is a different process answering *"how far does the
- * ledger go"* rather than *"was the array I just read whole"*.
- *
- * ⚠️ **It is one round-trip later than the rows, not one read with them, and callers order it so
- * that matters.** Every caller asks this AFTER the rows it is about, so a release landing between
- * the two evaluates is seen and reds; asking first would let a release slip in behind a passed
- * guard, which is the one state this exists to forbid.
- */
 async function ledgerReach(cdp) {
-  const reach = await cdp.evaluate(`
-    const log = document.querySelector('[data-cy=event-log]')
-    if (!log) return null
-    return {
-      whole: log.dataset.whole,
-      from: log.dataset.from,
-      hasOlder: log.dataset.hasOlder,
-      atTail: log.dataset.atTail,
-      behind: log.dataset.behind,
-      // ⚠️ Rows, not children: the empty state is an <li> too, so a session with nothing in it
-      // would otherwise report one row and misdescribe the very evidence it is offering.
-      shown: log.querySelectorAll('li[data-type]').length,
-    }`)
-  if (reach === null) {
-    throw new Error(
-      'the event log is not mounted, so whether it holds the whole session cannot be read at all ' +
-        '— call ensureEventsOpen(cdp) first (093)',
-    )
-  }
-  // ⛔ **Every one of the five has to be THERE**, and an app that stopped rendering any of them is
-  // a red rather than a default. ⚠️ Reading `whole` straight off the attribute would make a lost
-  // `:data-whole` binding refuse four steps with a message that says the window is fine —
-  // `hasOlder=false, atTail=true` — so the verdict is DERIVED here from the two facts it is made of
-  // and the attribute is checked for agreement.
-  const missing = ['whole', 'from', 'hasOlder', 'atTail', 'behind'].filter(
-    (key) => reach[key] === undefined || reach[key] === '',
-  )
-  if (
-    missing.length > 0 ||
-    Number.isNaN(Number(reach.from)) ||
-    Number.isNaN(Number(reach.behind))
-  ) {
-    throw new Error(
-      `the event log does not say how much of the ledger it holds: ${JSON.stringify(reach)} — ` +
-        '237 §1 put data-whole/data-from/data-has-older/data-at-tail/data-behind on it for this ' +
-        `read${missing.length > 0 ? `, and ${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not rendered` : ''}`,
-    )
-  }
-  const read = {
-    whole: reach.hasOlder === 'false' && reach.atTail === 'true',
-    from: Number(reach.from),
-    hasOlder: reach.hasOlder === 'true',
-    atTail: reach.atTail === 'true',
-    behind: Number(reach.behind),
-    shown: reach.shown,
-  }
-  // …and the app's own verdict has to agree with the one derived from its own two facts. They are
-  // computed from the same pair one line apart in `EventStream.vue`; disagreeing means the binding
-  // is reading something else.
-  if ((reach.whole === 'true') !== read.whole) {
-    throw new Error(
-      `the event log says data-whole="${reach.whole}" over hasOlder=${reach.hasOlder} ` +
-        `atTail=${reach.atTail} — the completeness attribute disagrees with the facts it is made of`,
-    )
-  }
-  return read
+  return await cdp.evaluate(`
+    const history = ${ACTIVE_TRANSCRIPT_HISTORY}
+    if (!history) throw new Error('No normal conversation is selected for the page-boundary read.')
+    return { whole: !history.hasOlder, from: history.from,
+      hasOlder: history.hasOlder, shown: history.entries.length }`)
 }
 
 /**
@@ -2803,17 +2666,15 @@ async function refuseIfLedgerWindowed(cdp, what) {
   const reach = await ledgerReach(cdp)
   if (reach.whole) return reach
   throw new Error(
-    `the event log holds a WINDOW onto this session, not the session: ${reach.shown} row(s) from ` +
-      `ordinal ${reach.from}, hasOlder=${reach.hasOlder}, atTail=${reach.atTail}, ` +
-      `behind=${reach.behind}. ⛔ ${what} would be a claim about the model read off a partial ` +
-      'list — the released rows and the calls that never happened look identical (230 H1)',
+    `The normal transcript's persisted page is partial: ${reach.shown} events from ` +
+      `ordinal ${reach.from}, hasOlder=${reach.hasOlder}. Cannot conclude ${what} from a partial page.`,
   )
 }
 
 /** Every tool the ledger says the model called, by name — `describeEvent` puts it first. */
 async function toolCallsRecorded(cdp) {
-  return (await ledgerRows(cdp, 'tool_call'))
-    .map((detail) => detail.split(' · ')[0].trim())
+  return (await recordedEventsOf(cdp, 'tool_call'))
+    .map((entry) => entry.event.name)
     .filter((name) => name !== '')
 }
 
@@ -2853,14 +2714,12 @@ async function toolCallsRecorded(cdp) {
  * ⚑ Drop the type for *"was anything of ours erased at all"* — 235's note 4.
  */
 async function framesErased(cdp, type) {
-  // Match the degraded marker rendered from runtime events.
-  const marker = ' · degraded:'
-  // `ledgerRows` refuses an unmounted log (093), which is note 1: without it this would answer
-  // "no erasures" about a list that is not on screen — an absence about an absence.
-  return (await ledgerRows(cdp, 'unknown')).filter(
-    (detail) =>
-      detail.endsWith(`${marker}<unnamed>`) ||
-      (type === undefined ? detail.includes(marker) : detail.endsWith(`${marker}${type}`)),
+  return (await recordedEventsOf(cdp, 'unknown')).filter(
+    ({ event }) =>
+      event.label === 'degraded:<unnamed>' ||
+      (type === undefined
+        ? event.label?.startsWith('degraded:')
+        : event.label === `degraded:${type}`),
   )
 }
 
@@ -3556,11 +3415,11 @@ async function main() {
    * One check, at the two places every counter-driven wait goes through, and the run says what is
    * actually wrong in the first second instead of the fourth minute.
    */
-  function assertCountersVisible(now, what) {
-    if (now.eventLog) return
+  function assertHistoryAvailable(now, what) {
+    if (now.historyRead) return
     throw new Error(
-      `cannot wait for ${what}: the drawer is not on Events, so every counter in the snapshot ` +
-        `reads 0 whatever the session does — call ensureEventsOpen(cdp) before waiting on a turn`,
+      `cannot wait for ${what}: no selected normal transcript history was read. ` +
+        `Call ensureHistoryAvailable(cdp) before using turn counters.`,
     )
   }
 
@@ -3569,7 +3428,7 @@ async function main() {
       what,
       async () => {
         const now = await snapshot()
-        assertCountersVisible(now, what)
+        assertHistoryAvailable(now, what)
         await each?.(now)
         return now.turns > before.turns && now.status !== 'working' ? now : null
       },
@@ -3986,7 +3845,7 @@ async function main() {
     const deadline = Date.now() + TURN_BUDGET_MS
     for (;;) {
       const now = await snapshot()
-      assertCountersVisible(now, 'the turn to terminalize')
+      assertHistoryAvailable(now, 'the turn to terminalize')
       if (now.streamingBlocks > 0 && now.liveTags > 0) seen.streaming = true
       if (now.composer?.stop) seen.stop = true
       if (now.activity?.doing) seen.activityPhases.add(now.activity.doing)
@@ -4049,49 +3908,31 @@ async function main() {
   )
 
   await step(
-    '1b the lifecycle toggle opens nothing — it is not the event stream (079 §3)',
+    '1b Debug mode changes the log detail and leaves the conversation surface alone',
     async () => {
-      // ⚠️ **This step changed shape with 080, and it is still the one everything else depends on.**
-      // Before it, one control did two jobs: the eye put lifecycle notices in the transcript AND
-      // opened a second drawer holding the raw stream. 079 split them — the toggle means only the
-      // first now, and the stream is a tab in the one drawer (opened in step 2, once there is a
-      // conversation to have one). This proves the split and leaves lifecycle ON, which is what the
-      // later mode assertions and `SNAPSHOT`'s counts are read against.
-      //
-      // It runs on the EMPTY surface, before any session exists — which is exactly why it can make
-      // the strongest half of the claim: there is no drawer to open here at all, so a toggle that
-      // still opened one would have nowhere to hide it.
-      const look = async () =>
-        await cdp.evaluate(`
-        // ${WIDE_READ_MARK} — absence IS the claim here (097's walk). There is no session and no
-        // drawer on this surface, so \`stream\` reading false is the assertion, not a missed tab.
-        const toggle = document.querySelector('[data-cy=toggle-debug-mode]')
-        return {
-          debug: toggle ? toggle.dataset.on === 'true' : null,
-          label: toggle?.title ?? '',
-          drawer: Boolean(document.querySelector('[data-cy=session-drawer]')),
-          stream: Boolean(document.querySelector('[data-cy=event-log]')),
-        }`)
-
-      const before = await look()
-      if (before.debug === null) throw new Error('the app view has no lifecycle toggle')
-      // A previous run's preference is remembered on this machine, so normalize rather than assume.
-      if (before.debug) await cdp.evaluate(CLICK('toggle-debug-mode'))
-      const off = await look()
-      if (off.debug) throw new Error('the lifecycle toggle would not turn off')
-
-      await cdp.evaluate(CLICK('toggle-debug-mode'))
-      const on = await look()
-      if (!on.debug) throw new Error('the lifecycle toggle would not turn on')
-      if (on.drawer) throw new Error('the lifecycle toggle opened a drawer — 079 §3 split these')
-      if (on.stream) throw new Error('the raw stream is showing without a drawer being open')
-      // And the control SAYS what it now means, rather than the meaning being known only to whoever
-      // moved it. This is the copy 079 §3 specified.
-      if (!on.label.includes('lifecycle events in the conversation')) {
-        throw new Error(`the toggle still describes itself as something else: ${on.label}`)
+      const before = await cdp.evaluate(`
+      if (!window.api?.logging) throw new Error('Logging IPC is not composed.')
+      const state = await window.api.logging.getLogging()
+      return { state, drawer: Boolean(document.querySelector('[data-cy=session-drawer]')) }
+    `)
+      if (typeof before.state.debug !== 'boolean' || !before.state.path.endsWith('brocrew.log')) {
+        throw new Error('Logging does not report the debug choice and the log file path.')
       }
-
-      return `lifecycle on, no drawer and no stream came with it — "${on.label.slice(0, 48)}…"`
+      try {
+        const after = await cdp.evaluate(`
+        const state = await window.api.logging.setLoggingDebug(${JSON.stringify(!before.state.debug)})
+        return { state, drawer: Boolean(document.querySelector('[data-cy=session-drawer]')) }
+      `)
+        if (after.state.debug !== !before.state.debug)
+          throw new Error('The debug choice did not change.')
+        if (after.drawer !== before.drawer)
+          throw new Error('Changing Debug mode opened or closed a drawer.')
+        return `Debug mode changed independently of the conversation; log ${after.state.path}`
+      } finally {
+        await cdp.evaluate(
+          `return await window.api.logging.setLoggingDebug(${JSON.stringify(before.state.debug)})`,
+        )
+      }
     },
   )
 
@@ -4339,7 +4180,6 @@ async function main() {
       )
 
       // The drawer exists from here on, because a drawer is a drawer OF something. It stays open on
-      // Events for the rest of the run, which is where `SNAPSHOT` and step 7c read `event-log` from.
       //
       // 🔴 **OPEN on a fresh machine since 385 §2, and this assertion is inverted rather than
       // deleted.** From 080 to 384 it read `if (tabs.length !== 0) throw new Error('the drawer was
@@ -4391,15 +4231,16 @@ async function main() {
       const live = strip.filter((t) => !t.reserved).map((t) => t.tab)
       // ⚑ **W4.208 · six again: `context` left** — its meter is the Context popup on the Open tab.
       // ⚑ Five: `controls` left too — its model, plan and approval mode are on the Open tab's card.
-      if (live.join(',') !== 'open,events,info,changes,work') {
+      // ⚑ Four: the Events tab left with Debug mode; the raw stream is no longer a drawer tab.
+      if (live.join(',') !== 'open,info,changes,work') {
         throw new Error(`the live tabs are ${live.join(',') || '(none)'}`)
       }
-      if (strip.length !== 5) throw new Error(`expected five tabs, saw ${strip.length}`)
+      if (strip.length !== 4) throw new Error(`expected four tabs, saw ${strip.length}`)
       if (live.length !== strip.length)
         throw new Error(
           `${strip.length - live.length} reserved slot(s) — RESERVED_TABS is empty now`,
         )
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
 
       await cdp.screenshot('session-created')
       return `status=${state.status} cwd=${state.cwd}, drawer already open on a fresh profile (385 §2) onto ${live.join(' · ')} — all ${strip.length} live, none reserved`
@@ -4413,11 +4254,10 @@ async function main() {
     //
     // ⚠️ **The Info tab, said out loud — 080's own rule, which 080 did not apply here.** Everything
     // below lives on Info, and step 2 leaves the drawer on Events because that is where the rest of
-    // the run reads `event-log` from. Since 080 only one tab body is mounted at a time, so without
     // this line every selector answers `null` and the step dies on `home is not managed: null`.
     //
     // ⚠️ It is worse than a plain red, which is why 093 is fixing it rather than noting it: `2b`
-    // also PASSED in 093's first attempt — because step 2 threw before its own `ensureEventsOpen`
+    // also PASSED in 093's first attempt — because step 2 threw before its own `ensureHistoryAvailable`
     // and left the drawer sitting on Info. The step's result was reading whichever tab the previous
     // step happened to die on. Restored to Events at the end for the same reason.
     await ensureInfoOpen(cdp)
@@ -4503,7 +4343,7 @@ async function main() {
     if (!/programmatic/.test(info.config ?? '')) throw new Error('config model not stated')
     if (!/Keychain/i.test(info.config ?? '')) throw new Error('Keychain auth not stated')
 
-    await ensureEventsOpen(cdp) // put it back where step 2 left it — see the note at the top
+    await ensureHistoryAvailable(cdp) // put it back where step 2 left it — see the note at the top
     return (
       info.files.map((f) => `${f.name}=${f.exists ? 'present' : 'absent'}`).join(' ') +
       (refreshed
@@ -4524,7 +4364,7 @@ async function main() {
     // fetched deliberately rather than read off a snapshot taken with the drawer somewhere else.
     await ensureInfoOpen(cdp)
     const { ref } = await snapshot()
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
     if (!ref || ref.startsWith('—')) throw new Error('ref never announced')
     after.ref = ref
 
@@ -4620,7 +4460,6 @@ async function main() {
       // 085 could prove from the ledger that a conversation had closed and not WHAT closed it.
       // `user-command.test.ts` drives the IPC boundary directly, which proves the mapping; what it
       // cannot prove is that a real click on a real control reaches that boundary and lands in the
-      // ledger the Events tab reads. This is that half.
       //
       // ⚠️ **It sits after step 3 because it needs a LIVE session.** Placed at the end of the run it
       // found the approval control rendered as a `<span>` — the read-only variant a finished session
@@ -4660,15 +4499,16 @@ async function main() {
         // step 7 then failed for a reason that had nothing to do with them. 097's walk named it
         // instantly instead of letting them time out — but leaving the suite where it expects to be
         // is this step's job, not the walk's.
-        await ensureEventsOpen(cdp)
+        await ensureHistoryAvailable(cdp)
       }
       const seen = await waitFor(
         'both breadcrumbs to reach the event log',
         async () => {
           const rows = await cdp.evaluate(`
-          return [...document.querySelectorAll('[data-cy=event-log] li')]
-            .filter((li) => li.dataset.type === 'user_command')
-            .map((li) => li.textContent.replace(/\\s+/g, ' ').trim())
+          const history = ${ACTIVE_TRANSCRIPT_HISTORY}
+          if (!history) throw new Error('No normal transcript is selected.')
+          return history.entries.filter((entry) => entry.event.type === 'user_command')
+            .map(({ event }) => event.command.replace(/_/g, ' ') + (event.target ? ' → ' + event.target : ''))
         `)
           return rows.length >= 2 ? rows : null
         },
@@ -4910,7 +4750,7 @@ async function main() {
         'the reply to be well under way',
         async () => {
           const now = await snapshot()
-          assertCountersVisible(now, 'the reply to be well under way')
+          assertHistoryAvailable(now, 'the reply to be well under way')
           if (now.openCards.length > 0) {
             if (await cdp.evaluate(ANSWER_FIRST_OPEN_CARD('allow'))) answered += 1
             return null
@@ -4970,7 +4810,7 @@ async function main() {
         'the turn to terminalize and settle',
         async () => {
           const now = await snapshot()
-          assertCountersVisible(now, 'the turn to terminalize and settle')
+          assertHistoryAvailable(now, 'the turn to terminalize and settle')
           // The terminal turn and `status: idle` are two events; catching the turn
           // first and asserting the status immediately is a race in the TEST.
           return now.turns > before.turns && now.status === 'idle' ? now : null
@@ -5044,7 +4884,7 @@ async function main() {
         // Events `now.turns` is a flat 0, `turns > before.turns` never fires, and this loop happily
         // waits out its budget having stopped checking that the silence it found belongs to a turn
         // that was still running.
-        assertCountersVisible(now, 'the provider to fall silent')
+        assertHistoryAvailable(now, 'the provider to fall silent')
         if (now.openCards.length > 0) {
           const id = await cdp.evaluate(ANSWER_FIRST_OPEN_CARD('allow'))
           if (id) answered += 1
@@ -5084,8 +4924,9 @@ async function main() {
 
   await step('7 the renderer only ever saw transcript entries it knows', async () => {
     const types = await cdp.evaluate(`
-      return [...new Set([...document.querySelectorAll('[data-cy=event-log] li')]
-        .map((li) => li.dataset.type))].sort()
+      const history = ${ACTIVE_TRANSCRIPT_HISTORY}
+      if (!history) throw new Error('No normal transcript is selected.')
+      return [...new Set(history.entries.map((entry) => entry.event.type))].sort()
     `)
     const known = new Set([
       'session',
@@ -5294,7 +5135,6 @@ async function main() {
     const strange = types.filter((type) => !known.has(type))
     if (strange.length > 0) throw new Error(`unexpected event types: ${strange.join(', ')}`)
     // ⚠️ **Non-vacuity, and this check needed it more than most.** `types` is read off
-    // `[data-cy=event-log] li`, which since 080 is mounted only on the Events tab — so a run that
     // arrived here on any other tab would find `[]`, filter nothing, and pass having checked
     // nothing at all. 097's walk now refuses the read outright, but the pairing is what makes the
     // PASS mean "we saw a conversation and recognised all of it".
@@ -5420,7 +5260,7 @@ async function main() {
     // was quiet"* and *"the renderer dropped every entry"* read identically (224 §4). ⚑ The ledger
     // is the second surface: reasoning that ARRIVED and was drawn nowhere is this app losing rows,
     // and it stays RED. That is the same pairing step 12 makes for Codex.
-    const reasoningEvents = (await ledgerRows(cdp, 'thinking')).length
+    const reasoningEvents = (await recordedEventsOf(cdp, 'thinking')).length
     // ⛔ **…and the ledger has to be the whole session for its agreement to be worth anything**
     // (237 §1). `230` H1: this log and the conversation are ONE bounded array, so *"neither surface
     // has a thinking entry"* is one surface twice — and a released window says it just as loudly.
@@ -5434,13 +5274,11 @@ async function main() {
     // the sentence in the panel, and asserting them together is what stops one drifting from the
     // other. `237 §1` put both on this tab precisely because the smoke's absence conclusions and a
     // human reading the raw stream were being misled by the same missing fact.
-    const reachSaid = await cdp.evaluate(`
-      const note = document.querySelector('[data-cy=event-log-reach]')
-      return note ? note.textContent.replace(/\\s+/g, ' ').trim() : null`)
-    if (reachSaid === null || !/whole ledger/i.test(reachSaid)) {
+    const olderOffered = await cdp.evaluate(`
+      return Boolean(document.querySelector('[data-cy=transcript-older]'))`)
+    if (olderOffered) {
       throw new Error(
-        `the raw tab does not say it holds the whole ledger while its own attribute says it does: ` +
-          `${JSON.stringify(reachSaid)}`,
+        'The normal transcript offers older messages; absence cannot be concluded from its visible page.',
       )
     }
     // ⛔ **…and that nothing of ours was ERASED on the way** (235 §3, 237 §5). ⚠️ The pairing below
@@ -5557,11 +5395,6 @@ async function main() {
                 'disclosure on Codex, whose adapter does carry summary text',
             ),
       asserted(`sub-agent cards — ${nesting}`),
-      // ⛔ **The sentence a PERSON reads, checked against the attribute a STEP reads** (237 §1). Two
-      // renderings of one fact, and the reason to assert them together is that the machine-readable
-      // one is what every refusal above rests on: if they ever disagree, the guard is describing a
-      // different window than the panel is.
-      asserted(`the raw tab says what it holds — "${reachSaid}"`),
     )
   })
 
@@ -5580,18 +5413,19 @@ async function main() {
       // 049 split is mostly ABOUT (`reasoning`, `plan`, `activity`) are no longer drawn here at all,
       // and a step that only looked at the transcript would have quietly stopped measuring the
       // classification it exists for. That is the "a filter can blind its own justification" shape.
-      // The raw Events tab filters nothing, and since 211 its rows carry `data-category`.
       const seen = await cdp.evaluate(`
       const quiet = [...document.querySelectorAll('[data-cy=chatter-entry]')]
       const loud = [...document.querySelectorAll('[data-cy=unknown-entry]')]
-      const raw = [...document.querySelectorAll('[data-cy=event-log] [data-type=unknown]')]
+      const history = ${ACTIVE_TRANSCRIPT_HISTORY}
+      if (!history) throw new Error('No normal transcript is selected.')
+      const raw = history.entries.filter((entry) => entry.event.type === 'unknown')
       return {
         quiet: quiet.length,
         loud: loud.length,
         categories: [...new Set(quiet.map((e) => e.dataset.category))].sort(),
         loudCategories: [...new Set(loud.map((e) => e.dataset.category))].sort(),
         raw: raw.length,
-        rawCategories: [...new Set(raw.map((e) => e.dataset.category))].sort(),
+        rawCategories: [...new Set(raw.map((entry) => entry.event.category))].sort(),
       }
     `)
       // ⛔ The loud bucket is a HARD assertion in both directions and always has been: a recognized
@@ -5606,16 +5440,9 @@ async function main() {
         throw new Error('an `unrecognized` event rendered as quiet chatter')
       // ⛔ **211 §4's own claim, and the reason the raw count is read at all**: nothing the lifecycle
       // view draws quietly may be anything other than housekeeping.
-      const strayInView = seen.categories.filter((category) => category !== 'lifecycle')
-      if (strayInView.length > 0) {
-        throw new Error(
-          `the lifecycle view drew ${strayInView.join(', ')} chatter — it shows session/turn ` +
-            `housekeeping and nothing else (211 §4)`,
-        )
-      }
-      const hidden = seen.rawCategories.filter(
-        (category) => category !== 'lifecycle' && category !== 'unrecognized',
-      )
+      if (seen.quiet !== 0)
+        throw new Error('Recognized chatter was rendered in the normal transcript.')
+      const hidden = seen.rawCategories.filter((category) => category !== 'unrecognized')
       return claims(
         seen.quiet > 0 || seen.loud > 0
           ? asserted(
@@ -5645,13 +5472,14 @@ async function main() {
   )
 
   await step(
-    '7c layout holds: nothing widens the chat, both panes scroll, composer stays put',
+    '7c layout holds: normal transcript and Info stay bounded, composer stays put',
     async () => {
       // Keep long unbreakable tokens within the transcript's right edge and vertical bounds,
       // without horizontal overflow or clipping the composer.
+      await ensureInfoOpen(cdp)
       const layout = await cdp.evaluate(`
       const t = document.querySelector('[data-cy=transcript]')
-      const l = document.querySelector('[data-cy=event-log]')
+      const l = document.querySelector('[data-cy=session-info]')?.closest('.drawer-body')
       const c = document.querySelector('[data-cy=prompt-input]')
       if (!t || !l || !c) throw new Error('the live panes are not on screen')
       const longestToken = Math.max(0, ...t.innerText.split(/\\s+/).map((w) => w.length))
@@ -5660,7 +5488,9 @@ async function main() {
         transcript: { clientWidth: t.clientWidth, scrollWidth: t.scrollWidth,
                       scrollsY: t.scrollHeight > t.clientHeight + 1 },
         widestItem: Math.max(0, ...[...t.children].map((el) => el.scrollWidth)),
-        logScrollsY: l.scrollHeight > l.clientHeight + 1,
+        infoAllowsScroll: ['auto', 'scroll'].includes(getComputedStyle(l).overflowY),
+        infoHasContent: Boolean(l.querySelector('[data-cy=session-cwd]')),
+        infoFits: l.scrollWidth <= l.clientWidth + 1,
         composerBottom: Math.round(c.getBoundingClientRect().bottom),
         viewport: window.innerHeight,
       }
@@ -5678,127 +5508,69 @@ async function main() {
         throw new Error(`an item is wider than the pane: ${layout.widestItem}`)
       }
       if (!layout.transcript.scrollsY) throw new Error('the transcript does not scroll in its pane')
-      if (!layout.logScrollsY) throw new Error('the event log does not scroll in its pane')
+      if (!layout.infoAllowsScroll || !layout.infoHasContent || !layout.infoFits) {
+        throw new Error(
+          'The normal Info panel does not keep its real paths in a bounded scrolling pane.',
+        )
+      }
       if (layout.composerBottom > layout.viewport + 1) {
         throw new Error(`composer clipped: bottom ${layout.composerBottom} > ${layout.viewport}`)
       }
       await cdp.screenshot('layout')
-      return `longest token ${layout.longestToken} chars, pane ${layout.transcript.clientWidth}px, both panes scroll`
+      return `longest token ${layout.longestToken} chars, pane ${layout.transcript.clientWidth}px, Info bounded and scrollable`
     },
   )
 
-  await step('7d the body’s normal mode hides the noise and keeps the conversation', async () => {
-    // The same component the real app view will mount, switched over a REAL transcript
-    // — four turns of messages, tools, cards, lifecycle notices and provider chatter.
+  await step('7d the normal transcript hides noise and is independent of file detail', async () => {
     const count = `
       const t = document.querySelector('[data-cy=transcript]')
+      if (!t) throw new Error('The normal transcript is not mounted.')
+      const history = ${ACTIVE_TRANSCRIPT_HISTORY}
+      if (!history || history.hasOlder) throw new Error('A complete persisted page is required to check filtering.')
       return {
-        mode: t.dataset.mode,
-        items: t.children.length,
         conversation: t.querySelectorAll('[data-cy=user-message], [data-cy=assistant-message], [data-cy=tool-entry], [data-cy=tool-run], [data-cy=permission-card]').length,
-        lifecycle: t.querySelectorAll('[data-cy=notice-info]').length,
         problems: t.querySelectorAll('[data-cy=notice-warn], [data-cy=notice-error]').length,
+        lifecycle: t.querySelectorAll('[data-cy=notice-info]').length,
         chatter: t.querySelectorAll('[data-cy=chatter-entry]').length,
-        chatterCategories: [...new Set([...t.querySelectorAll('[data-cy=chatter-entry]')].map((e) => e.dataset.category))].sort(),
-      }
-    `
-    // 🔴 **713 · NORMALIZED, not assumed** (`708` H-5) — step 70's repair, one step earlier: a
-    // click is a toggle. ⛔ This step assumed 1b had left the screen in debug, and in a full batch
-    // it had; selected without 1b — `BROBOT_SMOKE_ONLY=2,3,7d` — it read `normal` here and failed
-    // before measuring anything (measured on `main`, 713). ⚑ Normalized BEFORE the settle below, so
-    // the two identical reads it waits for are reads of the debug view it then measures.
-    const found = await cdp.evaluate(count)
+        recordedBoundaries: history.entries.filter(({ event }) => event.type === 'session' || event.type === 'turn').length,
+      }`
+    let settled
+    await waitFor(
+      'the normal transcript to settle',
+      async () => {
+        const now = await cdp.evaluate(count)
+        const same = settled && JSON.stringify(now) === JSON.stringify(settled)
+        settled = now
+        return same ? now : null
+      },
+      30_000,
+      300,
+    )
+    const normal = await cdp.evaluate(count)
+    if (normal.conversation === 0 || normal.recordedBoundaries === 0) {
+      throw new Error(
+        'Conversation content and recorded lifecycle events are both required to check the filter.',
+      )
+    }
+    if (normal.lifecycle !== 0 || normal.chatter !== 0)
+      throw new Error('The normal transcript rendered lifecycle noise.')
+    const original = await cdp.evaluate(`return await window.api.logging.getLogging()`)
     try {
-      if (found.mode !== 'debug') await cdp.evaluate(CLICK('toggle-debug-mode'))
-      // Let the transcript STOP MOVING before measuring it. This step compares two snapshots of a
-      // live surface for exact equality, so a stray event landing between them reads as "normal mode
-      // changed the conversation" — which is a claim about our renderer, made by the provider's
-      // timing. Seen once as `22 → 23`. Waiting for two identical reads removes the race at its
-      // source rather than loosening the assertion the step exists for.
-      let settled = null
-      await waitFor(
-        'the transcript to settle',
-        async () => {
-          const now = await cdp.evaluate(count)
-          const same = settled && JSON.stringify(now) === JSON.stringify(settled)
-          settled = now
-          return same ? now : null
-        },
-        30_000,
-        300,
+      await cdp.evaluate(
+        `return await window.api.logging.setLoggingDebug(${JSON.stringify(!original.debug)})`,
       )
-
-      const debug = await cdp.evaluate(count)
-      if (debug.mode !== 'debug') throw new Error(`the screen is not in debug: ${debug.mode}`)
-      // Non-vacuous: there has to BE noise for hiding it to mean anything.
-      //
-      // ⛔ **`debug.chatter === 0` was a throw here until 211 §4, and it had to stop being one.** The
-      // lifecycle view keeps `unknown{lifecycle}` — session/turn housekeeping — and drops every other
-      // recognized category, so whether ANY chatter is on screen now depends on whether this
-      // conversation happened to produce housekeeping. A hard requirement would have made the step
-      // report on the provider's mood. It is a claim below instead; the lifecycle NOTICES are the
-      // guaranteed noise, and a turn cannot end without one.
-      if (debug.lifecycle === 0) throw new Error('no lifecycle notices in the transcript')
-      if (debug.conversation === 0) throw new Error('no conversation in the transcript')
-      // ⛔ 211 §4's claim, and it is hard: nothing else may be drawn quietly in this view.
-      const strayInView = debug.chatterCategories.filter((category) => category !== 'lifecycle')
-      if (strayInView.length > 0) {
-        throw new Error(
-          `the lifecycle view drew ${strayInView.join(', ')} chatter — its tooltip promises session ` +
-            `start, turn boundaries and provider housekeeping, and that is all it may show`,
-        )
+      const changed = await cdp.evaluate(count)
+      if (changed.conversation !== normal.conversation || changed.problems !== normal.problems) {
+        throw new Error('Changing Debug mode changed conversation content or hid a problem notice.')
       }
-
-      await cdp.evaluate(CLICK('toggle-debug-mode'))
-      const normal = await cdp.evaluate(count)
-      // ⚠️ **Inverted by 080, and deliberately.** This used to require the raw stream to VANISH with
-      // the mode; since 079 §3 the toggle owns the transcript and nothing else, so the stream staying
-      // exactly where it was put is the property now. A toggle that still closed it would be the two
-      // meanings growing back together.
-      if (!(await cdp.evaluate(`return Boolean(document.querySelector('[data-cy=event-log]'))`))) {
-        throw new Error('switching the transcript to normal closed the Events tab as well')
-      }
+      if (changed.lifecycle !== 0 || changed.chatter !== 0)
+        throw new Error('Debug mode revealed lifecycle noise in the conversation.')
       await cdp.screenshot('body-normal')
-      if (normal.mode !== 'normal') throw new Error(`mode did not switch: ${normal.mode}`)
-      if (normal.lifecycle !== 0) throw new Error(`${normal.lifecycle} lifecycle notices survived`)
-      if (normal.chatter !== 0) throw new Error(`${normal.chatter} chatter entries survived`)
-      if (normal.conversation !== debug.conversation) {
-        throw new Error(`conversation changed: ${debug.conversation} → ${normal.conversation}`)
-      }
-      if (normal.problems !== debug.problems) {
-        throw new Error(`a problem notice was hidden: ${debug.problems} → ${normal.problems}`)
-      }
-
-      // Back to debug, to check the toggle puts back what normal hid — the `finally` below then leaves
-      // the screen as it was FOUND (713).
-      await cdp.evaluate(CLICK('toggle-debug-mode'))
-      const back = await cdp.evaluate(count)
-      // `>=` not `===`: a late event landing between the two snapshots would be a
-      // false alarm, and what this checks is that the toggle put the hidden items back.
-      if (back.mode !== 'debug' || back.items < debug.items) {
-        throw new Error(`debug did not restore: mode=${back.mode} items=${back.items}`)
-      }
-      return claims(
-        asserted(
-          `1 · lifecycle ${debug.items} items → normal ${normal.items}, keeping ` +
-            `${normal.conversation} conversation + ${normal.problems} problem row(s) and hiding ` +
-            `${debug.lifecycle} lifecycle notice(s)`,
-        ),
-        debug.chatter > 0
-          ? asserted(
-              `2 · the lifecycle view kept ${debug.chatter} housekeeping row(s) ` +
-                `(${debug.chatterCategories.join(', ')}) and normal dropped every one`,
-            )
-          : unasserted(
-              `2 · this conversation produced no session/turn housekeeping, so nothing here shows the ` +
-                `lifecycle view keeping it`,
-            ),
-      )
+      return `${normal.conversation} content and ${normal.problems} problem rows preserved; ${normal.recordedBoundaries} persisted boundaries remain filtered`
     } finally {
-      // …and leave the screen as it was FOUND — read from the screen, not assumed from the clicks,
-      // so a throw anywhere above still restores it (step 70's rule, `708`'s review).
-      const now = await cdp.evaluate(count).catch(() => null)
-      if (now !== null && now.mode !== found.mode) await cdp.evaluate(CLICK('toggle-debug-mode'))
+      await cdp.evaluate(
+        `return await window.api.logging.setLoggingDebug(${JSON.stringify(original.debug)})`,
+      )
     }
   })
 
@@ -6003,7 +5775,7 @@ async function main() {
       // The drawer is open for both readings, because check 2b below is about the drawer — and on
       // the SAME tab for both, or `dark` and `light` would be two different drawers and the
       // difference would read as drift.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
 
       // ⛔ **344 removed the titlebar switch this step used to press**, so the direction inverts:
       // paper is what the app OPENS on, and the dark ramp is reached for by setting the carrier.
@@ -6285,7 +6057,7 @@ async function main() {
     // arrived only with `system/init`, so step 10's scan adopted that transcript as a stranger (R79)
     // or never saw one. A finished turn puts the transcript and the ref on disk, and step 10's pins
     // then hold exactly. ⚠️ The conversation closed before its init is R79's own test now.
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
     await watchTurn(before, 'allow')
 
     // Close the session this step opened — and WAIT for it to end. Fire-and-forget would leave a
@@ -6302,7 +6074,7 @@ async function main() {
     )
     // Left where the rest of the run expects it. This step reloaded the page, so the tab it
     // remembered is now the one every later step inherits.
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
     return `Info selected and still selected after a reload (drawer was on ${onEntry.tab ?? 'shut'} on entry), top bar kept stating the session`
   })
 
@@ -7758,12 +7530,11 @@ async function main() {
       approvalMode: 'auto',
     })
     // ⛔ **Opened HERE rather than assumed** (found reviewing this diff). `watchTurn` reads its
-    // counters off `[data-cy=event-log]`, which lives inside the drawer, and the drawer defaults to
     // CLOSED on a fresh `--user-data-dir`. ⚠️ **`BROBOT_SMOKE_ONLY` pulls in no dependencies** — the
     // standing rule — so a run selecting this step alone threw on its first line, with a message
     // about counters rather than about the drawer. ⚑ One line makes the step self-sufficient
     // instead of naming a prerequisite nobody would remember.
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
     await watchTurn(opening, 'allow')
 
     const overComposer = async () =>
@@ -8023,7 +7794,7 @@ async function main() {
       })
       // …and what the LEDGER saw of the same turn, before the next session takes the drawer over.
       // `waitForTurnEnd` has just asserted the counters are visible, so the log is mounted here.
-      codexThinkingEvents += (await ledgerRows(cdp, 'thinking')).length
+      codexThinkingEvents += (await recordedEventsOf(cdp, 'thinking')).length
       // ⛔ **And the ledger has to BE the session for that count to mean anything** (237 §1). A
       // `thinking` frame released out of the window leaves `codexThinkingEvents` at zero, which is
       // the number the blank at the end reads as *"Codex reasoned nowhere"*. ⚠️ Asked AFTER the
@@ -8308,7 +8079,7 @@ async function main() {
     // "B has had no turns" but "the counter is not mounted". `waitForTurnEnd(…, beforeB)` further
     // down then compared `now.turns > 0` with the drawer back on Events, which is true the instant
     // it looks, so it returned without waiting for B's turn at all. Found in 093's review.
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
     const beforeB = await snapshot()
     await cdp.evaluate(SET_VALUE('prompt-input', SAY_IN_B))
     await cdp.evaluate(CLICK('send-prompt'))
@@ -8330,7 +8101,7 @@ async function main() {
     // The counter, not idle ({@link waitForTurnEnd}) — `beforeB` was taken before B's send.
     // ⚠️ And on EVENTS, because this step has been on the Info tab since it read the cwd: the
     // counter lives in the event log and the event log is mounted on one tab (093).
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
     await waitForTurnEnd('B’s turn to finish', beforeB)
 
     // Back in A: the draft is still there, and still whole — blank lines and indentation included,
@@ -8743,7 +8514,7 @@ async function main() {
       await cdp.screenshot('typed-into-existence')
       // ⚠️ The stream count is Events-tab-scoped (093), and `opened` was taken while the drawer was
       // wherever step 12 left it — so this is re-read deliberately rather than trusted from above.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       const streamed = await snapshot()
       if (streamed.events === 0) throw new Error('the new session has no stream at all')
       // ONE user message, newline inside it — not a send per line, not a duplicate from the
@@ -8800,7 +8571,7 @@ async function main() {
             `HO-023 §3 has moved`,
         )
       }
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
 
       // ⛔ **The provider assertions that stood here are NOT PERFORMED** — see the block above.
       // `013`'s regression was *"the composer one ignored the provider select"*; `435` drew the
@@ -8961,10 +8732,8 @@ async function main() {
         'exactly three lines of text, (2) count the lines in plan.txt, (3) tell me the count. ' +
         'Track your progress as you go.',
     })
-
-    // ⚠️ On Events, said rather than inherited (093): every counter this step waits on is read off
     // the event log, which the tabbed drawer mounts on one tab only.
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
 
     // Everything the checklist did between the send and the terminal turn.
     const revisions = []
@@ -9161,9 +8930,7 @@ async function main() {
           'are in the current working directory. Wait for both to finish, then give me their two ' +
           'answers as two bullet points. Do not write any files.',
       })
-
-      // ⚠️ On Events, said rather than inherited (093) — the counters below are event-log-scoped.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
 
       // Everything the cards did between the send and the terminal turn. A final snapshot cannot
       // tell a card that was never running from one that ran and ended, and "it spins forever" is
@@ -9473,12 +9240,11 @@ async function main() {
 
       // ⚠️ **Back to Events before ANY counter is read, and this is the bug 093 found.** Every
       // number `SNAPSHOT` returns — `turns`, `events`, `deltas`, `permissions`, `tools` — is counted
-      // off `[data-cy=event-log] li`, which exists only on the Events tab. 080's review added the
       // `ensureTab(cdp, 'controls')` above to reach the approval control and did not notice that it
       // takes the whole counter block with it: from that line on, `snapshot().turns` was 0, so the
       // wait below compared `0 > 0` and sat out its full 180 s. Measured, not reasoned — that is
       // exactly how this step failed on its first run since 080.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
 
       // Answer the card and let the turn end — it is still live, and leaving it would hang.
       //
@@ -9493,7 +9259,7 @@ async function main() {
         'the first turn to end',
         async () => {
           const now = await snapshot()
-          assertCountersVisible(now, 'the first turn to end')
+          assertHistoryAvailable(now, 'the first turn to end')
           return now.turns > asked.turns ? true : null
         },
         TURN_BUDGET_MS,
@@ -9509,7 +9275,7 @@ async function main() {
         'the unattended turn',
         async () => {
           const now = await snapshot()
-          assertCountersVisible(now, 'the unattended turn')
+          assertHistoryAvailable(now, 'the unattended turn')
           if (now.openCards.length > 0) sawCard = true
           return now.turns > before.turns ? true : null
         },
@@ -9711,14 +9477,12 @@ async function main() {
           'not depend on what is in it. Do not create any files yet. Write the plan and then ' +
           'present it to me for approval using your ExitPlanMode tool.',
       })
-
-      // ⚠️ **On Events, said rather than inherited** (093). Step 18 ends on the Controls tab, and
       // this step's `waitForTurnEnd` reads the turn counter out of the event log — which is mounted
       // on Events alone. In 093's discovery run 18 threw while on Controls and 19 inherited it, so
       // 19 waited its whole budget on `0 > 0` and reported "timed out waiting for the plan turn to
       // end". That is the THIRD distinct wrong diagnosis this one sentence has produced (072, 075,
       // and here) and the first that was not about the model at all.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
 
       // 1 · the plan arrives as a DOCUMENT, on paper, with a way to see the raw.
       //
@@ -9802,7 +9566,7 @@ async function main() {
         const now = await snapshot()
         // The instrument first: off Events every counter reads 0 and the ledger reads empty, which
         // would be indistinguishable from a model that did nothing (093).
-        assertCountersVisible(now, 'what the plan-mode turn actually produced')
+        assertHistoryAvailable(now, 'what the plan-mode turn actually produced')
         const called = await toolCallsRecorded(cdp)
         // ⛔ **CONTROL 1 · this app ingested a real turn.** A blank claimed over a session that
         // produced nothing at all would be a blank over a dead app.
@@ -9969,9 +9733,9 @@ async function main() {
           'word HELLO, using your Write tool. Do not ask me anything first.',
       })
       // Said rather than inherited (093): every turn counter in the snapshot reads 0 unless the
-      // drawer is on Events, and `assertCountersVisible` turns that into an error in the first
+      // drawer is on Events, and `assertHistoryAvailable` turns that into an error in the first
       // second instead of a timeout in the fourth minute.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       const before = await snapshot()
 
       // ⛔ **Waits for the turn to SETTLE, which is not the same as the turn ending** (162 §3).
@@ -9994,7 +9758,7 @@ async function main() {
         'the planning turn to end or park on its plan',
         async () => {
           const now = await snapshot()
-          assertCountersVisible(now, 'the planning turn to settle')
+          assertHistoryAvailable(now, 'the planning turn to settle')
           if (now.turns > before.turns && now.status !== 'working') return { now, how: 'ended' }
           // ⚑ 728 · WHICH card it parked on, said — the plan's approval or the CLI's own ask.
           if ((now.userInputCards ?? []).some((c) => c.approve && !c.answered)) {
@@ -10422,7 +10186,7 @@ async function main() {
       // one before it left — and in 093's discovery run that was Controls, because step 18 threw
       // while it was there. Counters read 0 on Controls, so the wait below compared `0 > 0` and
       // timed out. Step 22 was reported red twice for a session that had run perfectly.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
 
       // 1 · unattended, and PROVEN unattended. If the first turn asked, this session never had the
       // frozen bypass and everything after it would be about nothing.
@@ -10434,7 +10198,7 @@ async function main() {
         'the unattended first turn',
         async () => {
           const now = await snapshot()
-          assertCountersVisible(now, 'the unattended first turn')
+          assertHistoryAvailable(now, 'the unattended first turn')
           return now.turns > start.turns ? true : null
         },
         TURN_BUDGET_MS,
@@ -10475,12 +10239,11 @@ async function main() {
       // approved the write before anything of ours was consulted: the file appeared, no card, and
       // the header said `ask` the whole time.
       // ⚠️ **Back to Events, for the same reason step 18 needed it** (093): every counter in
-      // `SNAPSHOT` is read off `[data-cy=event-log] li`, and the `ensureTab(cdp, 'controls')` above
       // unmounts that list. Off Events `now.turns` is a flat 0, so the `turns > before.turns`
       // branches below — the two that tell "a tool ran with no card" apart from "the model answered
       // in prose" — could never be reached, and BOTH outcomes would have arrived as a bare timeout.
       // The card half would still have passed, which is what made this survivable and invisible.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       const before = await snapshot()
       await cdp.evaluate(SET_VALUE('prompt-input', write(asked)))
       await cdp.evaluate(CLICK('send-prompt'))
@@ -10488,7 +10251,7 @@ async function main() {
         'the re-armed approval card',
         async () => {
           const now = await snapshot()
-          assertCountersVisible(now, 'the re-armed approval card')
+          assertHistoryAvailable(now, 'the re-armed approval card')
           if (now.openCards.length > 0) return now.openCards[0] ?? '(card with no request id)'
           // A turn that ENDS without ever asking needs to be reported as ITSELF rather than as a
           // timeout — but the diagnosis depends on WHY, and the two are not the same failure:
@@ -10521,7 +10284,7 @@ async function main() {
           `the turn that raised the card did not adopt ask: ${JSON.stringify(asking.approval)}`,
         )
       }
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
 
       // 4 · and DENY still means no. An approval path that only appears to work is the same defect
       // one layer up.
@@ -10534,7 +10297,7 @@ async function main() {
         'the denied turn to end',
         async () => {
           const now = await snapshot()
-          assertCountersVisible(now, 'the denied turn to end')
+          assertHistoryAvailable(now, 'the denied turn to end')
           if (now.openCards.length > 0) {
             if (denied >= MAX_APPROVALS_PER_TURN) {
               throw new Error(`still re-prompting after ${denied} denials`)
@@ -10821,14 +10584,9 @@ async function main() {
       try {
         const ownCdp = await Cdp.attach(port)
 
-        // Where Electron actually puts it, discovered rather than assumed. `app.getPath('logs')`
-        // is `~/Library/Logs/<app.getName()>`, and `getName()` comes from the package `name` —
-        // `@brobot2/desktop` — NOT from the `productName` the bundle carries. So the file lands
-        // somewhere nobody told to "check the logs" would look. Both are probed and the one that
-        // grew is reported, so the day that changes, this says so instead of silently passing.
+        // The app writes its log inside its own data folder, which this step created.
         const candidates = [
-          join(homedir(), 'Library/Logs/@brobot2/desktop/memory.log'),
-          join(homedir(), 'Library/Logs/BroBot2/memory.log'),
+          join(smokeUserDataDir(EVIDENCE, 'user-data-watchdog'), 'logs', 'brocrew.log'),
         ]
         // ⚠️ The file is APPENDED to and is shared by EVERY instance on this machine — the path is
         // keyed to the app's name, not to its user-data dir — so the size before does NOT identify
@@ -11273,14 +11031,12 @@ async function main() {
           `the absolute path ${target} containing exactly OK using a single file write. ` +
           'Do not read anything back and do not run any shell command.',
       })
-
-      // ⚠️ **On Events, and this step needs it TWICE OVER** (093). The counter below is read out of
       // the event log, which mounts on this tab alone; and the whole premise underneath — "the card
       // lands while the drawer is on the WRONG tab" — is only true if the drawer is on a tab that
       // is not Open. Inherited until 093, when step 18 threw on Controls four steps earlier and
       // this one reported "timed out waiting for the permission card" about a card that had
       // arrived on time.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
 
       // The card, off the cumulative event log rather than off the DOM: an open card is a moment,
       // and a poll can miss it between two samples. The log cannot be missed — the same reason
@@ -11289,7 +11045,7 @@ async function main() {
         'the permission card',
         async () => {
           const now = await snapshot()
-          assertCountersVisible(now, 'the permission card')
+          assertHistoryAvailable(now, 'the permission card')
           return now.permissions > start.permissions ? true : null
         },
         TURN_BUDGET_MS,
@@ -11377,7 +11133,7 @@ async function main() {
 
       // ⭐ And the one-click route the bar offers — an OFFER, never a jump made for you. Back on
       // Events first, so the click under test is the bar's rather than the tab strip's.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       await clickWhenReady(cdp, 'drawer-show-open')
 
       const listed = await cdp.evaluate(`
@@ -11659,7 +11415,7 @@ async function main() {
         )
       }
       // Left where the rest of the run reads from.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
 
       return (
         `badge ${badged.badge} before opening · row → entry ${listed.cardItem} ` +
@@ -11901,7 +11657,7 @@ async function main() {
       if (!pill.includes('Bash')) throw new Error(`Info does not name the grant: "${pill}"`)
       // ⚠️ Info unmounts the event log, and `waitForTurnEnd` counts its rows: put the drawer back
       // where every other step expects it.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
 
       const afterFirst = await waitForTurnEnd('the first turn to finish', beforeFirst)
 
@@ -12045,7 +11801,7 @@ async function main() {
           // the work the plan described"* — and the file the plan described was already on disk,
           // written eight minutes earlier. `29` had thrown before restoring the drawer to Events,
           // so `now.turns` read 0 forever, and this bare `waitFor` had no way to say so.
-          assertCountersVisible(now, 'the work the plan described')
+          assertHistoryAvailable(now, 'the work the plan described')
           if (now.openCards.length > 0) await cdp.evaluate(ANSWER_FIRST_OPEN_CARD('allow'))
           return now.status === 'idle' && now.turns >= proposed.turns + 1 ? now : null
         },
@@ -12141,29 +11897,14 @@ async function main() {
       let ownCdp = null
       try {
         ownCdp = await Cdp.attach(port)
-        // ⚠️ **Debug on, in THIS app** (066). `SNAPSHOT` counts turns off `[data-cy=event-log]`,
-        // which lives in a drawer rendered `v-if="debug"` — and debug is a per-userData preference
-        // that step 1b turns on in the MAIN app only. This app has its own fresh userData, so its
-        // event log does not exist, `turns` is permanently 0, and the wait below for `turns > 0`
-        // could never have returned. That is how this step spent its whole 180 s budget in batch #2
-        // on a conversation that had in fact finished.
-        // Normalized rather than clicked blind, the way 1b does it — a click is a toggle, and a
-        // step that assumes which way it went is one preference change from being wrong.
         await waitFor(
-          'the debug toggle in the owned app',
+          'the owned normal launcher',
           async () =>
-            await ownCdp.evaluate(
-              `return Boolean(document.querySelector('[data-cy=toggle-debug-mode]'))`,
-            ),
+            await ownCdp.evaluate(`
+          return Boolean(document.querySelector('[data-cy=prompt-input]')) &&
+            typeof window.api?.runtime?.latestHistory === 'function'`),
           30_000,
         )
-        if (
-          !(await ownCdp.evaluate(
-            `return document.querySelector('[data-cy=toggle-debug-mode]').dataset.on === 'true'`,
-          ))
-        ) {
-          await ownCdp.evaluate(CLICK('toggle-debug-mode'))
-        }
 
         // A real conversation, LEFT OPEN. The quit is what has to close it — closing it from the UI
         // first would test the Close button, which 051 already covers.
@@ -12176,19 +11917,18 @@ async function main() {
           prompt: 'Say the word ready, and nothing else.',
         })
         // ⚠️ **The OWN app's drawer, and it starts SHUT** (093). 080 §1 defaults a fresh install to
-        // a closed drawer, and every `launchApp` here is a fresh install — so `event-log` is not
         // mounted, `SNAPSHOT.turns` is a flat 0, and the `turns > 0` below could never become true.
         // This step waited its whole 180-second budget on it. Step 38 survives the same shape only
         // because it settles for `status === 'idle'`, which is top-bar and not tab-scoped.
-        await ensureEventsOpen(ownCdp)
+        await ensureHistoryAvailable(ownCdp)
         await waitFor(
           'the first turn to finish',
           async () => {
             const now = await ownCdp.evaluate(SNAPSHOT)
             // The guard takes a snapshot, not a connection — so a step driving its OWN app gets it
-            // too (162 §4). `ensureEventsOpen(ownCdp)` above is what makes it pass; this is what
+            // too (162 §4). `ensureHistoryAvailable(ownCdp)` above is what makes it pass; this is what
             // says so when someone removes that line.
-            assertCountersVisible(now, 'the first turn to finish')
+            assertHistoryAvailable(now, 'the first turn to finish')
             if (now.openCards.length > 0) await ownCdp.evaluate(ANSWER_FIRST_OPEN_CARD('allow'))
             // A fresh instance, so any completed turn at all is this step's.
             return now.turns > 0 && now.status === 'idle' ? now : null
@@ -12381,16 +12121,14 @@ async function main() {
           'Generate one small, simple image: a single red circle on a white background. ' +
           'Use your image generation tool. Do not write any files yourself and do not explain.',
       })
-
-      // ⚠️ On Events, said rather than inherited (093). `watchTurn` below reads the turn counter out
       // of the event log, which the drawer mounts on this tab alone.
       //
       // (An earlier version of this comment blamed step 29 for leaving the drawer on Open via its
-      // "Show in Open" click. Checked in review: 29 ends with an `ensureEventsOpen` of its own, so
+      // "Show in Open" click. Checked in review: 29 ends with an `ensureHistoryAvailable` of its own, so
       // that was not the route. The line still earns its place — the tab is sticky across every step
       // and every new conversation, and 093 measured this step failing with the counters at 0 — but
       // the mechanism named here was wrong and is corrected rather than deleted.)
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       const turn = await watchTurn(before, 'allow')
       const after = turn.after
       // ⚑ **722 · the premise, from the screen**: an `imageGeneration` item is Codex's alone, so a
@@ -12699,9 +12437,8 @@ async function main() {
       model: CHEAP_CLAUDE,
       prompt: 'Reply with the single word OK. Do not use any tools.',
     })
-    // ⚠️ On Events, said rather than inherited (093): step 35 leaves the drawer on Open, and every
     // turn wait in this step — there are fifteen — reads the counter out of the event log.
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
     await watchTurn(before, 'allow')
 
     // Thirteen more, so the ledger holds fourteen turns and the newest page leaves two behind.
@@ -14982,14 +14719,15 @@ async function main() {
       // its first walked tab in every full batch with step 2. Held to `DRAWER_TABS` in `ci` beside
       // step 2's list (`scripts/test/smoke-step-2-reads-the-drawer-the-app-ships.test.mjs`).
       // ⚑ W4.208 · six since the Context tab left; five since the Controls tab did.
-      if (walkable.length < 5) {
+      // ⚑ Four since the Events tab left.
+      if (walkable.length < 4) {
         throw new Error(`only ${walkable.length} live tab(s) to walk: ${walkable.join(', ')}`)
       }
       for (const tab of walkable) {
         await ensureTab(cdp, tab)
         const strip = await measure()
         if (!strip) throw new Error('the drawer is not open')
-        if (strip.tabs !== 5) throw new Error(`${strip.tabs} tabs in the strip, not five`)
+        if (strip.tabs !== 4) throw new Error(`${strip.tabs} tabs in the strip, not four`)
         // §2 — exactly one label, and it is the active tab's.
         if (strip.labelled.length !== 1 || strip.labelled[0] !== tab) {
           throw new Error(
@@ -15258,7 +14996,7 @@ async function main() {
         `${error.message} — the send did not start a conversation (still on ${wasActive ?? 'the launcher'})`,
       )
     })
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
     void started
     void planningId
     // ⚠️ **Watched DURING the planning turn, not after it — step 32's shape, and the difference is
@@ -15505,8 +15243,8 @@ async function main() {
     //
     // ⚠️ **The violation has to be real, not simulated.** Calling `tabFlowViolation` here would
     // re-test the unit test. What is under test is `Cdp.evaluate`, so the step does what a careless
-    // step does: sits on Events and asks for an Info row.
-    await ensureEventsOpen(cdp)
+    // step does: sits on Work and asks for an Info row.
+    await ensureTab(cdp, 'work')
     const caught = await cdp
       .evaluate(`return Boolean(document.querySelector('[data-cy=session-cwd]'))`)
       .then(
@@ -15515,7 +15253,7 @@ async function main() {
       )
     if (!caught.threw) {
       throw new Error(
-        `the walk let it through: reading [data-cy=session-cwd] from the Events tab returned ` +
+        `the walk let it through: reading [data-cy=session-cwd] from the Work tab returned ` +
           `${JSON.stringify(caught.value)} instead of throwing — which is exactly the ` +
           `${'`false`'} that 093's twenty-one steps were asserting against`,
       )
@@ -15534,8 +15272,8 @@ async function main() {
     if (onInfo !== true) throw new Error(`the cwd row was not readable on Info either: ${onInfo}`)
 
     // Left where the rest of the run reads from (093's convention).
-    await ensureEventsOpen(cdp)
-    return `refused the Info read from Events — "${caught.message.slice(0, 80)}…" — and allowed the same read on Info`
+    await ensureHistoryAvailable(cdp)
+    return `refused the Info read from Work — "${caught.message.slice(0, 80)}…" — and allowed the same read on Info`
   })
 
   await step(
@@ -16948,7 +16686,7 @@ async function main() {
     // resolver, then verify idle recovery and another send. This does not reliably reproduce a
     // background Workflow asking after the foreground turn ended; the stranded-turn adapter test
     // covers that shape deterministically. Use Claude because it owns this tool. Open the
-    // conversation before ensureEventsOpen: another surface may have unmounted the pane and its
+    // conversation before ensureHistoryAvailable: another surface may have unmounted the pane and its
     // drawer hook. This costs two short Haiku turns.
     const askCwd = mkdtempSync(join(tmpdir(), 'brobot2-smoke-122-'))
     const activeNow = `return document.querySelector('[data-cy^=open-session-][data-active=true]')?.dataset.sessionId ?? null`
@@ -16973,7 +16711,7 @@ async function main() {
       },
       60_000,
     )
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
 
     const asked = await waitFor(
       'the question card, and a session that says it is waiting',
@@ -17081,13 +16819,13 @@ async function main() {
       },
       60_000,
     )
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
 
     const settled = await waitFor(
       'the foreground turn to end',
       async () => {
         const now = await snapshot()
-        assertCountersVisible(now, 'the foreground turn to end')
+        assertHistoryAvailable(now, 'the foreground turn to end')
         return now.turns >= 1 && now.status === 'idle' ? now : null
       },
       TURN_BUDGET_MS,
@@ -17228,12 +16966,12 @@ async function main() {
         'Reply with three sentences about what a context window is, and nothing else. Do not use ' +
         'any tools.',
     })
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
     let filled = await waitFor(
       'the conversation to take its first turn',
       async () => {
         const now = await snapshot()
-        assertCountersVisible(now, 'the conversation to take its first turn')
+        assertHistoryAvailable(now, 'the conversation to take its first turn')
         return now.turns >= 1 && now.status === 'idle' ? now : null
       },
       TURN_BUDGET_MS,
@@ -17280,12 +17018,12 @@ async function main() {
       compactCwd,
       `the conversation to compact (cwd ${compactCwd}) to be offered for reopening`,
     )
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
     const before = await waitFor(
       'the reopened conversation',
       async () => {
         const now = await snapshot()
-        assertCountersVisible(now, 'the reopened conversation')
+        assertHistoryAvailable(now, 'the reopened conversation')
         return now.turns >= 1 ? now : null
       },
       60_000,
@@ -17323,8 +17061,9 @@ async function main() {
     // `magnitude` renders only when the provider gave BOTH ends, so it is read separately from the
     // row: Codex gives neither and the row is still the proof a boundary was drawn.
     const compactions = await cdp.evaluate(`
-      const rows = [...document.querySelectorAll('[data-cy=event-log] li')]
-        .filter((li) => li.dataset.type === 'compaction')
+      const history = ${ACTIVE_TRANSCRIPT_HISTORY}
+      if (!history) throw new Error('No normal transcript is selected.')
+      const rows = history.entries.filter((entry) => entry.event.type === 'compaction')
       const row = document.querySelector('[data-cy=compaction-boundary]')
       return {
         count: rows.length,
@@ -17909,7 +17648,7 @@ async function main() {
           `Please remember this for future sessions, permanently: ${fact}. ` +
           'Save it to your memory now, then reply with the word SAVED.',
       })
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       // ⚠️ **`watchTurn`, not `waitForTurnEnd`, and the difference is a card nobody would answer.**
       // The session runs in ASK mode on purpose — that is what a person gets — and 166 §2's carve-out
       // covers the memory write itself, not whatever else a model reaches for on the way. A turn
@@ -17976,7 +17715,7 @@ async function main() {
           'What is my personal style tag? Answer from memory. If you have no memory of it, say ' +
           'exactly NOTHING REMEMBERED.',
       })
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       const { after } = await watchTurn(second, 'allow')
       if (!after.assistantText.includes(marker)) {
         throw new Error(
@@ -18149,7 +17888,7 @@ async function main() {
           model: CHEAP_CLAUDE,
           ...options,
         })
-        await ensureEventsOpen(cdp)
+        await ensureHistoryAvailable(cdp)
         // Cards answered as they arrive, for step 66's reason: ask mode is what a person gets, and a
         // turn parked on an unanswered card is indistinguishable from a slow one at this distance.
         return (await watchTurn(before, 'allow')).after
@@ -18268,7 +18007,7 @@ async function main() {
         `(2) Then attempt to run "wc -l" on that file with your Bash tool, and tell me what came ` +
         `back, including any refusal. Report both results and stop.`,
     })
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
     const before = await snapshot()
 
     // ⛔ **Waits for the two ROWS, not for the turn.** The turn ending is not the assertion and
@@ -18381,7 +18120,7 @@ async function main() {
     const after68 = await snapshot()
     // Off Events every counter reads 0 and the ledger reads empty, which is indistinguishable from
     // a turn that did nothing (093). The instrument is checked before it is believed.
-    assertCountersVisible(after68, 'what the planning turn actually produced')
+    assertHistoryAvailable(after68, 'what the planning turn actually produced')
     const called = await toolCallsRecorded(cdp)
     // ⛔ **CONTROL 1 · this app ingested a real turn.** A blank over a session that produced nothing
     // at all would be a blank over a dead app.
@@ -18496,7 +18235,7 @@ async function main() {
       'the planning turn to end or park on its plan',
       async () => {
         const now = await snapshot()
-        assertCountersVisible(now, 'the planning turn to settle')
+        assertHistoryAvailable(now, 'the planning turn to settle')
         if (now.turns > before.turns && now.status !== 'working') return 'ended'
         // ⚑ 728 · WHICH card it parked on, said — the plan's approval or the CLI's own ask.
         if ((now.userInputCards ?? []).some((c) => c.approve && !c.answered)) {
@@ -18594,7 +18333,7 @@ async function main() {
       })
       // ⚠️ Events first, then Info — 178 §5's ownership table, and `watchTurn` reads the counters
       // that only the Events body mounts.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       const { after } = await watchTurn(before, 'allow')
 
       // ── §3a · the paired POSITIVE · the instruction actually reached the model ──────────────
@@ -18949,12 +18688,12 @@ async function main() {
       approvalMode: 'auto',
       prompt: 'Reply with exactly the word CLEARBEFORE and nothing else. Do not use any tools.',
     })
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
     const before = await waitFor(
       'the conversation to take its first turn',
       async () => {
         const now = await snapshot()
-        assertCountersVisible(now, 'the conversation to take its first turn')
+        assertHistoryAvailable(now, 'the conversation to take its first turn')
         return now.turns >= 1 && now.status === 'idle' ? now : null
       },
       TURN_BUDGET_MS,
@@ -18963,7 +18702,7 @@ async function main() {
     // and reading it BEFORE is what makes "it moved" a comparison rather than a hope.
     await ensureInfoOpen(cdp)
     const refBefore = (await snapshot()).ref
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
     if (!refBefore || refBefore.startsWith('—')) {
       throw new Error('the session never announced a ref, so there is nothing a reset could move')
     }
@@ -18974,15 +18713,16 @@ async function main() {
     // closes a turn; what it is actually waiting for is the SIGNAL, so it waits for that and falls
     // back on the turn counter for the case where the provider answers some other way.
     const resetsInLog = `
-      return [...document.querySelectorAll('[data-cy=event-log] li')]
-        .filter((li) => li.dataset.type === 'conversation_reset').length`
+      const history = ${ACTIVE_TRANSCRIPT_HISTORY}
+      if (!history) throw new Error('No normal transcript is selected.')
+      return history.entries.filter((entry) => entry.event.type === 'conversation_reset').length`
     await cdp.evaluate(SET_VALUE('prompt-input', '/clear'))
     await cdp.evaluate(CLICK('send-prompt'))
     await waitFor(
       'the provider to answer the `/clear`',
       async () => {
         const now = await snapshot()
-        assertCountersVisible(now, 'the provider to answer the `/clear`')
+        assertHistoryAvailable(now, 'the provider to answer the `/clear`')
         if ((await cdp.evaluate(resetsInLog)) > 0) return 'reset'
         return now.turns > before.turns && now.status !== 'working' ? 'turn ended' : null
       },
@@ -18990,8 +18730,9 @@ async function main() {
     ).catch(() => 'neither')
 
     const saw = await cdp.evaluate(`
-      const rows = [...document.querySelectorAll('[data-cy=event-log] li')]
-        .filter((li) => li.dataset.type === 'conversation_reset')
+      const history = ${ACTIVE_TRANSCRIPT_HISTORY}
+      if (!history) throw new Error('No normal transcript is selected.')
+      const rows = history.entries.filter((entry) => entry.event.type === 'conversation_reset')
       const row = document.querySelector('[data-cy=reset-boundary]')
       return {
         events: rows.length,
@@ -19020,9 +18761,9 @@ async function main() {
       // `conversation_reset` off the init AFTER the frame; a frame with no event is the app's
       // defect, never the provider's weather (`721`'s second review).
       const theCliReset = await cdp.evaluate(`
-        return [...document.querySelectorAll('[data-cy=event-log] li')].some(
-          (li) => li.dataset.type === 'unknown' && (li.textContent || '').includes('conversation_reset'),
-        )`)
+        const history = ${ACTIVE_TRANSCRIPT_HISTORY}
+        if (!history) throw new Error('No normal transcript is selected.')
+        return history.entries.some(({ event }) => event.type === 'unknown' && event.label?.includes('conversation_reset'))`)
       if (theCliReset) {
         throw new Error(
           'the CLI reset the conversation — its conversation_reset frame is in the log — and the app ' +
@@ -19041,7 +18782,7 @@ async function main() {
     // ⛔ **Claim 1.** The Info tab now names the conversation the provider moved to.
     await ensureInfoOpen(cdp)
     const refAfter = (await snapshot()).ref
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
     if (refAfter === refBefore) {
       throw new Error(
         `the provider reset the conversation (${saw.events} event(s)) and the session's ref did ` +
@@ -19063,38 +18804,18 @@ async function main() {
       )
     }
 
-    // ⛔ **Claim 2, and the half that was ACTUALLY missing.** The seam survives the reading view.
-    const modeOf = `
+    // A real reset event must remain visible in the normal transcript while lifecycle noise stays hidden.
+    const readingView = await cdp.evaluate(`
       const t = document.querySelector('[data-cy=transcript]')
+      const history = ${ACTIVE_TRANSCRIPT_HISTORY}
+      if (!t || !history || history.hasOlder) throw new Error('The reset check needs a complete normal transcript page.')
       return {
-        mode: t.dataset.mode,
         reset: t.querySelectorAll('[data-cy=reset-boundary]').length,
         lifecycle: t.querySelectorAll('[data-cy=notice-info]').length,
         chatter: t.querySelectorAll('[data-cy=chatter-entry]').length,
-      }`
-    // 🔴 **708 · NORMALIZED, not assumed** — the way 1b and 33 do it: a click is a toggle. ⛔ This
-    // step assumed an earlier step of the full batch had left the screen in debug, and nothing
-    // ever showed it, because from `607` until `708` the step never got this far (the CLI never
-    // received `/clear` as a command). Run on its own for `708`, it read `normal` here and failed.
-    const found = await cdp.evaluate(modeOf)
-    let debugView
-    let readingView
-    try {
-      if (found.mode !== 'debug') await cdp.evaluate(CLICK('toggle-debug-mode'))
-      debugView = await cdp.evaluate(modeOf)
-      if (debugView.mode !== 'debug') {
-        throw new Error(`the screen is not in debug: ${debugView.mode}`)
-      }
-      await cdp.evaluate(CLICK('toggle-debug-mode'))
-      readingView = await cdp.evaluate(modeOf)
-      await cdp.screenshot('conversation-reset-normal-199')
-    } finally {
-      // …and leave the screen as it was FOUND — read from the screen, not assumed from the clicks,
-      // so a throw anywhere above still restores it (708's review).
-      const now = await cdp.evaluate(modeOf).catch(() => null)
-      if (now !== null && now.mode !== found.mode) await cdp.evaluate(CLICK('toggle-debug-mode'))
-    }
-    if (readingView.mode !== 'normal') throw new Error(`mode did not switch: ${readingView.mode}`)
+        recordedBoundaries: history.entries.filter(({ event }) => event.type === 'session' || event.type === 'turn').length,
+      }`)
+    await cdp.screenshot('conversation-reset-normal-199')
     if (readingView.reset === 0) {
       throw new Error(
         `the reset seam vanished in normal mode — which is where it was before 199, filed as ` +
@@ -19111,13 +18832,14 @@ async function main() {
       )
     }
     // …and non-vacuity for the negative itself: debug HAD chrome to hide.
-    if (debugView.lifecycle === 0 && debugView.chatter === 0) {
-      throw new Error('the transcript held no chrome at all, so normal mode hid nothing')
+    if (readingView.recordedBoundaries === 0) {
+      throw new Error(
+        'The persisted transcript held no lifecycle boundaries, so filtering was not exercised.',
+      )
     }
     return (
       `${saw.events} conversation_reset · ref ${refBefore} → ${refAfter} · row "${saw.entry.slice(0, 70)}" ` +
-      `citing ${saw.source} · survives normal mode (${debugView.lifecycle} notice(s) and ` +
-      `${debugView.chatter} chatter row(s) did not)`
+      `citing ${saw.source} · survives the normal view (${readingView.recordedBoundaries} recorded boundaries remain filtered)`
     )
   })
 
@@ -19527,9 +19249,9 @@ async function main() {
         model: MODEL,
         prompt: 'Reply with exactly OK.',
       })
-      // ⚠️ Explicit rather than inherited — `assertCountersVisible` refuses to wait on a drawer that
+      // ⚠️ Explicit rather than inherited — `assertHistoryAvailable` refuses to wait on a drawer that
       // is off Events, and this step must not depend on which tab step 72 left it on (066).
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       const turn = await watchTurn(before, 'allow')
       await cdp.screenshot('one-failure')
 
@@ -19700,19 +19422,18 @@ async function main() {
 
       // ⛑ **6 · And the diagnostic is still ON SCREEN, in the place diagnostics go** (085's split).
       // ⚠️ Without this the step could be satisfied by an app that simply stopped showing the
-      // provider's words anywhere — which is a fact deleted, not a duplicate removed. The Events tab
       // renders from the normalized stream via `describe-event.ts`, which prints `event.message`
       // verbatim; the transcript is where it must not be.
-      const debugRows = await ledgerRows(cdp, 'error')
+      const debugRows = await recordedEventsOf(cdp, 'error')
       const reach = await ledgerReach(cdp)
       said.push(
-        cause !== null && debugRows.some((row) => row.includes(cause))
+        cause !== null && debugRows.some(({ event }) => event.message.includes(cause))
           ? asserted(
-              `6 · the machine text a person no longer reads is still in the Events tab, whole ` +
+              `6 · the original diagnostic remains in persisted transcript history ` +
                 `(${debugRows.length} error row(s), ledger whole=${reach.whole})`,
             )
           : unasserted(
-              `6 · the Events tab holds ${debugRows.length} error row(s) and none of them carries ` +
+              `6 · the persisted page holds ${debugRows.length} error event(s) and none of them carries ` +
                 'the machine text, so this run cannot show the diagnostic surviving the transcript',
             ),
       )
@@ -19794,10 +19515,10 @@ async function main() {
         prompt: `Run this command in the background and then tell me you have started it: ${COMMAND}`,
       })
       // ⚠️ **Explicit rather than inherited, and step 73 carries the same line for the same reason.**
-      // `assertCountersVisible` refuses to wait on a drawer that is not on Events — every counter in
+      // `assertHistoryAvailable` refuses to wait on a drawer that is not on Events — every counter in
       // the snapshot reads 0 whatever the session does — so a step that waits on a turn without this
       // fails on the instrument rather than on its subject. It did, on this step's first live run.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       const turn = await watchTurn(before, 'allow')
       await cdp.screenshot('stays-true-turn-ended')
 
@@ -20090,9 +19811,9 @@ async function main() {
         approvalMode: 'auto',
         prompt: `Run this command in the background and then tell me you have started it: ${COMMAND}`,
       })
-      // `assertCountersVisible` refuses to wait on a drawer that is not on Events — 74 failed on this
+      // `assertHistoryAvailable` refuses to wait on a drawer that is not on Events — 74 failed on this
       // instrument on its first live run, and the line is here for that reason rather than by habit.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       await watchTurn(before, 'allow')
       await cdp.screenshot('names-the-command-turn-ended')
 
@@ -20359,7 +20080,7 @@ async function main() {
       // ⚠️ **The drawer, explicitly** — every counter `watchTurn` reads is Events-tab-scoped, and a
       // filtered run (`BROBOT_SMOKE_ONLY=1,1b,76`) has nothing before this to have opened it. Found
       // by the first live run of this step, which failed on exactly that guard.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       await watchTurn(opening, 'allow')
 
       /** The pasted row, or null while there is none — read off the real composer. */
@@ -20604,7 +20325,7 @@ async function main() {
       })
       // ⚠️ The drawer, explicitly — every counter `watchTurn` reads is Events-tab-scoped, and a
       // filtered run has nothing before this to have opened it (found by 254's first live run).
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       await watchTurn(opening, 'allow')
 
       /**
@@ -20736,23 +20457,19 @@ async function main() {
       // different function. Two readings, one fact (099/064).
       //
       // ⚠️ Through `ledgerRows`, which reads `.rdetail` and refuses an unmounted log — a raw
-      // `li.textContent` sweep returns '' for any row `EventStream` has not drawn (255), so a reader
       // not stuck to the tail would have produced "the ledger recorded no scheduled_work event"
       // about an event that is right there.
-      const levels = await ledgerRows(cdp, 'scheduled_work')
-      const rawLine = levels.length > 0 ? levels[levels.length - 1] : null
-      if (!rawLine)
-        throw new Error('the ledger recorded no scheduled_work event for a job that exists')
-      if (!rawLine.includes(bar.when)) {
+      const levels = await recordedEventsOf(cdp, 'scheduled_work')
+      const level = levels.at(-1)?.event
+      if (!level)
         throw new Error(
-          `the bar shows ${JSON.stringify(bar.when)}, which the raw event does not carry: ${rawLine}`,
+          'The persisted transcript contains no scheduled_work event for an existing job.',
         )
+      const persistedJob = level.jobs?.find((job) => job.id === bar.rowId)
+      if (!persistedJob || persistedJob.schedule !== bar.when) {
+        throw new Error('The schedule bar disagrees with the actual persisted job id or schedule.')
       }
-      if (!rawLine.includes(bar.rowId)) {
-        throw new Error(
-          `the bar's row is ${JSON.stringify(bar.rowId)}, which the raw event does not name: ${rawLine}`,
-        )
-      }
+      const rawLine = level.jobs.map(({ id, schedule }) => `${id}@${schedule}`).join(', ')
 
       const live = await snapshot()
       if (live.standing !== 'scheduled') {
@@ -20766,7 +20483,7 @@ async function main() {
 
       // The drawer has no empty-permissions paragraph. The pill and rail row carry scheduled state,
       // so there is no paragraph to inspect for data-scheduled.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
 
       await cdp.screenshot('scheduled-work-258')
 
@@ -20945,7 +20662,7 @@ async function main() {
         approvalMode: 'auto',
         prompt: `Run this command and tell me you have started it: ${COMMAND}`,
       })
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       const turn = await watchTurn(before, 'allow')
       await cdp.screenshot('half-a-stop-turn-ended')
 
@@ -21179,12 +20896,12 @@ async function main() {
         approvalMode: 'auto',
         prompt: 'Reply with exactly the word COMMANDS and nothing else. Do not use any tools.',
       })
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       await waitFor(
         'the conversation to settle',
         async () => {
           const now = await snapshot()
-          assertCountersVisible(now, 'the conversation to settle')
+          assertHistoryAvailable(now, 'the conversation to settle')
           return now.turns >= 1 && now.status === 'idle' ? now : null
         },
         TURN_BUDGET_MS,
@@ -21344,12 +21061,12 @@ async function main() {
             'so this is the app withholding it, not the provider choosing',
         )
       }
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       await waitFor(
         'the conversation to settle',
         async () => {
           const now = await snapshot()
-          assertCountersVisible(now, 'the conversation to settle')
+          assertHistoryAvailable(now, 'the conversation to settle')
           return now.turns >= 1 && now.status === 'idle' ? now : null
         },
         TURN_BUDGET_MS,
@@ -21369,7 +21086,7 @@ async function main() {
         const called = (await toolCallsRecorded(cdp)).filter(
           (name) => name === 'Agent' || name === 'Task',
         )
-        const reported = (await ledgerRows(cdp, 'sub_agent')).length
+        const reported = (await recordedEventsOf(cdp, 'sub_agent')).length
         const offered =
           dispatchers === null
             ? 'with no ledger on disk, whether its launch was offered the tool is not known here'
@@ -21502,12 +21219,12 @@ async function main() {
         approvalMode: 'auto',
         prompt: 'Reply with exactly the word OPENED and nothing else. Do not use any tools.',
       })
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       await waitFor(
         'the conversation to take its first turn',
         async () => {
           const now = await snapshot()
-          assertCountersVisible(now, 'the conversation to take its first turn')
+          assertHistoryAvailable(now, 'the conversation to take its first turn')
           return now.turns >= 1 && now.status === 'idle' ? now : null
         },
         TURN_BUDGET_MS,
@@ -21519,7 +21236,7 @@ async function main() {
         cdCwd,
         `the conversation to move (cwd ${cdCwd}) to be offered for reopening`,
       )
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       // ⚑ **D-017b · opening starts nothing** — the view is the stopped life's, from its ledger, so
       // what is waited for is its turns, never an `idle` only a running conversation says; the
       // message below is what starts it (`startAndSend`).
@@ -21527,7 +21244,7 @@ async function main() {
         'the reopened conversation',
         async () => {
           const now = await snapshot()
-          assertCountersVisible(now, 'the reopened conversation')
+          assertHistoryAvailable(now, 'the reopened conversation')
           return now.turns >= 1 ? now : null
         },
         60_000,
@@ -21745,12 +21462,12 @@ async function main() {
       },
       60_000,
     )
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
     return waitFor(
       what,
       async () => {
         const now = await snapshot()
-        assertCountersVisible(now, what)
+        assertHistoryAvailable(now, what)
         return now.turns >= 1 ? now : null
       },
       60_000,
@@ -21773,12 +21490,12 @@ async function main() {
         approvalMode: 'auto',
         prompt: 'Reply with exactly the word OPENED and nothing else. Do not use any tools.',
       })
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       const opened = await waitFor(
         'the conversation to take its first turn',
         async () => {
           const now = await snapshot()
-          assertCountersVisible(now, 'the conversation to take its first turn')
+          assertHistoryAvailable(now, 'the conversation to take its first turn')
           return now.turns >= 1 && now.status === 'idle' ? now : null
         },
         TURN_BUDGET_MS,
@@ -21913,12 +21630,12 @@ async function main() {
         approvalMode: 'auto',
         prompt: 'Reply with exactly the word OPENED and nothing else. Do not use any tools.',
       })
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       await waitFor(
         'the conversation to take its first turn',
         async () => {
           const now = await snapshot()
-          assertCountersVisible(now, 'the conversation to take its first turn')
+          assertHistoryAvailable(now, 'the conversation to take its first turn')
           return now.turns >= 1 && now.status === 'idle' ? now : null
         },
         TURN_BUDGET_MS,
@@ -22114,7 +21831,7 @@ async function main() {
       what,
       async () => {
         const now = await snapshot()
-        assertCountersVisible(now, what)
+        assertHistoryAvailable(now, what)
         return now.turns >= 1 && now.status === 'idle' ? now : null
       },
       TURN_BUDGET_MS,
@@ -22160,7 +21877,7 @@ async function main() {
               'reply with exactly the two lines they printed.',
       })
       const sessionId = await activeSession726()
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       await settled726(`the ${provider} reading turn to end`)
       const ledger = ledgerOf721(sessionId)
       providerDown726(ledger, provider, 'reading')
@@ -22249,7 +21966,7 @@ async function main() {
         'tool. Then reply with the one word DONE.',
     })
     const parentId = await activeSession726()
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
     // ⚑ `give_work` starts something outside this app, so a person may be asked (486, HO-031
     // §2.4): answer it as a person would, once, and say so.
     const allowed = []
@@ -22275,7 +21992,7 @@ async function main() {
           allowed.push(request.id)
         }
         const now = await snapshot()
-        assertCountersVisible(now, `the ${provider} parent's give to settle`)
+        assertHistoryAvailable(now, `the ${provider} parent's give to settle`)
         return now.turns >= 1 && now.status === 'idle' ? now : null
       },
       TURN_BUDGET_MS,

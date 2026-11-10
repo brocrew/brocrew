@@ -143,8 +143,8 @@ export async function smoke(resources: string, scratch: string, packages?: strin
       `[plugin-service-check] ${packages ? 'plugin calls' : 'lifecycle only (plugin calls not requested)'}: ready, alive, authenticated, drained and exited`,
     )
   } catch (error) {
-    await recordPluginStartupFailure(root, 'service-start', error)
-    console.error(await readFile(join(root, 'plugin-startup.log'), 'utf8'))
+    recordPluginStartupFailure('service-start', error)
+    console.error(error)
     throw error
   } finally {
     try {

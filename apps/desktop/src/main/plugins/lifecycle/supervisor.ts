@@ -42,15 +42,14 @@ export async function createSupervisorLifecycle(options: {
       },
     }),
   )
-  const refused = pluginToolRefusalLog(options.lifecycle.root)
+  const refused = pluginToolRefusalLog()
   const agents = createLifecycleAgentBridge({
     owner: options.owner,
-    routeTrace: (event) => recordRouteAdmissionTrace(options.lifecycle.root, event),
+    routeTrace: recordRouteAdmissionTrace,
     controller,
     binding: (view, diagnostic) =>
       requirePluginAdapter(view.installation.pluginId).broker(view, refused, diagnostic),
-    diagnostic: (id, reason, detail) =>
-      recordPluginToolFailure(options.lifecycle.root, id, reason, detail),
+    diagnostic: (id, reason, detail) => recordPluginToolFailure(id, reason, detail),
     refused,
     recoverChromeHost: (view, stopped) => controller.restartChromeTools(view.runId, stopped),
     restartChromeHost: () => controller.restartChromeTools(undefined, () => {}),

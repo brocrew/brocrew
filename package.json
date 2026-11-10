@@ -35,8 +35,6 @@
     "smoke:claude-yolo": "vitest run --config vitest.smoke.config.ts packages/runtime/smoke/claude-yolo-probe.smoke.ts",
     "smoke:ui": "node scripts/ui-live-smoke.mjs",
     "look:capture": "node scripts/look-capture.mjs",
-    "probe:event-fold": "vitest run --config apps/desktop/vitest.probe.config.ts event-fold-scale",
-    "probe:event-append": "vitest run --config apps/desktop/vitest.probe.config.ts event-append-scale",
     "probe:nav": "node scripts/nav-order-probe.mjs",
     "probe:draft-restart": "node scripts/draft-survives-a-restart-probe.mjs",
     "probe:drop": "node scripts/drop-hazard-probe.mjs",

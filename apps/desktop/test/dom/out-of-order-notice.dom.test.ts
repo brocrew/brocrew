@@ -53,7 +53,7 @@ describe('320 · the two notices, drawn', () => {
     // is the assertion that would have caught me doing it.
     const view = mount(
       TranscriptView,
-      { items: afterTheReorder().control.items, mode: 'normal' },
+      { items: afterTheReorder().control.items },
       { width: 900, height: 2000 },
     )
 
@@ -79,7 +79,7 @@ describe('320 · the two notices, drawn', () => {
   it('draws both at the same severity, and it is amber rather than red', () => {
     const view = mount(
       TranscriptView,
-      { items: afterTheReorder().control.items, mode: 'normal' },
+      { items: afterTheReorder().control.items },
       { width: 900, height: 2000 },
     )
 
@@ -116,7 +116,7 @@ describe('320 · the two notices, drawn', () => {
 
     const view = mount(
       TranscriptView,
-      { items: record.control.items, mode: 'normal' },
+      { items: record.control.items },
       { width: 900, height: 2000 },
     )
     expect(view.host.querySelectorAll('[data-cy^="notice-"]')).toHaveLength(0)

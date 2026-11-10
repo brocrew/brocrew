@@ -66,7 +66,7 @@ function launcher(runtime: Record<string, unknown>): {
         h(NewConversation as Component, {
           busy: busy.value,
           error: error.value,
-          debug: false,
+
           draft: words.value,
           handing: book.handing(NEW_CONVERSATION),
           defaultProvider: provider.value,

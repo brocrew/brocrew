@@ -300,7 +300,7 @@ const SURFACES: readonly Surface[] = [
     props: () => ({
       busy: false,
       error: 'failed: no such binary — is codex installed?',
-      debug: true,
+
       draft: 'Refactor the auth module to use the new token store',
       defaultProvider: 'claude',
       // ⚑ **The front door's three choices, unanswered** (435) — `NO_LAUNCH_CHOICES` is what an
@@ -347,7 +347,7 @@ const SURFACES: readonly Surface[] = [
     props: () => ({
       entry: READING_ENTRY,
       history: READING_HISTORY,
-      mode: 'normal',
+
       onLoadOlder: async (): Promise<void> => {},
     }),
     evidence: ['read-only-banner', 'reading-behind', 'reading-transcript', 'reading-title'],

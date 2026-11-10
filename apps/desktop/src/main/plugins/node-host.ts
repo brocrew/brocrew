@@ -470,8 +470,7 @@ export function createPluginNodeHost(options: {
             `plugin=${manifest.id} run=${runId}\n${value.stderrTruncated === true ? '[stderr truncated to last 16 KiB]\n' : ''}${output}`,
           )
           ready.reject(failure)
-          void recordPluginStartupFailure(run, 'plugin-start', failure)
-          void recordPluginStartupFailure(root, 'plugin-start', failure)
+          recordPluginStartupFailure('plugin-start', failure)
         }
       } else if (value.type === 'stopped') proof = value.exited === true
       else if (value.type === 'unsupported') unsupported = true
@@ -592,7 +591,7 @@ export function createPluginNodeHost(options: {
             (await endWindowsTree(child.pid, forkedAt, guardianEndedAt || Date.now()))
           : groups.size > 0 &&
             (await stopGroups(groups, 1500, (cause) => {
-              recordDrainTrace(root, {
+              recordDrainTrace({
                 stage: 'group-cleanup',
                 state: 'failed',
                 cause: pluginFailureCause(cause),
@@ -648,7 +647,7 @@ export function createPluginNodeHost(options: {
           for (const group of groups.keys())
             if ((await liveGroupMembers(group)).length) return false
         } catch (error) {
-          recordDrainTrace(root, {
+          recordDrainTrace({
             stage: 'group-cleanup',
             state: 'failed',
             cause: pluginFailureCause(error),

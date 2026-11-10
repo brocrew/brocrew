@@ -373,7 +373,7 @@ describe("463 · a night's backlog, rehearsed", () => {
         render: () =>
           h(TranscriptView as never, {
             items: transcript.items,
-            mode: 'normal',
+
             who: 'Codex',
             hasOlder: history.hasOlder,
             turnAligned: history.turnAligned,

@@ -156,16 +156,13 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
       await target.lease.close()
       expect(await ended(target.child)).toBe(0)
       expect((await readOwner(target.root)).phase).not.toBe('blocked')
-      const trace = await readFile(join(target.root, 'plugin-drain.log'), 'utf8')
-      const attempts = [...trace.matchAll(/stage=blocked-write state=\w+ attempt=\d+/g)]
-      expect(attempts.map((match) => match[0])).toEqual([
-        'stage=blocked-write state=failed attempt=1',
-      ])
-      expect(trace).toContain('stage=blocked-write state=failed attempt=1 errno=EPERM')
+      const trace = await readFile(join(target.root, 'service.log'), 'utf8')
+      const attempts = trace.split('\n').filter((line) => line.includes('blocked-write'))
+      expect(attempts).toHaveLength(1)
+      expect(attempts[0]).toMatch(/state: 'failed'.*attempt: 1.*errno: 'EPERM'/)
       // Cause logging keeps the real error text and path.
-      expect(trace).toContain('fictional-secret')
       expect(trace).toContain(
-        'cause=Error code=EPERM: Bearer fictional-secret /fictional/private-owner-path',
+        "cause: 'Error code=EPERM: Bearer fictional-secret /fictional/private-owner-path'",
       )
       const advice = vi.fn()
       const successor = await PluginSupervisor.start({
@@ -192,8 +189,8 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
       expect(await ended(target.child)).toBe(0)
       expect((await readOwner(target.root)).phase).toBe(fault ? 'draining' : 'blocked')
       if (fault)
-        expect(await readFile(join(target.root, 'plugin-drain.log'), 'utf8')).toContain(
-          'stage=blocked-write state=failed attempt=1 errno=EPERM',
+        expect(await readFile(join(target.root, 'service.log'), 'utf8')).toMatch(
+          /blocked-write.*state: 'failed'.*attempt: 1.*errno: 'EPERM'/,
         )
       const proof = target.runId
         ? join(target.root, 'host/runs', target.runId, 'exit.json')
@@ -242,8 +239,8 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
       expect(await bystander.lease.close()).toBe(!fault)
       expect(await ended(bystander.child)).toBe(0)
       if (fault)
-        expect(await readFile(join(bystander.root, 'plugin-drain.log'), 'utf8')).toContain(
-          'stage=stopped-write state=failed attempt=1 errno=EPERM',
+        expect(await readFile(join(bystander.root, 'service.log'), 'utf8')).toMatch(
+          /stopped-write.*state: 'failed'.*attempt: 1.*errno: 'EPERM'/,
         )
     },
   )

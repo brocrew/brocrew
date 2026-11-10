@@ -44,7 +44,7 @@ scene('new-conversation-recent', async (stage) => {
         h(NewConversation, {
           busy: false,
           error: null,
-          debug: false,
+
           draft: draft.value,
           handing,
           recent: sample === 'empty' ? [] : recent,

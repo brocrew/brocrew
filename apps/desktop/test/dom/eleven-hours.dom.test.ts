@@ -102,7 +102,7 @@ function stranded(options: {
       return () =>
         h(TranscriptView as Component, {
           items: items.value,
-          mode: 'normal',
+
           hasOlder: options.hasOlder,
           turnAligned: true,
           loadOlder: options.hasOlder ? async () => {} : undefined,
@@ -190,7 +190,7 @@ describe('a window that has left the tail offers a way back (313 §1)', () => {
           return () =>
             h(TranscriptView as Component, {
               items: foldWindow(run(0, 6)).items,
-              mode: 'normal',
+
               // No `atTail` at all — and a real callback, so only the default can decide this.
               jumpToLatest: async () => {},
             })

@@ -223,7 +223,7 @@ describe('§5 · the pane of a conversation this window holds says it owes, off 
     markup(ConversationPane, {
       record: openRecord(),
       mode: 'chat' as const,
-      debug: false,
+
       drawerOpen: true,
       drawerTab: 'open' as const,
       models: null,
@@ -258,7 +258,7 @@ describe('§6 · the agent card names the asker, and a schedule still shows unde
       canOpen: false,
       panel: sessionPanel(record.control),
       state: record.control,
-      mode: 'normal',
+
       agentState,
     })
   }

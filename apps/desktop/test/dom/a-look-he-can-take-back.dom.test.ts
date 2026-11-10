@@ -81,7 +81,7 @@ function bar(over: Record<string, unknown> = {}): {
   const m = mount(SessionHeader, {
     session: CLAIMED,
     status: 'idle',
-    debug: false,
+
     facets: { doing: 'idle' as const, being: 'live' as const },
     onHandBack: () => handBacks.push(1),
     ...over,

@@ -178,7 +178,7 @@ const props = withDefaults(
      * that knows only the sentence.
      */
     refusedAs?: LaunchRefusal | null
-    debug: boolean
+
     /** What is typed on THIS surface and not yet sent (019) — its own slot, no session id yet. */
     draft: string
     /**
@@ -281,7 +281,7 @@ const emit = defineEmits<{
   start: [input: CreateSessionInput, firstMessage: string, attachments: HandedPath[]]
   /** Stop waiting for the launch in flight (102). Only reachable while `busy`. */
   cancel: []
-  toggleDebug: []
+
   'update:draft': [text: string]
   /**
    * ⛔ **A credential gesture for this profile has SETTLED** (257 §2) — sign in, or re-copy.
@@ -855,11 +855,9 @@ watch(
     <SessionHeader
       :session="null"
       :status="null"
-      :debug="props.debug"
       :default-provider="headerProvider"
       :facets="LAUNCHER_FACETS"
       :starting="props.busy"
-      @toggle-debug="emit('toggleDebug')"
     />
 
     <div class="empty-stage">

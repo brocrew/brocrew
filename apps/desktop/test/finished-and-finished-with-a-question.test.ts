@@ -785,7 +785,7 @@ describe('406 · finished, and finished with a question', () => {
       const row = state.items[0]
       if (row === undefined) throw new Error('nothing folded')
       for (const mode of ['normal', 'debug'] as const) {
-        expect(isVisibleIn(mode, row), `hidden in ${mode}`).toBe(true)
+        expect(isVisibleIn(row), `hidden in ${mode}`).toBe(true)
       }
     })
   })

@@ -1292,7 +1292,7 @@ describe('§4b · R81 — the person’s queue copies the live row’s line', ()
 
 describe('§5 · the transcript hands the R80 card the provider it names', () => {
   const view = (items: TranscriptItem[], over: Record<string, unknown> = {}): Promise<string> =>
-    render(TranscriptView, { items, mode: 'normal', ...over })
+    render(TranscriptView, { items, ...over })
 
   it('🔴 in a Codex conversation’s transcript the card says *Codex asks to run an MCP tool*', async () => {
     const html = await view(recordOf(captured.asks).transcript.items, { provider: 'codex' })

@@ -75,8 +75,7 @@ const pane = (events: TranscriptEvent[]): Promise<string> =>
       render: () =>
         h(ConversationPane as never, {
           record: record(events),
-          mode: 'normal' as const,
-          debug: false,
+
           drawerOpen: false,
           drawerTab: 'open',
           models: null,

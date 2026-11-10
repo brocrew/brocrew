@@ -155,7 +155,7 @@ const noticeOf = async (cause: 'auth_stale' | 'auth', drawnWhole = false): Promi
     cause,
   } as unknown as TranscriptEvent)
   await page.viewport(760, 520)
-  const m = mount(TranscriptView, { items: state.items, mode: 'normal', ownAgent: null }, { width: 720, height: 480 }) // prettier-ignore
+  const m = mount(TranscriptView, { items: state.items, ownAgent: null }, { width: 720, height: 480 }) // prettier-ignore
   await nextTick()
   const shown = m.all('what-the-notice-says').filter(visible)
   expect(shown).toHaveLength(1)
@@ -209,7 +209,7 @@ describe('§2b · the provider’s own words are clamped — the app’s sentenc
     const state = createTranscript()
     applyEvent(state, { type: 'error', message: wall, fatal: false } as unknown as TranscriptEvent)
     await page.viewport(760, 520)
-    const m = mount(TranscriptView, { items: state.items, mode: 'normal', ownAgent: null }, { width: 720, height: 480 }) // prettier-ignore
+    const m = mount(TranscriptView, { items: state.items, ownAgent: null }, { width: 720, height: 480 }) // prettier-ignore
     await nextTick()
     await drawnReady()
     const what = m.q('what-the-notice-says')

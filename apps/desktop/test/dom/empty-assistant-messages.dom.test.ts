@@ -93,7 +93,7 @@ describe('empty Codex messages in the conversation', () => {
         TranscriptView,
         {
           items: state.items,
-          mode: 'normal',
+
           canSendAnswers,
           onSendAnswer: (text: string) => answered.push(text),
         },
@@ -133,7 +133,7 @@ describe('empty Codex messages in the conversation', () => {
         panel: sessionPanel(state),
         canOpen: true,
         facets: facetsOfState({ is: 'idle' }),
-        mode: 'normal',
+
         conversation: 'fictional',
         onNavigate: (id: string) => navigated.push(id),
       },
@@ -158,7 +158,7 @@ describe('empty Codex messages in the conversation', () => {
     ])
     const m = mount(
       TranscriptView,
-      { items: state.items, mode: 'normal', canSendAnswers: true },
+      { items: state.items, canSendAnswers: true },
       { width: 900, height: 700 },
     )
     expect(m.q('assistant-message').textContent?.trim()).toBe('Which recipe?')

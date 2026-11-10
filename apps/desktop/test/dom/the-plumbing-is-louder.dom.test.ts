@@ -84,7 +84,7 @@ const ADA: TranscriptEvent[] = [
 ]
 
 const paneOf = (events: TranscriptEvent[]) =>
-  mount(ConversationPane, paneProps({ record: record(events), mode: 'normal' }), PANE)
+  mount(ConversationPane, paneProps({ record: record(events) }), PANE)
 
 /** The items the old drawing needs, folded exactly as the pane folds them. */
 /**
@@ -563,7 +563,7 @@ describe('§7 · a followed command that settles lets go of its follow', () => {
           return () =>
             h(TranscriptView, {
               items,
-              mode: 'normal',
+
               canWatchCommands: true,
               onWatchCommand: (callId: string, on: boolean) => said.push({ callId, on }),
             })

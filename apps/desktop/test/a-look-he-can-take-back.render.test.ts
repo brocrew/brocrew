@@ -110,7 +110,7 @@ const header = (session: CreatedSession | null, over: Record<string, unknown> = 
         h(SessionHeader as never, {
           session,
           status: 'idle',
-          debug: false,
+
           facets: { doing: 'idle' as const, being: 'live' as const },
           ...over,
         }),
@@ -163,7 +163,7 @@ describe('§3 · Q1 · it cannot be read as the control that ends the conversati
     const html = await header(CLAIMED, { drawerOpen: false, tools: undefined })
     // ⚑ **The positive on the SAME markup**: the bar is fully drawn, with this press and the two
     // controls that stand beside it.
-    for (const cy of ['hand-it-back', 'toggle-debug-mode', 'toggle-session-panel']) {
+    for (const cy of ['hand-it-back', 'toggle-session-panel']) {
       expect(html, `nothing with data-cy="${cy}" was rendered`).toContain(`data-cy="${cy}"`)
     }
     expect(html).not.toContain('data-cy="close-session"')

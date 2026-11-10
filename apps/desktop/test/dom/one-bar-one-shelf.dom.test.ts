@@ -542,7 +542,7 @@ describe('§4 · the archived variant is reduced, and it cannot borrow (389 §3)
     await page.viewport(1200, 808)
     const m = mount(
       ReadingPane,
-      { entry: ENTRY, history: createWindow(), mode: 'normal' },
+      { entry: ENTRY, history: createWindow() },
       { width: 1200, height: 808 },
     )
     await nextTick()

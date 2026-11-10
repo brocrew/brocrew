@@ -39,7 +39,7 @@ const header = (over: Record<string, unknown>) =>
   mount(SessionHeader, {
     session: META,
     status: 'idle',
-    debug: false,
+
     facets: { doing: 'idle' as const, being: 'live' as const },
     ...over,
   })
@@ -139,9 +139,9 @@ describe('the drawer tab strip follows the tabs pattern', () => {
         .map((el) => el.dataset.cy ?? '')
     expect(stops()).toEqual(['drawer-tab-info'])
     expect(tabs(m.host).length).toBeGreaterThan(1)
-    m.q('drawer-tab-events').click()
+    m.q('drawer-tab-changes').click()
     await nextTick()
-    expect(stops()).toEqual(['drawer-tab-events'])
+    expect(stops()).toEqual(['drawer-tab-changes'])
   })
 
   it('Arrow, Home and End move focus and selection, wrapping at the ends', async () => {
@@ -209,19 +209,5 @@ describe('the drawer tab strip follows the tabs pattern', () => {
     await nextTick()
     expect(labelledBy()).toBe(m.q('drawer-tab-info').id)
     expect(document.getElementById(labelledBy()!)?.dataset.cy).toBe('drawer-tab-info')
-  })
-
-  it('a hidden selected tab leaves the first tab as the stop and the label', () => {
-    const m = mount(
-      Harness,
-      { start: 'events', extra: { hiddenTabs: ['events'] } },
-      { width: 380, height: 700 },
-    )
-    const first = tabs(m.host)[0]!
-    expect(first.tabIndex).toBe(0)
-    expect(tabs(m.host).filter((el) => el.tabIndex === 0)).toHaveLength(1)
-    expect(m.host.querySelector('[role="tabpanel"]')!.getAttribute('aria-labelledby')).toBe(
-      first.id,
-    )
   })
 })

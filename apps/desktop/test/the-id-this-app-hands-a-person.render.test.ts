@@ -164,7 +164,7 @@ describe('510 · the row opens the document it names', () => {
       (
         await renderToString(
           createSSRApp({
-            render: () => h(TranscriptView as never, { items: [item], mode: 'normal', ...props }),
+            render: () => h(TranscriptView as never, { items: [item], ...props }),
           }),
         )
       ).replace(/<!--[\s\S]*?-->/g, '')

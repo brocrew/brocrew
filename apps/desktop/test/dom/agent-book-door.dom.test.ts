@@ -25,7 +25,7 @@ describe('the agent card book door', () => {
             profile: 'quill',
             tasks: [],
             canOpen: false,
-            mode: 'normal',
+
             canOpenInputs: true,
             onOpenBook: book,
             onOpenInputs: inputs,
@@ -62,7 +62,6 @@ describe('the agent card book door', () => {
       profile: null,
       tasks: [],
       canOpen: false,
-      mode: 'normal',
     })
     expect(view.host.querySelector('[data-cy="agent-book-button"]')).toBeNull()
   })

@@ -60,7 +60,7 @@ describe('…and the guard can actually go red', () => {
       'a prefix scan, whose value is built as well',
       `document.querySelectorAll('[data-cy^=' + p + ']')`,
     ],
-    ['a literal hook', `document.querySelector('[data-cy=event-log]')`],
+    ['a literal hook', `document.querySelector('[data-cy=session-info]')`],
     // ⛔ **The nested hole is written under an OWNED prefix on purpose.** The first version of this
     // fixture used an ordinary one, and the brace-counting mutation survived it: with `injected-`
     // absent, the leftover `x.a }` fails `HOOK_NAME` and is then waved through by the prefix rule,

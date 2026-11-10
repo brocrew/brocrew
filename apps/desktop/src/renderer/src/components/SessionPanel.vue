@@ -10,7 +10,6 @@ import type { WorkThatNamesIt } from '../../../shared/piece-called'
 import type { AgentFacets } from '../lib/agent-state'
 import { sessionPanel, type PanelAsset } from '../lib/session-panel'
 import type { TranscriptState } from '../lib/transcript'
-import type { TranscriptMode } from '../lib/transcript-mode'
 import type {
   AgentIdentity,
   CreatedSession,
@@ -92,7 +91,7 @@ const props = defineProps<{
    * that is the state's business — only whether a row can be scrolled to, so the panel never
    * offers a jump to somewhere that is not on screen.
    */
-  mode: TranscriptMode
+
   /**
    * The agent this conversation is (082), drawn at the pinned top of this tab (090).
    *
@@ -332,7 +331,6 @@ const panel = computed(() => sessionPanel(props.state))
       :panel="panel"
       :state="props.state"
       :shown="props.shown"
-      :mode="props.mode"
       :conversation="props.conversation"
       :can-stop-background-work="props.canStopBackgroundWork"
       :on-stop-background-work="props.onStopBackgroundWork"
@@ -427,7 +425,6 @@ const panel = computed(() => sessionPanel(props.state))
       <ContextDialog
         :state="props.state"
         :shown="props.shown"
-        :mode="props.mode"
         :provider="props.session?.provider ?? ''"
         :capability="props.compactCapability ?? null"
         :conversation="props.compaction ?? null"

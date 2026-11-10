@@ -1,12 +1,10 @@
+import { captureLog } from './lib/log-file'
 import { setup, seams, settingsCall } from './plugin-production-fixtures'
-import {
-  pluginStartupTrace,
-  PluginSupervisorLaunchFailure,
-} from '../src/main/plugins/startup-failure'
+import { PluginSupervisorLaunchFailure } from '../src/main/plugins/startup-failure'
 import { randomUUID } from 'node:crypto'
 import { fixture } from './plugin-lifecycle-fixtures'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdir, readFile } from 'node:fs/promises'
+import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
 import type { PluginCard } from '../src/shared/plugin-settings'
@@ -67,14 +65,18 @@ describe.skipIf(process.platform === 'win32')('first Settings startup catalogue 
   }
   it('does three fetches, not six, from startup through the first Settings list', async () => {
     const f = await modern()
+    const captured = await captureLog()
     f.controller.start(f.options)
     await f.controller.ready!()
     expect(f.fetch).toHaveBeenCalledTimes(3)
     expect(await f.controller.catalogue(true)).toMatchObject([{ state: 'Available' }])
     expect(f.fetch).toHaveBeenCalledTimes(3)
     expect(f.peer.refreshCatalogue).not.toHaveBeenCalled()
-    await pluginStartupTrace.flush()
-    const log = await readFile(join(f.options.root, 'plugin-startup-trace.log'), 'utf8')
+    await vi.waitFor(async () =>
+      expect(await captured.text()).toContain('controller-admission end'),
+    )
+    const log = await captured.text()
+    await captured.close()
     for (const phase of [
       'catalogue start',
       'catalogue end',
@@ -687,14 +689,15 @@ describe.skipIf(process.platform === 'win32')(
       async ({ status, body, expected }) => {
         const f = await setup()
         f.fetch.mockImplementation(async () => new Response(body, { status }))
-        const warn = vi.spyOn(console, 'warn')
+        const captured = await captureLog()
         f.controller.start(f.options)
         await f.controller.ready!()
         expect(await settingsCall(f.controller)({ kind: 'list' })).toEqual(expected)
         expect(f.controller.available!()).toBe(true)
         expect(f.supervisor.start).not.toHaveBeenCalled()
         expect(seams.connect).not.toHaveBeenCalled()
-        expect(warn).not.toHaveBeenCalledWith('[plugins] plugin-initialization-failed')
+        expect(await captured.text()).not.toContain('plugin-initialization-failed')
+        await captured.close()
       },
     )
     it('loads only the fixed repo list without a key and Install needs one press', async () => {
@@ -1298,21 +1301,21 @@ describe.skipIf(process.platform === 'win32')(
     })
     it('logs a closed initialization failure instead of the private thrown message', async () => {
       const f = await setup()
-      const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const captured = await captureLog()
       seams.launch.mockImplementationOnce(() => {
         throw new Error('fictional-private-error-with-key')
       })
       f.controller.start(f.options)
       await f.controller.ready!()
-      await vi.waitFor(() =>
-        expect(warning.mock.calls.filter(([line]) => String(line).startsWith('[plugins]'))).toEqual(
-          [["[plugins] service-start: BroCrew couldn't start the plugin service. Try again."]],
-        ),
-      )
-      expect(
-        warning.mock.calls.some(([line]) => String(line).includes('controller-admission failure')),
-      ).toBe(true)
-      expect(JSON.stringify(warning.mock.calls)).not.toContain('fictional-private-error-with-key')
+      await vi.waitFor(async () => {
+        const text = await captured.text()
+        expect(
+          text.match(/service-start: BroCrew couldn't start the plugin service. Try again./g),
+        ).toHaveLength(1)
+        expect(text).toContain('controller-admission failure')
+      })
+      expect(await captured.text()).not.toContain('fictional-private-error-with-key')
+      await captured.close()
       expect(f.supervisor.start).not.toHaveBeenCalled()
       await expect(f.controller.install(f.pkg.release.id)).rejects.toThrow(
         'Plugin unavailable. Try again.',
@@ -1320,7 +1323,7 @@ describe.skipIf(process.platform === 'win32')(
     })
     it('keeps the first catalogue response failure instead of relabeling it as a connection failure', async () => {
       const f = await setup()
-      const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const captured = await captureLog()
       f.peer.catalogue.mockRejectedValue(new Error('fictional-private-catalogue-error'))
       f.controller.start(f.options)
       await f.controller.ready!()
@@ -1329,8 +1332,9 @@ describe.skipIf(process.platform === 'win32')(
         { state: 'Unavailable', unavailableReason: 'catalogue-response' },
       ])
       expect(f.peer.close).toHaveBeenCalled()
-      expect(JSON.stringify(warning.mock.calls)).toContain('fictional-private-catalogue-error')
-      expect(JSON.stringify(warning.mock.calls)).toContain('stage=rpc')
+      await vi.waitFor(async () => expect(await captured.text()).toContain('stage=rpc'))
+      expect(await captured.text()).toContain('fictional-private-catalogue-error')
+      await captured.close()
       f.peer.catalogue.mockResolvedValue([
         { id: f.pkg.release.id, name: 'Fictional Fir', installed: false, state: 'Available' },
       ])
@@ -1736,24 +1740,24 @@ it('resets correlated busy continuity when the root inode changes but its superv
 
 it('catalogue composition reports missing admitted cards at its own stage', async () => {
   const f = await setup()
-  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const captured = await captureLog()
   f.peer.catalogue.mockResolvedValue([])
   f.controller.start(f.options)
   await f.controller.ready!()
-  await vi.waitFor(() => expect(JSON.stringify(warn.mock.calls)).toContain('stage=composition'))
-  expect(JSON.stringify(warn.mock.calls)).toContain(
-    'origin=catalogue-composition cause=invalid-reply',
-  )
+  await vi.waitFor(async () => expect(await captured.text()).toContain('stage=composition'))
+  expect(await captured.text()).toContain('origin=catalogue-composition cause=invalid-reply')
+  await captured.close()
 })
 
 it('catalogue diagnostics retain existing busy classification', async () => {
   const f = await setup()
-  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const captured = await captureLog()
   f.peer.catalogue.mockRejectedValue(new PluginSupervisorError('busy'))
   f.controller.start(f.options)
   await f.controller.ready!()
   expect(await f.controller.catalogue()).toMatchObject([{ unavailableReason: 'cleanup-pending' }])
-  await vi.waitFor(() => expect(JSON.stringify(warn.mock.calls)).toContain('stage=rpc'))
+  await vi.waitFor(async () => expect(await captured.text()).toContain('stage=rpc'))
+  await captured.close()
 })
 
 it.skipIf(process.platform === 'win32')(

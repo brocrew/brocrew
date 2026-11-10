@@ -578,7 +578,7 @@ describe('§1 · the conversation’s card — the server asking, in the CLI’s
   it('🔴 in the conversation’s transcript the card draws the same chip and word — `TranscriptView` hands it the request the fold made', async () => {
     const html = await render(TranscriptView, {
       items: recordOf(captured.zeroNoTurn).transcript.items,
-      mode: 'normal',
+
       provider: 'codex',
     })
     expect(chipsOf(html)).not.toContain('command')

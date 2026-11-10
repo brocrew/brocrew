@@ -456,7 +456,7 @@ const PATHS = [
     open: () =>
       h(ContextDialog, {
         state: createTranscript(),
-        mode: 'normal',
+
         provider: 'claude',
         capability: null,
         conversation: null,

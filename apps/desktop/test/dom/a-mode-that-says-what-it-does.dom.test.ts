@@ -94,7 +94,7 @@ const header = (session: CreatedSession, box = { width: 1200, height: 808 }): Mo
       session,
       status: 'idle',
       ended: false,
-      debug: false,
+
       capabilities: allProviderCapabilities(),
       facets: { doing: 'idle', being: 'live' },
     },

@@ -176,14 +176,12 @@ describe('F035 · the named line is content: shown in both modes and exported; t
 
   it('🔴 the named line is shown in normal mode AND debug mode', () => {
     if (woken === undefined) throw new Error('no named line')
-    expect(isVisibleIn('normal', woken)).toBe(true)
-    expect(isVisibleIn('debug', woken)).toBe(true)
+    expect(isVisibleIn(woken)).toBe(true)
   })
 
   it('⛔ paired: the plain line stays debug-only', () => {
     if (plain === undefined) throw new Error('no plain line')
-    expect(isVisibleIn('normal', plain)).toBe(false)
-    expect(isVisibleIn('debug', plain)).toBe(true)
+    expect(isVisibleIn(plain)).toBe(false)
   })
 
   it('🔴 the reading export keeps the named line, and drops the plain one', () => {

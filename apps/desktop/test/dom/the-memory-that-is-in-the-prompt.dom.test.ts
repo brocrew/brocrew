@@ -212,7 +212,7 @@ describe('332 §2.3 · the door is the one that already exists', () => {
       TranscriptView,
       {
         items: record([launch(3)]).transcript.items,
-        mode: 'normal',
+
         hasOlder: false,
         turnAligned: true,
       },
@@ -243,13 +243,11 @@ describe('332 · where the row is, and where it is not', () => {
     const items = record([launch(3)]).transcript.items
 
     expect(items).toHaveLength(1)
-    for (const mode of ['normal', 'debug'] as const) {
-      expect(items.filter((item) => isVisibleIn(mode, item))).toHaveLength(1)
-    }
+    expect(items.filter((item) => isVisibleIn(item))).toHaveLength(1)
   })
 
   it('⚑ …and it really is drawn in the reading view, not only kept by the filter', () => {
-    const view = pane(HIS_LAUNCH, { mode: 'normal' })
+    const view = pane(HIS_LAUNCH, {})
 
     expect(view.all('memory-loaded')).toHaveLength(1)
     expect(view.q('reading-surface')).toBeTruthy()

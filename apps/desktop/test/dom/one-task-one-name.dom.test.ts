@@ -37,8 +37,8 @@ import { mount, unmountAll, visible } from './harness'
  * ⚑ **D-016 · the one name is now the piece's label** (`W1.2`); there is no *Task #N* any more.
  *
  * ⚠️ **`innerText` through {@link visible}**, because a sentence can be laid out and painted
- * nowhere — and the notice arm is drawn in DEBUG mode only (`transcript-mode.ts`: an `info` notice
- * is housekeeping in normal mode), which is the mode a person switches to to read it.
+ * nowhere. ⚠️ The notice arm is not drawn at all now (`transcript-mode.ts`: an `info` notice is
+ * housekeeping), so its test reads the items and checks the screen holds none of it.
  */
 
 const ev = (event: Record<string, unknown>): TranscriptEvent => event as unknown as TranscriptEvent
@@ -91,7 +91,7 @@ describe('§1 · the transcript', () => {
     await page.viewport(760, 520)
     const m = mount(
       TranscriptView,
-      { items: state.items, mode: 'debug', ownAgent: null },
+      { items: state.items, ownAgent: null },
       { width: 720, height: 480 },
     )
     await nextTick()
@@ -104,18 +104,25 @@ describe('§1 · the transcript', () => {
       .map((el) => el.innerText.trim())
 
   it('🔴 a question about W1.3 says W1.3 — and a question whose row spells no label does not guess', async () => {
-    const m = await view([
+    const events = [
       given('work_1', 'W1.3'),
       asked('req_1', 'work_1', 'W1.3'),
       asked('req_2', 'work_9'),
-    ])
-    const said = noticeTexts(m.host)
+    ]
+    // ⚑ The row is housekeeping since Debug mode went: its sentence lives in the transcript's
+    // items and is not drawn in the reading view, so the spelling is read off the items and the
+    // screen is checked to hold none of it.
+    const state = createTranscript()
+    for (const event of events) applyEvent(state, event)
+    const said = state.items.flatMap((item) => (item.kind === 'notice' ? [item.text] : []))
     expect(said).toContain('asked about W1.3')
-    // ⛔ the old spellings, gone from the screen
+    // ⛔ the old spellings, gone from the row
     expect(said.some((one) => /asked about #\d/.test(one))).toBe(false)
     expect(said.some((one) => one.includes('Task #'))).toBe(false)
     // ⚑ **the planted control** — a row with no label to spell keeps its own sentence
     expect(said).toContain('asked about a piece of work')
+    const m = await view(events)
+    expect(noticeTexts(m.host).filter((one) => one.startsWith('asked about'))).toEqual([])
   })
 
   it('🔴 held words whose work arrived say W1.4 — and words that never went keep their sentence', async () => {

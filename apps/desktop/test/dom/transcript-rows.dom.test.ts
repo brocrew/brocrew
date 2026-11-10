@@ -22,7 +22,7 @@ import { mount, unmountAll } from './harness'
  * has been standing in for a design rule since `108` shipped.
  *
  * ⚑ **It is the second, and the mechanism is one line of `TranscriptView.vue`:**
- * `v-for="(item, index) in shown"`, where `shown = visibleItems(mode, items)`. A wrapper is **one
+ * `v-for="(item, index) in shown"`, where `shown = visibleItems(items)`. A wrapper is **one
  * transcript ITEM in the current mode** — every item, of every kind, in the whole loaded window. It
  * was never a count of the workflow's rows, and it never had anything to do with the frames.
  *
@@ -165,8 +165,8 @@ interface Rows {
   onTree: number
 }
 
-function draw(state: TranscriptState, mode: 'debug' | 'normal'): Rows {
-  const view = mount(TranscriptView, { items: state.items, mode }, { width: 900, height: 4000 })
+function draw(state: TranscriptState): Rows {
+  const view = mount(TranscriptView, { items: state.items }, { width: 900, height: 4000 })
   const wrappers = [...view.host.querySelectorAll<HTMLElement>('.entry[data-item]')]
   const has = (el: HTMLElement, cy: string): boolean => el.querySelector(`[data-cy=${cy}]`) !== null
   return {
@@ -205,11 +205,11 @@ describe('what a .entry[data-item] is (114)', () => {
     })
 
     // ⛔ **The identity, stated as an assertion rather than as a comment.** The wrapper count IS
-    // `visibleItems(mode, items).length`, in both modes — which is what makes it a count of the
+    // `visibleItems(items).length`, in both modes — which is what makes it a count of the
     // conversation's LENGTH and not of anything the workflow did.
-    for (const mode of ['debug', 'normal'] as const) {
-      const rows = draw(state, mode)
-      expect(rows.wrappers, mode).toHaveLength(visibleItems(mode, state.items).length)
+    for (const mode of ['normal'] as const) {
+      const rows = draw(state)
+      expect(rows.wrappers, mode).toHaveLength(visibleItems(state.items).length)
       // …and the paired positive: every one of them is a real row with a real box, so the count is
       // not inflated by wrappers that render nothing. `113`'s second guess is refuted here.
       expect(rows.visible, `${mode}: some wrappers drew no box`).toHaveLength(rows.wrappers.length)
@@ -217,41 +217,12 @@ describe('what a .entry[data-item] is (114)', () => {
     }
   })
 
-  it('⛔ 108’s ceiling of 6 was a claim about the CONVERSATION — and 211 §4 shrank the mode it was checked in', async () => {
-    const state = feed(ledger(12))
-    await nextTick()
-
-    const debug = draw(state, 'debug')
-    // ⛔ **This measured 90 wrappers and 82 chatter rows until 211 §4, and both numbers were the
-    // defect.** `1b` turns the lifecycle toggle on, and the toggle has promised *"session start,
-    // turn boundaries, idle gaps"* since 079 while the filter went on showing every recognized
-    // whisper — which is how 210's Codex plan acquired 208 `item/plan/delta` markers. The 82
-    // `activity`/`reasoning` rows are now in the Events tab and nowhere else, so the mode step 57
-    // measures is the conversation plus its boundaries: 6 + 2 notices + 2 lifecycle payloads.
-    expect(debug.wrappers).toHaveLength(10)
-    expect(debug.chatter, 'recognized chatter is back in the lifecycle view').toBe(2)
-    expect(debug.infoNotices).toBe(2)
-    // ⚠️ **The loud card is a different row from the quiet one-liner, and it is not chatter.** 049
-    // split these so a genuine surprise surfaces instead of being swallowed, and `transcript-mode`
-    // keeps it in BOTH modes for the same reason.
-    expect(debug.unrecognized).toBe(1)
-    unmountAll()
-
-    // …and the conversation underneath it is six rows: the prompt, the `Workflow` call the tree
-    // hangs off, the `Bash` beside it, the reasoning, the reply — and the one payload nothing could
-    // classify, which the reader is still owed.
-    const normal = draw(state, 'normal')
-    expect(normal.wrappers).toHaveLength(6)
-    expect(normal.unrecognized, 'normal mode dropped the loud card').toBe(1)
-    // ⚑ **The reconstruction the live smoke performs, checked here rather than assumed there.**
-    // Step 57 cannot call `visibleItems`, and it must not toggle a mode that step `1b` owns — so it
-    // subtracts the two things the conversation mode drops, off hooks that are in the DOM.
-    // ⛔ **`unrecognized` is NOT one of them, and the first draft of this subtracted it.** Review
-    // caught it: `transcript-mode.ts` keeps the loud card in both modes, so subtracting it would
-    // have blinded the live count to the one payload class it most needs to see. The fixture
-    // carries one now, so the term has a value that can be wrong.
-    expect(debug.wrappers.length - debug.chatter - debug.infoNotices).toBe(normal.wrappers.length)
-    unmountAll()
+  it('keeps the conversation without lifecycle rows', async () => {
+    const rows = draw(feed(ledger(12)))
+    expect(rows.wrappers).toHaveLength(6)
+    expect(rows.chatter).toBe(0)
+    expect(rows.infoNotices).toBe(0)
+    expect(rows.unrecognized).toBe(1)
   })
 
   it('⚑ 078’s rule, measured where it lives: TWICE the frames, and not one extra row', async () => {
@@ -274,10 +245,10 @@ describe('what a .entry[data-item] is (114)', () => {
     expect(lastBeat(twentyFour)).toBe(2400)
     await nextTick()
 
-    for (const mode of ['debug', 'normal'] as const) {
-      const few = draw(twelve, mode)
+    for (const mode of ['normal'] as const) {
+      const few = draw(twelve)
       unmountAll()
-      const many = draw(twentyFour, mode)
+      const many = draw(twentyFour)
       expect(many.wrappers, `${mode}: doubling the frames changed the row count`).toHaveLength(
         few.wrappers.length,
       )
@@ -293,7 +264,7 @@ describe('what a .entry[data-item] is (114)', () => {
     // draws a tree for any tool row at all.
     const state = feed(ledger(0))
     await nextTick()
-    const rows = draw(state, 'normal')
+    const rows = draw(state)
     expect(rows.trees).toBe(0)
     // …and the row the tree would have hung off is still there, so this is about the tree.
     // ⚑ **`587` · it is there as a RUN.** A tool call with no workflow and no sub-agents is settled

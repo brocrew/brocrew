@@ -154,17 +154,16 @@ describe('the drawer shows one body at a time, and a click is what moves it', ()
     }
   })
 
-  it('the ordinals and the session ref really are on different tabs — 080’s two timeouts', async () => {
+  it('Info owns the session ref and retired Events navigation is absent', async () => {
     const m = mount(Harness, {}, { width: 380, height: 700 })
 
     const info = await show(m.host, 'info')
     expect(info, 'the Info tab no longer carries the session ref').toContain('session-ref')
 
-    const events = await show(m.host, 'events')
-    // The negative, paired: Events rendered a body of its own, so the absence above is a choice
-    // rather than a drawer that failed to mount.
-    expect(events.size).toBeGreaterThan(0)
-    expect(events).not.toContain('session-ref')
+    expect(m.host.querySelector('[data-cy=drawer-tab-events]')).toBeNull()
+    const work = await show(m.host, 'work')
+    expect(work.size).toBeGreaterThan(0)
+    expect(work).not.toContain('session-ref')
   })
 
   /**

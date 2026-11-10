@@ -99,7 +99,7 @@ function launcher(over: Record<string, unknown> = {}): Mounted {
         h(NewConversation as Component, {
           busy: false,
           error: null,
-          debug: false,
+
           defaultProvider: 'claude',
           // ⚑ **The front door's three choices, unanswered** (435) — `NO_LAUNCH_CHOICES` is what an
           // untouched door holds, and `models: null` is *nobody has answered yet*. Both are required
@@ -310,7 +310,7 @@ function launcherWith(staged: HandedPath[], draft = ''): Mounted {
         h(NewConversation as Component, {
           busy: false,
           error: null,
-          debug: false,
+
           defaultProvider: 'claude',
           models: null,
           choices: NO_LAUNCH_CHOICES,
@@ -349,7 +349,7 @@ describe('a launch that failed hands both halves back (217 §2)', () => {
           h(NewConversation as Component, {
             busy: busy.value,
             error: error.value,
-            debug: false,
+
             defaultProvider: 'claude',
             models: null,
             choices: NO_LAUNCH_CHOICES,
@@ -403,7 +403,7 @@ describe('a launch that failed hands both halves back (217 §2)', () => {
           h(NewConversation as Component, {
             busy: busy.value,
             error: null,
-            debug: false,
+
             defaultProvider: 'claude',
             models: null,
             choices: NO_LAUNCH_CHOICES,

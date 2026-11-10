@@ -74,7 +74,7 @@ function render(props: {
           session: props.session,
           state: createTranscript(),
           shown: createTranscript(),
-          mode: 'normal',
+
           window: createWindow(),
           sessionRef: props.session.ref,
           status: 'idle',

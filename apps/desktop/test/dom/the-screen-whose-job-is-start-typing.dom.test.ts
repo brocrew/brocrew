@@ -41,7 +41,7 @@ function open(over: Record<string, unknown> = {}): Mounted {
         h(NewConversation as Component, {
           busy: false,
           error: null,
-          debug: false,
+
           draft: words.value,
           handing: book.handing(NEW_CONVERSATION),
           defaultProvider: resolved.value,
@@ -104,7 +104,6 @@ describe('the short launcher keeps typing first', () => {
     const m = open()
     await caretIn(m)
     expect(tabOrder(m).map((el) => el.dataset.cy)).toEqual([
-      'toggle-debug-mode',
       'prompt-input',
       'attach-path',
       'model-picker-face',
@@ -113,7 +112,7 @@ describe('the short launcher keeps typing first', () => {
     ])
     expect((m.q('send-prompt') as HTMLButtonElement).disabled).toBe(true)
     await userEvent.tab({ shift: true })
-    await vi.waitFor(() => expect(document.activeElement).toBe(m.q('toggle-debug-mode')))
+    await vi.waitFor(() => expect(m.host.contains(document.activeElement)).toBe(false))
   })
   it('leaves both explicit choices unselected before the first start', async () => {
     await page.viewport(REAL.width, REAL.height)

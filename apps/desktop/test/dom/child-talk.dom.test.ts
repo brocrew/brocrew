@@ -289,8 +289,7 @@ describe('296 · a refresh that lands late must not overwrite a different child'
           ...card(A, 'toolu_a'),
           ...card(B, 'toolu_b'),
         ]),
-        mode: 'normal',
-        debug: false,
+
         onReadChildWork: async (what: ChildWorkInput): Promise<ChildWorkResult> => {
           if (what.part !== 'transcript') throw new Error('unexpected part')
           if (what.agentId === A && releaseA === null) {

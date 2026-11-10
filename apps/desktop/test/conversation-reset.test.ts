@@ -268,16 +268,14 @@ describe('what a reader is told (199)', () => {
     expect(row?.at).toBe(2) // stamped where it happened, not when it was replayed
 
     // ⛔ The claim: it survives the reading view.
-    expect(row && isVisibleIn('normal', row)).toBe(true)
-    expect(visibleItems('normal', state.items).some((item) => item.kind === 'reset')).toBe(true)
+    expect(row && isVisibleIn(row)).toBe(true)
+    expect(visibleItems(state.items).some((item) => item.kind === 'reset')).toBe(true)
 
     // ⚠️ The paired negative: the `session started` line beside it is STILL hidden, so this is not
     // "everything became visible" — it is this one row, on purpose. That notice is exactly where a
     // reset would have been filed if it had been made a `session` state.
     expect(
-      visibleItems('normal', state.items).some(
-        (item) => item.kind === 'notice' && item.level === 'info',
-      ),
+      visibleItems(state.items).some((item) => item.kind === 'notice' && item.level === 'info'),
     ).toBe(false)
   })
 
@@ -300,7 +298,7 @@ describe('what a reader is told (199)', () => {
       message: 'claude declined to answer (cyber) — no fallback model was tried: because reasons',
     })
 
-    const shown = visibleItems('normal', state.items)
+    const shown = visibleItems(state.items)
     const notice = shown.find((item) => item.kind === 'notice')
     expect(notice).toMatchObject({ kind: 'notice', level: 'warn' })
     expect(notice?.kind === 'notice' && notice.text).toContain('cyber')
@@ -326,6 +324,6 @@ describe('what a reader is told (199)', () => {
     )
     // Non-vacuity: the chatter really is in the transcript — it is the READING view that drops it.
     expect(state.items.filter((item) => item.kind === 'unknown')).toHaveLength(2)
-    expect(visibleItems('normal', state.items).some((item) => item.kind === 'unknown')).toBe(false)
+    expect(visibleItems(state.items).some((item) => item.kind === 'unknown')).toBe(false)
   })
 })

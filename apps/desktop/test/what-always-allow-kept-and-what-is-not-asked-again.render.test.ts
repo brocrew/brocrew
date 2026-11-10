@@ -252,8 +252,7 @@ const render = (component: unknown, props: Record<string, unknown>): Promise<str
 const pane = (record: SessionRecord, over: Record<string, unknown> = {}): Promise<string> =>
   render(ConversationPane, {
     record,
-    mode: 'normal' as const,
-    debug: false,
+
     drawerOpen: false,
     drawerTab: 'open' as DrawerTab,
     models: null,

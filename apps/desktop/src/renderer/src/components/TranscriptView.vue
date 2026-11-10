@@ -18,7 +18,7 @@ import type { RequestDraft, TakenWithoutThisWindow } from '../lib/session-record
 import { repliedAfter } from '../lib/asked-without-waiting'
 import { isAwaitingAnswer, itemKey, type ImageItem, type TranscriptItem } from '../lib/transcript'
 import { drawsAsACard } from '../lib/draws-as-a-card'
-import { visibleItems, type TranscriptMode } from '../lib/transcript-mode'
+import { visibleItems } from '../lib/transcript-mode'
 import { takenBackGoAheadsThatMayCarryOn } from '../lib/plan-mode'
 import { rowKey, transcriptRows, type TranscriptRow } from '../lib/tool-runs'
 import { everyResourceAReportNames } from '../lib/the-document-a-report-names'
@@ -64,7 +64,7 @@ const props = withDefaults(
     limitNow?: number
     items: TranscriptItem[]
     sessionId?: string
-    mode?: TranscriptMode
+
     /**
      * Who the assistant is — the heading of this conversation's own rows. ⚠️ A NAME on a live
      * conversation, and the provider or *sub-agent* where the surface has no name.
@@ -316,7 +316,6 @@ const props = withDefaults(
     canStopTurn?: boolean
   }>(),
   {
-    mode: 'debug',
     who: 'Assistant',
     footprint: '',
     held: undefined,
@@ -349,7 +348,7 @@ const props = withDefaults(
   },
 )
 
-const shown = computed(() => visibleItems(props.mode, props.items))
+const shown = computed(() => visibleItems(props.items))
 
 /** The quiet line at the end while a turn runs ({@link workingLine}). */
 const working = computed(() => workingLine(props.turnRunning, shown.value))
@@ -719,7 +718,7 @@ defineExpose({ focusItem })
 </script>
 
 <template>
-  <section ref="el" class="stream" data-cy="transcript" :data-mode="mode" @scroll="onScroll">
+  <section ref="el" class="stream" data-cy="transcript" @scroll="onScroll">
     <!-- INSIDE the scroll container, and first, so it moves with the content it belongs to: a
          "load earlier" pinned outside would sit still while the conversation slid under it.
          Rendered only when there IS something older — an always-present control that does nothing

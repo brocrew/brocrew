@@ -678,7 +678,7 @@ export class PluginSupervisorAttachment {
     return this.recovering
   }
   recordTrace(event: RouteAdmissionEvent): void {
-    if (this.where) recordRouteAdmissionTrace(this.where.root, event)
+    recordRouteAdmissionTrace(event)
   }
   async agentRoutes(input: {
     workspaceId: string

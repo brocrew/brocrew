@@ -32,7 +32,7 @@ scene('new-conversation', async (stage) => {
   stage.mount(NewConversation, {
     busy: false,
     error: null,
-    debug: false,
+
     draft: DRAFT,
     defaultProvider: 'claude',
     defaultApprovalMode: 'ask',

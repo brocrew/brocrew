@@ -269,7 +269,7 @@ describe('§1 · `stop_unanswered` is a warn notice in R83’s words, and a fact
       texts.indexOf(THE_PROVIDER_HAS_NOT_ANSWERED),
     )
     // ⚑ A warn notice — the reading view keeps it (an `info` one would be dropped there).
-    expect(isVisibleIn('normal', said)).toBe(true)
+    expect(isVisibleIn(said)).toBe(true)
     // ⚑ rule 5 — the words are the module's, not this file's.
     const { stopUnansweredSays } = await since730()
     expect(said.text).toBe(stopUnansweredSays({ by: 'a-person', waitedMs: 2_000 }, null))

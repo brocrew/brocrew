@@ -129,7 +129,7 @@ async function transcript(events: TranscriptEvent[]): Promise<{
           h('button', { type: 'button', 'data-cy': 'before' }, 'before'),
           h(TranscriptView, {
             items: items.value,
-            mode: 'normal',
+
             who: `Agent ${tick.value}`,
             paths: paths.value,
           }),

@@ -1,3 +1,4 @@
+import type { LoggingClient } from '../../shared/logging'
 import type { HandedPath } from '../../shared/attachment-contracts'
 import type { ProviderSetupBridge } from '../../shared/provider-setup'
 import type { RecoveryRetentionClient } from '../../shared/recovery-retention'
@@ -69,6 +70,7 @@ declare global {
       attentionSignals: (signal: AttentionSignal) => Promise<void>
       /** This workspace's short name and colour on the Dock icon (`shared/dock-label.ts`). */
       recoveryRetention?: RecoveryRetentionClient
+      logging?: LoggingClient
       transcriptRetention?: {
         read: () => Promise<TranscriptRetention>
         set: (period: TranscriptRetention) => Promise<TranscriptRetention>

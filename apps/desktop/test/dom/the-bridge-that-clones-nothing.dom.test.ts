@@ -99,7 +99,7 @@ function launcherFrame(
         h(NewConversation as Component, {
           busy: busy.value,
           error: error.value,
-          debug: false,
+
           draft: words.value,
           handing: book.handing(NEW_CONVERSATION),
           // ⚑ **`models` and `profiles` are not props any more** (417) — the model box and the

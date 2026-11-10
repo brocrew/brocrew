@@ -130,7 +130,7 @@ describe('§4 · the agent card plate, wired to a real transcript', () => {
       canOpen: false,
       panel: sessionPanel(record.control),
       state: record.control,
-      mode: 'normal',
+
       agentState: stateHere(record, facets, null, []),
     })
   }

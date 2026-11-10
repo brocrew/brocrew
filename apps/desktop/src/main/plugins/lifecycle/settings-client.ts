@@ -96,7 +96,7 @@ export async function connectPluginSettings(options: {
     stage: PluginReviewStage,
     code: Refusal,
     cause: Refusal | 'integrity' | 'transport' | 'verification' | 'unknown',
-  ): Promise<void>
+  ): void | Promise<void>
 }): Promise<PluginSettingsController & { close(): Promise<void> }> {
   if (
     options.repoCatalogueSha256 !== undefined &&

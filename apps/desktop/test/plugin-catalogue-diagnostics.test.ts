@@ -1,6 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { join } from 'node:path'
-import { readFile } from 'node:fs/promises'
+import { captureLog } from './lib/log-file'
 import { fixture, projection, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
@@ -76,9 +75,10 @@ it.each(['owner-check', 'rpc', 'schema'] as const)(
       expect((failure as Error).message).toContain('owner-features')
     }
     if (stage !== 'schema') expect((failure as Error).cause).toBe(original)
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    await recordPluginStartupFailure(f.root, 'catalogue-response', failure)
-    const log = await readFile(join(f.root, 'plugin-startup.log'), 'utf8')
+    const captured = await captureLog()
+    recordPluginStartupFailure('catalogue-response', failure)
+    const log = (await captured.lines(1)).join('\n')
+    await captured.close()
     expect(log).toContain(`stage=${stage}`)
     if (stage === 'owner-check') expect(log).toContain('detail=owner-features')
     if (stage !== 'schema') {

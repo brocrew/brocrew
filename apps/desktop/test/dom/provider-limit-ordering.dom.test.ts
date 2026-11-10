@@ -180,8 +180,7 @@ async function screens() {
         }),
         h(ConversationPane, {
           record,
-          mode: 'normal',
-          debug: false,
+
           drawerOpen: true,
           drawerTab: 'open',
           cwd: '/made-up/bakery',

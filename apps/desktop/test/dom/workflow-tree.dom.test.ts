@@ -578,7 +578,7 @@ describe("the drawer's workflow row (108)", () => {
     // the conversation is not on screen" about a tool row that was right there. A disabled button
     // dispatches no click, so the one thing the row exists for could not be done — and nothing
     // failed, because no test had ever clicked one.
-    const view = mount(SessionPanel, { state: withWorkflow(), mode: 'normal' }, { width: 360 })
+    const view = mount(SessionPanel, { state: withWorkflow() }, { width: 360 })
     const section = view.q('panel-workflows')
     const rows = [...section.querySelectorAll<HTMLButtonElement>('[data-cy=panel-row]')]
     // One row, not twenty-two — the same restraint, asserted where the drawer actually draws it.
@@ -595,7 +595,7 @@ describe("the drawer's workflow row (108)", () => {
       SessionPanel,
       {
         state: withWorkflow(),
-        mode: 'normal',
+
         onNavigate: (itemId: string) => navigated.push(itemId),
       },
       { width: 360 },
@@ -608,7 +608,7 @@ describe("the drawer's workflow row (108)", () => {
 
   it('a busy workflow leaves the panel’s own waiting count at zero', () => {
     // The drawer half of 080's line, read off the rendered attribute rather than the projection.
-    const view = mount(SessionPanel, { state: withWorkflow(), mode: 'normal' }, { width: 360 })
+    const view = mount(SessionPanel, { state: withWorkflow() }, { width: 360 })
     expect(view.q('session-panel').getAttribute('data-waiting')).toBe('0')
     // …and the paired positive: the panel is not simply empty — it is saying something.
     expect(view.all('panel-workflows')).toHaveLength(1)
@@ -689,8 +689,7 @@ describe('the walk step 57 could not finish (114)', () => {
       ConversationPane,
       paneProps({
         record: record(finishedRun()),
-        mode: 'normal',
-        debug: false,
+
         onReadChildWork: async (what: ChildWorkInput): Promise<ChildWorkResult> => {
           asked.child.push(what)
           const text = CHILD.map((event) => JSON.stringify(event)).join('\n')
@@ -810,8 +809,7 @@ describe('the walk step 57 could not finish (114)', () => {
       ConversationPane,
       paneProps({
         record: record(events),
-        mode: 'normal',
-        debug: false,
+
         onReadChildWork: async (what: ChildWorkInput) => {
           asked.push(what)
           return { ok: false, reason: 'unknown-agent' } as ChildWorkResult

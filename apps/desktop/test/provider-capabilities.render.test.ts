@@ -28,7 +28,7 @@ const render = (props: Record<string, unknown>): Promise<string> =>
 const launcher = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
   busy: false,
   error: null,
-  debug: false,
+
   draft: '',
   defaultProvider: 'claude',
   choices: NO_LAUNCH_CHOICES,

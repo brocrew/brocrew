@@ -43,7 +43,7 @@ function open(
         draft: text.value,
         busy: false,
         error: null,
-        debug: false,
+
         handing: createAttachmentBook().handing(NEW_CONVERSATION),
         defaultProvider: 'claude',
         defaultApprovalMode: 'ask',
@@ -180,7 +180,7 @@ it('puts the sign-in remedy above send after a sign-in refusal', async () => {
         busy: busy.value,
         error: error.value,
         refusedAs: 'sign-in',
-        debug: false,
+
         draft: text.value,
         handing,
         recent: [],

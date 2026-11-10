@@ -1092,11 +1092,10 @@ describe('405 · a refusal you can see', () => {
       // rule 5). ⛔ `isVisibleIn` is what decides it: `mode === 'debug' || item.level !== 'info'`.
       // ⚠️ **`'normal'` is the reading view's own spelling** — `TranscriptMode` is
       // `'debug' | 'normal'`, and the prose in this app calls the second one the reading view.
-      expect(isVisibleIn('normal', item)).toBe(true)
-      expect(isVisibleIn('debug', item)).toBe(true)
+      expect(isVisibleIn(item)).toBe(true)
       // ⚑ **The control that makes it a measurement**: the SAME item at `info` disappears from the
       // reading view, so this is a fact about the level and not about notices in general.
-      expect(isVisibleIn('normal', { ...item, level: 'info' })).toBe(false)
+      expect(isVisibleIn({ ...item, level: 'info' })).toBe(false)
       // ⚑ **The clause is a rendering of the ROW and not a constant**, which is what the pair below
       // measures. ⚠️ **The real refusal changed sides at `424`** — `no-such-agent` is `permanent`
       // now — so the row this test drives says *will not help*, and the control says the other

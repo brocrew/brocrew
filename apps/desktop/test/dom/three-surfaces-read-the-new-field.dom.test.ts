@@ -228,7 +228,7 @@ const bar = (waiting: ConversationWait | undefined): Mounted =>
       session: SESSION,
       status: 'idle',
       ended: false,
-      debug: false,
+
       facets: {
         doing: 'idle' as const,
         being: 'live' as const,
@@ -340,7 +340,7 @@ describe('645 §3 · the PLATE is the third surface, on two call sites and two p
         session: SESSION,
         status: 'idle',
         ended: false,
-        debug: false,
+
         facets: {
           doing: 'idle' as const,
           being: 'live' as const,

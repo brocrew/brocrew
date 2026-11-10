@@ -296,10 +296,10 @@ describe('a conversation brought back from the archive says so', () => {
       (item): item is NoticeItem => item.kind === 'notice' && item.text === SENTENCE,
     )
     expect(said).toHaveLength(1)
-    expect(isVisibleIn('normal', said[0]!)).toBe(true)
+    expect(isVisibleIn(said[0]!)).toBe(true)
 
     // The control: a lifecycle notice at `info` is what the normal view drops.
-    expect(isVisibleIn('normal', { ...said[0]!, level: 'info' })).toBe(false)
+    expect(isVisibleIn({ ...said[0]!, level: 'info' })).toBe(false)
   })
 
   it('a reopen that brought nothing back draws no such line', () => {

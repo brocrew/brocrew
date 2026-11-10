@@ -192,7 +192,6 @@ describe('Claude sign-in recovery where the error is read', () => {
       items: r.transcript.items,
       provider: 'claude',
       recorded: true,
-      mode: 'debug',
     })
     await settled()
     expect(m.all('claude-sign-in-action')).toHaveLength(0)

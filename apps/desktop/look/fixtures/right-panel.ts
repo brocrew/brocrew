@@ -4,7 +4,6 @@ import { drawerProps, META } from '../../test/dom/harness'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { defineComponent, h, type Component } from 'vue'
-import { hiddenDrawerTabs } from '../../src/renderer/src/lib/developer-views'
 import { CAPABILITY_FIXTURE } from '../../test/provider-capability-fixture'
 
 /**
@@ -294,7 +293,7 @@ export function rightPanelStage(over: Record<string, unknown> = {}): Component {
               session: SESSION,
               state,
               shown: state,
-              hiddenTabs: hiddenDrawerTabs(false),
+
               facets: { doing: 'tool', being: 'live' },
               onRevealPath: async () => ({ ok: true }),
               capabilities: CAPABILITY_FIXTURE,

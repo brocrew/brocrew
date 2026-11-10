@@ -19,7 +19,6 @@ import {
   usePersistentToggle,
   type ToggleStorage,
 } from '../src/renderer/src/composables/usePersistentToggle'
-import { LIFECYCLE_TOGGLE_TITLE } from '../src/renderer/src/lib/transcript-mode'
 import type { SessionStatus } from '../src/shared/runtime-ipc'
 
 /**
@@ -41,11 +40,11 @@ describe('the tab set', () => {
     // before it do.
     // ⚑ **W4.208 · `context` left**: its meter is the Context popup on the Open tab's card.
     // ⚑ **`controls` left too**: its model, plan and approval mode are on the same card.
-    expect(DRAWER_TABS.map((tab) => tab.id)).toEqual(['open', 'events', 'info', 'changes', 'work'])
+    expect(DRAWER_TABS.map((tab) => tab.id)).toEqual(['open', 'info', 'changes', 'work'])
     expect(DEFAULT_TAB).toBe('open')
   })
 
-  it('the last reserved slot became real, and one tab arrived with no slot held for it', () => {
+  it('the four remaining tabs need no reserved slots', () => {
     // 079 §2 shipped `changes` dimmed so the layout that got tested was the one this would have.
     // 096 built it, and this is the assertion that says the bet paid: the reserved list is EMPTY
     // now. `context` left it in 087 the same way.
@@ -55,7 +54,7 @@ describe('the tab set', () => {
     // reserved slots; `work` is outside that bet, so its width was measured in the dom project
     // before this number changed — see `drawer.ts`' `work` entry and
     // `the-work-this-conversation-gave-out.dom.test.ts`, which is where the fit is pinned.
-    expect(DRAWER_TABS.length + RESERVED_TABS.length).toBe(5)
+    expect(DRAWER_TABS.length + RESERVED_TABS.length).toBe(4)
     // …and the tab that arrived is the one that was reserved, on the glyph that was reserved for it.
     expect(DRAWER_TABS.find((tab) => tab.id === 'changes')?.icon).toBe('#i-diff')
   })
@@ -67,15 +66,6 @@ describe('the tab set', () => {
     expect(new Set(icons).size).toBe(icons.length)
   })
 
-  it('the lifecycle toggle and the Events tab do NOT share a glyph', () => {
-    // ⚠️ The pair 079 §3 is about. They are the two halves the old debug eye used to be — marks in
-    // the conversation, and the unfiltered stream — and drawing them the same way would rebuild
-    // exactly the ambiguity that retired the eye. Asserted because they are one character apart in
-    // the sprite and a copy-paste would never be noticed by eye.
-    const events = DRAWER_TABS.find((tab) => tab.id === 'events')!.icon
-    expect(events).toBe('#i-activity')
-    expect(events).not.toBe('#i-lifecycle')
-  })
 })
 
 describe('a remembered tab is validated, never trusted', () => {
@@ -101,11 +91,11 @@ describe('a remembered tab is validated, never trusted', () => {
     expect(isDrawerTab(undefined)).toBe(false)
   })
 
-  it('restores a tab that was left open', () => {
+  it('falls back when the retired Events tab was left open', () => {
     const store = fake({ 'brobot2.drawerTab': 'events' })
     expect(
       usePersistentChoice<DrawerTab>('brobot2.drawerTab', 'open', isDrawerTab, store).value,
-    ).toBe('events')
+    ).toBe(DEFAULT_TAB)
   })
 
   it('falls back to Open when the stored value is one a LATER build retired', () => {
@@ -339,13 +329,5 @@ describe('the attention model: a waiting card is never traceless (079 §5)', () 
         expect(tracesOutsideDrawer(traces)).toBe(2)
       }
     }
-  })
-})
-
-describe('the top bar states, and the drawer acts (079 §1)', () => {
-  it('the debug toggle is the lifecycle toggle now, and says so in words', () => {
-    // The hook is deliberately unchanged (079 §3 allows it) — what changed is the meaning, and the
-    // meaning has to be readable on the control rather than known by whoever moved it.
-    expect(LIFECYCLE_TOGGLE_TITLE).toContain('Show lifecycle events in the conversation')
   })
 })

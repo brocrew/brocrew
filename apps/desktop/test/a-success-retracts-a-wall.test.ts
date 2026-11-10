@@ -493,7 +493,7 @@ describe('§5 · `HO-080` §1.3 — a wall-ending record that is not chatter and
     // already invisible there. ⚑ The promotion had to keep it invisible in BOTH modes, because the
     // raw stream does draw an `unknown` and `provider_limit_clear` produces no item at all.
     expect(
-      isVisibleIn('normal', {
+      isVisibleIn({
         kind: 'unknown',
         id: 'u1',
         provider: 'claude',

@@ -76,7 +76,7 @@ function pane(waiting?: TaskWait): Record<string, unknown> {
   return {
     record,
     mode: 'chat' as const,
-    debug: false,
+
     drawerOpen: false,
     drawerTab: 'open' as const,
     draft: '',

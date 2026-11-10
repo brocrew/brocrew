@@ -572,7 +572,7 @@ describe('712 §2a · R41 — the notice about an identity’s rules names both 
 
     const named = mount(
       TranscriptView,
-      { items: state.items, mode: 'normal', ownAgent: null, identities: NAMED() },
+      { items: state.items, ownAgent: null, identities: NAMED() },
       { width: 860, height: 1300 },
     )
     await settle()
@@ -580,7 +580,7 @@ describe('712 §2a · R41 — the notice about an identity’s rules names both 
 
     const bare = mount(
       TranscriptView,
-      { items: state.items, mode: 'normal', ownAgent: null, identities: null },
+      { items: state.items, ownAgent: null, identities: null },
       { width: 860, height: 1300 },
     )
     await settle()

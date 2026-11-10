@@ -232,7 +232,7 @@ describe('the history count IS the number of boundary rows (acceptance 6)', () =
     // twice (review finding 28). `compactions(state) === state.items.filter(kind==='compaction')`
     // is true by construction and could not fail; the claim worth making is that the tally matches
     // the rows a reader actually sees, which is `visibleItems` in the mode they are reading in.
-    const rendered = visibleItems('normal', state.items).filter((i) => i.kind === 'compaction')
+    const rendered = visibleItems(state.items).filter((i) => i.kind === 'compaction')
     expect(compactions(state)).toEqual(rendered)
     expect(compactions(state)).toHaveLength(2)
     // Each row carries an item id, which is what a jump lands on.
@@ -262,14 +262,13 @@ describe('the history count IS the number of boundary rows (acceptance 6)', () =
   it('a boundary is never hidden by the reading view — in BOTH modes', () => {
     const state = fold(createTranscript(), compaction({ before: 1, after: 0 }))
     const row = compactions(state)[0]!
-    expect(isVisibleIn('normal', row)).toBe(true)
-    expect(isVisibleIn('debug', row)).toBe(true)
+    expect(isVisibleIn(row)).toBe(true)
     // Paired with the item kind this one was deliberately NOT built as: an `info` notice IS hidden
     // in normal mode, which is exactly why a compaction is not one.
     const notice = fold(createTranscript(), { type: 'turn', state: 'completed' }).items.find(
       (item) => item.kind === 'notice',
     )!
-    expect(isVisibleIn('normal', notice)).toBe(false)
+    expect(isVisibleIn(notice)).toBe(false)
   })
 
   it('`reclaimed` needs BOTH ends, and refuses a compaction that grew', () => {

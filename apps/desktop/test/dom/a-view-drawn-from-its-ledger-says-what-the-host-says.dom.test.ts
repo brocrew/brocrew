@@ -185,8 +185,7 @@ function view(
           record: drawn,
           cwd: CWD,
           identities: IDS,
-          mode: 'normal',
-          debug: false,
+
           drawerOpen: false,
           drawerTab: 'open',
           // ⚑ UI-012 · what the screen hands every conversation: a model pick, carried out.

@@ -5,7 +5,6 @@ import type { Mounted } from '../../test/dom/harness'
 import AppTitleBar from '../../src/renderer/src/components/AppTitleBar.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
-import { hiddenDrawerTabs } from '../../src/renderer/src/lib/developer-views'
 import { RAIL_NARROW_BELOW } from '../../src/renderer/src/lib/rail-fold'
 import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import { applyEvent } from '../../src/renderer/src/lib/transcript'
@@ -161,7 +160,7 @@ export function windowStage(options: WindowStageOptions = {}): Component {
                 drawerOpen: true,
                 drawerTab: 'open',
                 capabilities: CAPABILITY_FIXTURE,
-                hiddenDrawerTabs: hiddenDrawerTabs(false),
+
                 ...options.pane,
               }),
             ),

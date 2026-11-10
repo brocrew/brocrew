@@ -48,11 +48,22 @@ import { installAppNavigation } from './app-navigation'
 import { makeWorkerPieceFolder, WORKER_OUTPUT_DIRNAME } from './worker-piece-folder'
 import { keptShippedSkills, prepareBuiltInSkills } from './skills/prepare-built-in-skills'
 import { factoryTextOf, readTextPack } from './skills/text-pack'
-import { aStartAttemptsLog } from './start-attempts-log'
+import {
+  appLogFile,
+  debugIsOn,
+  logInfo,
+  logWarn,
+  openLog,
+  readDebugChoice,
+  saveDebugChoice,
+  serviceLogFile,
+  setDebug,
+} from './logging/log'
+import { LOGGING_CHANNELS } from '../shared/logging'
 import { broadcastRuntime } from './runtime/window-broadcast'
 import { changeNotices } from './runtime/change-notices'
 import { execFile, spawn } from 'node:child_process'
-import { appendFileSync, existsSync, mkdirSync, writeSync } from 'node:fs'
+import { existsSync, writeSync } from 'node:fs'
 import { inspect } from 'node:util'
 import { join } from 'node:path'
 import { totalmem } from 'node:os'
@@ -117,7 +128,6 @@ import {
   whatTheAppItselfHolds,
 } from './memory-watch'
 import { logWhenThePageStopsAnswering } from './page-answers'
-import { aDiagnosticsSink, type DiagnosticsSink } from './diagnostics-sink'
 import { aPageReceipt, pageHeardSays, type PageReceipt } from './runtime/page-performance'
 import {
   MainThreadWork,
@@ -962,9 +972,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
       }),
     // A text pack, read once for each launch; a packaged build never reads one.
     readTextPack: () => readTextPack(process.env, app.isPackaged, shippedVersion),
-    // Each launch's timing, by name and number only, written later and kept to two files of at
-    // most 2 MB.
-    recordStartAttempt: aStartAttemptsLog(userData).write,
+    recordStartAttempt: (line) => logInfo('launch', line.stage, { ...line }),
     // Share the same non-provisioning path derivation with memory recovery.
     ...providerHomePaths,
     // List profiles from directories under the managed root, without a separate registry.
@@ -1310,18 +1318,13 @@ let lookAtTheWindow: () => void = () => {}
 
 /** The page's own freeze reports; set once the commands are registered. */
 let thePageReceipt: PageReceipt | null = null
+/** Settles once the saved Debug mode choice has been applied to the log. */
+let debugChoiceRead: Promise<void> = Promise.resolve()
 
-/**
- * A stall's line, to the console and to `stalls.log` beside `memory.log`, written off this thread
- * so a slow disk or console never lengthens the stall it reports. A hidden launch (a test or a
- * smoke, loading the machine on purpose) writes to its console only.
- */
+/** A stall's line goes to the log (and the console), like every other diagnostic line. */
 function intoTheStallLog(line: string): void {
-  theStallSink ??= aDiagnosticsSink({ logs: presentation.hidden ? null : app.getPath('logs') })
-  theStallSink.accept(`${new Date().toISOString()} pid ${String(process.pid)}: ${line}`)
+  logWarn('stall', line)
 }
-
-let theStallSink: DiagnosticsSink | null = null
 
 /**
  * Suppress Electron's error modal on hidden launches by adding an `uncaughtException`
@@ -1377,6 +1380,21 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
   } catch {
     // An unavailable plugin root remains unavailable in Storage too.
   }
+  const loggingState = async () => {
+    await debugChoiceRead
+    return {
+      debug: debugIsOn(),
+      path: appLogFile(storageData),
+      servicePath: storagePlugins ? serviceLogFile(storagePlugins) : null,
+    }
+  }
+  ipcMain.handle(LOGGING_CHANNELS.get, loggingState)
+  ipcMain.handle(LOGGING_CHANNELS.setDebug, async (_event, debug: unknown) => {
+    if (typeof debug !== 'boolean') throw new Error('Invalid debug choice.')
+    await saveDebugChoice(storageData, debug)
+    setDebug(debug)
+    return loggingState()
+  })
   const storage = new StorageService(
     {
       data: storageData,
@@ -2342,6 +2360,8 @@ function startTheDockLabel(): void {
 function start(ownership: HostGateVerdict): void {
   // Only the one app on this data may change which agents are services.
   soleAtThisLaunch = ownership === 'sole'
+  openLog(appLogFile(app.getPath('userData')))
+  debugChoiceRead = readDebugChoice(app.getPath('userData')).then(setDebug)
   // Presence is for the workspace chooser and deletion check; it does not decide ownership.
   void publishWorkspacePresence(app.getPath('userData')).catch((error: unknown) =>
     console.warn('BroCrew could not announce this open workspace:', error),
@@ -2414,7 +2434,6 @@ function start(ownership: HostGateVerdict): void {
       } catch (error) {
         console.warn('the stall watch could not start:', error)
       }
-      pluginStartupTrace.destination(presentation.hidden ? undefined : app.getPath('logs'))
       let finishStartupPhase = pluginStartupTrace.begin('workspace-recovery')
       const verdict = await theVerdictBeforeTheData(ownership)
       finishStartupPhase(verdict.kind === 'open' ? undefined : verdict.kind)
@@ -2542,16 +2561,7 @@ function start(ownership: HostGateVerdict): void {
       startTitlingTheOlderFiles(host)
       startRecordingWhatTheOlderOnesRan(host)
       let itself = whatTheAppItselfHolds([])
-      const intoTheMemoryLog = (message: string): void => {
-        console.warn(message)
-        try {
-          const logs = app.getPath('logs')
-          mkdirSync(logs, { recursive: true })
-          appendFileSync(join(logs, 'memory.log'), `${new Date().toISOString()} ${message}\n`)
-        } catch {
-          // Diagnostic writes cannot interrupt the app.
-        }
-      }
+      const intoTheMemoryLog = (message: string): void => logWarn('memory', message)
       const unrefdInterval = (fn: () => void, ms: number): unknown => {
         const timer = setInterval(fn, ms)
         timer.unref()
@@ -2666,8 +2676,6 @@ const lifetime = createAppLifetime({
     await transcriptRetention?.stop()
     await (stoppingTheStart ?? host?.drainArchiveWork() ?? Promise.resolve())
     await themes?.close()
-    // Stall lines still queued, and the notice of what was left, get half a second in all.
-    await theStallSink?.close(500)
   },
   closeDatabase: () => {
     db?.close()

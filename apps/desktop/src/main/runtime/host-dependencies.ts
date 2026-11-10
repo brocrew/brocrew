@@ -6,7 +6,7 @@ import type { SkillsWindow } from '../../shared/skills-window'
 import type { PastWorkSearchReader } from '../db/past-work-search-reader'
 import type { TranscriptsCleared } from '../../shared/transcript-retention'
 import type { SkillImportNotice } from '../../shared/recent-activity'
-import type { StartAttemptLine } from '../start-attempts-log'
+import type { StartAttemptLine } from '../start-attempt-line'
 import type { ThemeStore } from '../themes/store'
 import type { MainThreadWork } from '../stall-watch'
 import type { SkillLaunchSelection } from '../skills/launch-selection'
@@ -476,7 +476,7 @@ export interface RuntimeHostDeps {
   reopenLeadsGraceMs?: number
   /**
    * Takes each launch's timing line, by name and number only, without waiting for the disk
-   * (`aStartAttemptsLog`); nothing is recorded when not given.
+   * through the shared log; nothing is recorded when not given.
    */
   recordStartAttempt?: (line: StartAttemptLine) => void
   /** A clock that only moves forward, for a launch's phases; `performance.now` when not given. */

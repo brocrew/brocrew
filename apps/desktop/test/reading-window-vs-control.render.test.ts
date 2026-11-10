@@ -80,7 +80,7 @@ function fold(padding: number, ...events: TranscriptEvent[]): TranscriptItem[] {
 
 async function render(items: TranscriptItem[], draftFor: (id: string) => RequestDraft) {
   return await renderToString(
-    createSSRApp({ render: () => h(TranscriptView, { items, mode: 'debug', draftFor }) }),
+    createSSRApp({ render: () => h(TranscriptView, { items, draftFor }) }),
   )
 }
 
@@ -146,7 +146,7 @@ const META: CreatedSession = {
 const paneProps = (record: SessionRecord): Record<string, unknown> => ({
   record,
   mode: 'chat' as const,
-  debug: false,
+
   drawerOpen: false,
   drawerTab: 'open' as const,
   draft: '',
@@ -271,8 +271,7 @@ describe('a card renders from the record, not from itself', () => {
   it('works with no draft owner at all, which is what the read-only pane hands it', async () => {
     const html = await renderToString(
       createSSRApp({
-        render: () =>
-          h(TranscriptView, { items: fold(0, permissionRequest('req_ro')), mode: 'debug' }),
+        render: () => h(TranscriptView, { items: fold(0, permissionRequest('req_ro')) }),
       }),
     )
     expect(html).toContain('data-cy="permission-card"')

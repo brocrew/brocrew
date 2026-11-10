@@ -295,8 +295,7 @@ describe('the sub-agent card finally opens something (115)', () => {
       ConversationPane,
       paneProps({
         record: record(events),
-        mode: 'normal',
-        debug: false,
+
         onReadChildWork: async (what: ChildWorkInput): Promise<ChildWorkResult> => {
           asked.push(what)
           return answer

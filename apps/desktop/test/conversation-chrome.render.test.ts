@@ -7,7 +7,6 @@ import ConversationPane from '../src/renderer/src/components/ConversationPane.vu
 import SessionDrawer from '../src/renderer/src/components/SessionDrawer.vue'
 import { createSessionRecord, type SessionRecord } from '../src/renderer/src/lib/session-record'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-import { createWindow } from '../src/renderer/src/lib/transcript-window'
 import { createAttachmentBook, draftKey } from '../src/renderer/src/lib/drafts'
 import { HOW_THESE_GRANTS_END, NOT_ASKED_AGAIN } from '../src/renderer/src/lib/standing-grants'
 import {
@@ -111,8 +110,7 @@ function record(events: TranscriptEvent[], meta: CreatedSession = META): Session
 
 const paneProps = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
   record: record([permission('req_1'), { type: 'status', state: 'waiting_permission' }]),
-  mode: 'normal' as const,
-  debug: false,
+
   drawerOpen: false,
   drawerTab: 'open' as DrawerTab,
   draft: '',
@@ -133,8 +131,7 @@ const drawer = (over: Record<string, unknown> = {}): Promise<string> =>
           session: META,
           state: createTranscript(),
           shown: createTranscript(),
-          mode: 'normal',
-          window: createWindow(),
+
           sessionRef: META.ref,
           status: 'idle',
           fixed: false,
@@ -171,7 +168,7 @@ describe('the top bar states and does not act (079 §1)', () => {
     // conversation (`close-session`), is gone**: a conversation is never ended, and a message
     // continues it.
     expect(html).toContain('data-cy="toggle-session-panel"')
-    expect(html).toContain('data-cy="toggle-debug-mode"')
+    expect(html).not.toContain('data-cy="toggle-debug-mode"')
 
     // The five that moved, and the one D-017b removed. Paired with the positives above, so an
     // empty render cannot pass.
@@ -383,10 +380,6 @@ describe('one drawer, every tab live (079 §2 → 096 → 508)', () => {
     expect(tag(open, 'drawer-tab-open')).toContain('data-active="true"')
     expect(tag(open, 'drawer-tab-info')).toContain('data-active="false"')
 
-    const events = await drawer({ tab: 'events' })
-    expect(events).toContain('data-cy="event-stream"')
-    expect(events).not.toContain('data-cy="session-panel"')
-
     const info = await drawer({ tab: 'info' })
     expect(info).toContain('data-cy="session-info"')
     expect(info).toContain('data-cy="session-cwd"')
@@ -422,10 +415,10 @@ describe('one drawer, every tab live (079 §2 → 096 → 508)', () => {
   })
 
   it('the active tab is the one marked active and the one with the words (088 §3)', async () => {
-    const html = await drawer({ tab: 'events' })
-    expect(tag(html, 'drawer-tab-events')).toContain('data-active="true"')
+    const html = await drawer({ tab: 'changes' })
+    expect(tag(html, 'drawer-tab-changes')).toContain('data-active="true"')
     expect(tag(html, 'drawer-tab-open')).toContain('data-active="false"')
-    expect(html).toContain('>Events</span>')
+    expect(html).toContain('>Changes</span>')
   })
 
   it('floats over the transcript with a scrim rather than crushing it', async () => {

@@ -305,8 +305,7 @@ describe('the fold: an app-authored turn is a turn, and is not a bubble (278 §1
       text: GO_AHEAD_MESSAGE,
       at: 1,
     } as const
-    expect(isVisibleIn('normal', item)).toBe(true)
-    expect(isVisibleIn('debug', item)).toBe(true)
+    expect(isVisibleIn(item)).toBe(true)
   })
 
   it('and the raw stream stops printing one word for three different provenances', () => {

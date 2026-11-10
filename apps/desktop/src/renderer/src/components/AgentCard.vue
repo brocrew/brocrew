@@ -23,7 +23,7 @@ import { FILES_DID_NOT_ANSWER, fileKindOf, fileTitleSays } from '../lib/files-ke
 import { ROWS_UNREAD_LEAD } from '../lib/rows-unread'
 import type { PanelAsset, PanelEntry, SessionPanel as SessionPanelView } from '../lib/session-panel'
 import type { TranscriptState } from '../lib/transcript'
-import { isVisibleIn, type TranscriptMode } from '../lib/transcript-mode'
+import { isVisibleIn } from '../lib/transcript-mode'
 import { panelWords } from '../lib/latest-words'
 import { briefsOf } from '../lib/piece-briefs'
 
@@ -97,7 +97,7 @@ const props = defineProps<{
   /** While this conversation holds a piece with a typed wait: that wait, in place of its state. */
   ownWait?: OwnWait | null
   shown?: TranscriptState
-  mode: TranscriptMode
+
   conversation?: string
   /** ⚑ The pane's one Stop gate (`094`) — see `SessionDrawer`'s note. Absent is *cannot stop*. */
   canStopBackgroundWork?: boolean
@@ -339,7 +339,7 @@ const reachable = computed(() => {
   // genuinely are not on screen, and the row says so rather than doing nothing when pressed.
   const found = new Set<string>()
   for (const item of within.items) {
-    if (wanted.has(item.id) && isVisibleIn(props.mode, item)) found.add(item.id)
+    if (wanted.has(item.id) && isVisibleIn(item)) found.add(item.id)
   }
   return found
 })

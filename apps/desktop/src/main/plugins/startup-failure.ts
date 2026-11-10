@@ -1,6 +1,4 @@
-import { randomUUID } from 'node:crypto'
-import { rename, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { logInfo, logWarn } from '../logging/log'
 import {
   pluginUnavailableNotice,
   PluginStartupDiagnosticSchema,
@@ -226,30 +224,14 @@ export function pluginStartupReason(
 export function createPluginStartupTrace(now = () => performance.now()) {
   const launch = new Date().toISOString(),
     began = now()
-  let root: string | undefined,
-    ordinal = 0,
-    lines = '',
-    pending = Promise.resolve()
+  let ordinal = 0
   const active = new Set<(error?: unknown) => void>()
-  const write = () => {
-    const destination = root,
-      snapshot = lines
-    if (destination)
-      pending = pending.then(() =>
-        writePluginStartupLog(destination, 'plugin-startup-trace.log', snapshot),
-      )
-  }
   const mark = (phase: string, state: string, attempt = ordinal) => {
-    const line = `${new Date().toISOString()} launch=${launch} elapsed=${Math.round(now() - began)} attempt=${attempt} ${phase} ${state}`
-    lines += `${line}\n`
-    console.warn(line)
-    write()
+    const facts = { launch, elapsed: Math.round(now() - began), attempt }
+    if (state.startsWith('failure')) logWarn('plugin-startup', `${phase} ${state}`, facts)
+    else logInfo('plugin-startup', `${phase} ${state}`, facts)
   }
   return {
-    destination(next: string | undefined) {
-      root = next
-      write()
-    },
     attempt() {
       ordinal++
     },
@@ -281,43 +263,21 @@ export function createPluginStartupTrace(now = () => performance.now()) {
         `failure ${diagnostic ? pluginStartupDiagnosticNotice(diagnostic) : ''} ${phase === 'catalogue-response' ? pluginFailureCause(error) : ''}${stderr ? `\n${stderr}` : ''}`,
       )
     },
-    flush: () => pending,
   }
 }
 export const pluginStartupTrace = createPluginStartupTrace()
 
-async function writePluginStartupLog(root: string, name: string, contents: string): Promise<void> {
-  const temporary = join(root, `.plugin-startup-${randomUUID()}.log`)
-  try {
-    await writeFile(temporary, contents, { flag: 'wx', mode: 0o600 })
-    await rename(temporary, join(root, name))
-  } catch {
-    // Diagnostic writes cannot prevent startup or recovery.
-  } finally {
-    await rm(temporary, { force: true }).catch(() => {})
-  }
-}
 export type PluginReviewStage = 'download' | 'verify' | 'installed-disclosure' | 'owner-prepare'
-/** Only closed vocabulary is retained; no error text, paths, URLs or inspected objects. */
-export async function recordPluginReviewFailure(
-  root: string,
+export function recordPluginReviewFailure(
   action: 'install' | 'update',
   stage: PluginReviewStage,
   code: Refusal,
   cause: Refusal | 'integrity' | 'transport' | 'verification' | 'unknown',
-): Promise<void> {
-  await writePluginStartupLog(
-    root,
-    'plugin-settings-failure.log',
-    `${new Date().toISOString()} action=${action} stage=${stage} code=${code} cause=${cause}\n`,
-  )
+): void {
+  logWarn('plugin-review', `${action} ${stage}`, { code, cause })
 }
-/** Retain one bounded, readable failure. */
-export async function recordPluginStartupFailure(
-  root: string | undefined,
-  reason: PluginUnavailableReason,
-  error?: unknown,
-): Promise<void> {
+/** Log one readable failure, with the plugin's own stderr when it printed any. */
+export function recordPluginStartupFailure(reason: PluginUnavailableReason, error?: unknown): void {
   const diagnostic = pluginStartupDiagnostic(error)
   let stderrOutput: string | undefined
   for (let cause = error, depth = 0; depth < 6 && cause && typeof cause === 'object'; depth++) {
@@ -344,11 +304,5 @@ export async function recordPluginStartupFailure(
   }
   const cause = reason === 'catalogue-response' || stage ? pluginFailureCause(original) : undefined
   const line = `[plugins] ${reason}: ${pluginUnavailableNotice(reason)}${code ? ` (${code})` : ''}${diagnostic ? ` ${pluginStartupDiagnosticNotice(diagnostic)}` : ''}${cause ? ` stage=${stage ?? 'rpc'}${detail ? ` detail=${detail}` : ''} cause=${cause}` : ''}`
-  console.warn(line)
-  if (!root) return
-  await writePluginStartupLog(
-    root,
-    'plugin-startup.log',
-    `${new Date().toISOString()} ${line}\n${stderrOutput ? `${stderrOutput}\n` : ''}`,
-  )
+  logWarn('plugin-startup', stderrOutput ? `${line}\n${stderrOutput}` : line)
 }

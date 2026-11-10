@@ -81,7 +81,7 @@ describe('Claude sign-in failures', () => {
       level: 'info',
       claudeSignIn: { state: 'recovered' },
     })
-    expect(visibleItems('normal', state.items)).toHaveLength(0)
+    expect(visibleItems(state.items)).toHaveLength(0)
   })
 
   it.each(['error_max_turns', 'error_during_execution'])(
@@ -92,9 +92,7 @@ describe('Claude sign-in failures', () => {
       applyEvent(state, { type: 'error', message: `turn failed: ${reason}`, fatal: false })
       applyEvent(state, { type: 'turn', state: 'failed' })
       expect(
-        visibleItems('normal', state.items).map((item) =>
-          item.kind === 'notice' ? item.text : '',
-        ),
+        visibleItems(state.items).map((item) => (item.kind === 'notice' ? item.text : '')),
       ).toEqual([reason, 'turn failed'])
       expect(notices(state.items)[0]?.claudeSignIn?.state).toBe('ended')
       expect(notices(state.items).some((item) => item.claudeSignIn?.state === 'refused')).toBe(
@@ -109,7 +107,7 @@ describe('Claude sign-in failures', () => {
     applyEvent(state, { type: 'turn', state: 'failed' })
     expect(notices(state.items)[0]?.claudeSignIn?.state).toBe('ended')
     expect(
-      visibleItems('normal', state.items).map((item) => (item.kind === 'notice' ? item.text : '')),
+      visibleItems(state.items).map((item) => (item.kind === 'notice' ? item.text : '')),
     ).toEqual(['turn failed'])
   })
 
@@ -123,7 +121,7 @@ describe('Claude sign-in failures', () => {
     })
     expect(notices(state.items)[0]?.claudeSignIn?.details).toContain('turn interrupted')
     expect(
-      visibleItems('normal', state.items).map((item) => (item.kind === 'notice' ? item.text : '')),
+      visibleItems(state.items).map((item) => (item.kind === 'notice' ? item.text : '')),
     ).toEqual(['turn interrupted'])
   })
 
@@ -168,10 +166,8 @@ describe('Claude sign-in failures', () => {
         raw: { type: label },
       })
     expect(state.items).toHaveLength(2)
-    for (const mode of ['normal', 'debug'] as const) {
-      expect(
-        visibleItems(mode, state.items).map((item) => (item.kind === 'unknown' ? item.label : '')),
-      ).toEqual(['new-useful-event'])
-    }
+    expect(
+      visibleItems(state.items).map((item) => (item.kind === 'unknown' ? item.label : '')),
+    ).toEqual(['new-useful-event'])
   })
 })

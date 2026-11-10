@@ -73,7 +73,7 @@ function transcript(events: readonly TranscriptEvent[]): Mounted {
   events.forEach((event, i) => applyEvent(state, event, 1_700_000_000_000 + i * 900, i + 1))
   return mount(
     TranscriptView,
-    { items: state.items, mode: 'normal', ownAgent: 'BroBot' },
+    { items: state.items, ownAgent: 'BroBot' },
     { width: 1180, height: 800 },
   )
 }

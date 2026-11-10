@@ -1,3 +1,4 @@
+import { loggingClient } from '../shared/logging'
 import type { DecideMoveRequestInput, MoveRequestAck } from '../shared/move-contracts'
 import type { LedgerWalk, PersonsDecision, PersonsQuestion } from '../shared/question-contracts'
 import type { WhatEachConversationIsWaitingOn, WorkGivenOut } from '../shared/task-contracts'
@@ -1039,6 +1040,7 @@ const api = Object.freeze({
     deleteNow: (id: string): Promise<void> =>
       ipcRenderer.invoke(RECOVERY_RETENTION_CHANNELS.delete, id),
   } satisfies RecoveryRetentionClient),
+  logging: loggingClient((channel, ...args) => ipcRenderer.invoke(channel, ...args)),
   transcriptRetention: Object.freeze({
     read: (): Promise<TranscriptRetention> =>
       ipcRenderer.invoke(TRANSCRIPT_RETENTION_CHANNELS.read) as Promise<TranscriptRetention>,

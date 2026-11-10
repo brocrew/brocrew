@@ -11,7 +11,7 @@ import type { ProviderLimitsView } from '../lib/persons-queue'
 import type { ModelLists } from '../lib/model-lists'
 import type { AgentStore } from '../lib/agent-store'
 import { useAttentionSignals } from '../composables/useAttentionSignals'
-import { useDebugMode } from '../composables/useDebugMode'
+import { useLogging } from '../composables/useLogging'
 import { useDockLabel } from '../composables/useDockLabel'
 import {
   DOCK_LABEL_COLOURS,
@@ -82,7 +82,7 @@ const allTabs: readonly { id: SettingsTab; label: string }[] = [
 ]
 const tabs = computed(() => allTabs.filter((tab) => tab.id !== 'plugins' || pluginEnabled.value))
 const attentionSignals = useAttentionSignals()
-const debugMode = useDebugMode()
+const logging = useLogging()
 const approvalSaving = ref(false)
 const approvalError = ref<string | null>(null)
 async function saveApprovalDefault(event: Event): Promise<void> {
@@ -392,23 +392,43 @@ async function tabKey(event: KeyboardEvent, current: SettingsTab): Promise<void>
         </div>
       </section>
       <section class="setting-card" data-cy="debug-mode">
-        <span class="setting-icon" aria-hidden="true"
-          ><svg class="icon"><use href="#i-terminal" /></svg
-        ></span>
+        <span class="setting-icon" aria-hidden="true">
+          <svg class="icon"><use href="#i-terminal" /></svg>
+        </span>
         <div class="setting-copy">
           <h2 id="settings-debug-label">Debug mode</h2>
           <p id="settings-debug-help">
-            Show the Events tab in a conversation’s side panel: the raw event list, for chasing
-            bugs.
+            Write more detail about what the app is doing to its log file. Errors are always logged,
+            with this on or off.
           </p>
+          <template v-if="logging.state.value">
+            <p class="log-path" data-cy="log-path">Log file: {{ logging.state.value.path }}</p>
+            <p v-if="logging.state.value.servicePath" class="log-path" data-cy="log-service-path">
+              Plugin service log: {{ logging.state.value.servicePath }}
+            </p>
+          </template>
+          <p v-else-if="!logging.error.value" role="status">Loading…</p>
+          <p v-if="logging.error.value" role="status" data-cy="log-error">
+            {{ logging.error.value }}
+          </p>
+          <button
+            v-if="logging.error.value && !logging.state.value"
+            type="button"
+            data-cy="log-retry"
+            @click="logging.load"
+          >
+            Try again
+          </button>
         </div>
         <input
-          v-model="debugMode"
           type="checkbox"
           role="switch"
+          :checked="logging.state.value?.debug ?? false"
+          :disabled="!logging.state.value || logging.saving.value"
           data-cy="debug-mode-switch"
           aria-labelledby="settings-debug-label"
           aria-describedby="settings-debug-help"
+          @change="logging.save"
         />
       </section>
     </div>
@@ -554,6 +574,10 @@ async function tabKey(event: KeyboardEvent, current: SettingsTab): Promise<void>
 .setting-card input[role='switch']:focus-visible {
   outline: var(--border-accent-width) solid var(--accent);
   outline-offset: var(--space-1);
+}
+.log-path {
+  overflow-wrap: anywhere;
+  user-select: text;
 }
 .dock-label-card {
   flex-direction: column;

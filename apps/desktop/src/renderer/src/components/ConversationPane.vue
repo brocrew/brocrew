@@ -91,7 +91,6 @@ import {
   type ResourceRevealer,
 } from '../lib/opening-a-document'
 import { A_COMMAND_HAS_NOT_ANSWERED, type SendIntent } from '../lib/session-store'
-import type { TranscriptMode } from '../lib/transcript-mode'
 import type { ForestView } from '../lib/the-forest'
 import { receiptOf } from '../lib/transcript'
 import ActivityPill from './ActivityPill.vue'
@@ -134,18 +133,15 @@ const props = defineProps<{
   record: SessionRecord
   /** The main panel reads the forest lazily; `null` means it has not been read. */
   forest?: ForestView | null | (() => ForestView | null)
-  mode: TranscriptMode
-  /** Whether lifecycle notices are shown inline in the conversation (079 §3). */
-  debug: boolean
+
   /**
-   * Whether the drawer is showing (080). A view preference like `debug`, so it is owned and
+   * Whether the drawer is showing (080). A view preference, owned and
    * persisted by the screen rather than reset every time you switch conversation.
    */
   drawerOpen: boolean
   /** Which tab it is on — persisted beside `drawerOpen`, so coming back lands where you left. */
   drawerTab: DrawerTab
-  /** ⚑ **W4.13 · the drawer's tabs not offered** — the developer views while debug mode is off. */
-  hiddenDrawerTabs?: readonly DrawerTab[]
+
   /**
    * 🔴 **UI-012 · a person's model pick, carried out** — the model, then the effort
    * (`pickInAConversation`), by the screen that holds the conversation; the drawer's picker calls
@@ -432,7 +428,7 @@ const emit = defineEmits<{
    * without reopening is what the header's own X already does.
    */
   reopenSignIn: []
-  toggleDebug: []
+
   toggleDrawer: []
   'update:drawerTab': [tab: DrawerTab]
   /**
@@ -1890,12 +1886,12 @@ onUnmounted(() => {
   <section
     class="conversation-pane bb-conversation-ground"
     data-cy="conversation-pane"
+    :data-session-id="props.record.meta?.sessionId"
     data-chat-theme="light"
   >
     <SessionHeader
       :session="props.record.meta"
       :status="control.status"
-      :debug="props.debug"
       :drawer-open="props.drawerOpen"
       :waiting="panel.waiting"
       :facets="agentFacets"
@@ -1912,7 +1908,6 @@ onUnmounted(() => {
       :plate="!theCardShowsTheAgent"
       @hand-back="emit('handBack')"
       @delete="emit('delete')"
-      @toggle-debug="emit('toggleDebug')"
       @toggle-drawer="emit('toggleDrawer')"
       @open-tools="toolsFor = props.record.sessionId"
     />
@@ -1962,7 +1957,6 @@ onUnmounted(() => {
           :session-id="props.record.sessionId"
           :queued-disclosures="props.record.meta?.queued ?? null"
           :limit-now="limitMinute"
-          :mode="props.mode"
           :who="who"
           :own-agent="ownAgent"
           :identities="props.identities ?? null"
@@ -2225,8 +2219,6 @@ onUnmounted(() => {
         :approval-saving="props.record.busy"
         :state="control"
         :shown="transcript"
-        :mode="props.mode"
-        :window="props.record.window"
         :session-ref="control.ref"
         :status="control.status"
         :fixed="settingsFixed"
@@ -2243,7 +2235,6 @@ onUnmounted(() => {
         :own-wait="ownWait"
         :compaction="compaction"
         :tab="props.drawerTab"
-        :hidden-tabs="props.hiddenDrawerTabs"
         :fit="fit"
         @update:tab="(tab) => emit('update:drawerTab', tab)"
         @navigate="focus"

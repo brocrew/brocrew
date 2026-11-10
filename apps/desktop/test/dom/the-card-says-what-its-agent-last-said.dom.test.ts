@@ -34,7 +34,7 @@ const panel = (state: ReturnType<typeof createTranscript>, navigated: string[] =
     SessionPanel,
     {
       state,
-      mode: 'normal',
+
       facets: { doing: 'idle', being: 'live' },
       who: 'BroBot',
       profile: 'brobot',

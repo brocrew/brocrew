@@ -34,6 +34,7 @@ export const STATE_FILES = [
   'provider-usage.json',
   'schedule-attempts.json',
   'profile-execution.json',
+  'logging.json',
   'workspace.json',
   'update-settings.json',
   'workspaces.json',

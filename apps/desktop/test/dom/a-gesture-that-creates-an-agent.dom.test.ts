@@ -545,7 +545,7 @@ describe('§5 · the front door’s provider can MOVE under a pending gesture', 
           h(NewConversation as never, {
             busy: busy.value,
             error: error.value,
-            debug: false,
+
             draft: 'go',
             handing: book.handing(NEW_CONVERSATION),
             defaultProvider: provider.value,

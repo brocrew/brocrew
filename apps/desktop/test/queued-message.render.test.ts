@@ -145,8 +145,7 @@ describe('the fold: a queued message is not a turn', () => {
 describe('the fold: a queued message survives the modes', () => {
   it('is shown in NORMAL mode — hiding it would hide a message the user wrote', () => {
     const item = queued()
-    expect(isVisibleIn('normal', item)).toBe(true)
-    expect(isVisibleIn('debug', item)).toBe(true)
+    expect(isVisibleIn(item)).toBe(true)
   })
 })
 

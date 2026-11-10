@@ -1,3 +1,4 @@
+import { captureLog } from './lib/log-file'
 import { createPluginStartupTrace } from '../src/main/plugins/startup-failure'
 import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -107,7 +108,9 @@ async function startup(
     exits: number[] = [],
     stores: ThemeStore[] = []
   let databaseStarts = 0
-  const begin = index.indexOf('      pluginStartupTrace.destination(')
+  const begin = index.indexOf(
+    "      let finishStartupPhase = pluginStartupTrace.begin('workspace-recovery')",
+  )
   const endLine = '      host = await createRuntimeHost(initDatabase())\n      finishStartupPhase()'
   const end = index.indexOf(endLine, begin) + endLine.length
   expect(begin).toBeGreaterThan(0)
@@ -371,26 +374,27 @@ it('configured startup on existing data reaches the database', async () => {
 })
 
 it('the actual app startup records recovery before database/themes and retains a refusal without creating a plugin root', async () => {
-  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const captured = await captureLog()
   try {
     await startup(app())
-    const log = warn.mock.calls.map(([line]) => String(line)).join('\n')
+    await vi.waitFor(async () =>
+      expect(await captured.text()).toContain('themes-database-runtime-host end'),
+    )
+    const log = await captured.text()
     expect(log.indexOf('workspace-recovery start')).toBeLessThan(
       log.indexOf('workspace-recovery end'),
     )
     expect(log.indexOf('workspace-recovery end')).toBeLessThan(
       log.indexOf('themes-database-runtime-host start'),
     )
-    expect(log).toContain('themes-database-runtime-host end')
-    warn.mockClear()
     await startup(app(), undefined, createPluginStartupTrace(), () =>
       rmSync(join(workspace, 'brobot2.sqlite')),
     )
-    expect(
-      warn.mock.calls.some(([line]) => String(line).includes('workspace-recovery failure')),
-    ).toBe(true)
+    await vi.waitFor(async () =>
+      expect(await captured.text()).toContain('workspace-recovery failure'),
+    )
     expect(existsSync(join(workspace, 'plugins'))).toBe(false)
   } finally {
-    warn.mockRestore()
+    await captured.close()
   }
 })

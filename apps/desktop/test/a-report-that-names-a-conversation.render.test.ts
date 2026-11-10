@@ -162,9 +162,7 @@ describe('506 · the row takes a person to the conversation it names', () => {
       },
     ] as TranscriptEvent[])
       applyEvent(state, event)
-    const html = await renderToString(
-      createSSRApp({ render: () => h(SessionPanel, { state, mode: 'normal' }) }),
-    )
+    const html = await renderToString(createSSRApp({ render: () => h(SessionPanel, { state }) }))
     const band = html.slice(html.indexOf('data-cy="panel-agents"'))
     expect(band.slice(0, band.indexOf('</section>'))).toMatch(/>Sub-agents</)
     // ⛔ The word this negative is about is unchanged.

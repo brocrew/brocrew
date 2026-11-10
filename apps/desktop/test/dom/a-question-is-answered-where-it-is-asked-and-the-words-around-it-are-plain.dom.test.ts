@@ -1358,7 +1358,7 @@ function reader(options: { rows: number; hasOlder: boolean }): Reader {
       return () =>
         h(TranscriptView as Component, {
           items: items.value,
-          mode: 'normal',
+
           hasOlder: options.hasOlder,
           turnAligned: true,
           loadOlder: options.hasOlder

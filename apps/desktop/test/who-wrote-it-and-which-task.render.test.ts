@@ -473,8 +473,7 @@ describe('688 · draw who wrote it, and which task', () => {
   const drawPane = (record: SessionRecord, draft: string): Promise<string> =>
     draw(ConversationPane, {
       record,
-      mode: 'normal' as const,
-      debug: false,
+
       drawerOpen: false,
       drawerTab: 'open',
       models: null,

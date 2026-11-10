@@ -3,9 +3,6 @@ import {
   pluginStartupDiagnosticNotice,
   PluginStartupDiagnosticSchema,
 } from '../src/shared/plugin-settings'
-import { mkdtemp, readFile, rm, symlink } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { EventEmitter } from 'node:events'
 import type { ChildProcess } from 'node:child_process'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -22,10 +19,16 @@ import {
 } from '../src/main/plugins/startup-failure'
 import { PluginSupervisorError } from '../src/main/plugins/supervisor/protocol'
 import { randomUUID } from 'node:crypto'
-const roots: string[] = []
+import { captureLog } from './lib/log-file'
+const captures: Awaited<ReturnType<typeof captureLog>>[] = []
+async function capture() {
+  const one = await captureLog()
+  captures.push(one)
+  return one
+}
 afterEach(async () => {
   vi.restoreAllMocks()
-  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
+  for (const one of captures.splice(0)) await one.close()
 })
 it('retains the failed phase through supervisor wrappers without exposing arbitrary messages', () => {
   const error = new PluginSupervisorError('unavailable', {
@@ -87,42 +90,17 @@ it('does not turn a stderr lookalike into a typed reboot remedy', () => {
   })
   expect(pluginStartupReason(error, 'service-start')).toBe('service-start')
 })
-it('keeps a readable bounded log with an errno and no raw message or configuration', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'fictional-plugin-diagnostic-'))
-  roots.push(root)
-  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-  await recordPluginStartupFailure(root, 'service-start', {
+it('logs a readable line with an errno and no raw message or configuration', async () => {
+  const log = await capture()
+  recordPluginStartupFailure('service-start', {
     cause: { code: 'EACCES', message: 'fictional-secret-key-and-path' },
   })
-  const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
-  expect(log).toContain("service-start: BroCrew couldn't start the plugin service.")
-  expect(log).toContain('(EACCES)')
-  expect(log).not.toContain('fictional-secret-key-and-path')
-  expect(log.length).toBeLessThan(1024)
-  expect(warn).toHaveBeenCalledOnce()
-  await recordPluginStartupFailure(root, 'connection')
-  expect(await readFile(join(root, 'plugin-startup.log'), 'utf8')).not.toContain('(EACCES)')
-})
-it.skipIf(process.platform === 'win32')(
-  'replaces a diagnostic symlink without writing its target',
-  async () => {
-    const root = await mkdtemp(join(tmpdir(), 'fictional-plugin-diagnostic-'))
-    roots.push(root)
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const target = join(root, 'untouched')
-    const { writeFile } = await import('node:fs/promises')
-    await writeFile(target, 'fictional existing file')
-    await symlink(target, join(root, 'plugin-startup.log'))
-    await recordPluginStartupFailure(root, 'runtime')
-    expect(await readFile(target, 'utf8')).toBe('fictional existing file')
-    expect(await readFile(join(root, 'plugin-startup.log'), 'utf8')).toContain('runtime')
-  },
-)
-it('a log write failure does not replace the original startup failure or prevent Retry', async () => {
-  vi.spyOn(console, 'warn').mockImplementation(() => {})
-  await expect(
-    recordPluginStartupFailure(join(tmpdir(), 'fictional-absent', 'no-parent'), 'storage'),
-  ).resolves.toBeUndefined()
+  recordPluginStartupFailure('connection')
+  const lines = await log.lines(2)
+  expect(lines[0]).toContain("service-start: BroCrew couldn't start the plugin service.")
+  expect(lines[0]).toContain('(EACCES)')
+  expect(lines[0]).not.toContain('fictional-secret-key-and-path')
+  expect(lines[1]).not.toContain('(EACCES)')
 })
 
 it('retains a split first stderr line and real child exit through wrappers into the same log text', async () => {
@@ -143,11 +121,10 @@ it('retains a split first stderr line and real child exit through wrappers into 
   expect(stderr.unref).toHaveBeenCalledOnce()
   stderr.emit('data', Buffer.alloc(100_000, 'x'))
   expect(pluginStartupDiagnostic(snapshot())).toEqual(diagnostic)
-  const root = await mkdtemp(join(tmpdir(), 'fictional-plugin-exit-'))
-  roots.push(root)
-  vi.spyOn(console, 'warn').mockImplementation(() => {})
-  await recordPluginStartupFailure(root, 'service-start', wrapped)
-  const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
+  const captured = await capture()
+  recordPluginStartupFailure('service-start', wrapped)
+  await vi.waitFor(async () => expect(await captured.text()).toContain('second private stack line'))
+  const log = await captured.text()
   expect(log).toContain(pluginStartupDiagnosticNotice(diagnostic))
   expect(log).toContain('fictional-capability')
   expect(diagnostic.stderr).not.toContain('second private stack line')
@@ -187,13 +164,13 @@ it('keeps the real multiline startup error after a loader preamble in Settings a
   expect(pluginStartupDiagnostic(failure)?.stderr).toBe(
     "Error: Cannot find module 'fictional-missing-module'",
   )
-  const root = await mkdtemp(join(tmpdir(), 'fictional-full-stderr-'))
-  roots.push(root)
-  vi.spyOn(console, 'warn').mockImplementation(() => {})
-  await recordPluginStartupFailure(root, 'service-start', failure)
-  const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
+  const captured = await capture()
+  recordPluginStartupFailure('service-start', failure)
+  await vi.waitFor(async () => expect(await captured.text()).toContain('at startup'))
+  const log = await captured.text()
   expect(log).toContain("Error: Cannot find module 'fictional-missing-module'")
-  expect(log).toContain('Require stack:\n- /fictional/service/entry.cjs')
+  expect(log).toContain('Require stack:')
+  expect(log).toContain('/fictional/service/entry.cjs')
   expect(log).toContain('at startup (entry.cjs:12:3)')
   expect(log).toContain('fictional-key')
 })
@@ -243,30 +220,24 @@ it('drains stderr after exit before retaining the failure, within the original l
   }
 })
 
-it('catalogue logs include stage and bounded nested causes only on that path', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'fictional-catalogue-cause-'))
-  roots.push(root)
-  vi.spyOn(console, 'warn').mockImplementation(() => {})
+it('catalogue logs include stage and nested causes only on that path', async () => {
+  const captured = await capture()
   const original = new Error('owner-invalidated token=fictional-token\u001b[31m', {
     cause: new Error('broker closed password=fictional-password'),
   })
-  await recordPluginStartupFailure(
-    root,
+  recordPluginStartupFailure(
     'catalogue-response',
     new PluginStartupError('catalogue-response', original, 'rpc'),
   )
-  const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
-  expect(log).toContain('stage=rpc')
-  expect(log).toContain('owner-invalidated')
-  expect(log).toContain('broker closed')
-  expect(log).toContain('token=fictional-token')
-  expect(log).toContain('password=fictional-password')
-  expect(log).not.toContain(String.fromCharCode(27))
-  expect(log.length).toBeLessThan(1024)
-  await recordPluginStartupFailure(root, 'connection', original)
-  expect(await readFile(join(root, 'plugin-startup.log'), 'utf8')).not.toContain(
-    'owner-invalidated',
-  )
+  recordPluginStartupFailure('connection', original)
+  const [first, second] = await captured.lines(2)
+  expect(first).toContain('stage=rpc')
+  expect(first).toContain('owner-invalidated')
+  expect(first).toContain('broker closed')
+  expect(first).toContain('token=fictional-token')
+  expect(first).toContain('password=fictional-password')
+  expect(first).not.toContain(String.fromCharCode(27))
+  expect(second).not.toContain('owner-invalidated')
 })
 it('cause formatting bounds cycles and survives hostile diagnostic properties', () => {
   const cyclic = new Error('owner-invalidated')
@@ -297,28 +268,20 @@ it('cause diagnostics keep the real error text, including addresses and paths', 
   expect(value).toBe('Error: http://127.0.0.1:8123/mcp /fictional/private sdk-body-contents')
 })
 it('catalogue logs retain the typed refusal code when its public Error message is generic', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'fictional-typed-catalogue-error-'))
-  roots.push(root)
-  vi.spyOn(console, 'warn').mockImplementation(() => {})
-  await recordPluginStartupFailure(
-    root,
-    'catalogue-response',
-    new PluginSupervisorError('policy-refused'),
-  )
-  const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
+  const captured = await capture()
+  recordPluginStartupFailure('catalogue-response', new PluginSupervisorError('policy-refused'))
+  const log = (await captured.lines(1)).join('\n')
   expect(log).toContain('PluginSupervisorError')
   expect(log).toContain('code=policy-refused')
 })
 
-it('retains pre-controller time, nested phases and failures across retries and later writes', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'fictional-startup-trace-'))
-  roots.push(root)
+it('logs pre-controller time, nested phases and failures across retries', async () => {
+  const captured = await capture()
   let now = 100
   const trace = createPluginStartupTrace(() => now)
   const recovery = trace.begin('workspace-recovery')
   now += 78_000
   recovery()
-  trace.destination(root)
   trace.attempt()
   const catalogue = trace.begin('catalogue')
   now += 5000
@@ -328,36 +291,18 @@ it('retains pre-controller time, nested phases and failures across retries and l
     stderr: 'Error: missing module',
   })
   catalogue(failed)
-  await recordPluginStartupFailure(root, 'service-start', failed)
+  recordPluginStartupFailure('service-start', failed)
   trace.failure('service-start', failed)
   trace.attempt()
   trace.begin('catalogue-new-owner')()
   trace.begin('ready')()
-  await trace.flush()
-  const log = await readFile(join(root, 'plugin-startup-trace.log'), 'utf8')
-  expect(log).toMatch(/launch=.* elapsed=0 attempt=0 workspace-recovery start/)
-  expect(log).toContain('elapsed=78000 attempt=0 workspace-recovery end')
-  expect(log).toContain('elapsed=83000 attempt=1 catalogue failure')
-  expect(log).toContain('attempt=2 catalogue-new-owner end')
-  expect(log).toContain('attempt=2 ready end')
+  await vi.waitFor(async () => expect(await captured.text()).toContain('ready end'))
+  const log = await captured.text()
+  expect(log).toMatch(/workspace-recovery start.*elapsed: 0, attempt: 0/)
+  expect(log).toMatch(/workspace-recovery end.*elapsed: 78000, attempt: 0/)
+  expect(log).toMatch(/catalogue failure.*elapsed: 83000, attempt: 1/)
+  expect(log).toMatch(/catalogue-new-owner end.*attempt: 2/)
+  expect(log).toMatch(/ready end.*attempt: 2/)
   expect(log).toContain('Exit code 1')
   expect(log).toContain('Error: missing module')
-  expect(await readFile(join(root, 'plugin-startup.log'), 'utf8')).toContain(
-    'Error: missing module',
-  )
-})
-it('trace write failure never rejects or prevents later startup work', async () => {
-  const trace = createPluginStartupTrace()
-  trace.destination(join(tmpdir(), 'fictional-absent', 'trace'))
-  trace.begin('workspace-recovery')()
-  await expect(trace.flush()).resolves.toBeUndefined()
-  const root = await mkdtemp(join(tmpdir(), 'fictional-recovered-trace-'))
-  roots.push(root)
-  trace.destination(root)
-  trace.attempt()
-  trace.begin('ready')()
-  await expect(trace.flush()).resolves.toBeUndefined()
-  const log = await readFile(join(root, 'plugin-startup-trace.log'), 'utf8')
-  expect(log).toContain('attempt=0 workspace-recovery end')
-  expect(log).toContain('attempt=1 ready end')
 })

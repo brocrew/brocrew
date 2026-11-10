@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
+import NoticeEntry from '../../src/renderer/src/components/NoticeEntry.vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
 import { acceptEvent, createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
@@ -72,11 +73,8 @@ function after(...ordinals: readonly number[]) {
 }
 
 /** Every notice row on screen, and the element the browser had to fit its sentence into. */
-function rows(
-  items: unknown[],
-  mode: 'normal' | 'debug' = 'normal',
-): { said: string; what: HTMLElement }[] {
-  const view = mount(TranscriptView, { items, mode }, READING)
+function rows(items: unknown[]): { said: string; what: HTMLElement }[] {
+  const view = mount(TranscriptView, { items }, READING)
   return [...view.host.querySelectorAll<HTMLElement>('[data-cy^="notice-"] .what')].map((what) => ({
     said: (what.textContent ?? '').replace(/\s+/g, ' ').trim(),
     what,
@@ -134,7 +132,7 @@ describe('623 · every sentence this instrument can write fits on its row', () =
       'are reading. It may still arrive — this will say so if it does. Reopening this ' +
       'conversation loads it again from the record.'
     const planted = (level: 'warn' | 'info') => ({
-      kind: 'notice',
+      kind: 'notice' as const,
       id: `notice-${level}`,
       level,
       text: tooLong,
@@ -152,11 +150,10 @@ describe('623 · every sentence this instrument can write fits on its row', () =
     // ⚑ **The same sentence as an `info` notice is still a one-line hairline**, and the sensor
     // still sees it cut — on the x axis and by the row's own box — so `assertDrawn` above is a
     // sensor that CAN fire, at the level where cutting is still what happens.
-    const [hairline] = rows([planted('info')], 'debug')
-    expect(hairline?.said, 'the planted notice never rendered').toContain(
-      'Part of this conversation',
-    )
-    const cut = assertClipped(hairline!.what, 'the 200-character first draft, as an info notice')
+    const info = mount(NoticeEntry, { item: planted('info') }, READING)
+    const what = info.host.querySelector<HTMLElement>('.what')!
+    expect(what.textContent).toContain('Part of this conversation')
+    const cut = assertClipped(what, 'the 200-character first draft, as an info notice')
     expect(cut.axis).toBe('x')
   })
 })
@@ -167,11 +164,7 @@ describe('623 · the severity did not move', () => {
     // ⚠️ **A notice at `info` is DROPPED by the reading view** (`transcript-mode.ts`), so demoting
     // this instrument would have softened it out of existence rather than softening its words —
     // which is what `320` §5 refused and what `HO-095` §2 explicitly does not ask for.
-    const view = mount(
-      TranscriptView,
-      { items: after(0, 4, 1, 2, 3).control.items, mode: 'normal' },
-      READING,
-    )
+    const view = mount(TranscriptView, { items: after(0, 4, 1, 2, 3).control.items }, READING)
     expect(view.all('notice-warn')).toHaveLength(4)
     expect(view.all('notice-error')).toHaveLength(0)
   })

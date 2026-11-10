@@ -11,6 +11,7 @@
  * Outside `ci`: needs the app, provider login and network. Evidence lives under
  * `/tmp/brobot2-resume-smoke/<run>`, with `latest` pointing to the newest run.
  */
+import { ACTIVE_TRANSCRIPT_HISTORY } from './lib/transcript-evidence.mjs'
 import { execFileSync, spawn } from 'node:child_process'
 import { createServer } from 'node:net'
 import {
@@ -560,17 +561,6 @@ class Cdp {
     return result.result.value
   }
 
-  /**
-   * **The tab-flow walk** (097) — the same enforcement `ui-live-smoke.mjs` gets, on the script that
-   * needs it most.
-   *
-   * This one reads across TWO tabs: the ordinals off Events and the session ref and provider home
-   * off Info. Its own `SNAPSHOT` already carries a comment saying *"the two below are Info-tab rows
-   * and read null unless the drawer is on Info"* — an accurate warning that nothing enforced. Now
-   * a read of an owned hook has to be on the tab that owns it.
-   *
-   * See `scripts/lib/tab-flow.mjs` for the rule and the exemption.
-   */
   async #walkTabFlow(expression) {
     await assertTabFlow(expression, (probe) => this.#evaluateRaw(probe))
   }
@@ -595,7 +585,10 @@ const SET_VALUE = (cy, value) => `
   return true`
 
 const ORDINALS = `
-  return [...document.querySelectorAll('[data-cy=event-log] li')].map((li) => Number(li.dataset.ordinal))`
+  const history = ${ACTIVE_TRANSCRIPT_HISTORY}
+  if (!history) throw new Error('No normal transcript is selected for the ordinal read.')
+  if (history.hasOlder) throw new Error('The persisted history is partial; dense ordering cannot be concluded.')
+  return history.entries.map((entry) => entry.ordinal)`
 
 const CLICK = (cy) => `
   const el = document.querySelector('[data-cy=${cy}]')
@@ -603,11 +596,13 @@ const CLICK = (cy) => `
   el.click()
   return true`
 
+/** UI assertions read the normal DOM; event counts use its bounded persisted history page. */
 const SNAPSHOT = `
   // ${WIDE_READ_MARK} — this reaches across Events and Info in one pass and its contract is that an
   // absent hook reads null (097's walk). The comment below has said so since 080; the marker is what
   // makes the exemption explicit rather than tacit.
-  const types = [...document.querySelectorAll('[data-cy=event-log] li')].map((li) => li.dataset.type)
+  const history = ${ACTIVE_TRANSCRIPT_HISTORY}
+  const types = history?.entries.map((entry) => entry.event.type) ?? []
   return {
     events: types.length,
     turns: types.filter((t) => t === 'turn').length,
@@ -616,7 +611,7 @@ const SNAPSHOT = `
     // both of them are a flat 0 no matter what the session is doing. Without this field a caller
     // cannot tell "no turn has ended" from "I am not looking at the place turns are counted", and
     // 161 spent two whole runs on the second one wearing the first one's message.
-    eventLog: Boolean(document.querySelector('[data-cy=event-log]')),
+    historyRead: history !== null,
     // The pill reads "Idle" / "Waiting on you" now; the machine word it is derived from lives on
     // the attribute, which is the thing worth asserting on anyway.
     status: document.querySelector('[data-cy=session-status]')?.dataset.status ?? null,
@@ -758,33 +753,26 @@ async function ensureTab(cdp, tab) {
  * ⛔ **So this function does not leave Events open, and callers must not assume it did** (`162`).
  * `161` found the early return standing between the pre-session call and every count in the file:
  * correct in itself, and the reason step `1` had never once reached step `2`. `driveTurn` now opens
- * Events for itself, after the send that creates the session, and `assertCountersVisible` makes any
+ * Events for itself, after the send that creates the session, and `assertHistoryAvailable` makes any
  * future caller that forgets fail in the first second by name instead of at the turn budget.
  */
-async function ensureDebugOn(cdp) {
-  const on = `return document.querySelector('[data-cy=toggle-debug-mode]')?.dataset.on === 'true'`
-  if (!(await cdp.evaluate(on))) {
-    await clickWhenReady(cdp, 'toggle-debug-mode')
-    await waitFor('lifecycle notices', async () => await cdp.evaluate(on), 10_000)
-  }
-  const hasDrawer = await cdp.evaluate(
-    `return Boolean(document.querySelector('[data-cy=toggle-session-panel]'))`,
-  )
-  if (!hasDrawer) return
-  await ensureTab(cdp, 'events')
+async function ensureTranscriptReady(cdp) {
   await waitFor(
-    'the raw stream',
-    async () => await cdp.evaluate(`return Boolean(document.querySelector('[data-cy=event-log]'))`),
+    'the normal conversation surface',
+    async () =>
+      await cdp.evaluate(`
+    return Boolean(document.querySelector('[data-cy=prompt-input]')) &&
+      typeof window.api?.runtime?.latestHistory === 'function'`),
     10_000,
   )
 }
 
-/** Back to the event stream, which is what every count in this script is read from. */
-async function ensureEventsOpen(cdp) {
-  await ensureTab(cdp, 'events')
+async function ensureHistoryAvailable(cdp) {
   await waitFor(
-    'the event stream',
-    async () => await cdp.evaluate(`return Boolean(document.querySelector('[data-cy=event-log]'))`),
+    'the normal transcript history',
+    async () =>
+      await cdp.evaluate(`
+    return (${ACTIVE_TRANSCRIPT_HISTORY}) !== null`),
     10_000,
   )
 }
@@ -807,11 +795,11 @@ async function ensureInfoOpen(cdp) {
  * finished"* — about a turn that had finished, had written its file, and had its approval card
  * answered. Six of its eight steps did not run, and had not run since `075`.
  */
-function assertCountersVisible(now, what) {
-  if (now.eventLog) return
+function assertHistoryAvailable(now, what) {
+  if (now.historyRead) return
   throw new Error(
-    `cannot wait for ${what}: the drawer is not on Events, so every counter in the snapshot ` +
-      `reads 0 whatever the session does — call ensureEventsOpen(cdp) before waiting on a turn`,
+    `cannot wait for ${what}: no selected normal transcript history was read. ` +
+      `Call ensureHistoryAvailable(cdp) before using turn counters.`,
   )
 }
 
@@ -834,18 +822,18 @@ const HAS_DRAWER = `return Boolean(document.querySelector('[data-cy=toggle-sessi
  *     click, and the baseline is `0` by construction because there is no session to have had a
  *     turn. Open Events once the send has created the session, then start counting.
  *
- * `161` §4 traced the abort to the second case: `ensureDebugOn` runs before step `1` and its drawer
+ * `161` §4 traced the abort to the second case: `ensureTranscriptReady` runs before step `1` and its drawer
  * half returns early — correctly — so the suite's first turn was always counted blind, and nothing
  * re-opened Events until *after* this function had already given up.
  */
 async function driveTurn(cdp, prompt, { turnsBefore = 0 } = {}) {
   const fresh = !(await cdp.evaluate(HAS_DRAWER))
-  if (!fresh) await ensureEventsOpen(cdp)
+  if (!fresh) await ensureHistoryAvailable(cdp)
   // ⚑ **D-017b · a conversation the quit left behind opens in its FULL view** — drawer and all — so
   // it takes the road above, counted off its own Events; `turnsBefore` is only the no-drawer road's
   // baseline, and a caller hands the LEDGER's count ({@link ledgerTurnCount}) for it.
   const before = fresh ? { turns: turnsBefore } : await cdp.evaluate(SNAPSHOT)
-  if (!fresh) assertCountersVisible(before, 'a turn to end')
+  if (!fresh) assertHistoryAvailable(before, 'a turn to end')
   await cdp.evaluate(SET_VALUE('prompt-input', prompt))
   // ⛔ **A send that cannot work is a SILENT no-op** (094, and 163 paid for its absence HERE).
   // `PromptComposer.send()` opens `if (!canSend(text.value, props.state, props.blocked,
@@ -905,13 +893,13 @@ async function driveTurn(cdp, prompt, { turnsBefore = 0 } = {}) {
         }`)
       throw new Error(`${error.message} — the screen says ${JSON.stringify(seen)}`)
     })
-    await ensureEventsOpen(cdp)
+    await ensureHistoryAvailable(cdp)
   }
   const deadline = Date.now() + TURN_BUDGET_MS
   const answered = []
   for (;;) {
     const now = await cdp.evaluate(SNAPSHOT)
-    assertCountersVisible(now, 'the turn to end')
+    assertHistoryAvailable(now, 'the turn to end')
     if (now.turns > before.turns) return now
     for (const card of now.openCards) {
       const decision = await cdp.evaluate(`
@@ -1049,7 +1037,7 @@ async function main() {
     // --- before the quit -------------------------------------------------------
     first = await launchApp({ reuseUserData: false })
     let cdp = await Cdp.attach(first.port)
-    await ensureDebugOn(cdp)
+    await ensureTranscriptReady(cdp)
     // ⚠️ **"the front door's own default" rather than "provider codex"** (420): this script does
     // not pick one any more, and step 1 is where the claim is checked against the app's answer.
     record(
@@ -1181,7 +1169,7 @@ async function main() {
       // including zero. The check would still pass, having stopped checking anything. Found in
       // review, and it is the sharpest example of what a tabbed drawer costs a script that used to
       // be able to read everything at once.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       preQuitLast = await cdp.evaluate(ORDINALS).then((o) => o.at(-1) ?? -1)
       if (preQuitLast < 0)
         throw new Error('no ordinals on screen — the seam check would be vacuous')
@@ -1259,7 +1247,7 @@ async function main() {
     // --- after the relaunch ----------------------------------------------------
     second = await launchApp({ reuseUserData: true, rendererPort: first.rendererPort })
     cdp = await Cdp.attach(second.port)
-    await ensureDebugOn(cdp)
+    await ensureTranscriptReady(cdp)
     record(
       true,
       `3 relaunched on the same user-data-dir — pid ${second.pid}`,
@@ -1508,7 +1496,7 @@ async function main() {
       const live = await cdp.evaluate(SNAPSHOT)
       const ref = live.ref
       // …and back, because step 7 reads ORDINALS off the event log.
-      await ensureEventsOpen(cdp)
+      await ensureHistoryAvailable(cdp)
       if (ref !== firstRef) throw new Error(`the thread changed: ${firstRef} → ${ref}`)
       // ⚑ **738 · moved here from step `5`**: the home and the model are read once this first message
       // has started the conversation and the provider has answered. Reopened into the

@@ -1,14 +1,9 @@
 import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, type Component } from 'vue'
-import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import SettingsScreen, {
   type SettingsTab,
 } from '../../src/renderer/src/components/SettingsScreen.vue'
-import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import { useDebugMode } from '../../src/renderer/src/composables/useDebugMode'
-import { hiddenDrawerTabs } from '../../src/renderer/src/lib/developer-views'
-import type { DrawerTab } from '../../src/renderer/src/lib/drawer'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import { readingSays } from '../../src/renderer/src/lib/usage-limit'
 import type {
@@ -21,7 +16,7 @@ import type {
   ProviderUsageReading,
   ProviderVersion,
 } from '../../src/shared/runtime-ipc'
-import { drawerProps, mount, paneProps, unmountAll, type Mounted } from './harness'
+import { mount, unmountAll, type Mounted } from './harness'
 
 /**
  * # W4.26 · the Providers screen — what is running is sampled only while a person is looking
@@ -36,21 +31,12 @@ import { drawerProps, mount, paneProps, unmountAll, type Mounted } from './harne
  * |---|---|---|
  * | 1 | the gate: arrival, 5 s, no overlap, blur / hidden / leave, back in front | the same screen in front keeps sampling |
  * | 2 | the change notices: `usage` reads usage again and tells the window; `login` re-checks THAT card | versions are read once a visit |
- * | 3 | `714955ca` · the Debug mode switch: off by default, a press is kept, the side panel follows | Events is offered while it is on |
  *
  * ⚠️ **`document.hasFocus()` and `visibilityState` are the browser's, and a headless runner's are not
  * a person's** — so both are stood in for (a spy and an own property, removed after each test), and
  * the events the screen listens to are dispatched as the window would. ⚑ Timers are faked only for
  * §1 (`setTimeout`/`clearTimeout`, as `a-command-that-has-no-answer.dom.test.ts` does).
  */
-
-const DEBUG_KEY = 'brobot2.debugMode'
-// ⚑ Before the first `useDebugMode()` of this file: the switch starts from nothing stored.
-localStorage.removeItem(DEBUG_KEY)
-// ⚑ …and made here, outside any component. The shared switch's save-watch lives in the scope of
-// whoever first asks for it: in the app that is `RuntimeScreen`, which is never unmounted; here the
-// first screen mounted would be, and its unmount would stop every later save.
-useDebugMode()
 
 const NOW = new Date(2026, 9, 3, 9, 0).getTime()
 
@@ -602,84 +588,5 @@ describe('§2 · 25cca325 · the provider’s own change notices redraw the scre
     await settled()
     expect(runtime.providerSetup).toHaveBeenCalledTimes(2)
     expect(runtime.providerVersions).toHaveBeenCalledTimes(2)
-  })
-})
-
-/* ================================================================ §3 · Debug mode */
-
-/** The side panel as `RuntimeScreen` hands it over: the tabs debug mode hides, from the one switch. */
-const drawerFor = (tab: DrawerTab): Mounted =>
-  mount(
-    SessionDrawer as Component,
-    drawerProps({ tab, hiddenTabs: hiddenDrawerTabs(useDebugMode().value) }),
-    { width: 380, height: 900 },
-  )
-
-describe('§3 · 714955ca · the Debug mode switch, and the side panel that follows it', () => {
-  afterEach(async () => {
-    useDebugMode().value = false
-    await nextTick()
-    localStorage.removeItem(DEBUG_KEY)
-  })
-
-  it('🔴 off by default: the switch is off, and the side panel offers no Events tab and draws no event list', async () => {
-    expect(useDebugMode().value).toBe(false)
-    const { m } = theScreen(undefined, VERSIONS, 'general')
-    await settled()
-    expect((m.q('debug-mode-switch') as HTMLInputElement).checked).toBe(false)
-    m.unmount()
-
-    const drawer = drawerFor('events')
-    expect(drawer.all('drawer-tab-events')).toHaveLength(0)
-    expect(drawer.all('event-stream')).toHaveLength(0)
-    // ⚑ The strip is still a strip: the default tab is there.
-    expect(drawer.all('drawer-tab-open')).toHaveLength(1)
-  })
-
-  it('🔴 a press turns it on and keeps it, and Events is offered and drawn again', async () => {
-    const { m } = theScreen(undefined, VERSIONS, 'general')
-    await settled()
-    const toggle = m.q('debug-mode-switch') as HTMLInputElement
-    toggle.click()
-    await nextTick()
-    expect(toggle.checked).toBe(true)
-    expect(useDebugMode().value).toBe(true)
-    // ⚑ Kept as a window preference, across restarts and windows.
-    expect(localStorage.getItem(DEBUG_KEY)).toBe('true')
-    m.unmount()
-
-    const drawer = drawerFor('events')
-    expect(drawer.all('drawer-tab-events')).toHaveLength(1)
-    expect(drawer.all('event-stream')).toHaveLength(1)
-  })
-
-  it('⚑ pressed again it is off again, and that is kept too', async () => {
-    const { m } = theScreen(undefined, VERSIONS, 'general')
-    await settled()
-    const toggle = m.q('debug-mode-switch') as HTMLInputElement
-    toggle.click()
-    await nextTick()
-    toggle.click()
-    await nextTick()
-    expect(toggle.checked).toBe(false)
-    expect(localStorage.getItem(DEBUG_KEY)).toBe('false')
-  })
-
-  it('⚑ the conversation pane hands the hidden tabs to its side panel', () => {
-    const hidden = mount(
-      ConversationPane as Component,
-      paneProps({ drawerOpen: true, drawerTab: 'open', hiddenDrawerTabs: hiddenDrawerTabs(false) }),
-      { width: 1200, height: 900 },
-    )
-    expect(hidden.all('drawer-tab-open')).toHaveLength(1)
-    expect(hidden.all('drawer-tab-events')).toHaveLength(0)
-    unmountAll()
-    // ⚑ The control: the same pane with debug mode on.
-    const shown = mount(
-      ConversationPane as Component,
-      paneProps({ drawerOpen: true, drawerTab: 'open', hiddenDrawerTabs: hiddenDrawerTabs(true) }),
-      { width: 1200, height: 900 },
-    )
-    expect(shown.all('drawer-tab-events')).toHaveLength(1)
   })
 })

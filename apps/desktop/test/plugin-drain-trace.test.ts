@@ -1,14 +1,4 @@
-import {
-  chmod,
-  link,
-  mkdir,
-  mkdtemp,
-  readFile,
-  realpath,
-  rm,
-  stat,
-  writeFile,
-} from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -16,8 +6,10 @@ import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import { recordDrainTrace, type DrainTrace } from '../src/main/plugins/supervisor/drain-trace'
 import { ownerDiagnosticLine } from '../src/main/plugins/supervisor/protocol'
+import { captureLog } from './lib/log-file'
 
 let parent = ''
+let captured: Awaited<ReturnType<typeof captureLog>> | undefined
 let owner: PluginSupervisor | undefined
 afterEach(async () => {
   vi.restoreAllMocks()
@@ -27,6 +19,8 @@ afterEach(async () => {
     owner = undefined
   }
   if (parent) await rm(parent, { recursive: true, force: true })
+  await captured?.close()
+  captured = undefined
 }, 30_000)
 it('logs actual drain stages and a failed-write errno, then closes after one attempt', async () => {
   parent = await realpath(
@@ -36,13 +30,14 @@ it('logs actual drain stages and a failed-write errno, then closes after one att
 
   await mkdir(join(parent, 'workspace'))
   const events: DrainTrace[] = []
+  captured = await captureLog()
   owner = await PluginSupervisor.start({
     root,
     workspaceRoots: [],
     drainWithin: 30,
     traceDrain: (event) => {
       events.push(event)
-      recordDrainTrace(root, event)
+      recordDrainTrace(event)
     },
   })
   const write = SupervisorStorage.prototype.write
@@ -79,11 +74,11 @@ it('logs actual drain stages and a failed-write errno, then closes after one att
     },
     { stage: 'closed', state: 'complete' },
   ])
-  const log = await readFile(join(root, 'plugin-drain.log'), 'utf8')
-  expect(log).toContain('stage=stopped-write state=failed attempt=1 errno=EBUSY')
-  expect(log).toContain('reason=shutdown')
-  expect(log).toContain('epoch=')
-  expect(log).toContain('cause=Error code=EBUSY: Bearer fictional-secret')
+  const log = (await captured.lines(9)).join('\n')
+  expect(log).toMatch(/\[error\]\s+\(drain\) stopped-write .*state: 'failed'.*errno: 'EBUSY'/)
+  expect(log).toContain("reason: 'shutdown'")
+  expect(log).toContain('epoch:')
+  expect(log).toContain('Error code=EBUSY: Bearer fictional-secret')
 })
 it('gives a plain Restart remedy in a restart-required phase diagnostic', () => {
   const text = ownerDiagnosticLine({
@@ -96,32 +91,6 @@ it('gives a plain Restart remedy in a restart-required phase diagnostic', () => 
   if (process.platform === 'win32') expect(text).toContain('Start > Power > Restart')
   expect(text).not.toContain('Shut down')
 })
-it('does not append through a hardlinked drain log to an outside fictional sentinel', async () => {
-  parent = await realpath(
-    await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-drain-alias-')),
-  )
-  const root = join(parent, 'plugins')
-  await mkdir(root, { mode: 0o700 })
-  const sentinel = join(parent, 'outside-sentinel')
-  await writeFile(sentinel, 'fictional unchanged bytes', { mode: 0o600 })
-  await link(sentinel, join(root, 'plugin-drain.log'))
-  recordDrainTrace(root, { stage: 'stopped-write', state: 'complete' })
-  expect(await readFile(sentinel, 'utf8')).toBe('fictional unchanged bytes')
-})
-it('appends to an OS-writable drain log without changing earlier bytes or its mode', async () => {
-  parent = await realpath(await mkdtemp(join(tmpdir(), 'fictional-drain-permission-')))
-  const path = join(parent, 'plugin-drain.log')
-  await writeFile(path, 'fictional unchanged bytes')
-  await chmod(path, 0o666)
-  const before = (await stat(path)).mode
-  recordDrainTrace(parent, { stage: 'closed', state: 'complete' })
-  const text = await readFile(path, 'utf8')
-  expect(text).toMatch(
-    /^fictional unchanged bytes\d{4}-\d{2}-\d{2}T[\d:.]+Z \[plugins\] drain stage=closed state=complete\n$/,
-  )
-  expect((await stat(path)).mode).toBe(before)
-})
-
 it.each(['released', 'lease-expired', 'shutdown', 'drain'] as const)(
   'records %s epoch and invalidation before child teardown and retains swallowed stop causes',
   async (reason) => {
@@ -135,6 +104,7 @@ it.each(['released', 'lease-expired', 'shutdown', 'drain'] as const)(
 
     await mkdir(workspaceRoot)
     const events: DrainTrace[] = []
+    captured = await captureLog()
     let now = 0
     owner = await PluginSupervisor.start({
       root,
@@ -142,7 +112,7 @@ it.each(['released', 'lease-expired', 'shutdown', 'drain'] as const)(
       now: () => now,
       traceDrain: (event) => {
         events.push(event)
-        recordDrainTrace(root, event)
+        recordDrainTrace(event)
       },
     })
     const { PluginWorkspaceLease } = await import('../src/main/plugins/supervisor/client')
@@ -201,9 +171,8 @@ it.each(['released', 'lease-expired', 'shutdown', 'drain'] as const)(
             ),
           }),
         )
-        const log = await readFile(join(root, 'plugin-drain.log'), 'utf8')
-        expect(log).toContain('fictional-token')
-        expect(log).toContain('broker closed')
+        await vi.waitFor(async () => expect(await captured!.text()).toContain('broker closed'))
+        expect(await captured!.text()).toContain('fictional-token')
       }
     } finally {
       lease?.abandon()

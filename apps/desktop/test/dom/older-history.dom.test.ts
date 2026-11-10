@@ -91,7 +91,7 @@ function paged(options: {
       return () =>
         h(TranscriptView as Component, {
           items: items.value,
-          mode: 'normal',
+
           hasOlder: true,
           turnAligned: true,
           loadOlder: load,

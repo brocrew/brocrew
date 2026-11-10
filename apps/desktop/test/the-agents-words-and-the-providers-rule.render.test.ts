@@ -648,7 +648,7 @@ describe('§4b · R73 — the person’s queue copies the live row’s sentence'
 
 describe('§5 · the transcript hands each card the name and the provider it draws under', () => {
   const view = (items: TranscriptItem[], over: Record<string, unknown> = {}): Promise<string> =>
-    render(TranscriptView, { items, mode: 'normal', ...over })
+    render(TranscriptView, { items, ...over })
 
   it('🔴 the command card in a transcript is named by the view’s `ownAgent`', async () => {
     const html = await view(folded('codex', escalated(true)), { ownAgent: 'Ada' })

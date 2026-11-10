@@ -307,7 +307,7 @@ describe('recorded rows whose controls need what this window lacks', () => {
     const state = createTranscript()
     for (const { event, at } of EVERY_KIND_EVENTS) applyEvent(state, event, at)
     markReadOnly(state, 'settled')
-    const view = mount(TranscriptView, { items: state.items, mode: 'normal' })
+    const view = mount(TranscriptView, { items: state.items })
     await settle()
     await disclose(view)
     const drawn = ACTIONS.filter((cy) => !cy.startsWith('user-input') && cy !== 'open-image')

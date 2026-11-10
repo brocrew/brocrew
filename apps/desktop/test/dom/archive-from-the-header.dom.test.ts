@@ -45,7 +45,7 @@ function bar(over: Record<string, unknown> = {}): { m: Mounted; deletes: number[
   const m = mount(SessionHeader, {
     session: META,
     status: 'idle',
-    debug: false,
+
     facets: { doing: 'idle' as const, being: 'live' as const },
     archive,
     onDelete: () => deletes.push(1),
@@ -144,14 +144,14 @@ describe('where the header offers neither', () => {
     expect(m.all('archive-conversation')).toHaveLength(0)
     expect(m.all('delete-conversation')).toHaveLength(0)
     // The control: the bar is drawn, with the acts it always has.
-    expect(m.all('toggle-debug-mode')).toHaveLength(1)
+    expect(m.all('toggle-debug-mode')).toHaveLength(0)
   })
 
   it('the launcher’s header, with no conversation, draws neither', () => {
     const { m } = bar({ session: null })
     expect(m.all('archive-conversation')).toHaveLength(0)
     expect(m.all('delete-conversation')).toHaveLength(0)
-    expect(m.all('toggle-debug-mode')).toHaveLength(1)
+    expect(m.all('toggle-debug-mode')).toHaveLength(0)
   })
 })
 
@@ -181,9 +181,10 @@ describe('the conversation pane hands both through', () => {
   it('a pane handed no archive offers neither', async () => {
     const m = pane([])
     await settle()
+    expect(m.q('conversation-pane').dataset.sessionId).toBe(META.sessionId)
     expect(m.all('archive-conversation')).toHaveLength(0)
     expect(m.all('delete-conversation')).toHaveLength(0)
-    expect(m.all('toggle-debug-mode')).toHaveLength(1)
+    expect(m.all('toggle-debug-mode')).toHaveLength(0)
   })
 
   const BROUGHT_BACK = 'Brought back from the archive: you wrote to it.'

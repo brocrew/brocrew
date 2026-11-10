@@ -556,7 +556,7 @@ describe('agent exchanges fold inline', () => {
     ] as TranscriptEvent[])
     const m = mount(TranscriptView, {
       items: r.transcript.items,
-      mode: 'normal',
+
       ownAgent: 'BroBot',
     })
     expect(m.all('exchange-toggle')).toHaveLength(1)

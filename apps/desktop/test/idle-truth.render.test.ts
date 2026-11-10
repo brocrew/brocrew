@@ -132,8 +132,7 @@ const pane = (events: TranscriptEvent[]): Promise<string> =>
       render: () =>
         h(ConversationPane as never, {
           record: record(events),
-          mode: 'normal' as const,
-          debug: false,
+
           // ⚑ The bars are on the agent's card, in the drawer's Open tab.
           drawerOpen: true,
           drawerTab: 'open',
@@ -222,8 +221,7 @@ describe('250 · the header pill', () => {
         render: () =>
           h(ConversationPane as never, {
             record: r,
-            mode: 'normal' as const,
-            debug: false,
+
             // ⚑ The bars are on the agent's card, in the drawer's Open tab.
             drawerOpen: true,
             drawerTab: 'open',
@@ -298,7 +296,7 @@ describe('250 · the rail row', () => {
         render: () =>
           h(SessionPanel as never, {
             state: record(TURN_OVER).control,
-            mode: 'normal' as const,
+
             facets: { doing: 'idle', being: 'live', detached: true },
             provider: 'claude',
           }),
@@ -318,7 +316,7 @@ describe('250 · the rail row', () => {
         render: () =>
           h(SessionPanel as never, {
             state: createTranscript(),
-            mode: 'normal' as const,
+
             facets: { doing: 'tool', being: 'live' },
             provider: 'claude',
           }),
@@ -453,8 +451,7 @@ describe('258 · the header pill and the bar it points at', () => {
         render: () =>
           h(ConversationPane as never, {
             record: r,
-            mode: 'normal' as const,
-            debug: false,
+
             // ⚑ The bars are on the agent's card, in the drawer's Open tab.
             drawerOpen: true,
             drawerTab: 'open',
@@ -478,7 +475,7 @@ describe('258 · the drawer’s bot, which went stale a SECOND time', () => {
         render: () =>
           h(SessionPanel as never, {
             state: record(TURN_SCHEDULED).control,
-            mode: 'normal' as const,
+
             facets: { doing: 'idle', being: 'live', scheduled: true },
             provider: 'claude',
           }),

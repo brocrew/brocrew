@@ -34,11 +34,8 @@ import {
 import type { CompactionFacts } from '../lib/compaction-offer'
 import type { PanelAsset } from '../lib/session-panel'
 import type { TranscriptState } from '../lib/transcript'
-import type { TranscriptMode } from '../lib/transcript-mode'
-import type { WindowState } from '../lib/transcript-window'
 import type { WorkGivenOutReading } from '../lib/work-given-out'
 import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
-import EventStream from './EventStream.vue'
 import SessionChanges from './SessionChanges.vue'
 import SessionInfo from './SessionInfo.vue'
 import { keptInThisConversation } from '../lib/standing-grants'
@@ -59,16 +56,7 @@ const props = defineProps<{
   state: TranscriptState
   /** The fold the transcript is rendering, when that is a different one. Reachability only. */
   shown: TranscriptState
-  mode: TranscriptMode
-  /**
-   * The raw stream, for the Events tab — **the window, not its entries** (237 §1).
-   *
-   * ⛔ **`230` H1 is why this is the whole window.** It was `RuntimeEventMessage[]`, and that array
-   * is `record.window.entries` — bounded, released at 5,001 events, and frozen while the reader is
-   * off the tail — while the tab it feeds promised *"you always see everything"*. Handing over the
-   * entries alone made the fact about them unavailable at the only place that draws them.
-   */
-  window: WindowState
+
   sessionRef: SessionRef | null
   status: SessionStatus | null
   /**
@@ -85,8 +73,7 @@ const props = defineProps<{
   /** How many things are blocked on the user — the same count the toggle's badge carries. */
   waiting: number
   tab: DrawerTab
-  /** ⚑ **W4.13 · tabs not offered** — the developer views while debug mode is off. Absent: none. */
-  hiddenTabs?: readonly DrawerTab[]
+
   /** How the column sits in the width it was given. `overlay` floats it over the transcript. */
   fit: DrawerFit
   /**
@@ -172,9 +159,7 @@ const emit = defineEmits<{
   openDocument: [resourceId: string]
 }>()
 
-const tabs = computed(() =>
-  DRAWER_TABS.filter((entry) => !(props.hiddenTabs ?? []).includes(entry.id)),
-)
+const tabs = computed(() => DRAWER_TABS)
 /** 🔴 739 · `736` F-1 — the grants *Always allow* kept in this conversation, for Info's own row. */
 const kept = computed(() => keptInThisConversation(props.state.items))
 const reserved = RESERVED_TABS
@@ -463,7 +448,6 @@ function steer(event: KeyboardEvent, at: number): DrawerTab | null {
         v-if="props.tab === 'open'"
         :state="props.state"
         :shown="props.shown"
-        :mode="props.mode"
         :facets="props.facets"
         :agent-state="props.agentState"
         :own-wait="props.ownWait"
@@ -516,23 +500,6 @@ function steer(event: KeyboardEvent, at: number): DrawerTab | null {
         :conversation="props.session.sessionId"
         :reading="props.work"
         :identities="props.identities"
-      />
-
-      <!-- ⛔ **KEYED by conversation** (292 §4, from `288` M2). This drawer is reused when the
-           active conversation changes — `RuntimeScreen` renders `ConversationPane` without a
-           session key — so `EventStream` kept A's scroll offset, A's released follow, and A's
-           virtualized slice indices for B. ⚠️ **The follow is the one that costs something**: a
-           person who scrolled up in A and then opened B watched B's new events stop arriving at the
-           bottom without ever having released follow in B, and `useStickToBottom` closes over a
-           plain `let stuck` with no way to reset it.
-           ⚑ **Keyed rather than reset field by field**, because "what has to be forgotten" is every
-           piece of state in that component and its composable — the offset, `first`/`last`, the
-           measured row height and `stuck` — and a list of four is a list that grows one short. A
-           rebuild is what the pane already does to the composer, for the same class of reason. -->
-      <EventStream
-        v-else-if="props.tab === 'events' && !(props.hiddenTabs ?? []).includes('events')"
-        :key="props.session.sessionId"
-        :window="props.window"
       />
 
       <!-- What the agent did to the working tree (096). `state` is the control projection for the

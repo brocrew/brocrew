@@ -237,8 +237,7 @@ const paneMarkup = (names: AgentIdentities, spelling: string): Promise<string> =
       render: () =>
         h(ConversationPane as never, {
           record: record(spelling),
-          mode: 'normal' as const,
-          debug: false,
+
           drawerOpen: false,
           drawerTab: 'open',
           models: null,
@@ -257,7 +256,7 @@ const drawerMarkup = (names: AgentIdentities, spelling: string): Promise<string>
           session: launchedAs(spelling),
           state: createTranscript(),
           shown: createTranscript(),
-          mode: 'normal',
+
           window: createWindow(),
           sessionRef: META.ref,
           status: 'working',

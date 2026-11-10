@@ -71,7 +71,7 @@ async function theForm(
     {
       busy: false,
       error: null,
-      debug: false,
+
       draft: '',
       handing: createAttachmentBook().handing(NEW_CONVERSATION),
       defaultProvider,

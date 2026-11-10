@@ -556,10 +556,6 @@ async function main() {
       rel: `${pastedImagesRoot(anchor.real)}/${name}`,
       why: 'not a name BroBot writes into that directory, so it is not ours to remove',
     })),
-    {
-      rel: "app.getPath('logs')/memory.log",
-      why: 'app-global across every userData — another BroBot instance can be appending to it',
-    },
   ]
   out.push('', '  kept on purpose')
   for (const keep of kept) {

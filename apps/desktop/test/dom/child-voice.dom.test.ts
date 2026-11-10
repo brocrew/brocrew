@@ -111,7 +111,7 @@ function feed(events: TranscriptEvent[]): TranscriptState {
 function draw(prose: string[], after: string[] = [], ended = false): ReturnType<typeof mount> {
   return mount(
     TranscriptView,
-    { items: feed(ledger(prose, after, ended)).items, mode: 'normal' },
+    { items: feed(ledger(prose, after, ended)).items },
     { width: 900, height: 2000 },
   )
 }

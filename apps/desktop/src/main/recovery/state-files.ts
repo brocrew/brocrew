@@ -95,6 +95,11 @@ export const APP_STATE_FILES: readonly AppStateFile[] = [
       'the database.',
   },
   {
+    name: 'logging.json',
+    restore: 'kept-current',
+    why: 'The Debug mode choice for this workspace, which a database restore must not rewind.',
+  },
+  {
     name: 'workspace.json',
     restore: 'kept-current',
     why: "The workspace's name, which must stay the same as in this computer's list of workspaces.",
@@ -160,10 +165,12 @@ export const NOT_STATE: readonly NotState[] = [
       'not the data; never copied or restored.',
   },
   {
+    name: 'logs',
+    why: "The app's log file and its one older copy: about the runs that wrote them, not the data.",
+  },
+  {
     name: 'start-attempts*.jsonl',
-    why:
-      "Each launch's timing, kept for diagnosing a slow start: about those launches, not the " +
-      'data; never copied or restored, and a reset may drop it.',
+    why: 'Launch timing an older version wrote here: not the data, never copied or restored.',
   },
   { name: 'updates', why: 'Downloaded updates and their private staging files, not state.' },
   { name: 'one-host.sock', why: 'The live socket that reports whether this workspace is open.' },

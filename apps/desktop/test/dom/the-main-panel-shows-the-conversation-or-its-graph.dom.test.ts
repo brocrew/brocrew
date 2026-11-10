@@ -444,7 +444,7 @@ describe('the main panel shows the conversation, or its whole tree', () => {
       paneProps({
         record: record([said('Checking the rail now.')]),
         drawerOpen: false,
-        drawerTab: 'events',
+        drawerTab: 'info',
         forest: FOREST(),
         identities: IDS,
         'onUpdate:drawerTab': (tab: string) => tabs.push(tab),

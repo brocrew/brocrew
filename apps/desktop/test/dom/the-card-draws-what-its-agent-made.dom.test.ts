@@ -39,7 +39,7 @@ const panel = (state: ReturnType<typeof createTranscript>, opened: PanelAsset[] 
     SessionPanel,
     {
       state,
-      mode: 'normal',
+
       facets: { doing: 'idle', being: 'live' },
       who: 'Ana',
       onOpenAsset: (asset: PanelAsset) => opened.push(asset),

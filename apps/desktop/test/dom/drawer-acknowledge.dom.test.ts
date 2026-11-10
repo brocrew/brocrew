@@ -131,7 +131,7 @@ describe('212 §3 · the drawer says it noticed, in the flush that handles the c
       'the pressed tab did not take the active ink',
     ).not.toBe(quietInk)
     expect(
-      getComputedStyle(mounted.q('drawer-tab-events')).color,
+      getComputedStyle(mounted.q('drawer-tab-info')).color,
       'a tab nobody pressed took the active ink too, so the mark says nothing',
     ).toBe(quietInk)
   })
@@ -163,14 +163,14 @@ describe('212 §3 · the drawer says it noticed, in the flush that handles the c
     // here, and the cost of the tab they passed over should be nothing at all.
     const { mounted } = host('open')
     mounted.q('drawer-tab-changes').click()
-    mounted.q('drawer-tab-events').click()
+    mounted.q('drawer-tab-info').click()
     await nextTick()
 
     expect(
       mounted.q('session-drawer').getAttribute('data-tab'),
       'the strip settled on the tab pressed LAST',
-    ).toBe('events')
-    expect(mounted.all('event-stream'), 'and that tab is the body on screen').toHaveLength(1)
+    ).toBe('info')
+    expect(mounted.all('session-info'), 'and that tab is the body on screen').toHaveLength(1)
     expect(mounted.all('slow-changes-body'), 'the tab passed through was never built').toHaveLength(
       0,
     )

@@ -239,7 +239,7 @@ describe('the rail and the header draw it', () => {
           h(ConversationPane as never, {
             record: idleConversation('sess_bo'),
             mode: 'chat' as const,
-            debug: false,
+
             drawerOpen: false,
             drawerTab: 'open' as const,
             draft: '',

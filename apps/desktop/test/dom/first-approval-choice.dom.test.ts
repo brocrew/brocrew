@@ -40,7 +40,7 @@ it.each(['ask', 'auto'] as const)(
       {
         busy: false,
         error: null,
-        debug: false,
+
         draft: 'Write a bakery menu.',
         recent: [],
         defaultProvider: 'claude',
@@ -99,7 +99,7 @@ it.each([null, 'ask', 'auto'] as const)(
       {
         busy: false,
         error: null,
-        debug: false,
+
         draft: 'Write a bakery menu.',
         recent: [],
         defaultProvider: 'claude',
@@ -145,7 +145,7 @@ it.each(['ask', 'auto'] as const)(
     const m = mount(NewConversation, {
       busy: false,
       error: null,
-      debug: false,
+
       draft: 'Write a menu.',
       recent: [],
       defaultProvider: 'claude',
@@ -298,7 +298,7 @@ it.each([null, 'Could not save the default.'])(
           h(NewConversation, {
             busy: guard.busy.value || creating.value,
             error: error.value,
-            debug: false,
+
             draft: draft.value,
             recent: [],
             defaultProvider: 'claude',

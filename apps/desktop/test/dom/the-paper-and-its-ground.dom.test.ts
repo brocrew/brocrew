@@ -38,7 +38,7 @@ afterEach(unmountAll)
 const asLauncher = (): Record<string, unknown> => ({
   busy: false,
   error: null,
-  debug: false,
+
   draft: '',
   handing: createAttachmentBook().handing(NEW_CONVERSATION),
   defaultProvider: 'codex',

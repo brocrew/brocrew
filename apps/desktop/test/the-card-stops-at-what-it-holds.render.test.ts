@@ -71,7 +71,7 @@ describe('the card stops at what it holds (bb5ab496)', () => {
     const render = (state: TranscriptState, over: Record<string, unknown> = {}): Promise<string> =>
       renderToString(
         createSSRApp({
-          render: () => h(SessionPanel, { state, mode: 'normal' as const, ...over }),
+          render: () => h(SessionPanel, { state, ...over }),
         }),
       )
     const reading = (r: Record<string, unknown>): TranscriptEvent =>
@@ -191,8 +191,7 @@ describe('the card stops at what it holds (bb5ab496)', () => {
           render: () =>
             h(ConversationPane as never, {
               record: record(TURN_OVER),
-              mode: 'normal' as const,
-              debug: false,
+
               drawerOpen,
               drawerTab: 'open' as const,
               models: null,

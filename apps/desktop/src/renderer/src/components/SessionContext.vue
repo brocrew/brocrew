@@ -23,7 +23,7 @@ import {
 } from '../lib/context-meter'
 import { ROLE_PROPERTIES } from '../lib/text-roles'
 import type { TranscriptState } from '../lib/transcript'
-import { isVisibleIn, type TranscriptMode } from '../lib/transcript-mode'
+import { isVisibleIn } from '../lib/transcript-mode'
 
 /**
  * **The context meter** — the Context popup's body (087, designed in 086).
@@ -49,7 +49,7 @@ const props = defineProps<{
   state: TranscriptState
   /** The fold on screen, when it differs. Reachability of the jump targets only. */
   shown?: TranscriptState
-  mode: TranscriptMode
+
   /** The provider's display name, for the source line. */
   provider: string
   /**
@@ -206,7 +206,7 @@ const source = computed(() => {
 const reachable = computed(() => {
   const found = new Set<string>()
   for (const item of (props.shown ?? props.state).items) {
-    if (item.kind === 'compaction' && isVisibleIn(props.mode, item)) found.add(item.id)
+    if (item.kind === 'compaction' && isVisibleIn(item)) found.add(item.id)
   }
   return found
 })

@@ -3,7 +3,6 @@ import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import ProvidersScreen from '../../src/renderer/src/components/ProvidersScreen.vue'
 import { providersBridge } from '../../look/fixtures/providers'
-import { useDebugMode } from '../../src/renderer/src/composables/useDebugMode'
 import {
   DEFAULT_PROFILE_ID,
   type AuthState,
@@ -38,7 +37,7 @@ const SETUP: ProviderSetupState = {
 
 function fixture(initial: AuthState = READY) {
   localStorage.clear()
-  useDebugMode().value = false
+  localStorage.removeItem('brobot2.debugMode')
   providersBridge()
   let auth = initial
   let probeReply: AuthState | null = null

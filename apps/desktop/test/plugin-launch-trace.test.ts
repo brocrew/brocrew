@@ -1,7 +1,4 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import {
   withManagedPluginAttachments,
@@ -23,17 +20,14 @@ afterEach(async () => {
   for (const close of closes.splice(0).reverse()) await close()
 })
 function output() {
-  const root = mkdtempSync(join(tmpdir(), 'fictional-launch-trace-'))
-  closes.push(() => rmSync(root, { recursive: true, force: true }))
-  const file = join(root, 'plugin-route-admission.log')
+  const events: RouteAdmissionEvent[] = []
   return {
-    recordTrace: (event: RouteAdmissionEvent) => recordRouteAdmissionTrace(root, event),
-    text: () => readFileSync(file, 'utf8'),
-    rows: () =>
-      readFileSync(file, 'utf8')
-        .trim()
-        .split('\n')
-        .map((line) => JSON.parse(line) as RouteAdmissionEvent),
+    recordTrace: (event: RouteAdmissionEvent) => {
+      events.push(event)
+      recordRouteAdmissionTrace(event)
+    },
+    text: () => JSON.stringify(events),
+    rows: () => events,
   }
 }
 function provider(discovered = true) {

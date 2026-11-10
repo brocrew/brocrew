@@ -161,7 +161,7 @@ describe('§0 · the bar and the strip, drawn as themselves (the ledger’s own 
       {
         session: LOUD_TAKEN,
         status: 'idle',
-        debug: false,
+
         capabilities: null,
         facets: { doing: 'idle', being: 'live' },
       },
@@ -237,12 +237,12 @@ describe('§1 · the act that carries a word keeps it, at every width the app ca
 
     // ⚑ **Derived from the mount**: every button in the bar, whatever it happens to be today.
     // ⚑ **D-017b · three, not four** — *End conversation* left the bar; hand-back, the lifecycle
-    // toggle and the drawer toggle are what stand in it.
+    // toggle and the drawer toggle stood in it. Two now: the debug-mode toggle left with Debug mode.
     const buttons = acts(m)
     expect(
       buttons.length,
       'the bar drew no buttons — this measures nothing',
-    ).toBeGreaterThanOrEqual(3)
+    ).toBeGreaterThanOrEqual(2)
     for (const act of buttons) {
       expect(visible(act), `an act is not visible at ${width}px`).toBe(true)
       assertDrawn(act, `${act.dataset['cy'] ?? act.className} at ${width}px`)
@@ -469,7 +469,7 @@ describe('§3 · a state word is not styled as a control (EXT-010 §1.3, and §2
     // ⚑ **The other half.** A bar whose controls had also lost their chrome would pass the loop
     // above and be a worse surface than the one this dispatch was sent to fix.
     const buttons = acts(m)
-    expect(buttons.length).toBeGreaterThanOrEqual(3)
+    expect(buttons.length).toBeGreaterThanOrEqual(2)
     for (const act of buttons) {
       expect(painted(act), `${act.dataset['cy']} is a control with no fill`).toBe(true)
       expect(solid(act), `${act.dataset['cy']} is a control with no border`).toBe(true)

@@ -195,7 +195,7 @@ import type {
 import { indexWorkerReadings } from '../worker-readings'
 import type { WorkerBindingReading } from '../../shared/worker-reading'
 import { WORKER_OUTPUT_FAILURE } from '../worker-piece-folder'
-import type { StartAttemptLine, StartAttemptOutcome } from '../start-attempts-log'
+import type { StartAttemptLine, StartAttemptOutcome } from '../start-attempt-line'
 import {
   isMcpServerRequestEnding,
   mcpServerRequestsWaiting,

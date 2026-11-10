@@ -67,7 +67,7 @@ const fromBottom = (el: HTMLElement): number => el.scrollHeight - el.scrollTop -
 function opened(held: RuntimeEventMessage[], height = 500): Mounted {
   return mount(
     TranscriptView as Component,
-    { items: foldWindow(held).items, mode: 'normal' },
+    { items: foldWindow(held).items },
     { width: 900, height },
   )
 }
@@ -87,7 +87,7 @@ function paged(held: RuntimeEventMessage[]): {
       return () =>
         h(TranscriptView as Component, {
           items: items.value,
-          mode: 'normal',
+
           hasOlder: true,
           turnAligned: true,
           loadOlder: async () => {

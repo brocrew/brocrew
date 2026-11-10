@@ -148,8 +148,8 @@ describe('318 §2.1 · the write is in the conversation', () => {
    * `info` notices in `normal`, which is why this is its own item kind and not a notice.
    */
   it('is on screen in the reading mode, not only in debug', () => {
-    expect(pane([memoryNote(HIS_NOTES)], { mode: 'normal' }).all('memory-note')).toHaveLength(1)
-    expect(pane([memoryNote(HIS_NOTES)], { mode: 'debug' }).all('memory-note')).toHaveLength(1)
+    expect(pane([memoryNote(HIS_NOTES)], {}).all('memory-note')).toHaveLength(1)
+    expect(pane([memoryNote(HIS_NOTES)], {}).all('memory-note')).toHaveLength(1)
   })
 
   it('a conversation with no memory note draws no such row', () => {
@@ -195,7 +195,7 @@ describe('318 §2.3 · the panel is one gesture away from the conversation', () 
       TranscriptView,
       {
         items: record([memoryNote(HIS_NOTES)]).transcript.items,
-        mode: 'normal',
+
         hasOlder: false,
         turnAligned: true,
       },

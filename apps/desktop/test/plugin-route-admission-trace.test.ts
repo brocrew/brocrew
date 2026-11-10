@@ -1,7 +1,4 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, statSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse, RequestListener, ServerOptions } from 'node:http'
 import { pluginProviderFixture } from './fixtures/plugin-provider-fixture'
 import { openManagedPluginRoute } from '../src/main/plugins/managed-transport'
@@ -29,18 +26,8 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close()
 })
 function log() {
-  const root = mkdtempSync(join(tmpdir(), 'fictional-route-trace-'))
-  cleanup.push(() => rmSync(root, { recursive: true, force: true }))
-  const path = join(root, 'plugin-route-admission.log')
-  return {
-    root,
-    path,
-    rows: () =>
-      readFileSync(path, 'utf8')
-        .trim()
-        .split('\n')
-        .map((line) => JSON.parse(line) as RouteAdmissionEvent),
-  }
+  const events: RouteAdmissionEvent[] = []
+  return { events, rows: () => events, text: () => JSON.stringify(events) }
 }
 
 it('persists bearer and broker refusals when its observer throws', async () => {
@@ -49,7 +36,8 @@ it('persists bearer and broker refusals when its observer throws', async () => {
   const original = await f.route('fictional-caller')
   const output = log()
   const scope = createRouteAdmissionTrace((event) => {
-    recordRouteAdmissionTrace(output.root, event)
+    output.events.push(event)
+    recordRouteAdmissionTrace(event)
     throw new Error('fictional observer failure')
   })
   const trace = scope({})
@@ -69,7 +57,7 @@ it('persists bearer and broker refusals when its observer throws', async () => {
   expect(new Set(rows.map((row) => row.request)).size).toBe(2)
   expect(new Set(rows.map((row) => row.route)).size).toBe(1)
   expect(rows.every((row) => row.route === route.server.url)).toBe(true)
-  expect(readFileSync(output.path, 'utf8')).not.toContain(route.server.capability)
+  expect(output.text()).not.toContain(route.server.capability)
   await route.close()
   expect(
     output
@@ -77,22 +65,6 @@ it('persists bearer and broker refusals when its observer throws', async () => {
       .slice(-2)
       .map((row) => row.event),
   ).toEqual(['route-close-start', 'route-close-complete'])
-})
-
-it('bounds the trace and ignores file failures', () => {
-  const output = log()
-  writeFileSync(output.path, 'x'.repeat(1024 * 1024))
-  recordRouteAdmissionTrace(output.root, {
-    process: '1'.repeat(32),
-    sequence: 1,
-    event: 'http-bearer-refused',
-    condition: 'bearer',
-  })
-  expect(statSync(output.path).size).toBeLessThan(1024 * 1024)
-  expect(output.rows()).toMatchObject([{ event: 'http-bearer-refused', condition: 'bearer' }])
-  expect(() =>
-    recordRouteAdmissionTrace(join(output.root, 'absent'), output.rows()[0]!),
-  ).not.toThrow()
 })
 
 it('refuses an already accepted request callback after close starts', async () => {
