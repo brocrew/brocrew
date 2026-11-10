@@ -77,6 +77,71 @@ export const WHO_DID_IT = [
 export type WhoDidIt = (typeof WHO_DID_IT)[number]
 
 /**
+ * 🔴 **Who a row may name as the actor of a stop** — the READER's vocabulary since `494`, and
+ * since `501` the WRITERS' as well.
+ *
+ * ## ⛔ There were two, because the two producers spelled the actor differently
+ *
+ * ⚠️ **`340` deferred naming the actor and `395` minted the first vocabulary**, a hand-written
+ * `WHO_ASKED_IT_TO_STOP = ['a-person', 'an-agent']`, because `RuntimeHost.recordTheAsk` spelled
+ * its own two words from `sessionSpeakingAs` alone. ⚑ `494` then gave the fold a SECOND producer
+ * — {@link UserDecisionEvent.by}, a permission answered `cancel` — whose vocabulary is
+ * {@link WHO_DID_IT}'s, and a reading left at the first producer's two would have had to DROP a
+ * word the second one can write. ⛔ The reader's `null` already means *no row says*, and two
+ * meanings for one absence is the defect `494` removed.
+ *
+ * 🔴 **`501` retired the pair rather than widening it.** `recordTheAsk` asks
+ * `RuntimeHost.whoDidIt` like every other writer and refuses the app, so what
+ * {@link WorkInterruptedEvent} can hold IS this type — by construction, and for every member
+ * {@link WHO_DID_IT} gains after this one. ⚑ **The two vocabularies were one question asked
+ * twice**, and the hand-written one was the half that could drift.
+ *
+ * ## ⚠️ Derived with `Exclude`, so a fifth caller kind cannot be missed
+ *
+ * ⛔ **Never a hand-written list.** A member added to {@link WHO_DID_IT} lands here the day it is
+ * added and already owes a sentence to {@link WHO_DID_IT_SAYS} — so a reading can never be handed
+ * an actor it has no words for.
+ *
+ * ## 🔴 `the-app-itself` is excluded, and it is a refusal rather than a preference
+ *
+ * ⛔ **Neither producer can put it here, and each refuses it in its own code.**
+ * `mayAnswerAsAHuman` opens with `by !== THE_APP_ITSELF`, so the app cannot answer a card and
+ * `RuntimeHost.respondPermission` writes no row for it; and `RuntimeHost.recordTheAsk` returns
+ * without writing a row when the caller is the app. ⚑ Two actual refusals rather than this
+ * paragraph — and `501` had to add the second one, because until then that caller was written
+ * down as a person.
+ *
+ * ⚠️ **The reason is the one `395` gave when it drafted a `this-app` member and removed it**:
+ * *the app never asks a turn to stop as an act of its own — it closes a conversation because a
+ * person or an agent said to, and the row records whichever of those it was.* ⛔ The state that
+ * member reached for is still reachable and still honest: a conversation closed mid-turn is
+ * stopped with no ask written at all, and the reading is `it-was-stopped` with
+ * {@link StopReading.who} `null` — *it was stopped, and this ledger does not say by whom*.
+ * ⚑ **A truthful absence, where `this-app` would have been a guess dressed as a fact** — and a
+ * false actor in a durable record is worse than an absent one (HO-037 §3).
+ *
+ * ⚠️ **`a-caller-this-app-cannot-name` is IN for the opposite reason.** `whoDidIt` returns it for
+ * a caller that is neither a window nor a conversation, and such a caller reaches
+ * `mayAnswerAsAHuman` the moment its sink declares a person — {@link WhoDidIt}'s own shipped
+ * argument, not a new one. ⛔ A reading with no home for it would report that press as nobody's,
+ * and until `501` the other producer reported it as a person's.
+ */
+export type WhoStoppedIt = Exclude<WhoDidIt, 'the-app-itself'>
+
+export interface StopAsker {
+  /**
+   * ⛔ **Off a row's own actor — never derived from the caller a reader imagines.**
+   *
+   * ⚑ **494 · two producers now, and the vocabulary is the READER's** ({@link WhoStoppedIt}):
+   * `WorkInterruptedEvent.by` for a Stop, and {@link UserDecisionEvent.by} for a permission
+   * answered `cancel`.
+   */
+  readonly by: WhoStoppedIt
+  /** The asking conversation's id — present only when {@link by} is `an-agent`, else `null`. */
+  readonly asker: string | null
+}
+
+/**
  * ⛔ **What each member means, in a person's words** — the vocabulary owns its own sentences, so a
  * member added here is a compile error rather than a blank space on a surface.
  *

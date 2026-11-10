@@ -1,6 +1,5 @@
-import type { TranscriptEvent } from './conversation-events'
 import type { MoveOffer } from './move-contracts'
-import type { ChannelRefusal, UserInputQuestion } from '@brobot2/runtime'
+import type { ChannelRefusal, RuntimeEvent, UserInputQuestion } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 
 export type RequestState = (typeof REQUEST_STATES)[number]
@@ -744,7 +743,7 @@ export interface PersonsDecision {
 
 /** A request a provider raised and a card answers: a permission, or its own question. */
 export type ProviderRequestEvent = Extract<
-  TranscriptEvent,
+  RuntimeEvent,
   { type: 'permission_request' | 'user_input_request' }
 >
 

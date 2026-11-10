@@ -1,15 +1,14 @@
 import type { AgentRulesReceipt } from './agent-rules'
 import type { AppNotice } from './app-notice'
 import type { HandedPath } from './attachment-contracts'
-import type { WhoStoppedIt } from './how-work-stopped'
 import type { AnsweredQuestion, UserTurnEvent } from './human-answer-contracts'
 import type {
-  McpServerRequestEnding,
+  McpServerRequestedEvent,
+  McpServerRequestSettledEvent,
   McpServerRequestWaiting,
-  McpServerRequestWho,
 } from './mcp-server-requests'
 import type { MoveOrigin, MoveReceipt } from './move-contracts'
-import type { InstructionAsk, InstructionEnding, RulesAuthor } from './own-instructions'
+import type { InstructionProposedEvent, InstructionSettledEvent } from './own-instructions'
 import type {
   QuestionAskedEvent,
   QuestionEndedWithItsPieceEvent,
@@ -39,8 +38,11 @@ import type {
   WorkTakenBackEvent,
 } from './task-contracts'
 import type { WhatALaunchGave } from './what-this-agent-was-given'
-import type { ActedBy } from './who-did-it'
+import type { ActedBy, WhoStoppedIt } from './who-did-it'
 import type { PermissionDecision, RuntimeEvent } from '@brobot2/runtime'
+
+export type { InstructionProposedEvent, InstructionSettledEvent } from './own-instructions'
+export type { McpServerRequestedEvent, McpServerRequestSettledEvent } from './mcp-server-requests'
 
 /**
  * A decision this app sent for a request card — which button was pressed. Ours for the same
@@ -1274,102 +1276,10 @@ export interface MessageSentEvent {
   clipped?: true
 }
 
-/**
- * 🔴 **An agent asked for something against one identity's own instructions** (582) — a ledger row,
- * folded by {@link waitingOnAPerson}.
- *
- * ⚑ **The row is appended the moment the ask is made** (`HO-062` §4): no tool can end it, and the
- * only door that can is a person's.
- */
-export interface InstructionProposedEvent {
-  type: 'instruction_proposed'
-  /** `iprop_<uuid>` — minted by this app, which is why a person's door can find it. */
-  askId: string
-  /** ⚑ Which arm the agent took — see {@link INSTRUCTION_ASKS}. */
-  ask: InstructionAsk
-  /** The identity the rules are ABOUT, by folded slug — never the proposer. */
-  about: string
-  /** The proposing agent, by slug. ⚑ `438`'s rule: a claim carries its speaker. */
-  proposedBy: string
-  /** Snapshotted when proposed; legacy rows may not have recorded a name or baseline. */
-  author?: RulesAuthor
-  basedOnVersion?: number
-  /** The rules it wants in force, whole. ⛔ Bounded by {@link OWN_INSTRUCTIONS_CHARS} at the door. */
-  text: string
-  /** ⚠️ **The agent's reasoning — a CLAIM.** Nothing in this app checked a word of it. */
-  why: string
-}
-
-/**
- * 🔴 **How one {@link InstructionProposedEvent} stopped waiting** (582).
- *
- * ⛔ **There is no tool that can write this row**: `approved` and `refused` come from a person at
- * the sheet, `superseded` from this app when the person writes their own version, and `withdrawn`
- * when the work that asked was stopped.
- */
-export interface InstructionSettledEvent {
-  type: 'instruction_settled'
-  /** The ask this ends — {@link InstructionProposedEvent.askId}. */
-  askId: string
-  /** One of {@link INSTRUCTION_ENDINGS}. */
-  ending: InstructionEnding
-  /**
-   * ⛔ **Who settled it** — `RuntimeHost.whoDidIt`, read off the caller at the moment it stopped
-   * waiting, and OPTIONAL: absence means *written before this app recorded who*.
-   */
-  by?: ActedBy
-}
-
-/**
- * An agent asked the person to register an external MCP server (`request_mcp_server`). The row is
- * written in the asking conversation's ledger and contacts nothing; only a person's press settles
- * it ({@link McpServerRequestSettledEvent}).
- */
-export interface McpServerRequestedEvent {
-  type: 'mcp_server_requested'
-  /** `msreq_<uuid>`, made by this app. */
-  requestId: string
-  /** The server's name, folded, as it would be registered. */
-  name: string
-  /** The address, as `new URL(…).href` gives it, so its host is lowercase and in punycode. */
-  url: string
-  /** What the agent says the server can read and do. Its claim; nothing checked it. */
-  reaches: string
-  /** Who would get the server. */
-  whoGetsIt: McpServerRequestWho
-  /** With `only-these-agents`: the agents, by folded profile slug. */
-  agents?: readonly string[]
-  /** The asking agent, by profile slug. */
-  requestedBy: string
-  /** The asking conversation's own piece of work this is for, when it named one. */
-  piece?: string
-  /** That piece's label. Present only beside {@link piece}. */
-  label?: string
-}
-
 /** One MCP server request waiting on a person, as the window reads it: with what its asker is called. */
 export interface McpServerRequestForAPerson extends McpServerRequestWaiting {
   /** What the asking conversation is called, for the card's "reopens …". */
   readonly askerCalled: string
-}
-
-/**
- * How one {@link McpServerRequestedEvent} stopped waiting. No agent tool writes this row: a person's
- * press does, or this app when the person registers a server of that name themselves.
- */
-export interface McpServerRequestSettledEvent {
-  type: 'mcp_server_request_settled'
-  /** The request this ends. */
-  requestId: string
-  ending: McpServerRequestEnding
-  /** Who settled it. */
-  by?: ActedBy
-  /** With `approved`: the tool names the server offered when it was registered. */
-  offered?: readonly string[]
-  /** With `approved`: agents the request named that no longer existed, so got nothing. */
-  notGiven?: readonly string[]
-  /** With `could-not-register`: why. */
-  why?: string
 }
 
 /** The durable binding of a normal worker, recorded with its first conversation row. */

@@ -1,4 +1,4 @@
-import type { InjectedInstructionKind } from './instruction-contracts'
+import type { InjectedInstructionKind } from './injected-instruction-kind'
 
 import type { ToldLayerKind } from './told'
 

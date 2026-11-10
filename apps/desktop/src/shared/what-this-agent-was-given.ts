@@ -1,4 +1,5 @@
-import type { InjectedInstructionKind, RefusedInstruction } from './instruction-contracts'
+import type { RefusedInstruction } from './instruction-contracts'
+import type { InjectedInstructionKind } from './injected-instruction-kind'
 import type { InstalledSkillVersion } from './skills-installation'
 import type { LaunchSetting, LaunchSettingKey, LaunchSettingValue } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'

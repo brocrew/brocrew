@@ -1,4 +1,4 @@
-import type { McpServerRequestSettledEvent, McpServerRequestedEvent } from './conversation-events'
+import type { ActedBy } from './who-did-it'
 import { pendingProposals } from './pending-proposals'
 /**
  * An agent asking the person to register an external MCP server: the words, the limits and the
@@ -42,6 +42,52 @@ export const MCP_SERVER_URL_CHARS = 2_048
 
 /** How many of the tools a registered server offered an agent is told by name. */
 export const MCP_SERVER_TOOLS_NAMED = 20
+
+/**
+ * An agent asked the person to register an external MCP server (`request_mcp_server`). The row is
+ * written in the asking conversation's ledger and contacts nothing; only a person's press settles
+ * it ({@link McpServerRequestSettledEvent}).
+ */
+export interface McpServerRequestedEvent {
+  type: 'mcp_server_requested'
+  /** `msreq_<uuid>`, made by this app. */
+  requestId: string
+  /** The server's name, folded, as it would be registered. */
+  name: string
+  /** The address, as `new URL(…).href` gives it, so its host is lowercase and in punycode. */
+  url: string
+  /** What the agent says the server can read and do. Its claim; nothing checked it. */
+  reaches: string
+  /** Who would get the server. */
+  whoGetsIt: McpServerRequestWho
+  /** With `only-these-agents`: the agents, by folded profile slug. */
+  agents?: readonly string[]
+  /** The asking agent, by profile slug. */
+  requestedBy: string
+  /** The asking conversation's own piece of work this is for, when it named one. */
+  piece?: string
+  /** That piece's label. Present only beside {@link piece}. */
+  label?: string
+}
+
+/**
+ * How one {@link McpServerRequestedEvent} stopped waiting. No agent tool writes this row: a person's
+ * press does, or this app when the person registers a server of that name themselves.
+ */
+export interface McpServerRequestSettledEvent {
+  type: 'mcp_server_request_settled'
+  /** The request this ends. */
+  requestId: string
+  ending: McpServerRequestEnding
+  /** Who settled it. */
+  by?: ActedBy
+  /** With `approved`: the tool names the server offered when it was registered. */
+  offered?: readonly string[]
+  /** With `approved`: agents the request named that no longer existed, so got nothing. */
+  notGiven?: readonly string[]
+  /** With `could-not-register`: why. */
+  why?: string
+}
 
 /** One request nobody has decided, with the conversation that asked and when. */
 export interface McpServerRequestWaiting {

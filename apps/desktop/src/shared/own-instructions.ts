@@ -1,4 +1,3 @@
-import type { InstructionProposedEvent, InstructionSettledEvent } from './conversation-events'
 import { pendingProposals } from './pending-proposals'
 /**
  * 🔴 **The `configured` layer — the one layer of `HO-009` §2 a PERSON OWNS** (582, `HO-063` gap 4).
@@ -50,15 +49,10 @@ import { pendingProposals } from './pending-proposals'
  *
  * ## ⚠️ It is a pure vocabulary and a pure fold, like `tasks.ts`
  *
- * ⛔ **Every import here is a TYPE.** This module cannot reach a database, a host, a clock or a
- * filesystem, so *"the reading is a function of its arguments"* is checked by the compiler rather
- * than by a test that has to remember to drop something.
+ * It imports only types and the import-free proposal fold. Neither reaches a database, a host,
+ * a clock or a filesystem, so the reading remains a function of its arguments.
  */
 import type { ActedBy } from './who-did-it'
-// ⚑ **A type-only edge back to the union's own module** — `tasks.ts`' arrangement with that file
-// exactly. ⛔ It is a TYPE and never a value: the cycle exists only in the checker and is erased at
-// build time, and this module must stay reachable from a renderer without pulling `runtime-ipc.ts`
-// in as a value.
 
 /**
  * ⛔ **The longest rule set a person may save, in characters.**
@@ -386,14 +380,50 @@ export const ENDING_MEANS: Readonly<Record<InstructionEnding, string>> = {
 }
 
 /**
- * 🔴 **582's ledger pair lives in `runtime-ipc.ts`, with every other arm of `TranscriptEvent`** —
- * {@link InstructionProposedEvent} and {@link InstructionSettledEvent}.
+ * 🔴 **An agent asked for something against one identity's own instructions** (582) — a ledger row,
+ * folded by {@link waitingOnAPerson}.
  *
- * ⛔ **That split is not a preference**: `scripts/test/event-vocabulary.test.mjs` reads the union's
- * arms and looks each one's `export interface` up IN THAT FILE. ⚑ An arm declared
- * elsewhere makes that guard throw by name — which it did, on the first run after this dispatch
- * tried to keep them here, and is the right direction for a guard scoped by a path to fail in.
+ * ⚑ **The row is appended the moment the ask is made** (`HO-062` §4): no tool can end it, and the
+ * only door that can is a person's.
  */
+export interface InstructionProposedEvent {
+  type: 'instruction_proposed'
+  /** `iprop_<uuid>` — minted by this app, which is why a person's door can find it. */
+  askId: string
+  /** ⚑ Which arm the agent took — see {@link INSTRUCTION_ASKS}. */
+  ask: InstructionAsk
+  /** The identity the rules are ABOUT, by folded slug — never the proposer. */
+  about: string
+  /** The proposing agent, by slug. ⚑ `438`'s rule: a claim carries its speaker. */
+  proposedBy: string
+  /** Snapshotted when proposed; legacy rows may not have recorded a name or baseline. */
+  author?: RulesAuthor
+  basedOnVersion?: number
+  /** The rules it wants in force, whole. ⛔ Bounded by {@link OWN_INSTRUCTIONS_CHARS} at the door. */
+  text: string
+  /** ⚠️ **The agent's reasoning — a CLAIM.** Nothing in this app checked a word of it. */
+  why: string
+}
+
+/**
+ * 🔴 **How one {@link InstructionProposedEvent} stopped waiting** (582).
+ *
+ * ⛔ **There is no tool that can write this row**: `approved` and `refused` come from a person at
+ * the sheet, `superseded` from this app when the person writes their own version, and `withdrawn`
+ * when the work that asked was stopped.
+ */
+export interface InstructionSettledEvent {
+  type: 'instruction_settled'
+  /** The ask this ends — {@link InstructionProposedEvent.askId}. */
+  askId: string
+  /** One of {@link INSTRUCTION_ENDINGS}. */
+  ending: InstructionEnding
+  /**
+   * ⛔ **Who settled it** — `RuntimeHost.whoDidIt`, read off the caller at the moment it stopped
+   * waiting, and OPTIONAL: absence means *written before this app recorded who*.
+   */
+  by?: ActedBy
+}
 
 /** One ask nobody has answered, with the ordinal its row sits at. */
 export interface InstructionAskWaiting {

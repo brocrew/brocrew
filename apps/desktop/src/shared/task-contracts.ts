@@ -4,8 +4,8 @@ import type {
   TaskStallCause,
   TaskOutcome,
 } from './work-report-contracts'
-import type { TranscriptEvent } from './conversation-events'
-import type { AskToStop, WhoStoppedIt } from './how-work-stopped'
+import type { RuntimeEvent } from '@brobot2/runtime'
+import type { StopAsker, WhoStoppedIt } from './who-did-it'
 import type { ModelAndEffort } from './model-choice-contracts'
 import type { GivenFolder } from './work-folders'
 
@@ -149,7 +149,7 @@ export interface StoppedOnALogin {
 }
 
 /** The `limit` a `turn` row carries. */
-export type TurnLimitOnTheRow = NonNullable<Extract<TranscriptEvent, { type: 'turn' }>['limit']>
+export type TurnLimitOnTheRow = NonNullable<Extract<RuntimeEvent, { type: 'turn' }>['limit']>
 
 /**
  * One piece of work, as derived (a task until D-016). ⚠️ **Every field is either copied off
@@ -312,7 +312,7 @@ export interface PieceRow {
    * to stop (a window closing a conversation mid-turn, or a turn that simply ended), a decision
    * written before `477`, and a cause that is not a turn's at all.
    */
-  readonly stalledBy: Pick<AskToStop, 'by' | 'asker'> | null
+  readonly stalledBy: StopAsker | null
   /**
    * 🔴 **A question this conversation had asked was still unanswered when the app went
    * away** (400, HO-018 §2.4 · criterion 14).

@@ -1,5 +1,5 @@
 import type { TaskStallCause } from './task-contracts'
-import type { WhoStoppedIt } from './how-work-stopped'
+import type { WhoStoppedIt } from './who-did-it'
 
 import { undrivenSentence } from './tasks'
 
