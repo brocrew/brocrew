@@ -5,7 +5,9 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { previousRunsProvenStopped } from '../src/main/plugins/supervisor/recovery-proof'
 
-const native = vi.hoisted(() => ({ recover: vi.fn(async (_name: string, _cache: string) => true) }))
+const native = vi.hoisted(() => ({
+  recover: vi.fn<(name: string, cache: string) => Promise<boolean>>(async () => true),
+}))
 vi.mock('../resources/plugin-host/windows-job.mjs', async (original) => ({
   ...(await original<typeof import('../resources/plugin-host/windows-job.mjs')>()),
   recoverWindowsJob: native.recover,

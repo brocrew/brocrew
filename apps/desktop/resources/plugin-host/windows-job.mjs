@@ -21,8 +21,7 @@ function cacheFile(folder, script) {
 /** Recover the whole recorded job, including descendants, after its owner has exited. */
 export function recoverWindowsJob(name, cache) {
   const program = powershellPath()
-  if (!program || !/^Local\\BroCrew\.Plugin\.[a-f0-9-]{36}$/.test(name))
-    return Promise.resolve(false)
+  if (!program || !/^Local\\BroCrew\.Plugin\.[a-f0-9-]{36}$/.test(name)) return Promise.resolve(false)
   const script = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'windows-job.ps1'))
   return new Promise((resolve) => {
     execFile(
