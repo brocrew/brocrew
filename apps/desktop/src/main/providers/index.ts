@@ -77,6 +77,16 @@ export function providerAuthFromModules(modules: ProviderModules): ProviderAuthO
   return forwardAuth(providerRecord((provider) => modules[provider].auth))
 }
 
+/** Keep optional program lookups bound without reading them during desktop composition. */
+export function providerProgramPathsFromModules(
+  modules: ProviderModules,
+): Readonly<Record<Provider, (() => string | null) | undefined>> {
+  return providerRecord((provider) => {
+    const service = modules[provider].program
+    return service?.installedPath?.bind(service)
+  })
+}
+
 /** Use the caches already bound by each provider; legacy runtime-only modules have no versions. */
 export function providerVersionsFromModules(
   modules: ProviderModules,
