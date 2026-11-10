@@ -1,6 +1,5 @@
 import { PluginSupervisorError } from '../supervisor/protocol'
 
-/** One bounded JSON reply from a plugin's admin route, or the supervisor's refusal. */
 export async function readAdminJson(
   url: string,
   headers: { Authorization: string },

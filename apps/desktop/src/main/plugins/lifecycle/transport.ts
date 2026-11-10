@@ -144,9 +144,8 @@ export class PersonChannel {
                   kind: 'reply',
                   id: packet.id,
                   ok: false,
-                  value: {
-                    message: error instanceof Error ? error.message : String(error),
-                    ...(this.reportRefusals() &&
+                  value:
+                    this.reportRefusals() &&
                     error instanceof PluginSupervisorError &&
                     [
                       'policy-refused',
@@ -157,8 +156,7 @@ export class PersonChannel {
                       'package-invalid',
                     ].includes(error.code)
                       ? { pluginRefusal: error.code }
-                      : {}),
-                  },
+                      : { message: error instanceof Error ? error.message : String(error) },
                 })
               },
             )

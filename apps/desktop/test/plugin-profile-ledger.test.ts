@@ -58,7 +58,9 @@ it('preserves actual package failures and never accepts an incomplete applicatio
   await expect(
     applyPluginConfiguration(endpoint, {}, 1, new AbortController().signal),
   ).rejects.toThrow('not applied')
-  await expect(readPluginConfiguration(endpoint, new AbortController().signal)).rejects.toThrow('Package snapshot failed.')
+  await expect(readPluginConfiguration(endpoint, new AbortController().signal)).rejects.toThrow(
+    'Package snapshot failed.',
+  )
   expect(fetch).toHaveBeenCalledTimes(3)
 })
 
