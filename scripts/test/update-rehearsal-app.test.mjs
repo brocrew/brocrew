@@ -5,11 +5,46 @@ import {
   closeExpectedLaunchSetup,
   devToolsCalls,
   connectDevTools,
+  openTheUpdatesMenu,
   press,
   saveRehearsalCodexKey,
 } from '../lib/update-rehearsal-app.mjs'
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+
+test('opens Updates with the version button and leaves an already open menu alone', async () => {
+  let open = false
+  let clicks = 0
+  const document = {
+    querySelector(selector) {
+      if (selector === '[data-cy="updates-menu"]')
+        return open ? { textContent: 'Updates' } : null
+      assert.equal(selector, '[data-cy="rail-version"]')
+      return {
+        scrollIntoView() {},
+        getBoundingClientRect: () => ({ x: 10, y: 20, width: 40, height: 20 }),
+      }
+    },
+  }
+  const cdp = {
+    evaluate: (body) => new AsyncFunction('document', body)(document),
+    send: async (method, event) => {
+      assert.equal(method, 'Input.dispatchMouseEvent')
+      if (event.type === 'mouseReleased') {
+        assert.equal(event.x, 30)
+        assert.equal(event.y, 30)
+        clicks += 1
+        open = !open
+      }
+    },
+  }
+  await openTheUpdatesMenu(cdp)
+  assert.equal(open, true)
+  assert.equal(clicks, 1)
+  await openTheUpdatesMenu(cdp)
+  assert.equal(open, true)
+  assert.equal(clicks, 1)
+})
 
 function aWindow({
   label = 'Set up Claude',
