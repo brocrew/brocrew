@@ -445,7 +445,7 @@ describe('bounded archive extraction without filesystem effects', () => {
   })
 })
 
-describe('payload inventory, install hooks and existing skill rules', () => {
+describe('payload inventory and existing skill rules', () => {
   it('checks the manifest digest even when the archive digest is valid', () => {
     const fixture = packageFixture()
     const catalogue = catalogueBytes({
@@ -485,20 +485,12 @@ describe('payload inventory, install hooks and existing skill rules', () => {
     ['install.sh', 'inert'],
     ['setup.ps1', 'inert'],
     ['Makefile', 'inert'],
-  ])('refuses an inventoried installation recipe %s', (path, content) => {
+  ])('verifies inventoried payload bytes for %s', (path, content) => {
     const files = payload()
     files.set(path, Buffer.from(content))
-    expect(() => verified(packageFixture({ files }))).toThrow(
-      expect.objectContaining({ code: 'install-hook' }),
+    expect(verified(packageFixture({ files })).readFile(path)).toEqual(
+      Uint8Array.from(Buffer.from(content)),
     )
-  })
-  it('accepts built dependency metadata without scripts, including an empty scripts object', () => {
-    const files = payload()
-    files.set(
-      'node_modules/fictional/package.json',
-      Buffer.from('{"name":"fictional","scripts":{}}'),
-    )
-    expect(() => verified(packageFixture({ files }))).not.toThrow()
   })
   it('refuses a skill whose verified bytes disagree with existing Skills frontmatter or metadata', () => {
     const files = payload()

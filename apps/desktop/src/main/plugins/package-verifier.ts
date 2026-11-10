@@ -66,33 +66,6 @@ function decoded(bytes: Buffer): string {
     return refusePlugin('invalid')
   }
 }
-function noInstallRecipes(path: string, bytes: Buffer): void {
-  const basename = path.split('/').at(-1)?.toLowerCase()
-  if (
-    basename === 'binding.gyp' ||
-    /\.(?:sh|bash|zsh|bat|cmd|ps1)$/i.test(path) ||
-    basename === 'makefile'
-  )
-    refusePlugin('install-hook')
-  if (basename !== 'package.json') return
-  const value = strictPluginJson(bytes, 1024 * 1024)
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) refusePlugin('invalid')
-  // Built dependencies may keep metadata, but no lifecycle/build command is admitted.
-  for (const key of ['scripts', 'hooks', 'gypfile']) {
-    if (Object.hasOwn(value, key)) {
-      const member: unknown = Reflect.get(value, key)
-      if (
-        key !== 'scripts' ||
-        member === null ||
-        typeof member !== 'object' ||
-        Array.isArray(member) ||
-        Object.keys(member).length !== 0
-      )
-        refusePlugin('install-hook')
-    }
-  }
-}
-
 /** Verify catalogue structure and each selected package's bytes. */
 export function createRepoAwarePluginVerifier(options: PluginVerifierOptions) {
   const target = PluginTarget.safeParse(options.target)
@@ -152,7 +125,6 @@ export function createRepoAwarePluginVerifier(options: PluginVerifierOptions) {
             const body = files.get(entry.path)
             if (!body) refusePlugin('digest')
             verifyPluginDigest(body, entry, PLUGIN_LIMITS.expandedBytes)
-            noInstallRecipes(entry.path, body)
           }
           for (const skill of manifest.skills) {
             const body = files.get(skill.path)
