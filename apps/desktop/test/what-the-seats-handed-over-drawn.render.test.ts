@@ -208,6 +208,7 @@ describe('the provider control says what its press will clear, before it', () =>
       }
     }
 
+    expect(whatAProviderPressWouldClear(null)).toBeNull()
     expect(table).toHaveLength(PROVIDERS.length * 2 * (PROVIDERS.length + 1))
     expect(new Set(table.map((row) => row.door))).toEqual(new Set([true, false]))
     expect(table.filter((row) => row.predicted !== row.door)).toEqual([])
