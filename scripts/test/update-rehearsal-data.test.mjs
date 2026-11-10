@@ -25,9 +25,11 @@ import {
   copyHoldsTheData,
   dataOf,
   firstStartProblems,
+  makeData,
   sameData,
   verifyCheckpoint,
   whatTheDataLacks,
+  THE_DRAFT,
 } from '../lib/update-rehearsal-data.mjs'
 import { STATE_FILES } from '../lib/update-rehearsal.mjs'
 import { readStateEntry, SKILL_TREE_NAMES, skillTreeStateDigest } from '../lib/skill-tree-state.mjs'
@@ -44,6 +46,50 @@ beforeEach(() => {
 })
 afterEach(() => {
   rmSync(root, { recursive: true, force: true })
+})
+
+it('opens New conversation after saving the key before typing the existing draft', async () => {
+  let onNewConversation = false
+  let typed = false
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+  const document = {
+    querySelector(selector) {
+      const isNew = selector === '[data-cy="new-conversation"]'
+      if (!isNew) {
+        assert.equal(selector, '[data-cy="prompt-input"]')
+        assert.equal(onNewConversation, true)
+      }
+      return {
+        scrollIntoView() {},
+        getBoundingClientRect: () => ({ x: isNew ? 0 : 20, y: 0, width: 10, height: 10 }),
+      }
+    },
+  }
+  const window = {
+    api: {
+      runtime: {
+        setApiKey: async () => ({ provider: 'codex', set: true, inUse: true }),
+        createSession: async () => {
+          assert.equal(typed, true)
+          throw new Error('stop after the draft')
+        },
+      },
+    },
+  }
+  const cdp = {
+    evaluate: (body) => new AsyncFunction('document', 'window', body)(document, window),
+    send: async (method, event) => {
+      if (method === 'Input.dispatchMouseEvent' && event.type === 'mouseReleased' && event.x === 5)
+        onNewConversation = true
+      if (method === 'Input.insertText') {
+        assert.equal(onNewConversation, true)
+        assert.equal(event.text, THE_DRAFT)
+        typed = true
+      }
+    },
+  }
+  await assert.rejects(makeData(cdp, { say: () => {} }), /no conversation:.*stop after the draft/)
+  assert.equal(typed, true)
 })
 
 /** A data folder with two conversations, their events and frames, a transcript and a draft. */

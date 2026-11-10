@@ -94,6 +94,7 @@ export async function aConversation(cdp, { answerARefusal = false } = {}) {
 export async function makeData(cdp, { say }) {
   await saveRehearsalCodexKey(cdp)
   say('the fictional Codex key is saved and usable')
+  await press(cdp, '[data-cy="new-conversation"]')
   const input = '[data-cy="prompt-input"]'
   if (
     !(await until(
