@@ -17,8 +17,7 @@ test('opens Updates with the version button and leaves an already open menu alon
   let clicks = 0
   const document = {
     querySelector(selector) {
-      if (selector === '[data-cy="updates-menu"]')
-        return open ? { textContent: 'Updates' } : null
+      if (selector === '[data-cy="updates-menu"]') return open ? { textContent: 'Updates' } : null
       assert.equal(selector, '[data-cy="rail-version"]')
       return {
         scrollIntoView() {},
