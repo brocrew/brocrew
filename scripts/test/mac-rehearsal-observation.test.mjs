@@ -339,11 +339,11 @@ it('keeps seed error bodies and model receipts when either diagnostic is unavail
     expect(capture).toHaveBeenCalledOnce()
     if (unavailable === 'model')
       expect(summary.modelDiagnosticFailure).toContain('model evidence unavailable')
-    else expect(files.get('/evidence/model-failure.json')).toEqual(model)
+    else expect(files.get(join('/evidence', 'model-failure.json'))).toEqual(model)
     if (unavailable === 'history')
       expect(summary.historyDiagnosticFailure).toContain('history unavailable')
     else
-      expect(files.get('/evidence/Default/a-history-failure.json')).toEqual({
+      expect(files.get(join('/evidence/Default', 'a-history-failure.json'))).toEqual({
         stage: 'a',
         sessionId: 'fictional-session',
         turn,
