@@ -79,17 +79,14 @@ describe.skipIf(process.platform === 'win32')(
       const f = await setup()
       const before = f.state.exportActivation().entries[0]!
       const ledger = new PluginProfileLedger(f.root)
-      const revision = await ledger.reserve(before.installId, 0, {
-        action: 'set-read',
-        enabled: true,
-      })
+      const revision = await ledger.reserve(before.installId, 0)
       const other = projection(f.events)
       const otherHandle = await f.controller.attach(other.sink)
       await f.offer()
       expect((await f.controller.status()).cards[0]).toMatchObject({
         installedVersion: '0.1.0',
         updateVersion: '0.1.3',
-        uninstallDeletesData: true,
+        uninstallDeletesData: false,
       })
       f.events.length = 0
       const operationId = randomUUID()

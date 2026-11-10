@@ -198,9 +198,9 @@ it('consumes live commands durably without storing a replayable profile action',
   await mkdir(f.root, { mode: 0o700 })
   const ledger = new PluginProfileLedger(f.root),
     installId = randomUUID()
-  expect(await ledger.reserve(installId, 0, null, 2)).toBe(1)
+  expect(await ledger.reserve(installId, 0)).toBe(1)
   expect(await ledger.revision(installId)).toBe(1)
-  await expect(ledger.reserve(installId, 0, null, 2)).rejects.toThrow()
+  await expect(ledger.reserve(installId, 0)).rejects.toThrow()
   await expect(ledger.revision(installId, false)).rejects.toThrow()
   const { digest } = await import('../src/main/plugins/node-host-files')
   const checkpoint = JSON.parse(
@@ -213,12 +213,7 @@ it('consumes live commands durably without storing a replayable profile action',
   expect(checkpoint).not.toHaveProperty('proposal')
   expect(await new EarlierProfileLedger(f.root).revision(installId)).toBe(1)
   expect(
-    await ledger.reserve(
-      installId,
-      1,
-      { action: 'set-enabled', profile: 'fern', enabled: true },
-      2,
-    ),
+    await ledger.reserve(installId, 1),
   ).toBe(2)
 })
 
