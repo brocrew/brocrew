@@ -9,12 +9,76 @@ import type { SessionHandle } from '../src/runtime'
 import {
   PLUGIN_ATTACHMENT_WAIT_MS,
   withManagedPluginAttachments,
+  type ManagedPluginLaunchObservation,
 } from '../src/managed-plugin-session'
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
   vi.useRealTimers()
   for (const close of cleanup.splice(0)) await close()
 })
+it.each([false, true])(
+  'Claude discovery follows refreshed routes only after a successful refresh (failed %s)',
+  async (failed) => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'fictional-discovery-refresh-')))
+    const frames = new AsyncQueue<SDKMessage>()
+    const initial = {
+      name: 'plugin-fern',
+      pluginId: 'fern',
+      url: 'http://127.0.0.1:8123/mcp',
+      capability: 'a'.repeat(64),
+    }
+    const added = { ...initial, name: 'plugin-willow', pluginId: 'willow' }
+    const observations: ManagedPluginLaunchObservation[] = []
+    const query: ClaudeQuery = {
+      interrupt: async () => {},
+      close: () => frames.close(),
+      return: async () => frames.close(),
+      setMcpServers: async () => ({
+        added: [],
+        removed: [],
+        errors: failed ? { 'plugin-willow': 'fictional refresh failed' } : {},
+      }),
+      [Symbol.asyncIterator]: () => frames[Symbol.asyncIterator](),
+    }
+    const raw = new ClaudeRuntime(() => query, async () => true)
+    const open = raw.start.bind(raw)
+    raw.start = async (options) => {
+      const handle = await open(options)
+      vi.spyOn(handle, 'send').mockResolvedValue(undefined)
+      return handle
+    }
+    let servers = [initial]
+    const runtime = withManagedPluginAttachments(raw, {
+      read: async () => ({ revision: String(servers.length), servers }),
+      close: async () => {},
+      observe: (event) => observations.push(event),
+    })
+    const handle = await runtime.start({ cwd: root, providerHome: root })
+    cleanup.push(async () => {
+      await handle.close()
+      rmSync(root, { recursive: true, force: true })
+    })
+    servers = [initial, added]
+    await handle.send('fictional turn after refresh')
+    frames.push({
+      type: 'system',
+      subtype: 'init',
+      session_id: 'fictional-claude',
+      cwd: root,
+      tools: ['mcp__plugin-fern__list', 'mcp__plugin-willow__list'],
+      mcp_servers: servers.map(({ name }) => ({ name, status: 'connected' })),
+    } as unknown as SDKMessage)
+    await vi.waitFor(() => {
+      const discoveries = observations.filter((event) => event.discovery)
+      expect(discoveries.map((event) => event.discovery!.server)).toEqual(
+        failed ? [initial.name] : [initial.name, added.name],
+      )
+      expect(discoveries.map((event) => event.servers.map((server) => server.name))).toEqual(
+        failed ? [[initial.name]] : [[initial.name, added.name], [initial.name, added.name]],
+      )
+    })
+  },
+)
 it('a Claude setMcpServers still pending after the wait lets the message go out once, and a late settle changes nothing', async () => {
   vi.useFakeTimers()
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'fictional-slow-refresh-')))
