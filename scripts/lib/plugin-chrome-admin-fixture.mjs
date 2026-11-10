@@ -79,8 +79,13 @@ export async function chromeAdminRouteFixture(directory) {
         let status, body
         const response = {
           locals: {},
-          status(value) { status = value; return response },
-          json(value) { body = value },
+          status(value) {
+            status = value
+            return response
+          },
+          json(value) {
+            body = value
+          },
         }
         await reads.get('/v1/configuration')({}, response)
         return Response.json(body, { status })
@@ -105,10 +110,9 @@ export async function chromeAdminRouteFixture(directory) {
         },
       }
       const kind = path.endsWith('/flags') ? 'flags' : 'open'
-      await routes.get(path === '/configuration' ? '/v1/configuration' : '/v1/profiles/:name/' + kind)(
-        { params: { name: 'birch' }, body: JSON.parse(init.body) },
-        response,
-      )
+      await routes.get(
+        path === '/configuration' ? '/v1/configuration' : '/v1/profiles/:name/' + kind,
+      )({ params: { name: 'birch' }, body: JSON.parse(init.body) }, response)
       statuses.push(status)
       return new Response(JSON.stringify(body), { status })
     },

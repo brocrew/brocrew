@@ -684,28 +684,34 @@ export async function connectPluginSettings(options: {
           'schema',
         )
       }
-      return Promise.all(cards.map(async (card) => {
-        let removal
-        if (!modern && card.installed) {
-          const installed = Installation.parse(await channel.call({ kind: 'screen', pluginId: card.id }))
-          const checked = await vault.load({
-            id: card.id,
-            version: installed.release.version,
-            manifestSha256: installed.release.manifestSha256,
-            archive: { sha256: installed.release.archiveSha256 },
-          })
-          removal = checked.manifest.removal
-        }
-        return {
-          ...card,
-          ...(!modern && card.installed ? {
-            uninstallDeletesData: removal?.data === 'delete',
-            ...(removal ? { uninstallNote: removal.note } : {}),
-          } : {}),
-          ...(sourceFormat === 2 || blocked ? { preparationRequired: true as const } : {}),
-          ...(blocked ? { mutationBlocked: blocked } : {}),
-        }
-      }))
+      return Promise.all(
+        cards.map(async (card) => {
+          let removal
+          if (!modern && card.installed) {
+            const installed = Installation.parse(
+              await channel.call({ kind: 'screen', pluginId: card.id }),
+            )
+            const checked = await vault.load({
+              id: card.id,
+              version: installed.release.version,
+              manifestSha256: installed.release.manifestSha256,
+              archive: { sha256: installed.release.archiveSha256 },
+            })
+            removal = checked.manifest.removal
+          }
+          return {
+            ...card,
+            ...(!modern && card.installed
+              ? {
+                  uninstallDeletesData: removal?.data === 'delete',
+                  ...(removal ? { uninstallNote: removal.note } : {}),
+                }
+              : {}),
+            ...(sourceFormat === 2 || blocked ? { preparationRequired: true as const } : {}),
+            ...(blocked ? { mutationBlocked: blocked } : {}),
+          }
+        }),
+      )
     },
     ...(features.includes('plugin-actions-v1')
       ? {

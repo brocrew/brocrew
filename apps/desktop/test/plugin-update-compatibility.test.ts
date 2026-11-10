@@ -177,53 +177,65 @@ describe.skipIf(process.platform === 'win32')(
         await f.controller.drain()
       }
     })
-    it.each([true, false])('the new client lists and configures under the actual parent owner with removal declaration %s without offering unsupported verbs', async (declared) => {
-      const f = await fixture({}, 'whatsapp', declared ? {
-        removal: { data: 'delete', note: 'Fictional local data is removed.' },
-      } : {})
-      exitable(f)
-      f.state.close()
-      const state = ParentState.open({ root: join(f.root, 'state'), workspaceRoots: [f.workspace] })
-      const controller = await ParentController.open({ ...f.opts, state } as never)
-      const handle = await controller.attach(projection().sink)
-      await controller.install(handle, 'whatsapp')
-      const bridge = await parentServer({
-        root: f.root,
-        key: 'a'.repeat(64),
-        controller,
-        read: async () => ({}),
-      })
-      // The window's list can have advanced while the older owner retains its admitted list.
-      const next = packageFixture({ manifest: { ...f.pkg.manifest, version: '1.0.3' } })
-      const client = await connectPluginSettings({
-        ...clientOptions(f, bridge.path),
-        catalogue: { bytes: next.bytes },
-      })
-      try {
-        expect(client.refreshCatalogue).toBeUndefined()
-        expect(client.update).toBeUndefined()
-        if (declared) {
-          expect(await client.catalogue()).toMatchObject([
-            { installed: true, state: 'Running', uninstallDeletesData: true },
-          ])
-        } else {
-          const cards = await client.catalogue()
-          expect(cards).toMatchObject([
-            { installed: true, state: 'Running', uninstallDeletesData: false },
-          ])
-          expect(cards[0]?.uninstallNote).toBeUndefined()
+    it.each([true, false])(
+      'the new client lists and configures under the actual parent owner with removal declaration %s without offering unsupported verbs',
+      async (declared) => {
+        const f = await fixture(
+          {},
+          'whatsapp',
+          declared
+            ? {
+                removal: { data: 'delete', note: 'Fictional local data is removed.' },
+              }
+            : {},
+        )
+        exitable(f)
+        f.state.close()
+        const state = ParentState.open({
+          root: join(f.root, 'state'),
+          workspaceRoots: [f.workspace],
+        })
+        const controller = await ParentController.open({ ...f.opts, state } as never)
+        const handle = await controller.attach(projection().sink)
+        await controller.install(handle, 'whatsapp')
+        const bridge = await parentServer({
+          root: f.root,
+          key: 'a'.repeat(64),
+          controller,
+          read: async () => ({}),
+        })
+        // The window's list can have advanced while the older owner retains its admitted list.
+        const next = packageFixture({ manifest: { ...f.pkg.manifest, version: '1.0.3' } })
+        const client = await connectPluginSettings({
+          ...clientOptions(f, bridge.path),
+          catalogue: { bytes: next.bytes },
+        })
+        try {
+          expect(client.refreshCatalogue).toBeUndefined()
+          expect(client.update).toBeUndefined()
+          if (declared) {
+            expect(await client.catalogue()).toMatchObject([
+              { installed: true, state: 'Running', uninstallDeletesData: true },
+            ])
+          } else {
+            const cards = await client.catalogue()
+            expect(cards).toMatchObject([
+              { installed: true, state: 'Running', uninstallDeletesData: false },
+            ])
+            expect(cards[0]?.uninstallNote).toBeUndefined()
+          }
+          const screen = await client.screen('whatsapp')
+          expect(screen.current(screen.binding)).toBe(true)
+          expect(screen.verified.manifest.version).toBe(f.pkg.manifest.version)
+          expect(state.inspect().pending).toBeNull()
+        } finally {
+          await client.close()
+          await bridge.close()
+          await controller.drain()
+          state.close()
         }
-        const screen = await client.screen('whatsapp')
-        expect(screen.current(screen.binding)).toBe(true)
-        expect(screen.verified.manifest.version).toBe(f.pkg.manifest.version)
-        expect(state.inspect().pending).toBeNull()
-      } finally {
-        await client.close()
-        await bridge.close()
-        await controller.drain()
-        state.close()
-      }
-    })
+      },
+    )
     it.each([
       'staged',
       'update-fenced',

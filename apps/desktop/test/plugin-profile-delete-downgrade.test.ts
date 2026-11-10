@@ -52,7 +52,11 @@ it('the historical shared ledger refuses a destructive proposal if adapter proje
   ).rejects.toThrow()
   expect(await ledger.revision(installId)).toBe(0)
 })
-type Reply = { locals: Record<string, unknown>; status(code: number): Reply; json(value: unknown): void }
+type Reply = {
+  locals: Record<string, unknown>
+  status(code: number): Reply
+  json(value: unknown): void
+}
 type Handler = (request: { params: { name: string }; body: unknown }, reply: Reply) => unknown
 
 it.each(['success', 'lost-reply', 'partial-removal'] as const)(
@@ -135,10 +139,7 @@ it.each(['success', 'lost-reply', 'partial-removal'] as const)(
         }
         const payload = JSON.parse(String(init.body))
         if (path === '/configuration') {
-          await routes.get('/v1/configuration')!(
-            { params: { name: '' }, body: payload },
-            reply,
-          )
+          await routes.get('/v1/configuration')!({ params: { name: '' }, body: payload }, reply)
           if (payload.payload.action === 'delete-profile') {
             deletes++
             expect(status).toBe(partial && deletes === 1 ? 409 : 200)

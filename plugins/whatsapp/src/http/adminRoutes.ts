@@ -156,10 +156,14 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     void beforeRemove(req, res).catch(next)
   })
   command('set-read', '/read', (body, res) =>
-    switched(body, res, (body) => { settings.setRead(body.enabled as boolean) }),
+    switched(body, res, (body) => {
+      settings.setRead(body.enabled as boolean)
+    }),
   )
   command('set-prefix', '/prefix', (body, res) =>
-    switched(body, res, (body) => { settings.setPrefix(body.enabled as boolean) }),
+    switched(body, res, (body) => {
+      settings.setPrefix(body.enabled as boolean)
+    }),
   )
   command('set-group-write', '/group-write', (body, res) =>
     switched(

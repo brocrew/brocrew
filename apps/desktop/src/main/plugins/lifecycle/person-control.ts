@@ -413,7 +413,11 @@ export async function servePersonPluginControl(options: {
           }
           case 'uninstall':
           case 'uninstall-result-v1': {
-            const outcome = await options.controller.uninstall(handle, request.pluginId, request.operationId)
+            const outcome = await options.controller.uninstall(
+              handle,
+              request.pluginId,
+              request.operationId,
+            )
             return request.kind === 'uninstall' ? true : (outcome ?? true)
           }
           case 'screen': {

@@ -203,7 +203,9 @@ async function settingsClient(
   return client
 }
 
-describe.skipIf(process.platform === 'win32')('native Chrome configuration route continuity', () => {
+describe.skipIf(process.platform === 'win32')(
+  'native Chrome configuration route continuity',
+  () => {
     it('keeps the preceding Open route 202 and applies its generic command without replay', async () => {
       const f = await fixture()
       await f.controller.install(f.handle, 'chrome')
@@ -233,9 +235,7 @@ describe.skipIf(process.platform === 'win32')('native Chrome configuration route
       const reopened = await reopenLifecycleFixture(f)
       expect(await new PluginProfileLedger(f.root).revision(active.installId)).toBe(1)
       expect(reopened.exportActivation().entries[0]?.installId).toBe(active.installId)
-      await expect(
-        new PluginProfileLedger(f.root).reserve(active.installId, 0),
-      ).rejects.toThrow()
+      await expect(new PluginProfileLedger(f.root).reserve(active.installId, 0)).rejects.toThrow()
       expect(fetch).toHaveBeenCalledOnce()
       expect(route.launches).toHaveLength(1)
     })
@@ -296,5 +296,5 @@ describe.skipIf(process.platform === 'win32')('native Chrome configuration route
       const install = f.state.exportActivation().entries[0]!
       expect(await f.controller.profileRevision(f.handle, 'chrome', install.installId)).toBe(2)
     })
-
-})
+  },
+)
