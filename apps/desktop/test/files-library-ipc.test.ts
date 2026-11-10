@@ -4,43 +4,14 @@ import { FilesLibraryWindows } from '../src/main/db/files-library-windows'
 import { FilesLibraryLifetime } from '../src/main/db/files-library-reader'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { FakeRuntime } from '@brobot2/runtime'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { bundleAWorker } from './helpers/bundle-a-worker'
-import { filesLibraryFixture, workspaceQuery } from './helpers/files-library-fixture'
+import { aLibraryHost, filesLibraryFixture, workspaceQuery } from './helpers/files-library-fixture'
 import {
   filesLibraryResult,
   libraryUnavailable,
   type FilesLibraryReader,
 } from '../src/shared/files-library'
 import { createSessionStore } from '../src/main/db/session-store'
-
-type HostDeps = ConstructorParameters<typeof RuntimeHost>[0]
-
-/** A host over `directory` whose only provider is a fake Codex; `deps` adds store and library. */
-function aLibraryHost(
-  directory: string,
-  deps: Pick<HostDeps, 'store'> & Partial<HostDeps>,
-): RuntimeHost {
-  return new RuntimeHost({
-    discoverSessions: NO_DISCOVERY,
-    createRuntime: () => new FakeRuntime('codex'),
-    resolveCwd: () => directory,
-    prepareProviderHome: () => directory,
-    providerHomePath: () => directory,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => directory,
-    newSessionId: () => 'fictional-new',
-    readProviderConfig: () => ({
-      home: directory,
-      homeEnv: 'CODEX_HOME',
-      model: 'fictional',
-      authNote: null,
-      files: [],
-    }),
-    ...deps,
-  })
-}
 
 const sink = {
   ownerId: 'fictional-window',

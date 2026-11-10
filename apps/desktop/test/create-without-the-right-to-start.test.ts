@@ -1,6 +1,6 @@
 import { ToolWatchingRuntime } from './lib/provider-double'
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -24,6 +24,7 @@ import {
   neutralHostDeps,
   RecordingSink,
 } from './lib/host-fixture'
+import { closeAndRemove } from './helpers/scratch-host'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -103,10 +104,7 @@ describe('573 · the grant prose scopes its own claim', () => {
   })
 
   afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    rmSync(userData, { recursive: true, force: true })
-    rmSync(work, { recursive: true, force: true })
+    await closeAndRemove([host], db, userData, work)
   })
 
   /** ⚑ The toolset a model on BroBot's own conversation is handed. */

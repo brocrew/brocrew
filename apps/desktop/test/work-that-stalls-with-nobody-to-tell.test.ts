@@ -17,21 +17,16 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { runtimeCommandSchema } from '../src/main/runtime/ipc'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { WALK_COVERS } from '../src/shared/questions'
 import { UNDRIVEN_SENTENCES, stalledWithACause } from '../src/shared/tasks'
 import { stalledWorkKey, stalledWorkSaid } from '../src/shared/stalled-work'
 import type { StalledWork } from '../src/shared/stalled-work'
 import { KIND_WORDS, stalledWorkLead, stalledWorkView } from '../src/renderer/src/lib/persons-queue'
 import { OPEN_THE_CONVERSATION } from '../src/renderer/src/lib/taking-over'
-import {
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
-} from './lib/host-fixture'
-import { ProviderDouble, anOpenGate } from './lib/provider-double'
+import { RecordingSink, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import { ProviderDouble } from './lib/provider-double'
 import { callOn } from './helpers/call-tool'
+import { homesUnder } from './helpers/scratch-host'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -56,12 +51,9 @@ describe('557 · work that stalls with nobody left to tell', () => {
     const built = new RuntimeHost({
       store: over,
       ...neutralHostDeps(() => userData),
+      ...homesUnder(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
-      createRuntime: (provider: Provider) =>
-        new ProviderDouble(provider, handles, issued, anOpenGate()),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
+      createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,

@@ -1,3 +1,5 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { FakeProviderSessions } from '@brobot2/runtime'
 import { waitFor } from './lib/f093-host'
 import { REQUEST_STATES } from '../src/shared/question-contracts'
 import type { RequestState } from '../src/shared/question-contracts'
@@ -6,16 +8,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type {
-  AgentToolset,
-  FakeSessionHandle,
-  ResumeOptions,
-  SessionRef,
-  StartOptions,
-  UserInputResponse,
-} from '@brobot2/runtime'
+import type { AgentToolset, FakeSessionHandle, UserInputResponse } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -31,6 +24,7 @@ import {
   syntheticProviderHome,
   neutralHostDeps,
 } from './lib/host-fixture'
+import { ProviderDouble } from './lib/provider-double'
 
 /**
  * 🔴 **397 · the word for a question nobody stopped** — Slice 4 S6, the last build dispatch of the
@@ -88,27 +82,6 @@ import {
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
-
-/** `394`'s double, with the handles kept — a test has to BE the provider to ask like one. */
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handles: FakeSessionHandle[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(options)
-    this.handles.push(handle)
-    return handle
-  }
-  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
-    const handle = await super.resume(ref, options)
-    this.handles.push(handle)
-    return handle
-  }
-}
 
 describe('397 · the word for a question nobody stopped', () => {
   let userData: string

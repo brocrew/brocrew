@@ -35,6 +35,7 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { GO_AHEAD_MESSAGE } from '../src/renderer/src/lib/plan-mode'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
+import { latch } from './helpers/held-operation'
 import {
   RecordingSink,
   syntheticProviderHome,
@@ -79,15 +80,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-/** A latch a test opens by hand. */
-const latch = (): { promise: Promise<void>; open: () => void } => {
-  let open = (): void => {}
-  const promise = new Promise<void>((resolve) => {
-    open = resolve
-  })
-  return { promise, open }
-}
 
 /**
  * ⚑ **A `query()` that hears every pushed turn and answers it** — `662`'s double, with two knobs

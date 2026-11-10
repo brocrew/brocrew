@@ -2,14 +2,9 @@ import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  FakeProviderSessions,
-  FakeRuntime,
-  type AgentToolset,
-  type StartOptions,
-} from '@brobot2/runtime'
+import { fileURLToPath } from 'node:url'
+import { FakeProviderSessions, type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -28,6 +23,7 @@ import {
   type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
 import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import { ToolWatchingRuntime } from './lib/provider-double'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const srcRoot = join(here, '../src')
@@ -53,21 +49,6 @@ class Sink implements RuntimeEventSink {
     this.messages.push(message)
   }
   sendLiveness(): void {}
-}
-
-class WatchingRuntime extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
 }
 
 /** ⚑ One `an-agent` creator, folded — see `AgentIdentity.createdBy`. */
@@ -137,7 +118,7 @@ describe('598 · the grant covers what it created', () => {
     host = new RuntimeHost({
       store,
       ...neutralHostDeps(() => userData),
-      createRuntime: (provider: Provider) => new WatchingRuntime(provider, handed, sessions),
+      createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, sessions),
       prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),

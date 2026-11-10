@@ -1,22 +1,17 @@
 import { waitFor } from './lib/f093-host'
-import {
-  syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
-  RecordingSink,
-} from './lib/host-fixture'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { neutralHostDeps, fixtureProviderConfig, RecordingSink } from './lib/host-fixture'
+import { ProviderDouble } from './lib/provider-double'
+import { closeAndRemove, homesUnder } from './helpers/scratch-host'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { FakeSessionHandle, StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions, type FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 
 /** The toolset one conversation is offered — `agentToolsFor` exports no name for it. */
@@ -45,22 +40,6 @@ type AgentToolset = ReturnType<typeof agentToolsFor>
 
 const migrationsFolder = join(__dirname, '../src/main/db/migrations')
 
-/** `394`'s double, with the handles kept — a test has to BE the provider to ask like one. */
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handles: FakeSessionHandle[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(options)
-    this.handles.push(handle)
-    return handle
-  }
-}
-
 describe('675 M20 · abandoned prints why it cannot come back', () => {
   let userData: string
   let root: string
@@ -87,10 +66,8 @@ describe('675 M20 · abandoned prints why it cannot come back', () => {
     host = new RuntimeHost({
       store,
       ...neutralHostDeps(() => userData),
+      ...homesUnder(() => userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,
@@ -99,10 +76,7 @@ describe('675 M20 · abandoned prints why it cannot come back', () => {
   })
 
   afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    rmSync(userData, { recursive: true, force: true })
-    rmSync(root, { recursive: true, force: true })
+    await closeAndRemove([host], db, userData, root)
   })
 
   const personOpens = async (profileId: string): Promise<string> => {

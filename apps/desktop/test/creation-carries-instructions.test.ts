@@ -5,15 +5,15 @@ import {
   RecordingSink,
 } from './lib/host-fixture'
 import { ToolWatchingRuntime } from './lib/provider-double'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
+import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -28,6 +28,7 @@ import {
 } from '../src/shared/own-instructions'
 import { CAPABILITY_FIELDS } from '../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
+import { closeAndRemove } from './helpers/scratch-host'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -112,9 +113,7 @@ describe('618 · creation carries instructions', () => {
   })
 
   afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    for (const dir of [userData, work]) rmSync(dir, { recursive: true, force: true })
+    await closeAndRemove([host], db, userData, work)
   })
 
   const personOpens = async (profileId: string): Promise<string> => {

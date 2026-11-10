@@ -18,7 +18,8 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
+import { answerOn, callOn } from './helpers/call-tool'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
@@ -136,20 +137,6 @@ describe('message now · a message or an answer can stop the running turn', () =
     const id = await personOpens(profileId)
     await host.close(id, window)
   }
-
-  /** The whole answer of a call: its sentence and what it structures. */
-  const answerOn = async (toolset: AgentToolset, name: ToolName, args: Record<string, unknown>) => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return tool.call(args)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> =>
-    (await answerOn(toolset, name, args)).structured as Record<string, unknown>
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)

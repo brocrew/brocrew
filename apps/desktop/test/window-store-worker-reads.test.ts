@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { FakeRuntime } from '@brobot2/runtime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -29,7 +28,7 @@ import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
 import { windowWriterSampler } from '../src/main/db/window-writer-stamp'
 import { RuntimeHost, type RuntimeHostDeps } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
+import { aLibraryHost } from './helpers/files-library-fixture'
 import { joinLiveHosts } from '../src/main/runtime/live-hosts'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 
@@ -355,26 +354,11 @@ describe('canonical window worker folds and independent live-store reads', () =>
           }),
         }
       : store
-    const host = new RuntimeHost({
+    const host = aLibraryHost(directory, {
       store: writer,
       windowReader: reader,
       limitsWriterStamp: limitsWriterSampler(db, () => true),
       windowWriterStamp: windowWriterSampler(db, () => true),
-      createRuntime: () => new FakeRuntime('codex'),
-      discoverSessions: NO_DISCOVERY,
-      resolveCwd: () => directory,
-      prepareProviderHome: () => directory,
-      providerHomePath: () => directory,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => directory,
-      newSessionId: () => 'fictional-new',
-      readProviderConfig: () => ({
-        home: directory,
-        homeEnv: 'CODEX_HOME',
-        model: 'fictional',
-        authNote: null,
-        files: [],
-      }),
       ...extra,
     })
     hosts.push(host)

@@ -1,8 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { createSSRApp, h } from 'vue'
-import { renderToString } from 'vue/server-renderer'
 import PromptComposer, {
   interruptKeyLabel,
   sendKeyLabel,
@@ -11,6 +9,7 @@ import { useConversationControls } from '../src/renderer/src/composables/useConv
 import { stopJoinsThatAsk } from '../src/renderer/src/lib/stop-unanswered'
 import { ASKED_TO_STOP } from '../src/shared/how-work-stopped'
 import { DEFAULT_PROFILE_ID, type CreatedSession } from '../src/shared/runtime-ipc'
+import { decode, escapeRegExp, render, shown } from './helpers/rendered-markup'
 
 /**
  * # 🔴 737 · Draw 3 — the Stop says what a press does: *the turn is asked to stop* (`730` F-3)
@@ -99,22 +98,6 @@ function oldClaimsIn(text: string): string[] {
   }
   return hits
 }
-
-const render = (component: unknown, props: Record<string, unknown>): Promise<string> =>
-  renderToString(createSSRApp({ render: () => h(component as never, props) }))
-
-/** ⚑ What a person reads — the templates carry their reasoning inline, as comments. */
-const shown = (markup: string): string => markup.replace(/<!--[\s\S]*?-->/g, '')
-
-const decode = (text: string): string =>
-  text
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&')
-
-const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /** ⚑ The `title` of every element with this `data-cy`, decoded — `[]` when none is drawn. */
 const titlesOf = (markup: string, cy: string): string[] =>

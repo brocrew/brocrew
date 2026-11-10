@@ -17,3 +17,12 @@ export function heldOperation() {
     },
   }
 }
+
+/** A latch a test opens by hand. */
+export function latch(): { promise: Promise<void>; open: () => void } {
+  let open = (): void => {}
+  const promise = new Promise<void>((resolve) => {
+    open = resolve
+  })
+  return { promise, open }
+}

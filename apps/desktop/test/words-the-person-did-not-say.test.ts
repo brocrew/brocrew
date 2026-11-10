@@ -3,7 +3,7 @@ import { RecordingSink, fixtureProviderConfig, neutralHostDeps } from './lib/hos
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 import { callOn } from './helpers/call-tool'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -28,7 +28,6 @@ import {
   sinkOwnerId,
 } from '../src/main/runtime/window-caller'
 import { resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
 import { GO_AHEAD_SENDER } from '../src/renderer/src/lib/plan-mode'
@@ -41,6 +40,7 @@ import { TURN_AUTHORSHIP_KEYS, agentName } from '../src/shared/runtime-ipc'
 import { pieceLine, theOwnerOf } from '../src/shared/piece-called'
 import { theDirectionLine } from '../src/main/runtime/turn-origin'
 import { replyText } from '../src/main/runtime/reply-rails'
+import { homesUnder } from './helpers/scratch-host'
 
 /**
  * App-delivered words must not be attributed to the person.
@@ -90,16 +90,10 @@ describe('413 · words the person did not say', () => {
     const built = new RuntimeHost({
       store: withStore,
       ...neutralHostDeps(() => userData),
+      ...homesUnder(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) =>
         new ProviderDouble(provider, handles, issued, anOpenGate()),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,

@@ -77,6 +77,7 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble as GatedDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { homesUnder } from './helpers/scratch-host'
 
 /**
  * 🔴 **D-039 · the tools reach a Codex model in its lead, the namespace stays under the app-server's
@@ -353,14 +354,8 @@ function anApp(
   const host = new RuntimeHost({
     store,
     ...neutralHostDeps(() => userData),
+    ...homesUnder(() => userData),
     createRuntime,
-    prepareProviderHome: (provider: Provider, profileId?: string) => {
-      const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-      mkdirSync(home, { recursive: true })
-      return home
-    },
-    providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-    resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
     newSessionId: () => `sess_${String(++counter)}`,
     commandListWaitMs: 60,
     readProviderConfig: (_provider, home) => ({

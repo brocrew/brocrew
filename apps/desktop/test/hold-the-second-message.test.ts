@@ -1,4 +1,5 @@
 import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
+import { latch } from './helpers/held-operation'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -53,15 +54,6 @@ import { pieceCalled, pieceNumbersOf } from '../src/shared/piece-called'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-/** A latch a test opens by hand. */
-const latch = (): { promise: Promise<void>; open: () => void } => {
-  let open = (): void => {}
-  const promise = new Promise<void>((resolve) => {
-    open = resolve
-  })
-  return { promise, open }
-}
 
 describe('657 · hold the second message instead of refusing it', () => {
   let userData: string

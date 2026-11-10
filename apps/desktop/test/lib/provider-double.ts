@@ -235,13 +235,16 @@ export function closingOnlyWhenReleased<Handle extends SessionHandle>(
   })
 }
 
-/** `394`'s double, with the handles kept — a test has to BE the provider to emit a status row. */
+/**
+ * `394`'s double, with the handles kept — a test has to BE the provider to emit a status row. A test
+ * that never holds a resume can leave the gate out.
+ */
 export class ProviderDouble extends FakeRuntime {
   constructor(
     provider: Provider,
     private readonly handles: FakeSessionHandle[],
     sessions: FakeProviderSessions,
-    private readonly resumeGate: ResumeGate,
+    private readonly resumeGate: ResumeGate = anOpenGate(),
   ) {
     super(provider, { sessions })
   }

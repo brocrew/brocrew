@@ -10,13 +10,9 @@ import type { Provider } from '@brobot2/shared'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, NULL_SESSION_STORE } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import {
-  MEMORY_NOTES_PER_EVENT,
-  MEMORY_NOTE_TEXT_CAP,
-  type RuntimeEventMessage,
-} from '../src/shared/runtime-ipc'
-import { neutralHostDeps } from './lib/host-fixture'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { MEMORY_NOTES_PER_EVENT, MEMORY_NOTE_TEXT_CAP } from '../src/shared/runtime-ipc'
+import { neutralHostDeps, RecordingSink as WindowSink } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
@@ -36,16 +32,11 @@ const migrationsDir = join(here, '../src/main/db/migrations')
  * real sink, and a note written into the real store directory while the turn is genuinely in flight.
  */
 
-class RecordingSink implements RuntimeEventSink {
-  // 349 · this double stands in for a WINDOW — the tests below answer for a person through it.
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId = 'owner:1') {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
+/** A window's sink: the tests below answer for a person through it. */
+class RecordingSink extends WindowSink {
+  constructor(ownerId = 'owner:1') {
+    super(ownerId)
   }
-  sendLiveness(): void {}
   events(): TranscriptEvent[] {
     return this.messages.map((message) => message.event)
   }

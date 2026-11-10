@@ -1,6 +1,6 @@
 import type { PieceRow } from '../src/shared/task-contracts'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -23,6 +23,7 @@ import { derivePieces } from '../src/shared/tasks'
 import { waitFor } from './lib/f093-host'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
+import { closeAndRemove } from './helpers/scratch-host'
 
 /**
  * # 🔴 D-013 · work running in the background isn't stalled (plan §3.7, §7)
@@ -291,9 +292,7 @@ describe('§4 · through the host: no stall notice while the build runs, and wha
   })
 
   afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    rmSync(userData, { recursive: true, force: true })
+    await closeAndRemove([host], db, userData)
   })
 
   const ledger = (sessionId: string) => store.events(sessionId).map((entry) => entry.event)

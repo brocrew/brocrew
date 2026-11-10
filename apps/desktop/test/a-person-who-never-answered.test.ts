@@ -14,6 +14,7 @@ import {
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { waitFor } from './lib/f093-host'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -169,15 +170,6 @@ describe('465 · a person who never answered', () => {
     const tool = tools.tools.find((one) => one.name === name)
     if (tool === undefined) throw new Error(`no such tool: ${name}`)
     return (await tool.call(args)).structured as Record<string, unknown>
-  }
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    // ⛔ **Bounded, and it reports rather than hangs** (standing rule 13).
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
   }
 
   const digestOf = (from = FROM, to = TO): ReturnType<typeof distil> =>

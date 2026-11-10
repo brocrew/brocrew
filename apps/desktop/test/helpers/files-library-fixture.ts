@@ -6,6 +6,9 @@ import { openDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { createSessionStore } from '../../src/main/db/session-store'
 import { FilesLibraryEngine } from '../../src/main/db/files-library-engine'
+import { FakeRuntime } from '@brobot2/runtime'
+import { NO_DISCOVERY } from '../../src/main/adopt/discover-sessions'
+import { RuntimeHost } from '../../src/main/runtime/runtime-host'
 import { filesExample } from '../fixtures/files-library-example'
 import type { FilesLibraryQuery, LibraryReadContext } from '../../src/shared/files-library'
 
@@ -21,6 +24,34 @@ export const libraryContext: LibraryReadContext = {
   givers: [],
   hostRevision: '0',
 }
+
+type HostDeps = ConstructorParameters<typeof RuntimeHost>[0]
+
+/** A host over `directory` whose only provider is a fake Codex; `deps` adds store and library. */
+export function aLibraryHost(
+  directory: string,
+  deps: Pick<HostDeps, 'store'> & Partial<HostDeps>,
+): RuntimeHost {
+  return new RuntimeHost({
+    discoverSessions: NO_DISCOVERY,
+    createRuntime: () => new FakeRuntime('codex'),
+    resolveCwd: () => directory,
+    prepareProviderHome: () => directory,
+    providerHomePath: () => directory,
+    nativeTranscriptPath: () => null,
+    exportDirectory: () => directory,
+    newSessionId: () => 'fictional-new',
+    readProviderConfig: () => ({
+      home: directory,
+      homeEnv: 'CODEX_HOME',
+      model: 'fictional',
+      authNote: null,
+      files: [],
+    }),
+    ...deps,
+  })
+}
+
 export function filesLibraryFixture(now?: () => number) {
   const directory = mkdtempSync(join(tmpdir(), 'fictional-files-library-'))
   const file = join(directory, 'fictional.sqlite')

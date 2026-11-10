@@ -4,12 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  FakeProviderSessions,
-  FakeRuntime,
-  type AgentToolset,
-  type StartOptions,
-} from '@brobot2/runtime'
+import { FakeProviderSessions, type AgentToolset } from '@brobot2/runtime'
 import { claudeMcpServersFor } from '../../../packages/runtime/src/claude/agent-tools'
 import { codexDynamicToolsFor } from '../../../packages/runtime/src/codex/agent-tools'
 import type { Provider } from '@brobot2/shared'
@@ -20,6 +15,7 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import { ToolWatchingRuntime } from './lib/provider-double'
 
 const PROJECT_MANAGER_PROFILE_ID = 'project-manager'
 
@@ -52,7 +48,7 @@ describe('two verbs, one sentence', () => {
     host = new RuntimeHost({
       store,
       ...neutralHostDeps(() => userData),
-      createRuntime: (provider: Provider) => new WatchingRuntime(provider, handed, sessions),
+      createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, sessions),
       prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
@@ -240,19 +236,4 @@ class Sink implements RuntimeEventSink {
     this.messages.push(message)
   }
   sendLiveness(): void {}
-}
-
-class WatchingRuntime extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
 }
