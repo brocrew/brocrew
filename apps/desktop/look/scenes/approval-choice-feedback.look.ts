@@ -13,7 +13,7 @@ scene('approval choice feedback', async (stage) => {
   let hearLiveness: Parameters<RuntimeBridge['onLiveness']>[0] = () => {}
   const store = createSessionStore({
     onEvent: () => () => {},
-    onLiveness: (listener) => {
+    onLiveness: (listener: Parameters<RuntimeBridge['onLiveness']>[0]) => {
       hearLiveness = listener
       return () => {}
     },
