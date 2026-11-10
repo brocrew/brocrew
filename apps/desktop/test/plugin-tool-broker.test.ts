@@ -5,8 +5,6 @@ import type {
   BrokerOptions,
   BrokerPerson,
   BrokerReply,
-  BrokerValue,
-  BrokerWorkspace,
 } from '../src/main/plugins/tool-broker'
 import { deferred, tick, setup } from './helpers/plugin-tool-broker'
 
@@ -207,43 +205,29 @@ describe('bounded fair serial queue', () => {
     ])
     expect(h.clock.timers.size).toBe(0)
   })
-  it('caps waiting requests at two per agent, without duplicate-grant quota evasion', async () => {
+  it('serves more than two queued calls from one agent and eight from one workspace', async () => {
     const h = setup()
     const first = h.call()
     await tick()
     const same = h.broker.owner.grantAgent(h.ws, 'fern-life-one')
     expect(same).toBe(h.agent)
-    const two = [h.call(), h.call(same)]
-    await expect(h.call(same)).rejects.toMatchObject({
-      code: 'busy',
-      message: 'Plugin busy. Try again.',
-    })
-    expect(h.broker.status().queued).toBe(2)
-    h.broker.owner.invalidate()
-    await Promise.allSettled([first, ...two])
-    h.server.calls[0]!.quiet.resolve()
-    await tick()
+    const pending = Array.from({ length: 10 }, () => h.call(same))
+    expect(h.broker.status().queued).toBe(10)
+    for (let i = 0; i < 11; i++) {
+      h.server.finish(i)
+      await tick()
+    }
+    await Promise.all([first, ...pending])
+    expect(h.server.calls).toHaveLength(11)
+    expect(h.broker.status()).toMatchObject({ available: true, queued: 0, executing: false })
   })
-  it('caps waiting requests at eight per workspace and active plus queued work at 64', async () => {
+  it('caps active plus queued work at 64 even for one agent', async () => {
     const h = setup()
     const first = h.call()
     await tick()
-    const pending: Promise<BrokerValue>[] = []
-    const spaces: BrokerWorkspace[] = []
-    for (let w = 0; w < 8; w++) {
-      const workspace = h.broker.owner.attach(`fictional-space-${w}`)
-      spaces.push(workspace)
-      for (let a = 0; a < 4; a++) {
-        const cap = h.broker.owner.grantAgent(workspace, `fictional-agent-${a}`)
-        pending.push(h.call(cap), h.call(cap))
-      }
-      const excess = h.broker.owner.grantAgent(workspace, 'one-too-many')
-      await expect(h.call(excess)).rejects.toMatchObject({ code: 'busy' })
-    }
+    const pending = Array.from({ length: 63 }, () => h.call())
     expect(h.broker.status().queued).toBe(63)
-    await expect(pending.at(-1)).rejects.toMatchObject({ code: 'busy' })
-    const extra = h.broker.owner.grantAgent(h.broker.owner.attach('overflow'), 'extra')
-    await expect(h.call(extra)).rejects.toMatchObject({ code: 'busy' })
+    await expect(h.call()).rejects.toMatchObject({ code: 'busy' })
     h.broker.owner.invalidate()
     await Promise.allSettled([first, ...pending])
     h.server.calls[0]!.quiet.resolve()

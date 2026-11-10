@@ -29,8 +29,6 @@ export type * from './tool-broker-types'
 
 export const PLUGIN_BROKER_LIMITS = Object.freeze({
   total: 64,
-  workspace: 8,
-  agent: 2,
   queueMs: 120_000,
   callMs: 120_000,
   cancelProofMs: 1000,
@@ -523,15 +521,9 @@ export function createPluginToolBroker(options: BrokerOptions): PluginToolBroker
         copy = supplied
         identity(capability, kind)
         if (signal?.aborted) return refuse('cancelled')
-        const q = queues.get(actor.workspace.id)
-        const workspaceCount = q
-          ? [...q.actors.values()].reduce((n, jobs) => n + jobs.length, 0)
-          : 0
         if (
           count + uncertain.size + (active && !uncertain.has(active) ? 1 : 0) >=
-            PLUGIN_BROKER_LIMITS.total ||
-          workspaceCount >= PLUGIN_BROKER_LIMITS.workspace ||
-          (q?.actors.get(actor.key)?.length ?? 0) >= PLUGIN_BROKER_LIMITS.agent
+            PLUGIN_BROKER_LIMITS.total
         )
           return refuse('busy')
       } catch (error) {

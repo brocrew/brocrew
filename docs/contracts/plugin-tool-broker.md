@@ -20,7 +20,7 @@ Before dispatch, the broker freezes copied normalized arguments/claims, checks c
 
 ## Queue and stopping
 
-One executing request per broker. Waiting limits: 64 total, eight per workspace, two per agent/person incarnation; the executing request is separate from those waiting counts. Round-robin selection first chooses a workspace, then one of its agents/person callers. Cancelled/empty buckets are removed, and a returning busy caller cannot take a second consecutive turn while another caller is waiting.
+One executing request per broker. Limit: 64 total, counting executing/unknown requests plus waiting ones. Round-robin selection among admitted jobs first chooses a workspace, then one of its agents/person callers. Cancelled/empty buckets are removed, and a returning busy caller cannot take a second consecutive turn while another caller is waiting.
 
 Queue admission and execution each have a 120-second monotonic deadline. The default clock uses `performance.now`; tests inject a clock and do not sleep. Queued abort/expiry never reaches the server. An active abort, revocation or deadline answers the caller immediately, requests cancellation once and retains the execution slot. A successful cancellation request and a returned result are independently insufficient to release it.
 
