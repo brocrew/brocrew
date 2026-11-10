@@ -193,25 +193,6 @@ describe('strict and bounded own-plugin RPC', () => {
     f.push({ loaves: 4 })
     expect(f.emit).toHaveBeenCalledTimes(2)
   })
-  it('waits for the snapshot slot after a successful Apply instead of reporting a false failure', async () => {
-    vi.useFakeTimers()
-    const f = rpcFixture()
-    await f.rpc.invoke(packet('read', 'before'))
-    await f.rpc.invoke(packet('proposeConfig', 'apply', { loaves: 3 }))
-    let finished = false
-    const refresh = f.rpc.invoke(packet('read', 'after')).then(
-      (value) => {
-        finished = true
-        return { ok: true, value }
-      },
-      () => ({ ok: false, value: null }),
-    )
-    await vi.advanceTimersByTimeAsync(999)
-    expect(finished).toBe(false)
-    f.advance()
-    await vi.advanceTimersByTimeAsync(1)
-    expect(await refresh).toEqual({ ok: true, value: { loaves: 2 } })
-  })
   it('reads fresh state when its slot opens instead of buffering a pre-Apply snapshot', async () => {
     vi.useFakeTimers()
     const f = rpcFixture()

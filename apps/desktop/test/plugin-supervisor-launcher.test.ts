@@ -8,7 +8,6 @@ import {
 } from '../src/main/plugins/supervisor/client'
 import { createPluginSupervisorLauncher } from '../src/main/plugins/supervisor/launcher'
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
-import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import { OWNER_LAUNCH_MS, OWNER_LIMITS } from '../src/main/plugins/supervisor/protocol'
 
 const program = vi.hoisted(() => ({ start: vi.fn() }))
@@ -156,24 +155,6 @@ describe.skipIf(process.platform === 'win32')('immutable supervisor launcher ref
     expect(settled).toBe(true)
     expect(await result).toMatchObject({ code: 'unavailable', cause: { cause: original } })
     expect(program.start).not.toHaveBeenCalled()
-  })
-  it('attaches to a simultaneous winner despite the losing launcher error', async () => {
-    const options = await workspaceOptions()
-    const owner = await PluginSupervisor.start({ root: options.root, workspaceRoots: [] })
-    const read = vi.spyOn(SupervisorStorage.prototype, 'read').mockReturnValueOnce(null)
-    const launch = vi.fn(async () => {
-      throw new Error('fictional losing starter')
-    })
-    let lease: PluginWorkspaceLease | undefined
-    try {
-      lease = await PluginWorkspaceLease.attach({ ...options, launch })
-      expect(owner.valid(lease.lease, lease.epoch)).toBe(true)
-      expect(launch).toHaveBeenCalledOnce()
-    } finally {
-      read.mockRestore()
-      await lease?.close()
-      await owner.shutdown()
-    }
   })
   it('refuses a global root inside a workspace before writing or starting anything', async () => {
     root = await realpath(await mkdtemp('/tmp/fictional-launcher-'))

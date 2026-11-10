@@ -79,19 +79,6 @@ it('freshly opens and closes all journal files while eliminating only duplicate 
   // Load and exclusive-lease entry/exit remain full checks; path checks stay.
   expect(directoryChecks.size).toBeGreaterThan(0)
   for (const count of directoryChecks.values()) expect(count).toBe(f.files.length + 4)
-  const metrics = {
-    kind: 'journal-read-syscalls',
-    files: f.files.length,
-    bytes: total,
-    opens: fileOpens.length,
-    closes: closed.mock.calls.length,
-    lstats: observed.mock.calls.length,
-    fstats: held.mock.calls.length,
-    reads: read.mock.calls.length,
-  }
-  console.log(JSON.stringify(metrics))
-  if (process.env.BROCREW_PLUGIN_DIAGNOSTIC_RECEIPT)
-    fs.appendFileSync(process.env.BROCREW_PLUGIN_DIAGNOSTIC_RECEIPT, JSON.stringify(metrics) + '\n')
   for (const result of opened.mock.results)
     if (result.type === 'return') expect(() => fs.fstatSync(result.value)).toThrow()
 })

@@ -750,6 +750,12 @@ describe('revocation and malformed downstream boundaries', () => {
     await expect(first).rejects.toMatchObject({ code: 'unavailable' })
     await expect(second).rejects.toMatchObject({ code: 'unavailable' })
     expect(h.server.calls).toHaveLength(1)
+    expect(h.audit).toContainEqual(
+      expect.objectContaining({ event: 'unavailable', reason: 'proof-rejected' }),
+    )
+    expect(h.audit).toContainEqual(
+      expect.objectContaining({ event: 'refused', code: 'unavailable' }),
+    )
     expect(JSON.stringify(h.audit)).not.toContain('fictional-quiescence-secret')
   })
   it('handles throwing result getters as a fixed failure with no unhandled secret exception', async () => {
@@ -852,19 +858,6 @@ it('does not dispatch when the caller aborts during preparation', async () => {
   expect(h.server.calls).toHaveLength(0)
   expect(h.broker.status()).toMatchObject({ executing: false, queued: 0 })
   expect(h.clock.timers.size).toBe(0)
-})
-
-it('audits every settled failure and distinguishes a rejected proof without retaining its error', async () => {
-  const h = setup()
-  const pending = h.call()
-  await tick()
-  h.server.calls[0]!.quiet.reject(new Error('fictional-private-proof-reason'))
-  await expect(pending).rejects.toMatchObject({ code: 'unavailable' })
-  expect(h.audit).toContainEqual(
-    expect.objectContaining({ event: 'unavailable', reason: 'proof-rejected' }),
-  )
-  expect(h.audit).toContainEqual(expect.objectContaining({ event: 'refused', code: 'unavailable' }))
-  expect(JSON.stringify(h.audit)).not.toContain('fictional-private-proof-reason')
 })
 
 it('distinguishes a queue deadline from a dispatched call deadline using fixed reasons', async () => {

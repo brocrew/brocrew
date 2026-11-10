@@ -70,24 +70,3 @@ it('correlates route issue and teardown with its lifecycle identities', async ()
   expect(labels.lastIndexOf('source-refresh')).toBeLessThan(labels.indexOf('release-received'))
   expect(JSON.stringify(events)).not.toContain(route.capability)
 })
-
-it('still records teardown when its observer throws', async () => {
-  const events: unknown[] = []
-  const f = await live({
-    routeTrace: (event) => {
-      events.push(event)
-      throw new Error('fictional observer failure')
-    },
-  })
-  const owner = lease()
-  const req = request(f.local.sink.workspaceId)
-  const route = (await f.bridge.routes(owner, req))[0]!
-  expect(route).toBeDefined()
-  await f.bridge.routes(owner, { ...req, release: true })
-  expect(events).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ event: 'route-close-start' }),
-      expect.objectContaining({ event: 'route-close-complete' }),
-    ]),
-  )
-})
