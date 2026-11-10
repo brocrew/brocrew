@@ -21,7 +21,7 @@ import { chainReading, escalationChain, NOTHING_NAMED_THE_WORK } from '../../src
 import type { WorkIncident } from '../../src/shared/work-incidents'
 import RuntimeScreen from '../../src/renderer/src/components/RuntimeScreen.vue'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts, useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import type {
   ProcessMemory,
