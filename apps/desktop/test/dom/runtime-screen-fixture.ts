@@ -27,6 +27,12 @@ vi.mock('../../src/renderer/src/components/ProviderSetupAtLaunch.vue', () => ({
   default: { render: () => null },
 }))
 
+const fixtureIds = new WeakMap<object, number>()
+let fixtureNext = 0
+function fixtureIdentity(value: object): number {
+  if (!fixtureIds.has(value)) fixtureIds.set(value, ++fixtureNext)
+  return fixtureIds.get(value)!
+}
 export let sessions: SessionStore
 export let agentStore: ReturnType<typeof createAgentStore>
 const changeListeners = new Set<Parameters<RuntimeBridge['onChanged']>[0]>()
@@ -34,10 +40,10 @@ export const changed: Parameters<RuntimeBridge['onChanged']>[0] = (change) => {
   for (const listener of [...changeListeners]) listener(change)
 }
 vi.mock('../../src/renderer/src/composables/useSessionStore', () => ({
-  useSessionStore: () => sessions,
+  useSessionStore: () => { console.log('S04_STORE_GET session', fixtureIdentity(sessions)); return sessions },
 }))
 vi.mock('../../src/renderer/src/composables/useAgentStore', () => ({
-  useAgentStore: () => agentStore,
+  useAgentStore: () => { console.log('S04_STORE_GET agent', fixtureIdentity(agentStore)); return agentStore },
 }))
 vi.mock('../../src/renderer/src/composables/useModelLists', () => ({
   useModelLists: () => createModelLists(() => window.api.runtime),
@@ -199,6 +205,9 @@ export function installRuntimeScreenFixture(): void {
   } as unknown as Window['api']
   sessions = createSessionStore(window.api.runtime as RuntimeBridge)
   agentStore = createAgentStore(window.api.runtime)
+  console.log('S04_STORE_INSTALL', fixtureIdentity(sessions), fixtureIdentity(agentStore))
+  const originalLoad = agentStore.load
+  agentStore.load = async () => { console.log('S04_AGENT_LOAD', fixtureIdentity(agentStore)); await originalLoad(); console.log('S04_AGENT_LOADED', fixtureIdentity(agentStore), agentStore.loaded.value) }
 }
 
 export function disposeRuntimeScreenFixture(): void {
