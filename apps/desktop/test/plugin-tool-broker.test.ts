@@ -470,6 +470,47 @@ describe('bounded fair serial queue', () => {
 })
 
 describe('independent transport calls', () => {
+  it.each(['reply-first', 'proof-first'])('releases a successful reply with rejected proof (%s)', async (order) => {
+    const h = setup((options) => ({ ...options, server: { ...options.server, independentToolCalls: true } }))
+    let outcome: unknown
+    void h.call().then((value) => { outcome = value }, (error) => { outcome = error })
+    await tick()
+    const call = h.server.calls[0]!
+    if (order === 'reply-first') call.result.resolve({ ok: true, value: 'remote reply' })
+    else call.quiet.reject(new Error('close failed'))
+    await tick()
+    if (order === 'reply-first') call.quiet.reject(new Error('close failed'))
+    else call.result.resolve({ ok: true, value: 'remote reply' })
+    await tick()
+    expect(outcome).toMatchObject({ message: expect.stringContaining('completion is unknown') })
+    expect(h.broker.status()).toMatchObject({ available: true, executing: false, awaitingQuiescence: true })
+    const second = h.call()
+    await tick()
+    expect(h.server.calls).toHaveLength(2)
+    h.server.finish(1)
+    await second
+    h.broker.owner.invalidate()
+    expect(h.broker.owner.hasCompletionProof()).toBe(false)
+  })
+  it('counts active admin work together with uncertain and queued calls', async () => {
+    const h = setup((options) => ({ ...options, server: { ...options.server, independentToolCalls: true } }))
+    for (let i = 0; i < 63; i++) {
+      const call = h.call()
+      await tick()
+      h.server.calls[i]!.result.resolve({ ok: false, cause: 'stalled' })
+      h.server.calls[i]!.quiet.reject(new Error('unproved'))
+      await expect(call).rejects.toMatchObject({ code: 'downstream' })
+      await tick()
+    }
+    const admin = tracked(h.broker.person.call(h.person, 'open_window', {}))
+    await tick()
+    let refused = false
+    void h.call().catch((error) => { refused = error.code === 'busy' })
+    await tick()
+    expect(refused).toBe(true)
+    h.server.finish(63)
+    await admin
+  })
   it('retains unknown completion across later successful calls until exact host exit', async () => {
     const exited = deferred<void>()
     const h = setup((options) => ({
@@ -492,11 +533,13 @@ describe('independent transport calls', () => {
     h.server.finish(1)
     await second
     expect(h.broker.status()).toMatchObject({ available: true, awaitingQuiescence: true })
+    expect(h.audit).toContainEqual(expect.objectContaining({ call: expect.objectContaining({ tool: 'read_page', state: 'completion-unknown', lastStage: 'unknown', startedAt: expect.any(String) }) }))
     h.broker.owner.invalidate()
     expect(h.broker.owner.hasCompletionProof()).toBe(false)
     exited.resolve()
     await tick()
     expect(h.broker.owner.hasCompletionProof()).toBe(true)
+    expect(h.audit).toContainEqual(expect.objectContaining({ call: expect.objectContaining({ tool: 'read_page', state: 'host-exited' }) }))
   })
   it('bounds retained uncertainty with the existing total capacity', async () => {
     const h = setup((options) => ({

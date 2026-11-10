@@ -88,7 +88,7 @@ it('keeps the same route usable after an SDK idle timeout without claiming remot
   await vi.advanceTimersByTimeAsync(60_001)
   await expect(pending).resolves.toMatchObject({
     isError: true,
-    content: [{ text: expect.stringMatching(/echo.*(stalled|progress|timeout)/i) }],
+    content: [{ text: 'Tool echo took too long; completion is unknown. The operation may still be running.' }],
   })
   expect(f.broker.status().available).toBe(true)
   expect(f.broker.owner.hasCompletionProof()).toBe(false)
