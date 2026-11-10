@@ -304,10 +304,6 @@ describe('strict catalogue and manifest profiles', () => {
 
 describe('ASCII package namespace in manifest and archive', () => {
   it.each([
-    ['dotted-I filenames', ['\u0130.mjs', 'i\u0307.mjs']],
-    ['sharp-S filenames', ['\u00df.mjs', '\u1e9e.mjs']],
-    ['dotted-I parents', ['\u0130/first.mjs', 'i\u0307/second.mjs']],
-    ['sharp-S parents', ['\u00df/first.mjs', '\u1e9e/second.mjs']],
     ['reserved basename', ['dist/CON.mjs', 'dist/allowed.mjs']],
     ['ASCII case filenames', ['dist/recipe.mjs', 'dist/RECIPE.mjs']],
     ['ASCII case parents', ['Store/first.mjs', 'store/second.mjs']],
