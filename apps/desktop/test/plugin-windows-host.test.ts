@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { once } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import {
   lstatSync,
@@ -180,20 +181,36 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
       mkdirSync(cache)
       const name = `Local\\BroCrew.Plugin.${randomUUID()}`
       const keeper = startJobKeeper({ name, cache, openMs: 120_000 })
-      const bystander = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' })
+      const bystander = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], {
+        stdio: 'ignore',
+      })
       children.push(bystander)
       try {
         expect(await keeper.opened).not.toBeNull()
         let member: ChildProcess | undefined
+        let descendant: number | undefined
         if (state === 'live') {
-          member = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' })
+          // The command to spawn its child is sent only after assignment, as plugin admission is.
+          member = spawn(
+            process.execPath,
+            [
+              '-e',
+              "process.on('message',()=>{const c=require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',detached:true});process.send(c.pid)});setInterval(()=>{},1000)",
+            ],
+            { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] },
+          )
           children.push(member)
           expect(await keeper.assign(member.pid!)).toMatch(/^\d+$/)
-          expect(await keeper.count()).toBe(1)
+          const reported = once(member, 'message')
+          member.send('start')
+          descendant = Number((await reported)[0])
+          expect(running(descendant)).toBe(true)
+          expect(await keeper.count()).toBe(2)
         }
         if (state === 'closed') expect(await keeper.end()).toBe(true)
         expect(await recoverWindowsJob(name, cache)).toBe(true)
         if (member) expect(running(member.pid!)).toBe(false)
+        if (descendant) expect(running(descendant)).toBe(false)
         if (state !== 'closed') expect(await keeper.count()).toBe(0)
         expect(running(bystander.pid!)).toBe(true)
       } finally {

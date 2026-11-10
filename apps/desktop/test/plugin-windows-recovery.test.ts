@@ -12,21 +12,32 @@ vi.mock('../resources/plugin-host/windows-job.mjs', async (original) => ({
 }))
 
 const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
-let root: string, run: string, processRecord: Record<string, unknown>, job: Record<string, unknown>
+let root: string,
+  run: string,
+  processRecord: Record<string, unknown>,
+  job: Record<string, unknown>
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'fictional-windows-recovery-'))
-  const runId = randomUUID(), nonce = randomUUID()
+  const runId = randomUUID(),
+    nonce = randomUUID()
   run = join(root, 'host/runs', runId)
   await mkdir(run, { recursive: true })
   processRecord = {
-    format: 1, runId, pluginId: 'fictional', releaseDigest: 'f'.repeat(64),
-    guardianPid: 40000, groups: [[40001, '123456789']],
+    format: 1,
+    runId,
+    pluginId: 'fictional',
+    releaseDigest: 'f'.repeat(64),
+    guardianPid: 40000,
+    groups: [[40001, '123456789']],
   }
   job = {
-    ...processRecord, nonce, state: 'assigned-ready',
+    ...processRecord,
+    nonce,
+    state: 'assigned-ready',
     server: { pid: 40001, birth: '123456789' },
     job: {
-      format: 1, name: `Local\\BroCrew.Plugin.${nonce}`,
+      format: 1,
+      name: `Local\\BroCrew.Plugin.${nonce}`,
       guardian: { pid: 40000, birth: '123456780' },
       keeper: { pid: 40002, birth: '123456781' },
       boot: { kind: 'windows-tick64-v1', value: '1000' },
@@ -48,14 +59,19 @@ it.each(['missing', 'failed'])(
     if (exit === 'failed')
       await writeFile(join(run, 'exit.json'), JSON.stringify({ ...processRecord, exited: false }))
     const reboot = vi.fn()
-    expect(await previousRunsProvenStopped(root, {
-      previous: null, readBootWitness: reboot, onRebootRequired: reboot,
-    })).toBe(true)
+    expect(
+      await previousRunsProvenStopped(root, {
+        previous: null,
+        readBootWitness: reboot,
+        onRebootRequired: reboot,
+      }),
+    ).toBe(true)
     expect(native.recover).toHaveBeenCalledOnce()
     expect(native.recover.mock.calls[0]?.[0]).toBe((job.job as { name: string }).name)
     expect(reboot).not.toHaveBeenCalled()
     expect(JSON.parse(await readFile(join(run, 'exit.json'), 'utf8'))).toMatchObject({
-      ...processRecord, exited: true,
+      ...processRecord,
+      exited: true,
     })
   },
 )
