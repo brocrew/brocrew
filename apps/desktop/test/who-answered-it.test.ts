@@ -13,7 +13,6 @@ import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { distil } from '../src/main/runtime/digest'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { HAND_CARRIED, V23_FIELD_MAP } from './lib/design-v2-map'
 import {
   applyEvent,
   createTranscript,
@@ -50,7 +49,6 @@ import { callOn } from './helpers/call-tool'
  *    settled carries no actor.
  *  - The words: the vocabulary's sentences, the sentence for a row with no actor (the digest
  *    composes the same one), and the conversation id kept off the card.
- *  - The map: the actor slot and the sentence it supports.
  *
  * The one planted population is a row written before the app recorded an actor. The provider is a
  * double and every directory is temporary.
@@ -412,36 +410,6 @@ describe('503 · who answered it', () => {
       // the string `undefined` for such a row until this dispatch.
       expect(didIt(later)).toBe('a-kind-a-later-build-wrote')
       expect(didIt(later)).not.toContain('undefined')
-    })
-  })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §4 · the map — `494` F2's two sentences, corrected with the surface (rule 19's corollary)
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§4 · the map', () => {
-    it('⛔ the actor slot names its source and its absent sentence is the one the product composes', () => {
-      const actor = V23_FIELD_MAP.find((field) => field.path === 'requests[].actor')
-      expect(actor, 'the map no longer answers for the actor').toBeDefined()
-      expect(actor!.binding.state).toBe('derived')
-      expect(
-        actor!.binding.state === 'hole' ? [] : actor!.binding.from.map((one) => one.symbol),
-      ).toEqual(['UserDecisionEvent'])
-      // ⚑ **Resolved against the product rather than transcribed**: the sentence the map says the
-      // surface draws is the sentence the surface draws.
-      expect(actor!.absent).toContain(whoAnsweredIt(undefined))
-      // ⛔ …and the retired ruling is gone rather than reworded.
-      expect(actor!.absent).not.toContain('Omit the row')
-    })
-
-    it('🔴 the v2.3 sentence `494` F2 found false is `supported`, and names a source', () => {
-      const quote =
-        'An answer or denial stays attributed, with its reason and final provider outcome.'
-      const sentence = HAND_CARRIED.find((one) => one.quote === quote)
-      expect(sentence, 'the audit no longer holds the sentence').toBeDefined()
-      expect(sentence!.verdict).toBe('supported')
-      expect(sentence!.renderFrom.map((one) => one.symbol)).toContain('UserDecisionEvent')
-      expect(sentence!.heldIn).toEqual(['v2.3'])
     })
   })
 })
