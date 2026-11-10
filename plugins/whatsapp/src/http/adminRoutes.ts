@@ -64,13 +64,13 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
   const switched = (
     input: unknown,
     res: Response,
-    change: (body: Record<string, unknown>) => void,
+    change: (body: Record<string, unknown>) => void | false,
     allowed: readonly string[] = ['enabled'],
   ): void => {
     const body = bodyOf(input, allowed)
     if (!body || typeof body.enabled !== 'boolean') return invalid(res)
     try {
-      change(body)
+      if (change(body) === false) return invalid(res)
     } catch (error) {
       if (res.locals.configuration) throw error
       return invalid(res)
@@ -111,11 +111,10 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     if (!(await bridge.pair())) return send(res, 409, { error: 'state' })
     send(res, 200, bridge.status())
   })
-  command('unlink-phone', '/unlink', async (body, res) => {
+  command('unlink-phone', '/unlink', (body, res) => {
     if (!bodyOf(body, [])) return invalid(res)
     const work = bridge.unlink()
-    if (res.locals.configuration) await work
-    else void work
+    if (res.locals.configuration) return work.then(() => send(res, 200, {}))
     send(res, 202, {})
   })
   // Before the app deletes the plugin: log out, phone side included, and wait until the data is gone.
@@ -149,7 +148,7 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
           !GROUP_ID.test(group) ||
           (body.enabled === true && !bridge.groups().some((one) => one.jid === group))
         )
-          throw new Error('group')
+          return false
         settings.setWritable(group, body.enabled as boolean)
       },
       ['group', 'enabled'],

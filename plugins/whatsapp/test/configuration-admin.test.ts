@@ -34,7 +34,9 @@ async function boot() {
       headers: { 'content-type': 'application/json' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
-    return { status: response.status, body: await response.json() }
+    const body = response.headers.get('content-type')?.includes('application/json')
+      ? await response.json() : await response.text()
+    return { status: response.status, body }
   }
   return { bridge, settings, request,
     apply: (payload: unknown) => request('/configuration', { payload, configRevision: 0 }),
@@ -80,6 +82,10 @@ it('rejects invalid package commands and retains actual failures without retries
   const f = await boot()
   expect((await f.apply({ action: 'unknown' })).status).toBe(400)
   expect((await f.apply({ action: 'set-read', enabled: 'yes' })).status).toBe(400)
+  for (const group of [undefined, 'invalid', '120363999999999999@g.us']) {
+    expect((await f.apply({ action: 'set-group-write', group, enabled: true })).status).toBe(400)
+    expect((await f.request('/group-write', { group, enabled: true })).status).toBe(400)
+  }
   expect((await f.apply({ action: 'link-phone' })).status).toBe(409)
   expect((await f.request('/configuration', { payload: null, configRevision: 0 })).status).toBe(400)
   const refresh = vi.spyOn(f.bridge, 'refreshGroups').mockRejectedValue(new Error('bridge disconnected'))
@@ -93,4 +99,15 @@ it('rejects invalid package commands and retains actual failures without retries
     status: 500, body: { error: 'disk full' },
   })
   expect(write).toHaveBeenCalledOnce()
+})
+it('lets Express handle a synchronous old-route unlink failure and returns it from generic configuration', async () => {
+  const f = await boot()
+  const unlink = vi.spyOn(f.bridge, 'unlink').mockImplementation(() => {
+    throw new Error('pending marker write failed')
+  })
+  expect((await f.request('/unlink', {})).status).toBe(500)
+  expect(await f.apply({ action: 'unlink-phone' })).toEqual({
+    status: 500, body: { error: 'pending marker write failed' },
+  })
+  expect(unlink).toHaveBeenCalledTimes(2)
 })
