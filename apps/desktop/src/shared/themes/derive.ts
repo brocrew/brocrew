@@ -114,7 +114,7 @@ export function deriveZone(seeds: ZoneSeeds): DerivedZone {
   return out
 }
 
-export const FRAME_STATUS = { mix: 40, chroma: 2.5 } as const
+const FRAME_STATUS = { mix: 40, chroma: 2.5 } as const
 
 export function frameStatus(status: Rgba, frameInk: Rgba): Rgba {
   return scaleChroma(mixOklab(status, FRAME_STATUS.mix, frameInk), FRAME_STATUS.chroma)
@@ -124,7 +124,7 @@ export const TYPE_FLOOR = 12
 
 export const TYPE_DEFAULTS = { base: 14, ratio: 1.26 } as const
 
-export const TYPE_STEPS = {
+const TYPE_STEPS = {
   caption: -0.5,
   small: -0.25,
   body: 0,

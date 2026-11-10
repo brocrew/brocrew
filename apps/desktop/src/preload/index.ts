@@ -13,6 +13,7 @@ import type { OwnNotesWrite } from '../shared/own-notes'
 import {
   RECOVERY_RETENTION_CHANNELS,
   type RetainedRecoveryCopy,
+  type RecoveryRetentionClient,
 } from '../shared/recovery-retention'
 import { pluginsBridge } from './plugins'
 import { storageBridge } from './storage'
@@ -1037,7 +1038,7 @@ const api = Object.freeze({
       ipcRenderer.invoke(RECOVERY_RETENTION_CHANNELS.read) as Promise<RetainedRecoveryCopy | null>,
     deleteNow: (id: string): Promise<void> =>
       ipcRenderer.invoke(RECOVERY_RETENTION_CHANNELS.delete, id),
-  }),
+  } satisfies RecoveryRetentionClient),
   transcriptRetention: Object.freeze({
     read: (): Promise<TranscriptRetention> =>
       ipcRenderer.invoke(TRANSCRIPT_RETENTION_CHANNELS.read) as Promise<TranscriptRetention>,

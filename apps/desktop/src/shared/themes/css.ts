@@ -38,7 +38,7 @@ export const THEME_ATTRIBUTES: readonly string[] = (() => {
 export const BRAND_MARK_FIGURE = '--brand-mark-figure'
 
 /** The longhands a background setting is written as, after its name. */
-export const FILL_LONGHANDS = ['color', 'image', 'size', 'position', 'repeat', 'rendering'] as const
+const FILL_LONGHANDS = ['color', 'image', 'size', 'position', 'repeat', 'rendering'] as const
 
 export const THEME_CUSTOM_PROPERTIES: readonly string[] = (() => {
   const out: string[] = []
