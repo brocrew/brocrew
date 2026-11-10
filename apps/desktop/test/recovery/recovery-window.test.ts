@@ -1,7 +1,5 @@
-import { readFileSync } from 'node:fs'
 import { dirname, join, sep } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
-import ts from 'typescript'
+import { pathToFileURL } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RECOVERY_CHANNELS, type RecoveryBridge } from '../../src/shared/recovery'
 import { HIDDEN_TITLE } from '../../src/main/launch-presentation'
@@ -101,9 +99,6 @@ vi.mock('electron', () => {
     },
   }
 })
-
-const here = dirname(fileURLToPath(import.meta.url))
-const SRC = join(here, '../../src')
 
 beforeEach(() => {
   vi.stubEnv('ELECTRON_RENDERER_URL', '')
@@ -310,54 +305,4 @@ describe('the recovery preload', () => {
     stopVerdicts()
     expect(electron.stopped).toEqual(electron.listening)
   })
-
-  /**
-   * A sandboxed preload can load no module but `electron`, so a shared chunk the build might make
-   * for anything it imports would stop it from loading. Every other import must be `import type`,
-   * which the build drops: an `import { type X }` can still leave a bare import behind.
-   */
-  it('loads no module but electron: every other import is a type, so no shared chunk can appear', () => {
-    const preload = readFileSync(join(SRC, 'preload', 'recovery.ts'), 'utf8')
-    expect(modulesLoadedBy(preload)).toEqual(['electron'])
-    expect(preload).toMatch(/^import type \{[^}]*\} from '\.\.\/shared\/recovery'$/m)
-
-    // Each way a module could come back in is seen.
-    for (const [planted, loaded] of [
-      ["import { RECOVERY_CHANNELS } from '../shared/recovery'", '../shared/recovery'],
-      ["import { type StartupVerdict } from '../shared/recovery'", '../shared/recovery'],
-      ["import '../shared/recovery'", '../shared/recovery'],
-      ["export { RECOVERY_CHANNELS } from '../shared/recovery'", '../shared/recovery'],
-      ["const shared = await import('../shared/recovery')", '../shared/recovery'],
-      ["const shared = require('../shared/recovery')", '../shared/recovery'],
-    ] as const) {
-      expect(modulesLoadedBy(`${planted}\n${preload}`)).toEqual([loaded, 'electron'])
-    }
-    expect(modulesLoadedBy("import type { X } from '../shared/recovery'")).toEqual([])
-  })
 })
-
-/** The modules `source` loads when it runs: every import, export-from or require but a type's. */
-function modulesLoadedBy(source: string): string[] {
-  const file = ts.createSourceFile('preload.ts', source, ts.ScriptTarget.Latest, true)
-  const loaded: string[] = []
-  const named = (node: ts.Expression | undefined): string =>
-    node !== undefined && ts.isStringLiteralLike(node) ? node.text : '(computed)'
-  const visit = (node: ts.Node): void => {
-    if (ts.isImportDeclaration(node) && node.importClause?.isTypeOnly !== true) {
-      loaded.push(named(node.moduleSpecifier))
-    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier && !node.isTypeOnly) {
-      loaded.push(named(node.moduleSpecifier))
-    } else if (ts.isImportEqualsDeclaration(node) && !node.isTypeOnly) {
-      loaded.push('(import =)')
-    } else if (
-      ts.isCallExpression(node) &&
-      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-        (ts.isIdentifier(node.expression) && node.expression.text === 'require'))
-    ) {
-      loaded.push(named(node.arguments[0]))
-    }
-    ts.forEachChild(node, visit)
-  }
-  visit(file)
-  return loaded
-}

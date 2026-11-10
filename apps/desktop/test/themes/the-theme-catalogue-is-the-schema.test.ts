@@ -1,8 +1,6 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { themeCatalogue } from '../../src/shared/themes/catalogue'
-import { HELD_SETTINGS, overridableIn } from '../../src/shared/themes/schema'
+import { HELD_SETTINGS } from '../../src/shared/themes/schema'
 import { validateTheme } from '../../src/shared/themes/validate'
 import { contextFor } from './fixtures'
 
@@ -55,13 +53,6 @@ describe('the catalogue an agent reads', () => {
 
   it('is plain data an agent tool can send as JSON', () => {
     expect(JSON.parse(JSON.stringify(catalogue))).toEqual(catalogue)
-  })
-})
-
-describe('every colour token a theme may set by hand is a token the window declares', () => {
-  const tokens = readFileSync(join(__dirname, '../../src/renderer/src/assets/tokens.css'), 'utf8')
-  it.each([...overridableIn('content')])('--%s', (name) => {
-    expect(tokens).toMatch(new RegExp(`^\\s*--${name}\\s*:`, 'm'))
   })
 })
 

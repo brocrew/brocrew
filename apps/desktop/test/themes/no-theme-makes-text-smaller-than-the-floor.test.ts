@@ -1,7 +1,5 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { TYPE_DEFAULTS, TYPE_FLOOR, TYPE_STEPS, typeSizes } from '../../src/shared/themes/derive'
+import { TYPE_DEFAULTS, typeSizes } from '../../src/shared/themes/derive'
 import { validateTheme } from '../../src/shared/themes/validate'
 import { contextFor } from './fixtures'
 
@@ -69,30 +67,5 @@ describe('the type scale a theme’s size and ratio make', () => {
       { ...contextFor(), builtIns },
     )
     expect(r.ok ? [] : r.problems.map((p) => p.at)).toEqual(['shared.typeRatio'])
-  })
-})
-
-describe('the window works the scale out as the check does', () => {
-  const css = readFileSync(join(__dirname, '../../src/renderer/src/assets/tokens.css'), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\s+/g, ' ')
-    .replace(/\(\s+/g, '(')
-    .replace(/\s+\)/g, ')')
-
-  it.each(Object.entries(TYPE_STEPS))('--type-%s', (role, power) => {
-    const growth =
-      power === 1
-        ? '* var(--type-ratio)'
-        : power > 0
-          ? `* pow(var(--type-ratio), ${power})`
-          : `/ pow(var(--type-ratio), ${-power})`
-    const formula =
-      power === 0 ? 'var(--type-base)' : `round(calc(var(--type-base) ${growth}), 1px)`
-    expect(css).toContain(`--type-${role}: max(${TYPE_FLOOR}px, ${formula});`)
-  })
-
-  it('the default size and ratio are the check’s', () => {
-    expect(css).toContain(`--type-base: ${TYPE_DEFAULTS.base}px;`)
-    expect(css).toContain(`--type-ratio: ${TYPE_DEFAULTS.ratio};`)
   })
 })

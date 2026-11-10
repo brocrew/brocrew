@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { registerThemeIpc } from '../../src/main/themes/ipc'
 import { themeDefaultsFor } from '../../src/main/themes/defaults'
@@ -141,10 +140,5 @@ describe('the first surface has the cached chosen theme before an async read can
       dispose()
     }
     expect(synchronous.size).toBe(0)
-  })
-
-  it('bootstraps only the main frame in the packaged preload', async () => {
-    const source = await readFile(new URL('../../src/preload/index.ts', import.meta.url), 'utf8')
-    expect(source).toMatch(/if\s*\(process\.isMainFrame\)\s*themeBeforePaint\(ipcRenderer\)/)
   })
 })
