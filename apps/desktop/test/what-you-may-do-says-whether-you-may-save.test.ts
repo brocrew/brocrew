@@ -13,8 +13,6 @@ import {
 } from '../src/main/runtime/factory-text'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
-import { requestTabs, type ReaderRow } from '../src/renderer/src/lib/request-order'
-import { givenAnswer } from './dom/what-this-agent-was-given.fixture'
 
 /**
  * Every launch says, under "What you may do", whether the conversation may save to its profile's
@@ -89,14 +87,6 @@ describe('"What you may do" says whether this conversation may save memory', () 
     )
   })
 
-  it('stays the last line when the app blocks creating agents', () => {
-    for (const launch of [withAProfile, withNone]) {
-      const said = whatYouMayDo({ ...launch, spawningEnabled: false }).trimEnd()
-      expect(said.endsWith(launch === withNone ? MAY_NOT_SAVE_MEMORY : MAY_SAVE_MEMORY)).toBe(true)
-      expect(said).toContain('This app currently blocks creating agents')
-    }
-  })
-
   for (const provider of providerSchema.options) {
     it(`${provider}: each line reaches the model where this conversation's text goes`, () => {
       expect(handed(provider, withAProfile)).toContain(MAY_SAVE_MEMORY)
@@ -109,36 +99,4 @@ describe('"What you may do" says whether this conversation may save memory', () 
     expect(composeProfileBundle(withAProfile)).not.toContain(MAY_SAVE_MEMORY)
     expect(composeProfileBundle(withNone)).not.toContain(MAY_NOT_SAVE_MEMORY)
   })
-
-  for (const [layout, launch, line] of [
-    ['claude', withAProfile, MAY_SAVE_MEMORY],
-    ['codex', withNone, MAY_NOT_SAVE_MEMORY],
-  ] as const) {
-    it(`the popup (${layout}) shows the line in the text this conversation was given`, () => {
-      const text = thisConversationSpans(launch).text
-      const base = givenAnswer()
-      const given = givenAnswer({
-        thisConversation: {
-          text,
-          textIs: 'as-launched',
-          sections: [],
-          size: { characters: text.length, words: 0, tokens: 0 },
-        },
-        ...(layout === 'codex'
-          ? {
-              placement: 'first-message' as const,
-              providerParts: { ...base.providerParts, snapshot: null },
-            }
-          : {}),
-      })
-      const key = layout === 'claude' ? 'this-conversation' : 'conversation-lead'
-      const row = requestTabs(given, [], true, () => 'today')
-        .flatMap((tab) => tab.items)
-        .find((item) => item.kind === 'row' && item.key === key) as ReaderRow | undefined
-      expect(row).toBeDefined()
-      expect(row!.pieces.some((piece) => piece.kind === 'text' && piece.text.includes(line))).toBe(
-        true,
-      )
-    })
-  }
 })

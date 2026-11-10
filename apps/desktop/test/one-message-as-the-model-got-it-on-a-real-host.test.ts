@@ -28,25 +28,6 @@ import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-/**
- * # 🔴 F093 · C9 d — one message as the model got it, on a real host
- *
- * ⚑ **A real host over a real ledger**, the provider a double that echoes what it was handed
- * (`what-a-turn-of-several-held-messages-says-and-keeps.test.ts`' harness), and `main/index.ts`'s
- * instruction wiring, so a launch keeps its record. What the devs' own C9 d cases do not reach:
- *
- *  - §1 · a turn of several held messages: its words one per message, and the text handed over is
- *    exactly what the provider got (its echo); a turn mixing the app's words with a person's is no
- *    one sender's.
- *  - §2 · a message with a file: the words are the person's, the text handed over names the file.
- *  - §3 · ⛔ a message never sent (held, then cancelled): no place in the record answers with it.
- *  - §4 · ⛔ the launch record not taken: a conversation brought in from elsewhere, and a record this
- *    app cannot read — each paired with the same conversation read before.
- *  - §5 · a message row that will not parse is passed over for the one before it, never read as none.
- *
- * ⛔ No real provider home is read: every folder is a temporary one made here.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
@@ -64,7 +45,7 @@ const letItSettle = async (ticks = 20): Promise<void> => {
   for (let i = 0; i < ticks; i += 1) await new Promise((resolve) => setTimeout(resolve, 5))
 }
 
-describe('F093 · C9 d · one message as the model got it, on a real host', () => {
+describe('one message as the model got it, on a real host', () => {
   let userData: string
   let root: string
   let db: AppDatabase

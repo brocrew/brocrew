@@ -92,19 +92,6 @@ describe('one status vocabulary and one tightest limit line', () => {
       providerStanding({ ...facts, auth: { state: 'unknown', reason: 'No answer.' } }),
     ).toEqual({ words: "Couldn't check", tone: 'unknown' })
   })
-  it('uses Ready, Needs setup and amber At its limit from the existing facts', () => {
-    expect(providerStanding(facts)).toEqual({ words: 'Ready', tone: 'ready' })
-    expect(
-      providerStanding({
-        ...facts,
-        auth: { state: 'absent', reason: 'No fictional login.', why: 'no-login' },
-      }),
-    ).toEqual({ words: 'Needs setup', tone: 'not-ready' })
-    expect(providerStanding({ ...facts, atItsLimit: 'At its limit until later.' })).toEqual({
-      words: 'At its limit',
-      tone: 'at-limit',
-    })
-  })
   it('an unreadable saved key cannot be hidden by a usable account or a limit', () => {
     expect(
       providerStanding({

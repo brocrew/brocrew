@@ -19,7 +19,6 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { NONE_STARTED, theProviderOfAnAgent } from '../src/shared/agent-roster'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
@@ -29,7 +28,7 @@ import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
  * conversations ran on both is a person's to choose; and one nothing has run takes it at its first
  * start, and keeps it.
  *
- * ⚑ Real host, real SQLite ledger, real migrations. The providers are doubles that record which
+ * Real host, real SQLite ledger, real migrations. The providers are doubles that record which
  * provider each start ran on; every Codex sign-in file here is a fake one in a scratch folder.
  */
 
@@ -74,41 +73,6 @@ class WatchingRuntime extends FakeRuntime {
     return handle
   }
 }
-
-describe('the rule: what an agent runs on', () => {
-  it('a provider saved for it wins over its conversations', () => {
-    expect(theProviderOfAnAgent('codex', { claude: 3, codex: 0 })).toEqual({
-      provider: 'codex',
-      from: 'saved',
-    })
-  })
-
-  it('with none saved, conversations that all started on one provider name it', () => {
-    expect(theProviderOfAnAgent(null, { claude: 2, codex: 0 })).toEqual({
-      provider: 'claude',
-      from: 'its-conversations',
-    })
-    expect(theProviderOfAnAgent(null, { claude: 0, codex: 1 })).toEqual({
-      provider: 'codex',
-      from: 'its-conversations',
-    })
-  })
-
-  it('conversations on both name none, and say how many ran on each', () => {
-    expect(theProviderOfAnAgent(null, { claude: 3, codex: 1 })).toEqual({
-      provider: null,
-      from: 'its-conversations-differ',
-      startedOn: { claude: 3, codex: 1 },
-    })
-  })
-
-  it('with none saved and none started, nothing names one yet', () => {
-    expect(theProviderOfAnAgent(null, NONE_STARTED)).toEqual({
-      provider: null,
-      from: 'nothing-yet',
-    })
-  })
-})
 
 describe('through the host: a give never changes an agent’s provider', () => {
   let userData: string

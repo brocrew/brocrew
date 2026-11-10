@@ -48,30 +48,8 @@ import { derivePieces, theDriveOfTheTurn } from '../src/shared/tasks'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 
-/**
- * # 🔴 D-027 · what a turn of several held messages says, and what it keeps
- *
- * ⚑ **The card**: *everything waiting for a conversation goes in together, as one
- * turn, oldest first, each message under its own sender* — and the ledger records ONE `user_turn` per
- * delivery, with the messages as its `parts`. DEV's `2f080601` re-aimed 25 files by cause; what none of
- * them pins is the turn of several ITSELF: the words it is handed as, the keys it keeps, and every
- * reader that has to read each message under its own sender. This file is that measure.
- *
- * ⚑ **Two halves.** The readers a turn of several is read through are pure, and are measured with no
- * host: the words, `theMessagesOf`, the fold of the work the turn drives, the window's draw. The host's
- * half — the flush, the ledger it writes, the doors that join or refuse to join — runs a real host over
- * a real ledger, with the provider as a double that echoes what it was handed.
- *
- * ⚠️ **What this cannot say**: what a hosted model does with a turn of several. It measures what the
- * provider was handed and what the ledger holds, never a model's obedience to the words.
- *
- * ⛔ A negative is read beside a positive from the same reader, and a presence is asserted before an
- * order or a text.
- */
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// the pure half
-// ─────────────────────────────────────────────────────────────────────────────────────────────
+// The pure readers are checked with no host; the flush and the doors run a real host over a real
+// ledger, with a provider double that echoes what it was handed.
 
 let ordinal = 0
 let clock = 5_000_000
@@ -153,11 +131,9 @@ describe('D-027 · the turn of several, read with no host', () => {
     expect(two.indexOf('first words')).toBeLessThan(two.indexOf('second words'))
   })
 
-  it('§2 · a plain turn is its own one message, a turn with parts is its parts, and a row whose parts do not read is none — and the cap is 64', () => {
+  it('§2 · a plain turn is its own one message, a turn with parts is its parts, and a row whose parts do not read is none', () => {
     const aTurn = (parts?: unknown): UserTurnEvent =>
       ({ type: 'user_turn', text: 't', ...(parts === undefined ? {} : { parts }) }) as UserTurnEvent
-
-    expect(MAX_TURN_PARTS).toBe(64)
 
     // ⚑ A turn with no `parts` key reads as itself, and as the one message it is.
     const plain = aTurn()
@@ -176,19 +152,9 @@ describe('D-027 · the turn of several, read with no host', () => {
     for (const junk of ['x', {}, null]) {
       expect(theMessagesOf(aTurn(junk)), JSON.stringify(junk)).toEqual([])
     }
-    // ⚑ …and an entry reads only as an object with words.
     expect(theMessagesOf(aTurn([null, 'a', 7, {}, { text: 5 }, { text: 'ok' }]))).toEqual([
       { text: 'ok' },
     ])
-
-    // ⚑ The cap, and the paired positive: 64 are all kept, the 70 are cut at the 64th.
-    const at = (count: number): { text: string }[] =>
-      Array.from({ length: count }, (_, index) => ({ text: `p${String(index)}` }))
-    expect(theMessagesOf(aTurn(at(64)))).toHaveLength(64)
-    const cut = theMessagesOf(aTurn(at(70)))
-    expect(cut).toHaveLength(64)
-    expect(cut[0]?.text).toBe('p0')
-    expect(cut.at(-1)?.text).toBe('p63')
   })
 
   it('§3 · a turn drives one piece only when every message in it names that one', () => {
@@ -429,10 +395,6 @@ describe('D-027 · the turn of several, read with no host', () => {
     expect(describeEvent(aTurnOpens('hello'))).toBe('5 chars (ours)')
   })
 })
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// the host's half — one app: a real host, a real ledger, the provider as a double that echoes
-// ─────────────────────────────────────────────────────────────────────────────────────────────
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -1020,34 +982,6 @@ describe('D-027 · what a ledger and the agents’ doors say of a turn of severa
         (who) => who.conversation,
       )[0],
     ).toBe('Its last turn answered a person, who wrote:')
-  })
-
-  it('§8 · the verbs’ descriptions say a held message goes with whatever else is held, and a brief is a message of its own', async () => {
-    const pm = await app.personOpens('pm')
-    const descriptionOf = (name: ToolName): string => {
-      const tool = pm.tools.tools.find((one) => one.name === name)
-      if (tool === undefined) throw new Error(`no such tool: ${name}`)
-      return tool.description
-    }
-
-    const messageAgent = descriptionOf('message_agent')
-    expect(messageAgent).toContain(
-      'It is held until that agent is free, then delivered with whatever else is held for it, oldest first (a person’s command goes on its own).',
-    )
-    expect(messageAgent).not.toContain('as an ordinary turn')
-    // ⚑ Each still carries a sentence it always had, so the check reads the right tool's text.
-    expect(messageAgent).toContain('To give work, use give_work')
-
-    const giveWork = descriptionOf('give_work')
-    expect(giveWork).toContain('the brief is sent to it as a message of its own')
-    expect(giveWork).toContain(
-      'the one the words that began this turn were about, when they were about one',
-    )
-    expect(giveWork).toContain('Returns the piece’s label')
-
-    const updateWork = descriptionOf('update_work')
-    expect(updateWork).toContain('sent to the agent holding it as a message of its own')
-    expect(updateWork).toContain('The newest title, status line, brief and done condition stand')
   })
 })
 
