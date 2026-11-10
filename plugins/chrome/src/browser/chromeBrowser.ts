@@ -756,7 +756,7 @@ export class ChromeBrowser implements ProfileBrowser {
       }
       check()
       return frameIdsOf(tree.frameTree)
-    }, onprogress)
+    }, existing ? undefined : onprogress)
     let completed = false
     let savedGuid: string | undefined
     let unobserve = () => {}

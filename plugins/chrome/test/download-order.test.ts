@@ -199,6 +199,8 @@ it.each([false, true])('observes an earlier GUID without taking its capture owne
   let count = 0
   try {
     await pathReady.promise
+    f.begin('unrelated-guid', 'unrelated.txt')
+    await flush()
     for (const bytes of [2, 2, 1, 5]) f.session.emit('Browser.downloadProgress', {
       guid: 'earlier-guid', state: 'inProgress', receivedBytes: bytes, totalBytes: 11,
     })
