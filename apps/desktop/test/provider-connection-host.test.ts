@@ -12,7 +12,11 @@ import { createSessionStore } from '../src/main/db/session-store'
 import { resolveProviderConnection } from '../src/main/db/provider-connections'
 import { createCodexModule } from '../src/main/providers/codex/index'
 import { ApiKeys } from '../src/main/runtime/api-keys'
-import { RuntimeHost, type RuntimeEventSink, type RuntimeHostDeps } from '../src/main/runtime/runtime-host'
+import {
+  RuntimeHost,
+  type RuntimeEventSink,
+  type RuntimeHostDeps,
+} from '../src/main/runtime/runtime-host'
 
 let db: AppDatabase
 const saved = new Set<Provider>()

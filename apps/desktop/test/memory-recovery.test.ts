@@ -309,12 +309,25 @@ describe('memory intent survives interruption before its single honest observati
             .all()
         const columns = () => saved.prepare('PRAGMA table_info(identity_memory_amendment)').all()
         const foreignKeys = () =>
-          (saved.prepare('PRAGMA foreign_key_list(identity_memory_amendment)').all() as {
-            table: string; from: string; to: string; on_update: string; on_delete: string; match: string
-          }[]).map((key) => ({
-            table: key.table, from: key.from, to: key.to,
-            on_update: key.on_update, on_delete: key.on_delete, match: key.match,
-          })).sort((a, b) => a.from.localeCompare(b.from))
+          (
+            saved.prepare('PRAGMA foreign_key_list(identity_memory_amendment)').all() as {
+              table: string
+              from: string
+              to: string
+              on_update: string
+              on_delete: string
+              match: string
+            }[]
+          )
+            .map((key) => ({
+              table: key.table,
+              from: key.from,
+              to: key.to,
+              on_update: key.on_update,
+              on_delete: key.on_delete,
+              match: key.match,
+            }))
+            .sort((a, b) => a.from.localeCompare(b.from))
         const originalColumns = columns()
         const originalForeignKeys = foreignKeys()
         applyMigrations(saved, migrations)

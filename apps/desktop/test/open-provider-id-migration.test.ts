@@ -83,8 +83,7 @@ const movedStateRows: Record<string, Record<string, unknown>> = {
 }
 
 function plant(db: AppDatabase, last: number): void {
-  if (last >= 28)
-    for (const [table, row] of Object.entries(movedStateRows)) put(db, table, row)
+  if (last >= 28) for (const [table, row] of Object.entries(movedStateRows)) put(db, table, row)
   legacyConversation(db, {
     id: 'cedar',
     profileId: 'cedar-baker',
@@ -259,67 +258,70 @@ afterEach(() => {
   for (const folder of directories.splice(0)) rmSync(folder, { recursive: true, force: true })
 })
 
-it.each([0, 17, 21, 28])('preserves populated rows and references when upgrading after %s', (last) => {
-  const { folder, file, db } = fixture()
-  applyMigrations(db, through(folder, last))
-  plant(db, last)
-  const tables = [
-    'provider_session',
-    'turn',
-    'events',
-    'derived_generation',
-    'work',
-    'work_resource',
-    'identity_instruction',
-    'identity_memory_amendment',
-  ]
-  if (last >= 21) tables.push('provider_connection', 'work_legacy_stall_cut')
-  if (last >= 28) tables.push(...Object.keys(movedStateRows))
-  const kept = tables.map((table) => ({
-    table,
-    columns: (db.pragma(`table_info(${quote(table)})`) as { name: string }[]).map(
-      (column) => column.name,
-    ),
-    rows: rows(db, table),
-  }))
-  const triggers = db
-    .prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger' ORDER BY name")
-    .all()
-  applyMigrations(db, migrations)
-  expect(db.pragma('foreign_keys', { simple: true })).toBe(1)
-  expect(db.pragma('foreign_key_check')).toEqual([])
-  for (const before of kept) {
-    const expected =
-      before.table === 'events' && last === 0
-        ? (before.rows as Record<string, unknown>[])
-            .filter((row) => row.id !== 'fragment')
-            .map((row) => ({ ...row, ordinal: 0 }))
-        : before.rows
-    expect(rows(db, before.table, before.columns), before.table).toEqual(expected)
-  }
-  expect(exists(db, 'raw_frame')).toBe(false)
-  // Later historical migrations may add triggers; each one already present must survive.
-  const afterTriggers = db
-    .prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger' ORDER BY name")
-    .all()
-  expect(afterTriggers).toEqual(expect.arrayContaining(triggers))
-  expect(
-    db
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type='index' AND (tbl_name='provider_session' OR tbl_name='identity_memory_amendment') AND sql IS NOT NULL",
-      )
-      .all(),
-  ).toHaveLength(8)
-  db.close()
-  const reopened = openDatabase(file)
-  databases.push(reopened)
-  expect(rows(reopened, 'provider_session')).toMatchObject([
-    { id: 'birch', profile_id: 'birch-gardener', parent_session_id: 'cedar' },
-    { id: 'cedar', profile_id: 'cedar-baker', connection_id: null },
-  ])
-  applyMigrations(reopened, migrations)
-  expect(reopened.pragma('foreign_key_check')).toEqual([])
-})
+it.each([0, 17, 21, 28])(
+  'preserves populated rows and references when upgrading after %s',
+  (last) => {
+    const { folder, file, db } = fixture()
+    applyMigrations(db, through(folder, last))
+    plant(db, last)
+    const tables = [
+      'provider_session',
+      'turn',
+      'events',
+      'derived_generation',
+      'work',
+      'work_resource',
+      'identity_instruction',
+      'identity_memory_amendment',
+    ]
+    if (last >= 21) tables.push('provider_connection', 'work_legacy_stall_cut')
+    if (last >= 28) tables.push(...Object.keys(movedStateRows))
+    const kept = tables.map((table) => ({
+      table,
+      columns: (db.pragma(`table_info(${quote(table)})`) as { name: string }[]).map(
+        (column) => column.name,
+      ),
+      rows: rows(db, table),
+    }))
+    const triggers = db
+      .prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger' ORDER BY name")
+      .all()
+    applyMigrations(db, migrations)
+    expect(db.pragma('foreign_keys', { simple: true })).toBe(1)
+    expect(db.pragma('foreign_key_check')).toEqual([])
+    for (const before of kept) {
+      const expected =
+        before.table === 'events' && last === 0
+          ? (before.rows as Record<string, unknown>[])
+              .filter((row) => row.id !== 'fragment')
+              .map((row) => ({ ...row, ordinal: 0 }))
+          : before.rows
+      expect(rows(db, before.table, before.columns), before.table).toEqual(expected)
+    }
+    expect(exists(db, 'raw_frame')).toBe(false)
+    // Later historical migrations may add triggers; each one already present must survive.
+    const afterTriggers = db
+      .prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger' ORDER BY name")
+      .all()
+    expect(afterTriggers).toEqual(expect.arrayContaining(triggers))
+    expect(
+      db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='index' AND (tbl_name='provider_session' OR tbl_name='identity_memory_amendment') AND sql IS NOT NULL",
+        )
+        .all(),
+    ).toHaveLength(8)
+    db.close()
+    const reopened = openDatabase(file)
+    databases.push(reopened)
+    expect(rows(reopened, 'provider_session')).toMatchObject([
+      { id: 'birch', profile_id: 'birch-gardener', parent_session_id: 'cedar' },
+      { id: 'cedar', profile_id: 'cedar-baker', connection_id: null },
+    ])
+    applyMigrations(reopened, migrations)
+    expect(reopened.pragma('foreign_key_check')).toEqual([])
+  },
+)
 
 it.each([
   [true, 21],

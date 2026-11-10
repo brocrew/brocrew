@@ -313,7 +313,9 @@ describe('main wires the home seams to the one folder (D-016a)', () => {
     // …and main never spells the layout itself.
     expect(main).not.toMatch(/HOME_FOLDER|['"]provider-homes['"]/)
     // …and neither seam takes a third parameter, which is where a segment used to arrive.
-    expect(main).not.toMatch(/(?:prepareProviderHome|providerHomePath): (?:async )?\(provider, profileId, \w+\) =>/)
+    expect(main).not.toMatch(
+      /(?:prepareProviderHome|providerHomePath): (?:async )?\(provider, profileId, \w+\) =>/,
+    )
   })
 
   it('the census has teeth: a seam that ignores the profile it is given is not the seam', () => {
@@ -342,7 +344,9 @@ describe('main wires the home seams to the one folder (D-016a)', () => {
     expect(flat(codeOf('prepareProviderHome: (provider, profileId, segment) => x'))).toMatch(
       /(?:prepareProviderHome|providerHomePath): (?:async )?\(provider, profileId, \w+\) =>/,
     )
-    expect(flat(codeOf('prepareProviderLaunch: (provider, profileId, connection) => x'))).not.toMatch(
+    expect(
+      flat(codeOf('prepareProviderLaunch: (provider, profileId, connection) => x')),
+    ).not.toMatch(
       /(?:prepareProviderHome|providerHomePath): (?:async )?\(provider, profileId, \w+\) =>/,
     )
     expect(codeOf('// every home is under `HOME_FOLDER`\nconst a = 1')).not.toMatch(/HOME_FOLDER/)
