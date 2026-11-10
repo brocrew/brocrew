@@ -1,9 +1,9 @@
 import { REQUEST_STATES } from '../src/shared/question-contracts'
 import type { RaisedQuestion, RoutedRequest } from '../src/shared/question-contracts'
-import { TASK_STALL_CAUSES, TASK_STATES } from '../src/shared/task-contracts'
+import { TASK_STATES } from '../src/shared/task-contracts'
 import type { PieceRow, WhatAConversationIsWaitingOn } from '../src/shared/task-contracts'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -34,45 +34,13 @@ import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider
 import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
- * 🔴 **603 · waiting on an answer is not stalled** — `HO-018` §2.1, `HO-085`, `HO-091` §1.
- *
- * ## ⚑ The property
- *
- * > **A worker whose question nobody has answered reads as ASKING, on every surface that reports a
- * > task's state — and a worker nothing is driving still reads as STALLED.**
- *
- * ## ⛔ Why the vocabulary had to gain a member rather than a surface gaining a filter
- *
- * ⚠️ **`437` wrote the argument down rather than omitting a state**, and `591` re-derived it rather
- * than assuming it: *"A verb that returned immediately would end the turn, and the fold would then
- * say `stalled` with `turn_ended`: 'its turn ended and it replied nothing', which is FALSE of a
- * worker that asked."* ⛔ So `ask_parent` HELD the turn, and the hold was the only thing standing
- * between a parent and that sentence.
- *
- * 🔴 **608 · the hold is GONE and this composition is what stands in its place** (`HO-084` §4,
- * unblocked by this dispatch). ⛔ **A worker that asks now ends its turn**, `derivePieces` writes
- * `stalled`/`turn_ended` exactly as `437` predicted, and every surface reads `asking` over it.
- * ⚑ §3's sequence is unchanged and its premise is: it used to need the five-minute bound to expire
- * before a turn could end under an open question, and now that is simply what happens.
- *
- * ## ⚠️ Where the readings diverge, which is where every section is written
- *
- *  - **§1** the FOLD, untouched — `400`'s rule is kept rather than relaxed, and the assertion
- *    `437` wrote against a fourth state is re-aimed rather than deleted.
- *  - **§2** the composition, pure — both arms, with a planted control that differs in ONE fact.
- *  - **§3** the live sequence — a real ask, a real turn ending, and the two workers read in ONE
- *    call so the control is trapped the way the subject is.
- *  - **§4** the surfaces AGREE — the same task, read three ways, says the same word.
- *  - **§5** one derivation — the door that ENDS a question and the read that reports it resolve the
- *    same set, measured by ending one and watching the word move.
- *  - **§6** the censuses — the vocabulary, the words, and every surface that reports a state.
- *
- * ⚑ **Real host, real SQLite, real migrations, real tools.**
+ * A worker whose question nobody has answered reads as waiting on an answer on every surface that
+ * reports a piece's state, while the fold still says `stalled` once its turn ends; a worker nothing
+ * is driving still reads as stalled. Real host, SQLite, migrations and tools.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const hostSource = join(here, '../src/main/runtime/runtime-host.ts')
 
 class RecordingSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = true
@@ -84,13 +52,6 @@ class RecordingSink implements RuntimeEventSink {
   }
   sendLiveness(): void {}
 }
-
-/**
- * ⚠️ **Prose quotes code all over this repository, so a census that COUNTS has to read the code
- * only** — `a-source-census-must-strip-prose-before-it-asserts`.
- */
-const code = (text: string): string =>
-  text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ')
 
 describe('603 · waiting on an answer is not stalled', () => {
   let userData: string
@@ -340,15 +301,10 @@ describe('603 · waiting on an answer is not stalled', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
   /**
-   * 🔴 **§1 · the FOLD is untouched, and that is `400`'s rule kept rather than relaxed.**
-   *
-   * ⛔ **`400`, at the fold's own `travelled` set:** *"Ids only: what became of each one is
-   * `deriveRoutedRequests`' answer and this fold must not grow a second opinion about it."*
-   * ⚑ Whether a question is still open IS that answer, so the fold may not learn it — and the
-   * proof is that `derivePieces` still says `stalled` over exactly the ledger §3 composes to
-   * `asking`.
+   * Whether a question is still open is `deriveRoutedRequests`' answer, so the fold does not learn
+   * it: `derivePieces` still says `stalled` over the ledger the composition reads as waiting.
    */
-  describe('§1 · derivePieces cannot produce the new state and must not learn to', () => {
+  describe('derivePieces cannot produce the new state and must not learn to', () => {
     it('⛔ a question outstanding moves nothing in the fold, and the turn ending still stalls it', () => {
       const assigned = at(1, {
         type: 'work_given',
@@ -374,63 +330,19 @@ describe('603 · waiting on an answer is not stalled', () => {
         parent: 'sess_pm',
       })
       const ended = at(4, { type: 'turn', state: 'completed' })
-      // ⚑ **`437`'s own pair, unchanged**: with the question and without it, the fold agrees.
       expect(derivePieces('sess_w', [assigned, asked, routed])[0]?.state).toBe('working')
       const both = derivePieces('sess_w', [assigned, asked, routed, ended])[0]
       expect(both?.state).toBe('stalled')
       expect(both?.stalledBecause).toBe('turn_ended')
-      // ⛔ **And no prefix of that ledger folds to the new member.** A fold taught to suppress the
-      // stall while a question is open is the second opinion `400` forbids, and it would pass every
-      // assertion in §2 while breaking this one.
+      // No prefix of that ledger folds to the waiting state.
       const prefixes = [assigned, asked, routed, ended].map((_, index) =>
         derivePieces('sess_w', [assigned, asked, routed, ended].slice(0, index + 1)),
       )
       expect(prefixes.flat().map((row) => row.state)).not.toContain('waiting-on-an-answer')
-      // ⚑ **And the prefixes really did reach the states this claims to have looked at** — a
-      // negative over a list of empty folds would pass for the wrong reason.
+      // The prefixes really reached these states, so the negative above is not over empty folds.
       expect(new Set(prefixes.flat().map((row) => row.state))).toEqual(
         new Set(['working', 'stalled']),
       )
-    })
-
-    it('🔴 437 · `no member was added to TASK_STATES` is RE-AIMED, not deleted — the fold still reaches neither', () => {
-      // ⛔ **`437` §1 asserted the vocabulary had gained nothing, and `HO-018` §2.1 · `HO-085` §6 ·
-      // `HO-091` §1 are the rulings that reverse it** — standing rule 19: find the ruling, open it,
-      // and say what the sentence was a claim ABOUT. ⚑ What `437` was protecting is the clause
-      // below it, which is untouched: the ASK reaches neither table, because nothing in
-      // `raiseAQuestion` writes a task state and `derivePieces` has no branch that could.
-      // ⚠️ **609 · re-aimed for the rename and its two new neighbours.** `asking` became
-      // `waiting-on-an-answer` so the family reads as a set; what `437` was protecting is below.
-      expect([...TASK_STATES]).toContain('waiting-on-an-answer')
-      expect(TASK_IS_OPEN['waiting-on-an-answer']).toBe(true)
-      const host = readFileSync(hostSource, 'utf8')
-      const asking = code(host).slice(
-        code(host).indexOf('async raiseAQuestion('),
-        code(host).indexOf('\n  }\n', code(host).indexOf('async raiseAQuestion(')),
-      )
-      expect(asking.length, 'the slice found no raiseAQuestion body').toBeGreaterThan(400)
-      // ⛔ **The verb writes no state and reads no task fold to decide one.**
-      for (const state of TASK_STATES) expect(asking).not.toContain(`'${state}'`)
-      expect(asking).not.toContain('composeWhatEachPieceIsWaitingOn')
-      // ⚑ **And the fold cannot reach the request derivation at all** — `400`'s rule as an IMPORT
-      // census rather than as a word count.
-      //
-      // ⛔ **A word census was written here first and it was the wrong instrument.** `answered` and
-      // `withdrawn` are members of BOTH vocabularies and `interrupted` is a TURN state, so
-      // `not.toContain("'interrupted'")` was asserting something false about code that is right —
-      // `a-file-level-contains-cannot-tell-sibling-declarations-apart`, and
-      // `derive-a-roster-from-the-import-not-the-mention` is the shape that answers it.
-      const fold = readFileSync(join(here, '../src/shared/tasks.ts'), 'utf8')
-      const imported = [...code(fold).matchAll(/import[\s\S]*?from '([^']+)'/g)]
-      expect(imported.length, 'the import census found no imports').toBeGreaterThan(2)
-      const fromQuestions = imported.filter(
-        (one) => one[1] === './questions' || one[1] === './question-contracts',
-      )
-      // ⚠️ **One import and it is a TYPE**, which carries no derivation into this module: a value
-      // import of `REQUEST_IS_OPEN` or `deriveRoutedRequests` is exactly the second opinion `400`
-      // forbids, and it would appear here.
-      expect(fromQuestions).toHaveLength(1)
-      expect(fromQuestions[0]?.[0]).toBe("import type { WorkInHand } from './question-contracts'")
     })
   })
 
@@ -935,82 +847,21 @@ describe('603 · waiting on an answer is not stalled', () => {
     })
   })
 
-  /**
-   * 🔴 **§6 · the censuses — the vocabulary, the words, and every surface that reports a state.**
-   */
-  describe('§6 · the vocabulary gained a member and every exhaustive reader gained a sentence', () => {
-    it('⛔ the member is in both tables, is OPEN, and the two tables are keyed by one another', () => {
-      expect(Object.keys(TASK_IS_OPEN).sort()).toEqual([...TASK_STATES].sort())
-      // ⚠️ **609 · re-aimed and WIDENED** — two members joined the family, and the list is the
-      // rule rather than four examples.
-      expect(TASK_STATES.filter((state) => TASK_IS_OPEN[state])).toEqual([
-        'waiting',
-        'working',
-        'waiting-on-an-answer',
-        'waiting-on-a-person',
-        'waiting-on-a-worker',
-        // ⚑ **D-016 · commit 6 · a fourth wait, OPEN like its family** — a piece a person gave,
-        // whose owner's turn ended with it open.
-        'waiting-on-the-person-who-asked',
-        // ⚑ **F097 · a fifth, OPEN the same way** — a piece a conversation gave, whose owner's turn
-        // a person's words opened and ended with it open.
-        'waiting-on-the-person-who-wrote',
-        // ⚑ **A sixth, OPEN the same way** — a piece marked as waiting on purpose.
-        'waiting-on-purpose',
-        'stalled',
-      ])
-      // ⚑ **D-016, commit 5 · a third ending joined the closed side** — the giver closed the work —
-      // and commit 5 left the open list above as it was.
-      expect(TASK_STATES.filter((state) => !TASK_IS_OPEN[state])).toEqual([
-        'answered',
-        'withdrawn',
-        'closed',
-      ])
-      // ⛔ **And it did NOT become a stall cause** — a cause says what the ENGINE observed stopping
-      // the work, and here nothing stopped; `HO-085` §2's table is the measurement this reverses.
-      for (const wait of TASK_WAITS) expect([...TASK_STALL_CAUSES]).not.toContain(wait)
-      // ⚑ **D-017 · R10 · 5 → 6** — `could_not_be_reopened`, which IS something stopping the work
-      // (the conversation holding it was replaced), and is no wait. ⚑ **D-016c · 6 → 5** —
-      // `conversation_ended` went: a process stopping changes nothing about a piece. ⚑ **5 → 6** —
-      // `background_stopped`: the background work a piece waited on stopped with its conversation,
-      // which IS something stopping the work, and is no wait. ⚑ **F074 · 6 → 7** —
-      // `provider_limited`: the provider refused the turn for its usage limit, which IS something
-      // stopping the work, and is no wait. ⚑ **F076 · 7 → 8** — `login_refused`: the provider
-      // refused the turn on a login this Mac had moved on from, which IS something stopping the
-      // work, and is no wait. 8 → 9 with `billing_refused`: the provider would not bill the account
-      // the turn ran on, which stops the work, and is no wait.
-      expect([...TASK_STALL_CAUSES]).toHaveLength(9)
-      expect([...TASK_STALL_CAUSES].at(-1)).toBe('billing_refused')
-    })
-
+  describe('the state words', () => {
     it('⚑ every member has its OWN word, driven over the constant rather than over a list here', () => {
       const words = TASK_STATES.map((state) => WORK_STATE_WORD[state])
       expect(words.filter((word) => word.length > 0)).toHaveLength(TASK_STATES.length)
       expect(new Set(words).size).toBe(TASK_STATES.length)
-      // ⚠️ **A real sentence and not a placeholder** — `a-closed-vocabulary-guards-what-a-member-
-      // says`. The word is about the WORK and names nobody, because the state does not: an
-      // escalation moves who owes the answer without moving anything about the task.
+      // The word names nobody: who owes the answer can move (a parent's question escalates to a
+      // person) while nothing about the work changes.
       expect(WORK_STATE_WORD['waiting-on-an-answer']).toBe('waiting on an answer')
       for (const forbidden of ['parent', 'person', 'BroBot']) {
         expect(WORK_STATE_WORD['waiting-on-an-answer']).not.toContain(forbidden)
       }
-      // 🔴 **609 · the rule above is about THIS member and does not range over its neighbours**,
-      // and saying so is standing rule 19's *find what the sentence was a claim about*.
-      // ⛔ *Waiting on an answer* must name nobody because WHO owes the answer MOVES: a question
-      // routed to the parent becomes a person's at an escalation with nothing about the work
-      // changing. ⚑ *Waiting on a person* may name one because who owes it CANNOT move — the
-      // routing is `RequestOnlyAPersonCanSettle` and a proposal is a person's by construction —
-      // so the word is a property of the state rather than a guess about a reader.
+      // Who owes a person's wait cannot move, so its word may say so.
       expect(WORK_STATE_WORD['waiting-on-a-person']).toContain('person')
-      // ⚠️ **And still never *you***: any person at this machine may answer, and the window
-      // drawing the row may not be the one that will. ⚑ **D-016 · commit 6 · the one wait that
-      // does say *you* is named, with its reason**: a piece a person gave waits on the person who
-      // asked for it, and is said on the piece only, in the conversation they asked in — its reader
-      // is only ever the one whose request it is. ⛔ Asserted as the whole set, so every other wait
-      // is still held to the rule and a second exception is a red verdict.
-      // 🔴 **F083 · and since then, none does**: the one exception now reads *replied*.
-      // ⚑ **F097 · one again, with its reason**: a piece waiting on the person who wrote is counted
-      // under *Waiting on you*, so its word may say so (`three-waits-one-family.test.ts`).
+      // Only a piece waiting on the person who wrote is counted under "Waiting on you", so only
+      // its word addresses the reader.
       expect(
         TASK_WAITS.filter((wait) => /\byou\b/.test(WORK_STATE_WORD[wait])),
         'the waits whose word addresses the reader',

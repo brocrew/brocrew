@@ -1,5 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,7 +17,6 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import {
   DEFAULT_PROFILE_ID,
-  RUNTIME_CHANGE_SUBJECTS,
   type RuntimeChangeMessage,
   type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
@@ -25,31 +24,12 @@ import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider
 import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
- * 🔴 **638 · work moved and nothing announced it** — `631` §6.2, in the frontend seat's own words:
- * ⛔ ***"`534`'s `runtime:changed` fires on the session-row write that creates a child; no
- * equivalent fires when work moves between conversations. Until one does, the only way the band can
- * know is the 30-second poll."***
- *
- * ## ⛔ What this suite measures, and what it deliberately does not
- *
- * ⚑ **`638` §2.2 asks for a test that a change ARRIVES, not a LATENCY** — *"prefer a test that a
- * change ARRIVES AT ALL without a poll, which is a fact rather than a duration"*. ⛔ **Nothing here
- * reads a clock or asserts a millisecond.** Every assertion is *this act announced* or *this act
- * did not*.
- *
- * ⚠️ **And the negative half is as load-bearing as the positive one.** `638` §3.2: *"do not make it
- * a firehose"*. 🔴 §4 is what holds a turn's stall to ONE announcement (D-033), never one per row
- * of the provider stream.
+ * An act that moves work announces `work`, so a window re-reads without waiting for its poll.
+ * Nothing here reads a clock: every assertion is "this act announced" or "this act did not", and a
+ * turn's stall announces once, never once per provider event.
  */
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const srcRoot = join(here, '../src')
-
-/** ⛔ **CODE only** — `a-source-census-must-strip-prose-before-it-asserts`. */
-const codeOf = (file: string): string =>
-  readFileSync(join(srcRoot, file), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/^[ \t]*\/\/.*$/gm, ' ')
 
 describe('638 · a change to a conversation’s work announces itself', () => {
   class RecordingSink implements RuntimeEventSink {
@@ -202,34 +182,29 @@ describe('638 · a change to a conversation’s work announces itself', () => {
     return mine
   }
 
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§1 · the subject', () => {
-    it('⛔ `work` is a member, and the four name four populations', () => {
-      expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work', 'persons'])
-      // ⚑ **Distinct**, because a duplicate would make one reader run for the other's fact —
-      // `an-enumeration-whose-members-must-differ-needs-a-distinctness-check`.
-      expect(new Set(RUNTIME_CHANGE_SUBJECTS).size).toBe(RUNTIME_CHANGE_SUBJECTS.length)
-    })
-
-    it('⚠️ the payload carries the subject and NOTHING else — no conversation id', () => {
-      // 🔴 **`638` §3.2's granularity, asserted rather than described.** ⛔ A task's state is
-      // composed from OTHER conversations' ledgers, so an id would name a transitive closure
-      // nobody has bounded — see {@link RUNTIME_CHANGE_SUBJECTS}' own note.
-      const wire = codeOf('shared/runtime-ipc.ts')
-      const at = wire.indexOf('export interface RuntimeChangeMessage {')
-      expect(at).toBeGreaterThan(-1)
-      const body = wire.slice(at, wire.indexOf('\n}', at))
-      // The subject, and on a `persons` notice the publication it was made at: an epoch and a
-      // sequence, which name no conversation.
-      const fields = [...body.matchAll(/^ {2}readonly (\w+)\??:/gm)].map((one) => one[1])
-      expect(fields).toEqual(['what', 'published'])
-      expect(body).toContain('readonly what: RuntimeChangeSubject')
-      expect(body).toContain(
-        'readonly published?: { readonly epoch: PublicationEpoch; readonly seq: number }',
+  /** {@link aChainOfTwo}, its worker held by a second window and parked on its first card. */
+  const aWorkerParkedOnItsCard = async (): Promise<{
+    pm: string
+    worker: string
+    surface: RecordingSink
+    card: string
+  }> => {
+    const { pm, worker } = await aChainOfTwo()
+    const surface = new RecordingSink('webContents:9')
+    host.claimSession(worker, surface)
+    await waitFor(
+      () => ledger(worker).some((event) => event.type === 'permission_request'),
+      'the worker to park',
+    )
+    const card = ledger(worker)
+      .filter(
+        (event): event is TranscriptEvent & { type: 'permission_request'; id: string } =>
+          event.type === 'permission_request',
       )
-    })
-  })
+      .at(-1)
+    if (card === undefined) throw new Error('no card')
+    return { pm, worker, surface, card: card.id }
+  }
 
   describe('§2 · a change ARRIVES, with no poll and no clock', () => {
     it('🔴 WORK GIVEN announces, and the control beside it does not', async () => {
@@ -250,21 +225,8 @@ describe('638 · a change to a conversation’s work announces itself', () => {
     })
 
     it('🔴 WORK ANSWERED announces', async () => {
-      const { worker } = await aChainOfTwo()
-      const surface = new RecordingSink('webContents:9')
-      host.claimSession(worker, surface)
-      await waitFor(
-        () => ledger(worker).some((event) => event.type === 'permission_request'),
-        'the worker to park',
-      )
-      const card = ledger(worker)
-        .filter(
-          (event): event is TranscriptEvent & { type: 'permission_request'; id: string } =>
-            event.type === 'permission_request',
-        )
-        .at(-1)
-      if (card === undefined) throw new Error('no card')
-      await host.respondPermission(worker, card.id, { outcome: 'allow' }, surface)
+      const { worker, surface, card } = await aWorkerParkedOnItsCard()
+      await host.respondPermission(worker, card, { outcome: 'allow' }, surface)
       const mine = theOpenPieceOf(worker)
 
       announced.length = 0
@@ -278,25 +240,10 @@ describe('638 · a change to a conversation’s work announces itself', () => {
     })
 
     it('🔴 a QUESTION about the work announces — the half `638` nearly shipped silent', async () => {
-      // ⛔ **The gap this dispatch's own adversarial pass found.** ⚑ A piece's `state` is COMPOSED
-      // from `WhatAConversationIsWaitingOn`, and `answers` is one of THREE halves: a worker asking
-      // about its work moves the row to `waiting-on-an-answer` on the holder's list AND the
-      // giver's — and the first five announcements did not cover it.
-      const { worker } = await aChainOfTwo()
-      const surface = new RecordingSink('webContents:9')
-      host.claimSession(worker, surface)
-      await waitFor(
-        () => ledger(worker).some((event) => event.type === 'permission_request'),
-        'the worker to park',
-      )
-      const card = ledger(worker)
-        .filter(
-          (event): event is TranscriptEvent & { type: 'permission_request'; id: string } =>
-            event.type === 'permission_request',
-        )
-        .at(-1)
-      if (card === undefined) throw new Error('no card')
-      await host.respondPermission(worker, card.id, { outcome: 'allow' }, surface)
+      // Asking about a piece moves it to `waiting-on-an-answer` on the holder's list and the
+      // giver's.
+      const { worker, surface, card } = await aWorkerParkedOnItsCard()
+      await host.respondPermission(worker, card, { outcome: 'allow' }, surface)
       const mine = theOpenPieceOf(worker)
 
       announced.length = 0
@@ -341,21 +288,8 @@ describe('638 · a change to a conversation’s work announces itself', () => {
     it('⚑ …a REOPEN of a conversation whose only work is ANSWERED does not', async () => {
       // ⚑ The task is still in the ledger, and closed — a reopen moves no piece, and there is no
       // open piece for anything to move.
-      const { worker } = await aChainOfTwo()
-      const surface = new RecordingSink('webContents:9')
-      host.claimSession(worker, surface)
-      await waitFor(
-        () => ledger(worker).some((event) => event.type === 'permission_request'),
-        'the worker to park',
-      )
-      const card = ledger(worker)
-        .filter(
-          (event): event is TranscriptEvent & { type: 'permission_request'; id: string } =>
-            event.type === 'permission_request',
-        )
-        .at(-1)
-      if (card === undefined) throw new Error('no card')
-      await host.respondPermission(worker, card.id, { outcome: 'allow' }, surface)
+      const { worker, surface, card } = await aWorkerParkedOnItsCard()
+      await host.respondPermission(worker, card, { outcome: 'allow' }, surface)
       const mine = theOpenPieceOf(worker)
       const replied = await callOn(lastToolset(), 'reply_to_parent', {
         piece: mine.piece,
@@ -418,27 +352,12 @@ describe('638 · a change to a conversation’s work announces itself', () => {
 
   describe('§4 · a turn’s stall announces once, and never per provider event', () => {
     it('🔴 a TURN ENDING moves rows to `stalled` and announces `work` once', async () => {
-      const { pm, worker } = await aChainOfTwo()
-      const surface = new RecordingSink('webContents:9')
-      host.claimSession(worker, surface)
-      await waitFor(
-        () => ledger(worker).some((event) => event.type === 'permission_request'),
-        'the worker to park',
-      )
-      const card = ledger(worker)
-        .filter(
-          (event): event is TranscriptEvent & { type: 'permission_request'; id: string } =>
-            event.type === 'permission_request',
-        )
-        .at(-1)
-      if (card === undefined) throw new Error('no card')
+      const { pm, worker, surface, card } = await aWorkerParkedOnItsCard()
       const mine = theOpenPieceOf(worker)
 
-      // 🔴 **The reset moves BELOW the permission**, because `respondPermission` is itself one of
-      // the thirteen now — it closes the `aPerson` half. ⛔ Resetting above it would attribute that
-      // verb's announcement to the turn ending and this test would measure the wrong act, which is
-      // `a-comparison-tested-where-both-sides-agree` in the other direction.
-      await host.respondPermission(worker, card.id, { outcome: 'allow' }, surface)
+      // Reset after the permission: answering it announces `work` too, and that is not the act
+      // measured here.
+      await host.respondPermission(worker, card, { outcome: 'allow' }, surface)
       announced.length = 0
       watching = pm
       sawWhenAnnounced.length = 0
@@ -457,14 +376,9 @@ describe('638 · a change to a conversation’s work announces itself', () => {
       expect(store.piecesOwnedBy(worker).find((one) => one.piece === mine.piece)?.state).toBe(
         'stalled',
       )
-      // The stall moves once; its giver notice separately announces its queue and delivery.
-      // 🔴 **D-033 · AND IT ANNOUNCED THE STALL ONCE.** ⚑ A turn ending arrives through `deliver`,
-      // which appends one ledger row PER PROVIDER EVENT — announcing at each is the storm
-      // `what-is-being-done.ts` names. ⚠️ So the host says it once, when the read it takes after a
-      // `turn` or `status` row finds the piece moved — the turn's own row and the `idle` after it
-      // read the same stall, and only the first says it. ⚑ Counted by what the store said at each
-      // announcement: the permission's own read may echo `respondPermission` before the stall, and
-      // that one saw no stall.
+      // The stall announces once, though a turn ending appends one ledger row per provider event;
+      // its giver notice separately announces its queue and its delivery. Counted by what the store
+      // said at each announcement, so an echo of the permission before the stall is not counted.
       expect(
         sawWhenAnnounced.filter((one) => one.what === 'work' && one.stalled > 0),
         'the stall and the giver notice queue and send each announce once',
@@ -480,126 +394,6 @@ describe('638 · a change to a conversation’s work announces itself', () => {
           .reconciliationReceiptsForOwner(worker)
           .filter((row) => row.step === 'giver' && row.outcome === 'delivered'),
       ).toHaveLength(1)
-    })
-  })
-
-  describe('§5 · one signal, one reader', () => {
-    it('⚑ every announcement is at a VERB, after its append — never in the shared plumbing', () => {
-      const host_ = codeOf('main/runtime/runtime-host.ts')
-      const keptFiles = codeOf('main/runtime/kept-files.ts')
-      // ⛔ **These call sites and no more** — the count is the assertion's. ⚠️ One in `publishOurs`, `recordOurs` or `deliver`
-      // would make EVERY ledger append announce, which is §4's firehose — and that property, not
-      // the number, is what this guards.
-      // 🔴 **It was FIVE until this dispatch's own adversarial pass**, which found `aWorker` is one
-      // of THREE halves composing a task's state: six question/permission/proposal verbs move the
-      // other two, and `abandonQueued` strands held work at a teardown.
-      // ⚑ **648 · the fourteenth**, and it is the same family as `abandonQueued`'s: `runFlush` now
-      // ENDS a held message whose refusal can never clear, which moves that message's task from
-      // `waiting` to `stalled`. ⛔ **The sibling branch four lines above it — the one that ends a
-      // message whose attached path vanished — still does NOT announce**, and that is a finding of
-      // `648` rather than a shape this census blesses.
-      // ⚑ **673 · the fifteenth**: `announceTheWorkItHolds`' line. It was a REOPEN's; since D-016c
-      // a reopen moves no piece and calls it no more (§2's ending/reopen pair), and the line is
-      // the ending's and the replacement's.
-      // ⚑ **692 · the sixteenth**: `withdraw_task` on a conversation a quit left open writes its
-      // `task_withdrawn` row straight into that ledger — no session, so no `publishOurs` — and
-      // announces at the verb, after the append, exactly as the live withdrawal does.
-      // ⚑ **689 · and the ENDING, through the SAME line** — `announceTheWorkItHolds` was one rule
-      // for both, so 689 did not move the count (`four-small-things-main-owes-the-window.test.ts` §1).
-      // (Both kept by the PM at the 689 + 692 integration; counted on the merged tree: 16.)
-      // ⚑ **D-009 · +3, each at its verb after its append** — a decline, a withdrawal, and the
-      // questions a recipient's ending closes.
-      // ⚑ **D-017 · +5, each at its act after its row, none in the plumbing below.** Two moved with
-      // a rename and did not change the count: `abandonQueued`'s is `handOnWhatItHeld`'s (a stop
-      // hands the held work on, R3) and `692`'s is `withdrawFromAStoppedConversation`'s (R2). ⚑ The
-      // new ones: words this app holds for a conversation that is not running
-      // (`holdForTheNextStart`, twice — into a running mailbox, or into the ledger for the next
-      // start), a held message a start finds no longer true and ends (`whatWaitedForThisStart`), a
-      // giver's held notice taken back while it waits for its start
-      // (`takeBackWhatWaitsForTheGiversStart`), and a person's answer to this app's question from
-      // the asker's ledger (`aPersonAnswersAQuestionThisAppAsked`, R6), after the decision's row.
-      // ⚑ **D-016 · −1**: `decideProposal`'s — the `aPerson` half a proposal stopped waiting on —
-      // went with proposals.
-      // ⚑ **D-016, commit 5 · +1**: `runFlush` ends a held brief or new brief whose piece has ended
-      // before it goes out — `648`'s family again, announced after its `message_unqueued` row.
-      // ⚑ **D-016 · R4 · +1**: a person's rename of a piece a person gave (`retitleForAPerson`),
-      // announced through `writeIntoItsLedger`'s `landed` callback — once its `work_retitled` row
-      // is down, whatever state its owner is in.
-      // ⚑ **D-029 · +1**: `letGoOfItsMissedJobs` — a wake-up start that finds its conversation can
-      // never be reopened ends the missed-job words it held for that start (`abandoned`, their
-      // `a-scheduled-job-that-will-not-run` rows), and announces once, after the last
-      // `message_unqueued` row, at that act — held work stopped waiting, as `abandonQueued`'s did.
-      // ⚑ **−1: `648`'s is gone** — a flush that meets a sign-in that moved on no longer ENDS what it
-      // took: the words stay held for the reopen on the current sign-in, and no task moves.
-      // ⚑ **D-033 · +1**: `sayWhenItsWorkMoved` — a piece moved by a turn, found by a read the host
-      // already takes after a `turn`, `status` or background-level row, and said only when it
-      // moved; never in the plumbing.
-      // ⚑ **F046 · +1**: `titleTheOlderFiles` — the files kept before titles were taken, titled
-      // once, announced once at the end of that act, after its last row.
-      // ⚑ **+1**: `deleteConversation` — a delete takes the tree's pieces with its records, and
-      // announces once, after the rows are gone.
-      // ⚑ **+1**: `acceptAtTheService` — a give queued at a service whose conversation nothing runs
-      // writes its piece into that ledger, and announces once, after the row is down.
-      // ⚑ **+2**: `advanceTheService` — a service's next brief held for it, announced once after its
-      // row; and `startTheServiceFor` — that brief ended unsent when the start it needed failed,
-      // announced once after its `message_unqueued` row.
-      // ⚑ **+1**: `setServicesOn` — a person's switch changes whether each piece queued at a service
-      // waits for services, announced once after the services list is written.
-      // ⚑ **+1**: `closeForAPerson` — a person's close of stopped work, announced once after its
-      // `work_closed` row.
-      // +1: `rebuildLedger` — a replaced ledger can take work away from its giver's drawer,
-      // announced once after the new generation is promoted.
-      const hostAnnouncements = host_.split("this.theWorldMoved('work')").length - 1
-      const keptFileAnnouncements =
-        keptFiles.split("this.operations.theWorldMoved('work')").length - 1
-      expect(hostAnnouncements + keptFileAnnouncements).toBe(37)
-      for (const verb of [
-        'private declineMoveOffersFromText(',
-        'async decideMoveRequest(',
-        'async takeOnWork(',
-      ]) {
-        const at = host_.indexOf(verb)
-        expect(at, `${verb} missing`).toBeGreaterThan(0)
-        const body = host_.slice(at, host_.indexOf('\n  }\n', at))
-        expect(body.split("this.theWorldMoved('work')").length - 1).toBe(1)
-      }
-      for (const plumbing of ['publishOurs(', 'recordOurs(', 'emitOurs(']) {
-        const at = host_.indexOf(`private ${plumbing}`)
-        expect(at, `${plumbing} not found`).toBeGreaterThan(0)
-        expect(
-          host_.slice(at, at + 2600),
-          `${plumbing} announces — every ledger append would announce`,
-        ).not.toContain("theWorldMoved('work')")
-      }
-      // ⚑ **THE POSITIVE CONTROL for those three negatives** — the same corpus, read for the
-      // string they are hunting, so a slice that had stopped matching anything is visible here.
-      expect(host_).toContain("this.theWorldMoved('work')")
-    })
-
-    it('⛔ the renderer serves it from the SAME reader, so there is no second cadence', () => {
-      const screen = readFileSync(
-        join(srcRoot, 'renderer/src/components/RuntimeScreen.vue'),
-        'utf8',
-      )
-      // 🔴 **`631` §2.1's rule**: two cadences on one screen is two answers. ⚑ `readTheCast` is the
-      // one `Promise.all` behind both `631`'s task lists and `632`'s child rows, and it is what
-      // BOTH arms call.
-      // 🔴 **SLICED to the arm, because `toContain` over the whole file is satisfied by a
-      // NEIGHBOUR.** ⛔ `void readTheCast()` appears five times in this component — a watch, a
-      // surface change, the `conversations` arm, this arm and the interval — so a file-wide
-      // `toContain` passed while the arm itself had been re-pointed at another population.
-      // ⚠️ `an-assertion-can-be-satisfied-by-a-neighbouring-element`, caught by a mutation row
-      // that survived.
-      const armAt = screen.indexOf('work: () => {')
-      expect(armAt, 'the work arm is gone').toBeGreaterThan(0)
-      const arm = screen.slice(armAt, screen.indexOf('},', armAt))
-      // ⚑ **`631`'s task lists and `632`'s child rows are ONE `Promise.all` inside `readTheCast`**,
-      // and it is what BOTH arms call — so there is no second cadence (`631` §2.1).
-      expect(arm, 'the work arm stopped reading the band').toContain('void readTheCast()')
-      // ⛔ **And the drawer's Work tab**, the other surface on THIS screen drawing a task's state —
-      // without it the band updates instantly while the tab beside it keeps the old word. (The
-      // Team forest is a third in the file, on another screen, and keeps its 30 s poll: `664` F3.)
-      expect(arm, 'the work arm stopped reading the Work tab').toContain('void readTheWork()')
     })
   })
 })

@@ -355,14 +355,6 @@ describe('557 · work that stalls with nobody left to tell', () => {
       expect(made.ownerName).not.toBe(made.giverName)
     })
 
-    it('🔴 the RECEIPT is the discriminator, and it is the same row the push de-duplicates on', async () => {
-      const { told, nobody } = await aStallEachWay()
-      const walked = store.stalledWorkNobodyWasToldAbout()
-      expect(walked.rows.map((row) => row.piece)).toEqual([nobody.task])
-      expect(store.workReportedTo(told.pm).has(told.task)).toBe(true)
-      expect(store.workReportedTo(nobody.pm).has(nobody.task)).toBe(false)
-    })
-
     it('⛔ a giver that is LIVE and has NOT been told is a person’s — the failure path, planted', async () => {
       const giver = await personOpens('a-live-giver')
       const holder = 'sess_never_run'

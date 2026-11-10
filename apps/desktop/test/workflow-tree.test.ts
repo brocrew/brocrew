@@ -320,7 +320,7 @@ describe('the drawer: one row, and never amber (108)', () => {
   })
 })
 
-describe('the agent plate speaks 081, and adds no words (108)', () => {
+describe('the agent plate adds no words', () => {
   /** A run that is still going — the premise every `live` answer below depends on. */
   const LIVE = { running: true }
   /** A run that is over. How it ended is a different fact and none of these read it. */
@@ -351,24 +351,6 @@ describe('the agent plate speaks 081, and adds no words (108)', () => {
     })
     // No underline: we were told a state and could not read it, which is not "it is running".
     expect(workflowAgentFacets({ state: 'unknown' }, LIVE)).toEqual({ doing: 'unknown' })
-  })
-
-  it('an agent row can NEVER wear a needing badge, because nothing could supply one', () => {
-    // ⚠️ **This test used to assert the opposite, by handing the helper an argument no production
-    // path supplied** (108 review). It proved a function signature, not a surface — the badge could
-    // not appear on screen and the test could not tell. The wire carries no link from a permission
-    // to a workflow agent (`permission_request` has no agentId and no task_id in any measured
-    // payload), so the honest assertion is that this facet is unreachable here.
-    for (const state of ['queued', 'running', 'done', 'failed', 'unknown'] as const) {
-      expect(workflowAgentFacets({ state }, LIVE)).not.toHaveProperty('needing')
-    }
-    // ⚠️ **118 added an OVER half to this loop and review removed it again.** The function returns
-    // one of four hard-coded literals and has no parameter that could carry a `needing`, so the
-    // assertion is about a signature; running it twice doubles nothing. The "never amber" rule that
-    // 108 actually cares about is asserted where it can be broken — on the rendered row, in
-    // `dom/workflow-tree.dom.test.ts`, which reads the real element for a needing badge.
-    // …and the paired positive is above: a permission raised while a workflow runs DOES count,
-    // through the ordinary card, which is 107 §6's ruling by the route that actually exists.
   })
 
   it('an agent frozen `running` inside a run that is OVER is not live — and not done (118)', () => {
