@@ -170,7 +170,12 @@ import type {
   ConfigFileResult,
   SessionPathTarget,
 } from '../../../shared/runtime-ipc'
-import { DEFAULT_PROFILE_ID, HELD_ELSEWHERE, PROVIDER_NAME } from '../../../shared/runtime-ipc'
+import {
+  agentName,
+  DEFAULT_PROFILE_ID,
+  HELD_ELSEWHERE,
+  PROVIDER_NAME,
+} from '../../../shared/runtime-ipc'
 import { useAgentStore } from '../composables/useAgentStore'
 import { providerForALaunch, providersNotChosenIn } from '../lib/agent-store'
 import { NO_LAUNCH_CHOICES, type LaunchChoices } from '../lib/launch-choices'
@@ -1266,6 +1271,13 @@ const frontDoorProvider = computed<Provider>(() =>
     launchReadiness.value,
   ),
 )
+
+/** Live roster names for the screen's attention and queue readers. */
+function agentHeadingFor(profileSlug: string): string {
+  // ⚠️ **The inner list, which is what `team-roster.ts` passes too** — `AgentIdentities` is the
+  // whole reading and carries `use`, the folders and the registry beside the rows.
+  return agentName(profileSlug, agentStore.identities.value?.identities ?? null)
+}
 
 /** The sheet owns its presentation; both launch doors still use the same start operation. */
 const startFromSheet: SheetStart = (input, firstMessage, attachments, told) =>
