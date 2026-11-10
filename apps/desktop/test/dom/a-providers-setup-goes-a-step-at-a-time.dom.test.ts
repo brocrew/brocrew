@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
-import { nextTick } from 'vue'
+import { nextTick, type Component } from 'vue'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
 import ProviderSetupAtLaunch from '../../src/renderer/src/components/ProviderSetupAtLaunch.vue'
 import { useKeyAsked } from '../../src/renderer/src/composables/useKeyAsked'
@@ -18,7 +18,7 @@ import type {
   ProviderProgramStanding,
   ProviderVersion,
 } from '../../src/shared/runtime-ipc'
-import { mount, unmountAll, type Mounted } from './harness'
+import { mount, unmountAll } from './harness'
 
 /** Live launch routing and inline provider setup. */
 

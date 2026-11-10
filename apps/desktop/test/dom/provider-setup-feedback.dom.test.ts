@@ -258,7 +258,6 @@ describe('setup feedback follows the latest facts', () => {
     expect(words(out.m.q('provider-inline-setup'))).toContain(INSTRUCTIONS)
     expect(out.runtime.signInProvider).not.toHaveBeenCalled()
   })
-
 })
 
 describe('usage readings and recorded warnings are separate evidence', () => {
