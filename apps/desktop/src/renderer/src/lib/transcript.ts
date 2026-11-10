@@ -3,6 +3,7 @@ import type {
   AssistantItem,
   NoticeItem,
   TranscriptItem,
+  LostReply,
 } from './transcript-message-contracts'
 export type {
   UserItem,
@@ -172,6 +173,7 @@ import { startHumanAnswer, finishHumanAnswer } from './human-answers'
 
 /** ⚠️ Not `ErrorEvent` — that is a DOM global, and this file is compiled with `lib.dom`. */
 type RuntimeErrorEvent = Extract<RuntimeEvent, { type: 'error' }>
+type Timed = Pick<TranscriptItem, 'at'>
 
 /**
  * The most change reports a window release will carry forward.
