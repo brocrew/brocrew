@@ -316,7 +316,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     const facts = await (
       await fetch(ready.origin + '/v1/env', { headers: ready.admin().headers })
     ).json()
-    expect(facts.home).toBe(join(home, 'data/fictional-orchid'))
+    expect(facts).toMatchObject({ home: join(home, 'data/fictional-orchid') })
     expect(
       (await fetch(ready.origin + '/v1/profiles', { headers: ready.admin().headers })).status,
     ).toBe(404)
