@@ -1,3 +1,34 @@
+import { DEFAULT_PROFILE_ID, foldProfileName } from './profile-name'
+export {
+  DEFAULT_PROFILE_ID,
+  foldProfileName,
+  isPathSegment,
+  PATH_SEGMENT_MAX_LENGTH,
+  PATH_SEGMENT_PATTERN,
+  PATH_SEGMENT_RULE,
+} from './profile-name'
+import { PROVIDER_NAME } from './provider-names'
+export { PROVIDER_NAME } from './provider-names'
+import type { RunningState } from './conversation-running'
+export { RUNNING_STATES } from './conversation-running'
+export type { RunningState } from './conversation-running'
+import type { AgentIdentity } from './agent-identity-contracts'
+export type { AgentIdentity, IdentityCreator } from './agent-identity-contracts'
+import type {
+  ConversationProviderBlock,
+  LastKnownProviderBlock,
+  LibraryChild,
+  ResumableSessionInfo,
+  UnresumableSessionInfo,
+} from './conversation-listing-contracts'
+export type {
+  ConversationProviderBlock,
+  LastKnownProviderBlock,
+  LibraryChild,
+  PieceWaitingOnPurpose,
+  ResumableSessionInfo,
+  UnresumableSessionInfo,
+} from './conversation-listing-contracts'
 import type { DecideMoveRequestInput, MoveRequestAck } from './move-contracts'
 import type {
   LedgerWalk,
@@ -6,7 +37,7 @@ import type {
   PersonsQuestion,
 } from './question-contracts'
 import type { AgentModelChoice, ModelChoiceSaved } from './model-choice-contracts'
-import type { WaitOn, WhatEachConversationIsWaitingOn, WorkGivenOut } from './task-contracts'
+import type { WhatEachConversationIsWaitingOn, WorkGivenOut } from './task-contracts'
 import type { AgentState } from './agent-state-contracts'
 import type { SessionInstructions } from './instruction-contracts'
 import type {
@@ -38,29 +69,17 @@ import type { LinkResolution } from './link-resolution'
 import { pathTail } from './path-tail'
 export type { LinkResolution } from './link-resolution'
 
-import type { WorkerBindingReading } from './worker-reading'
-
-// ⚑ **533 · a type-only edge to the wall recogniser.** ⛔ That module imports `PROVIDER_NAME` from
-// THIS one as a value, so the edge back must stay erased: a value cycle here would load `runtime-ipc`
-// before its own constants exist. See `provider-limit.ts`' header.
 import type { ProviderLimitSeen } from './provider-limit'
 import type { LimitsDisplayAnswer, LimitsDisplayChanged } from './limits-display'
 import type { StalledWork } from './stalled-work'
 import type { StoppedWorkForAPerson } from './stopped-work'
 import type { WorkIncident } from './work-incidents'
 import type { WaitingOnWhoWrote } from './waiting-on-who-wrote'
-// ⚑ **558 · the roster's own shapes.** ⛔ **Type-only, and the edge back must stay erased**: that
-// module imports {@link DEFAULT_PROFILE_ID} and {@link foldProfileName} from THIS one as VALUES,
-// so a value import here would load `runtime-ipc` before its own constants exist. Same arrangement
-// as `provider-limit.ts` above.
 import type { AgentRemoved, IdentityUse } from './agent-roster'
 import type { ArchiveOutcome, DeleteOutcome, DeleteVerdict } from './conversation-archive'
 
 import type { DigestReading } from './digest'
 import type { RecentActivityReading } from './recent-activity'
-// ⚑ **543 · the relationship shapes.** ⛔ A type-only edge, and the module on the other side
-// imports {@link RunningState} from here the same way — the cycle is the checker's alone and is
-// erased at build time, which is `tasks.ts`' own arrangement with this file.
 import type { WhoCalledWhom } from './who-called-whom'
 import type { WorkspaceReading } from './workspace-reading'
 import type { WorkFolderGrant } from './work-folders'
@@ -133,20 +152,13 @@ import type {
   WorkflowAgent,
   WorkflowPhase,
 } from '@brobot2/runtime'
-import {
-  DEFAULT_IDENTITY_PROVIDER,
-  providerDescriptor,
-  providerRecord,
-} from '@brobot2/shared/providers'
+import { DEFAULT_IDENTITY_PROVIDER, providerDescriptor } from '@brobot2/shared/providers'
 import type { Provider, ProviderConnection, SessionStatus, TurnEnding } from '@brobot2/shared'
 
 // ⚑ **The capability schema, which is a `src/shared` module and holds no zod** (355) — the same
 // rule this file is written under, so the renderer may name a capability without paying for a
 // validator it never runs.
 import type { CapabilityGrant, CapabilityOrigins, ProfileCapabilities } from './capabilities'
-// ⚑ **516 · the registry's row shape.** A TYPE edge back to a module that imports this one's
-// `isPathSegment` as a VALUE — erased at build time, so the cycle exists only in the checker, which
-// is the shape `tasks.ts` above is already written under.
 import type { ExternalMcpServerReach, ExternalMcpServerRow } from './external-mcp'
 
 /**
@@ -160,25 +172,6 @@ import type { ExternalMcpServerReach, ExternalMcpServerRow } from './external-mc
  * is a provider-neutral runtime type, so the renderer consumes `RuntimeEvent`s
  * and nothing provider-specific — the type imports are erased at build time.
  */
-
-/**
- * What a profile id may be. It becomes a directory name, so the alphabet excludes
- * anything that could be spelled to walk out of the managed root, and the length is bounded —
- * a 300-character id passes any regex and then fails deep inside `mkdir` with `ENAMETOOLONG`,
- * naming a path instead of the field that caused it.
- *
- * It lives here, in the module main, preload and the renderer all import, so the launcher can
- * tell you the value is wrong BEFORE sending it and the boundary can reject it with the exact
- * same rule. Two copies of this would drift, and the drift would be silent.
- */
-export const PATH_SEGMENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
-export const PATH_SEGMENT_MAX_LENGTH = 64
-export function isPathSegment(value: string): boolean {
-  return value.length <= PATH_SEGMENT_MAX_LENGTH && PATH_SEGMENT_PATTERN.test(value)
-}
-
-/** How to say it, once, wherever a bad id has to be explained. */
-export const PATH_SEGMENT_RULE = `letters, digits, dot, dash or underscore (max ${PATH_SEGMENT_MAX_LENGTH})`
 
 /**
  * 🔴 **Which profile does this name NAME?** — one matcher, for every caller that has to decide
@@ -239,81 +232,6 @@ export function alreadyStagedAs(path: string, staged: readonly string[]): string
 }
 
 /**
- * ⛔ **The fold the DATABASE performs** — a second fold, deliberately, and not the one above (238,
- * from 208 H1).
- *
- * `db/identity.ts` derives `aid:<profile>` through this, `agent_identity_slug_folded_ck` folds with
- * SQLite's `lower()`, and `agent_identity_slug_uq` compares with `COLLATE NOCASE`. Those three must
- * give one answer for every input or the database keys on one identity while the app talks about
- * another — which is 208 H1 all over again, with the fix in place.
- *
- * ⛔ **ASCII only, because SQLite without ICU is.** `lower('DÉV')` is `dÉv` and `NOCASE` compares the
- * same way, while JavaScript's `toLowerCase()` folds the whole of Unicode and answers `dév` — a
- * different string, and therefore a different `aid:` id from the one the migration and the index
- * compute for the very same row.
- *
- * ## ⚠️ Why this is NOT {@link profileAlreadyNamed}'s fold, though it looks like it
- *
- * ⛔ **They answer two different questions, and only one of them is SQLite's.**
- * {@link profileAlreadyNamed} asks *which directory does this name name*, so it folds the way the
- * VOLUME does — and a case-insensitive macOS volume folds far more than ASCII (measured on the
- * shipped one: a Kelvin sign `K` and `k` are one dirent, and so are `Éx` and `éx`). This one asks
- * *which row does this name key*, and the migration and the index have to reproduce it in SQL.
- * Unifying them would make one of the two wrong: an ASCII-only matcher would stop 187 refusing a `K`
- * beside a `k` the disk already treats as one folder, and a Unicode-folding derivation would make
- * `agentIdentityRowId` disagree with the SQL that computes the same id.
- *
- * ⚑ **And they cannot disagree about anything either of them will ever see, because the ALPHABET is
- * ASCII** (review — the first draft of this paragraph claimed a residual that does not exist).
- * {@link PATH_SEGMENT_PATTERN} is `[A-Za-z0-9][A-Za-z0-9._-]*`, and it is not only the wire that
- * enforces it: the adoption sweep filters every DIRENT through {@link isPathSegment}
- * (`provider-homes.ts`, `listProviderHomes`), and a `.brobot` bundle's `meta.profileId` is refined by
- * it in `read-bundle.ts` — which 203 added, its own comment naming that reader as *"the one entrance
- * that skipped it"*. ⛔ **Those two guards are what make this pair safe.** Relaxing either one
- * without also giving SQLite the same fold — an ICU build, or a stored fold column — reopens 208 H1
- * for every name outside the alphabet.
- *
- * ⚠️ `toLowerCase` per ASCII letter, never `toLocaleLowerCase`: under a Turkish locale
- * `'I'.toLocaleLowerCase()` is `'ı'`, so an identity would resolve by the machine's locale. Applied
- * one `A`–`Z` at a time, `toLowerCase` cannot answer anything but `a`–`z`.
- */
-export function foldProfileName(name: string): string {
-  return name.replace(/[A-Z]/g, (letter) => letter.toLowerCase())
-}
-
-/**
- * **The profile a session gets when none is chosen** — and, since 167, a value the RENDERER needs.
- *
- * ## 🔴 592 · it was `'default'`, and the word was the defect rather than the thing it named
- *
- * ⛔ **This docblock read *"so the default has to stay `'default'`: every session recorded before
- * profiles existed lived there."*** ⚠️ **`HO-078` §2 is the ruling that retires it**, and the
- * sentence is corrected rather than deleted because it was TRUE when it shipped and is the exact
- * shape standing rule 19's corollary is about.
- *
- * Use a meaningful default slug so the main agent does not display as `default` when its name is absent, avoiding a persistent display-only special case.
- *
- * ## ⚠️ What the old sentence was RIGHT about, and how it was paid rather than argued away
- *
- * Profiles define provider-home and shared-memory boundaries. Because the identity id derives from the slug, changing it creates another identity with its own home and memory rather than renaming an existing one.
- *
- * 🔴 **So this is NEW INSTALLS ONLY and there is no migration.** ⛔ Nothing moves a provider home,
- * nothing rewrites a row, and every statement keyed on the old slug — `0021`'s role `UPDATE`,
- * `0025`'s `INSERT … WHERE slug = 'default'` — matches nothing on a fresh database, which is the
- * state every install in the world is about to be in. ⚠️ **An install that is NOT clean keeps its
- * old identity untouched and gains a second one**, which is standing rule 11's direction: this app
- * seeds at creation and never rewrites what is already there.
- *
- * ⚠️ **It lives HERE rather than in `main/runtime/provider-homes.ts`, where it used to, for exactly
- * the reason {@link PATH_SEGMENT_PATTERN} does**: main, preload and the renderer all import this
- * module, and the launcher now has to name the default profile — to preselect it, to label it, and
- * to refuse a "new" name that is already taken. `provider-homes.ts` re-exports it, so every existing
- * import site is unchanged and there is still one literal. The renderer previously carried its own
- * `const BROBOT_PROFILE = 'default'`, which was a second answer to a question the host also answers.
- */
-export const DEFAULT_PROFILE_ID = 'brobot'
-
-/**
  * 🔴 **WHO brought an identity into being, as a closed set of ORIGINS** (598, `HO-084` §1).
  *
  * ⛔ **A vocabulary and not a nullable creator id**, because a column holding *the creating
@@ -339,159 +257,7 @@ export const IDENTITY_ORIGINS = ['a-person', 'this-app', 'an-agent'] as const
 /** One of {@link IDENTITY_ORIGINS}. */
 export type IdentityOrigin = (typeof IDENTITY_ORIGINS)[number]
 
-/**
- * 🔴 **Who brought one identity into being** (598, `HO-084` §1) — one of {@link IDENTITY_ORIGINS},
- * with the creator's folded slug on the one arm that has one.
- *
- * ⛔ **A discriminated union and not a pair**, because `agent` is meaningless on two of the three
- * arms: a *creator* beside `this-app` would be a field every reader has to remember is empty, and
- * `a-value-beside-a-word-or-a-union-of-arms` names that as the case a union answers.
- *
- * ⚠️ **It is DERIVED from one column.** `agent_identity.created_by` holds `a-person`, `this-app`,
- * or the creating identity's `aid:<slug>` row id — see `readIdentityCreator` in `db/identity.ts`,
- * which is the one place the encoding is known, and `db/identity.ts`'s own note for why `:` cannot
- * appear in a slug and therefore why the three shapes cannot collide.
- */
-export type IdentityCreator =
-  | { readonly by: 'a-person' }
-  | { readonly by: 'this-app' }
-  | { readonly by: 'an-agent'; readonly agent: string }
-
 export type AgentIdentityName = Pick<AgentIdentity, 'id' | 'slug' | 'displayName'>
-
-/**
- * 🔴 **One agent identity, as a person can see it** (355) — the row, and what it may do.
- *
- * ⛔ **A ROW, not a directory.** `RuntimeCommand`'s `profiles` verb lists folders under
- * `provider-homes/`, and a folder exists for anything that was ever launched — including a launch
- * refused before it registered. An identity EXISTS when the database says so, and that is the same
- * fact `give_work`'s `no-such-profile` rail refuses on. A surface built off folders would offer
- * grants the door answers `false` to.
- *
- * ⚠️ **This said *“which is after a conversation has actually run as it”* until 558, and `419`
- * had falsified it.** ⛔ `createAgentIdentity` writes a row and NOTHING ELSE — no home and no
- * conversation — so an identity that has never run is an ordinary member of this list, and the
- * sentence was describing the world before the creation door existed. 🔴 **It is the population
- * `HO-063` gap 1 is about**, which is why the correction is here rather than filed: a reader who
- * believed that sentence would have concluded the roster could not have the rows it is asked for.
- * ⚑ What each identity has actually done is {@link AgentIdentities.use}.
- *
- * ⚑ **Two readings of the same columns, and both are needed.** `capabilities` is RESOLVED —
- * exactly what the rails read, with nulls already replaced by the ruled defaults. `chosen` says
- * whether each column is NULL or holds something, which is the only way a sheet can tell *nobody
- * has chosen* from *somebody chose today's default* — and the only way its first Save can avoid
- * writing the second over the first.
- */
-export interface AgentIdentity {
-  /**
-   * `aid:<folded slug>` — derived, and shown because it is the thing the rails key on.
-   *
-   * ⚠️ **It was `agp:<project>:<slug>` until 369.** The producer now selects from the global
-   * `agent_identity` table, so a surface that parsed a project out of this string would be reading a
-   * segment that is no longer there — nothing does, and this line is what says so.
-   */
-  readonly id: string
-  /** The folded name. The identity's name, not a directory name (238). */
-  readonly slug: string
-  /**
-   * A human name, or null — nobody has named this identity.
-   *
-   * ⚠️ **It said *"shape only — nothing writes it yet (204 §3)"* until `423`**, and that stopped
-   * being true twice: `419` gave it two writers (`create_agent` and `createAgent`) and `423` put a
-   * person behind the second one, with the control carrying {@link AGENT_DISPLAY_NAME_CHARS}
-   * (221 §3).
-   *
-   * 🔴 **538 · there is a THIRD writer now and it is this app itself**, and **584 · it writes a
-   * GENERATED name rather than a table's** — see `human-names.ts`. ⛔ Every identity this app brings
-   * into being is handed a first name, drawn at random, that nothing in the roster already answers to,
-   * without anybody being asked what to call it (`HO-078` §5: *"The app assigns. No decision, no
-   * round trip."*). ⚠️ **An agent no longer supplies one at all** — `create_agent` advertises no
-   * such field — **and a person still may**, at `NewAgent`, where a typed name beats the generator.
-   *
-   * ⛔ **Nothing draws `displayName ?? slug`**, and the line that said the rail did has been wrong
-   * since `449`: every surface that names an identity asks {@link agentName}, which is
-   * {@link profileLabel} PLUS this field — so the fallback is written once, there, and
-   * `a-row-that-says-who-is-in-it.test.ts` §3 greps this file's own neighbours to keep it that way.
-   *
-   * 🔴 **558 · there IS a rename now, and it is a person's** — `setAgentDisplayName`, the second
-   * statement that writes this column and the first that can correct one (`HO-063` gap 2).
-   *
-   * ⚠️ **This read *“There is no RENAME”* until 558**, and the sentence carried an argument: a
-   * name written once was the name for the life of the install, which is why `538`'s seed refused a
-   * name DERIVED FROM A SLUG rather than merely declining one. ⛔ **That argument is spent, and the
-   * refusal it justified is NOT thereby reversed** — what a person is called by is still not a word
-   * this app may invent from a path segment; it is only no longer permanent if it does. ⚑ **584's
-   * generator obeys that refusal and is not an exception to it**: it reads no slug, no role and no
-   * project, so the handle it hands out says nothing about what the agent IS.
-   *
-   * ⛔ **`HO-016` §2 is what keeps the two writers apart.** The app's are both `INSERT OR IGNORE`
-   * and cannot touch a row that exists; the rename is reached only from the window wire, behind
-   * `requireAPerson`. ⚑ So a seed can never land on top of a name a person chose.
-   */
-  readonly displayName: string | null
-  readonly createdAt: number
-  /**
-   * 🔴 **Who brought this identity into being — or null, nobody recorded it** (598, `HO-084` §1).
-   *
-   * ⛔ **Written ONCE, at the `INSERT` that mints the row, and by nothing afterwards.** That is
-   * `INSERT OR IGNORE`'s own guarantee one column over — see {@link AgentIdentity.displayName} for
-   * why a seed can never land on a row that exists — and it is what makes this a fact about the
-   * row's birth rather than a field a later writer could re-aim.
-   *
-   * ⚠️ **NULL is *nobody recorded it*** — every row written before `0041` carries it, and nothing
-   * can mint another.
-   *
-   * ⛔ **It is not a capability and it is on this record rather than inside
-   * {@link AgentIdentity.capabilities}**, for {@link AgentIdentity.provider}'s reason: every member
-   * of `ProfileCapabilities` is a GRANT a rail reads to refuse an act, and this refuses nothing — it
-   * is a fact about the row's birth.
-   */
-  readonly createdBy: IdentityCreator | null
-  /** What the rails see. */
-  readonly capabilities: ProfileCapabilities
-  /** Per capability, whether this row has chosen. */
-  readonly chosen: CapabilityOrigins
-  /**
-   * 🔴 **Which provider this identity's NEXT conversation runs on, or null — nobody has said** (419,
-   * HO-023 §3).
-   *
-   * ⛔ **Not a capability, and it is on this record rather than inside
-   * {@link AgentIdentity.capabilities} for that reason.** Every field in there is a GRANT — something
-   * a rail reads to refuse an act — and this refuses nothing: it is a default the resolution order
-   * consults when a caller named no provider. ⚠️ Folding it into the capability schema would have
-   * put a non-grant in front of `CAPABILITY_FIELDS`' `satisfies`, and would have made a rail-shaped
-   * reader of a preference.
-   *
-   * ⚑ **Null is *nobody has said* and is not `codex`.** The renderer's `DEFAULT_PROVIDER` is the
-   * fallback for an identity that has not said; an identity that HAS said is a different fact, and a
-   * surface that drew them the same way would be making a claim nobody made.
-   */
-  readonly provider: Provider | null
-  /**
-   * 🔴 **Which registered external MCP servers this identity was GRANTED** (516, HO-040 §4.2) — ids
-   * into {@link AgentIdentities.externalMcpServers}.
-   *
-   * ⛔ **Granted, and since 524 that is no longer the same question as *may reach*.** `HO-048` §1
-   * moved the default onto the server: a row whose `reach` is `'everyone'` is usable by every
-   * identity and appears in NONE of these lists. ⚠️ **So a surface that drew this set as *what this
-   * identity may use* would now under-report it** — `CapabilitiesSheet` draws the registry and
-   * reads this only to decide which rows carry a tick-box.
-   *
-   * ⛔ **Not a capability, and it is on this record rather than inside
-   * {@link AgentIdentity.capabilities} for {@link AgentIdentity.provider}'s reason plus one of its
-   * own.** `507` §5: server ids *"are a related capability grant with a different relational
-   * shape"* — every member of `ProfileCapabilities` is one column on one row, and this is a set of
-   * rows in another table. ⚑ Putting it in front of `CAPABILITY_FIELDS`' `satisfies` would have made
-   * `parseChoice`, the sheet's editor switch and the wire's `capabilityValueSchema` each grow an arm
-   * for a shape none of them has.
-   *
-   * ⛔ **Presence IS the grant** (`HO-042` §6): a slug appears here or it does not, and there is no
-   * *nobody has chosen* state — which is why this has no companion in {@link AgentIdentity.chosen}.
-   *
-   * ⚠️ **Empty is the normal answer** and stays so until a person registers a server and ticks a box.
-   */
-  readonly externalMcpServerIds: readonly string[]
-}
 
 /**
  * 🔴 **What a person or an agent supplies to bring an identity into existence** (419, HO-023 §2.4).
@@ -836,19 +602,6 @@ export function seededProviderFor(profileSlug: string): Provider | null {
  * BroBot's own row is minted like any other, so this is the one fact the generator is told to leave
  * alone — see that store's `nameForANewIdentity`.
  */
-
-/**
- * ⛔ **What the two programs are CALLED, on screen** (151's register, applied by 169 §2).
- *
- * Use the program names Claude and Codex and call their storage location a folder in reader-facing prose. Share this table from main's `session-store.ts` vocabulary with renderer surfaces so they can explain whose folder they mean rather than rely on the unexplained term provider home.
- *
- * ⚠️ **`SideRail` had already written the answer as a literal** — *"Conversations from here, and
- * from Claude's and Codex's own folders"* — and that sentence is what the rest of the sweep was
- * matched to. A second literal beside it is how one of them comes to say `Codex CLI` one day.
- */
-export const PROVIDER_NAME: Record<Provider, string> = providerRecord(
-  (provider) => providerDescriptor(provider).displayName,
-)
 
 /** How to say one provider's name in a sentence a person reads. */
 export function providerName(provider: Provider): string {
@@ -1367,17 +1120,6 @@ export interface RuntimeChangeMessage {
  * `resourceId`.
  */
 export const RUNTIME_STATES_CHANNEL = 'runtime:states'
-
-export interface ConversationProviderBlock {
-  readonly provider: Provider
-  /** Null means the provider supplied no reset time. */
-  readonly resetsAt: number | null
-}
-
-/** Previously validated evidence, with no current or admission authority. */
-export interface LastKnownProviderBlock extends ConversationProviderBlock {
-  readonly asOf: number
-}
 
 export interface ProviderLimitHoldReason extends ConversationProviderBlock {
   readonly is: 'provider-limit'
@@ -2108,269 +1850,6 @@ export interface ProviderConfigInfo {
 }
 
 /**
- * 🔴 **What this app is DOING with a recorded conversation, right now** (421).
- *
- * ⛔ **The field the rail did not have, and its absence was four lies in a row** (HO-023 §2.3). The
- * two list commands read the DATABASE; a conversation the app is running has a row there like any
- * other, so the rail drew a live agent-spawned conversation under *"Closed conversations"*, called
- * it **ended**, offered **Reopen**, and had that reopen refused by naming a window that does not
- * exist. Every one of those four came from the same gap: **nothing on the wire said whether this
- * app is running the row**.
- *
- * ⚠️ **Not derivable from {@link ResumableSessionInfo.status}, which is what `418` assumed and this
- * dispatch measured.** `status` is a COLUMN, and `settleOrphanRuns` settles a crashed run's row to
- * **`idle`** — a non-terminal status — while a conversation that was merely open and not mid-turn
- * when the app died keeps the `idle` it already had. So `idle` is what a live conversation and a
- * conversation killed by a power cut three weeks ago both say, and a rail keyed on it would offer
- * *"take it over"* on every row a crash left behind. ⛔ **The host's slot map is the only thing that
- * knows**, and this is that answer travelling to the surface that has to act on it (`032`'s rule).
- *
- * ⚑ **Three states, because the two the app IS running are different things to be told.** A
- * conversation nobody is watching can be taken over by the person reading the row; one a window
- * holds cannot, and its sentence is the one place *"already open in another window"* is true.
- */
-export const RUNNING_STATES = [
-  /**
-   * This host holds no live session for this row. ⚑ **D-017b** — a person's press opens it in the
-   * full view, drawn from its ledger, and the message they send continues it.
-   */
-  'not-running',
-  /**
-   * 🔴 **Running, and `ownerId` is `null`** — 336's session nobody owns, which is what every
-   * conversation an agent's give started is from the moment it is reserved (`give_work` passes no
-   * sink).
-   *
-   * ⛔ **The gesture is `claim`, never `reopen`.** A reopen is refused because the id is live; a
-   * claim is the door `336` built for exactly this and it is one press away from the same window.
-   */
-  'unwatched',
-  /**
-   * Running, and a surface owns it. ⚠️ Whether that surface is THIS window is a question the host
-   * cannot answer about a list command — the rail answers it from `store.live`, the one question a
-   * per-window filter genuinely can answer.
-   */
-  'in-a-window',
-] as const
-
-/**
- * Derived from the list rather than declared beside it, so a state cannot be added to the type
- * without appearing in the list a test walks — `session-unavailable.ts`'s rule, one file over.
- */
-export type RunningState = (typeof RUNNING_STATES)[number]
-
-/**
- * A piece its holder marked as waiting on purpose (`update_work` with `on`), by its label, and
- * that status line's text: the holder's own words, at most as long as a status line may be.
- */
-export interface PieceWaitingOnPurpose {
-  readonly label: string
-  readonly status: string
-  /** What it waits on; absent for a wait from before a wait named one, which needs classifying. */
-  readonly on?: WaitOn
-  /**
-   * For a wait on an agent: what to call the conversation holding the piece it waits on, or the
-   * one its question went to.
-   */
-  readonly agentName?: string
-}
-
-/**
- * A recorded session that could be resumed: it has a provider ref to resume *from*.
- * The row is what 084's resume flow offers; `approvalMode` is here because it is the
- * one launch decision that cannot be re-derived, and resuming an `auto` session as
- * `ask` (or the reverse) would silently change what the agent may do.
- */
-export interface ResumableSessionInfo {
-  /** Stable normal-worker identity, absent when its binding is unavailable. */
-  readonly worker?: WorkerBindingReading
-  /** Current has an explicit value or null; unavailable does not renew a kept value. */
-  readonly providerBlock?: ConversationProviderBlock | null
-  readonly providerBlockStatus?: 'current' | 'unavailable'
-  /** Explicit null retires history; omission is no update. */
-  readonly providerBlockLastKnown?: LastKnownProviderBlock | null
-  sessionId: string
-  provider: Provider
-  ref: SessionRef
-  cwd: string
-  status: SessionStatus
-  /**
-   * 🔴 **What this app is doing with it RIGHT NOW** (421) — see {@link RunningState}.
-   *
-   * Keep this beside status: ledger status describes the conversation, while the host's slot map describes its process. An idle row may be not running after a crash or unwatched when another agent owns it.
-   */
-  running: RunningState
-  /**
-   * ⚑ **D-017b · what this agent is doing, in the ONE derivation** (`agent-state.ts`, D-017 · R11) —
-   * the state `list_agents` says of it, which the window's one list draws on the row. ⛔ Never
-   * whether a process runs (`05` rule 5). ⚑ As of this read: every change after it arrives on
-   * {@link RUNTIME_STATES_CHANNEL} (D-019).
-   */
-  state: AgentState
-  /**
-   * 🔴 **D-016 · commit 7 · R2 — the work that names it** — the header, the rail row and the ⌘K
-   * palette show it where they showed the conversation's name, the agent's name beside it: a
-   * conversation that owns a root is named by that root (its label, and its newest title — `null`
-   * until it is titled); any other by the newest open piece it holds, with how many more it holds
-   * open, else ⚑ F033 by the piece that ended last, with how it ended. `null` only when it holds
-   * no piece at all. ⚑ Read by `SessionStore.workThatNames`, per row. ⚑ Those three, and the Team
-   * roster, draw it with `theWorkThatNamesItSaid` — the count and the mark included; the header's
-   * rename field edits the title alone.
-   */
-  named: WorkThatNamesIt | null
-  /**
-   * The newest open piece it holds, when that piece reads as waiting on purpose, with the status
-   * line that marks it; absent otherwise, and for a service's.
-   */
-  readonly waitingOnPurpose?: PieceWaitingOnPurpose
-  /** Null only for rows written before the mode was recorded — never guessed. */
-  approvalMode: 'ask' | 'auto' | null
-  /** Null for rows recorded before profiles could be chosen; those ran in the default one. */
-  profileId: string | null
-  /**
-   * The reasoning effort this conversation is selected to run at (024; D-042 · R1), replayed on
-   * reopen. Null where its model offers none, or for a row that has named none yet.
-   */
-  reasoningEffort: string | null
-  /**
-   * The model this conversation is selected to run (038; D-042 · R1), replayed on reopen. Null only
-   * for a row that has named none yet — adopted, or from before D-042 and not started since.
-   */
-  model: string | null
-  /** ⚑ **D-042 · R5 — what its provider last reported running**, absent until it has said. */
-  reported?: ReportedModel
-  /** Whether it was started in plan mode (030), replayed on reopen. Null for rows older than it. */
-  planMode: boolean | null
-  /**
-   * When this session was imported from a provider home (087), or null if this app ran it. An
-   * adopted session's messages and approvals were never ours, so the UI must not imply they were.
-   */
-  adoptedAt: number | null
-  /**
-   * Whether reopening it will show a conversation. False for an adopted session whose transcript
-   * has not been imported — so the row can say that instead of the chat simply being empty (088).
-   */
-  hasTranscript: boolean
-  /**
-   * ⛔ **How its LAST turn ended** (222), or null when it never closed one.
-   *
-   * ⚠️ **Not a second opinion about {@link status}, and the pair is the whole feature.** `status`
-   * answers *"is this conversation over"*; this answers *"did the work in it finish"*. `220` read
-   * three closed conversations off this list after quitting the app mid-turn and got the same word
-   * for all three, because until now only the first question had an answer here.
-   *
-   * ⚑ Derived from `turn.end_reason` at list time rather than stored on the row — measured, and the
-   * reasoning is in `session-store.ts`'s `LAST_ENDING_COLUMN`.
-   */
-  lastEnding: TurnEnding | null
-  /**
-   * That another conversation spawned this one, and what the provider says about it (111), or null
-   * for a row that is not a child — or one recorded before we knew to ask.
-   *
-   * ⛔ **Absent from this interface until 118, and that absence WAS the bug** (`116` §5). `111` put
-   * the descent on `LibraryEntry`, so the Library could say "child of —" while this list, the one
-   * with the button on it, could not tell a sub-agent from a conversation a person started.
-   *
-   * ⚑ The SAME shape the library row carries, from the same mapping function, so the two surfaces
-   * cannot describe one conversation's parentage differently.
-   */
-  child: LibraryChild | null
-  /**
-   * Why Resume is not offered on this row, or null when it is (118).
-   *
-   * ⚠️ **A row carrying this is still a row, with everything else it had.** It is not the same
-   * question as {@link UnresumableSessionInfo}, which is "there is nothing to resume FROM": this
-   * conversation has a provider ref in a home we provision and a transcript we hold, and every
-   * other control on it — export, and the read below — still works. What it has no input end for
-   * is a turn. The surface owes the reader this sentence and an alternative, not a blank space.
-   */
-  resumeRefusal: string | null
-  updatedAt: number
-}
-
-/**
- * A recorded session the reopen list must show but cannot offer, with the reason. Kept separate
- * from {@link ResumableSessionInfo} so the two can never be confused: this one has no ref, so
- * there is nothing to resume from and no Resume button to press.
- */
-export interface UnresumableSessionInfo {
-  /** Stable normal-worker identity, absent when its binding is unavailable. */
-  readonly worker?: WorkerBindingReading
-  /** Current has an explicit value or null; unavailable does not renew a kept value. */
-  readonly providerBlock?: ConversationProviderBlock | null
-  readonly providerBlockStatus?: 'current' | 'unavailable'
-  /** Explicit null retires history; omission is no update. */
-  readonly providerBlockLastKnown?: LastKnownProviderBlock | null
-  sessionId: string
-  provider: Provider
-  cwd: string
-  status: SessionStatus
-  /**
-   * 🔴 **What this app is doing with it right now** (421) — see {@link RunningState}.
-   *
-   * ⚑ **On this half too, for the reason {@link lastEnding} gives one field down**: the rail folds
-   * both lists into one row shape, and a fact only the offerable half carried would let the rail
-   * describe two live conversations differently because of a column neither of them is about. ⚠️ A
-   * live Claude session is in THIS list for the whole of its first turn — it has no `external_ref`
-   * until the provider's init arrives — so the half without the ref is not the half without the
-   * running conversations.
-   */
-  running: RunningState
-  /**
-   * ⚑ **D-017b** — {@link ResumableSessionInfo.state}, on this half for {@link running}'s reason:
-   * as of this read, and moved after it on {@link RUNTIME_STATES_CHANNEL} (D-019).
-   */
-  state: AgentState
-  /**
-   * ⚑ **D-016 · commit 7 · R2** — {@link ResumableSessionInfo.named}, on this half for
-   * {@link running}'s reason.
-   */
-  named: WorkThatNamesIt | null
-  /** {@link ResumableSessionInfo.waitingOnPurpose}, on this half for {@link running}'s reason. */
-  readonly waitingOnPurpose?: PieceWaitingOnPurpose
-  profileId: string | null
-  adoptedAt: number | null
-  updatedAt: number
-  /**
-   * Whether we hold its messages (088) — which is the difference between a row that can be opened
-   * READ-ONLY and one that can do nothing at all (151, `106`).
-   */
-  hasTranscript: boolean
-  /**
-   * **Whether the sweep found this conversation in the user's OWN provider folder** (046/047) —
-   * the answer, carried, rather than the rule (154).
-   *
-   * Conversations found in the person's own provider folder remain in the Library, but cannot be resumed through this app's owned-home reopen list. Separate what is recorded from what this launch can continue.
-   *
-   * ⚠️ **A field and not a predicate in the renderer, because `032` says one test.** The rule is
-   * `session-store.ts`'s `foundInUserHome`, where it was measured and where its reason is written
-   * down; this is that function's answer travelling to a surface that has to act on it. The two
-   * facts it is computed from — `adoptedAt` and `profileId` — are on this shape too, and a
-   * renderer deriving it from them would be the second implementation. There were already two
-   * (`session-library.ts` had its own `fromUserHome`); this field is what makes there be one.
-   */
-  foundInUserHome: boolean
-  /**
-   * ⛔ **The OTHER "no home to reopen into" class** (214 §1) — restored from a bundle.
-   *
-   * On the wire for the same reason `foundInUserHome` is, and it is the same rule one member wider:
-   * the store computes it and every surface that acts on it reads that answer. ⚠️ Without it the
-   * rail's closed list dropped one half of the class and kept the other — which half depended on
-   * what the bundle's `meta` happened to say about a profile, so one origin chip got opposite
-   * treatment on one surface.
-   */
-  restoredFromBundle: boolean
-  /**
-   * How its last turn ended, or null (222) — see {@link ResumableSessionInfo.lastEnding}.
-   *
-   * ⚑ **On this half too, because the rail folds both lists into one row shape** (151). A field only
-   * the offerable half carried would make the rail's own list describe two rows differently for a
-   * reason that has nothing to do with how either of them ended.
-   */
-  lastEnding: TurnEnding | null
-  reason: string
-}
-
-/**
  * What an export produced (089). `native` is a copy of the provider's own file; `bundle` is one
  * self-contained document that needs no provider home and no
  * database.
@@ -2762,18 +2241,6 @@ export interface LibraryEntry {
   profileId?: string
   /** When a person archived it, epoch ms; present only for an archived conversation, listed here so it can be restored. */
   archivedAt?: number
-}
-
-/**
- * What a library row can say about its parentage (111).
- *
- * Provider records can establish a child while omitting parent, depth or other descent fields. Represent missing values honestly rather than inventing a parent.
- */
-export interface LibraryChild {
-  parentSessionId: string | null
-  depth: number | null
-  nickname: string | null
-  role: string | null
 }
 
 /** How many of each, over the WHOLE library — a count that moved with the page would be a lie. */

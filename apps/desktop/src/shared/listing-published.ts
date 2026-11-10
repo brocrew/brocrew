@@ -4,7 +4,7 @@
  * push keys its rows by the same conversation id.
  */
 import type { Published, PublicationEpoch } from './data-version'
-import type { ResumableSessionInfo, UnresumableSessionInfo } from './runtime-ipc'
+import type { ResumableSessionInfo, UnresumableSessionInfo } from './conversation-listing-contracts'
 
 export interface PublishedListing {
   readonly resumable: readonly ResumableSessionInfo[]

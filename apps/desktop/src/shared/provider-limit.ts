@@ -1,6 +1,6 @@
 import type { Provider } from '@brobot2/shared'
 import { MAX_INSTANT } from './clock'
-import { PROVIDER_NAME } from './runtime-ipc'
+import { PROVIDER_NAME } from './provider-names'
 
 /**
  * 🔴 **A provider wall, read back out of the ledger and said as a consequence** (533, HO-052 §4).

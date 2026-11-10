@@ -1,4 +1,4 @@
-import { foldProfileName, isPathSegment, PATH_SEGMENT_RULE } from './runtime-ipc'
+import { foldProfileName, isPathSegment, PATH_SEGMENT_RULE } from './profile-name'
 
 /**
  * 🔴 **One external MCP server a person registered, and who may reach it** (516, HO-040 §4.2,

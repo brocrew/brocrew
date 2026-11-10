@@ -5,7 +5,8 @@ import type { Provider } from '@brobot2/shared'
 // host or a clock. ⛔ There is no value import here at all, so nothing this file does can cost a
 // renderer a bundle (`a-value-import-from-shared-costs-the-renderer-135kb`).
 
-import type { RunningState, SessionStatus } from './runtime-ipc'
+import type { RunningState } from './conversation-running'
+import type { SessionStatus } from '@brobot2/shared'
 import type { WorkEdge } from './who-called-whom'
 
 /**

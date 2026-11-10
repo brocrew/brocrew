@@ -1,6 +1,7 @@
 import type { Provider } from '@brobot2/shared'
-import { DEFAULT_PROFILE_ID, PROVIDER_NAME, foldProfileName } from './runtime-ipc'
-import type { AgentIdentity } from './runtime-ipc'
+import { DEFAULT_PROFILE_ID, foldProfileName } from './profile-name'
+import { PROVIDER_NAME } from './provider-names'
+import type { AgentIdentity } from './agent-identity-contracts'
 
 /**
  * 🔴 **What an identity has DONE, and what is still pointing at it** (558, `HO-063` gap 1).
