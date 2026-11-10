@@ -2130,7 +2130,13 @@ const FIRST_OPEN_STARTS_MS = 180_000
 function theStartAndTheKey(conversation, called, atFirstOpen) {
   const logs = ['candidate-first', 'candidate-second'].map((stage) => loggedBy(stage)).join('\n')
   const { started, refused, retried } = startEvidence({ log: logs, conversation })
-  const seen = { conversation, atFirstOpen: atFirstOpen?.outcome ?? null, started, refused, retried }
+  const seen = {
+    conversation,
+    atFirstOpen: atFirstOpen?.outcome ?? null,
+    started,
+    refused,
+    retried,
+  }
   summary.claude.keyWait[conversation] = seen
   if (atFirstOpen?.outcome === 'told') {
     check(
