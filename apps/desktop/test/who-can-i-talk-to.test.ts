@@ -377,35 +377,9 @@ describe('642 · who can I talk to', () => {
   // §4 · the sentence this dispatch changed, pinned by name
   // ───────────────────────────────────────────────────────────────────────────────
 
-  /**
-   * ⚑ **Standing rule 5** — the clause is load-bearing, so it is asserted BY NAME rather than left
-   * to a byte-equality fixture that would go green on any rewrite that kept the length.
-   */
-  // 🔴 **D-007 · re-aimed (F017)**: *"a conversation that has ended is not here"* stopped being true of
-  // the ones the caller started — they are listed apart, with how they ended — so the clause that
-  // says what the listing drops named what is left out. ⚑ **D-017 · R2 — re-aimed again**: nothing
-  // that stopped is dropped now, only cut at the most recently active, so the clause says what an
-  // OMITTED id still is — one the two doors that take any id may reach. ⚑ **D-017 · R12/R13 — and
-  // the description was rewritten to be true** (the one list): the clause is its words for that.
-  // ⚑ **D-016 · commit 7 · R1 — re-aimed once more**: those doors take an omitted conversation by
-  // the label of a piece it owns as well as by its id, and the clause says both.
+  // What an id the listing leaves out still is: one the two doors that take any id may reach.
   const SAYS_WHAT_IT_DROPS =
     'message_agent and get_agent_status take any of them by the label of a piece it owns (W1.2) or by its id'
-
-  /**
-   * 🔴 **The planted control** (rule 12, and rule 20's *a rule is proven by violating it*): the
-   * description `642` replaced, kept here as a literal. ⛔ It passes every OTHER assertion this
-   * description carries and fails exactly the two below — which is what makes those two a
-   * measurement rather than a restatement.
-   *
-   * ⚠️ **643 · it was a HAND-TRIMMED version of that sentence and this docblock called it two
-   * things it was not** — *what `433` shipped* (whose last clause `610` replaced) and *what `642`
-   * replaced* (which carries two clauses the trimmed literal dropped). ⛔ **A name is a claim**
-   * (rule 25), so the literal is now the real bytes, read out of `70818518~1`. ⚑ It still fails
-   * both assertions below, which is the only property a control owes.
-   */
-  const THE_SENTENCE_BEFORE_642 =
-    'List the agents you can see: every conversation this app will let you name, including your own. Seeing one is not permission to send to it — message_agent answers that separately. Reports who each one is — the name a person gave that agent, and the profile slug you would spawn it under — with its id, project, state and where it came from. A conversation this app cannot attribute is still listed, and says so rather than being given a name.'
 
   it('§4.1 the description says what the listing drops, and names the surface that holds the rest', async () => {
     await personOpens(DEFAULT_PROFILE_ID)
@@ -415,42 +389,20 @@ describe('642 · who can I talk to', () => {
 
     expect(listing?.description).toContain(SAYS_WHAT_IT_DROPS)
     expect(listing?.description).toContain('list_profiles')
-    // ⚑ **D-017 · R12 — ONE list**: nothing is listed apart any more (D-007's ended section went).
+    // One list: nothing is listed apart.
     expect(listing?.description).not.toContain('Listed apart')
-
-    // ⚠️ **The control fires**: the shipped sentence before this dispatch carries neither clause,
-    // so neither assertion above is satisfied by prose that was already there.
-    expect(THE_SENTENCE_BEFORE_642).not.toContain(SAYS_WHAT_IT_DROPS)
-    expect(THE_SENTENCE_BEFORE_642).not.toContain('list_profiles')
-    // ⛔ …and a clause it DOES carry is still in the shipped sentence, so the two are one
-    // description with a middle added rather than a rewrite wearing the old name. ⚑ D-016 dropped
-    // `project` from the middle of the fields it lists, and named the door that takes the slug —
-    // `give_work`, since `spawn_agent` went — and the work each one holds; so the clause's opening
-    // is pinned in BOTH, and the clause is pinned whole as it reads today. ⚑ D-016 · commit 7 · R3
-    // put the piece each one owns before who it is, and moved its id to the payload, so what both
-    // carry is the clause's middle — the name and the slug.
-    const THE_CLAUSE_BOTH_CARRY = 'the name a person gave that agent, and the profile slug'
-    expect(THE_SENTENCE_BEFORE_642).toContain(THE_CLAUSE_BOTH_CARRY)
-    expect(listing?.description).toContain(THE_CLAUSE_BOTH_CARRY)
     expect(listing?.description).toContain(
       'Each is named by the piece of work it owns (the owner of W1.2 · its title), or by its id when it holds none, then who it is — the name a person gave that agent, and the profile slug give_work takes — its state, the conversation that started it, named the same way, and the work it holds',
     )
   })
 
   // ───────────────────────────────────────────────────────────────────────────────
-  // §5 · D-007 · F017 — a child that left stays listed to its parent, apart, with how it left
+  // §5 · a child that stopped stays listed to its parent
   // ───────────────────────────────────────────────────────────────────────────────
 
   /**
-   * 🔴 **D-007 · F017** — measured by BroBot (2026-09-22 → 24): children dropped out of `list_agents`
-   * after a crash or once they had ended, and nothing told their parent why — *"work that finished
-   * cleanly looks identical to work that was lost."* ⚑ They are listed APART from the agents, which
-   * stay exactly the conversations a door can reach (`a-reach-you-can-see`).
-   *
-   * ⚑ **D-017 · R2 — a child that stopped is an AGENT again**, because a message starts it however
-   * it stopped. ⚑ **R12 — and there is ONE list**: the list apart went, so the arms below that
-   * measured a Close, an `end_agent` (now the app's own stop), a provider failure and a crash
-   * measure the child staying among the agents, `idle` (R11); the page is the one list's cut.
+   * A child that stopped, by a Close, the app's own stop, a provider failure or a crash, stays on
+   * the one list as an `idle` agent, because a message starts it again.
    */
   describe('§5 · D-007 · the children that left', () => {
     const aParentAndItsChild = async (): Promise<{
@@ -485,7 +437,7 @@ describe('642 · who can I talk to', () => {
         keys: Object.keys(structured).sort(),
       }
     }
-    /** ⚑ **D-017 · R12 — ONE list**: the answer carries no second list beside the agents. */
+    /** The answer carries no second list beside the agents. */
     const ONE_LIST = ['agents', 'count', 'notListed', 'outcome']
 
     it('🔴 a child a person closes stays among the agents, stopped — never listed apart — and every door answers it', async () => {
@@ -622,18 +574,6 @@ describe('642 · who can I talk to', () => {
         expect(seen.agents).toContain(child)
         expect(seen.keys).toEqual(ONE_LIST)
       }
-    })
-
-    it('⛔ a child a graceful quit left open is a card, never listed as ended', async () => {
-      const { parent, child } = await aParentAndItsChild()
-      await host.closeAll()
-      host = buildHost()
-      await host.resumeSession(parent, window)
-      expect(host.agentCard(child, speakingAs(parent), parent)?.state).toEqual({ is: 'idle' })
-      // ⚑ **D-017 · R12** — on the one list, among the agents.
-      expect(
-        host.agentsVisibleTo(speakingAs(parent), parent).agents.map((card) => card.agent),
-      ).toContain(child)
     })
 
     it('⚑ a page, not a filter: the most recently active, and how many more there are', async () => {

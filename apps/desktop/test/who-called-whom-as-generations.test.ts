@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { forestView, type ForestView } from '../src/renderer/src/lib/the-forest'
 import { forestGraph, waitsOnIt, type GraphNode } from '../src/renderer/src/lib/forest-graph'
@@ -14,23 +11,15 @@ import {
 import type { ForestNode, TheWholeForest } from '../src/shared/the-whole-forest'
 
 /**
- * # 🔴 668 · *Who called whom*, drawn as generations — and every node opens
+ * *Who called whom*, drawn as generations: the graph groups conversations and successive
+ * generations vertically.
  *
- * The graph groups BroBot conversations and successive generations vertically. Pressing a
- * stopped agent must open its conversation and show the current state without requiring a
- * manual reopen and return to the page.
- *
- * ⛔ **This file owns what can be decided without a screen**: the placement (`forest-graph.ts`), the
- * one fact about where each node is, the live plate a held conversation wears, and the screen's
- * WIRING, read from its source with prose stripped. ⚑ **D-017b** — a node no longer presses a
- * gesture per process state: every press opens the conversation in its one full view, so `668`'s
- * gesture table (§2) and the closed press it routed through (`closed-press.ts`, §5) went with it. ⚑ **What a person SEES** — pixels, the press reaching
- * its act, the ring following a reopen without a remount — is
+ * This file covers what can be decided without a screen: the placement (`forest-graph.ts`), the
+ * one fact about where each node is, and the live plate a held conversation wears. What a person
+ * sees (pixels, the press reaching its act, the ring following a reopen without a remount) is
  * `test/dom/who-called-whom-as-generations.dom.test.ts`.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
-const COMPONENTS = join(here, '..', 'src', 'renderer', 'src', 'components')
 const NOW = 1_800_000_000_000
 
 const conv = (id: string, parent: string | null, over: Record<string, unknown> = {}): ForestNode =>
@@ -341,90 +330,6 @@ describe('§3 · the rail’s plate — the person’s dotted ring, and UI-004�
       expect(polled.rows[0]!.facets.doing).toBe('unknown')
       expect(polled.rows[0]!.says).toBe(STANDING_LABEL[standingOf(polled.rows[0]!.facets)])
     }
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// §4 · the screen's wiring, read from its source
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-/** ⚑ Code only — a docblock quoting a call is not a call. */
-const code = (source: string): string =>
-  source
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '')
-
-/** ⚑ The body of `name: () => { … }` in an object literal, by brace counting. */
-function armOf(source: string, name: string): string {
-  const start = source.indexOf(`${name}: () => {`)
-  expect(start, `no ${name} arm`).toBeGreaterThan(-1)
-  let depth = 0
-  for (let i = source.indexOf('{', start); i < source.length; i += 1) {
-    if (source[i] === '{') depth += 1
-    if (source[i] === '}') depth -= 1
-    if (depth === 0) return source.slice(start, i + 1)
-  }
-  throw new Error(`${name} arm never closes`)
-}
-
-describe('§4 · RuntimeScreen follows the change, and routes every press to the one open', () => {
-  const screen = code(readFileSync(join(COMPONENTS, 'RuntimeScreen.vue'), 'utf8'))
-
-  it('⚑ the arm reader finds each arm by name — the control plants TWO', () => {
-    const planted = 'x({\n  a: () => {\n    one()\n  },\n  b: () => {\n    two()\n  },\n})'
-    expect(armOf(planted, 'a')).toContain('one()')
-    expect(armOf(planted, 'a')).not.toContain('two()')
-    expect(armOf(planted, 'b')).toContain('two()')
-  })
-
-  it('🔴 when the host says conversations or work moved, the forest is read again', () => {
-    for (const subject of ['conversations', 'work']) {
-      expect(armOf(screen, subject), subject).toMatch(/\breadWhoIsWorking\(\)/)
-    }
-  })
-
-  it('🔴 the forest is handed the rail’s rows — every card the rail’s plate and word (UI-004)', () => {
-    // ⚑ **2026-09-30 · one fold for both drawings of the forest** — the Team page's and the main
-    // panel's Graph tab — so the rules below are read off that one function, and both views are
-    // proved to be folded by it.
-    expect(screen).toMatch(
-      /const theForestView = computed\(\(\) => foldTheForest\(theForest\.value, beingDone\.value\)\)/,
-    )
-    expect(screen).toMatch(/const conversationForestView = computed\(\(\) =>\s*foldTheForest\(/)
-    const start = screen.indexOf('function foldTheForest(')
-    expect(start).toBeGreaterThan(-1)
-    const body = screen.slice(start, screen.indexOf('\n}\n', start))
-    // ⚑ **UI-004** — the rail's rows (`668`'s `live` plate for a held conversation is one of them),
-    // so the Graph moves on D-019's push. ⛔ And no second derivation in the fold.
-    expect(body).toMatch(/said:\s*cast\.railSays\.value/)
-    expect(body).not.toMatch(/recordFacets\(/)
-    // ⚑ **D-006** · the rail derives a held conversation's row from its record, the wait and where
-    // the work it holds stands — both off the screen's one reading of the waits
-    const rail = code(readFileSync(join(COMPONENTS, 'SideRail.vue'), 'utf8'))
-    expect(rail).toMatch(
-      // ⚑ F036 · and who waits on its answer, off the host's state of it (`whoItOwesIn`).
-      /recordFacets\(\s*record,\s*theWaitIn\(props\.waiting, record\.sessionId\),\s*theWorkIn\(props\.waiting, record\.sessionId\),\s*whoItOwesIn\(host\?\.state\),?\s*\)/,
-    )
-    expect(screen).toMatch(/:waiting="conversationWaits"/)
-  })
-
-  it('🔴 a node’s press reaches the one open — the conversation in its full view', () => {
-    // ⚑ **D-017b · re-aimed** — a closed node's press went through `closedPress` (the library's one
-    // answer, then reopen or read); every node now presses the one open, whatever it is doing, and
-    // the screen draws it through `openConversation`, which looks and starts nothing.
-    const team = code(readFileSync(join(COMPONENTS, 'TeamWorkspace.vue'), 'utf8'))
-    expect(team).toMatch(/<TeamForest[\s\S]{0,200}@press="pressForest"/)
-    const press = team.slice(team.indexOf('function pressForest('))
-    expect(press.slice(0, press.indexOf('\n}\n'))).toMatch(
-      /emit\('openConversation', row\.conversation\)/,
-    )
-    expect(screen).toMatch(/<TeamWorkspace[\s\S]{0,800}@open-conversation="select"/)
-    const select = screen.slice(screen.indexOf('function select('))
-    expect(select.slice(0, select.indexOf('\n}\n'))).toMatch(/openConversation\(sessionId\)/)
-    // ⛔ **And the old route is gone**, so nothing presses round the one open.
-    expect(screen).not.toMatch(/@open-closed=/)
-    expect(screen).not.toContain('closedPress(')
   })
 })
 

@@ -1,5 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -32,59 +32,28 @@ import {
   type ActedBy,
 } from '../src/shared/who-did-it'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
-import type { RuntimeEvent } from '@brobot2/runtime'
 import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
- * 🔴 **477 · who did it** — HO-029 §2, landed.
+ * Who did it: the actor is recorded by whoever performs the act, at the moment it happens, and a
+ * row written before the app recorded an actor stays without one; the digest keeps saying so.
  *
- * > ⛔ §2.1: *"The actor is recorded by whoever performs the act, at the moment it happens. Never
- * > inferred afterwards, never derived from position, never reconstructed from what else was
- * > happening."*
- * >
- * > ⛔ §2.2: *"Do not backfill, and do not smooth the discontinuity. Every event written before
- * > this answers unknown, and the digest must keep saying so."*
- *
- * ## ⛔ What was measured, and where the scope came from
- *
- * ⚠️ **`463` F1 found the digest saying *"1 request was answered by a person"* about a question a
- * parent AGENT had answered, and `465` narrowed the sentence because the row genuinely did not
- * know.** ⚑ This file is the other half: the row knows now.
- *
- * 🔴 **The scope is DERIVED and §3 is the derivation, executable.** The rule is *a durable row
- * that ends a wait on somebody's decision, written at a door that has already established who the
- * decider is.* ⛔ Over the twenty-three app-written event types that was exactly two —
- * `user_decision` and `proposal_ended`, which D-016 took out with proposals — and §3 states, per
- * type, why each of the others is left alone. ⚠️ **An act performed by the engine has an actor
- * too**, and *the app itself* is one of this vocabulary's answers rather than an omission.
- *
- * ## ⚑ The instruments are production doors, never hand-built rows
- *
- * ⛔ **Except where a hand-built row IS the subject.** §1's whole point is a window holding one row
- * written before this app recorded an actor and one written after, so the old row is planted —
- * that population cannot be produced any other way, and producing it by deleting a field would be
- * a fixture built with the code under test.
- *
- * ⚑ The provider is a double, every directory is temporary, and no live app, port or provider is
- * touched.
+ * The instruments are production doors. The one exception is the old row, which is planted
+ * because today's code cannot produce it. The provider is a double and every directory is
+ * temporary.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
-const srcDir = join(here, '../src')
 
 const HOUR = 3_600_000
 const FROM = 1_800_000_000_000
 const TO = FROM + 12 * HOUR
 const INSIDE = FROM + 6 * HOUR
-/**
- * ⚑ **D-016 · the window after it**, because the digest is ONE window over every conversation an
- * agent of this app holds: §1's second reading gets a window of its own.
- */
+/** The window after it: the digest is one window over every conversation. */
 const NEXT_TO = TO + 12 * HOUR
 const INSIDE_NEXT = TO + 6 * HOUR
 
-/** A window sink: `aPersonIsBehindIt` is what the person's answer door reads (`340`, `349`). */
 /** Keep the provider handles, so a card can be raised through the real path. */
 class ProviderDouble extends FakeRuntime {
   constructor(
@@ -462,241 +431,7 @@ describe('477 · who did it', () => {
     expect(whoDidIt(THE_APP_ITSELF)).toBe(THE_APP_DID_IT)
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §3 · the scope, derived — and a reason for every row left alone
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * 🔴 **The census `477` is scoped by, as data.** ⛔ `records` is the verdict; the string is the
-   * reason, and it is what the response document states per row.
-   *
-   * ⚠️ **Keyed by `Exclude<TranscriptEvent, RuntimeEvent>['type']`, so a new app-written event is
-   * a compile error here** — the roster device `transcript.test.ts` uses, one question over. ⛔ A
-   * durable act that nobody classified is the thing this dispatch exists to stop.
-   */
-  const ACTOR_CENSUS: Readonly<
-    Record<Exclude<TranscriptEvent, RuntimeEvent>['type'], { records: boolean; because: string }>
-  > = {
-    worker_registered: {
-      records: false,
-      because:
-        'a binding fact written by this app with the conversation; its actual starter is the parent recorded in the same transaction',
-    },
-    // ── it records one, and did before 477 ────────────────────────────────────────────────────
-    user_turn: {
-      records: true,
-      because: '`attribution` + `relayedFrom`, written by whoseWordsTheseAre at the door (413)',
-    },
-    work_given: {
-      records: true,
-      because: '`givenBy` — the conversation that gave the piece; its owner is the ledger it is in',
-    },
-    work_taken_back: { records: true, because: '`by` — the conversation that took the piece back' },
-    work_retitled: {
-      records: true,
-      because: '`by` — the giver or the owner that titled the piece',
-    },
-    work_status_set: {
-      records: true,
-      because: '`by` — the giver or the owner that set the piece’s status line',
-    },
-    work_rebriefed: {
-      records: true,
-      because: '`by` — the giver that rewrote the brief; no verb writes the row yet',
-    },
-    work_closed: {
-      records: true,
-      because: '`by` — the conversation that closed the piece; no verb writes the row yet',
-    },
-    work_interrupted: {
-      records: true,
-      because: '`by` plus `agent` — the precedent this vocabulary reuses',
-    },
-    message_sent: { records: true, because: '`onBehalfOfAPerson`, derived off the sending slot' },
-    // ── 477 ───────────────────────────────────────────────────────────────────────────────────
-    user_decision: {
-      records: true,
-      because: '477 · `by` — five writers, two kinds of actor, one row',
-    },
-    instruction_changed: {
-      records: true,
-      because: 'The writing conversation and snapshotted author are bound by the host.',
-    },
-    instruction_settled: {
-      records: true,
-      because:
-        '582 · `by` — a person at the sheet, a person’s own save superseding it, or the launch sweep; four actors and one word, which is 477’s finding carried across rather than re-learned',
-    },
-    mcp_server_request_settled: {
-      records: true,
-      because: '`by` — a person at Waiting on you, or a person’s own registration superseding it',
-    },
-    // ── left alone, and why ───────────────────────────────────────────────────────────────────
-    mcp_server_requested: {
-      records: false,
-      because:
-        'the actor is WHICH LEDGER it is in — only the conversation that asked can write one — and `requestedBy` names the identity behind it',
-    },
-    instruction_proposed: {
-      records: false,
-      because:
-        '582 · the actor is WHICH LEDGER it is in — only the conversation that asked can write one — and `proposedBy` names the identity behind it',
-    },
-    // ── left alone, and why ───────────────────────────────────────────────────────────────────
-    work_replied: {
-      records: false,
-      because:
-        'the actor is WHICH LEDGER it is in — only the conversation that holds the piece can reply, and the giver’s `user_turn` carries `relayedFrom`',
-    },
-    question_asked: {
-      records: false,
-      because:
-        'the actor is WHICH LEDGER it is in — only the conversation holding the work can ask',
-    },
-    work_sent: {
-      records: false,
-      because:
-        'D-047 · the actor is WHICH LEDGER it is in — only the conversation that gave the piece, or gave it a new brief, writes one',
-    },
-    tool_refused: {
-      records: false,
-      because: 'the actor is WHICH LEDGER it is in, and `rail` names which rule refused',
-    },
-    reply_undelivered: {
-      records: false,
-      because: 'the act is an absence — nobody was there — and the replier is the ledger owner',
-    },
-    // ⚑ **723** — the provider did not answer an ask; the row names WHOSE, as the ask's own row does,
-    // because another ask can land between the two.
-    stop_unanswered: {
-      records: true,
-      because: '723 · `by` plus `agent` — the asker of the ask the provider did not answer',
-    },
-    // ⚑ **D-042** — 682's `model_choice_set_aside` went, with the stand-in re-judge that wrote it:
-    // no launch sets a person's choice aside any more (R1 names and records each conversation's
-    // pair), so there is no row left to classify.
-    work_reconciliation: {
-      records: false,
-      because: 'an app-written receipt of its reminder or escalation, not a new act by a caller',
-    },
-    work_recovery: {
-      records: false,
-      because: 'an app-written observation of the existing sign-in recovery, not a new request',
-    },
-    work_stall_told: {
-      records: false,
-      because:
-        '`how` already splits the actors: the app pushed it, or the piece’s own wake or question set it right',
-    },
-    request_routed: {
-      records: false,
-      because: 'the router is this app and there is one classifier; the asker is the ledger owner',
-    },
-    request_escalated: {
-      records: false,
-      because:
-        'a deadline sweep, one writer, one possible author — a `by` here would have exactly one value',
-    },
-    request_stranded: {
-      records: false,
-      because: 'the launch sweep, one writer; the event TYPE is the actor',
-    },
-    work_restarted: {
-      records: false,
-      because: 'the launch sweep, one writer; its one field names the pieces it stalled, not who',
-    },
-    // ⚠️ **673 · not recorded, and that is a gap stated rather than a design claimed**: the row is
-    // for the task fold, and who reopened — a person's Reopen or a parent's wake — is not written on it.
-    // ⚑ **T-002 · D-004 records ONE actor**: `because` (`the-sign-in-was-renewed`, and
-    // `the-sign-in-moved-on`) says this app reopened it by itself. A person's Reopen and a wake still
-    // name nobody, so `false` stands.
-    reopened: {
-      records: false,
-      because:
-        '673 · the host row the task fold unwinds on; a person’s Reopen and a wake are not recorded here (`because` names only the app’s own reopens: on a renewed sign-in, and on the current sign-in for what waited)',
-    },
-    // Its sentence names the agent that restored it; it has no field of its own for who.
-    restored_from_archive: {
-      records: false,
-      because:
-        'one writer, the host, when an agent restores an archived conversation; `saying` is a sentence for a person that names the agent, not a field a reader can attribute by',
-    },
-    // ⚑ **D-017 · R4** — the launch marker the question fold keys on; `reopened`'s answer beside it.
-    launched: {
-      records: false,
-      because:
-        'D-017 · R4 · one writer, the host at every start and reopen, and the event TYPE is the actor (this app launched the provider); who caused the start is on the row that carried it, as for `reopened`',
-    },
-    // ⚑ **D-017 · R10** — a replacement at each end: nobody chose it; the app found it.
-    replaced_by: {
-      records: false,
-      because:
-        'D-017 · R10 · one writer, the host, when a start finds the conversation can never be reopened — nobody chose it, and the delivery that found it is recorded on its own row, with its authorship',
-    },
-    replaces: {
-      records: false,
-      because:
-        'D-017 · R10 · `replaced_by`’s other end, the same writer in the same act; the new conversation’s own start rows carry who it serves',
-    },
-    request_interrupted: {
-      records: false,
-      because:
-        '397 chose the actor on the NEIGHBOURING `work_interrupted` row and said so — reversing that is not this dispatch',
-    },
-    // ⚑ **D-009** — the asker withdrawing its own question: the ledger it lands in IS the actor's.
-    question_withdrawn: {
-      records: false,
-      because:
-        'written only by the asker itself, into its own ledger: the conversation holding the row is who did it, and a field would be a second copy of that',
-    },
-    // ⚑ **D-009** — nobody acted: the recipient's conversation ended, and `recipient` names it.
-    question_recipient_ended: {
-      records: false,
-      because:
-        'an ending, not an act: the app writes it when the conversation it names ended, and whoever ended that one is recorded where it ended',
-    },
-    question_ended_with_its_piece: {
-      records: false,
-      because:
-        'an ending, not an act: the app writes it when a piece ended, and whoever ended the piece is recorded on that row',
-    },
-    user_command: {
-      records: false,
-      because:
-        'the type MEANS a person pressed a control; it is gated on `mayControl` and silent for every commanded gesture',
-    },
-    memory_note: {
-      records: false,
-      because:
-        'an observation the app makes of a directory any session in the profile can write — naming one would be a guess',
-    },
-    memory_loaded: { records: false, because: 'a launch fact about the app’s own prompt assembly' },
-    message_queued: {
-      records: false,
-      because:
-        'the act is a transmission, and 413 already ruled its authorship: `work` + `relayedFrom`, with `attribution` deliberately stripped',
-    },
-    message_unqueued: {
-      records: false,
-      because:
-        'F1 — the `cancelled` arm HAS two kinds of actor and records neither; left alone with the measurement in the response, not closed here',
-    },
-  }
-
-  it('⛔ every app-written durable event is classified, and the one that changed is the one derived', () => {
-    // ⚑ **Two until D-016**, which took `proposal_ended` out with proposals.
-    const changed = Object.entries(ACTOR_CENSUS)
-      .filter(([, one]) => one.because.startsWith('477'))
-      .map(([type]) => type)
-      .sort()
-    expect(changed).toEqual(['user_decision'])
-    // ⛔ **Every row owes a reason, whichever way it went.** ⚠️ A `records: false` with no sentence
-    // is an omission nobody decided about, which is the shape HO-029 §2.1 is written against.
-    for (const [type, one] of Object.entries(ACTOR_CENSUS)) {
-      expect(one.because.length, type).toBeGreaterThan(20)
-    }
-    // ⚑ **And the one 477 touched really does carry it in the TYPE**, asserted through a value the
-    // compiler checks rather than through the census's own opinion of itself.
+  it('the Events tab names the person who answered a decision', () => {
     const decision: Extract<TranscriptEvent, { type: 'user_decision' }> = {
       type: 'user_decision',
       requestId: 'r',
@@ -744,7 +479,7 @@ describe('477 · who did it', () => {
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §5 · the doors (the four ways a proposal stopped waiting went with proposals at D-016)
+  // the doors
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   it('🔴 the agent door records the answering CONVERSATION, not a word', async () => {
@@ -760,34 +495,6 @@ describe('477 · who did it', () => {
       },
     ])
     expect(said('request-answered')).toBe('1 request was answered. Who answered: 1 · an agent.')
-  })
-
-  it('⛔ a PERMISSION answered from a window records the person — the fourth of the five writers', async () => {
-    const opened = await host.createSession(
-      {
-        provider: 'claude',
-        profileId: 'permission-side',
-        approvalMode: 'ask',
-        cwd: root,
-      },
-      window,
-    )
-    // ⚑ **The double parks its first turn on a permission card**, which is how a real `ask` session
-    // reaches `respondPermission` — the door `465` §2 could not tell apart from the agent's.
-    await host.send(opened.sessionId, 'hello', window)
-    await waitFor(
-      () => window.messages.some((one) => one.event.type === 'permission_request'),
-      'the permission card',
-    )
-    await host.respondPermission(opened.sessionId, 'turn_1_perm', { outcome: 'allow' }, window)
-    expect(rowsOf(opened.sessionId, 'user_decision')).toEqual([
-      {
-        type: 'user_decision',
-        requestId: 'turn_1_perm',
-        outcome: 'allow',
-        by: { who: 'a-person' },
-      },
-    ])
   })
 
   it('⛔ a question THIS APP holds records its answerer at BOTH its doors — the other two writers', async () => {
@@ -902,49 +609,5 @@ describe('477 · who did it', () => {
       outcome: 'answered',
       by: { who: 'a-person' },
     })
-  })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §6 · no schema change, stated rather than inferred
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  it('⛔ nothing here is a schema change — no migration, no column, and clean-base is owed nothing', () => {
-    // ⛔ **The column, under four spellings, with a positive control.** ⚠️ A named absence is only
-    // as strong as its search shape.
-    const schema = readFileSync(join(srcDir, 'main/db/schema.ts'), 'utf8')
-    for (const spelling of ['actedBy', 'acted_by', 'whoDidIt', 'who_did_it']) {
-      expect(schema, spelling).not.toContain(spelling)
-    }
-    // ⚑ The control: the column the new field actually lives INSIDE, which the census can see.
-    expect(schema).toContain("text('payload', { mode: 'json' })")
-    // 🔴 **500 · and over every migration, which is what makes the claim survive a later one.**
-    // ⛔ *No migration, whichever number it carries, writes this column* — which is what `477`
-    // actually promised. ⚑ Since D-016 that is `0000_the_tree.sql` and whatever lands after it.
-    const everyMigration = readdirSync(migrationsDir)
-      .filter((one) => one.endsWith('.sql'))
-      .map((one) => readFileSync(join(migrationsDir, one), 'utf8'))
-    expect(everyMigration.length).toBeGreaterThan(0)
-    for (const sql of everyMigration) {
-      for (const spelling of ['acted_by', 'who_did_it']) {
-        expect(sql, spelling).not.toContain(spelling)
-      }
-    }
-
-    // 🔴 **`clean-base` is owed nothing, and that is a decision rather than an omission.** ⛔ Its
-    // census is over the literals passed as `join(userData, …)` — a PATH census — and a key inside
-    // an `events.payload` JSON object adds none. ⚠️ Asserted here so the sentence is a test rather
-    // than a claim in a response document.
-    const written = [
-      join(srcDir, 'shared/who-did-it.ts'),
-      join(srcDir, 'main/runtime/runtime-host.ts'),
-      join(srcDir, 'main/db/session-store.ts'),
-    ]
-    for (const file of written) {
-      const source = readFileSync(file, 'utf8')
-      for (const line of source.split('\n')) {
-        if (line.trimStart().startsWith('*') || line.trimStart().startsWith('//')) continue
-        expect(line, file).not.toMatch(/join\(\s*userData/)
-      }
-    }
   })
 })

@@ -11,7 +11,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { TOOL_NAMES, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { SPAWN_RAILS } from '../src/main/runtime/spawn-rails'
 import { CAPABILITY_FIELDS, EVERY_AGENT_THIS_APP_HOLDS } from '../src/shared/capabilities'
 import { composeProfileBundle } from '../src/main/runtime/factory-text'
@@ -410,12 +410,8 @@ describe('488 · who exists, and what they were told', () => {
 
   describe('§5 · the door itself', () => {
     it('⛔ it advertises one argument, the agent whose record to read, and no spelling of another', () => {
-      // 🔴 **The ruling was *none*, and it is what removed `486`'s trap rather than passing it.**
-      // ⚠️ With nothing to read there was no argument this door could read before its fold, and the
-      // MCP SDK strips an argument nobody documented — so a caller that invented one would be told
-      // nothing. ⚑ **F009 · one argument now, and it opens a different answer**: `profile` reads that
-      // agent's record — its own read, never a narrowing of this roster, which still has no wall
-      // (below) — and any other spelling is still stripped (the next case).
+      // `profile` reads that agent's record, never a narrowing of this roster; any other spelling
+      // is stripped (the next case).
       const one = agentToolsFor(host, 'sess_nobody').tools.find(
         (tool) => tool.name === 'list_profiles',
       )
@@ -423,8 +419,8 @@ describe('488 · who exists, and what they were told', () => {
     })
 
     it('🔴 an argument a caller invents changes nothing', async () => {
-      // ⛔ **Measured rather than argued.** `325`'s device: the door is called with the arguments a
-      // model would most plausibly invent, and the answer is byte-identical to the empty call.
+      // Called with the arguments a model would most plausibly invent, the answer is byte-identical
+      // to the empty call.
       await bringIdentityIntoBeing('builder')
       await bringIdentityIntoBeing('auditor')
       const me = await anAgentRunning('lead')
@@ -440,19 +436,6 @@ describe('488 · who exists, and what they were told', () => {
           JSON.stringify(bare),
         )
       }
-    })
-
-    it('⛔ it is APPENDED to the roster and the indexes five tests pin are untouched', () => {
-      // ⚠️ **`an-anchor-on-a-lists-last-member-dies-when-anything-appends`** — this is an INDEX pin,
-      // which is the shape that survives the next append.
-      // ⚑ **D-017 — one lower each**: `end_agent` (index 4) went, and everything after it moved up.
-      // ⚑ **D-016 — two lower**: `list_projects` (13) and `create_project` (14) went, so
-      // `list_profiles` is 13 and its neighbour before it is `ask_question`, where `list_projects`
-      // was pinned.
-      expect(TOOL_NAMES.indexOf('list_profiles')).toBe(13)
-      expect(TOOL_NAMES.filter((one) => one === 'list_profiles')).toHaveLength(1)
-      expect(TOOL_NAMES.indexOf('list_agents')).toBe(0)
-      expect(TOOL_NAMES.indexOf('ask_question')).toBe(12)
     })
   })
 

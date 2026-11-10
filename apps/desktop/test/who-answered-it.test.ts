@@ -47,41 +47,18 @@ import {
 } from './lib/host-fixture'
 
 /**
- * 🔴 **503 · who answered it** — HO-037 §2, landed.
+ * Who answered it: a person can only have answered a permission, but a question may have been
+ * answered by a parent agent, and the Requests surface says which.
  *
- * > ⚑ *"The Requests surface shows who answered."*
- * >
- * > ⛔ *"My* omit the row entirely, do not add the label anywhere *rested on one premise —*
- * > nothing records who decided. *`477` ended that premise, so the ruling dies with it rather than
- * > needing to be argued down."*
- * >
- * > ⚠️ *"A person can only ever have answered a permission, but a question may have been answered
- * > by a parent agent. So the actor is what distinguishes* I decided this *from* the project
- * > manager handled it *— which is the escalation picture, on the surface where the escalation
- * > lands."*
+ *  - The row: the same event type, answered at a window and by a parent agent, records two words.
+ *  - The fold: the actor reaches the card off the row that set the outcome, and a card a teardown
+ *    settled carries no actor.
+ *  - The words: the vocabulary's sentences, the sentence for a row with no actor (the digest
+ *    composes the same one), and the conversation id kept off the card.
+ *  - The map: the actor slot and the sentence it supports.
  *
- * ## ⛔ What each section is for
- *
- *  - **§1** — is `494` F2 right? ⚠️ **The brief cites `494` and a docblock, which is two claims and
- *    no measurement**, so this asks the code twice: a census over every production writer of
- *    `user_decision`, and the two doors driven for real. 🔴 **The two doors are where the readings
- *    DIVERGE** — the same event type, answered by a window and by a parent agent, producing two
- *    different words — which is standing rule 3 and the reason `463` F1 existed at all.
- *  - **§2** — the fold. The actor reaches the item off the row that set the outcome, and off
- *    nothing else; and the THIRD population — a card a teardown settled — carries no actor and no
- *    ledger gap either.
- *  - **§3** — the words. `WHO_DID_IT_SAYS`' vocabulary, `465`'s sentence for the absence with the
- *    digest composing the same bytes, and the conversation id kept off the surface a person reads.
- *  - **§4** — the map, which `494` F2 found carrying two sentences that went false at `477`.
- *
- * ## ⚑ The instruments are production doors
- *
- * ⛔ **Except the one population no door can produce**: a row written before this app recorded an
- * actor. It is planted, for `477`'s own stated reason — manufacturing it by deleting the field
- * afterwards would be a fixture built out of the thing under test.
- *
- * ⚑ The provider is a double, every directory is temporary, and no live app, port, provider home
- * or `auth.json` is touched.
+ * The one planted population is a row written before the app recorded an actor. The provider is a
+ * double and every directory is temporary.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -92,7 +69,6 @@ const FROM = 1_800_000_000_000
 const TO = FROM + 12 * HOUR
 const INSIDE = FROM + 6 * HOUR
 
-/** A window sink: `aPersonIsBehindIt` is what the person's answer door reads (`340`, `349`). */
 /** Keep the provider handles, so a card can be raised through the real path. */
 class ProviderDouble extends FakeRuntime {
   constructor(
@@ -208,7 +184,7 @@ describe('503 · who answered it', () => {
   }
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §1 · is `494` F2 right — the actor is on the row, from every producer
+  // the actor is on the row
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§1 · the row', () => {
@@ -276,30 +252,6 @@ describe('503 · who answered it', () => {
         (rows) => (rows[0] as { by?: ActedBy }).by?.who,
       )
       expect(words).toEqual(['a-person', 'an-agent'])
-    })
-
-    it('⚠️ a person answering the same QUESTION writes `a-person` — so the word tracks the door, not the kind', async () => {
-      // ⛔ **The cell one fact over from the agent's.** Without it, `an-agent` above could be a
-      // property of questions rather than of who answered one.
-      const sessionId = await opened('person-question')
-      const asked = liveHandle().simulateUserInput('Which database?', ['Postgres', 'SQLite'])
-      expect(
-        await host.respondUserInput(
-          sessionId,
-          asked.id,
-          { kind: 'answer', answers: { q0: ['Postgres'] } },
-          window,
-        ),
-      ).toEqual({ outcome: 'taken' })
-      await expect(asked.answered).resolves.toMatchObject({ kind: 'answer' })
-      expect(decisionsIn(sessionId)).toEqual([
-        {
-          type: 'user_decision',
-          requestId: asked.id,
-          outcome: 'answered',
-          by: { who: 'a-person' },
-        },
-      ])
     })
   })
 

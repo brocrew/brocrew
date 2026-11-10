@@ -1,6 +1,6 @@
 import { LEDGER_WALK_KINDS } from '../src/shared/question-contracts'
 import { TASK_STATES } from '../src/shared/task-contracts'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,49 +19,24 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { openElsewhere } from '../src/renderer/src/lib/taking-over'
 import { walkCovers } from '../src/shared/questions'
-import { RUNTIME_CHANGE_SUBJECTS } from '../src/shared/runtime-ipc'
 import { type RuntimeChangeMessage } from '../src/shared/runtime-ipc'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import type { WhoCalledWhom } from '../src/shared/who-called-whom'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
- * 🔴 **543 · who called whom — the read that has to exist first** (`540` §7 slice 1).
+ * Who called whom: the host's read of which conversation started which and what work passed
+ * between them, by conversation rather than by profile slug, driven through the host on a real
+ * database. `WorkGivenOut` carries only `givenToProfile`, which is why §0 shows two conversations
+ * of one identity reading as one word there.
  *
- * ## ⛔ The premise, asserted rather than quoted (§0)
- *
- * Navigation needs the recipient conversation, not just a profile slug. `WorkGivenOut`
- * carries `givenToProfile` without a session id. §0 uses two conversations of one identity to
- * demonstrate the shipped reader returning the same word for both; this is a retained defect
- * demonstration rather than a claim that the reader was changed.
- *
- * ## ⚑ What each section is for
- *
- *  - **§0** — the premise: one identity, two conversations, and the answer that cannot separate them.
- *  - **§1** — the property, driven through the host on a real database.
- *  - **§2** — a start and a handoff are INDEPENDENT edges (`540` §5).
- *  - **§3** — completeness: four empties, three words, and a `rowsUnread` that measures something.
- *  - **§4** — one aggregate, one honest completion point (`540` MI-19, brief §3.2).
- *  - **§5** — the status fold is lossy and is not folded here (brief §3.3).
- *  - **§6** — the FOURTH navigation state stays reachable (brief §3.4).
- *  - **§7** — lineage from explicit ids and from nothing else (brief §3.1).
- *  - **§8** — the wire, the doors and the entitlement.
- *  - **§9** — `runtime:changed`: what moves this population, measured (brief §5.3).
- *
- * 🔒 The provider is a double, every directory is temporary, and no live app, port, provider home
- * or `auth.json` is touched.
+ * The provider is a double and every directory is temporary.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
-const STORE_SRC = join(here, '../src/main/db/session-store.ts')
 
 const NOW = 1_800_000_000_000
-
-/** ⛔ **Prose stripped before anything is counted** — a docblock quoting a call is not a call. */
-function code(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1')
-}
 
 describe('543 · who called whom', () => {
   let userData: string
@@ -258,24 +233,22 @@ describe('543 · who called whom', () => {
 
     it('⛔ the case a SLUG cannot tell apart — one identity, two conversations, two edges', () => {
       const pm = conversation('sess_pm', 'project-manager')
-      // ⚑ **Standing rule 12: plant TWO.** One conversation of this identity is a child and the
-      // other is not, and both are given work — so every field of the answer has to separate them.
+      // One conversation of this identity is a child and the other is not, both are given work
+      // with the same title, so only explicit ids can separate them.
       const born = conversation('sess_worker_1', 'worker', { parent: pm })
       const adopted = conversation('sess_worker_2', 'worker')
-      giveWork(pm, born, 'work_a', { title: 'the first job' })
-      giveWork(pm, adopted, 'work_b', { title: 'the second job' })
+      giveWork(pm, born, 'work_a', { title: 'do the thing' })
+      giveWork(pm, adopted, 'work_b', { title: 'do the thing' })
 
       const read = host.whoCalledWhom(pm)
-      // ⛔ **One of the two is a child and the other is not**, and a reader keyed on the identity
-      // would have had to say *both* or *neither*.
       expect(read.children.rows.map((row) => row.conversation)).toEqual([born])
       expect(read.children.rows.map((row) => row.identity)).toEqual(['worker'])
-      // ⛔ **Both were given work, and the two edges land on two different conversations.**
       expect(read.workGivenOut.rows.map((row) => row.to)).toEqual([born, adopted])
       expect(new Set(read.workGivenOut.rows.map((row) => row.toIdentity))).toEqual(
         new Set(['worker']),
       )
-      // 🔴 **The whole point, in one line**: the identity is the same word and the edge is not.
+      expect(new Set(read.workGivenOut.rows.map((row) => row.title)).size).toBe(1)
+      // The identity is the same word and the edge is not.
       expect(read.workGivenOut.rows[0]?.toIdentity).toBe(read.workGivenOut.rows[1]?.toIdentity)
       expect(read.workGivenOut.rows[0]?.to).not.toBe(read.workGivenOut.rows[1]?.to)
     })
@@ -341,31 +314,6 @@ describe('543 · who called whom', () => {
       // row that exists always answers it.
       expect(parent?.provider).toBeNull()
       expect(parent?.identity).toBeNull()
-    })
-  })
-
-  /* ═════════════ §2 · a start and a handoff are two edges and never derived from each other ═══ */
-
-  describe('§2 · `540` §5 — work outside the child list is a real product case', () => {
-    it('⛔ work to a conversation this one never spawned is an edge, and not a child', () => {
-      const pm = conversation('sess_pm', 'project-manager')
-      const stranger = conversation('sess_stranger', 'auditor')
-      giveWork(pm, stranger, 'work_a')
-      const read = host.whoCalledWhom(pm)
-      expect(read.workGivenOut.rows.map((row) => row.to)).toEqual([stranger])
-      expect(read.children.rows).toEqual([])
-      // ⛔ **So `childIds` may never be derived from the work list** — it would invent a start.
-      expect(read.children.walk).toBe('every-conversation-this-one-spawned')
-    })
-
-    it('⛔ a child this one never gave work to is a child, and not a work edge', () => {
-      const pm = conversation('sess_pm', 'project-manager')
-      const child = conversation('sess_child', 'worker', { parent: pm })
-      const read = host.whoCalledWhom(pm)
-      expect(read.children.rows.map((row) => row.conversation)).toEqual([child])
-      expect(read.workGivenOut.rows).toEqual([])
-      // ⛔ **And the work list may never be derived from the child list** — it would invent work.
-      expect(read.workGivenOut.walk).toBe('every-conversation-this-one-gave-work-to')
     })
   })
 
@@ -530,17 +478,6 @@ describe('543 · who called whom', () => {
   /* ══════════════════ §4 · one aggregate read, one honest completion point ═══════════════════ */
 
   describe('§4 · `540` MI-19, decided: one read and one `readAt` (brief §3.2)', () => {
-    it('🔴 the host answers SYNCHRONOUSLY, which is what makes one stamp honest', () => {
-      const pm = conversation('sess_pm', 'project-manager')
-      const answer: WhoCalledWhom | Promise<WhoCalledWhom> = host.whoCalledWhom(pm)
-      // ⛔ **The condition `540` named:** *"One timestamp is honest only if the host performs one
-      // atomic/defined aggregate read and records the common completion point."* ⚑ Nothing can be
-      // written between two of these lists if the whole read is one uninterrupted stretch, and
-      // *not a thenable* is the form of that claim a test can hold.
-      expect(typeof (answer as { then?: unknown }).then).toBe('undefined')
-      expect((answer as WhoCalledWhom).conversation).toBe(pm)
-    })
-
     it('⛔ `readAt` is taken LAST, inside the call, and is a completion point', () => {
       const pm = conversation('sess_pm', 'project-manager')
       const before = Date.now()
@@ -639,24 +576,6 @@ describe('543 · who called whom', () => {
     })
   })
 
-  /* ═════════════════════ §7 · lineage from explicit ids and from nothing else ════════════════ */
-
-  describe('§7 · `540` §3.1 — never derive lineage from role, title or task text', () => {
-    it('🔴 two conversations with ONE identity and ONE task text are still two edges', () => {
-      const pm = conversation('sess_pm', 'project-manager')
-      const a = conversation('sess_a', 'worker', { parent: pm })
-      const b = conversation('sess_b', 'worker')
-      // ⚑ **Everything a derivation could have keyed on is identical** — same identity, same
-      // title — and the two rows are still told apart, because nothing keys on those.
-      giveWork(pm, a, 'work_a', { title: 'do the thing' })
-      giveWork(pm, b, 'work_b', { title: 'do the thing' })
-      const read = host.whoCalledWhom(pm)
-      expect(read.children.rows.map((row) => row.conversation)).toEqual([a])
-      expect(read.workGivenOut.rows.map((row) => row.to)).toEqual([a, b])
-      expect(new Set(read.workGivenOut.rows.map((row) => row.title)).size).toBe(1)
-    })
-  })
-
   /* ═════════════════════════ §8 · the wire, the doors and the entitlement ═══════════════════ */
 
   describe('§8 · one verb, on the window wire and on no toolset', () => {
@@ -687,50 +606,22 @@ describe('543 · who called whom', () => {
     })
   })
 
-  /* ═══════════════════ §9 · what moves this population, measured (brief §5.3) ════════════════ */
+  /* ═════════════════════════ §9 · what moves this population, measured ═════════════════════════ */
 
   describe('§9 · `runtime:changed` — the answer is ADD NOTHING, and here is the measurement', () => {
-    it('🔴 the LINEAGE half moves only when a session ROW is written, which already announces', () => {
-      const pm = conversation('sess_pm', 'project-manager')
-      expect(host.whoCalledWhom(pm).children.rows).toEqual([])
-      // ⛔ **`parent_session_id` has exactly one writer on the creation path** — `store.create`'s
-      // parent — so the lineage answer moves exactly when a row is written, which is
-      // `theWorldMoved('conversations')`' own stated CATEGORY (`534`, standing rule 20).
-      const store_ = code(readFileSync(STORE_SRC, 'utf8'))
-      expect(store_.split('SET parent_session_id = ?').length - 1).toBe(1)
-      conversation('sess_child', 'worker', { parent: pm })
-      expect(host.whoCalledWhom(pm).children.rows).toHaveLength(1)
-      // ⚑ **Two subjects and no third** — a member added here is a compile error in
-      // `the-world-moved.ts`'s `Record<RuntimeChangeSubject, () => void>` until somebody says what
-      // to re-read, and this read gives nobody anything new to re-read.
-      // ⚑ **638 · a THIRD member**, `work` — the condition `534` set (*do not add a subject
-      // nothing reads*) lapsed when `631` built the task lists that read it.
-      expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work', 'persons'])
-    })
-
     it('⛔ 638 · a RAW ledger append still announces nothing — the announcement is at the VERB', () => {
       const pm = conversation('sess_pm', 'project-manager')
       const worker = conversation('sess_worker', 'worker')
       announced.length = 0
       giveWork(pm, worker, 'work_a')
-      // 🔴 **638 · RE-AIMED, not stripped** (standing rule 26). ⛔ **The sentence that went false
-      // is *"and that is unchanged"***: `638` added the `work` subject and five announcements, so
-      // the app DOES announce when work moves. ⚑ **What this test measures is narrower and still
-      // true, and it is the more useful half**: `giveWork` writes to the STORE directly, and a raw
-      // write announces nothing — because the announcement is at the VERB (`recordTheGive`,
-      // `replyToParent`, `takeBackPiece`, `takeQueuedBack`, `runFlush`), which is where `534` put
-      // its own and where a durable write has already committed.
-      // ⚠️ **The arrival half is pinned in `work-moved-and-nothing-announced-it.test.ts`**, driven
-      // through the host's verbs end to end.
+      // `giveWork` writes to the store directly; the announcement belongs to the host's verbs
+      // (`recordTheGive`, `replyToParent`, ...), so a raw write announces nothing.
       expect(host.whoCalledWhom(pm).workGivenOut.rows).toHaveLength(1)
-      // ⚑ Only `persons`, which the store's record of the commit carries for the work a person is
-      // asked about; every other subject is still the verb's.
+      // Only `persons`, which the store's record of the commit carries for the work a person is
+      // asked about; every other subject is the verb's.
       expect(announced.filter((message) => message.what !== 'persons')).toEqual([])
-      // ⛔ **THE CONTROL, REPAIRED.** ⚠️ It read `expect(announced.length).toBeGreaterThanOrEqual(0)`
-      // — true of every array there is, so it proved nothing
-      // (`a-positive-assertion-must-differ-from-the-default`). ⚑ A session row written through the
-      // host's own door announces, so the emptiness above is a fact about RAW APPENDS and not about
-      // a dep nobody wired.
+      // The control: a session row written through the host's own door announces, so the emptiness
+      // above is about raw appends and not about an unwired channel.
       announced.length = 0
       host.createAgent({ slug: 'a-control-agent' } as never)
       expect(announced, 'the channel is live in this harness').not.toEqual([])

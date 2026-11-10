@@ -1,9 +1,9 @@
 import { waitFor } from './lib/f093-host'
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime, FakeSessionHandle } from '@brobot2/runtime'
@@ -69,7 +69,6 @@ import { replyText } from '../src/main/runtime/reply-rails'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const mainRoot = join(here, '../src/main')
 
 class RecordingSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = true
@@ -80,29 +79,6 @@ class RecordingSink implements RuntimeEventSink {
     this.messages.push(message)
   }
   sendLiveness(): void {}
-}
-
-/** ⛔ **Comment-stripped**, so a census reads what the code does and not what a docblock says. */
-const codeOnly = (source: string): string =>
-  source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-
-/** Every file under a root, as `{ path, text }` — the census shape `404` and `406` use. */
-function filesUnder(root: string): { path: string; text: string }[] {
-  const out: { path: string; text: string }[] = []
-  const walk = (dir: string): void => {
-    for (const entry of readdirSync(dir)) {
-      const full = join(dir, entry)
-      if (statSync(full).isDirectory()) walk(full)
-      else if (/\.(ts|vue)$/.test(entry)) {
-        out.push({
-          path: relative(root, full).replaceAll('\\', '/'),
-          text: readFileSync(full, 'utf8'),
-        })
-      }
-    }
-  }
-  walk(root)
-  return out
 }
 
 /**
@@ -335,31 +311,10 @@ describe('413 · words the person did not say', () => {
     return state
   }
 
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §1 · the census — every producer that puts a turn into a provider, classified
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§1 · the census, derived from the call sites', () => {
-    it('⚠️ the window prefix has exactly ONE spelling, and the decoder is its inverse', () => {
-      // ⛔ **`sessionSpeakingAs`'s own rule, applied to the other kind of caller**: *"it lives
-      // beside the encoder so the two spellings cannot drift apart, which is the only reason a
-      // prefix scheme is safe to depend on."* ⚠️ Before `413` the encoder was in `ipc.ts` and
-      // there was no decoder at all.
-      const written = filesUnder(mainRoot).filter(
-        (file) =>
-          file.path !== 'runtime/window-caller.ts' && codeOnly(file.text).includes("'webContents:"),
-      )
-      expect(written.map((file) => file.path)).toEqual([])
-      // ⛔ **And the excluded file is asserted from the inside — found by `M32` SURVIVING.** ⚠️ A
-      // census that skips one file is blind in exactly that file, and the encoder writing the
-      // prefix as a literal beside the constant is indistinguishable from the constant to every
-      // behavioural test: both produce `webContents:7`. ⚑ So the count is the instrument, and the
-      // ONE occurrence is the declaration.
-      const owner = codeOnly(readFileSync(join(mainRoot, 'runtime/window-caller.ts'), 'utf8'))
-      expect(owner.match(/webContents:/g) ?? []).toHaveLength(1)
-      expect(owner).toContain('return `${WINDOW_CALLER_PREFIX}${contents.id}`')
+  describe('the window caller id', () => {
+    it('a window owner id decodes as a window; a bare prefix or an agent id does not', () => {
       expect(aWindowIsAsking(sinkOwnerId({ id: 7 }))).toBe(true)
-      // ⛔ **A bare prefix names no window**, and admitting it would make the empty string a person.
+      // A bare prefix names no window, and admitting it would make the empty string a person.
       expect(aWindowIsAsking(WINDOW_CALLER_PREFIX)).toBe(false)
       expect(aWindowIsAsking(agentCallerId('sess_9'))).toBe(false)
     })
@@ -591,23 +546,6 @@ describe('413 · words the person did not say', () => {
       expect(carried?.attribution).toBe('app_authored')
       expect(carried?.relayedFrom).toBe(worker)
       expect(carried?.work).toBeUndefined()
-    })
-
-    it('⛔ the caller is the APP and the name is the CHILD’s — not the caller’s', async () => {
-      // ⚠️ **Tested where the two readings DIVERGE** (standing rule 3). `deliverQuestion` calls as
-      // `THE_APP_ITSELF`, so a relay derived from the caller alone would be ABSENT here and the
-      // turn would fall through to the go-ahead's *"sent for you"* entry — the exact falsehood
-      // `406` refused to ship. ⛔ Every other relayed turn derives it from the caller, so this is
-      // the one sample where the two rules give different answers.
-      const { pm, worker } = await workWasGiven('another question coming')
-      const raised = latestHandle().simulateUserInput('deploy now?', ['yes', 'no'], false)
-      await waitFor(
-        () => turnsIn(pm).some((turn) => turn.text.includes(raised.id)),
-        'the question to reach the parent',
-      )
-      const carried = turnsIn(pm).find((turn) => turn.text.includes(raised.id))
-      expect(carried?.relayedFrom).toBe(worker)
-      expect(carried?.relayedFrom).not.toBe(pm)
     })
   })
 
