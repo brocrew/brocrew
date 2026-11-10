@@ -93,6 +93,11 @@ describe('every Electron launcher under scripts/', () => {
     expect(silent, 'a launcher puts a window on a person’s screen and says nothing').toEqual([])
   })
 
+  it('the delegated renderer log probe passes the hidden switch', () => {
+    const source = readFileSync(join(SCRIPTS, 'renderer-logging-probe.mjs'), 'utf8')
+    expect(verdictOf(source)).toBe('hidden')
+  })
+
   it('the gates and the live smokes are hidden — the launches that run most', () => {
     const hidden = new Set(
       LAUNCHERS.filter((one) => one.verdict === 'hidden').map((one) => one.name),
