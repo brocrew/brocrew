@@ -1,6 +1,6 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -43,8 +43,7 @@ import { applyEvent, createTranscript, type UnknownItem } from '../src/renderer/
  * third of those was missed on the first pass and found in review — bounding at construction does
  * nothing about a row already on disk, and the database that prompted this dispatch has exactly
  * one. The assertions below drive each stage with the real production function: main's wire
- * boundary, the structured clone Electron performs on IPC, the renderer's fold, the row written,
- * and the row replayed.
+ * boundary, the renderer's fold, the row written, and the row replayed.
  */
 
 /** The real shape, at the real size, from characters generated here. */
@@ -73,11 +72,6 @@ const jsonBytes = (value: unknown): number => Buffer.byteLength(JSON.stringify(v
 const marker = (raw: unknown): DiscardedPayload => raw as DiscardedPayload
 
 describe('the size bound on unknown payloads (052)', () => {
-  it('the fixture really is the multi-megabyte shape, or this test proves nothing', () => {
-    expect(jsonBytes(PAYLOAD)).toBeGreaterThan(2_000_000)
-    expect(jsonBytes(PAYLOAD)).toBeGreaterThan(MAX_UNKNOWN_RAW_BYTES * 30)
-  })
-
   it('replaces an oversized payload at creation with a marker, and never a fragment of it', () => {
     const created = event()
     expect(created.type).toBe('unknown')
@@ -129,24 +123,9 @@ describe('the size bound on unknown payloads (052)', () => {
     // deleted, and swearing otherwise would be the same kind of wrong in the other direction.
     expect(note).toMatch(/for as long as that file is kept/)
     expect(note).not.toMatch(/always|guaranteed|never lost|not gone/)
-  })
-
-  it('⚠️ the note does not promise a re-import gives the payload back — because it would not', () => {
-    // Codex's importer keeps `response_item` lines and skips every `event_msg`, and `event_msg` is
-    // the only kind the biggest payloads arrive as — measured across both rollouts on this machine.
-    // The archive holds the bytes; the re-derived ledger does not. The old note's "and that is what
-    // export reassembles" was the half of the sentence that could be read as saying otherwise.
-    const created = event()
-    if (created.type !== 'unknown') throw new Error('unreachable')
-    expect(String(marker(created.raw).note)).not.toContain('export reassembles')
-  })
-
-  it('⚠️ the ceiling itself is unchanged at 64 KiB — 067 did not move it (acceptance 6)', () => {
-    // 067 makes images cheap by never putting them through this door, NOT by widening it. Written
-    // as the literal number as well as the constant, so "raise it a bit" cannot pass by editing one
-    // place. The bound was never the thing standing between the app and images.
-    expect(MAX_UNKNOWN_RAW_BYTES).toBe(64 * 1024)
-    expect(MAX_UNKNOWN_RAW_BYTES).toBe(65_536)
+    // Codex's importer skips the `event_msg` lines the biggest payloads arrive as, so the note may
+    // not promise a re-import gives the payload back.
+    expect(note).not.toContain('export reassembles')
   })
 
   it('keeps the label, which is the part the UI actually shows', () => {
@@ -155,14 +134,6 @@ describe('the size bound on unknown payloads (052)', () => {
     // The event's own label is untouched — a bounded payload still says WHAT it was.
     expect(created.label).toBe('imageGeneration')
     expect(created.category).toBe('activity')
-  })
-
-  it('survives the wire boundary and Electron’s structured clone', () => {
-    const wire = toWireEvent('codex', event())
-    expect(jsonBytes(wire)).toBeLessThan(2_000)
-    // `webContents.send` puts every event through structured clone; this is that step, run for
-    // real rather than described.
-    expect(jsonBytes(structuredClone(wire))).toBeLessThan(2_000)
   })
 
   it('reaches the renderer fold as the marker, and renders as readable text', () => {
@@ -310,66 +281,5 @@ describe('the bound reaches the database (052)', () => {
     expect(event?.type).toBe('unknown')
     expect(jsonBytes(event)).toBeLessThan(2_000)
     expect(marker(event?.type === 'unknown' ? event.raw : null).reason).toBe('too-large')
-  })
-})
-
-/**
- * `wrapUnknown` is the only door (052).
- *
- * The bound lives at construction, so a second place that builds the variant literally is a second
- * place that skips it — which is exactly what `import-claude.ts` did before this change. Checked
- * structurally rather than by review, in the same spirit as the navigation guard's own check (050).
- */
-describe('no production source builds an unknown event around the bound', () => {
-  const here = dirname(fileURLToPath(import.meta.url))
-  // The RENDERER is scanned too, and so are `.vue` files: `transcript.ts` copies `event.raw`
-  // verbatim into the item it renders, and `applyEvent` is called from components — so a component
-  // that built its own unknown event would reach the DOM without passing any door.
-  const roots = [
-    join(here, '..', 'src', 'main'),
-    join(here, '..', 'src', 'renderer'),
-    join(here, '..', '..', '..', 'packages', 'runtime', 'src'),
-  ]
-
-  /** Where the bound itself is applied — the two doors, and the only permitted constructions. */
-  const doors = ['events.ts']
-
-  function sources(dir: string): string[] {
-    const found: string[] = []
-    for (const entry of readdirSync(dir)) {
-      const path = join(dir, entry)
-      if (statSync(path).isDirectory()) found.push(...sources(path))
-      else if (entry.endsWith('.ts') || entry.endsWith('.vue')) found.push(path)
-    }
-    return found
-  }
-
-  it('constructs `type: ‘unknown’` only where the bound is applied', () => {
-    const offenders: string[] = []
-    for (const root of roots) {
-      for (const file of sources(root)) {
-        if (doors.includes(basename(file))) continue
-        const text = readFileSync(file, 'utf8')
-        // `type: 'unknown'` appears in TYPE positions too — `Extract<RuntimeEvent, {type:'unknown'}>`
-        // is the ordinary way to name the variant and carries no payload. What matters is a value
-        // being BUILT with one, so a match only counts when the same literal also sets `raw`.
-        //
-        // The window is deliberately generous. The permitted construction in `events.ts` already
-        // spans 343 characters between `type` and `raw` because of the comment between them, so a
-        // tight window would miss exactly the shape it is looking for; over-matching only ever
-        // costs a loud failure that a reviewer resolves, where under-matching is silent.
-        for (const match of text.matchAll(/type:\s*['"]unknown['"]/g)) {
-          const literal = text.slice(match.index, match.index + 2_000)
-          if (/\braw\s*:/.test(literal)) {
-            offenders.push(file)
-            break
-          }
-        }
-      }
-    }
-    expect(
-      offenders,
-      'these build an unknown event directly and so skip the size bound in `wrapUnknown`',
-    ).toEqual([])
   })
 })

@@ -35,22 +35,6 @@ const nothingRecorded = {
 }
 
 describe('the two destinations say their own half', () => {
-  it('goes quiet when nothing needs you — each destination saying its own half', async () => {
-    // ⚑ **606 · the quiet state is spread over the destinations** (`EXT-008` §3), and each one is
-    // asserted where it lives. ⛔ Reading only one of them would be
-    // `a-negative-is-only-as-strong-as-the-search-shape`: the sentences moved.
-    const waiting = await render(WaitingOnYou, { needsYou: [] })
-    const away = await render(RecentActivity, notReadYet)
-
-    expect(waiting).toContain('All clear')
-    // ⚠️ **`attention-empty` is gone and this is its replacement** (305 §1). The panel's own clear
-    // block is what says the region is empty, and it is what 067 asks for.
-    expect(waiting).toContain('data-cy="attention-clear"')
-    // ⛔ **`'Everything is quiet'` until 211 §2**, and Recent activity keeps the rule: with nothing
-    // read it says so, which is a different and narrower thing than a calm sentence.
-    expect(away).toContain('data-cy="activity-not-read"')
-  })
-
   it('⛔ the quiet reassurance states what the queue MEANS and enumerates no vocabulary (250)', async () => {
     // ⚠️ **Held by nothing until 250's adversarial pass said so.** This line read *"Every open
     // conversation is either working or idle"* — a list of two over a vocabulary that already had

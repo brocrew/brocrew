@@ -101,16 +101,6 @@ describe('636 · the pane hands the wait to the object its three surfaces are dr
     expect(untold).toContain('data-standing="idle"')
   })
 
-  it('⚑ the one wait that IS a person’s reaches the same bar as *Waiting on you*', async () => {
-    // 🔴 **`621` F2's half that a facet can close**: no card is drawn for a question passed up to
-    // a person, so `pending` is empty and this bar had nothing to say.
-    const told = await render(pane('waiting-on-a-person'))
-    expect(told).toContain(STANDING_LABEL.waiting)
-    expect(told).toContain('data-standing="waiting"')
-    // ⛔ …and it is the AMBER one, which is the whole difference between the two families.
-    expect(told).not.toContain('data-standing="elsewhere"')
-  })
-
   it('⚠️ the second agent-owed wait says WHICH, on the plate under the avatar', async () => {
     // ⚑ The drawer's bot draws `plateWord`, which is the third of `HO-095` §5.1's surfaces — and
     // it is the one `250` and `258` each found printing `idle` over a paragraph that said

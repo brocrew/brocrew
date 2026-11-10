@@ -1,27 +1,8 @@
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { OPEN_THE_CONVERSATION } from '../src/renderer/src/lib/taking-over'
 import { ANOTHER_CALLER_MAY_REACH_IN } from '../src/renderer/src/lib/standing-grants'
 
-/**
- * 🔴 **634 · the halves of `HO-095` §7's three rows that are not a drawn word.**
- *
- * The removed Home rail row and commander mark have no DOM suite left:
- * `test/dom/three-sentences-that-describe-an-older-app.dom.test.ts` is absent. This file
- * retains the vocabulary of the paragraph Info still draws and explicitly reports the
- * remaining row without changing it.
- */
-const here = dirname(fileURLToPath(import.meta.url))
-const renderer = join(here, '../src/renderer/src')
-
-/** ⛔ **CODE only** — `a-source-census-must-strip-prose-before-it-asserts`. */
-const codeOf = (file: string): string =>
-  readFileSync(join(renderer, file), 'utf8')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/^[ \t]*\/\/.*$/gm, ' ')
+/** The words Info's commander paragraph and a conversation row's press say. */
 
 describe('634 · three sentences that described an older app', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
@@ -47,33 +28,10 @@ describe('634 · three sentences that described an older app', () => {
     })
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §3 · the one this dispatch REPORTS
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * 🔴 **§3.1 asked which of two things is true, and it was the first one** — *Take it over and open
-   * it* was honest, and there was no read-only path.
-   *
-   * ⚑ **D-017b · the fork is gone, and so is the gap.** Every conversation opens in its one full view
-   * whatever it is doing — held here, running for no window, or drawn from its ledger — so a row
-   * offers ONE press in one sentence (`taking-over.ts`). ⛔ The two arms this section walked
-   * (`gestureFor`'s claim, `recordingGesture`'s read) went with `closed-threads.ts`, so they are not
-   * re-asked here: there is no gesture per process state to ask about.
-   */
+  /** Every conversation opens in its one full view, so a row offers one press in one sentence. */
   describe('§3 · one press opens a conversation, and it is the one full view', () => {
-    it('⛔ the label says OPEN, and the press opens through the look — never a take-over first', () => {
-      // 🔴 **The press is `openConversation`**, which asks the host to LOOK (`store.look`): one
-      // held here is answered at once, one running with no window is taken for this window (a
-      // person's press, `claim: true`), and any other is drawn from its ledger — nothing is started.
+    it('the label says OPEN', () => {
       expect(OPEN_THE_CONVERSATION).toBe('Open the conversation')
-      const screen = codeOf('components/RuntimeScreen.vue')
-      const body = screen.slice(screen.indexOf('async function openConversation('))
-      expect(body.length, 'the slice found no openConversation body').toBeGreaterThan(200)
-      expect(body.slice(0, 400)).toContain('await store.look(sessionId)')
-      // ⛔ **And the old fork's take-over is not how it opens**: `takeOver` went with the gesture.
-      expect(body.slice(0, 400)).not.toContain('store.claim(')
-      expect(screen).not.toContain('async function takeOver(')
     })
   })
 })

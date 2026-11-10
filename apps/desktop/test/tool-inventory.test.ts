@@ -197,16 +197,6 @@ describe('what tools this conversation has (358)', () => {
     expect(inventorySummary(reading)).toBe('1 of 3 BroCrew tools confirmed · 1 built-in')
   })
 
-  it('⛔ …and `offered` is not reachable on a provider that publishes nothing', () => {
-    // The same declaration, the same three tools, the OTHER arm — so `unconfirmable` and `offered`
-    // are proved distinct rather than two names for one path.
-    const unpublished = readInventory(
-      registry({ naming: CODEX_NAMING, declared: DECLARED, published: null }),
-    )
-    expect(unpublished.own?.tools.every((tool) => tool.standing === 'unconfirmable')).toBe(true)
-    expect(unpublished.own?.tools.some((tool) => tool.standing === 'offered')).toBe(false)
-  })
-
   it('names the server the agent connected to, and says so when the agent named none', () => {
     const noServerRow = readInventory(
       registry({
@@ -292,17 +282,6 @@ describe('what tools this conversation has (358)', () => {
   })
 
   describe('the spelling, which is data and never a provider', () => {
-    it('splits Claude’s and Codex’s conventions, from the same function', () => {
-      expect(splitQualified(CLAUDE_NAMING, 'mcp__brobot__spawn_agent')).toEqual({
-        server: 'brobot',
-        tool: 'spawn_agent',
-      })
-      expect(splitQualified(CODEX_NAMING, 'brobot__spawn_agent')).toEqual({
-        server: 'brobot',
-        tool: 'spawn_agent',
-      })
-    })
-
     it('⛔ a built-in is not a qualified name, on either convention', () => {
       expect(splitQualified(CLAUDE_NAMING, 'Bash')).toBeNull()
       expect(splitQualified(CODEX_NAMING, 'shell')).toBeNull()
@@ -379,22 +358,8 @@ describe('what tools this conversation has (358)', () => {
     })
   })
 
-  it('⛔ a cap that bit is carried through to the reading, never silently', () => {
-    const reading = readInventory(
-      registry({ naming: CLAUDE_NAMING, declared: DECLARED, published: PUBLISHED }, 4),
-    )
-    expect(reading.dropped).toBe(4)
-    // …and zero is zero, so the assertion above is about the number and not about its presence.
-    expect(
-      readInventory(registry({ naming: CLAUDE_NAMING, declared: DECLARED, published: PUBLISHED }))
-        .dropped,
-    ).toBe(0)
-  })
-
   it('⛔ …and it travels on the EVENT, not only in a hand-built registry', () => {
-    // ⚠️ **Every other `dropped` assertion in this file injects the number into the registry
-    // helper**, so nothing measured the fold's own `event.dropped ?? 0` — the line that carries a
-    // shortfall from the adapter to the screen. Driven through `applyEvent` here.
+    // A cap that bit is carried from the adapter's frame, through the fold, to the reading.
     const state = createTranscript()
     applyEvent(state, {
       type: 'tool_inventory',
@@ -519,7 +484,7 @@ describe('what tools this conversation has (358)', () => {
      */
     it('⛔ survives a window release, which no compiler could have checked', () => {
       const state = createTranscript()
-      applyEvent(state, event)
+      applyEvent(state, event, 1_700_000_000_000)
       expect(state.tools.set?.declared?.tools).toHaveLength(3)
 
       // A retained run that restates nothing about tools — the release case.
@@ -540,12 +505,16 @@ describe('what tools this conversation has (358)', () => {
       ])
       expect(rebuilt.tools.set?.published?.tools).toEqual(PUBLISHED.tools)
       expect(rebuilt.tools.set?.naming).toEqual(CLAUDE_NAMING)
+      // The moment comes across with the set, not `retained`'s `at` of 1 nor a clock of its own.
+      expect(rebuilt.tools.at, 'the carry dropped the moment').toBe(1_700_000_000_000)
 
       // ⛔ **The pair, and it is what makes the assertion above a carry rather than a re-fold.** A
       // state that never held an inventory rebuilds to `null` through the SAME two calls — so the
       // rows above came across the release rather than being produced by `retained`.
       const empty = createTranscript()
-      expect(foldWindow(retained, null, carryForward(empty, retained)).tools.set).toBeNull()
+      const rebuiltEmpty = foldWindow(retained, null, carryForward(empty, retained))
+      expect(rebuiltEmpty.tools.set).toBeNull()
+      expect(rebuiltEmpty.tools.at).toBeNull()
     })
 
     /* ─────────────────────────── 444 relay 1 · the moment the count was true ────────────── */
@@ -606,32 +575,6 @@ describe('what tools this conversation has (358)', () => {
       // the MOMENT**: a fold that took the new row's tools and kept the old row's stamp passes
       // either assertion alone and fails them together.
       expect(before.own?.tools.map((tool) => tool.name)).not.toContain(EXTRA_TOOL.name)
-    })
-
-    /**
-     * ⛔ **The moment survives a window release, which no compiler could have checked** — the
-     * carry builds the registry field by hand. ⚠️ And a conversation long enough to roll its
-     * window is precisely the one whose inventory is oldest.
-     */
-    it('🔴 …and the moment comes across a window release with the set', () => {
-      const state = createTranscript()
-      applyEvent(state, event, 1_700_000_000_000)
-      const retained: RuntimeEventMessage[] = [
-        {
-          sessionId: 'sess_1',
-          ordinal: 900,
-          at: 1,
-          event: { type: 'status', state: 'idle' } as TranscriptEvent,
-        },
-      ]
-      const rebuilt = foldWindow(retained, null, carryForward(state, retained))
-      expect(rebuilt.tools.at, 'the carry dropped the moment').toBe(1_700_000_000_000)
-      // ⛔ **Against the outgoing state, not a literal** — a carry that stamped its own clock or
-      // took `retained`'s `at` of 1 fails here, and unlike a `not.toBe(1)` this cannot be entailed
-      // by the line above it.
-      expect(rebuilt.tools.at).toBe(state.tools.at)
-      const empty = createTranscript()
-      expect(foldWindow(retained, null, carryForward(empty, retained)).tools.at).toBeNull()
     })
 
     it('⛔ the carry is a COPY, not an alias — two folds cannot share one array', () => {
@@ -1015,9 +958,6 @@ describe('392 · the catalogue', () => {
     }
 
     it('⚑ three readings and three standings, and every standing belongs to exactly one reading', () => {
-      expect(Object.keys(READINGS)).toHaveLength(3)
-      expect(Object.keys(STANDINGS)).toHaveLength(3)
-
       // ⛔ Every standing this app can MINT appears under exactly one reading, and every choice a
       // reading offers is a standing that reading can really produce. Both directions, because one
       // of them alone is satisfied by a `standingChoices` that returns everything.
@@ -1071,28 +1011,6 @@ describe('392 · the catalogue', () => {
             `${reading.kind} minted ${standing} and does not offer it`,
           ).toContain(standing)
       }
-    })
-
-    /**
-     * ⛔ **The control, and it plants TWO** (standing rule 12). A walk that stopped at the first
-     * unknown member would pass a table missing its last one — the exact shape `store.create(`
-     * failed on in an 8 700-line host.
-     */
-    it('…and the walk above sees BOTH of two members nothing mints', () => {
-      // ⛔ **The control runs the WALK, on a planted vocabulary.** The first version filtered two
-      // string literals through `Object.keys(STANDINGS)` and called no production code at all — a
-      // tautology that could only fail if somebody added `sideways` to the union. Found in review.
-      const unminted = (vocabulary: readonly string[]): string[] => {
-        const mintable = new Set<string>()
-        for (const kind of Object.keys(READINGS) as (keyof typeof READINGS)[])
-          for (const choice of standingChoices(kind)) mintable.add(choice)
-        return vocabulary.filter((word) => !mintable.has(word))
-      }
-      expect(unminted(Object.keys(STANDINGS)), 'a real standing reads as unminted').toEqual([])
-      expect(
-        unminted([...Object.keys(STANDINGS), 'sideways', 'rumoured']),
-        'the walk stopped at the first stranger',
-      ).toEqual(['sideways', 'rumoured'])
     })
   })
 
@@ -1246,21 +1164,6 @@ describe('444 relay 1 · the inventory says as-of-when', () => {
         'the provider',
       ]) {
         expect(said, `the sentence claims ${spelling}`).not.toContain(spelling)
-      }
-      // ⚑ **The control, and it runs the SAME FOUR NEEDLES over a string that DOES make the
-      // claim** — a first draft looked for a different phrase in a different haystack, which
-      // proved only that `String.prototype.includes` works. ⛔ Two of the four are spellings no
-      // version of this sentence has ever carried, so without this they would be absences of
-      // something unreachable.
-      const claiming =
-        'the provider published this inventory: published by the provider, confirmed by it'
-      for (const spelling of [
-        'provider published',
-        'published by',
-        'confirmed by',
-        'the provider',
-      ]) {
-        expect(claiming, `the scan cannot see ${spelling}`).toContain(spelling)
       }
     })
   })

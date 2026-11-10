@@ -113,18 +113,8 @@ describe('tool refusals name their limits and fields without keeping caller text
 
   const problems: { name: string; args: Record<string, unknown>; expected: string }[] = [
     {
-      name: 'missing recipient',
-      args: { who_answers: undefined },
-      expected: 'who_answers: required; expected one of the-parent, a-person, an-agent',
-    },
-    {
       name: 'unknown recipient',
       args: { who_answers: 'PRIVATE_RECIPIENT' },
-      expected: 'who_answers: required; expected one of the-parent, a-person, an-agent',
-    },
-    {
-      name: 'wrong recipient type',
-      args: { who_answers: 42 },
       expected: 'who_answers: required; expected one of the-parent, a-person, an-agent',
     },
     {

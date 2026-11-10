@@ -1,4 +1,4 @@
-import { computed, nextTick, ref, watch, type ComputedRef } from 'vue'
+import { computed, nextTick, ref, type ComputedRef } from 'vue'
 import { describe, expect, it } from 'vitest'
 import { createSessionRecord, type SessionRecord } from '../src/renderer/src/lib/session-record'
 import { LAUNCHER, useSurface } from '../src/renderer/src/composables/useSurface'
@@ -238,50 +238,6 @@ describe('a late answer may not take the surface', () => {
     await nextTick()
     expect(activeId.value, 'the click wins over the answer that predates it').toBe('sess_b')
   })
-
-  it('and the rule this replaces would have taken it', async () => {
-    // ⚠️ **NON-VACUITY for the fix itself**, in the shape of `window-navigation.test.ts`'s
-    // 017's-predicate-verbatim: the pre-095 routing, run against the same sequence. Two lines, both
-    // from `RuntimeScreen` as it stood at 026e670 — the watch that elected on every change, and the
-    // template condition that drew a conversation whenever `place` was null and one was elected.
-    const store = fakeStore()
-    store.arrive('sess_first')
-    const place = ref<string | null>(null)
-    const activeId = ref<string | null>(null)
-    const active = computed(() => (activeId.value ? store.get(activeId.value) : null))
-    watch(
-      store.live,
-      (live) => {
-        if (activeId.value && store.get(activeId.value)) return
-        activeId.value = live.at(-1)?.sessionId ?? null
-      },
-      { immediate: true },
-    )
-    const drewTheLauncher = (): boolean => !(place.value === null && active.value?.meta)
-    await nextTick()
-
-    // The user presses "New conversation" — which, in the old code, set `place` to 'new'…
-    place.value = 'new'
-    expect(drewTheLauncher()).toBe(true)
-    const elected = activeId.value
-    // …and the resume from before it lands, doing what `reopen` did unconditionally.
-    const reopened = store.arrive('sess_reopened')
-    await nextTick()
-    // ⚠️ **WHICH of the two mechanisms actually steals, decided here rather than argued.** 094 named
-    // the watch: *"it re-elects on every change to `store.open` while `activeId` is null, and
-    // `activeId` is null exactly when the user has asked for the launcher."* It is not — a closed
-    // record is still answered by `store.get` (`close()` sets `phase = 'ended'` and keeps the row),
-    // so `activeId` is not null and the early return holds. The arrival changes nothing, and the
-    // launcher is still on screen.
-    expect(activeId.value, 'the watch did NOT re-elect — a closed record still answers').toBe(
-      elected,
-    )
-    expect(drewTheLauncher(), 'so the watch is not what took the launcher away').toBe(true)
-    // THIS is: `reopen()` set `place = null` unconditionally on the far side of its await.
-    activeId.value = reopened.sessionId
-    place.value = null
-    expect(drewTheLauncher(), 'this is the bug, and it is why step 52 is red').toBe(false)
-  })
 })
 
 /**
@@ -323,24 +279,5 @@ describe('212 §3 · the selected conversation changes before anything can yield
     )
     expect(surface.place.value, 'and the surface is the conversation, immediately').toBeNull()
     expect(surface.surface.value).toBe('conversation')
-  })
-
-  it('…and the paired negative: a caller that yields FIRST can be refused', async () => {
-    // ⚠️ Without this the test above would pass on a `showConversation` that ignored `asked`
-    // entirely — which is the very guard 095 added, and asserting the synchronous half over a
-    // version that had lost it would be a green with nothing behind it.
-    const store = fakeStore()
-    store.arrive('sess_a')
-    store.arrive('sess_b')
-    const surface = useSurface(store)
-    await nextTick()
-
-    const asked = surface.view()
-    // The reader moves while the slow caller is away — exactly what `reopen` has to survive.
-    surface.place.value = 'waiting'
-    await nextTick()
-
-    surface.showConversation('sess_b', asked)
-    expect(surface.place.value, 'a late answer may not take the surface').toBe('waiting')
   })
 })

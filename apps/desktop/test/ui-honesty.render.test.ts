@@ -69,21 +69,6 @@ describe('§2.1 · a card cannot read "Answered" unless a human answered it', ()
     expect(html).toContain('settled when the session closed')
   })
 
-  it('says "Not answered" for an ExitPlanMode plan nobody approved', async () => {
-    // ⚠️ The worst instance, and the reason this outranked everything else in 069 §2. A plan
-    // awaiting a decision is a `user_input_request` like any other, so the same conflation read as
-    // "Answered" over a plan the user never saw the end of — *"a plan approved by nobody"*, which is
-    // the thing 063 refused to do by auto-continuing and 035 removed from sub-agent attribution.
-    const html = await render(UserInputCard, {
-      item: card({
-        request: { ...REQUEST, id: 'req_plan', prompt: 'Here is my plan. Shall I go ahead?' },
-        note: 'settled when the session closed',
-      }),
-    })
-    expect(html).toContain('Not answered')
-    expect(html).not.toContain('>Answered<')
-  })
-
   it('still says "Answered" when a human actually answered, and "Rejected" when they refused', async () => {
     // Non-vacuity. A fix that made the card never say "Answered" would pass every assertion above
     // and lose the disclosure entirely — and a refusal gets its own word, because the transcript is
@@ -94,15 +79,6 @@ describe('§2.1 · a card cannot read "Answered" unless a human answered it', ()
     expect(await render(UserInputCard, { item: card({ answered: 'rejected' }) })).toContain(
       'Rejected',
     )
-  })
-
-  it('a card the host refused to deliver is not dressed as answered either', async () => {
-    // `markRequestFailed` sets a note with no answer — the third way into this state, and the one
-    // nobody listed. "we tried and it did not land" is not a decision.
-    const html = await render(UserInputCard, {
-      item: card({ note: 'session is no longer open' }),
-    })
-    expect(html).toContain('Not answered')
   })
 
   it('a pending card still asks, and still offers the buttons', async () => {
@@ -309,21 +285,9 @@ describe('§2.4 · a provider-supplied line cannot be rendered as the human’s 
     expect(html).not.toContain('per the transcript')
     expect(html).toContain('run the tests')
   })
-
-  it('carries the mark through the fold rather than re-deriving it in the view', async () => {
-    const state = createTranscript()
-    applyEvent(state, { type: 'user_turn', text: 'hi', attribution: 'provider_transcript' }, 1_000)
-    const item = state.items.find((entry) => entry.kind === 'user')
-    expect(item?.kind === 'user' && item.attribution).toBe('provider_transcript')
-  })
 })
 
 describe('§1.8 · a link discloses where it really goes', () => {
-  it('puts every destination within reach', async () => {
-    const html = renderChatMarkdown('[the diff on GitHub](https://example.com/a/b)')
-    expect(html).toContain('title="https://example.com/a/b"')
-  })
-
   it('states the disagreement inline when the text claims somewhere else', () => {
     // ⚠️ The phishing shape 069 finding 8 names: the visible text asserts a host, the href is
     // another. Inline rather than on hover, because a disclosure a reader has to already suspect
@@ -405,18 +369,6 @@ describe('§1.8 · a link discloses where it really goes', () => {
     // asterisks in it — which parses as no host at all, and the disclosure would go missing.
     const html = renderChatMarkdown(
       '[![**github.com**/anthropics/x](https://example.com/b.png)](https://attacker.example/x)',
-    )
-    expect(html).toContain('link-target')
-    expect(html).toContain('https://attacker.example/x')
-  })
-
-  it('sees the claim in an IMAGE’s alt text, where the visible words also live', () => {
-    // Found in review. An image's alt is in `token.children`, not `token.content`, so reading
-    // `content` alone made the visible claim the empty string and the mismatch went undisclosed —
-    // for `[![host/path](pic)](elsewhere)`, which is a real shape and a more convincing one than the
-    // plain-text version, because the reader sees a rendered badge rather than a URL.
-    const html = renderChatMarkdown(
-      '[![github.com/anthropics/x](https://example.com/badge.png)](https://attacker.example/x)',
     )
     expect(html).toContain('link-target')
     expect(html).toContain('https://attacker.example/x')

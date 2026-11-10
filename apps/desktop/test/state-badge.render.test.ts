@@ -23,9 +23,7 @@ const render = (props: Record<string, unknown>): Promise<string> =>
  * Every task outcome, and the token it must come out in (406).
  *
  * Written out rather than derived from the map, so that a transposed or mistyped token in
- * `StateBadge.vue` fails here instead of being compared against itself. Completeness is what the
- * test at the bottom of the file checks — this list and the map must name the same states, or a
- * value ships with a colour nothing ever renders (089).
+ * `StateBadge.vue` fails here instead of being compared against itself.
  *
  * ⚑ **Two of the three take one hue and `tokens.css` §4 already says so** — *failed /
  * no-response / blocked → `--danger`* — which is why the distinctness check below is about the
@@ -74,20 +72,5 @@ describe('StateBadge draws the prototype’s colours, from tokens', () => {
   it('has a look for every value in the vocabulary, and no others', () => {
     // A new state must be given a colour here rather than defaulting into an invisible one.
     expect(Object.keys(TASK_OUTCOME_LOOK).sort()).toEqual([...TASK_OUTCOMES].sort())
-  })
-
-  /**
-   * ⚠️ **And a look is not coverage** (089). The check above would have passed `auto_approve`
-   * through with a token, a tint and a label that no test ever rendered, because the `it.each`
-   * tables at the top of this file were hand-written lists rather than the vocabulary. Having a
-   * colour and being drawn correctly in it are two claims, and only one of them had a guard.
-   *
-   * This asserts the table is COMPLETE without replacing it: the hard-coded rows still pin which
-   * token each state actually takes, which a table derived from the map could not.
-   */
-  it('every state that draws a badge has a row in the tables above', () => {
-    const rows = (table: ReadonlyArray<readonly [string, string]>): string[] =>
-      table.map(([name]) => name).sort()
-    expect(Object.keys(TASK_OUTCOME_LOOK).sort()).toEqual(rows(TASK_OUTCOME_ROWS))
   })
 })

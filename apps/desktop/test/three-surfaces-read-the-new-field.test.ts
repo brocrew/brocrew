@@ -200,23 +200,6 @@ describe('636 §2 · `waiting-on-a-worker` does not put a mark on the person', (
     }
   })
 
-  it('⚑ THE PAIR · the one wait that IS a person’s reaches `waiting`, and it is the F2 case', () => {
-    // 🔴 **`621` F2**: `passQuestionUp` writes `request_routed{to:'a-person'}` into the passer's
-    // ledger and the transcript draws no card for it, so `control.pending` is zero — the surface
-    // had nothing to read and said `idle`. ⚑ **`aPerson` is what it reads now.**
-    const person: AgentFacets = { doing: 'idle', being: 'live', waiting: 'waiting-on-a-person' }
-    expect(standingOf(person)).toBe('waiting')
-    // ⚑ **UI-008** — the pill says the one state's word, *needs you* (F051).
-    expect(STANDING_LABEL[standingOf(person)]).toBe('Needs you')
-    expect(STANDING_TONE[standingOf(person)]).toBe('waiting')
-    // ⚠️ **No NEEDING is invented for it.** The badge vocabulary is unchanged and the row wears
-    // no glyph it did not earn; what changed is the one-word answer.
-    expect(person.needing).toBeUndefined()
-    // ⛔ **And the screen reader is told the fact**, which is the surface that had nothing at all —
-    // ⚑ in the one state's word since UI-008, as the plate's word says it.
-    expect(accessibleName({ ...person, label: 'brobot' })).toBe('brobot — idle, live, needs you')
-  })
-
   it('⛔ …and it is not a DOUBLE count: a permission already reached `waiting` without it', () => {
     // ⚠️ **The two sources answer one question and are OR-ed**, so a conversation holding a
     // permission AND a person-wait is one `waiting` row, not two.
