@@ -20,6 +20,7 @@ import {
 } from '../lib/command-palette'
 import { useOverlays } from '../lib/overlay-store'
 import { readableError } from '../lib/session-record'
+import { TAB_STOPS, isLaidOut, tabStopsIn } from '../lib/tab-stops'
 import { useModalDepth } from './OverlayHost.vue'
 
 /**
@@ -168,18 +169,8 @@ const panel = ref<HTMLElement | null>(null)
 /** Who was focused when this opened, so it can be given back — `OverlayHost.vue:64,75`'s rule. */
 let opener: HTMLElement | null = null
 
-/**
- * Everything inside this panel a person can Tab to — `OverlayHost.vue:18-25`'s selector, and its
- * visibility filter with it: an element that is not laid out is not a stop on the cycle.
- */
-function focusable(): HTMLElement[] {
-  if (!panel.value) return []
-  return [
-    ...panel.value.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    ),
-  ].filter((el) => el.offsetParent !== null || el === document.activeElement)
-}
+/** What a person can Tab to in this panel: an element that is not laid out is not a stop. */
+const focusable = (): HTMLElement[] => tabStopsIn(panel.value, TAB_STOPS, isLaidOut)
 
 const commands = computed(() =>
   buildCommands({
