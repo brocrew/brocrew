@@ -1,7 +1,9 @@
 import type { PersistedEventInfo } from './conversation-events'
-import type { StopAsker, WhoStoppedIt } from './who-did-it'
 
 import { WHO_DID_IT, WHO_DID_IT_SAYS, type ActedBy, type WhoDidIt } from './who-did-it'
+
+type StopAsker = import('./who-did-it').StopAsker
+type WhoStoppedIt = import('./who-did-it').WhoStoppedIt
 
 /**
  * 🔴 **Telling *somebody stopped this* from *this broke*** (395, HO-007 S5) — the reading, and the
