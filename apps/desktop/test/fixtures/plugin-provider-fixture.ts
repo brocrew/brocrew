@@ -7,6 +7,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   type CallToolResult,
+  type CallToolRequest,
 } from '@modelcontextprotocol/sdk/types.js'
 import { createPluginToolBroker, type BrokerTool } from '../../src/main/plugins/tool-broker'
 import {
@@ -30,6 +31,7 @@ export async function pluginProviderFixture(
     toolMetadata?: Record<string, unknown>
     replyText?: string
     result?: CallToolResult
+    onCall?: (params: CallToolRequest['params']) => void
   } = {},
 ) {
   const credential = createPluginCredential()
@@ -78,6 +80,7 @@ export async function pluginProviderFixture(
       }))
       server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
         seen.push({ method: 'tools/call', authenticated })
+        options.onCall?.(request.params)
         if (!allowed || request.params.arguments?.profile !== 'fern')
           return {
             isError: true,

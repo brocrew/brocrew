@@ -1,3 +1,4 @@
+import type { RequestMeta } from '@modelcontextprotocol/sdk/types.js'
 import type { PluginToolFailureReason, PluginCallDiagnostic } from './tool-diagnostics'
 export type BrokerValue =
   | null
@@ -31,6 +32,7 @@ export interface BrokerRequest {
   readonly identity: BrokerIdentity
   readonly name: string
   readonly input: BrokerInput
+  readonly _meta?: RequestMeta
 }
 export type BrokerReply =
   | { readonly ok: true; readonly value: BrokerValue }
@@ -115,6 +117,7 @@ export interface PluginToolBroker {
       input: BrokerInput,
       signal?: AbortSignal,
       onprogress?: (progress: BrokerProgress) => void,
+      _meta?: RequestMeta,
     ): Promise<BrokerValue>
   }
   readonly person: {

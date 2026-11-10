@@ -142,7 +142,7 @@ export function createPrivatePluginPort(options: {
           await client.connect(transport)
           connected = true
           const reply = await client.callTool(
-            { name: request.name, arguments: request.input },
+            { name: request.name, arguments: request.input, _meta: request._meta },
             undefined,
             {
               signal: cancellation.signal,
@@ -352,6 +352,7 @@ export async function openManagedPluginRoute(
                     })
                     .catch(() => undefined)
               },
+              call.params._meta,
             )
             return result as CallToolResult
           } catch (error) {

@@ -98,6 +98,7 @@ interface Job {
   readonly operation: 'tool' | 'admin'
   readonly name: string
   readonly input: BrokerInput
+  readonly _meta?: BrokerRequest['_meta']
   readonly queuedAt: number
   readonly resolve: (value: BrokerValue) => void
   readonly reject: (error: unknown) => void
@@ -398,6 +399,7 @@ export function createPluginToolBroker(options: BrokerOptions): PluginToolBroker
       identity: job.actor.identity,
       name: job.name,
       input: job.input,
+      _meta: job._meta,
     })
     try {
       job.execution =
@@ -508,6 +510,7 @@ export function createPluginToolBroker(options: BrokerOptions): PluginToolBroker
     supplied: BrokerInput,
     signal?: AbortSignal,
     onprogress?: (progress: BrokerProgress) => void,
+    _meta?: BrokerRequest['_meta'],
   ): Promise<BrokerValue> {
     return new Promise((resolve, reject) => {
       let actor: Actor, copy: BrokerInput
@@ -554,6 +557,7 @@ export function createPluginToolBroker(options: BrokerOptions): PluginToolBroker
         quiet: false,
         cancelSent: false,
         onprogress,
+        _meta,
       }
       const cancel = (): void => stop(job, 'cancelled')
       signal?.addEventListener('abort', cancel, { once: true })
@@ -635,9 +639,10 @@ export function createPluginToolBroker(options: BrokerOptions): PluginToolBroker
         args: BrokerInput,
         signal?: AbortSignal,
         onprogress?: (progress: BrokerProgress) => void,
+        _meta?: BrokerRequest['_meta'],
       ) {
         const name = published.find((tool) => tool.qualifiedName === qualifiedName)?.name ?? ''
-        return submit(capability, 'agent', 'tool', name, args, signal, onprogress)
+        return submit(capability, 'agent', 'tool', name, args, signal, onprogress, _meta)
       },
     }),
     person: Object.freeze({

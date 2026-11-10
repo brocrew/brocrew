@@ -58,14 +58,17 @@ it('forwards package tool metadata through the actual MCP tools/list route', asy
   expect(tools[0]).not.toHaveProperty('qualifiedName')
 })
 
-it('completes beyond elapsed deadlines while forwarding actual downstream progress', async () => {
-  const f = await fixture()
+it('forwards nested request metadata and downstream progress beyond elapsed deadlines', async () => {
+  let observed: unknown
+  const metadata = { fictional: { nested: ['one', { two: 2 }] } }
+  const f = await pluginProviderFixture({ onCall: (params) => { observed = params._meta } })
+  cleanup.push(() => f.close())
   const { client } = await caller(f)
   f.reply('controlled')
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   const received: number[] = []
   let seen!: () => void
-  const pending = client.callTool({ name: 'echo', arguments: { profile: 'fern' } }, undefined, {
+  const pending = client.callTool({ name: 'echo', arguments: { profile: 'fern' }, _meta: metadata }, undefined, {
     resetTimeoutOnProgress: true,
     onprogress: (value) => {
       received.push(value.progress)
@@ -75,6 +78,8 @@ it('completes beyond elapsed deadlines while forwarding actual downstream progre
   void pending.catch(() => undefined)
   await f.admission
   expect(f.requestedProgress()).toBe(true)
+  expect(observed).toMatchObject(metadata)
+  expect(observed).toHaveProperty('progressToken')
   for (const value of [1, 2, 3, 4]) {
     await vi.advanceTimersByTimeAsync(35_000)
     const notification = new Promise<void>((resolve) => {
