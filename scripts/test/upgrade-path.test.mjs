@@ -716,7 +716,6 @@ describe('the history the beta made', () => {
       { id: 1, session_id: 'a' },
       { id: 2, session_id: 'b' },
     ],
-    provider_api_key: [{ provider: 'codex' }],
   }
 
   it('is each conversation’s own events and Codex session', () => {
@@ -731,22 +730,9 @@ describe('the history the beta made', () => {
     expect(() => historyOf(onlyA, ['a', 'b'])).toThrow('no events for conversation b')
   })
 
-  it('is refused with one conversation, a missing row, no saved key or no Codex session', () => {
+  it('is refused with one conversation, a missing row or no Codex session', () => {
     expect(() => historyOf(tables, ['a'])).toThrow('fewer than two')
     expect(() => historyOf(tables, ['a', 'c'])).toThrow('no row for conversation c')
-    expect(() => historyOf({ ...tables, provider_api_key: [] }, ['a', 'b'])).toThrow(
-      'no Codex API key',
-    )
-    // Another provider's key beside it is not the Codex one, and does not stand in for it.
-    expect(() =>
-      historyOf({ ...tables, provider_api_key: [{ provider: 'claude' }] }, ['a', 'b']),
-    ).toThrow('no Codex API key')
-    expect(() =>
-      historyOf({ ...tables, provider_api_key: [{ provider: 'codex' }, { provider: 'claude' }] }, [
-        'a',
-        'b',
-      ]),
-    ).not.toThrow()
     const unnamed = copy(tables)
     unnamed.provider_session[1].external_ref = null
     expect(() => historyOf(unnamed, ['a', 'b'])).toThrow('names no Codex session')

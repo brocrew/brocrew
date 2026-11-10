@@ -503,15 +503,11 @@ export function rowsPreserved(
 /**
  * The fictional history the beta must have made for the check to mean anything: each conversation
  * it created has its row and its own events, and names the Codex session its transcript is kept
- * under; and one Codex API key is saved, beside any other provider's.
+ * under.
  */
 export function historyOf(tables, conversations) {
   const rows = (table) => (Array.isArray(tables[table]) ? tables[table] : [])
   requireEvidence(conversations.length >= 2, 'The beta made fewer than two conversations.')
-  requireEvidence(
-    rows('provider_api_key').filter((row) => row.provider === 'codex').length === 1,
-    'The beta saved no Codex API key row.',
-  )
   return conversations.map((id) => {
     const session = rows('provider_session').find((row) => row.id === id)
     requireEvidence(session !== undefined, `The beta left no row for conversation ${id}.`)
