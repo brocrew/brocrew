@@ -570,7 +570,8 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
           ? [...q.actors.values()].reduce((n, jobs) => n + jobs.length, 0)
           : 0
         if (
-          count + uncertain.size >= PLUGIN_BROKER_LIMITS.total ||
+          count + uncertain.size + (active && independent(active) && !uncertain.has(active) ? 1 : 0) >=
+            PLUGIN_BROKER_LIMITS.total ||
           workspaceCount >= PLUGIN_BROKER_LIMITS.workspace ||
           (q?.actors.get(actor.key)?.length ?? 0) >= PLUGIN_BROKER_LIMITS.agent
         )

@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
-import { createPluginToolBroker } from '../../src/main/plugins/tool-broker'
+import { createPluginToolBroker, type BrokerTool } from '../../src/main/plugins/tool-broker'
 import {
   createPrivatePluginPort,
   createPluginCredential,
@@ -19,14 +19,18 @@ export function noPrivateCredential(value: unknown, secret: string): void {
     return item
   })
 }
-export async function pluginProviderFixture(options: { diagnostic?: PluginToolDiagnostic } = {}) {
+export async function pluginProviderFixture(
+  options: { diagnostic?: PluginToolDiagnostic; secondTool?: boolean } = {},
+) {
   const credential = createPluginCredential()
   const seen: { method: string; authenticated: boolean }[] = []
   const audit: unknown[] = []
   let allowed = true,
     reply: 'normal' | 'error' | 'tool-error' | 'hold' | 'controlled' = 'normal'
   let admitted!: () => void
-  const admission = new Promise<void>((resolve) => { admitted = resolve })
+  const admission = new Promise<void>((resolve) => {
+    admitted = resolve
+  })
   let complete!: () => void
   let progress!: (value: number) => Promise<void>
   let requestedProgress = false
@@ -51,23 +55,23 @@ export async function pluginProviderFixture(options: { diagnostic?: PluginToolDi
       )
       server.onerror = () => undefined
       server.setRequestHandler(ListToolsRequestSchema, async () => ({
-        tools: [
-          {
-            name: 'echo',
-            description: 'Fictional echo',
-            inputSchema: {
-              type: 'object',
-              properties: { profile: { type: 'string' } },
-              required: ['profile'],
-            },
+        tools: ['echo', ...(options.secondTool ? ['other'] : [])].map((name) => ({
+          name,
+          description: 'Fictional echo',
+          inputSchema: {
+            type: 'object',
+            properties: { profile: { type: 'string' } },
+            required: ['profile'],
           },
-        ],
+        })),
       }))
       server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
         seen.push({ method: 'tools/call', authenticated })
         if (reply === 'controlled') {
           requestedProgress = request.params._meta?.progressToken !== undefined
-          const done = new Promise<void>((resolve) => { complete = resolve })
+          const done = new Promise<void>((resolve) => {
+            complete = resolve
+          })
           progress = async (value) => {
             const progressToken = request.params._meta?.progressToken
             if (progressToken !== undefined)
@@ -114,9 +118,8 @@ export async function pluginProviderFixture(options: { diagnostic?: PluginToolDi
     hostToolNames: [],
     occupiedNamespaces: [],
     occupiedQualifiedNames: [],
-    tools: [
-      {
-        name: 'echo',
+    tools: ['echo', ...(options.secondTool ? ['other'] : [])].map<BrokerTool>((name) => ({
+        name,
         description: 'Fictional echo',
         inputSchema: {
           type: 'object',
@@ -128,8 +131,7 @@ export async function pluginProviderFixture(options: { diagnostic?: PluginToolDi
           if (input.profile !== 'fern') throw new Error('invalid')
           return { input, resources: [{ resource: 'profiles', key: 'fern', mode: 'read' }] }
         },
-      },
-    ],
+    })),
     adminOperations: [],
     resources: [{ id: 'profiles', read: true, write: false }],
     isAllowed: () => allowed,

@@ -18,8 +18,8 @@ afterEach(async () => {
   vi.useRealTimers()
   for (const close of cleanup.splice(0).reverse()) await close()
 })
-async function fixture() {
-  const f = await pluginProviderFixture()
+async function fixture(secondTool = false) {
+  const f = await pluginProviderFixture({ secondTool })
   cleanup.push(() => f.close())
   return f
 }
@@ -52,14 +52,19 @@ it('completes beyond elapsed deadlines while forwarding actual downstream progre
   let seen!: () => void
   const pending = client.callTool({ name: 'echo', arguments: { profile: 'fern' } }, undefined, {
     resetTimeoutOnProgress: true,
-    onprogress: (value) => { received.push(value.progress); seen() },
+    onprogress: (value) => {
+      received.push(value.progress)
+      seen()
+    },
   })
   void pending.catch(() => undefined)
   await f.admission
   expect(f.requestedProgress()).toBe(true)
   for (const value of [1, 2, 3, 4]) {
     await vi.advanceTimersByTimeAsync(35_000)
-    const notification = new Promise<void>((resolve) => { seen = resolve })
+    const notification = new Promise<void>((resolve) => {
+      seen = resolve
+    })
     await f.progress(value)
     await notification
     expect(received).toContain(value)
@@ -70,7 +75,7 @@ it('completes beyond elapsed deadlines while forwarding actual downstream progre
 })
 
 it('keeps the same route usable after an SDK idle timeout without claiming remote completion', async () => {
-  const f = await fixture()
+  const f = await fixture(true)
   const { client } = await caller(f)
   f.reply('controlled')
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
@@ -87,10 +92,10 @@ it('keeps the same route usable after an SDK idle timeout without claiming remot
   expect(f.broker.status().available).toBe(true)
   expect(f.broker.owner.hasCompletionProof()).toBe(false)
   f.reply('normal')
-  await expect(client.callTool({ name: 'echo', arguments: { profile: 'fern' } })).resolves.toMatchObject({
-    content: [{ text: PLUGIN_MARKER }],
-  })
-  expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(['echo'])
+  await expect(
+    client.callTool({ name: 'other', arguments: { profile: 'fern' } }),
+  ).resolves.toMatchObject({ content: [{ text: PLUGIN_MARKER }] })
+  expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(['echo', 'other'])
   f.broker.owner.invalidate()
   expect(f.broker.owner.hasCompletionProof()).toBe(false)
   f.complete()
