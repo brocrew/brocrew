@@ -611,12 +611,29 @@ it.each(['launch', 'sign-in'] as const)(
   async (word) => {
     const answer = deferred<CreatedSession | RefusedLaunch>()
     const check = vi.fn<RuntimeBridge['checkProviderAuth']>(async () => ({
-      state: 'absent',
-      reason: 'The fictional sign-in needs attention.',
+      state: 'unknown',
+      reason: 'The fictional sign-in check could not answer.',
     }))
+    const catalogue = vi.fn<RuntimeBridge['modelList']>(async ({ provider }) => ({
+      provider,
+      notAsked: null,
+      standIn: null,
+      models: [
+        {
+          id: 'fictional-model',
+          label: 'Fictional model',
+          isDefault: true,
+          addedBy: 'the-provider',
+          efforts: [],
+        },
+      ],
+      lastPicked: null,
+      startsOn: { model: 'fictional-model', effort: null, from: 'the-providers-default' },
+    }))
+    const previousCatalogue = Object.getOwnPropertyDescriptor(runtime, 'modelList')
     const previous = Object.getOwnPropertyDescriptor(runtime, 'checkProviderAuth')
     const previousApi = window.api
-    Object.assign(runtime, { checkProviderAuth: check })
+    Object.assign(runtime, { checkProviderAuth: check, modelList: catalogue })
     window.api = { ...previousApi, runtime: runtime as unknown as RuntimeBridge }
     runtime.createSession.mockReturnValueOnce(answer.promise)
     const screen = mount(RuntimeScreen, {})
@@ -631,6 +648,10 @@ it.each(['launch', 'sign-in'] as const)(
       await expect.poll(() => screen.all('cancel-launch').length).toBe(1)
       expect(screen.all('command-error')).toHaveLength(0)
       expect(check).not.toHaveBeenCalled()
+      const startedOn = runtime.createSession.mock.calls[0]![0].provider
+      await expect
+        .poll(() => catalogue.mock.calls.some(([input]) => input.provider === startedOn))
+        .toBe(true)
       answer.resolve({ refused: { reason: word, said: 'The fictional launch did not open.' } })
       await expect.poll(() => screen.all('cancel-launch').length).toBe(0)
       await expect
@@ -642,7 +663,7 @@ it.each(['launch', 'sign-in'] as const)(
         await expect.poll(() => check.mock.calls.length).toBe(1)
         await expect.poll(() => screen.all('sign-in-panel').length).toBe(1)
         expect(screen.q('sign-in-reason').textContent).toBe(
-          'The fictional sign-in needs attention.',
+          'The fictional sign-in check could not answer.',
         )
         expect(screen.q('sign-in-open-providers')).toBeTruthy()
       } else {
@@ -654,6 +675,8 @@ it.each(['launch', 'sign-in'] as const)(
       screen.unmount()
       if (previous) Object.defineProperty(runtime, 'checkProviderAuth', previous)
       else Reflect.deleteProperty(runtime, 'checkProviderAuth')
+      if (previousCatalogue) Object.defineProperty(runtime, 'modelList', previousCatalogue)
+      else Reflect.deleteProperty(runtime, 'modelList')
       window.api = previousApi
     }
   },
