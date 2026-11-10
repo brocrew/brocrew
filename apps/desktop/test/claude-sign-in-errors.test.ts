@@ -95,9 +95,7 @@ describe('Claude sign-in failures', () => {
         visibleItems(state.items).map((item) => (item.kind === 'notice' ? item.text : '')),
       ).toEqual([reason, 'turn failed'])
       expect(notices(state.items)[0]?.signIn?.state).toBe('ended')
-      expect(notices(state.items).some((item) => item.signIn?.state === 'refused')).toBe(
-        false,
-      )
+      expect(notices(state.items).some((item) => item.signIn?.state === 'refused')).toBe(false)
     },
   )
 

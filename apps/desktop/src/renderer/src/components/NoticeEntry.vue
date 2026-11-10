@@ -34,8 +34,7 @@ const props = defineProps<{
 
 defineEmits<{ signIn: []; retrySignIn: [] }>()
 const expired = computed(
-  () =>
-    props.signInExpired || (props.item.signIn?.needsSignIn === true && !props.signInRenewed),
+  () => props.signInExpired || (props.item.signIn?.needsSignIn === true && !props.signInRenewed),
 )
 
 /**

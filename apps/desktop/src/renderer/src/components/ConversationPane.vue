@@ -805,8 +805,7 @@ watch(
   ([signIn, error, refused], before) => {
     if (refused !== before?.[2]) signInRenewedFor.value = null
     if (signIn === null || (error === null && !refused)) return
-    if (signIn.auth === null || error !== before?.[1] || refused !== before?.[2])
-      void signIn.check()
+    if (signIn.auth === null || error !== before?.[1] || refused !== before?.[2]) void signIn.check()
   },
   { immediate: true },
 )
