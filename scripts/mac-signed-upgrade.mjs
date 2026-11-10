@@ -122,7 +122,6 @@ const summary = {
   replacementCount: 0,
   sameCode: false,
   scriptedCopyIsFinderDrag: false,
-  quarantineAppliedByFixture: { image: false, installedApp: false },
   assertions: [],
   knownLimits: [],
   launches: [],
@@ -443,27 +442,12 @@ async function guidedDownload(workspace, published) {
     downloads,
   )
   requireEvidence((await realpath(image)) === image, 'Downloaded image path differs.')
-  let mounted = await waitFor(
+  const mounted = await waitFor(
     async () => mountedImageOf(await plist('/usr/bin/hdiutil', ['info', '-plist']), image),
     'the app actually opens and mounts its downloaded DMG',
   )
   mountedCandidate = mounted.mount
-  await run('/usr/bin/xattr', [
-    '-w',
-    'com.apple.quarantine',
-    `0083;${Math.floor(Date.now() / 1000).toString(16)};BroCrew controlled download fixture;`,
-    image,
-  ])
-  summary.quarantineAppliedByFixture.image = true
-  await quarantine(image, 'fresh-download-quarantine-fixture')
-  await run('/usr/bin/hdiutil', ['detach', mounted.mount])
-  mountedCandidate = null
-  await click(cdp, '[data-cy=updates-open-again]')
-  mounted = await waitFor(
-    async () => mountedImageOf(await plist('/usr/bin/hdiutil', ['info', '-plist']), image),
-    'real app reopens its quarantined image',
-  )
-  mountedCandidate = mounted.mount
+  await quarantine(image, 'downloaded-image')
   const finder = await run('/usr/bin/osascript', [
     '-e',
     `tell application "Finder"
@@ -513,7 +497,7 @@ end tell`,
     bundle: await bundleChecked(source, VERSION_B),
   }
   transport.requireHealthy()
-  passed('guided-download-finder-quarantine-and-message', summary.download)
+  passed('guided-download-mount-finder-and-message', summary.download)
   return source
 }
 
@@ -654,6 +638,41 @@ async function reopenSecond(workspace) {
       read.checkAutomatically
     )
   }, 'the signed candidate does not offer itself or change settings')
+  const requestsBefore = model.requests.length
+  const unreadable = await cdp.evaluate(
+    "return await window.api.runtime.apiKeyStatus({provider:'codex'})",
+  )
+  const reason = 'Saved key can’t be read, save it again in Settings.'
+  requireEvidence(
+    unreadable.provider === 'codex' &&
+      unreadable.set &&
+      !unreadable.inUse &&
+      unreadable.readState === 'unreadable' &&
+      unreadable.unreadableReason === reason,
+    'The predecessor sealed key did not report its plain unreadable state.',
+  )
+  const refusal = await cdp.evaluate(`try {
+    await window.api.runtime.resume({sessionId:${JSON.stringify(workspace.conversations[0])}})
+    return null
+  } catch(error) { return error.message }`)
+  requireEvidence(
+    refusal === `Error invoking remote method 'runtime:command': Error: ${reason}`,
+    'Resuming with the predecessor sealed key did not give its exact refusal.',
+  )
+  requireEvidence(
+    model.requests.length === requestsBefore,
+    'The unreadable key reached the scripted model before being saved again.',
+  )
+  credentialPreserved(
+    baseline.before.provider_api_key,
+    databaseSnapshot(join(data, 'brobot2.sqlite'), { credentials: true }).provider_api_key,
+  )
+  workspace.result.unreadableCredential = {
+    reason,
+    refusal,
+    modelRequests: model.requests.length - requestsBefore,
+  }
+  workspace.result.resavedCredential = await saveRehearsalCodexKey(cdp)
   let expected
   await startLocalModelTurn(
     cdp,
@@ -679,13 +698,14 @@ async function reopenSecond(workspace) {
     set: credential.set,
     inUse: credential.inUse,
     readState: credential.readState ?? null,
+    setAt: credential.setAt,
   }
   requireEvidence(
     credential.provider === 'codex' &&
       credential.set &&
       credential.inUse &&
       credential.readState !== 'unreadable',
-    'The fictional saved credential is inaccessible after the signing transition.',
+    'The fictional credential saved again is inaccessible.',
   )
   await cdp.evaluate(
     `return await window.api.runtime.close({sessionId:${JSON.stringify(workspace.conversations[0])}})`,
@@ -753,14 +773,7 @@ try {
   await rm(app, { recursive: true })
   await run('/usr/bin/ditto', ['--rsrc', '--extattr', source, app])
   summary.replacementCount++
-  await run('/usr/bin/xattr', [
-    '-w',
-    'com.apple.quarantine',
-    `0083;${Math.floor(Date.now() / 1000).toString(16)};BroCrew controlled download fixture;`,
-    app,
-  ])
-  summary.quarantineAppliedByFixture.installedApp = true
-  await quarantine(app, 'installed-signed-candidate')
+  await quarantine(app, 'installed-candidate')
   summary.installedCandidate = await bundleChecked(app, VERSION_B)
   for (const workspace of workspaces) await reopenFirst(workspace)
   await allRunning(VERSION_B, 'concurrentSignedFirst')
@@ -773,7 +786,19 @@ try {
     const baseline = workspace.baseline,
       after = databaseSnapshot(join(data, 'brobot2.sqlite'), { credentials: true })
     dataPreserved(baseline.before, after, { allowAppended: true })
-    credentialPreserved(baseline.before.provider_api_key, after.provider_api_key)
+    credentialPreserved(baseline.before.provider_api_key, after.provider_api_key, { resaved: true })
+    const keys = JSON.parse(await readFile(join(data, 'api-keys.json'), 'utf8'))
+    requireEvidence(
+      keys.version === 1 &&
+        isDeepStrictEqual(keys.keys, {
+          codex: {
+            key: 'sk-update-rehearsal-not-a-real-key',
+            setAt: workspace.result.credential.setAt,
+          },
+        }) &&
+        keys.cantRead === undefined,
+      'Saving the fictional key again did not keep its current plain-file state.',
+    )
     await checkNativePrefixes(baseline.natives, data)
     permissionsKept(baseline.permissions, fixturePermissions(data, Object.keys(baseline.natives)))
     workspace.result.finalDatabase = {

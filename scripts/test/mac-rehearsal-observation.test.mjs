@@ -1,12 +1,17 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ts from 'typescript'
-import { openUpdates } from '../lib/update-rehearsal-app.mjs'
+import { openUpdates, saveRehearsalCodexKey } from '../lib/update-rehearsal-app.mjs'
+import { credentialPreserved } from '../mac-signed-upgrade-contract.mjs'
 import {
   databaseSnapshot,
+  downloadedImagePath,
+  mountedImageOf,
+  requireEvidence,
   nativeFiles,
   checkNativePrefixes,
   checkpointIds,
@@ -352,7 +357,7 @@ it('keeps seed error bodies and model receipts when either diagnostic is unavail
   }
 })
 
-it('uses the Updates control and reaches Download from offered or checking state', async () => {
+it('uses Updates and its ordinary Download/mount/Finder path from offered or checking state', async () => {
   const source = ts.createSourceFile(
     'mac-signed-upgrade.mjs',
     readFileSync(new URL('../mac-signed-upgrade.mjs', import.meta.url), 'utf8'),
@@ -365,13 +370,21 @@ it('uses the Updates control and reaches Download from offered or checking state
   )
   expect(guided).toBeDefined()
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+  const downloads = join(folder(), 'Downloads')
+  const image = join(downloads, 'BroCrew-0.2.16-arm64.dmg')
+  const mount = '/Volumes/BroCrew 0.2.16-arm64'
+  const message =
+    'BroCrew 0.2.16 is downloaded and opened. Quit every open copy of BroCrew, then drag the new one into Applications.'
   for (const initiallyOpen of [false, true])
     for (const kind of ['available', 'checking']) {
       let opened = initiallyOpen
+      let downloaded = false
       let state = { kind, version: '0.2.16' }
       const updates = {
         checkNow: vi.fn(async () => ({ state })),
         read: vi.fn(async () => {
+          if (downloaded)
+            return { state: { kind: 'ready', how: 'opened', version: '0.2.16', path: image } }
           const current = state
           state = { kind: 'available', version: '0.2.16' }
           return { state: current }
@@ -379,6 +392,8 @@ it('uses the Updates control and reaches Download from offered or checking state
       }
       const document = {
         querySelector(selector) {
+          if (selector === '[data-cy=updates-said]') return { textContent: message }
+          if (selector === '[data-cy=updates-restart]') return null
           expect(['[data-cy=rail-version]', '[data-cy=updates-menu]']).toContain(selector)
           return {
             disabled: false,
@@ -400,37 +415,182 @@ it('uses the Updates control and reaches Download from offered or checking state
           if (event.type === 'mouseReleased') opened = !opened
         }),
       }
-      const download = new Error('the Download action was reached')
+      const click = vi.fn(async (_cdp, selector) => {
+        expect(selector).toBe('[data-cy=updates-download]')
+        downloaded = true
+      })
+      const commands = vi.fn(async (program, args) => {
+        if (program === '/usr/bin/osascript') return mount + '/'
+        expect(['/usr/sbin/screencapture', '/usr/bin/xcrun', '/usr/sbin/spctl']).toContain(program)
+        if (program === '/usr/bin/xcrun') expect(args).toEqual(['stapler', 'validate', image])
+        return ''
+      })
+      const plist = vi.fn(async () => ({
+        images: [{ 'image-path': image, 'system-entities': [{ 'mount-point': mount }] }],
+      }))
+      const quarantine = vi.fn()
+      const fixture = {
+        workspace: { cdp },
+        selectWorkspace: vi.fn(),
+        openUpdates,
+        click,
+        waitFor: async (check) => {
+          const result = (await check()) || (await check())
+          expect(result).toBeTruthy()
+          return result
+        },
+        screenshot: vi.fn(),
+        VERSION_B: '0.2.16',
+        downloadedImagePath,
+        downloads,
+        realpath: async (path) => path,
+        requireEvidence,
+        mountedImageOf,
+        plist,
+        quarantine,
+        run: commands,
+        join,
+        evidence: folder(),
+        summary: {},
+        bundleChecked: async () => ({ version: '0.2.16' }),
+        transport: { requireHealthy: vi.fn() },
+        passed: vi.fn(),
+      }
       const run = new AsyncFunction(
-        'workspace',
-        'selectWorkspace',
-        'openUpdates',
-        'click',
-        'waitFor',
-        'screenshot',
-        'VERSION_B',
-        `${guided.getText(source)}; return await guidedDownload(workspace, {})`,
+        'fixture',
+        `const { ${Object.keys(fixture).join(', ')} } = fixture
+        let mountedCandidate
+        ${guided.getText(source)}
+        return await guidedDownload(workspace, {})`,
       )
-      await expect(
-        run(
-          { cdp },
-          vi.fn(),
-          openUpdates,
-          async (_cdp, selector) => {
-            expect(selector).toBe('[data-cy=updates-download]')
-            throw download
-          },
-          async (check) => {
-            if (!(await check())) expect(await check()).toBe(true)
-          },
-          vi.fn(),
-          '0.2.16',
-        ),
-      ).rejects.toBe(download)
+      expect(await run(fixture)).toBe(join(mount, 'BroCrew.app'))
+      expect(click).toHaveBeenCalledOnce()
+      expect(plist).toHaveBeenCalledExactlyOnceWith('/usr/bin/hdiutil', ['info', '-plist'])
+      expect(quarantine).toHaveBeenCalledExactlyOnceWith(image, 'downloaded-image')
+      expect(fixture.summary.download.guided).toBe(message)
       expect(updates.checkNow).toHaveBeenCalledOnce()
-      expect(updates.read).toHaveBeenCalledTimes(kind === 'checking' ? 2 : 1)
+      expect(updates.read).toHaveBeenCalledTimes(kind === 'checking' ? 4 : 3)
       expect(cdp.send).toHaveBeenCalledTimes(initiallyOpen ? 0 : 3)
       await openUpdates(cdp)
       expect(cdp.send).toHaveBeenCalledTimes(initiallyOpen ? 0 : 3)
     }
+})
+
+it('requires the sealed-key refusal and no model request before saving again and resuming the same conversation', async () => {
+  const source = ts.createSourceFile(
+    'mac-signed-upgrade.mjs',
+    readFileSync(new URL('../mac-signed-upgrade.mjs', import.meta.url), 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  )
+  const reopen = source.statements.find(
+    (node) => ts.isFunctionDeclaration(node) && node.name?.text === 'reopenSecond',
+  )
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+  for (const mode of ['expected', 'usable-key', 'wrong-refusal', 'model-request']) {
+    let saved = false
+    const reason = 'Saved key can’t be read, save it again in Settings.'
+    const rows = [{ provider: 'codex', sealed: 'original-ciphertext' }]
+    const model = { requests: [] }
+    const runtime = {
+      apiKeyStatus: async () => ({
+        provider: 'codex',
+        set: true,
+        inUse: mode === 'usable-key',
+        readState: mode === 'usable-key' ? undefined : 'unreadable',
+        unreadableReason: reason,
+      }),
+      resume: vi.fn(async ({ sessionId }) => {
+        expect(sessionId).toBe('original-conversation')
+        if (mode === 'model-request') model.requests.push({ post: true })
+        throw new Error(
+          mode === 'wrong-refusal'
+            ? 'another refusal'
+            : `Error invoking remote method 'runtime:command': Error: ${reason}`,
+        )
+      }),
+      setApiKey: vi.fn(async ({ provider, key }) => {
+        expect(provider).toBe('codex')
+        expect(key).toBe('sk-update-rehearsal-not-a-real-key')
+        saved = true
+        return { provider, set: true, inUse: true }
+      }),
+    }
+    const cdp = {
+      evaluate: (body) =>
+        new AsyncFunction('window', body)({
+          api: {
+            runtime,
+            updates: {
+              read: async () => ({
+                version: '0.2.17',
+                channel: 'stable',
+                checkAutomatically: true,
+                state: { kind: 'idle', upToDate: true },
+              }),
+            },
+          },
+        }),
+    }
+    const continued = new Error('the original conversation continues after the explicit resave')
+    const fixture = {
+      workspace: {
+        name: 'Default',
+        baseline: { before: { provider_api_key: rows } },
+        copiesAfterFirst: ['copy'],
+        conversations: ['original-conversation', 'second-conversation'],
+        result: {},
+      },
+      selectWorkspace: vi.fn(),
+      launch: async () => cdp,
+      VERSION_B: '0.2.17',
+      recoveryOrder: vi.fn(),
+      readFile: vi.fn(),
+      join,
+      evidence: folder(),
+      checkpointIds: async () => ['copy'],
+      data: folder(),
+      isDeepStrictEqual,
+      requireEvidence,
+      checkRetention: vi.fn(),
+      openUpdates: vi.fn(),
+      click: vi.fn(),
+      waitFor: async (check) => expect(await check()).toBe(true),
+      model,
+      credentialPreserved,
+      databaseSnapshot: () => ({ provider_api_key: rows }),
+      saveRehearsalCodexKey,
+      startLocalModelTurn: vi.fn(async (_cdp, _text, options) => {
+        expect(saved).toBe(true)
+        expect(options.sessionId).toBe('original-conversation')
+        throw continued
+      }),
+    }
+    const run = new AsyncFunction(
+      'fixture',
+      `const { ${Object.keys(fixture).join(', ')} } = fixture
+      ${reopen.getText(source)}
+      return await reopenSecond(workspace)`,
+    )
+    if (mode === 'expected') {
+      await expect(run(fixture)).rejects.toBe(continued)
+      expect(runtime.setApiKey).toHaveBeenCalledOnce()
+      expect(fixture.workspace.result.unreadableCredential).toEqual({
+        reason,
+        refusal: `Error invoking remote method 'runtime:command': Error: ${reason}`,
+        modelRequests: 0,
+      })
+    } else {
+      await expect(run(fixture)).rejects.toThrow(
+        mode === 'usable-key'
+          ? 'plain unreadable state'
+          : mode === 'wrong-refusal'
+            ? 'exact refusal'
+            : 'reached the scripted model',
+      )
+      expect(runtime.setApiKey).not.toHaveBeenCalled()
+      expect(fixture.startLocalModelTurn).not.toHaveBeenCalled()
+    }
+  }
 })

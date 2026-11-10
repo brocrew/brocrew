@@ -76,7 +76,7 @@ export function fixturePermissions(folder, nativeNames = []) {
   return result
 }
 
-export function credentialPreserved(before, after) {
+export function credentialPreserved(before, after, { resaved = false } = {}) {
   requireEvidence(
     Array.isArray(before) &&
       before.some(
@@ -86,8 +86,10 @@ export function credentialPreserved(before, after) {
     'Fictional encrypted credential baseline is missing.',
   )
   requireEvidence(
-    isDeepStrictEqual(before, after),
-    'Fictional encrypted credential bytes changed during update.',
+    isDeepStrictEqual(resaved ? before.filter((row) => row.provider !== 'codex') : before, after),
+    resaved
+      ? 'Saving Codex again did not remove only its sealed row.'
+      : 'Fictional encrypted credential bytes changed during update.',
   )
 }
 

@@ -44,12 +44,20 @@ test('persistent fixture permissions include nested skill files and ignore trans
   }
 })
 
-test('the encrypted credential sentinel cannot disappear or be replaced while other data survives', () => {
-  const rows = [{ provider: 'codex', sealed: 'fictional-ciphertext', updated_at: 12 }]
+test('sealed credentials stay exact until Codex is explicitly saved again', () => {
+  const rows = [
+    { provider: 'claude', sealed: 'other-ciphertext', updated_at: 11 },
+    { provider: 'codex', sealed: 'fictional-ciphertext', updated_at: 12 },
+  ]
   credentialPreserved(rows, structuredClone(rows))
   assert.throws(() => credentialPreserved([], []))
   assert.throws(() => credentialPreserved(rows, []))
-  assert.throws(() => credentialPreserved(rows, [{ ...rows[0], sealed: 'rewritten-ciphertext' }]))
+  assert.throws(() =>
+    credentialPreserved(rows, [rows[0], { ...rows[1], sealed: 'rewritten-ciphertext' }]),
+  )
+  credentialPreserved(rows, [rows[0]], { resaved: true })
+  for (const after of [rows, [], [{ ...rows[0], sealed: 'changed' }]])
+    assert.throws(() => credentialPreserved(rows, after, { resaved: true }))
 })
 
 test('all three workspace registry entries survive, allowing only their last-opened timestamps to change', () => {
