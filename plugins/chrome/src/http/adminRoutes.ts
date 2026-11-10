@@ -45,6 +45,10 @@ export const ADMIN_ERRORS = {
 } as const
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
+type AdminCommand = (
+  input: { body: unknown; profile?: unknown },
+  res: Response,
+) => void | Promise<void>
 export const actorOf = (req: Request): 'panel' | 'direct-bearer' =>
   req.headers['x-brocrew-actor'] === 'panel' ? 'panel' : 'direct-bearer'
 export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
@@ -71,7 +75,13 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     next()
   })
   const send = (res: Response, status: number, body: unknown): void => {
-    res.status(status).json(body)
+    const applied = res.locals.configuration && status >= 200 && status < 300
+    res.status(applied ? 200 : status).json(applied ? { applied: true } : body)
+  }
+  const commands = new Map<string, AdminCommand>()
+  const command = (action: string, path: string, handle: AdminCommand): void => {
+    commands.set(action, handle)
+    app.post('/v1' + path, (req, res) => handle({ body: req.body, profile: req.params.name }, res))
   }
   const fail = (res: Response, status: number, error: string): void => send(res, status, { error })
   const view = (name: string): Record<string, unknown> | undefined => {
@@ -87,12 +97,11 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
       helperOff: rec.helper === 'off',
     }
   }
-  const bodyOf = (req: Request, allowed: readonly string[]): Record<string, unknown> | null => {
-    const b = req.body === undefined || req.body === null ? {} : req.body
+  const bodyOf = (input: unknown, allowed: readonly string[]): Record<string, unknown> | null => {
+    const b = input === undefined || input === null ? {} : input
     return isRecord(b) && Object.keys(b).every((k) => allowed.includes(k)) ? b : null
   }
-  const named = (req: Request, res: Response): string | null => {
-    const name = req.params.name
+  const named = (name: unknown, res: Response): string | null => {
     if (!isProfileName(name)) {
       fail(res, 400, ADMIN_ERRORS.name)
       return null
@@ -104,9 +113,9 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     return name
   }
   app.get('/healthz', (_req, res) => send(res, 200, { ok: true, version: deps.version }))
-  app.get('/v1/tabs', async (_req, res) => {
+  const tabs = async (): Promise<AdminTab[]> => {
     const tabs = deps.tabs.list((name) => browser.state(name)?.generation ?? null).slice(0, 200)
-    const rows: AdminTab[] = await Promise.all(
+    return Promise.all(
       tabs.map(async (tab) => ({
         id: tab.id,
         profile: tab.profile,
@@ -120,14 +129,30 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
         ]).then((v) => v.slice(0, 512)),
       })),
     )
-    const reply: AdminTabList = { tabs: rows }
-    send(res, 200, reply)
-  })
+  }
+  app.get('/v1/tabs', async (_req, res) => send(res, 200, { tabs: await tabs() }))
   app.get('/v1/profiles', (_req, res) =>
     send(res, 200, { profiles: store.list().map((p) => view(p.name)) }),
   )
-  app.post('/v1/profiles', (req, res) => {
-    const body = bodyOf(req, ['name', 'description'])
+  app.get('/v1/configuration', async (_req, res) =>
+    send(res, 200, { profiles: store.list().map((p) => view(p.name)), tabs: await tabs() }),
+  )
+  app.post('/v1/configuration', async (req, res) => {
+    const { payload, configRevision } = req.body ?? {}
+    if (!Number.isSafeInteger(configRevision) || configRevision < 0 || !isRecord(payload))
+      return fail(res, 400, ADMIN_ERRORS.body)
+    const { action, profile, ...body } = payload
+    const handle = typeof action === 'string' ? commands.get(action) : undefined
+    if (!handle) return fail(res, 400, ADMIN_ERRORS.body)
+    res.locals.configuration = true
+    try {
+      await handle({ profile, body: action === 'create-profile' ? { ...body, name: profile } : body }, res)
+    } catch (error) {
+      fail(res, 500, error instanceof Error ? error.message : String(error))
+    }
+  })
+  command('create-profile', '/profiles', ({ body: input }, res) => {
+    const body = bodyOf(input, ['name', 'description'])
     if (!body) return fail(res, 400, ADMIN_ERRORS.body)
     if (typeof body.name !== 'string' || !PROFILE_NAME.test(body.name))
       return fail(res, 400, ADMIN_ERRORS.name)
@@ -138,6 +163,7 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
         body.description === undefined ? {} : { description: checkDescription(body.description) },
       )
     } catch (e) {
+      if (res.locals.configuration && !(e instanceof ProfileStoreError)) throw e
       if (e instanceof ProfileStoreError && /description/.test(e.message))
         return fail(res, 400, ADMIN_ERRORS.description)
       return e instanceof ProfileStoreError && /already exists/.test(e.message)
@@ -147,10 +173,10 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     deps.logger.info('profile created', { by: 'panel' })
     send(res, 201, { profile: view(body.name) })
   })
-  app.post('/v1/profiles/:name/flags', async (req, res) => {
-    const name = named(req, res)
+  command('set-flags', '/profiles/:name/flags', async ({ profile, body: input }, res) => {
+    const name = named(profile, res)
     if (!name) return
-    const body = bodyOf(req, FLAG_NAMES)
+    const body = bodyOf(input, FLAG_NAMES)
     if (!body || Object.keys(body).length === 0) return fail(res, 400, ADMIN_ERRORS.flags)
     if (Object.values(body).some((v) => typeof v !== 'boolean'))
       return fail(res, 400, ADMIN_ERRORS.flags)
@@ -166,25 +192,29 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
       before !== undefined &&
       body.allowExtensions !== before.allowExtensions
     if (body.enabled === false || extensionsChanged)
-      await browser.exclusive(name, () => browser.close(name)).catch(() => undefined)
+      await browser.exclusive(name, () => browser.close(name)).catch((error) => {
+        if (res.locals.configuration) throw error
+      })
     deps.logger.info('profile flags changed', { flags: Object.keys(body) })
     send(res, 200, { profile: view(name) })
   })
-  // The person's "Turn on" for the BroCrew helper; an enabled profile only.
-  app.post('/v1/profiles/:name/helper', async (req, res) => {
-    const name = named(req, res)
+  commands.set('set-enabled', commands.get('set-flags')!)
+  command('helper-on', '/profiles/:name/helper', async ({ profile, body }, res) => {
+    const name = named(profile, res)
     if (!name) return
-    if (!bodyOf(req, [])) return fail(res, 400, ADMIN_ERRORS.body)
+    if (!bodyOf(body, [])) return fail(res, 400, ADMIN_ERRORS.body)
     if (store.get(name)?.enabled !== true) return fail(res, 409, ADMIN_ERRORS.helper)
     store.setHelper(name, 'turning-on')
-    await browser.turnHelperOn(name).catch(() => undefined)
+    await browser.turnHelperOn(name).catch((error) => {
+      if (res.locals.configuration) throw error
+    })
     deps.logger.info('BroCrew helper turned on', { by: 'panel' })
     send(res, 200, { profile: view(name) })
   })
-  app.post('/v1/profiles/:name/open', async (req, res) => {
-    const name = named(req, res)
+  command('open-window', '/profiles/:name/open', async ({ profile, body }, res) => {
+    const name = named(profile, res)
     if (!name) return
-    if (!bodyOf(req, [])) return fail(res, 400, ADMIN_ERRORS.body)
+    if (!bodyOf(body, [])) return fail(res, 400, ADMIN_ERRORS.body)
     if (store.get(name)?.temporary) return fail(res, 400, ADMIN_ERRORS.temporary)
     try {
       await deps.opener.open(name)
@@ -192,15 +222,16 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
       if (e instanceof ProfileInUseElsewhereError) return fail(res, 409, e.message)
       if (e instanceof ProfileInUseError) return fail(res, 409, ADMIN_ERRORS.inUse)
       if (e instanceof BrowserNotFoundError) return fail(res, 409, ADMIN_ERRORS.noBrowser)
+      if (res.locals.configuration) throw e
       deps.logger.warn('open window failed to open')
       return fail(res, 409, ADMIN_ERRORS.failed)
     }
     send(res, 202, { profile: view(name) })
   })
-  app.post('/v1/profiles/:name/rename', (req, res) => {
-    const name = named(req, res)
+  command('rename-profile', '/profiles/:name/rename', ({ profile, body: input }, res) => {
+    const name = named(profile, res)
     if (!name) return
-    const body = bodyOf(req, ['newName'])
+    const body = bodyOf(input, ['newName'])
     if (!body || typeof body.newName !== 'string') return fail(res, 400, ADMIN_ERRORS.body)
     try {
       store.rename(name, body.newName)
@@ -210,17 +241,19 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
       if (message === RENAME_ERRORS.invalid) return fail(res, 400, message)
       if (message === RENAME_ERRORS.duplicate || message === RENAME_ERRORS.deleting)
         return fail(res, 409, message)
+      if (res.locals.configuration) throw error
       return fail(res, 409, ADMIN_ERRORS.failed)
     }
   })
-  app.post('/v1/profiles/:name/description', (req, res) => {
-    const name = named(req, res)
+  command('set-description', '/profiles/:name/description', ({ profile, body: input }, res) => {
+    const name = named(profile, res)
     if (!name) return
-    const body = bodyOf(req, ['description'])
+    const body = bodyOf(input, ['description'])
     if (!body || typeof body.description !== 'string') return fail(res, 400, ADMIN_ERRORS.body)
     try {
       store.setDescription(name, body.description)
     } catch (e) {
+      if (res.locals.configuration && !(e instanceof ProfileStoreError)) throw e
       return fail(
         res,
         400,
@@ -231,10 +264,10 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     }
     send(res, 200, { profile: view(name) })
   })
-  app.post('/v1/profiles/:name/delete', async (req, res) => {
-    const name = named(req, res)
+  command('delete-profile', '/profiles/:name/delete', async ({ profile, body: input }, res) => {
+    const name = named(profile, res)
     if (!name) return
-    const body = bodyOf(req, ['confirm', 'deleteConfirmation'])
+    const body = bodyOf(input, ['confirm', 'deleteConfirmation'])
     if (!body) return fail(res, 400, ADMIN_ERRORS.body)
     if (body.confirm !== name) return fail(res, 400, ADMIN_ERRORS.confirm)
     try {
@@ -252,6 +285,7 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
       if (error instanceof ProfileInUseElsewhereError) return fail(res, 409, error.message)
       if (error instanceof ProfileStoreError) return fail(res, 409, error.message)
       if (error instanceof ProfileInUseError) return fail(res, 409, ADMIN_ERRORS.deleteInUse)
+      if (res.locals.configuration) throw error
       return fail(res, 409, ADMIN_ERRORS.failed)
     }
     deps.logger.info('profile deleted')
