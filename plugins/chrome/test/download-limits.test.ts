@@ -38,6 +38,23 @@ function fixture(allowUnclaimed = true, quota = new UnclaimedDownloadQuota()) {
     session.emit('Browser.downloadProgress', { guid, receivedBytes, totalBytes, state })
   return { dir, session, router, failed, begin, progress }
 }
+it('reports only advancing received bytes for the owning active capture', async () => {
+  const h = fixture(false)
+  const activity = vi.fn()
+  const capture = h.router.capture(async () => new Set(['fern-frame']), activity)
+  h.begin('fern')
+  await flush()
+  h.progress('fern', 10)
+  h.progress('fern', 10)
+  h.progress('fern', 5)
+  h.progress('fern', 20)
+  h.begin('other', 'other-frame')
+  h.progress('other', 30)
+  expect(activity).toHaveBeenCalledTimes(2)
+  capture.end()
+  h.progress('fern', 40)
+  expect(activity).toHaveBeenCalledTimes(2)
+})
 it.each(['received', 'declared'] as const)(
   'cancels a page download beyond 200 MB (%s), including a claimed download',
   async (kind) => {
