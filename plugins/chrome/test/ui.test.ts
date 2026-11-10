@@ -107,8 +107,7 @@ it('uses only bounded DOM RPC, displays current windows/tabs as text, and propos
   await Promise.resolve()
   expect(view.nodes.get('#profiles')!.children).toHaveLength(0)
   view.reply(snapshot)
-  await Promise.resolve()
-  await Promise.resolve()
+  await settle()
   const row = view.nodes.get('#profiles')!.children[0]
   expect(row.dataset.profile).toBe('fern')
   const heading = row.children[0]
@@ -155,8 +154,7 @@ it('offers "Turn on" for the BroCrew helper only where the person turned it off'
     ],
     tabs: [],
   })
-  await Promise.resolve()
-  await Promise.resolve()
+  await settle()
   const [fern, willow, aspen, birch] = view.nodes.get('#profiles')!.children
   expect(fern.children).toHaveLength(2)
   const line = fern.children[1]
@@ -173,22 +171,13 @@ it('offers "Turn on" for the BroCrew helper only where the person turned it off'
 it('shows the reviewed empty-profile message', async () => {
   const view = screen()
   view.reply({ configRevision: 0, profiles: [], tabs: [] })
-  await Promise.resolve()
-  await Promise.resolve()
+  await settle()
   expect(view.nodes.get('#profiles')!.children[0].textContent).toBe(
     'No profiles yet. Create one to get started.',
   )
 })
 it('names the profile and deleted data before the person confirms, and Cancel sends no proposal', async () => {
-  const view = screen()
-  const snapshot = {
-    configRevision: 3,
-    profiles: [{ name: 'fern', enabled: true, open: false }],
-    tabs: [],
-  }
-  view.reply(snapshot)
-  await Promise.resolve()
-  await Promise.resolve()
+  const { view } = await profileView({ configRevision: 3 })
   view.nodes
     .get('#profiles')!
     .children[0].children[0].children[2].children[3].listeners.get('click')!({})
@@ -203,15 +192,7 @@ it('names the profile and deleted data before the person confirms, and Cancel se
   view.events.get('pagehide')!({})
 })
 it('sends only the confirmed person proposal and keeps a plain retry message on refusal', async () => {
-  const view = screen()
-  const snapshot = {
-    configRevision: 3,
-    profiles: [{ name: 'fern', enabled: true, open: true }],
-    tabs: [],
-  }
-  view.reply(snapshot)
-  await Promise.resolve()
-  await Promise.resolve()
+  const { view, snapshot } = await profileView({ configRevision: 3, open: true })
   view.nodes
     .get('#profiles')!
     .children[0].children[0].children[2].children[3].listeners.get('click')!({})
@@ -224,12 +205,10 @@ it('sends only the confirmed person proposal and keeps a plain retry message on 
     configRevision: 3,
   })
   view.reply(undefined, undefined, proposal, false)
-  await Promise.resolve()
-  await Promise.resolve()
+  await settle()
   expect(view.packets.at(-1)?.method).toBe('read')
   view.reply(snapshot, undefined, view.packets.at(-1))
-  await Promise.resolve()
-  await Promise.resolve()
+  await settle()
   const refusal = view.nodes.get('#profiles')!.children[0].children[1]
   expect(refusal.children.at(-1)!.textContent).toContain(
     'Turn it off and wait for agent work to finish',
@@ -247,23 +226,20 @@ it.each([true, false])(
       profiles: [{ name: 'fern', enabled: wasEnabled, open: false }],
       tabs: [],
     })
-    await Promise.resolve()
-    await Promise.resolve()
+    await settle()
     view.nodes
       .get('#profiles')!
       .children[0].children[0].children[2].children[3].listeners.get('click')!({})
     view.nodes.get('#profiles')!.children[0].children[1].children[2].listeners.get('click')!({})
     view.reply(undefined, undefined, view.packets.at(-1), false)
-    await Promise.resolve()
-    await Promise.resolve()
+    await settle()
     expect(view.packets.at(-1)?.method).toBe('read')
     view.reply(
       { configRevision: 4, profiles: [{ name: 'fern', enabled: false, open: false }], tabs: [] },
       undefined,
       view.packets.at(-1),
     )
-    await Promise.resolve()
-    await Promise.resolve()
+    await settle()
     const confirmation = view.nodes.get('#profiles')!.children[0].children[1]
     expect(confirmation.children.at(-1)?.textContent).toBe(
       wasEnabled
@@ -284,8 +260,7 @@ it.each([true, false])(
   async (success) => {
     const view = screen()
     view.reply({ configRevision: 1, profiles: [], tabs: [] })
-    await Promise.resolve()
-    await Promise.resolve()
+    await settle()
     const input = view.nodes.get('#name')!
     input.value = 'fern'
     view.nodes.get('#create')!.listeners.get('submit')!({ preventDefault() {} })
@@ -293,15 +268,13 @@ it.each([true, false])(
     expect(create.payload).toEqual({ action: 'create-profile', profile: 'fern' })
     expect(input.value).toBe('fern')
     view.reply(undefined, undefined, create, success)
-    await Promise.resolve()
-    await Promise.resolve()
+    await settle()
     expect(input.value).toBe(success ? '' : 'fern')
     if (success) {
       expect(view.packets.at(-1)?.method).toBe('read')
       // A follow-up refresh failure does not undo an acknowledged creation.
       view.reply(undefined, undefined, view.packets.at(-1), false)
-      await Promise.resolve()
-      await Promise.resolve()
+      await settle()
       expect(input.value).toBe('')
     }
     view.events.get('pagehide')!({})
@@ -317,6 +290,19 @@ type Drawn = {
   children: Drawn[]
   listeners: Map<string, (event: unknown) => void>
 }
+async function profileView({ configRevision = 1, enabled = true, open = false } = {}) {
+  const view = screen()
+  const snapshot = {
+    configRevision,
+    profiles: [{ name: 'fern', enabled, open }],
+    tabs: [],
+  }
+  view.reply(snapshot)
+  await settle()
+  const row = () => view.nodes.get('#profiles')!.children[0] as unknown as Drawn
+  return { view, snapshot, row }
+}
+
 const words = (node: Drawn): string[] => [node.textContent, ...node.children.flatMap(words)]
 async function settle() {
   await Promise.resolve()
@@ -412,14 +398,7 @@ it('checks a new profile name with the approved words before the person proposes
 })
 
 it('closes the rename field on Escape without proposing anything', async () => {
-  const view = screen()
-  view.reply({
-    configRevision: 1,
-    profiles: [{ name: 'fern', enabled: true, open: false }],
-    tabs: [],
-  })
-  await settle()
-  const row = () => view.nodes.get('#profiles')!.children[0] as unknown as Drawn
+  const { view, row } = await profileView()
   row().children[0].children[2].children[2].listeners.get('click')!({})
   expect(row().children[1].className).toBe('profile-rename')
   row().children[1].children[0].listeners.get('keydown')!({ key: 'Escape' })
@@ -429,15 +408,7 @@ it('closes the rename field on Escape without proposing anything', async () => {
 })
 
 it('holds a read that arrives mid-composition and draws it once the word is finished', async () => {
-  const view = screen()
-  const snapshot = {
-    configRevision: 1,
-    profiles: [{ name: 'fern', enabled: true, open: false }],
-    tabs: [],
-  }
-  view.reply(snapshot)
-  await settle()
-  const row = () => view.nodes.get('#profiles')!.children[0] as unknown as Drawn
+  const { view, snapshot, row } = await profileView()
   row().children[0].children[2].children[2].listeners.get('click')!({})
   const form = row().children[1]
   const input = form.children[0]
@@ -458,15 +429,7 @@ it('holds a read that arrives mid-composition and draws it once the word is fini
 })
 
 it('holds the redraw after a refused rename while the person is composing a word', async () => {
-  const view = screen()
-  const snapshot = {
-    configRevision: 1,
-    profiles: [{ name: 'fern', enabled: true, open: false }],
-    tabs: [],
-  }
-  view.reply(snapshot)
-  await settle()
-  const row = () => view.nodes.get('#profiles')!.children[0] as unknown as Drawn
+  const { view, snapshot, row } = await profileView()
   row().children[0].children[2].children[2].listeners.get('click')!({})
   const input = row().children[1].children[0]
   input.value = 'Garden'
@@ -550,14 +513,7 @@ it('turns a profile on here with one switch press, shows it busy, and puts it ba
 })
 
 it('holds the switch put-back after a refusal while the person is composing a name', async () => {
-  const view = screen()
-  view.reply({
-    configRevision: 1,
-    profiles: [{ name: 'fern', enabled: true, open: false }],
-    tabs: [],
-  })
-  await settle()
-  const row = () => view.nodes.get('#profiles')!.children[0] as unknown as Drawn
+  const { view, row } = await profileView()
   const control = () => row().children[0].children[2].children[0] as Drawn & Record<string, unknown>
   control().listeners.get('click')!({})
   const proposal = view.packets.at(-1)!
@@ -578,14 +534,7 @@ it('holds the switch put-back after a refusal while the person is composing a na
 })
 
 it('keeps an accepted switch change on every redraw when the read after it fails', async () => {
-  const view = screen()
-  view.reply({
-    configRevision: 1,
-    profiles: [{ name: 'fern', enabled: false, open: false }],
-    tabs: [],
-  })
-  await settle()
-  const row = () => view.nodes.get('#profiles')!.children[0] as unknown as Drawn
+  const { view, row } = await profileView({ enabled: false })
   const control = () => row().children[0].children[2].children[0] as Drawn & Record<string, unknown>
   control().listeners.get('click')!({})
   view.reply(undefined, undefined, view.packets.at(-1))
@@ -610,15 +559,7 @@ it('keeps an accepted switch change on every redraw when the read after it fails
 })
 
 it('lets a later read that lands before the switch is accepted keep its own state', async () => {
-  const view = screen()
-  const snapshot = {
-    configRevision: 1,
-    profiles: [{ name: 'fern', enabled: false, open: false }],
-    tabs: [],
-  }
-  view.reply(snapshot)
-  await settle()
-  const row = () => view.nodes.get('#profiles')!.children[0] as unknown as Drawn
+  const { view, snapshot, row } = await profileView({ enabled: false })
   const control = () => row().children[0].children[2].children[0] as Drawn & Record<string, unknown>
   control().listeners.get('click')!({})
   const proposal = view.packets.at(-1)!

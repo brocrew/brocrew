@@ -14,6 +14,20 @@ import {
 import { safeReport } from '../gates/plugin-packaged/contract.mjs'
 import { openPlugins } from '../gates/plugin-packaged/cdp.mjs'
 
+function guiProbeWith(io) {
+  const source = fs.readFileSync(
+    new URL('../gates/plugin-packaged/journey.mjs', import.meta.url),
+    'utf8',
+  )
+  const body = source
+    .slice(
+      source.indexOf('export async function guiProbe('),
+      source.indexOf('export async function journey('),
+    )
+    .replace('export ', '')
+  return Function(...Object.keys(io), 'return (' + body + ')')(...Object.values(io))
+}
+
 function child() {
   const child = new EventEmitter()
   return observeApp(child)
@@ -178,16 +192,6 @@ describe('packaged GUI probe diagnostic steps without an app launch', () => {
     }
   })
   it('retains the setup route when closing it fails to uncover the workspace before the probe deadline', async () => {
-    const source = fs.readFileSync(
-      new URL('../gates/plugin-packaged/journey.mjs', import.meta.url),
-      'utf8',
-    )
-    const body = source
-      .slice(
-        source.indexOf('export async function guiProbe('),
-        source.indexOf('export async function journey('),
-      )
-      .replace('export ', '')
     const emitted = [],
       clicks = []
     let drew = false
@@ -234,7 +238,7 @@ describe('packaged GUI probe diagnostic steps without an app launch', () => {
       stopApp: async () => {},
       printPageState: (value) => emitted.push(value),
     }
-    const probe = Function(...Object.keys(io), 'return (' + body + ')')(...Object.values(io))
+    const probe = guiProbeWith(io)
     const error = await probe('/fictional/root').catch((error) => error)
     expect(error.failure).toEqual({
       phase: 'gui-probe',
@@ -302,16 +306,6 @@ describe('packaged GUI probe diagnostic steps without an app launch', () => {
     expect(result.stdout).not.toMatch(/fictional|HOME|path|argv/)
   })
   it('captures page state on a drawing timeout without replacing the original failure', async () => {
-    const source = fs.readFileSync(
-      new URL('../gates/plugin-packaged/journey.mjs', import.meta.url),
-      'utf8',
-    )
-    const body = source
-      .slice(
-        source.indexOf('export async function guiProbe('),
-        source.indexOf('export async function journey('),
-      )
-      .replace('export ', '')
     const failure = {
       failure: {
         phase: 'gui-probe',
@@ -340,7 +334,7 @@ describe('packaged GUI probe diagnostic steps without an app launch', () => {
       stopApp: async () => {},
       printPageState: (value) => emitted.push(value),
     }
-    const probe = Function(...Object.keys(io), 'return (' + body + ')')(...Object.values(io))
+    const probe = guiProbeWith(io)
     expect(await probe('/fictional/root').catch((error) => error)).toBe(failure)
     expect(emitted).toEqual([
       { readyState: 'complete', routeCategory: 'recovery', markers: ['recovery'] },
