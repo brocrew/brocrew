@@ -53,10 +53,10 @@ export interface ProviderHomeStrategy {
   prepare(profileId: string): Promise<string>
 }
 
-/** Metadata only; providers retain all existing credential and state operations. */
-export interface ProviderConnectionOperations {
-  list(): readonly ProviderConnection[]
-  resolve(connectionId?: string | null): ProviderConnection
+/** Bound selection operations; adapters own the connection value and its native protocol. */
+export interface ProviderConnectionOperations<Connection = ProviderConnection> {
+  list(): readonly Connection[]
+  resolve(connectionId?: string | null): Connection
 }
 
 export interface PreparedProviderLaunch {
@@ -64,7 +64,7 @@ export interface PreparedProviderLaunch {
   readonly runtime: AgentRuntime
 }
 
-export interface ProviderModule<H extends ProviderHostValues> {
+export interface ProviderModule<H extends ProviderHostValues, Connection = ProviderConnection> {
   readonly program?: ProviderProgramOperations
   readonly authPolicy: ProviderAuthPolicy
   readonly transcripts: TranscriptPolicy<H>
@@ -76,9 +76,9 @@ export interface ProviderModule<H extends ProviderHostValues> {
   readonly keptRules: KeptRulePolicy
   /** A fresh runtime for this launch; the program is resolved only when called. */
   createRuntime(): AgentRuntime
-  prepareLaunch(profileId: string, connection?: ProviderConnection): Promise<PreparedProviderLaunch>
+  prepareLaunch(profileId: string, connection?: Connection): Promise<PreparedProviderLaunch>
   /** Bound by the desktop composition; legacy runtime-only constructions may omit it. */
-  readonly connections?: ProviderConnectionOperations
+  readonly connections?: ProviderConnectionOperations<Connection>
   readonly home: ProviderHomeStrategy
   readonly auth: HomeAuthOperations
 }

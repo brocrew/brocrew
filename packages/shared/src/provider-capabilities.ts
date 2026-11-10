@@ -51,6 +51,16 @@ export type CapabilityState =
   /** The provider genuinely does not have it, at the version we are pinned to. */
   | 'absent'
 
+export type ConnectionAuthMethod = 'sign-in' | 'api-key'
+export type ConnectionCredentialSource = 'provider-sign-in' | 'provider-api-key'
+
+/** Static connection choices; native protocols belong to each adapter's implementation. */
+export interface ProviderConnectionCapabilities {
+  readonly contractVersion: 1
+  readonly authMethods: readonly ConnectionAuthMethod[]
+  readonly additionalConnections: false
+}
+
 /**
  * One capability's standing with one provider.
  *

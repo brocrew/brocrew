@@ -1,7 +1,12 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import { z } from 'zod'
 import { FakeRuntime } from '../src/fake-runtime'
-import type { ProviderModule, ProviderHostValues, ProviderDisplayEvent } from '@brobot2/runtime/provider-module'
+import type {
+  ProviderModule,
+  ProviderConnectionOperations,
+  ProviderHostValues,
+  ProviderDisplayEvent,
+} from '@brobot2/runtime/provider-module'
 import type { RuntimeEvent } from '../src/events'
 
 interface FernValues extends ProviderHostValues {
@@ -108,9 +113,57 @@ function fernModule(): ProviderModule<FernValues> {
 }
 
 describe('the portable module consumer', () => {
+  it('binds connection operations with an external handle without interpreting its native protocol', async () => {
+    interface FernConnection {
+      readonly id: string
+      readonly workspace: string
+    }
+    const first: FernConnection = { id: 'fern-grove', workspace: '/fictional/grove' }
+    const second: FernConnection = { id: 'fern-meadow', workspace: '/fictional/meadow' }
+    const rows = [second, first] as const
+    const unavailable = new Error('Fictional connection is unavailable')
+    const calls: unknown[] = []
+    const connections: ProviderConnectionOperations<FernConnection> & {
+      readonly rows: typeof rows
+    } = {
+      rows,
+      list() {
+        calls.push('list')
+        return this.rows
+      },
+      resolve(id) {
+        calls.push(id)
+        const selected = id == null ? this.rows[0] : this.rows.find((row) => row.id === id)
+        if (selected === undefined) throw unavailable
+        return selected
+      },
+    }
+    const module: ProviderModule<FernValues, FernConnection> = {
+      ...fernModule(),
+      connections,
+      async prepareLaunch(profile, connection) {
+        calls.push(['prepare', profile, connection])
+        return { home: connection?.workspace ?? '/fictional/default', runtime: this.createRuntime() }
+      },
+    }
+    expect(calls).toEqual([])
+    expect(module.connections).toBe(connections)
+    expect(module.connections?.list()).toBe(rows)
+    expect(module.connections?.resolve()).toBe(second)
+    expect(module.connections?.resolve(null)).toBe(second)
+    expect(module.connections?.resolve(first.id)).toBe(first)
+    expect(() => module.connections?.resolve('missing')).toThrow(unavailable)
+    expect(calls).toEqual(['list', undefined, null, first.id, 'missing'])
+    const launch = await module.prepareLaunch('willow', first)
+    expect(launch.home).toBe(first.workspace)
+    expect(calls.at(-1)).toEqual(['prepare', 'willow', first])
+    expectTypeOf(module.prepareLaunch).parameter(1).toEqualTypeOf<FernConnection | undefined>()
+  })
+
   it('implements real operations with its own host protocol and no program service', async () => {
     const module = fernModule()
     expect(module.program).toBeUndefined()
+    expect(module.connections).toBeUndefined()
     expect(module.instructions.read({ cwd: '/fictional/work' })).toEqual({ text: '/fictional/work' })
     expect(module.transcripts.readTurn({ prompt: 'Fern task' }, {}).answer()).toEqual({ sent: 'Fern task' })
     expect(module.transcripts.parse(['Fern record'], 12).entries).toEqual([

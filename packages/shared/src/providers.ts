@@ -1,5 +1,4 @@
-import type { ProviderCapabilities } from './provider-capabilities'
-import type { ProviderConnectionCapabilities } from './provider-connections'
+import type { ProviderCapabilities, ProviderConnectionCapabilities } from './provider-capabilities'
 import { CLAUDE_CAPABILITIES } from './providers/claude-capabilities'
 import { CODEX_CAPABILITIES } from './providers/codex-capabilities'
 

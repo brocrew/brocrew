@@ -25,9 +25,17 @@ it('registers connection operations inside modules without probing a program, lo
       assertMayOpen: sideEffect,
     }))
     const sources = providerRecord((provider) => ({
-      list: () => listProviderConnections(db, provider, false),
-      resolve: (connectionId?: string | null) =>
-        resolveProviderConnection(db, { provider, connectionId, keySaved: false }),
+      provider,
+      list() {
+        return listProviderConnections(db, this.provider, false)
+      },
+      resolve(connectionId?: string | null) {
+        return resolveProviderConnection(db, {
+          provider: this.provider,
+          connectionId,
+          keySaved: false,
+        })
+      },
     }))
     const modules = Reflect.apply(createProviderModules, undefined, [
       (provider: keyof typeof paths) => paths[provider],
@@ -45,8 +53,10 @@ it('registers connection operations inside modules without probing a program, lo
       const operations = Reflect.get(modules[provider], 'connections') as
         typeof sources.claude | undefined
       expect(operations).toBeDefined()
+      expect(operations).toBe(sources[provider])
       expect(operations?.list().map((item) => item.id)).toEqual([`${provider}:sign-in`])
       expect(operations?.resolve().id).toBe(`${provider}:sign-in`)
+      expect(operations?.resolve(null)).toEqual(operations?.resolve(undefined))
       expect(() => operations?.resolve(`${provider}:api-key`)).toThrow('connection')
     }
     expect(sideEffect).not.toHaveBeenCalled()

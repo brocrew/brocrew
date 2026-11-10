@@ -1,7 +1,10 @@
 import type { Provider } from './providers'
-
-export type ConnectionAuthMethod = 'sign-in' | 'api-key'
-export type ConnectionCredentialSource = 'provider-sign-in' | 'provider-api-key'
+import type { ConnectionAuthMethod, ConnectionCredentialSource } from './provider-capabilities'
+export type {
+  ConnectionAuthMethod,
+  ConnectionCredentialSource,
+  ProviderConnectionCapabilities,
+} from './provider-capabilities'
 
 /** A reference to configuration; never a credential or a provider/agent state directory. */
 export interface ProviderConnection {
@@ -13,13 +16,6 @@ export interface ProviderConnection {
   readonly baseUrl: string | null
   readonly enabled: boolean
   readonly contractVersion: 1
-}
-
-/** Static adapter capabilities, separate from mutable configuration and program versions. */
-export interface ProviderConnectionCapabilities {
-  readonly contractVersion: 1
-  readonly authMethods: readonly ConnectionAuthMethod[]
-  readonly additionalConnections: false
 }
 
 /** Stable identifiers have no dependency on this computer's paths or login identity. */
