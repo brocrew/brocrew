@@ -100,10 +100,10 @@ function deferred() {
 }
 
 function doorsFor(held: ReturnType<typeof deferred>) {
-  const handBack = vi.fn((_label: string) => held.promise as Promise<string>)
-  const answerTodo = vi.fn(
-    (_session: string, _request: string, _done: boolean, _note: string) => held.promise,
-  )
+  const handBack = vi.fn<(label: string) => Promise<string>>(() => held.promise as Promise<string>)
+  const answerTodo = vi.fn<
+    (session: string, request: string, done: boolean, note: string) => Promise<string | null>
+  >(() => held.promise)
   return { handBack, answerTodo }
 }
 
@@ -180,14 +180,15 @@ describe.each(actions)('$name pending bookkeeping', (action) => {
   it('cleans up a rejected call without converting it into a domain result', async () => {
     const original = Promise.prototype.finally
     const endings: Promise<unknown>[] = []
-    const observed = vi
-      .spyOn(Promise.prototype, 'finally')
-      .mockImplementation(function (this: Promise<unknown>, onFinally) {
-        const ending = original.call(this, onFinally)
-        void ending.catch(() => {})
-        endings.push(ending)
-        return ending
-      })
+    const observed = vi.spyOn(Promise.prototype, 'finally').mockImplementation(function (
+      this: Promise<unknown>,
+      onFinally,
+    ) {
+      const ending = original.call(this, onFinally)
+      void ending.catch(() => {})
+      endings.push(ending)
+      return ending
+    })
     try {
       const queue = createPersonsQueue()
       const held = deferred()
