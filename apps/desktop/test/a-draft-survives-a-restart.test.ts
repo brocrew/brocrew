@@ -746,6 +746,7 @@ describe('§4 · the file — in the app’s own userData, whole, and read as un
   })
 
   it('⛔ what a reader cannot recognise is dropped rather than guessed at', () => {
+    const keptPaths = ['/work/a\nb.md', '/work/ok.md']
     const shaped = savedDraftsFrom({
       drafts: [
         { slot: 'thread-a', text: 'no such slot', attached: [] },
@@ -778,11 +779,7 @@ describe('§4 · the file — in the app’s own userData, whole, and read as un
     })
     expect(shaped).toEqual({
       drafts: [
-        {
-          slot: NEW_CONVERSATION,
-          text: 'kept',
-          attached: [FILE('/work/a\nb.md'), FILE('/work/ok.md')],
-        },
+        { slot: NEW_CONVERSATION, text: 'kept', attached: keptPaths.map(FILE) },
         { slot: draftKey(B), text: 'kept too', attached: [] },
       ],
     })
