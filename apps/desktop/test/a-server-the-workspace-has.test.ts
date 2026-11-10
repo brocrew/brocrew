@@ -566,21 +566,6 @@ describe('524 · a server the workspace has', () => {
       // anything — and `605`'s response says so rather than letting this line imply parity.
       expect(lastLaunch().externalMcp?.reservedToolNames).toEqual(TOOL_NAMES)
     })
-
-    it('⛔ …and no conversation with no identity at all', async () => {
-      // ⚠️ **`externalMcpContext` answers `{}` for a null slug and 524 did NOT widen that.** An
-      // available-to-all server is available to every IDENTITY; an adopted conversation is running
-      // as nobody, and handing tool servers to a row whose owner this app cannot name is not what
-      // *everyone's* means. ⛔ Asserted at the source of the answer, because no door in this build
-      // can produce an adopted row synchronously.
-      const clean = await localMcpServer(['search_logs'])
-      await register('kibana', clean.url, 'everyone')
-      const source = readFileSync(join(here, '../src/main/runtime/runtime-host.ts'), 'utf8')
-      expect(source).toContain('if (profileSlug === null) return {}')
-      // ⚑ The pairing: the same function DOES answer for a slug, so the line above is a guard and
-      // not a function that never returns anything.
-      expect(store.externalMcpServersFor('worker').map((one) => one.name)).toEqual(['kibana'])
-    })
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────

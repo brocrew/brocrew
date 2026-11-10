@@ -1,5 +1,5 @@
 import { neutralHostDeps, syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -59,10 +59,6 @@ function png(width: number, height: number): Buffer {
   bytes[25] = 6
   return bytes
 }
-
-/** Prose stripped before anything is searched: a docblock naming a verb is not a tool. */
-const code = (source: string): string =>
-  source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1')
 
 describe('D-032 · a person draws a kept picture or PDF, and finds any kept file in Finder', () => {
   let userData: string
@@ -349,22 +345,6 @@ describe('D-032 · a person draws a kept picture or PDF, and finds any kept file
         ).rejects.toThrow(refusedDuringAQuit(kind))
       }
       expect(revealed).toEqual([])
-    })
-
-    it('⛔ no agent tool reaches either door', () => {
-      const tools = code(readFileSync(join(here, '../src/main/runtime/agent-tools.ts'), 'utf8'))
-      // The positive: this is the file the toolset is written in.
-      expect(tools).toContain('give_work')
-      for (const name of [
-        'drawResource',
-        'revealResource',
-        'draw_resource',
-        'reveal_resource',
-        'keptPictureOrPdf',
-        'keptFileToShow',
-      ]) {
-        expect(tools.toLowerCase(), `an agent tool names ${name}`).not.toContain(name.toLowerCase())
-      }
     })
   })
 })

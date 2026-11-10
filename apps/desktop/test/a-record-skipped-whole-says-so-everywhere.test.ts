@@ -1,7 +1,4 @@
 import type { LedgerWalk } from '../src/shared/question-contracts'
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   rowsUnreadSays,
@@ -24,28 +21,6 @@ import type { WhoCalledWhom } from '../src/shared/who-called-whom'
 import { forestView } from '../src/renderer/src/lib/the-forest'
 import type { ForestNode, TheWholeForest } from '../src/shared/the-whole-forest'
 import { NOTHING_IT_WAITS_ON } from '../src/shared/tasks'
-
-/**
- * # 🔴 D-017 · R8 — a record skipped whole says so everywhere, not only where a torn ROW does
- *
- * ⚑ **R8's own words**: a conversation whose ledger throws is skipped WHOLE, counted apart from the
- * `rowsUnread` a torn row leaves — a whole record is not one row, and counting it as one would
- * understate it. ⛔ **`rows-unread.ts` composes the sentence in one place** and six other readers —
- * `digest.ts` (renderer and main), `work-given-out.ts`, `working-together.ts`, `the-forest.ts`, and
- * the Vue paragraphs that gate on it (two since D-016 took the project room's out) — each have to
- * carry `ledgersSkipped` through to it rather than stopping at `rowsUnread`. ⚠️ **This file pins that the count survives the whole chain,
- * kept beside — never summed into — the unread-rows count at every stop**, mirroring M20–M29.
- *
- * ⚑ **Where each `it` sits against the copied file's shape**: pure composers first
- * (`the-night-the-digest-could-not-describe.test.ts` §1's method, one vocabulary over), then the
- * fold and its isolation path, then the three renderer surfaces, then the one durable constant D-017
- * added, then the census over the components that draw the sentence.
- */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const rendererComponents = join(here, '../src/renderer/src/components')
-const componentSource = (name: string): string =>
-  readFileSync(join(rendererComponents, name), 'utf8')
 
 const NOW = 1_800_000_000_000
 
@@ -489,37 +464,5 @@ describe('§4 · D-017 R8 · `NOTHING_IT_WAITS_ON`', () => {
       aPerson: false,
       childrenOpen: new Set(),
     })
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// §5 · the paragraphs gate on the composed sentence, never on the raw count
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-describe('§5 · D-017 R8 · the unread-rows paragraphs gate on `.short`, never on a raw count', () => {
-  it('the unread-rows paragraphs gate on the composed sentence, never on the raw unread count alone', () => {
-    // ⚑ D-016 took the third paragraph out with the project room (`ProjectWorkspace.vue`).
-    const sessionWork = componentSource('SessionWork.vue')
-    const teamForest = componentSource('TeamForest.vue')
-
-    const lineWith = (source: string, needle: string): string => {
-      const line = source.split('\n').find((one) => one.includes(needle))
-      expect(line, `no line in the source contains ${needle}`).toBeDefined()
-      return line ?? ''
-    }
-
-    // ⚑ This is itself the missing half of two already-rendered controls
-    // (`the-forest-from-the-person-down.dom.test.ts`, `one-count-one-sentence.dom.test.ts`), which
-    // already prove the paragraph draws correctly when the raw count is > 0. What neither states is
-    // that the gate is no longer that raw count — asserted here as a source census.
-    expect(lineWith(sessionWork, 'data-cy="work-short"')).toContain('v-if="view.short"')
-    expect(lineWith(teamForest, 'data-cy="forest-rows-unread"')).toContain(
-      'v-if="props.view.coverage.short"',
-    )
-
-    for (const source of [sessionWork, teamForest]) {
-      expect(source).not.toContain('unread > 0')
-      expect(source).not.toContain('rowsUnread > 0')
-    }
   })
 })

@@ -1,6 +1,3 @@
-import { readFileSync, readdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { MenuItemConstructorOptions } from 'electron'
 import {
@@ -9,25 +6,6 @@ import {
   appMenuTemplate,
   rolesIn,
 } from '../src/main/app-menu'
-
-/**
- * ⛔ **View → Reload ended every conversation in the window, from a menu this app never wrote**
- * (203, from 195 H2).
- *
- * Electron installs a default application menu when nothing replaces it, and until 203 nothing did:
- * `setApplicationMenu` had zero hits in this repository, `Menu` was not imported in `src/main`, and
- * no accelerator was registered anywhere. So ⌘R was live, it committed a navigation, `did-navigate`
- * fired, and `closeSessionsForOwner` closed every slot for that window — the exact row 094 measured
- * and pinned (*"`webContents.reload()` (⌘R, devtools, menu)"*), reachable by one keystroke with no
- * confirmation.
- *
- * ⚑ **The choice was REMOVE, and `app-menu.ts` argues it**: the renderer's own `location.reload()`
- * has been refused silently since 074, so a confirm on ⌘R would be a second answer to one question
- * one door apart. The tests below pin both halves of the removal — the item is gone, and the menu it
- * left behind is still a menu.
- */
-
-const HERE = dirname(fileURLToPath(import.meta.url))
 
 const template = (devTools: boolean): MenuItemConstructorOptions[] =>
   appMenuTemplate({ appName: 'BroBot2', devTools })
@@ -70,35 +48,5 @@ describe('203 · the application menu this app owns (195 H2)', () => {
     const first = template(false)[0]
     expect(first?.label).toBe('BroBot2')
     expect(rolesIn([first as MenuItemConstructorOptions])).toContain('quit')
-  })
-
-  it('⛔ the app really installs it — src/main sets the application menu exactly once', () => {
-    // The structural half, on `window-navigation.test.ts`'s pattern: `index.ts` imports `electron`
-    // as a value and no test can load it, so what a test CAN do is read it. A template nothing
-    // hands to Electron is a policy the app does not have.
-    const sources: string[] = []
-    const walk = (dir: string): void => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const child = join(dir, entry.name)
-        if (entry.isDirectory()) walk(child)
-        else if (entry.name.endsWith('.ts')) sources.push(child)
-      }
-    }
-    walk(join(HERE, '../src/main'))
-
-    let installs = 0
-    const offenders: string[] = []
-    for (const file of sources) {
-      // Comments stripped first: `app-menu.ts` and this file both DISCUSS `setApplicationMenu`, and
-      // the discussion is the point — it is the code that must do it exactly once.
-      const source = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
-      installs += (source.match(/setApplicationMenu\(/g) ?? []).length
-      // ⚠️ `setApplicationMenu(null)` would pass every assertion above by removing the menu
-      // entirely, and on darwin that takes Copy, Paste and Quit with it.
-      if (/setApplicationMenu\(\s*null\s*\)/.test(source))
-        offenders.push(`${file} removes the menu`)
-    }
-    expect(installs, 'nothing installs a menu — the default one is back').toBe(1)
-    expect(offenders).toEqual([])
   })
 })

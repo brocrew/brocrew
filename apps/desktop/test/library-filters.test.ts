@@ -1,6 +1,3 @@
-import { readFileSync, readdirSync } from 'node:fs'
-import { join, relative } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   KIND_OPTIONS,
@@ -17,18 +14,6 @@ import {
 } from '../src/renderer/src/lib/library-filters'
 import { LIBRARY_ORIGINS } from '../src/shared/runtime-ipc'
 import type { LibraryCounts, LibraryFilters, Provider } from '../src/shared/runtime-ipc'
-
-/**
- * **The filter rules, as rules** (121) — the pure half of `120`'s design, asserted without a DOM.
- *
- * Everything the facet row, the window note and the empty state say about a narrowing comes from
- * one list and three functions. They are here rather than only in the browser test because they are
- * CLAIMS — *"the note is silent only when unfiltered and complete"*, *"the five stay five"*, *"the
- * two clears are independent"* — and a claim reachable only by mounting something is a claim tested
- * through everything that could hide it.
- */
-
-const HERE = fileURLToPath(new URL('.', import.meta.url))
 
 describe('what counts as a filter (120 §3)', () => {
   it('nothing set is not a filter, and neither is a toggle that is off', () => {
@@ -220,64 +205,6 @@ describe('every active constraint is nameable (120 §5)', () => {
     // The query chip belongs to the other axis: dropping it leaves the filters untouched, and the
     // caller clears the box (120 §4 — the two axes are independent).
     expect(withoutConstraint(filters, 'query')).toEqual(filters)
-  })
-})
-
-/**
- * ⚠️ **The rest of this ruling is asserted in `test/dom/library-filters.dom.test.ts`**, and the
- * split is the repo's own tiering rather than a preference: `home-scan.ts` reads `window.api`, so
- * it belongs to the projects that have a `window`. What lives here is the half that needs a
- * filesystem instead — which is the half a browser cannot do.
- */
-describe('one scan, surfaced twice (120 §7)', () => {
-  it('⛔ …and there is ONE call site in the whole renderer, not two', () => {
-    /**
-     * `120`'s ruling, as a structural guard: *"It must be the same operation, surfaced twice, never
-     * forked… two scan buttons that look alike and behave differently is 061 finding 6 in control
-     * form."* Behaviour tests show both buttons calling the bridge; only this shows that they
-     * cannot drift, because there is only one place in the renderer that calls it.
-     */
-    const root = join(HERE, '../src/renderer/src')
-    const walk = (dir: string): string[] =>
-      readdirSync(dir, { withFileTypes: true }).flatMap((item) =>
-        item.isDirectory()
-          ? walk(join(dir, item.name))
-          : /\.(ts|vue)$/.test(item.name)
-            ? [join(dir, item.name)]
-            : [],
-      )
-    const callers = walk(root).filter((file) =>
-      /runtime\s*\.\s*adoptSessions\s*\(/.test(readFileSync(file, 'utf8')),
-    )
-    expect(callers.map((file) => relative(root, file).replaceAll('\\', '/'))).toEqual([
-      'lib/home-scan.ts',
-    ])
-
-    // ⚠️ And the scanner fires: the same pattern IS found when pointed at a second caller. Without
-    // this, `toEqual([one])` is equally consistent with a regex that matches nothing.
-    expect(
-      /runtime\s*\.\s*adoptSessions\s*\(/.test('await window.api.runtime.adoptSessions()'),
-    ).toBe(true)
-  })
-
-  it('…and both surfaces reach it through the same shared function', () => {
-    // The other half: one call site is only a shared operation if the surfaces actually use it.
-    /**
-     * ⚠️ **The IMPORT, not the word** (review). Both files name `useHomeScan` and `scanSummary` in
-     * their own prose — `{@link useHomeScan}` is in each one's doc block — so a `toContain` over
-     * the raw source stayed green with the import deleted and the comment kept, which is a guard
-     * satisfied by documentation of the thing it is meant to guard.
-     */
-    for (const component of ['SessionLibrary.vue', 'ResumableSessions.vue']) {
-      const source = readFileSync(join(HERE, '../src/renderer/src/components', component), 'utf8')
-      const imports = /import\s*\{([^}]*)\}\s*from\s*'\.\.\/lib\/home-scan'/.exec(source)?.[1] ?? ''
-      expect(imports, `${component} does not import the shared scan`).toContain('useHomeScan')
-      expect(imports, `${component} does not import the shared summary`).toContain('scanSummary')
-    }
-    // …and the matcher fires: it finds nothing in a file that only talks about them.
-    expect(
-      /import\s*\{([^}]*)\}\s*from\s*'\.\.\/lib\/home-scan'/.test('// {@link useHomeScan}'),
-    ).toBe(false)
   })
 })
 

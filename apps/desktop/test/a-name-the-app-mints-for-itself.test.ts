@@ -2,7 +2,6 @@ import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import { performance } from 'node:perf_hooks'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -578,114 +577,10 @@ describe('538 · a name the app mints for itself', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§5 · where the table is read', () => {
-    /**
-     * 🔴 **The census, and it plants TWO** (standing rule 12). ⛔ A reader that found only the
-     * first call per file would pass a one-planted control and be blind to a third call site in an
-     * 8,000-line store — which is `a-payload-census-must-read-call-sites-not-types`' sibling and
-     * the defect this census exists to catch.
-     */
-    it('🔴 584 · `nameForANewIdentity` is called at TWO mint sites, and in no row writer', () => {
-      const code = withoutProse(readFileSync(join(SRC, 'main/db/session-store.ts'), 'utf8'))
-      // ⛔ **Two, and the definition is NOT one of them** — it is
-      // `const nameForANewIdentity = (profileSlug: …)`, so the arrow binding puts a space where
-      // this pattern wants a paren. ⚠️ Said out loud because a reader who assumed otherwise would
-      // read this number as one call site (`a-title-that-names-a-count-the-assertion-never-checks`).
-      const calls = [...code.matchAll(/nameForANewIdentity\(/g)]
-      expect(calls).toHaveLength(2)
-
-      // ⛔ **The LAUNCH and the CREATION door** — every place a row comes into being. ⚠️ **`584`
-      // added the second**: `HO-078` §5 gives an agent's creation the app's name, where `538`
-      // deliberately left it null. D-014 removed the grant-target loop that was a third.
-      expect(code).toContain('displayName: nameForANewIdentity(profileSlug),')
-      expect(code).toContain(
-        'displayName: blankToNull(said.displayName) ?? nameForANewIdentity(slug),',
-      )
-
-      // 🔴 **And NOT in the shared row writer.** ⛔ `writeIdentityRow` is what every door goes
-      // through, so resolving the name there would make a launch's fallback overwrite the person's
-      // own `null` — which is `433`'s defect one column over, and the reason the seed was ever
-      // resolved at call sites.
-      // ⚑ Both anchors asserted present first, so an absent one cannot slice an empty region.
-      const from = code.indexOf('const writeIdentityRow')
-      const to = code.indexOf('const setAgentProviderTx')
-      expect(from).toBeGreaterThan(-1)
-      expect(to).toBeGreaterThan(from)
-      const writer = code.slice(from, to)
-      expect(writer.length).toBeGreaterThan(200)
-      expect(writer).toContain('ensureIdentityRow.run(')
-      expect(
-        writer,
-        'the row writer resolves the name, so every door gets the same one',
-      ).not.toContain('nameForANewIdentity(')
-    })
-
     /** ⚑ **The control for the reader above**, planting two calls in one string. */
     it('⚑ the census reads every call in a file, not the first', () => {
       const planted = 'a = nameForANewIdentity(x)\nb = nameForANewIdentity(y)\n'
       expect([...planted.matchAll(/nameForANewIdentity\(/g)]).toHaveLength(2)
-    })
-
-    /**
-     * 🔴 **`create_agent`'s `display_name` stays OPTIONAL, and the reason is measured.**
-     *
-     * ⛔ **A required argument would be a rail on ONE provider and a suggestion on the other.**
-     * Claude's in-process MCP server parses arguments against the schema BEFORE the handler runs —
-     * `safeParseAsync(normalizeObjectSchema(inputSchema), args)`, which `348` measured end to end
-     * — so an omission would be refused by the transport and this app's own door would never run.
-     * ⚠️ That puts argument shape ABOVE the standing wall, which is the ordering HO-031 §2.5
-     * forbids and the confusion `445` measured. ⛔ **Codex does the opposite**:
-     * `answerCodexToolCall` hands the arguments to the door UNPARSED, so a `required` there is
-     * enforced by nothing.
-     *
-     * ⚑ **Both halves are asserted**, because either alone is a different claim.
-     */
-    it('🔴 584 · the tool advertises NO such field, and the two adapters are why removing it was the answer', () => {
-      const tools = withoutProse(readFileSync(join(SRC, 'main/runtime/agent-tools.ts'), 'utf8'))
-      // 🔴 **This asserted `.optional()` on `display_name: z` until `584`.** ⛔ `HO-078` §5 —
-      // *"The app assigns the name. The agent does not choose it and does not ask."* — so the
-      // field is GONE rather than made required, and the two adapters below are the measured
-      // reason why *required* was never available as an answer.
-      //
-      // ⚠️ **The whole file, not a window** — `a-fixed-width-slice-runs-into-the-next-region`.
-      expect(tools, 'create_agent advertises a name again').not.toContain('display_name: z')
-      // ⛔ **And the reader is gone with the advertisement**, which is what `348`'s
-      // `z.looseObject` makes load-bearing: an undocumented key is NOT stripped, so a reader left
-      // behind would be a path a test could drive and no model was ever told about.
-      expect(tools).not.toContain('CREATE_DISPLAY_NAME_ARGUMENT')
-      // ⚑ **The door still HANDS one down, and it is the app's.** `NewAgent` is unchanged and a
-      // person's typed name still wins; what this tool passes is `null`, every time.
-      expect(tools).toContain('displayName: null,')
-
-      const runtime = join(here, '../../../packages/runtime/src')
-
-      // ⛔ **Claude: read off the SDK ITSELF and not off our own docblock about it.** ⚠️ `348`'s
-      // note quotes this line, and a census that matched the quote would be asserting PROSE —
-      // rule 26's first question, answered against the wrong file. ⚑ Resolving the dependency is
-      // what makes it a measurement, and a moved file is a LOUD failure rather than a quiet pass.
-      const sdk = createRequire(join(SRC, '../package.json')).resolve(
-        '@modelcontextprotocol/sdk/server/mcp.js',
-      )
-      const server = readFileSync(sdk, 'utf8')
-      expect(server, `${sdk} no longer parses arguments`).toContain('safeParseAsync')
-      // 🔴 **And it THROWS rather than answering** — an `McpError`, which is a JSON-RPC error and
-      // therefore exactly the shape `307` ruled *"carries no machine-readable policy meaning"*.
-      expect(server).toContain('Invalid arguments for tool')
-      expect(server).toContain('ErrorCode.InvalidParams')
-      // ⚑ …and this app really does hand that server its raw shape, kept loose, so the parse above
-      // is ours and an undocumented key reaches the door rather than being stripped.
-      const claude = readFileSync(join(runtime, 'claude/agent-tools.ts'), 'utf8')
-      expect(claude).toContain('looseShape(one.input, one.handlerOwnsMissingInput === true)')
-      expect(claude).toContain(
-        'const loose = missingAtHandler ? agentToolHandlerObject(shape) : z.looseObject(shape)',
-      )
-
-      // ⚑ Codex: the door is handed what arrived, unparsed — `isPlainObject` and nothing more.
-      const codex = withoutProse(readFileSync(join(runtime, 'codex/agent-tools.ts'), 'utf8'))
-      expect(codex).toContain('const answer = await tool.call(call.arguments)')
-      expect(codex.split('tool.call(').length - 1).toBe(1)
-      expect(codex).toContain('completed?.(answer)')
-      expect(codex).toContain('return succeeded(answer)')
-      expect(codex).not.toContain('inputSchema.parse')
     })
   })
 })

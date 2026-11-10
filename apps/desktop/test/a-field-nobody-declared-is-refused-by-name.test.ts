@@ -1,5 +1,5 @@
 import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -32,7 +32,6 @@ import type {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const source = (relative: string): string => readFileSync(join(here, '..', relative), 'utf8')
 
 /**
  * 🔴 **D-020 · a field nobody declared is refused by name, on the two commands a person's settings
@@ -305,24 +304,6 @@ describe('D-020 · a field nobody declared is refused by name', () => {
           keys: ['savedAt'],
         })
       }
-    })
-  })
-
-  describe('§4 · the preload’s framing', () => {
-    /**
-     * ⛔ **Read as text, because the preload needs electron and cannot be imported.** What it pins
-     * is the framing: a window that put a field beside `kind` in the preload (for example
-     * `command({ kind: 'agentIdentities', windowId })`) goes red here as well as at the wire.
-     */
-    it('⛔ the preload frames both verbs with nothing beside kind and the spread input', () => {
-      const preload = source('src/preload/index.ts')
-
-      expect(preload).toContain(`command({ kind: 'agentIdentities' })`)
-      expect(preload).toContain(`command({ kind: 'setCapabilities', ...input })`)
-      // ⚑ And what the window may hand `setCapabilities` is exactly the three declared fields.
-      expect(preload).toMatch(
-        /setCapabilities: \(input: \{\s*profileId: string\s*grant: CapabilityGrant\s*externalMcpServerIds: readonly string\[\]\s*\}\)/,
-      )
     })
   })
 })

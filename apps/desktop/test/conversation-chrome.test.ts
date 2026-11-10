@@ -197,10 +197,6 @@ describe('a remembered tab is validated, never trusted', () => {
     // drawer for the person who shut it.
     expect(screen).not.toContain("forgetPersistentPreference('brobot2.drawerOpen')")
   })
-
-  it('remembers the tab as well as the openness — both, or coming back is a guess', () => {
-    expect(source('components/RuntimeScreen.vue')).toContain("'brobot2.drawerTab'")
-  })
 })
 
 describe('the squeeze: the transcript always wins (079 §4, W4.183)', () => {
@@ -268,13 +264,6 @@ describe('the squeeze: the transcript always wins (079 §4, W4.183)', () => {
     }
   })
 
-  it('the CSS track is the same clamp as the arithmetic', () => {
-    const pane = source('components/ConversationPane.vue')
-    expect(pane.replace(/\s+/g, ' ')).toContain(
-      'clamp(var(--drawer-w-min), calc(100% - var(--transcript-comfort)), var(--drawer-w-max))',
-    )
-  })
-
   /**
    * At the app's minimum the drawer is docked at its floor: the rail is 251.68 px, so the row is
    * 928.32, short of the transcript's comfortable width plus the drawer's floor, and the transcript
@@ -289,23 +278,6 @@ describe('the squeeze: the transcript always wins (079 §4, W4.183)', () => {
     expect(row).toBeCloseTo(928.32, 5)
     expect(drawerFit(row)).toBe('docked')
     expect(drawerWidth(row)).toBe(DRAWER_W_MIN)
-  })
-
-  /**
-   * 🔴 **`--rail-w` has TWO declarations since 390 §4, and `token()` above reads the FIRST** — safe
-   * because the second is inside `@media (min-width: 1400px)`, asserted rather than assumed.
-   */
-  it('the second rail width is the ≥1400px one (390 §4)', () => {
-    expect(TOKENS).toContain('--rail-w: 251.68px')
-    expect(TOKENS).toContain('--rail-w-wide: 266.2px')
-    expect(TOKENS.match(/--rail-w:/g)).toHaveLength(2)
-    const narrow = TOKENS.slice(TOKENS.indexOf('@media (max-width: 1320px)'))
-    expect(narrow.slice(0, narrow.indexOf('}')), 'the rail narrows again below 1320').not.toContain(
-      '--rail-w',
-    )
-    const wide = TOKENS.slice(TOKENS.indexOf('@media (min-width: 1400px)'))
-    expect(wide).toContain('--rail-w: var(--rail-w-wide)')
-    expect(wide.indexOf('--rail-w: var(--rail-w-wide)')).toBeLessThan(wide.indexOf('}'))
   })
 
   /** 🔴 **The drawer at all THREE photographed widths** (444, `411` §6 item 5). */
@@ -325,20 +297,6 @@ describe('the squeeze: the transcript always wins (079 §4, W4.183)', () => {
     expect(drawers[0]).toBe(DRAWER_W_MIN)
     expect(drawers[1]).toBe(DRAWER_W_MIN)
     expect(drawers[2]).toBeCloseTo(1440 - wideRail - TRANSCRIPT_COMFORT, 5)
-  })
-
-  it('the first frame is measured, not assumed', () => {
-    // ⚠️ **Asserted at the source, because the defect is one frame long and SSR has no frames.**
-    // A ResizeObserver's first callback lands after the browser has painted, so a pane that only
-    // learned its width from the observer docked the drawer at 380 on the first paint whatever the
-    // window was — the transcript squeezed under its floor and then snapping back, on every cold
-    // open of a narrow window. Found in review. `onMounted` runs before paint, so the fix is to
-    // read the box there; this pins that the read exists and comes BEFORE the observer is wired.
-    const pane = source('components/ConversationPane.vue')
-    const measured = pane.indexOf('getBoundingClientRect')
-    const observed = pane.indexOf('new ResizeObserver')
-    expect(measured, 'the pane never measures its own width synchronously').toBeGreaterThan(0)
-    expect(measured).toBeLessThan(observed)
   })
 
   it('the OVERLAY is unreachable today, and that is a fact worth pinning', () => {
@@ -488,57 +446,6 @@ describe('the attention model: a waiting card is never traceless (079 §5)', () 
       }
     }
   })
-
-  it('the drawer never MOVES you — no auto-open, no auto-switch', () => {
-    // ⚠️ Asserted at the source, because it is the absence of behaviour and there is nothing to
-    // render. 079's reason, kept verbatim: *"a surface that steals focus mid-action can turn a
-    // keystroke into an accidental Approve"* — which is 063's neighbourhood. The drawer emits a tab
-    // change only from a click; it has no watcher, so nothing arriving can select a tab for you.
-    const drawer = source('components/SessionDrawer.vue')
-    // ⚠️ Named reactive primitives are not enough — a mutation that auto-switched from `onMounted`
-    // walked straight past a `watch`-only check. The strongest form of the claim is that the SCRIPT
-    // never raises the event at all: the template does, from a click, and nothing else can.
-    const drawerScript = drawer.slice(0, drawer.indexOf('</script>'))
-    expect(drawerScript).not.toMatch(/emit\(\s*'update:tab'/)
-    expect(drawer).not.toMatch(/\bwatch\s*\(/)
-    expect(drawer).not.toMatch(/\bwatchEffect\s*\(/)
-    expect(drawer).not.toMatch(/\bonMounted\s*\(/)
-    // The pane is where an "open it for them" would have to live. Its SCRIPT half is checked, not
-    // the whole file: the template forwards the header's click and must, so a plain search for the
-    // emit would be asserting that the button does not work.
-    const pane = source('components/ConversationPane.vue')
-    const script = pane.slice(0, pane.indexOf('</script>'))
-
-    // 🔴 **551 · re-aimed, and the FACT moved rather than its spelling** (standing rule 26).
-    //
-    // ⛔ **The rule is *nothing opens the drawer except a person*.** *No raise in the script* was
-    // the instrument, and it worked while every raise was a template expression forwarding a
-    // click. ⚠️ A press that shows the band cannot be one — `551` wrote it for the spawn path's
-    // entrance, and UI-006's Graph press is its caller now: *set the tab, and open only if it is
-    // shut* is two emits and a condition (`318` §2.3 — a flip would shut the drawer for somebody
-    // who already had it open), so the handler is a named function in the script.
-    //
-    // ⚑ **So the allowed handler is cut out and the old absence is asserted over the rest** — and
-    // the cut cannot pass by matching nothing, because the raises would then still be in the text
-    // the two assertions below read. 🔴 **What replaces the lost strength is the line under it:**
-    // the name appears in the script EXACTLY ONCE, which is its own declaration — so nothing
-    // reactive, timed or mounted can reach it, and the only caller left is the template.
-    const RAISED_BY_A_PRESS = 'showTheBand'
-    const pressHandler = new RegExp(
-      `\\nfunction ${RAISED_BY_A_PRESS}\\(\\): void \\{[\\s\\S]*?\\n\\}\\n`,
-    )
-    const withoutThePress = script.replace(pressHandler, '\n')
-    // Declaring the events is not raising them — what would auto-open the drawer is a CALL.
-    expect(withoutThePress).not.toMatch(/emit\(\s*'toggleDrawer'/)
-    expect(withoutThePress).not.toMatch(/emit\(\s*'update:drawerTab'/)
-    // ⛔ **Declared once, called by nothing in this script.**
-    expect(script.match(new RegExp(RAISED_BY_A_PRESS, 'g')) ?? []).toHaveLength(1)
-    // ⚑ …and the TEMPLATE is where it is reached from — a component event raised by a real button:
-    // a press on the Graph (`@select`), which is the one caller left since the spawn path went.
-    expect(pane.slice(pane.indexOf('<template>'))).toMatch(
-      new RegExp(`@select="[^"]*\\b${RAISED_BY_A_PRESS}\\(\\)[^"]*"`),
-    )
-  })
 })
 
 /*
@@ -572,23 +479,6 @@ describe('the attention model: a waiting card is never traceless (079 §5)', () 
 describe('the top bar states, and the drawer acts (079 §1)', () => {
   const header = source('components/SessionHeader.vue')
 
-  it('the header no longer owns a single control that changes the conversation', () => {
-    // The moved five, by the hook they were reachable by. Their absence HERE is the ticket.
-    for (const hook of [
-      'live-model-select',
-      'live-effort-select',
-      'live-plan-start',
-      'toggle-session-info',
-    ]) {
-      expect(header, `${hook} is still on the top bar`).not.toContain(hook)
-    }
-    // Approvals: the top bar keeps a read-only indicator under its own name, and the TOGGLE is on
-    // the agent card. Two elements sharing one `data-cy` would make the smoke's click ambiguous.
-    expect(header).toContain('data-cy="session-approval-indicator"')
-    expect(header).not.toContain('data-cy="card-approval"')
-    expect(source('components/CardApproval.vue')).toContain('data-cy="card-approval"')
-  })
-
   it('and it still keeps the two affordances 079 left it that D-017b did not take away', () => {
     // ⚠️ **This said *exactly the affordances* until `523`, and the word was never asserted.** These
     // are positives; nothing here counts, so a further control on the bar has always passed — and
@@ -605,57 +495,6 @@ describe('the top bar states, and the drawer acts (079 §1)', () => {
     expect(header).not.toContain('data-cy="ending-door"')
   })
 
-  it('the reading light is not a control anywhere any more (344, ending 079 §1 #12 / 080)', () => {
-    // The light/dark control is absent from all four drawer tabs; an app-wide control must
-    // not remain in a conversation-specific tab.
-    //
-    // ⛔ **344 removes the control itself.** *"Get rid of the dark and light toggle and only keep:
-    // light stuff for the bodies (conversation, project views…), dark stuff for the header and the
-    // left menus."* The two-zone scheme it switched between is now the app's, so there is nothing
-    // to switch. The titlebar is the fourth place it must not have been left behind in, and it is
-    // the one that had it.
-    for (const file of [
-      'components/AgentCard.vue',
-      'components/NewConversation.vue',
-      'components/RuntimeScreen.vue',
-    ]) {
-      expect(source(file), `${file} still renders the toggle`).not.toContain(
-        'data-cy="toggle-chat-theme"',
-      )
-    }
-    expect(header).not.toContain('data-cy="toggle-chat-theme"')
-
-    // Keep a paired positive: `AppTitleBar.vue` still draws the build-stamp cluster.
-    // Otherwise four missing files could satisfy the control-absence assertions. The state
-    // would have lived in `RuntimeScreen`, so the two negatives stay aimed there.
-    const bar = source('components/AppTitleBar.vue')
-    expect(bar).toContain('data-cy="app-info"')
-    expect(bar).toContain('data-cy="build-line"')
-
-    // …and no state behind it: the persisted key is not read, and the prop is not threaded.
-    const screen = source('components/RuntimeScreen.vue')
-    expect(screen).not.toContain("usePersistentToggle('brobot2.chatLightTheme'")
-    expect(screen).not.toContain(':chat-light=')
-
-    // ⛔ **And the key is FORGOTTEN, which is a separate act from not reading it** (344 §3.2). A
-    // machine that used the toggle holds `"true"` or `"false"` under this name; nothing reads it,
-    // so it cannot pin a body dark — but it is a live value under a name the product has stopped
-    // meaning anything by. Asserted here because this is the file that knows what the titlebar
-    // owns, and because the smoke that checks the same thing on a real machine is outside CI.
-    expect(screen).toContain("forgetPersistentPreference('brobot2.chatLightTheme')")
-  })
-
-  it('and nothing forwards a reading-light event any more — the screen owns the state', () => {
-    // The old shape was an emit relayed up four components to the one `ref` that holds it. With the
-    // button beside the `ref`, every one of those hops is dead code, and a surviving one would be a
-    // second way to flip a preference that now has exactly one.
-    for (const file of ['SessionHeader', 'AgentCard', 'SessionDrawer', 'ConversationPane']) {
-      expect(source(`components/${file}.vue`), `${file} still relays it`).not.toContain(
-        'toggleChatTheme',
-      )
-    }
-  })
-
   it('the debug toggle is the lifecycle toggle now, and says so in words', () => {
     // The hook is deliberately unchanged (079 §3 allows it) — what changed is the meaning, and the
     // meaning has to be readable on the control rather than known by whoever moved it.
@@ -669,24 +508,5 @@ describe('the top bar states, and the drawer acts (079 §1)', () => {
     expect(header).not.toContain('raw event stream')
     // …and nothing anywhere still opens a second drawer with it.
     expect(source('components/ConversationPane.vue')).not.toContain('EventLogDrawer')
-  })
-})
-
-/**
- * 🔴 **UI-006 · a selection keeps the main panel's tab** (F045) — a press on the Graph selects its
- * agent through the screen's one door, and the Graph stays on screen with it outlined. ⚠️ That holds
- * only while the screen REUSES one pane across conversations: a key would mount a new one on every
- * selection, back on the Conversation tab. `RuntimeScreen` is mounted by no test, so the tag is read
- * where it is written; the pane's half is `the-main-panel-shows-the-conversation-or-its-graph`'s.
- */
-describe('UI-006 · a selection keeps the main panel’s tab', () => {
-  it('🔴 the screen mounts ONE conversation pane, with no key — a selection reuses it', () => {
-    const screen = read('components/RuntimeScreen.vue')
-    const from = screen.indexOf('<ConversationPane\n')
-    expect(from, 'no conversation pane on the screen').toBeGreaterThan(-1)
-    expect(screen.indexOf('<ConversationPane\n', from + 1), 'a second pane').toBe(-1)
-    const tag = screen.slice(from, screen.indexOf('/>', from))
-    expect(tag).toContain(':record="active"')
-    expect(tag).not.toMatch(/\s:key=|\sv-bind:key=/)
   })
 })

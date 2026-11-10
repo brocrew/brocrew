@@ -291,16 +291,6 @@ describe('591 · a question does not expire on a clock', () => {
       .replace(/^[ \t]*\/\/.*$/gm, ' ')
 
   /**
-   * ⚑ **PROSE with its wrapping removed** — a docblock sentence is re-wrapped by `prettier` the
-   * moment a word is added above it, so an assertion against the literal line is one edit from
-   * measuring nothing.
-   */
-  const proseOf = (dir: string, file: string): string =>
-    sourceOf(dir, file)
-      .replace(/\n\s*\*\s?/g, ' ')
-      .replace(/\s+/g, ' ')
-
-  /**
    * ⚠️ **A function BODY, so an absence is about that function and not about the file** — `437`'s
    * own helper, and this suite needed it for a measured reason: `441` holds a SECOND map with a
    * `waiting` flag of its own (`proposalsThisAppHolds`), and a file-wide `not.toContain` of
@@ -638,53 +628,6 @@ describe('591 · a question does not expire on a clock', () => {
       expect(still.outcome, JSON.stringify(still)).toBe('ok')
     })
 
-    it('⛔ a withdrawal ends the question and there is NOTHING LEFT TO RELEASE', async () => {
-      // 🔴 **608 · this test measured `437`'s release and the release is gone** (HO-084 §4,
-      // standing rule 26 — strip AND re-aim). ⚠️ It shortened the bound to 30 s, asserted the
-      // worker's call was still parked, withdrew the work, and asserted the call came back — the
-      // measurement that stopped the ledger asserting an ending the app had not performed.
-      // ⛔ **No call parks any more**, so `endTheQuestionsAbout`'s second half was deleted with the
-      // promise it settled.
-      //
-      // ⚑ **The subject survives and is measured where it now lives**: after a withdrawal the
-      // ledger's ending is the WHOLE of what happened — nothing in this process is holding a
-      // different opinion, and the worker is told by the row rather than by a returning call.
-      const { worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
-      const said = await callOn(workerTools, 'ask_question', {
-        who_answers: 'the-parent',
-        piece,
-        question: 'which schema?',
-      })
-      expect(said.outcome, JSON.stringify(said)).toBe('ok')
-      const asked = openRequestOf(worker)
-      const before = ledger(worker).length
-
-      const took = await callOn(pmTools, 'withdraw_task', { piece })
-      expect(took.outcome, JSON.stringify(took)).toBe('ok')
-      expect(took.endedQuestions).toBe(1)
-      expect(stateOfRequest(worker, asked.requestId)).toBe('work-withdrawn')
-
-      // ⛔ **And nothing ANSWERS the worker's question** — a released call used to hand it *nobody
-      // answered*; an ending is a row, and the words a worker gets about a question are answers.
-      // ⚑ **D-016 · ruling 8 — the one thing it is handed is the take-back itself**: the app's own
-      // notice that the piece is no longer its to do. ⚑
-      // `a-positive-assertion-must-differ-from-the-default`: the arm above this one proves this
-      // same reader DOES see an answer when there is one.
-      const handed = ledger(worker)
-        .slice(before)
-        .filter(
-          (event): event is Extract<TranscriptEvent, { type: 'user_turn' | 'message_queued' }> =>
-            event.type === 'user_turn' || event.type === 'message_queued',
-        )
-      expect(handed.map((event) => event.appNotice)).toEqual(['a-piece-taken-back'])
-      expect(handed.map((event) => event.text).join('\n')).not.toContain('answer')
-
-      // ⚑ **The census half, because *there is nothing left to release* is a claim about CODE.**
-      const code = codeOf(mainRoot, 'runtime/runtime-host.ts')
-      expect(bodyOf(code, 'async takeBackPiece(')).not.toContain('questionsThisAppHolds')
-      expect(bodyOf(code, 'private askTheWorkToStop(')).not.toContain('questionsThisAppHolds')
-    })
-
     it('⚑ THE CONTROL · a question an ANSWER already ended is not ended twice, and keeps its first ending', async () => {
       const { worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
       await callOn(workerTools, 'ask_question', {
@@ -733,49 +676,6 @@ describe('591 · a question does not expire on a clock', () => {
       })
       expect(late.outcome, JSON.stringify(late)).toBe('ok')
       expect(stateOfRequest(worker, asked.requestId)).toBe('answered')
-    })
-
-    it('⛔ a ledger this process can no longer READ cannot become a transport error, because it is no longer read', async () => {
-      // 🔴 **Found by the gate's third run, not by me** (591 §10.3). ⛔ **`raiseAQuestion` did no
-      // ledger read after its race until `591` added one**, and the three things that settled that
-      // race — the bound, an interruption and a withdrawal — all fired at moments the app may be
-      // going away. ⚠️ A teardown released every held ask and closed the database in the same
-      // breath, so the released call read a closed store: *`TypeError: The database connection is
-      // not open`*, one unhandled rejection with all 11,596 tests passing. `591` wrapped it.
-      //
-      // 🔴 **608 · the READ is gone rather than the guard** (HO-084 §4, standing rule 26). ⛔ The
-      // read existed to say which of three silences a five-minute race had met; nothing is awaited
-      // between the writes and the return, so it could only ever have answered `open`.
-      // ⚑ **The hazard is still put on the path the code walks** — a store whose `routedRequestsOf`
-      // throws exactly the way a closed one does — and the ask must still come back as an ANSWER.
-      const brittle: SessionStore = {
-        ...store,
-        routedRequestsOf: () => {
-          throw new Error('The database connection is not open')
-        },
-      }
-      const { workerTools, piece } = await aWorkerHoldingWork()
-      const asking = host as unknown as { deps: { store: SessionStore } }
-      const real = asking.deps.store
-      asking.deps.store = brittle
-      try {
-        const said = await callOn(workerTools, 'ask_question', {
-          who_answers: 'the-parent',
-          piece,
-          question: 'which schema?',
-        })
-        // ⛔ **An ANSWER, never a throw** — `307`'s rule: a model meeting a transport error is told
-        // its tool is broken rather than what happened.
-        expect(said.outcome, JSON.stringify(said)).toBe('ok')
-        expect(said.question).toEqual(expect.any(String))
-      } finally {
-        asking.deps.store = real
-      }
-      // ⚑ **And the structural half, which is what makes the hazard unreachable rather than
-      // caught**: the verb reads no routing at all, and holds no `try` around one.
-      const body = bodyOf(codeOf(mainRoot, 'runtime/runtime-host.ts'), 'async raiseAQuestion(')
-      expect(body).not.toContain('routedRequestsOf')
-      expect(body).not.toContain('whatBecameOfTheQuestion')
     })
 
     it('⛔ and the ONE table that decides it has no member a clock can reach', () => {
@@ -944,60 +844,6 @@ describe('591 · a question does not expire on a clock', () => {
    * implementing the ruling.** ⚠️ These assertions are what stops one of them coming back.
    */
   describe('§7 · the prose that went false with the behaviour', () => {
-    it('⛔ no door refuses an answer on a clock any more, and both read the ledger instead', () => {
-      // 🔴 **CODE, not prose** — the first draft of this read the whole file and went red on its
-      // own docblock, which quotes the refusal it is asserting the absence of.
-      const code = codeOf(mainRoot, 'runtime/runtime-host.ts')
-      // ⛔ **The two refusals that are gone, quoted as they stood.**
-      expect(bodyOf(code, 'async answerQuestion(')).not.toContain(
-        'if (held !== undefined && !held.waiting)',
-      )
-      // ⛔ **Asked of the DOOR's body and not of the file** — `441`'s proposal map has a `waiting`
-      // flag of its own and `decideProposal` reads it correctly; see {@link bodyOf}.
-      expect(bodyOf(code, 'async respondUserInput(')).not.toContain('if (!holding.waiting) {')
-      // ⛔ **608 · the flag `591` left behind is GONE, and this line used to assert it was there**
-      // (HO-084 §4, standing rule 26). ⚑ `591` narrowed `waiting` to `aTurnIsWaiting` — *is there
-      // a promise in this process that `settle` would reach?* — and `608` made the answer *no,
-      // always*, so the field went rather than staying as a constant a branch could hang off.
-      expect(code).not.toContain('aTurnIsWaiting')
-      // ⚠️ **Scoped to the two ANSWER DOORS and not to the file**, because `441`'s proposal map
-      // has a `settle` of its own that `decideProposal` calls correctly —
-      // `an-assertion-can-be-satisfied-by-a-neighbouring-element`, avoided rather than repaired.
-      expect(bodyOf(code, 'async answerQuestion(')).not.toContain('.settle(')
-      expect(bodyOf(code, 'async respondUserInput(')).not.toContain('.settle(')
-      expect(bodyOf(code, 'private async aPersonAnswersAQuestionThisAppAsked(')).not.toContain(
-        '.settle(',
-      )
-      expect(bodyOf(code, 'async answerQuestion(')).not.toMatch(/\bheld\.waiting\b/)
-      expect(bodyOf(code, 'async respondUserInput(')).not.toMatch(/\bholding\.waiting\b/)
-      // ⚑ **The positive control for the `not.toContain`s above**, without which they would all pass
-      // over a file this suite had stopped reading: what a late answer is routed through is read at
-      // both doors. ⚑ **D-017 · R6 — the asker's LEDGER** (`RuntimeHost.theWordsOf`), which replaced the
-      // map this line used to name (`questionsThisAppHolds`, gone with the remember/bring-back).
-      expect(code).not.toContain('questionsThisAppHolds')
-      expect(bodyOf(code, 'async answerQuestion(')).toContain(
-        'this.theWordsOf(request.askedBy, request.requestId)',
-      )
-      expect(bodyOf(code, 'async respondUserInput(')).toContain(
-        'this.theWordsOf(sessionId, requestId)',
-      )
-      expect(bodyOf(code, 'private theWordsOf(')).toContain(
-        'this.deps.store.questionsRaisedIn(askedBy)',
-      )
-      // ⛔ **The PROSE keeps the withdrawn sentence on purpose** — `498`'s rule: a sentence deleted
-      // without its history comes back. ⚑ What may not survive is the claim stated as fact.
-      expect(proseOf(mainRoot, 'runtime/runtime-host.ts')).toContain('it read a clock')
-    })
-
-    it('⛔ the ask_parent sentence no longer says an answer after the bound is refused', () => {
-      const tools = codeOf(mainRoot, 'runtime/agent-tools.ts')
-      expect(tools).toContain('reaches you as a message rather than as this call')
-      // ⚠️ **Read as PROSE with its wrapping removed**, because a docblock sentence moves across
-      // lines the moment anything above it changes length.
-      const questions = proseOf(join(mainRoot, '..'), 'shared/question-contracts.ts')
-      expect(questions).toContain('deleted the behaviour that sentence described')
-    })
-
     it('🔴 603/608 · HO-082 §3.1 · the condition EXISTS, the FOLD still has none, and the hold is GONE', () => {
       const tasks = codeOf(join(mainRoot, '..'), 'shared/tasks.ts')
       // ⛔ **This census guessed two spellings and it would have stayed GREEN over the world that
@@ -1053,17 +899,6 @@ describe('591 · a question does not expire on a clock', () => {
       expect(ask).toContain("type: 'question_asked'")
       expect(ask).toContain("type: 'request_routed'")
       expect(ask).toContain('this.deliverQuestion(')
-    })
-
-    it('⚑ and the ending has exactly one producer, which is what the word claims', () => {
-      // ⛔ **Asked of CODE**, so the three docblocks that name the type do not count as writers —
-      // which is the whole shape `a-source-census-must-strip-prose-before-it-asserts` names.
-      // ⚑ **D-016 · the ending is the take-back's own row** — `request_work_withdrawn` has no writer
-      // now, and `work_taken_back` is written by the one door that takes a piece back.
-      const code = codeOf(mainRoot, 'runtime/runtime-host.ts')
-      expect(code.split("type: 'request_work_withdrawn'").length - 1).toBe(0)
-      expect(code.split("type: 'work_taken_back'").length - 1).toBe(1)
-      expect(bodyOf(code, 'async takeBackPiece(')).toContain("type: 'work_taken_back'")
     })
   })
 

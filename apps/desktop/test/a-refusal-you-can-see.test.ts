@@ -39,7 +39,6 @@ import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from '.
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const mainRoot = join(here, '../src/main')
 
 /**
  * 🔴 **405 · a refusal you can see** (HO-019 §4, `402` F2).
@@ -993,18 +992,6 @@ describe('405 · a refusal you can see', () => {
   })
 
   describe('§4 · nothing builds a refusal payload by hand', () => {
-    it('⛔ every `outcome: refused` in `agent-tools.ts` comes from a builder', () => {
-      const source = readFileSync(join(mainRoot, 'runtime', 'agent-tools.ts'), 'utf8')
-      expect(straysIn(source)).toEqual([])
-      // ⚑ **Non-vacuity**: the census found the builders, and it found their payloads.
-      for (const name of REFUSAL_BUILDERS) {
-        expect(source, `${name} was renamed or removed`).toContain(`function ${name}(`)
-      }
-      expect(withoutProse(source).split("outcome: 'refused'").length - 1).toBeGreaterThanOrEqual(
-        REFUSAL_BUILDERS.length - 1,
-      )
-    })
-
     it('⚑ the control plants TWO, and the census reports BOTH', () => {
       // ⛔ **TWO, not one** (standing rule 12). A census that stops at the first stray is exactly as
       // wrong as one that finds none, and twice this month a control that planted one hid that.

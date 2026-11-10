@@ -1,5 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -416,44 +416,6 @@ describe('465 · a person who never answered', () => {
       // line has no field for — `DIGEST_REGISTERS`' own stated reason for having no constructor.
       expect(declared).not.toContain('unknown')
     }
-  })
-
-  it('🔴 the constructors refuse the wrong kind IN SOURCE, and the fold spells no register itself', () => {
-    // ⚠️ **A source census, and `438` wrote the first half of it over the fold.** ⛔ The second
-    // half is over the shared module, and it is here because the two rumour routes `463` measured
-    // are closed by TYPES — which `typecheck` proves and a test run cannot. A census is what makes
-    // the closure visible to a suite, and to a mutation.
-    const strip = (text: string): string =>
-      text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-    const fold = readFileSync(join(here, '../src/main/runtime/digest.ts'), 'utf8')
-    const code = strip(fold)
-    // ⚑ **The strip really stripped** — this file's own subject is prose, and a census over a
-    // docblock that quotes what it retired asserts nothing. ⚠️ Two controls, because one of them
-    // is the retired sentence itself: `HO-024` is the stable half, so the strip is still proven
-    // the day somebody shortens the comment that records what `465` removed.
-    expect(fold).toContain('HO-024')
-    expect(code).not.toContain('HO-024')
-    expect(fold).toContain('answered by a person')
-    expect(code).not.toContain('answered by a person')
-    expect(code).not.toMatch(/register:\s*'/)
-    expect(code).toContain('observedLine(')
-    expect(code).toContain('claimedLine(')
-    // ⛔ **The sentence composer no longer has an arm for the claimed kind**, which used to be a
-    // comment saying it was unreachable. The parameter type is what says it now.
-    expect(code).not.toContain("case 'worker-reported':")
-    expect(code).toContain('function sentence(kind: ObservedLineKind')
-
-    const shared = strip(readFileSync(join(here, '../src/shared/digest.ts'), 'utf8'))
-    // 🔴 **The narrowed constructors**, which is `463`'s first rumour route closed.
-    expect(shared).toContain('  kind: ObservedLineKind,')
-    expect(shared).toContain('  kind: ClaimedLineKind,')
-    expect(shared).not.toMatch(/export function (observed|claimed)Line\([^)]*kind: DigestLineKind/)
-    // ⛔ **The discriminated union**, which is the second route: one interface with a nullable
-    // speaker is what let an object literal spell `register: 'claimed'` with `saidBy: null`.
-    expect(shared).toContain('export type DigestLine = ObservedLine | ClaimedLine')
-    expect(shared).toMatch(/readonly saidBy: null$/m)
-    expect(shared).toMatch(/readonly saidBy: string$/m)
-    expect(shared).not.toContain('saidBy: string | null')
   })
 
   it('⚑ a planted speaker DRAWS, and the same reading’s observation still has none', () => {

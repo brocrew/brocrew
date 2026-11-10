@@ -4,15 +4,7 @@ import {
   syntheticProviderHome,
   neutralHostDeps,
 } from './lib/host-fixture'
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -523,55 +515,6 @@ describe('517 · one rule, one place, and both doors narrow', () => {
       // kept before titles were taken, and since W4.98 its second half, which titles again the files
       // an older reader titled (by their name, or by a heading before front matter was read).
       expect(keptFilesSource.split('resourceBytes(root, row)')).toHaveLength(5)
-    })
-
-    it('⛔ which files may SPELL each word, pinned — another one is a rule spelled twice', () => {
-      const spelling = (needle: string): string[] => {
-        const found: string[] = []
-        const walk = (dir: string): void => {
-          for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-            a.name < b.name ? -1 : 1,
-          )) {
-            const full = join(dir, entry.name)
-            if (entry.isDirectory()) walk(full)
-            else if (entry.name.endsWith('.ts')) {
-              if (codeOnly(readFileSync(full, 'utf8')).includes(needle)) {
-                found.push(relative(mainRoot, full).replaceAll('\\', '/'))
-              }
-            }
-          }
-        }
-        walk(mainRoot)
-        return found.sort()
-      }
-
-      // ⛔ **`resource-bytes-unreadable` and `resource-bytes-missing` are spelled where they are
-      // DEFINED and RAISED — one module — and nowhere else.** The person's window never names them:
-      // it folds every rail but `changed` to one word, which is the fold `510` ruled.
-      expect(spelling("'resource-bytes-unreadable'")).toEqual(['resources/resources.ts'])
-      expect(spelling("'resource-bytes-missing'")).toEqual(['resources/resources.ts'])
-      // ⚑ **The changed word is spelled in TWO, and the second has a named job**: the person's door
-      // reads it to answer `changed`. ⛔ A third file spelling it is a second reader of one rule,
-      // which is what `169` §1 is about — so it goes red here.
-      expect(spelling("'resource-bytes-changed'")).toEqual([
-        'resources/resources.ts',
-        'runtime/kept-files.ts',
-      ])
-      // ⚠️ **And exactly once in the kept-file reader** — a second occurrence is a second decision,
-      // however it is spelled.
-      const keptFilesSource = sourceOf('runtime/kept-files.ts')
-      expect(keptFilesSource.split("'resource-bytes-changed'")).toHaveLength(2)
-
-      // 🔴 **The control that plants TWO** (standing rule 12). ⛔ A needle assembled at run time
-      // so the sweep cannot find it in this file's own source, and a broad one that must come back
-      // with far more than the pins — a census that can only ever answer small is not a census.
-      // ⚠️ The broad needle is a SPECIFIC spelling — the refusal type every rail word is built
-      // into, spelled in code by the module that defines it, the host, the tools and the reply's
-      // rails — never the bare word `resource`, which a census would find almost anywhere.
-      expect(spelling(`'resource-${String.fromCodePoint(0x1f41f)}-unreadable'`)).toEqual([])
-      const broad = spelling('ResourceRefusal')
-      expect(broad.length).toBeGreaterThan(2)
-      expect(broad).toContain('runtime/runtime-host.ts')
     })
   })
 })

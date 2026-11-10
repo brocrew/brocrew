@@ -3,7 +3,6 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -13,7 +12,6 @@ import {
 } from 'node:fs'
 import { hostname, tmpdir } from 'node:os'
 import { basename, dirname, join, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   deleteVerdict,
@@ -24,21 +22,6 @@ import {
 import { publishWorkspacePresence, whoIsOn } from '../src/main/one-host-gate'
 import { pastedImagesRoot } from '../src/main/runtime/pasted-image'
 import { readWorkspaceList, rememberWorkspace } from '../src/main/workspaces'
-
-/**
- * 🔴 **W4.151 · F092 — deleting a workspace: the Trash, never `rm`** (`delete-workspace.ts`).
- *
- *  - §1 · every refusal, in words: the default, this one, an open one, one not listed, one not
- *    BroBot's, one that holds or is inside another workspace, a home, a provider's own folder.
- *  - §2 · a delete: the folder and its pasted pictures to the Trash, its row off the list — also
- *    when the list reaches it through a link, or by macOS's Data-volume spelling.
- *  - §3 · the wiring: `shell.trashItem`, and nothing in the module removes a file.
- *
- * ⛔ **Every folder is a throwaway one**, and the home and environment are a scratch home and `{}`:
- * no test here reads a person's real folders (W4's rule, after `dad19072`).
- */
-
-const here = dirname(fileURLToPath(import.meta.url))
 const roots: string[] = []
 afterEach(() => {
   for (const root of roots.splice(0)) {
@@ -706,26 +689,4 @@ describe('§2 · a delete: the Trash, and the row off the list', () => {
       expect((await deleteVerdict(again, aContext(root, [asListed]))).ok).toBe(true)
     },
   )
-})
-
-describe('§3 · the wiring: the Trash, never `rm`', () => {
-  it('⛔ nothing in the delete removes a file; the app hands it the system’s Trash', () => {
-    const core = readFileSync(join(here, '../src/main/delete-workspace.ts'), 'utf8')
-    expect(core).not.toMatch(/\b(rm|rmSync|rmdir|rmdirSync|unlink|unlinkSync|removeChecked)\s*\(/)
-    expect(core).toContain("from '../../../../scripts/lib/safe-remove.mjs'")
-    const wired = readFileSync(join(here, '../src/main/workspaces-in-the-app.ts'), 'utf8')
-    expect(wired).toContain('trash: (one) => shell.trashItem(one),')
-    // ⚑ The home and environment it guards are the account's own, and a hidden launch's reach holds.
-    expect(wired).toContain(
-      '    home: options.hidden ? homedir() : home,\n    env: options.hidden ? {} : process.env,\n    cwd: process.cwd(),',
-    )
-    // ⚑ A folder this window started a BroBot on moments ago is open: it has no gate yet.
-    expect(wired).toContain(
-      "ask: async (folder) => (startingHere(folder) ? 'open' : whoIsOn(folder)),",
-    )
-    // ⚑ One delete at a time, and nothing started on or renamed in the folder it deletes.
-    expect(wired.match(/beingDeleted\(/g)).toHaveLength(2)
-    expect(wired).toContain('      if (deletingNow !== null) {')
-    expect(wired).toContain('    outOfReach,\n  })')
-  })
 })

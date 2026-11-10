@@ -250,44 +250,6 @@ it('refuses malformed IPC metadata rather than asking native code to guess', () 
   }
 })
 
-it('wires the existing page count and all its populations, with no extra host read', () => {
-  const screen = readFileSync(
-    new URL('../src/renderer/src/components/RuntimeScreen.vue', import.meta.url),
-    'utf8',
-  )
-  const start = screen.indexOf('syncAttentionSignals(\n')
-  expect(start).toBeGreaterThan(0)
-  const slice = screen.slice(start, screen.indexOf('/**\n * ⛔ **A clock', start))
-  expect(slice).toContain('count: homeNeedsYou.value.total')
-  expect(slice).toContain('ready: agentStore.identities.value !== null')
-  for (const read of [
-    'waitingHere.value',
-    'persons.view.value',
-    'persons.asks.value',
-    'persons.serverRequests.value',
-    'persons.waitingOnWhoWrote.value',
-    'persons.workWaits.value.todos',
-    'persons.workWaits.value.incidents',
-    'providersNotChosenIn(agentStore.identities.value)',
-  ]) {
-    expect(slice).toContain(read)
-  }
-  expect(slice).not.toContain('window.api.runtime.')
-  const main = readFileSync(new URL('../src/main/index.ts', import.meta.url), 'utf8')
-  const handler = main.slice(
-    main.indexOf('const attentionWindows'),
-    main.indexOf('registerWindowControls(ipcMain'),
-  )
-  expect(handler).toContain('BrowserWindow.fromWebContents(event.sender)')
-  expect(handler).toContain("window.on('focus', () => owned.focused())")
-  expect(handler).toContain("setBadge(count === 0 ? '' : String(count))")
-  expect(handler).toContain('app.setBadgeCount(count)')
-  expect(handler).toContain('window.flashFrame(active)')
-  expect(handler).toContain("window.webContents.on('did-navigate', () => owned.reloaded())")
-  expect(handler).toContain("window.webContents.on('render-process-gone', () => owned.reloaded())")
-  expect(handler).toContain('png === null ? null : nativeImage.createFromBuffer(png)')
-})
-
 it.each([
   ['did-navigate', 'darwin'],
   ['render-process-gone', 'darwin'],

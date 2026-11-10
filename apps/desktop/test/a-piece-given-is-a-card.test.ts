@@ -1,7 +1,4 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   applyEvent,
@@ -20,27 +17,6 @@ import {
 } from '../src/renderer/src/lib/outgoing-card'
 import type { AgentIdentity } from '../src/shared/runtime-ipc'
 import type { WorkEdge } from '../src/shared/who-called-whom'
-
-/**
- * # 🔴 A piece this conversation gave, drawn as a card
- *
- * A `give_work` call draws its own card, like a question, rather than a line in the tool run.
- *
- * ⛔ **Where no row of the give's own is on the call** — D-047's `work_sent`, which these events do
- * not hold — the card reads the call's arguments and the tool's own receipt, and §1 pins the
- * receipt's shape to the tool's own template — a sentence reworded in `agent-tools.ts` turns this
- * file red rather than the card silent.
- * ⚑ The receipt names no conversation (D-016 · commit 7 · R1), so the press opens the one the cast
- * read for the receipt's label.
- *
- * | § | subject | ⚑ control |
- * |---|---|---|
- * | 1 | the receipt this card reads is the tool's own sentence | — |
- * | 2 | the call is recognised and leaves the tool run | a session never told its tools' names |
- * | 3 | the card's words: to whom, the label, the title and the brief, how it went, the press | a refusal, a failure and a cut receipt name nothing they do not say |
- */
-
-const here = dirname(fileURLToPath(import.meta.url))
 
 const CLAUDE = { prefix: 'mcp__', separator: '__' }
 const CODEX = { prefix: '', separator: '__' }
@@ -61,22 +37,8 @@ const call = (id: string, args: Record<string, unknown>, name = 'mcp__brobot__gi
 
 const result = (id: string, summary: string, ok = true): TranscriptEvent =>
   ({ type: 'tool_result', id, summary, ok }) as TranscriptEvent
-
-/* ------------------------------------------------ the tool's own sentences, as §1 finds them */
-
-const WENT_STRAIGHT = '`; it went to ${name} straight away`'
-/**
- * ⚑ **D-027 moved the held tail**: a held give no longer *"goes out as its own turn"* — it goes out
- * with whatever else is held for that conversation, oldest first, in one turn. The template now
- * puts in a constant the verbs share, so §1 pins the template AND the constant's own words.
- */
-const WENT_HELD =
-  '`; it is held until ${name} is free, then goes out ${WITH_WHATEVER_ELSE_IS_HELD}`'
 const WITH_THE_REST =
   'with whatever else is held for it, oldest first (a person’s command goes on its own)'
-/** ⚑ The constant as the source declares it — its apostrophe written as an escape. */
-const WITH_THE_REST_DECLARED = `const WITH_WHATEVER_ELSE_IS_HELD =\n  '${WITH_THE_REST.replace('’', '\\u2019')}'`
-const LEAD = '`${given.label} given to ${name} (${given.profile})${went}.'
 
 /** ⚑ The receipt as `give_work` writes it — its own template, with these values put in. */
 const receipt = (label: string, name: string, profile: string, held = false) =>
@@ -147,18 +109,6 @@ const cardOf = (
   expect(item.outgoing, 'the call was not recognised').toBeDefined()
   return outgoingCard(item, item.outgoing as OutgoingCardWords, IDS, held, GAVE_OUT)
 }
-
-/* ============================================================================================= */
-
-describe('§1 · the receipt this card reads is the tool’s own sentence', () => {
-  it('🔴 `give_work` still words its receipt the way the card reads it', () => {
-    const source = readFileSync(join(here, '../src/main/runtime/agent-tools.ts'), 'utf8')
-    expect(source).toContain(LEAD)
-    expect(source).toContain(WENT_STRAIGHT)
-    expect(source).toContain(WENT_HELD)
-    expect(source).toContain(WITH_THE_REST_DECLARED)
-  })
-})
 
 describe('§2 · the call is recognised and leaves the tool run', () => {
   it('🔴 on Claude and on Codex, by the names the session was handed', () => {

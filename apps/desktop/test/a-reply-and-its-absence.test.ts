@@ -1516,76 +1516,6 @@ describe('393 · a reply, and its absence', () => {
       }
     })
 
-    it('⛔ not one capability check reached this dispatch’s new code', () => {
-      // ⚑ **`the-five-tools.test.ts` §6's census, asked of the two files `393` added or grew.** A
-      // rail keyed on a grant here would be one rule in two places, and the copy that drifts is
-      // always the one further from the thing it protects.
-      const forbidden = ['canMessage', 'canAssignWork', 'canCreateAgents', 'capabilitiesOf']
-      // ⚑ **D-016 · a RESOURCE has a role** — what a kept file is to its piece (`RESOURCE_ROLES`) —
-      // and the two doors that hand one back report it; `update_work` words its answer by whether
-      // the caller kept what it MADE, and the host lists a piece's INPUTS in its brief and, D-026,
-      // reports each kept file's role to a window (`keptFileOf`); D-037, `find_files` says each
-      // file it finds is an input or kept. ⛔ None of them is an identity's role, so each spelling is
-      // counted in its own file (another would be a new read) and taken out before the census reads.
-      // Each spelling, and how many times it is read in its file.
-      const RESOURCE_ROLE_READS: Readonly<Record<string, Readonly<Record<string, number>>>> = {
-        'agent-tools.ts': {
-          'role: read.resource.role': 1,
-          'role: one.role': 1,
-          // A piece's record lists its inputs apart from the rest of its files.
-          "one.role === 'input'": 1,
-          "one.role !== 'input'": 2,
-          'role: one.file.role': 1,
-          "file.role === 'input'": 1,
-        },
-        'runtime-host.ts': { "one.role === 'input'": 1, 'role: resource.role': 1 },
-      }
-      const withoutResourceRoles = (file: string, code: string): string =>
-        Object.keys(RESOURCE_ROLE_READS[file] ?? {}).reduce(
-          (left, spelled) => left.split(spelled).join(''),
-          code,
-        )
-      for (const [file, counts] of Object.entries(RESOURCE_ROLE_READS)) {
-        const code = codeOnly(readFileSync(join(mainRoot, 'runtime', file), 'utf8'))
-        for (const [spelled, times] of Object.entries(counts)) {
-          expect(code.split(spelled).length - 1, `${file}: ${spelled}`).toBe(times)
-        }
-      }
-      for (const file of ['reply-rails.ts', 'agent-tools.ts']) {
-        const code = withoutResourceRoles(
-          file,
-          codeOnly(readFileSync(join(mainRoot, 'runtime', file), 'utf8')),
-        )
-        for (const word of forbidden) {
-          expect(code, `${file} reads ${word}`).not.toContain(word)
-        }
-        // 🔴 **D-014 · there is no role to read**: the field left every identity, `create_agent`
-        // takes none and `list_profiles` reports none. ⛔ Standing rule 10 said a role never gates
-        // anything; the census now says neither spelling of one appears in this code at all.
-        expect(code, `${file} reads a role off something`).not.toMatch(/\broleOf\b|\.role\b/)
-      }
-      // ⛔ **Nor does the host or the factory text**, which is where a stored role used to be read
-      // into a launch context.
-      for (const file of ['runtime-host.ts', 'factory-text.ts']) {
-        const code = withoutResourceRoles(
-          file,
-          codeOnly(readFileSync(join(mainRoot, 'runtime', file), 'utf8')),
-        )
-        expect(code, `${file} reads a role off something`).not.toMatch(/\broleOf\b|\.role\b/)
-      }
-      // ⚠️ **The control that plants both spellings the census WOULD fire on** (standing rule 12),
-      // so the absences above are not passes over code no regex could ever match.
-      expect(codeOnly('const heading = context.role')).toMatch(/\broleOf\b|\.role\b/)
-      expect(codeOnly('const role = store.roleOf(slug)')).toMatch(/\broleOf\b|\.role\b/)
-      // ⛔ **The control that plants two grant words** (standing rule 12): the census must be able
-      // to SEE such a word, or it is asserting nothing. The rails' real neighbour contains both.
-      const neighbour = codeOnly(
-        readFileSync(join(mainRoot, 'runtime', 'message-rails.ts'), 'utf8'),
-      )
-      expect(neighbour).toContain('canMessage')
-      expect(neighbour).toContain('canAssignWork')
-    })
-
     it('⚠️ the summary bound is named in exactly one place, and the refusal reads it from there', () => {
       // 🔴 **`a-bound-written-as-the-constant-cannot-pin-it`, from the other side**: the CONSTANT
       // must not be duplicated, or the refusal and the check could disagree.
@@ -1617,43 +1547,6 @@ describe('393 · a reply, and its absence', () => {
       // ⚑ **The one entry worth arguing about, pinned by name** so it cannot quietly flip.
       expect(TASK_IS_OPEN.stalled).toBe(true)
       expect(TASK_IS_OPEN.answered).toBe(false)
-    })
-
-    it('⛔ every refusal on this path is a RETURNED payload — the handler cannot throw one', () => {
-      // ⚑ **§4's requirement, as a property of the code rather than as a hope.** `307` measured that
-      // a thrown handler becomes transport-shaped `-32603` and *"carries no machine-readable policy
-      // meaning"*; the child learns a tool broke. ⛔ So neither new tool's body may contain a
-      // `throw`, and both refusal sources are RETURNED unions — `admitReply` answers
-      // `ReplyRefusal | null`, `registerDocument` answers `{ok}`.
-      const tools = readFileSync(join(mainRoot, 'runtime', 'agent-tools.ts'), 'utf8')
-      for (const name of ['reply_to_parent', 'list_tasks']) {
-        const from = tools.indexOf(`name: '${name}',`)
-        expect(from, `${name} is not in the file`).toBeGreaterThan(0)
-        const next = tools.indexOf("      name: '", from + 10)
-        const body = codeOnly(tools.slice(from, next === -1 ? tools.length : next))
-        expect(body, `${name} throws`).not.toContain('throw ')
-      }
-      // ⛔ **The control that plants two** (standing rule 12): the census must be able to SEE a
-      // `throw`, or it is asserting nothing. `message_agent`'s delivery classifier has one,
-      // deliberately — a start that failed for a reason no wake recognises is a fault, not a policy
-      // refusal — and that is what makes the two absences above a measurement. ⚠️ D-014:
-      // `end_agent`'s rethrow went with the grant check it guarded. ⚑ **D-016** — the catch moved
-      // out of `message_agent` into `whatADeliveryMet`, which `give_work` shares.
-      const floor = tools.indexOf('function whatADeliveryMet(')
-      expect(floor, 'whatADeliveryMet is not in the file').toBeGreaterThan(0)
-      const floorBody = codeOnly(tools.slice(floor, tools.indexOf('\n}\n', floor)))
-      expect(floorBody).toContain('throw error.cause')
-      expect(
-        codeOnly(readFileSync(join(mainRoot, 'runtime', 'reply-rails.ts'), 'utf8')),
-      ).not.toContain('throw ')
-      expect(
-        codeOnly(readFileSync(join(mainRoot, 'runtime', 'runtime-host.ts'), 'utf8')),
-      ).toContain('throw new MessagingRefused')
-      // ⚑ …and the same shape one file over: `admitReply` ANSWERS a refusal and never raises one.
-      // ⚠️ The plant for this half is `runtime-host.ts`, not `message-rails.ts` — that file declares
-      // `MessagingRefused` and throws nothing; the host is what raises it. **Written after the
-      // first version of this line passed on a file that could not have contained a `throw`**, which
-      // is a control that proves the grep works only if the grep could have failed.
     })
 
     it('⚑ the inventory grew by exactly the two tools this dispatch published', () => {

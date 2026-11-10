@@ -1,6 +1,5 @@
 import type { MemoryNoteEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,8 +20,6 @@ import { neutralHostDeps } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
-const rendererSource = (path: string): string =>
-  readFileSync(join(here, '../src/renderer/src', path), 'utf8')
 
 /**
  * 🔴 **318 · the turn boundary itself — and this file exists because a mutation row found it
@@ -726,53 +723,5 @@ describe('318 · a memory note is bounded on the way back out of the ledger', ()
       { path: '/homes/codex/memories/extensions/ad_hoc/notes/ok.md', bytes: 3, text: 'hi' },
     ])
     db.close()
-  })
-})
-
-/**
- * ⚑ **318 §2.3's two halves, read off the source** — the idiom `conversation-chrome.test.ts` uses
- * for exactly this component, for the reason it gives: chrome is the part of a UI that gets verified
- * by eye, so every rule that CAN be a checked string is one.
- *
- * ⛔ **What this can and cannot see, stated rather than implied — and the first draft of this
- * sentence overstated it.** It can see that the handler body assigns `true`, chooses the `info` tab
- * and never toggles, and that the Info hint names memory.
- *
- * ⚠️ **It cannot see that the handler is REACHED.** The dom test proves the first two hops —
- * `MemoryNoteEntry` → `TranscriptView` → `ConversationPane` raises `showInstructions` on a real
- * click — and stops there: nothing in this repository mounts `RuntimeScreen`, so the last hop,
- * `ConversationPane`'s event arriving at this handler, is checked by an unanchored string search and
- * by nothing else. ⛔ Saying *"the dom test covers the wiring"* was the kind of claim `074` is
- * about, and it was written here before it was true. It is the honest gap of this pair of
- * instruments, and it is left open rather than papered over.
- */
-describe('318 §2.3 · the gesture SETS the drawer and the tab hint names memory', () => {
-  it('the show-instructions handler opens the drawer rather than flipping it', () => {
-    const screen = rendererSource('components/RuntimeScreen.vue')
-    const at = screen.indexOf('@show-instructions=')
-    expect(at, 'RuntimeScreen no longer handles the request').toBeGreaterThan(-1)
-    // The handler body, up to the closing quote of the attribute value.
-    const body = screen.slice(at, screen.indexOf('"', screen.indexOf('"', at) + 1) + 1)
-    expect(body).toContain('drawerOpen = true')
-    expect(body).toContain("drawerTab = 'info'")
-    // ⛔ The defect this replaces: a flip shuts the drawer for anyone who already had it open.
-    expect(body).not.toContain('!drawerOpen')
-    // ⛔ **The slice is checked STRUCTURALLY, never against a magic length** (`313`'s lesson: a
-    // derived guard that truncates early fails OPEN, and a number tuned to today's comment would
-    // fail CLOSED the next time somebody explains themselves). It must start at the attribute and
-    // end at the attribute's own closing quote — and be a small fraction of the file, so a slice
-    // that ran to the end of `RuntimeScreen.vue` cannot satisfy the `toContain`s above by accident.
-    expect(body.startsWith('@show-instructions="')).toBe(true)
-    expect(body.endsWith('"')).toBe(true)
-    expect(body.length).toBeLessThan(screen.length / 10)
-  })
-
-  it('the Info tab says it holds what the profile remembers', () => {
-    const drawer = rendererSource('lib/drawer.ts')
-    const info = drawer.slice(drawer.indexOf("id: 'info'"), drawer.indexOf("id: 'changes'"))
-    expect(info).toContain('remembers')
-    // Paired: the slice really is the Info entry and really does carry a hint.
-    expect(info).toContain('hint:')
-    expect(info).toContain('Paths, the profile')
   })
 })

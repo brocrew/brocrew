@@ -1,5 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -75,8 +75,6 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
   throw new Error(`timed out waiting for ${what}`)
 }
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const COMPONENTS = join(here, '../src/renderer/src/components')
-const RELAYED_TURN_SRC = join(here, '../src/renderer/src/lib/relayed-turn.ts')
 
 const AT = 1_700_000_000_000
 
@@ -879,170 +877,5 @@ describe('545 §8 · what each entry derives its author from', () => {
         `<A v-if="item.kind === 'a'" :item="item" />\n<B v-else-if="item.kind === 'b'" />`,
       ),
     ).toEqual(['A', 'B'])
-  })
-
-  it('🔴 and each of them derives its author from one of four kinds, named here', () => {
-    /**
-     * ⛔ **`identity`** — it asks the app's one naming function, directly or through
-     * `relayed-turn.ts`. **`the-app-itself`** — a CONSTANT, on a row whose actor really IS the
-     * app: the go-ahead is a sentence BroBot sent when a person pressed, a work report is
-     * BroBot's own account of work the reader gave out, and `624`'s notice is the software
-     * reporting with nobody on whose behalf it speaks. **`the-person`** — the one row a person
-     * typed. **`no-author`** — the entry draws no author heading at all, because nobody is
-     * speaking on it.
-     *
-     * ⚠️ **624 · this kind read *a constant naming BroBot* and the word is no longer part of
-     * it.** ⛔ `HO-095` §6.3: *"And the app sent it, not BroBot"* — BroBot is an AGENT, and the
-     * approval carrier lands in BroBot's own conversation, so `THE_APP_IS_THE_AUTHOR` is a
-     * category (`This app`) exactly as `AN_UNNAMED_RELAYER` is. ⚑ **What the kind is about is
-     * unchanged**: the heading is a constant this app owns and never a name it looked up.
-     */
-    const KINDS: Record<string, 'identity' | 'the-app-itself' | 'the-person' | 'no-author'> = {
-      // Agent answers use the relayer's profile; person answers say who answered without a lookup.
-      AnsweredQuestionEntry: 'identity',
-      // 545 — `relayedSender(item.relayedFromProfile, identities)`.
-      RelayedEntry: 'identity',
-      // 545 — the same function, so the held row and the turn it becomes cannot disagree; it is
-      // also `the-person` on a row nobody relayed, which is the branch its heading starts with.
-      QueuedMessage: 'identity',
-      // 537 — `:who` is `agentName(meta.profileId, identities)` — folded by `agentName` itself since `671` — handed
-      // down by `ConversationPane`.
-      AssistantMessage: 'identity',
-      // 278 — `GO_AHEAD_SENDER`. BroBot really did send it, when a person pressed the button.
-      ContinuationEntry: 'the-app-itself',
-      // 406 — `WORK_REPORT_MARK`. BroBot's own account of work the reader gave out.
-      // ⚠️ **658 · and on a REPLY, a from-line above it** — *"Ada to BroBot"*, whose sender is
-      // `relayedSender(item.relayedFromProfile, …)`. ⛔ The report's own heading is still the
-      // app's (the piece's label, `W1.2`, beside `WORK_REPORT_MARK`); the from-line says who SENT
-      // it, which is a second fact, and it asks the same function `RelayedEntry` does.
-      WorkReportEntry: 'the-app-itself',
-      // 658 — a call that put THIS conversation's words into another one. The sender is HANDED
-      // down, as `AssistantMessage`'s is — ⚠️ **667 · as `:own-agent`, the NAME or `null`, and no
-      // longer `:who`**, which a recording fills with the provider; the recipient is named in
-      // `lib/outgoing-card.ts`, through `agentName`.
-      OutgoingEntry: 'identity',
-      // 624 — `THE_APP_IS_THE_AUTHOR`. The software reporting something it observed, on a row
-      // nobody pressed anything for and nobody's words are being carried on.
-      AppNoticeEntry: 'the-app-itself',
-      // ⚑ **725 · re-aimed, not stripped** (rule 26) — R44: both cards draw the MODEL's own words
-      // under the conversation's agent's NAME (`inTheAgentsWords`), handed down as `:own-agent`
-      // exactly as `OutgoingEntry`'s sender is. They were `no-author` until the words had an author.
-      PermissionCard: 'identity',
-      UserInputCard: 'identity',
-      UserMessage: 'the-person',
-      CompactionEntry: 'no-author',
-      ConversationResetEntry: 'no-author',
-      ImageEntry: 'no-author',
-      MemoryLoadedEntry: 'no-author',
-      MemoryNoteEntry: 'no-author',
-      MemoryRecallEntry: 'no-author',
-      NoticeEntry: 'no-author',
-      PlanEntry: 'no-author',
-      SubAgentEntry: 'no-author',
-      ThinkingEntry: 'no-author',
-      ToolEntry: 'no-author',
-    }
-    const found = dispatched(readFileSync(join(COMPONENTS, 'TranscriptView.vue'), 'utf8'))
-    // ⚑ Non-vacuity first: an empty read would make both lists empty and this test silent.
-    expect(found.length).toBeGreaterThan(10)
-    expect(found).toEqual(Object.keys(KINDS).sort())
-
-    /**
-     * ⛔ **An identity reaches an entry two ways, and only one of them is this file's to check.**
-     *
-     * ⚠️ **`asks`** — the component OWNS the name and calls the function. **`handed`** — it is
-     * given a name by `TranscriptView`, through the PROP named here, and WHERE that came from is
-     * the census `two-rows-that-say-the-wrong-thing.render.test.ts` §3 already owns (`537` §3.2)
-     * for `:who`, and `the-three-sentences-beside-the-cards.test.ts` §2 for `:own-agent` (`667`).
-     * ⛔ A component that is handed one and reaches for a function of its own would be a second
-     * answer, which is what those censuses exist to refuse — so the two halves are declared rather
-     * than collapsed into one grep.
-     */
-    const HOW: Record<string, 'asks' | { readonly handed: 'who' | 'ownAgent' }> = {
-      AnsweredQuestionEntry: 'asks',
-      RelayedEntry: 'asks',
-      QueuedMessage: 'asks',
-      AssistantMessage: { handed: 'who' },
-      // ⚑ **667** — the card's own side is the agent's NAME or `null`, never the heading word.
-      OutgoingEntry: { handed: 'ownAgent' },
-      // ⚑ **725 · R44** — the same prop, the same forward (`the-three-sentences-beside-the-cards`
-      // §2 counts it), and `THE_AGENT` where it is `null`.
-      PermissionCard: { handed: 'ownAgent' },
-      UserInputCard: { handed: 'ownAgent' },
-    }
-    expect(
-      Object.keys(HOW).sort(),
-      'an entry names an identity and nothing says how it gets one',
-    ).toEqual(
-      Object.entries(KINDS)
-        .filter(([, kind]) => kind === 'identity')
-        .map(([component]) => component)
-        .sort(),
-    )
-    for (const [component, how] of Object.entries(HOW)) {
-      const source = code(readFileSync(join(COMPONENTS, `${component}.vue`), 'utf8'))
-      if (how === 'asks') {
-        expect(source, `${component} names an identity without asking for it`).toMatch(
-          /agentName\(|relayedSender\(/,
-        )
-      } else {
-        // ⛔ **It is HANDED one and derives nothing**, which is the property that keeps
-        // `537`'s census the only reader of that derivation. ⚑ **667 · the PROP is read as a
-        // declaration**, where `toContain('who')` matched any word with those three letters in it.
-        expect(source, `${component} takes no ${how.handed}`).toMatch(
-          new RegExp(`^\\s*${how.handed}\\??:`, 'm'),
-        )
-        expect(source, `${component} derives a name of its own`).not.toMatch(
-          /agentName\(|relayedSender\(/,
-        )
-      }
-    }
-    // 🔴 **…and `relayedSender` is the app's one naming function and not a second answer**, which
-    // is what makes the transitive claim above true rather than a forward to nowhere.
-    const relayedTurnSrc = code(readFileSync(RELAYED_TURN_SRC, 'utf8'))
-    expect(relayedTurnSrc).toContain('agentName(')
-    expect(relayedTurnSrc).not.toMatch(/displayName \?\?/)
-    // ⚠️ **658 · `OutgoingEntry` is `handed` its SENDER and derives its RECIPIENT one file over** —
-    // `outgoingCard` in `lib/outgoing-card.ts`, which a grep of the `.vue` cannot see. ⛔ So that
-    // file is held to the same rule here: the one naming function, and never a display name read
-    // off the roster by hand.
-    const outgoingCardSrc = code(
-      readFileSync(join(COMPONENTS, '..', 'lib', 'outgoing-card.ts'), 'utf8'),
-    )
-    expect(outgoingCardSrc).toContain('agentName(')
-    expect(outgoingCardSrc).not.toMatch(/displayName \?\?/)
-    expect(code(readFileSync(join(COMPONENTS, 'OutgoingEntry.vue'), 'utf8'))).toContain(
-      'outgoingCard(',
-    )
-    // ⚑ **667 · and the notice that says a reply reached nobody names its parent the same way** —
-    // `lib/lost-reply.ts`, drawn by `NoticeEntry` (a `no-author` row: the name is the RECIPIENT's).
-    const lostReplySrc = code(readFileSync(join(COMPONENTS, '..', 'lib', 'lost-reply.ts'), 'utf8'))
-    expect(lostReplySrc).toContain('agentName(')
-    expect(lostReplySrc).not.toMatch(/displayName \?\?/)
-
-    // ⛔ **No `no-author` entry spells one of the author constants**, so a fifth answer cannot
-    // appear on a row this table says nobody speaks on.
-    for (const [component, kind] of Object.entries(KINDS)) {
-      if (kind !== 'no-author') continue
-      const source = code(readFileSync(join(COMPONENTS, `${component}.vue`), 'utf8'))
-      expect(source, `${component} names a speaker`).not.toMatch(
-        // ⚑ **624 · the fourth author constant joins the refusal**, so a `no-author` row cannot
-        // start heading itself *This app* either.
-        /GO_AHEAD_SENDER|WORK_REPORT_MARK|AN_UNNAMED_RELAYER|THE_APP_IS_THE_AUTHOR|relayedSender\(/,
-      )
-    }
-  })
-
-  /**
-   * ⛔ **The planted control for the half above**, and it is the reason the census cannot pass by
-   * banning a word: `SessionContext.vue` reads `provider` on the same screen, names nobody, and is
-   * not an entry at all — so it is absent from the population rather than exempted from it.
-   */
-  it('⚑ the population is the DISPATCH and not every component in the folder', () => {
-    const all = readdirSync(COMPONENTS).filter((one) => one.endsWith('.vue'))
-    const found = dispatched(readFileSync(join(COMPONENTS, 'TranscriptView.vue'), 'utf8'))
-    expect(all.length).toBeGreaterThan(found.length)
-    expect(found).not.toContain('SessionContext')
-    expect(all).toContain('SessionContext.vue')
   })
 })

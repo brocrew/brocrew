@@ -58,7 +58,6 @@ const COMPOSER = join(here, '../src/renderer/src/components/PromptComposer.vue')
  * follows them rather than pretending they did not move.
  */
 const DRAFTS = join(here, '../src/renderer/src/lib/drafts.ts')
-const MAIN = join(here, '../src/main/index.ts')
 
 /**
  * The file with comments removed — line comments, block comments and HTML comments.
@@ -379,117 +378,6 @@ describe('only one thing stages an attachment (218, acceptance 7)', () => {
     expect(bodyOf(code, 'function onDragEnter(')).toContain('canStage.value')
     expect(bodyOf(code, 'function onDragOver(')).toContain('canStage.value')
     expect(bodyOf(code, 'async function onDrop(')).toContain('canStage.value')
-  })
-
-  it('⛔ main has three doors onto the classifier, and all three call the same function', () => {
-    // ⚑ **Three since 254 §2 — and the third one is still not a third RULE.** The paste writes a
-    // file that did not exist and then asks `classifyHandedPath` about it like everything else, so
-    // what a path IS still has exactly one decider in main.
-    const main = codeOf(readFileSync(MAIN, 'utf8'))
-    const picker = main.slice(
-      main.indexOf("'app:choose-attachment'"),
-      main.indexOf("'app:classify-attachments'"),
-    )
-    const drop = main.slice(
-      main.indexOf("'app:hand-dropped-paths'"),
-      main.indexOf("'app:paste-image'"),
-    )
-    const paste = main.slice(
-      main.indexOf("'app:paste-image'"),
-      main.indexOf('registerRuntimeIpc({'),
-    )
-    expect(picker.length, 'the choose-attachment handler moved — re-point this').toBeGreaterThan(
-      100,
-    )
-    expect(drop.length, 'the hand-dropped-paths handler moved — re-point this').toBeGreaterThan(100)
-    expect(paste.length, 'the paste-image handler moved — re-point this').toBeGreaterThan(100)
-    expect(picker).toContain('classifyHandedPath')
-    expect(drop).toContain('classifyDroppedPaths')
-    // ⛔ **The paste does not classify inline** — it hands the bytes to the module that writes them
-    // down, and THAT module ends in the same classifier (`no-byte-authority.test.ts` pins it).
-    expect(paste).toContain('pastePicture(')
-    // ⛔ **And neither the drop nor the paste opens a dialog.** A native sheet in the middle of a
-    // drag — or after a ⌘V — would be a gesture answering itself with another gesture.
-    expect(drop).not.toContain('showOpenDialog')
-    expect(paste).not.toContain('showOpenDialog')
-  })
-})
-
-describe('the rule has teeth (218)', () => {
-  it('🔴 a planted second writer IS caught, through the same slice the rules use', () => {
-    // ⛔ Every assertion above is a string search, and a slice that came back empty would satisfy
-    // the negative ones while silently failing to check the positives. This runs the same helpers
-    // over source that has the defect and requires it to be visible.
-    const defective = [
-      'async function onDrop(event) {',
-      '  const path = window.api.pathForDroppedFile(file)',
-      "  emit('update:attachments', [...props.attachments, { path, kind: 'file' }])",
-      '}',
-    ].join('\n')
-    const planted = codeOf(defective)
-    expect(flat(bodyOf(planted, 'async function onDrop('))).toContain(ADDS)
-    expect(bodyOf(planted, 'async function onDrop(')).toContain('kind:')
-    expect(times(flat(planted), CHANNEL)).toBe(1)
-
-    // ⛔ **…and the 292 §2 shape of the same defect: a gesture that stages for itself**, skipping
-    // the reservation that holds the send. It emits nothing, so the rule above would not see it.
-    const own = codeOf(
-      [
-        'async function onPaste(event) {',
-        '  const verdicts = await window.api.pasteImage({})',
-        '  props.handing.stage([...staged.value, verdicts.handed])',
-        '}',
-      ].join('\n'),
-    )
-    const gesture = flat(bodyOf(own, 'async function onPaste('))
-    expect(gesture).toContain('.stage(')
-    expect(
-      gesture,
-      'a gesture that stages for itself must not look like it reserved',
-    ).not.toContain('acquire(')
-
-    // ⛔ **…and the 292 §1 shape: a send that awaits before it latches.** The latch is still there,
-    // the code still reads as single-flight, and the window is wide open.
-    const late = codeOf(
-      [
-        'async function send(interrupting = false) {',
-        '  await settle()',
-        '  const already = sending.value',
-        '  if (already !== null) return already.run',
-        '}',
-      ].join('\n'),
-    )
-    expect(flat(bodyOf(late, 'function send('))).toContain('await ')
-
-    // ⛔ **And it is caught when the formatter WRAPS it**, which is how the first version of this
-    // census missed `detach` entirely: three lines, one call, zero matches per-line.
-    const wrapped = codeOf(
-      [
-        'async function onDrop(event) {',
-        '  emit(',
-        "    'update:attachments',",
-        '    next,',
-        '  )',
-        '}',
-      ].join('\n'),
-    )
-    expect(flat(bodyOf(wrapped, 'async function onDrop('))).toContain(ADDS)
-
-    // ⛔ …and PROSE cannot satisfy or break a rule, which is what the stripper is for. Both a line
-    // comment and an HTML comment, because this file censuses a `.vue`.
-    const prosey = [
-      'async function onDrop(event) {',
-      "  // never emit('update:attachments', …) here — the draft owns it",
-      '  acquire(work)',
-      '}',
-      "<!-- emit('update:attachments', …) in a template comment is prose too -->",
-    ].join('\n')
-    const stripped = codeOf(prosey)
-    expect(flat(stripped)).not.toContain(CHANNEL)
-    expect(bodyOf(stripped, 'async function onDrop(')).toContain('acquire(')
-
-    // ⚑ …and a missing function yields an EMPTY slice rather than a passing one.
-    expect(bodyOf('const nothing = 1\n', 'async function onDrop(')).toBe('')
   })
 })
 

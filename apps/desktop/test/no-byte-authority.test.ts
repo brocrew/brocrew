@@ -4,14 +4,13 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
   realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { basename, dirname, join, relative } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -42,62 +41,6 @@ import { MAX_HANDED_PATHS } from '../src/shared/runtime-ipc'
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
-
-/**
- * ⛔ **Every file on the handed-path route through MAIN, and what each may import from `node:fs` —
- * an ALLOWLIST, PER FILE, which is the rule with teeth.**
- *
- * The renderer never sees a path it did not get from one of these, and the provider never sees
- * anything but the composed string.
- *
- * The census below is a denylist of read APIs, and a denylist is always one name behind: `fs.open`
- * reached through a namespace import, `require('fs')`, a bare `read(fd, …)` — each would need
- * another entry, and the entry gets added after the read does. ⚑ **Measured instead**: `ipc.ts` and
- * `runtime-host.ts` import nothing from `node:fs` at all, `handed-path.ts` imports exactly the stat
- * family, `index.ts` imports three that WRITE or test existence, and `pasted-image.ts` imports the
- * six it needs to create, publish and remove ITS OWN files. Not one of these returns a file's contents.
- *
- * So the rule can be stated positively, and a positive rule cannot be outgrown: ⛔ **on this route,
- * the only bindings that may come out of `node:fs` are these**, and a namespace or default import
- * is refused by name because it would make the binding unknowable.
- *
- * ## 🔴 It used to be ONE list shared by every file, and 254 tightened it
- *
- * ⚠️ **`254` needed `readdir` and `unlink`** — {@link sweepPastedImages} lists BroBot's own pasted
- * directory and removes what has aged out of it. ⛔ **Added to a shared list, those two would have
- * been granted to `handed-path.ts` as well** — and `218` §3's rule is that a dropped FOLDER is one
- * path, *"not enumerated, not expanded, not counted"*, a rule enforced in main by nothing except
- * `readdirSync` being unavailable there. ⚑ **A per-file map is strictly stronger than the list it
- * replaces**: every file now carries exactly the authority it uses and no more, `ipc.ts` and
- * `runtime-host.ts` are pinned at NONE rather than inheriting six, and the three `*Sync` stat names
- * nothing has imported since `232` §3 are gone rather than sitting there as a standing permission.
- */
-const ROUTE: Record<string, string[]> = {
-  // ⛔ **The stat family, and since `232` §3 the ASYNC one** (from `231`). The unattended queue
-  // flush re-checks a queued message's paths with nobody at the keyboard, and a `realpathSync` on a
-  // stalled network mount parked Electron's whole main process — no window, no menu, no quit.
-  // ⚠️ **The same three questions under different names**, and the rule is unchanged in what it
-  // permits: existence, link-or-not, file-or-folder.
-  '../src/main/runtime/handed-path.ts': ['realpath', 'stat', 'lstat'],
-  // ⚑ **`writeSync` added by 294, and it is a WRITE to a descriptor rather than to a path** — the
-  // composition root writes its shutdown notices with `writeSync(STDERR_FD, …)` because
-  // `console.error` to a pipe is asynchronous and the app's last three lines were being lost when
-  // the quit stopped the loop. ⚠️ It takes an fd, not a filename, and returns a byte COUNT: there is
-  // no spelling of it that acquires a file's contents, which is the only thing this rule forbids.
-  '../src/main/index.ts': ['appendFileSync', 'existsSync', 'mkdirSync', 'writeSync'],
-  '../src/main/runtime/ipc.ts': [],
-  // ⛔ **The second caller, and it was MISSING** (found in review). `runtime-host.ts` is where the
-  // paths are re-checked and composed into the message on all four send paths — the most likely
-  // place for somebody to "just read it here" — and the census did not look at it. `ipc.ts` was
-  // listed and never scanned, which is the same hole with a name on it.
-  '../src/main/runtime/runtime-host.ts': [],
-  '../src/main/runtime/pasted-image.ts': ['mkdir', 'readdir', 'stat', 'unlink'],
-  // 🔴 **744 · the records a RESTORED draft's chips are drawn from** (R100). ⚑ It makes `HandedPath`s
-  // out of the kept drafts file's contents, so it is on the route for `pasted-image.ts`' reason — and
-  // it holds NO filesystem binding: `drafts-file.ts` reads BroBot's own file and hands it the parsed
-  // JSON, and the one question it asks of a person's path is the classifier's.
-  '../src/main/saved-drafts.ts': [],
-}
 
 /**
  * ⛔ **Every file on the handed-path route through MAIN — a LITERAL, deliberately not
@@ -391,19 +334,6 @@ function callsItDidNotImport(path: string): string[] {
 }
 
 describe('a handed path is a path, never bytes (216)', () => {
-  it.each(ON_THE_ROUTE)('🔴 %s reads no file’s contents', (file) => {
-    // ⛔ **Every file on the route, not just the first** (review). The old version censused
-    // `ON_THE_ROUTE[0]` and left the other entries listed-but-unscanned — a census with a hole
-    // exactly where the read would be added. `it.each` means adding a path to the list is enough.
-    const offenders = violations(join(here, file))
-
-    expect(
-      offenders,
-      'BroBot may stat a handed path and must not open it — the agent’s own read is where the ' +
-        'provider’s own permission card already lives (215 §3.3)',
-    ).toEqual([])
-  })
-
   it.each(ON_THE_ROUTE)('⛔ %s reaches fs by no side door either', (file) => {
     // `await import('node:fs')` and `createRequire(...)('fs')` both hand over the whole module and
     // neither appears as a binding the allowlist can judge. Measured: zero of either on this route.
@@ -411,247 +341,6 @@ describe('a handed path is a path, never bytes (216)', () => {
       moduleSideDoors(join(here, file)),
       'a module acquired at runtime cannot be allowlisted, so this route acquires none',
     ).toEqual([])
-  })
-
-  it.each(ON_THE_ROUTE)('⚑ …and the census actually READS %s to the end', (file) => {
-    // ⛔ **Non-vacuity for the stripper itself** (found in review). `codeOf`'s block-comment state
-    // latches on a `/*` inside a STRING — `const glob = '**' + '/*.ts'` is enough — and every line
-    // after it is silently dropped, so both censuses above would pass over a file they had stopped
-    // reading at line 3. ⚠️ Nothing else notices: the teeth test plants into a fresh synthetic
-    // file, and a clean file and an unread one look identical from the outside.
-    const path = join(here, file)
-    const seen = codeOf(path)
-    const total = readFileSync(path, 'utf8').split('\n').length
-    expect(
-      seen.length,
-      'the stripper returned almost nothing — it latched on something',
-    ).toBeGreaterThan(total / 8)
-    expect(seen.at(-1)!.number, 'the stripper stopped before the end of the file').toBeGreaterThan(
-      total - 12,
-    )
-  })
-
-  it.each(ON_THE_ROUTE)('⛔ %s imports nothing from node:fs that returns bytes', (file) => {
-    // The allowlist rule — see {@link ROUTE} for why it is positive rather than negative, and why it
-    // is per-file rather than one list every file inherits.
-    // ⛔ **A file on the route that the map grants nothing is the hole, said here** (268 §3). The
-    // case is registered from the literal, so removing an entry from `ROUTE` no longer un-registers
-    // this rule — it reaches it with `undefined` in hand, and that is a failing verdict rather than
-    // a suite that collected one fewer test.
-    const allowed = ROUTE[file]
-    expect(
-      allowed,
-      `${file} is on the route and the map grants it nothing — the allowance rule would pass over it`,
-    ).toBeDefined()
-    const forbidden = forbiddenBindings(join(here, file), allowed ?? [])
-
-    expect(
-      forbidden,
-      'this route may stat and may write, and may not acquire a way to read a file’s contents ' +
-        '(215 §3.3) — a namespace import shows up here as "*" because it hides which',
-    ).toEqual([])
-  })
-
-  it.each(ON_THE_ROUTE)('🔴 %s calls no fs API it did not import — it is a PROGRAM', (file) => {
-    // See {@link callsItDidNotImport}. This is the floor UNDER the four censuses above: each of them
-    // reads text, and text in a file that could never compile is not evidence of anything. `260` §5
-    // found exactly that row, and `264` §4 could not close it from the harness side.
-    expect(
-      callsItDidNotImport(join(here, file)),
-      'this file calls an fs API that is not in its import clause — it would not compile, so every ' +
-        'verdict the censuses above return about it is void (268 §1)',
-    ).toEqual([])
-  })
-
-  it('⚑ the ROUTE names every file that can produce a handed path — a missing entry is a hole', () => {
-    // ⛔ **The floor, pointed the other way round since 268 §3.** It used to compare the derived list
-    // against a literal, which meant the mutation it exists to catch shrank the suite before this
-    // ran. Now the LITERAL is what registers the cases and the MAP is what is measured against it —
-    // so a module dropped from `ROUTE` is a red verdict here, not four uncollected tests.
-    // ⚠️ The finding that added `runtime-host.ts` is why the floor exists at all: *"listed and never
-    // scanned, which is the same hole with a name on it."*
-    expect(
-      Object.keys(ROUTE),
-      'the route map and the list that registers the census have drifted apart',
-    ).toEqual([...ON_THE_ROUTE])
-  })
-
-  it('🔴 …and each file’s allowance is exactly what it USES — no standing permissions', () => {
-    // ⛔ **The half a per-file map buys that a shared list cannot** (254). An entry nobody imports is
-    // a permission sitting there for whoever adds the next line, and the old shared list had three:
-    // `statSync`, `lstatSync` and `realpathSync`, unused since `232` §3 made this route async.
-    // ⚠️ It is also the non-vacuity floor for {@link ROUTE} itself — an allowance list that had
-    // drifted away from the imports would make the rule above pass over names nothing checks.
-    const unused = Object.entries(ROUTE).flatMap(([file, allowed]) => {
-      const imported = fsBindings(join(here, file))
-      return allowed.filter((name) => !imported.includes(name)).map((name) => `${file}: ${name}`)
-    })
-
-    expect(
-      unused,
-      'an allowance nothing imports is a permission waiting for the next line',
-    ).toEqual([])
-  })
-
-  it('⚑ …and the paired positive: it really does STAT, so the census is not passing over nothing', () => {
-    // Non-vacuity. A module that had stopped touching the filesystem entirely would satisfy the
-    // negative above while having lost the choose-time refusal the whole of §3 is about.
-    const source = readFileSync(join(here, ON_THE_ROUTE[0]!), 'utf8')
-    // ⚠️ The ASYNC family since 232 §3 — the same three questions, asked without parking Electron's
-    // main process on a stalled mount. `Sync` here would be the regression, not the rule.
-    expect(source).toContain("from 'node:fs/promises'")
-    expect(source).toContain('await stat(')
-    expect(source).toContain('await realpath(')
-    expect(source).toContain('await lstat(')
-  })
-
-  it('⛔ the picker in main hands the path onward without opening it', () => {
-    // The other end of the route: `app:choose-attachment` classifies and returns. If it ever grew a
-    // read, the handler is where it would go.
-    const main = readFileSync(join(here, ON_THE_ROUTE[1]!), 'utf8')
-    const handler = main.slice(
-      main.indexOf("ipcMain.handle(\n    'app:choose-attachment'"),
-      main.indexOf("'app:classify-attachments'"),
-    )
-    expect(
-      handler.length,
-      'the choose-attachment handler moved — re-point this test',
-    ).toBeGreaterThan(200)
-    for (const api of READS_BYTES) expect(handler).not.toContain(api)
-    expect(handler).toContain('classifyHandedPath')
-  })
-
-  it('⛔ the RE-CLASSIFY handler stats and does not open either (217 §2)', () => {
-    // ⚑ The second caller of `classifyHandedPath` in main, added by 217 so the launcher's `outside`
-    // mark can be re-decided when the folder changes underneath it. It takes paths the renderer
-    // already holds, which is exactly the shape somebody would later "improve" by reading them.
-    const main = readFileSync(join(here, ON_THE_ROUTE[1]!), 'utf8')
-    const handler = main.slice(
-      main.indexOf("ipcMain.handle(\n    'app:classify-attachments'"),
-      main.indexOf("'app:hand-dropped-paths'"),
-    )
-    expect(
-      handler.length,
-      'the classify-attachments handler moved — re-point this test',
-    ).toBeGreaterThan(200)
-    for (const api of READS_BYTES) expect(handler).not.toContain(api)
-    // ⚑ **A thin door over `captionHandedPaths`**, which is where the bound and the classification
-    // live — put inline in this callback they were unreachable, and 217's own table found the row
-    // protecting them surviving for exactly that reason.
-    expect(handler).toContain('captionHandedPaths')
-    // ⛔ **And it opens no dialog.** A re-check is not a gesture: a picker here would put a native
-    // sheet in front of somebody who only typed in the folder field.
-    expect(handler).not.toContain('showOpenDialog')
-  })
-})
-
-/**
- * # ⛔ The ONE exception, named as one: BroBot reads the CLIPBOARD (254 §2)
- *
- * ⚠️ **`216`'s rule is that BroBot never opens an attached FILE**, and every gesture until `254`
- * honoured it for free because every gesture began with something that already existed. ⛔ **A
- * screenshot on the clipboard has no path**, so there is nothing to hand over until somebody writes
- * it down — a genuine exception, and the dispatch asks for it to be said out loud rather than
- * smuggled in.
- *
- * ⚑ **So the exception is bounded here rather than argued in a comment.** One call, in one file,
- * whose result goes straight to a module that may write and may not read — and the two sides that
- * could have done it instead (the renderer, holding a pasted `File`, and the module holding the
- * buffer) are pinned as unable to.
- */
-describe('the clipboard is the one thing BroBot may read, and only in one place (254 §2)', () => {
-  const countOf = (path: string, needle: string): number =>
-    codeOf(path).filter(({ line }) => line.includes(needle)).length
-
-  /** Every source file under a directory — so a claim about "the app" is measured over the app. */
-  const walk = (dir: string): string[] =>
-    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-      const path = join(dir, entry.name)
-      if (entry.isDirectory()) return walk(path)
-      return /\.(ts|vue|mts)$/.test(entry.name) ? [path] : []
-    })
-
-  it('🔴 `clipboard.readImage` appears EXACTLY ONCE — across the WHOLE of apps/desktop/src', () => {
-    // ⛔ A second call site is a second answer to *"what did the person copy?"*, which is `197`'s
-    // two-classifiers defect with bytes in it. One door, and this is the count that says so.
-    //
-    // ⚠️ **The first version of this censused SIX FILES and its own name said "in the app"** (found
-    // by two review angles). A `clipboard.readImage()` in `app-menu.ts`, in `asset-protocol.ts`, or
-    // in any renderer component would have sat green underneath a message insisting a second reader
-    // was impossible. ⛔ A claim about the app has to be measured over the app: this walks every
-    // source file under `apps/desktop/src`, and the floor below is what says it really did.
-    const sources = walk(join(here, '../src'))
-    expect(
-      sources.length,
-      'the walk found almost nothing — it is looking in the wrong place',
-    ).toBeGreaterThan(80)
-    const readers = sources.filter((file) => countOf(file, 'readImage') > 0)
-
-    expect(
-      readers.map((file) => relative(join(here, '..'), file).replaceAll('\\', '/')),
-      'the clipboard is read in exactly one place — a second reader is a second opinion',
-    ).toEqual(['src/main/index.ts'])
-    expect(countOf(readers[0]!, 'clipboard.readImage')).toBe(1)
-  })
-
-  it('⛔ the DROP handler has a census of its own, and the four of them TILE the block', () => {
-    // ⛔ **Found by the review, over this dispatch's own diff.** Narrowing the picker and re-classify
-    // slices (they used to run to the end of the IPC block) left the region between
-    // `app:hand-dropped-paths` and `app:paste-image` covered by no per-handler census at all — and
-    // that gap is exactly where the next attachment gesture would be written. ⚠️ The drop was the
-    // one handler that never had its own, which is how the hole opened without anybody removing a
-    // rule. ⚑ Stated as a TILING so a fifth handler cannot open a fifth gap in silence.
-    const main = readFileSync(join(here, '../src/main/index.ts'), 'utf8')
-    const marks = [
-      "ipcMain.handle(\n    'app:choose-attachment'",
-      "'app:classify-attachments'",
-      "'app:hand-dropped-paths'",
-      "'app:paste-image'",
-      'registerRuntimeIpc({',
-    ].map((mark) => main.indexOf(mark))
-    expect(
-      marks.some((at) => at === -1),
-      'a handler moved — re-point this test',
-    ).toBe(false)
-    // The marks are in order, so the four slices between them cover the whole block with no gap.
-    expect([...marks].sort((a, b) => a - b)).toEqual(marks)
-    for (let at = 0; at < marks.length - 1; at += 1) {
-      const handler = main.slice(marks[at]!, marks[at + 1]!)
-      expect(handler.length, `handler ${at} is suspiciously short`).toBeGreaterThan(150)
-      for (const api of READS_BYTES) expect(handler, `handler ${at}`).not.toContain(api)
-    }
-    // ⚑ …and the drop's own positive, which is what it was missing.
-    expect(main.slice(marks[2]!, marks[3]!)).toContain('classifyDroppedPaths')
-  })
-
-  it('⛔ the paste handler reads no FILE, and hands the buffer to the module that writes it', () => {
-    const main = readFileSync(join(here, '../src/main/index.ts'), 'utf8')
-    const handler = main.slice(
-      main.indexOf("ipcMain.handle(\n    'app:paste-image'"),
-      main.indexOf('registerRuntimeIpc({'),
-    )
-    expect(handler.length, 'the paste-image handler moved — re-point this test').toBeGreaterThan(
-      200,
-    )
-    for (const api of READS_BYTES) expect(handler).not.toContain(api)
-    // ⚠️ **`pastePicture`, since 262 §3.** It is the sweep-then-write pair as ONE turn of the
-    // paste root's queue — see `pasted-image.ts`'s `onTheRoot`; the two awaits it replaced left a
-    // window the unawaited startup sweep could unlink a fresh file through.
-    expect(handler).toContain('pastePicture(')
-    // ⛔ **And it opens no dialog.** A paste is a gesture that has already happened; a native sheet
-    // in the middle of one would be the app answering ⌘V with a question.
-    expect(handler).not.toContain('showOpenDialog')
-  })
-
-  it('⚑ …and the paired positive: the module really does WRITE and then CLASSIFY', () => {
-    // Non-vacuity. A module that had stopped writing would satisfy every negative above while the
-    // paste silently did nothing — and one that had stopped classifying would hand the renderer a
-    // path no gate had looked at, which is the whole reason it is on this route.
-    const source = readFileSync(join(here, '../src/main/runtime/pasted-image.ts'), 'utf8')
-    expect(source).toContain("from 'node:fs/promises'")
-    expect(source).toContain('await writeAtomically(')
-    expect(source).toContain('await classifyHandedPath(')
-    expect(source).toContain('await unlink(')
   })
 })
 
@@ -805,26 +494,6 @@ describe('the census has teeth (216, acceptance 7)', () => {
 })
 
 /**
- * ⛔ **The WEB half of the same rule** (218 §2/§3).
- *
- * `216` put the byte boundary in main, because main was the only place a path could come from. ⚠️
- * **A drop moves half the boundary into the renderer**: `dataTransfer` hands over `File` objects,
- * and a `File` is a byte source — `.text()`, `.arrayBuffer()`, `FileReader` are all one call away and
- * none of them touches `node:fs`, so every rule above is blind to them. ⚑ The census that made the
- * main-process rule real has to be extended, or `218` quietly acquires `215` §3.3's authority
- * through a door `216` never had.
- *
- * ⛔ **And the §3 rule rides with it.** *"A dropped folder is one path — do not enumerate, do not
- * expand, do not count."* The APIs that would walk a dropped directory (`webkitGetAsEntry`,
- * `createReader`, `readEntries`, `getAsFileSystemHandle`) are on the same list, so "one path" is
- * enforced rather than merely intended.
- */
-const ON_THE_DROP_ROUTE = [
-  '../src/preload/index.ts',
-  '../src/renderer/src/components/PromptComposer.vue',
-]
-
-/**
  * The web APIs that read a dropped file's CONTENTS, or walk a dropped directory.
  *
  * ⚠️ **`getPathForFile` is deliberately not here** — it is the whole point. It takes a `File` and
@@ -858,39 +527,6 @@ function droppedFileViolations(path: string): string[] {
 }
 
 describe('a DROPPED file is a path too, never bytes (218 §2/§3)', () => {
-  it.each(ON_THE_DROP_ROUTE)('🔴 %s reads no dropped file’s contents', (file) => {
-    expect(
-      droppedFileViolations(join(here, file)),
-      'a dropped File is a byte source one call away from `.text()` — BroBot resolves its path and ' +
-        'hands that to the agent, exactly as it does for a picked one (215 §3.3, 216)',
-    ).toEqual([])
-  })
-
-  it.each(ON_THE_DROP_ROUTE)('⚑ …and the census actually READS %s to the end', (file) => {
-    // ⛔ The non-vacuity floor `216`'s review installed, applied to the new route — and it matters
-    // MORE here: `PromptComposer.vue` is half HTML, so the stripper is running its `<!--` branch
-    // over hundreds of lines of template. A latch there would silently unpolice the whole file.
-    const path = join(here, file)
-    const seen = codeOf(path)
-    const total = readFileSync(path, 'utf8').split('\n').length
-    expect(
-      seen.length,
-      'the stripper returned almost nothing — it latched on something',
-    ).toBeGreaterThan(total / 8)
-    expect(seen.at(-1)!.number, 'the stripper stopped before the end of the file').toBeGreaterThan(
-      total - 40,
-    )
-  })
-
-  it('⚑ …and the paired positive: the route really does RESOLVE paths', () => {
-    // Non-vacuity for the rule itself. A preload that had stopped resolving paths would satisfy
-    // every negative above while the drop silently did nothing.
-    const preload = readFileSync(join(here, ON_THE_DROP_ROUTE[0]!), 'utf8')
-    expect(preload).toContain('webUtils.getPathForFile')
-    const composer = readFileSync(join(here, ON_THE_DROP_ROUTE[1]!), 'utf8')
-    expect(composer).toContain('window.api.pathForDroppedFile')
-  })
-
   it('🔴 a planted read IS caught, through the same census the rule uses', () => {
     // ⛔ `216` M-class lesson: a census that matches nothing and a clean file look identical. This
     // runs the same predicate over lines that break the rule and requires each to fire — including

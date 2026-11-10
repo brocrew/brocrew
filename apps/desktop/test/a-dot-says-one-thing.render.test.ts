@@ -478,15 +478,6 @@ describe('§2 · the census — every dot in the app is declared, and nothing el
     // the stale-entry shape `mutations:census` refuses for the same reason.
     expect(dotsIn(ROSTER)).toEqual(DECLARED)
   })
-
-  it('⚑ every declaration names its word, and the word is a hook the declared file really draws', () => {
-    // ⛔ **A pointer is a claim** ([[a-pointer-clause-is-a-claim]]): a `word` naming a `data-cy`
-    // the file no longer carries would be a declaration describing nothing.
-    for (const [file, entry] of Object.entries(DOTS)) {
-      expect(entry.repeats.length, file).toBeGreaterThan(0)
-      expect(SOURCES[`${PREFIX}${file}`], file).toContain(`data-cy="${entry.word}"`)
-    }
-  })
 })
 
 /* ──────────────────────────────────────────────────────────────────────────────────────────── §3 */

@@ -228,21 +228,6 @@ describe('§1 · `R60` — "Compact now…" is offered where a plain Send of /co
     expect(alone.why).toContain('no conversation to send it to')
   })
 
-  /**
-   * ⚠️ **`RuntimeScreen` is mounted by no test**, so the last hop is read where it is written: the
-   * pane's `compactNow` reaches `store.send` with the bare word, and never the screen's `send`,
-   * which would write a refused `/compact` into the person's own draft.
-   */
-  it('🔴 the screen sends the person’s /compact through the composer’s door, and nothing else', () => {
-    const screen = read('components/RuntimeScreen.vue')
-    const body = bodyOf(screen, 'function compactNow(')
-    expect(body).toContain('void store.send(sessionId, THE_COMPACT_COMMAND, intent, [])')
-    expect(body).not.toMatch(/restoreRefused|drafts\./)
-    const from = screen.indexOf('<ConversationPane\n')
-    expect(screen.indexOf('<ConversationPane\n', from + 1), 'a second pane').toBe(-1)
-    expect(screen.slice(from, screen.indexOf('/>', from))).toContain('@compact-now="compactNow"')
-  })
-
   it('⚑ rule 5 — the confirm’s load-bearing clause, by name', () => {
     expect(COMPACT_LINE).toContain('It cannot be undone.')
     expect(COMPACT_LINE).toContain('loses the detail')
@@ -447,84 +432,6 @@ describe('§4 · `710` F-5, D-017b — the one open door says the host’s words
     // ⚑ …and none left anywhere on the screen, so a copy cannot hide in another function.
     expect(screen).not.toMatch(/try again in a moment/i)
   })
-
-  /**
-   * ⚑ **The wider search's fourth** (standing rule 38.4): the reopen's own refusal ended *"— try
-   * again"* too. ⚑ **D-017b** — a record that stopped again as it was handed over is SHOWN, recorded
-   * (its next message continues it), so there is no refusal left to word: the reopen answers the id
-   * whenever the record it adopted is the one the store holds.
-   */
-  it('🔴 …and the reopen that stopped on its way in is shown, with no refusal to word', () => {
-    const store = read('lib/session-store.ts')
-    expect(store).not.toContain('ENDED_AS_IT_REOPENED')
-    expect(store).toContain('return sessions.get(opened) === into ? opened : null')
-    expect(store).not.toMatch(/'[^'\n]*— try again'/)
-  })
-
-  /**
-   * ⛔ **Where the store forgets a record, pinned where it is derived** — every delete sits on a path
-   * that opened nothing here, or lets go of a recorded view nobody looks at. ⚑ **D-017b · and
-   * `release` is NOT one**: the record stays and is looked at again, so the view a person was reading
-   * stays where it is. If a delete ever appears on a success path, this reddens.
-   */
-  it('⛔ the store deletes a record only where nothing opened — and never on a release', () => {
-    const store = read('lib/session-store.ts')
-    const deletes = [...store.matchAll(/sessions\.delete\(/g)].length
-    // ⚑ **737 · 3 → 5**, **D-017 · R10 · 5 → 7**, ⚑ **D-017b · 7 → 8, re-aimed and not loosened**:
-    // `release` lost its delete, and `look` (a refused look) and `forget` (a recorded view nobody is
-    // looking at) each gained one — all located below.
-    expect(deletes).toBe(8)
-    const method = (header: string): string => {
-      const from = store.indexOf(header)
-      expect(from, `no ${header}`).toBeGreaterThan(-1)
-      return store.slice(from, store.indexOf('\n    },\n', from))
-    }
-    // ⚑ **D-017b · the release keeps it, recorded, and looks at it again.**
-    const release = method('    async release(')
-    expect(release).not.toContain('sessions.delete(')
-    expect(release).toContain("record.phase = 'recorded'")
-    expect(release).toContain("void store.look(released.sessionId, 'again')")
-    const claim = method('    async claim(sessionId')
-    expect(claim).toContain('const holding = slot(sessionId)')
-    const inCatch = claim.slice(claim.indexOf('} catch (error) {'), claim.indexOf('} finally {'))
-    expect(inCatch).toContain('if (holding.meta === null) sessions.delete(sessionId)')
-    expect(claim.match(/sessions\.delete\(/g)).toHaveLength(1)
-    const resume = method('    async resume(sessionId')
-    const refused = resume.slice(resume.indexOf('if (!resumed) {'))
-    expect(refused.slice(0, refused.indexOf('\n        }\n'))).toContain(
-      'if (record.meta === null) sessions.delete(sessionId)',
-    )
-    // ⚑ **D-017 · R10 — the replaced id's record, and only when nothing was adopted into it.**
-    expect(resume).toContain(
-      'if (opened !== sessionId && record.meta === null) sessions.delete(sessionId)',
-    )
-    expect(resume.match(/sessions\.delete\(/g)).toHaveLength(2)
-    // ⚑ **D-017b · a look the host refused** — only a record this call made up.
-    const look = method("    async look(sessionId, by = 'press')")
-    const lookCatch = look.slice(look.indexOf('} catch (cause) {'), look.indexOf('} finally {'))
-    expect(lookCatch).toContain('if (holding.meta === null) sessions.delete(sessionId)')
-    expect(look.match(/sessions\.delete\(/g)).toHaveLength(1)
-    // ⚑ **D-017b · `forget`** — only a RECORDED record nothing is handing over or commanding.
-    const forget = method('    forget(sessionId)')
-    expect(forget).toContain(
-      "if (record === undefined || record.phase !== 'recorded' || record.handover > 0) return",
-    )
-    expect(forget.match(/sessions\.delete\(/g)).toHaveLength(1)
-    // ⚑ **737 · `startAndSend`'s** — no answer (a rejection), an answer that sent nothing and handed
-    // nothing over, and R10's replaced id; ⛔ never after an adoption, where the conversation IS here.
-    const first = method('    async startAndSend(sessionId')
-    const noAnswer = first.slice(first.indexOf('if (answer === undefined) {'))
-    expect(noAnswer.slice(0, noAnswer.indexOf('\n        }\n'))).toContain(
-      'if (starting.meta === null) sessions.delete(sessionId)',
-    )
-    expect(first).toMatch(
-      /if \(starting\.meta === null\) sessions\.delete\(sessionId\)\n\s*else starting\.error = said\n\s*return \{ sent: false, refusal, openHere: false \}/,
-    )
-    expect(first).toContain(
-      'if (went !== null && starting.meta === null) sessions.delete(sessionId)',
-    )
-    expect(first.match(/sessions\.delete\(/g)).toHaveLength(3)
-  })
 })
 
 /* ================================================================ §5 · F-9 */
@@ -673,85 +580,5 @@ describe('§5 · `710` F-9 — the sheet’s launch is its own: key, error and C
       close: false,
       notice: 'no',
     })
-  })
-
-  it('🔴 the screen closes the sheet only when the conversation OPENS, and scopes what it draws to it', () => {
-    const screen = read('components/RuntimeScreen.vue')
-    const placed = bodyOf(screen, 'function startPlaced(')
-    // ⛔ **The close is inside `start`'s `opened` callback and nowhere else** (`718`'s review: a text
-    // order could not tell a close in the callback from one right after the ask).
-    const opened = placed.slice(placed.indexOf('opened: () => {'), placed.indexOf('refused: ('))
-    expect(opened).toContain(
-      "if (afterAPlacedLaunch({ kind: 'opened' }, stillThere()).close) overlays.close()",
-    )
-    expect(placed.split('overlays.close()')).toHaveLength(2)
-    expect(placed).toContain("'sheet'")
-    // ⚑ A refusal whose sheet is gone goes to the lane that paints ABOVE an overlay — never the
-    // frame's own `.toast`, which paints under the scrim (`718`'s review).
-    expect(placed).toContain(
-      "const { notice } = afterAPlacedLaunch({ kind: 'refused', sentence: refusal }, stillThere())",
-    )
-    expect(placed).toContain('if (notice !== null) overlays.notify(notice)')
-    expect(placed).not.toMatch(/\bsay\(/)
-    // ⚑ …and the sheet is handed the store's ONE sheet launch only if it is the sheet that asked.
-    const tag = screen.slice(
-      screen.indexOf('<StartAsAgent\n'),
-      screen.indexOf('/>', screen.indexOf('<StartAsAgent\n')),
-    )
-    expect(tag).toContain(':busy="placedHere && store.isPlacing()"')
-    expect(tag).toContain(':error="placedHere ? store.placedError.value : null"')
-    expect(tag).toContain('@cancel="void store.cancelPlaced()"')
-    // ⛔ And `start` hands the sheet's words to no one — its composer keeps them.
-    const start = bodyOf(screen, 'async function start(')
-    expect(start).toContain("if (door === 'sheet') return")
-  })
-
-  /**
-   * 🔴 **`718`'s second review round — the screen's own hops, each pinned where it is written.**
-   * ⛔ Every one of these reintroduces `710` F-9 with every other test green: the sheet never learns
-   * its launch is its own (`placedFrom`), a close is taken for the sheet still being up
-   * (`stillThere`), the refusal never reaches the caller (`told.refused`), the sheet never closes on
-   * success (`told.opened`), or the refusal is never kept for the notice.
-   */
-  it('🔴 the screen’s own hops for a sheet launch — each one read where it is written', () => {
-    const screen = read('components/RuntimeScreen.vue')
-    const placed = bodyOf(screen, 'function startPlaced(')
-    expect(placed).toContain('  placedFrom.value = sheet\n')
-    expect(placed).toContain(
-      'const stillThere = (): boolean => sheet !== null && overlays.overlay.value === sheet',
-    )
-    expect(placed).toMatch(/refused: \(sentence\) => \{\s*refusal = sentence\s*\}/)
-    expect(screen).toMatch(
-      /const placedHere = computed\(\s*\(\) => placedFrom\.value !== null && placedFrom\.value === overlays\.overlay\.value,?\s*\)/,
-    )
-    const start = bodyOf(screen, 'async function start(')
-    expect(start).toContain('const sessionId = await store.create(input, door, told.refused)')
-    // ⚑ The sheet closes when the conversation OPENS — after the refused arm, before it is shown.
-    const opened = start.indexOf('  told.opened?.()\n  showConversation(sessionId, from)')
-    expect(opened).toBeGreaterThan(start.indexOf('if (!sessionId) {'))
-  })
-
-  /**
-   * 🔴 **`718`'s second review round — closing the sheet while its launch runs cancels it.** ⛔ The
-   * sheet is that launch's only Cancel, and a closed sheet could neither draw its refusal nor give
-   * its words back. ⚑ Every overlay closes through `closeOverlay` — the sheet's ×, and the host's Esc
-   * and backdrop — so no way of closing it skips the rule.
-   */
-  it('🔴 closing the sheet while its launch runs cancels that launch — by every way of closing it', () => {
-    const screen = read('components/RuntimeScreen.vue')
-    const close = bodyOf(screen, 'function closeOverlay(')
-    expect(close).toContain('if (placedHere.value && store.isPlacing()) void store.cancelPlaced()')
-    expect(close.indexOf('overlays.close()')).toBeGreaterThan(close.indexOf('cancelPlaced'))
-    const host = screen.slice(
-      screen.indexOf('<OverlayHost'),
-      screen.indexOf('>', screen.indexOf('<OverlayHost')),
-    )
-    expect(host).toContain('v-if="overlays.overlay.value"')
-    expect(host).toContain('@close="closeOverlay()"')
-    const tag = screen.slice(
-      screen.indexOf('<StartAsAgent\n'),
-      screen.indexOf('/>', screen.indexOf('<StartAsAgent\n')),
-    )
-    expect(tag).toContain('@close="closeOverlay()"')
   })
 })

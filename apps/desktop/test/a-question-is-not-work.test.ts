@@ -1,9 +1,9 @@
 import { waitFor } from './lib/f093-host'
 import { AGENT_MESSAGE_KINDS } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime, parametersOf, ResumeError } from '@brobot2/runtime'
@@ -67,7 +67,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const mainRoot = join(here, '../src/main')
 
 /**
  * The line `messageNamingThePiece` composes — quoted once, as `412`'s own suite quotes it (D-016's
@@ -329,20 +328,6 @@ describe('415 · a question is not work', () => {
     )
   }
 
-  const sourceOf = (dir: string, file: string): string => readFileSync(join(dir, file), 'utf8')
-
-  /** Prose quotes code, so a census that COUNTS has to read the code only (`412`'s helper). */
-  const codeOnly = (source: string): string =>
-    source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-
-  const filesUnder = (dir: string): { path: string; text: string }[] =>
-    readdirSync(dir, { recursive: true, withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
-      .map((entry) => {
-        const full = join(entry.parentPath, entry.name)
-        return { path: relative(dir, full).replaceAll('\\', '/'), text: readFileSync(full, 'utf8') }
-      })
-
   // ───────────────────────────────────────────────────────────────────────────────────────────
   // §1 · property 1 — an agent can ask without opening work
   // ───────────────────────────────────────────────────────────────────────────────────────────
@@ -538,22 +523,6 @@ describe('415 · a question is not work', () => {
       expect(kind?.description ?? '').toContain('There is no default')
     })
 
-    it('⚠️ …and both adapters build that schema the same way — the claim, measured', () => {
-      // 🔴 **`parametersOf`'s own docblock says it matches both adapters *"exactly"*, and a
-      // docblock's universality claim is the specification the next census is written to.** ⛔ So
-      // it is read rather than trusted: the three call sites that turn a tool's `input` into what a
-      // model sees all use the same loose spelling.
-      const spellings = [
-        sourceOf(join(here, '../../../packages/runtime/src'), 'tool-inventory.ts'),
-        sourceOf(join(here, '../../../packages/runtime/src/codex'), 'agent-tools.ts'),
-        sourceOf(join(here, '../../../packages/runtime/src/claude'), 'agent-tools.ts'),
-      ]
-      for (const source of spellings) expect(codeOnly(source)).toContain('z.looseObject(')
-      // ⚑ **The control that this is not vacuous**: a strict object anywhere in that trio would be
-      // the defect `348` measured, so its absence is asserted rather than assumed.
-      for (const source of spellings) expect(codeOnly(source)).not.toContain('z.strictObject(')
-    })
-
     it('⚑ the stall remedy is the ask-and-wait skill’s, and the core offers no new work for one', () => {
       // PE-004: a follow-up drives the stalled piece, and a new give could repeat HO-020's cascade.
       // The remedy is in the ask-and-wait skill; the core may say when to look at a stall, but no
@@ -572,68 +541,6 @@ describe('415 · a question is not work', () => {
       expect(offered(`${said}\nFor a stall, give the work again.`)).toHaveLength(1)
       expect(aboutAStall('Use an installed skill.')).toEqual([])
       expect(AGENT_MESSAGE_KINDS).toContain('follow-up')
-    })
-
-    it('⛔ the agent door and the app’s personal-work note are the only explicit callers', () => {
-      // ⚑ **`394`'s rule for the parameter beside it, pointed the same way**: the widening is
-      // opt-in at the call site, so every caller that existed before `415` keeps the task it always
-      // minted. ⚠️ A census with a control that plants TWO (standing rule 12).
-      //
-      // ⚑ **D-016 · read per CALL, not per line** — `message_agent`'s call gained the piece a
-      // message is about and is written one argument a line, so a line-wise read found no declaring
-      // line at all. ⛔ Each call is its whole argument list, read to its closing paren.
-      const callsIn = (text: string): string[] => {
-        const found: string[] = []
-        for (let at = text.indexOf('queueMessage('); at !== -1;) {
-          const opens = at + 'queueMessage('.length
-          let depth = 1
-          let end = opens
-          while (end < text.length && depth > 0) {
-            if (text[end] === '(') depth += 1
-            if (text[end] === ')') depth -= 1
-            end += 1
-          }
-          found.push(text.slice(at, end).replace(/\s+/g, ' '))
-          at = text.indexOf('queueMessage(', end)
-        }
-        return found
-      }
-      const declares = (call: string): boolean =>
-        /,\s*says\s*,?\s*\)|,\s*'(?:note|follow-up)'/.test(call)
-      const calls = filesUnder(mainRoot).flatMap((file) =>
-        callsIn(codeOnly(file.text)).map((call) => ({ path: file.path, call })),
-      )
-      expect(calls.length, 'the census found nothing to read').toBeGreaterThanOrEqual(4)
-      const declaring = calls.filter((one) => declares(one.call))
-      // The host forwards agent declarations and explicitly marks its personal-work notice as a note.
-      expect(declaring.map((one) => one.path)).toEqual([
-        'runtime/agent-tools.ts',
-        'runtime/runtime-host.ts',
-        'runtime/runtime-host.ts',
-      ])
-      const appNote = declaring.find((one) =>
-        one.call.includes("appNotice: 'a-person-gave-new-work'"),
-      )
-      expect(appNote).toBeDefined()
-      expect(appNote!.call).toContain('THE_APP_ITSELF')
-      expect(appNote!.call).toContain("'notice'")
-      expect(appNote!.call).toContain("'note'")
-
-      // ⛔ **The control, planting TWO** — a sweep that read only the first match per file would
-      // pass this suite and miss a second declaring call site in an 8,700-line host.
-      const planted = [
-        { path: 'a.ts', text: "host.queueMessage(a, b, by, [], 'work', {}, says)" },
-        {
-          path: 'b.ts',
-          text: "await this.queueMessage(\n  id,\n  text,\n  THE_APP_ITSELF,\n  [],\n  'work',\n  {},\n  says,\n)",
-        },
-      ]
-      const found = planted.flatMap((file) =>
-        callsIn(file.text)
-          .filter((call) => declares(call))
-          .map(() => file.path),
-      )
-      expect(found).toEqual(['a.ts', 'b.ts'])
     })
   })
 

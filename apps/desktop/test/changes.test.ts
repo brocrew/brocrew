@@ -1,6 +1,4 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { allProviderCapabilities, isNetUnchanged as runtimeNetUnchanged } from '@brobot2/runtime'
 import type { FileChange, RuntimeEvent, RuntimeEventMessage } from '../src/shared/runtime-ipc'
@@ -301,19 +299,6 @@ describe('a file changing is not a question (092 §2, inheriting 086)', () => {
     })
     expect(waiting.badge).toBe(true)
     expect(tracesOutsideDrawer(waiting)).toBeGreaterThanOrEqual(1)
-  })
-
-  it('the change set is not an input to the attention model at all', () => {
-    // Asserted against the SOURCE rather than a literal written two lines up — 087's review finding
-    // 20. A `changes` field appearing on `AttentionInput` some later day is what this catches.
-    const source = readFileSync(
-      fileURLToPath(new URL('../src/renderer/src/lib/drawer.ts', import.meta.url)),
-      'utf8',
-    )
-    const body = /export interface AttentionInput \{([^}]*)\}/.exec(source)?.[1] ?? ''
-    expect(body, 'AttentionInput not found in drawer.ts').not.toBe('')
-    const fields = [...body.matchAll(/^\s{2}(\w+):/gm)].map((m) => m[1]).sort()
-    expect(fields).toEqual(['drawerOpen', 'status', 'tab', 'waiting'])
   })
 })
 

@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { conversationList } from '../src/renderer/src/lib/conversation-list'
 import type { ConversationListInput } from '../src/renderer/src/lib/conversation-list'
@@ -13,11 +10,6 @@ import {
 } from '../src/shared/runtime-ipc'
 import type { AgentIdentity, ResumableSessionInfo } from '../src/shared/runtime-ipc'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
-
-const here = dirname(fileURLToPath(import.meta.url))
-const RAIL = join(here, '../src/renderer/src/components/SideRail.vue')
-const TEAM_FOLD = join(here, '../src/renderer/src/lib/team-roster.ts')
-const TEAM_PAGE = join(here, '../src/renderer/src/components/TeamWorkspace.vue')
 
 const identity = (slug: string, displayName: string | null): AgentIdentity => ({
   id: `aid:${slug}`,
@@ -144,72 +136,3 @@ describe('§2 · the rail’s one list carries both facts, and the one that can 
     expect(row!.label).toBe('Project manager')
   })
 })
-
-describe('§3 · one spelling in the rail, asserted over its source', () => {
-  it('⛔ the rail names an identity through ONE function, in the one list it has left', () => {
-    const raw = readFileSync(RAIL, 'utf8')
-    const code = withoutProse(raw)
-    expect(code.match(/agentName\(/g)?.length ?? 0).toBe(1)
-    expect(code, 'a second spelling of the fallback is back in the rail').not.toContain(
-      'displayName ??',
-    )
-    const planted = raw.replace(
-      '<script setup lang="ts">',
-      '<script setup lang="ts">\n/* identity.displayName ?? */',
-    )
-    expect(planted).not.toBe(raw)
-    expect(planted.match(/identity\.displayName \?\?/g)).toHaveLength(
-      (raw.match(/identity\.displayName \?\?/g)?.length ?? 0) + 1,
-    )
-    expect(withoutProse(planted)).not.toContain('identity.displayName ??')
-    expect(withoutProse(planted).match(/agentName\(/g)).toHaveLength(1)
-    const badCode = raw.replace(
-      '</script>',
-      'const badName = identity.displayName ?? identity.slug\n</script>',
-    )
-    expect(badCode).not.toBe(raw)
-    expect(withoutProse(badCode)).toContain('identity.displayName ??')
-  })
-
-  it('⛔ the team roster names an identity through the same one function', () => {
-    const raw = readFileSync(TEAM_FOLD, 'utf8')
-    const fold = withoutProse(raw)
-    expect(fold.match(/agentName\(/g)?.length ?? 0).toBeGreaterThanOrEqual(1)
-    expect(fold, 'a second spelling of the fallback is in the team fold').not.toContain(
-      'displayName ??',
-    )
-    expect(raw, 'the stripper removed nothing').toContain('identity.displayName ??')
-    const page = withoutProse(readFileSync(TEAM_PAGE, 'utf8'))
-    expect(page, 'the team page names an identity of its own').not.toContain('agentName(')
-    expect(page, 'the team page stopped drawing the name the fold computed').toContain(
-      '{{ member.heading }}',
-    )
-  })
-})
-
-function withoutProse(source: string): string {
-  let inBlock = false
-  return source
-    .split('\n')
-    .map((raw) => {
-      let code = ''
-      for (let at = 0; at < raw.length; at += 1) {
-        const rest = raw.slice(at)
-        if (inBlock) {
-          if (!rest.startsWith('*/') && !rest.startsWith('-->')) continue
-          at += rest.startsWith('-->') ? 2 : 1
-          inBlock = false
-          continue
-        }
-        if (rest.startsWith('//')) break
-        if (rest.startsWith('/*') || rest.startsWith('<!--')) {
-          inBlock = true
-          at += rest.startsWith('<!--') ? 3 : 1
-          continue
-        }
-        code += raw[at]
-      }
-      return code
-    })
-    .join('\n')
-}

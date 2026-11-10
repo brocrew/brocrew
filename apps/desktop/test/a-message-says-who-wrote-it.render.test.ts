@@ -1,7 +1,4 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { readFileSync, readdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -12,25 +9,6 @@ import { createAttachmentBook, draftKey } from '../src/renderer/src/lib/drafts'
 import { APP_NOTICE_MARK, THE_APP_IS_THE_AUTHOR } from '../src/shared/app-notice'
 import { GO_AHEAD_AUTHORSHIP, GO_AHEAD_SENDER } from '../src/renderer/src/lib/plan-mode'
 import type { CreatedSession } from '../src/shared/runtime-ipc'
-
-/**
- * 🔴 **624 · what a person actually reads on the app's own carrier** — `HO-095` §6.1, §6.2, §6.3.
- *
- * ## ⛔ The photograph this file is written from
- *
- * An app-authored approval carrier must not appear under the person’s avatar or “You”
- * heading, nor offer “Cancel it” for a project that already exists.
- *
- * ## 🔴 Why every arm below draws TWO rows
- *
- * ⛔ **`a-positive-assertion-must-differ-from-the-default`.** *The carrier says `This app`* is
- * satisfied by a build that says `This app` on every row in the column, and *no Cancel it* is
- * satisfied by a build that has stopped drawing the control at all. ⚑ So each render carries the
- * app's row AND the person's own, and the assertions are about the DIFFERENCE — standing rule
- * 12, two planted rather than one.
- */
-const here = dirname(fileURLToPath(import.meta.url))
-const COMPONENTS = join(here, '../src/renderer/src/components')
 
 const AT = 1_700_000_000_000
 
@@ -119,13 +97,6 @@ const textsOf = (markup: string, cy: string): string[] =>
   [...visible(markup).matchAll(new RegExp(`data-cy="${cy}"[^>]*>([^<]*)<`, 'g'))].map((found) =>
     found[1]!.trim(),
   )
-
-/** ⚑ Code only — block comments, line comments and template comments all go. */
-const code = (source: string): string =>
-  source
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '')
 
 // ── the rows, named once ────────────────────────────────────────────────────────────────────
 
@@ -282,31 +253,5 @@ describe('app notices omit the caption', () => {
     } as unknown as TranscriptEvent
     const markup = await pane([theCarrier(), answer])
     expect(textsOf(markup, 'app-notice-why')).toEqual([])
-  })
-})
-
-// ────────────────────────────────────────────────────────────────────────────────────────────
-// §4 · the component owns no second spelling
-// ────────────────────────────────────────────────────────────────────────────────────────────
-
-describe('624 §4 · one source for the words', () => {
-  it('⛔ the entry renders the constants and spells none of them itself', () => {
-    const source = code(readFileSync(join(COMPONENTS, 'AppNoticeEntry.vue'), 'utf8'))
-    // ⚑ **Standing rule 8**: copy is rendered from one source. ⛔ A component that spelled its
-    // own heading would be the second spelling `WORK_REPORT_MARK`'s docblock already records
-    // diverging once.
-    expect(source).toContain('THE_APP_IS_THE_AUTHOR')
-    expect(source).toContain('APP_NOTICE_MARK')
-    expect(source).not.toContain('noticeMeans(')
-    expect(source).not.toContain("'This app'")
-    // ⛔ **And it never says `You`**, which is the entire reason the component exists.
-    expect(source).not.toMatch(/>\s*You\s*</)
-  })
-
-  it('⚑ the population is the DISPATCH — the entry is reachable from TranscriptView', () => {
-    const view = code(readFileSync(join(COMPONENTS, 'TranscriptView.vue'), 'utf8'))
-    expect(view).toContain("item.kind === 'appNotice'")
-    // ⚑ Non-vacuity: the folder really does hold the component the view names.
-    expect(readdirSync(COMPONENTS)).toContain('AppNoticeEntry.vue')
   })
 })

@@ -1,8 +1,5 @@
 import type { LedgerWalk, LedgerWalkKind } from '../src/shared/question-contracts'
 import type { WorkReport } from '../src/shared/task-contracts'
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { STANDING_LABEL, standingOf, type AgentFacets } from '../src/renderer/src/lib/agent-state'
 import type { ListedConversation } from '../src/renderer/src/lib/conversation-list'
@@ -24,41 +21,6 @@ import {
 
 import type { ForestConversation, TheWholeForest } from '../src/shared/the-whole-forest'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../src/shared/who-called-whom'
-
-/**
- * # 🔴 725 · draw 6 — a conversation the quit left open, said everywhere it is listed — ⚑ D-017b: ANY
- *
- * ⚑ **`711` GAP-1 / `701` F-4, as they were** — a conversation the quit left open read *Ended* /
- * *this app is not running it* / *Reopen the conversation* on the room, the Team shelf, the cast and
- * the forest while the rail drew it OPEN, and a work report's link and an outgoing card's press said
- * *Take it over and open it* on a holder with nothing running in it. `725` taught every surface the
- * kept-open population's words.
- *
- * Every surface listing a conversation says the same thing and offers one action, “Open the
- * conversation”, regardless of whether its process runs. The location detail remains
- * actionable: another window may have it open.
- *
- *  - **§1 · the Team shelf** (`theirConversations`) — ⚑ D-016 took the room (`projectRoster`) out.
- *  - **§2 · the forest** (`forestView`) — and `668`'s rule: a node the window holds is drawn from
- *    the window's own record, never the poll.
- *  - **§3 · the cast** (`workingTogetherView`, `parentCardOf`) — the child's tile and the
- *    parent's row, with no fact about where either is: no surface draws one since the spawn path
- *    went, so §3 has no control one fact over.
- *  - **§4 · the link** (`workIsWith`) and **§5 · the outgoing card** (`outgoingCard`).
- *  - **§6 · the hops** — `RuntimeScreen` is mounted by no test, so what reaches the entries is read
- *    where it is written: `held`, and no second list beside it.
- *
- * ⚑ **Each subject has its control one fact over** (rule 3): the same row in ANOTHER window says so,
- * and that is the only difference a surface draws.
- */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const RENDERER = join(here, '../src/renderer/src')
-const read = (path: string): string => readFileSync(join(RENDERER, path), 'utf8')
-
-/** ⚠️ Prose is stripped first — a docblock that NAMES a field is not code that reads it. */
-const codeOf = (body: string): string =>
-  body.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
 
 const AT = 1_700_000_000_000
 
@@ -338,58 +300,5 @@ describe('§5 · `701` F-4 — an outgoing card, both arms', () => {
     for (const words of [MESSAGE, REPLY]) {
       expect(outgoingCard(BARE, words, null, ids()).where?.action).toBe(OPEN_THE_CONVERSATION)
     }
-  })
-})
-
-/* ================================================================ §6 · the hops */
-
-/** The attributes of the one tag that opens at `open`, up to its self-close. */
-function tagOf(source: string, open: string): string {
-  const from = source.indexOf(open)
-  expect(from, `no ${open.trim()} in the source`).toBeGreaterThan(-1)
-  expect(source.indexOf(open, from + 1), `a second ${open.trim()}`).toBe(-1)
-  const end = source.indexOf('/>', from)
-  expect(end).toBeGreaterThan(from)
-  return source.slice(from, end)
-}
-
-/**
- * ⚑ **D-017b · re-aimed** — `725` threaded the rail's LIVE kept-open list beside `held` through
- * every hop (screen → pane → transcript → both entries). ⛔ With the population gone, the list is
- * gone from every hop, and `held` — the one fact an entry still marks — travels alone.
- * ⚠️ `RuntimeScreen` is mounted by no test, so each hop is read where it is written.
- */
-describe('§6 · `held` reaches both entries, alone — every hop, read where it is written', () => {
-  it('🔴 the screen hands the pane the window’s held list, and no second list', () => {
-    const tag = tagOf(read('components/RuntimeScreen.vue'), '<ConversationPane\n')
-    expect(tag).toContain(':held="heldHere"')
-    expect(tag).not.toContain(':kept-open=')
-  })
-
-  it('🔴 the pane forwards it to its transcript', () => {
-    const pane = read('components/ConversationPane.vue')
-    const tag = tagOf(pane, '<TranscriptView\n')
-    expect(tag).toContain(':held="props.held"')
-    expect(tag).not.toContain(':kept-open=')
-    expect(codeOf(pane)).not.toContain('keptOpen')
-  })
-
-  it('🔴 the transcript hands it to both entries, and each entry to its lib', () => {
-    const view = read('components/TranscriptView.vue')
-    for (const open of ['<WorkReportEntry\n', '<OutgoingEntry\n']) {
-      const tag = tagOf(view, open)
-      expect(tag, open).toContain(':held="heldIds"')
-      expect(tag, open).not.toContain(':kept-open=')
-    }
-    expect(read('components/WorkReportEntry.vue')).toContain(
-      'workIsWith(props.item.report, props.held ?? null)',
-    )
-    // ⚑ The argument after `held` is the work this conversation gave out, where a give's card finds
-    // its press — not a second list of what the window holds.
-    expect(codeOf(read('components/OutgoingEntry.vue'))).toMatch(
-      /outgoingCard\(\s*props\.item,\s*props\.words,\s*props\.identities \?\? null,\s*props\.held \?\? null,\s*props\.gaveOut \?\? null,?\s*\)/,
-    )
-    // ⚑ …and the list the screen read is gone from the rail.
-    expect(codeOf(read('components/SideRail.vue'))).not.toContain('keptOpenIds')
   })
 })

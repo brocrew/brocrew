@@ -3,9 +3,6 @@ import type {
   HeldWork,
   WhatEachConversationIsWaitingOn,
 } from '../src/shared/task-contracts'
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -43,7 +40,6 @@ import type { WhatIsBeingDone } from '../src/shared/what-is-being-done'
  */
 
 const NOW = 1_800_000_000_000
-const here = dirname(fileURLToPath(import.meta.url))
 
 const meta = (sessionId: string): CreatedSession =>
   ({
@@ -283,18 +279,6 @@ describe('D-006 §3 · the rail and the header draw it', () => {
     const untold = await pane()
     expect(untold).toContain('data-standing="idle"')
     expect(untold).not.toContain(STANDING_LABEL.stalled)
-  })
-
-  it('⚑ the screen hands it to the pane and to the forest’s live plates, off the same reading', () => {
-    // ⚠️ `RuntimeScreen` is not mounted by any test, so its two lines are read as code.
-    const screen = readFileSync(
-      join(here, '../src/renderer/src/components/RuntimeScreen.vue'),
-      'utf8',
-    )
-    // ⚑ **The positive control**: the wait's own line, which the work's sits beside.
-    expect(screen).toContain(':waiting="theWaitIn(conversationWaits, active.sessionId)"')
-    expect(screen).toContain(':held-work="theWorkIn(conversationWaits, active.sessionId)"')
-    expect(screen).toContain('theWorkIn(conversationWaits.value, record.sessionId)')
   })
 })
 

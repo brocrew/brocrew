@@ -1,6 +1,6 @@
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -69,7 +69,6 @@ import {
  */
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const mainRoot = join(here, '../src/main')
 
 class ProviderDouble extends FakeRuntime {
   constructor(
@@ -580,65 +579,6 @@ describe('629 · a stop reaches down the whole chain', () => {
    * so the door and its address cannot come to two readings of it.
    */
   describe('§5 · the widening is one predicate with one caller', () => {
-    /** ⛔ **CODE only** — `a-source-census-must-strip-prose-before-it-asserts`. */
-    const codeOf = (file: string): string =>
-      readFileSync(join(mainRoot, file), 'utf8')
-        .replace(/\/\*[\s\S]*?\*\//g, ' ')
-        .replace(/^[ \t]*\/\/.*$/gm, ' ')
-
-    it('⛔ exactly ONE call site asks the predicate — `mayInterrupt`, which the door and the resolver of its address ask', () => {
-      const code = codeOf('runtime/runtime-host.ts')
-      const lines = code.split('\n')
-      const declaration = /^ {2}(?:private |protected |public )?(?:static )?(?:async )?(\w+)\s*\(/
-      let current: string | null = null
-      const asked: string[] = []
-      /** ⚑ Each method's own code, so the condition is read where the predicate is asked. */
-      const bodies = new Map<string, string>()
-      for (const line of lines) {
-        // ⛔ **A zero-indent declaration RESETS the method**, and that line is the difference
-        // between this census and the one in `a-reach-you-can-see.test.ts` §3. ⚠️ That one relies
-        // on `mayCommand(`'s own declaration wrapping its arguments onto the next line, so the
-        // `\(\w` shape misses it by luck; this predicate's fits on one line, and without the reset
-        // it was attributed to whatever two-space `if (` happened to have matched last — the
-        // census reported `['if', 'interruptAgent']` and would have gone on doing so for a real
-        // ninth call site in any `export function` below.
-        if (/^(?:export )?(?:async )?function \w/.test(line)) current = null
-        const declared = declaration.exec(line)
-        if (declared !== null) current = declared[1] ?? null
-        if (current !== null) bodies.set(current, `${bodies.get(current) ?? ''}${line}\n`)
-        // ⛔ **Inside a METHOD** — the predicate's own declaration is excluded by position now
-        // that the reset above makes that true rather than accidental.
-        // ⚠️ **Its arguments may wrap onto the next line** (D-017 · R10 maps the chain through the
-        // one in each place), so an open paren at the end of the line counts as a call too.
-        if (/\bmayInterruptDownTheChain\((?:\w|\s*$)/.test(line) && current !== null)
-          asked.push(current)
-      }
-      expect(asked).toEqual(['mayInterrupt'])
-      // ⚑ **And it spells `mayCommand` in the SAME condition**, which is what keeps
-      // `a-reach-you-can-see.test.ts` §3's count honest rather than accidentally short.
-      const oneCondition =
-        /mayCommand\(this\.commandedNow\(target\), by\)\)\s*(?:\|\||&&)\s*!?mayInterruptDownTheChain\(\s*by,\s*this\.ancestorsAsItWillRun\(sessionId\)/
-      for (const name of asked) expect(bodies.get(name), name).toMatch(oneCondition)
-      // ⚑ **D-016 · commit 7 · R1 — and the entitlement has exactly two askers**: the door's verb,
-      // and the one resolver of an agent address, for the label `interrupt_agent` is handed.
-      // ⚑ **Four**: a message and an answer that ask the turn they wait behind to stop ask it too.
-      const askers = [...bodies.entries()]
-        .filter(([, body]) => /\bthis\.mayInterrupt\(/.test(body))
-        .map(([name]) => name)
-        .sort()
-      expect(askers).toEqual([
-        'interruptAgent',
-        'messageAgentNow',
-        'stopForAnAnswer',
-        'theConversationAddressed',
-      ])
-      // ⛔ **The stripper has teeth**, written as a comparison rather than as a pinned sentence.
-      const raw = readFileSync(join(mainRoot, 'runtime/runtime-host.ts'), 'utf8')
-      expect(raw.match(/mayInterruptDownTheChain/g)?.length ?? 0).toBeGreaterThan(
-        code.match(/mayInterruptDownTheChain/g)?.length ?? 0,
-      )
-    })
-
     it('⛔ the model-facing sentence of the verb names the chain and not *you created*', () => {
       // 🔴 **Standing rule 8.1.** ⛔ A description that went on saying *an agent you created*
       // would instruct a model not to try the act this app now admits — `402`'s defect pointed

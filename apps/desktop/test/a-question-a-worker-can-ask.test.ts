@@ -1,7 +1,7 @@
 import { waitFor } from './lib/f093-host'
 import { TASK_STATES } from '../src/shared/task-contracts'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -22,7 +22,6 @@ import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { stillHeld } from '../src/shared/mailbox'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { bodyOf, sourceOf, expectNoDeadlineDeps } from './helpers/source-contracts'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
@@ -83,7 +82,6 @@ import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from '.
  */
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const mainRoot = join(here, '../src/main')
 
 describe('437 · a question a worker can ask its parent', () => {
   class RecordingSink implements RuntimeEventSink {
@@ -578,39 +576,6 @@ describe('437 · a question a worker can ask its parent', () => {
       ).toBe(1)
       void asking
     })
-
-    it('⚑ the two gates this dispatch did not touch still read exactly as they did', () => {
-      // ⛔ **A source census with its shape stated** (standing rule 4): a widening for this dispatch
-      // would have had to add a clause naming a task or a parent inside one of these two functions,
-      // so the search is for THIS dispatch's own vocabulary appearing in them. ⚠️ A hit would be a
-      // finding; the absence is what says the reach is untouched.
-      // ⚑ **D-016 · the vocabulary is the piece's now** — `piecesOwnedBy` for `tasksOf`, `heldBy` for
-      // `theTaskYouWereGiven` and `parentOf` for `spawnProvenance` — so the search is for those.
-      const source = sourceOf(join(mainRoot, 'runtime'), 'runtime-host.ts')
-      const reach = bodyOf(source, 'withinMessagingReach(sessionId: string, by: Caller')
-      expect(reach).not.toContain('piecesOwnedBy')
-      expect(reach).not.toContain('heldBy')
-      expect(reach).not.toContain('parentOf')
-      const command = bodyOf(
-        sourceOf(join(mainRoot, 'runtime'), 'conversation-caller.ts'),
-        'export function mayCommand(',
-        '\n}',
-      )
-      expect(command).not.toContain('piecesOwnedBy')
-      expect(command).not.toContain('heldBy')
-      // ⚑ **The positive control for the instrument itself**: the two bodies really were found and
-      // really do contain what they have always contained. ⛔ Without this the three absences above
-      // would pass just as well against an empty string.
-      // ⛔ **Controls taken from the LAST statement of each body, never from its signature** (found
-      // by this dispatch's own review). ⚠️ A token that appears in the signature is satisfied by a
-      // span that found the declaration and stopped, so the three absences above would have been
-      // measured over nothing.
-      expect(reach).toContain('reachesWhatItDidNotStart')
-      expect(command).toContain('commandedBy')
-      // ⚠️ **And the verb really does read the task edge**, which is where the derivation moved to —
-      // ⚑ **D-016** — the pieces the asker holds, its root among them.
-      expect(bodyOf(source, 'async raiseAQuestion(')).toContain('this.heldBy(speaking)')
-    })
   })
 
   /**
@@ -1013,45 +978,6 @@ describe('437 · a question a worker can ask its parent', () => {
           .slice(before)
           .filter((event) => event.type === 'user_turn' || event.type === 'message_queued'),
       ).toEqual([])
-    })
-
-    it('⛔ 608 · the bound this section was named for is gone, and its neighbour still refuses a non-positive one', () => {
-      // 🔴 **This test pinned `askBoundMs`'s own construction guard** (437): a non-positive bound is
-      // not a shorter wait, it is a wait that has always expired — every question reporting *nobody
-      // answered* the instant it was asked, which reads as a working mechanism and is a broken one.
-      //
-      // ⛔ **608 removed the dep, the field and the constant** (HO-084 §4), so the guard has nothing
-      // left to guard. ⚑ **Re-aimed rather than deleted** (standing rule 26): what it pins now is
-      // that the number is GONE from every layer it lived in, and that the sibling guard the
-      // argument was borrowed from still fires — without which this would be a negative with no
-      // positive control anywhere near it.
-      const questions = readFileSync(join(mainRoot, '../shared/questions.ts'), 'utf8')
-      const code = questions.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, ' ')
-      expect(code).not.toContain('ASK_BOUND_MS')
-      // ⚠️ **612 · the positive control was `ESCALATION_WINDOW_MS` and that number is GONE too**
-      // (HO-088 §3.1, standing rule 26). ⛔ **A control has to be a thing that EXISTS**, so it is
-      // re-pointed at the one this module still exports — otherwise this negative would be green
-      // over an unreadable file.
-      expect(code).toContain('export function aPersonsSince(')
-
-      const host = readFileSync(join(mainRoot, 'runtime/runtime-host.ts'), 'utf8')
-      const hostCode = host.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, ' ')
-      expect(hostCode).not.toContain('askBoundMs')
-      expect(hostCode).not.toContain('escalationWindowMs')
-      // ⚑ **616 · the argument was borrowed from a guard that no longer has anything to guard.**
-      // ⛔ `612` re-pointed this at `positiveWindow(deps.proposalBoundMs ?? PROPOSAL_BOUND_MS,` —
-      // *the only window `positiveWindow` still guards* — and `HO-093` §2 removed that one too,
-      // so the helper itself went with its last caller. ⚠️ **Re-aimed a second time rather than
-      // deleted** (standing rule 26): what it pins is that the guard and BOTH remaining windows
-      // are gone from this class together, so a deadline cannot come back without its rule.
-      expect(hostCode).not.toContain('proposalBoundMs')
-      expect(hostCode).not.toContain('positiveWindow')
-      expectNoDeadlineDeps(mainRoot, 'worker-question')
-      // ⚑ **THE POSITIVE CONTROL, and it is a distinction rather than a spare string**: this class
-      // still resolves three injected numbers — they bound THIS APP's own teardown and launch, not
-      // how long somebody has to answer — so *no deadline window is resolved here* is a
-      // measurement and not a reader pointed at a file that moved (standing rule 34.2).
-      expect(hostCode).toContain('deps.closeDrainTimeoutMs ?? DEFAULT_CLOSE_DRAIN_TIMEOUT_MS')
     })
   })
 

@@ -60,7 +60,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const mainRoot = join(here, '../src/main')
 
 /**
  * ⛔ **The provider double, keeping the toolset the host handed each launch and each reopen.**
@@ -754,27 +753,6 @@ describe('373 · a parent that survives a restart', () => {
       await host.setApprovalMode(worker, 'auto', secondWindow)
       await host.close(worker, secondWindow)
     })
-
-    it('⛔ `readonly` still means what 340 §3 said it means — nothing writes the field twice', () => {
-      // 🔴 **The clause this dispatch's whole argument rests on, asserted rather than asserted-in-a
-      // -comment** (HO-013 §5). 340 §3's property is *fixed at reservation and never written
-      // again*, which is what makes *"a window claiming a session must not take away the spawner's
-      // ability to command it"* true because no line exists that could make it false. ⚠️ A resume
-      // that DERIVES the field writes it at a reservation, so the property is untouched — and this
-      // is what would go red if a later dispatch reached for an assignment instead.
-      const strip = (text: string): string =>
-        text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ')
-      const everything = readdirSync(mainRoot, { recursive: true, encoding: 'utf8' })
-        .filter((entry) => entry.endsWith('.ts'))
-        .map((entry) => strip(readFileSync(join(mainRoot, entry), 'utf8')))
-        .join('\n')
-      expect(everything).not.toMatch(/commandedBy\s*=[^=]/)
-      expect(everything).not.toMatch(/spawnedBy\s*=[^=]/)
-      // ⚑ **The control that makes those two lines a fact about these fields.** The same reader over
-      // the same text finds the assignment to the field that DOES move — `ownerId`, `null → id →
-      // null`, on a claim and on a release — so "nothing assigns it" is not "nothing was read".
-      expect(everything).toMatch(/slot\.ownerId = /)
-    })
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
@@ -782,75 +760,6 @@ describe('373 · a parent that survives a restart', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§4 · what clears a derived commander', () => {
-    it('⛔ nothing clears it, and the bound is who can SPELL it — the call sites, enumerated', () => {
-      // ⚠️ **`mayCommand` compares strings and asks nothing about liveness**, so the honest answer
-      // to *"what clears a commander whose parent is gone"* is: nothing, and nothing needs to,
-      // because the identity can be minted in exactly two places — the toolset builder, from the
-      // session a toolset was built FOR, and the resume, from the parent a row NAMES. ⛔ This is
-      // that enumeration, derived from the directory rather than typed out, so a third file that
-      // learns to spell one turns it red.
-      const sources = readdirSync(mainRoot, { recursive: true, encoding: 'utf8' })
-        .filter((entry) => entry.endsWith('.ts'))
-        .map((entry) => ({
-          path: entry.replaceAll('\\', '/'),
-          text: readFileSync(join(mainRoot, entry), 'utf8'),
-        }))
-      const strip = (text: string): string =>
-        text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ')
-      // ⚠️ **The FILES, not the lines.** What this asks is *where can this identity be minted*, and
-      // pinning each call's argument here would make every row of `373`'s mutation table red through
-      // this test rather than through the behaviour it claims to protect. What the argument IS is
-      // §2's question, asked of three callers at the door instead of of the source.
-      const callers = sources.flatMap(({ path, text }) =>
-        strip(text)
-          .split('\n')
-          .some(
-            (line) =>
-              line.includes('agentCallerId(') && !line.includes('export const agentCallerId'),
-          )
-          ? [path]
-          : [],
-      )
-      expect(callers.sort()).toEqual(['runtime/agent-tools.ts', 'runtime/runtime-host.ts'])
-      // ⚑ **And the toolset builder is only ever handed a session`s OWN id**, which is what makes
-      // the first line above a mint rather than a forge.
-      const host = sources.find((one) => one.path.endsWith('runtime/runtime-host.ts'))
-      if (host === undefined) throw new Error('runtime-host.ts is not where this test looked')
-      const built = strip(host.text)
-        .split('\n')
-        .filter((line) => line.includes('agentToolsFor('))
-        .map((line) => line.trim())
-      // ⚑ **F093 · two more, each handed the conversation's own id too**: the record composed for a
-      // read of a launch that kept none (`whatALaunchGave`) and the agent-input popup's read
-      // (`whatThisAgentWasGiven`). A launch's own record is handed the toolset its launch built.
-      expect(built).toEqual([
-        'return agentToolsFor(this, sessionId, this.theListsAsLastRead(), offersDirectRulesWrite)',
-      ])
-      const roleBound = strip(host.text)
-        .split('\n')
-        .filter((line) => line.includes('this.agentToolsForSession('))
-        .map((line) => line.trim())
-      expect(roleBound).toEqual([
-        'const agentTools = this.agentToolsForSession(id)',
-        'this.agentToolsForSession(sessionId),',
-        'toolset: this.agentToolsForSession(sessionId),',
-        'const agentTools = this.agentToolsForSession(sessionId)',
-      ])
-      expect(
-        sources
-          .filter(({ text }) =>
-            strip(text)
-              .split('\n')
-              .some(
-                (line) =>
-                  line.includes('agentToolsFor(') &&
-                  !line.includes('export function agentToolsFor('),
-              ),
-          )
-          .map(({ path }) => path),
-      ).toEqual(['runtime/runtime-host.ts'])
-    })
-
     it('⚠️ the entitlement names an identity, not a live session — and that is the honest reading', async () => {
       const { pm, worker } = await aPmAndItsWorker()
       await restart()

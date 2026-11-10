@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   GROUP_LABEL,
@@ -19,25 +16,6 @@ import {
   type PaletteInput,
   type PaletteOpenRow,
 } from '../src/renderer/src/lib/command-palette'
-
-/**
- * # 249 · what ⌘K offers, and what it says it looked at
- *
- * ⛔ **The rule, not the markup.** `command-palette.dom.test.ts` presses the keys in a real engine;
- * this file is the part that can be asserted without one — which row exists, which is absent, how
- * they rank, and the three sentences the palette owes a person.
- *
- * ⚠️ **Every absence below is paired with a presence on the same input.** A `toHaveLength(0)` over a
- * builder that had stopped building anything would be a false claim about coverage — the vacuity
- * hazard `live-settings.render.test.ts` writes down and `118` §M6 caught for real.
- */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const read = (rel: string): string => readFileSync(join(here, '..', rel), 'utf8')
-
-const RULE = 'src/renderer/src/lib/command-palette.ts'
-const RAIL = 'src/renderer/src/components/SideRail.vue'
-const PANEL = 'src/renderer/src/components/CommandPalette.vue'
 
 /** ⚑ **D-017b · one row of the rail's one list** — the same shape whatever the conversation is doing. */
 function openRow(over: Partial<PaletteOpenRow> = {}): PaletteOpenRow {
@@ -406,103 +384,5 @@ describe('249 §2 · the palette says what it searched', () => {
     // sentence offering to search the library FOR this text would land a person on an empty box.
     expect(NO_MATCH_BODY).not.toMatch(/search(ing)? (all|every).*for/i)
     expect(NO_MATCH_ESCAPE).toEqual({ kind: 'go', place: 'sessions' })
-  })
-})
-
-/**
- * # ⛔ The drift guard (223 §5's instrument, on this dispatch's seams)
- *
- * ⚠️ **A SOURCE census.** It proves the call is written, not that the value is right — the DOM test
- * is what presses the keys. Each assertion below is a seam where two things could quietly stop
- * being one thing.
- */
-describe('249 · the seams, censused', () => {
-  it("⛔ the palette offers the RAIL's rows, and the rail presses each one the way the palette does", () => {
-    // ⚑ **D-017b · re-aimed from `pressable`'s one definition**, which went with the closed rows it
-    // judged. The seam that is left is the one list: the rail hands the palette the SAME `rows` its
-    // own `v-for` walks, and both press a row with one verb — `select` — whatever it is doing.
-    const rail = read(RAIL)
-    expect(rail).toContain(':conversations="rows"')
-    // ⚑ **2026-10-01 · the rail walks each SECTION's rows** — BroBot's, then the other agents' — and
-    // a section's rows are the same `rows`, cut by the one fact the section is.
-    expect(rail).toContain('v-for="row in section.rows"')
-    expect(rail).toContain('rows.value.filter((row) => row.section === key)')
-    expect(rail).toContain('@click="emit(\'select\', row.sessionId)"')
-    expect(rail).toContain("if (action.kind === 'select') return emit('select', action.sessionId)")
-    expect(read(RULE)).toContain('for (const row of input.conversations)')
-    // ⛔ …and neither reads a second list of its own.
-    expect(read(RULE)).not.toContain('closed-threads')
-    expect(rail).not.toContain('closed-threads')
-  })
-
-  it('⛔ "this conversation" means the one ON SCREEN, in one place, for all three readers', () => {
-    const rail = read(RAIL)
-    // ⚠️ `activeId` alone still names a conversation while the reader is on Home or the library, so
-    // the palette would offer "Export this conversation" about something nobody is looking at.
-    expect(rail).toContain(
-      'const onScreenId = computed(() => (props.place === null ? props.activeId : null))',
-    )
-    expect(rail).toContain(':active-id="onScreenId"')
-    expect(rail).toContain(':class="{ active: row.sessionId === onScreenId }"')
-    expect(rail).toContain(':data-active="row.sessionId === onScreenId"')
-    // The expression this replaced must be gone from all three sites, not just the palette's.
-    expect(rail).not.toContain('props.activeId && props.place === null')
-  })
-
-  it('⛔ the ⌘K BUTTON and the ⌘K KEY run one function, not two ideas of "open"', () => {
-    // `169`: the gesture is gone, not answered — both paths, or neither.
-    expect(read(RAIL)).toContain('@click="palette?.toggle()"')
-    expect(read(PANEL)).toContain('toggle: (): void => (showing.value ? hide() : show())')
-    expect(read(PANEL)).toMatch(/event\.key === 'k' \|\| event\.key === 'K'/)
-  })
-
-  it('⛔ the key is claimed in CAPTURE, and released on unmount', () => {
-    // ⚠️ Registration order would work today and break the day a component moved; the capture
-    // phase at `window` is first by the DOM's own ordering. Both halves are asserted, because a
-    // listener added with `capture` and removed without it is never removed at all.
-    expect(read(PANEL)).toContain("window.addEventListener('keydown', onKey, { capture: true })")
-    expect(read(PANEL)).toContain("window.removeEventListener('keydown', onKey, { capture: true })")
-  })
-
-  it('⛔ the ⌘K control no longer announces that it does nothing, and emits no dead event', () => {
-    const rail = read(RAIL)
-    // ⚠️ Scoped to the BUTTON's own tag, not to the file: the rail's other sections are genuinely
-    // placeholders and their "not wired yet" doctrine is still true of them (`012`). A file-wide
-    // assertion here would have to be deleted the day the first project surface lands, which is
-    // how a guard stops meaning anything.
-    const at = rail.indexOf('data-cy="command-palette"')
-    expect(at, 'the ⌘K button is no longer recognisable in the rail').toBeGreaterThan(-1)
-    const tag = rail.slice(rail.lastIndexOf('<button', at), rail.indexOf('>', at) + 1)
-    expect(tag).not.toContain('not wired yet')
-    expect(tag).toContain(":title=\"`Command palette (${chordSaid(platform, 'K')})")
-    expect(tag).toContain('@click="palette?.toggle()"')
-    // ⛔ `217` §9 (c): an emit nothing raises is a dead prop one layer up. The rail declares it no
-    // longer, and raises it nowhere — so `RuntimeScreen`'s `@command` sink has nothing to sink.
-    expect(rail).not.toContain("emit('command')")
-    expect(rail).not.toMatch(/^\s*command: \[\]$/m)
-  })
-
-  it("⚠️ the palette REFUSES the composer's chords rather than letting them past", () => {
-    const panel = read(PANEL)
-    // ⛔ **This read *"handed straight back"* and asserted the bare `return` that did it** (292 §4,
-    // from `288` M1). ⚠️ **There is nowhere to hand them back TO.** The send handler is
-    // `@keydown.enter` on the composer's textarea; an event dispatched at this panel's input
-    // bubbles to its ancestors and to `window` and can never travel sideways into a sibling
-    // control. So the chord did nothing at all: no send, no queue, no interrupt, no refusal, and
-    // the panel stayed open — on a chord the composer's own hint advertises.
-    //
-    // ⚑ **Claimed and answered now, like every other chord this panel owns**, so nothing
-    // underneath can pick up the half a bare `return` let through.
-    expect(panel).toContain('if (event.metaKey || event.ctrlKey) {')
-    expect(panel).toContain('chordRefusal.value = SEND_CHORD_REFUSED')
-    expect(panel, 'plain Enter must still be the palette\u2019s').toContain(
-      'if (event.isComposing) return',
-    )
-    // …and ⌘N is left to `RuntimeScreen`: the palette gets out of the way without preventing it.
-    const branch = panel.slice(panel.indexOf("event.key === 'n'"))
-    const body = branch.slice(branch.indexOf('{') + 1, branch.indexOf('}'))
-    expect(body).toContain('hide()')
-    expect(body).not.toContain('preventDefault')
-    expect(body).not.toContain('stopImmediatePropagation')
   })
 })

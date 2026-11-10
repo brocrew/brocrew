@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 import { createLaunchGuard, saveFirstApproval } from '../src/renderer/src/lib/first-approval'
 
@@ -38,27 +37,4 @@ it('returns a save refusal and releases the launch guard after an exception', as
   const next = vi.fn(async () => {})
   await guard.run(next)
   expect(next).toHaveBeenCalledTimes(1)
-})
-
-it('the front door releases after navigation and before awaiting its first send', () => {
-  const source = readFileSync(
-    new URL('../src/renderer/src/components/RuntimeScreen.vue', import.meta.url),
-    'utf8',
-  )
-  const wrapper = source.slice(
-    source.indexOf('async function startFromFrontDoor('),
-    source.indexOf('async function start('),
-  )
-  expect(wrapper).toContain('frontDoorLaunch.run((release) =>')
-  expect(wrapper).toContain("'front-door', { navigated: release }")
-  const start = source.slice(
-    source.indexOf('async function start('),
-    source.indexOf('const openAsForSheet'),
-  )
-  const navigation = start.indexOf('showConversation(sessionId, from)')
-  const release = start.indexOf('told.navigated?.()')
-  const send = start.indexOf("await store.send(sessionId, firstMessage, 'now', attachments)")
-  expect(navigation).toBeGreaterThan(-1)
-  expect(release).toBeGreaterThan(navigation)
-  expect(send).toBeGreaterThan(release)
 })

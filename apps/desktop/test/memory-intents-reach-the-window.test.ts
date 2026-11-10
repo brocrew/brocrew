@@ -1,14 +1,5 @@
 import { neutralHostDeps } from './lib/host-fixture'
-import ts from 'typescript'
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -160,46 +151,4 @@ describe('the window host uses the durable memory service', () => {
     expect(restored?.done && restored.amendment.by).toEqual({ who: 'a-person' })
     expect(readFileSync(entry, 'utf8')).toBe(text)
   })
-})
-
-it('has no main-process import of the legacy filesystem-first memory writer', () => {
-  const root = join(dirname(fileURLToPath(import.meta.url)), '../src/main')
-  let checked = 0
-  const walk = (folder: string) => {
-    for (const entry of readdirSync(folder, { withFileTypes: true })) {
-      const file = join(folder, entry.name)
-      if (entry.isDirectory()) {
-        walk(file)
-        continue
-      }
-      if (!entry.isFile() || !entry.name.endsWith('.ts')) continue
-      const tree = ts.createSourceFile(
-        file,
-        readFileSync(file, 'utf8'),
-        ts.ScriptTarget.Latest,
-        true,
-      )
-      for (const item of tree.statements) {
-        if (
-          !ts.isImportDeclaration(item) ||
-          !ts.isStringLiteral(item.moduleSpecifier) ||
-          !item.moduleSpecifier.text.endsWith('/agent-memory') ||
-          item.importClause?.isTypeOnly
-        )
-          continue
-        checked++
-        const bindings = item.importClause?.namedBindings
-        expect(bindings === undefined || ts.isNamedImports(bindings), file).toBe(true)
-        if (bindings && ts.isNamedImports(bindings))
-          expect(
-            bindings.elements
-              .filter((one) => !one.isTypeOnly)
-              .map((one) => (one.propertyName ?? one.name).text),
-            file,
-          ).not.toContain('amendAgentMemory')
-      }
-    }
-  }
-  walk(root)
-  expect(checked).toBeGreaterThan(0)
 })

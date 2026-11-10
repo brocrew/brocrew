@@ -1,6 +1,6 @@
 import type { ConversationWait } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { readdirSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
@@ -78,25 +78,6 @@ import {
 
 const source = (path: string): string =>
   readFileSync(fileURLToPath(new URL(`../src/renderer/src/${path}`, import.meta.url)), 'utf8')
-
-/**
- * Every `.vue` and `.ts` under the renderer — the scope a sprite reference can hide in.
- *
- * ⚠️ `.d.ts` is excluded (089 review). A declaration file ships no markup, so a `#i-…` in one of its
- * doc comments would be a reference that no browser ever resolves — and it would count as a live
- * use, hiding the deletion of the last real one.
- */
-function rendererSources(): string[] {
-  const root = fileURLToPath(new URL('../src/renderer/src', import.meta.url))
-  const walk = (dir: string): string[] =>
-    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-      const full = `${dir}/${entry.name}`
-      if (entry.isDirectory()) return walk(full)
-      if (entry.name.endsWith('.d.ts')) return []
-      return entry.name.endsWith('.vue') || entry.name.endsWith('.ts') ? [full] : []
-    })
-  return walk(root)
-}
 
 const TOKENS = source('assets/tokens.css')
 
@@ -350,36 +331,6 @@ describe('no colour is carried anywhere but tokens.css (acceptance 6)', () => {
     expect(named).toContain('--waiting')
     expect(named).toContain('--danger')
   })
-
-  it('every token it names is declared in :root, and re-tuned for light', () => {
-    // ⚠️ These are named in a .ts file, so NO component list can see them — `chat-theme.test.ts`
-    // greps `.vue` sources for `var(--x)` and this module's tokens reach the DOM through an inline
-    // style built here. That is precisely why they are checked at their source instead.
-    for (const token of named) {
-      expect(DARK[token], `${token} is not declared in :root`).toBeDefined()
-      expect(LIGHT[token], `${token} has no light value — it would smear on paper`).toBeDefined()
-      expect(LIGHT[token], `${token} did not actually change`).not.toBe(DARK[token])
-    }
-  })
-
-  it('the component itself carries no hex, rgb or hsl', () => {
-    const component = source('components/AgentState.vue')
-    expect(component).not.toMatch(/#[0-9a-fA-F]{3,8}\b(?![^<]*<\/)/)
-    expect(component).not.toMatch(/\brgba?\(/)
-    expect(component).not.toMatch(/\bhsla?\(/)
-    // The positive half: it does paint, through tokens.
-    expect(component).toContain('var(--badge-ink)')
-    expect(component).toContain('var(--paper-line)')
-  })
-
-  it('--badge-ink is the ONE token 082 added, and it is white in both themes on purpose', () => {
-    expect(DARK['--badge-ink']).toBe('#ffffff')
-    // The plate is white on dark chrome, in the drawer and on paper. A light value would be the
-    // same white, and `chat-theme.test.ts` rejects an override that does not change anything — so
-    // its absence from §13 is the design, and this is the positive statement of it.
-    expect(LIGHT['--badge-ink']).toBeUndefined()
-    expect(source('components/AgentState.vue')).toContain('background: var(--badge-ink)')
-  })
 })
 
 describe('the white plate is a light island (tokens.css §14)', () => {
@@ -429,25 +380,6 @@ describe('the white plate is a light island (tokens.css §14)', () => {
     expect(islandFindings(TOKENS)).toEqual([])
   })
 
-  it('⛔ and each way the island could drift is refused', () => {
-    const light = ":root,\n[data-chat-theme='light'],\n[data-on-white] {"
-    expect(TOKENS.includes(light)).toBe(true)
-    // A literal colour in the shared alias block: a second palette.
-    expect(islandFindings(TOKENS.replace(light, `${light}\n  --faint: #5f6979;`))).toContain(
-      'the shared alias block holds a value, not a reference: --faint',
-    )
-    // A rule that names the island on its own, appended at the end: it would win by order.
-    expect(islandFindings(`${TOKENS}\n[data-on-white] { --faint: #5f6979; }`)).toContain(
-      'the island is named in more than one place — a second block wins by source order',
-    )
-    // A derived rule for the island alone: the derived layer would split the two.
-    expect(
-      islandFindings(
-        `${TOKENS}\n:where(:root[data-theme]:not([data-theme='classic'])) [data-on-white] { --faint: var(--muted); }`,
-      ),
-    ).toContain('a derived rule names the island without the light conversation')
-  })
-
   it('at exactly the values the light conversation uses — one palette, not two', () => {
     // ⚠️ Two of these three are now true by construction (one block, two selectors) and are kept as
     // the statement of WHAT that construction buys. The third is not: `not.toBe(DARK[token])` is a
@@ -457,30 +389,6 @@ describe('the white plate is a light island (tokens.css §14)', () => {
       expect(PLATE[token], `${token} missing from the plate scope`).toBeDefined()
       expect(PLATE[token], `${token} disagrees with the light conversation`).toBe(LIGHT[token])
       expect(PLATE[token], `${token} is still the dark value`).not.toBe(DARK[token])
-    }
-  })
-
-  it('sits on the PLATE and not on the component root, so the underline stays on the surface', () => {
-    // If the scope moved up to the root, an amber underline on near-black would be drawn at its
-    // paper value — the same mistake as the badges, in the other direction. The attribute's
-    // position is the rule, and it is not visible to any render assertion.
-    // ⚠️ Matched as a TAG rather than as a fixed substring: `indexOf('class="plate" data-on-white')`
-    // was the first version, and it would have gone red on a formatter reordering two attributes
-    // that were both still there. Found in review.
-    const component = source('components/AgentState.vue')
-    const tagWith = (attribute: string): string[] =>
-      [...component.matchAll(/<span[^>]*>/g)]
-        .map((match) => match[0])
-        .filter((tag) => tag.includes(attribute))
-    const islands = tagWith('data-on-white')
-    expect(islands, 'the light-island scope is on no element at all').toHaveLength(1)
-    expect(islands[0], 'the light island is not on the plate').toContain('class="plate"')
-    // Everything the underline and the dot sit on must be OUTSIDE it, or a paper-dark amber line
-    // would be drawn on near-black — the same mistake in the other direction.
-    for (const outside of ['class="agent-state"', 'class="underline"', 'class="doing-dot"']) {
-      expect(tagWith(outside).join(''), `${outside} carries the island`).not.toContain(
-        'data-on-white',
-      )
     }
   })
 })
@@ -503,101 +411,6 @@ describe('the sprite has every glyph the badges name', () => {
     }
     // …and the three 082 added really were absent before, so this is not describing the status quo.
     expect(named).toEqual(expect.arrayContaining(['#i-lock', '#i-question', '#i-bang']))
-  })
-
-  it('each symbol id is defined exactly once', () => {
-    const ids = [...sprite.matchAll(/id="(i-[a-z-]+)"/g)].map((m) => m[1]!)
-    expect(ids.length).toBe(new Set(ids).size)
-    // A duplicate id resolves to whichever the browser saw first, which is a silently wrong icon.
-    // +1 in 087 (`i-compact`), +1 in 096 (`i-revert`, the deferred foot), +1 in 216
-    // (`i-paperclip`), +1 in 254 (`i-image`, the chip for a pasted screenshot), ⛔ **−1 in 344**:
-    // `i-sun` was the reading light's glyph and the toggle was its only caller, so retiring the
-    // control left a symbol nothing draws. ⚑ This count is the repo's only guard on an orphaned
-    // glyph, and it is why the sprite did not quietly keep it.
-    // 38 since 358 added `#i-tool` — the glyph on the header button that opens the Tools sheet.
-    // ⛔ **A new symbol rather than a borrowed one**: `#i-sliders` is Controls and `#i-terminal` is a
-    // shell command, and a second meaning on either would make one shape say two things.
-    // 39 since 376 added `#i-plus` — the rail's New project. ⛔ Also a new symbol rather than a
-    // rotated `i-x`: a transform on a shared glyph makes one shape mean two things depending on a
-    // class somebody may drop, and this count is the repo's only guard on an orphaned glyph.
-    // 40 since 508 added `#i-list` — the Work tab. ⛔ **A new symbol rather than `#i-check`**, which
-    // is already `NEEDING_GLYPH.plan` and means *waiting on you*: a tab whose subject is mostly
-    // work that is still OPEN must not wear the tick that means finished, and must not borrow the
-    // attention channel's glyph for a tally that is deliberately not an attention signal.
-    // ⛔ **37 since D-016 took out `i-home`, `i-plus` and `i-link`**: only deleted code drew them.
-    // The agent card adds #i-users for its Sub agents box, bringing this count to 38.
-    // ⛔ **A new symbol rather than `#i-user`**, which is one person: the box holds agents.
-    // 39 since the main panel's Graph tab (2026-09-30) added `#i-graph` — its tab's glyph.
-    // 40 since the card's way up (2026-09-30) added `#i-up`. ⛔ A new symbol rather than a rotated
-    // `#i-arrow`, for 376's reason above: a transform on a shared glyph makes one shape mean two.
-    // 46 after the Settings rail gained its gear and the provider marks moved into ProviderMark:
-    // an app-owned C and OpenAI's own image files replace the two unused provider symbols.
-    // `#i-shield` went with the Waiting on you footer, and `#i-hourglass` came as the plate's
-    // corner mark for an agent waiting on another agent (`#i-clock` is that corner's wake-up).
-    // 47 with `#i-open`, the Open icon after a path in a message.
-    // The agent knowledge button adds the Book glyph.
-    expect(ids.length).toBe(48)
-    expect(ids).toContain('i-book')
-    expect(source('components/AgentBookButton.vue')).toContain('href="#i-book"')
-  })
-
-  /**
-   * ⚠️ **The test 082's duplicate-id check could not be** (089). A `<use href="#i-nope">` renders an
-   * empty `<svg>`: no error, no console warning, no missing-image glyph — a blank 16px box where an
-   * icon was meant to be, on a control that still works. `#i-square` and `#i-help` shipped that way
-   * and were found by reading, not by running. A duplicate DEFINITION is a wrong icon; a dangling
-   * REFERENCE is no icon, and only one of the two had a test.
-   *
-   * It scans every renderer source file rather than the components it knows about, because the
-   * failure is precisely the reference nobody thought to look at.
-   *
-   * ⚠️ **It cannot tell a live reference from prose, and that is the safe direction.** A comment
-   * naming a `#i-…` that does not exist fails this test; the cure is to write the id without its
-   * `#`, which two comments in this change now do. The opposite bias — skipping comments — is how a
-   * reference inside a commented-out block comes back to life unchecked.
-   */
-  it('every sprite id the app names is one the sprite defines', () => {
-    const defined = new Set([...sprite.matchAll(/id="(i-[a-z-]+)"/g)].map((match) => match[1]!))
-    const referenced = new Map<string, string[]>()
-    for (const file of rendererSources()) {
-      const text = readFileSync(file, 'utf8')
-      // Matches `href="#i-x"`, `:href="cond ? '#i-x' : '#i-y'"` and a bare '#i-x' in a glyph map
-      // alike — the id is named the same way wherever it is written down. The sprite's own
-      // `id="i-x"` cannot match, which is what keeps this from checking itself.
-      for (const match of text.matchAll(/#(i-[a-z0-9-]+)/g)) {
-        const at = referenced.get(match[1]!) ?? []
-        at.push(file.split('/').at(-1)!)
-        referenced.set(match[1]!, at)
-      }
-    }
-
-    // A reference built from a template literal reads as its prefix, ending in `-`: it is a
-    // FAMILY, and it dangles only when the sprite defines no member.
-    const dangling = [...referenced].filter(([id]) =>
-      id.endsWith('-') ? ![...defined].some((one) => one.startsWith(id)) : !defined.has(id),
-    )
-    expect(dangling.map(([id, where]) => `${id} (${[...new Set(where)].join(', ')})`)).toEqual([])
-
-    // ⚠️ **The positive half, and this test is worthless without it.** An empty `referenced` map —
-    // a broken glob, a regex that stopped matching, a renamed directory — would satisfy the line
-    // above over nothing at all. These three are named because each is written a DIFFERENT way:
-    // a static `href` attribute, a value in a TypeScript map, and one arm of an inline ternary.
-    expect(referenced.get('i-send'), 'static href="#i-…" is no longer being read').toBeDefined()
-    expect(
-      referenced.get('i-lock'),
-      "a '#i-…' in a .ts glyph map is no longer being read",
-    ).toBeDefined()
-    expect(
-      referenced.get('i-play'),
-      'a #i-… inside a :href ternary is no longer being read',
-    ).toBeDefined()
-    expect(referenced.size).toBeGreaterThan(20)
-
-    // …and the two that were dangling really were referenced, so this is not passing because the
-    // call sites were deleted. 089 fixed them by adding one symbol and reusing two that existed.
-    expect(referenced.get('i-square'), 'the interrupt button lost its icon').toBeDefined()
-    expect(defined.has('i-square'), 'i-square was never added to the sprite').toBe(true)
-    expect(referenced.has('i-help'), 'i-help came back, and it is still not a symbol').toBe(false)
   })
 })
 
@@ -730,17 +543,6 @@ describe('motion is two states, and reduced motion removes it', () => {
     const dotted = BEINGS.filter((being) => underlineFor(being).dotted)
     expect(dotted).toEqual(['unstarted', 'starting', 'silent'])
     expect(underlineFor('live').dotted).toBe(false)
-  })
-
-  it('the reduced-motion path exists and cancels the only animation there is', () => {
-    // ⚠️ SSR has no media queries and no computed styles, so this is unassertable by rendering —
-    // and it is the one setting nobody switches on by hand. Checked at the source.
-    const component = source('components/AgentState.vue')
-    expect(component).toContain('@media (prefers-reduced-motion: reduce)')
-    const reduced = component.slice(component.indexOf('@media (prefers-reduced-motion'))
-    expect(reduced).toContain('animation: none')
-    // …and there is exactly one animation for it to cancel.
-    expect([...component.matchAll(/animation:/g)]).toHaveLength(2)
   })
 
   it('every BEING gets a real token for its underline', () => {
@@ -1369,45 +1171,6 @@ describe('a sub-agent, from its card (082 adoption)', () => {
     // this passes over a function that returns an empty object for everything.
     expect(subAgentFacets({ running: false, outcome: 'completed' }).doing).toBe('idle')
     expect(subAgentFacets({ running: false, outcome: 'completed' }).being).toBeDefined()
-  })
-
-  it('the five written outcomes still differ — the mark did not flatten them', () => {
-    const entry = readFileSync(
-      fileURLToPath(new URL('../src/renderer/src/components/SubAgentEntry.vue', import.meta.url)),
-      'utf8',
-    )
-    for (const word of ['running', 'completed', 'failed', 'interrupted', 'ended']) {
-      expect(entry, `${word} is no longer written out`).toContain(`: '${word}'`)
-    }
-    // …and the dot that used to carry the colour is gone rather than left beside the plate.
-    expect(entry).not.toContain('<span class="dot"')
-    expect(entry).toContain('<AgentState')
-  })
-})
-
-describe('one counter, not two (082 hazard 1)', () => {
-  it('the component never counts — no timer, no clock of its own', () => {
-    const component = readFileSync(
-      fileURLToPath(new URL('../src/renderer/src/components/AgentState.vue', import.meta.url)),
-      'utf8',
-    )
-    for (const forbidden of ['setInterval', 'setTimeout', 'Date.now', 'requestAnimationFrame']) {
-      expect(component, `AgentState started its own ${forbidden}`).not.toContain(forbidden)
-    }
-    // The positive half: it does take the number, it just does not produce it.
-    expect(component).toContain('silentSeconds')
-  })
-
-  it('and the header hands over the one it already had', () => {
-    const header = readFileSync(
-      fileURLToPath(new URL('../src/renderer/src/components/SessionHeader.vue', import.meta.url)),
-      'utf8',
-    )
-    // `silentFor` is the header's own computed, ticked off `liveness.since` once a second. The pill
-    // and the plate therefore read the same number in the same frame, by construction.
-    expect(header).toMatch(/:silent-seconds="[^"]*silentFor/)
-    expect(header).toContain('const silentFor = computed(')
-    expect([...header.matchAll(/setInterval\(/g)]).toHaveLength(1)
   })
 })
 

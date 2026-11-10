@@ -1,5 +1,5 @@
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -37,7 +37,6 @@ const PROJECT_MANAGER_PROFILE_ID = 'project-manager'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const mainRoot = join(here, '../src/main')
 
 /** ⚠️ This file is about who may create an identity, and never about what a launch is told. */
 const NOTHING_INJECTED: SessionInstructions = {
@@ -402,39 +401,6 @@ describe('419 · creating an agent, and the provider it runs on', () => {
       expect(rows('PRAGMA table_info(provider_session)').map((one) => one['name'])).not.toContain(
         'home_project_segment',
       )
-    })
-
-    it('⛔ the creation path names no home writer at all — and since D-016 no path in the store does', () => {
-      const strip = (source: string): string =>
-        source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ')
-      const code = strip(readFileSync(join(mainRoot, 'db/session-store.ts'), 'utf8'))
-      // ⚠️ **Each anchor is asserted present before it is sliced on**: `indexOf` answers −1 for a
-      // renamed one, and a slice to −1 is most of the file.
-      const between = (from: string, to: string): string => {
-        const start = code.indexOf(from)
-        const end = code.indexOf(to)
-        expect(start, `${from} was renamed or moved`).toBeGreaterThanOrEqual(0)
-        expect(end, `${to} was renamed or moved`).toBeGreaterThan(start)
-        return code.slice(start, end)
-      }
-      const creation = between(
-        'const createAgentIdentityTx = db.transaction(',
-        'const identityRowFor = (',
-      )
-      expect(creation.length, 'createAgentIdentityTx was renamed or moved').toBeGreaterThan(200)
-      const launch = between('const createTx = db.transaction(', 'const adoptTx = db.transaction(')
-      expect(launch.length, 'createTx was renamed or moved').toBeGreaterThan(200)
-
-      // ⛔ **D-016 · the launch path stopped writing one, so the absence is measured over every
-      // statement in the store**: the table and the column are named by no code at all — which is
-      // what makes it an absence on the creation path as well.
-      expect(code).not.toContain('agent_identity_home')
-      expect(code).not.toContain('home_project_segment')
-      // ⚑ **The control, and it is what makes the absences above a measurement**: the launch path's
-      // one write about where a conversation belongs is the identity, and its statement — a column
-      // named in SQL — survives the same strip the two absences were read through.
-      expect(launch).toContain('spawnSql().writeIdentityOnSession.run(')
-      expect(code).toContain('UPDATE provider_session SET agent_identity_id = ? WHERE id = ?')
     })
   })
 

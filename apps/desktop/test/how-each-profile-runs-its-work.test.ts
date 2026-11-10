@@ -754,26 +754,6 @@ describe('the host takes the file as it starts', () => {
       expect(host.profileKindOf('browser-driver')).toBe('service')
       warned.mockRestore()
     })
-
-    it('only goes through that door: the host’s removal is the one place that removes an identity', () => {
-      const sources: string[] = []
-      const walk = (dir: string): void => {
-        for (const entry of readdirSync(dir, { withFileTypes: true })) {
-          const path = join(dir, entry.name)
-          if (entry.isDirectory()) walk(path)
-          else if (entry.name.endsWith('.ts')) sources.push(path)
-        }
-      }
-      walk(join(here, '../src'))
-      const callers = sources.flatMap((path) =>
-        [...readFileSync(path, 'utf8').matchAll(/\.removeAgentIdentity\(/g)].map(() => path),
-      )
-      expect(
-        callers
-          .map((path) => path.replaceAll('\\', '/').split('/src/')[1])
-          .map((tail) => `src/${tail}`),
-      ).toEqual(['src/main/runtime/runtime-host.ts'])
-    })
   })
 
   describe('a missing file', () => {

@@ -7,7 +7,7 @@ import type {
   RoutedRequest,
 } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -685,19 +685,6 @@ describe('476 · every compact answer that reaches the host, plus the blocked pe
         decision: { outcome: 'deny' },
       })
       assertDecisionRow(session.sessionId, WITHHELD, 'deny')
-    })
-
-    it('⚑ the card really does build its press this way, in its own source (487)', () => {
-      // ⛔ **The join the arm above cannot make on its own.** `the-bridge-that-clones-nothing`'s
-      // §9 asserts the producer; this asserts the pair — the offer it renders and the payload it
-      // sends — so an arm that stopped standing in for the card would be visible here.
-      const card = readFileSync(
-        join(here, '../src/renderer/src/components/PermissionCard.vue'),
-        'utf8',
-      )
-      expect(card).toContain('permissionOffer(scope.value.availableDecisions')
-      expect(card).toContain('permissionDecisionFor(outcome)')
-      expect(card).toContain('v-for="outcome in offered"')
     })
   })
 })

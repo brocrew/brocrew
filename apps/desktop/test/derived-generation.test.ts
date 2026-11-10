@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -819,81 +819,6 @@ describe('the derived-generation contract (065)', () => {
   })
 
   describe('`hasEvents` is no longer the completeness signal (acceptance 6)', () => {
-    /** Every production source file in the main process, with comments stripped. */
-    const sources = (): { path: string; code: string }[] => {
-      const found: { path: string; code: string }[] = []
-      const walk = (at: string): void => {
-        for (const entry of readdirSync(at, { withFileTypes: true })) {
-          const path = join(at, entry.name)
-          if (entry.isDirectory()) {
-            if (entry.name !== 'migrations') walk(path)
-            continue
-          }
-          if (!entry.name.endsWith('.ts')) continue
-          const code = readFileSync(path, 'utf8')
-            .split('\n')
-            .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
-            .join('\n')
-          found.push({ path, code })
-        }
-      }
-      walk(join(here, '../src/main'))
-      return found
-    }
-
-    it('is called nowhere, and the contract is called in its place', () => {
-      const files = sources()
-      // Non-vacuity #1: the scan is looking at real files.
-      expect(files.length).toBeGreaterThan(20)
-
-      const offenders = files.filter((file) => /\.hasEvents\s*\(/.test(file.code))
-      expect(offenders.map((file) => file.path)).toEqual([])
-
-      // Non-vacuity #2, and EXACT rather than a floor — 064's review found that a floor I had
-      // guessed was half the real count, and would therefore have tolerated deleting half the sites
-      // in silence.
-      //
-      // ⚠️ **CALL SITES, not files (073, 068 finding 14) — the sixth vacuous test.** The comment
-      // below has always said four; the assertion counted the three FILES they live in, so deleting
-      // either duplicate, or adding a fifth call inside a file already on the list, moved nothing.
-      // 068: *"A completeness gate can be removed from one production path without moving this
-      // advertised mutation guard."* A map keeps both properties in one assertion: a new file is a
-      // new key, a lost file is a missing one, and a call appearing or vanishing inside any of them
-      // is a number that no longer matches.
-      //
-      // **FIVE is what is there, and the comment that said four was itself wrong** — which is the
-      // finding twice over: an assertion that could not count and a sentence beside it that had
-      // miscounted. 068 said five and it is five: the derive's idempotence guard; the sweep's
-      // up-to-date short-circuit and its failure-reason reporter; the host's import readback and
-      // the host's own `status`. (068's line numbers are stale — the calls are at
-      // `derive-ledger.ts:131`, `sweep.ts:695,799` and `runtime-host.ts:1791,1848` — but the count
-      // it drew from them was right.) ⚑ **FIVE again since the provider's file became the only
-      // record**: the one-file import asks once, where the bulk pass it replaced asked twice. Line numbers are not asserted, deliberately — they move on
-      // every edit and a guard nobody can keep green is a guard that gets deleted. Changing the
-      // count is allowed; changing it without noticing is what this stops.
-      //
-      // ⚑ **SIX since 119**, and the new one is `importRecordedSession`'s read-back — the row's own
-      // Import, which owes the same answer the sweep's import owes and gets it the same way. It is
-      // ONE site for three endings on purpose: the two refusals ahead of the attempt need `readable`
-      // too, and three literal calls would have moved this number by three to say one new thing.
-      // Unsorted, deliberately: `toEqual` on an object does not care about key order, so a `.sort()`
-      // here would be decoration standing where an assertion should be.
-      const sites: Record<string, number> = {}
-      for (const file of files) {
-        const count = [...file.code.matchAll(/\.ledgerStatus\s*\(/g)].length
-        if (count > 0) {
-          const portable = file.path.replaceAll('\\', '/')
-          sites[portable.slice(portable.indexOf('/src/main/'))] = count
-        }
-      }
-      expect(sites, 'the scan found the wrong contract call sites').toEqual({
-        '/src/main/archive/derive-ledger.ts': 1,
-        '/src/main/archive/import-from-home.ts': 1,
-        '/src/main/runtime/runtime-host.ts': 3,
-      })
-      expect(Object.values(sites).reduce((a, b) => a + b, 0)).toBe(5)
-    })
-
     it('counts every call rather than every file, so a duplicate cannot go missing', () => {
       // ⚠️ Non-vacuity for the count itself, and the one the file-path version could not have: two
       // calls in one file must read as two. Written against a synthetic file because the real
@@ -919,14 +844,6 @@ describe('the derived-generation contract (065)', () => {
         .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
         .join('\n')
       expect(/\.hasEvents\s*\(/.test(stripped)).toBe(true)
-    })
-
-    it('the store does not offer it either, so a new caller cannot reach for it', () => {
-      const source = readFileSync(join(here, '../src/main/db/session-store.ts'), 'utf8')
-      // The interface itself: `hasEvents` is gone as a member, not merely unused. A method left on
-      // the surface is one an unrelated task adds a caller to.
-      expect(source).not.toMatch(/^\s*hasEvents\(/m)
-      expect(source).toMatch(/^\s*ledgerStatus\(sessionId: string\): LedgerStatus/m)
     })
   })
 

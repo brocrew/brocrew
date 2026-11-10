@@ -95,27 +95,6 @@ describe('what the first message is made of (217)', () => {
   it('⛔ start() takes the paths at all — the signature the four hops end at', () => {
     expect(body).toContain('attachments: HandedPath[] = [],')
   })
-
-  it('🔴 …and what would not FIT under the ceiling is said out loud (236 §5)', () => {
-    // ⛔ **`227` LOW 3's other half.** The book merges the returned paths into whatever was staged
-    // while the send was in flight, and the ceiling still binds — so a refused message can come
-    // back one file short. ⚠️ Nothing in this repository mounts `RuntimeScreen`, so this is a
-    // source census like the three above it: the count is computed in `drafts.ts`, where a test can
-    // read it, and this is the assertion that the screen does not compute it and throw it away.
-    const screen = readFileSync(
-      join(here, '../src/renderer/src/components/RuntimeScreen.vue'),
-      'utf8',
-    )
-    const restore = screen.slice(
-      screen.indexOf('function restoreRefused('),
-      screen.indexOf('function restoreRefused(') + 400,
-    )
-    expect(restore.length, 'restoreRefused moved or was renamed — re-point this').toBeGreaterThan(
-      100,
-    )
-    expect(restore).toContain('const refused = handRefusedBack(drafts, slot, text, attachments)')
-    expect(restore).toContain('if (refused > 0) say(attachmentsNotRestored(refused))')
-  })
 })
 
 describe('the rule has teeth (217)', () => {

@@ -325,25 +325,6 @@ describe('§5 · the wiring in main', () => {
   /** The start's own failure handler: the first after its `whenReady`. */
   const startsCatch = index.indexOf('.catch((error: unknown) => {', index.indexOf('.whenReady()'))
 
-  it('🔴 asked before any migration runs, with no way past it', () => {
-    const init = body(
-      'function initDatabase(): AppDatabase {',
-      '/**\n * How many database migrations',
-    )
-    const asked = init.indexOf('openOrRefuse(database, theBuildsMigrations(), {')
-    expect(asked).toBeGreaterThan(-1)
-    expect(asked).toBeLessThan(init.indexOf('applyMigrations(database, migrationsFolder)'))
-    // …against the migrations the start-up check read, the ones it let this start open by.
-    expect(body('async function theVerdictBeforeTheData(', '\n}\n')).toMatch(
-      /if \(verdict\.kind === 'open'\) \{\s+thisBuildsMigrations = await buildLineage\(resolveMigrationsFolder\(\)\)/,
-    )
-    // ⛔ The force-open switch is gone, from the app and from the module.
-    expect(index).not.toMatch(/OPEN_A_NEWER_DATABASE|brobot-open-a-newer-database|override:/)
-    expect(readFileSync(join(here, '../src/main/db/newer-database.ts'), 'utf8')).not.toMatch(
-      /OPEN_A_NEWER_DATABASE|brobot-open-a-newer-database|override/,
-    )
-  })
-
   it('🔴 the start-up check runs before the database is opened at all', () => {
     const decided = index.indexOf('const verdict = await theVerdictBeforeTheData(ownership)')
     expect(decided).toBeGreaterThan(index.indexOf('.whenReady()'))

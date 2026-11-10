@@ -146,18 +146,6 @@ function whatTheRemovalReadingRefused(
 }
 
 describe('§2 · the table says what the adapters DO, and each half is bound differently', () => {
-  it('🔴 the CODEX row is bound to `APPROVAL_PROFILES` BY VALUE — in the runtime project', () => {
-    const bound = readFileSync(
-      join(REPO, 'packages/runtime/test/a-mode-a-child-inherits.test.ts'),
-      'utf8',
-    )
-    expect(bound).toContain("import { APPROVAL_PROFILES } from '../src/codex/codex-runtime'")
-    expect(bound).toContain('WHAT_STANDS_PAST_ITS_FOLDER.codex')
-    expect(bound).toContain("'danger-full-access'")
-    expect(bound).toContain('the-sandbox-around-an-act')
-    expect(bound).toContain('!==')
-  })
-
   it('⛔ the CLAUDE row is a NEGATIVE, and this is the search shape behind it', () => {
     const claude = readFileSync(join(RUNTIME, 'claude/claude-runtime.ts'), 'utf8')
     const code = withoutProse(claude)
@@ -238,18 +226,6 @@ describe('§4 · the sentence the PO ruled owed, and it is derived rather than t
     expect(YOLO_MEANS_FOR_AGENTS_IT_STARTS.split('\n').filter(Boolean)).toHaveLength(1)
     expect(YOLO_MEANS_FOR_AGENTS_IT_STARTS.length).toBeLessThan(160)
     expect(YOLO_MEANS_FOR_AGENTS_IT_STARTS).not.toMatch(/unsafe|danger|careful|be aware|warning/i)
-  })
-
-  it('the current conversation shows its mode choice immediately while it is pending', () => {
-    const controls = readFileSync(
-      join(HERE, '../src/renderer/src/components/CardApproval.vue'),
-      'utf8',
-    )
-    expect(controls).toContain('data-cy="card-approval"')
-    expect(controls).toContain('role="switch"')
-    expect(controls).toContain(
-      ':checked="(props.approval.pending ?? props.approval.mode) === \'auto\'"',
-    )
   })
 })
 

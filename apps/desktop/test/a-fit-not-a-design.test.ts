@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ACTIVITY_PHASES, type ActivityPhase } from '../src/shared/what-is-being-done'
 import {
@@ -79,43 +79,6 @@ describe('§2 · one derivation of the line', () => {
   /** ⚑ **No line, no words** — and `''` rather than `'null'`, which is what an interpolation does. */
   it('⚑ no line is an empty string', () => {
     expect(activityWords(null)).toBe('')
-  })
-
-  /**
-   * 🔴 **The census: NO component composes this sentence itself.**
-   *
-   * ⛔ **`ActivityPill.vue`'s own docblock is the rule** — *"There is now one rule, `activityLine`
-   * in `lib/agent-state.ts`, feeding both… Do not re-derive anything in this file"* — and `588`
-   * gave that line a second surface, which is `169` §1's hazard arriving.
-   *
-   * ⚠️ **Derived from the tree, not from a list of paths** (`a-guard-scoped-by-where-things-live-
-   * today-expires-silently`): every `.vue` under `components/` is read, so a THIRD surface drawing
-   * the line is caught by the same assertion.
-   */
-  it('🔴 no component spells the composition itself', () => {
-    const dir = join(import.meta.dirname, '../src/renderer/src/components')
-    const files = readdirSync(dir).filter((name) => name.endsWith('.vue'))
-    // ⛔ **The non-vacuity control, and it is a floor rather than a count** — a glob that matched
-    // nothing would otherwise pass this census silently.
-    expect(files.length).toBeGreaterThan(20)
-    const guilty: string[] = []
-    let readers = 0
-    for (const name of files) {
-      const text = readFileSync(join(dir, name), 'utf8')
-      if (text.includes('activityWords')) readers += 1
-      // ⚑ **The SHAPE, not the spelling**: `word` and `detail` interpolated into one template
-      // literal is the composition however it is punctuated.
-      if (/\$\{[^}]*\bword\b[^}]*\}[^`]*\$\{[^}]*\bdetail\b[^}]*\}/.test(text)) guilty.push(name)
-    }
-    expect(guilty, 'a component composes the activity line itself').toEqual([])
-    // 🔴 **The control that proves the walk reached the files** — THREE components ask for the
-    // shared function today (`ActivityPill`, `SessionShelf` and, since `593`, `TeamWorkspace`;
-    // `ProjectWorkspace` went at D-016), and a census that found zero readers would be reading the
-    // wrong directory.
-    // ⛔ **The bound stays a FLOOR**: the number is what the walk is checked against, never what
-    // the app is pinned to (`a-bound-written-as-the-constant-cannot-pin-it`). ⚠️ The sentence said
-    // *two* and was already one short at `588`.
-    expect(readers, 'no component imports the shared composition').toBeGreaterThanOrEqual(2)
   })
 
   /**

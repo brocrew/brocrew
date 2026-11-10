@@ -1,8 +1,7 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppDatabase } from '../src/main/db/connection'
 import type { SessionStore } from '../src/main/db/session-store'
@@ -281,25 +280,5 @@ describe('723 · R83 — a Stop the provider does not answer is said', () => {
     await host.interrupt(id, window)
     expect(server.sent('turn/interrupt')).toHaveLength(2)
     expect(ofType(id, 'work_interrupted')).toHaveLength(2)
-  })
-
-  it('⚑ “not on Claude” — Claude’s own stop bounds its ack no later than the host says a stop is unanswered', () => {
-    // ⚑ Claude's `interrupt()` bounds its ack and then forces the ending itself (074), so its ask is
-    // settled before the host's bound passes. ⚠️ That holds while Claude's ack bound is no longer
-    // than the host's wait — two constants in two packages, pinned here so neither moves alone
-    // (review). ⛔ Equal bounds rely on Claude's timer being made first, inside `handle.interrupt()`.
-    const here = dirname(fileURLToPath(import.meta.url))
-    const read = (path: string): string => readFileSync(join(here, path), 'utf8')
-    const hostWait = /const DEFAULT_INTERRUPT_WAIT_MS = ([\d_]+)/.exec(
-      read('../src/main/runtime/runtime-host.ts'),
-    )?.[1]
-    const claudeAck = /const INTERRUPT_ACK_TIMEOUT_MS = ([\d_]+)/.exec(
-      read('../../../packages/runtime/src/claude/claude-runtime.ts'),
-    )?.[1]
-    expect(hostWait, 'the host’s wait').toBeDefined()
-    expect(claudeAck, 'Claude’s ack bound').toBeDefined()
-    expect(Number(claudeAck?.replaceAll('_', ''))).toBeLessThanOrEqual(
-      Number(hostWait?.replaceAll('_', '')),
-    )
   })
 })

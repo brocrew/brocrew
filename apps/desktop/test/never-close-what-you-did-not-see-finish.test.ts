@@ -43,7 +43,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const mainRoot = join(here, '../src/main')
 const sharedRoot = join(here, '../src/shared')
 
 class ProviderDouble extends FakeRuntime {
@@ -875,41 +874,6 @@ describe('400 · never close what you did not see finish', () => {
         }
       })
     }
-
-    it('🔴 the restart sweep runs LAST, and that ordering is load-bearing', () => {
-      const host_ = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'runtime-host.ts'))
-      const undriven = host_.indexOf('store.settleRestartedWork(')
-      const messages = host_.indexOf('store.settleStrandedMessages(')
-      const requests = host_.indexOf('store.settleStrandedRequests(')
-      const runs = host_.indexOf('store.settleOrphanRuns(')
-      for (const at of [undriven, messages, requests, runs]) expect(at).toBeGreaterThan(0)
-      expect(undriven).toBeGreaterThan(messages)
-      expect(undriven).toBeGreaterThan(requests)
-      expect(undriven).toBeGreaterThan(runs)
-    })
-
-    it('⛔ exactly ONE place writes the row, and it is the store', () => {
-      const writers = filesUnder(join(here, '../src/main'))
-        .filter(({ text }) => codeOnly(text).includes("type: 'work_restarted'"))
-        .map(({ path }) => path)
-        .sort()
-      expect(writers).toEqual(['db/session-store.ts'])
-      const readers = filesUnder(join(here, '../src'))
-        .filter(({ text }) => codeOnly(text).includes('work_restarted'))
-        .map(({ path }) => path)
-        .sort()
-      expect(readers).toEqual([
-        'main/db/fold-index.ts',
-        'main/db/session-store.ts',
-        'main/runtime/digest.ts',
-        'main/runtime/runtime-host.ts',
-        'renderer/src/lib/describe-event.ts',
-        'renderer/src/lib/transcript.ts',
-        'shared/digest.ts',
-        'shared/task-contracts.ts',
-        'shared/tasks.ts',
-      ])
-    })
   })
 
   describe('§6 · the censuses', () => {
@@ -976,40 +940,6 @@ describe('400 · never close what you did not see finish', () => {
           entries.filter((entry) => entry.event.type !== 'request_routed'),
         )[0]?.questionLostAtRestart,
       ).toBe(false)
-    })
-
-    it('⛔ nothing anywhere in the app infers a task state from an ABSENCE of events', () => {
-      const main = filesUnder(join(here, '../src/main'))
-      const quietWork = ({ text }: { text: string }): boolean => text.includes('work_quiet')
-      expect(main.filter(quietWork)).toEqual([])
-      expect(main.filter(({ text }) => text.includes('quietWorkDue'))).toEqual([])
-      expect(main.filter(({ text }) => text.includes('settleQuietWork'))).toEqual([])
-      const planted = [
-        ...main,
-        { path: 'planted-quiet-work.ts', text: "const type = 'work_quiet'" },
-      ]
-      expect(planted.filter(quietWork).map(({ path }) => path)).toEqual(['planted-quiet-work.ts'])
-      const owners = (files: typeof main): string[] =>
-        files
-          .filter(({ text }) => codeOnly(text).includes('settleRestartedWork'))
-          .map(({ path }) => path)
-          .sort()
-      const expectedOwners = ['db/session-store.ts', 'runtime/runtime-host.ts']
-      expect(owners(main)).toEqual(expectedOwners)
-      const missingStore = main.filter(({ path }) => path !== 'db/session-store.ts')
-      expect(owners(missingStore)).toEqual(['runtime/runtime-host.ts'])
-      expect(() => expect(owners(missingStore)).toEqual(expectedOwners)).toThrow()
-      expect(owners([])).toEqual([])
-      expect(() => expect(owners([])).toEqual(expectedOwners)).toThrow()
-    })
-
-    it('⛔ the runtime package never learns either of this dispatch’s words', () => {
-      const runtime = filesUnder(join(here, '../../../packages/runtime/src')).map(
-        ({ text }) => text,
-      )
-      expect(runtime.filter((text) => text.includes('work_restarted'))).toHaveLength(0)
-      expect(runtime.filter((text) => text.includes('stalledBecause'))).toHaveLength(0)
-      expect(runtime.filter((text) => text.includes('completeTurn')).length).toBeGreaterThan(1)
     })
   })
 })

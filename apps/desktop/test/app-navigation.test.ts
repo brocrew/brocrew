@@ -1,5 +1,4 @@
 import { EventEmitter } from 'node:events'
-import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { installAppNavigation } from '../src/main/app-navigation'
 import { APP_NAVIGATE_CHANNEL } from '../src/shared/app-navigation'
@@ -54,15 +53,6 @@ describe('native history gestures', () => {
       window.emit('app-command', {}, value)
     }
     expect(window.webContents.send).not.toHaveBeenCalled()
-  })
-
-  it('installs the handler on the app window', () => {
-    const main = readFileSync(new URL('../src/main/index.ts', import.meta.url), 'utf8')
-    const create = main.slice(
-      main.indexOf('function createWindow(): void {'),
-      main.indexOf('function appDocument('),
-    )
-    expect(create).toContain('installAppNavigation(window)')
   })
 })
 

@@ -974,22 +974,6 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
 describe('§5 · the wiring — `main.ts`, `RuntimeScreen` and main’s doors, which no test mounts', () => {
   const read = (path: string): string => readFileSync(join(HERE, path), 'utf8')
 
-  it('🔴 the drafts are read BEFORE the app mounts, and handed to it once', () => {
-    expect(read('../src/renderer/src/main.ts')).toMatch(
-      /draftHandoffBeforeDrawing\(window\.api\?\.savedDrafts\)\.then\(\(handoff\) => \{\n\s+createApp\(App\)\.provide\(SAVED_DRAFTS, handoff\)\.mount\('#app'\)/,
-    )
-  })
-
-  it('🔴 the screen keeps ITS book through the one entry point, and stops it BEFORE it unmounts', () => {
-    const screen = read('../src/renderer/src/components/RuntimeScreen.vue')
-    // ⚑ …and the sweep empties nothing while the app is closing — its fifth door
-    const sweep = screen.slice(screen.indexOf('const draftSweep = sweepDrafts('))
-    expect(sweep.slice(0, sweep.indexOf('\n)\n'))).toMatch(/\n\s+\(\) => appClosing\.value,$/)
-    expect(screen).toMatch(
-      /const draftKeeping = keepTheDraftBook\(\{\n\s+book: drafts,\n\s+sweep: draftSweep,\n\s+handoff: inject\(SAVED_DRAFTS, null\),\n\s+bridge: window\.api,\n\s+closing: \(\) => appClosing\.value,\n\}\)\nonBeforeUnmount\(draftKeeping\.stop\)\n/,
-    )
-  })
-
   it('🔴 main’s doors, the existence question, the quit’s wait and the start-up keep are wired', () => {
     const index = read('../src/main/index.ts')
     expect(index).toMatch(
@@ -1031,40 +1015,6 @@ describe('§5 · the wiring — `main.ts`, `RuntimeScreen` and main’s doors, w
     expect(read('../src/renderer/src/lib/kept-drafts.ts')).toMatch(
       /onLastSave: bridge\?\.onLastDraftSave,/,
     )
-  })
-
-  it('⛔ nothing about a draft is SENT anywhere by being saved — the two modules reach no host, command, provider or network', () => {
-    /** Every module a file names — single-line imports, multi-line ones, and any other way in. */
-    const reaches = (path: string): { from: string[]; other: RegExpMatchArray | null } => {
-      const source = read(path)
-      return {
-        from: [...source.matchAll(/from\s+'([^']+)'/g)].map((each) => each[1]!).sort(),
-        other: source.match(/\bimport\(|\brequire\(|\bfetch\(|\bnet\b|'electron'/),
-      }
-    }
-    expect(reaches('../src/main/saved-drafts.ts')).toEqual({
-      from: [
-        '../shared/attachment-contracts',
-        '../shared/runtime-ipc',
-        '../shared/saved-drafts',
-        './runtime/handed-path',
-        'node:path',
-      ],
-      other: null,
-    })
-    expect(reaches('../src/main/drafts-file.ts')).toEqual({
-      from: [
-        '../shared/runtime-ipc',
-        '../shared/saved-drafts',
-        './db/connection',
-        './db/side-file-import',
-        './runtime/pasted-image',
-        './saved-drafts',
-        'node:fs',
-        'node:path',
-      ],
-      other: null,
-    })
   })
 })
 

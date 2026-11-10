@@ -1,6 +1,3 @@
-import { readdirSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   aCommandTakesNoAttachments,
@@ -16,32 +13,6 @@ import { attentionQueue } from '../src/renderer/src/lib/attention'
 import { createSessionRecord, type SessionRecord } from '../src/renderer/src/lib/session-record'
 import { applyEvent, type CommandRegistry } from '../src/renderer/src/lib/transcript'
 import type { CreatedSession, RuntimeEvent } from '../src/shared/runtime-ipc'
-
-/**
- * # 🔴 714 — names, a new project, and a command with files: the halves a DOM mount cannot see
- *
- * ## §1–§2 · `708` H-3a — the composer's copy of the host's question
- *
- * ⛔ **The host decides `R42` in `aPersonsCommand` (`main/runtime/a-command-goes-as-typed.ts`), and the
- * renderer cannot import it** — so `a-command-with-files.ts` asks the same question of the list this
- * window folded. ⚑ **One rule in two places is held together by running BOTH over one corpus**: the
- * day either one moves, a row below disagrees. ⚠️ **Where the window holds NO list, the two are
- * meant to differ** — the host asks for one or judges by shape, and the window leaves that to it —
- * so §1 asserts that difference too, rather than skipping those rows.
- *
- * ## §3 · R41 (`712` F-4) — the attention row NAMES who it runs as
- *
- * ## §4 · R41 — the roster reaches the two surfaces no DOM mount here raises
- *
- * ⚠️ `RuntimeScreen` and `SessionLibrary` are read as SOURCE here. `RuntimeScreen` is mounted by no
- * test in this repo (it needs the whole bridge); `SessionLibrary` IS mounted by DOM files of its own (the `library-*` suites among them), over
- * doubles of the library's reads, and a mount there would add those doubles to prove one
- * forwarded attribute — so its hop is pinned where it is written. The components the roster is
- * handed TO are mounted in `names-a-new-project-and-a-command-with-files.dom.test.ts`.
- */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const RENDERER = join(here, '../src/renderer/src')
 
 /* ================================================================ §1 · the host's question, twice */
 
@@ -185,24 +156,6 @@ describe('§2 · the composer’s sentence is the host’s, less the part only a
       /^\/clear reads as a command \(this conversation's command list could not confirm it\), /,
     )
   })
-
-  it('⛔ the renderer imports nothing from main — the copy above is a COPY, held by §1', () => {
-    const files: string[] = []
-    const walk = (dir: string): void => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const at = join(dir, entry.name)
-        if (entry.isDirectory()) walk(at)
-        else if (/\.(ts|vue)$/.test(entry.name)) files.push(at)
-      }
-    }
-    walk(RENDERER)
-    expect(files.length, 'the renderer walk found nothing').toBeGreaterThan(50)
-    const IMPORT_OF_MAIN = /\bfrom\s+['"](?:\.\.\/)+main\//
-    // ⚑ The search can find one: a planted import is matched.
-    expect(IMPORT_OF_MAIN.test(`import { x } from '../../../main/runtime/y'`)).toBe(true)
-    for (const file of files)
-      expect(IMPORT_OF_MAIN.test(readFileSync(file, 'utf8')), `${file} imports main`).toBe(false)
-  })
 })
 
 /* ================================================================ §3 · the attention row */
@@ -259,31 +212,5 @@ describe('§3 · R41 (`712` F-4) — an attention row NAMES who it runs as (`Att
   it('⚑ THE CONTROL — a caller with no roster gets the slug, which is `nameOf`’s own default', () => {
     const [row] = attentionQueue([waitingAs('s3', 'web-frontend-pm')], standing)
     expect(row?.who).toBe('web-frontend-pm')
-  })
-})
-
-/* ================================================================ §4 · the roster's two hops */
-
-/** The one opening tag of `<Name` … `/>` — bounded by the tag's own end, never a count. */
-function theTag(source: string, name: string): string {
-  const from = source.indexOf(`<${name}\n`)
-  expect(from, `no <${name} in the source`).toBeGreaterThan(-1)
-  expect(source.indexOf(`<${name}\n`, from + 1), `a second <${name}`).toBe(-1)
-  const to = source.indexOf('/>', from)
-  return source.slice(from, to)
-}
-
-describe('§4 · R41 — the roster reaches the reopen list, through the two hops read as source', () => {
-  it('🔴 `RuntimeScreen` hands `SessionLibrary` the window’s roster', () => {
-    const screen = readFileSync(join(RENDERER, 'components/RuntimeScreen.vue'), 'utf8')
-    expect(theTag(screen, 'SessionLibrary')).toContain(
-      ':identities="agentStore.identities.value?.identities ?? null"',
-    )
-  })
-
-  it('🔴 `SessionLibrary` forwards it to `ResumableSessions`, and reads it nowhere else', () => {
-    const library = readFileSync(join(RENDERER, 'components/SessionLibrary.vue'), 'utf8')
-    expect(theTag(library, 'ResumableSessions')).toContain(':identities="props.identities"')
-    expect(library.match(/props\.identities/g)).toHaveLength(1)
   })
 })

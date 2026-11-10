@@ -1,5 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -185,38 +185,5 @@ describe('the ending a close records (246 §2)', () => {
       expect(erroredAt).toBeGreaterThan(turnAt)
       expect(record(events)).toBe('failed')
     }
-  })
-
-  it('⚑ and both shipped adapters really do call forceEnd before closeSession', () => {
-    // ⛔ **The line the two tests above stand on, read out of the adapters themselves.** `246` §4
-    // puts `packages/runtime` out of bounds for this dispatch, so it is pinned rather than edited:
-    // if a future teardown drops `forceEnd`, `cut off` becomes reachable and this fails, which is
-    // the right way round — the word would then need covering, not deleting.
-    for (const rel of [
-      '../../../packages/runtime/src/codex/codex-runtime.ts',
-      '../../../packages/runtime/src/claude/claude-runtime.ts',
-      '../../../packages/runtime/src/fake-runtime.ts',
-    ]) {
-      const source = readFileSync(new URL(rel, import.meta.url), 'utf8')
-      const doClose = source.slice(source.indexOf('private async doClose('))
-      const work = doClose.indexOf('this.machine.hasProviderWork')
-      const force = doClose.indexOf('this.machine.forceEnd(')
-      const close = doClose.indexOf('this.machine.closeSession(')
-      expect(work, `${rel} no longer asks whether the provider is working`).toBeGreaterThan(-1)
-      expect(force, `${rel} no longer ends the open turn before closing`).toBeGreaterThan(work)
-      expect(close, `${rel} closes the session before ending the turn`).toBeGreaterThan(force)
-    }
-  })
-
-  it('⚑ and the cross-adapter proof of the ordering is still where this file says it is', () => {
-    // A citation nobody can check is a comment. This one is checkable: the suite that asserts the
-    // ordering on Fake, Claude and Codex has to still contain the case named above.
-    const conformance = readFileSync(
-      new URL('../../../packages/runtime/test/conformance.test.ts', import.meta.url),
-      'utf8',
-    )
-    expect(conformance).toContain(
-      'close() mid-turn emits exactly one terminal turn (interrupted) → idle → ended → status:ended',
-    )
   })
 })

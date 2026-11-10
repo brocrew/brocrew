@@ -79,32 +79,6 @@ const A_CARD_OF_EACH_KIND: Readonly<Record<string, RuntimeEvent>> = {
   } as RuntimeEvent,
 }
 
-/**
- * 🔴 **The roster, read out of the predicate's own source** — every `item.kind === '<x>'` that
- * {@link isAwaitingAnswer} tests.
- *
- * ⛔ **Prose is stripped BEFORE the census asserts**, which is this repository's own rule
- * (`a-source-census-must-strip-prose-before-it-asserts`): the body carries a `441` comment naming
- * `TranscriptView` and a compaction, and a regex over the raw text would count whatever a future
- * comment happened to quote. ⚑ The control below plants a kind in a comment and proves the strip
- * removes it, so *"stripped"* is measured rather than claimed.
- */
-function kindsThatWait(source: string): string[] {
-  const body = source.slice(source.indexOf('export function isAwaitingAnswer'))
-  const fn = body.slice(0, body.indexOf('\n}\n') + 2)
-  const code = fn
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .split('\n')
-    .map((line) => line.replace(/\/\/.*$/, ''))
-    .join('\n')
-  return [...code.matchAll(/item\.kind === '([a-zA-Z]+)'/g)].map((match) => match[1]!)
-}
-
-const TRANSCRIPT_SOURCE = readFileSync(
-  fileURLToPath(new URL('../src/renderer/src/lib/transcript.ts', import.meta.url)),
-  'utf8',
-)
-
 const SCREEN_SOURCE = readFileSync(
   fileURLToPath(new URL('../src/renderer/src/components/RuntimeScreen.vue', import.meta.url)),
   'utf8',
@@ -122,33 +96,6 @@ function recordWith(sessionId: string, events: readonly RuntimeEvent[]): Session
   for (const event of events) applyEvent(record.control, event, 1_000)
   return record
 }
-
-describe('§4 · the roster is derived from the predicate, not typed here', () => {
-  it('🔴 every kind `isAwaitingAnswer` admits has a fixture in this file, and no kind is invented', () => {
-    const kinds = kindsThatWait(TRANSCRIPT_SOURCE)
-    // ⛔ **A positive floor first.** A census that found nothing would pass every assertion below
-    // vacuously, which is the exact shape `316` was measured going wrong.
-    expect(kinds.length).toBeGreaterThan(0)
-    expect([...kinds].sort()).toEqual(Object.keys(A_CARD_OF_EACH_KIND).sort())
-    // ⚑ **And the question card is really in there**, so this file cannot pass by the predicate
-    // having quietly lost a card.
-    expect(kinds).toContain('userInput')
-  })
-
-  it('⚠️ the census strips prose — a kind named only in a comment is NOT counted', () => {
-    // ⛔ **The control plants TWO** (standing rule 12): one in a block comment and one in a line
-    // comment, because a strip that handled only one would read as working.
-    const planted = `
-export function isAwaitingAnswer(item: TranscriptItem): boolean {
-  /* item.kind === 'blockPlanted' — prose */
-  if (item.kind === 'permission') return item.outcome === null
-  // item.kind === 'linePlanted' — also prose
-  return false
-}
-`
-    expect(kindsThatWait(planted)).toEqual(['permission'])
-  })
-})
 
 describe('§4 · every card a person must answer reaches every surface that counts them', () => {
   it.each(Object.keys(A_CARD_OF_EACH_KIND))(

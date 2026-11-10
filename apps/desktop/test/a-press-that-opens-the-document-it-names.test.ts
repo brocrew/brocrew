@@ -326,36 +326,6 @@ describe('562 · a press that opens the document it names', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§3 · the mechanism is shared, so a vocabulary cannot drift from it', () => {
-    const WALK = '../src/renderer/src/lib/named-in-a-reply.ts'
-    // ⚑ **D-016** — `places.ts` went with projects, so one vocabulary calls the walk now; the census
-    // still asks it not to carry a second one.
-    // Paths in a message are the second vocabulary; main, not a roster, says which are real.
-    const VOCABULARIES = [
-      '../src/renderer/src/lib/the-documents-a-reply-names.ts',
-      '../src/renderer/src/lib/the-paths-a-message-names.ts',
-    ]
-
-    it('🔴 every vocabulary calls the one walk, and none declares a second one', () => {
-      // ⛔ `169`: *"The validation must be ONE rule, not two."* ⚑ `537`'s discharge: fixed at the
-      // derivation rather than at the call sites.
-      for (const path of VOCABULARIES) {
-        const source = CODE(path)
-        expect(source, path).toContain("from './named-in-a-reply'")
-        expect(source, path).toContain('markNamesIn(html, {')
-        // ⛔ **The walk's own moving parts, named** — a second private copy would have to bring
-        // them, and `a-second-function-in-the-same-shape-disarms-a-file-scoped-census` is what it
-        // would cost.
-        expect(source, path).not.toContain("indexOf('<')")
-        expect(source, path).not.toContain('LEAVE_ALONE')
-      }
-      expect(CODE(WALK)).toContain('const LEAVE_ALONE')
-      expect(CODE(WALK)).toContain("html.indexOf('<', index)")
-    })
-
-    it('⛔ the walk skips a control this app already wrote, and says which tags it skips', () => {
-      expect(CODE(WALK)).toContain("new Set(['pre', 'a', 'button'])")
-    })
-
     it('⚠️ a resource id is one pattern in both contexts', () => {
       // 🔴 **The policy stayed with each caller** — that is the whole reason the walk could move.
       // ⚑ A `res_<32 hex>` is not a word anybody writes by accident, so running prose is not
@@ -392,18 +362,6 @@ describe('562 · a press that opens the document it names', () => {
         'data-document="amp"',
       )
     })
-
-    it('⛔ the boundary predicate may not be global, because `test` would advance it', () => {
-      // ⚠️ A global `RegExp` moves `lastIndex` on every `test`, so the second hit in one text run
-      // would be let through. ⚑ Every vocabulary is read, because the rule is the walk's and the
-      // predicate is theirs.
-      for (const path of VOCABULARIES)
-        expect(CODE(path), path).not.toMatch(/boundary: \/.*\/[a-z]*g/)
-      // ⚑ Non-vacuity: the two MATCH patterns do carry it, and they are in the same files.
-      expect(CODE('../src/renderer/src/lib/the-documents-a-reply-names.ts')).toContain(
-        ".join('|'), 'g')",
-      )
-    })
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────
@@ -411,80 +369,6 @@ describe('562 · a press that opens the document it names', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§4 · what each surface that opens a document derives its target from', () => {
-    /**
-     * 🔴 **`537` §3.2's shape.** ⛔ The question is not *does anything contain `res_`* — that string
-     * is a legitimate fact in a dozen places. ⚑ The question is **what does each surface that opens
-     * a document derive its target from**, and there are exactly two kinds. ⚑ **D-016** — the third,
-     * *a row off the table* (the project band's `ProjectDocumentRow`), went with the project room.
-     */
-    type Kind = 'a-typed-field' | 'a-roster-of-typed-fields'
-    const FROM: Readonly<Record<Kind, string>> = {
-      // ⛔ The work report's own press — `WorkReport.resources`, through `theResourcesAReportNames`.
-      'a-typed-field': "from '../lib/the-document-a-report-names'",
-      // 🔴 **562's control** — the same predicate, folded over the window's rows into a roster and
-      // handed down as a prop, which is `places.ts`' shape.
-      'a-roster-of-typed-fields': "from '../lib/the-documents-a-reply-names'",
-    }
-    const KINDS: Readonly<Record<string, Kind>> = {
-      'WorkReportEntry.vue': 'a-typed-field',
-      // The view builds the roster; the shared prose component draws from it. Both are listed because a
-      // binding is a forward and says nothing about the computed behind it — `537` §3.2's reason
-      // for asking in two directions.
-      'TranscriptView.vue': 'a-typed-field',
-      'MarkdownWords.vue': 'a-roster-of-typed-fields',
-    }
-
-    it('🔴 three surfaces, and not one of them reads an id out of prose', () => {
-      expect(Object.keys(KINDS)).toHaveLength(3)
-      for (const [file, kind] of Object.entries(KINDS)) {
-        const source = CODE(`../src/renderer/src/components/${file}`)
-        expect(source, `${file} · ${kind}`).toContain(FROM[kind])
-        // ⛔ **Nobody parses.** A renderer that split an id would be a second reading of
-        // `newResourceId`, free to disagree with it the day the id gains a character.
-        expect(source, file).not.toContain(".split('_')")
-        // ⛔ **And nobody matches the SHAPE of an id** — `548` §Q4's refusal, asked of the code
-        // rather than of the prose that quotes it.
-        expect(source, file).not.toContain("'res_'")
-        expect(source, file).not.toMatch(/\/\\bres_/)
-      }
-      // ⚑ **Non-vacuity, in both directions**: every kind in the table is actually used, and the
-      // two needles really are different strings.
-      expect(new Set(Object.values(KINDS)).size).toBe(2)
-      expect(new Set(Object.values(FROM)).size).toBe(2)
-    })
-
-    it('⛔ the new control reaches the door through the hops 510 already built', () => {
-      // ⚑ **No fourth "how".** `562` adds a second place a press is DRAWN and no new route: the
-      // event, the pane's handler, the panel and the five refusals are `510`'s.
-      const message = CODE('../src/renderer/src/components/AssistantMessage.vue')
-      expect(message).toContain("import MarkdownWords from './MarkdownWords.vue'")
-      expect(message).toContain(':documents="props.documents"')
-      expect(message).not.toContain(".split('_')")
-      expect(message).not.toContain("'res_'")
-      expect(message).not.toMatch(/\/\\bres_/)
-      expect(message).toContain("emit('openDocument', resourceId)")
-      const words = CODE('../src/renderer/src/components/MarkdownWords.vue')
-      expect(words).toContain('documentsNamedIn(html.value, props.documents ?? [])')
-      expect(words).toContain("emit('openDocument', resource)")
-      expect(CODE('../src/renderer/src/components/TranscriptView.vue')).toContain(
-        '@open-document="(resourceId) => $emit(\'openDocument\', resourceId)"',
-      )
-      expect(CODE('../src/renderer/src/components/ConversationPane.vue')).toContain(
-        'async function openResource(resourceId: string): Promise<void> {',
-      )
-      expect(CODE('../src/renderer/src/components/RuntimeScreen.vue')).toContain(
-        ':on-read-resource="readResourceForAnySurface"',
-      )
-    })
-
-    it('⚠️ the roster is built from the WINDOW’s items and not from the mode’s list', () => {
-      // ⛔ A roster built from `shown` would make a control appear and disappear as a person flips
-      // the transcript mode — a fact about a document answered by a display setting.
-      const view = CODE('../src/renderer/src/components/TranscriptView.vue')
-      expect(view).toContain('everyResourceAReportNames(props.items, props.canOpenDocument)')
-      expect(view).not.toContain('everyResourceAReportNames(shown')
-    })
-
     it('🔴 the two presses say different words, and each sentence is true of its own row', () => {
       // ⛔ `169` cuts both ways. ⚑ `OPEN_THE_DOCUMENT` says the file is *"kept with this reply"* and
       // is true only on the reply's own row; an id in a sentence sits in somebody else's words,

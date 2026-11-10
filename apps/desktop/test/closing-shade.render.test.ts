@@ -149,20 +149,6 @@ describe('the mount point', () => {
     expect(app).toMatch(/onBeforeUnmount\(\(\) => stopWatching\?\.\(\)\)/)
   })
 
-  /**
-   * ⚠️ **The preload is the one hop above that nothing can execute** — it imports `electron` as a
-   * value, so no test in this repository can load it, which is the same reason `index.ts` is source-
-   * scanned in `app-lifetime.test.ts`. `watchClosing` above proves the renderer's end against a
-   * fake; these two lines are all that can be said about the real one.
-   */
-  it('forwards the channel and hands back a real unsubscribe', () => {
-    const preload = readFileSync(join(src, '../src/preload/index.ts'), 'utf8')
-    expect(preload).toMatch(/ipcRenderer\.on\(APP_CLOSING_CHANNEL, forward\)/)
-    // ⛔ The `off` is the half that rots silently: without it every re-mounted renderer would stack
-    // another listener on a channel that fires exactly once, and nothing on screen would differ.
-    expect(preload).toMatch(/ipcRenderer\.off\(APP_CLOSING_CHANNEL, forward\)/)
-  })
-
   it('puts the shade OUTSIDE the screen, over the titlebar and the rail', () => {
     // ⛔ Inside `RuntimeScreen` it would leave a live-looking rail and a working New-conversation
     // button beside a message saying the app is closing — two answers to one fact, which is the

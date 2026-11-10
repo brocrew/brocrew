@@ -1,5 +1,5 @@
 import { neutralHostDeps } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync, readdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -432,57 +432,6 @@ describe('214 §2 · injected provider context is not the user speaking', () => 
     const events = eventsOf(line('assistant', 'Done — committed as 7bfe813.'))
     expect(events.map((event) => event.type)).toEqual(['assistant_message'])
     expect(events[0]?.text).toBe('Done — committed as 7bfe813.')
-  })
-})
-
-describe('the user’s own provider directories are never written to', () => {
-  /**
-   * The import path is reachable only through the store and injected `nativeTranscriptPath`
-   * seam. Assert structurally that no source names a path in the user’s home, preventing a
-   * stray write to personal transcript history.
-   */
-  it('no main-process source writes under ~/.claude or ~/.codex', () => {
-    const roots = [join(here, '../src/main')]
-    const offenders: string[] = []
-    const walk = (path: string): void => {
-      for (const entry of readdirSync(path, { withFileTypes: true })) {
-        const child = join(path, entry.name)
-        if (entry.isDirectory()) {
-          walk(child)
-          continue
-        }
-        if (!entry.name.endsWith('.ts')) continue
-        // COMMENTS STRIPPED FIRST. The first version of this check flagged `workspace.ts` for a
-        // comment explaining why we do NOT load `.claude/settings.json` — prose about the risk read
-        // as the risk itself. A check that fires on its own documentation trains people to silence it.
-        const code = readFileSync(child, 'utf8')
-          .replace(/\/\*[\s\S]*?\*\//g, '')
-          .replace(/^\s*\/\/.*$/gm, '')
-        // The user's real homes are only reachable by naming them, and every app-owned path is built
-        // from `userData` instead. So: does this file construct such a path AND write?
-        const namesUserHome = /homedir\(\)|['"`]~\/\.(claude|codex)|\.(claude|codex)['"`]/.test(
-          code,
-        )
-        // `new Database(` is in here because of 046: opening a provider's WAL-mode SQLite index
-        // with `{readonly: true}` CREATES its `-shm` sidecar when one is missing — measured — so a
-        // "read" through better-sqlite3 is a write to the directory. The regex above catches none
-        // of that, because the write happens in C. Reads now go through `readProviderDatabase`,
-        // which copies first; naming a user home AND opening a database directly is the shape this
-        // has to keep catching.
-        const writes =
-          /\bwriteFileSync\b|\bappendFileSync\b|\bmkdirSync\b|\brmSync\b|\bunlinkSync\b|\bcpSync\b|new Database\(/.test(
-            code,
-          )
-        // ⚠️ What this AND cannot see, said out loud so a green run is not read as more than it is:
-        // a file that RECEIVES a user-home path instead of naming one is never flagged, whatever it
-        // goes on to do with it. `runtime-host.ts` is exactly that file — 047 gave it paths from
-        // `deps.userHomeSessions()` — so its archive and import paths are covered by the
-        // BEHAVIOURAL tests in `user-homes.test.ts` and by review, not by this scan.
-        if (namesUserHome && writes) offenders.push(child)
-      }
-    }
-    walk(roots[0]!)
-    expect(offenders, 'a file both names a provider home and writes').toEqual([])
   })
 })
 

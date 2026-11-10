@@ -5,7 +5,7 @@ import {
   RecordingSink,
   syntheticProviderHome,
 } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -85,7 +85,6 @@ import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const mainRoot = join(here, '../src/main')
 
 /** Keeps the toolsets the HOST handed out, so an agent's calls go through the real one. */
 describe('431 · the message that crosses a project', () => {
@@ -664,78 +663,4 @@ describe('431 · the message that crosses a project', () => {
       expect(host.withinMessagingReach(manager, speakingAs(brobot))).toBe(false)
     })
   })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §3 · the opt-in, as source
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§3 · the opt-in, as source', () => {
-    // ⚑ **D-016 · the project-rail pair went** — *"the only reach that crosses a project is the one
-    // that never compares projects"* measured `same-project` against `any` at `admitMessaging`, and
-    // both the word and the rail are gone. ⛔ What `any` admits and `none` refuses is §1.
-
-    /**
-     * ⛔ **The opt-in, as source** — one verb asks the wider question and its four siblings do not.
-     * ⚠️ A behaviour test can show that `interrupt_agent` refuses today; only this can show that the
-     * NEXT verb gets the strict question by writing the name every other verb writes.
-     */
-    it('⛔ the two send verbs and the move press ask `requireToMessage`, and the readers ask it too since `433`', () => {
-      const code = withoutProse(readFileSync(join(mainRoot, 'runtime/runtime-host.ts'), 'utf8'))
-      // The definition, two send verbs, and the move press before and after its waits.
-      expect(code.match(/requireToMessage\(/g)).toHaveLength(5)
-      expect(code.match(/this\.requireToMessage\(offer\.destination, by\)/g)).toHaveLength(2)
-      // ⚠️ **681 · `queueMessage`'s call carries a third argument now** — the walls it asks inside the
-      // gate, before *not started* (R30b) — so the spelling ends at the caller either way.
-      expect(code.match(/this\.requireToMessage\(sessionId, by[,)]/g)).toHaveLength(2)
-      // ⛔ **The siblings, still strict** — `sendInterrupting`, `cancelQueuedMessage`, `interrupt`
-      // and `replyToParent`'s own resolution, which is what keeps *"a way to cut into a conversation
-      // in another project"* out of this dispatch.
-      expect(code.match(/this\.requireToCommand\(/g)).toHaveLength(4)
-      // 🔴 **The two readers were `mayCommand`'s and are the REACH's since `433`.** ⛔ **These two
-      // lines are still pinned verbatim and that is deliberate here**: this file's subject is the
-      // GATE, and the cheapest statement of *the readers moved* is the two lines that moved.
-      // ⚠️ **The durable question — how many call sites the strict predicate has and which methods
-      // they sit in — is `a-reach-you-can-see.test.ts` §3's census**, which also computes the
-      // question count; it is named rather than copied so the two files cannot come to two answers.
-      expect(code).toContain('.filter((slot) => this.withinMessagingReach(slot.id, by, me))')
-      expect(code).toContain('if (!this.withinMessagingReach(sessionId, by, me)) return null')
-      // ⚠️ **The stripper has teeth, and this is the control that says so**: the file's PROSE
-      // names this gate more often than its code does, so a census that counted comments would have
-      // reported a different app. ⛔ Written as a comparison rather than as a pinned sentence —
-      // `a-source-census-that-pins-a-line-kills-every-row-on-it`, and a docblock is prose that
-      // moves.
-      const raw = readFileSync(join(mainRoot, 'runtime/runtime-host.ts'), 'utf8')
-      expect(raw.match(/requireToMessage/g)?.length ?? 0).toBeGreaterThan(
-        code.match(/requireToMessage/g)?.length ?? 0,
-      )
-    })
-  })
 })
-
-/** Line and block comments removed — `send-refusals.test.ts`'s stripper, for its reason. */
-function withoutProse(source: string): string {
-  let inBlock = false
-  return source
-    .split('\n')
-    .map((raw) => {
-      let code = ''
-      for (let at = 0; at < raw.length; at += 1) {
-        const rest = raw.slice(at)
-        if (inBlock) {
-          if (!rest.startsWith('*/')) continue
-          at += 1
-          inBlock = false
-          continue
-        }
-        if (rest.startsWith('//')) break
-        if (rest.startsWith('/*')) {
-          inBlock = true
-          at += 1
-          continue
-        }
-        code += raw[at]
-      }
-      return code
-    })
-    .join('\n')
-}

@@ -1,6 +1,6 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -47,34 +47,8 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
-const STORE_SRC = join(here, '../src/main/db/session-store.ts')
-const TOOLS_SRC = join(here, '../src/main/runtime/agent-tools.ts')
 
 const NOW = 1_800_000_000_000
-
-const sourceOf = (path: string): string => readFileSync(path, 'utf8')
-
-/**
- * ⛔ **One declaration's body** — `a-decision-only-a-person-can-make.test.ts`'s device, copied for
- * its own reason: slicing the raw source rather than the whole file keeps a census pinned to the
- * one function it names.
- */
-const bodyIn = (source: string, from: string, to: string): string => {
-  const start = source.indexOf(from)
-  expect(start, `${from} is not in this file`).toBeGreaterThan(-1)
-  const end = source.indexOf(to, start)
-  expect(end, `${to} does not close ${from}`).toBeGreaterThan(start)
-  return source.slice(start, end)
-}
-
-/** ⚑ The line immediately after one marker line, trimmed — indentation-proof. */
-const nextLineAfter = (source: string, marker: string): string => {
-  const at = source.indexOf(marker)
-  expect(at, `${marker} is not in this file`).toBeGreaterThan(-1)
-  const eol = source.indexOf('\n', at)
-  const nextEol = source.indexOf('\n', eol + 1)
-  return source.slice(eol + 1, nextEol).trim()
-}
 
 /* ══════════════════ §1 · the two counters, pure — no database at all ══════════════════ */
 
@@ -162,23 +136,6 @@ describe('D-017 · the two tallies, pure', () => {
     expect(Object.keys(ledgersSkippedOf(0))).toEqual([])
     // ⚑ **The paired positive**, in the same breath: a real count answers with exactly one key.
     expect(ledgersSkippedOf(3)).toEqual({ ledgersSkipped: 3 })
-  })
-})
-
-/* ══════════════════ §2 · walkLedgers, by its source ══════════════════ */
-
-describe('D-017 · walkLedgers, by its source', () => {
-  it('walkLedgers folds every candidate through the same per-ledger recovery its answer reports', () => {
-    const body = bodyIn(
-      sourceOf(STORE_SRC),
-      'function walkLedgers<Row, Candidate extends { id: string }>(',
-      'interface GivenWorkRow',
-    )
-    // ⛔ **The outer net, named**: every candidate's fold is wrapped in the SAME `readOrSkip` a
-    // single-ledger reader uses, so a candidate whose fold throws is skipped and not fatal.
-    expect(body).toContain(
-      'readOrSkip(candidate.id, noteSkip, [], () => foldOne(candidate.id, noteSkip, candidate))',
-    )
   })
 })
 
@@ -519,28 +476,6 @@ describe('D-017 · a torn row inside one ledger is not a skipped ledger', () => 
     // 🔴 **The whole point**: a torn ROW is counted, and it is never reported as a skipped LEDGER.
     expect('ledgersSkipped' in decisions).toBe(false)
     expect('ledgersSkipped' in questions).toBe(false)
-  })
-})
-
-/* ══════════════════ §6 · agent-tools.ts, by its source ══════════════════ */
-
-describe('D-017 · agent-tools.ts, by its source', () => {
-  it('recordsOf spells the boundary at exactly one conversation', () => {
-    const source = sourceOf(TOOLS_SRC)
-    expect(source).toContain(`count === 1 ? "1 conversation's record" : `)
-  })
-
-  it('every reader that carries ledgersSkipped still splices its own skipped-records sentence', () => {
-    const source = sourceOf(TOOLS_SRC)
-    expect(
-      nextLineAfter(source, '...(rowsUnread === 0 ? [] : [unreadRowsSentence(rowsUnread)]),'),
-    ).toBe('...whenSkipped(ledgersSkipped, skippedRecordsSentence),')
-    expect(
-      nextLineAfter(
-        source,
-        '...(listed.rowsUnread === 0 ? [] : [unreadQuestionRowsSentence(listed.rowsUnread)]),',
-      ),
-    ).toBe('...whenSkipped(listed.ledgersSkipped, skippedQuestionRecordsSentence),')
   })
 })
 

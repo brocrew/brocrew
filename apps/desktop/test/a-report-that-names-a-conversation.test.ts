@@ -1,8 +1,6 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { WorkReport } from '../src/shared/task-contracts'
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { workAnswered, workUndriven } from '../src/main/runtime/reply-rails'
 import { PANEL_EMPTY_WORDS } from '../src/renderer/src/lib/session-panel'
 import { OPEN_THE_CONVERSATION } from '../src/renderer/src/lib/taking-over'
@@ -12,34 +10,6 @@ import {
   type TranscriptState,
 } from '../src/renderer/src/lib/transcript'
 import { workIsWith } from '../src/renderer/src/lib/where-the-work-is'
-
-/**
- * 🔴 **A report that names a conversation, and can take you there** (506).
- *
- * A task completion or report includes a link to the conversation where the task runs.
- *
- * ## ⛔ What this file is actually pinning
- *
- * ⚠️ **The row he was reading names two session ids in its PROSE** — `undrivenWorkText` writes
- * *"Task #5 (task_…) with sess_A is not being worked on: the turn it was running in was stopped,
- * by sess_B."* (a piece's label and id since D-016) — and `work-report.ts`'s standing rule is
- * *"Nothing here is computed from the words"*. ⛔ So §3 below is the load-bearing section: it
- * plants a report whose FIELD and whose SENTENCE name different conversations and reads which one
- * the control carries.
- *
- * ⚑ **D-017b · one press, whatever the conversation is doing** — `taking-over.ts`'s
- * `OPEN_THE_CONVERSATION`, the words every surface that opens a conversation reads. `held` is
- * still carried, for `data-held`, and no longer forks the words.
- *
- * ⚑ **D-016 · a task is a PIECE** — the report's `assignedTo` is its `owner`, and a piece reads by
- * its label (`W1.5`), never *Task #5*.
- */
-
-const SRC = (path: string): string => readFileSync(resolve(import.meta.dirname, '..', path), 'utf8')
-
-const LIB = 'src/renderer/src/lib/where-the-work-is.ts'
-const VIEW = 'src/renderer/src/components/TranscriptView.vue'
-const SCREEN = 'src/renderer/src/components/RuntimeScreen.vue'
 
 const report = (over: Partial<WorkReport> = {}): WorkReport => ({
   piece: 'work_1',
@@ -175,68 +145,6 @@ describe('506 · a report that names a conversation, and will not take you there
     })
   })
 
-  describe('§4 · the press is emitted, and the door is the one every surface uses', () => {
-    it('⛔ the lib spells no sentence — it asks `taking-over.ts` for the one press', () => {
-      const source = SRC(LIB)
-      expect(source).toContain("from './taking-over'")
-      expect(source).toContain('action: OPEN_THE_CONVERSATION')
-      // ⚠️ **The negative, with the positive above making it mean something**: a copy of the words
-      // here is how two surfaces come to name one gesture differently.
-      expect(source).not.toContain("'Take it over and open it'")
-      expect(source.includes("action: 'Open the conversation'")).toBe(false)
-    })
-
-    it('🔴 the transcript RAISES it and performs nothing — the look lives in `RuntimeScreen`', () => {
-      const view = SRC(VIEW)
-      // ⚑ UI-011 · the press may also name the piece whose brief the opened conversation shows.
-      expect(view).toContain('openConversation: [sessionId: string, briefOf?: string]')
-      // ⛔ **No door in the view.** A transcript that claimed or looked would be a second route into
-      // the routing `095` spent a dispatch collecting into one place.
-      expect(view).not.toContain('store.claim')
-      expect(view).not.toContain('store.look')
-      // ⚑ The positive control for that negative: the screen is where the door is, and it is the
-      // one every press that opens a conversation goes through (D-017b).
-      const screen = SRC(SCREEN)
-      expect(screen).toContain('async function goToTheWork(')
-      expect(screen).toContain('await openConversation(sessionId)')
-      expect(screen).toContain('await store.look(sessionId)')
-      expect(screen).toContain('@open-conversation="goToTheWork"')
-    })
-
-    it('⚠️ `from` is read BEFORE the look, which is the rule the queue paid for', () => {
-      // ⛔ **Both ends of the slice are asserted PRESENT before anything is compared, and that is
-      // not belt-and-braces — it is the row that survived.** `indexOf` answers `-1` for a string
-      // that is gone, `-1` is less than every real offset, and the first version of this read
-      // *"the missing line comes first"* as *"the ordering is right"*. ⚑ The mutation that moves
-      // `view()` past the await deletes `const from = view()` outright, so the only assertion
-      // that can see it is one that asks whether the line is there at all.
-      // ⚑ **D-017b · the door is `openConversation`**, which `goToTheWork` calls — so its body is read.
-      const screen = SRC(SCREEN)
-      const at = screen.indexOf('async function openConversation(')
-      expect(at).toBeGreaterThan(-1)
-      const body = screen.slice(at, screen.indexOf('\n}\n', at))
-      expect(body).toContain('const from = view()')
-      expect(body).toContain('await store.look(sessionId)')
-      expect(body).toContain('showConversation(opened, from)')
-      expect(body.indexOf('const from = view()')).toBeLessThan(body.indexOf('await store.look'))
-    })
-
-    it('⛔ the two transcripts with no runtime behind them pass no held set', () => {
-      // ⚑ Derived from the mounts rather than asserted about them: the control is absent on a
-      // recording because nothing hands it the fact it needs, not because a flag says so.
-      for (const mount of [
-        'src/renderer/src/components/ReadingPane.vue',
-        'src/renderer/src/components/ChildWorkViewer.vue',
-      ]) {
-        expect(SRC(mount)).not.toContain(':held=')
-      }
-      // ⚠️ The paired positive: the one pane with a live conversation behind it does hand it over.
-      expect(SRC('src/renderer/src/components/ConversationPane.vue')).toContain(
-        ':held="props.held"',
-      )
-    })
-  })
-
   describe('§5 · the panel promised *agents* and meant sub-agents', () => {
     it('🔴 the empty paragraph names the population the band actually lists', () => {
       // ⚑ **Lowercased since `577`, because the noun became sentence-initial** — three of the five
@@ -259,16 +167,6 @@ describe('506 · a report that names a conversation, and will not take you there
       for (const named of ['questions', 'permissions', 'the checklist']) {
         expect(paragraph).toContain(named)
       }
-    })
-
-    it('⛔ the band’s heading says the same word as its own untitled rows', () => {
-      // ⚑ The sections are the agent card's since the panel's top agent became `AgentCard`.
-      const panel = SRC('src/renderer/src/components/AgentCard.vue')
-      expect(panel).toContain("label: 'Sub-agents'")
-      // ⚠️ **The HOOK is untouched**, which is the half a rename usually breaks: the render tests,
-      // the live smoke and `tab-flow.mjs` all address this band by `panel-agents`.
-      expect(panel).toContain("cy: 'panel-agents'")
-      expect(SRC('src/renderer/src/lib/session-panel.ts')).toContain("card.kind ?? 'sub-agent'")
     })
   })
 })

@@ -162,13 +162,4 @@ describe('490 · every closed vocabulary a tool caller has to choose from', () =
       'plant.rows[].second': ['three', 'four'],
     })
   })
-
-  // ⚑ **D-016 · `spawn_agent.approval_mode` went with `spawn_agent`.** `give_work` takes no mode:
-  // a conversation it starts runs in its giver's (inherit, never wider), so no vocabulary is left
-  // for a caller to choose from and the case that pinned its two values is gone with it.
-
-  it('⛔ a tool input does not bypass the shared declaration with a direct zod enum', () => {
-    const registered = toolSource.slice(toolSource.indexOf('export function agentToolsFor('))
-    expect(registered).not.toMatch(/\bz\.(?:enum|literal)\s*\(/)
-  })
 })

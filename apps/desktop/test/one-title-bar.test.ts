@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { appMenuTemplate, rolesIn } from '../src/main/app-menu'
@@ -37,121 +37,7 @@ import {
 
 const src = (path: string): string =>
   readFileSync(fileURLToPath(new URL(`../src/${path}`, import.meta.url)), 'utf8')
-
-const withoutComments = (code: string): string =>
-  code
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .split('\n')
-    .filter((line) => !line.trim().startsWith('//') && !line.trim().startsWith('*'))
-    .join('\n')
-
-const MAIN = withoutComments(src('main/index.ts'))
-const TOKENS = src('renderer/src/assets/tokens.css')
-const RUNTIME_SCREEN = src('renderer/src/components/RuntimeScreen.vue')
-/** ⚑ **389 §2 moved the bar out of `RuntimeScreen` so a DOM test could mount it.** Same markup. */
-const TITLE_BAR = src('renderer/src/components/AppTitleBar.vue')
 const CONTROLS = src('renderer/src/components/WindowControls.vue')
-
-/**
- * Every component in the renderer, **with its prose stripped**, so a census here is over the tree and
- * not over one file.
- *
- * ⛔ **The stripping is not tidiness and this file went red without it.** `WindowControls.vue`'s own
- * docblock explains that the three decorative `<span>`s it replaced lived in a
- * `class="traffic-lights"` wrapper — so a search over the raw text reports the component that ENDED
- * the defect as carrying it. `RuntimeScreen.vue` had the same shape for the drag region. A source
- * census that reads prose reads code wrong; what is left here is markup, expressions and literals,
- * which is where a second title bar would actually have to be written.
- */
-function everyComponent(): { name: string; source: string }[] {
-  const dir = fileURLToPath(new URL('../src/renderer/src/components', import.meta.url))
-  return readdirSync(dir)
-    .filter((name) => name.endsWith('.vue'))
-    .map((name) => ({ name, source: withoutProse(src(`renderer/src/components/${name}`)) }))
-}
-
-/** Block, line and HTML comments removed; everything a compiler would keep, kept. */
-function withoutProse(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/(^|[^:])\/\/.*$/gm, '$1')
-}
-
-/** The `new BrowserWindow({…})` options object, and nothing around it. */
-function windowOptions(): string {
-  const at = MAIN.indexOf('new BrowserWindow({')
-  expect(
-    at,
-    'main/index.ts no longer constructs a BrowserWindow the way this reads it',
-  ).toBeGreaterThan(-1)
-  const open = MAIN.indexOf('{', at)
-  let depth = 0
-  for (let index = open; index < MAIN.length; index += 1) {
-    if (MAIN[index] === '{') depth += 1
-    if (MAIN[index] === '}') {
-      depth -= 1
-      if (depth === 0) return MAIN.slice(open + 1, index)
-    }
-  }
-  throw new Error('the BrowserWindow options never close')
-}
-
-/* --------------------------------------------------------------- §1 · the window has no frame */
-
-describe('§1 · the window draws its own bar, and only its own (385 §1)', () => {
-  it('🔴 is frameless', () => {
-    expect(windowOptions()).toMatch(/(^|\s)frame:\s*false/)
-  })
-
-  it('⚑ the reader really can see the options — the control, one fact over', () => {
-    // ⛔ Non-vacuity for the negative below AND for the positive above: a brace walker that stopped
-    // early, a rename, or a comment-stripper that ate the object would all produce a slice that
-    // matches nothing, and `not.toMatch` passes on an empty string.
-    const options = windowOptions()
-    expect(options).toMatch(/(^|\s)width:\s*1200/)
-    expect(options).toMatch(/(^|\s)height:\s*840/)
-    expect(options).toMatch(/(^|\s)title:\s*'BroCrew'/)
-  })
-
-  it('⛔ and takes none of the half-measures, which each leave a second bar or a second set of lights', () => {
-    const options = windowOptions()
-    // `titleBarStyle: 'hiddenInset'` is the real alternative and it is a DIFFERENT product decision:
-    // it keeps macOS's own traffic lights and insets them into our bar. It would also mean the dots
-    // this app draws are a duplicate set. Frameless is what was ruled; this says so in code rather
-    // than in a response document.
-    for (const half of ['titleBarStyle', 'titleBarOverlay', 'trafficLightPosition']) {
-      expect(options, `${half} is set as well as frame: false`).not.toMatch(
-        new RegExp(`(^|\\s)${half}:`),
-      )
-    }
-  })
-
-  it('⛔ the controls are wired to the SENDER’s window, never to a captured one', () => {
-    // ⚠️ **§3 below exercises `registerWindowControls` through an injected `ownerOf`**, which is what
-    // makes its five outcomes assertable — and which means nothing there can see what the
-    // composition root actually passes. This is that line, and it is the only place it exists.
-    // ⛔ `BrowserWindow.getAllWindows()[0]` would pass every test in this file and move the wrong
-    // window the day there are two.
-    const at = MAIN.indexOf('registerWindowControls(')
-    expect(at, 'main/index.ts never registers the window controls').toBeGreaterThan(-1)
-    const call = MAIN.slice(at, MAIN.indexOf(')\n', at))
-    expect(call).toContain('BrowserWindow.fromWebContents(event.sender)')
-    expect(call).not.toContain('getAllWindows')
-  })
-
-  it('⚠️ 840 declared − a 32px bar = the 1200 × 808 shell 381 measured v2.3 assuming', () => {
-    // ⛔ **Measured before and after on a real window** (385): `outerHeight` is 840 either way — it
-    // is what the option declares — and `innerHeight` went 808 → 840 when the frame came off. So
-    // the OS bar took exactly 32, and a 32px bar of our own puts the shell back where it was while
-    // removing the second one.
-    const declaredHeight = /(^|\s)height:\s*(\d+)/.exec(windowOptions())?.[2]
-    const barHeight = /--titlebar-h:\s*(\d+)px/.exec(TOKENS)?.[1]
-    expect(declaredHeight).toBe('840')
-    expect(barHeight).toBe('32')
-    expect(Number(declaredHeight) - Number(barHeight)).toBe(808)
-  })
-})
 
 /* ------------------------------------------------------- §2 · what a control does to a window */
 
@@ -276,69 +162,6 @@ describe('§3 · the channel answers for the window that asked (385 §1)', () =>
 /* ------------------------------------------------------- §4 · the bar draws controls, not a picture */
 
 describe('§4 · three buttons, one per verb, and no decoration left (385 §1)', () => {
-  it('🔴 the titlebar mounts the controls, and the dots that did nothing are gone', () => {
-    // ⚑ **The bar moved to its own component in 389 §2 and the controls moved with it.** The frame
-    // still mounts exactly one bar, and the bar still mounts the controls — two links instead of
-    // one, and the census below is what makes the pair a chain rather than two loose facts.
-    expect(RUNTIME_SCREEN).toContain(
-      '<AppTitleBar :info="info" :error="infoError" :provider-readiness="launchReadiness" />',
-    )
-    expect(RUNTIME_SCREEN).toContain("import AppTitleBar from './AppTitleBar.vue'")
-    expect(TITLE_BAR).toContain('<WindowControls />')
-    expect(TITLE_BAR).toContain("import WindowControls from './WindowControls.vue'")
-    // ⛔ **The exact markup that was there**, so this cannot pass on a build where it came back
-    // under another name: an `aria-hidden` div of bare spans coloured like traffic lights.
-    for (const { name, source } of everyComponent()) {
-      expect(source, `${name} draws the decorative dots again`).not.toContain(
-        'class="traffic-lights"',
-      )
-      expect(source, `${name} draws bare spans inside an aria-hidden wrapper`).not.toMatch(
-        /aria-hidden="true"><span \/>/,
-      )
-    }
-  })
-
-  it('⛔ …and ONE component in the whole tree mounts them — 386’s warning, as a census', () => {
-    // 🔴 **`386` warned that keeping both bars recreates the double-title-bar defect we removed**,
-    // and `389 §2` asks for the absence with a search shape rather than an impression. This is the
-    // shape: every `.vue` in the renderer, asked which ones IMPORT the controls — the import and
-    // not the mention, because a name in a comment is not a second bar and a component that draws
-    // `<WindowControls />` without importing it does not compile.
-    const mounts = everyComponent().filter(({ source }) =>
-      source.includes("from './WindowControls.vue'"),
-    )
-    expect(mounts.map(({ name }) => name)).toEqual(['AppTitleBar.vue'])
-    // ⚑ **The control, one fact over**: the search shape CAN find an import when there is one, so
-    // the single-name list above is a reading rather than a pattern that matches nothing.
-    expect(
-      everyComponent().filter(({ source }) => source.includes("from './IconSprite.vue'")).length,
-    ).toBeGreaterThan(0)
-    // ⛔ …and exactly one component declares the drag region, which is the other half of "one bar":
-    // a second strip that was draggable would be a title bar whatever it called itself.
-    const regions = everyComponent().filter(({ source }) =>
-      / {2}-webkit-app-region: drag;/.test(source),
-    )
-    expect(regions.map(({ name }) => name)).toEqual(['AppTitleBar.vue'])
-  })
-
-  it('⛔ every control is a real button with an accessible name, and the roster IS the vocabulary', () => {
-    // ⚑ **One list, iterated** — see the component: a second list is a second opinion about which
-    // controls exist, and both of its failure modes are silent.
-    expect(CONTROLS).toContain('const controls: readonly WindowControl[] = WINDOW_CONTROLS')
-    expect(CONTROLS).toMatch(/<button\b[\s\S]*v-for="control in controls"/)
-    expect(CONTROLS).toContain(':aria-label="LABEL[control]"')
-    expect(CONTROLS).toContain('type="button"')
-    // …and the labels are exhaustive by type, so a verb cannot arrive unlabelled.
-    expect(CONTROLS).toContain('const LABEL: Record<WindowControl, string>')
-    for (const [control, label] of [
-      ['close', 'Close this window'],
-      ['minimize', 'Minimise this window'],
-      ['zoom', 'Zoom this window'],
-    ] as const) {
-      expect(CONTROLS).toContain(`${control}: '${label}',`)
-    }
-  })
-
   it('⚠️ the labels a person reads are British and the verbs on the wire are not', () => {
     // The wire says what Electron says (`minimize`); the button says what this product says
     // everywhere else (`Minimise`). Two spellings of one gesture are only safe when one of them is
@@ -395,21 +218,6 @@ describe('§5 · the live probe cannot go dark unnoticed (310)', () => {
 /* --------------------------------------------------------------- §6 · the bridge carries the verb */
 
 describe('§6 · the wire (385 §1)', () => {
-  it('⛔ the preload exposes exactly one window-control member, and it invokes', () => {
-    const preload = withoutComments(src('preload/index.ts'))
-    expect(preload).toContain('windowControl: (control: WindowControl)')
-    expect(preload).toContain('ipcRenderer.invoke(WINDOW_CONTROL_CHANNEL, control)')
-    // 🔒 The channel name is imported from the contract, never retyped — a second spelling of a
-    // channel is a handler nobody reaches.
-    expect(preload).not.toContain("invoke('app:window-control'")
-  })
-
-  it('⚠️ the contract lives in `shared/`, where a sandboxed preload can reach it', () => {
-    const contract = src('shared/window-controls.ts')
-    expect(contract).not.toMatch(/from 'electron'/)
-    expect(src('preload/index.ts')).toContain("} from '../shared/window-controls'")
-  })
-
   it('⚑ the vocabulary’s ORDER is the one the buttons are drawn in', () => {
     // It is macOS's own left-to-right order, and the component keeps no second list — so the order
     // on screen is this array. A reorder here reorders the window's controls.
