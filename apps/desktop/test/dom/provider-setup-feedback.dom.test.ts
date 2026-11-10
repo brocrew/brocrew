@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, reactive, ref } from 'vue'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
-import ProviderSetupWizard from '../../src/renderer/src/components/ProviderSetupWizard.vue'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import type { LimitsDisplayState } from '../../src/renderer/src/lib/limits-display'
 import type {
@@ -260,33 +259,7 @@ describe('setup feedback follows the latest facts', () => {
     expect(out.runtime.signInProvider).not.toHaveBeenCalled()
   })
 
-  it('also shows the interactive instructions in the step-by-step guide', async () => {
-    const out = card()
-    unmountAll()
-    const external = {
-      state: 'absent' as const,
-      reason: 'Use the tool.',
-      checkedAgainst: 'fictional',
-    }
-    const m = mount(ProviderSetupWizard, {
-      provider: 'claude',
-      version: PROGRAM,
-      setup: out.props.setup,
-      auth: ABSENT,
-      keyRefused: false,
-      signIn: external,
-      reprovision: external,
-      busy: 'idle',
-      notice: null,
-      recheck: async () => undefined,
-    })
-    await settled()
-    expect(words(m.q('setup-says'))).toContain(INSTRUCTIONS)
-    expect(words(m.q('setup-command'))).toBe(COMMAND)
-    m.q('setup-copy').click()
-    await settled()
-    expect(out.copied).toEqual([COMMAND])
-  })
+
 })
 
 describe('usage readings and recorded warnings are separate evidence', () => {

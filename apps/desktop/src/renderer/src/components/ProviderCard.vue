@@ -1962,18 +1962,6 @@ defineExpose({ beginSetup })
   width: var(--icon-sm);
   height: var(--icon-sm);
 }
-.provider-menu {
-  display: grid;
-  place-items: center;
-  margin-left: auto;
-  padding: 0;
-  width: var(--control-icon);
-  height: var(--control-icon);
-  flex: none;
-  background: var(--accent-fill);
-  border-color: var(--accent-border-weak);
-  color: var(--accent-text);
-}
 .at-limit {
   display: flex;
   align-items: center;
