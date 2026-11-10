@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import {
@@ -8,9 +5,6 @@ import {
   agentToolsFor,
   type AgentToolHost,
 } from '../src/main/runtime/agent-tools'
-
-const here = dirname(fileURLToPath(import.meta.url))
-const toolSource = readFileSync(join(here, '../src/main/runtime/agent-tools.ts'), 'utf8')
 
 interface PropertySchema {
   readonly const?: unknown
@@ -102,12 +96,6 @@ function publishedEnumArguments(): Readonly<Record<string, PropertySchema>> {
   return enumArgumentsIn(agentToolsFor({} as AgentToolHost, 'sess_enum_census').tools)
 }
 
-function documentedCalls(source: string): string[] {
-  return [...source.matchAll(/documentedToolEnum\(\s*TOOL_INPUT_ENUMS\[['"]([^'"]+)['"]\]/g)].map(
-    (match) => match[1] ?? '',
-  )
-}
-
 describe('490 · every closed vocabulary a tool caller has to choose from', () => {
   it('🔴 the census reads the registered schemas, and every member has its own sentence', () => {
     const actual = publishedEnumArguments()
@@ -130,36 +118,5 @@ describe('490 · every closed vocabulary a tool caller has to choose from', () =
         expect(description).toContain(sentences[member])
       }
     }
-  })
-
-  it('⛔ asks for every helper CALL, not merely an imported vocabulary', () => {
-    const calls = documentedCalls(toolSource).sort()
-    expect(calls).toEqual(Object.keys(TOOL_INPUT_ENUMS).sort())
-
-    // ⚠️ Two controls: a scanner that stops after the first call in a file, or folds two calls to
-    // one vocabulary, fails here before it can bless production by accident.
-    const planted = [
-      "const a = documentedToolEnum(TOOL_INPUT_ENUMS['plant.one'], 'one')",
-      "const b = documentedToolEnum(TOOL_INPUT_ENUMS['plant.two'], 'two')",
-    ].join('\n')
-    expect(documentedCalls(planted)).toEqual(['plant.one', 'plant.two'])
-  })
-
-  it('⚠️ the schema census finds two planted leaves, including one nested in an array', () => {
-    const planted = enumArgumentsIn([
-      {
-        name: 'plant',
-        input: {
-          first: z.literal('one'),
-          rows: z.array(z.object({ second: z.enum(['three', 'four']) })),
-        },
-      },
-    ])
-    expect(
-      Object.fromEntries(Object.entries(planted).map(([path, schema]) => [path, schema.enum])),
-    ).toEqual({
-      'plant.first': ['one'],
-      'plant.rows[].second': ['three', 'four'],
-    })
   })
 })

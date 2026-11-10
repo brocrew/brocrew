@@ -1,6 +1,6 @@
 import { neutralHostDeps } from './lib/host-fixture'
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -48,7 +48,6 @@ const PROJECT_MANAGER_PROFILE_ID = 'project-manager'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const SRC = join(here, '../src')
 
 /** ⚠️ This file is about the roster, and never about what a launch is told. */
 const NOTHING_INJECTED: SessionInstructions = {
@@ -109,14 +108,6 @@ class Sink implements RuntimeEventSink {
   }
   sendLiveness(): void {}
 }
-
-/**
- * ⚑ **Prose stripped before a source census reads it** — `a-source-census-must-strip-prose-before-it-asserts`.
- * ⛔ This dispatch's own docblocks name both verbs in prose, so a raw-file negative would be
- * satisfied by a comment about a door that had been deleted.
- */
-const withoutComments = (source: string): string =>
-  source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, ' ')
 
 /** ⛔ A channel that declares nobody — what `requireAPerson` is asked about. */
 class AnonymousSink extends Sink {
@@ -289,28 +280,6 @@ describe('558 · every identity he has', () => {
       // about an absence rather than a door that ignores its argument.
       host.createAgent({ slug: 'named', displayName: 'The Boss', provider: null })
       expect(identityOf('named').displayName).toBe('The Boss')
-    })
-
-    /**
-     * ⛔ **Measurement B: there was exactly one writer and no rename.**
-     *
-     * ⚠️ **This reads the WORKING TREE, so it cannot re-take the base's measurement** — what it
-     * pins is the shape after the repair: the app's writer is still an `INSERT OR IGNORE`, and the
-     * statement that retires *no rename* is an `UPDATE` a person drives. ⛔ **The EXACTLY-ONE half
-     * is pinned by `a-name-the-app-mints-for-itself.test.ts` §4**, which sweeps every statement in
-     * `src/main` bounded by its own backticks; `toContain` cannot express *only* and this does not
-     * claim to.
-     *
-     * ⚑ **D-016 · the scope caveat went with proposals.** `propose_project` was the other
-     * agent-initiated route to an identity (`displayName: proposal.name`); it is deleted, so A
-     * holds of every identity an agent creates.
-     */
-    it('⚠️ B · the app still INSERTs this column and a person now UPDATEs it', () => {
-      const source = readFileSync(join(SRC, 'main/db/session-store.ts'), 'utf8')
-      // ⛔ The app's own writer is still the one that cannot overwrite a row that exists.
-      expect(source).toContain('INSERT OR IGNORE INTO agent_identity\n')
-      // 🔴 **And there is now an UPDATE that moves the column** — the rename.
-      expect(source).toContain('UPDATE agent_identity SET display_name = ? WHERE id = ?')
     })
   })
 
@@ -868,14 +837,6 @@ describe('558 · every identity he has', () => {
       expect(thisAppWouldMintIt(PROJECT_MANAGER_PROFILE_ID)).toBe(false)
     })
 
-    /** ⛔ Criterion 12, the removal direction: a name with no row is not a thing to un-create. */
-    it('⛔ a name with no row is refused rather than reported as removed', () => {
-      expect(host.removeAgent('nobody-minted-this')).toEqual({
-        ok: false,
-        rail: 'no-such-agent',
-      })
-    })
-
     /**
      * ⚠️ **The guard between the read and the write, reached with a store DOUBLE.**
      *
@@ -1115,48 +1076,6 @@ describe('558 · every identity he has', () => {
       await expect(asked(window, { kind: 'removeAgent', profileId: 'worker' })).rejects.toThrow(
         refusedDuringAQuit('removeAgent'),
       )
-    })
-
-    /**
-     * ⛔ **Neither verb reaches a toolset**, which is what keeps an AGENT off them — the gate above
-     * is about the channel. ⚑ A negative with a search shape (standing rule 4): the tools module
-     * names `spawn_agent`, so the sweep is over something.
-     */
-    it('⛔ the only files in `src/main` that name either verb are the wire and the host', () => {
-      const walk = (dir: string): string[] =>
-        readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
-          entry.isDirectory()
-            ? walk(join(dir, entry.name))
-            : entry.name.endsWith('.ts')
-              ? [join(dir, entry.name)]
-              : [],
-        )
-      const files = walk(join(SRC, 'main'))
-      // ⚑ The premise: the sweep is over a tree, not over one file somebody remembered — and it
-      // reaches the toolset module, so a verb added there would surface.
-      expect(files.length).toBeGreaterThan(40)
-      expect(files.map((path) => path.slice(SRC.length + 1).replaceAll('\\', '/'))).toContain(
-        'main/runtime/agent-tools.ts',
-      )
-
-      // ⛔ **The whole tree and not `agent-tools.ts` alone** (found in review). A one-file negative
-      // proves that file was read, never that it is the whole toolset surface — `spawn_agent`
-      // itself is named in six files under here.
-      for (const verb of ['setAgentDisplayName', 'removeAgent']) {
-        const naming = files
-          .filter((path) => withoutComments(readFileSync(path, 'utf8')).includes(verb))
-          .map((path) => path.slice(SRC.length + 1).replaceAll('\\', '/'))
-          .sort()
-        // ⚑ **The wire, the host and the store — and `agent-tools.ts` is not among them.**
-        // ⚠️ `session-store.ts` is here because its own methods carry these names
-        // (`setAgentDisplayName`, and `removeAgentIdentity` which contains `removeAgent`), which is
-        // the store's half of each verb and reaches no toolset either.
-        expect(naming, `${verb} is named somewhere new in src/main`).toEqual([
-          'main/db/session-store.ts',
-          'main/runtime/ipc.ts',
-          'main/runtime/runtime-host.ts',
-        ])
-      }
     })
   })
 

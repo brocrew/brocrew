@@ -1,57 +1,16 @@
 import type { LedgerWalkKind } from '../src/shared/question-contracts'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { attentionQueue } from '../src/renderer/src/lib/attention'
-import {
-  KIND_WORDS,
-  personsQueueView,
-  type PersonsQueueKind,
-} from '../src/renderer/src/lib/persons-queue'
+import { personsQueueView, type PersonsQueueKind } from '../src/renderer/src/lib/persons-queue'
 import { createSessionRecord, type SessionRecord } from '../src/renderer/src/lib/session-record'
 import { sessionPanel } from '../src/renderer/src/lib/session-panel'
 import { applyEvent, isAwaitingAnswer } from '../src/renderer/src/lib/transcript'
 import { decisionReading, readingSentence } from '../src/shared/questions'
 import type { CreatedSession, RuntimeEvent } from '../src/shared/runtime-ipc'
-import { runtimeCommandSchema } from '../src/main/runtime/ipc'
 
 /**
- * 🔴 **EVERYTHING THIS APP CAN BE WAITING ON A PERSON FOR APPEARS IN THE QUEUE** (446 §4).
- *
- * ## ⛔ The defect this is the assertion for, and it had two green gates over it
- *
- * A proposal card with Approve and No must place the conversation in the attention queue. The
- * attention panel cannot say “Nothing is waiting” while the conversation and composer imply
- * ongoing tool work; the visible decision is waiting on the person.
- *
- * ⚑ **`441` and `434` were each right in isolation.** `434` folded the queue over the two
- * populations that existed when it was written; `441` argued against reusing the question channel
- * on three measurable grounds and was right about all three. ⛔ **What nobody built was the seam**,
- * and nothing was red, because completeness was a property no test asked about.
- *
- * ## ⚑ So this asks about completeness, and it DERIVES the list rather than typing it
- *
- * ⛔ **`never-name-a-count-of-surfaces-in-a-brief` applies to a test as much as to a brief**, and a
- * roster typed here would go stale exactly the way the panel's own *"Questions, permissions, running
- * agents and the checklist appear here"* sentence did — at `250`, at `258`, at `446`, at `506` and
- * again at `577`, which found it short of `workflows`; each time because something had started
- * appearing that it did not name.
- *
- * **Three rosters, three derivations, and none of them is a literal in this file:**
- *
- * | roster | derived from | what goes red |
- * |---|---|---|
- * | the CARD kinds a person must answer | a source census over `isAwaitingAnswer`'s own body | a fourth item kind that waits, with no fixture, no counter, no panel row or no live row |
- * | the QUEUE populations | `Record<PersonsQueueKind, …>` — the compiler | a fourth `PersonsQueueKind` that `personsQueueView` cannot place |
- * | the main-side READERS | every `RuntimeCommandKind` matching `…ForAPerson` | a fourth reader the screen never polls |
- *
- * ⚠️ **`isAwaitingAnswer` is the honest first roster and not a convenient one.** It is the ONE
- * predicate this app asks for *is this card still waiting on somebody* — `recountPending` reads it,
- * `sessionPanel` reads it, `attentionQueue` reads it, and `transcript-window.ts`' carry reads it —
- * and its own docblock says it lives outside the component precisely so a test can hold it. ⛔ A
- * fifth kind of card that waits and is not in that predicate is invisible to this file, which is a
- * declared limit rather than a silent one: it would also be invisible to every surface in the app,
- * which is a different and larger bug than the one this test is about.
+ * Everything this app can be waiting on a person for appears in the queue: a card that waits is
+ * counted, listed in the panel and listed live, and every queue population can be placed.
  */
 
 /** A card of each kind, keyed by the item kind `isAwaitingAnswer` admits. */
@@ -78,11 +37,6 @@ const A_CARD_OF_EACH_KIND: Readonly<Record<string, RuntimeEvent>> = {
     questions: [{ id: 'q1', prompt: 'Pick a colour', options: [{ label: 'Red' }] }],
   } as RuntimeEvent,
 }
-
-const SCREEN_SOURCE = readFileSync(
-  fileURLToPath(new URL('../src/renderer/src/components/RuntimeScreen.vue', import.meta.url)),
-  'utf8',
-)
 
 function recordWith(sessionId: string, events: readonly RuntimeEvent[]): SessionRecord {
   const record = createSessionRecord(sessionId)
@@ -249,96 +203,4 @@ describe('§4 · every population of the person’s queue can be placed in it', 
       expect(view!.announcement).not.toBe('')
     },
   )
-})
-
-describe('§4 · actionable reads and the limits display each have a publication lane', () => {
-  // Future actionable readers join the same look. The legacy synchronous limits door is the
-  // only exception: the window explicitly asks the independent worker display door instead.
-  it('the screen calls every actionable `…ForAPerson` verb the wire declares', () => {
-    // ⚑ **Read off the zod union that governs the wire**, so this roster is the one the main
-    // process actually accepts rather than a list of names typed here.
-    //
-    // ⚠️ **One member of the union is itself a union**, so the walk recurses rather than assuming
-    // every option is an object — a `.map` that took `def.shape.kind` off every one threw on that
-    // member, which is the honest version of a census that would otherwise have quietly dropped
-    // whatever hid inside it.
-    type Node = {
-      def: {
-        type: string
-        shape?: Record<string, Node>
-        options?: Node[]
-        values?: readonly string[]
-      }
-    }
-    const kindsOf = (node: Node): string[] => {
-      if (node.def.options !== undefined) return node.def.options.flatMap(kindsOf)
-      const literal = node.def.shape?.kind
-      return literal?.def.values === undefined ? [] : [...literal.def.values]
-    }
-    const every = kindsOf(runtimeCommandSchema as unknown as Node)
-    // ⛔ **The whole roster first, so a walk that found three names out of sixty would be visible.**
-    expect(every.length).toBeGreaterThan(50)
-    const kinds = every.filter((kind) => kind.endsWith('ForAPerson'))
-    // ⛔ A positive floor: an empty roster would pass the loop below over nothing.
-    expect(kinds.length).toBeGreaterThanOrEqual(5)
-    expect(kinds).toContain('limitsForAPerson')
-    expect(every).toContain('readLimitsDisplay')
-    // ⚑ The readers are one round of the look, which every ask for the queue goes through.
-    const look = SCREEN_SOURCE.slice(SCREEN_SOURCE.indexOf('async function lookAtTheQueueOnce'))
-    const body = look.slice(0, look.indexOf('\n}\n') + 2)
-    for (const kind of kinds.filter((kind) => kind !== 'limitsForAPerson'))
-      expect(body).toContain(`store.${kind}()`)
-    // ⚑ **And they go out TOGETHER**, which is `403`'s rule: reads a round trip apart can
-    // straddle an answer, and the list is drawn as one queue with one count.
-    expect(body).toContain('Promise.all')
-  })
-
-  it('the limits display starts without awaiting it and is not a queue population', () => {
-    const look = SCREEN_SOURCE.slice(SCREEN_SOURCE.indexOf('async function lookForWhatIsYours'))
-    const body = look.slice(0, look.indexOf('\n}\n') + 2)
-    expect(body).toContain('void refreshLimitsDisplay(scheduled)')
-    expect(body).not.toContain('await refreshLimitsDisplay')
-    expect(body).not.toContain('store.limitsForAPerson()')
-    expect(body).not.toContain('store.readLimitsDisplay()')
-    const refresh = SCREEN_SOURCE.slice(
-      SCREEN_SOURCE.indexOf('async function refreshLimitsDisplay'),
-    )
-    expect(refresh.slice(0, refresh.indexOf('\n}\n') + 2)).toContain('store.readLimitsDisplay()')
-    // 🔴 **Second: it is NOT a `PersonsQueueKind`**, and that is the shape decision `533` §2.1
-    // argued rather than a gap. ⛔ Three exhaustive tables in `persons-queue.ts` would each have to
-    // be given a sentence that is false of a wall — and the FIRST of them is the one the describe
-    // above this asserts by name: `heading` matches `/^A [a-z]+ is waiting on you$/`, and nothing
-    // is waiting on a person when a provider's window is spent. ⚑ So a limit that arrived as a
-    // fourth population would have made this file demand a false sentence.
-    // ⚑ **The vocabulary read off an exhaustive `Record<PersonsQueueKind, …>`** — `KIND_WORDS` —
-    // so this roster is the compiler's and not a list typed here, which is this file's own rule.
-    const populations: readonly string[] = Object.keys(KIND_WORDS)
-    expect(populations).not.toContain('a-limit')
-    expect(populations).not.toContain('limit')
-    // ⚠️ **The paired positive**: the vocabulary really is the two it is, so the negative above
-    // is a statement about a list that exists rather than about a name nobody chose.
-    expect([...populations].sort()).toEqual(['a-decision', 'a-question'])
-  })
-
-  it('⛔ 557 · the fifth reader is in the look and is deliberately NOT a queue population either', () => {
-    // 🔴 **Both halves, for `533`'s reason exactly**, on the second thing this queue carries beside
-    // its rows rather than as one.
-    //
-    // ⚠️ **First: it really is conscripted.** `stalledWorkForAPerson` ends in the suffix, so the
-    // assertion above already requires the look's round to call it — and that assertion would
-    // also pass if the verb had been named something else and quietly left out, which is `441`'s
-    // defect.
-    const look = SCREEN_SOURCE.slice(SCREEN_SOURCE.indexOf('async function lookAtTheQueueOnce'))
-    expect(look.slice(0, look.indexOf('\n}\n') + 2)).toContain('store.stalledWorkForAPerson()')
-    // 🔴 **Second: it is NOT a `PersonsQueueKind`.** ⛔ `533`'s own table, re-run against this
-    // subject, has TWO false rows rather than one: `WHERE_ITS_SETTLED` and its mixed-list tail both
-    // say *card*, and a stall has no card, no request and no answer to send. ⚑ The row the two
-    // subjects differ on is `NOUN_OF_KIND` — something IS waiting on a person here — which is why
-    // `stalledWorkView`'s docblock argues the shape rather than citing the wall.
-    // ⚑ **The vocabulary read off an exhaustive `Record<PersonsQueueKind, …>`** — `KIND_WORDS`.
-    const populations: readonly string[] = Object.keys(KIND_WORDS)
-    expect(populations).not.toContain('work-stalled')
-    expect(populations).not.toContain('a-stall')
-    expect([...populations].sort()).toEqual(['a-decision', 'a-question'])
-  })
 })

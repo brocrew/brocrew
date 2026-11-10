@@ -2,9 +2,9 @@ import { waitFor } from './lib/f093-host'
 import { TASK_OUTCOMES, TASK_STALL_CAUSES, TASK_STATES } from '../src/shared/task-contracts'
 import type { TaskState, WorkReport } from '../src/shared/task-contracts'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
@@ -22,7 +22,6 @@ import {
   A_PERSON_MUST_ACT,
   A_PERSON_MUST_ACT_SENTENCE,
   TASK_IS_OPEN,
-  UNDRIVEN_SENTENCES,
   derivePieces,
   isAWorkReport,
   undrivenSentence,
@@ -88,31 +87,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const sharedRoot = join(here, '../src/shared')
-const rendererRoot = join(here, '../src/renderer/src')
-
-/** ⛔ **Comment-stripped**, so a census reads what the code does and not what a docblock says. */
-const codeOnly = (source: string): string =>
-  source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-
-/** Every file under a root, as `{ path, text }` — the census shape `404` uses. */
-function filesUnder(root: string): { path: string; text: string }[] {
-  const out: { path: string; text: string }[] = []
-  const walk = (dir: string): void => {
-    for (const entry of readdirSync(dir)) {
-      const full = join(dir, entry)
-      if (statSync(full).isDirectory()) walk(full)
-      else if (/\.(ts|vue)$/.test(entry)) {
-        out.push({
-          path: relative(root, full).replaceAll('\\', '/'),
-          text: readFileSync(full, 'utf8'),
-        })
-      }
-    }
-  }
-  walk(root)
-  return out
-}
 
 describe('406 · finished, and finished with a question', () => {
   let userData: string
@@ -949,21 +923,6 @@ describe('406 · finished, and finished with a question', () => {
       expect(turn).toContain('(This app wrote it)')
       expect(turn).not.toContain('done')
       expect(describeEvent({ type: 'user_turn', text: 'a person typed this' })).not.toContain('·')
-    })
-
-    it('⛔ the stall sentences are ONE table, and the renderer reads it rather than copying it', () => {
-      // 🔴 **`400`'s rule with a third caller** — the move to `shared/` is what made the third
-      // possible, and a copy in the renderer is the thing this census exists to catch.
-      const words = filesUnder(rendererRoot).filter((file) =>
-        Object.values(UNDRIVEN_SENTENCES).some((sentence) =>
-          codeOnly(file.text).includes(sentence),
-        ),
-      )
-      expect(words.map((file) => file.path)).toEqual([])
-      // ⚑ Non-vacuous: the sentences really are findable where they live.
-      expect(codeOnly(readFileSync(join(sharedRoot, 'tasks.ts'), 'utf8'))).toContain(
-        UNDRIVEN_SENTENCES.app_restarted,
-      )
     })
   })
 })

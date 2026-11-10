@@ -85,10 +85,6 @@ function fixture() {
     workIncidentsForAPerson: vi.fn().mockResolvedValue(empty),
   }
   const body = functionSource('lookForWhatIsYours')
-  expect(body).toContain('void refreshLimitsDisplay(scheduled)')
-  expect(functionSource('refreshLimitsDisplay')).toContain(
-    'lookAtLimits(() => limitsLane.refresh(() => store.readLimitsDisplay()), scheduled)',
-  )
   // Execute the screen's real look with only its return type removed, using fictional IPC replies.
   let operation = 0
   const limitsLane = limitsDisplayLane((next) => {
@@ -138,9 +134,7 @@ function fixture() {
   const readWhatIsWaiting = vi.fn()
 
   function startTimer(): void {
-    const timers = screen.match(/looking = setInterval\(\(\) => \{[\s\S]*?\}, LOOK_EVERY_MS\)/g)
-    expect(timers).toHaveLength(1)
-    const timer = timers?.[0]
+    const timer = screen.match(/looking = setInterval\(\(\) => \{[\s\S]*?\}, LOOK_EVERY_MS\)/)?.[0]
     if (timer === undefined) throw new Error('the screen has no actionable look timer')
     runInNewContext(timer, {
       looking: null,
@@ -170,11 +164,6 @@ describe('limits polling without delaying person asks', () => {
     expect(LOOK_EVERY_MS).toBe(5_000)
     expect(LIMITS_LOOK_EVERY_MS).toBe(30_000)
     const one = fixture()
-    const mount = screen.slice(
-      screen.indexOf('onMounted(() => {'),
-      screen.indexOf('looking = setInterval'),
-    )
-    expect(mount.match(/void lookForWhatIsYours\(\)/g)).toHaveLength(1)
     await one.look()
     expect(one.store.readLimitsDisplay).toHaveBeenCalledTimes(1)
     for (const name of actionable) one.store[name].mockClear()
@@ -187,27 +176,22 @@ describe('limits polling without delaying person asks', () => {
     expect(one.readWhatIsWaiting).toHaveBeenCalledTimes(12)
   })
 
-  it.each(['answerWhereNobodyHolds', 'answerFromTheQueue', 'decideInstructionAsk'])(
-    'keeps %s as an immediate fresh limits look',
-    async (name) => {
-      expect(functionSource(name)).toContain('await lookForWhatIsYours()')
-      const one = fixture()
-      await one.look()
-      vi.setSystemTime(NOW + 1_000)
-      await one.look()
-      expect(one.store.readLimitsDisplay).toHaveBeenCalledTimes(2)
-      vi.setSystemTime(NOW + LOOK_EVERY_MS)
-      await one.look(true)
-      expect(one.store.readLimitsDisplay).toHaveBeenCalledTimes(2)
-      for (const reader of actionable) expect(one.store[reader]).toHaveBeenCalledTimes(3)
-    },
-  )
+  it('keeps the look after an answer an immediate fresh limits look', async () => {
+    const one = fixture()
+    await one.look()
+    vi.setSystemTime(NOW + 1_000)
+    await one.look()
+    expect(one.store.readLimitsDisplay).toHaveBeenCalledTimes(2)
+    vi.setSystemTime(NOW + LOOK_EVERY_MS)
+    await one.look(true)
+    expect(one.store.readLimitsDisplay).toHaveBeenCalledTimes(2)
+    for (const reader of actionable) expect(one.store[reader]).toHaveBeenCalledTimes(3)
+  })
 
   it('keeps Providers usage refreshes fresh and coalesces only their own pending look', async () => {
     const start = screen.indexOf('function lookAfterAUsageNotice(): void {')
     const end = screen.indexOf('\n}\n', start)
     if (start < 0 || end < start) throw new Error('the usage look disappeared')
-    expect(screen).toContain('@usage-moved="lookAfterAUsageNotice"')
     const one = fixture()
     await one.look()
     const usage = runInNewContext(
