@@ -496,7 +496,8 @@ describe('sending', () => {
     const { client, bridge, refusals } = await boot({ read: true, writable: [ROWING.jid] })
     const reply = { status: 503, body: { error: 'send_failed', detail: 'Connection closed' } }
     vi.spyOn(bridge, 'call').mockResolvedValueOnce(reply)
-    const args = tool === 'search_contacts' ? { query: 'Ines' } : { group: ROWING.jid, text: 'Hello' }
+    const args =
+      tool === 'search_contacts' ? { query: 'Ines' } : { group: ROWING.jid, text: 'Hello' }
     expect(await client.callTool({ name: tool, arguments: args })).toEqual({
       isError: true,
       content: [{ type: 'text', text: `Error: ${JSON.stringify(reply)}` }],

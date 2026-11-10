@@ -39,7 +39,9 @@ export function createToolServer(options: ToolServerOptions): Server {
       return await tool.execute((args as Record<string, unknown>) ?? {})
     } catch (err: unknown) {
       return {
-        content: [{ type: 'text', text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
+        content: [
+          { type: 'text', text: `Error: ${err instanceof Error ? err.message : String(err)}` },
+        ],
         ...(err instanceof PublicToolError ? {} : { isError: true }),
       }
     }
