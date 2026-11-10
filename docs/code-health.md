@@ -53,5 +53,8 @@ duplication, module-boundary and dead-code reviewers read it; the code reviewer 
 Two dependency-cruiser rules keep plugin host code (`apps/desktop/src/main/plugins/`) and the
 plugin service (`apps/desktop/resources/plugin-host/`) away from the runtime barrel
 (`packages/runtime/src/index.ts`) and the Claude Agent SDK / Codex SDK, directly or through any
-chain of imports. They are ordinary depcruise rules, so existing violations sit in
-`baseline/depcruise.json` and new ones fail the gate.
+chain of executable imports. These rules run with `tsPreCompilationDeps: false` in
+`depcruise-plugin.cjs`, so erased type dependencies do not create runtime paths. The ordinary
+scan in `depcruise.cjs` still includes type dependencies for the other module and cycle checks.
+Both scans use dependency-cruiser's native rules and feed `baseline/depcruise.json`; new
+violations fail the gate.

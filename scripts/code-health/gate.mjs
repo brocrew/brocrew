@@ -136,16 +136,37 @@ const TOOLS = {
     }
   },
   depcruise(files, out) {
-    const report = path.join(out, 'depcruise.json')
-    const config = path.join(here, 'depcruise.cjs')
-    const args = [...files, '--config', config, '--output-type', 'json', '--output-to', report]
-    run('depcruise', args, out, (s) => s !== null)
-    const r = readJson('depcruise', report, (r) =>
-      [r?.summary?.violations, r?.modules].every(Array.isArray),
-    )
+    const scan = (name) => {
+      const report = path.join(out, `${name}.json`)
+      const args = [
+        '--prefix',
+        here,
+        'run',
+        '--silent',
+        'scan:dependencies',
+        '--',
+        ...files,
+        '--config',
+        path.join(here, `${name}.cjs`),
+        '--output-type',
+        'json',
+        '--output-to',
+        report,
+      ]
+      run(name, args, out, (s) => s !== null, 'npm')
+      return readJson(name, report, (r) =>
+        [r?.summary?.violations, r?.modules].every(Array.isArray),
+      )
+    }
+    const r = scan('depcruise')
+    const plugin = scan('depcruise-plugin')
     const s = r.summary
-    const totals = `${s.totalCruised} modules, ${s.totalDependenciesCruised} dependencies, ${s.violations.length} violations`
-    return { keys: depcruiseKeys(r), totals }
+    const totals = `${s.totalCruised} modules, ${s.totalDependenciesCruised} dependencies, ${s.violations.length} violations; ${plugin.summary.violations.length} executable plugin violations`
+    const combined = {
+      ...r,
+      summary: { ...s, violations: [...s.violations, ...plugin.summary.violations] },
+    }
+    return { keys: depcruiseKeys(combined), totals }
   },
   knip(files, out) {
     const args = ['--config', path.join(here, 'knip.json'), '--reporter', 'json', '--no-progress']

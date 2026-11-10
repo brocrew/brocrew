@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "scan:clones": "jscpd"
+    "scan:clones": "jscpd",
+    "scan:dependencies": "cd ../.. && depcruise"
   },
   "dependencies": {
     "@vue/compiler-sfc": "3.5.40",

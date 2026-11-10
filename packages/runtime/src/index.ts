@@ -482,6 +482,5 @@ export {
   withManagedPluginAttachments,
   StoppedBeforeSend,
   type ManagedPluginAttachment,
-  type ManagedPluginAttachmentSource,
 } from './managed-plugin-session'
 export { ManagedPluginFailure } from './managed-plugin-failure'
