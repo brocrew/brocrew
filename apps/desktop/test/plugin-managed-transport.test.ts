@@ -138,6 +138,27 @@ for (const provider of ['claude', 'codex'] as const) {
     noPrivateCredential([result, f.audit], f.credential)
   })
 }
+it('releases dispatch after a real downstream reply when client close fails', async () => {
+  const f = await fixture(true)
+  const { client } = await caller(f)
+  let unclosed: Client | undefined
+  const close = vi.spyOn(Client.prototype, 'close').mockImplementationOnce(function (this: Client) {
+    unclosed = this
+    return Promise.reject(new Error('fictional close failure'))
+  })
+  try {
+    await expect(client.callTool({ name: 'echo', arguments: { profile: 'fern' } })).resolves.toMatchObject({
+      isError: true,
+      content: [{ text: 'Tool echo failed: downstream; completion is unknown.' }],
+    })
+    expect(f.broker.status()).toMatchObject({ available: true, executing: false, awaitingQuiescence: true })
+  } finally {
+    close.mockRestore()
+    await unclosed?.close()
+  }
+  await expect(client.callTool({ name: 'other', arguments: { profile: 'fern' } })).resolves.toMatchObject({ content: [{ text: PLUGIN_MARKER }] })
+  expect(f.broker.status().unknownCalls).toHaveLength(1)
+})
 describe('authenticated broker boundaries', () => {
   it('rejects no token, wrong token, wrong route, Origin and a token for another caller', async () => {
     const f = await fixture(),

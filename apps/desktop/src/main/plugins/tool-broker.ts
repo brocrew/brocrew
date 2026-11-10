@@ -533,6 +533,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
             settle(job)
           },
           (error) => {
+            if (job.state === 'finished') return
             if (independent(job)) {
               if (!job.reply && error instanceof PluginBrokerError)
                 job.reply = { ok: false, cause: error.callCause }
