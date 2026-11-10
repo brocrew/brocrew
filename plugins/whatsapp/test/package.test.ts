@@ -89,6 +89,7 @@ async function boot(options: { read?: boolean; writable?: string[]; prefix?: boo
     config,
     settings,
     bridge,
+    client,
     request,
     call,
     text,
@@ -491,12 +492,15 @@ describe('sending', () => {
     },
   )
 
-  it('says the plugin is unavailable, not a refusal, when the bridge fails a send', async () => {
-    const { call, bridge, refusals } = await boot({ writable: [ROWING.jid] })
-    bridge.sendError = 'send_failed'
-    expect(
-      (await call('send_to_group', { group: ROWING.jid, text: 'Hello' })).content[0].text,
-    ).toBe('Error: Plugin unavailable. Try again.')
+  it.each(['send_to_group', 'search_contacts'])('preserves bridge errors from %s', async (tool) => {
+    const { client, bridge, refusals } = await boot({ read: true, writable: [ROWING.jid] })
+    const reply = { status: 503, body: { error: 'send_failed', detail: 'Connection closed' } }
+    vi.spyOn(bridge, 'call').mockResolvedValueOnce(reply)
+    const args = tool === 'search_contacts' ? { query: 'Ines' } : { group: ROWING.jid, text: 'Hello' }
+    expect(await client.callTool({ name: tool, arguments: args })).toEqual({
+      isError: true,
+      content: [{ type: 'text', text: `Error: ${JSON.stringify(reply)}` }],
+    })
     expect(refusals()).toEqual([])
   })
 

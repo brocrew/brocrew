@@ -129,7 +129,6 @@ export interface ToolDeps {
 export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
   const { bridge, settings, refusals, config } = deps
 
-  /** One bridge request; its fixed refusals come back as the agent's words, anything else as unavailable. */
   async function ask(
     tool: string,
     route: string,
@@ -144,7 +143,7 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
     if (reply.status === 200) return reply.body
     const { refusal } = refusalIn(known, reply.body)
     if (refusal) throw refusals.refuse(tool, refusal)
-    throw new Error('unavailable')
+    throw new Error(JSON.stringify(reply))
   }
 
   /** Reading needs the person's yes and a linked phone; the stored messages stay readable while it reconnects. */
@@ -443,7 +442,7 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
           // A send that failed on the way may still have gone out, so it keeps counting.
           if (code !== 'send_failed') reservation.release()
           if (refusal) throw refusals.refuse(tool, refusal)
-          throw new Error('unavailable')
+          throw new Error(JSON.stringify(reply))
         },
       },
     ]

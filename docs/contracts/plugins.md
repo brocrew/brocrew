@@ -6,7 +6,7 @@ Plugins are global per OS user, under `<appData>/@brobot2/plugins`, outside ever
 
 ## 1 Package and compatibility envelope
 
-The strict UTF-8 JSON manifest rejects duplicate keys and unknown required features; names/paths are normalized and checked for Windows case collisions, devices, alternate streams, traversal, links and reparse points. Publish only built Node code/dependencies; no shell recipes, install hooks or local builds.
+The strict UTF-8 JSON manifest rejects duplicate keys and unknown required features; names/paths are normalized and checked for Windows case collisions, devices, alternate streams, traversal, links and reparse points. Packages include the Node code and dependencies needed to run.
 
 | Manifest v1 field | Frozen meaning |
 | --- | --- |
