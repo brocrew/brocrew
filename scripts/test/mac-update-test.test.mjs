@@ -213,6 +213,46 @@ test('preserves full payloads with explicit startup metadata allowance', () => {
   assert.throws(() => dataPreserved(before, missing, { allowAppended: true }))
 })
 
+test('compares complete usage-table rows and reports actual empty or nonempty counts', () => {
+  const before = {
+    ...baseline(),
+    provider_usage_reading: [
+      {
+        provider: 'codex',
+        window: 'five-hour',
+        position: 0,
+        used_percent: 12,
+        resets_at: null,
+        at: 42,
+        account: null,
+      },
+    ],
+    provider_usage_window_seen: [
+      { provider: 'codex', window: 'five-hour', position: 0, first: 40, last: 42 },
+    ],
+    provider_usage_read_on: [{ provider: 'codex', tag: 'fictional-account' }],
+  }
+  const tables = ['provider_usage_reading', 'provider_usage_window_seen', 'provider_usage_read_on']
+  const counts = dataPreserved(before, structuredClone(before), { usage: true })
+  for (const table of tables) {
+    assert.deepEqual(counts[table], { before: 1, after: 1, preserved: 1 })
+    for (const mutate of [
+      (after) => after[table].pop(),
+      (after) => after[table].push({ ...after[table][0] }),
+      (after) => (after[table][0].provider = 'claude'),
+      (after) => delete after[table],
+    ]) {
+      const after = structuredClone(before)
+      mutate(after)
+      assert.throws(() => dataPreserved(before, after, { usage: true }), new RegExp(table))
+    }
+  }
+  const empty = { ...baseline(), ...Object.fromEntries(tables.map((table) => [table, []])) }
+  const emptyCounts = dataPreserved(empty, structuredClone(empty), { usage: true })
+  for (const table of tables)
+    assert.deepEqual(emptyCounts[table], { before: 0, after: 0, preserved: 0 })
+})
+
 test('keeps both present and absent workspace state files', () => {
   const before = { 'drafts.json': Buffer.from('fictional draft') }
   assert.doesNotThrow(() => statePreserved(before, { ...before }))

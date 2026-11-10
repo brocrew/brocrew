@@ -263,8 +263,8 @@ async function fixtureWithKeyRecovery(attempt, { getPage, setPage, stage, versio
 }
 
 async function checkRetention(before, state, natives, settingsBefore, registryBefore) {
-  const after = databaseSnapshot(join(data, 'brobot2.sqlite'))
-  const comparison = dataPreserved(before, after)
+  const after = databaseSnapshot(join(data, 'brobot2.sqlite'), { usage: true })
+  const comparison = dataPreserved(before, after, { usage: true })
   statePreserved(state, stateBytes(data))
   registryPreserved(registryBefore, JSON.parse(await readFile(registry, 'utf8')), data)
   requireEvidence(
@@ -433,7 +433,7 @@ try {
     )
   await quit()
   cdpA.close()
-  const settledFixture = databaseSnapshot(join(data, 'brobot2.sqlite'))
+  const settledFixture = databaseSnapshot(join(data, 'brobot2.sqlite'), { usage: true })
   await writeFile(
     join(evidence, 'a-fixture-before-relaunch.json'),
     JSON.stringify(settledFixture, null, 2),
@@ -441,7 +441,9 @@ try {
   cdpA = await launch('a-settled', 9339, VERSION_A, values['marker-a'])
   passed(
     'fictional-data-survives-a-settling-relaunch',
-    dataPreserved(settledFixture, databaseSnapshot(join(data, 'brobot2.sqlite'))),
+    dataPreserved(settledFixture, databaseSnapshot(join(data, 'brobot2.sqlite'), { usage: true }), {
+      usage: true,
+    }),
   )
   await waitFor(
     async () => {
@@ -480,12 +482,8 @@ try {
     fictionalNote: 'Unopened café lab ☕',
   })
   await writeFile(registry, JSON.stringify(registryFixture, null, 2))
-  const beforeButtons = databaseSnapshot(join(data, 'brobot2.sqlite'))
+  const beforeButtons = databaseSnapshot(join(data, 'brobot2.sqlite'), { usage: true })
   const stateBeforeButtons = stateBytes(data)
-  requireEvidence(
-    stateBeforeButtons['provider-usage.json'] !== undefined,
-    'A settling quit did not preserve provider usage state.',
-  )
   const nativeBeforeButtons = await nativeFiles(nativeRoot, data)
   const settingsBeforeButtons = await readFile(settings)
   requireEvidence(
@@ -593,12 +591,15 @@ try {
   passed('window-download-sha512-guided-text-and-os-mount', summary.download)
   await quit()
   cdpA.close()
-  const before = databaseSnapshot(join(data, 'brobot2.sqlite')),
+  const before = databaseSnapshot(join(data, 'brobot2.sqlite'), { usage: true }),
     state = stateBytes(data)
   const natives = await nativeFiles(nativeRoot, data),
     settingsBefore = await readFile(settings)
   const registryBefore = JSON.parse(await readFile(registry, 'utf8'))
-  const beforeReplacement = dataPreserved(beforeButtons, before, { allowAppended: true })
+  const beforeReplacement = dataPreserved(beforeButtons, before, {
+    allowAppended: true,
+    usage: true,
+  })
   statePreserved(stateBeforeButtons, state)
   await checkNativePrefixes(nativeBeforeButtons, data)
   requireEvidence(
@@ -647,9 +648,13 @@ try {
     state,
     migrations: before.migrations.map((one) => ({ createdAt: one.created_at, hash: one.hash })),
   })
-  dataPreserved(before, databaseSnapshot(join(checkpoint, 'database.sqlite')))
+  const copyComparison = dataPreserved(
+    before,
+    databaseSnapshot(join(checkpoint, 'database.sqlite'), { usage: true }),
+    { usage: true },
+  )
   await writeFile(join(evidence, 'b-checkpoint-manifest.json'), JSON.stringify(manifest, null, 2))
-  passed('b-checked-recovery-copy-before-ready', { ...checked, order })
+  passed('b-checked-recovery-copy-before-ready', { ...checked, order, data: copyComparison })
   const kept = await checkRetention(before, state, natives, settingsBefore, registryBefore)
   await writeFile(join(evidence, 'b-first-retained-data.json'), JSON.stringify(kept.after, null, 2))
   const restoredDrafts = await cdpB.evaluate('return await window.api.savedDrafts()')
@@ -714,11 +719,16 @@ try {
   passed('second-b-start-no-copy-no-self-offer-and-local-resume', {
     copies: copiesAfterFirst,
     replies: model.requests.filter((one) => one.responseId !== null).length,
+    data: secondKept.comparison,
   })
   await screenshot(cdpSecond, 'b-second-ready.png')
   await quit()
   cdpSecond.close()
-  dataPreserved(before, databaseSnapshot(join(data, 'brobot2.sqlite')), { allowAppended: true })
+  summary.finalData = dataPreserved(
+    before,
+    databaseSnapshot(join(data, 'brobot2.sqlite'), { usage: true }),
+    { allowAppended: true, usage: true },
+  )
   await checkNativePrefixes(natives, data)
   summary.success = true
 } catch (error) {

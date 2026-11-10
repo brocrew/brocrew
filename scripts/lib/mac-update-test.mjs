@@ -23,6 +23,12 @@ export const FEED_URL = 'http://127.0.0.1:47123/'
 export { STATE_FILES, VERSION_A, VERSION_B }
 export { CHECKPOINT_LINE, FAIL_LINE, READY_LINE }
 
+const USAGE_TABLES = [
+  'provider_usage_reading',
+  'provider_usage_window_seen',
+  'provider_usage_read_on',
+]
+
 /** Packaged launches keep their list apart from development launches' workspaces.json. */
 export function packagedRegistryFile(dataRoot) {
   return join(dataRoot, 'packaged-workspaces.json')
@@ -269,7 +275,7 @@ function rowsKept(before, after, table, ignored = []) {
   }
 }
 
-export function dataPreserved(before, after, { allowAppended = false } = {}) {
+export function dataPreserved(before, after, { allowAppended = false, usage = false } = {}) {
   for (const table of ['provider_session', 'events']) {
     requireEvidence(
       Array.isArray(before[table]) && Array.isArray(after[table]) && before[table].length > 0,
@@ -300,8 +306,16 @@ export function dataPreserved(before, after, { allowAppended = false } = {}) {
     isDeepStrictEqual(before.migrations, after.migrations),
     'Migration records changed in the same-code rehearsal.',
   )
+  if (usage)
+    for (const table of USAGE_TABLES)
+      requireEvidence(
+        Array.isArray(before[table]) &&
+          Array.isArray(after[table]) &&
+          isDeepStrictEqual(before[table], after[table]),
+        `${table} rows changed or are missing.`,
+      )
   return Object.fromEntries(
-    ['provider_session', 'events'].map((name) => [
+    ['provider_session', 'events', ...(usage ? USAGE_TABLES : [])].map((name) => [
       name,
       { before: before[name].length, after: after[name].length, preserved: before[name].length },
     ]),
@@ -555,7 +569,7 @@ export function macCommands(record) {
   }
   return { run, plist, processInfo }
 }
-export function databaseSnapshot(file, { credentials = false } = {}) {
+export function databaseSnapshot(file, { credentials = false, usage = false } = {}) {
   const db = new DatabaseSync(file, { readOnly: true })
   try {
     requireEvidence(
@@ -577,6 +591,13 @@ export function databaseSnapshot(file, { credentials = false } = {}) {
       snapshot.provider_api_key = db
         .prepare('SELECT * FROM provider_api_key ORDER BY provider')
         .all()
+    if (usage)
+      for (const table of USAGE_TABLES)
+        snapshot[table] = db
+          .prepare(
+            `SELECT * FROM ${table} ORDER BY provider${table === 'provider_usage_read_on' ? '' : ', "window"'}`,
+          )
+          .all()
     snapshot.migrations = db.prepare('SELECT * FROM __drizzle_migrations ORDER BY id').all()
     db.exec('COMMIT')
     return snapshot
