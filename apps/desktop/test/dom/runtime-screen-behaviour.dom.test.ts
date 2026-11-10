@@ -22,7 +22,7 @@ import { chainReading, escalationChain, NOTHING_NAMED_THE_WORK } from '../../src
 import type { WorkIncident } from '../../src/shared/work-incidents'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 import { screenFacts, useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
-import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
+import { useOverlays, type Overlay } from '../../src/renderer/src/lib/overlay-store'
 import type {
   ProcessMemory,
   RuntimeBridge,
@@ -36,6 +36,8 @@ import { drawnReady } from './drawn'
 import { conv, forestOf, forestDrawn } from './forest-fixture'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { mount, META } from './harness'
+import { LISTED } from './delete-conversation-fixture'
+import { wearTheme } from '../../look/fixtures/themes'
 
 // Register the fixture's mocks before loading the root's composable imports.
 const { default: RuntimeScreen } =
@@ -465,6 +467,80 @@ it('opens the create-agent form from Team and cancels without creating an agent'
   expect(m.q('team-workspace')).toBeTruthy()
 })
 
+const keyboardSheets = [
+  { overlay: { kind: 'newAgent' }, ready: 'new-agent' },
+  { overlay: { kind: 'externalMcpServers' }, ready: 'external-mcp-registry' },
+  { overlay: { kind: 'agentSections', profileSlug: 'editor' }, ready: 'agent-sections-sheet' },
+  { overlay: { kind: 'agentCapabilities', profileSlug: 'editor' }, ready: 'capabilities-sheet' },
+  { overlay: { kind: 'startAsAgent', profileSlug: 'editor' }, ready: 'start-as-agent' },
+  {
+    overlay: { kind: 'deleteConversation', sessionId: LISTED.conversation },
+    ready: 'delete-conversation',
+  },
+] satisfies { overlay: Overlay; ready: string }[]
+
+function overlayKey(key: 'Escape' | 'Tab', shiftKey = false) {
+  const event = new KeyboardEvent('keydown', { key, shiftKey, bubbles: true, cancelable: true })
+  window.dispatchEvent(event)
+  expect(event.defaultPrevented).toBe(true)
+}
+
+it.each(keyboardSheets)(
+  'traps focus and restores the connected opener for $ready in the root overlay layer',
+  async ({ overlay, ready }) => {
+    const answers = {
+      ...agentBookAnswers().book,
+      checkDeleteConversation: async () => LISTED,
+      agentModelAndEffort: async () => null,
+    }
+    const previous = Object.getOwnPropertyDescriptors(runtime)
+    Object.assign(runtime, answers)
+    const m = mount(RuntimeScreen, {}, { width: 1200, height: 800 })
+    try {
+      wearTheme('defined')
+      await expect.poll(() => agentStore.loaded.value).toBe(true)
+      m.q('rail-team').click()
+      await expect.poll(() => m.all('team-create').length).toBe(1)
+      const opener = m.q('team-create')
+      opener.focus()
+      expect(document.activeElement).toBe(opener)
+      // Supply each real sheet payload through the root's existing overlay store.
+      useOverlays().open(overlay)
+      await expect.poll(() => m.all(ready).length).toBe(1)
+      const host = m.q('overlay-host')
+      expect(host.parentElement).toBe(m.q('overlay-layer'))
+      expect(m.q('overlay-layer').children).toHaveLength(1)
+      const bounds = m.q(ready).getBoundingClientRect()
+      expect(bounds.width).toBeGreaterThan(250)
+      expect(bounds.height).toBeGreaterThan(100)
+      expect(bounds.left).toBeGreaterThanOrEqual(0)
+      expect(bounds.top).toBeGreaterThanOrEqual(0)
+      expect(bounds.right).toBeLessThanOrEqual(window.innerWidth)
+      expect(bounds.bottom).toBeLessThanOrEqual(window.innerHeight)
+      await expect.poll(() => host.contains(document.activeElement)).toBe(true)
+      const first = m.q('close-overlay')
+      const last = m.q('overlay-spawning')
+      first.focus()
+      overlayKey('Tab', true)
+      expect(document.activeElement).toBe(last)
+      overlayKey('Tab')
+      expect(document.activeElement).toBe(first)
+      overlayKey('Escape')
+      await expect.poll(() => m.all('overlay-host').length).toBe(0)
+      expect(useOverlays().overlay.value).toBeNull()
+      expect(opener.isConnected).toBe(true)
+      expect(document.activeElement).toBe(opener)
+    } finally {
+      m.unmount()
+      for (const key of Object.keys(answers)) {
+        const descriptor = previous[key]
+        if (descriptor) Object.defineProperty(runtime, key, descriptor)
+        else Reflect.deleteProperty(runtime, key)
+      }
+    }
+  },
+)
+
 it('refreshes Team after work changes and stops requesting its forest on another page', async () => {
   const m = mount(RuntimeScreen, {})
   m.q('rail-team').click()
@@ -787,6 +863,27 @@ it.each(['cancel-launch', 'close-overlay'] as const)(
       expect(m.all('start-as-agent')).toHaveLength(1)
       expect(input.value).toBe('Keep these words if I cancel.')
     }
+  },
+)
+
+it.each(['Escape', 'backdrop'] as const)(
+  'cancels the captured pending launch once through %s and closes without a refusal',
+  async (route) => {
+    const { m, answer } = await launchFromAgentSheet('Cancel this pending launch.')
+    const key = runtime.createSession.mock.calls[0]![0].launchKey
+    expect(key).toEqual(expect.any(String))
+    if (route === 'Escape') overlayKey('Escape')
+    else m.q('overlay-host').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    await expect.poll(() => m.all('overlay-host').length).toBe(0)
+    expect(useOverlays().overlay.value).toBeNull()
+    expect(runtime.cancelLaunch).toHaveBeenCalledExactlyOnceWith({ launchKey: key })
+    answer.resolve({ refused: { reason: 'cancelled', said: 'The launch was cancelled.' } })
+    await expect.poll(() => sessions.isPlacing()).toBe(false)
+    await nextTick()
+    expect(runtime.cancelLaunch).toHaveBeenCalledExactlyOnceWith({ launchKey: key })
+    expect(m.all('start-as-agent-error')).toHaveLength(0)
+    expect(m.all('toast')).toHaveLength(0)
+    expect(sessions.launchRefusal.value).toBeNull()
   },
 )
 
