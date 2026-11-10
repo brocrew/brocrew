@@ -348,11 +348,16 @@ export async function openManagedPluginRoute(
         const mcp = new Server({ name, version: '1' }, { capabilities: { tools: {} } })
         mcp.onerror = () => undefined
         mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
-          tools: broker.agent.discover(agent).map((tool) =>
-            Object.fromEntries(
-              Object.entries(tool).filter(([key]) => key !== 'namespace' && key !== 'qualifiedName'),
-            ) as Tool,
-          ),
+          tools: broker.agent
+            .discover(agent)
+            .map(
+              (tool) =>
+                Object.fromEntries(
+                  Object.entries(tool).filter(
+                    ([key]) => key !== 'namespace' && key !== 'qualifiedName',
+                  ),
+                ) as Tool,
+            ),
         }))
         mcp.setRequestHandler(CallToolRequestSchema, async (call, extra) => {
           const tool = offered.find((one) => one.name === call.params.name)
