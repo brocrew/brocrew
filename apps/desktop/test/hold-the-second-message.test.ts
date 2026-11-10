@@ -293,6 +293,62 @@ describe('657 · hold the second message instead of refusing it', () => {
     return { parent, child, call, piece }
   }
 
+  /** Gives the child a piece and waits until its turn parks on a permission card. */
+  const parkItOnACard = async (child: string, call: ReturnType<typeof toolsOf>): Promise<void> => {
+    const cards = (): number =>
+      eventsOf(child).filter((event) => event.type === 'permission_request').length
+    const cardsBefore = cards()
+    expect(
+      payload(
+        await call('give_work', {
+          profile: 'worker',
+          title: 'Go',
+          brief: 'go',
+          definition_of_done: 'The requested result and its checks are recorded.',
+        }),
+      ).outcome,
+    ).toBe('ok')
+    await until(() => cards() > cardsBefore, 'the child to park')
+  }
+
+  /**
+   * Gives the child a piece; a person closes it and reopens it with the launch held, which is the
+   * route where a task is real and its holder is a reservation. Waits until the reopen is listed as
+   * `active` (a start on its way in has no state of its own) and returns the held latch.
+   */
+  const aReopenHeldAfterAGive = async (
+    child: string,
+    call: ReturnType<typeof toolsOf>,
+  ): Promise<{
+    piece: string
+    reopening: Promise<unknown>
+    hold: { promise: Promise<void>; open: () => void }
+  }> => {
+    const given = payload(
+      await call('give_work', {
+        definition_of_done: 'The requested result and its checks are recorded.',
+        profile: 'worker',
+        title: 'The task',
+        brief: 'the task',
+      }),
+    )
+    expect(given.outcome).toBe('ok')
+    host.claimSession(child, window)
+    await host.close(child, window)
+    const hold = latch()
+    homeHold = hold
+    const reopening = host.resumeSession(child, window)
+    reopening.catch(() => undefined)
+    await until(
+      async () =>
+        (
+          payload(await call('list_agents', {})) as { agents: { agent: string; state: string }[] }
+        ).agents.some((one) => one.agent === child && one.state === 'active'),
+      'the reopen to be listed as active',
+    )
+    return { piece: given.label as string, reopening, hold }
+  }
+
   /**
    * ⚑ A person takes the child over and allows its parked card, so its turn can end. ⚑ **D-016** —
    * only a card nobody has answered yet: the child's first turn raised one of its own.
@@ -540,24 +596,7 @@ describe('657 · hold the second message instead of refusing it', () => {
   it('§4 a message suspended while its receiver closes waits out the stop, starts it again, and is sent — never held in the mailbox that went', async () => {
     const { child, call } = await aParentAndItsIdleChild()
     // ⚑ Park the child on its card, so the message below takes the HELD branch.
-    const cardsBefore = eventsOf(child).filter(
-      (event) => event.type === 'permission_request',
-    ).length
-    expect(
-      payload(
-        await call('give_work', {
-          profile: 'worker',
-          title: 'Go',
-          brief: 'go',
-          definition_of_done: 'The requested result and its checks are recorded.',
-        }),
-      ).outcome,
-    ).toBe('ok')
-    await until(
-      () =>
-        eventsOf(child).filter((event) => event.type === 'permission_request').length > cardsBefore,
-      'the child to park',
-    )
+    await parkItOnACard(child, call)
     signInGate = latch()
     const asking = call('message_agent', { agent: child, text: 'are you there', kind: 'note' })
     host.claimSession(child, window)
@@ -639,24 +678,7 @@ describe('657 · hold the second message instead of refusing it', () => {
   it('§5.2 held branch: a read failing after the push no longer says "not queued" about words the mailbox holds', async () => {
     const { parent, child, call } = await aParentAndItsIdleChild()
     // ⚑ Park the child, so the next message takes the HELD branch.
-    const cardsBefore = eventsOf(child).filter(
-      (event) => event.type === 'permission_request',
-    ).length
-    expect(
-      payload(
-        await call('give_work', {
-          profile: 'worker',
-          title: 'Go',
-          brief: 'go',
-          definition_of_done: 'The requested result and its checks are recorded.',
-        }),
-      ).outcome,
-    ).toBe('ok')
-    await until(
-      () =>
-        eventsOf(child).filter((event) => event.type === 'permission_request').length > cardsBefore,
-      'the child to park',
-    )
+    await parkItOnACard(child, call)
     // ⛔ **Armed on the PUSH**, read off the host's own mailbox — a private cast, because the push is
     // the handover on this branch and nothing public observes it before the row that follows.
     const mailbox = (): unknown[] =>
@@ -692,34 +714,7 @@ describe('657 · hold the second message instead of refusing it', () => {
 
   it('§6 withdrawing work from a child whose reopen is in flight answers the shared word, and works once it lands', async () => {
     const { child, call } = await aParentAndItsIdleChild()
-    const given = payload(
-      await call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The task',
-        brief: 'the task',
-      }),
-    )
-    expect(given.outcome).toBe('ok')
-    const piece = given.label as string
-    // ⚠️ **A person closes it, not the parent**: the child is parked on a person's card — and
-    // since D-017 a Close is the one stop there is (`end_agent` is gone).
-    host.claimSession(child, window)
-    await host.close(child, window)
-
-    // ⚑ **A person reopens it, and the launch is held** — the route where a task is real and its
-    // holder is a reservation.
-    homeHold = latch()
-    const reopening = host.resumeSession(child, window)
-    reopening.catch(() => undefined)
-    const cards = async (): Promise<{ agent: string; state: string }[]> =>
-      (payload(await call('list_agents', {})) as { agents: { agent: string; state: string }[] })
-        .agents
-    // ⚑ **D-017 · R11 — a start on its way in is `active`** (there is no *starting* state).
-    await until(
-      async () => (await cards()).some((one) => one.agent === child && one.state === 'active'),
-      'the reopen to be listed as active',
-    )
+    const { piece, reopening, hold } = await aReopenHeldAfterAGive(child, call)
 
     const during = payload(await call('withdraw_task', { piece }))
     // 🔴 **RED before `657`**: `no-task-you-gave-that-agent`, priced `permanent`, about a task that
@@ -737,7 +732,7 @@ describe('657 · hold the second message instead of refusing it', () => {
       'not-a-piece-you-gave',
     )
 
-    homeHold.open()
+    hold.open()
     homeHold = null
     await reopening
     expect(payload(await call('withdraw_task', { piece })).outcome).toBe('ok')
@@ -745,33 +740,12 @@ describe('657 · hold the second message instead of refusing it', () => {
 
   it('§6.1 a reopen a person is CLOSING is not a launch in flight, and is not told to retry', async () => {
     const { child, call } = await aParentAndItsIdleChild()
-    const given = payload(
-      await call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The task',
-        brief: 'the task',
-      }),
-    )
-    expect(given.outcome).toBe('ok')
-    const piece = given.label as string
-    host.claimSession(child, window)
-    await host.close(child, window)
-    homeHold = latch()
-    const reopening = host.resumeSession(child, window)
-    reopening.catch(() => undefined)
-    await until(
-      async () =>
-        (
-          payload(await call('list_agents', {})) as { agents: { agent: string; state: string }[] }
-        ).agents.some((one) => one.agent === child && one.state === 'active'),
-      'the reopen to be listed as active',
-    )
+    const { piece, reopening, hold } = await aReopenHeldAfterAGive(child, call)
     const closing = host.close(child, window)
     closing.catch(() => undefined)
     // ⛔ **The fold, as `message_agent` keeps it**: this reservation will never come up.
     expect(payload(await call('withdraw_task', { piece })).rail).toBe('not-a-piece-you-gave')
-    homeHold.open()
+    hold.open()
     homeHold = null
     await Promise.allSettled([reopening, closing])
   })

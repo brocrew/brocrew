@@ -190,6 +190,19 @@ describe('handing the agent a path, through the host (216)', () => {
       .map((entry) => entry.event)
       .filter((event): event is Extract<TranscriptEvent, { type: T }> => event.type === type)
 
+  /** Allows the parked card so the busy turn ends, then waits for the queued message's ending. */
+  const allowTheCardAndAwaitTheUnqueue = async (
+    sessionId: string,
+  ): Promise<Extract<TranscriptEvent, { type: 'message_unqueued' }> | null> => {
+    await host.respondPermission(sessionId, 'turn_1_perm', { outcome: 'allow' }, new NullSink())
+    for (let i = 0; i < 100; i++) {
+      const seen = eventsOfType(sessionId, 'message_unqueued').at(-1)
+      if (seen) return seen
+      await new Promise((done) => setTimeout(done, 20))
+    }
+    return null
+  }
+
   const turns = (sessionId: string): Extract<TranscriptEvent, { type: 'user_turn' }>[] =>
     store
       .events(sessionId)
@@ -294,15 +307,7 @@ describe('handing the agent a path, through the host (216)', () => {
     expect(eventsOfType(sessionId, 'message_queued').at(-1)?.attachments).toEqual([file])
 
     rmSync(join(cwd, 'notes.md'))
-    await host.respondPermission(sessionId, 'turn_1_perm', { outcome: 'allow' }, new NullSink())
-    const ended = await (async () => {
-      for (let i = 0; i < 100; i++) {
-        const seen = eventsOfType(sessionId, 'message_unqueued').at(-1)
-        if (seen) return seen
-        await new Promise((done) => setTimeout(done, 20))
-      }
-      return null
-    })()
+    const ended = await allowTheCardAndAwaitTheUnqueue(sessionId)
 
     expect(ended?.reason).toBe('abandoned')
     // ⚠️ **With a reason that is TRUE.** `abandoned` alone renders as "the conversation ended
@@ -345,15 +350,7 @@ describe('handing the agent a path, through the host (216)', () => {
     rmSync(join(cwd, 'notes.md'))
     mkdirSync(join(cwd, 'notes.md'))
 
-    await host.respondPermission(sessionId, 'turn_1_perm', { outcome: 'allow' }, new NullSink())
-    const ended = await (async () => {
-      for (let i = 0; i < 100; i++) {
-        const seen = eventsOfType(sessionId, 'message_unqueued').at(-1)
-        if (seen) return seen
-        await new Promise((done) => setTimeout(done, 20))
-      }
-      return null
-    })()
+    const ended = await allowTheCardAndAwaitTheUnqueue(sessionId)
 
     expect(ended?.reason).toBe('abandoned')
     // ⚑ **This ending names the message it ends** (354). Four writers can end a queued message and

@@ -15,6 +15,33 @@ import {
 } from '../src/shared/files-library'
 import { createSessionStore } from '../src/main/db/session-store'
 
+type HostDeps = ConstructorParameters<typeof RuntimeHost>[0]
+
+/** A host over `directory` whose only provider is a fake Codex; `deps` adds the store and library. */
+function aLibraryHost(
+  directory: string,
+  deps: Pick<HostDeps, 'store'> & Partial<HostDeps>,
+): RuntimeHost {
+  return new RuntimeHost({
+    discoverSessions: NO_DISCOVERY,
+    createRuntime: () => new FakeRuntime('codex'),
+    resolveCwd: () => directory,
+    prepareProviderHome: () => directory,
+    providerHomePath: () => directory,
+    nativeTranscriptPath: () => null,
+    exportDirectory: () => directory,
+    newSessionId: () => 'fictional-new',
+    readProviderConfig: () => ({
+      home: directory,
+      homeEnv: 'CODEX_HOME',
+      model: 'fictional',
+      authNote: null,
+      files: [],
+    }),
+    ...deps,
+  })
+}
+
 const sink = {
   ownerId: 'fictional-window',
   aPersonIsBehindIt: true,
@@ -87,26 +114,11 @@ it('takes the command through a dedicated real worker with no main-thread legacy
   const afterFirstWindowLoad = new Promise<void>((resolve) => {
     releaseStartup = resolve
   })
-  const host = new RuntimeHost({
+  const host = aLibraryHost(f.directory, {
     store: { ...measuredStore, filesKept: forbidden, filesKeptTogether: forbidden },
     filesLibraries: libraries,
     filesLibraryRevision: () => '0',
     afterFirstWindowLoad,
-    discoverSessions: NO_DISCOVERY,
-    createRuntime: () => new FakeRuntime('codex'),
-    resolveCwd: () => f.directory,
-    prepareProviderHome: () => f.directory,
-    providerHomePath: () => f.directory,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => f.directory,
-    newSessionId: () => 'fictional-new',
-    readProviderConfig: () => ({
-      home: f.directory,
-      homeEnv: 'CODEX_HOME',
-      model: 'fictional',
-      authNote: null,
-      files: [],
-    }),
   })
   mainReads.length = 0
   try {
@@ -191,25 +203,10 @@ it.each(['cancelled', 'changed'] as const)(
       () => new Promise<ReturnType<typeof libraryUnavailable>>((resolve) => pending.push(resolve)),
     )
     const libraries = new FilesLibraryWindows(() => ({ read, close: async () => {} }))
-    const host = new RuntimeHost({
+    const host = aLibraryHost(f.directory, {
       store: f.store,
       filesLibraries: libraries,
       filesLibraryRevision: () => revision,
-      discoverSessions: NO_DISCOVERY,
-      createRuntime: () => new FakeRuntime('codex'),
-      resolveCwd: () => f.directory,
-      prepareProviderHome: () => f.directory,
-      providerHomePath: () => f.directory,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => f.directory,
-      newSessionId: () => 'fictional-new',
-      readProviderConfig: () => ({
-        home: f.directory,
-        homeEnv: 'CODEX_HOME',
-        model: 'fictional',
-        authNote: null,
-        files: [],
-      }),
     })
     try {
       const first = host.filesLibraryForWindow(

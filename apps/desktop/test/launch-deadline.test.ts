@@ -193,37 +193,53 @@ class StallingRuntime implements AgentRuntime {
   }
 }
 
+/** A host over no ledger whose only provider is `runtime`, launching into `userData`. */
+function aLaunchHost(
+  userData: string,
+  runtime: AgentRuntime,
+  launchTimeoutMs: number,
+): RuntimeHost {
+  let counter = 0
+  return new RuntimeHost({
+    store: NULL_SESSION_STORE,
+    ...neutralHostDeps(() => userData),
+    createRuntime: () => runtime,
+    prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
+    providerHomePath: (provider) => join(userData, 'provider-homes', provider),
+    resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
+    newSessionId: () => `sess_${++counter}`,
+    readProviderConfig: (_provider, home) => ({
+      home,
+      homeEnv: 'CODEX_HOME',
+      model: 'fake',
+      authNote: null,
+      files: [],
+    }),
+    launchTimeoutMs,
+    closeDrainTimeoutMs: 40,
+  })
+}
+
+/** Asks to reopen `sess_1` until the answer is no longer "cannot continue yet", for two seconds. */
+async function whenTheIdIsFree(host: RuntimeHost, sink: RecordingSink): Promise<string> {
+  const until = Date.now() + 2_000
+  let message: string
+  do {
+    const again = await host.resumeSession('sess_1', sink).catch((e: Error) => e)
+    message = (again as Error).message
+    if (!message.includes('cannot continue yet')) break
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  } while (Date.now() < until)
+  return message
+}
+
 describe('a launch that cannot complete (102)', () => {
   let userData: string
   let sink: RecordingSink
 
-  function buildHost(
-    runtime: AgentRuntime,
-    overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {},
-  ): RuntimeHost {
-    let counter = 0
-    return new RuntimeHost({
-      store: NULL_SESSION_STORE,
-      ...neutralHostDeps(() => userData),
-      createRuntime: () => runtime,
-      prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
-      providerHomePath: (provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'fake',
-        authNote: null,
-        files: [],
-      }),
-      // Short, so the wedge is reproduced rather than waited out. The value under test is the
-      // BEHAVIOUR at expiry; the fifteen seconds the app ships is argued from the latency probe.
-      launchTimeoutMs: 40,
-      closeDrainTimeoutMs: 40,
-      ...overrides,
-    })
-  }
+  // Short, so the wedge is reproduced rather than waited out. The value under test is the
+  // BEHAVIOUR at expiry; the fifteen seconds the app ships is argued from the latency probe.
+  const buildHost = (runtime: AgentRuntime): RuntimeHost => aLaunchHost(userData, runtime, 40)
 
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-launch-'))
@@ -289,15 +305,7 @@ describe('a launch that cannot complete (102)', () => {
     // Once it IS confirmed, the id is free again — refusing forever would be a different bug. The
     // next refusal is the ordinary "no such recording", which is a POSITIVE assertion that the
     // reservation path was reached rather than merely that one sentence stopped appearing.
-    const until = Date.now() + 2_000
-    let message: string
-    do {
-      const again = await host.resumeSession('sess_1', sink).catch((e: Error) => e)
-      message = (again as Error).message
-      if (!message.includes('cannot continue yet')) break
-      await new Promise((resolve) => setTimeout(resolve, 5))
-    } while (Date.now() < until)
-    expect(message).toBe('There is no record of this conversation here.')
+    expect(await whenTheIdIsFree(host, sink)).toBe('There is no record of this conversation here.')
     await host.closeAll()
   })
 
@@ -349,15 +357,7 @@ describe('a launch that cannot complete (102)', () => {
 
     // …and once the process really goes, the id is free — refusing forever would be a different bug.
     exit.confirm()
-    const until = Date.now() + 2_000
-    let message: string
-    do {
-      const again = await host.resumeSession('sess_1', sink).catch((e: Error) => e)
-      message = (again as Error).message
-      if (!message.includes('cannot continue yet')) break
-      await new Promise((resolve) => setTimeout(resolve, 5))
-    } while (Date.now() < until)
-    expect(message).toBe('There is no record of this conversation here.')
+    expect(await whenTheIdIsFree(host, sink)).toBe('There is no record of this conversation here.')
     await host.closeAll()
   })
 
@@ -381,32 +381,8 @@ describe('cancelling a launch (102)', () => {
   let userData: string
   let sink: RecordingSink
 
-  function buildHost(
-    runtime: AgentRuntime,
-    overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {},
-  ): RuntimeHost {
-    let counter = 0
-    return new RuntimeHost({
-      store: NULL_SESSION_STORE,
-      ...neutralHostDeps(() => userData),
-      createRuntime: () => runtime,
-      prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
-      providerHomePath: (provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'fake',
-        authNote: null,
-        files: [],
-      }),
-      // Long enough that nothing here can be the deadline firing: every ending below is a Cancel.
-      launchTimeoutMs: 30_000,
-      closeDrainTimeoutMs: 40,
-      ...overrides,
-    })
-  }
+  // Long enough that nothing here can be the deadline firing: every ending below is a Cancel.
+  const buildHost = (runtime: AgentRuntime): RuntimeHost => aLaunchHost(userData, runtime, 30_000)
 
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-cancel-'))

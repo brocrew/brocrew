@@ -5,18 +5,14 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime } from '@brobot2/runtime'
 import { claudeProjectDirName } from '@brobot2/runtime/claude'
-import {
-  NO_DISCOVERY,
-  discoverSessionsIn,
-  type Discovery,
-} from '../src/main/adopt/discover-sessions'
+import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import type { SessionBundle } from '../src/main/archive/export-session'
 import { importClaudeTranscript } from '../src/main/providers/claude/import-transcript'
 import { nativeTranscriptPath } from '../src/main/archive/native-file'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { listProviderHomes } from '../src/main/runtime/provider-homes'
+import { discoverEveryHomeIn } from './helpers/discover-every-home'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
@@ -62,23 +58,11 @@ describe('when each event happened', () => {
   let runtimes: Map<string, FakeRuntime>
   let fixture: { sessionId: string; cwd: string; text: string }
 
-  function discoverEverything(): Discovery {
-    return listProviderHomes(userData)
-      .map((home) => discoverSessionsIn(home.provider, home.path, home.profileId))
-      .reduce<Discovery>(
-        (all, part) => ({
-          found: [...all.found, ...part.found],
-          skipped: [...all.skipped, ...part.skipped],
-        }),
-        { found: [], skipped: [] },
-      )
-  }
-
   function buildHost(overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {}) {
     let counter = 0
     return new RuntimeHost({
       store,
-      discoverSessions: discoverEverything,
+      discoverSessions: () => discoverEveryHomeIn(userData),
       // A pinned clock, so "the wire and the ledger agree" is an equality rather than a
       // near-enough: two readings of Date.now() would differ by a millisecond and prove nothing.
       now: () => clock,

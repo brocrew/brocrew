@@ -14,11 +14,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ClaudeRuntime, claudeProjectDirName } from '@brobot2/runtime/claude'
 import { FakeRuntime } from '@brobot2/runtime'
-import {
-  NO_DISCOVERY,
-  discoverSessionsIn,
-  type Discovery,
-} from '../src/main/adopt/discover-sessions'
+import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { nativeTranscriptPath } from '../src/main/archive/native-file'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import {
@@ -31,7 +27,7 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { recordedEntry } from '../src/main/library/session-library'
-import { listProviderHomes } from '../src/main/runtime/provider-homes'
+import { discoverEveryHomeIn } from './helpers/discover-every-home'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 
 /**
@@ -72,18 +68,6 @@ describe('exporting a session', () => {
     return path
   }
 
-  function discoverEverything(): Discovery {
-    return listProviderHomes(userData)
-      .map((home) => discoverSessionsIn(home.provider, home.path, home.profileId))
-      .reduce<Discovery>(
-        (all, part) => ({
-          found: [...all.found, ...part.found],
-          skipped: [...all.skipped, ...part.skipped],
-        }),
-        { found: [], skipped: [] },
-      )
-  }
-
   function buildHost(
     overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {},
     ownStore: SessionStore = store,
@@ -91,7 +75,7 @@ describe('exporting a session', () => {
     let counter = 0
     return new RuntimeHost({
       store: ownStore,
-      discoverSessions: discoverEverything,
+      discoverSessions: () => discoverEveryHomeIn(userData),
       exportDirectory: () => join(dir, 'exports'),
       nativeTranscriptPath,
       createRuntime: (provider) => new FakeRuntime(provider),
