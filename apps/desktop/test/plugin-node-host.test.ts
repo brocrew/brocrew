@@ -777,6 +777,30 @@ process.exit(24);
       stderr: 'Error: ended /fictional/plugin/server.mjs',
     })
   }, 15000)
+  it('keeps the bounded server stderr tail on a normal host stop', async () => {
+    const { host } = await context()
+    const tail = 'fictional browser operation awaiting reply\n'
+    const child = await host.start(
+      fixture(`process.stderr.write('x'.repeat(17000) + ${JSON.stringify(tail)});\n${source}`),
+    )
+    await child.ready()
+    expect(await child.stop()).toEqual({ exited: true })
+    const kept = JSON.parse(
+      await readFile(resolve(child.receiptPath, '..', 'stderr.json'), 'utf8'),
+    )
+    expect(kept).toMatchObject({
+      format: 1,
+      runId: child.runId,
+      cause: 'stop',
+      truncated: true,
+    })
+    expect(kept.output).toBe(('x'.repeat(17000) + tail).slice(-16384))
+    expect(child.startupDiagnostic?.()).toBeUndefined()
+    expect(JSON.parse(await readFile(child.receiptPath, 'utf8'))).toMatchObject({
+      exited: true,
+      cause: 'stop',
+    })
+  }, 15000)
   it('retains stderr and the actual exit when a server announces failed over IPC', async () => {
     const { host } = await context()
     const child = await host.start(
