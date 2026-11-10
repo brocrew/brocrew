@@ -189,14 +189,14 @@ async function home(): Promise<Mounted> {
 }
 
 beforeEach(() => {
-  useOverlays().overlay.value = null
+  useOverlays().close()
   // ⛔ **The queue is a MODULE singleton**, so a supply left by one test is the next one's world.
   queue.forget()
 })
 
 afterEach(async () => {
   unmountAll()
-  useOverlays().overlay.value = null
+  useOverlays().close()
   queue.forget()
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })

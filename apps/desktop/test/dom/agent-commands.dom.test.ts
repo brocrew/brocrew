@@ -124,8 +124,8 @@ async function open(
 
 afterEach(() => {
   unmountAll()
-  useOverlays().overlay.value = null
-  useOverlays().toasts.value = []
+  useOverlays().close()
+  for (const toast of useOverlays().toasts.value) useOverlays().dismiss(toast.id)
 })
 
 describe('279 · the band is on screen and says whose it is', () => {

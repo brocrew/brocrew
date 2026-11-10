@@ -104,7 +104,7 @@ afterEach(() => {
   unmountAll()
   // The overlay store is a module singleton: a toast raised here would otherwise be on screen for
   // whatever mounts next.
-  useOverlays().toasts.value = []
+  for (const toast of useOverlays().toasts.value) useOverlays().dismiss(toast.id)
 })
 
 /** The app as it really is at this layer: a host that is the backdrop, with one panel on it. */

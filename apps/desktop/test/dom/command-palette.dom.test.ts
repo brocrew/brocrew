@@ -145,8 +145,8 @@ const bound: (() => void)[] = []
 afterEach(() => {
   unmountAll()
   while (bound.length) bound.pop()!()
-  useOverlays().overlay.value = null
-  useOverlays().toasts.value = []
+  useOverlays().close()
+  for (const toast of useOverlays().toasts.value) useOverlays().dismiss(toast.id)
   delete stubbed().api
 })
 

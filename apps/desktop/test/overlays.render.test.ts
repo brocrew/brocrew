@@ -1,9 +1,14 @@
-import { describe, expect, it } from 'vitest'
-import { createSSRApp, h } from 'vue'
+import { describe, expect, expectTypeOf, it } from 'vitest'
+import { createSSRApp, h, toRaw, watchSyncEffect, type Ref } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import DocumentBody from '../src/renderer/src/components/DocumentBody.vue'
 import { renderMarkdown } from '../src/renderer/src/lib/markdown'
-import { TOAST_MS, createOverlayStore } from '../src/renderer/src/lib/overlay-store'
+import {
+  TOAST_MS,
+  createOverlayStore,
+  type Overlay,
+  type OverlayStore,
+} from '../src/renderer/src/lib/overlay-store'
 
 /**
  * The overlays (Slice 2 · 011).
@@ -62,6 +67,69 @@ describe('the shared document viewer', () => {
 })
 
 describe('the overlay layer', () => {
+  it('exposes readonly refs, payloads and toast entries to its readers', () => {
+    expectTypeOf<Pick<OverlayStore, 'overlay' | 'toasts'>>().toEqualTypeOf<{
+      readonly overlay: Readonly<Ref<Readonly<Overlay> | null>>
+      readonly toasts: Readonly<Ref<readonly { readonly id: number; readonly text: string }[]>>
+    }>()
+  })
+
+  it('keeps the same refs and reactive overlay identity through its operations', () => {
+    const store = createOverlayStore(() => {})
+    const overlay = store.overlay
+    const toasts = store.toasts
+    const next: Overlay = { kind: 'startAsAgent', profileSlug: 'research' }
+    const seen: (string | null)[] = []
+    const stop = watchSyncEffect(() => {
+      seen.push(store.overlay.value?.kind ?? null)
+    })
+    try {
+      store.open(next)
+      const shown = store.overlay.value
+      expect(toRaw(shown)).toBe(next)
+      store.open(next)
+      expect(store.overlay.value).toBe(shown)
+      store.open({ kind: 'externalMcpServers' })
+      expect(store.overlay.value).not.toBe(shown)
+      store.close()
+      expect(store.overlay).toBe(overlay)
+      expect(store.toasts).toBe(toasts)
+      expect(seen).toEqual([null, 'startAsAgent', 'externalMcpServers', null])
+    } finally {
+      stop()
+    }
+  })
+
+  it('keeps toast order, entry identity and timer ownership after dismissing an older toast', () => {
+    const scheduled: { fn: () => void; ms: number }[] = []
+    const store = createOverlayStore((fn, ms) => void scheduled.push({ fn, ms }))
+    const toasts = store.toasts
+    const firstId = store.notify('first')
+    const firstList = store.toasts.value
+    const first = firstList[0]
+    const secondId = store.notify('second')
+    expect(secondId).toBe(firstId + 1)
+    expect(store.toasts.value).not.toBe(firstList)
+    expect(store.toasts.value[0]).toBe(first)
+    expect(scheduled.map(({ ms }) => ms)).toEqual([TOAST_MS, TOAST_MS])
+    store.dismiss(firstId)
+    const second = store.toasts.value[0]
+    scheduled[0]?.fn()
+    expect(store.toasts.value).toEqual([{ id: secondId, text: 'second' }])
+    expect(store.toasts.value[0]).toBe(second)
+    const beforeUnknownDismiss = store.toasts.value
+    store.dismiss(-1)
+    expect(store.toasts.value).not.toBe(beforeUnknownDismiss)
+    expect(store.toasts.value[0]).toBe(second)
+    scheduled[1]?.fn()
+    expect(store.toasts.value).toEqual([])
+    const thirdId = store.notify('third')
+    expect(thirdId).toBe(secondId + 1)
+    scheduled[0]?.fn()
+    expect(store.toasts.value).toEqual([{ id: thirdId, text: 'third' }])
+    expect(store.toasts).toBe(toasts)
+  })
+
   it('shows one thing at a time — opening a second replaces the first', () => {
     const store = createOverlayStore(() => {})
     store.open({ kind: 'newAgent' })

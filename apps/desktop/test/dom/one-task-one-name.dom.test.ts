@@ -46,7 +46,7 @@ const ev = (event: Record<string, unknown>): TranscriptEvent => event as unknown
 afterEach(async () => {
   unmountAll()
   usePersonsQueue().forget()
-  useOverlays().overlay.value = null
+  useOverlays().close()
   await page.viewport(1100, 900)
 })
 
