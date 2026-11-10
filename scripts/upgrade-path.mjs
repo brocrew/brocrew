@@ -1,4 +1,4 @@
-// The testers' upgrade path, on a GitHub-hosted runner: a published release installed as a person
+// 695-visible: this checks person-like starts on a GitHub-hosted runner: a release installed as a person
 // installs it, fictional data made by that beta through its own window, the candidate installed
 // over it by hand, and the candidate's first and second starts checked against what the beta left.
 // Run by `.github/workflows/upgrade-path.yml`:
