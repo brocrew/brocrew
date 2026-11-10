@@ -81,8 +81,8 @@ interface Toast {
 }
 
 export interface OverlayStore {
-  overlay: Ref<Overlay | null>
-  toasts: Ref<Toast[]>
+  readonly overlay: Readonly<Ref<Readonly<Overlay> | null>>
+  readonly toasts: Readonly<Ref<readonly Readonly<Toast>[]>>
   open(overlay: Overlay): void
   close(): void
   /**
