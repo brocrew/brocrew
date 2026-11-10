@@ -749,7 +749,7 @@ it.each(['proof-first', 'result-first'])(
     }
     call.result.resolve({
       ok: true,
-      get value() {
+      get value(): never {
         throw original
       },
     })
