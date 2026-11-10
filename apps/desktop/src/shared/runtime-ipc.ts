@@ -42,7 +42,6 @@ import type { AgentState } from './agent-state-contracts'
 import type { SessionInstructions } from './instruction-contracts'
 import type {
   ModelList,
-  ReportedModel,
   SessionSettingChanged,
   SessionSettingsDisclosure,
 } from './model-choice-contracts'
@@ -113,7 +112,6 @@ import type {
   WorkClosedByAPerson,
   WorkRetitled,
   WorkTakenBackByAPerson,
-  WorkThatNamesIt,
 } from './piece-called'
 import type {
   AuthState,
@@ -152,13 +150,13 @@ import type {
   WorkflowAgent,
   WorkflowPhase,
 } from '@brobot2/runtime'
-import { DEFAULT_IDENTITY_PROVIDER, providerDescriptor } from '@brobot2/shared/providers'
+import { DEFAULT_IDENTITY_PROVIDER } from '@brobot2/shared/providers'
 import type { Provider, ProviderConnection, SessionStatus, TurnEnding } from '@brobot2/shared'
 
 // ⚑ **The capability schema, which is a `src/shared` module and holds no zod** (355) — the same
 // rule this file is written under, so the renderer may name a capability without paying for a
 // validator it never runs.
-import type { CapabilityGrant, CapabilityOrigins, ProfileCapabilities } from './capabilities'
+import type { CapabilityGrant } from './capabilities'
 import type { ExternalMcpServerReach, ExternalMcpServerRow } from './external-mcp'
 
 /**
