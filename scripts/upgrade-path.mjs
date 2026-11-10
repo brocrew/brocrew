@@ -1761,12 +1761,26 @@ async function turn(sessionId, text, { resume, seenBy = modelSeen, answerOf = an
   return { answer, ...outcome, requests: seenBy.slice(asked), probes }
 }
 
-/** Saves the fictional Anthropic key through the window, as a person does on the Claude card. */
-const saveTheClaudeKey = () =>
+/** Saves a fictional key through the window, as a person does on the provider's card. */
+const saveTheKey = (provider, key) =>
   running.cdp.evaluate(
-    `return await window.api.runtime.setApiKey({ provider: 'claude', key: ${JSON.stringify(CLAUDE_FIXTURE_KEY)} }).then((one) => ({ set: one?.set, inUse: one?.inUse, refused: one?.refused ?? null })).catch((e) => ({ threw: String(e) }))`,
+    `return await window.api.runtime.setApiKey({ provider: ${JSON.stringify(provider)}, key: ${JSON.stringify(key)} }).then((one) => ({ set: one?.set, inUse: one?.inUse, refused: one?.refused ?? null })).catch((e) => ({ threw: String(e) }))`,
     240_000,
   )
+/** Whether a key save was accepted: saved, not refused, nothing thrown. */
+const savedCleanly = (saved) =>
+  saved?.set === true && saved.refused === null && saved.threw === undefined
+
+/** What the app recorded in `schedule-attempts.json` for one conversation, or why it is unread. */
+function scheduleAttemptsOf(conversation) {
+  try {
+    return JSON.parse(readFileSync(join(data, 'schedule-attempts.json'), 'utf8'))?.conversations?.[
+      conversation
+    ]
+  } catch (error) {
+    return { unread: String(error) }
+  }
+}
 
 /** What the app recorded of a conversation, kept as evidence when a turn was not answered. */
 const historyTail = (sessionId) =>
@@ -1946,14 +1960,9 @@ async function theKeySavedAgain(into, conversations, claude) {
   const { claudeConversation, claudeDueConversation } = claude
   await launch('candidate-new-key', 9347)
   await bridge('the key saved again')
-  into.codexSaved = await running.cdp.evaluate(
-    `return await window.api.runtime.setApiKey({ provider: 'codex', key: ${JSON.stringify(FIXTURE_KEY)} }).then((one) => ({ set: one?.set, inUse: one?.inUse, refused: one?.refused ?? null })).catch((e) => ({ threw: String(e) }))`,
-    240_000,
-  )
+  into.codexSaved = await saveTheKey('codex', FIXTURE_KEY)
   check(
-    into.codexSaved?.set === true &&
-      into.codexSaved.refused === null &&
-      into.codexSaved.threw === undefined,
+    savedCleanly(into.codexSaved),
     'the key saved again: the candidate saved the fictional Codex key, and was not refused',
     into.codexSaved,
   )
@@ -1969,11 +1978,9 @@ async function theKeySavedAgain(into, conversations, claude) {
     )
   }
   if (claudePort !== null) {
-    into.claudeSaved = await saveTheClaudeKey()
+    into.claudeSaved = await saveTheKey('claude', CLAUDE_FIXTURE_KEY)
     check(
-      into.claudeSaved?.set === true &&
-        into.claudeSaved.refused === null &&
-        into.claudeSaved.threw === undefined,
+      savedCleanly(into.claudeSaved),
       'the key saved again: the candidate saved the fictional Anthropic key, and was not refused',
       into.claudeSaved,
     )
@@ -2084,18 +2091,11 @@ async function theOwedStartOnTheKey(into, owed, { stamped, jobIds }) {
     'its words name the repeating job and the one-shot, and not the job the beta cancelled',
     { words },
   )
-  let attempts = null
-  try {
-    attempts = JSON.parse(readFileSync(join(data, 'schedule-attempts.json'), 'utf8'))
-      ?.conversations?.[owed]
-  } catch (error) {
-    attempts = { unread: String(error) }
-  }
-  into.owed.attempts = attempts
+  into.owed.attempts = scheduleAttemptsOf(owed)
   check(
-    Object.values(attempts?.notStartedSaid ?? {}).includes('time-not-known'),
+    Object.values(into.owed.attempts?.notStartedSaid ?? {}).includes('time-not-known'),
     'the candidate’s record of what it did says it told the conversation it cannot know that job’s time',
-    attempts,
+    into.owed.attempts,
   )
 }
 
@@ -2267,15 +2267,8 @@ try {
       workspace: summary.betaApp?.workspace,
     },
   )
-  const keyed = await running.cdp.evaluate(
-    `return await window.api.runtime.setApiKey({ provider: 'codex', key: ${JSON.stringify(FIXTURE_KEY)} }).then((one) => ({ set: one?.set, inUse: one?.inUse, refused: one?.refused ?? null })).catch((e) => ({ threw: String(e) }))`,
-    240_000,
-  )
-  must(
-    keyed.set === true && keyed.refused === null && keyed.threw === undefined,
-    'the beta saved the fictional Codex key, and was not refused',
-    keyed,
-  )
+  const keyed = await saveTheKey('codex', FIXTURE_KEY)
+  must(savedCleanly(keyed), 'the beta saved the fictional Codex key, and was not refused', keyed)
   const conversations = []
   const betaAnswers = {}
   for (const text of [
@@ -2310,9 +2303,9 @@ try {
   /** The beta's second Claude conversation, whose one-shot comes due while the app is closed. */
   let claudeDueConversation = null
   if (claudePort !== null) {
-    const claudeKeyed = await saveTheClaudeKey()
+    const claudeKeyed = await saveTheKey('claude', CLAUDE_FIXTURE_KEY)
     check(
-      claudeKeyed.set === true && claudeKeyed.refused === null && claudeKeyed.threw === undefined,
+      savedCleanly(claudeKeyed),
       'the beta saved the fictional Anthropic key, and was not refused',
       claudeKeyed,
     )
@@ -3070,14 +3063,7 @@ try {
   }
   if (claudeConversation !== null) {
     const notices = jobNoticesIn(afterSecond.tables.events, claudeConversation)
-    const attemptsFile = join(data, 'schedule-attempts.json')
-    let attempts = null
-    try {
-      attempts = JSON.parse(readFileSync(attemptsFile, 'utf8'))?.conversations?.[claudeConversation]
-    } catch (error) {
-      attempts = { unread: String(error) }
-    }
-    summary.claude.afterAll = { notices, attempts }
+    summary.claude.afterAll = { notices, attempts: scheduleAttemptsOf(claudeConversation) }
     if (!stamped()) {
       check(
         notices.queued.length === 1 && notices.said.length === 0,

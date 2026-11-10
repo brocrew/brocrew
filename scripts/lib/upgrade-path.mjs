@@ -811,7 +811,7 @@ export function keychainAttributes(printed) {
 }
 
 /** The app's refusal of a provider whose saved key it can't read (`SAVED_KEY_UNREADABLE`). */
-export const SAVED_KEY_UNREADABLE = 'Saved key can’t be read, save it again in Settings.'
+const SAVED_KEY_UNREADABLE = 'Saved key can’t be read, save it again in Settings.'
 
 /**
  * What became of a turn on the saved key after the upgrade, and whether that passes.
