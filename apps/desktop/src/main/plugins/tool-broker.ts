@@ -6,7 +6,6 @@ import {
 import { randomUUID } from 'node:crypto'
 import { collidingToolNames, externalMcpNameRefusal } from '../../shared/external-mcp'
 import { pluginSha256 } from './package-digests'
-import { strictPluginJson } from './strict-json'
 import type {
   BrokerAgent,
   BrokerAudit,
@@ -35,8 +34,6 @@ export const PLUGIN_BROKER_LIMITS = Object.freeze({
   queueMs: 120_000,
   callMs: 120_000,
   cancelProofMs: 1000,
-  inputBytes: 64 * 1024,
-  outputBytes: 8 * 1024 * 1024,
 })
 const failureCodes = new Set<BrokerFailure>([
   'invalid',
@@ -87,23 +84,6 @@ const identifier = (value: string): boolean =>
   value.length <= 128 &&
   ![...value].some((c) => /\s/.test(c) || c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)
 const fold = (value: string): string => value.normalize('NFKC').toLowerCase()
-function frozen<T>(value: T): T {
-  if (value !== null && typeof value === 'object') {
-    Object.values(value).forEach(frozen)
-    Object.freeze(value)
-  }
-  return value
-}
-function data(value: unknown, max: number): BrokerValue {
-  const encoded = JSON.stringify(value)
-  if (encoded === undefined) return refuse('invalid')
-  return frozen(strictPluginJson(Buffer.from(encoded), max) as BrokerValue)
-}
-function input(value: unknown): BrokerInput {
-  const copy = data(value, PLUGIN_BROKER_LIMITS.inputBytes)
-  if (copy === null || typeof copy !== 'object' || Array.isArray(copy)) return refuse('invalid')
-  return copy as BrokerInput
-}
 const defaultClock: BrokerClock = {
   now: () => performance.now(),
   after: (ms, callback) => {
@@ -165,7 +145,7 @@ export function createPluginToolBroker(options: BrokerOptions): PluginToolBroker
   }
 }
 function makeBroker(options: BrokerOptions): PluginToolBroker {
-  const binding = frozen({
+  const binding = Object.freeze({
     pluginId: options.binding.pluginId,
     installId: options.binding.installId,
     epoch: options.binding.epoch,
@@ -184,12 +164,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
     return refuse('invalid')
   if (options.occupiedNamespaces.some((name) => fold(name) === fold(namespace)))
     return refuse('invalid')
-  const tools = new Map(
-    options.tools.map((tool) => [
-      tool.name,
-      Object.freeze({ ...tool, inputSchema: input(tool.inputSchema) }),
-    ]),
-  )
+  const tools = new Map(options.tools.map((tool) => [tool.name, Object.freeze({ ...tool })]))
   const offered = options.tools.map((tool) => tool.name)
   const admin = new Set(options.adminOperations)
   if (
@@ -204,7 +179,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
     if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(name)) return refuse('invalid')
     if (tools.has(name) && admin.has(name)) return refuse('invalid')
   }
-  const published = frozen(
+  const published = Object.freeze(
     [...tools.values()].map((tool): PublishedBrokerTool => {
       const qualifiedName = `${namespace}__${tool.name}`
       if (occupied.has(fold(qualifiedName)) || typeof tool.description !== 'string')
@@ -471,10 +446,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
               job.reply = ok
                 ? {
                     ok: true,
-                    value: data(
-                      (reply as { ok: true; value: unknown }).value,
-                      PLUGIN_BROKER_LIMITS.outputBytes,
-                    ),
+                    value: (reply as { ok: true; value: BrokerValue }).value,
                   }
                 : { ok: false, cause: reply.ok === false ? reply.cause : undefined }
               settle(job)
@@ -554,7 +526,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
           (operation === 'admin' && !admin.has(name))
         )
           return refuse('denied')
-        copy = input(supplied)
+        copy = supplied
         identity(capability, kind)
         if (signal?.aborted) return refuse('cancelled')
         const q = queues.get(actor.workspace.id)

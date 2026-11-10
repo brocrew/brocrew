@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { PluginBrokerError } from '../src/main/plugins/tool-broker'
 import type {
   BrokerAgent,
-  BrokerInput,
   BrokerOptions,
   BrokerPerson,
   BrokerReply,
@@ -139,20 +138,19 @@ describe('plugin authority and all-agent reach', () => {
 })
 
 describe('package inputs at execution', () => {
-  it('clones queued inputs and freezes execution identity, and arguments', async () => {
+  it('forwards queued inputs without cloning or freezing transport-owned values', async () => {
     const h = setup()
     const first = h.call()
     await tick()
     const input = { profile: 'fern', nested: { title: 'before' } }
     const queued = h.call(h.agent, input)
-    input.profile = 'cedar'
     input.nested.title = 'after'
     h.server.finish(0)
     await first
     await tick()
     const request = h.server.calls[1]!.request
-    expect(request.input).toEqual({ profile: 'fern', nested: { title: 'before' } })
-    expect(Object.isFrozen(request.input.nested)).toBe(true)
+    expect(request.input).toBe(input)
+    expect(Object.isFrozen(request.input.nested)).toBe(false)
     expect(Object.isFrozen(request.identity)).toBe(true)
     h.server.finish(1)
     await queued
@@ -483,15 +481,19 @@ describe('secret-free failures and diagnostics', () => {
     logger.server.finish(0, secret)
     await expect(result).resolves.toBe(secret)
   })
-  it('bounds input, isolates invalid plugin replies and handles cyclic data without a raw error', async () => {
+  it('forwards large input and output without broker conversion', async () => {
     const h = setup()
-    await expect(
-      h.call(h.agent, { profile: 'fern', large: 'x'.repeat(65536) }),
-    ).rejects.toMatchObject({ code: 'invalid' })
-    const cycle: Record<string, unknown> = { profile: 'fern' }
-    cycle.self = cycle
-    await expect(h.call(h.agent, cycle as BrokerInput)).rejects.toBeInstanceOf(PluginBrokerError)
-    expect(h.server.calls).toHaveLength(0)
+    const input = { profile: 'fern', large: 'x'.repeat(65536) }
+    const pending = h.call(h.agent, input)
+    await tick()
+    expect(h.server.calls[0]!.request.input).toBe(input)
+    const reply = { large: 'x'.repeat(8 * 1024 * 1024), nested: { title: 'unchanged' } }
+    h.server.finish(0, reply)
+    await expect(pending).resolves.toBe(reply)
+    expect(Object.isFrozen(reply.nested)).toBe(false)
+  })
+  it('isolates invalid plugin replies without a raw error', async () => {
+    const h = setup()
     const pending = h.call()
     await tick()
     h.server.calls[0]!.result.resolve({ ok: false, error: secret } as unknown as BrokerReply)
@@ -577,31 +579,6 @@ describe('revocation and malformed downstream boundaries', () => {
     await tick()
     await expect(first).rejects.toMatchObject({ code: 'downstream' })
     expect(JSON.stringify(h.audit)).not.toContain('fictional-result-secret')
-  })
-  it('captures a result once and does not let later upstream mutation change it', async () => {
-    const h = setup()
-    const first = h.call()
-    await tick()
-    const payload = { page: 'original' }
-    h.server.calls[0]!.result.resolve({ ok: true, value: payload })
-    await tick()
-    payload.page = 'changed'
-    h.server.calls[0]!.quiet.resolve()
-    await expect(first).resolves.toEqual({ page: 'original' })
-  })
-  it('keeps error codes closed even if a caller throws a forged broker error from serialization', async () => {
-    const h = setup()
-    const payload = {
-      toJSON() {
-        throw new PluginBrokerError('fictional-code-secret' as never)
-      },
-    }
-    const result = await h
-      .call(h.agent, payload as unknown as BrokerInput)
-      .catch((error: unknown) => error)
-    expect(result).toMatchObject({ code: 'invalid', message: 'Plugin unavailable. Try again.' })
-    expect(JSON.stringify(h.audit)).not.toContain('fictional-code-secret')
-    expect(h.server.calls).toHaveLength(0)
   })
 })
 it('a stale detach cannot remove a newer attachment for the same workspace', async () => {

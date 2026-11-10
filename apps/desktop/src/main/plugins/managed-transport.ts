@@ -26,8 +26,6 @@ import type {
 } from './tool-broker'
 
 const WORDS = 'Plugin unavailable. Try again.'
-const INPUT_BYTES = 64 * 1024
-const OUTPUT_BYTES = 8 * 1024 * 1024
 function endpoint(raw: string): URL {
   let url: URL
   try {
@@ -139,24 +137,6 @@ export function createPrivatePluginPort(options: {
           signal.addEventListener('abort', cancel, { once: true })
           const transport = new StreamableHTTPClientTransport(url, {
             requestInit: { headers: { Authorization: `Bearer ${credential}` }, redirect: 'error' },
-            fetch: async (input, init) => {
-              const response = await fetch(input, { ...init, redirect: 'error' })
-              if (!response.body) return response
-              let bytes = 0
-              const body = response.body.pipeThrough(
-                new TransformStream<Uint8Array, Uint8Array>({
-                  transform(chunk, controller) {
-                    bytes += chunk.byteLength
-                    if (bytes > OUTPUT_BYTES) {
-                      report('response-limit')
-                      throw new Error(WORDS)
-                    }
-                    controller.enqueue(chunk)
-                  },
-                }),
-              )
-              return new Response(body, { status: response.status, headers: response.headers })
-            },
           })
           await client.connect(transport)
           connected = true
@@ -296,14 +276,7 @@ export async function openManagedPluginRoute(
         })
         responses.add(flushed)
         const chunks: Buffer[] = []
-        let length = 0
         for await (const chunk of req) {
-          length += chunk.length
-          if (length > INPUT_BYTES) {
-            res.writeHead(413)
-            res.end()
-            return
-          }
           chunks.push(chunk)
         }
         let body: unknown

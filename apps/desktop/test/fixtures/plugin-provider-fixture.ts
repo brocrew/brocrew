@@ -24,6 +24,7 @@ export async function pluginProviderFixture(
     diagnostic?: PluginToolDiagnostic
     secondTool?: boolean
     toolMetadata?: Record<string, unknown>
+    replyText?: string
   } = {},
 ) {
   const credential = createPluginCredential()
@@ -100,7 +101,10 @@ export async function pluginProviderFixture(
           content: [
             {
               type: 'text',
-              text: reply === 'tool-error' ? 'Error: window operation timed out' : PLUGIN_MARKER,
+              text:
+                reply === 'tool-error'
+                  ? 'Error: window operation timed out'
+                  : (options.replyText ?? PLUGIN_MARKER),
             },
           ],
           ...(reply === 'tool-error' ? { isError: true } : {}),

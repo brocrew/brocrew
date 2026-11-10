@@ -376,3 +376,17 @@ it('delivers the real plugin tool error through the agent MCP route', async () =
   expect(reasons).toContain('tool-error')
   expect(f.broker.status().available).toBe(true)
 })
+
+it('passes requests over 64 KiB and responses over 8 MiB through the MCP transport', async () => {
+  const replyText = 'fictional reply '.repeat(600_000)
+  const f = await pluginProviderFixture({ replyText })
+  cleanup.push(() => f.close())
+  const { client } = await caller(f)
+  const result = await client.callTool({
+    name: 'echo',
+    arguments: { profile: 'fern', payload: 'x'.repeat(65536) },
+  })
+  expect(result).toMatchObject({ content: [{ type: 'text', text: replyText }] })
+  expect(result.isError).not.toBe(true)
+  expect(f.broker.status().available).toBe(true)
+})
