@@ -28,7 +28,6 @@ import {
   validateThemeBytes,
   type LoadedTheme,
   type ThemeAssetBytes,
-  type ThemeHostProblem,
   type ThemeLoad,
   type ThemeLoader,
   type UnreadBases,
@@ -42,19 +41,12 @@ import {
   writeActiveTheme,
   type ThemeCommitFiles,
 } from './state'
-import { themeFileSizeProblem, themeFilesProblem, themeSizeProblem } from './words'
-
-export type ThemeStoreProblem =
-  | ThemeHostProblem
-  | 'duplicate-asset'
-  | 'asset-input'
-  | 'absolute-path'
-  | 'base64'
-  | 'save'
-  | 'choice'
-  | 'trash'
-  | 'open-folder'
-  | 'fallback'
+import {
+  themeFileSizeProblem,
+  themeFilesProblem,
+  themeSizeProblem,
+  type ThemeStoreProblem,
+} from './words'
 
 export interface ThemeStoreOptions {
   readonly builtIns: string

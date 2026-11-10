@@ -17,7 +17,6 @@ import {
   readThemeFile,
   THEME_JSON_BYTES,
   THEME_READ_FILES,
-  type ThemeFileFailure,
   type ThemeReadFiles,
 } from './files'
 import {
@@ -26,6 +25,7 @@ import {
   themeFontsProblem,
   themeSizeProblem,
   THEME_PICTURE_FORMAT_PROBLEM,
+  type ThemeHostProblem,
 } from './words'
 
 export const THEME_FOLDER_LIMIT = 513
@@ -40,8 +40,6 @@ async function readDirectory(path: string): Promise<readonly Dirent[]> {
   }
   return entries
 }
-
-export type ThemeHostProblem = ThemeFileFailure | 'json-size' | 'json' | 'id' | 'files' | 'decode'
 
 export interface ThemeLoader {
   readonly problem: (kind: ThemeHostProblem) => string

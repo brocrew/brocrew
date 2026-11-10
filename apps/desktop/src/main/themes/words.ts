@@ -1,4 +1,20 @@
-import type { ThemeStoreProblem } from './store'
+import type { ThemeFileFailure } from './files'
+
+/** What can stop a theme from loading. */
+export type ThemeHostProblem = ThemeFileFailure | 'json-size' | 'json' | 'id' | 'files' | 'decode'
+
+/** What can stop a theme from loading, saving or being chosen, each with the words below. */
+export type ThemeStoreProblem =
+  | ThemeHostProblem
+  | 'duplicate-asset'
+  | 'asset-input'
+  | 'absolute-path'
+  | 'base64'
+  | 'save'
+  | 'choice'
+  | 'trash'
+  | 'open-folder'
+  | 'fallback'
 
 const PROBLEMS: Readonly<Record<ThemeStoreProblem, string>> = {
   unreadable: 'The file could not be read.',
