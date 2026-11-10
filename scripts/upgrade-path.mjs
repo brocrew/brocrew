@@ -2554,7 +2554,7 @@ try {
       { path, ...fileFacts(join(data, path)) },
     ]),
   )
-  const stateBefore = readState()
+  const stateBefore = readState(data, before.tables)
   const besideBefore = besideTheFolder(args['beta-registry'])
   summary.baseline = {
     history,
@@ -2663,7 +2663,7 @@ try {
   )
   check(
     transcriptsKept(transcriptsBefore, { exact: true }).length === 0 &&
-      stateKept(stateBefore, readState(), stateFiles).lost.length === 0,
+      stateKept(stateBefore, readState(data, before.tables), stateFiles).lost.length === 0,
     'installing the candidate changed no transcript and no state file',
   )
 
