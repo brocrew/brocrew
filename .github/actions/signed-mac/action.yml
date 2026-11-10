@@ -53,7 +53,7 @@ runs:
         pnpm --filter @brobot2/desktop exec electron-builder --mac dmg zip dir --arm64 --config electron-builder.yml \
           -c.forceCodeSigning=true -c.mac.hardenedRuntime=true \
           -c.mac.timestamp=http://timestamp.apple.com/ts01 -c.mac.notarize=true -c.dmg.sign=true \
-          -c.artifactBuildCompleted=./build/notarize-dmg.cjs \
+          -c.artifactBuildCompleted=./build/notarize-dmg.mjs \
           -c.extraMetadata.version=${{ inputs.version }} \
           -c.publish.provider=github -c.publish.owner=${{ inputs.owner }} -c.publish.repo=${{ inputs.repo }} \
           --publish never

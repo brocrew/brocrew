@@ -1,4 +1,5 @@
-module.exports = async (event) => {
+/** Electron-builder calls this hook. @public */
+export default async (event) => {
   if (!event.file?.endsWith('.dmg')) return
   const { default: tools } = await import('./builder-tools.mjs')
   await tools.notarize({

@@ -80,7 +80,7 @@
     "apps/desktop": {
       "project": ["**/*.{ts,tsx,js,mjs,cjs,vue,html}"],
       "entry": [
-        "build/notarize-dmg.cjs",
+        "build/notarize-dmg.mjs",
         "src/main/index.ts",
         "src/main/plugins/supervisor/entry.ts",
         "src/main/plugins/supervisor/sqlite-adapter.ts",
