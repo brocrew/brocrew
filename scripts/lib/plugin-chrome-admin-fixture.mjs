@@ -62,6 +62,7 @@ export async function chromeAdminRouteFixture(directory) {
     snapshot() {
       let body
       const response = {
+        locals: {},
         status() {
           return response
         },
@@ -82,6 +83,7 @@ export async function chromeAdminRouteFixture(directory) {
         throw new Error('unexpected fictional route')
       let status, body
       const response = {
+        locals: {},
         status(value) {
           status = value
           return response

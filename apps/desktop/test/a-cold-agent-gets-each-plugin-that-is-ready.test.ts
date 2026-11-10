@@ -7,7 +7,6 @@ type Binding = Awaited<ReturnType<Parameters<typeof createLifecycleAgentBridge>[
 import type { LifecycleWorkspace } from '../src/main/plugins/lifecycle/types'
 import { openManagedPluginRoute } from '../src/main/plugins/managed-transport'
 import type { Command } from '../src/main/plugins/supervisor/protocol'
-import type { BrokerInput } from '../src/main/plugins/tool-broker'
 import { lease } from './helpers/plugin-agent-bridge'
 
 const cleanup: (() => Promise<unknown>)[] = []
@@ -59,12 +58,9 @@ async function aWorkspace(
         name: 'echo',
         description: 'Fictional echo',
         inputSchema: { type: 'object' },
-        prepare: (input: BrokerInput) => ({ input, resources: [] }),
       },
     ],
-    resources: [],
     adminOperations: [],
-    isAllowed: () => true,
     server: {
       tool: () => ({
         result: Promise.resolve({

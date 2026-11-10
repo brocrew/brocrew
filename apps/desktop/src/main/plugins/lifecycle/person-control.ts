@@ -59,6 +59,7 @@ const Request = z.discriminatedUnion('kind', [
     releaseDigest: Hex,
   }),
   z.strictObject({ kind: z.literal('uninstall'), pluginId: id, operationId: z.uuid() }),
+  z.strictObject({ kind: z.literal('uninstall-result-v1'), pluginId: id, operationId: z.uuid() }),
   z.strictObject({ kind: z.literal('screen'), pluginId: id }),
   z.strictObject({ kind: z.literal('read'), pluginId: id, installId: z.uuid() }),
   z.strictObject({
@@ -277,6 +278,7 @@ export async function servePersonPluginControl(options: {
                 'tool-starting-v1',
                 'startup-diagnostic-v1',
                 'download-progress-v1',
+                'removal-results-v1',
                 ...(options.restartPlugin ? ['plugin-actions-v1'] : []),
                 ...(options.controller.preparedMutationFeature()
                   ? ['authors-v1', 'prepared-mutations-v1']
@@ -410,10 +412,10 @@ export async function servePersonPluginControl(options: {
             return true
           }
           case 'uninstall':
-            return (
-              (await options.controller.uninstall(handle, request.pluginId, request.operationId)) ??
-              true
-            )
+          case 'uninstall-result-v1': {
+            const outcome = await options.controller.uninstall(handle, request.pluginId, request.operationId)
+            return request.kind === 'uninstall' ? true : (outcome ?? true)
+          }
           case 'screen': {
             const screen = options.controller.screen(handle, request.pluginId)
             return screen.installation

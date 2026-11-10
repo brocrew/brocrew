@@ -23,7 +23,9 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 async function setup(repo = false) {
-  const f = await fixture({}, 'whatsapp')
+  const f = await fixture({}, 'whatsapp', {
+    removal: { data: 'delete', note: 'Fictional local data is removed.' },
+  })
   const old = packageFixture({ manifest: { ...f.pkg.manifest, version: '0.1.0' } })
   const next = packageFixture({ manifest: { ...f.pkg.manifest, version: '0.1.3' } })
   let offered = old

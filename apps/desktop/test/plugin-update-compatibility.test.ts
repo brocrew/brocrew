@@ -177,8 +177,10 @@ describe.skipIf(process.platform === 'win32')(
         await f.controller.drain()
       }
     })
-    it('the new client lists and configures under the actual parent owner without offering unsupported verbs', async () => {
-      const f = await fixture({}, 'whatsapp')
+    it.each([true, false])('the new client lists and configures under the actual parent owner with removal declaration %s without offering unsupported verbs', async (declared) => {
+      const f = await fixture({}, 'whatsapp', declared ? {
+        removal: { data: 'delete', note: 'Fictional local data is removed.' },
+      } : {})
       exitable(f)
       f.state.close()
       const state = ParentState.open({ root: join(f.root, 'state'), workspaceRoots: [f.workspace] })
@@ -200,9 +202,17 @@ describe.skipIf(process.platform === 'win32')(
       try {
         expect(client.refreshCatalogue).toBeUndefined()
         expect(client.update).toBeUndefined()
-        expect(await client.catalogue()).toMatchObject([
-          { installed: true, state: 'Running', uninstallDeletesData: true },
-        ])
+        if (declared) {
+          expect(await client.catalogue()).toMatchObject([
+            { installed: true, state: 'Running', uninstallDeletesData: true },
+          ])
+        } else {
+          const cards = await client.catalogue()
+          expect(cards).toMatchObject([
+            { installed: true, state: 'Running', uninstallDeletesData: false },
+          ])
+          expect(cards[0]?.uninstallNote).toBeUndefined()
+        }
         const screen = await client.screen('whatsapp')
         expect(screen.current(screen.binding)).toBe(true)
         expect(screen.verified.manifest.version).toBe(f.pkg.manifest.version)

@@ -93,6 +93,7 @@ describe.skipIf(process.platform === 'win32')(
           projection: projection().sink,
           propose: () => {},
         })
+        expect(client.features()).toContain('removal-results-v1')
         await client.install('whatsapp')
         expect((await client.catalogue())[0]?.uninstallNote).toBe(note)
         vi.stubGlobal(

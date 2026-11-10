@@ -9,7 +9,7 @@ import { StreamableHTTPClientTransport } from '../../apps/desktop/node_modules/@
 import { createRepoAwarePluginVerifier } from '../../apps/desktop/src/main/plugins/package-verifier.ts'
 import { preparePluginNodeRuntime } from '../../apps/desktop/src/main/plugins/node-runtime.ts'
 import { createPluginNodeHost } from '../../apps/desktop/src/main/plugins/node-host.ts'
-import { chromeBrokerBinding } from '../../apps/desktop/src/main/plugins/lifecycle/chrome-broker.ts'
+import { pluginBrokerBinding } from '../../apps/desktop/src/main/plugins/lifecycle/broker-binding.ts'
 import { createLifecycleAgentBridge } from '../../apps/desktop/src/main/plugins/lifecycle/agent-bridge.ts'
 import { WorkspacePluginAttachments } from '../../apps/desktop/src/main/plugins/attachments.ts'
 import {
@@ -382,7 +382,7 @@ describe.skipIf(process.platform === 'win32')(
             detach: async () => {},
             agentAttachments: () => [view],
           },
-          binding: chromeBrokerBinding,
+          binding: pluginBrokerBinding,
         })
         cleanup.push(() => bridge.close())
         let attachmentReads = 0

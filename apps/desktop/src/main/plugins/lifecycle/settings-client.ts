@@ -684,10 +684,27 @@ export async function connectPluginSettings(options: {
           'schema',
         )
       }
-      return cards.map((card) => ({
-        ...card,
-        ...(sourceFormat === 2 || blocked ? { preparationRequired: true as const } : {}),
-        ...(blocked ? { mutationBlocked: blocked } : {}),
+      return Promise.all(cards.map(async (card) => {
+        let removal
+        if (!modern && card.installed) {
+          const installed = Installation.parse(await channel.call({ kind: 'screen', pluginId: card.id }))
+          const checked = await vault.load({
+            id: card.id,
+            version: installed.release.version,
+            manifestSha256: installed.release.manifestSha256,
+            archive: { sha256: installed.release.archiveSha256 },
+          })
+          removal = checked.manifest.removal
+        }
+        return {
+          ...card,
+          ...(!modern && card.installed ? {
+            uninstallDeletesData: removal?.data === 'delete',
+            ...(removal ? { uninstallNote: removal.note } : {}),
+          } : {}),
+          ...(sourceFormat === 2 || blocked ? { preparationRequired: true as const } : {}),
+          ...(blocked ? { mutationBlocked: blocked } : {}),
+        }
       }))
     },
     ...(features.includes('plugin-actions-v1')
@@ -780,7 +797,11 @@ export async function connectPluginSettings(options: {
     async uninstall(pluginId) {
       // The caller's UI is denied immediately too; other workspace consumers get a reverse revoke.
       const closing = invalidate(pluginId)
-      const removing = channel.call({ kind: 'uninstall', pluginId, operationId: randomUUID() })
+      const removing = channel.call({
+        kind: features.includes('removal-results-v1') ? 'uninstall-result-v1' : 'uninstall',
+        pluginId,
+        operationId: randomUUID(),
+      })
       const result = await Promise.allSettled([closing, removing])
       if (result.some((one) => one.status !== 'fulfilled'))
         throw new PluginSupervisorError('unavailable')
