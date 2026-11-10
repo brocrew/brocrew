@@ -1,7 +1,7 @@
 import type { UserTurnEvent } from '../../shared/human-answer-contracts'
 import Database from 'better-sqlite3'
 import type { AppDatabase } from './connection'
-import type { SessionStore } from './session-store'
+import type { WorkLedgerRead } from './work-ledger-read'
 import { rowsUnreadOnce } from './rows-unread'
 import { conversationLink, pieceLink } from '../../shared/links'
 import { aPersonsOwnWords } from '../../shared/a-persons-own-words'
@@ -30,7 +30,7 @@ const searches = new WeakMap<AppDatabase, ProfilePastWorkSearch>()
 
 export function searchPastWork(
   db: AppDatabase,
-  store: SessionStore,
+  store: WorkLedgerRead,
   caller: string,
   words: string,
   revision?: PastWorkSource,
@@ -123,7 +123,7 @@ class ProfilePastWorkSearch {
   }
 
   read(
-    store: SessionStore,
+    store: WorkLedgerRead,
     caller: string,
     words: string,
     revision?: PastWorkSource,
@@ -276,7 +276,7 @@ class ProfilePastWorkSearch {
     }
   }
 
-  private indexConversation(index: Index, store: SessionStore, session: Source): void {
+  private indexConversation(index: Index, store: WorkLedgerRead, session: Source): void {
     const insert = index.db.prepare(
       'INSERT INTO documents(conversation, piece, field, text) VALUES (?, ?, ?, ?)',
     )

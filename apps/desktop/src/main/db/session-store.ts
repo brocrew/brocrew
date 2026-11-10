@@ -1,3 +1,5 @@
+import type { WorkLedgerRead, WorkRow } from './work-ledger-read'
+export type { WorkRow } from './work-ledger-read'
 import { rowsUnreadOnce, THE_WHOLE_LEDGER, type RowsUnread, type SkipNote } from './rows-unread'
 import type {
   ReconciliationReceipt,
@@ -335,24 +337,6 @@ export interface TurnAsItEnded {
   /** Whether its provider refused the login it ran on, or the account's bill. */
   readonly refused: boolean
   readonly piecesItNamed: readonly string[]
-}
-
-export interface WorkRow {
-  /** `work.id`. */
-  readonly piece: string
-  /** The piece it was given under, or `null`: a root. */
-  readonly parent: string | null
-  readonly number: number
-  readonly label: string
-  /** The conversation whose ledger holds its life. */
-  readonly owner: string
-  readonly givenBy: string | null
-  readonly title: string | null
-  /** As given; `null` on a root. */
-  readonly brief: string | null
-  /** The folder the give asked for, as asked, or `null`. */
-  readonly folder: string | null
-  readonly createdAt: number
 }
 
 export interface ResourceRow {
@@ -874,8 +858,7 @@ export interface ScheduleEvidenceRow {
   readonly payload: unknown
 }
 
-export interface SessionStore extends OwnNotesStore {
-  piecesWithTheirWaits(owner: string, unread: RowsUnread): readonly PieceRow[]
+export interface SessionStore extends OwnNotesStore, WorkLedgerRead {
   /** Indexed candidate pages; the caller folds owners within its turn-block budget. */
   turnBlockCandidates(
     giver: string,
@@ -1087,7 +1070,6 @@ export interface SessionStore extends OwnNotesStore {
   ensurePersonalRoot(sessionId: string, at: number): WorkRow
   theOpenTurn(sessionId: string): OpenTurn | null
   theNewestTurn(sessionId: string): string | null
-  theActiveGeneration(sessionId: string): number
   aLifeOpenedTheTurn(
     sessionId: string,
     turnId: string,
@@ -1143,8 +1125,6 @@ export interface SessionStore extends OwnNotesStore {
     target: string,
     messageId: string,
   ): 'pending' | 'running' | 'turn-ended' | 'not-delivered'
-  /** One `work` row by its id, or `null`. */
-  workById(piece: string): WorkRow | null
   /** Canonical labels and current titles, with one retitle walk per owner. */
   activityWorkNames(
     pieces: readonly string[],
@@ -1166,12 +1146,7 @@ export interface SessionStore extends OwnNotesStore {
   ): readonly PersistedEvent[] | null
   workerLineage(conversation: string): readonly string[]
   workerQuestionTargets(): readonly { asker: string; recipient: string }[] | null
-  rootDoneCondition(root: string): string | null
   rootLines(root: string): { readonly title: string | null; readonly statusLine: StatusLine | null }
-  /** Root lines for the closing block: null means unread, rather than absent. */
-  turnBlockRootLines(
-    root: string,
-  ): { readonly title: string | null; readonly statusLine: StatusLine | null } | null
   workThatNames(conversation: string, unread?: RowsUnread): WorkThatNamesIt | null
   workThatNamesAndItsWait(
     conversation: string,
@@ -1191,7 +1166,6 @@ export interface SessionStore extends OwnNotesStore {
   childrenOf(piece: string): readonly WorkRow[]
   depthOf(piece: string): number
   pieceOfItsChainHeldBy(piece: string, owner: string): string | null
-  piecesOwnedBy(owner: string, unread?: RowsUnread): readonly PieceRow[]
   turnBlockPiecesOwnedBy(owner: string, unread?: RowsUnread): readonly PieceRow[]
   openPiecesOf(owner: string, unread?: RowsUnread): readonly PieceRow[]
   newestChildAs(
