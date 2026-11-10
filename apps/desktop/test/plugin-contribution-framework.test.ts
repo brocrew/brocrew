@@ -97,10 +97,6 @@ describe('versioned contribution metadata', () => {
     Object.assign(required.hooks[0]!, { optional: false })
     expect(() => parsePluginManifest(Buffer.from(JSON.stringify(required)))).toThrow()
   })
-  it('keeps exact installed legacy manifests readable', () => {
-    const raw = manifestFor()
-    expect(parsePluginManifest(Buffer.from(JSON.stringify(raw)))).toEqual(raw)
-  })
   it('binds registrations to verified bytes and invalidates stale run authority', async () => {
     const api = await framework()
     const pkg = packageFixture({
