@@ -33,6 +33,8 @@ export async function rendererLoggingProbe(launchArgs) {
     })
     const args = [main, ...launchArgs, `--probe-root=${folder}`, `--probe-renderer=${renderer}`]
     const needsDisplay = process.platform === 'linux' && !process.env.DISPLAY
+    const env = { ...process.env }
+    delete env.ELECTRON_RUN_AS_NODE
     const child = spawnSync(
       needsDisplay ? 'xvfb-run' : electron,
       needsDisplay ? ['-a', electron, ...args] : args,
@@ -40,7 +42,7 @@ export async function rendererLoggingProbe(launchArgs) {
         cwd: root,
         encoding: 'utf8',
         timeout: 30_000,
-        env: { ...process.env, ELECTRON_RUN_AS_NODE: '' },
+        env,
       },
     )
     process.stdout.write(child.stdout || '')
