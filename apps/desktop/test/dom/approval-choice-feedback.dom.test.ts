@@ -32,9 +32,13 @@ async function screen(mode: 'ask' | 'auto') {
     () =>
       new Promise<ApprovalModeDisclosure>((resolve, reject) => answers.push({ resolve, reject })),
   )
+  let hearLiveness: Parameters<RuntimeBridge['onLiveness']>[0] = () => {}
   const store = createSessionStore({
     onEvent: () => () => {},
-    onLiveness: () => () => {},
+    onLiveness: (listener) => {
+      hearLiveness = listener
+      return () => {}
+    },
     createSession: async () => ({ ...META, approvalMode: mode }),
     setApprovalMode,
   } as unknown as RuntimeBridge)
@@ -54,7 +58,7 @@ async function screen(mode: 'ask' | 'auto') {
   )
   await settle()
   await drawnReady()
-  return { m, record, answers, setApprovalMode }
+  return { m, record, answers, setApprovalMode, hearLiveness }
 }
 
 it.each(['ask', 'auto'] as const)(
@@ -110,7 +114,7 @@ it.each(['ask', 'auto'] as const)(
 )
 
 it('removes pending words when the next message adopts the mode', async () => {
-  const { m, record, answers } = await screen('auto')
+  const { m, answers, hearLiveness } = await screen('auto')
   const input = m.q('card-approval') as HTMLInputElement
   input.click()
   await settle()
@@ -121,7 +125,19 @@ it('removes pending words when the next message adopts the mode', async () => {
     blanketGrants: [],
   })
   await settle()
-  record.meta = { ...record.meta!, approvalMode: 'ask', pendingApprovalMode: null }
+  hearLiveness({
+    sessionId: META.sessionId,
+    liveness: {
+      state: 'live',
+      since: 0,
+      approval: {
+        approvalMode: 'ask',
+        pendingApprovalMode: null,
+        approvalNote: 'Ask',
+        blanketGrants: [],
+      },
+    },
+  })
   await settle()
   expect(input.checked).toBe(false)
   expect(m.all('card-approval-pending')).toHaveLength(0)
@@ -131,8 +147,21 @@ it('removes pending words when the next message adopts the mode', async () => {
 it.each([false, true])(
   'reverts a failed change or cancellation, preserving the prior choice (pending=%s)',
   async (pending) => {
-    const { m, record, answers } = await screen('auto')
-    if (pending) record.meta = { ...record.meta!, pendingApprovalMode: 'ask' }
+    const { m, record, answers, hearLiveness } = await screen('auto')
+    if (pending)
+      hearLiveness({
+        sessionId: META.sessionId,
+        liveness: {
+          state: 'live',
+          since: 0,
+          approval: {
+            approvalMode: 'auto',
+            pendingApprovalMode: 'ask',
+            approvalNote: 'Auto',
+            blanketGrants: [],
+          },
+        },
+      })
     await settle()
     const input = m.q('card-approval') as HTMLInputElement
     const before = input.checked

@@ -10,9 +10,13 @@ import type { ApprovalModeDisclosure, RuntimeBridge } from '../../src/shared/run
 scene('approval choice feedback', async (stage) => {
   wearTheme('brocrew')
   let answer: (value: ApprovalModeDisclosure) => void = () => {}
+  let hearLiveness: Parameters<RuntimeBridge['onLiveness']>[0] = () => {}
   const store = createSessionStore({
     onEvent: () => () => {},
-    onLiveness: () => () => {},
+    onLiveness: (listener) => {
+      hearLiveness = listener
+      return () => {}
+    },
     createSession: async () => ({ ...META, approvalMode: 'auto' }),
     setApprovalMode: () =>
       new Promise<ApprovalModeDisclosure>((resolve) => {
@@ -45,7 +49,19 @@ scene('approval choice feedback', async (stage) => {
     })
     await settle()
     if (state === 'after') {
-      record.meta = { ...record.meta!, approvalMode: 'ask', pendingApprovalMode: null }
+      hearLiveness({
+        sessionId: id,
+        liveness: {
+          state: 'live',
+          since: 0,
+          approval: {
+            approvalMode: 'ask',
+            pendingApprovalMode: null,
+            approvalNote: 'Ask',
+            blanketGrants: [],
+          },
+        },
+      })
       await settle()
     }
   }

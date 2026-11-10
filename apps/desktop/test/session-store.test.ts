@@ -2728,18 +2728,14 @@ describe('the session store', () => {
       expect(store.get(id)?.meta?.approvalMode).toBe(nativeMode)
       expect(store.get(id)?.meta?.pendingApprovalMode).toBe(nativeMode === 'auto' ? null : 'auto')
       const record = store.get(id)!
-      const claim = bridge.claim
-      bridge.claim = async (input) => ({
-        ...(await claim(input)),
-        ...record.meta!,
-        cwd: '/work/fictional-bakery',
-      })
-      await store.claim(id)
+      bridge.refreshConfig = async () => ({ ...record.meta!.config, model: 'fictional-new-model' })
+      await store.refreshConfig(id)
+      expect(record.meta?.config.model).toBe('fictional-new-model')
       refuse(new Error('Mode could not be saved'))
       await saving
       expect(record.meta?.approvalMode).toBe(nativeMode)
       expect(record.meta?.pendingApprovalMode).toBeNull()
-      expect(record.meta?.cwd).toBe('/work/fictional-bakery')
+      expect(record.meta?.config.model).toBe('fictional-new-model')
       store.dispose()
     },
   )

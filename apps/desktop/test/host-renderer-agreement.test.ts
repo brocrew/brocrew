@@ -164,7 +164,7 @@ describe('the host and the renderer cannot disagree about what is running (100)'
   /** What the host is running, and what the renderer says is running — the two answers, compared. */
   const hostSays = (): string[] => [...host.sessionIds].sort()
   // ⚑ **D-017b · `live`** — the conversations this window is fed the events of (it was `open`).
-  const rendererSays = (store: { live: { value: { sessionId: string }[] } }): string[] =>
+  const rendererSays = (store: { live: { value: readonly { sessionId: string }[] } }): string[] =>
     store.live.value.map((record) => record.sessionId).sort()
 
   it('a store built after the old one was disposed agrees with the host again', async () => {
