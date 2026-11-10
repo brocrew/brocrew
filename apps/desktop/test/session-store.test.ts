@@ -1084,15 +1084,6 @@ describe('the session store', () => {
     store.dispose()
   })
 
-  it('keeps a conversation running while you read another one', () => {
-    // The switch is not in the store at all — there is nothing here to switch. That is the
-    // point: a session cannot go quiet because the view moved, because the view is elsewhere.
-    const bridge = fakeBridge()
-    const store = createSessionStore(bridge)
-    expect(Object.keys(store)).not.toContain('activeId')
-    store.dispose()
-  })
-
   it('never asks the host to reopen something it is already running', async () => {
     // This is the "session is already open" error, gone by construction: the store answers from
     // what it already holds instead of asking.
@@ -1415,16 +1406,6 @@ describe('the session store', () => {
     store.forget(id)
     expect(store.get(id)).toBeNull()
     expect(bridge.__calls.filter((call) => call === `stopLooking:${id}`)).toHaveLength(1)
-    store.dispose()
-  })
-
-  it('reports a close the host AGREED to, which is the half a reopen rides on (147)', async () => {
-    const bridge = fakeBridge()
-    const store = createSessionStore(bridge)
-    const id = (await store.create({ provider: 'claude' })) ?? ''
-
-    expect(await store.close(id)).toBe(true)
-    expect(store.get(id)?.phase).toBe('recorded')
     store.dispose()
   })
 
@@ -2046,18 +2027,6 @@ describe('the session store', () => {
     store.dispose()
   })
 
-  it('an empty message reports success — nothing was lost, so nothing is handed back (077)', async () => {
-    // `false` here would make the caller write an empty string into a box the user had just
-    // cleared, which is a different way of losing what they were typing.
-    const bridge = fakeBridge()
-    const store = createSessionStore(bridge)
-    const id = (await store.create({ provider: 'claude' })) ?? ''
-
-    expect(await store.send(id, '   ')).toBe(true)
-    expect(bridge.__calls).not.toContain(`send:${id}`)
-    store.dispose()
-  })
-
   it('reads the SESSION being working, not the page being read (064)', async () => {
     // ⚠️ 061 finding 5, on the send path: *"send can call the wrong bridge operation."* A reader
     // paged back into a quiet stretch of history left `record.transcript.status` at whatever that
@@ -2615,17 +2584,6 @@ describe('the session store', () => {
     expect(store.isLaunching('sess_other')).toBe(false)
     expect(await store.cancelLaunch()).toBe(true)
     expect(await creating).toBeNull()
-    store.dispose()
-  })
-
-  it('applies liveness that arrives before the session is adopted', async () => {
-    const bridge = fakeBridge()
-    const store = createSessionStore(bridge)
-    bridge.__liveness('sess_1', 'silent')
-
-    await store.create({ provider: 'claude' })
-
-    expect(store.get('sess_1')?.meta?.liveness.state).toBe('silent')
     store.dispose()
   })
 

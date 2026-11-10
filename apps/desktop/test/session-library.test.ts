@@ -168,6 +168,8 @@ describe('the session library', () => {
         onDisk: false,
       })
       expect(page.counts.onlyHere).toBe(1)
+      // "Only here" is a subset of imported, not a fourth bucket.
+      expect(page.counts.imported).toBe(1)
     })
 
     it('carries what a home could not describe rather than dropping it', async () => {
@@ -502,24 +504,6 @@ describe('the session library', () => {
       const page = await readLibrary(deps({ found: [], skipped: [] }))
       expect(page.entries).toHaveLength(1)
       expect(new Set(page.entries.map((entry) => entry.id)).size).toBe(1)
-    })
-
-    it('counts "only here" as a SUBSET of imported rather than a fourth bucket', async () => {
-      store.adopt({
-        id: 'sess_rescued',
-        provider: 'claude',
-        sessionId: 'thread-gone',
-        cwd: '/work/old',
-        profileId: null,
-        updatedAt: 3_000,
-        createdAt: 500,
-      })
-      const page = await readLibrary(deps({ found: [], skipped: [] }))
-      // Both true of the SAME conversation. The counts are honest; it is the surface that has to
-      // word them as an inclusion, which is why this pins the relationship rather than the numbers.
-      expect(page.counts.imported).toBe(1)
-      expect(page.counts.onlyHere).toBe(1)
-      expect(page.counts.onlyHere).toBeLessThanOrEqual(page.counts.imported)
     })
 
     it('truncates a caption instead of putting a pasted document on the wire', async () => {

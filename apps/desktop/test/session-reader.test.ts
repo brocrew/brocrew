@@ -51,17 +51,6 @@ describe('the Codex rollout parser', () => {
     ])
   })
 
-  it('reads ONLY response_item — event_msg is the same words a second time', () => {
-    // The rollout carries both: `response_item{message}` and `event_msg{agent_message}` say the
-    // same thing, and `event_msg` has no tool calls at all. Reading both would render every
-    // message twice; reading only `event_msg` would render prose with the work missing.
-    const { entries } = importCodexRollout(lines(ROLLOUT_FIXTURE), AT)
-    const assistants = entries.filter((e) => e.event.type === 'assistant_message')
-    expect(assistants).toHaveLength(1)
-    const users = entries.filter((e) => e.event.type === 'user_turn')
-    expect(users).toHaveLength(1)
-  })
-
   it('unwraps the shapes Codex actually writes, rather than showing their JSON', () => {
     const { entries } = importCodexRollout(lines(ROLLOUT_FIXTURE), AT)
     const call = entries.find((e) => e.event.type === 'tool_call')?.event

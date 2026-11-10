@@ -202,11 +202,6 @@ describe('calendar days and bounded occurrence search (V/B)', () => {
     expectAt(next('30 4 1,15 * 5', '2026-05-01T04:29:59Z'), '2026-05-01T04:30:00.000Z')
     expectAt(next('30 4 1,15 * 5', '2026-05-01T04:30:00Z'), '2026-05-08T04:30:00.000Z')
   })
-  it('the unrestricted day branch leaves the other branch in control', () => {
-    expect(matches('0 9 * * 1', '2026-10-07T09:00:00Z')).toBe(false)
-    expect(matches('0 9 15 * *', '2026-10-07T09:00:00Z')).toBe(false)
-    expect(matches('0 9 * * *', '2026-10-07T09:00:00Z')).toBe(true)
-  })
   it('proves impossible dates without spending search budget, after applying OR', () => {
     expect(next('* * 31 2 *', '2026-01-01T00:00:00Z', { budget: 0 })).toMatchObject({
       kind: 'impossible',

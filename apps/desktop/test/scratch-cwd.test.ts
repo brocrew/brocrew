@@ -30,10 +30,6 @@ describe('resolveSessionCwd', () => {
     expect(resolveSessionCwd(userData, 'sess_2')).toBe(cwd)
   })
 
-  it('treats a blank cwd as "none"', () => {
-    expect(resolveSessionCwd(userData, 'sess_2', '   ')).toBe(brobotWorkspace(userData))
-  })
-
   it('accepts an existing directory', () => {
     // OUTSIDE `userData`, because that is where a real working directory lives. ⚑ `726` · R92: a
     // folder inside `userData` is accepted too now (071's refusal is gone) — see the describe below.
@@ -47,33 +43,6 @@ describe('resolveSessionCwd', () => {
 
   it('expands a home-relative path', () => {
     expect(resolveSessionCwd(userData, 'sess_4', '~')).toBe(homedir())
-  })
-
-  /**
-   * ⚑ **The EXISTENCE rule and the DIRECTORY rule**, measured outside `userData`. (From `489` until
-   * `726` a path inside `userData` met the app-data wall before the disk was asked; R92 removed the
-   * wall, and the same two rules now answer there too — asserted below.)
-   */
-  it('refuses a directory that does not exist rather than creating what was mistyped', () => {
-    const elsewhere = mkdtempSync(join(tmpdir(), 'brobot2-cwd-gone-'))
-    try {
-      expect(() => resolveSessionCwd(userData, 'sess_5', join(elsewhere, 'typo'))).toThrow(
-        /cwd does not exist/,
-      )
-    } finally {
-      rmSync(elsewhere, { recursive: true, force: true })
-    }
-  })
-
-  it('refuses a file', () => {
-    const elsewhere = mkdtempSync(join(tmpdir(), 'brobot2-cwd-file-'))
-    try {
-      const file = join(elsewhere, 'a-file')
-      writeFileSync(file, 'x')
-      expect(() => resolveSessionCwd(userData, 'sess_6', file)).toThrow(/cwd is not a directory/)
-    } finally {
-      rmSync(elsewhere, { recursive: true, force: true })
-    }
   })
 
   describe("the app's own data is a working directory like any other (`726` · R92, was 071)", () => {

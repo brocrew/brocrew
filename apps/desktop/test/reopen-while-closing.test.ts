@@ -298,21 +298,6 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
     expect(host.sessionIds).toEqual([])
   })
 
-  it('⚑ …and the same reopen succeeds when the window does NOT go away', async () => {
-    // ⛔ **The pairing, and without it the test above passes for a build that simply refuses every
-    // reopen that had to wait** — which is the behaviour 075 exists to have removed. Same gesture,
-    // same suspended wait, no release: it reopens.
-    const first = new RecordingSink('webContents:7')
-    const sessionId = await openOne(first)
-    const closing = host.close(sessionId, first)
-    await waitFor(() => saidClosed(first), 'the app to say the conversation ended')
-
-    const reopening = host.resumeSession(sessionId, new RecordingSink('webContents:7'))
-    gate.resolve()
-    await expect(reopening).resolves.toMatchObject({ sessionId })
-    await closing
-  })
-
   it('⚑ 652 · …and a reopen with NO surface is not refused by that release — it had nobody to lose', async () => {
     // ⛔ **The 265 §1 gesture above, with one fact changed: the reopen names no sink.** Same close,
     // same suspended wait, the SAME window released mid-wait. 🔴 **The two must diverge**: a

@@ -449,15 +449,14 @@ describe('scheduled jobs across a crash', () => {
         expect(heldWords(a)).toHaveLength(1)
       })
 
-      it('after its provider is up and before the words are taken: no second start is made, and its ledger says the words were not sent', async () => {
+      it('after its provider is up and before the words are taken: no second start is made, its ledger says the words were not sent, and the next start says them', async () => {
         const a = await aConversationWith(schedule)
         const launchedBefore = ledger(a).filter((event) => event.type === 'launched').length
         const crashed = starts(at, {
           beforeTheWordsAreTaken: held('the app died before the words were taken'),
         })
         await waitFor(() => askedFor(crashed, a) === 1, 'its provider to be asked')
-        // ⚑ Its provider is up, and its first turn waits on words it never takes. (The file no
-        // longer says the words were handed over until they are taken.)
+        // Its provider is up, and its first turn waits on words it never takes.
         await waitFor(
           () =>
             ledger(a).filter((event) => event.type === 'launched').length === launchedBefore + 1,
@@ -471,7 +470,7 @@ describe('scheduled jobs across a crash', () => {
         expect(askedFor(now, a)).toBe(0)
         expect(wakeUpOf(a)).toBeUndefined()
         expect(stateOf(a)).toEqual({ is: 'idle' })
-        // ⚑ The launch ends every message a crash left on its way in, the app's own words too:
+        // The launch ends every message a crash left on its way in, the app's own words too:
         // the row a person can read says they were not sent.
         const endings = ledger(a).filter(
           (event) =>
@@ -480,31 +479,10 @@ describe('scheduled jobs across a crash', () => {
         )
         expect(endings).toHaveLength(1)
         expect(endings[0]).toMatchObject({ reason: 'abandoned' })
-        // ⚑ …and the words are held again for its next start: none was ever told them.
+        // The words are held again for its next start, which says them.
         expect(now.store.messagesWaitingIn(a)).toHaveLength(1)
         expect(ownLevels(a).at(-1)).toEqual([notStarted])
-      })
 
-      // ⚑ The words are kept as told only once they are taken, so the launch after a crash ends
-      // them as not sent and holds them again, and its next start says them.
-      it('⛔ after its provider is up and before the words are taken: the words are said at the next start', async () => {
-        const a = await aConversationWith(schedule)
-        const launchedBefore = ledger(a).filter((event) => event.type === 'launched').length
-        const crashed = starts(at, {
-          beforeTheWordsAreTaken: held('the app died before the words were taken'),
-        })
-        await waitFor(() => askedFor(crashed, a) === 1, 'its provider to be asked')
-        // ⚑ Its provider is up, and its first turn waits on words it never takes. (The file no
-        // longer says the words were handed over until they are taken.)
-        await waitFor(
-          () =>
-            ledger(a).filter((event) => event.type === 'launched').length === launchedBefore + 1,
-          'its provider to be up',
-        )
-        await settle()
-
-        starts(at + 60_000)
-        await settle()
         await aPersonStarts(a)
         await settle()
         expect(saidWords(a)).toHaveLength(1)
