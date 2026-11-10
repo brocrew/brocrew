@@ -201,6 +201,15 @@ export interface TabCall {
   tab: TabState
   page: Page
 }
+export function openDialogNote(tab: TabState): string | undefined {
+  const dialog = tab.pendingDialog
+  if (!dialog) return undefined
+  return `tab ${tab.id} has an open ${dialog.type()} dialog: ${JSON.stringify(dialog.message().slice(0, 2000))} — call handle_dialog with tabId ${tab.id} and accept true or false to answer it`
+}
+function requireNoDialog(tab: TabState): void {
+  const note = openDialogNote(tab)
+  if (note) throw new TabError(note)
+}
 export async function onTab<T>(
   deps: ToolDeps,
   id: string,
@@ -211,18 +220,31 @@ export async function onTab<T>(
 }> {
   const tab = deps.tabs.resolve(id, generationOf(deps))
   usableProfile(deps, tab.profile)
+  requireNoDialog(tab)
   deps.browser.touch(tab.profile)
   const value = await deps.browser.operate(tab.profile, () =>
     deps.serializer.runExclusive(tab.id, async () => {
       deps.tabs.resolve(id, generationOf(deps))
       usableProfile(deps, tab.profile)
+      requireNoDialog(tab)
       await deps.browser.usePage(tab.profile, tab.page)
       deps.tabs.resolve(id, generationOf(deps))
       usableProfile(deps, tab.profile)
-      return fn({ tab, page: tab.page })
+      requireNoDialog(tab)
+      try {
+        return await fn({ tab, page: tab.page })
+      } catch (error) {
+        const note = openDialogNote(tab)
+        if (note)
+          throw new TabError(`${note}. The action's completion is unknown; do not replay it.`)
+        throw error
+      }
     }),
   )
-  return { value, notes: tab.notes.splice(0) }
+  const notes = tab.notes.splice(0)
+  const dialog = openDialogNote(tab)
+  if (dialog) notes.push(dialog)
+  return { value, notes }
 }
 export function withNotes(
   json: Record<string, unknown>,

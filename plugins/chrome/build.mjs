@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import { build } from 'esbuild'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
@@ -77,6 +78,47 @@ export const CHROME_TARGETS = Object.freeze([
   Object.freeze({ os: 'darwin', cpu: 'arm64' }),
   Object.freeze({ os: 'win32', cpu: 'x64' }),
 ])
+function buildWindowsBirth(out) {
+  const go = process.env.BROCREW_GO
+  if (!path.isAbsolute(go ?? '')) throw new Error('Supply the absolute path of go1.27.2 go')
+  const keep = [
+    'HOME',
+    'USERPROFILE',
+    'SystemRoot',
+    'SYSTEMROOT',
+    'WINDIR',
+    'LOCALAPPDATA',
+    'APPDATA',
+    'GOPATH',
+    'GOMODCACHE',
+    'GOCACHE',
+    'GOPROXY',
+    'GOSUMDB',
+    'TMPDIR',
+    'TMP',
+    'TEMP',
+  ]
+  const env = {
+    ...Object.fromEntries(
+      keep.filter((key) => process.env[key]).map((key) => [key, process.env[key]]),
+    ),
+    PATH: `${path.dirname(go)}${path.delimiter}/usr/bin${path.delimiter}/bin`,
+    GOTOOLCHAIN: 'local',
+    CGO_ENABLED: '0',
+    GOOS: 'windows',
+    GOARCH: 'amd64',
+    GOFLAGS: '-mod=readonly',
+  }
+  const cwd = path.join(root, 'native/process-birth')
+  if (execFileSync(go, ['env', 'GOVERSION'], { cwd, env, encoding: 'utf8' }).trim() !== 'go1.27.2')
+    throw new Error('The Windows birth reader is built with go1.27.2')
+  fs.mkdirSync(path.dirname(out))
+  execFileSync(
+    go,
+    ['build', '-trimpath', '-buildvcs=false', '-ldflags=-s -w -buildid=', '-o', out, '.'],
+    { cwd, env, stdio: ['ignore', 'ignore', 'inherit'] },
+  )
+}
 export async function buildChromePackage(
   destination,
   sourceCommit = process.env.BROCREW_PLUGIN_SOURCE_COMMIT,
@@ -91,6 +133,7 @@ export async function buildChromePackage(
   fs.mkdirSync(destination, { recursive: true, mode: 0o700 })
   const payload = path.join(destination, 'package')
   fs.mkdirSync(payload)
+  if (target.os === 'win32') buildWindowsBirth(path.join(payload, 'bin/chrome-process-birth.exe'))
   const result = await build({
     entryPoints: [path.join(root, 'src/index.ts')],
     outfile: path.join(payload, 'server.mjs'),

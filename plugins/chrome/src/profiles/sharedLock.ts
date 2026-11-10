@@ -6,6 +6,7 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { privateFolder } from '../privatePaths.js'
+import { windowsBirthOf } from './windowsBirth.js'
 export type Liveness = 'alive' | 'gone' | 'unknown'
 export interface ProcessIdentity {
   pid: number
@@ -13,20 +14,13 @@ export interface ProcessIdentity {
 }
 export function birthOf(pid: number): string | undefined {
   try {
+    if (process.platform === 'win32') return windowsBirthOf(pid)
     if (process.platform === 'linux') {
       const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8')
       return stat.slice(stat.lastIndexOf(') ') + 2).split(' ')[19]
     }
-    const args =
-      process.platform === 'win32'
-        ? [
-            '-NoProfile',
-            '-NonInteractive',
-            '-Command',
-            `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`,
-          ]
-        : ['-p', String(pid), '-o', 'lstart=']
-    const out = execFileSync(process.platform === 'win32' ? 'powershell' : 'ps', args, {
+    const args = ['-p', String(pid), '-o', 'lstart=']
+    const out = execFileSync('ps', args, {
       encoding: 'utf8',
       timeout: 2000,
       windowsHide: true,
@@ -47,7 +41,7 @@ export function ownerState(owner: ProcessIdentity): Liveness {
   return birth === undefined ? 'unknown' : birth === owner.birth ? 'alive' : 'gone'
 }
 export const identity = (): ProcessIdentity => {
-  const birth = birthOf(process.pid)
+  const birth = process.platform === 'win32' ? windowsBirthOf(process.pid) : birthOf(process.pid)
   if (!birth) throw new Error('Cannot confirm plugin process identity; try again.')
   return { pid: process.pid, birth }
 }

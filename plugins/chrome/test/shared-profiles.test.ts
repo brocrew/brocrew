@@ -85,6 +85,32 @@ it('leases refuse the same and other workspaces; release compares tokens', () =>
   expect(() => a.shared.acquire('fern')).toThrow(/beta/)
   successor.release()
 })
+it.each(['acquire', 'disk', 'delete'] as const)(
+  'names the recorded profile owner on a refused %s without changing its lease',
+  (operation) => {
+    const f = fixture()
+    const a = f.open('alpha', {
+      workspaceLabel: 'the default workspaces',
+      processIdentity: { pid: 314159, birth: 'fictional-start-identity' },
+      ownerState: () => 'alive',
+    })
+    const b = f.open('beta', { ownerState: () => 'alive' })
+    a.create('fern', 'panel')
+    a.shared.acquire('fern')
+    const file = path.join(f.shared, 'registry.json')
+    const before = fs.readFileSync(file, 'utf8')
+    const run = () => {
+      if (operation === 'acquire') return b.shared.acquire('fern')
+      if (operation === 'disk') return b.shared.withDiskAccess('fern', false, () => undefined)
+      return b.shared.remove('fern', b.shared.confirmation('fern'))
+    }
+    expect(run).toThrow(/Chrome profile "fern" is in use in the default workspaces/)
+    expect(run).toThrow(/Recorded plugin host PID: 314159/)
+    expect(run).toThrow(/A new window cannot bypass this owner/)
+    expect(run).toThrow(/after the owning profile's browser closes/)
+    expect(fs.readFileSync(file, 'utf8')).toBe(before)
+  },
+)
 it('unknown Chrome state preserves a lease on release', () => {
   const f = fixture()
   const a = f.open('alpha', { chromeState: () => 'unknown' })

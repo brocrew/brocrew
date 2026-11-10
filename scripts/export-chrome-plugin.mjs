@@ -132,6 +132,17 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22.23.3'
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Verify native birth source and select pinned compiler
+        run: |
+          set -eu
+          cd plugins/chrome/native/process-birth
+          GOTOOLCHAIN=local go test ./...
+          GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go vet ./...
+          echo "BROCREW_GO=$(command -v go)" >> "$GITHUB_ENV"
       - name: Validate explicit canonical source pin
         run: node -e 'if (!/^[a-f0-9]{40}$/.test(process.env.BROCREW_PLUGIN_SOURCE_COMMIT || "")) throw new Error("A full reviewed source pin is required")'
       - uses: actions/checkout@v7
@@ -175,6 +186,17 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22.23.3'
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Verify native birth source and select pinned compiler
+        run: |
+          set -eu
+          cd plugins/chrome/native/process-birth
+          GOTOOLCHAIN=local go test ./...
+          GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go vet ./...
+          echo "BROCREW_GO=$(command -v go)" >> "$GITHUB_ENV"
       - name: Validate explicit canonical source pin
         run: node -e 'if (!/^[a-f0-9]{40}$/.test(process.env.BROCREW_PLUGIN_SOURCE_COMMIT || "")) throw new Error("A full reviewed source pin is required")'
       - uses: actions/checkout@v7

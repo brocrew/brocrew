@@ -268,11 +268,23 @@ func newAPI(cfg config, s *session, unlinked func()) http.Handler {
 		} else {
 			err = s.sendText(ctx, jid, request.Text)
 		}
-		if err != nil {
-			writeCode(w, "send_failed")
-			return
-		}
-		writeJSON(w, http.StatusOK, sendResult{Kind: att.Kind, Name: att.Name})
+		writeSendResult(w, att, err)
 	})
 	return mux
+}
+
+func writeSendResult(w http.ResponseWriter, att attachment, err error) {
+	if err != nil {
+		var caption *captionSendError
+		if errors.As(err, &caption) {
+			writeJSON(w, http.StatusBadGateway, map[string]any{
+				"error": "caption_failed", "audioSent": true, "captionSent": false,
+				"cause": caption.cause.Error(),
+			})
+			return
+		}
+		writeCode(w, "send_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, sendResult{Kind: att.Kind, Name: att.Name})
 }
