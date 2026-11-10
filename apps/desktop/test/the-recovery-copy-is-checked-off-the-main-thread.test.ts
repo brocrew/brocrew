@@ -9,12 +9,7 @@ import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { compactWhenMuchIsFree } from '../src/main/db/compact'
 import { CheckpointFailed, makeCheckpoint } from '../src/main/recovery/checkpoint'
-import {
-  checkTheCopy,
-  verifyInAWorker,
-  type CopyCheck,
-  type VerifyCopy,
-} from '../src/main/recovery/copy-check'
+import { checkTheCopy, verifyInAWorker, type VerifyCopy } from '../src/main/recovery/copy-check'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
@@ -27,6 +22,7 @@ const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db
 describe('the recovery copy is checked off the main thread', () => {
   let folder: string
   let bundle: string
+  let checkBundle: string
   const roots: string[] = []
   const aRoot = () => {
     const root = mkdtempSync(join(folder, 'root-'))
@@ -81,6 +77,7 @@ describe('the recovery copy is checked off the main thread', () => {
   beforeAll(async () => {
     folder = mkdtempSync(join(tmpdir(), 'fictional-copy-check-'))
     bundle = await bundleAWorker('src/main/recovery-verify.worker.ts', folder, 'verify.cjs')
+    checkBundle = await bundleAWorker('src/main/recovery/copy-check.ts', folder, 'check.cjs')
   }, 120_000)
   afterAll(() => {
     rmSync(folder, { recursive: true, force: true })
@@ -88,17 +85,47 @@ describe('the recovery copy is checked off the main thread', () => {
 
   it('a long check in the worker leaves the main thread beating; the same check here does not', async () => {
     const copy = aCopy()
-    let answer: CopyCheck | undefined
-    const inWorker = await longestGapDuring(async () => {
-      answer = await inAWorker(400)(copy)
+    let inWorker: Promise<number> | undefined
+    let checked!: () => void
+    const phaseEnded = new Promise<void>((resolve) => {
+      checked = resolve
     })
-    expect(answer).toEqual({ kind: 'ok' })
-    expect(inWorker).toBeLessThan(100)
-    // The control: run on this thread, the same hold stops the heartbeat for all of it.
-    const here = await longestGapDuring(async () => {
-      checkTheCopy(copy, 400)
-    })
-    expect(here).toBeGreaterThanOrEqual(350)
+    const verifier = verifyInAWorker((request) => {
+      const worker = new Worker(
+        `const { parentPort, workerData } = require('node:worker_threads');
+        const { checkTheCopy } = require(workerData.checkBundle);
+        parentPort.once('message', () => {
+          parentPort.postMessage(checkTheCopy(workerData.copy, workerData.holdMs));
+          parentPort.close();
+        });
+        parentPort.postMessage('ready');`,
+        { eval: true, workerData: { ...request, checkBundle } },
+      )
+      worker.on('message', (message: unknown) => {
+        if (message === 'ready') {
+          // Start after module loading; include command delivery, the check and its answer.
+          inWorker = longestGapDuring(async () => {
+            worker.postMessage('check')
+            await phaseEnded
+          })
+        } else checked()
+      })
+      worker.once('exit', checked)
+      return worker
+    }, 400)
+    try {
+      const answer = await verifier.verify(copy)
+      expect(answer).toEqual({ kind: 'ok' })
+      expect(inWorker).toBeDefined()
+      expect(await inWorker).toBeLessThan(100)
+      // The control: run on this thread, the same hold stops the heartbeat for all of it.
+      const here = await longestGapDuring(async () => {
+        checkTheCopy(copy, 400)
+      })
+      expect(here).toBeGreaterThanOrEqual(350)
+    } finally {
+      await verifier.stop()
+    }
   })
 
   it('the worker keeps the three outcomes apart', async () => {
