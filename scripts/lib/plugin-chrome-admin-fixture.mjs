@@ -43,6 +43,7 @@ export async function chromeAdminRouteFixture(directory) {
       },
     },
     {
+      tabs: { list: () => [] },
       store: {
         get: (name) => (name === 'birch' ? profile : undefined),
         list: () => [profile],
@@ -74,13 +75,24 @@ export async function chromeAdminRouteFixture(directory) {
       return body.profiles[0]
     },
     async request(url, init) {
+      if (new URL(url, 'http://127.0.0.1').pathname.endsWith('/configuration') && !init?.method) {
+        let status, body
+        const response = {
+          locals: {},
+          status(value) { status = value; return response },
+          json(value) { body = value },
+        }
+        await reads.get('/v1/configuration')({}, response)
+        return Response.json(body, { status })
+      }
       if (
-        !['/profiles/birch/open', '/profiles/birch/flags'].includes(
+        !['/configuration', '/profiles/birch/open', '/profiles/birch/flags'].includes(
           new URL(url, 'http://127.0.0.1').pathname.replace(/^\/v1/, ''),
         ) ||
         init.method !== 'POST'
       )
         throw new Error('unexpected fictional route')
+      const path = new URL(url, 'http://127.0.0.1').pathname.replace(/^\/v1/, '')
       let status, body
       const response = {
         locals: {},
@@ -92,8 +104,8 @@ export async function chromeAdminRouteFixture(directory) {
           body = value
         },
       }
-      const kind = new URL(url, 'http://127.0.0.1').pathname.endsWith('/flags') ? 'flags' : 'open'
-      await routes.get('/v1/profiles/:name/' + kind)(
+      const kind = path.endsWith('/flags') ? 'flags' : 'open'
+      await routes.get(path === '/configuration' ? '/v1/configuration' : '/v1/profiles/:name/' + kind)(
         { params: { name: 'birch' }, body: JSON.parse(init.body) },
         response,
       )

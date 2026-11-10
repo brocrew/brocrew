@@ -1,3 +1,9 @@
+import { chromeAdminRouteFixture } from '../../../scripts/lib/plugin-chrome-admin-fixture.mjs'
+import { PluginUiRpc } from '../src/main/plugins/ui/rpc'
+import { chromeUiFixture } from './chrome-ui-fixture'
+import { PLUGIN_UI_CHANNEL } from '../src/shared/plugin-ui'
+import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
+import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { join } from 'node:path'
 import { readFile, readdir, rm } from 'node:fs/promises'
@@ -16,7 +22,9 @@ import {
   deferred,
 } from './plugin-lifecycle-fixtures'
 
+const closers: (() => Promise<unknown>)[] = []
 afterEach(async () => {
+  for (const close of closers.splice(0).reverse()) await close()
   vi.unstubAllGlobals()
   await cleanupLifecycleFixtures()
 })
@@ -169,4 +177,124 @@ describe.skipIf(process.platform === 'win32')('consumed configuration checkpoint
     await rm(directory, { recursive: true })
     await expect(ledger.revision(id)).rejects.toThrow()
   })
+})
+
+async function settingsClient(
+  f: Awaited<ReturnType<typeof fixture>>,
+  read: () => Promise<unknown>,
+) {
+  const bridge = await servePersonPluginControl({
+    root: f.root,
+    key: 'e'.repeat(64),
+    controller: f.controller,
+    read,
+  })
+  closers.push(() => bridge.close())
+  const client = await connectPluginSettings({
+    path: bridge.path,
+    personKey: 'e'.repeat(64),
+    root: f.root,
+    target: f.opts.target,
+    catalogue: f.opts.catalogue,
+    projection: projection().sink,
+    propose: () => {},
+  })
+  closers.push(() => client.close())
+  return client
+}
+
+describe.skipIf(process.platform === 'win32')('native Chrome configuration route continuity', () => {
+    it('keeps the preceding Open route 202 and applies its generic command without replay', async () => {
+      const f = await fixture()
+      await f.controller.install(f.handle, 'chrome')
+      const active = f.state.exportActivation().entries[0]!
+      const preceding = await chromeAdminRouteFixture(f.parent)
+      await preceding.request('/profiles/birch/open', { method: 'POST', body: '{}' })
+      expect(preceding.statuses).toEqual([202])
+      const route = await chromeAdminRouteFixture(f.parent)
+      const fetch = vi.fn(route.request)
+      vi.stubGlobal('fetch', fetch)
+      const input = {
+        pluginId: 'chrome',
+        installId: active.installId,
+        incarnation: active.incarnation,
+        revision: 0,
+        proposal: { action: 'open-window', profile: 'birch' },
+      }
+      const succeeded = await f.controller.applyProfile(f.handle, input).then(
+        () => true,
+        () => false,
+      )
+      expect(route.statuses).toEqual([200])
+      expect(succeeded).toBe(true)
+      expect(route.launches).toEqual([{ profile: 'birch', mode: 'visible' }])
+      expect(route.snapshot()).toMatchObject({ name: 'birch', open: true, mode: 'visible' })
+      expect(await f.controller.profileRevision(f.handle, 'chrome', active.installId)).toBe(1)
+      const reopened = await reopenLifecycleFixture(f)
+      expect(await new PluginProfileLedger(f.root).revision(active.installId)).toBe(1)
+      expect(reopened.exportActivation().entries[0]?.installId).toBe(active.installId)
+      await expect(
+        new PluginProfileLedger(f.root).reserve(active.installId, 0),
+      ).rejects.toThrow()
+      expect(fetch).toHaveBeenCalledOnce()
+      expect(route.launches).toHaveLength(1)
+    })
+    it('refreshes after real Settings enable/disable Apply without mistaking a committed change for unavailability', async () => {
+      const f = await fixture()
+      await f.controller.install(f.handle, 'chrome')
+      const route = await chromeAdminRouteFixture(f.parent)
+      vi.stubGlobal('fetch', route.request)
+      const client = await settingsClient(f, async () => ({
+        profiles: [route.snapshot()],
+        tabs: [],
+      }))
+      const screen = await client.screen('chrome')
+      let time = 0,
+        request = 0
+      const rpc = new PluginUiRpc({
+        binding: screen.binding,
+        schemas: chromeUiFixture().verified.manifest.ui!.methodSchemas,
+        peer: screen.peer,
+        current: () => screen.current(screen.binding),
+        emit: () => {},
+        propose: screen.propose,
+        now: () => time,
+      })
+      closers.push(async () => rpc.close())
+      const invoke = (method: string, payload: unknown, revision: number) =>
+        rpc.invoke({
+          channel: PLUGIN_UI_CHANNEL,
+          requestId: String(++request),
+          method,
+          payload,
+          configRevision: revision,
+        })
+      await invoke('read', { surface: 'chrome' }, 0)
+      for (const [index, enabled] of [false, true].entries()) {
+        await invoke('proposeConfig', { action: 'set-enabled', profile: 'birch', enabled }, index)
+        expect(route.snapshot().enabled).toBe(enabled)
+        expect(route.statuses).toEqual(Array(index + 1).fill(200))
+        const refreshed = invoke('read', { surface: 'chrome' }, index).then(
+          (value) => ({ ok: true, value }),
+          () => ({ ok: false, value: null }),
+        )
+        const timer = setTimeout(() => {
+          time += 1000
+        }, 50)
+        try {
+          expect(await refreshed).toMatchObject({
+            ok: true,
+            value: {
+              configRevision: index + 1,
+              profiles: [{ name: 'birch', enabled }],
+            },
+          })
+        } finally {
+          clearTimeout(timer)
+        }
+      }
+      const install = f.state.exportActivation().entries[0]!
+      expect(await f.controller.profileRevision(f.handle, 'chrome', install.installId)).toBe(2)
+    })
+
 })

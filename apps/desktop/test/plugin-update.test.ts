@@ -88,7 +88,7 @@ describe.skipIf(process.platform === 'win32')(
       expect((await f.controller.status()).cards[0]).toMatchObject({
         installedVersion: '0.1.0',
         updateVersion: '0.1.3',
-        uninstallDeletesData: false,
+        uninstallDeletesData: true,
       })
       f.events.length = 0
       const operationId = randomUUID()
