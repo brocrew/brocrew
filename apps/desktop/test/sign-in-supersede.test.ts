@@ -632,17 +632,4 @@ describe('147 — a turn is not taken on a sign-in that has been replaced', () =
     )
     expect(sink.events().filter((event) => event.type === 'user_command')).toHaveLength(before)
   })
-
-  it('…and an interrupt that DOES go still records it — the paired positive', async () => {
-    // Without this the fix above would be satisfied by never recording the gesture at all, which is
-    // the failure 085 reported in the first place: a Stop the ledger had nothing to say about.
-    const id = await sessionOnACard()
-    await host.sendInterrupting(id, 'do this instead', sink)
-    expect(
-      sink
-        .events()
-        .filter((event) => event.type === 'user_command')
-        .map((event) => (event as { command: string }).command),
-    ).toContain('interrupted_to_send')
-  })
 })

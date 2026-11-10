@@ -1,8 +1,7 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import ts from 'typescript'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { TheCliAnswersInOrder } from '../../../packages/runtime/test/the-cli-answers-in-order'
 import { ClaudeRuntime } from '@brobot2/runtime/claude'
@@ -245,6 +244,19 @@ describe('a provider that goes on working after its turn ended (122)', () => {
     return { answered }
   }
 
+  /** A person's words open a turn, and the adapter's `canUseTool` comes back with it. */
+  async function aTurnIsOpen(
+    providerSession: string,
+    words = 'ask me something',
+  ): Promise<{ id: string; ask: NonNullable<Options['canUseTool']> }> {
+    const created = await host.createSession({ provider: 'claude' }, sink)
+    await host.send(created.sessionId, words, sink)
+    fq.emit(init(providerSession, join(userData, 'scratch', created.sessionId)))
+    await waitFor(() => statuses().includes('working'), 'the turn opening')
+    if (!canUseTool) throw new Error('the adapter never handed the SDK a canUseTool')
+    return { id: created.sessionId, ask: canUseTool }
+  }
+
   it('a REJECTED question outside a turn leaves a session the user can act from', async () => {
     const id = await afterTheTurnEnded()
     const { answered } = await askOutOfTurn(id)
@@ -295,13 +307,9 @@ describe('a provider that goes on working after its turn ended (122)', () => {
     // not a note about a gesture, it is the app stating that a human answer reached the provider —
     // and the provider had been told the opposite. 142 §1 is that finding, and the test below is
     // what it left: the refusal now happens before anything is recorded at all.
-    const created = await host.createSession({ provider: 'claude' }, sink)
-    await host.send(created.sessionId, 'ask me something', sink)
-    fq.emit(init('sess_provider_2', join(userData, 'scratch', created.sessionId)))
-    await waitFor(() => statuses().includes('working'), 'the turn opening')
-    if (!canUseTool) throw new Error('the adapter never handed the SDK a canUseTool')
+    const { id, ask } = await aTurnIsOpen('sess_provider_2')
 
-    const answered = canUseTool(
+    const answered = ask(
       'AskUserQuestion',
       { questions: [{ question: 'Red or blue?', options: ['red', 'blue'] }] },
       { toolUseID: 'tu_q', signal: new AbortController().signal } as never,
@@ -313,7 +321,7 @@ describe('a provider that goes on working after its turn ended (122)', () => {
     // the refusal comes back as an ACK saying the card survived it (146), never as a throw.
     expect(
       await host.respondUserInput(
-        created.sessionId,
+        id,
         'tu_q',
         {
           kind: 'answer',
@@ -331,12 +339,7 @@ describe('a provider that goes on working after its turn ended (122)', () => {
     // paired negative for `stillOpen`**: this refusal really did consume nothing, but the request
     // is not there to answer again, so settling the card is the correct reading of it.
     expect(
-      await host.respondUserInput(
-        created.sessionId,
-        'tu_gone',
-        { kind: 'answer', answers: {} },
-        sink,
-      ),
+      await host.respondUserInput(id, 'tu_gone', { kind: 'answer', answers: {} }, sink),
     ).toMatchObject({ outcome: 'refused', stillOpen: false })
     expect(eventsOfType('user_decision'), 'a failed approve is silent, never a rejection').toEqual(
       [],
@@ -345,7 +348,7 @@ describe('a provider that goes on working after its turn ended (122)', () => {
     // ⚠️ **The paired positive, and it is what makes the two `toEqual([])` above non-vacuous**: the
     // card was live the whole time, and a usable answer records `answered` and nothing else.
     await host.respondUserInput(
-      created.sessionId,
+      id,
       'tu_q',
       {
         kind: 'answer',
@@ -383,13 +386,9 @@ describe('a provider that goes on working after its turn ended (122)', () => {
     // any card exists — the same route 064 uses for a question with nothing to ask and 146 for two
     // questions sharing an answer key. What the user sees is no card at all; what the model gets is
     // a sentence it can act on.
-    const created = await host.createSession({ provider: 'claude' }, sink)
-    await host.send(created.sessionId, 'ask me something', sink)
-    fq.emit(init('sess_provider_3', join(userData, 'scratch', created.sessionId)))
-    await waitFor(() => statuses().includes('working'), 'the turn opening')
-    if (!canUseTool) throw new Error('the adapter never handed the SDK a canUseTool')
+    const { ask } = await aTurnIsOpen('sess_provider_3')
 
-    const declined = await canUseTool(
+    const declined = await ask(
       'AskUserQuestion',
       {
         questions: [
@@ -416,13 +415,9 @@ describe('a provider that goes on working after its turn ended (122)', () => {
     // ⚠️ **The labels are never trimmed, renamed or filtered** (143/146). Only a label that is
     // NOTHING but whitespace is unanswerable; ` leading` and `trailing ` and a non-breaking space
     // are choices somebody deliberately wrote, and deleting one would change what the model asked.
-    const created = await host.createSession({ provider: 'claude' }, sink)
-    await host.send(created.sessionId, 'ask me something', sink)
-    fq.emit(init('sess_provider_5', join(userData, 'scratch', created.sessionId)))
-    await waitFor(() => statuses().includes('working'), 'the turn opening')
-    if (!canUseTool) throw new Error('the adapter never handed the SDK a canUseTool')
+    const { id, ask } = await aTurnIsOpen('sess_provider_5')
 
-    const answered = canUseTool(
+    const answered = ask(
       'AskUserQuestion',
       {
         questions: [
@@ -442,7 +437,7 @@ describe('a provider that goes on working after its turn ended (122)', () => {
       { label: ' nbsp ' },
     ])
     await host.respondUserInput(
-      created.sessionId,
+      id,
       'tu_kept',
       {
         kind: 'answer',
@@ -464,13 +459,9 @@ describe('a provider that goes on working after its turn ended (122)', () => {
     // the blank label rather than going away with it. The options here are perfectly answerable; it
     // is the ANSWER that says nothing, and that can still arrive from a stored or imported card,
     // from the read-only pane, or from a renderer that sent an empty selection.
-    const created = await host.createSession({ provider: 'claude' }, sink)
-    await host.send(created.sessionId, 'ask me something', sink)
-    fq.emit(init('sess_provider_4', join(userData, 'scratch', created.sessionId)))
-    await waitFor(() => statuses().includes('working'), 'the turn opening')
-    if (!canUseTool) throw new Error('the adapter never handed the SDK a canUseTool')
+    const { id, ask } = await aTurnIsOpen('sess_provider_4')
 
-    const answered = canUseTool(
+    const answered = ask(
       'AskUserQuestion',
       {
         questions: [
@@ -491,7 +482,7 @@ describe('a provider that goes on working after its turn ended (122)', () => {
     ])
 
     const refused = await host.respondUserInput(
-      created.sessionId,
+      id,
       'tu_ws',
       {
         kind: 'answer',
@@ -518,7 +509,7 @@ describe('a provider that goes on working after its turn ended (122)', () => {
     // The card is still live and still says so — the session never left `waiting_permission`.
     expect(statuses().at(-1)).toBe('waiting_permission')
     await host.respondUserInput(
-      created.sessionId,
+      id,
       'tu_ws',
       {
         kind: 'answer',
@@ -540,13 +531,9 @@ describe('a provider that goes on working after its turn ended (122)', () => {
     // ⚠️ **The paired positive.** Everything above is about a question raised with no turn open;
     // this is the ordinary path, which must not have moved: waiting → working → the turn's own
     // terminal → idle, with the answer forwarded to the provider.
-    const created = await host.createSession({ provider: 'claude' }, sink)
-    await host.send(created.sessionId, 'ask me something', sink)
-    fq.emit(init('sess_provider_1', join(userData, 'scratch', created.sessionId)))
-    await waitFor(() => statuses().includes('working'), 'the turn opening')
-    if (!canUseTool) throw new Error('the adapter never handed the SDK a canUseTool')
+    const { id, ask } = await aTurnIsOpen('sess_provider_1')
 
-    const answered = canUseTool(
+    const answered = ask(
       'AskUserQuestion',
       { questions: [{ question: 'Red or blue?', options: ['red', 'blue'] }] },
       { toolUseID: 'tu_q', signal: new AbortController().signal } as never,
@@ -556,7 +543,7 @@ describe('a provider that goes on working after its turn ended (122)', () => {
     expect(statuses().at(-1)).toBe('waiting_permission')
 
     await host.respondUserInput(
-      created.sessionId,
+      id,
       'tu_q',
       {
         kind: 'answer',
@@ -614,24 +601,19 @@ describe('a provider that goes on working after its turn ended (122)', () => {
     //
     // The first version of 122 made it worse by design — `takeTurn` cleared the wait count so the
     // contract's "terminal turn → idle" could be kept verbatim — which is what put this test here.
-    const created = await host.createSession({ provider: 'claude' }, sink)
-    await host.send(created.sessionId, 'do the thing', sink)
-    fq.emit(init('sess_provider_1', join(userData, 'scratch', created.sessionId)))
-    await waitFor(() => statuses().includes('working'), 'the turn opening')
-    if (!canUseTool) throw new Error('the adapter never handed the SDK a canUseTool')
+    const { id, ask } = await aTurnIsOpen('sess_provider_1', 'do the thing')
 
     // A card raised inside the turn, and deliberately left unanswered.
-    const pending = canUseTool('Bash', { command: 'echo hi' }, {
+    const pending = ask('Bash', { command: 'echo hi' }, {
       toolUseID: 'tu_a',
       signal: new AbortController().signal,
     } as never)
     await waitFor(() => eventsOfType('permission_request').length > 0, 'the card')
     expect(statuses().at(-1)).toBe('waiting_permission')
 
-    expect(
-      (await host.queueMessage(created.sessionId, 'must not go while a card is open', sink))
-        .outcome,
-    ).toBe('queued')
+    expect((await host.queueMessage(id, 'must not go while a card is open', sink)).outcome).toBe(
+      'queued',
+    )
 
     // The provider's terminal arrives on its own schedule, with the card still on screen.
     fq.emit(result())
@@ -646,7 +628,7 @@ describe('a provider that goes on working after its turn ended (122)', () => {
     expect(eventsOfType('user_turn').map((event) => event.text)).toEqual(['do the thing'])
 
     // …and the paired positive: answering the card is what lets it go.
-    await host.respondPermission(created.sessionId, 'tu_a', { outcome: 'allow' }, sink)
+    await host.respondPermission(id, 'tu_a', { outcome: 'allow' }, sink)
     await pending
     await waitFor(
       () =>
@@ -679,361 +661,5 @@ describe('a provider that goes on working after its turn ended (122)', () => {
     await waitFor(() => statuses().at(-1) === 'idle', 'the session settling')
 
     expect(statuses().slice(openedAt)).toEqual(['waiting_permission', 'working', 'idle'])
-  })
-})
-
-/**
- * **Who is allowed to say what a session is doing (122).**
- *
- * 042 measured three writers of `status` and named that as the root of the idle bug; 045 gave the
- * durable COLUMN one source of truth and left the event stream with all three. The stranding above
- * is what the remaining two cost. The repair is structural — the machine derives every `status`
- * from the session state, the turn, and the wait count — and a structural repair needs a
- * structural guard, or the next adapter that wants to announce something will simply emit one.
- *
- * ⚠️ **A census rather than a unit test, for the same reason `provider-neutrality.test.ts` is one:**
- * no behavioural test can fail because a NEW file started publishing statuses.
- */
-describe('one writer for `status` (122)', () => {
-  /**
-   * ⛔ **Every source tree the app ships, not the two the defect happened to live in.** The first
-   * draft scanned `src/main` and `packages/runtime/src`; a reviewer added an emitter to
-   * `src/shared/runtime-ipc.ts` and the census stayed green. The renderer is the realistic place
-   * for a third writer to reappear — `transcript.ts` already applies status events — so it is
-   * scanned too, `.vue` included.
-   */
-  const REPO = join(__dirname, '..', '..', '..')
-  const ROOTS = [
-    join(REPO, 'apps', 'desktop', 'src'),
-    join(REPO, 'packages', 'runtime', 'src'),
-    join(REPO, 'packages', 'shared', 'src'),
-    join(REPO, 'packages', 'orchestration', 'src'),
-  ]
-  const OWNER = join('internal', 'session-machine.ts')
-
-  function sources(dir: string): string[] {
-    return readdirSync(dir).flatMap((entry) => {
-      const path = join(dir, entry)
-      if (statSync(path).isDirectory()) return sources(path)
-      return /\.(ts|vue)$/.test(path) ? [path] : []
-    })
-  }
-
-  /**
-   * The property name of one member, however it was written — `type`, `'type'` or `['type']`.
-   *
-   * ⛔ **The quoted and computed forms were both invisible until 137**, because this read
-   * `ts.isIdentifier(prop.name)` and nothing else: `{ "type": 'status' }` has a name that is a
-   * string literal, so the member was skipped entirely and the whole object went uncounted. 136
-   * named both, and neither costs anything to read.
-   */
-  function memberName(prop: ts.ObjectLiteralElementLike): string | null {
-    const name = prop.name
-    if (!name) return null
-    if (ts.isIdentifier(name) || ts.isStringLiteralLike(name)) return name.text
-    if (ts.isComputedPropertyName(name) && ts.isStringLiteralLike(name.expression))
-      return name.expression.text
-    return null
-  }
-
-  /**
-   * How many `{ type: 'status', … }` object literals one file CONSTRUCTS — found on the AST, not
-   * with a regex.
-   *
-   * ⛔ **Two regex censuses were defeated in review before this existed, and both failures were
-   * measured rather than argued.** Stripping comments with `/\*[\s\S]*?\*\//` treats the `/*`
-   * inside an ordinary glob string — `'**' + '/*.ts'` — as the start of a comment, which swallows
-   * every emitter written after it until the next close-comment anywhere in the file: a reviewer added a
-   * real rogue emitter behind one and the census passed 5/5. And matching `type:\s*'status'` misses
-   * `"status"` and `{ type }` shorthand while matching an explanatory comment that merely mentions
-   * the shape. A parser has no opinion about any of that.
-   *
-   * ⚠️ **What it deliberately does NOT read, stated because a guard's blind spot is part of what it
-   * claims — and the boundary has to be one the code actually honours.** A `type` whose value is a
-   * CALL — `{ type: z.literal('status') }` — is not counted. Measured before choosing: counting
-   * calls too lights up the zod declarations in `packages/runtime/src/events.ts`, and a census that
-   * reports the schema as a writer is a census nobody will keep green. Declaring the shape is not
-   * emitting it (136). **Everything else is counted**, whether or not this can read it: shorthand,
-   * a bare identifier, a property access, a ternary. Measured across all four roots — that costs
-   * three theme effect/catalogue objects, whose complete AST prints are pinned below.
-   *
-   * ⛔ **The first version of that sentence was a lie by omission, and review caught it.** It named
-   * the call as the single blind spot while the code also dropped `as const`, `satisfies` and a
-   * parenthesized literal — and `{ type: 'status' as const }` is not exotic here:
-   * `packages/runtime/src/claude/normalize.ts` already writes `type: 'workflow_run' as const` in a
-   * hoisted object, where the assertion is REQUIRED to stop the discriminant widening. A status
-   * writer composed that way was invisible. {@link unwrapAssertions} is why it is not any more, and
-   * it also keeps `'workflow_run' as const` correctly UNcounted, because unwrapping reaches the
-   * string rather than giving up on it.
-   *
-   * `.vue` is handled by taking the `<script>` CONTENTS — a template cannot construct an event.
-   * ⚠️ The contents and not the whole match: this used to hand `<script setup lang="ts">…</script>`
-   * to the TypeScript parser, which is error-tolerant enough to say nothing about it (136).
-   */
-  function statusObjects(path: string): string[] {
-    const raw = readFileSync(path, 'utf8')
-    const source = path.endsWith('.vue')
-      ? [...raw.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map((hit) => hit[1]).join('\n')
-      : raw
-    const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
-    const found: string[] = []
-    const printer = ts.createPrinter({ removeComments: true })
-    const record = (node: ts.ObjectLiteralExpression): void => {
-      found.push(printer.printNode(ts.EmitHint.Expression, node, file))
-    }
-    const visit = (node: ts.Node): void => {
-      if (ts.isObjectLiteralExpression(node)) {
-        for (const prop of node.properties) {
-          if (memberName(prop) !== 'type') continue
-          // Shorthand (`{ type, state }`) counts: it is an object claiming a `type` this census
-          // cannot read, and the point is to make a new writer visible rather than to be clever.
-          if (ts.isShorthandPropertyAssignment(prop)) record(node)
-          else if (!ts.isPropertyAssignment(prop)) continue
-          else {
-            const value = unwrapAssertions(prop.initializer)
-            if (ts.isStringLiteralLike(value)) {
-              if (value.text === 'status') record(node)
-            } else if (!ts.isCallExpression(value)) record(node)
-          }
-        }
-      }
-      ts.forEachChild(node, visit)
-    }
-    visit(file)
-    return found
-  }
-
-  function statusLiterals(path: string): number {
-    return statusObjects(path).length
-  }
-
-  // These complete objects describe theme effects, not session events. Every other candidate
-  // remains counted, including another object in either of these files.
-  const NON_STATUS = new Map<string, readonly string[]>([
-    [
-      join('apps', 'desktop', 'src', 'shared', 'themes', 'catalogue.ts'),
-      ['{ type, params: entries(EFFECT_PARAMS[type]) }'],
-    ],
-    [
-      join('apps', 'desktop', 'src', 'shared', 'themes', 'validate.ts'),
-      [
-        `{
-    type: { kind: 'choice', values: ['linear', 'radial'], says: '', required: true },
-    angle: { kind: 'number', min: 0, max: 360, unit: '', says: '' },
-    stops: { kind: 'text', max: 0, says: '' },
-}`,
-        '{ type, ...params }',
-      ],
-    ],
-  ])
-
-  /**
-   * The expression under any number of type assertions — `'status' as const`, `'status' satisfies
-   * string`, `('status')`, `x!`.
-   *
-   * ⚠️ **Not cosmetic, and not a widening either.** Every one of these wraps a value the census can
-   * already read; without unwrapping they made it UNREADABLE, so a real writer went uncounted and an
-   * unrelated `'workflow_run' as const` would have been counted the moment the fallback widened.
-   * Reaching the literal settles both directions at once.
-   */
-  function unwrapAssertions(node: ts.Expression): ts.Expression {
-    let value = node
-    for (;;) {
-      if (
-        ts.isAsExpression(value) ||
-        ts.isSatisfiesExpression(value) ||
-        ts.isParenthesizedExpression(value) ||
-        ts.isNonNullExpression(value) ||
-        ts.isTypeAssertionExpression(value)
-      ) {
-        value = value.expression
-        continue
-      }
-      return value
-    }
-  }
-
-  /**
-   * The status writers among census candidates: every print still standing once each exempt print
-   * is taken away ONCE per time it is exempted, so a second copy of an exempt object is still seen.
-   */
-  function writers(
-    candidates: readonly { path: string; prints: readonly string[] }[],
-  ): (readonly [string, number])[] {
-    return candidates
-      .map(({ path, prints }) => {
-        const exempt = [...(NON_STATUS.get(path) ?? [])]
-        const left = prints.filter((print) => {
-          const at = exempt.indexOf(print)
-          if (at === -1) return true
-          exempt.splice(at, 1)
-          return false
-        })
-        return [path, left.length] as const
-      })
-      .filter(([, count]) => count > 0)
-  }
-
-  it('is constructed in exactly one PLACE in the whole app', () => {
-    const files = ROOTS.flatMap(sources)
-    // ⚠️ **The census must have something to census.** A `sources()` that stopped walking would
-    // return an empty list and every assertion below would pass over nothing.
-    expect(files.length, 'the census found no source files at all').toBeGreaterThan(300)
-
-    // ⛔ **The COUNT, not `count > 0`, and that is 137 repairing this guard rather than restating
-    // it.** 136: *"a second `this.say({ type: 'status', … })` inside session-machine.ts leaves the
-    // result unchanged"* — because the old assertion mapped every count to a filename and compared
-    // the list. 122's whole point was one writer, and a guard that cannot see the second writer is
-    // worse than the sentence it replaced.
-    const candidates = files.map((path) => ({
-      path: path.slice(REPO.length + 1),
-      prints: statusObjects(path),
-    }))
-    const nonStatus = candidates.flatMap(({ path, prints }) =>
-      prints.filter((print) => NON_STATUS.get(path)?.includes(print)).map((print) => [path, print]),
-    )
-    expect(nonStatus).toEqual(
-      [...NON_STATUS].flatMap(([path, prints]) => prints.map((print) => [path, print])),
-    )
-    expect(nonStatus).toHaveLength(3)
-    const sites = writers(candidates)
-    expect(sites, 'something other than the session machine constructs a status event').toEqual([
-      [join('packages', 'runtime', 'src', 'internal', 'session-machine.ts'), 1],
-    ])
-    expect(sites[0]?.[0].endsWith(OWNER)).toBe(true)
-  })
-
-  it('⛔ …and a status emitter beside an exempt theme object is still a writer', () => {
-    // The exemption is the exact objects, once each; nothing about the file or its count. A rogue
-    // `{ type: 'status' }` added to the theme module, or to a file that merely looks like it, is
-    // reported like any other writer.
-    const rogue = `\nconst rogue = { type: 'status', state: 'working' }\n`
-    const probe = (real: string, extra: string): string[] => {
-      const file = join(tmpdir(), `brobot2-census-theme-${process.pid}.ts`)
-      writeFileSync(file, `${readFileSync(join(REPO, real), 'utf8')}${extra}`)
-      try {
-        return statusObjects(file)
-      } finally {
-        rmSync(file, { force: true })
-      }
-    }
-    const catalogue = join('apps', 'desktop', 'src', 'shared', 'themes', 'catalogue.ts')
-    const validate = join('apps', 'desktop', 'src', 'shared', 'themes', 'validate.ts')
-    expect(
-      writers([{ path: catalogue, prints: probe(catalogue, '') }]),
-      'the module as it is',
-    ).toEqual([])
-    expect(writers([{ path: catalogue, prints: probe(catalogue, rogue) }])).toEqual([
-      [catalogue, 1],
-    ])
-    expect(writers([{ path: validate, prints: probe(validate, rogue + rogue) }])).toEqual([
-      [validate, 2],
-    ])
-    // A second copy of an exempt object is not exempt twice.
-    expect(
-      writers([
-        { path: validate, prints: probe(validate, '\nconst again = { type, ...params }\n') },
-      ]),
-    ).toEqual([[validate, 1]])
-    // A fictional catalogue beside the real one carries no exemption at all.
-    const elsewhere = join('apps', 'desktop', 'src', 'shared', 'themes', 'catalogue-copy.ts')
-    expect(writers([{ path: elsewhere, prints: probe(catalogue, rogue) }])).toEqual([
-      [elsewhere, 2],
-    ])
-  })
-
-  it('…and the census can actually see one, in every form a writer could take', () => {
-    // ⛔ **The paired positive.** Everything above is an assertion that a set is EMPTY except for
-    // one known file — the shape that passes hardest when the detector has quietly stopped
-    // detecting. This runs the same parser over source that really does construct a status event,
-    // including the forms the regex version missed and the three 136 found this one missing.
-    const rogue = [
-      `const a = { type: 'status', state: 'idle' }`,
-      `const b = { type: "status", state: 'idle' }`,
-      `const type = 'status'; const c = { type, state: 'idle' }`,
-      // …and the glob that defeated the regex stripper, ahead of a real emitter.
-      `const glob = '**` + `/*.ts'\nconst d = { type: 'status', state: 'idle' }\n/** doc */`,
-      // 136's three: a quoted key, a computed key, and a value this census cannot read.
-      `const e = { "type": 'status', state: 'idle' }`,
-      `const f = { ['type']: 'status', state: 'idle' }`,
-      `const STATUS = 'status'; const g = { type: STATUS, state: 'idle' }`,
-      // …and 137's own review: the assertion forms, one of which this repo already uses.
-      `const h = { type: 'status' as const, state: 'idle' }`,
-      `const i = { type: 'status' satisfies string, state: 'idle' }`,
-      `const j = { type: ('status'), state: 'idle' }`,
-      `const k = { type: cond ? 'status' : 'idle', state: 'idle' }`,
-    ].join('\n')
-    const file = join(tmpdir(), `brobot2-census-probe-${process.pid}.ts`)
-    writeFileSync(file, rogue)
-    try {
-      expect(statusLiterals(file)).toBe(11)
-    } finally {
-      rmSync(file, { force: true })
-    }
-  })
-
-  it('…and does not count a DIFFERENT event asserted the same way — the paired negative', () => {
-    // ⛔ The bound on the widening above, and the reason it is an unwrap rather than "count anything
-    // that is not a call". `packages/runtime/src/claude/normalize.ts` really does write
-    // `type: 'workflow_run' as const` in a hoisted object — required there, or the discriminant
-    // widens to `string` — and a census that reported it would be red on the day it landed.
-    const file = join(tmpdir(), `brobot2-census-other-${process.pid}.ts`)
-    writeFileSync(
-      file,
-      [
-        `const common = { type: 'workflow_run' as const, taskId: 't' }`,
-        `const schema = { type: z.literal('status'), state: z.string() }`,
-      ].join('\n'),
-    )
-    try {
-      expect(statusLiterals(file), 'the census reported a writer of something else').toBe(0)
-    } finally {
-      rmSync(file, { force: true })
-    }
-  })
-
-  it('…and it can see one in a `.vue` file, which is where a third writer would appear', () => {
-    // ⛔ **136: the Vue extractor was exercised only by a `.ts` paired positive.** The renderer is
-    // the realistic home for a new emitter — `transcript.ts` already applies status events — so the
-    // half of the census that reads single-file components needs its own probe, or scanning `.vue`
-    // at all is a claim rather than a check.
-    const file = join(tmpdir(), `brobot2-census-vue-${process.pid}.vue`)
-    writeFileSync(
-      file,
-      [
-        `<template><p>{{ type }}</p></template>`,
-        `<script setup lang="ts">`,
-        `const rogue = { type: 'status', state: 'idle' }`,
-        `</script>`,
-        `<style scoped>.p { color: red }</style>`,
-      ].join('\n'),
-    )
-    try {
-      expect(statusLiterals(file), 'a status event constructed inside a component').toBe(1)
-    } finally {
-      rmSync(file, { force: true })
-    }
-  })
-
-  it('…and a SECOND construction in the owner file is what the count exists to catch', () => {
-    // ⛔ **AC4, made a test rather than a claim.** The census's whole value is that adding one more
-    // `say({ type: 'status' })` beside the existing one turns it red. Run over the real owner plus
-    // one line, so the arithmetic is the file's own and not a fixture's.
-    const owner = join(REPO, 'packages', 'runtime', 'src', 'internal', 'session-machine.ts')
-    expect(statusLiterals(owner), 'the owner has exactly the one this suite allows').toBe(1)
-
-    const file = join(tmpdir(), `brobot2-census-second-${process.pid}.ts`)
-    const owned = readFileSync(owner, 'utf8')
-    try {
-      writeFileSync(file, `${owned}\nconst rogue = { type: 'status', state: 'idle' }\n`)
-      expect(statusLiterals(file), 'a second writer in the SAME file is visible').toBe(2)
-      // ⛔ **And the same writer wearing the assertion this repo already uses.** Review found this
-      // one escaping: `as const` made the second site invisible and BOTH assertions above stayed
-      // green with two real writers in the owner file.
-      writeFileSync(file, `${owned}\nconst rogue = { type: 'status' as const, state: 'idle' }\n`)
-      expect(statusLiterals(file), 'a second writer behind `as const` is visible').toBe(2)
-    } finally {
-      rmSync(file, { force: true })
-    }
   })
 })

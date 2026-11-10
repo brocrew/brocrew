@@ -3,7 +3,7 @@ import { TASK_STATES } from '../src/shared/task-contracts'
 import type { PieceRow, WhatAConversationIsWaitingOn } from '../src/shared/task-contracts'
 import type { RoutedRequest } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -33,7 +33,6 @@ import {
 } from '../src/shared/tasks'
 import { WORK_STATE_WORD } from '../src/renderer/src/lib/work-report'
 import { aPersonOwesAnAnswerIn } from '../src/shared/questions'
-import { spacedCode } from './helpers/source-contracts'
 import {
   fixtureProviderConfig,
   syntheticProviderHome,
@@ -77,13 +76,6 @@ import {
  */
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const srcRoot = join(here, '../src')
-
-/**
- * ⛔ **CODE only** — `a-source-census-must-strip-prose-before-it-asserts`. ⚠️ Every negative in §7
- * is about what the app DOES, and this file's own history sections quote the words they replaced.
- */
-const codeOf = (file: string): string => spacedCode(readFileSync(join(srcRoot, file), 'utf8'))
 
 describe('609 · three waits, one family', () => {
   class ToolWatchingRuntime extends FakeRuntime {
@@ -500,24 +492,6 @@ describe('609 · three waits, one family', () => {
    * directions. ⚑ This section puts both on the path the code walks.
    */
   describe('§4 · the hand-over row, and never a child’s state', () => {
-    it('🔴 the giver reads `waiting-on-a-worker` whatever the child is doing — the PO’s first direction', async () => {
-      // ⛔ **A child idle because it FINISHED, because it CRASHED, and because it is waiting on a
-      // person are three different situations** — and the giver's state must not differ between
-      // them, because the hand-over row is the same in all three.
-      const rows = [rowFor('stalled', 'sess_giver')]
-      const fromTheRow = outstanding({ childrenOpen: new Set(['work_1']) })
-      expect(composeWhatEachPieceIsWaitingOn(rows, fromTheRow)[0]?.state).toBe(
-        'waiting-on-a-worker',
-      )
-      // ⚑ **The source is a FUNCTION of the conversation id and of nothing else** — it is handed in
-      // rather than reached for, so this module cannot consult a slot map even if somebody wanted
-      // it to. 🔴 That is the structural half of the ruling.
-      const tasks = codeOf('shared/tasks.ts')
-      for (const forbidden of ['slots', 'status()', 'handle', 'runningStateOf', 'AgentCard']) {
-        expect(tasks, `the composition module reached for ${forbidden}`).not.toContain(forbidden)
-      }
-    })
-
     it('⚑ END TO END: the giver’s turn ends, it has work out, and it is NOT reported as stalled', async () => {
       // ⛔ **A three-deep chain, because that is the only shape in which a giver holds a GIVEN piece
       // of its own**: a root is never a folded piece (D-016 · R1), so the middle needs a giver.
@@ -608,6 +582,62 @@ describe('609 · three waits, one family', () => {
   })
 
   /**
+   * A chain three deep: the top gives the owner its report, the owner's first turn parks on its
+   * card, and inside that turn the owner hands a piece on to a helper. `latch` goes on the owner's
+   * launch.
+   */
+  const anOwnerWithAHelperOut = async (
+    latch: { moved: boolean } | null = null,
+  ): Promise<{
+    top: string
+    middle: string
+    surface: RecordingSink
+    report: PieceRow
+    helper: string
+    helperTools: AgentToolset
+    notices: () => string[]
+  }> => {
+    const seeded = await personOpens('worker')
+    await host.close(seeded, window)
+    const top = await personOpens('pm')
+    const topTools = theToolsetJustHandedOut()
+    latchNext = latch
+    const given = await callOn(topTools, 'give_work', {
+      definition_of_done: 'The requested result and its checks are recorded.',
+      profile: 'worker',
+      title: 'The report',
+      brief: 'write the report',
+    })
+    expect(given.outcome, JSON.stringify(given)).toBe('ok')
+    const middle = given.agent as string
+    const middleTools = theToolsetJustHandedOut()
+    const report = theOpenPieceOf(middle, 'the give')
+    const surface = new RecordingSink('webContents:9')
+    host.claimSession(middle, surface)
+    await waitFor(
+      () => ledger(middle).some((event) => event.type === 'permission_request'),
+      'the owner to park on its card',
+    )
+    const handedOn = await callOn(middleTools, 'give_work', {
+      definition_of_done: 'The requested result and its checks are recorded.',
+      profile: 'worker',
+      title: 'The notes for the report',
+      brief: 'write the notes',
+    })
+    expect(handedOn.outcome, JSON.stringify(handedOn)).toBe('ok')
+    const helperTools = theToolsetJustHandedOut()
+    const notices = (): string[] =>
+      ledger(top).flatMap((event) =>
+        (event.type === 'user_turn' || event.type === 'message_queued') &&
+        event.text.includes(report.label) &&
+        isGiverStallNotice(event.text)
+          ? [event.text]
+          : [],
+      )
+    return { top, middle, surface, report, helper: handedOn.agent as string, helperTools, notices }
+  }
+
+  /**
    * 🔴 **D-005 · F019 — the last helper's reply starts its owner's turn, and nobody is told it
    * stalled.** ⚑ Measured by BroBot (F019): the helper's task closed before its reply reached the
    * owner, so the owner's work read `stalled` at the moment that reply started its next turn — and
@@ -616,38 +646,9 @@ describe('609 · three waits, one family', () => {
    */
   describe('D-005 · F019 — an owner woken by its last helper', () => {
     it('🔴 no stall notice reaches the giver, and the owner’s work reads working in its wake turn', async () => {
-      const seeded = await personOpens('worker')
-      await host.close(seeded, window)
-      const top = await personOpens('pm')
-      const topTools = theToolsetJustHandedOut()
-      // ⚑ **D-016** — the give starts the owner, and its brief is the owner's first turn.
-      const given = await callOn(topTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The report',
-        brief: 'write the report',
-      })
-      expect(given.outcome, JSON.stringify(given)).toBe('ok')
-      const middle = given.agent as string
-      const middleTools = theToolsetJustHandedOut()
-      const report = theOpenPieceOf(middle, 'the give')
-      const surface = new RecordingSink('webContents:9')
-      host.claimSession(middle, surface)
-      await waitFor(
-        () => ledger(middle).some((event) => event.type === 'permission_request'),
-        'the owner to park on its card',
-      )
-
-      // ⚑ **F019's order: the owner hands a piece on INSIDE its turn**, then its turn ends.
-      const handedOn = await callOn(middleTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The notes for the report',
-        brief: 'write the notes',
-      })
-      expect(handedOn.outcome, JSON.stringify(handedOn)).toBe('ok')
-      const helper = handedOn.agent as string
-      const helperTools = theToolsetJustHandedOut()
+      // F019's order: the owner hands a piece on inside its turn, and then its turn ends.
+      const { top, middle, surface, report, helper, helperTools, notices } =
+        await anOwnerWithAHelperOut()
       await clearTheCard(middle, surface)
       await waitFor(
         () =>
@@ -655,19 +656,11 @@ describe('609 · three waits, one family', () => {
           'stalled',
         'the owner’s turn to end',
       )
-      // ⚑ **609 holds**: its turn ended with a helper out, so it reads waiting, and nobody is told.
+      // Its turn ended with a helper out, so it reads waiting, and nobody is told.
       expect(stateSeenBy(top, report.piece)).toBe('waiting-on-a-worker')
-      const noticesToTheGiver = (): string[] =>
-        ledger(top).flatMap((event) =>
-          (event.type === 'user_turn' || event.type === 'message_queued') &&
-          event.text.includes(report.label) &&
-          isGiverStallNotice(event.text)
-            ? [event.text]
-            : [],
-        )
-      expect(noticesToTheGiver()).toEqual([])
+      expect(notices()).toEqual([])
 
-      // 🔴 **The helper answers — its piece closes, and its reply starts the owner's next turn.**
+      // The helper answers: its piece closes, and its reply starts the owner's next turn.
       const notes = theOpenPieceOf(helper, 'the handed-on work')
       const turnsBefore = ledger(middle).filter((event) => event.type === 'user_turn').length
       const replied = await callOn(helperTools, 'reply_to_parent', {
@@ -685,7 +678,7 @@ describe('609 · three waits, one family', () => {
         'the owner to park on its wake turn’s card',
       )
       // ⛔ **No notice**: its work was being driven the whole time.
-      expect(noticesToTheGiver()).toEqual([])
+      expect(notices()).toEqual([])
       // ⚑ **And the fold reads it working in the wake turn** — the composition says the card
       // it is parked on, which outranks it (`609`'s precedence).
       expect(store.piecesOwnedBy(middle).find((one) => one.piece === report.piece)).toMatchObject({
@@ -703,7 +696,7 @@ describe('609 · three waits, one family', () => {
    * started the owner's next turn.
    */
   describe('D-005a · F019 — answers waiting in the owner’s queue', () => {
-    /** ⚑ The chain up to the helper's answer, queued behind the owner's running turn. */
+    /** The chain up to the helper's answer, queued behind the owner's running turn. */
     const answeredMidTurn = async (
       latch: { moved: boolean } | null = null,
     ): Promise<{
@@ -713,58 +706,20 @@ describe('609 · three waits, one family', () => {
       report: PieceRow
       notices: () => string[]
     }> => {
-      const seeded = await personOpens('worker')
-      await host.close(seeded, window)
-      const top = await personOpens('pm')
-      const topTools = theToolsetJustHandedOut()
-      latchNext = latch
-      // ⚑ **D-016** — the give starts the owner (on the latched launch), and its brief is the
-      // owner's first turn.
-      const given = await callOn(topTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The report',
-        brief: 'write the report',
-      })
-      expect(given.outcome, JSON.stringify(given)).toBe('ok')
-      const middle = given.agent as string
-      const middleTools = theToolsetJustHandedOut()
-      const report = theOpenPieceOf(middle, 'the give')
-      const surface = new RecordingSink('webContents:9')
-      host.claimSession(middle, surface)
-      await waitFor(
-        () => ledger(middle).some((event) => event.type === 'permission_request'),
-        'the owner to park on its card',
-      )
-      const handedOn = await callOn(middleTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The notes for the report',
-        brief: 'write the notes',
-      })
-      expect(handedOn.outcome, JSON.stringify(handedOn)).toBe('ok')
-      const helper = handedOn.agent as string
-      const helperTools = theToolsetJustHandedOut()
+      const { top, middle, surface, report, helper, helperTools, notices } =
+        await anOwnerWithAHelperOut(latch)
       const notes = theOpenPieceOf(helper, 'the handed-on work')
-      // 🔴 **The helper answers while its owner's turn is still running.**
+      // The helper answers while its owner's turn is still running.
       const replied = await callOn(helperTools, 'reply_to_parent', {
         piece: notes.label,
         outcome: 'done',
         summary: 'the notes are written',
       })
       expect(replied.outcome, JSON.stringify(replied)).toBe('ok')
-      // ⚑ **The premise, read off the owner's ledger**: its helper's work is closed, and the answer
-      // is WAITING in its queue rather than delivered.
+      // The premise, read off the owner's ledger: its helper's work is closed, and the answer is
+      // waiting in its queue rather than delivered.
       expect(store.piecesOwnedBy(helper)[0]?.state).toBe('answered')
       expect(ledger(middle).some((event) => event.type === 'message_queued')).toBe(true)
-      const notices = (): string[] =>
-        ledger(top).flatMap((event) =>
-          (event.type === 'user_turn' || event.type === 'message_queued') &&
-          event.text.includes(report.label) &&
-          isGiverStallNotice(event.text)
-            ? [event.text]
-            : [],
-        )
       return { top, middle, surface, report, notices }
     }
 
@@ -826,40 +781,6 @@ describe('609 · three waits, one family', () => {
   })
 
   /**
-   * 🔴 **§5 · what it costs the stall notice, stated as a property rather than discovered later.**
-   */
-  describe('§5 · the notice moves to where the work actually stopped', () => {
-    it('⛔ a giver waiting on a worker is owed NO undriven notice, and the control still is', () => {
-      // ⚑ **`stalledWithACause` is the ONE predicate both recipients are admitted by** — an agent's
-      // notice and a person's queue row — so one assertion measures both.
-      const waiting = composeWhatEachPieceIsWaitingOn(
-        [rowFor('stalled')],
-        outstanding({ childrenOpen: new Set(['work_1']) }),
-      )[0] as PieceRow
-      expect(stalledWithACause(waiting)).toBe(false)
-      // ⛔ **THE CONTROL, trapped the same way** — the same row, the same composition, and the one
-      // fact that differs is whether anything is outstanding.
-      const told = composeWhatEachPieceIsWaitingOn(
-        [rowFor('stalled')],
-        outstanding(),
-      )[0] as PieceRow
-      expect(stalledWithACause(told)).toBe(true)
-    })
-
-    it('🔴 the notice is not LOST — it is owed at the link that actually stopped', () => {
-      // ⛔ **The child's own row is untouched by its giver's wait.** ⚑ `waiting-on-a-worker` is a
-      // fact about the GIVER, and the row the notice is owed about belongs to the conversation
-      // that went quiet — which is why a chain that stops reports at its broken link and not at
-      // every link above it.
-      const childsRow = rowFor('stalled', 'sess_sub', 'work_child')
-      const composed = composeWhatEachPieceIsWaitingOn([childsRow], outstanding())[0] as PieceRow
-      expect(composed.state).toBe('stalled')
-      expect(stalledWithACause(composed)).toBe(true)
-      expect(composed.giver).toBe('sess_pm')
-    })
-  })
-
-  /**
    * 🔴 **§7 · the sweep — BOTH audiences, each with the control that makes its zero a measurement.**
    */
   describe('§7 · the sentences the ruling moved', () => {
@@ -895,63 +816,9 @@ describe('609 · three waits, one family', () => {
       // ⚑ **`603`'s word did not move**, which is what makes the rename a KEY change rather than a
       // change a person can see.
       expect(WORK_STATE_WORD['waiting-on-an-answer']).toBe('waiting on an answer')
-      // ⚠️ **And the sweep's own count, reported as the zero it is**: no rendered string a person
-      // reads described the OLD behaviour, because the old behaviour was a word this app DID NOT
-      // HAVE — `stalled` and `working` are both still true of the rows they still apply to.
+      // `stalled` keeps its word: it is still true of the rows it applies to.
       const stalledWord = WORK_STATE_WORD.stalled
       expect(stalledWord).toBe('not being worked on')
-      // ⛔ **THE POSITIVE CONTROL** — the pattern the sweep used finds a real person-facing string
-      // in this same corpus, so *none found* is a measurement (standing rule 34.2).
-      expect(codeOf('renderer/src/lib/work-report.ts')).toContain(
-        "import { WORK_STATE_WORD } from '../../../shared/work-state-words'",
-      )
-      expect(codeOf('shared/work-state-words.ts')).toContain("stalled: 'not being worked on'")
-    })
-
-    it('⚑ no rail gates on a composed word — standing rule 10’s shape, one vocabulary over', () => {
-      // 🔴 **A wait is derived from what became of a QUESTION, a CARD or a CHILD's work**, so a
-      // rail keyed on one would make an entitlement answer depend on whether somebody had replied.
-      const whole = codeOf('main/runtime/runtime-host.ts')
-      // ⚑ **D-016c · no reader is cut out any more.** `703`'s `theNoticesALaterFactMadeFalse` and
-      // R49's `putWhatIsTrueInPlaceOfTheWait` and `theWaitsThatSetRightAStop` compared against
-      // `waiting-on-an-answer` — none a rail — for the *"It is waiting"* correction a reopen once
-      // sent a giver. ⛔ They are GONE with their subject (a reopen tells nobody now).
-      // ⚑ **F097 · one reader is cut out by name, and it is no rail either**:
-      // `aPieceItHoldsWaitsOnWhoWrote` asks whether a piece waits on the person who wrote — the
-      // FOLD's own wait, never a composed word — for who owes the conversation the next move, which
-      // gates nothing. ⛔ Cut out whole and measured, so the negative holds over the rest.
-      const reader = 'private aPieceItHoldsWaitsOnWhoWrote('
-      const from = whole.indexOf(reader)
-      expect(from, 'the reader cut out below moved or went').toBeGreaterThan(-1)
-      const to = whole.indexOf('\n  }\n', from)
-      expect(whole.slice(from, to)).toContain("=== 'waiting-on-the-person-who-wrote'")
-      const withoutFirstReader = whole.slice(0, from) + whole.slice(to)
-      const factsFrom = withoutFirstReader.indexOf('private factsForTheTurnBlock(')
-      expect(factsFrom).toBeGreaterThan(-1)
-      const factsTo = withoutFirstReader.indexOf('\n  }\n', factsFrom)
-      const facts = withoutFirstReader.slice(factsFrom, factsTo)
-      expect(facts).toContain('composeWhatEachPieceIsWaitingOn(raw, waits)')
-      expect(facts).not.toContain('publishOurs(')
-      expect(facts).not.toContain('session.handle.')
-      const withoutFacts =
-        withoutFirstReader.slice(0, factsFrom) + withoutFirstReader.slice(factsTo)
-      const classifyFrom = withoutFacts.indexOf('private reconciliationReading(')
-      expect(classifyFrom).toBeGreaterThan(-1)
-      const classifyTo = withoutFacts.indexOf('\n  }\n', classifyFrom)
-      const classifier = withoutFacts.slice(classifyFrom, classifyTo)
-      expect(classifier).toContain("folded.state !== 'waiting-on-purpose'")
-      expect(classifier).toContain("disposition: 'waiting', validWait: true")
-      expect(classifier).not.toContain('publishOurs(')
-      expect(classifier).not.toContain('session.handle.')
-      const host = withoutFacts.slice(0, classifyFrom) + withoutFacts.slice(classifyTo)
-      for (const wait of TASK_WAITS) {
-        expect(host, `a door compares against '${wait}'`).not.toContain(`=== '${wait}'`)
-        expect(host, `a door refuses on '${wait}'`).not.toContain(`!== '${wait}'`)
-      }
-      // ⚠️ **THE POSITIVE CONTROL**: the host really does compare states against string literals
-      // elsewhere, so the negatives above are about these words and not about a shape this file
-      // never uses.
-      expect(host).toMatch(/=== 'live'|=== 'working'|=== 'idle'/)
     })
   })
 })

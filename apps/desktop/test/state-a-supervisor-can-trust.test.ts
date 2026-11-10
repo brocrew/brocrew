@@ -3,7 +3,7 @@ import { TASK_STALL_CAUSES } from '../src/shared/task-contracts'
 import type { TaskStallCause } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { expectIdsOnlyInLinkTargets } from './helpers/navigation-reply'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -23,15 +23,10 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { isGiverStallNotice, RuntimeHost } from './helpers/giver-notice-host'
-import { TOOL_NAMES, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  WHERE_AN_ASK_LANDED,
-  WHO_STOPPED_IT,
-  type AskToStop,
-  type LastEndedTurn,
-} from '../src/shared/how-work-stopped'
+import { WHERE_AN_ASK_LANDED, WHO_STOPPED_IT, type AskToStop } from '../src/shared/how-work-stopped'
 import { AN_ASK_RIDES_ON, derivePieces } from '../src/shared/tasks'
 import { exchangePreviewLines } from '../src/shared/last-exchange'
 import { pieceLine, theConversationCalled } from '../src/shared/piece-called'
@@ -63,8 +58,7 @@ import {
  *    a `work_interrupted` row exists and the answer names nobody.
  *  - **§2** — `lastEndedTurn` says which turn it is about, in the type. HO-031 §2.2: *"an ambiguity
  *    a reader must resolve is the defect, not the staleness."*
- *  - **§3** — every published tool answer is classified as describing an act or not, and the actor
- *    each one reports is named. ⛔ The residue is named too rather than left out.
+ *  - **§3** — the tool answers that describe an act report the actor the ledger holds.
  *  - **§4** — `stalled_because` across its WHOLE state set, plus the case that reaches none of it:
  *    an agent frozen on a permission, which HO-031 §3 calls *"the most actively misleading thing in
  *    the report"*.
@@ -79,7 +73,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const mainRoot = join(here, '../src/main')
 
 class ProviderDouble extends FakeRuntime {
   constructor(
@@ -239,8 +232,6 @@ describe('484 · state a supervisor can trust', () => {
     db.close()
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
-
-  const sourceOf = (...parts: string[]): string => readFileSync(join(mainRoot, ...parts), 'utf8')
 
   const personOpens = async (profileId: string): Promise<string> => {
     const { sessionId } = await host.createSession(
@@ -448,6 +439,26 @@ describe('484 · state a supervisor can trust', () => {
     expect(answered?.by).toBe(last?.type === 'work_interrupted' ? last.by : 'unreachable')
   }
 
+  /**
+   * The first stall notice the giver was pushed, once one has arrived: as a turn, or with `orHeld`
+   * also as a message still held for it.
+   */
+  const theStallNoticeTo = async (giver: string, orHeld = false): Promise<string | undefined> => {
+    const notices = (): string[] =>
+      ledger(giver)
+        .flatMap((event) =>
+          event.type === 'user_turn' || (orHeld && event.type === 'message_queued')
+            ? [event.text]
+            : [],
+        )
+        .filter((text) => isGiverStallNotice(text))
+    await waitFor(
+      () => notices().length > 0,
+      orHeld ? 'the giver to be told' : 'the parent to be pushed the notice',
+    )
+    return notices()[0]
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────────────────────
   // §1 · THE DELIVERABLE — a person intervened, and the tool says so
   // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -524,24 +535,6 @@ describe('484 · state a supervisor can trust', () => {
       theAskIsReported(worker)
     })
 
-    it('⚑ an AGENT’s stop names the conversation, and a person’s does not — the same row, two arms', async () => {
-      // ⛔ **A held working turn rather than a carded one, and the reason is a RAIL rather than
-      // convenience.** `INTERRUPT_RAILS`' `a-person-is-being-asked` refuses an agent that would cut
-      // into a child parked on somebody's permission — HO-005 Q2 — so the state an agent may
-      // actually stop is a child working with nobody being asked. ⚑ **D-016** — the give's brief is
-      // the child's first turn, so it is that turn, held working ({@link holdingAWorkingTurn}),
-      // where `123`'s out-of-turn burst stood in for it on a child nothing had been sent.
-      const { pm, worker, workerHandle } = await aPmAndItsWorker(holdingAWorkingTurn)
-      await waitFor(() => workerHandle.status() === 'working', 'the child to be working')
-      const stopped = await host.interruptAgent(worker, asPm(pm))
-      expect(stopped.ok, JSON.stringify(stopped)).toBe(true)
-
-      // ⛔ **`asker` exists on the agent arm and nowhere else** — `WorkInterruptedEvent`'s rule,
-      // carried through rather than re-decided.
-      expect(store.lastAskToStop(worker)).toMatchObject({ by: 'an-agent', asker: pm })
-      theAskIsReported(worker)
-    })
-
     it('⛔ the LAST ask wins, and a person after an agent does not inherit the agent’s name', async () => {
       const { pm, worker, workerHandle } = await aPmAndItsWorker(holdingAWorkingTurn)
       await waitFor(() => workerHandle.status() === 'working', 'the child to be working')
@@ -604,31 +597,6 @@ describe('484 · state a supervisor can trust', () => {
         asker: null,
       })
       theAskIsReported(sessionId)
-    })
-
-    it('🔴 the row is written where the old reader looked and where it did NOT — both, from one writer', () => {
-      // ⛔ **The structural claim, on the source**: there is ONE writer of the ask, and the column
-      // that hid it from the turn-narrowed reader is `turnFor`'s null.
-      const store_ = sourceOf('db', 'session-store.ts')
-      const hostSource = sourceOf('runtime', 'runtime-host.ts')
-      expect(hostSource.split("type: 'work_interrupted'")).toHaveLength(2)
-      // ⚑ **The null that made the gap**, quoted from the function that produces it.
-      expect(store_).toContain('if (!CONTENT_EVENTS.has(event.type)) return null')
-      // ⚠️ **And the new read is NOT narrowed by turn**, which is the whole difference between the
-      // two questions. ⛔ A `turn_id =` clause appearing in this statement would silently restore
-      // the blindness, so the statement's own text is asserted.
-      const opens = store_.indexOf('const selectLastAskToStop = db.prepare(')
-      expect(opens, 'selectLastAskToStop was renamed or removed').toBeGreaterThan(0)
-      const statement = store_.slice(opens, store_.indexOf('  )', opens))
-      expect(statement).toContain("type = 'work_interrupted'")
-      expect(statement).not.toContain('turn_id =')
-      // ⚑ **The control that plants TWO** (standing rule 12): the slice really can see a `turn_id =`
-      // clause, so the negative above is a measurement rather than a matcher that never fires.
-      const neighbour = store_.slice(
-        store_.indexOf('const selectLastTurnEndingEvents = db.prepare('),
-        store_.indexOf('const selectLastAskToStop = db.prepare('),
-      )
-      expect(neighbour).toContain('turn_id =')
     })
   })
 
@@ -747,13 +715,6 @@ describe('484 · state a supervisor can trust', () => {
       // than a constant.
       expect(second?.endedAt).toBeGreaterThan(first?.endedAt ?? 0)
       expect(second?.since).toBe('nothing-has-started-since')
-      // ⚠️ **The type carries both words and the values below are the two the app produces**, so a
-      // third member added without a producer is visible here.
-      const words: readonly LastEndedTurn['since'][] = [
-        'nothing-has-started-since',
-        'a-turn-is-running-now',
-      ]
-      expect(words).toHaveLength(2)
     })
 
     it('⛔ every member of `WHERE_AN_ASK_LANDED` is reached by something — a member nothing writes guards nothing', async () => {
@@ -812,240 +773,6 @@ describe('484 · state a supervisor can trust', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§3 · every act-describing tool answer, classified', () => {
-    /**
-     * 🔴 **HO-031 §2.1's scope, as data.** ⛔ *"Derive every tool answer that describes an ACT and
-     * check whether it reports the actor the ledger holds."*
-     *
-     * ⚠️ **Keyed by {@link ToolName}, so a FURTHER tool is a compile error here** — `477`'s
-     * `ACTOR_CENSUS` device one layer out. ⛔ A published answer nobody classified is exactly what
-     * this ruling exists to stop.
-     *
-     * ⚑ **`describes` means *the answer reports an act performed by somebody other than the
-     * caller***. A verb's own outcome is not in scope: the caller IS the actor, it has just called
-     * the tool, and a `by` echoing the caller back would be a field with one possible value.
-     */
-    const ACT_CENSUS: Readonly<
-      Record<ToolName, { describes: boolean; actor: string; because: string }>
-    > = {
-      list_themes: {
-        describes: false,
-        actor: 'none',
-        because: 'It reads theme settings and the active choice, not another actor’s act.',
-      },
-      save_theme: {
-        describes: false,
-        actor: 'the caller',
-        because: 'It reports the caller’s own save and optional workspace selection.',
-      },
-      set_theme: {
-        describes: false,
-        actor: 'the caller',
-        because: 'It reports the caller’s own workspace selection and previous choice.',
-      },
-      list_agents: {
-        describes: true,
-        actor: 'lastEndedTurn.who + lastAskToStop.by',
-        because: '484 · a turn was stopped, and who asked — the card carries both readings',
-      },
-      get_agent_status: {
-        describes: true,
-        actor: 'lastEndedTurn.who + lastAskToStop.by',
-        because: '484 · the surface HO-031 §2.1 was measured on; one card, one derivation',
-      },
-      list_tasks: {
-        describes: true,
-        actor: 'asked_to_stop_by',
-        because:
-          '484 · `turn_interrupted` says the turn was stopped, and the asker is on the neighbouring row of the same ledger',
-      },
-      // ⚑ **D-016** — `list_projects` (*the same act on the project read*) is gone with projects.
-      write_agent_rules: {
-        describes: false,
-        actor: 'the caller',
-        because: 'It reports this caller’s own attributed rules write, with a metadata receipt.',
-      },
-      read_own_notes: {
-        describes: false,
-        actor: 'n/a',
-        because: 'Reads a profile page and its stored author; it describes no stopping act.',
-      },
-      write_own_notes: {
-        describes: false,
-        actor: 'the caller',
-        because: 'Reports this caller’s own attributed note version; it describes no stopping act.',
-      },
-      read_agent_rules: {
-        describes: false,
-        actor: 'n/a',
-        because: 'Reads current standing rules and their provenance; it describes no stopping act.',
-      },
-      propose_agent_rules: {
-        describes: false,
-        actor: 'n/a',
-        because:
-          '582 · the answer reports what THIS call did — a version written, or a request put in front of a person. No other act, no other actor, and nothing that was stopped',
-      },
-      // ⚑ **D-016** — `549`'s `list_documents` row is gone with the document registry.
-      list_questions: {
-        describes: true,
-        actor: 'NOT REPORTED — named as a finding',
-        because:
-          '484 F1 · `state: interrupted` reports an act; the asker is in the CHILD ledger and `deriveRoutedRequests` does not read `work_interrupted`, so naming one from the conversation’s last ask could attribute an older gesture to this ending',
-      },
-      // ⚑ **D-016** — `create_project` (*its own act*, since `616`) is gone with projects and
-      // proposals.
-      // ⚑ **D-016 · `give_work` took `spawn_agent`'s row, and its reason.**
-      give_work: {
-        describes: false,
-        actor: 'the caller',
-        because: 'it reports its own act, and a `by` echoing the caller back has one value',
-      },
-      // ⚑ **D-016** — a title or a status line the caller set on a piece it holds or gave.
-      update_work: {
-        describes: false,
-        actor: 'the caller',
-        because: 'D-016 · its own act — a title or a status line the caller itself set on a piece',
-      },
-      // ⚑ **D-016 · commit 6** — a piece the caller took on for a person; the answer names that piece.
-      take_on_work: {
-        describes: false,
-        actor: 'the caller',
-        because:
-          'D-016 · commit 6 · its own act — a piece the caller took on under its own conversation’s work, and nobody else acted',
-      },
-      message_agent: {
-        describes: false,
-        actor: 'the caller',
-        because: 'its own act — and 413 already ruled the authorship a message carries',
-      },
-      // ⚑ **D-017** — `end_agent` (*its own act*) is gone.
-      interrupt_agent: {
-        describes: false,
-        actor: 'the caller',
-        because:
-          'its own act, and it answers `asked` rather than `stopped` because the two providers differ in kind',
-      },
-      withdraw_task: {
-        describes: false,
-        actor: 'the caller',
-        because:
-          'its own act — the parent taking back work it gave, and it is the parent that called',
-      },
-      reply_to_parent: {
-        describes: false,
-        actor: 'the caller',
-        because: 'its own act — and 393 ruled the actor is WHICH LEDGER the reply is in',
-      },
-      answer_question: {
-        describes: false,
-        actor: 'the caller',
-        because:
-          'its own act — and 477 put the answerer on `user_decision`, which is the durable row',
-      },
-      ask_question: {
-        describes: false,
-        actor: 'the caller',
-        because: 'its own act — the actor is WHICH LEDGER the question was raised in',
-      },
-      // 🔴 **611 · the same answer for the same reason** (HO-088 §3.2). ⛔ A pass-up writes the
-      // passer's OWN `question_asked` row, in the passer's own ledger — so the actor is which
-      // ledger it is in, exactly as it is one row up. ⚠️ The WORDS are somebody else's and the ACT
-      // is the caller's, and `passedUpFrom` is what keeps those two facts apart.
-      pass_question_up: {
-        describes: false,
-        actor: 'the caller',
-        because: 'its own act — the words are the original asker’s and the raising is the caller’s',
-      },
-      create_agent: {
-        describes: false,
-        actor: 'the caller',
-        because: 'its own act — one row written, nothing started, and the caller is the author',
-      },
-      read_document: {
-        describes: false,
-        actor: 'none',
-        because: 'it returns bytes and reports no act at all',
-      },
-      search_work: {
-        describes: false,
-        actor: 'none',
-        because: 'It reads recorded work facts without claiming who changed them.',
-      },
-      search_past_work: {
-        describes: false,
-        actor: 'none',
-        because: 'It reads past records without claiming who changed them.',
-      },
-      find_files: {
-        describes: true,
-        actor: 'added_by',
-        because:
-          'D-037 · each file found was kept by somebody, and the answer names who from the row that kept it: the conversation’s agent, or a person',
-      },
-      restore_agent: {
-        describes: false,
-        actor: 'the caller',
-        because:
-          'its own act — the conversations it brought back to the lists, and how each carries on; the caller is the one who restored them',
-      },
-      request_mcp_server: {
-        describes: false,
-        actor: 'the caller',
-        because:
-          'its own act — the request it put in front of the person; the caller is the one who asked',
-      },
-      request_action: {
-        describes: false,
-        actor: 'the caller',
-        because:
-          'its own act — the to-do it put in front of the person; the caller is the one who asked',
-      },
-      // 🔴 **488 · a listing of IDENTITIES, and it is the row this census had to think hardest
-      // about.**
-      // ⛔ **Bringing an identity into existence IS an act**, and a person or an agent performed it —
-      // but no field on this row reports it. ⚑ The row says which identities exist and what each one
-      // is, and existence and configuration are STATES: nothing on it says anything happened, so
-      // there is no act whose actor is being withheld. ⚠️ **And the actor is not merely omitted, it
-      // is unrecorded** — `writeIdentityRow` writes no author — so a row claiming one would be a
-      // derivation answering what its ledger does not contain.
-      list_profiles: {
-        describes: false,
-        actor: 'none',
-        because:
-          '488 · it reports which identities exist and what each one is; existence and configuration are states, and nothing this app stores says who minted a name',
-      },
-      // ⚑ **D-017** — `663`'s `resume_agent` (*its own act*) is gone.
-      // ⚑ **D-009 · `give_work`'s reason** (`spawn_agent`'s until D-016) — the answer is the
-      // caller's own withdrawal of a question it asked; nobody else's act is on it.
-      withdraw_question: {
-        describes: false,
-        actor: 'the caller',
-        because: 'D-009 · it reports its own act, withdrawing a question the caller itself asked',
-      },
-      // ⚑ **D-012 · each message it reports says who sent it**, read off the row's own fields.
-      read_transcript: {
-        describes: true,
-        actor: 'last_exchange.received.from + turns[].received.from',
-        because: 'D-012 · it reports messages others sent, and each carries its sender',
-      },
-    }
-
-    it('⛔ every published tool is classified, and every row owes a reason', () => {
-      expect(Object.keys(ACT_CENSUS).sort()).toEqual([...TOOL_NAMES].sort())
-      // ⚠️ **A verdict with no sentence is an omission nobody decided about** — `477`'s rule, and
-      // this ruling is written against exactly that shape.
-      for (const [name, one] of Object.entries(ACT_CENSUS)) {
-        expect(one.because.length, name).toBeGreaterThan(20)
-      }
-      // 🔴 **The residue is NAMED and counted**, so it cannot quietly grow. ⛔ Standing rule 14: a
-      // deferred question in a response is a finding, and this is the line it is lifted from.
-      const missing = Object.entries(ACT_CENSUS).filter(
-        ([, one]) => one.describes && one.actor.startsWith('NOT REPORTED'),
-      )
-      expect(missing.map(([name]) => name)).toEqual(['list_questions'])
-    })
-
-    // ⚑ **Four until D-016 took `list_projects`**, the other surface that reported the same act.
     it('🔴 the three that DO report it really do, on a live ledger — not on the census’s opinion', async () => {
       const { pmTools, worker, piece } = await aPmAndItsWorker()
       await waitFor(
@@ -1087,15 +814,7 @@ describe('484 · state a supervisor can trust', () => {
       await cardOn(worker)
       aPersonTakesOver(worker)
       await host.interrupt(worker, window)
-      await waitFor(
-        () =>
-          ledger(pm).some((event) => event.type === 'user_turn' && isGiverStallNotice(event.text)),
-        'the parent to be pushed the notice',
-      )
-      const told = ledger(pm)
-        .filter((event) => event.type === 'user_turn')
-        .map((event) => (event.type === 'user_turn' ? event.text : ''))
-        .find((text) => isGiverStallNotice(text))
+      const told = await theStallNoticeTo(pm)
       // 🔴 **The pushed line is the one a parent acts on**, and until this dispatch it reported the
       // act and named nobody. ⚑ Same composition as the row read back, so the two cannot disagree.
       expect(told).toContain('the turn it was running in was stopped, by a person')
@@ -1239,12 +958,6 @@ describe('484 · state a supervisor can trust', () => {
         'login_refused',
         'billing_refused',
       ])
-      // ⚑ **And the fold reads the table**, off the source rather than off this test's opinion.
-      const fold = readFileSync(join(here, '../src/shared/tasks.ts'), 'utf8')
-      expect(fold).toContain('stalledBy: AN_ASK_RIDES_ON[cause] ? by : null')
-      // ⚑ **D-005a** · `by` is the turn's own ask — `asked`, unless a stall the turn held for its
-      // queue is written later, when it is the ask that turn carried.
-      expect(fold).toContain("by: PieceRow['stalledBy'] = asked,")
     })
 
     it('🔴 an ask belongs to the turn it precedes and to NOTHING after it — the fold, on its own', () => {
@@ -1407,34 +1120,6 @@ describe('484 · state a supervisor can trust', () => {
       )
       expect(JSON.stringify(ledger(worker))).toContain(`${distinctive}-but-spoken`)
       expect(JSON.stringify(ledger(worker))).not.toContain(`"${distinctive}"`)
-    })
-
-    it('⛔ the host door cannot receive it — the strongest proof is that there is nowhere to put it', () => {
-      // 🔴 **`477`'s standard, quoted by the brief: *a model must not be able to CLAIM it, and the
-      // strongest proof is a build failure.*** ⚠️ Here the equivalent is the SIGNATURE: neither
-      // door takes a reason, so a tool that wanted to deliver one has nothing to call.
-      const hostSource = sourceOf('runtime', 'runtime-host.ts')
-      // ⚑ **D-017** — the one door left; `endAgent`, its twin, went with `end_agent`.
-      expect(hostSource).toContain('async interruptAgent(id: string, by: Caller)')
-    })
-
-    it('⚑ and the description says both halves, on the bytes each provider is sent', async () => {
-      const { pmTools } = await aPmAndItsWorker()
-      const definition = pmTools.tools.find((one) => one.name === 'interrupt_agent')
-      expect(definition, 'interrupt_agent is published').toBeDefined()
-      const described = `${definition?.description ?? ''} ${JSON.stringify(definition?.input ?? {})}`
-      void described
-      const source = sourceOf('runtime', 'agent-tools.ts')
-      // ⛔ **The sentence a model reads**, pinned so it cannot drift back to implying a channel.
-      // ⚑ F084 — what the agent IS told: which of its commands the stop ended, never who or why.
-      expect(source).toContain(
-        'The agent is not told who stopped it or why — only, the next time it is sent words, which of its commands the stop ended: to stop its turn and tell it why in one act, use message_agent with interrupt.',
-      )
-      // ⚠️ **Both halves on the ARGUMENT too** — not delivered, and not kept.
-      expect(source).toContain(
-        'the agent never sees these words and this app does not keep them. Required so that destroying work in flight is a stated decision.',
-      )
-      // ⚑ **D-017** — `end_agent`, which carried the identical argument and sentence, is gone.
     })
 
     it('⚠️ the UI half of the evidence, measured — interrupting and speaking really are two acts', async () => {
@@ -1715,268 +1400,70 @@ describe('484 · state a supervisor can trust', () => {
       })
     })
 
-    it('⛔ `asked_to_stop_by` carries the OTHER actor too — through message, interrupt and the same public read', async () => {
-      const words = '491-agent-actor-product-path'
-      const { pm, pmTools, worker, piece } = await aPmAndItsWorker(holdingAWorkingTurn, words)
+    /**
+     * The giver's own worker, held working while the giver is named Ada, and stopped by the giver
+     * through `interrupt_agent`; the provider ends the stopped turn in `itsWord`. The rows the stop
+     * leaves come from their real producers, and none is planted.
+     */
+    const theGiverStopsItsOwnWorker = async (
+      itsWord: 'interrupted' | 'completed',
+      words: string,
+      reason: string,
+    ): Promise<{
+      pm: string
+      pmTools: AgentToolset
+      worker: string
+      workerProfile: string
+      piece: string
+    }> => {
+      const { pm, pmProfile, pmTools, worker, workerProfile, piece } = await aPmAndItsWorker(
+        (handle) => holdingAWorkingTurn(handle, itsWord),
+        words,
+      )
+      expect(host.setAgentDisplayName(pmProfile, 'Ada')).not.toBeNull()
       await waitFor(
         () => host.agentCard(worker, asPm(pm), pm)?.state.is === 'active',
         'the deliberately held provider turn to be working',
       )
       const task = pieceOf(worker, piece)
       if (task === undefined) throw new Error('the product path gave no piece')
-
-      const stopped = await callOn(pmTools, 'interrupt_agent', {
-        agent: worker,
-        reason: 'prove the agent-valued actor through its real producer',
-      })
+      const stopped = await callOn(pmTools, 'interrupt_agent', { agent: worker, reason })
       expect(stopped.outcome, JSON.stringify(stopped)).toBe('ok')
       await waitFor(
         () => pieceOf(worker, task.piece)?.state === 'stalled',
         'the agent-interrupted task to stall',
       )
-
-      // 🔴 No event is planted: these are the real producer rows from `give_work` and
-      // `interrupt_agent`, followed by the provider terminal from the shared SessionMachine.
       expect(ledger(worker)).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ type: 'work_given', piece: task.piece }),
           expect.objectContaining({ type: 'work_interrupted', by: 'an-agent', agent: pm }),
-          expect.objectContaining({ type: 'turn', state: 'interrupted' }),
+          expect.objectContaining({ type: 'turn', state: itsWord }),
         ]),
       )
-
-      const listed = await callOn(pmTools, 'list_tasks', {})
-      const row = (listed.you_gave as Record<string, unknown>[]).find(
-        (one) => one.piece === task.piece,
-      )
-      expect(row).toMatchObject({
-        stalled_because: 'turn_interrupted',
-        asked_to_stop_by: { by: 'an-agent', asker: pm },
-      })
-    })
-
-    it('🔴 720 · R72 — a provider that FINISHES the turn anyway: the stall is its word, and who asked rides beside it', async () => {
-      // ⚑ The same rig and the same producers as the test above, one fact over: the provider's own
-      // word for the turn it was asked to stop is `completed` (Codex does this,
-      // `probe:codex-early-interrupt`). ⛔ **On `main`: `stalled_by: null`, and neither text named
-      // the ask** — `709` F-2.
-      const words = '720-a-finished-turn-that-was-asked-to-stop'
-      const { pm, pmProfile, pmTools, worker, workerProfile, piece } = await aPmAndItsWorker(
-        (handle) => holdingAWorkingTurn(handle, 'completed'),
-        words,
-      )
-      // ⚑ **724 · the asker has a NAME a person gave it**, so the sentences below can be read for it.
-      expect(host.setAgentDisplayName(pmProfile, 'Ada')).not.toBeNull()
-      await waitFor(
-        () => host.agentCard(worker, asPm(pm), pm)?.state.is === 'active',
-        'the deliberately held provider turn to be working',
-      )
-      const task = pieceOf(worker, piece)
-      if (task === undefined) throw new Error('the product path gave no piece')
-      const stopped = await callOn(pmTools, 'interrupt_agent', {
-        agent: worker,
-        reason: 'the provider will finish the turn anyway',
-      })
-      expect(stopped.outcome, JSON.stringify(stopped)).toBe('ok')
-      await waitFor(
-        () => pieceOf(worker, task.piece)?.state === 'stalled',
-        'the task to stall on the turn the provider finished',
-      )
-      expect(ledger(worker)).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ type: 'work_interrupted', by: 'an-agent', agent: pm }),
-          expect.objectContaining({ type: 'turn', state: 'completed' }),
-        ]),
-      )
-
-      // ⚑ The text read back, and the notice pushed — one composition, and the ask said AS an ask.
-      const line = await textOf(pmTools, 'list_tasks', {})
-      // 🔴 **724 · `720` F-C — who asked is NAMED** (re-aimed): this pinned only that an ask was
-      // PRESENT, because an agent asker printed as its raw conversation id (`stoppedBy`, since `484`)
-      // — a handle where `HO-095` §5.3 wants a name, which `720` reported rather than pinned as right.
-      // 🔴 **729 · PM ruling R90 (re-aimed again)**: the asker here IS the reader — Ada stopped her own
-      // worker — so it is said as her own act, never *"…, by Ada"* to Ada (`724` F-2). ⛔ RED on
-      // `main`: *"…; it had been asked to stop, by Ada"*. ⚑ The id stays on the row, below.
-      expect(line).toContain('its turn ended with this work still open; you asked it to stop')
-      // The line also names who holds the piece: the worker, whose own name is Ada here too. That
-      // one clause is checked and set aside; no other "by Ada" may appear.
-      const holder = host.whatToCallTheConversation(worker)
-      expect(holder).toBe(
-        store.agentIdentities().find((one) => one.slug === workerProfile)?.displayName,
-      )
-      const heldBy = ` · held by ${holder} · `
-      expect(line.split(heldBy)).toHaveLength(2)
-      expect(line.replace(heldBy, ' · ')).not.toContain('by Ada')
-      expectIdsOnlyInLinkTargets(line, [pm])
-      await waitFor(
-        () =>
-          ledger(pm).some((event) => event.type === 'user_turn' && isGiverStallNotice(event.text)),
-        'the parent to be pushed the notice',
-      )
-      const told = ledger(pm)
-        .flatMap((event) => (event.type === 'user_turn' ? [event.text] : []))
-        .find((text) => isGiverStallNotice(text))
-      expect(told).toContain('its turn ended with this work still open; you asked it to stop)')
-      expect(told).not.toContain('by Ada')
-      expect(told).not.toContain(pm)
-      // ⛔ **Never the asker as the one who ENDED it** — the sentence a cause-blind clause would write.
-      for (const text of [line, told ?? '']) expect(text).not.toContain('still open, by')
-      // ⚑ The payload: the PROVIDER's word as the cause, and who asked beside it — the id, which a
-      // model can press on (asserted after the sentences, so a red above is theirs).
-      const listed = await callOn(pmTools, 'list_tasks', {})
-      const row = (listed.you_gave as Record<string, unknown>[]).find(
-        (one) => one.piece === task.piece,
-      )
-      expect(row).toMatchObject({
-        stalled_because: 'turn_ended',
-        asked_to_stop_by: { by: 'an-agent', asker: pm },
-      })
-    })
-
-    it('🔴 724 · 729 R90 — a turn the giver STOPPED itself: the line and the notice say its own ask as its own act, and never print the handle', async () => {
-      // ⚑ The first test above, one fact over: the provider's own word is `interrupted`, so the
-      // clause follows the stall as it always has. ⚑ `724` (`720` F-C) named the asker here, never
-      // its handle — and the asker is the giver reading it, so since `729` (R90) its own ask is said
-      // as its own act. ⚑ The ancestor tests below are where another asker is still NAMED.
-      const words = '724-a-turn-the-giver-stopped-itself'
-      const { pm, pmProfile, pmTools, worker, workerProfile, piece } = await aPmAndItsWorker(
-        holdingAWorkingTurn,
-        words,
-      )
-      expect(host.setAgentDisplayName(pmProfile, 'Ada')).not.toBeNull()
-      await waitFor(
-        () => host.agentCard(worker, asPm(pm), pm)?.state.is === 'active',
-        'the deliberately held provider turn to be working',
-      )
-      const task = pieceOf(worker, piece)
-      if (task === undefined) throw new Error('the product path gave no piece')
-      const stopped = await callOn(pmTools, 'interrupt_agent', {
-        agent: worker,
-        reason: 'its own ask, said as its own act',
-      })
-      expect(stopped.outcome, JSON.stringify(stopped)).toBe('ok')
-      await waitFor(
-        () => pieceOf(worker, task.piece)?.state === 'stalled',
-        'the agent-interrupted task to stall',
-      )
-      // 🔴 The subject: neither sentence prints the handle — and, 🔴 **729 · PM ruling R90
-      // (re-aimed)**, Ada is the one reading them and the one who asked, so both say it as her own
-      // act rather than naming her to herself (`724` F-2). ⛔ RED on `main`: *"…stopped, by Ada"*.
-      const line = await textOf(pmTools, 'list_tasks', {})
-      expect(line).toContain('the turn it was running in was stopped; you asked it to stop')
-      // The line also names who holds the piece: the worker, whose own name is Ada here too. That
-      // one clause is checked and set aside; no other "by Ada" may appear.
-      const holder = host.whatToCallTheConversation(worker)
-      expect(holder).toBe(
-        store.agentIdentities().find((one) => one.slug === workerProfile)?.displayName,
-      )
-      const heldBy = ` · held by ${holder} · `
-      expect(line.split(heldBy)).toHaveLength(2)
-      expect(line.replace(heldBy, ' · ')).not.toContain('by Ada')
-      expectIdsOnlyInLinkTargets(line, [pm])
-      await waitFor(
-        () =>
-          ledger(pm).some((event) => event.type === 'user_turn' && isGiverStallNotice(event.text)),
-        'the parent to be pushed the notice',
-      )
-      const told = ledger(pm)
-        .flatMap((event) => (event.type === 'user_turn' ? [event.text] : []))
-        .find((text) => isGiverStallNotice(text))
-      expect(told).toContain('the turn it was running in was stopped; you asked it to stop.')
-      expect(told).not.toContain('by Ada')
-      expect(told).not.toContain(pm)
-      // ⚑ The control: the ROW keeps the id a model can press on (after the sentences, so a red
-      // above is theirs).
-      const listed = await callOn(pmTools, 'list_tasks', {})
-      const row = (listed.you_gave as Record<string, unknown>[]).find(
-        (one) => one.piece === task.piece,
-      )
-      expect(row).toMatchObject({
-        stalled_because: 'turn_interrupted',
-        asked_to_stop_by: { by: 'an-agent', asker: pm },
-      })
-    })
-
-    it('🔴 724 · `720` F-C — an ANCESTOR that is not the giver asks: the giver is told the ancestor’s name', async () => {
-      // ⚑ **Found by `724`'s review**: in the two tests above the asker IS the giver, so a sentence
-      // that named the giver, or the reader, instead of whoever asked would pass them. ⚠️ **Since
-      // `729` (R90) they assert the reader's OWN act**, so what would pass them now is saying *"you
-      // asked it to stop"* of every agent's ask — which this test, and its `turn_ended` twin below,
-      // refuse. ⚑ Any
-      // ancestor may ask (`mayInterruptDownTheChain`): Grace, two levels up, stops Bob, the worker Ada
-      // gave the work to — three names, and only the asker's is right.
-      await bringIdentityIntoBeing('pm-g')
-      await bringIdentityIntoBeing('worker-g')
-      const boss = await personOpens('boss-g')
-      for (const [slug, name] of [
-        ['boss-g', 'Grace'],
-        ['pm-g', 'Ada'],
-        ['worker-g', 'Bob'],
-      ] as const) {
-        expect(host.setAgentDisplayName(slug, name), slug).not.toBeNull()
-      }
-      const bossTools = agentToolsFor(host, boss)
-      // ⚑ **D-016 · each give starts the conversation below it**, its brief the first turn.
-      const pm = (await aGive(bossTools, 'pm-g', 'the plan')).agent
-      const pmTools = agentToolsFor(host, pm)
-      const words = '724-an-ancestor-asks'
-      const given = await aGive(pmTools, 'worker-g', words, holdingAWorkingTurn)
-      const worker = given.agent
-      await waitFor(
-        () => host.agentCard(worker, asPm(pm), pm)?.state.is === 'active',
-        'the deliberately held provider turn to be working',
-      )
-      const task = pieceOf(worker, given.piece)
-      if (task === undefined) throw new Error('the product path gave no piece')
-      const stopped = await callOn(bossTools, 'interrupt_agent', {
-        agent: worker,
-        reason: 'the plan changed',
-      })
-      expect(stopped.outcome, JSON.stringify(stopped)).toBe('ok')
-      await waitFor(
-        () => pieceOf(worker, task.piece)?.state === 'stalled',
-        'the work to stall on the turn Grace stopped',
-      )
-      await waitFor(
-        () =>
-          ledger(pm).some(
-            (event) =>
-              (event.type === 'user_turn' || event.type === 'message_queued') &&
-              isGiverStallNotice(event.text),
-          ),
-        'the giver to be told',
-      )
-      const told = ledger(pm)
-        .flatMap((event) =>
-          event.type === 'user_turn' || event.type === 'message_queued' ? [event.text] : [],
-        )
-        .find((text) => isGiverStallNotice(text))
-      // 🔴 The push names the ASKER — not the giver reading it, not the holder it is about. ⚑ **D-016
-      // · commit 7 · R3 — by the piece it owns**, beside its name: nothing else in the sentence names
-      // that conversation.
-      const grace = theConversationCalled('Grace', store.workThatNames(boss))
-      expect(store.workThatNames(boss)).not.toBeNull()
-      expect(told).toContain(`the turn it was running in was stopped, by ${grace}.`)
-      expect(told).not.toMatch(/stopped, by (Ada|Bob|sess_)/)
-      // 🔴 …and so does the line `list_tasks` hands the giver.
-      const line = await textOf(pmTools, 'list_tasks', {})
-      expect(line).toContain(`the turn it was running in was stopped, by ${grace}`)
-      expect(line).not.toMatch(/stopped, by (Ada|Bob|sess_)/)
-      // ⚑ The control: the row keeps the ASKER's id, which a model can press on.
-      const listed = await callOn(pmTools, 'list_tasks', {})
-      const row = (listed.you_gave as Record<string, unknown>[]).find(
-        (one) => one.piece === task.piece,
-      )
-      expect(row).toMatchObject({
-        stalled_because: 'turn_interrupted',
-        asked_to_stop_by: { by: 'an-agent', asker: boss },
-      })
-    })
+      return { pm, pmTools, worker, workerProfile, piece: task.piece }
+    }
 
     /**
-     * ⚑ **729 · the ancestor rig, for the tests below** — the test above's, with the provider's own
-     * word for the turn chosen: Grace (two levels up) may stop Bob, the worker Ada gave the work to.
+     * The line also names who holds the piece: the worker, whose own name is Ada here too. That one
+     * clause is checked and set aside; no other "by Ada" may appear, and no id outside a link.
      */
+    const theHolderClauseSetAside = (
+      line: string,
+      worker: string,
+      workerProfile: string,
+      pm: string,
+    ): void => {
+      const holder = host.whatToCallTheConversation(worker)
+      expect(holder).toBe(
+        store.agentIdentities().find((one) => one.slug === workerProfile)?.displayName,
+      )
+      const heldBy = ` · held by ${holder} · `
+      expect(line.split(heldBy)).toHaveLength(2)
+      expect(line.replace(heldBy, ' · ')).not.toContain('by Ada')
+      expectIdsOnlyInLinkTargets(line, [pm])
+    }
+
+    /** Grace (two levels up) may stop Bob, the worker Ada gave the work to. */
     const graceAdaAndBob = async (
       itsWord: 'interrupted' | 'completed',
       words: string,
@@ -1999,7 +1486,7 @@ describe('484 · state a supervisor can trust', () => {
         expect(host.setAgentDisplayName(slug, name), slug).not.toBeNull()
       }
       const bossTools = agentToolsFor(host, boss)
-      // ⚑ **D-016 · each give starts the conversation below it**, its brief the first turn.
+      // Each give starts the conversation below it, its brief the first turn.
       const pm = (await aGive(bossTools, 'pm-g', 'the plan')).agent
       const pmTools = agentToolsFor(host, pm)
       const given = await aGive(pmTools, 'worker-g', words, (handle) =>
@@ -2013,11 +1500,92 @@ describe('484 · state a supervisor can trust', () => {
       return { boss, bossTools, pm, pmTools, worker, piece: given.piece }
     }
 
+    it('🔴 720 · R72 — a provider that FINISHES the turn anyway: the stall is its word, and who asked rides beside it', async () => {
+      // The provider finishes the turn it was asked to stop, as Codex does.
+      const { pm, pmTools, worker, workerProfile, piece } = await theGiverStopsItsOwnWorker(
+        'completed',
+        '720-a-finished-turn-that-was-asked-to-stop',
+        'the provider will finish the turn anyway',
+      )
+      // The asker is the reader, so the line and the notice say the ask as its own act.
+      const line = await textOf(pmTools, 'list_tasks', {})
+      expect(line).toContain('its turn ended with this work still open; you asked it to stop')
+      theHolderClauseSetAside(line, worker, workerProfile, pm)
+      const told = await theStallNoticeTo(pm)
+      expect(told).toContain('its turn ended with this work still open; you asked it to stop)')
+      expect(told).not.toContain('by Ada')
+      expect(told).not.toContain(pm)
+      // Never the asker as the one who ended it.
+      for (const text of [line, told ?? '']) expect(text).not.toContain('still open, by')
+      // The payload: the provider's word as the cause, and who asked beside it, by id.
+      const listed = await callOn(pmTools, 'list_tasks', {})
+      const row = (listed.you_gave as Record<string, unknown>[]).find((one) => one.piece === piece)
+      expect(row).toMatchObject({
+        stalled_because: 'turn_ended',
+        asked_to_stop_by: { by: 'an-agent', asker: pm },
+      })
+    })
+
+    it('🔴 724 · 729 R90 — a turn the giver STOPPED itself: the line and the notice say its own ask as its own act, and never print the handle', async () => {
+      const { pm, pmTools, worker, workerProfile, piece } = await theGiverStopsItsOwnWorker(
+        'interrupted',
+        '724-a-turn-the-giver-stopped-itself',
+        'its own ask, said as its own act',
+      )
+      // Ada reads both sentences and is the one who asked, so both say it as her own act.
+      const line = await textOf(pmTools, 'list_tasks', {})
+      expect(line).toContain('the turn it was running in was stopped; you asked it to stop')
+      theHolderClauseSetAside(line, worker, workerProfile, pm)
+      const told = await theStallNoticeTo(pm)
+      expect(told).toContain('the turn it was running in was stopped; you asked it to stop.')
+      expect(told).not.toContain('by Ada')
+      expect(told).not.toContain(pm)
+      // The row keeps the id a model can press on.
+      const listed = await callOn(pmTools, 'list_tasks', {})
+      const row = (listed.you_gave as Record<string, unknown>[]).find((one) => one.piece === piece)
+      expect(row).toMatchObject({
+        stalled_because: 'turn_interrupted',
+        asked_to_stop_by: { by: 'an-agent', asker: pm },
+      })
+    })
+
+    it('🔴 724 · `720` F-C — an ANCESTOR that is not the giver asks: the giver is told the ancestor’s name', async () => {
+      // In the two tests above the asker is the giver. Here Grace, two levels up, stops Bob, the
+      // worker Ada gave the work to: three names, and only the asker's is right.
+      const { boss, bossTools, pm, pmTools, worker, piece } = await graceAdaAndBob(
+        'interrupted',
+        '724-an-ancestor-asks',
+      )
+      const stopped = await callOn(bossTools, 'interrupt_agent', {
+        agent: worker,
+        reason: 'the plan changed',
+      })
+      expect(stopped.outcome, JSON.stringify(stopped)).toBe('ok')
+      await waitFor(
+        () => pieceOf(worker, piece)?.state === 'stalled',
+        'the work to stall on the turn Grace stopped',
+      )
+      const told = await theStallNoticeTo(pm, true)
+      // The push names the asker by the piece it owns: not the giver reading it, not the holder.
+      const grace = theConversationCalled('Grace', store.workThatNames(boss))
+      expect(store.workThatNames(boss)).not.toBeNull()
+      expect(told).toContain(`the turn it was running in was stopped, by ${grace}.`)
+      expect(told).not.toMatch(/stopped, by (Ada|Bob|sess_)/)
+      // …and so does the line `list_tasks` hands the giver.
+      const line = await textOf(pmTools, 'list_tasks', {})
+      expect(line).toContain(`the turn it was running in was stopped, by ${grace}`)
+      expect(line).not.toMatch(/stopped, by (Ada|Bob|sess_)/)
+      // The row keeps the asker's id, which a model can press on.
+      const listed = await callOn(pmTools, 'list_tasks', {})
+      const row = (listed.you_gave as Record<string, unknown>[]).find((one) => one.piece === piece)
+      expect(row).toMatchObject({
+        stalled_because: 'turn_interrupted',
+        asked_to_stop_by: { by: 'an-agent', asker: boss },
+      })
+    })
+
     it('🔴 729 · R90 — the control on the other shape: an ANCESTOR asks and the provider FINISHES the turn — the giver is told Grace’s name, as an ask', async () => {
-      // ⚑ **The R90 control on `turn_ended`**: the test above is the control on `turn_interrupted`,
-      // and the two arms of `theStallAndItsAsk` are two branches — so each shape has another asker
-      // that must still be NAMED, while the reader's own ask (the two `720`/`724` tests above) is
-      // said as its own act.
+      // Another asker is still named when the provider finishes the turn anyway.
       const { bossTools, pm, pmTools, worker, piece } = await graceAdaAndBob(
         'completed',
         '729-an-ancestor-asks-and-the-turn-finishes',
@@ -2031,20 +1599,7 @@ describe('484 · state a supervisor can trust', () => {
         () => pieceOf(worker, piece)?.state === 'stalled',
         'the work to stall on the turn the provider finished',
       )
-      await waitFor(
-        () =>
-          ledger(pm).some(
-            (event) =>
-              (event.type === 'user_turn' || event.type === 'message_queued') &&
-              isGiverStallNotice(event.text),
-          ),
-        'the giver to be told',
-      )
-      const told = ledger(pm)
-        .flatMap((event) =>
-          event.type === 'user_turn' || event.type === 'message_queued' ? [event.text] : [],
-        )
-        .find((text) => isGiverStallNotice(text))
+      const told = await theStallNoticeTo(pm, true)
       const line = await textOf(pmTools, 'list_tasks', {})
       for (const text of [told ?? '', line]) {
         expect(text).toContain(

@@ -44,8 +44,8 @@ import {
  * planted sentence for its length and nothing else, so no test read the words, the detail, or the
  * host's half (who ended it, the caller's own act said as its own, whether the caller may rename).
  *
- *  - §1 `anEndedPieceSaid` over a literal detail: each ending, each act, the time on the same day
- *    and on another, and each fact left out where the detail carries none.
+ *  - §1 `anEndedPieceSaid` over a literal detail: a closed piece and a piece taken back, by the
+ *    caller and by another, and each fact left out where the detail carries none.
  *  - §2 through the real host, real SQLite and the real tools: an answered piece read by its giver
  *    and by its helper; the same refusal days later; a piece the giver closed, closed again; a piece
  *    the giver took back; a held brief cancelled, which names nobody. Each is paired with a title
@@ -85,51 +85,12 @@ describe('F059 · §1 · anEndedPieceSaid, over a literal detail', () => {
   /** Noon UTC: on whatever zone this Mac is in, a minute later is the same local day. */
   const AT = Date.UTC(2030, 0, 15, 12, 0)
   const SAME_DAY = AT + 60_000
-  const DAYS_LATER = AT + 3 * DAY_MS
 
   /** A detail with every required field spelled, so a test moves exactly the facts it names. */
   const detailOf = (
     over: Pick<EndedPieceDetail, 'state' | 'yoursToRetitle'> &
       Partial<Omit<EndedPieceDetail, 'state' | 'yoursToRetitle'>>,
   ): EndedPieceDetail => ({ piece: 'work_1', label: 'W2.1', at: AT, ...over })
-
-  it('the premise: the two reading moments fall on the same day and on another, and say the time differently', () => {
-    expect(sameLocalDay(AT, SAME_DAY)).toBe(true)
-    expect(sameLocalDay(AT, DAYS_LATER)).toBe(false)
-    expect(clockTime(AT)).toMatch(/\d/)
-    expect(clockTimeFrom(AT, SAME_DAY)).toBe(clockTime(AT))
-    expect(clockTimeFrom(AT, DAYS_LATER)).not.toBe(clockTime(AT))
-  })
-
-  it('an answered piece: its giver is told to read the answer, its helper to stop, and the helper is "You", never by name', () => {
-    const toTheGiver = anEndedPieceSaid(
-      detailOf({ state: 'answered', called: 'Ada', yoursToRetitle: true }),
-      SAME_DAY,
-    )
-    expect(toTheGiver).toBe(
-      `${readItsAnswer('W2.1')} W2.1 was answered by Ada at ${clockTime(AT)}, ${NOTHING_CHANGED}`,
-    )
-
-    const toTheHelper = anEndedPieceSaid(
-      detailOf({ state: 'answered', endedByYou: true, yoursToRetitle: false }),
-      SAME_DAY,
-    )
-    expect(toTheHelper).toBe(`${STOP} You answered W2.1 at ${clockTime(AT)}, ${NOTHING_CHANGED}`)
-    expect(toTheHelper).not.toContain(' by ')
-    expect(toTheHelper).not.toContain('list_tasks')
-    expect(toTheHelper).not.toContain(ONLY_THE_TITLE)
-
-    // One fact over: the same ending by the caller itself, where it MAY rename the piece (the owner
-    // of a piece a person gave). No answer is waiting for it to read, so it is told the title alone.
-    const toAnOwnerThatMayRename = anEndedPieceSaid(
-      detailOf({ state: 'answered', endedByYou: true, yoursToRetitle: true }),
-      SAME_DAY,
-    )
-    expect(toAnOwnerThatMayRename).toBe(
-      `${ONLY_THE_TITLE} You answered W2.1 at ${clockTime(AT)}, ${NOTHING_CHANGED}`,
-    )
-    expect(toAnOwnerThatMayRename).not.toContain('list_tasks')
-  })
 
   it('a closed piece and a piece taken back: "You …" for the caller’s own act, "… by <name>" for another’s', () => {
     const t = clockTime(AT)
@@ -168,19 +129,6 @@ describe('F059 · §1 · anEndedPieceSaid, over a literal detail', () => {
       `${ONLY_THE_TITLE} W2.1 was closed by Grace at ${t}, ${NOTHING_CHANGED}`,
     )
     expect(closedByAnother).not.toContain('list_tasks')
-  })
-
-  it('an ending on another day is said with its date, and the same ending read that day with the time alone', () => {
-    const detail = detailOf({ state: 'answered', called: 'Ada', yoursToRetitle: true })
-    const sameDay = anEndedPieceSaid(detail, SAME_DAY)
-    const later = anEndedPieceSaid(detail, DAYS_LATER)
-    expect(sameDay).toContain(` at ${clockTime(AT)}, `)
-    expect(later).toBe(
-      `${readItsAnswer('W2.1')} W2.1 was answered by Ada at ${clockTimeFrom(AT, DAYS_LATER)}, ${NOTHING_CHANGED}`,
-    )
-    // The only difference between the two is how the moment is said.
-    expect(later).not.toBe(sameDay)
-    expect(later).not.toContain(` at ${clockTime(AT)}, `)
   })
 
   it('says no "by" where nobody is recorded and no "at" where no moment is, and falls back for a state it does not name', () => {

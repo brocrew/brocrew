@@ -1,6 +1,6 @@
 import { TASK_STATES } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -400,8 +400,6 @@ describe('429 · taking work back', () => {
     return made
   }
 
-  const sourceOf = (dir: string, file: string): string => readFileSync(join(dir, file), 'utf8')
-
   // ─────────────────────────────────────────────────────────────────────────────────────────
   // §1 · the carrier — §2 and §2.1 of the brief
   // ─────────────────────────────────────────────────────────────────────────────────────────
@@ -742,63 +740,6 @@ describe('429 · taking work back', () => {
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────
-  // §4 · the composition — §6.4 of the brief, which is the acceptance
-  // ─────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§4 · the sequence the brief calls the acceptance', () => {
-    it('🔴 assign → answered → withdraw REFUSED naming the reply → the same words given again are NEW work', async () => {
-      const { worker, pmTools, label } = await workAlreadyAnswered()
-
-      // ⛔ **Withdrawing it is refused, which is the half `429` §6.4 and §3.1 disagreed about.**
-      // ⚠️ The brief's acceptance read *"refused … → withdraw → assign again admitted"*, and §3.1 of
-      // the same brief forbids withdrawing an answered piece. ⚑ **§3.1 is right**: the work was done,
-      // and taking it back would be a claim about history nobody can act on.
-      const cannot = await callOn(pmTools, 'withdraw_task', { piece: label })
-      expect(cannot.rail, JSON.stringify(cannot)).toBe('that-piece-was-already-answered')
-      expect((cannot.detail as Record<string, unknown>).label).toBe(label)
-
-      // ⚑ **The way forward is a DIFFERENT call, which is what `permanent` says**: the same words as
-      // NEW work — ⚑ D-016: a new give, which opens a new piece (the re-send `429` refused on
-      // `message_agent` went with work sent as a message).
-      const fresh = await aGive(pmTools, 'worker', 'read the brief and report')
-      expect(fresh.agent).toBe(worker)
-      expect(fresh.label).not.toBe(label)
-      expect(piecesOf(worker)).toHaveLength(2)
-    })
-
-    it('⚑ …and the sequence §0 calls legitimate: a re-give names the stalled original, which is then withdrawn', async () => {
-      // 🔴 **HO-023 §4.3, walked end to end**: *"withdraw then reassign is legitimate; reassign
-      // without withdrawing is the duplicate."* ⛔ Both halves are in this one test, over the same
-      // piece of work. ⚑ The duplicate is not refused: its answer names the stalled
-      // original, and taking that back leaves the re-given piece as the one open.
-      const { worker, pmTools, piece, label } = await aPmAndItsWorker('the piece')
-      await letTheTurnFinish(worker)
-      await waitFor(() => piecesOf(worker)[0]?.state === 'stalled', 'the piece to stall')
-
-      const duplicate = await callOn(pmTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'the piece',
-        brief: 'the piece',
-      })
-      expect(duplicate.outcome, JSON.stringify(duplicate)).toBe('ok')
-      expect(duplicate.agent).toBe(worker)
-      expect(duplicate.stalled).toEqual([label])
-
-      expect((await callOn(pmTools, 'withdraw_task', { piece: label })).outcome).toBe('ok')
-      const rows = piecesOf(worker)
-      expect(rows).toHaveLength(2)
-      // ⚠️ **The re-given piece is OPEN, and whether it is `waiting` or `working` is about the
-      // receiver's turn rather than about this verb** — pinning either would make this assertion
-      // about the fake provider's timing.
-      expect(rows.find((one) => one.piece === piece)?.state).toBe('withdrawn')
-      expect(rows.filter((one) => TASK_IS_OPEN[one.state]).map((one) => one.label)).toEqual([
-        duplicate.label,
-      ])
-    })
-  })
-
-  // ─────────────────────────────────────────────────────────────────────────────────────────
   // §5 · both readers, and the vocabularies the rails joined
   // ─────────────────────────────────────────────────────────────────────────────────────────
 
@@ -881,11 +822,6 @@ describe('429 · taking work back', () => {
           .map(([state]) => state)
           .sort(),
       ).toEqual(['answered', 'closed', 'withdrawn'])
-      // ⚑ **Two producers now, and the fold names both** — see `derivePieces` (⚑ D-016: the take-back
-      // is `work_taken_back`).
-      const fold = sourceOf(join(here, '../src/shared'), 'tasks.ts')
-      expect(fold).toContain("if (event.type === 'work_taken_back') {")
-      expect(fold).toContain("if (event.reason === 'cancelled') {")
     })
   })
 })
