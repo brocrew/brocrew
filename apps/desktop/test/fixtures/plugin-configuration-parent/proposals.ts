@@ -6,7 +6,7 @@ import { WhatsAppProposal } from './whatsapp-apply'
 export const PluginProposal = z.union([ChromeProposal, WhatsAppProposal])
 export type PluginProposal = z.infer<typeof PluginProposal>
 /** What each hosted plugin's page may propose. */
-export const pluginProposals: Readonly<Record<string, z.ZodType<PluginProposal>>> = Object.freeze({
+const pluginProposals: Readonly<Record<string, z.ZodType<PluginProposal>>> = Object.freeze({
   chrome: ChromeProposal,
   whatsapp: WhatsAppProposal,
 })

@@ -39,26 +39,6 @@ export const ChromeProposal = z.union([
     ),
 ])
 export type ChromeProposal = z.infer<typeof ChromeProposal>
-/**
- * Record each live command's real prerequisite: a confirmed delete needs the profile off; turning
- * the helper on needs it enabled, and the plugin refuses otherwise. Neither is ever replayed.
- */
-export function chromeProfileIntent(
-  input: ChromeProposal,
-): z.infer<typeof ChromeLedgerProposal> | null {
-  const proposal = ChromeProposal.parse(input)
-  if (
-    proposal.action === 'set-flags' ||
-    proposal.action === 'rename-profile' ||
-    (proposal.action === 'delete-profile' && proposal.deleteConfirmation)
-  )
-    return null
-  if (proposal.action === 'delete-profile')
-    return { action: 'set-enabled', profile: proposal.profile, enabled: false }
-  if (proposal.action === 'helper-on')
-    return { action: 'set-enabled', profile: proposal.profile, enabled: true }
-  return proposal
-}
 /** Fixed reviewed admin adapter. Neither routes, credentials nor arbitrary JSON come from the page. */
 export async function applyChromeProfile(
   connection: PluginNodeReady,

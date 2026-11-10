@@ -3,7 +3,14 @@ import { randomUUID } from 'node:crypto'
 import Database from 'better-sqlite3'
 import { join } from 'node:path'
 import { cleanupLifecycleFixtures, deferred, fixture } from './plugin-lifecycle-fixtures'
-import { closes, connected, lease, live, request } from './helpers/plugin-agent-bridge'
+import {
+  closes,
+  connected,
+  lease,
+  live,
+  request,
+  recoveringLive,
+} from './helpers/plugin-agent-bridge'
 
 afterEach(async () => {
   for (const close of closes.splice(0).reverse()) await close()
@@ -136,11 +143,8 @@ it('does not permanently revoke a contribution during another lifecycle writer l
 
 it('recovers once after host exit and stays usable during subsequent writer contention', async () => {
   const exited = deferred<void>()
-  const recover = vi.fn(
-    (id: string, runId: string | undefined, stopped: () => void): Promise<void> =>
-      f.controller.restartPluginTools(id, runId, stopped),
-  )
-  const f = await live({ firstExit: exited.promise, restartHost: recover })
+  const f = await recoveringLive(exited.promise)
+  const { recover } = f
   const owner = lease(),
     req = request(f.local.sink.workspaceId)
   await f.bridge.routes(owner, req)

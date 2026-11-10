@@ -1,3 +1,5 @@
+export { Client } from '@modelcontextprotocol/sdk/client/index.js'
+export { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import { Readable } from 'node:stream'

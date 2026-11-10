@@ -132,3 +132,61 @@ it('lets Express handle a synchronous old-route unlink failure and returns it fr
   })
   expect(unlink).toHaveBeenCalledTimes(2)
 })
+
+async function bootRemoval() {
+  const f = await boot()
+  return { ...f, request: (path = '/before-remove') => f.request(path, {}) }
+}
+
+it.each([
+  { state: 'linked' as const, remoteUncertain: false, confirmed: true },
+  { state: 'unlinked' as const, remoteUncertain: false, confirmed: false },
+  { state: 'linked' as const, remoteUncertain: true, confirmed: false },
+  { state: 'unlinked' as const, remoteUncertain: true, confirmed: false },
+])('keeps phone interpretation inside the package for $state / $remoteUncertain', async (prior) => {
+  const f = await bootRemoval()
+  f.bridge.state = prior.state
+  const status = f.bridge.status.bind(f.bridge)
+  vi.spyOn(f.bridge, 'status').mockImplementation(() => ({
+    ...status(),
+    removeOnPhone: prior.remoteUncertain,
+  }))
+  const reply = await f.request()
+  expect(reply.status).toBe(200)
+  expect(reply.body.notice).toBe(
+    prior.confirmed
+      ? 'WhatsApp’s device was logged out.'
+      : 'Logout was not confirmed. Open Linked devices on your phone and remove this device if it is still listed.',
+  )
+  expect(f.bridge.unlinked).toBe(1)
+})
+it('keeps the preceding app response body and waits for local cleanup', async () => {
+  const f = await bootRemoval()
+  expect(await f.request('/uninstall')).toEqual({ status: 200, body: {} })
+  let release!: () => void
+  const work = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const unlink = vi.spyOn(f.bridge, 'unlink').mockReturnValue(work)
+  let settled = false
+  const pending = f.request().then((reply) => {
+    settled = true
+    return reply
+  })
+  try {
+    await vi.waitFor(() => expect(unlink).toHaveBeenCalledOnce())
+    expect(settled).toBe(false)
+  } finally {
+    release()
+  }
+  expect((await pending).status).toBe(200)
+})
+it('returns an HTTP failure if the pending-marker write throws', async () => {
+  const f = await bootRemoval()
+  const unlink = vi.spyOn(f.bridge, 'unlink').mockImplementation(() => {
+    throw new Error('pending marker write failed')
+  })
+  expect((await f.request()).status).toBe(500)
+  expect((await f.request('/uninstall')).status).toBe(500)
+  expect(unlink).toHaveBeenCalledTimes(2)
+})

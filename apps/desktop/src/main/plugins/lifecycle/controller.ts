@@ -35,12 +35,18 @@ import { PluginPackageVault } from './vault'
 import type {
   LifecycleOptions,
   LifecycleRun,
+  WorkspaceAdmissionCheck,
+  ControllerWorkspace as Workspace,
+  Unfinished,
+  Running,
+  PreparedPluginMutation,
   LifecycleWorkspace,
   WorkspaceProjection,
   Installation,
   PluginArchiveTransfer,
 } from './types'
 import type { PluginCard, PluginRemovalOutcome } from '../../../shared/plugin-settings'
+export type { PreparedPluginMutation } from './types'
 
 const refuse = (): never => {
   throw new PluginSupervisorError('unavailable')
@@ -53,48 +59,14 @@ const idSchema = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)
 const TOOLS_CAUSE = /^[a-z][a-z0-9-]{0,63}(?:: [a-z][a-z0-9-]{0,63})?$/
 const toolsCause = (value: unknown): value is string =>
   typeof value === 'string' && TOOLS_CAUSE.test(value)
-interface Workspace {
-  sink: WorkspaceProjection
-  /** The installs this workspace was given, so its consumers hear of a detach, update or removal. */
-  installs: Map<string, string>
-  live: boolean
-}
 type WorkspaceAdmission = ReturnType<LifecycleOptions['state']['readWorkspaceAdmission']>
-/** The journal's pending operation, including one whose writer is still working. */
-interface Unfinished {
-  install: Installation
-  operationId: string
-}
-interface Running {
-  installId: string
-  run: LifecycleRun
-  package: VerifiedPluginPackage
-  ended: boolean
-  exitProven?: boolean
-  revocation?: Promise<void>
-  priorityClamped?: boolean | null
-}
-
-export interface PreparedPluginMutation {
-  action: 'install' | 'update'
-  pluginId: string
-  releaseDigest: string
-  catalogueDigest: string
-  sequence: number
-  catalogueRevision: number
-  installId: string | null
-}
-
 /** One instance per exclusively owned supervisor. Settings/person authority is never an agent API. */
 export class PluginLifecycleController {
   private readonly workspaces = new Map<LifecycleWorkspace, Workspace>()
   private readonly blocks = new Map<string, symbol>()
   private readonly runs = new Map<string, Running>()
   private readonly pluginWork = new PluginWorkQueue(() => this.draining && pending())
-  private readonly attachmentChecks = new WeakMap<
-    object,
-    (workspaceId: string, read: WorkspaceAdmission) => boolean
-  >()
+  private readonly attachmentChecks = new WeakMap<object, WorkspaceAdmissionCheck>()
   private toolRestarts = new Map<string, { runId: string | undefined; work: Promise<void> }>()
   private toolRestartBlocks = new Map<string, symbol>()
   private readonly attempted = new Set<string>()

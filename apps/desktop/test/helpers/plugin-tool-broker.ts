@@ -11,6 +11,18 @@ import type {
   PluginExecution,
 } from '../../src/main/plugins/tool-broker'
 
+export function inventoryClient<Connect, List, Close>(sdk: {
+  connect: Connect
+  list: List
+  close: Close
+}) {
+  return class Client {
+    connect = sdk.connect
+    listTools = sdk.list
+    close = sdk.close
+  }
+}
+
 export function deferred<T>() {
   let resolve!: (value: T) => void, reject!: (error: unknown) => void
   const promise = new Promise<T>((yes, no) => {
@@ -19,7 +31,7 @@ export function deferred<T>() {
   })
   return { promise, resolve, reject }
 }
-export class Clock implements BrokerClock {
+class Clock implements BrokerClock {
   time = 0
   next = 0
   timers = new Map<number, { at: number; callback: () => void }>()

@@ -1,3 +1,5 @@
+import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
+import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -200,4 +202,29 @@ export function appendProjectionHistory(
       flag: 'wx',
     })
   }
+}
+
+export async function fixtureSettingsClient(
+  f: Awaited<ReturnType<typeof fixture>>,
+  closers: Array<() => unknown | Promise<unknown>>,
+  read: () => Promise<unknown>,
+) {
+  const bridge = await servePersonPluginControl({
+    root: f.root,
+    key: 'e'.repeat(64),
+    controller: f.controller,
+    read,
+  })
+  closers.push(() => bridge.close())
+  const client = await connectPluginSettings({
+    path: bridge.path,
+    personKey: 'e'.repeat(64),
+    root: f.root,
+    target: f.opts.target,
+    catalogue: f.opts.catalogue,
+    projection: projection().sink,
+    propose: () => {},
+  })
+  closers.push(() => client.close())
+  return client
 }

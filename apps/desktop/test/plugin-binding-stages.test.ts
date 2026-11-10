@@ -1,11 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 const sdk = vi.hoisted(() => ({ connect: vi.fn(), list: vi.fn(), close: vi.fn() }))
-vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
-  Client: class {
-    connect = sdk.connect
-    listTools = sdk.list
-    close = sdk.close
-  },
+vi.mock('@modelcontextprotocol/sdk/client/index.js', async () => ({
+  Client: (await import('./helpers/plugin-tool-broker')).inventoryClient(sdk),
 }))
 vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({
   StreamableHTTPClientTransport: class {},

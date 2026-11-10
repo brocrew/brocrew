@@ -4,9 +4,11 @@ import { readdir, readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import { PluginProfileLedger } from '../src/main/plugins/lifecycle/profile-ledger'
 import { PluginProfileLedger as PreviousLedger } from './fixtures/plugin-configuration-parent/profile-ledger'
 import { digest } from '../src/main/plugins/node-host-files'
-import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
-import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
-import { cleanupLifecycleFixtures, fixture, projection } from './plugin-lifecycle-fixtures'
+import {
+  cleanupLifecycleFixtures,
+  fixture,
+  fixtureSettingsClient,
+} from './plugin-lifecycle-fixtures'
 
 const fault = vi.hoisted(() => ({ point: '' }))
 vi.mock('node:fs/promises', async (original) => {
@@ -119,23 +121,10 @@ describe.skipIf(process.platform === 'win32')('bounded durable configuration led
       const f = await fixture({}, plugin)
       await f.controller.install(f.handle, plugin)
       const active = f.state.exportActivation().entries[0]!
-      const bridge = await servePersonPluginControl({
-        root: f.root,
-        key: 'e'.repeat(64),
-        controller: f.controller,
-        read: async () => ({ profiles: [], tabs: [] }),
-      })
-      closers.push(() => bridge.close())
-      const client = await connectPluginSettings({
-        path: bridge.path,
-        personKey: 'e'.repeat(64),
-        root: f.root,
-        target: f.opts.target,
-        catalogue: f.opts.catalogue,
-        projection: projection().sink,
-        propose: () => {},
-      })
-      closers.push(() => client.close())
+      const client = await fixtureSettingsClient(f, closers, async () => ({
+        profiles: [],
+        tabs: [],
+      }))
       const screen = await client.screen(plugin)
       await upgradedFixture(f.root, active.installId)
       const fetch = vi.fn(async () => Response.json({ applied: true }))

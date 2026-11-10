@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PluginUiRpc } from '../src/main/plugins/ui/rpc'
 import { PLUGIN_UI_CHANNEL } from '../src/shared/plugin-ui'
-import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
-import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
-import { cleanupLifecycleFixtures, fixture, projection } from './plugin-lifecycle-fixtures'
+import {
+  cleanupLifecycleFixtures,
+  fixture,
+  fixtureSettingsClient,
+} from './plugin-lifecycle-fixtures'
 import { chromeUiFixture } from './chrome-ui-fixture'
 const closers: Array<() => Promise<unknown> | void> = []
 afterEach(async () => {
@@ -15,23 +17,9 @@ describe.skipIf(process.platform === 'win32')('package configuration error conti
   it('carries a real package failure through person-control and RPC without replaying the consumed attempt', async () => {
     const f = await fixture()
     await f.controller.install(f.handle, 'chrome')
-    const bridge = await servePersonPluginControl({
-      root: f.root,
-      key: 'e'.repeat(64),
-      controller: f.controller,
-      read: async () => ({ packageView: { current: true } }),
-    })
-    closers.push(() => bridge.close())
-    const client = await connectPluginSettings({
-      path: bridge.path,
-      personKey: 'e'.repeat(64),
-      root: f.root,
-      target: f.opts.target,
-      catalogue: f.opts.catalogue,
-      projection: projection().sink,
-      propose() {},
-    })
-    closers.push(() => client.close())
+    const client = await fixtureSettingsClient(f, closers, async () => ({
+      packageView: { current: true },
+    }))
     const screen = await client.screen('chrome')
     const proposed = vi.fn()
     const rpc = new PluginUiRpc({

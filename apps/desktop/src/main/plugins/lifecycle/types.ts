@@ -1,3 +1,4 @@
+import type { VerifiedPluginPackage } from '../package-verifier'
 import type { PluginStartupDiagnostic } from '../../../shared/plugin-settings'
 import type { PluginRelease, PluginTarget } from '../package-schema'
 import type { GlobalPluginState } from '../state/store'
@@ -84,3 +85,39 @@ export interface LifecycleWorkspace {
   readonly [workspaceBrand]: true
 }
 export type { Installation }
+
+export interface ControllerWorkspace {
+  sink: WorkspaceProjection
+  /** The installs this workspace was given, so its consumers hear of a detach, update or removal. */
+  installs: Map<string, string>
+  live: boolean
+}
+/** The journal's pending operation, including one whose writer is still working. */
+export interface Unfinished {
+  install: Installation
+  operationId: string
+}
+export interface Running {
+  installId: string
+  run: LifecycleRun
+  package: VerifiedPluginPackage
+  ended: boolean
+  exitProven?: boolean
+  revocation?: Promise<void>
+  priorityClamped?: boolean | null
+}
+
+export interface PreparedPluginMutation {
+  action: 'install' | 'update'
+  pluginId: string
+  releaseDigest: string
+  catalogueDigest: string
+  sequence: number
+  catalogueRevision: number
+  installId: string | null
+}
+
+export type WorkspaceAdmissionCheck = (
+  workspaceId: string,
+  read: ReturnType<LifecycleOptions['state']['readWorkspaceAdmission']>,
+) => boolean

@@ -6,6 +6,6 @@ export default defineConfig({
     environment: 'node',
     env: theTestsEnv(),
     setupFiles: [THE_GUARD],
-    include: ['plugins/chrome/test/**/*.test.ts'],
+    include: ['plugins/chrome/test/**/*.test.ts', 'scripts/test/chrome-archive.test.ts'],
   },
 })

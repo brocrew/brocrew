@@ -5,12 +5,8 @@ const sdk = vi.hoisted(() => ({
   close: vi.fn(),
   tool: vi.fn(),
 }))
-vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
-  Client: class {
-    connect = sdk.connect
-    listTools = sdk.list
-    close = sdk.close
-  },
+vi.mock('@modelcontextprotocol/sdk/client/index.js', async () => ({
+  Client: (await import('./helpers/plugin-tool-broker')).inventoryClient(sdk),
 }))
 vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({
   StreamableHTTPClientTransport: class {},

@@ -1,24 +1,22 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { FakeBrowser } from './fakes'
+import { FakeBrowser, Client, StreamableHTTPClientTransport } from '../../plugins/chrome/test/fakes'
 import { pathToFileURL } from 'node:url'
 import { createHash, randomUUID } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import * as chromeBinding from '../../../apps/desktop/src/main/plugins/lifecycle/broker-binding'
-import { createLifecycleAgentBridge } from '../../../apps/desktop/src/main/plugins/lifecycle/agent-bridge'
-import { Installation } from '../../../apps/desktop/src/main/plugins/state/format'
-import type { LifecycleWorkspace } from '../../../apps/desktop/src/main/plugins/lifecycle/types'
-import { createPluginNodeHost } from '../../../apps/desktop/src/main/plugins/node-host'
+import * as chromeBinding from '../../apps/desktop/src/main/plugins/lifecycle/broker-binding'
+import { createLifecycleAgentBridge } from '../../apps/desktop/src/main/plugins/lifecycle/agent-bridge'
+import { Installation } from '../../apps/desktop/src/main/plugins/state/format'
+import type { LifecycleWorkspace } from '../../apps/desktop/src/main/plugins/lifecycle/types'
+import { createPluginNodeHost } from '../../apps/desktop/src/main/plugins/node-host'
 import {
   preparePluginNodeRuntime,
   runtimeFiles,
-} from '../../../apps/desktop/src/main/plugins/node-runtime'
-import { liveGroupMembers } from '../../../apps/desktop/resources/plugin-host/process-groups.mjs'
-import { createRepoAwarePluginVerifier } from '../../../apps/desktop/src/main/plugins/package-verifier'
-import { catalogueBytes } from '../../../apps/desktop/test/plugin-package-fixtures'
+} from '../../apps/desktop/src/main/plugins/node-runtime'
+import { liveGroupMembers } from '../../apps/desktop/resources/plugin-host/process-groups.mjs'
+import { createRepoAwarePluginVerifier } from '../../apps/desktop/src/main/plugins/package-verifier'
+import { catalogueBytes } from '../../apps/desktop/test/plugin-package-fixtures'
 const artifact = process.env.BROCREW_CHROME_TEST_ARTIFACT
 const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
 async function builtInventory(

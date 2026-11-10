@@ -12,7 +12,14 @@ import {
   type SessionHandle,
 } from '@brobot2/runtime'
 
-import { closes, connected, live, request, lease } from './helpers/plugin-agent-bridge'
+import {
+  closes,
+  connected,
+  live,
+  request,
+  lease,
+  recoveringLive,
+} from './helpers/plugin-agent-bridge'
 function brokerClock() {
   let now = 0,
     sequence = 0
@@ -246,10 +253,7 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     'a late exact exit never reverses %s',
     async (action) => {
       const exited = deferred<void>()
-      const recover = vi.fn((id, runId, stopped) =>
-        f.controller.restartPluginTools(id, runId, stopped),
-      )
-      const f = await live({ firstExit: exited.promise, restartHost: recover })
+      const f = await recoveringLive(exited.promise)
       const owner = lease(),
         req = request(f.local.sink.workspaceId)
       await f.bridge.routes(owner, req)

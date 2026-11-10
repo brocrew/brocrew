@@ -2,8 +2,6 @@ import { chromeAdminRouteFixture } from '../../../scripts/lib/plugin-chrome-admi
 import { PluginUiRpc } from '../src/main/plugins/ui/rpc'
 import { chromeUiFixture } from './chrome-ui-fixture'
 import { PLUGIN_UI_CHANNEL } from '../src/shared/plugin-ui'
-import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
-import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { join } from 'node:path'
 import { readFile, readdir, rm } from 'node:fs/promises'
@@ -17,6 +15,7 @@ import {
 } from '../src/main/plugins/lifecycle/configuration'
 import {
   cleanupLifecycleFixtures,
+  fixtureSettingsClient as settingsClient,
   reopenLifecycleFixture,
   fixture,
   projection,
@@ -180,30 +179,6 @@ describe.skipIf(process.platform === 'win32')('consumed configuration checkpoint
   })
 })
 
-async function settingsClient(
-  f: Awaited<ReturnType<typeof fixture>>,
-  read: () => Promise<unknown>,
-) {
-  const bridge = await servePersonPluginControl({
-    root: f.root,
-    key: 'e'.repeat(64),
-    controller: f.controller,
-    read,
-  })
-  closers.push(() => bridge.close())
-  const client = await connectPluginSettings({
-    path: bridge.path,
-    personKey: 'e'.repeat(64),
-    root: f.root,
-    target: f.opts.target,
-    catalogue: f.opts.catalogue,
-    projection: projection().sink,
-    propose: () => {},
-  })
-  closers.push(() => client.close())
-  return client
-}
-
 describe.skipIf(process.platform === 'win32')(
   'native Chrome configuration route continuity',
   () => {
@@ -245,7 +220,7 @@ describe.skipIf(process.platform === 'win32')(
       await f.controller.install(f.handle, 'chrome')
       const route = await chromeAdminRouteFixture(f.parent)
       vi.stubGlobal('fetch', route.request)
-      const client = await settingsClient(f, async () => ({
+      const client = await settingsClient(f, closers, async () => ({
         profiles: [route.snapshot()],
         tabs: [],
       }))

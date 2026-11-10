@@ -134,3 +134,12 @@ export async function live(
     },
   }
 }
+
+export async function recoveringLive(firstExit: Promise<void>) {
+  const recover = vi.fn(
+    (id: string, runId: string | undefined, stopped: () => void): Promise<void> =>
+      f.controller.restartPluginTools(id, runId, stopped),
+  )
+  const f = await live({ firstExit, restartHost: recover })
+  return { ...f, recover }
+}
