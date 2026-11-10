@@ -54,6 +54,8 @@ public static class BroCrewPluginJob {
 
   [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
   static extern IntPtr CreateJobObjectW(IntPtr attributes, string name);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
+  static extern IntPtr OpenJobObjectW(uint access, bool inherit, string name);
   [DllImport("kernel32.dll")]
   static extern UInt64 GetTickCount64();
   [DllImport("kernel32.dll", SetLastError = true)]
@@ -177,6 +179,25 @@ public static class BroCrewPluginJob {
   public static string End() {
     return TerminateJobObject(job, 1) ? "terminated" : "failed";
   }
+
+  public static string Recover(string name) {
+    IntPtr previous = OpenJobObjectW(0x0004 | 0x0008, false, name);
+    // Kill-on-close jobs disappear only after their last process has terminated.
+    if (previous == IntPtr.Zero) return Marshal.GetLastWin32Error() == 2 ? "gone" : "failed";
+    try {
+      if (!TerminateJobObject(previous, 1)) return "failed";
+      var elapsed = System.Diagnostics.Stopwatch.StartNew();
+      do {
+        BasicAccounting info;
+        if (!QueryInformationJobObject(previous, 1, out info, Marshal.SizeOf(typeof(BasicAccounting)), IntPtr.Zero)) return "failed";
+        if (info.ActiveProcesses == 0) return "gone";
+        System.Threading.Thread.Sleep(25);
+      } while (elapsed.ElapsedMilliseconds < 3000);
+      return "failed";
+    } finally {
+      CloseHandle(previous);
+    }
+  }
 }
 '@
 $cache = $env:BROCREW_PLUGIN_JOB_CACHE
@@ -193,6 +214,10 @@ if (-not $loaded -and $cache) {
   $loaded = $true
 }
 if (-not $loaded) { Add-Type -TypeDefinition $source }
+if ($env:BROCREW_PLUGIN_JOB_RECOVER -eq '1') {
+  [Console]::Out.WriteLine([BroCrewPluginJob]::Recover($env:BROCREW_PLUGIN_JOB_NAME))
+  exit
+}
 $opened = [BroCrewPluginJob]::Open($env:BROCREW_PLUGIN_JOB_NAME)
 # A job opened from code loaded out of the cache says so, for the host's start-time record.
 [Console]::Out.WriteLine($(if ($opened -eq 'ready' -and $fromCache) { 'ready cached' } else { $opened }))

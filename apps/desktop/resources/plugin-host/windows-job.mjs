@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -16,6 +16,39 @@ import { powershellPath } from './process-groups.mjs'
 /** The compiled job code's file in `folder`, named by the keeper script it was compiled from. */
 function cacheFile(folder, script) {
   return join(folder, `job-${createHash('sha256').update(script).digest('hex').slice(0, 32)}.dll`)
+}
+
+/** Recover the whole recorded job, including descendants, after its owner has exited. */
+export function recoverWindowsJob(name, cache) {
+  const program = powershellPath()
+  if (!program || !/^Local\\BroCrew\.Plugin\.[a-f0-9-]{36}$/.test(name))
+    return Promise.resolve(false)
+  const script = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'windows-job.ps1'))
+  return new Promise((resolve) => {
+    execFile(
+      program,
+      [
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-EncodedCommand',
+        Buffer.from(script.toString('utf8'), 'utf16le').toString('base64'),
+      ],
+      {
+        timeout: 120_000,
+        windowsHide: true,
+        encoding: 'utf8',
+        maxBuffer: 16384,
+        env: {
+          ...process.env,
+          BROCREW_PLUGIN_JOB_NAME: name,
+          BROCREW_PLUGIN_JOB_RECOVER: '1',
+          BROCREW_PLUGIN_JOB_CACHE: cacheFile(cache, script),
+        },
+      },
+      (error, stdout, stderr) => resolve(!error && stdout.trim() === 'gone' && stderr.trim() === ''),
+    )
+  })
 }
 export function startJobKeeper(options = {}) {
   const name = options.name ?? `Local\\BroCrew.Plugin.${randomUUID()}`

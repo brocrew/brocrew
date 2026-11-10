@@ -14,6 +14,7 @@ import type { OwnerRecord } from './protocol'
 import { readVolumeIdentity } from '../../../../resources/plugin-host/volume-identity.mjs'
 import { stopGroups } from '../../../../resources/plugin-host/process-groups.mjs'
 import { writeReceipt } from '../../../../resources/plugin-host/receipts.mjs'
+import { recoverWindowsJob } from '../../../../resources/plugin-host/windows-job.mjs'
 
 const directoryIdentity = z.strictObject({ id: z.uuid(), identity: z.string().max(128) })
 const bindingSchema = z.strictObject({
@@ -275,6 +276,11 @@ async function exists(path: string): Promise<boolean> {
 const processRecord = receipt.omit({ exited: true }).extend({
   groups: receipt.shape.groups.min(1),
 })
+const assignedJob = z.object({
+  runId: z.uuid(),
+  state: z.literal('assigned-ready'),
+  job: z.object({ name: z.string() }),
+})
 
 async function readRunFile<S extends z.ZodType<{ runId: string }>>(
   root: string,
@@ -320,15 +326,22 @@ async function hasExitReceipt(root: string, runId: string): Promise<boolean> {
  * - A process record: every recorded group, by pid and birth, is stopped and found gone, as its
  *   guardian does, and the receipt is written so a later reuse of the pid can't unprove it. A group
  *   this user can't signal, or whose number now belongs to another process, leaves the run
- *   unresolved. On Windows the record names only the server, not its job's tree, so a Windows run
- *   with a record stays unresolved here.
+ *   unresolved. On Windows job-ready.json records the job assigned before admission; recovery
+ *   ends and observes that whole job rather than treating its server as a process tree.
  */
 async function proveRunStopped(root: string, runId: string): Promise<boolean> {
   const run = join(root, 'host/runs', runId)
   if (!(await exists(join(run, 'process.json')))) return true
-  if (process.platform === 'win32') return false
   const record = await readRunFile(root, runId, 'process.json', processRecord)
-  if (!record || !(await stopGroups(new Map(record.groups)))) return false
+  if (!record) return false
+  if (process.platform === 'win32') {
+    const assigned = await readRunFile(root, runId, 'job-ready.json', assignedJob)
+    if (
+      !assigned ||
+      !(await recoverWindowsJob(assigned.job.name, await privateChild(root, 'host/keeper')))
+    )
+      return false
+  } else if (!(await stopGroups(new Map(record.groups)))) return false
   try {
     writeReceipt(run, 'exit.json', { ...record, writerPid: process.pid, exited: true })
   } catch {

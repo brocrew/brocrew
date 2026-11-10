@@ -24,3 +24,4 @@ export function startJobKeeper(options?: {
   cache?: string
   env?: NodeJS.ProcessEnv
 }): JobKeeper
+export function recoverWindowsJob(name: string, cache: string): Promise<boolean>

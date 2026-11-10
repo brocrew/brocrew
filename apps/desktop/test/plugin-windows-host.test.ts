@@ -32,7 +32,7 @@ import {
 import { thisMachine } from '../src/main/plugins/package-schema'
 import { createRepoAwarePluginVerifier } from '../src/main/plugins/package-verifier'
 import { endProcessesByIdentity, endWindowsTree } from '../resources/plugin-host/process-groups.mjs'
-import { startJobKeeper } from '../resources/plugin-host/windows-job.mjs'
+import { recoverWindowsJob, startJobKeeper } from '../resources/plugin-host/windows-job.mjs'
 import { writeReceipt } from '../resources/plugin-host/receipts.mjs'
 import { manifestFor, packageFixture } from './plugin-package-fixtures'
 
@@ -171,6 +171,37 @@ async function until(check: () => boolean | Promise<boolean>, ms = 10000): Promi
 }
 
 describe.runIf(process.platform === 'win32')('the plugin host on Windows', () => {
+  it.each(['live', 'empty', 'closed'] as const)(
+    'recovers a recorded %s job without a computer restart, leaving a bystander running',
+    async (state) => {
+      const home = mkdtempSync(join(tmpdir(), 'fictional-recover-job-'))
+      roots.push(home)
+      const cache = join(home, 'keeper')
+      mkdirSync(cache)
+      const name = `Local\\BroCrew.Plugin.${randomUUID()}`
+      const keeper = startJobKeeper({ name, cache, openMs: 120_000 })
+      const bystander = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' })
+      children.push(bystander)
+      try {
+        expect(await keeper.opened).not.toBeNull()
+        let member: ChildProcess | undefined
+        if (state === 'live') {
+          member = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' })
+          children.push(member)
+          expect(await keeper.assign(member.pid!)).toMatch(/^\d+$/)
+          expect(await keeper.count()).toBe(1)
+        }
+        if (state === 'closed') expect(await keeper.end()).toBe(true)
+        expect(await recoverWindowsJob(name, cache)).toBe(true)
+        if (member) expect(running(member.pid!)).toBe(false)
+        if (state !== 'closed') expect(await keeper.count()).toBe(0)
+        expect(running(bystander.pid!)).toBe(true)
+      } finally {
+        await keeper.end()
+      }
+    },
+    150_000,
+  )
   it('writes a run receipt, which fsyncs no folder there', () => {
     const folder = mkdtempSync(join(tmpdir(), 'fictional-receipt-'))
     roots.push(folder)
