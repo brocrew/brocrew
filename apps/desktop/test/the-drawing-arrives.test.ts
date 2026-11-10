@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { HAND_CARRIED, V27_SURFACES } from '../src/renderer/src/lib/design-v2-map'
+import { HAND_CARRIED, V27_SURFACES } from './lib/design-v2-map'
 import { SPAWN_RAIL_MEANS } from '../src/shared/capabilities'
 
 /**

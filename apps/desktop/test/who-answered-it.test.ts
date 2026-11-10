@@ -21,7 +21,7 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { distil } from '../src/main/runtime/digest'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { HAND_CARRIED, V23_FIELD_MAP } from '../src/renderer/src/lib/design-v2-map'
+import { HAND_CARRIED, V23_FIELD_MAP } from './lib/design-v2-map'
 import {
   applyEvent,
   createTranscript,

@@ -9,7 +9,7 @@ import {
   V23_FIELD_MAP,
   type Binding,
   type SourceRef,
-} from '../src/renderer/src/lib/design-v2-map'
+} from './lib/design-v2-map'
 
 /**
  * 🔴 **382 · The map before the move — the instrument that makes the map a check.**
@@ -239,12 +239,6 @@ describe('§5 · the verdicts on the enumerated copy', () => {
 })
 
 describe('§6 · §9.2’s count — hand-copied safety strings in the product', () => {
-  /**
-   * ⛔ **This file is the enumeration and not a render site**, so it is exempt and says so. Nothing
-   * else is: a second exemption would be the hole the count exists to close.
-   */
-  const EXEMPT = 'renderer/src/lib/design-v2-map.ts'
-
   function rendererAndShared(): { file: string; code: string }[] {
     return ['renderer', 'shared'].flatMap((root) =>
       readdirSync(join(SRC, root), { recursive: true, encoding: 'utf8' })
@@ -257,17 +251,11 @@ describe('§6 · §9.2’s count — hand-copied safety strings in the product',
   }
 
   it('⛔ ZERO of v2.3’s static sentences have been pasted into the product', () => {
-    const every = rendererAndShared()
-    const files = every.filter((file) => file.file !== EXEMPT)
+    const files = rendererAndShared()
     // The non-vacuity floor `a-mode-that-says-what-it-does` uses on the same two trees.
     expect(files.length, 'the walk found no source at all').toBeGreaterThan(50)
-    // 🔴 **EXACTLY one file is excused, and this is what says so.** A mutation widening the
-    // exemption to the whole of `renderer/src/lib` survived the paste census — of course it did,
-    // there is nothing pasted there yet — so the census cannot be the thing that guards its own
-    // scope. ⛔ `a-filter-can-blind-the-instrument-that-justifies-it`.
-    expect(every.length - files.length, 'more than one file is exempt from the paste census').toBe(
-      1,
-    )
+    // The enumeration lives in test support; every product file is included in this walk.
+    expect(existsSync(join(SRC, 'renderer/src/lib/design-v2-map.ts'))).toBe(false)
 
     const pasted = HAND_CARRIED.flatMap((sentence) =>
       files
@@ -277,10 +265,8 @@ describe('§6 · §9.2’s count — hand-copied safety strings in the product',
     expect(pasted).toEqual([])
   })
 
-  it('⚠️ the exemption is real, so the walk is not passing because it excluded everything', () => {
-    // A control for the exclusion itself: the exempt file DOES contain the sentences, which is why
-    // it is exempt — and if it stopped containing them the enumeration would have moved.
-    const map = readFileSync(join(SRC, 'renderer/src/lib/design-v2-map.ts'), 'utf8')
+  it('the test-support enumeration contains every sentence checked against the product', () => {
+    const map = readFileSync(join(HERE, 'lib/design-v2-map.ts'), 'utf8')
     expect(HAND_CARRIED.filter((sentence) => !map.includes(sentence.quote))).toEqual([])
   })
 })
@@ -289,7 +275,7 @@ describe('§7 · the map itself obeys the rules it is written to enforce', () =>
   it('⛔ it names no provider — the sheet’s two tabs are a `v-for`, not two literals', () => {
     // 039, and the reason it belongs here rather than only in `provider-neutrality.test.ts`: this
     // file is ABOUT per-provider copy, which is the single most tempting place to write one down.
-    const code = readFileSync(join(SRC, 'renderer/src/lib/design-v2-map.ts'), 'utf8')
+    const code = readFileSync(join(HERE, 'lib/design-v2-map.ts'), 'utf8')
     const withoutProse = code
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .split('\n')
