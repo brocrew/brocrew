@@ -1,7 +1,7 @@
 // The parts of the update rehearsal that drive a running BroBot and stand in for the world around
 // it, in `scripts/windows-update-test.mjs`: the window, reached over the DevTools protocol and
 // pressed as a person presses it; a scripted model; and a local feed. Node built-ins only.
-import { createReadStream, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, createReadStream, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { basename, join } from 'node:path'
 import { feedToken, LOCAL_FEED_PORT, LOCAL_FEED_URL } from './update-rehearsal.mjs'
@@ -54,6 +54,25 @@ export function aRecord(results, name) {
     failures,
     minutes: () => Math.round((Date.now() - started) / 6_000) / 10,
     lines,
+  }
+}
+
+/** Keep the failed launch's drain evidence without replacing its failure or copying its key. */
+export function keepPluginDrainEvidence(root, stage, { evidence, keep, say }) {
+  for (const [file, name] of [
+    ['plugin-drain.log', 'drain.log'],
+    ['supervisor/owner.json', 'owner.json'],
+  ]) {
+    try {
+      const source = join(root, file)
+      const target = `${stage}-plugin-${name}`
+      if (name === 'owner.json') {
+        const { version, epoch, phase, wire } = JSON.parse(readFileSync(source, 'utf8'))
+        keep(target, { version, epoch, phase, wire })
+      } else copyFileSync(source, join(evidence, target))
+    } catch {
+      say(`(could not retain ${stage} plugin ${name})`)
+    }
   }
 }
 

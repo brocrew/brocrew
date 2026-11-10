@@ -22,6 +22,7 @@
 // can answer.
 import { spawn, spawnSync } from 'node:child_process'
 import { readStateEntry, SKILL_TREE_NAMES } from './lib/skill-tree-state.mjs'
+import { keepPluginDrainEvidence, sleep, until } from './lib/update-rehearsal-app.mjs'
 import { withMovedFiles } from './lib/moved-state-files.mjs'
 import {
   appendFileSync,
@@ -254,16 +255,6 @@ const keep = (name, value) =>
       ? value
       : `${JSON.stringify(value, null, 2)}\n`,
   )
-const sleep = (ms) => new Promise((done) => setTimeout(done, ms))
-async function until(test, ms, every = 1_000) {
-  const end = Date.now() + ms
-  for (;;) {
-    const answer = await test()
-    if (answer) return answer
-    if (Date.now() >= end) return null
-    await sleep(every)
-  }
-}
 function run(program, argv, options = {}) {
   const done = spawnSync(program, argv, { encoding: 'utf8', timeout: 300_000, ...options })
   if (done.status !== 0) {
@@ -1363,21 +1354,7 @@ async function quit(stage) {
     },
   )
   if (os === 'windows' && plugins === 'not-stopped') {
-    for (const [file, name] of [
-      ['plugin-drain.log', 'drain.log'],
-      ['supervisor/owner.json', 'owner.json'],
-    ]) {
-      try {
-        const source = join(appRoot, 'plugins', file)
-        const target = `${running.stage}-plugin-${name}`
-        if (name === 'owner.json') {
-          const { version, epoch, phase, wire } = JSON.parse(readFileSync(source, 'utf8'))
-          keep(target, { version, epoch, phase, wire })
-        } else copyFileSync(source, join(evidence, target))
-      } catch {
-        say(`(could not retain ${running.stage} plugin ${name})`)
-      }
-    }
+    keepPluginDrainEvidence(join(appRoot, 'plugins'), running.stage, { evidence, keep, say })
   }
   await stop()
 }
