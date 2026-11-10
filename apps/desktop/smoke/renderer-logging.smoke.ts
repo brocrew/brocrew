@@ -66,7 +66,12 @@ app
       assert.ok(!text.includes('fictional-debug-disabled-again'))
       assert.deepEqual(await readdir(join(root, 'logs')), ['brocrew.log'])
       process.stdout.write(
-        JSON.stringify({ result: 'PASS', file, debug: 'off-on-off', defaultErrorsPreserved: true }) + '\n',
+        JSON.stringify({
+          result: 'PASS',
+          file,
+          debug: 'off-on-off',
+          defaultErrorsPreserved: true,
+        }) + '\n',
       )
       window.destroy()
       app.exit(0)
