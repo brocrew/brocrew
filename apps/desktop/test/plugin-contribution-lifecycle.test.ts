@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import * as nodeHost from '../src/main/plugins/node-host'
+import { authenticatedHookHealth, pluginNodePolicy } from '../src/main/plugins/node-host'
 import { parsePluginManifest } from '../src/main/plugins/package-schema'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
@@ -71,14 +71,9 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
     )
     await f.controller.installPrepared(f.handle, f.pkg.manifest.id, prepared)
     expect(f.controller.agentAttachments(f.receiver.sink.workspaceId)).toEqual([])
-    const get = Reflect.get(f.controller, 'contributions') as (
-      handle: unknown,
-      id: string,
-    ) => { current(): boolean; contributions: { tools: unknown; configuration: unknown } }
-    expect(typeof get).toBe('function')
-    const entry = get.call(f.controller, f.handle, f.pkg.manifest.id)
+    const entry = f.controller.contributions(f.handle, f.pkg.manifest.id)
     expect(entry.current()).toBe(true)
-    expect(get.call(f.controller, f.handle, f.pkg.manifest.id)).toBe(entry)
+    expect(f.controller.contributions(f.handle, f.pkg.manifest.id)).toBe(entry)
     expect(entry.contributions.tools).toBeNull()
     expect(entry.contributions.configuration).toBeNull()
     await f.controller.uninstall(f.handle, f.pkg.manifest.id)
@@ -94,12 +89,7 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
       pluginSha256(f.pkg.bytes),
     )
     await f.controller.installPrepared(f.handle, f.pkg.manifest.id, prepared)
-    const get = Reflect.get(f.controller, 'contributions') as (
-      handle: unknown,
-      id: string,
-    ) => { current(): boolean; identity: { runId: string } }
-    expect(typeof get).toBe('function')
-    const before = get.call(f.controller, f.handle, f.pkg.manifest.id)
+    const before = f.controller.contributions(f.handle, f.pkg.manifest.id)
     const next = packageFixture({ manifest: { ...f.pkg.manifest, version: '1.0.3' } })
     f.options.refreshCatalogue = async () => ({
       catalogue: { bytes: next.bytes },
@@ -116,7 +106,7 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
     )
     await f.controller.updatePrepared(f.handle, f.pkg.manifest.id, update)
     expect(before.current()).toBe(false)
-    const updated = get.call(f.controller, f.handle, f.pkg.manifest.id)
+    const updated = f.controller.contributions(f.handle, f.pkg.manifest.id)
     expect(updated.current()).toBe(true)
     expect(updated.identity.runId).not.toBe(before.identity.runId)
     await f.controller.detach(f.handle)
@@ -125,7 +115,7 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
       workspaceId: f.receiver.sink.workspaceId,
     })
     expect(updated.current()).toBe(false)
-    expect(get.call(f.controller, restored, f.pkg.manifest.id).current()).toBe(true)
+    expect(f.controller.contributions(restored, f.pkg.manifest.id).current()).toBe(true)
   })
   it('keeps an old frozen source admitted when the new owner uses a versioned source', async () => {
     const f = await fixture()
@@ -186,23 +176,16 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
       propose() {},
     })
     closers.push(() => client.close())
-    const features = Reflect.get(client, 'features') as (() => readonly string[]) | undefined
-    expect(features?.()).toEqual(expect.arrayContaining(['contributions-v1', 'hooks-v1']))
+    expect(client.features?.()).toEqual(expect.arrayContaining(['contributions-v1', 'hooks-v1']))
   })
   it.each(['speech.transcribe', 'transcript.cleanup'])(
     'does not start a reserved-only %s executor',
     async (kind) => {
       const f = await generic(kind)
-      const policy = Reflect.get(nodeHost, 'pluginNodePolicy') as (pkg: unknown) => unknown
-      expect(typeof policy).toBe('function')
-      expect(() => policy(verified(f.pkg))).toThrow()
+      expect(() => pluginNodePolicy(verified(f.pkg))).toThrow()
     },
   )
   it('uses a distinct fixed hook readiness route, without MCP or person-admin credentials', async () => {
-    const health = Reflect.get(nodeHost, 'authenticatedHookHealth') as (
-      input: Record<string, unknown>,
-    ) => Promise<void>
-    expect(typeof health).toBe('function')
     const fetch = vi.fn(
       async (_url: Parameters<typeof globalThis.fetch>[0], init?: RequestInit) => {
         const headers = new Headers(init?.headers)
@@ -211,7 +194,7 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
           : new Response('', { status: 401 })
       },
     )
-    await health({
+    await authenticatedHookHealth({
       origin: 'http://127.0.0.1:1234',
       hookToken: 'fictional-hook-capability',
       otherTokens: ['fictional-tool-capability', 'fictional-person-capability'],

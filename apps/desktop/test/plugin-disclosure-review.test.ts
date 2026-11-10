@@ -206,9 +206,7 @@ it('feature change revokes the displayed review through a notification as well a
     c = await f.connect(),
     shown = await review(c, 'install'),
     invalidated = vi.fn()
-  const subscribe = Reflect.get(c, 'onReviewInvalidated') as
-    ((listener: () => void) => () => void) | undefined
-  const stop = subscribe?.call(c, invalidated)
+  const stop = c.onReviewInvalidated!(invalidated)
   const original = PersonChannel.prototype.call
   vi.spyOn(PersonChannel.prototype, 'call').mockImplementation(function (
     this: PersonChannel,
@@ -223,5 +221,5 @@ it('feature change revokes the displayed review through a notification as well a
   expect(invalidated).toHaveBeenCalledOnce()
   await expect(commit(c, 'install', shown.consent)).rejects.toThrow()
   expect(await f.snapshot()).toEqual(before)
-  stop?.()
+  stop()
 })

@@ -7,7 +7,11 @@ import {
 } from './plugin-disclosure-fixtures'
 import { PluginSupervisorError } from '../src/main/plugins/supervisor/protocol'
 import { PersonChannel } from '../src/main/plugins/lifecycle/transport'
-import * as policy from '../src/shared/plugin-settings'
+import {
+  canonicalPluginDisclosure,
+  pluginMutationFailureNotice,
+  PluginReleaseDetailsSchema,
+} from '../src/shared/plugin-settings'
 vi.mock('../src/main/plugins/ui/host', () => ({ openPluginConfigurationView: vi.fn() }))
 const closers: Array<() => Promise<void>> = []
 afterEach(async () => {
@@ -180,10 +184,8 @@ it.each([
     'Install and update are unavailable until every BroCrew app on this computer is updated and restarted. You can still configure or uninstall installed plugins.',
   ],
   ['unavailable', 'Plugin unavailable. Try again.'],
-] as const)('guard 7 maps %s to its honest words', (code, words) => {
-  const mapping = Reflect.get(policy, 'pluginMutationFailureNotice') as
-    ((code: string) => string) | undefined
-  expect(mapping ? mapping(code) : 'Plugin unavailable. Try again.').toBe(words)
+] as const)('maps %s to its honest words', (code, words) => {
+  expect(pluginMutationFailureNotice(code)).toBe(words)
 })
 
 it('rejects renderer-supplied details, digests and window identities before commit', async () => {
@@ -202,9 +204,7 @@ it('rejects renderer-supplied details, digests and window identities before comm
   expect(await f.snapshot()).toEqual(before)
 })
 it('hash input is canonical across property order and covers nested permissions and the installed side', () => {
-  const canonical = Reflect.get(policy, 'canonicalPluginDisclosure') as
-    ((value: unknown) => string) | undefined
-  const encode = canonical ?? JSON.stringify
+  const encode = canonicalPluginDisclosure
   const a = {
     action: 'update',
     id: 'chrome',
@@ -241,8 +241,6 @@ it('hash input is canonical across property order and covers nested permissions 
 it.each(['\u0000', '\u202e', '\u2067'])(
   'rejects unsafe control or bidi override in displayed permissions: %s',
   (unsafe) => {
-    const schema = Reflect.get(policy, 'PluginReleaseDetailsSchema') as
-      { safeParse(value: unknown): { success: boolean } } | undefined
     const value = {
       version: '1.0.2',
       digest: 'a'.repeat(64),
@@ -250,7 +248,7 @@ it.each(['\u0000', '\u202e', '\u2067'])(
       authors: ['fern-makers'],
       permissions: { description: 'Read' + unsafe + ' recipes.', resources: [] },
     }
-    expect(schema?.safeParse(value).success ?? true).toBe(false)
+    expect(PluginReleaseDetailsSchema.safeParse(value).success).toBe(false)
   },
 )
 

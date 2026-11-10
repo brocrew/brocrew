@@ -4,13 +4,13 @@ import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parsePluginManifest } from '../src/main/plugins/package-schema'
+import { createContributionRegistry, pluginContributions } from '../src/main/plugins/contributions'
 import { loadRepoPluginList, parseRepoPluginList } from '../src/main/plugins/catalogue/repo-list'
 import { PLUGIN_LIST_URL, downloadPluginBytes } from '../src/main/plugins/catalogue/download'
 import { manifestFor, packageFixture, verified } from './plugin-package-fixtures'
 import { repoListFor } from './plugin-repo-list-fixtures'
 
 const target = { os: 'linux', cpu: 'x64' } as const
-const frameworkModule = new URL('../src/main/plugins/contributions.ts', import.meta.url).href
 const v2Url = PLUGIN_LIST_URL.replace('catalogue.json', 'catalogue-v2.json')
 const folders: string[] = []
 const modernManifest = () => ({
@@ -34,41 +34,23 @@ const modernManifest = () => ({
     },
   ],
 })
-async function framework() {
-  return (await import(frameworkModule)) as {
-    pluginContributions(pkg: unknown): {
-      executor: { kind: string; entry: string }
-      tools: unknown
-      configuration: unknown
-      hooks: readonly { kind: string; supported: boolean }[]
-    }
-    createContributionRegistry(): {
-      register(
-        pkg: unknown,
-        identity: Record<string, unknown>,
-        current: () => boolean,
-      ): { current(): boolean }
-      revoke(pluginId: string): void
-    }
-  }
-}
 afterEach(async () => {
   vi.unstubAllGlobals()
   for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true })
 })
 
 describe('versioned contribution metadata', () => {
-  it('reads a hook-only Node manifest without inventing tools or configuration', async () => {
+  it('reads a hook-only Node manifest without inventing tools or configuration', () => {
     const manifest = parsePluginManifest(Buffer.from(JSON.stringify(modernManifest())))
     const pkg = packageFixture({ manifest })
-    const contributions = (await framework()).pluginContributions(verified(pkg))
+    const contributions = pluginContributions(verified(pkg))
     expect(contributions.executor).toEqual({ kind: 'node', entry: 'dist/recipe.mjs' })
     expect(contributions.tools).toBeNull()
     expect(contributions.configuration).toBeNull()
   })
   it.each(['speech.transcribe', 'transcript.cleanup'])(
     'keeps reserved %s visibly unsupported',
-    async (kind) => {
+    (kind) => {
       const raw = modernManifest()
       raw.hooks = [
         {
@@ -81,9 +63,7 @@ describe('versioned contribution metadata', () => {
         },
       ]
       const manifest = parsePluginManifest(Buffer.from(JSON.stringify(raw)))
-      const entries = (await framework()).pluginContributions(
-        verified(packageFixture({ manifest })),
-      )
+      const entries = pluginContributions(verified(packageFixture({ manifest })))
       expect(entries.hooks).toMatchObject([{ kind, supported: false }])
       expect(entries.tools).toBeNull()
       expect(entries.configuration).toBeNull()
@@ -97,13 +77,12 @@ describe('versioned contribution metadata', () => {
     Object.assign(required.hooks[0]!, { optional: false })
     expect(() => parsePluginManifest(Buffer.from(JSON.stringify(required)))).toThrow()
   })
-  it('binds registrations to verified bytes and invalidates stale run authority', async () => {
-    const api = await framework()
+  it('binds registrations to verified bytes and invalidates stale run authority', () => {
     const pkg = packageFixture({
       manifest: parsePluginManifest(Buffer.from(JSON.stringify(modernManifest()))),
     })
     const checked = verified(pkg)
-    const registry = api.createContributionRegistry()
+    const registry = createContributionRegistry()
     const identity = {
       pluginId: pkg.manifest.id,
       releaseDigest: pkg.release.archive.sha256,

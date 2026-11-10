@@ -23,9 +23,10 @@ async function setup() {
   return f
 }
 function snapshot(root: string) {
-  const read = Reflect.get(GlobalPluginState, 'readInstalledPackage') as
-    ((options: { root: string; workspaceRoots: string[] }, id: string) => unknown) | undefined
-  return read?.({ root: join(root, 'state'), workspaceRoots: [] }, 'chrome') ?? null
+  return GlobalPluginState.readInstalledPackage(
+    { root: join(root, 'state'), workspaceRoots: [] },
+    'chrome',
+  )
 }
 it('reads only an immutable verified installed descriptor without a writer fence or effects', async () => {
   const f = await setup(),
