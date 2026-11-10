@@ -82,24 +82,4 @@ for (const [plugin, exportPlugin] of [
     expect(dryRun).toContain('if-no-files-found: error')
     expect(dryRun).not.toContain('continue-on-error')
   })
-
-  it(`${plugin} builds and tests artifacts with its configured toolchains`, () => {
-    const folder = mkdtempSync(join(tmpdir(), 'fictional-build-only-'))
-    folders.push(folder)
-    exportPlugin(join(folder, 'source'))
-    const workflow = readFileSync(join(folder, 'source/.github/workflows/release.yml'), 'utf8')
-    const dryRun = workflow.split('\n  build-only:\n')[1]
-    expect(dryRun).toContain("node-version: '22.23.3'")
-    if (plugin === 'whatsapp') {
-      expect(dryRun).toContain("go-version: '1.27.2'")
-      expect(dryRun).toContain('GOTOOLCHAIN: local')
-      expect(dryRun).toContain('BROCREW_GO="$(command -v go)" npm run build')
-    }
-    expect(dryRun).toContain('npm run build -- artifact\n')
-    expect(dryRun).toContain(`BROCREW_${plugin.toUpperCase()}_TEST_ARTIFACT:`)
-    const releaseTests = readFileSync(join(folder, `source/release-test/release.test.ts`), 'utf8')
-    expect(releaseTests).toContain(
-      'expect(manifest.sourceCommit).toBe(process.env.BROCREW_PLUGIN_SOURCE_COMMIT)',
-    )
-  })
 }

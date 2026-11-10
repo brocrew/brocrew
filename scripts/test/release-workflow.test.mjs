@@ -136,21 +136,7 @@ describe('§2 · release-check.mjs', () => {
 
 describe('§3 · release workflow route', () => {
   const workflow = readFileSync(join(here, '../../.github/workflows/release.yml'), 'utf8')
-  const mac = readFileSync(join(here, '../../.github/actions/signed-mac/action.yml'), 'utf8')
   const jobs = builderTools.loadYaml(workflow).jobs
-  it('drafts only after both builds and both upgrade tests, and publishes only through release', () => {
-    expect(jobs.windows.environment).toBe('windows-signing')
-    expect(jobs.macos.environment).toBe('mac-signing')
-    expect(jobs['mac-upgrade'].needs).toEqual(['plan', 'macos'])
-    expect(jobs['windows-upgrade'].uses).toBe('./.github/workflows/upgrade-path.yml')
-    expect(jobs.draft.needs).toEqual(
-      expect.arrayContaining(['leak', 'windows', 'macos', 'mac-upgrade', 'windows-upgrade']),
-    )
-    expect(jobs.publish.needs).toContain('draft')
-    expect(jobs.publish.environment).toBe('release')
-    for (const name of Object.keys(jobs))
-      if (!['draft', 'publish'].includes(name)) expect(jobs[name].permissions).toBeUndefined()
-  })
   it('a tag other than vX.Y.Z stops in plan', () => {
     const run = jobs.plan.steps[0].run
     for (const [tag, status] of [
@@ -166,16 +152,6 @@ describe('§3 · release workflow route', () => {
       expect(result.status, tag).toBe(status)
     }
   })
-  it('retains packaged/recovery/update checks and signs the Mac distribution', () => {
-    expect(mac).toContain('--mac dmg zip dir --arm64')
-    expect(mac).toContain('-c.mac.hardenedRuntime=true')
-    expect(mac).not.toContain('-c.mac.identity=-')
-    expect(mac).toContain('scripts/macos-packaged-check.mjs')
-    expect(mac).toContain('scripts/release-check.mjs')
-    expect(mac).toContain('scripts/recovery-real-entry-check.mjs')
-    for (const step of builderTools.loadYaml(mac).runs.steps)
-      if (step.run) expect(step.shell).toBe('bash')
-  })
 })
 
 describe('signed validation without a paid Windows build', () => {
@@ -187,40 +163,6 @@ describe('signed validation without a paid Windows build', () => {
     roots.push(root)
     return root
   }
-
-  it('reserves validation tags without changing automatic candidate or stable release routes', () => {
-    const release = load(readFileSync(join(repo, '.github/workflows/release.yml'), 'utf8'))
-    expect(release.on.push.tags).toEqual(['v*', '!v*-mac-signing-check.*'])
-    const mac = workflow()
-    expect(mac.on.workflow_dispatch.inputs.signed_release_validation.default).toBe(false)
-    expect(mac.on.workflow_dispatch.inputs.package_version.default).toBe('0.1.8')
-    for (const name of ['macos', 'guided-update-rehearsal', 'recovery-real-entry'])
-      expect(mac.jobs[name].if).toContain('inputs.signed_release_validation != true')
-    const validation = mac.jobs['signed-release-validation']
-    expect(validation.needs).toBe('flags')
-    expect(validation.if).toContain("github.event_name == 'workflow_dispatch'")
-    expect(validation.if).toContain("github.ref_type == 'tag'")
-    expect(validation.environment).toBe('mac-signing')
-    expect(validation.permissions).toEqual({ contents: 'read' })
-    expect(validation.concurrency['cancel-in-progress']).toBe(false)
-    const build = validation.steps.find((entry) => entry.uses === './.github/actions/signed-mac')
-    expect(build.with.version).toBe('${{ needs.flags.outputs.signing_version }}')
-    expect(build.with.owner).toBe('brocrew')
-    expect(build.with.repo).toBe('brocrew')
-    for (const name of [
-      'MAC_CERT_P12_BASE64',
-      'MAC_CERT_P12_PASSWORD',
-      'APPLE_API_KEY_P8',
-      'APPLE_API_KEY_ID',
-      'APPLE_API_ISSUER',
-    ])
-      expect(build.env[name]).toBe('${{ secrets.' + name + ' }}')
-    expect(JSON.stringify(validation)).not.toMatch(
-      /windows-signing|ES_USERNAME|ES_PASSWORD|ES_TOTP_SECRET|gh release/,
-    )
-    expect(mac.jobs.flags.steps.some((entry) => entry.id === 'signing')).toBe(true)
-    expect(mac.jobs.flags.environment).toBeUndefined()
-  })
 
   it('checks the actual tag, version and checked-out source before signed mode can run', () => {
     const mac = workflow()

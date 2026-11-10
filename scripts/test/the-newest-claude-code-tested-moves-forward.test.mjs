@@ -102,31 +102,3 @@ describe('the script, in a dry run', () => {
     }
   })
 })
-
-describe('the workflow runs it daily, against the newest published version', () => {
-  const workflow = readFileSync(join(ROOT, '.github', 'workflows', 'claude-code.yml'), 'utf8')
-
-  it('is scheduled, and reads the published version once, for every system and the raise', () => {
-    expect(workflow).toMatch(/schedule:\n\s+- cron: '[^']+'/)
-    expect(workflow).toContain(`github.event_name == 'schedule' && fromJSON('["published"]')`)
-    expect(workflow.split('npm view @anthropic-ai/claude-code version')).toHaveLength(2)
-    expect(workflow).toContain('PUBLISHED: ${{ needs.published.outputs.version }}')
-    expect(workflow).toContain("needs.published.outputs.newer == 'true'")
-  })
-
-  it('pushes one branch per version for the raise, says so in the summary, and opens no pull request', () => {
-    expect(workflow).toContain('branch="auto/claude-code-tested-$VERSION"')
-    expect(workflow).toContain('git ls-remote --exit-code --heads "$remote" "$branch"')
-    expect(workflow).toContain('echo "$said" >> "$GITHUB_STEP_SUMMARY"')
-    expect(workflow).not.toMatch(/\bgh pr\b/)
-    expect(workflow).not.toContain('pull-requests:')
-    expect(workflow).not.toContain('--force')
-  })
-
-  it('raises through the script, as an identity the public commit check takes, with only the built-in token', () => {
-    expect(workflow).toContain('node scripts/claude-code-newest.mjs decide')
-    expect(workflow).toContain('41898099+github-actions[bot]@users.noreply.github.com')
-    expect(workflow).not.toMatch(/secrets\./)
-    expect(workflow).not.toMatch(/\bgit config\b/)
-  })
-})

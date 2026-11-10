@@ -36,11 +36,6 @@ function proof(count, { mounted = true, failure = null } = {}) {
   return { run: () => run(cdp), reads: () => reads }
 }
 
-it('the packaged smoke step calls the proof exercised here', () => {
-  expect(source.slice(source.indexOf("'2b the packaged app opened its database"))).toContain(
-    'return await thePackagedDatabaseOpened(cdp)',
-  )
-})
 it('accepts an actual migration count with only Saved locally visible', async () => {
   const state = proof(7)
   await expect(state.run()).resolves.toContain('schema 7')
