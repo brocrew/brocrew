@@ -109,7 +109,7 @@ import { COLLAPSE_THE_MENU, EXPAND_THE_MENU } from '../lib/rail-fold'
 const props = withDefaults(
   defineProps<{
     /** The conversations this window is fed — `SessionStore.live`. */
-    open: SessionRecord[]
+    open: readonly Readonly<SessionRecord>[]
     providerBlocks?: ProviderBlockStore
     activeId: string | null
     /**

@@ -177,6 +177,9 @@ export type SendIntent =
    */
   | 'queue'
 
+/** Readonly outer fields; nested transcript and card-draft objects keep their existing contracts. */
+export type SessionSnapshot = Readonly<SessionRecord>
+
 export interface SessionStore {
   readonly providerBlocks: ProviderBlockStore
   hearProviderStates(message: RuntimeStatesMessage): void
@@ -184,9 +187,9 @@ export interface SessionStore {
    * ⚑ **D-017b · the conversations this window is fed the events of, oldest first** — every record
    * with `meta` that is not `recorded`.
    */
-  live: ComputedRef<SessionRecord[]>
+  readonly live: ComputedRef<readonly SessionSnapshot[]>
   /** One session by id, or null. */
-  get(sessionId: string): SessionRecord | null
+  get(sessionId: string): SessionSnapshot | null
   /** Whether this id is live here — the guard that replaces the host's error. */
   isLive(sessionId: string): boolean
   /**
@@ -198,7 +201,7 @@ export interface SessionStore {
    * under the row AND across the New-conversation page. One ref with two owners; the fix is two
    * refs with one owner each, not a second reader that remembers to clear the first.
    */
-  launchError: Ref<string | null>
+  readonly launchError: Readonly<Ref<string | null>>
   /**
    * 🔴 **725 · `716` F-1 — the WORD main refused the launcher's last start with**
    * (`LAUNCH_REFUSALS`), beside {@link launchError}'s sentence, or `null` when it gave none: a start
@@ -206,16 +209,18 @@ export interface SessionStore {
    * refusal at all. ⚑ Written with {@link launchError} and cleared with it; the launcher reads it to
    * decide whether its own sign-in check could say anything the refusal did not.
    */
-  launchRefusal: Ref<LaunchRefusal | null>
+  readonly launchRefusal: Readonly<Ref<LaunchRefusal | null>>
   /** Why REOPENING one failed. Belongs to the gesture that asked — see {@link launchError}. */
-  resumeError: Ref<string | null>
+  readonly resumeError: Readonly<Ref<string | null>>
   /** ⚑ **D-017b · why OPENING one failed** — {@link look}'s own, for its reason: one ref, one owner. */
-  lookError: Ref<string | null>
+  readonly lookError: Readonly<Ref<string | null>>
   /**
    * 🔴 **718 · why starting one from the StartAsAgent SHEET failed** — that sheet's own error, by
    * {@link launchError}'s rule: one ref, one owner (`710` F-9, and see {@link PLACED_LAUNCH}).
    */
-  placedError: Ref<string | null>
+  readonly placedError: Readonly<Ref<string | null>>
+  /** Report the front door's failure after its conversation was started. */
+  noteLaunchFailure(sentence: string): void
   /**
    * Whether THIS gesture's launch is in flight — `sessionId` for a reopen, omitted for the new
    * conversation.
@@ -1561,6 +1566,10 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
     resumeError,
     lookError,
     placedError,
+
+    noteLaunchFailure(sentence) {
+      launchError.value = sentence
+    },
 
     isLaunching: (sessionId) => inFlight.has(sessionId ?? NEW_LAUNCH),
     isPlacing: () => inFlight.has(PLACED_LAUNCH),

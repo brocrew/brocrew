@@ -1863,7 +1863,7 @@ async function start(
       (mode) => agentStore.setApprovalDefault(mode),
     )
     if (refusal !== null) {
-      store.launchError.value = refusal
+      store.noteLaunchFailure(refusal)
       restoreRefused(draftSlot(null), firstMessage, attachments)
       return
     }

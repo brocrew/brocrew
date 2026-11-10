@@ -1,5 +1,5 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
-import type { SessionRecord } from '../lib/session-record'
+import type { SessionSnapshot } from '../lib/session-store'
 import type { SessionStore } from '../lib/session-store'
 
 /**
@@ -31,7 +31,7 @@ export interface Surface {
   readonly place: Ref<string | null>
   /** The conversation the surface is about, whether or not it is the thing being drawn. */
   readonly activeId: Ref<string | null>
-  readonly active: ComputedRef<SessionRecord | null>
+  readonly active: ComputedRef<SessionSnapshot | null>
   /**
    * **What is on screen** — one name, decided here rather than by the order of the template's
    * `v-else-if`s (095).

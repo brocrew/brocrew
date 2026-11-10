@@ -13,12 +13,10 @@ import { NOT_REACHED_THIS_WINDOW } from '../src/renderer/src/lib/session-record'
 import { createAttachmentBook, draftKey } from '../src/renderer/src/lib/drafts'
 import { sessionPanel } from '../src/renderer/src/lib/session-panel'
 import {
-  applyEvent,
-  createTranscript,
   type OutgoingQuestion,
   type TranscriptState,
 } from '../src/renderer/src/lib/transcript'
-import { tailWindow } from '../src/renderer/src/lib/transcript-window'
+import { WINDOW_MAX_EVENTS } from '../src/renderer/src/lib/transcript-window'
 import { RETITLE_SAID } from '../src/shared/piece-called'
 import type {
   AnswerAck,
@@ -1755,9 +1753,15 @@ describe('the session store', () => {
     // the host must wait for the provider to arrive before it can stop it.
     const bridge = fakeBridge()
     const store = createSessionStore(bridge)
-    const id = (await store.create({ provider: 'claude' })) ?? ''
-    const record = store.get(id)!
-    record.phase = 'opening'
+    const id = 'sess_opening'
+    const resume = bridge.resume
+    let finishOpening = (): void => {}
+    bridge.resume = (input) =>
+      new Promise((resolve) => {
+        finishOpening = () => resolve(resume(input))
+      })
+    const opening = store.resume(id)
+    expect(store.get(id)?.phase).toBe('opening')
 
     let fail = (): void => {}
     bridge.close = () =>
@@ -1772,6 +1776,8 @@ describe('the session store', () => {
     fail()
     await closing
     expect(store.get(id)?.phase).toBe('opening')
+    finishOpening()
+    await opening
     store.dispose()
   })
 
@@ -2038,14 +2044,28 @@ describe('the session store', () => {
     // fold the reader happens to be looking at.
     const bridge = fakeBridge()
     const store = createSessionStore(bridge)
-    const id = (await store.create({ provider: 'claude' })) ?? ''
+    const id = 'sess_reading'
+    bridge.__history.set(id, [
+      { ordinal: WINDOW_MAX_EVENTS, at: 1_000, event: { type: 'status', state: 'working' } },
+    ])
+    const claim = bridge.claim
+    bridge.claim = async (input) => {
+      const answer = await claim(input)
+      return { ...answer, history: { ...answer.history, hasOlder: true } }
+    }
+    await store.claim(id)
+    bridge.__history.set(
+      id,
+      Array.from({ length: WINDOW_MAX_EVENTS }, (_, ordinal) => ({
+        ordinal,
+        at: 1_000,
+        event: hello('earlier words'),
+      })),
+    )
+    await store.loadOlder(id)
     const record = store.get(id)!
-
-    // The shape a release produces: the reading fold is a page of old history that ends idle, the
-    // control fold is the live tail and it is working.
-    record.control = createTranscript()
-    record.tail = tailWindow([])
-    applyEvent(record.control, { type: 'status', state: 'working' })
+    expect(record.control).not.toBe(record.transcript)
+    expect(record.control.status).toBe('working')
     expect(record.transcript.status).toBe('idle')
 
     await store.send(id, 'actually, do this instead')
@@ -2711,7 +2731,13 @@ describe('the session store', () => {
       expect(store.get(id)?.meta?.approvalMode).toBe(nativeMode)
       expect(store.get(id)?.meta?.pendingApprovalMode).toBe(nativeMode === 'auto' ? null : 'auto')
       const record = store.get(id)!
-      record.meta = { ...record.meta!, cwd: '/work/fictional-bakery' }
+      const claim = bridge.claim
+      bridge.claim = async (input) => ({
+        ...(await claim(input)),
+        ...record.meta!,
+        cwd: '/work/fictional-bakery',
+      })
+      await store.claim(id)
       refuse(new Error('Mode could not be saved'))
       await saving
       expect(record.meta?.approvalMode).toBe(nativeMode)
@@ -2729,10 +2755,23 @@ describe('the session store', () => {
     const seen = computed(() => store.live.value.length)
 
     expect(seen.value).toBe(0)
-    await store.create({ provider: 'claude' })
+    const first = (await store.create({ provider: 'claude' }))!
+    const record = store.get(first)!
+    const error = store.launchError
     expect(seen.value).toBe(1)
+    expect(store.live.value[0]).toBe(record)
+    bridge.__emit(first, 0, { type: 'status', state: 'working' })
+    expect(store.get(first)).toBe(record)
+    expect(store.live.value[0]).toBe(record)
+    expect(record.control.status).toBe('working')
+    store.noteLaunchFailure('The approval choice could not be saved.')
+    expect(store.launchError).toBe(error)
+    expect(error.value).toBe('The approval choice could not be saved.')
     await store.create({ provider: 'codex' })
     expect(seen.value).toBe(2)
+    expect(store.get(first)).toBe(record)
+    expect(store.launchError).toBe(error)
+    expect(error.value).toBeNull()
     store.dispose()
   })
 })
@@ -3054,11 +3093,28 @@ describe('a to-do answered through the store', () => {
   /** A conversation holding the to-do, its reading fold split from its control fold. */
   async function holding(bridge: ReturnType<typeof fakeBridge>) {
     const store = createSessionStore(bridge)
-    const id = (await store.create({ provider: 'claude' })) ?? ''
-    toDo.forEach((event, ordinal) => bridge.__emit(id, ordinal, event))
+    const id = 'sess_report'
+    bridge.__history.set(
+      id,
+      toDo.map((event, index) => ({ ordinal: WINDOW_MAX_EVENTS + index, at: 1_000, event })),
+    )
+    const claim = bridge.claim
+    bridge.claim = async (input) => {
+      const answer = await claim(input)
+      return { ...answer, history: { ...answer.history, hasOlder: true } }
+    }
+    await store.claim(id)
+    bridge.__history.set(
+      id,
+      Array.from({ length: WINDOW_MAX_EVENTS }, (_, ordinal) => ({
+        ordinal,
+        at: 1_000,
+        event: toDo[ordinal] ?? hello('earlier words'),
+      })),
+    )
+    await store.loadOlder(id)
     const record = store.get(id)!
-    record.control = createTranscript()
-    for (const event of toDo) applyEvent(record.control, event)
+    expect(record.control).not.toBe(record.transcript)
     expect(card(record.transcript)).not.toBeNull()
     expect(card(record.control)).not.toBeNull()
     return { store, id, record }
