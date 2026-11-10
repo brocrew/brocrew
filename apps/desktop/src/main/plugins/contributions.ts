@@ -12,7 +12,6 @@ export function pluginContributions(pkg: VerifiedPluginPackage) {
   if (!verifiedPluginDigest(pkg) || !pkg.compatibility.host) return unavailable()
   const manifest = pkg.manifest
   const adapter = pluginAdapter(manifest.id)
-  if (manifest.server && !adapter) return unavailable()
   const executor =
     manifest.format === 2
       ? manifest.executor
