@@ -120,8 +120,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # `cli-equivalence` chooses the real `~/.claude` and `~/.codex` as a working directory, and a
-      # fresh runner has neither CLI's home. Empty is enough; nothing reads them.
       - name: Give the runner the two CLI homes
         run: mkdir -p ~/.claude ~/.codex
 

@@ -99,8 +99,6 @@ jobs:
           mkdir -p node_modules/@vitejs
           ln -s "$(readlink -f apps/desktop/node_modules/@vitejs/plugin-vue)" node_modules/@vitejs/plugin-vue
 
-      # `cli-equivalence` chooses the real `~/.claude` and `~/.codex` as a working directory, and a
-      # fresh runner has neither CLI's home. Empty is enough; nothing reads them.
       - name: Give the runner the two CLI homes
         run: mkdir -p ~/.claude ~/.codex
 
