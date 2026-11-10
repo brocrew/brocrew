@@ -62,6 +62,7 @@ async function fixture(overrides: Partial<ClaudeQuery> = {}) {
   function init(
     names: string[],
     tools: string[] | null = names.map((name) => `mcp__${name}__list`),
+    status = 'connected',
   ) {
     frames.push({
       type: 'system',
@@ -69,7 +70,7 @@ async function fixture(overrides: Partial<ClaudeQuery> = {}) {
       session_id: 'fictional-session',
       cwd: root,
       ...(tools === null ? {} : { tools }),
-      mcp_servers: names.map((name) => ({ name, status: 'connected' })),
+      mcp_servers: names.map((name) => ({ name, status })),
     } as unknown as SDKMessage)
   }
   return { handle, query, observations, init, runtime }
@@ -343,3 +344,16 @@ it('same-name replacement keeps init name-only and copies the offered status rou
     route: snapshot,
   })
 })
+
+it.each(['failed', 'disabled', 'pending', 'needs-auth'] as const)(
+  'init with %s status and absent tools never reports an empty inventory',
+  async (status) => {
+    const f = await fixture()
+    f.init([fern.name], null, status)
+    await vi.waitFor(() => expect(f.observations).toHaveLength(1))
+    expect(f.observations[0]).toEqual({
+      server: fern.name,
+      outcome: status === 'failed' || status === 'disabled' ? 'unavailable' : 'unknown',
+    })
+  },
+)
