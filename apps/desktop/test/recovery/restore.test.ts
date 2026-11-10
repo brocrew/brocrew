@@ -1,3 +1,4 @@
+import { UNFLUSHED, withFileChanges } from './lib/recovery-files'
 import { createHash } from 'node:crypto'
 import {
   existsSync,
@@ -399,18 +400,6 @@ function theJournal(userData: string): RestoreJournal {
 }
 
 /**
- * The real file system without its flushes to disk. A stop simulated in this process cannot tell
- * them apart, and they make the hundreds of runs below slow.
- */
-const UNFLUSHED: RecoveryFs = {
-  ...nodeFs,
-  open: async (path, flags, mode) => {
-    const handle = await nodeFs.open(path, flags, mode)
-    return { ...handle, sync: () => Promise.resolve() }
-  },
-}
-
-/**
  * A file system that dies at its `at`-th change: that change and every one after it fail, as if the
  * process had stopped there. Reads go on working.
  */
@@ -422,21 +411,8 @@ function dyingAt(at: number): { readonly fs: RecoveryFs; readonly changes: () =>
     return changes >= at ? Promise.reject(coded('ECRASH')) : op()
   }
   const fs: RecoveryFs = {
-    ...real,
+    ...withFileChanges(real, change),
     rename: (from, to) => change(() => real.rename(from, to)),
-    copyFile: (from, to, mode) => change(() => real.copyFile(from, to, mode)),
-    link: (existing, name) => change(() => real.link(existing, name)),
-    unlink: (path) => change(() => real.unlink(path)),
-    rm: (path, options) => change(() => real.rm(path, options)),
-    mkdir: (path, options) => change(() => real.mkdir(path, options)),
-    mkdtemp: (prefix) => change(() => real.mkdtemp(prefix)),
-    writeFile: (path, data, options) => change(() => real.writeFile(path, data, options)),
-
-    open: async (path, flags, mode) => {
-      if (flags === 'r') return real.open(path, flags, mode)
-      const handle = await change(() => real.open(path, flags, mode))
-      return { ...handle, writeFile: (data) => change(() => handle.writeFile(data)) }
-    },
   }
   return { fs, changes: () => changes }
 }

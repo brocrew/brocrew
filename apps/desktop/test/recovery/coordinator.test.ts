@@ -1,10 +1,10 @@
+import { aBuildWithOneMoreMigration as buildWithOneMoreMigration } from './lib/seat-b-folders'
 import { registerMigrationLineageCases } from './lib/migration-lineage-cases'
 import Database from 'better-sqlite3'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { createHash } from 'node:crypto'
 import {
   appendFile,
-  copyFile,
   mkdir,
   mkdtemp,
   readdir,
@@ -46,7 +46,6 @@ import { CHECKPOINT_LINE, FAIL_LINE, READY_LINE } from '../../src/main/recovery/
 import {
   BUILD_LINEAGE,
   MIGRATIONS_FOLDER,
-  NEWER_MIGRATION,
   NEWER_VERSION,
   ONE_NEWER,
   THIS_BUILD,
@@ -157,28 +156,7 @@ async function treeOf(dir: string): Promise<Record<string, string>> {
 }
 
 /** A migrations folder holding this build's migrations and one more after them. */
-async function aBuildWithOneMoreMigration(): Promise<string> {
-  const folder = join(await aRoot(), 'migrations')
-  await mkdir(join(folder, 'meta'), { recursive: true })
-  for (const name of await readdir(MIGRATIONS_FOLDER)) {
-    if (name.endsWith('.sql')) await copyFile(join(MIGRATIONS_FOLDER, name), join(folder, name))
-  }
-  // The text whose hash a database one migration newer records for its newest migration.
-  const tag = `${String(BUILD_LINEAGE.length).padStart(4, '0')}_one_more`
-  await writeFile(join(folder, `${tag}.sql`), '-- a migration only a newer BroBot carries\n')
-  const journal = JSON.parse(
-    await readFile(join(MIGRATIONS_FOLDER, 'meta', '_journal.json'), 'utf8'),
-  ) as { entries: Record<string, unknown>[] }
-  const last = journal.entries.at(-1) ?? {}
-  journal.entries.push({
-    ...last,
-    idx: journal.entries.length,
-    when: NEWER_MIGRATION.createdAt,
-    tag,
-  })
-  await writeFile(join(folder, 'meta', '_journal.json'), JSON.stringify(journal))
-  return folder
-}
+const aBuildWithOneMoreMigration = () => buildWithOneMoreMigration({ root: aRoot })
 
 async function sha256Of(path: string): Promise<string> {
   return createHash('sha256')

@@ -15,7 +15,9 @@ import {
   type RecoveryTestOptions,
 } from '../../../src/main/recovery/coordinator'
 import { STEPS, type Step } from '../../../src/main/recovery/contract'
-import { nodeFs, type RecoveryFs } from '../../../src/main/recovery/files'
+import type { RecoveryFs } from '../../../src/main/recovery/files'
+import { UNFLUSHED, withFileChanges } from './recovery-files'
+export { UNFLUSHED } from './recovery-files'
 import { journalFile } from '../../../src/main/recovery/layout'
 import {
   BUILD_LINEAGE,
@@ -67,15 +69,6 @@ export async function aCopyOf(scratch: Scratch, template: Template): Promise<str
   const userData = join(await scratch.root(), 'data')
   await cp(template.userData, userData, { recursive: true, preserveTimestamps: true })
   return userData
-}
-
-/** The real file system without its flushes, which a stop simulated in this process cannot see. */
-export const UNFLUSHED: RecoveryFs = {
-  ...nodeFs,
-  open: async (path, flags, mode) => {
-    const handle = await nodeFs.open(path, flags, mode)
-    return { ...handle, sync: () => Promise.resolve() }
-  },
 }
 
 /** The real recovery service on `userData`, as this build (its own schema, version 0.1.0) runs it. */
@@ -168,7 +161,7 @@ export async function conversationsIn(database: string): Promise<string[]> {
 }
 
 /** A migrations folder holding this build's migrations and one more after them. */
-export async function aBuildWithOneMoreMigration(scratch: Scratch): Promise<string> {
+export async function aBuildWithOneMoreMigration(scratch: Pick<Scratch, 'root'>): Promise<string> {
   const folder = join(await scratch.root(), 'migrations')
   await mkdir(join(folder, 'meta'), { recursive: true })
   for (const name of await readdir(MIGRATIONS_FOLDER)) {
@@ -284,22 +277,9 @@ export function crashingAt(userData: string, point: CrashPoint | null): Crashing
   }
 
   const fs: RecoveryFs = {
-    ...real,
+    ...withFileChanges(real, change),
     rename,
-    copyFile: (from, to, mode) => change(() => real.copyFile(from, to, mode)),
-    link: (existing, name) => change(() => real.link(existing, name)),
-    unlink: (path) => change(() => real.unlink(path)),
-    rm: (path, options) => change(() => real.rm(path, options)),
-    mkdir: (path, options) => change(() => real.mkdir(path, options)),
     rmdir: (path) => change(() => real.rmdir(path)),
-    mkdtemp: (prefix) => change(() => real.mkdtemp(prefix)),
-    writeFile: (path, data, options) => change(() => real.writeFile(path, data, options)),
-
-    open: async (path, flags, mode) => {
-      if (flags === 'r') return real.open(path, flags, mode)
-      const handle = await change(() => real.open(path, flags, mode))
-      return { ...handle, writeFile: (data) => change(() => handle.writeFile(data)) }
-    },
   }
   return { fs, crashed: () => dead, moves }
 }

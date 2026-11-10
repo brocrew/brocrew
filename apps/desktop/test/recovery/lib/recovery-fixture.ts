@@ -1,3 +1,4 @@
+import { UNFLUSHED } from './recovery-files'
 import type { TranscriptEvent } from '../../../src/shared/conversation-events'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
@@ -541,15 +542,6 @@ async function writeStateFiles(folder: string, texts: StateTexts): Promise<void>
     const text = stateTextOf(file, texts)
     if (text !== null) await writeFile(stateFile(folder, file), text, { mode: 0o600 })
   }
-}
-
-/** The real file system without its flushes to disk, which a fixture has no use for. */
-const UNFLUSHED: RecoveryFs = {
-  ...nodeFs,
-  open: async (path, flags, mode) => {
-    const handle = await nodeFs.open(path, flags, mode)
-    return { ...handle, sync: () => Promise.resolve() }
-  },
 }
 
 /**
