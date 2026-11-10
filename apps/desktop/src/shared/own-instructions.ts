@@ -1,4 +1,5 @@
 import type { InstructionProposedEvent, InstructionSettledEvent } from './conversation-events'
+import { pendingProposals } from './pending-proposals'
 /**
  * 🔴 **The `configured` layer — the one layer of `HO-009` §2 a PERSON OWNS** (582, `HO-063` gap 4).
  *
@@ -419,20 +420,14 @@ export function waitingOnAPerson(
     readonly event: InstructionProposedEvent | InstructionSettledEvent
   }[],
 ): readonly InstructionAskWaiting[] {
-  const open = new Map<string, InstructionAskWaiting>()
-  const ended = new Set<string>()
-  for (const row of rows) {
-    if (row.event.type === 'instruction_settled') {
-      ended.add(row.event.askId)
-      continue
-    }
-    open.set(row.event.askId, {
-      asked: row.event,
-      conversation: row.conversation,
-      at: row.at,
-    })
-  }
-  return [...open.values()].filter((one) => !ended.has(one.asked.askId)).sort((a, b) => a.at - b.at)
+  return pendingProposals<InstructionProposedEvent, InstructionSettledEvent, InstructionAskWaiting>(
+    rows,
+    {
+      settled: (event): event is InstructionSettledEvent => event.type === 'instruction_settled',
+      id: (event) => event.askId,
+      pending: (asked, conversation, at) => ({ asked, conversation, at }),
+    },
+  )
 }
 
 /**

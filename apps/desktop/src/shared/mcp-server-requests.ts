@@ -1,12 +1,13 @@
 import type { McpServerRequestSettledEvent, McpServerRequestedEvent } from './conversation-events'
+import { pendingProposals } from './pending-proposals'
 /**
  * An agent asking the person to register an external MCP server: the words, the limits and the
  * fold that says which requests still wait.
  *
  * A request is a pair of ledger rows in the asking conversation, `mcp_server_requested` and
  * `mcp_server_request_settled`. Nothing is written to the server registry, and no address is
- * contacted, until a person approves it. Only types are imported, so the renderer can use this
- * module without pulling in the host.
+ * contacted, until a person approves it. It imports only types and an import-free fold, so the
+ * renderer can use this module without pulling in the host.
  */
 
 /** Who a requested server would be for: every agent, or only the agents the request names. */
@@ -63,22 +64,16 @@ export function mcpServerRequestsWaiting(
     readonly event: McpServerRequestedEvent | McpServerRequestSettledEvent
   }[],
 ): readonly McpServerRequestWaiting[] {
-  const open = new Map<string, McpServerRequestWaiting>()
-  const ended = new Set<string>()
-  for (const row of rows) {
-    if (row.event.type === 'mcp_server_request_settled') {
-      ended.add(row.event.requestId)
-      continue
-    }
-    open.set(row.event.requestId, {
-      requested: row.event,
-      conversation: row.conversation,
-      at: row.at,
-    })
-  }
-  return [...open.values()]
-    .filter((one) => !ended.has(one.requested.requestId))
-    .sort((a, b) => a.at - b.at)
+  return pendingProposals<
+    McpServerRequestedEvent,
+    McpServerRequestSettledEvent,
+    McpServerRequestWaiting
+  >(rows, {
+    settled: (event): event is McpServerRequestSettledEvent =>
+      event.type === 'mcp_server_request_settled',
+    id: (event) => event.requestId,
+    pending: (requested, conversation, at) => ({ requested, conversation, at }),
+  })
 }
 
 /** A sentence that will be set inside another, without its closing full stop. */
