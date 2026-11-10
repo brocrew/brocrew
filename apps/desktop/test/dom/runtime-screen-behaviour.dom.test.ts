@@ -647,11 +647,15 @@ it('does not give a same-agent replacement the old launch busy state or late ref
   await expect.poll(() => m.all('cancel-launch').length).toBe(0)
   expect(runtime.cancelLaunch).not.toHaveBeenCalled()
   answer.resolve({ refused: { reason: 'launch', said: 'The replaced launch was refused.' } })
-  await expect.poll(() =>
-    m.all('toast').filter((toast) =>
-      toast.textContent?.includes('The replaced launch was refused.'),
-    ).length,
-  ).toBe(1)
+  await expect
+    .poll(
+      () =>
+        m
+          .all('toast')
+          .filter((toast) => toast.textContent?.includes('The replaced launch was refused.'))
+          .length,
+    )
+    .toBe(1)
   expect(useOverlays().overlay.value).toBe(replacement)
   expect(m.all('start-as-agent')).toHaveLength(1)
   expect(m.all('start-as-agent-error')).toHaveLength(0)
@@ -667,11 +671,14 @@ it('closing a replacement does not cancel the launch owned by the replaced sheet
   await expect.poll(() => m.all('overlay-host').length).toBe(0)
   expect(runtime.cancelLaunch).not.toHaveBeenCalled()
   answer.resolve({ refused: { reason: 'launch', said: 'The unowned launch was refused.' } })
-  await expect.poll(() =>
-    m.all('toast').filter((toast) =>
-      toast.textContent?.includes('The unowned launch was refused.'),
-    ).length,
-  ).toBe(1)
+  await expect
+    .poll(
+      () =>
+        m
+          .all('toast')
+          .filter((toast) => toast.textContent?.includes('The unowned launch was refused.')).length,
+    )
+    .toBe(1)
   expect(useOverlays().overlay.value).toBeNull()
   expect(runtime.cancelLaunch).not.toHaveBeenCalled()
 })

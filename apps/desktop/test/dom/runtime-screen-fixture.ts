@@ -117,9 +117,12 @@ export const runtime = {
     turnAligned: true,
   })),
   startAndSend: vi.fn(),
-  createSession: vi.fn<
-    (input: Parameters<RuntimeBridge['createSession']>[0]) => Promise<CreatedSession | RefusedLaunch>
-  >(),
+  createSession:
+    vi.fn<
+      (
+        input: Parameters<RuntimeBridge['createSession']>[0],
+      ) => Promise<CreatedSession | RefusedLaunch>
+    >(),
   cancelLaunch: vi.fn<RuntimeBridge['cancelLaunch']>(),
   stopLooking: vi.fn(async () => {}),
   send: vi.fn(),

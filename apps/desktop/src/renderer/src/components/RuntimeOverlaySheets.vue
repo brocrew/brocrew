@@ -74,18 +74,20 @@ function startPlaced(
   placedFrom.value = sheet
   const stillThere = (): boolean => sheet !== null && overlays.overlay.value === sheet
   let refusal: string | null = null
-  void props.start(input, firstMessage, attachments, {
-    opened: () => {
-      if (afterAPlacedLaunch({ kind: 'opened' }, stillThere()).close) overlays.close()
-    },
-    refused: (sentence) => {
-      refusal = sentence
-    },
-  }).then(() => {
-    if (refusal === null) return
-    const { notice } = afterAPlacedLaunch({ kind: 'refused', sentence: refusal }, stillThere())
-    if (notice !== null) overlays.notify(notice)
-  })
+  void props
+    .start(input, firstMessage, attachments, {
+      opened: () => {
+        if (afterAPlacedLaunch({ kind: 'opened' }, stillThere()).close) overlays.close()
+      },
+      refused: (sentence) => {
+        refusal = sentence
+      },
+    })
+    .then(() => {
+      if (refusal === null) return
+      const { notice } = afterAPlacedLaunch({ kind: 'refused', sentence: refusal }, stillThere())
+      if (notice !== null) overlays.notify(notice)
+    })
 }
 /** Busy/error belong to the overlay object that pressed Start, not just to an agent slug. */
 const placedFrom = shallowRef<unknown>(null)
