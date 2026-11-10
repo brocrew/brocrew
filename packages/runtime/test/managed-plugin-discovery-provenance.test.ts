@@ -32,11 +32,11 @@ async function fixture(overrides: Partial<ClaudeQuery> = {}) {
   const runtime = new ClaudeRuntime(() => query, async () => true)
   const handle = await runtime.start({ cwd: root, providerHome: root, managedPluginMcp: [fern], observeManagedPlugins: (event) => observations.push(event) })
   cleanup.push(async () => { await handle.close(); rmSync(root, { recursive: true, force: true }) })
-  function init(names: string[], tools: string[] | undefined = names.map((name) => `mcp__${name}__list`)) {
+  function init(names: string[], tools: string[] | null = names.map((name) => `mcp__${name}__list`)) {
     frames.push({ type: 'system', subtype: 'init', session_id: 'fictional-session', cwd: root,
-      ...(tools === undefined ? {} : { tools }), mcp_servers: names.map((name) => ({ name, status: 'connected' })) } as unknown as SDKMessage)
+      ...(tools === null ? {} : { tools }), mcp_servers: names.map((name) => ({ name, status: 'connected' })) } as unknown as SDKMessage)
   }
-  return { handle, query, observations, init }
+  return { handle, query, observations, init, runtime }
 }
 
 it.each(['success', 'errors', 'rejected', 'sync'] as const)('init during %s refresh retains attempted names without endpoint provenance', async (result) => {
@@ -86,7 +86,7 @@ it.each([
   const f = await fixture({ mcpServerStatus: vi.fn(async () => rows) as ClaudeQuery['mcpServerStatus'] })
   await f.handle.refreshManagedPlugins!([fern])
   await vi.waitFor(() => expect(f.observations).toHaveLength(1))
-  expect(f.observations[0]).toEqual({ server: fern.name, outcome, ...(tools === undefined ? {} : { tools }), route: matched ? route(fern) : null })
+  expect(f.observations[0]).toEqual({ server: fern.name, outcome, ...(tools === null ? {} : { tools }), route: matched ? route(fern) : null })
 })
 
 it('two names sharing a URL match separately and ambiguous rows give no attribution', async () => {
@@ -148,4 +148,30 @@ it('wrapper distinguishes omitted, null and event-owned routes and ignores obser
   const count = events.length
   emit({ ...discovery, route: snapshot })
   expect(events).toHaveLength(count)
+})
+
+it('init with absent tools stays unknown while an explicit empty array reports zero', async () => {
+  const f = await fixture()
+  f.init([fern.name], null)
+  await vi.waitFor(() => expect(f.observations).toHaveLength(1))
+  expect(f.observations[0]).toEqual({ server: fern.name, outcome: 'unknown' })
+  f.init([fern.name], [])
+  await vi.waitFor(() => expect(f.observations).toHaveLength(2))
+  expect(f.observations[1]).toEqual({ server: fern.name, outcome: 'discovered', tools: [] })
+})
+
+it('a hung success-status read leaves ordinary Send exactly once', async () => {
+  const status = vi.fn(() => new Promise<never>(() => {}))
+  const f = await fixture({ mcpServerStatus: status })
+  const sent = vi.spyOn(f.handle, 'send').mockResolvedValue(undefined)
+  vi.spyOn(f.runtime, 'start').mockResolvedValue(f.handle)
+  let servers = [fern]
+  const handle = await withManagedPluginAttachments(f.runtime, {
+    read: async () => ({ revision: servers[0]!.name, servers }), close: async () => {},
+  }).start({ cwd: '/fictional' })
+  servers = [willow]
+  await handle.send('fictional ordinary turn')
+  expect(status).toHaveBeenCalledOnce()
+  expect(sent).toHaveBeenCalledExactlyOnceWith('fictional ordinary turn')
+  await handle.close()
 })
