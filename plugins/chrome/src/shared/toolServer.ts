@@ -87,11 +87,10 @@ export function createToolServer(options: ToolServerOptions): Server {
         },
       })
     } catch (err: unknown) {
-      const msg =
-        err instanceof PublicToolError
-          ? err.message.slice(0, 2000)
-          : 'Plugin unavailable. Try again.'
-      return { content: [{ type: 'text', text: `Error: ${msg}` }] }
+      return {
+        content: [{ type: 'text', text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
+        ...(err instanceof PublicToolError ? {} : { isError: true }),
+      }
     } finally {
       active = false
     }
