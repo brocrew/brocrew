@@ -1,3 +1,4 @@
+import { personOpener } from './helpers/person-opens-session'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -123,13 +124,7 @@ describe('3d1eb064 · a replacement after a give names its starter alone', () =>
     throw new Error(`timed out waiting for ${what}`)
   }
 
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode: 'auto', cwd: root },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'auto')
 
   const callOn = async (
     caller: string,

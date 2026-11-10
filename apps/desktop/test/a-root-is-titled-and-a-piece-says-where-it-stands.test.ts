@@ -1,3 +1,4 @@
+import { personOpener } from './helpers/person-opens-session'
 import type { TaskState, WorkRetitledEvent, WorkStatusSetEvent } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -134,16 +135,7 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
   /** ⚑ A real macrotask pause, so a negative is measured after whatever was queued has run. */
   const letItSettle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 50))
 
-  const personOpens = async (
-    profileId: string,
-    approvalMode: 'ask' | 'auto' = 'ask',
-  ): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode, cwd: root },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
   const callOn = async (
     caller: string,

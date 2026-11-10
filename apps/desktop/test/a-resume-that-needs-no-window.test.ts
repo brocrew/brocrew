@@ -1,3 +1,4 @@
+import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -220,16 +221,7 @@ describe('652 · a resume that needs no window', () => {
     throw new Error('the gesture was allowed')
   }
 
-  const personOpens = async (
-    profileId: string,
-    approvalMode: 'ask' | 'auto' = 'auto',
-  ): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode, cwd: root },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'auto')
   const theToolsetJustHandedOut = (): AgentToolset => {
     const last = handed.toolsets.at(-1)
     if (last === undefined) throw new Error('no toolset was handed to that launch')

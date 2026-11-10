@@ -1,3 +1,4 @@
+import { personOpener } from './helpers/person-opens-session'
 import {
   RecordingSink,
   syntheticProviderHome,
@@ -111,13 +112,7 @@ describe('D-017 · M141 · a caller whose reach does not cover it is refused bef
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
 
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode: 'ask', cwd: root },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
   /** What an agent's own calls look like from outside its toolset — `agent:<its session>`. */
   const speakingAs = (sessionId: string): CallerIdentity => ({ ownerId: agentCallerId(sessionId) })

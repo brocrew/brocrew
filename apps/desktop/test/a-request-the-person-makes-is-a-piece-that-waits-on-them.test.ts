@@ -1,3 +1,4 @@
+import { personOpener } from './helpers/person-opens-session'
 import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
 import { waitFor } from './lib/f093-host'
 import type { PieceRow, TaskState, WorkGivenEvent } from '../src/shared/task-contracts'
@@ -368,13 +369,7 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
   const givenIn = (sessionId: string): WorkGivenEvent[] =>
     events(sessionId).filter((event): event is WorkGivenEvent => event.type === 'work_given')
 
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode: 'ask', cwd: root },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
   /** An identity exists only once a person has run a conversation as it. */
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {

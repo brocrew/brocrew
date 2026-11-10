@@ -1,3 +1,4 @@
+import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import type { UnqueuedMessageEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -167,16 +168,7 @@ describe('648 · a task row that lies about its holder', () => {
     throw new Error(`timed out waiting for ${what}`)
   }
 
-  const personOpens = async (
-    profileId: string,
-    approvalMode: 'ask' | 'auto' = 'auto',
-  ): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode, cwd: root },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'auto')
   const theToolsetJustHandedOut = (): AgentToolset => {
     const last = handed.at(-1)
     if (last === undefined) throw new Error('no toolset was handed to that launch')

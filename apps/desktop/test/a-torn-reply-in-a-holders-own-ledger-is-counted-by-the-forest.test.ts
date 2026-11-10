@@ -1,3 +1,4 @@
+import { personOpener } from './helpers/person-opens-session'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import {
   RecordingSink,
@@ -87,13 +88,7 @@ describe('a torn reply in a holder’s own ledger is counted by the forest', () 
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
 
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode: 'ask', cwd: root },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
   const theToolsetJustHandedOut = (): AgentToolset => {
     const last = handed.at(-1)
