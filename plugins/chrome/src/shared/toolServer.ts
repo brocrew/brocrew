@@ -14,7 +14,7 @@ export type ToolActivity =
   | 'screenshot-captured'
   | 'download-received'
   | 'download-saved'
-export interface ToolContext extends Record<string, unknown> {
+interface ToolContext extends Record<string, unknown> {
   signal?: AbortSignal
   activity?: (stage: ToolActivity) => void
 }

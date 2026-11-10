@@ -120,7 +120,10 @@ it('shared tool listing hides off profiles while Settings can still list them', 
     guard: () => ({ roots: [f.config.workspace], hostHome: '', mount: '', maxBytes: 1000 }),
     downloadsRoot: f.config.downloadsRoot,
   })
-  const result = await tools.find((t) => t.definition.name === 'list_browser_profiles')!.execute({})
+  const result = await tools.find((t) => t.definition.name === 'list_browser_profiles')!.execute(
+    {},
+    {},
+  )
   expect(JSON.stringify(result)).not.toContain('fern')
   expect(f.store.list()).toHaveLength(1)
 })
@@ -155,7 +158,7 @@ it('set_setting refuses a foreign owner and keeps the reservation through atomic
   fs.writeFileSync(preferences, JSON.stringify({ translate: { enabled: true } }))
   const lease = f.store.shared.acquire('fern')
   await expect(
-    setting.execute({ profile: 'fern', key: 'translate.enabled', value: false }),
+    setting.execute({ profile: 'fern', key: 'translate.enabled', value: false }, {}),
   ).rejects.toThrow('in use')
   expect(JSON.parse(fs.readFileSync(preferences, 'utf8')).translate.enabled).toBe(true)
   lease.release()
@@ -168,7 +171,10 @@ it('set_setting refuses a foreign owner and keeps the reservation through atomic
     }
     return rename(source, destination)
   })
-  const result = await setting.execute({ profile: 'fern', key: 'translate.enabled', value: false })
+  const result = await setting.execute(
+    { profile: 'fern', key: 'translate.enabled', value: false },
+    {},
+  )
   expect(result).toMatchObject({ content: [{ type: 'text' }] })
   expect(observed).toBe(true)
   expect(JSON.parse(fs.readFileSync(preferences, 'utf8')).translate.enabled).toBe(false)
