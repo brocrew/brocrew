@@ -6,7 +6,11 @@ import ConversationPane from '../../src/renderer/src/components/ConversationPane
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
 import WorkingTogether from '../../src/renderer/src/components/WorkingTogether.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import {
+  railFacts,
+  screenFacts,
+  useWhoCalledWhom,
+} from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { RailSays } from '../../src/renderer/src/lib/agent-state'
 import { conversationList } from '../../src/renderer/src/lib/conversation-list'
 import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
@@ -31,9 +35,9 @@ const cast = useWhoCalledWhom()
 
 afterEach(async () => {
   unmountAll()
-  cast.listedConversations.value = null
-  cast.railSays.value = null
-  cast.reading.value = null
+  railFacts().update({ listedConversations: null })
+  screenFacts().update({ railSays: null })
+  screenFacts().update({ reading: null })
   delete (window as { api?: unknown }).api
   await page.viewport(1200, 808)
 })
@@ -112,23 +116,27 @@ const give = (state: TaskState): WorkEdge => ({
 function castFor(state: TaskState, marked: boolean): void {
   const walk = <Row>(rows: Row[], kind: string) =>
     ({ rows, walk: kind, ledgers: rows.length, rowsUnread: 0 }) as never
-  cast.reading.value = {
-    conversation: META.sessionId,
-    read: {
+  screenFacts().update({
+    reading: {
       conversation: META.sessionId,
-      parent: null,
-      children: walk([], 'every-conversation-this-one-spawned'),
-      workGivenOut: walk([give(state)], 'every-conversation-this-one-gave-work-to'),
-      workTakenIn: walk([], 'every-piece-of-work-this-one-was-given'),
-      readAt: NOW,
+      read: {
+        conversation: META.sessionId,
+        parent: null,
+        children: walk([], 'every-conversation-this-one-spawned'),
+        workGivenOut: walk([give(state)], 'every-conversation-this-one-gave-work-to'),
+        workTakenIn: walk([], 'every-piece-of-work-this-one-was-given'),
+        readAt: NOW,
+      },
+      answered: true,
+      atWork: null,
     },
-    answered: true,
-    atWork: null,
-  }
-  cast.listedConversations.value = conversationList({
-    resumable: [holder(marked)],
-    unresumable: [],
-    identities: identities(1).identities,
+  })
+  railFacts().update({
+    listedConversations: conversationList({
+      resumable: [holder(marked)],
+      unresumable: [],
+      identities: identities(1).identities,
+    }),
   })
 }
 
@@ -136,7 +144,7 @@ describe('the Sub agents card', () => {
   const card = async (marked: boolean) => {
     // The card says what the rail says of the agent: the rail is read first, as on the screen.
     const r = await rail(marked)
-    cast.railSays.value = r.vm.says as ReadonlyMap<string, RailSays>
+    screenFacts().update({ railSays: r.vm.says as ReadonlyMap<string, RailSays> })
     castFor(marked ? 'waiting-on-purpose' : 'working', marked)
     const m = mount(
       WorkingTogether,

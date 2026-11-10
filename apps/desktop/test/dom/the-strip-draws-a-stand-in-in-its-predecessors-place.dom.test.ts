@@ -2,7 +2,7 @@ import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contr
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import WorkingTogether from '../../src/renderer/src/components/WorkingTogether.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 
 import type { ForestNode, TheWholeForest } from '../../src/shared/the-whole-forest'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
@@ -20,9 +20,8 @@ const NOW = Date.now()
 
 afterEach(() => {
   unmountAll()
-  const cast = useWhoCalledWhom()
-  cast.forest.value = null
-  cast.railSays.value = null
+  screenFacts().update({ forest: null })
+  screenFacts().update({ railSays: null })
 })
 
 const walk = <Row>(rows: readonly Row[], kind: LedgerWalkKind): LedgerWalk<Row> => ({
@@ -78,7 +77,7 @@ const forest = (rows: readonly ForestNode[]): TheWholeForest =>
   }) as TheWholeForest
 
 async function strip(children: readonly string[], rows: readonly ForestNode[] | null) {
-  useWhoCalledWhom().forest.value = rows === null ? null : forest(rows)
+  screenFacts().update({ forest: rows === null ? null : forest(rows) })
   const m = mount(
     WorkingTogether,
     {

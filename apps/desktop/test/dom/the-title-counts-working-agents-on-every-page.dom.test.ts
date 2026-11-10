@@ -4,7 +4,11 @@ import { defineComponent, h, nextTick, reactive, ref } from 'vue'
 import { page } from 'vitest/browser'
 import AppTitleBar from '../../src/renderer/src/components/AppTitleBar.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import {
+  railFacts,
+  screenFacts,
+  useWhoCalledWhom,
+} from '../../src/renderer/src/composables/useWhoCalledWhom'
 
 import type {
   Provider,
@@ -20,11 +24,10 @@ const original = { width: window.innerWidth, height: window.innerHeight }
 afterEach(async () => {
   unmountAll()
   delete (window as { api?: unknown }).api
-  const cast = useWhoCalledWhom()
-  cast.runningConversations.value = null
-  cast.forest.value = null
-  cast.processMemory.value = new Map()
-  cast.memoryUnmeasured.value = null
+  railFacts().update({ runningConversations: null })
+  screenFacts().update({ forest: null })
+  screenFacts().update({ processMemory: new Map() })
+  screenFacts().update({ memoryUnmeasured: null })
   await page.viewport(original.width, original.height)
 })
 
@@ -315,13 +318,16 @@ describe('working counts in the title bar', () => {
 
   it('puts each provider’s working subset in the popup and keeps memory detail', async () => {
     const rows = mixed()
-    const cast = useWhoCalledWhom()
-    cast.forest.value = forestOf(
-      rows.map((one) =>
-        conv(one.sessionId, null, { running: one.running, provider: one.provider }),
+    screenFacts().update({
+      forest: forestOf(
+        rows.map((one) =>
+          conv(one.sessionId, null, { running: one.running, provider: one.provider }),
+        ),
       ),
-    )
-    cast.processMemory.value = new Map(rows.map((one) => [one.sessionId, 100 * 1024 * 1024]))
+    })
+    screenFacts().update({
+      processMemory: new Map(rows.map((one) => [one.sessionId, 100 * 1024 * 1024])),
+    })
     const { m } = await windowWith(rows)
     m.q('app-usage').click()
     await nextTick()
@@ -384,13 +390,16 @@ describe('working counts in the title bar', () => {
             ? { is: 'idle' as const }
             : one.state,
       }))
-      const cast = useWhoCalledWhom()
-      cast.forest.value = forestOf(
-        rows.map((one) =>
-          conv(one.sessionId, null, { running: one.running, provider: one.provider }),
+      screenFacts().update({
+        forest: forestOf(
+          rows.map((one) =>
+            conv(one.sessionId, null, { running: one.running, provider: one.provider }),
+          ),
         ),
-      )
-      cast.processMemory.value = new Map(rows.map((one) => [one.sessionId, 100 * 1024 * 1024]))
+      })
+      screenFacts().update({
+        processMemory: new Map(rows.map((one) => [one.sessionId, 100 * 1024 * 1024])),
+      })
       const now = Date.now()
       const { m } = await windowWith(rows, [], () => Promise.resolve(rows), {
         claude: [

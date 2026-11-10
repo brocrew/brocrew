@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { TAKE_BACK, takeBackThrough } from '../../src/renderer/src/lib/take-back'
 import type { WorkTakenBackByAPerson } from '../../src/shared/piece-called'
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
@@ -82,24 +82,26 @@ const edge = (mayTakeItBack: boolean): WorkEdge => ({
 function castWith(gave: WorkEdge[]): void {
   const walk = <Row>(rows: Row[], kind: string) =>
     ({ rows, walk: kind, ledgers: rows.length, rowsUnread: 0 }) as never
-  useWhoCalledWhom().reading.value = {
-    conversation: META.sessionId,
-    read: {
+  screenFacts().update({
+    reading: {
       conversation: META.sessionId,
-      parent: null,
-      children: walk([], 'every-conversation-this-one-spawned'),
-      workGivenOut: walk(gave, 'every-conversation-this-one-gave-work-to'),
-      workTakenIn: walk([], 'every-piece-of-work-this-one-was-given'),
-      readAt: AT,
+      read: {
+        conversation: META.sessionId,
+        parent: null,
+        children: walk([], 'every-conversation-this-one-spawned'),
+        workGivenOut: walk(gave, 'every-conversation-this-one-gave-work-to'),
+        workTakenIn: walk([], 'every-piece-of-work-this-one-was-given'),
+        readAt: AT,
+      },
+      answered: true,
+      atWork: null,
     },
-    answered: true,
-    atWork: null,
-  }
+  })
 }
 
 afterEach(async () => {
   unmountAll()
-  useWhoCalledWhom().reading.value = null
+  screenFacts().update({ reading: null })
   await page.viewport(1200, 808)
 })
 

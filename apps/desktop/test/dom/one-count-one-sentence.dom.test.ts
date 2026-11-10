@@ -13,7 +13,7 @@ import SessionWork from '../../src/renderer/src/components/SessionWork.vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { forestView } from '../../src/renderer/src/lib/the-forest'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
@@ -170,9 +170,10 @@ const answer = (gave: number, took: number): WhoCalledWhom => ({
 })
 
 function band(read: WhoCalledWhom) {
-  const cast = useWhoCalledWhom()
-  cast.reading.value = { conversation: META.sessionId, read, answered: true, atWork: null }
-  cast.goTo.value = null
+  screenFacts().update({
+    reading: { conversation: META.sessionId, read, answered: true, atWork: null },
+  })
+  screenFacts().update({ goTo: null })
   return mount(SessionDrawer as never, drawerProps({ identities: null }), {
     width: DRAWER_W_MIN,
     height: 900,

@@ -1,7 +1,7 @@
 import type { AgentState } from '../../src/shared/agent-state-contracts'
 import { scene } from '../capture'
 import { rightPanelStage } from '../fixtures/right-panel'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts, useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { facetsOfState } from '../../src/renderer/src/lib/agent-state'
 import { agentStateWords } from '../../src/shared/agent-state'
 
@@ -21,6 +21,6 @@ scene('subagent-long-status', (stage) => {
     facets: facetsOfState(waiting),
     word: agentStateWords(waiting),
   })
-  cast.railSays.value = rail as never
+  screenFacts().update({ railSays: rail as never })
   stage.mount(panel, {})
 })

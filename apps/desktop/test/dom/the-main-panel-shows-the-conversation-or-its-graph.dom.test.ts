@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { computed, defineComponent, h, nextTick, ref, shallowReactive } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { ForestView } from '../../src/renderer/src/lib/the-forest'
 import type { AgentIdentity, KeptFile } from '../../src/shared/runtime-ipc'
 
@@ -22,12 +22,11 @@ import { META, mount, paneProps, record, unmountAll, visible, type Mounted } fro
 
 afterEach(() => {
   unmountAll()
-  const cast = useWhoCalledWhom()
-  cast.goTo.value = null
-  cast.reading.value = null
-  cast.railSays.value = null
-  cast.processMemory.value = new Map()
-  cast.treeFiles.value = null
+  screenFacts().update({ goTo: null })
+  screenFacts().update({ reading: null })
+  screenFacts().update({ railSays: null })
+  screenFacts().update({ processMemory: new Map() })
+  screenFacts().update({ treeFiles: null })
 })
 
 const ID = META.sessionId
@@ -207,10 +206,12 @@ async function selecting(over: Record<string, unknown> = {}, lines = 1) {
   )
   const Wrapper = defineComponent({ setup: () => () => h(ConversationPane, state as never) })
   await page.viewport(1200, 808)
-  useWhoCalledWhom().goTo.value = (conversation) => {
-    opened.push(conversation)
-    state.record = recordOf(conversation, lines)
-  }
+  screenFacts().update({
+    goTo: (conversation) => {
+      opened.push(conversation)
+      state.record = recordOf(conversation, lines)
+    },
+  })
   const m = mount(Wrapper, {}, { width: 1200, height: 808 })
   await nextTick()
   return { m, opened }
@@ -323,12 +324,13 @@ describe('the main panel shows the conversation, or its whole tree', () => {
    * for the Conversation tab.
    */
   it('🔴 UI-006 · the person presses Arjun on the Graph: the Graph stays with Arjun outlined, the right panel is Arjun’s card with ↑ Ada, and Conversation shows Arjun’s conversation', async () => {
-    const cast = useWhoCalledWhom()
-    cast.treeFiles.value = { conversation: ID, files: [kept('work_9')], answered: true }
+    screenFacts().update({
+      treeFiles: { conversation: ID, files: [kept('work_9')], answered: true },
+    })
     const { m, opened } = await selecting()
     // ⚑ Ada's own read is on screen, and says her way up — and it is still there, the last read
     // the screen took, when Arjun is pressed (a read lands a round trip after a selection).
-    cast.reading.value = readOf(ID, 'sess_boss')
+    screenFacts().update({ reading: readOf(ID, 'sess_boss') })
     await nextTick()
     expect(m.q('came-from-name').textContent?.trim()).toBe('BroBot')
     await toGraph(m)
@@ -349,7 +351,7 @@ describe('the main panel shows the conversation, or its whole tree', () => {
     expect(m.all('card-task-empty')).toHaveLength(0)
     expect(m.all('panel-came-from')).toHaveLength(0)
     // ⚑ …and once it lands: ↑ Ada, and his current task.
-    cast.reading.value = arjunRead()
+    screenFacts().update({ reading: arjunRead() })
     await nextTick()
     expect(m.q('came-from-name').textContent?.trim()).toBe('Ada')
     expect(m.q('cast-taken-work').textContent).toContain('W1.2')
@@ -363,7 +365,9 @@ describe('the main panel shows the conversation, or its whole tree', () => {
     expect(drawer).not.toContain('Open conversation')
     // Legacy conversation-tree reads do not supply the workspace library's count.
     expect(m.all('main-tab-files-count')).toHaveLength(0)
-    cast.treeFiles.value = { conversation: 'sess_arjun', files: [kept('work_2')], answered: true }
+    screenFacts().update({
+      treeFiles: { conversation: 'sess_arjun', files: [kept('work_2')], answered: true },
+    })
     await nextTick()
     expect(m.all('main-tab-files-count')).toHaveLength(0)
     // ⚑ Conversation shows Arjun's conversation, not Ada's.
@@ -395,11 +399,10 @@ describe('the main panel shows the conversation, or its whole tree', () => {
   })
 
   it('🔴 a chip selects its agent and ↑ selects the parent — ⛔ a conversation a person started draws no ↑', async () => {
-    const cast = useWhoCalledWhom()
     const { m, opened } = await selecting()
     await toGraph(m)
     await press(m, 'sess_arjun')
-    cast.reading.value = readOf('sess_arjun', ID, ['sess_amara'])
+    screenFacts().update({ reading: readOf('sess_arjun', ID, ['sess_amara']) })
     await nextTick()
     // ⚑ A sub agent's chip selects it.
     m.q('cast-children-strip')
@@ -410,7 +413,7 @@ describe('the main panel shows the conversation, or its whole tree', () => {
     expect(m.q('session-bot-name').textContent?.trim()).toBe('Amara')
     // ⚑ ↑ selects the parent, all the way up: Amara → Arjun → Ada → BroBot.
     const up = async (from: string, parent: string, name: string) => {
-      cast.reading.value = readOf(from, parent)
+      screenFacts().update({ reading: readOf(from, parent) })
       await nextTick()
       expect(m.q('came-from-name').textContent?.trim(), `${from}'s way up`).toBe(name)
       m.q('came-from-open').click()
@@ -422,7 +425,7 @@ describe('the main panel shows the conversation, or its whole tree', () => {
     await up(ID, 'sess_boss', 'BroBot')
     expect(m.q('session-bot-name').textContent?.trim()).toBe('BroBot')
     // ⛔ BroBot's conversation was started by a person: no way up — one step after Ada's drew one.
-    cast.reading.value = readOf('sess_boss', null)
+    screenFacts().update({ reading: readOf('sess_boss', null) })
     await nextTick()
     expect(m.all('panel-came-from')).toHaveLength(0)
     // ⚑ And the Graph stayed on screen through every selection, outlining the last.
@@ -435,7 +438,7 @@ describe('the main panel shows the conversation, or its whole tree', () => {
     const tabs: string[] = []
     let flips = 0
     const opened: string[] = []
-    useWhoCalledWhom().reading.value = readOf(ID, 'sess_boss')
+    screenFacts().update({ reading: readOf(ID, 'sess_boss') })
     // ⚑ Props the test can move, so the drawer can be opened the way the screen opens it.
     const state = shallowReactive(
       paneProps({
@@ -452,7 +455,7 @@ describe('the main panel shows the conversation, or its whole tree', () => {
     )
     const Wrapper = defineComponent({ setup: () => () => h(ConversationPane, state as never) })
     await page.viewport(1200, 808)
-    useWhoCalledWhom().goTo.value = (conversation) => opened.push(conversation)
+    screenFacts().update({ goTo: (conversation) => opened.push(conversation) })
     const m = mount(Wrapper, {}, { width: 1200, height: 808 })
     await nextTick()
     await toGraph(m)
@@ -486,10 +489,12 @@ describe('the main panel shows the conversation, or its whole tree', () => {
 
   it('🔴 D-018 · the card says the memory of the SELECTED agent’s process', async () => {
     const MB = 1024 ** 2
-    useWhoCalledWhom().processMemory.value = new Map([
-      [ID, 300 * MB],
-      ['sess_arjun', 1536 * MB],
-    ])
+    screenFacts().update({
+      processMemory: new Map([
+        [ID, 300 * MB],
+        ['sess_arjun', 1536 * MB],
+      ]),
+    })
     const { m } = await selecting()
     const memory = () =>
       m.q('session-panel').querySelector('[data-cy="card-run-memory"]')?.textContent?.trim()

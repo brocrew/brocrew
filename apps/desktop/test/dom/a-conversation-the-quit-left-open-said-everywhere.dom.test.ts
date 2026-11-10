@@ -9,7 +9,7 @@ import ConversationPane from '../../src/renderer/src/components/ConversationPane
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { STANDING_LABEL } from '../../src/renderer/src/lib/agent-state'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
 import type { ListedConversation } from '../../src/renderer/src/lib/conversation-list'
@@ -60,9 +60,8 @@ afterEach(async () => {
   unmountAll()
   // ⛔ **The cast is a window-level singleton** (`547`), so a reading left behind would be the next
   // test's premise.
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
+  screenFacts().update({ reading: null })
+  screenFacts().update({ goTo: null })
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 
@@ -347,14 +346,15 @@ const castRead = (): WhoCalledWhom => ({
 
 /** The drawer's Open tab — the parent's row above the agent, the child's tile in the band. */
 function drawer() {
-  const cast = useWhoCalledWhom()
-  cast.reading.value = {
-    conversation: META.sessionId,
-    read: castRead(),
-    answered: true,
-    atWork: null,
-  }
-  cast.goTo.value = null
+  screenFacts().update({
+    reading: {
+      conversation: META.sessionId,
+      read: castRead(),
+      answered: true,
+      atWork: null,
+    },
+  })
+  screenFacts().update({ goTo: null })
   return mount(SessionDrawer as never, drawerProps({ identities: null }), {
     width: DRAWER_W_MIN,
     height: 900,

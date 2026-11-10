@@ -1,5 +1,5 @@
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { drawerProps, META } from '../../test/dom/harness'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
@@ -145,61 +145,68 @@ export function setTheCast(): void {
   window.api = {
     runtime: { listResumable: async () => [], listUnresumable: async () => [] },
   } as never
-  const cast = useWhoCalledWhom()
-  cast.reading.value = {
-    conversation: META.sessionId,
-    read: READ,
-    answered: true,
-    atWork: {
-      readAt: NOW,
-      conversations: [
+  screenFacts().update({
+    reading: {
+      conversation: META.sessionId,
+      read: READ,
+      answered: true,
+      atWork: {
+        readAt: NOW,
+        conversations: [
+          {
+            conversation: 'sess_ada',
+            identity: 'designer',
+            told: { said: 'nothing', because: 'nothing-has-arrived' },
+            status: 'running',
+            streaming: false,
+            since: NOW - 60_000,
+            context: { kind: 'tokens', used: 240_000 },
+          },
+          {
+            conversation: 'sess_ali',
+            identity: 'developer',
+            told: { said: 'nothing', because: 'nothing-has-arrived' },
+            status: 'idle',
+            streaming: false,
+            since: NOW - 600_000,
+            context: null,
+          },
+        ],
+      } as never,
+    },
+  })
+  screenFacts().update({
+    railSays: new Map([
+      [
+        'sess_ada',
         {
-          conversation: 'sess_ada',
-          identity: 'designer',
-          told: { said: 'nothing', because: 'nothing-has-arrived' },
-          status: 'running',
-          streaming: false,
-          since: NOW - 60_000,
-          context: { kind: 'tokens', used: 240_000 },
-        },
-        {
-          conversation: 'sess_ali',
-          identity: 'developer',
-          told: { said: 'nothing', because: 'nothing-has-arrived' },
-          status: 'idle',
-          streaming: false,
-          since: NOW - 600_000,
-          context: null,
+          facets: { doing: 'tool', being: 'live' },
+          word: 'working',
+          model: 'claude-opus-5-5[1m]',
+          effort: 'xhigh',
         },
       ],
-    } as never,
-  }
-  cast.railSays.value = new Map([
-    [
-      'sess_ada',
-      {
-        facets: { doing: 'tool', being: 'live' },
-        word: 'working',
-        model: 'claude-opus-5-5[1m]',
-        effort: 'xhigh',
-      },
-    ],
-    [
-      'sess_ali',
-      {
-        facets: { doing: 'idle', being: 'live' },
-        word: 'idle',
-        model: 'claude-sonnet-5-5',
-        effort: 'high',
-      },
-    ],
-  ]) as never
-  cast.processMemory.value = new Map([
-    [META.sessionId, 442_000_000],
-    ['sess_ada', 310_000_000],
-  ])
-  cast.goTo.value = () => {}
-  cast.cardFiles.value = { conversation: META.sessionId, files: FILES, answered: true } as never
+      [
+        'sess_ali',
+        {
+          facets: { doing: 'idle', being: 'live' },
+          word: 'idle',
+          model: 'claude-sonnet-5-5',
+          effort: 'high',
+        },
+      ],
+    ]) as never,
+  })
+  screenFacts().update({
+    processMemory: new Map([
+      [META.sessionId, 442_000_000],
+      ['sess_ada', 310_000_000],
+    ]),
+  })
+  screenFacts().update({ goTo: () => {} })
+  screenFacts().update({
+    cardFiles: { conversation: META.sessionId, files: FILES, answered: true } as never,
+  })
 }
 
 /** ⚑ The conversation's own events, with their times, as the ledger replays them. */

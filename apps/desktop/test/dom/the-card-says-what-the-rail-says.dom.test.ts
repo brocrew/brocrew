@@ -2,10 +2,7 @@ import type { AgentState } from '../../src/shared/agent-state-contracts'
 import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import {
-  useWhoCalledWhom,
-  type RailSays,
-} from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { type RailSays, screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { facetsOfState } from '../../src/renderer/src/lib/agent-state'
 import { DRAWER_W_MAX, DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { agentStateWords } from '../../src/shared/agent-state'
@@ -36,10 +33,9 @@ afterEach(() => {
   unmountAll()
   // ⛔ **The channel is a window-level singleton**, so a row left behind would be the next test's
   // premise.
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
-  cast.railSays.value = null
+  screenFacts().update({ reading: null })
+  screenFacts().update({ goTo: null })
+  screenFacts().update({ railSays: null })
 })
 
 const NOW = Date.now()
@@ -107,9 +103,10 @@ function show(
   identities: unknown = null,
   width: number = DRAWER_W_MIN,
 ) {
-  const cast = useWhoCalledWhom()
-  cast.reading.value = { conversation: META.sessionId, read, answered: true, atWork: AT_WORK }
-  cast.railSays.value = rail
+  screenFacts().update({
+    reading: { conversation: META.sessionId, read, answered: true, atWork: AT_WORK },
+  })
+  screenFacts().update({ railSays: rail })
   const drawer = mount(SessionDrawer as never, drawerProps({ identities }), {
     width,
     height: 900,

@@ -2,7 +2,7 @@ import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contr
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 
@@ -34,9 +34,8 @@ afterEach(() => {
   unmountAll()
   // ⛔ **The channel is a window-level singleton**, so a reading left behind would be the next
   // test's premise.
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
+  screenFacts().update({ reading: null })
+  screenFacts().update({ goTo: null })
 })
 
 /** ⚑ A stable instant, so every age below is a fact about the fixture rather than about the clock. */
@@ -97,12 +96,13 @@ interface Shown {
 }
 
 async function show(over: Shown) {
-  const cast = useWhoCalledWhom()
-  cast.reading.value =
-    over.read === null
-      ? null
-      : { conversation: META.sessionId, read: over.read, answered: true, atWork: null }
-  cast.goTo.value = null
+  screenFacts().update({
+    reading:
+      over.read === null
+        ? null
+        : { conversation: META.sessionId, read: over.read, answered: true, atWork: null },
+  })
+  screenFacts().update({ goTo: null })
   // ⚑ **The drawer alone** — its Current task is the one surface that draws `TaskList`, so these
   // are its rules as a person meets them.
   const m = mount(SessionDrawer as never, drawerProps({ identities: over.identities ?? null }), {

@@ -9,7 +9,7 @@ import {
   type FilesLibraryController,
   type LibraryApi,
 } from '../../src/renderer/src/composables/useFilesLibrary'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts, useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { filesLibraryReplies } from '../fixtures/files-library-replies'
 import type { FilesLibraryResult } from '../../src/shared/files-library'
 import { mount, paneProps, record, unmountAll, visible } from './harness'
@@ -19,8 +19,8 @@ import { mount, paneProps, record, unmountAll, visible } from './harness'
 // Every negative below is paired with a reading of the same surface.
 afterEach(() => {
   unmountAll()
-  useWhoCalledWhom().treeFiles.value = null
-  useWhoCalledWhom().cardFiles.value = null
+  screenFacts().update({ treeFiles: null })
+  screenFacts().update({ cardFiles: null })
 })
 
 async function pane(read?: LibraryApi, narrow = false) {
@@ -88,7 +88,7 @@ it('counts the complete workspace independently of the selected conversation tre
   const { m } = await pane()
   await vi.waitFor(() => expect(m.q('main-tab-files-count').textContent).toContain('16'))
   expect(m.all('library-file')).toHaveLength(16)
-  useWhoCalledWhom().treeFiles.value = { conversation: 'brobot', files: [], answered: true }
+  screenFacts().update({ treeFiles: { conversation: 'brobot', files: [], answered: true } })
   await nextTick()
   expect(m.q('main-tab-files-count').textContent).toContain('16')
   expect(m.all('library-file')).toHaveLength(16)

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_W_MIN, DRAWER_W_MAX } from '../../src/renderer/src/lib/drawer'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 
@@ -27,9 +27,8 @@ import { META, drawerProps, mount, unmountAll, visible } from './harness'
 
 afterEach(() => {
   unmountAll()
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
+  screenFacts().update({ reading: null })
+  screenFacts().update({ goTo: null })
 })
 
 const NOW = Date.now()
@@ -99,8 +98,9 @@ const briefed = (brief: string) => {
 }
 
 function show(read: WhoCalledWhom, state = createTranscript(), width = DRAWER_W_MIN) {
-  const cast = useWhoCalledWhom()
-  cast.reading.value = { conversation: META.sessionId, read, answered: true, atWork: null }
+  screenFacts().update({
+    reading: { conversation: META.sessionId, read, answered: true, atWork: null },
+  })
   return mount(SessionDrawer as never, drawerProps({ state, shown: state }), {
     width,
     height: 900,

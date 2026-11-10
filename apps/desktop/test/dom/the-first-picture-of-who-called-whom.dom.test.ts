@@ -5,7 +5,7 @@ import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { facetsOfState, type RailSays } from '../../src/renderer/src/lib/agent-state'
 import { agentStateWords } from '../../src/shared/agent-state'
 import { DRAWER_W_MAX, DRAWER_W_MIN, TRANSCRIPT_MIN } from '../../src/renderer/src/lib/drawer'
@@ -56,10 +56,9 @@ afterEach(() => {
   // ⛔ **The channel is a window-level singleton**, so a reading left behind would be the next
   // test's premise. ⚠️ Reset to the cold state rather than to an empty band — they are different
   // facts and this file asserts about both.
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
-  cast.railSays.value = null
+  screenFacts().update({ reading: null })
+  screenFacts().update({ goTo: null })
+  screenFacts().update({ railSays: null })
 })
 
 /** ⚑ A stable instant, so every age below is a fact about the fixture rather than about the clock. */
@@ -240,18 +239,21 @@ function beside(drawer: Mounted, graph: Mounted): Mounted & { drawer: Mounted; g
 }
 
 async function show(over: Shown) {
-  const cast = useWhoCalledWhom()
-  cast.reading.value =
-    over.read === null
-      ? null
-      : {
-          conversation: META.sessionId,
-          read: over.read,
-          answered: over.answered ?? true,
-          atWork: over.atWork ?? null,
-        }
-  cast.goTo.value = over.press ? (conversation) => over.press!.push(conversation) : null
-  cast.railSays.value = over.rail ?? null
+  screenFacts().update({
+    reading:
+      over.read === null
+        ? null
+        : {
+            conversation: META.sessionId,
+            read: over.read,
+            answered: over.answered ?? true,
+            atWork: over.atWork ?? null,
+          },
+  })
+  screenFacts().update({
+    goTo: over.press ? (conversation) => over.press!.push(conversation) : null,
+  })
+  screenFacts().update({ railSays: over.rail ?? null })
   const drawer = mount(
     SessionDrawer as never,
     drawerProps({ identities: over.identities ?? null }),
@@ -1635,13 +1637,14 @@ describe('§7 · what the band deliberately does not say', () => {
 
   /** ⛔ **A read for another conversation is the same absence as no read at all.** */
   it('⛔ an answer about a different conversation draws nothing', async () => {
-    const cast = useWhoCalledWhom()
-    cast.reading.value = {
-      conversation: 'sess_somebody_else',
-      read: answer({ children: walk([spawn()], 'every-conversation-this-one-spawned') }),
-      answered: true,
-      atWork: null,
-    }
+    screenFacts().update({
+      reading: {
+        conversation: 'sess_somebody_else',
+        read: answer({ children: walk([spawn()], 'every-conversation-this-one-spawned') }),
+        answered: true,
+        atWork: null,
+      },
+    })
     const m = mount(SessionDrawer as never, drawerProps(), { width: DRAWER_W_MIN, height: 900 })
     expect(m.q('cast-not-read')).toBeTruthy()
     expect(m.all('cast-card')).toHaveLength(0)

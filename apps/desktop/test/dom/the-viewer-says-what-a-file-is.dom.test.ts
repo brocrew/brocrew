@@ -11,7 +11,7 @@ import {
   provideFilesLibrary,
 } from '../../src/renderer/src/composables/useFilesLibrary'
 import { keptFileLibraryReplies } from '../fixtures/kept-file-library-replies'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { fullTime } from '../../src/renderer/src/lib/clock'
 import { clockTime } from '../../src/shared/clock'
 import type { KeptFile, ResourceReading } from '../../src/shared/runtime-ipc'
@@ -49,7 +49,7 @@ import {
 
 afterEach(async () => {
   unmountAll()
-  useWhoCalledWhom().treeFiles.value = null
+  screenFacts().update({ treeFiles: null })
   await page.viewport(1200, 808)
 })
 
@@ -167,11 +167,13 @@ describe('the viewer says what a file is', () => {
   })
 
   it('🔴 a press in the pane carries its row to the panel — ⛔ the same file opened with no row says only the read', async () => {
-    useWhoCalledWhom().treeFiles.value = {
-      conversation: META.sessionId,
-      files: [ROW],
-      answered: true,
-    }
+    screenFacts().update({
+      treeFiles: {
+        conversation: META.sessionId,
+        files: [ROW],
+        answered: true,
+      },
+    })
     await page.viewport(1200, 808)
     const libraryPane = defineComponent({
       setup() {
@@ -205,7 +207,7 @@ describe('the viewer says what a file is', () => {
     unmountAll()
     // ⚑ The pair: the same file, pressed on a reply card whose file the tree has not read — the
     // press the card drew before UI-002 — opens with no row, and the header says only the read.
-    useWhoCalledWhom().treeFiles.value = { conversation: META.sessionId, files: [], answered: true }
+    screenFacts().update({ treeFiles: { conversation: META.sessionId, files: [], answered: true } })
     const bare = mount(
       ConversationPane,
       paneProps({

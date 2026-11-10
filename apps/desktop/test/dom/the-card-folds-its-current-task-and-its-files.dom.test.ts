@@ -4,7 +4,7 @@ import { userEvent } from 'vitest/browser'
 import { nextTick } from 'vue'
 import CardSection from '../../src/renderer/src/components/CardSection.vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import type { KeptFile } from '../../src/shared/runtime-ipc'
 import { META, drawerProps, mount, unmountAll, visible, type Mounted } from './harness'
@@ -27,7 +27,7 @@ beforeEach(() => {
 afterEach(() => {
   unmountAll()
   vi.unstubAllGlobals()
-  useWhoCalledWhom().cardFiles.value = null
+  screenFacts().update({ cardFiles: null })
 })
 
 const FILE: KeptFile = {
@@ -46,11 +46,13 @@ const FILE: KeptFile = {
 }
 
 function card(): Mounted {
-  useWhoCalledWhom().cardFiles.value = {
-    conversation: META.sessionId,
-    files: [FILE],
-    answered: true,
-  }
+  screenFacts().update({
+    cardFiles: {
+      conversation: META.sessionId,
+      files: [FILE],
+      answered: true,
+    },
+  })
   return mount(SessionDrawer as never, drawerProps({ canOpenDocument: true }), {
     width: DRAWER_W_MIN,
     height: 900,

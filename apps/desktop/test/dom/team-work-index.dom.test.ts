@@ -1,17 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, reactive, ref } from 'vue'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { conversationList } from '../../src/renderer/src/lib/conversation-list'
 import type { ForestTask } from '../../src/shared/the-whole-forest'
 import { workerRows, identities, activity, store } from './parallel-workers-fixture'
 import { panelWork } from './sub-agents-workers-fixture'
 import { forestOf } from './forest-fixture'
 import { mount, unmountAll } from './harness'
-const cast = useWhoCalledWhom()
 afterEach(() => {
   unmountAll()
-  cast.forest.value = null
+  screenFacts().update({ forest: null })
 })
 function props(rows = workerRows(32)) {
   const agents = identities(rows.length)
@@ -45,7 +44,7 @@ describe('Team worker work index', () => {
         to: rows[i % rows.length]!.sessionId,
       },
     }))
-    cast.forest.value = forestOf(nodes)
+    screenFacts().update({ forest: forestOf(nodes) })
     visits = 0
     const held = ref<string[]>([])
     const input = props(rows)
@@ -82,13 +81,15 @@ describe('Team worker work index', () => {
     const changing = reactive({ ...newer, work: { ...newer.work } })
     const finished = extra('W91.9', 'Finished recipe', 9)
     const closed = { ...finished, work: { ...finished.work, state: 'answered' as const } }
-    cast.forest.value = forestOf([
-      extra('W91.2', 'Older recipe', 1),
-      changing,
-      extra('W91.3', 'Duplicate recipe', 0),
-      extra('W90.1', 'Naming duplicate', 8),
-      closed,
-    ])
+    screenFacts().update({
+      forest: forestOf([
+        extra('W91.2', 'Older recipe', 1),
+        changing,
+        extra('W91.3', 'Duplicate recipe', 0),
+        extra('W90.1', 'Naming duplicate', 8),
+        closed,
+      ]),
+    })
     const m = mount(TeamWorkspace, props(rows), { width: 1000, height: 900 })
     const titles = () =>
       [...m.q(`team-worker-${rows[0]!.sessionId}`).querySelectorAll('.team-worker-piece')].map(
@@ -113,10 +114,10 @@ describe('Team worker work index', () => {
     changing.work.to = 'missing-holder'
     await nextTick()
     expect(m.q(`team-worker-${rows[2]!.sessionId}`).textContent).not.toContain('Changed recipe')
-    cast.forest.value = null
+    screenFacts().update({ forest: null })
     await nextTick()
     expect(titles()).toEqual(['Recipe', 'and 3 more'])
-    cast.forest.value = forestOf([extra('W91.4', 'Replacement recipe', 3)])
+    screenFacts().update({ forest: forestOf([extra('W91.4', 'Replacement recipe', 3)]) })
     await nextTick()
     expect(titles()).toEqual(['Recipe', 'W91.4 · Replacement recipe', 'and 2 more'])
   })

@@ -1,7 +1,7 @@
 import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
@@ -91,9 +91,8 @@ const atWorkRow = (
 })
 
 function draw(atWork: WhatIsBeingDone | null) {
-  const cast = useWhoCalledWhom()
-  cast.reading.value = { conversation: PARENT, read, answered: true, atWork }
-  cast.goTo.value = null
+  screenFacts().update({ reading: { conversation: PARENT, read, answered: true, atWork } })
+  screenFacts().update({ goTo: null })
   return mount(SessionDrawer as never, drawerProps({ identities: null }), {
     width: DRAWER_W_MIN,
     height: 900,

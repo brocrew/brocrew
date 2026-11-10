@@ -3,7 +3,7 @@ import { agentCardRecipient } from './harness'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 import type { WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { mount, paneProps, record, unmountAll, visible } from './harness'
@@ -24,7 +24,7 @@ afterEach(() => {
   unmountAll()
   // ⛔ **The cast is a window-level singleton**, so a reading left behind would be the next test's
   // premise.
-  useWhoCalledWhom().reading.value = null
+  screenFacts().update({ reading: null })
 })
 
 const inventory: TranscriptEvent = {
@@ -96,12 +96,14 @@ const CAST: WhoCalledWhom = {
 }
 
 const pane = (events: TranscriptEvent[]) => {
-  useWhoCalledWhom().reading.value = {
-    conversation: 'sess_1',
-    read: CAST,
-    answered: true,
-    atWork: null,
-  }
+  screenFacts().update({
+    reading: {
+      conversation: 'sess_1',
+      read: CAST,
+      answered: true,
+      atWork: null,
+    },
+  })
   return expandAgentCards(
     mount(ConversationPane, paneProps({ record: record(events), identities: IDS, held: [] }), {
       width: 1200,

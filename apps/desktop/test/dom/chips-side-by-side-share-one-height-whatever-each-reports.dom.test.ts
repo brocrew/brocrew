@@ -2,7 +2,7 @@ import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contr
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import WorkingTogether from '../../src/renderer/src/components/WorkingTogether.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { AgentPanelSubAgent } from '../../src/renderer/src/lib/agent-panel'
 import { DRAWER_W_MAX } from '../../src/renderer/src/lib/drawer'
 
@@ -30,11 +30,10 @@ import { META, mount, unmountAll } from './harness'
 afterEach(() => {
   unmountAll()
   // The channel is a window-level singleton: a row left behind would be the next test's premise.
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
-  cast.railSays.value = null
-  cast.forest.value = null
+  screenFacts().update({ reading: null })
+  screenFacts().update({ goTo: null })
+  screenFacts().update({ railSays: null })
+  screenFacts().update({ forest: null })
 })
 
 const NOW = Date.now()
@@ -83,7 +82,7 @@ const ANAS: AgentPanelSubAgent = {
 
 async function band(): Promise<HTMLElement> {
   // No rail above the band, so neither chip says a state word: the two differ by telemetry alone.
-  useWhoCalledWhom().railSays.value = null
+  screenFacts().update({ railSays: null })
   const m = mount(
     WorkingTogether,
     {

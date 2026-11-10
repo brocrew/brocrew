@@ -4,7 +4,7 @@ import { userEvent } from 'vitest/browser'
 import { defineComponent, h, nextTick, ref } from 'vue'
 import type { RuntimeEvent } from '@brobot2/runtime'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import type { KeptFile } from '../../src/shared/runtime-ipc'
 import { META, drawerProps, mount, unmountAll, visible, type Mounted } from './harness'
@@ -26,7 +26,7 @@ beforeEach(() => {
 afterEach(() => {
   unmountAll()
   vi.unstubAllGlobals()
-  useWhoCalledWhom().cardFiles.value = null
+  screenFacts().update({ cardFiles: null })
 })
 
 const OTHER = 'sess_another_conversation'
@@ -63,11 +63,13 @@ function busy(id: string) {
 }
 
 function filesFor(conversation: string): void {
-  useWhoCalledWhom().cardFiles.value = {
-    conversation,
-    files: [fileOf(conversation)],
-    answered: true,
-  }
+  screenFacts().update({
+    cardFiles: {
+      conversation,
+      files: [fileOf(conversation)],
+      answered: true,
+    },
+  })
 }
 
 /** The panel on one conversation, with a way to show it another. */

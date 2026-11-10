@@ -671,7 +671,7 @@ describe('§4 · where the read is made, asked for and drawn', () => {
     )
     // It really does the read and draws from it …
     expect(reading).toContain('await store.processMemory()')
-    expect(reading).toContain('cast.processMemory.value = new Map(')
+    expect(reading).toContain('processMemory: new Map(')
     expect(reading).toContain('held?.conversations ?? []')
     // … and a refusal draws nothing: an early return on the answer would keep the last figures,
     // and a kept figure could belong to a process that has since stopped. The one guard compares
@@ -682,11 +682,13 @@ describe('§4 · where the read is made, asked for and drawn', () => {
     expect(drawn).not.toMatch(/\breturn\b/)
     expect(drawn).not.toMatch(/\bif\s*\(/)
 
-    // The figures go when the screen goes: the reset is in an `onUnmounted` callback.
-    const reset = 'cast.processMemory.value = new Map()'
-    const at = once(reset, 'RuntimeScreen.vue', screen)
+    // The figures go when the screen goes: its `onUnmounted` callback releases the screen's handle
+    // on the cast, and releasing it resets the figures.
+    const at = once('castFacts.release()', 'RuntimeScreen.vue', screen)
     const callback = screen.lastIndexOf('onUnmounted(() => {', at)
     expect(callback, 'no onUnmounted callback opens before the reset').toBeGreaterThan(-1)
     expect(screen.slice(callback, at)).not.toContain('\n})')
+    const cast = readFileSync(join(SRC, 'renderer/src/composables/useWhoCalledWhom.ts'), 'utf8')
+    expect(cast).toMatch(/release: \(\) =>\s+write\(\{[^}]*processMemory: new Map\(\),/)
   })
 })

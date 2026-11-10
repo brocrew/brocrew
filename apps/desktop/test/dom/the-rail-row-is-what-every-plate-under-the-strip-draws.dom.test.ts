@@ -5,10 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
-import {
-  useWhoCalledWhom,
-  type RailSays,
-} from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { type RailSays, screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { facetsOfState } from '../../src/renderer/src/lib/agent-state'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
@@ -44,11 +41,10 @@ afterEach(() => {
   unmountAll()
   // ⛔ **The channel is a window-level singleton**, so a row left behind would be the next test's
   // premise.
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
-  cast.forest.value = null
-  cast.railSays.value = null
+  screenFacts().update({ reading: null })
+  screenFacts().update({ goTo: null })
+  screenFacts().update({ forest: null })
+  screenFacts().update({ railSays: null })
   delete stubbed().api
 })
 
@@ -112,9 +108,10 @@ const RAIL = new Map<string, RailSays>([
 
 /** ⚑ The right panel, over the band's one channel — the strip's chips are the agents under it. */
 function show(rail: ReadonlyMap<string, RailSays> | null, atWork: WhatIsBeingDone = AT_WORK) {
-  const cast = useWhoCalledWhom()
-  cast.reading.value = { conversation: META.sessionId, read: READ, answered: true, atWork }
-  cast.railSays.value = rail
+  screenFacts().update({
+    reading: { conversation: META.sessionId, read: READ, answered: true, atWork },
+  })
+  screenFacts().update({ railSays: rail })
   return mount(SessionDrawer as never, drawerProps({ identities: null }), {
     width: DRAWER_W_MIN,
     height: 900,

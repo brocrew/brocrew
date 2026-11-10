@@ -4,7 +4,7 @@ import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, shallowRef } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { ForestView } from '../../src/renderer/src/lib/the-forest'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
@@ -37,11 +37,10 @@ const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
 
 afterEach(async () => {
   unmountAll()
-  const cast = useWhoCalledWhom()
   // ⛔ **The channel is a window-level singleton**, so a door left behind would be the next test's.
-  cast.goTo.value = null
-  cast.railSays.value = null
-  cast.forest.value = null
+  screenFacts().update({ goTo: null })
+  screenFacts().update({ railSays: null })
+  screenFacts().update({ forest: null })
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 
@@ -249,8 +248,7 @@ describe('the Graph is moved by hand, grows with its cards, and is fed by the sc
       )
 
       // (a) The conversation pane, on its Graph tab.
-      const cast = useWhoCalledWhom()
-      cast.goTo.value = () => undefined
+      screenFacts().update({ goTo: () => undefined })
       const said = {
         type: 'assistant_message',
         text: 'Checking the graph.',

@@ -6,7 +6,7 @@ import { defineComponent, h, nextTick, ref } from 'vue'
 import CanonicalDocumentViewer from '../../src/renderer/src/components/CanonicalDocumentViewer.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { useStickToBottom } from '../../src/renderer/src/composables/useStickToBottom'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import {
   BODY_WAS_CUT,
   outgoingCard,
@@ -139,19 +139,21 @@ const edge = (label: string, givenAt: number): WorkEdge => ({
 function castWith(gave: WorkEdge[], took: WorkEdge[], conversation: string = META.sessionId): void {
   const walk = <Row>(rows: Row[], kind: string) =>
     ({ rows, walk: kind, ledgers: rows.length, rowsUnread: 0 }) as never
-  useWhoCalledWhom().reading.value = {
-    conversation,
-    read: {
+  screenFacts().update({
+    reading: {
       conversation,
-      parent: null,
-      children: walk([], 'every-conversation-this-one-spawned'),
-      workGivenOut: walk(gave, 'every-conversation-this-one-gave-work-to'),
-      workTakenIn: walk(took, 'every-piece-of-work-this-one-was-given'),
-      readAt: AT,
+      read: {
+        conversation,
+        parent: null,
+        children: walk([], 'every-conversation-this-one-spawned'),
+        workGivenOut: walk(gave, 'every-conversation-this-one-gave-work-to'),
+        workTakenIn: walk(took, 'every-piece-of-work-this-one-was-given'),
+        readAt: AT,
+      },
+      answered: true,
+      atWork: null,
     },
-    answered: true,
-    atWork: null,
-  }
+  })
 }
 
 const kept = (over: Partial<KeptFile> & Pick<KeptFile, 'resourceId' | 'label'>): KeptFile => ({
@@ -227,9 +229,8 @@ let scrollTopWas: PropertyDescriptor | null = null
 
 afterEach(async () => {
   unmountAll()
-  const cast = useWhoCalledWhom()
-  cast.treeFiles.value = null
-  cast.reading.value = null
+  screenFacts().update({ treeFiles: null })
+  screenFacts().update({ reading: null })
   if (scrollTopWas !== null) Object.defineProperty(Element.prototype, 'scrollTop', scrollTopWas)
   scrollTopWas = null
   await page.viewport(1200, 808)
@@ -329,7 +330,7 @@ describe('the cut note on a give card, drawn', () => {
     unmountAll()
 
     // ⛔ One fact over: a cast that was not read — the plain words and no press of either kind.
-    useWhoCalledWhom().reading.value = null
+    screenFacts().update({ reading: null })
     const unread = await pane(gives(LONG_BRIEF), { held: [] })
     expect(read(unread.m.q('outgoing-cut'))).toBe(BODY_WAS_CUT)
     expect(unread.m.all('outgoing-read-whole')).toHaveLength(0)
@@ -533,8 +534,9 @@ async function paneOver(
   files: readonly KeptFile[] | null,
   events: TranscriptEvent[] = [],
 ): Promise<Mounted> {
-  useWhoCalledWhom().treeFiles.value =
-    files === null ? null : { conversation: META.sessionId, files, answered: true }
+  screenFacts().update({
+    treeFiles: files === null ? null : { conversation: META.sessionId, files, answered: true },
+  })
   await page.viewport(1200, 808)
   const m = mount(
     ConversationPane,

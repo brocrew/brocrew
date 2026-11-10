@@ -3,7 +3,7 @@ import type { WorkSentEvent } from '../../src/shared/task-contracts'
 import { expandAgentCards } from './harness'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { BODY_WAS_CUT, NEW_BRIEF_MARK } from '../../src/renderer/src/lib/outgoing-card'
 
 import { drawnReady } from './drawn'
@@ -23,12 +23,12 @@ import { mount, paneProps, record, unmountAll, visible } from './harness'
  */
 
 beforeEach(() => {
-  useWhoCalledWhom().reading.value = null
+  screenFacts().update({ reading: null })
 })
 
 afterEach(() => {
   unmountAll()
-  useWhoCalledWhom().reading.value = null
+  screenFacts().update({ reading: null })
 })
 
 const inventory: TranscriptEvent = {

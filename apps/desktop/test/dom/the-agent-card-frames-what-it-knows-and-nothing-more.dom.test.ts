@@ -3,10 +3,7 @@ import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import SessionPanel from '../../src/renderer/src/components/SessionPanel.vue'
-import {
-  useWhoCalledWhom,
-  type RailSays,
-} from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { type RailSays, screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { plateWord } from '../../src/renderer/src/lib/agent-state'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
@@ -47,11 +44,10 @@ afterEach(() => {
   unmountAll()
   // ⛔ **The channel is a window-level singleton**, so a reading left behind would be the next
   // test's premise.
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
-  cast.railSays.value = null
-  cast.forest.value = null
+  screenFacts().update({ reading: null })
+  screenFacts().update({ goTo: null })
+  screenFacts().update({ railSays: null })
+  screenFacts().update({ forest: null })
 })
 
 const NOW = Date.now()
@@ -183,9 +179,10 @@ function show(
   rail: ReadonlyMap<string, RailSays> | null = null,
   over: Record<string, unknown> = {},
 ): Mounted {
-  const cast = useWhoCalledWhom()
-  cast.reading.value = { conversation: META.sessionId, read, answered: true, atWork: null }
-  cast.railSays.value = rail
+  screenFacts().update({
+    reading: { conversation: META.sessionId, read, answered: true, atWork: null },
+  })
+  screenFacts().update({ railSays: rail })
   return mount(
     SessionDrawer as never,
     drawerProps({ state, shown: state, identities: null, ...over }),

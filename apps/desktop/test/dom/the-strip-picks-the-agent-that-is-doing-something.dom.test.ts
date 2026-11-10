@@ -1,7 +1,7 @@
 import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_W_MAX, DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 
@@ -25,14 +25,13 @@ import { META, drawerProps, mount, unmountAll } from './harness'
 
 afterEach(() => {
   unmountAll()
-  useWhoCalledWhom().memoryUnmeasured.value = null
-  useWhoCalledWhom().railSays.value = null
+  screenFacts().update({ memoryUnmeasured: null })
+  screenFacts().update({ railSays: null })
   // ⛔ **The channel is a window-level singleton**, so a reading left behind would be the next
   // test's premise. ⚠️ Reset to the cold state rather than to an empty band — they are different
   // facts and this file asserts about both.
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
+  screenFacts().update({ reading: null })
+  screenFacts().update({ goTo: null })
 })
 
 /** ⚑ A stable instant, so every age below is a fact about the fixture rather than about the clock. */
@@ -106,17 +105,20 @@ interface Shown {
 }
 
 function show(over: Shown) {
-  const cast = useWhoCalledWhom()
-  cast.reading.value =
-    over.read === null
-      ? null
-      : {
-          conversation: META.sessionId,
-          read: over.read,
-          answered: over.answered ?? true,
-          atWork: over.atWork ?? null,
-        }
-  cast.goTo.value = over.press ? (conversation) => over.press!.push(conversation) : null
+  screenFacts().update({
+    reading:
+      over.read === null
+        ? null
+        : {
+            conversation: META.sessionId,
+            read: over.read,
+            answered: over.answered ?? true,
+            atWork: over.atWork ?? null,
+          },
+  })
+  screenFacts().update({
+    goTo: over.press ? (conversation) => over.press!.push(conversation) : null,
+  })
   return mount(SessionDrawer as never, drawerProps({ identities: over.identities ?? null }), {
     width: over.width ?? DRAWER_W_MIN,
     height: 900,
@@ -242,7 +244,7 @@ describe('W4.203 · an idle or ended sub-agent says what it last reported', () =
     const memory = (m: ReturnType<typeof show>): HTMLElement =>
       m.q('cast-tile-telemetry-sess_ali').querySelector<HTMLElement>('.chip-metric.memory')!
 
-    useWhoCalledWhom().memoryUnmeasured.value = said
+    screenFacts().update({ memoryUnmeasured: said })
     const unmeasured = show({ read: answer({ children }), width: DRAWER_W_MAX })
     expect(memory(unmeasured).textContent?.trim()).toBe('not measured')
     expect(memory(unmeasured).title).toBe(`Memory (RAM): ${said}`)
@@ -250,7 +252,7 @@ describe('W4.203 · an idle or ended sub-agent says what it last reported', () =
     unmountAll()
 
     // The control: the processes were read and this one holds none.
-    useWhoCalledWhom().memoryUnmeasured.value = null
+    screenFacts().update({ memoryUnmeasured: null })
     const stopped = show({ read: answer({ children }), width: DRAWER_W_MAX })
     expect(memory(stopped).textContent?.trim()).toBe('not running')
     expect(memory(stopped).title).toBe('Memory (RAM): Not running now.')
@@ -261,11 +263,12 @@ describe('W4.203 · an idle or ended sub-agent says what it last reported', () =
       [spawn({ conversation: 'sess_ali' }), spawn({ conversation: 'sess_amara' })],
       'every-conversation-this-one-spawned',
     )
-    const cast = useWhoCalledWhom()
-    cast.railSays.value = new Map([
-      ['sess_ali', { facets: { doing: 'working' }, word: 'working' }],
-      ['sess_amara', { facets: { doing: 'idle' }, word: 'idle' }],
-    ])
+    screenFacts().update({
+      railSays: new Map([
+        ['sess_ali', { facets: { doing: 'working' }, word: 'working' }],
+        ['sess_amara', { facets: { doing: 'idle' }, word: 'idle' }],
+      ]),
+    })
     const m = show({ read: answer({ children }), width: DRAWER_W_MAX })
     const memory = (conversation: string): HTMLElement =>
       m.q(`cast-tile-telemetry-${conversation}`).querySelector<HTMLElement>('.chip-metric.memory')!

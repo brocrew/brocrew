@@ -6,7 +6,9 @@ import type { CastReading } from '../lib/working-together'
 import type { ResumableSessionInfo } from '../../../shared/runtime-ipc'
 import type { ListedConversation } from '../lib/conversation-list'
 
-export type RunningConversation = Pick<ResumableSessionInfo, 'sessionId' | 'provider' | 'state'>
+export type RunningConversation = Readonly<
+  Pick<ResumableSessionInfo, 'sessionId' | 'provider' | 'state'>
+>
 
 /**
  * 🔴 **The window's one answer to *who called whom*, and the one prop channel that could not be a
@@ -43,19 +45,26 @@ export type RunningConversation = Pick<ResumableSessionInfo, 'sessionId' | 'prov
  * answers to *who did this conversation spawn* on one screen, and the drawer and the screen would
  * disagree the moment either wrote. ⛔ Nothing is read at import time, so a module graph that
  * touches this pays nothing.
+ *
+ * ## Who writes it
+ *
+ * Readers get {@link TheCast}: the same refs, typed read-only. Every write happens in this module,
+ * through one of two owners' handles: the rail updates its two lists ({@link railFacts}), the
+ * screen everything else ({@link screenFacts}). Each clears what it wrote when it goes; `reading`
+ * and `forest` are kept until the module is reloaded.
  */
-export interface TheCast {
+interface CastState {
   /** Existing rail listing, including stopped conversations and their recorded worker bindings. */
-  readonly listedConversations: Ref<readonly ListedConversation[] | null>
+  readonly listedConversations: readonly ListedConversation[] | null
   /** The rail's running conversations and current host states, on every page; null until read. */
-  readonly runningConversations: Ref<readonly RunningConversation[] | null>
+  readonly runningConversations: readonly RunningConversation[] | null
   /**
    * ⚑ **`null` is *nothing has been read for this conversation yet*** and is not an empty band —
    * `434`'s distinction, and the state every real drawer is in on its first frame.
    */
-  readonly reading: Ref<CastReading | null>
+  readonly reading: CastReading | null
   /** The conversation whose relationship read is in flight, independent of refinements. */
-  readonly loadingFor: Ref<string | null>
+  readonly loadingFor: string | null
   /**
    * 🔴 **Take a person to one of these conversations** — `RuntimeScreen.goToTheWork`, the door
    * `506` built and the transcript's work report already presses.
@@ -70,52 +79,71 @@ export interface TheCast {
    * sentences. ⛔ Nothing is reported as done here; the screen selects only once the door answered,
    * which is rule 18.
    */
-  readonly goTo: Ref<((conversation: string) => void) | null>
+  readonly goTo: ((conversation: string) => void) | null
   /**
    * ⚑ **The whole forest, for the Graph tab** — the band's own reading names only this
    * conversation's children; this names who spawned whom everywhere, so the Graph can draw everyone
    * from the top down. ⛔ `null` until the first read lands, and kept last-good when a read fails.
    */
-  readonly forest: Ref<TheWholeForest | null>
+  readonly forest: TheWholeForest | null
   /**
    * ⚑ **UI-001 · what the rail's row says of each conversation** — its plate and its word, keyed by
    * conversation. A card under the strip draws its agent from here, so the right panel and the rail
    * say one thing; a row the window is not fed is the host's one state, `get_agent_status`'s own.
    * ⛔ `null` where no rail is on screen, and the band then draws its own reading.
    */
-  readonly railSays: Ref<ReadonlyMap<string, RailSays> | null>
+  readonly railSays: ReadonlyMap<string, RailSays> | null
   /**
    * ⚑ **D-018 · the memory each running conversation's process holds**, in bytes by conversation,
    * as the last read said — a card draws its own conversation's figure, and nothing where this has
    * none. ⛔ A person's alone: no agent reads it (`05` rule 5).
    */
-  readonly processMemory: Ref<ReadonlyMap<string, number>>
+  readonly processMemory: ReadonlyMap<string, number>
   /**
    * Main's sentence where the last read could measure no process at all, else null. With it set, a
    * conversation with no figure is not said to be stopped.
    */
-  readonly memoryUnmeasured: Ref<string | null>
+  readonly memoryUnmeasured: string | null
   /**
    * ⚑ **UI-002 · every file kept in the tree of the conversation on screen** — D-026's `filesKept`
    * `tree` scope: the pieces it holds or gave and everything under them. Read with the band's
    * triggers and again the moment the states channel says a file was kept. ⛔ `null`: nothing has
    * been read for this conversation yet, which is not an empty list.
    */
-  readonly treeFiles: Ref<FilesRead | null>
+  readonly treeFiles: FilesRead | null
   /**
    * ⚑ **UI-002 · the files the card's agent added** — what it made and the inputs it handed over
    * (`filesKept`'s `conversation` scope), for the conversation on screen: the selected agent, whose
    * card the right panel draws. ⛔ `null`: not read yet.
    */
-  readonly cardFiles: Ref<FilesRead | null>
+  readonly cardFiles: FilesRead | null
 }
+
+/** What every reader of the cast sees: the same refs, read-only. */
+export type TheCast = { readonly [K in keyof CastState]: Readonly<Ref<CastState[K]>> }
 
 /** ⚑ One rail row's plate and word — {@link TheCast.railSays}; declared beside the plate's type. */
 export type { RailSays } from '../lib/agent-state'
 
-let shared: TheCast | null = null
+type RailOwned = 'listedConversations' | 'runningConversations'
 
-export function useWhoCalledWhom(): TheCast {
+/** The rail's handle: it updates the two lists it publishes, and clears them when it goes. */
+export interface RailFacts {
+  update(changes: Partial<Pick<CastState, RailOwned>>): void
+  clear(): void
+}
+
+/** The screen's handle: it updates everything else, and releases its share when it goes. */
+export interface ScreenFacts {
+  update(changes: Partial<Omit<CastState, RailOwned>>): void
+  release(): void
+}
+
+type CastRefs = { readonly [K in keyof CastState]: Ref<CastState[K]> }
+
+let shared: CastRefs | null = null
+
+function refs(): CastRefs {
   shared ??= {
     listedConversations: ref<readonly ListedConversation[] | null>(null),
     runningConversations: ref<readonly RunningConversation[] | null>(null),
@@ -130,6 +158,43 @@ export function useWhoCalledWhom(): TheCast {
     cardFiles: ref<FilesRead | null>(null),
   }
   return shared
+}
+
+/** Writes each fact named in `changes`, in the order named. */
+function write(changes: Partial<CastState>): void {
+  const all = refs()
+  for (const key of Object.keys(changes) as (keyof CastState)[])
+    (all[key] as Ref<unknown>).value = changes[key]
+}
+
+export function useWhoCalledWhom(): TheCast {
+  return refs()
+}
+
+/** For `SideRail`, which lists the conversations: the only writer of the two lists. */
+export function railFacts(): RailFacts {
+  return {
+    update: write,
+    clear: () => write({ listedConversations: null, runningConversations: null }),
+  }
+}
+
+/** For `RuntimeScreen`, which reads the cast: the only writer of everything but the rail's lists. */
+export function screenFacts(): ScreenFacts {
+  return {
+    update: write,
+    // The screen's reads and its press die with it; `reading` and `forest` stay for the next one.
+    release: () =>
+      write({
+        goTo: null,
+        loadingFor: null,
+        railSays: null,
+        processMemory: new Map(),
+        memoryUnmeasured: null,
+        treeFiles: null,
+        cardFiles: null,
+      }),
+  }
 }
 
 // Hot reload re-evaluates this module and forgets the value. Explicit, so the next caller gets *nothing has been read* rather than a band belonging to a

@@ -3,7 +3,7 @@ import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, shallowRef } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import {
   createFilesLibrary,
   provideFilesLibrary,
@@ -17,9 +17,8 @@ import { META, mount, paneProps, record, unmountAll, visible, type Mounted } fro
 // Every negative below is paired with a reading of the same surface.
 afterEach(async () => {
   unmountAll()
-  const cast = useWhoCalledWhom()
-  cast.treeFiles.value = null
-  cast.goTo.value = null
+  screenFacts().update({ treeFiles: null })
+  screenFacts().update({ goTo: null })
   await page.viewport(1200, 808)
 })
 
@@ -73,8 +72,9 @@ const FILES = [
 const read = (el: Element): string => (el.textContent ?? '').replace(/\s+/g, ' ').trim()
 
 async function graph(files: readonly KeptFile[] | null, over: Record<string, unknown> = {}) {
-  useWhoCalledWhom().treeFiles.value =
-    files === null ? null : { conversation: ID, files, answered: true }
+  screenFacts().update({
+    treeFiles: files === null ? null : { conversation: ID, files, answered: true },
+  })
   await page.viewport(1200, 808)
   const shown = shallowRef(record([], ID))
   let library!: FilesLibraryController
@@ -135,7 +135,7 @@ describe('Graph file counts retain their own scope and explicitly enter the work
   it('a Graph count enters the exact task with subtasks off and clears query/kind/role while retaining view/sort', async () => {
     const band: string[] = [],
       opened: string[] = []
-    useWhoCalledWhom().goTo.value = (id) => opened.push(id)
+    screenFacts().update({ goTo: (id) => opened.push(id) })
     const m = await graph([...FILES, kept('res_c', 'work_9', 'W1.9', 'c')], {
       'onUpdate:drawerTab': (tab: string) => band.push(tab),
       onToggleDrawer: () => band.push('toggle'),

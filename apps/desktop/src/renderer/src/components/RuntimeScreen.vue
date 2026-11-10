@@ -269,7 +269,7 @@ import { filesReadFor } from '../lib/files-kept'
 import { createFilesLibrary, provideFilesLibrary } from '../composables/useFilesLibrary'
 import { createTeamProfileGraph, provideTeamProfileGraph } from '../composables/useTeamProfileGraph'
 import FilesLibraryPreview from './FilesLibraryPreview.vue'
-import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
+import { screenFacts, useWhoCalledWhom } from '../composables/useWhoCalledWhom'
 import { MAX_DIGEST_SPAN_MS } from '../../../shared/digest'
 import type { RecentActivityReading } from '../../../shared/recent-activity'
 import {
@@ -3055,6 +3055,7 @@ watch(surface, (now) => {
  * glance's ({@link glance}).
  */
 const cast = useWhoCalledWhom()
+const castFacts = screenFacts()
 /** ⛔ **Which read is the newest, because the conversation id alone cannot say** — `workRead`'s. */
 let castRead = 0
 
@@ -3068,36 +3069,40 @@ async function readTheCast(): Promise<void> {
   void readProcessMemory()
   castRead += 1
   const mine = castRead
-  cast.loadingFor.value = asked
+  castFacts.update({ loadingFor: asked })
   const answerPending = store.whoCalledWhom(asked)
   const doingPending = store.whatIsBeingDone()
   // The graph and activity refine the cards; neither holds up their first relationship reading.
   const forestPending = store.theWholeForest().then((grown) => {
     if (mine === castRead && asked === activeId.value && grown !== null) {
-      cast.forest.value = grown
+      castFacts.update({ forest: grown })
     }
   })
   const answer = await answerPending
   if (mine !== castRead || asked !== activeId.value) return
-  cast.loadingFor.value = null
+  castFacts.update({ loadingFor: null })
   if (answer !== null) {
     // ⛔ **No `at` of this window's own.** `543` stamps `readAt` LAST over one synchronous aggregate
     // — the completion point `540` MI-19 said a single timestamp depended on — so a second instant
     // taken here would be a clock the band would have to choose between. ⚑ It also means a kept
     // last-good answer keeps its OWN timestamp, which is `547` §3.3's requirement for free.
-    cast.reading.value = { conversation: asked, read: answer, answered: true, atWork: null }
+    castFacts.update({
+      reading: { conversation: asked, read: answer, answered: true, atWork: null },
+    })
   } else {
     // A failed refresh keeps this conversation's last cards, without old activity words.
-    cast.reading.value =
-      cast.reading.value?.conversation === asked
-        ? { ...cast.reading.value, answered: false, atWork: null }
-        : null
+    castFacts.update({
+      reading:
+        cast.reading.value?.conversation === asked
+          ? { ...cast.reading.value, answered: false, atWork: null }
+          : null,
+    })
   }
   const doing = await doingPending
   if (mine !== castRead || asked !== activeId.value) return
   const reading = cast.reading.value
   if (reading?.conversation === asked && reading.answered) {
-    cast.reading.value = { ...reading, atWork: doing }
+    castFacts.update({ reading: { ...reading, atWork: doing } })
   }
   await forestPending
 }
@@ -3126,10 +3131,10 @@ async function readProcessMemory(): Promise<void> {
   const held = await store.processMemory()
   // A read that lands after this screen has gone belongs to no screen.
   if (mine !== memoryRead) return
-  cast.processMemory.value = new Map(
-    (held?.conversations ?? []).map((one) => [one.conversation, one.bytes]),
-  )
-  cast.memoryUnmeasured.value = held?.unmeasured ?? null
+  castFacts.update({
+    processMemory: new Map((held?.conversations ?? []).map((one) => [one.conversation, one.bytes])),
+    memoryUnmeasured: held?.unmeasured ?? null,
+  })
 }
 
 /**
@@ -3179,7 +3184,7 @@ async function glance(): Promise<void> {
   const reading = cast.reading.value
   if (mine !== glanceRead || asked !== activeId.value) return
   if (reading === null || reading.conversation !== asked) return
-  cast.reading.value = { ...reading, atWork: reading.answered ? doing : null }
+  castFacts.update({ reading: { ...reading, atWork: reading.answered ? doing : null } })
 }
 
 /** ⚑ This window coming back to the front glances at once, rather than at the next tick. */
@@ -3227,8 +3232,10 @@ async function readTheFiles(): Promise<void> {
     // A failed read keeps the previous lists and allows the next refresh to retry.
   }
   if (asked !== activeId.value || mine !== filesRead) return
-  cast.treeFiles.value = filesReadFor(asked, tree, cast.treeFiles.value)
-  cast.cardFiles.value = filesReadFor(asked, added, cast.cardFiles.value)
+  castFacts.update({
+    treeFiles: filesReadFor(asked, tree, cast.treeFiles.value),
+    cardFiles: filesReadFor(asked, added, cast.cardFiles.value),
+  })
 }
 
 watch([activeId, surface], () => void readTheFiles())
@@ -3513,7 +3520,7 @@ onMounted(() => {
   // claims the conversation when this window does not hold it and selects only after the claim has
   // landed (rule 18). ⛔ While this is null the band draws no press at all, which is what a drawer
   // mounted with no screen above it gets.
-  cast.goTo.value = (conversation) => void goToTheWork(conversation)
+  castFacts.update({ goTo: (conversation) => void goToTheWork(conversation) })
 })
 onUnmounted(() => {
   // ⛔ **534 · unsubscribed like every interval below.** The preload holds the listener on
@@ -3535,26 +3542,16 @@ onUnmounted(() => {
   if (glancing !== null) clearInterval(glancing)
   window.removeEventListener('focus', glanceOnReturn)
   document.removeEventListener('visibilitychange', glanceOnReturn)
-  // ⛔ **Handed back, because the ref outlives this component under HMR** — a band left holding a
-  // press into a screen that has been replaced would claim through a store nobody is listening to.
-  cast.goTo.value = null
   // Every read still out belongs to this screen, so none of them may write once it has gone.
   castRead++
   memoryRead++
   filesRead++
   glanceRead++
   workRead++
-  cast.loadingFor.value = null
-  // ⚑ **UI-001 · and the rail's rows with it** — a band left holding them would draw a replaced
-  // screen's words.
-  cast.railSays.value = null
-  // ⚑ **D-018 · and the process figures** — a card left holding them would draw a replaced
-  // screen's read.
-  cast.processMemory.value = new Map()
-  cast.memoryUnmeasured.value = null
-  // ⚑ **UI-002 · and the files** — a Files tab left holding them would draw a replaced screen's read.
-  cast.treeFiles.value = null
-  cast.cardFiles.value = null
+  // ⛔ **Handed back, because the refs outlive this component under HMR**: the press, the rail's
+  // rows, the process figures and the files, so no band draws a replaced screen's read or presses
+  // into it.
+  castFacts.release()
   // ⚠️ **Back to *nobody has answered*, not to *nothing is waiting*.** The module is a singleton
   // that outlives this component under HMR, and a stale list of rows pointing at conversations a
   // new store has never heard of is worse than no list.
@@ -3648,7 +3645,7 @@ watch(decided, (walked) => {
  * says the host's one state (`get_agent_status`'). ⚑ Followed, never re-derived.
  */
 watchEffect(() => {
-  cast.railSays.value = rail.value?.says ?? null
+  castFacts.update({ railSays: rail.value?.says ?? null })
 })
 
 /**

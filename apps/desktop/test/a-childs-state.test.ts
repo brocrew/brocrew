@@ -471,23 +471,23 @@ describe('§3 · what RuntimeScreen asks, and what it keeps', () => {
     // read as *nothing is here*; this one is a REFINEMENT, so a kept card returns to the faceless
     // plate rather than wearing a tool name from a minute ago.
     const kept = readTheCast.slice(
-      readTheCast.indexOf('cast.reading.value =', readTheCast.indexOf('answered: true')),
+      readTheCast.indexOf('castFacts.update({', readTheCast.indexOf('answered: true')),
     )
     expect(kept).toContain('answered: false')
     expect(kept).toContain('atWork: null')
     // A successful relationship read still accepts fresh activity when its refinement arrives.
-    expect(readTheCast).toContain('cast.reading.value = { ...reading, atWork: doing }')
+    expect(readTheCast).toContain('castFacts.update({ reading: { ...reading, atWork: doing } })')
     expect(readTheCast).toContain('reading?.conversation === asked && reading.answered')
   })
 
   it('⛔ a failed forest read keeps the last good one', () => {
     // A failed graph refinement keeps the last good tree.
-    const written = readTheCast.split('\n').filter((line) => line.includes('cast.forest.value ='))
+    const written = readTheCast.split('\n').filter((line) => line.includes('forest:'))
     expect(written).toHaveLength(1)
     expect(readTheCast).toContain(
-      'if (mine === castRead && asked === activeId.value && grown !== null) {\n      cast.forest.value = grown',
+      'if (mine === castRead && asked === activeId.value && grown !== null) {\n      castFacts.update({ forest: grown })',
     )
-    expect(written[0]).toContain('cast.forest.value = grown')
+    expect(written[0]).toContain('castFacts.update({ forest: grown })')
   })
 })
 

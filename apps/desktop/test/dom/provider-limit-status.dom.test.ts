@@ -4,10 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, reactive } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import WorkingTogether from '../../src/renderer/src/components/WorkingTogether.vue'
-import {
-  useWhoCalledWhom,
-  type RailSays,
-} from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { type RailSays, screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { facetsOfState } from '../../src/renderer/src/lib/agent-state'
 import type { WhoCalledWhom } from '../../src/shared/who-called-whom'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
@@ -39,11 +36,10 @@ afterEach(() => {
   unmountAll()
   vi.useRealTimers()
   vi.restoreAllMocks()
-  const cast = useWhoCalledWhom()
-  cast.railSays.value = null
-  cast.reading.value = null
-  cast.forest.value = null
-  cast.goTo.value = null
+  screenFacts().update({ railSays: null })
+  screenFacts().update({ reading: null })
+  screenFacts().update({ forest: null })
+  screenFacts().update({ goTo: null })
   delete (window as { api?: unknown }).api
 })
 
@@ -616,7 +612,6 @@ describe('Child chips carry the rail’s provider stop and its full explanation'
   it.each(['claude', 'codex'] as const)(
     'reads %s current, unavailable and cleared words without changing the ordinary plate',
     async (provider) => {
-      const cast = useWhoCalledWhom()
       const reading: WhoCalledWhom = {
         conversation: META.sessionId,
         parent: null,
@@ -660,7 +655,7 @@ describe('Child chips carry the rail’s provider stop and its full explanation'
             },
           ],
         ])
-      cast.railSays.value = rail(`${providerWord} limit`, detail)
+      screenFacts().update({ railSays: rail(`${providerWord} limit`, detail) })
       const m = mount(
         WorkingTogether,
         {
@@ -693,7 +688,9 @@ describe('Child chips carry the rail’s provider stop and its full explanation'
       chip.focus()
       expect(document.activeElement).toBe(chip)
       expect(chip.getAttribute('aria-description')).toBe(detail)
-      cast.railSays.value = rail('Limit unavailable', 'The current limit status could not be read.')
+      screenFacts().update({
+        railSays: rail('Limit unavailable', 'The current limit status could not be read.'),
+      })
       await nextTick()
       expect(read(word())).toBe('Limit unavailable')
       await drawnReady()
@@ -708,7 +705,7 @@ describe('Child chips carry the rail’s provider stop and its full explanation'
       expect(visible(profile)).toBe(true)
       assertDrawn(profile, 'the retained child profile', m.host)
       expect(word().title).not.toContain('Stopped')
-      cast.railSays.value = rail('idle')
+      screenFacts().update({ railSays: rail('idle') })
       await nextTick()
       expect(read(word())).toBe('idle')
       expect(chip.getAttribute('aria-description')).toBeNull()

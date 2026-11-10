@@ -12,7 +12,7 @@ import RuntimeScreen from '../../src/renderer/src/components/RuntimeScreen.vue'
 import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts, useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import {
   forgetProfileSignIns,
@@ -180,7 +180,7 @@ beforeEach(() => {
   runtime.latestHistory.mockReset()
   changeListeners.clear()
   runtime.whoCalledWhom.mockReset().mockRejectedValue(new Error('No relationship reading supplied'))
-  useWhoCalledWhom().reading.value = null
+  screenFacts().update({ reading: null })
   useOverlays().close()
   localStorage.clear()
   useAttentionSignals().value = true
@@ -959,7 +959,7 @@ it.each(['B', 'A'] as const)(
 )
 
 it('keeps Graph unread until the independent forest arrives, then draws the current tree', async () => {
-  useWhoCalledWhom().forest.value = null
+  screenFacts().update({ forest: null })
   const forest = deferred<Awaited<ReturnType<RuntimeBridge['theWholeForest']>>>()
   const complete = forestOf([
     conv('fictional-source', null, { identity: 'editor' }),

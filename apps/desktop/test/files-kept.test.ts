@@ -410,7 +410,7 @@ describe('the screen reads the files with the conversation, and again when one i
   it('⛔ behind the band’s guards, and each answer kept by its rule', () => {
     const reads = body('async function readTheFiles(')
     const { tree, added, settled } = roundTrip(reads)
-    const written = reads.indexOf('cast.treeFiles.value =')
+    const written = reads.indexOf('treeFiles: filesReadFor(')
     // The sequence is taken before the await; both freshness checks precede either assignment.
     expect(settled, 'the round trip moved — this census reads nothing').toBeGreaterThan(0)
     const taken = reads.indexOf('const mine = filesRead')
@@ -421,13 +421,9 @@ describe('the screen reads the files with the conversation, and again when one i
     const guard = reads.indexOf('if (asked !== activeId.value || mine !== filesRead) return')
     expect(guard).toBeGreaterThan(settled)
     expect(guard).toBeLessThan(written)
-    expect(reads.indexOf('cast.cardFiles.value =')).toBeGreaterThan(guard)
-    expect(reads).toContain(
-      `cast.treeFiles.value = filesReadFor(asked, ${tree}, cast.treeFiles.value)`,
-    )
-    expect(reads).toContain(
-      `cast.cardFiles.value = filesReadFor(asked, ${added}, cast.cardFiles.value)`,
-    )
+    expect(reads.indexOf('cardFiles: filesReadFor(')).toBeGreaterThan(guard)
+    expect(reads).toContain(`treeFiles: filesReadFor(asked, ${tree}, cast.treeFiles.value)`)
+    expect(reads).toContain(`cardFiles: filesReadFor(asked, ${added}, cast.cardFiles.value)`)
   })
 
   it('⛔ a refusal or a throw is *did not answer*, never an empty list', () => {
@@ -455,11 +451,16 @@ describe('the screen reads the files with the conversation, and again when one i
     expect(absent).toBeGreaterThan(0)
     expect(absent).toBeLessThan(roundTrip(reads).settled)
     const released = [...screen.matchAll(/onUnmounted\(\(\) => \{([\s\S]*?)\n\}\)/g)].find(
-      (match) => match[1]?.includes('cast.treeFiles.value = null'),
+      (match) => match[1]?.includes('castFacts.release()'),
     )?.[1]
     expect(released, 'both lists are released by an unmount callback').toBeDefined()
-    expect(released).toMatch(/cast\.treeFiles\.value = null\s+cast\.cardFiles\.value = null/)
     expect(released).toContain('stopListening?.()')
+    // The screen's handle on the cast clears both lists when it is released.
+    const cast = readFileSync(
+      join(__dirname, '../src/renderer/src/composables/useWhoCalledWhom.ts'),
+      'utf8',
+    )
+    expect(cast).toMatch(/release: \(\) =>\s+write\(\{[^}]*treeFiles: null,\s+cardFiles: null,/)
   })
 
   it('⚑ once on mount — a screen that remounts on an open conversation has no watch to fire', () => {

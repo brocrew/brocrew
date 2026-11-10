@@ -4,7 +4,7 @@ import { nextTick, reactive } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { applyEvent } from '../../src/renderer/src/lib/transcript'
 import type { KeptFile, ResourceReading } from '../../src/shared/runtime-ipc'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { mount, paneProps, record, unmountAll, visible } from './harness'
 import { EXCHANGE_IDS } from './agent-exchanges.fixture'
 import {
@@ -21,7 +21,7 @@ import {
 afterEach(() => {
   unmountAll()
   vi.restoreAllMocks()
-  useWhoCalledWhom().treeFiles.value = null
+  screenFacts().update({ treeFiles: null })
 })
 function pane(
   events: TranscriptEvent[],
@@ -234,7 +234,7 @@ describe('durable card facts in the conversation', () => {
       label: 'W4.2',
       pieceTitle: 'Bakery menu',
     }
-    useWhoCalledWhom().treeFiles.value = { conversation: 'sess_1', files: [file], answered: true }
+    screenFacts().update({ treeFiles: { conversation: 'sess_1', files: [file], answered: true } })
     const read: string[] = []
     const { m } = pane(
       [{ ...answerNotice(EXCHANGE_OTHER), piece: 'work_bakery', label: 'W4.2' } as TranscriptEvent],

@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import WorkingTogether from '../../src/renderer/src/components/WorkingTogether.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import {
+  railFacts,
+  screenFacts,
+  useWhoCalledWhom,
+} from '../../src/renderer/src/composables/useWhoCalledWhom'
 import {
   type AgentFacets,
   type RailSays,
@@ -30,9 +34,9 @@ afterEach(() => {
   unmountAll()
   localStorage.removeItem('brobot2.subAgents.latestFirst')
   localStorage.removeItem('brobot2.subAgents.showIdle')
-  cast.listedConversations.value = null
-  cast.forest.value = null
-  cast.railSays.value = null
+  railFacts().update({ listedConversations: null })
+  screenFacts().update({ forest: null })
+  screenFacts().update({ railSays: null })
   delete (window as { api?: unknown }).api
 })
 async function settle() {
@@ -62,7 +66,9 @@ async function band(width = 360, reading: CastReading = panelReading(), canOpen 
   return Object.assign(m, { opened })
 }
 function listed(rows = panelRows()) {
-  cast.listedConversations.value = conversationList({ resumable: rows, unresumable: [] })
+  railFacts().update({
+    listedConversations: conversationList({ resumable: rows, unresumable: [] }),
+  })
 }
 
 describe('Sub agents: distinct parallel workers and their pieces', () => {
@@ -92,7 +98,7 @@ describe('Sub agents: distinct parallel workers and their pieces', () => {
   )
 
   it('does not infer a worker number from identity or card position', async () => {
-    cast.listedConversations.value = null
+    railFacts().update({ listedConversations: null })
     const m = await band()
     expect(m.q('cast-tile-name-ada-worker-2').textContent).toBe('Ada')
     expect(m.all('cast-tile-owner-ada-worker-2')).toHaveLength(0)
@@ -130,16 +136,18 @@ describe('Sub agents: distinct parallel workers and their pieces', () => {
       title: 'Read another menu',
       state: 'stalled',
     }
-    cast.forest.value = forestOf([
-      task('ada-worker-2', work[1]!.piece, work[1]!.label, work[1]!.title, OWNER),
-      task(
-        'ada-worker-2',
-        'from-other-giver',
-        'W91.1',
-        'Check the ingredient notes',
-        'other-giver',
-      ),
-    ])
+    screenFacts().update({
+      forest: forestOf([
+        task('ada-worker-2', work[1]!.piece, work[1]!.label, work[1]!.title, OWNER),
+        task(
+          'ada-worker-2',
+          'from-other-giver',
+          'W91.1',
+          'Check the ingredient notes',
+          'other-giver',
+        ),
+      ]),
+    })
     const rows = panelRows()
     rows[1] = { ...rows[1]!, named: { ...rows[1]!.named!, more: 2 } }
     listed(rows)
@@ -250,15 +258,17 @@ describe('Sub agents view preferences', () => {
       named: { ...row.named!, ended: 'answered' as const },
     }))
     listed(rows)
-    cast.railSays.value = new Map(
-      IDS.map((id) => [
-        id,
-        {
-          facets: facetsOfState({ is: id === 'ada-worker-3' ? 'needs-you' : 'idle' }),
-          word: id === 'ada-worker-3' ? 'needs you' : 'idle',
-        },
-      ]),
-    )
+    screenFacts().update({
+      railSays: new Map(
+        IDS.map((id) => [
+          id,
+          {
+            facets: facetsOfState({ is: id === 'ada-worker-3' ? 'needs-you' : 'idle' }),
+            word: id === 'ada-worker-3' ? 'needs you' : 'idle',
+          },
+        ]),
+      ),
+    })
     const work = panelWork()
       .filter((piece) => piece.to === 'ada-worker-4' || piece.to === OWNER)
       .map((piece) =>
@@ -275,7 +285,7 @@ describe('Sub agents view preferences', () => {
     expect(m.all('cast-tile-name-ada-worker-4')).toHaveLength(0)
     expect(m.q('cast-idle-hidden').textContent).toBe('3 idle hidden')
     assertDrawn(m.q('cast-idle-hidden'), 'hidden idle count', m.host)
-    cast.listedConversations.value = null
+    railFacts().update({ listedConversations: null })
     await settle()
     expect(m.all('cast-tile-name-ada-worker-2')).toHaveLength(0)
     expect(m.q('cast-idle-hidden').textContent).toBe('3 idle hidden')
@@ -296,12 +306,14 @@ describe('Sub agents view preferences', () => {
       named: { ...row.named!, ended: 'answered' as const },
     }))
     listed(rows)
-    cast.railSays.value = new Map(
-      IDS.map((id) => [
-        id,
-        { facets: id === 'ada-worker-2' ? facets : facetsOfState({ is: 'idle' }), word: 'idle' },
-      ]),
-    )
+    screenFacts().update({
+      railSays: new Map(
+        IDS.map((id) => [
+          id,
+          { facets: id === 'ada-worker-2' ? facets : facetsOfState({ is: 'idle' }), word: 'idle' },
+        ]),
+      ),
+    })
     const ownerWork = panelWork()
       .filter((piece) => piece.to === OWNER)
       .map((piece) => ({ ...piece, state: 'answered' as const, endedAt: 1800000000000 }))
@@ -326,9 +338,11 @@ describe('Sub agents view preferences', () => {
         named: { ...row.named!, ended: 'answered' as const },
       })),
     )
-    cast.railSays.value = new Map(
-      IDS.map((id) => [id, { facets: facetsOfState({ is: 'idle' }), word: 'idle' }]),
-    )
+    screenFacts().update({
+      railSays: new Map(
+        IDS.map((id) => [id, { facets: facetsOfState({ is: 'idle' }), word: 'idle' }]),
+      ),
+    })
     localStorage.setItem('brobot2.subAgents.showIdle', 'false')
     const ownerWork = panelWork()
       .filter((piece) => piece.to === OWNER)
@@ -343,12 +357,14 @@ describe('Sub agents view preferences', () => {
   it.each([320, 380])('moves a long worker state below the complete name at %s', async (width) => {
     listed()
     const word = 'waiting on an answer from another conversation'
-    cast.railSays.value = new Map(
-      IDS.map((id) => [
-        id,
-        { facets: { doing: 'idle' as const, waiting: 'waiting-on-an-answer' as const }, word },
-      ]),
-    )
+    screenFacts().update({
+      railSays: new Map(
+        IDS.map((id) => [
+          id,
+          { facets: { doing: 'idle' as const, waiting: 'waiting-on-an-answer' as const }, word },
+        ]),
+      ),
+    })
     const m = await band(width)
     const name = m.q('cast-tile-name-ada-worker-2')
     const state = m.q('cast-tile-word-ada-worker-2')
@@ -360,9 +376,11 @@ describe('Sub agents view preferences', () => {
     expect(state.title).toBe(word)
     expect(lineCount(state)).toBeLessThanOrEqual(2)
     assertDrawn(state, 'the two-line state within the worker card', card)
-    cast.railSays.value = new Map(
-      IDS.map((id) => [id, { facets: facetsOfState({ is: 'active' }), word: 'active' }]),
-    )
+    screenFacts().update({
+      railSays: new Map(
+        IDS.map((id) => [id, { facets: facetsOfState({ is: 'active' }), word: 'active' }]),
+      ),
+    })
     await settle()
     assertDrawn(name, 'the complete name beside a short state', card)
     assertDrawn(state, 'the short state at the top right', card)
@@ -376,7 +394,7 @@ describe('Sub agents view preferences', () => {
     'keeps the name and lone state dot together before a rail row arrives, worker metadata=%s',
     async (workerKnown) => {
       if (workerKnown) listed()
-      cast.railSays.value = new Map<string, RailSays>()
+      screenFacts().update({ railSays: new Map<string, RailSays>() })
       const m = await band(320)
       const name = m.q('cast-tile-name-ada-worker-2')
       const card = name.closest<HTMLElement>('.agent-chip')!

@@ -66,7 +66,7 @@ import type { ProviderLimitsView } from '../lib/persons-queue'
 import { providerLimitDisplay } from '../lib/provider-limit-status'
 import { createProviderBlockStore, type ProviderBlockStore } from '../lib/provider-limit-facts'
 import { useMinuteClock } from '../composables/useMinuteClock'
-import { useWhoCalledWhom, type RailSays } from '../composables/useWhoCalledWhom'
+import { railFacts, useWhoCalledWhom, type RailSays } from '../composables/useWhoCalledWhom'
 import type { WorkspaceReading } from '../../../shared/workspace-reading'
 import type { WorkEdge } from '../../../shared/who-called-whom'
 import type { AppInfo } from '@brobot2/shared'
@@ -464,6 +464,7 @@ const listed = computed(() =>
 )
 
 const cast = useWhoCalledWhom()
+const lists = railFacts()
 // Index the forest once per reading, rather than walking it for every row on every render.
 const workByHolder = computed(() => {
   const holders = new Map<string, WorkEdge[]>()
@@ -476,9 +477,9 @@ const workByHolder = computed(() => {
   return holders
 })
 watchEffect(() => {
-  cast.listedConversations.value = looked.value ? listed.value : null
+  lists.update({ listedConversations: looked.value ? listed.value : null })
   if (!looked.value) {
-    cast.runningConversations.value = null
+    lists.update({ runningConversations: null })
     return
   }
   const live = new Map(
@@ -486,15 +487,14 @@ watchEffect(() => {
       .filter((row) => row.running !== 'not-running')
       .map((row) => [row.sessionId, row.provider]),
   )
-  cast.runningConversations.value = listed.value.flatMap(({ sessionId, state }) => {
-    const provider = live.get(sessionId)
-    return provider === undefined ? [] : [{ sessionId, provider, state }]
+  lists.update({
+    runningConversations: listed.value.flatMap(({ sessionId, state }) => {
+      const provider = live.get(sessionId)
+      return provider === undefined ? [] : [{ sessionId, provider, state }]
+    }),
   })
 })
-onBeforeUnmount(() => {
-  cast.listedConversations.value = null
-  cast.runningConversations.value = null
-})
+onBeforeUnmount(() => lists.clear())
 
 async function refreshListed(): Promise<void> {
   // ⚑ **D-019 · numbered before either half is asked** — see {@link said}.

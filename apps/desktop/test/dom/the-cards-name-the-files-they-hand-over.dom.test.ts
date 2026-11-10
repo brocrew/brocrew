@@ -6,7 +6,7 @@ import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import FileRows from '../../src/renderer/src/components/FileRows.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { fullTime } from '../../src/renderer/src/lib/clock'
 import { clockTime } from '../../src/shared/clock'
 import type { AgentIdentity, KeptFile, ResourceReading } from '../../src/shared/runtime-ipc'
@@ -35,9 +35,8 @@ import { META, mount, paneProps, record, unmountAll, visible, type Mounted } fro
 
 afterEach(async () => {
   unmountAll()
-  const cast = useWhoCalledWhom()
-  cast.treeFiles.value = null
-  cast.reading.value = null
+  screenFacts().update({ treeFiles: null })
+  screenFacts().update({ reading: null })
   await page.viewport(1200, 808)
 })
 
@@ -178,8 +177,9 @@ async function pane(
   files: readonly KeptFile[] | null,
   over: Record<string, unknown> = {},
 ): Promise<Mounted> {
-  useWhoCalledWhom().treeFiles.value =
-    files === null ? null : { conversation: META.sessionId, files, answered: true }
+  screenFacts().update({
+    treeFiles: files === null ? null : { conversation: META.sessionId, files, answered: true },
+  })
   await page.viewport(1200, 808)
   const m = mount(
     ConversationPane,
@@ -228,19 +228,21 @@ const edge = (label: string, givenAt: number): WorkEdge => ({
 function castWith(gave: WorkEdge[], took: WorkEdge[]): void {
   const walk = <Row>(rows: Row[], kind: string) =>
     ({ rows, walk: kind, ledgers: rows.length, rowsUnread: 0 }) as never
-  useWhoCalledWhom().reading.value = {
-    conversation: META.sessionId,
-    read: {
+  screenFacts().update({
+    reading: {
       conversation: META.sessionId,
-      parent: null,
-      children: walk([], 'every-conversation-this-one-spawned'),
-      workGivenOut: walk(gave, 'every-conversation-this-one-gave-work-to'),
-      workTakenIn: walk(took, 'every-piece-of-work-this-one-was-given'),
-      readAt: AT,
+      read: {
+        conversation: META.sessionId,
+        parent: null,
+        children: walk([], 'every-conversation-this-one-spawned'),
+        workGivenOut: walk(gave, 'every-conversation-this-one-gave-work-to'),
+        workTakenIn: walk(took, 'every-piece-of-work-this-one-was-given'),
+        readAt: AT,
+      },
+      answered: true,
+      atWork: null,
     },
-    answered: true,
-    atWork: null,
-  }
+  })
 }
 
 async function opens(m: Mounted, row: HTMLElement, name: string): Promise<void> {
@@ -360,11 +362,13 @@ describe('the cards where files change hands name each file', () => {
       'res_later',
     ])
     expect(m.all('file-row')).toHaveLength(0)
-    useWhoCalledWhom().treeFiles.value = {
-      conversation: META.sessionId,
-      files: [FOUND],
-      answered: true,
-    }
+    screenFacts().update({
+      treeFiles: {
+        conversation: META.sessionId,
+        files: [FOUND],
+        answered: true,
+      },
+    })
     await nextTick()
     await drawnReady()
     expect(rowsIn(m.q('work-report')).map((row) => row.dataset.document)).toEqual(['res_found'])

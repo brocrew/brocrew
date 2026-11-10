@@ -3,7 +3,7 @@ import { defineComponent, h, nextTick, shallowReactive } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
 import WorkingTogether from '../../src/renderer/src/components/WorkingTogether.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { railFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { conversationList } from '../../src/renderer/src/lib/conversation-list'
 import type { AgentIdentities, ResumableSessionInfo } from '../../src/shared/runtime-ipc'
 import { assertDrawn, drawnReady } from './drawn'
@@ -24,8 +24,6 @@ import {
  * Every surface that titles a worker says the identity's name, else its slug: "Ana · W5.1.1".
  */
 
-const cast = useWhoCalledWhom()
-
 /** Everything a person can read or hear on a surface: its text, its hovers and its descriptions. */
 function said(host: HTMLElement): string {
   const attributes = [...host.querySelectorAll('*')].flatMap((el) =>
@@ -36,7 +34,7 @@ function said(host: HTMLElement): string {
 
 afterEach(() => {
   unmountAll()
-  cast.listedConversations.value = null
+  railFacts().update({ listedConversations: null })
   delete (window as { api?: unknown }).api
 })
 
@@ -54,7 +52,9 @@ function named(displayName: string | null): AgentIdentities {
 
 describe('Sub agents', () => {
   const band = async (displayName: string | null) => {
-    cast.listedConversations.value = conversationList({ resumable: panelRows(), unresumable: [] })
+    railFacts().update({
+      listedConversations: conversationList({ resumable: panelRows(), unresumable: [] }),
+    })
     const m = mount(
       WorkingTogether,
       {

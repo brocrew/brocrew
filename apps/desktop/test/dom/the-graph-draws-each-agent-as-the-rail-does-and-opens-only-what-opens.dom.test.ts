@@ -5,8 +5,9 @@ import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, shallowReactive, type Component } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import {
-  useWhoCalledWhom,
   type RailSays,
+  screenFacts,
+  useWhoCalledWhom,
 } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import {
   facetsOfState,
@@ -47,8 +48,8 @@ import { META, mount, paneProps, record, unmountAll, visible, type Mounted } fro
  * - 🔴 **LOST in 3d53e6af — not moved, and pinned nowhere**: *"a read that did not answer says so
  *   under the graph — and an answered read does not"*. The *This may not be current* line went with
  *   `ConversationGraph.vue` and nothing replaced it. The tab draws `cast.forest`, which
- *   `RuntimeScreen.readTheCast` keeps on a refusal (`if (grown !== null …) cast.forest.value =
- *   grown`), and `ForestView` carries no *answered*: the Graph tab draws the last forest it had and
+ *   `RuntimeScreen.readTheCast` keeps on a refusal (`if (grown !== null …) castFacts.update({ forest:
+ *   grown })`), and `ForestView` carries no *answered*: the Graph tab draws the last forest it had and
  *   says NOTHING. ⛔ The Team page does the opposite on purpose — its `theForest` is *"NOT kept on a
  *   refusal"*, because *"a stale TREE reads as this is the shape of your work"* (641 §5.5).
  *   ⚠️ Neither neighbour covers it: the main-panel file's *"a forest not read yet draws one quiet
@@ -88,14 +89,13 @@ import { META, mount, paneProps, record, unmountAll, visible, type Mounted } fro
 
 afterEach(() => {
   unmountAll()
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
+  screenFacts().update({ reading: null })
+  screenFacts().update({ goTo: null })
   // ⛔ **The channel is a window-level singleton**, so a rail or a choice left behind would be the
   // next test's premise.
-  cast.railSays.value = null
-  cast.forest.value = null
-  cast.processMemory.value = new Map()
+  screenFacts().update({ railSays: null })
+  screenFacts().update({ forest: null })
+  screenFacts().update({ processMemory: new Map() })
 })
 
 const NOW = Date.now()
@@ -217,10 +217,9 @@ interface Shown {
 async function show(over: Shown = {}): Promise<Mounted> {
   // ⚑ W4.183 · the drawer docks up to 560px now, so the graph needs this much room to sit at zoom 1.
   await page.viewport(1300, 808)
-  const cast = useWhoCalledWhom()
-  cast.railSays.value = over.rail ?? null
+  screenFacts().update({ railSays: over.rail ?? null })
   const opened = over.opened ?? []
-  cast.goTo.value = (conversation) => opened.push(conversation)
+  screenFacts().update({ goTo: (conversation) => opened.push(conversation) })
   const m = mount(
     ConversationPane,
     paneProps({
@@ -345,8 +344,8 @@ describe('the graph draws each conversation as the rail does, and opens only wha
   it('🔴 a push the rail hears moves the card on the same mount — the forest is not read again', async () => {
     const held = heldHere('sess_ana', [said('Inspecting the window states.'), WORKING])
     const cast = useWhoCalledWhom()
-    cast.railSays.value = new Map([['sess_ana', held.rail]])
-    cast.goTo.value = () => undefined
+    screenFacts().update({ railSays: new Map([['sess_ana', held.rail]]) })
+    screenFacts().update({ goTo: () => undefined })
     await page.viewport(1200, 808)
     // ⚑ The forest as it was read, ONCE — only the rail's rows move below, as a push moves them.
     const rows = ROWS()
@@ -365,9 +364,11 @@ describe('the graph draws each conversation as the rail does, and opens only wha
     expect(plateOf(ana).dataset.doing).toBe('working')
     expect(saysOf(ana)).toBe(held.rail.word)
     // ⚑ The rail hears Ana go idle.
-    cast.railSays.value = new Map([
-      ['sess_ana', { facets: { doing: 'idle', being: 'live' }, word: 'idle' } satisfies RailSays],
-    ])
+    screenFacts().update({
+      railSays: new Map([
+        ['sess_ana', { facets: { doing: 'idle', being: 'live' }, word: 'idle' } satisfies RailSays],
+      ]),
+    })
     await nextTick()
     await forestDrawn()
     expect(card(m, 'sess_ana')).toBe(ana)
@@ -786,7 +787,7 @@ describe('the graph draws each conversation as the rail does, and opens only wha
     )
     const Wrapper = defineComponent({ setup: () => () => h(ConversationPane, state as never) })
     await page.viewport(1200, 808)
-    useWhoCalledWhom().goTo.value = () => undefined
+    screenFacts().update({ goTo: () => undefined })
     const m = mount(Wrapper, {}, { width: 1200, height: 808 })
     await nextTick()
     await toGraph(m)

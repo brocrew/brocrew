@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { railFacts, screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { conversationList } from '../../src/renderer/src/lib/conversation-list'
 import { clockTime } from '../../src/shared/clock'
 import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
@@ -21,12 +21,10 @@ import { identities, NOW, workerRows } from './parallel-workers-fixture'
 const STATUS = 'Plan shared; coaching week in progress. Waiting on the next check-in.'
 const AT = NOW + 3_600_000
 
-const cast = useWhoCalledWhom()
-
 afterEach(async () => {
   unmountAll()
-  cast.listedConversations.value = null
-  cast.reading.value = null
+  railFacts().update({ listedConversations: null })
+  screenFacts().update({ reading: null })
   await page.viewport(1200, 808)
 })
 
@@ -75,23 +73,27 @@ const given: WorkEdge = {
 async function ownPage(on: WaitOn | null, agentName?: string, untyped = false) {
   const walk = <Row>(rows: Row[], kind: string) =>
     ({ rows, walk: kind, ledgers: rows.length, rowsUnread: 0 }) as never
-  cast.reading.value = {
-    conversation: META.sessionId,
-    read: {
+  screenFacts().update({
+    reading: {
       conversation: META.sessionId,
-      parent: null,
-      children: walk([], 'every-conversation-this-one-spawned'),
-      workGivenOut: walk([], 'every-conversation-this-one-gave-work-to'),
-      workTakenIn: walk([given], 'every-piece-of-work-this-one-was-given'),
-      readAt: NOW,
+      read: {
+        conversation: META.sessionId,
+        parent: null,
+        children: walk([], 'every-conversation-this-one-spawned'),
+        workGivenOut: walk([], 'every-conversation-this-one-gave-work-to'),
+        workTakenIn: walk([given], 'every-piece-of-work-this-one-was-given'),
+        readAt: NOW,
+      },
+      answered: true,
+      atWork: null,
     },
-    answered: true,
-    atWork: null,
-  }
-  cast.listedConversations.value = conversationList({
-    resumable: [holder(on, agentName, untyped)],
-    unresumable: [],
-    identities: identities(1).identities,
+  })
+  railFacts().update({
+    listedConversations: conversationList({
+      resumable: [holder(on, agentName, untyped)],
+      unresumable: [],
+      identities: identities(1).identities,
+    }),
   })
   await page.viewport(1400, 900)
   const m = mount(
