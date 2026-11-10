@@ -67,7 +67,10 @@ describe('a provider with its own harness', () => {
       })
       expect(versions[harnessProvider]).not.toHaveProperty('program')
       const launch = await f.module.prepareLaunch('willow')
-      const session = await launch.runtime.start({ providerHome: launch.home, cwd: '/fictional/work' })
+      const session = await launch.runtime.start({
+        providerHome: launch.home,
+        cwd: '/fictional/work',
+      })
       try {
         expect(session.ref?.provider).toBe('fern-harness')
         expect(session.ref?.cwd).toBe('/fictional/work')

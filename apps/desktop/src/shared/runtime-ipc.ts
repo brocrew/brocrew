@@ -817,8 +817,14 @@ export type KeptRuleRemoved =
   { readonly removed: true } | { readonly removed: false; readonly why: string }
 
 import type { ProviderVersion, ProviderProgramStanding } from '@brobot2/runtime/provider-module'
-export type { ProviderVersion, ProviderProgram, ProviderProgramFrom, ProviderProgramStanding,
-  ProviderProgramCopy, ProviderProgramUpdate } from '@brobot2/runtime/provider-module'
+export type {
+  ProviderVersion,
+  ProviderProgram,
+  ProviderProgramFrom,
+  ProviderProgramStanding,
+  ProviderProgramCopy,
+  ProviderProgramUpdate,
+} from '@brobot2/runtime/provider-module'
 
 /**
  * Whether a program's standing is a warning to a person: missing, unreadable, or older than the

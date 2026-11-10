@@ -1,6 +1,9 @@
 import type { TranscriptEvent } from '../../shared/conversation-events'
 
-import type { ImportedTranscript as PortableTranscript, ImportedEntry as PortableEntry } from '@brobot2/runtime/provider-module'
+import type {
+  ImportedTranscript as PortableTranscript,
+  ImportedEntry as PortableEntry,
+} from '@brobot2/runtime/provider-module'
 import type { DesktopProviderValues } from '../providers/desktop-values'
 
 export type ImportedEntry = PortableEntry<DesktopProviderValues>

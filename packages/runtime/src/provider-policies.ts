@@ -62,7 +62,11 @@ export interface RetentionScan<H extends ProviderHostValues> {
   scanChildren(path: string): AsyncGenerator<string>
   plainDirectory(path: string): Promise<boolean>
   considered(path: string): boolean
-  add(file: string, session: string, directory: string | null): Promise<H['retentionCandidate'] | null>
+  add(
+    file: string,
+    session: string,
+    directory: string | null,
+  ): Promise<H['retentionCandidate'] | null>
 }
 
 export interface ProviderChildWorkRequest<H extends ProviderHostValues> {
@@ -82,17 +86,24 @@ export interface TranscriptPolicy<H extends ProviderHostValues> {
   keepEarlierReportedEffort(): boolean
   whatDeletionLeaves(): string[]
   noModelMessageReason?(words: string): string | null
-  imageResolver?(threadId: string, home: () => string | null,
-    resolveAsset: (candidate: string) => string | null): ResolveImagePath
+  imageResolver?(
+    threadId: string,
+    home: () => string | null,
+    resolveAsset: (candidate: string) => string | null,
+  ): ResolveImagePath
   scanRetention(input: RetentionScan<H>): AsyncGenerator<{
-    path: string; candidate: H['retentionCandidate'] | null
+    path: string
+    candidate: H['retentionCandidate'] | null
   }>
   filesOf(home: string, sessions: readonly H['session'][]): H['file'][]
   memoryNotesOf(home: string, sessions: readonly H['session'][]): H['memoryNote'][]
   readChild(request: ProviderChildWorkRequest<H>): H['childResult']
   readTurn(asked: H['turnAsked'], options: TurnReadingOptions): TurnReading<H>
-  parse(frames: string[], fallbackAt: number,
-    options?: { edits?: object | undefined; resolveImage?: ResolveImagePath | undefined }): ImportedTranscript<H>
+  parse(
+    frames: string[],
+    fallbackAt: number,
+    options?: { edits?: object | undefined; resolveImage?: ResolveImagePath | undefined },
+  ): ImportedTranscript<H>
   nativePath(home: string, ref: SessionRef): string | null
   ownsRecord(home: string, file: string): boolean
   exportPath(home: string, ref: SessionRef, startedAt: number, recordedAt: string): string
@@ -121,8 +132,11 @@ export interface GivenPolicy<H extends ProviderHostValues> {
   readonly repositoryOrigin: string
   deferral(published: readonly string[] | null): H['deferral']
   externalDeferral(published: readonly string[] | null): H['deferral']
-  otherServers(published: readonly string[] | null, brobotsServer: string,
-    granted: readonly string[]): { readonly size: H['partSize'] | null; readonly why: string | null }
+  otherServers(
+    published: readonly string[] | null,
+    brobotsServer: string,
+    granted: readonly string[],
+  ): { readonly size: H['partSize'] | null; readonly why: string | null }
   namespaceText(declaredWith: string | null, count: number): string | null
   readonly planningKey: LaunchSettingKey
 }
@@ -155,8 +169,13 @@ export interface SkillPolicy<H extends ProviderHostValues> {
   readonly discoveryRoot: string
   initialFiles(): Map<string, string>
   fileFor(name: string): string
-  launchedEntry(root: string, skill: { readonly name: string; readonly description: string }): {
-    name: string; description: string; path: string
+  launchedEntry(
+    root: string,
+    skill: { readonly name: string; readonly description: string },
+  ): {
+    name: string
+    description: string
+    path: string
   }
   readonly legacyReminder: {
     readonly field: string
@@ -191,7 +210,9 @@ export interface KeptRulesFile {
 }
 
 export interface KeptRulePolicy {
-  projectFolders(records: readonly { readonly provider: Provider; readonly cwd: string }[]): string[]
+  projectFolders(
+    records: readonly { readonly provider: Provider; readonly cwd: string }[],
+  ): string[]
   files(homes: readonly string[], projectFiles: readonly string[]): KeptRulesFile[]
   remove(file: string, kept: string, platform: NodeJS.Platform): void
 }

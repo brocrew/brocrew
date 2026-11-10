@@ -4,11 +4,7 @@ import type { InjectedInstruction, RefusedInstruction } from '../../shared/instr
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-import type {
-  AgentMemoryPage,
-  MemoryCandidate,
-  MemoryStoreLayout,
-} from './instruction-types'
+import type { AgentMemoryPage, MemoryCandidate, MemoryStoreLayout } from './instruction-types'
 import {
   AGENT_MEMORY_NOTES_SHOWN,
   AGENT_MEMORY_TOTAL_CAP,

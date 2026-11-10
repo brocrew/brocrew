@@ -45,8 +45,14 @@ function fernModule(): ProviderModule<FernValues> {
       credentialHome: (profile) => `/fictional/${profile}`,
       check: async () => ({ state: 'usable', login: 'account', expiresAt: null }),
       reprovision: () => 'unchanged',
-      signIn: async () => ({ authUrl: '', completed: Promise.resolve({ success: true,
-        state: { state: 'usable', login: 'account', expiresAt: null } }), cancel: async () => {} }),
+      signIn: async () => ({
+        authUrl: '',
+        completed: Promise.resolve({
+          success: true,
+          state: { state: 'usable', login: 'account', expiresAt: null },
+        }),
+        cancel: async () => {},
+      }),
       bringTheKeyToItsHomes: async () => null,
       replaceARefusedCopy: async () => 'not-tried',
     },
@@ -55,8 +61,10 @@ function fernModule(): ProviderModule<FernValues> {
       refusalWords: { 'sign-in': null, settings: null, 'no-sign-in-to-copy': null },
       setup: () => null,
       renewedNotice: null,
-      key: { check: async () => ({ ok: false, reason: 'Fictional harness has no key' }),
-        loginRunsWithoutAKey: () => true },
+      key: {
+        check: async () => ({ ok: false, reason: 'Fictional harness has no key' }),
+        loginRunsWithoutAKey: () => true,
+      },
       identity: { waitsForAccount: false, launch: () => null, limit: () => null },
       copy: { carriesAcceptedAfterAccountChange: false, same: () => false, refused: () => null },
       protocol: { refusedGive: () => false, reopenedGive: () => false },
@@ -73,8 +81,12 @@ function fernModule(): ProviderModule<FernValues> {
       memoryNotesOf: () => [],
       readChild: (request) => ({ text: request.part }),
       readTurn: (asked) => ({ line: () => 'done', answer: () => ({ sent: asked.prompt }) }),
-      parse: (frames, at) => ({ entries: frames.map((text) => ({ at,
-        event: { type: 'fern-note', text } })), unreadable: 0, lastAt: at, edits: undefined }),
+      parse: (frames, at) => ({
+        entries: frames.map((text) => ({ at, event: { type: 'fern-note', text } })),
+        unreadable: 0,
+        lastAt: at,
+        edits: undefined,
+      }),
       nativePath: () => null,
       ownsRecord: () => false,
       exportPath: (home) => `${home}/fern`,
@@ -83,27 +95,43 @@ function fernModule(): ProviderModule<FernValues> {
     discovery: {
       discover: (home) => ({ homes: [home] }),
       userHome: (_env, fallback) => fallback(),
-      configHomes: (home) => [home], protectedPlaceKind: 'fern-state',
+      configHomes: (home) => [home],
+      protectedPlaceKind: 'fern-state',
     },
     instructions: {
-      bundleLeaf: 'fern.md', read: ({ cwd }) => ({ text: cwd }),
-      given: { nativeFiles: () => [], repositoryOrigin: 'fern',
-        deferral: () => ({ deferred: false }), externalDeferral: () => ({ deferred: false }),
-        otherServers: () => ({ size: null, why: null }), namespaceText: () => null,
-        planningKey: 'approval' },
+      bundleLeaf: 'fern.md',
+      read: ({ cwd }) => ({ text: cwd }),
+      given: {
+        nativeFiles: () => [],
+        repositoryOrigin: 'fern',
+        deferral: () => ({ deferred: false }),
+        externalDeferral: () => ({ deferred: false }),
+        otherServers: () => ({ size: null, why: null }),
+        namespaceText: () => null,
+        planningKey: 'approval',
+      },
     },
     memory: {
-      entryOrigin: () => 'fern', readStore: () => ({ entries: [] }),
-      layout: { fixedFiles: () => [], notesFolder: (home) => home,
-        listNotes: () => ({ names: [] }), acceptsNote: () => false },
+      entryOrigin: () => 'fern',
+      readStore: () => ({ entries: [] }),
+      layout: {
+        fixedFiles: () => [],
+        notesFolder: (home) => home,
+        listNotes: () => ({ names: [] }),
+        acceptsNote: () => false,
+      },
       counts: () => ({ total: 0, listed: 0 }),
-      readPage: () => ({ entries: [], next: null }), select: () => undefined,
+      readPage: () => ({ entries: [], next: null }),
+      select: () => undefined,
       noteDirectory: () => null,
     },
     skills: {
       asGiven: (listed) => ({ commands: listed?.commands.map((command) => command.name) ?? [] }),
-      needsReminders: () => false, builtInScope: null, discoveryRoot: 'fern',
-      initialFiles: () => new Map(), fileFor: (name) => name,
+      needsReminders: () => false,
+      builtInScope: null,
+      discoveryRoot: 'fern',
+      initialFiles: () => new Map(),
+      fileFor: (name) => name,
       launchedEntry: (root, skill) => ({ ...skill, path: `${root}/${skill.name}` }),
       legacyReminder: { field: 'fern', schema: z.string(), canonical: (_name, text) => text },
     },
@@ -143,7 +171,10 @@ describe('the portable module consumer', () => {
       connections,
       async prepareLaunch(profile, connection) {
         calls.push(['prepare', profile, connection])
-        return { home: connection?.workspace ?? '/fictional/default', runtime: this.createRuntime() }
+        return {
+          home: connection?.workspace ?? '/fictional/default',
+          runtime: this.createRuntime(),
+        }
       },
     }
     expect(calls).toEqual([])
@@ -164,17 +195,26 @@ describe('the portable module consumer', () => {
     const module = fernModule()
     expect(module.program).toBeUndefined()
     expect(module.connections).toBeUndefined()
-    expect(module.instructions.read({ cwd: '/fictional/work' })).toEqual({ text: '/fictional/work' })
-    expect(module.transcripts.readTurn({ prompt: 'Fern task' }, {}).answer()).toEqual({ sent: 'Fern task' })
+    expect(module.instructions.read({ cwd: '/fictional/work' })).toEqual({
+      text: '/fictional/work',
+    })
+    expect(module.transcripts.readTurn({ prompt: 'Fern task' }, {}).answer()).toEqual({
+      sent: 'Fern task',
+    })
     expect(module.transcripts.parse(['Fern record'], 12).entries).toEqual([
       { at: 12, event: { type: 'fern-note', text: 'Fern record' } },
     ])
     const launch = await module.prepareLaunch('willow')
-    const session = await launch.runtime.start({ providerHome: launch.home, cwd: '/fictional/work' })
+    const session = await launch.runtime.start({
+      providerHome: launch.home,
+      cwd: '/fictional/work',
+    })
     try {
       expect(session.ref?.provider).toBe('claude')
       expect(session.awaitProcessExit?.()).toBeUndefined()
-    } finally { await session.close() }
+    } finally {
+      await session.close()
+    }
   })
 
   it('keeps canonical runtime events and exact host inputs and outputs', () => {
@@ -182,7 +222,9 @@ describe('the portable module consumer', () => {
     const event: RuntimeEvent = { type: 'error', message: 'Fictional diagnostic', fatal: false }
     expect(module.transcripts.eventForDisplay?.(event)).toBe(event)
     expectTypeOf(module.instructions.read).parameter(0).toEqualTypeOf<{ cwd: string }>()
-    expectTypeOf(module.transcripts.readTurn({ prompt: 'Fern' }, {}).answer()).toEqualTypeOf<{ sent: string }>()
+    expectTypeOf(module.transcripts.readTurn({ prompt: 'Fern' }, {}).answer()).toEqualTypeOf<{
+      sent: string
+    }>()
     const portableEvent: ProviderDisplayEvent<FernValues> = event
     expect(module.transcripts.eventForDisplay?.(portableEvent)).toBe(event)
   })

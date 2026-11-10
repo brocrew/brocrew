@@ -123,7 +123,11 @@ describe('provider marks beside the provider name', () => {
   })
 
   it('draws supplied artwork for an opaque fictional provider id', () => {
-    const view = mount(ProviderMark, { provider: 'fictional-native-id', name: 'Fable', kind: 'blossom' })
+    const view = mount(ProviderMark, {
+      provider: 'fictional-native-id',
+      name: 'Fable',
+      kind: 'blossom',
+    })
     const mark = view.host.querySelector('[data-provider-mark="fictional-native-id"]')!
     expect(mark.querySelectorAll('img')).toHaveLength(2)
     expect(mark.querySelector('.provider-mark__black')?.getAttribute('src')).toBe(blossomBlack)
