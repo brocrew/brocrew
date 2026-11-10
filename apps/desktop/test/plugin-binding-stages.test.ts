@@ -108,10 +108,16 @@ it('keeps a successful inventory when close and its diagnostic observer fail', a
   expect(diagnostic).toHaveBeenCalledWith('transport-close-failed')
   expect(sdk.close).toHaveBeenCalledOnce()
 })
-it('still refuses an inventory that requires another page', async () => {
-  sdk.list.mockResolvedValue({ tools: [], nextCursor: 'next' })
-  await expect(admittedPluginTools(fixture())).rejects.toMatchObject({
-    pluginStage: 'binding-current',
-  })
+it('consumes every inventory page in order under one shared deadline', async () => {
+  const first = { name: 'first', inputSchema: { type: 'object' as const }, _meta: { page: 1 } }
+  const second = { name: 'second', inputSchema: { type: 'object' as const }, annotations: { readOnlyHint: true } }
+  sdk.list.mockResolvedValueOnce({ tools: [first], nextCursor: 'next' })
+    .mockResolvedValueOnce({ tools: [second] })
+  const result = await admittedPluginTools(fixture())
+  expect(result.admitted).toEqual([first, second])
+  const signal = sdk.list.mock.calls[0]![1].signal
+  expect(signal).toBeInstanceOf(AbortSignal)
+  expect(sdk.list.mock.calls[1]![1].signal).toBe(signal)
+  expect(sdk.list.mock.calls).toEqual([[{ cursor: undefined }, { signal }], [{ cursor: 'next' }, { signal }]])
   expect(sdk.close).toHaveBeenCalledOnce()
 })

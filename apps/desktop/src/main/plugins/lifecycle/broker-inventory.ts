@@ -1,5 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { DEFAULT_REQUEST_TIMEOUT_MSEC } from '@modelcontextprotocol/sdk/shared/protocol.js'
+import type { Tool } from '@modelcontextprotocol/sdk/types.js'
 import type { AgentAttachmentView } from './contracts'
 import { managedPluginFailure, type PluginFailureStage } from '@brobot2/runtime/plugin-failure'
 import { reportPluginToolFailure, type PluginToolDiagnostic } from '../tool-diagnostics'
@@ -42,11 +44,17 @@ export async function admittedPluginTools(
         }),
       )
       progress('binding-inventory')
-      // Use the SDK's documented request timeout for initialize and this static tools/list reply.
-      const inventory = await client.listTools()
+      const signal = AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MSEC)
+      const admitted: Tool[] = []
+      let cursor: string | undefined
+      do {
+        const inventory = await client.listTools({ cursor }, { signal })
+        admitted.push(...inventory.tools)
+        cursor = inventory.nextCursor
+      } while (cursor !== undefined)
       stage = 'binding-current'
-      if (inventory.nextCursor || !view.current()) throw new Error('unavailable')
-      return { connection, endpoint, credential, admitted: inventory.tools }
+      if (!view.current()) throw new Error('unavailable')
+      return { connection, endpoint, credential, admitted }
     })().then(
       (value) => ({ ok: true as const, value }),
       (error: unknown) => ({ ok: false as const, error: managedPluginFailure(error, stage) }),

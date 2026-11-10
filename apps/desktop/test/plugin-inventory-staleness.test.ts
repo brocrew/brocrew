@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
+import { DEFAULT_REQUEST_TIMEOUT_MSEC } from '@modelcontextprotocol/sdk/shared/protocol.js'
 import { admittedPluginTools } from '../src/main/plugins/lifecycle/broker-inventory'
 import { createLifecycleAgentBridge } from '../src/main/plugins/lifecycle/agent-bridge'
 import { managedPluginFailure } from '@brobot2/runtime/plugin-failure'
@@ -129,6 +130,8 @@ it.each(
       await work
     }
     expect(outcome).toMatchObject({ value: { admitted: [{ name: 'echo' }] } })
+    expect(vi.getTimerCount()).toBe(1)
+    await vi.advanceTimersByTimeAsync(DEFAULT_REQUEST_TIMEOUT_MSEC)
     expect(vi.getTimerCount()).toBe(0)
   },
 )
