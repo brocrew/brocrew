@@ -998,7 +998,7 @@ defineExpose({ beginSetup })
           :class="{ 'provider-logo--blossom': markKind === 'blossom' }"
           aria-hidden="true"
         >
-          <ProviderMark :provider="props.provider" :kind="markKind" />
+          <ProviderMark :provider="props.provider" :name="name" :kind="markKind" />
         </span>
         <h2>{{ name }}</h2>
         <span

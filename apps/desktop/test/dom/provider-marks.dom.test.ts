@@ -48,7 +48,10 @@ const lists: ModelLists = {
   remove: async () => null,
 }
 
-function realMarks(capabilities: ProviderCapabilityMap = allProviderCapabilities()) {
+function realMarks(
+  capabilities: ProviderCapabilityMap = allProviderCapabilities(),
+  displayName?: string,
+) {
   ;(window as unknown as { api: unknown }).api = {
     runtime: {
       checkProviderAuth: async () => ({ state: 'absent', reason: 'Not signed in.' }),
@@ -59,6 +62,7 @@ function realMarks(capabilities: ProviderCapabilityMap = allProviderCapabilities
     ProviderCard,
     {
       provider: 'codex',
+      displayName,
       capabilities,
       limit: null,
       limitsRead: true,
@@ -105,6 +109,28 @@ describe('provider marks beside the provider name', () => {
     expect(card.querySelector('[data-provider-mark]')).toBeNull()
   })
 
+  it('draws the supplied fictional label and letter mark instead of inferring from the provider id', async () => {
+    const declared = allProviderCapabilities()
+    const host = realMarks(
+      { ...declared, codex: { ...declared.codex, mark: { state: 'available', kind: 'letter' } } },
+      'Fable',
+    )
+    await nextTick()
+    expect(host.querySelector('h2')?.textContent).toBe('Fable')
+    const mark = host.querySelector('[data-provider-mark="codex"]')!
+    expect(mark.textContent).toBe('F')
+    expect(mark.querySelectorAll('img')).toHaveLength(0)
+  })
+
+  it('draws supplied artwork for an opaque fictional provider id', () => {
+    const view = mount(ProviderMark, { provider: 'fictional-native-id', name: 'Fable', kind: 'blossom' })
+    const mark = view.host.querySelector('[data-provider-mark="fictional-native-id"]')!
+    expect(mark.querySelectorAll('img')).toHaveLength(2)
+    expect(mark.querySelector('.provider-mark__black')?.getAttribute('src')).toBe(blossomBlack)
+    expect(mark.querySelector('.provider-mark__white')?.getAttribute('src')).toBe(blossomWhite)
+    expect(mark.textContent?.trim()).toBe('')
+  })
+
   it('shows an app-owned orange C for Claude at both card and setup sizes', () => {
     for (const size of ['card', 'setup'] as const) {
       const view = mount(ProviderMark, { provider: 'claude', kind: 'letter', size })
@@ -115,7 +141,7 @@ describe('provider marks beside the provider name', () => {
       accentSample.style.backgroundColor = 'var(--accent)'
       mark.append(accentSample)
       expect(
-        getComputedStyle(mark.querySelector<HTMLElement>('.provider-mark__claude')!)
+        getComputedStyle(mark.querySelector<HTMLElement>('.provider-mark__letter')!)
           .backgroundColor,
       ).toBe(getComputedStyle(accentSample).backgroundColor)
       accentSample.remove()

@@ -18,7 +18,7 @@ defineProps<{
     :data-provider-mark="provider"
     aria-hidden="true"
   >
-    <span v-if="kind === 'letter'" class="provider-mark__claude">{{
+    <span v-if="kind === 'letter'" class="provider-mark__letter">{{
       (name ?? provider).slice(0, 1).toUpperCase()
     }}</span>
     <template v-else-if="kind === 'blossom'">
@@ -40,7 +40,7 @@ defineProps<{
   width: var(--icon-lg);
   height: var(--icon-lg);
 }
-.provider-mark__claude {
+.provider-mark__letter {
   display: grid;
   width: 100%;
   height: 100%;
@@ -52,7 +52,7 @@ defineProps<{
   font-weight: var(--fw-bold);
   line-height: 1;
 }
-.provider-mark--setup .provider-mark__claude {
+.provider-mark--setup .provider-mark__letter {
   font-size: var(--type-base);
 }
 .provider-mark img {

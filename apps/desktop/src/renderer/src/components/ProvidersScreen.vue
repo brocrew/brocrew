@@ -601,7 +601,7 @@ const runningOf = (provider: Provider) => {
   width: var(--icon-lg);
   height: var(--icon-lg);
 }
-.provider-logo :deep(.provider-mark__claude) {
+.provider-logo :deep(.provider-mark__letter) {
   background: var(--accent-text);
   color: var(--accent-fill);
 }
