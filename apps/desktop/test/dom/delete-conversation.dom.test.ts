@@ -1,3 +1,4 @@
+import { NOTE, RECOVERY, HISTORY, LISTED } from './delete-conversation-fixture'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick } from 'vue'
 import DeleteConversation from '../../src/renderer/src/components/DeleteConversation.vue'
@@ -17,47 +18,6 @@ import { mount, unmountAll, visible, type Mounted } from './harness'
  * first, a refusal is shown with Archive as the way out where it names one, each part is a real
  * checkbox, only the ticked parts are sent, and what the delete did is said afterwards.
  */
-
-const NOTE = 'note:/homes/pm/memory/its-note.md'
-const RECOVERY =
-  'The recovery copies in the data folder still hold its records until newer copies replace them.'
-const HISTORY = 'The prompt history in an agent’s folder isn’t changed.'
-
-const LISTED: Extract<DeleteVerdict, { ok: true }> = {
-  ok: true,
-  conversation: 'sess_root',
-  name: 'W1 · Bakery website',
-  helpers: [{ conversation: 'sess_helper', name: 'W1.1 · Photos' }],
-  parts: [
-    {
-      id: 'records',
-      kind: 'records',
-      says: 'Its messages and pieces of work, with the same of the 1 helper below it: W1.1 · Photos.',
-      conversation: 'sess_root',
-      paths: [],
-      bytes: null,
-    },
-    {
-      id: 'files:sess_root',
-      kind: 'provider-files',
-      says: 'W1 · Bakery website’s transcript and what was kept for it (2 items).',
-      conversation: 'sess_root',
-      paths: ['/homes/pm/projects/p/root.jsonl', '/homes/pm/projects/p/root'],
-      bytes: 3 * 1024 * 1024,
-    },
-    {
-      id: NOTE,
-      kind: 'memory-note',
-      says: 'A memory note W1 · Bakery website wrote: “its-note” — what it learned',
-      conversation: 'sess_root',
-      paths: ['/homes/pm/memory/its-note.md'],
-      bytes: 120,
-    },
-  ],
-  ends: ['W1.1 · Photos is running: it is stopped first.'],
-  stays: ['Copies of what it sent to other conversations stay in theirs.'],
-  cannot: [HISTORY, RECOVERY],
-}
 
 type Api = {
   runtime: {
