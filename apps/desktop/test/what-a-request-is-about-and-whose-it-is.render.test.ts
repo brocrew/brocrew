@@ -132,7 +132,7 @@ describe('which work a queue row says it is about', () => {
       {
         requestId: 'req_named',
         askedBy: 'sess_worker-a',
-        about: { is: 'the-asker-named-it', work: { label: 'W1.4' } },
+        about: { is: 'the-asker-named-it', work: { label: 'W1.3' } },
         work: HOLDING,
       },
       {
@@ -150,6 +150,6 @@ describe('which work a queue row says it is about', () => {
     ])
     expect(workLines(html)).toEqual([])
     expect(html).toContain('data-cy="persons-queue-row-sess_worker-c:number:1"')
-    expect(cardPieces(html)).toEqual(['W1.4'])
+    expect(cardPieces(html)).toEqual(['W1.3'])
   })
 })
