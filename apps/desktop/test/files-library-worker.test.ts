@@ -3,7 +3,8 @@ import { EventEmitter } from 'node:events'
 import { Worker } from 'node:worker_threads'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { FilesLibraryLifetime, type LibraryWorker } from '../src/main/db/files-library-reader'
+import { FilesLibraryLifetime } from '../src/main/db/files-library-reader'
+import type { ReaderWorker } from '../src/main/db/reader-worker-lifetime'
 import { FilesLibraryEngine } from '../src/main/db/files-library-engine'
 import { libraryUnavailable, type FilesLibraryResult } from '../src/shared/files-library'
 import {
@@ -13,7 +14,7 @@ import {
 } from './helpers/files-library-fixture'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 
-class FictionalWorker extends EventEmitter implements LibraryWorker {
+class FictionalWorker extends EventEmitter implements ReaderWorker {
   posted: Record<string, unknown>[] = []
   terminationRequested = false
   postMessage(value: unknown): void {
@@ -235,7 +236,7 @@ it('cooperatively cancels inside the real worker engine without releasing its pe
   const entered = new Promise<void>((resolve) => {
     nativeStarted = resolve
   })
-  class ObservedWorker extends EventEmitter implements LibraryWorker {
+  class ObservedWorker extends EventEmitter implements ReaderWorker {
     constructor(readonly worker: Worker) {
       super()
       worker.on('message', (message: { type: string }) => {

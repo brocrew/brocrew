@@ -1,6 +1,6 @@
 import { Worker } from 'node:worker_threads'
 import { PerformanceObserver } from 'node:perf_hooks'
-import type { GraphWorker } from '../../src/main/db/team-profile-graph-reader'
+import type { ReaderWorker } from '../../src/main/db/reader-worker-lifetime'
 
 type Span = { phase: string; start: number; end: number; cpuMs: number; depth: number }
 type Gap = { start: number; end: number; delayMs: number; threadCpuMs: number }
@@ -46,7 +46,7 @@ export class GraphCallerProbe {
     return work
   }
 
-  worker(worker: Worker): GraphWorker {
+  worker(worker: Worker): ReaderWorker {
     return {
       on: (event, listener) => {
         worker.on(event, (...args: unknown[]) =>

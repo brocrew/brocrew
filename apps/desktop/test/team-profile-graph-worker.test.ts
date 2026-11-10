@@ -1,9 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, expect, it, vi } from 'vitest'
-import {
-  TeamProfileGraphLifetime,
-  type GraphWorker,
-} from '../src/main/db/team-profile-graph-reader'
+import { TeamProfileGraphLifetime } from '../src/main/db/team-profile-graph-reader'
+import type { ReaderWorker } from '../src/main/db/reader-worker-lifetime'
 import { TeamProfileGraphWindows } from '../src/main/db/team-profile-graph-windows'
 import { graphContext } from './helpers/team-profile-graph-fixture'
 import {
@@ -49,7 +47,7 @@ const header: TeamProfileGraphResult = {
 it('keeps native permit and shutdown pending until actual exit, even if terminate already resolves', async () => {
   vi.useFakeTimers()
   const worker = new Worker(),
-    start = vi.fn(() => worker as unknown as GraphWorker),
+    start = vi.fn(() => worker as unknown as ReaderWorker),
     reader = new TeamProfileGraphLifetime(start, () => 0, 50)
   const first = reader.read({ operation: 'snapshot' }, graphContext)
   worker.ready()
@@ -75,7 +73,7 @@ it('keeps native permit and shutdown pending until actual exit, even if terminat
 })
 it('admits only one native read and one replaceable successor', async () => {
   const worker = new Worker(),
-    reader = new TeamProfileGraphLifetime(() => worker as unknown as GraphWorker)
+    reader = new TeamProfileGraphLifetime(() => worker as unknown as ReaderWorker)
   const first = reader.read({ operation: 'snapshot' }, graphContext)
   worker.ready()
   const replaced = reader.read({ operation: 'snapshot' }, graphContext),
@@ -94,7 +92,7 @@ it('admits only one native read and one replaceable successor', async () => {
 })
 it('rejects malformed worker replies and waits for native exit', async () => {
   const worker = new Worker(),
-    reader = new TeamProfileGraphLifetime(() => worker as unknown as GraphWorker)
+    reader = new TeamProfileGraphLifetime(() => worker as unknown as ReaderWorker)
   const reading = reader.read({ operation: 'snapshot' }, graphContext)
   worker.ready()
   worker.emit('message', { type: 'read', id: 1, result: { ...header, privatePath: '/fictional' } })
