@@ -117,19 +117,31 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     if (res.locals.configuration) return work.then(() => send(res, 200, {}))
     send(res, 202, {})
   })
-  // Before the app deletes the plugin: log out, phone side included, and wait until the data is gone.
-  app.post('/v1/uninstall', async (req, res) => {
+  const beforeRemove = async (req: Request, res: Response): Promise<void> => {
     if (!bodyOf(req.body, [])) return invalid(res)
+    const before = bridge.status()
     let timer: NodeJS.Timeout | undefined
-    const done = await Promise.race([
-      bridge.unlink().then(() => true),
-      new Promise<boolean>((resolve) => {
-        timer = setTimeout(() => resolve(false), UNINSTALL_MS)
-      }),
-    ])
-    clearTimeout(timer)
-    if (done) send(res, 200, {})
-    else send(res, 504, { error: 'timeout' })
+    try {
+      const done = await Promise.race([
+        bridge.unlink().then(() => true),
+        new Promise<boolean>((resolve) => {
+          timer = setTimeout(() => resolve(false), UNINSTALL_MS)
+        }),
+      ])
+      if (!done) return send(res, 504, { error: 'timeout' })
+      const after = bridge.status()
+      const confirmed = before.state === 'linked' && before.removeOnPhone === false &&
+        after.state === 'unlinked' && after.removeOnPhone === false
+      send(res, 200, req.path === '/v1/uninstall' ? {} : {
+        notice: confirmed ? 'WhatsApp’s device was logged out.' :
+          'Logout was not confirmed. Open Linked devices on your phone and remove this device if it is still listed.',
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  app.post(['/v1/uninstall', '/v1/before-remove'], (req, res, next) => {
+    void beforeRemove(req, res).catch(next)
   })
   command('set-read', '/read', (body, res) =>
     switched(body, res, (body) => settings.setRead(body.enabled as boolean)),
