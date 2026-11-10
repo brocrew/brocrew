@@ -136,11 +136,6 @@ export function createLifecycleAgentBridge(options: {
   const bindingStages = new Map<string, { stage: PluginFailureStage }>()
   const liveEntries = new Map<string, Entry>()
   const failedRoutes = new Map<string, string>()
-  const overflowFailures = new Set<string>()
-  function failRoute(key: string, id: string) {
-    if (failedRoutes.size < 1024 || failedRoutes.has(key)) failedRoutes.set(key, id)
-    else overflowFailures.add(id) // Bounded and conservative until this installation is revoked.
-  }
   const failedAttachments = new Set<string>()
   // The last known stage and cause behind each plugin's unavailable tools, in fixed words only.
   const lastCause = new Map<string, string>()
@@ -186,7 +181,6 @@ export function createLifecycleAgentBridge(options: {
     cancelWarmups((one) => one.pluginId === id)
     liveEntries.delete(id)
     rebuilding.delete(id)
-    overflowFailures.delete(id)
     for (const [key, plugin] of failedRoutes) if (plugin === id) failedRoutes.delete(key)
     if (entry) {
       stopping.set(id, entry)
@@ -476,7 +470,7 @@ export function createLifecycleAgentBridge(options: {
       } catch (error) {
         // A retired attempt may be diagnosed, but cannot degrade its replacement's health.
         const current = live() && (versions.get(id) ?? 0) === version
-        if (current) failRoute(key, id)
+        if (current) failedRoutes.set(key, id)
         const failure = managedPluginFailure(error, 'route-open')
         const detail = bindingFailures.get(work) ?? {
           stage: failure.pluginStage,
@@ -697,7 +691,7 @@ export function createLifecycleAgentBridge(options: {
           routes.delete(key)
           if (taken.has(item.route.server.name.toLowerCase())) {
             failedHere.add(`${caller}:${item.pluginId}:${item.identity}`)
-            failRoute(key, item.pluginId)
+            failedRoutes.set(key, item.pluginId)
             reportPluginToolFailure(diagnostic(item.pluginId), 'name-collision')
           }
           void closeRoute(item.route).catch(() => undefined)
@@ -840,7 +834,6 @@ export function createLifecycleAgentBridge(options: {
       return (
         failedAttachments.size > 0 ||
         rebuilding.has(id) ||
-        overflowFailures.has(id) ||
         liveEntries.get(id)?.broker.status().available === false ||
         [...failedRoutes].some(
           ([key, plugin]) =>
