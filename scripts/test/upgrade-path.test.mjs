@@ -11,11 +11,9 @@ import {
   bundleIn,
   buildLineage,
   CHECKPOINT_LINE,
-  CLOSE_LIMIT,
   contains,
   copiesSince,
   credentialSeen,
-  dialogsAreAsDue,
   draftsKept,
   FAIL_LINE,
   historyOf,
@@ -38,7 +36,6 @@ import {
   registryKept,
   resultLine,
   rowsPreserved,
-  SAVED_KEY_LIMIT,
   sessionsKept,
   sha256,
   startOrder,
@@ -1212,78 +1209,71 @@ describe('a turn on the saved key after the upgrade', () => {
     refusedAfterMs: null,
     requests: [post('expected')],
   }
-  const notHandedOver = {
+  const cantBeRead = {
     answer: null,
     refused:
-      "Error invoking remote method 'runtime:command': Error: BroCrew can’t read the API key saved for Codex on this computer. macOS may be waiting for permission to read its saved key.",
+      "Error invoking remote method 'runtime:command': Error: Saved key can’t be read, save it again in Settings.",
     refusedAt: 'start',
-    refusedAfterMs: 12_100,
+    refusedAfterMs: 2_100,
     requests: [],
   }
   const inUse = { set: true, inUse: true }
   const unreadable = { set: true, inUse: false, readState: 'unreadable' }
 
-  it('passes anywhere when the model answered it on the fixture key', () => {
-    for (const os of ['windows', 'mac']) {
-      expect(turnOutcome(answered, os, inUse)).toEqual({ outcome: 'answered', ok: true })
-    }
+  it('passes when the model answered it on the fixture key', () => {
+    expect(turnOutcome(answered, inUse)).toEqual({ outcome: 'answered', ok: true })
   })
 
   it('fails when any request reached the model with another key or none, answered or not', () => {
     for (const auth of ['other', 'missing']) {
       const turn = { ...answered, requests: [post('expected'), post(auth)] }
-      expect(turnOutcome(turn, 'mac', inUse)).toEqual({
+      expect(turnOutcome(turn, inUse)).toEqual({
         outcome: 'asked-the-model-without-the-key',
         ok: false,
       })
     }
-    // The model said the key was wrong: words about an API key, but not macOS withholding ours.
     const wrongKey = {
-      ...notHandedOver,
+      ...cantBeRead,
       refused: 'Invalid API key',
       refusedAt: 'send',
       refusedAfterMs: 1_000,
       requests: [post('other')],
     }
-    expect(turnOutcome(wrongKey, 'mac', unreadable)).toEqual({
+    expect(turnOutcome(wrongKey, unreadable)).toEqual({
       outcome: 'asked-the-model-without-the-key',
       ok: false,
     })
-    expect(turnOutcome({ ...answered, requests: [] }, 'windows', inUse)).toEqual({
+    expect(turnOutcome({ ...answered, requests: [] }, inUse)).toEqual({
       outcome: 'answered-without-asking-the-model',
       ok: false,
     })
-    expect(turnOutcome({ ...answered, answer: null }, 'mac', inUse)).toEqual({
+    expect(turnOutcome({ ...answered, answer: null }, inUse)).toEqual({
       outcome: 'not-answered',
       ok: false,
     })
   })
 
-  it('on a Mac, passes a start the app refused because macOS did not hand the key over', () => {
-    expect(turnOutcome(notHandedOver, 'mac', unreadable)).toEqual({
-      outcome: 'the-saved-key-was-not-handed-over',
+  it('passes a start the app refused because it can’t read the key an earlier version sealed', () => {
+    expect(turnOutcome(cantBeRead, unreadable)).toEqual({
+      outcome: 'the-saved-key-cannot-be-read',
       ok: true,
     })
   })
 
-  it('fails that refusal on Windows, and on a Mac whenever one part of it is missing', () => {
-    expect(turnOutcome(notHandedOver, 'windows', unreadable)).toEqual({
-      outcome: 'the-saved-key-was-not-handed-over',
-      ok: false,
-    })
+  it('fails that refusal whenever one part of it is missing', () => {
     const not = (turn, status = unreadable) =>
-      expect(turnOutcome(turn, 'mac', status)).toEqual({ outcome: 'refused', ok: false })
+      expect(turnOutcome(turn, status)).toEqual({ outcome: 'refused', ok: false })
     // The message was refused, not the start.
-    not({ ...notHandedOver, refusedAt: 'send' })
-    // Too slow to be the bounded wait.
-    not({ ...notHandedOver, refusedAfterMs: 61_000 })
+    not({ ...cantBeRead, refusedAt: 'send' })
+    // Too slow to be a refusal at once.
+    not({ ...cantBeRead, refusedAfterMs: 61_000 })
     // Other words, even ones that mention an API key.
-    not({ ...notHandedOver, refused: 'Invalid API key' })
-    not({ ...notHandedOver, refused: 'unknown session' })
+    not({ ...cantBeRead, refused: 'Invalid API key' })
+    not({ ...cantBeRead, refused: 'unknown session' })
     // The app's own status does not say the key is unreadable.
-    not(notHandedOver, inUse)
-    not(notHandedOver, { set: true, inUse: false, readState: 'not-checked' })
-    not(notHandedOver, null)
+    not(cantBeRead, inUse)
+    not(cantBeRead, { set: true, inUse: false, readState: 'not-checked' })
+    not(cantBeRead, null)
   })
 })
 
@@ -1317,19 +1307,13 @@ describe('a run’s result', () => {
 
   it('is passed, failed, or passed with the limit it passed with, never a bare pass then', () => {
     expect(resultLine(summary)).toBe('passed')
-    expect(resultLine({ ...summary, knownLimits: [SAVED_KEY_LIMIT] })).toBe(
-      `passed with a known limit: ${SAVED_KEY_LIMIT}`,
+    expect(resultLine({ ...summary, knownLimits: [NOTHING_RAN_LIMIT] })).toBe(
+      `passed with a known limit: ${NOTHING_RAN_LIMIT}`,
     )
     // A failure outranks a limit: a run that failed did not pass with anything.
-    expect(resultLine({ failures: ['x', 'y'], knownLimits: [SAVED_KEY_LIMIT] })).toBe(
+    expect(resultLine({ failures: ['x', 'y'], knownLimits: [NOTHING_RAN_LIMIT] })).toBe(
       'failed: 2 check(s) did not hold',
     )
-    expect(resultLine({ failures: [], knownLimits: [SAVED_KEY_LIMIT, CLOSE_LIMIT] })).toBe(
-      `passed with a known limit: ${SAVED_KEY_LIMIT}; ${CLOSE_LIMIT}`,
-    )
-    // The limit says what was seen and what was not shown, and promises no remedy.
-    expect(SAVED_KEY_LIMIT).toContain('macOS did not hand over the saved key')
-    expect(SAVED_KEY_LIMIT).toContain('does not show the key working')
   })
 
   it.each([['delegate', 'hand-back'], []])(
@@ -1345,19 +1329,19 @@ describe('a run’s result', () => {
   )
 
   it('is the first thing its job’s summary says, with the limit, the key and what it left out', () => {
-    const limited = { ...summary, knownLimits: [SAVED_KEY_LIMIT] }
+    const limited = { ...summary, knownLimits: [NOTHING_RAN_LIMIT] }
     const said = jobSummary({
       ...limited,
       result: resultLine(limited),
-      savedKeyAfterTheUpgrade: 'not handed over: BroCrew can’t read the API key',
+      savedKeyAfterTheUpgrade: 'not in use: Saved key can’t be read',
       checkpoint: { id: 'c1', reason: 'first-start-of-release', madeBy: { appVersion: '0.1.0' } },
       baseline: { copies: [{ folder: 'b1', madeBy: { appVersion: '0.0.0', build: 'beta' } }] },
     })
     const lines = said.split('\n')
     expect(lines[0]).toBe('### Upgrade path · mac · mac-beta-1 → 0.1.0 (8b3e150f3)')
-    expect(lines[2]).toBe(`**Passed with a known limit: ${SAVED_KEY_LIMIT}.**`)
+    expect(lines[2]).toBe(`**Passed with a known limit: ${NOTHING_RAN_LIMIT}.**`)
     expect(said).toContain('- Checks: 2 held, 0 did not.')
-    expect(said).toContain('- The saved key after the upgrade: not handed over')
+    expect(said).toContain('- The saved key after the upgrade: not in use')
     expect(said).toContain('- Recovery copies the beta left: 1, made by 0.0.0.')
     expect(said).toContain('- Recovery copy: c1 (first-start-of-release), made by 0.1.0.')
     expect(said.indexOf('the beta left: 1')).toBeLessThan(said.indexOf('Recovery copy: c1'))
@@ -1365,23 +1349,16 @@ describe('a run’s result', () => {
     expect(said).not.toContain('setup at launch')
   })
 
-  it('says what was due of the app’s setup at launch, at each start', () => {
+  it('says what the app’s setup at launch did, at each start', () => {
     const said = jobSummary({
       ...summary,
       result: resultLine(summary),
-      firstStart: { launchSetup: { due: 'claude', dismissed: false } },
-      secondStart: { launchSetup: { due: null, dismissed: true } },
+      firstStart: { launchSetup: { opensProviders: true } },
+      secondStart: { launchSetup: { opensProviders: false } },
     })
     expect(said).toContain(
-      "- The app's setup at launch: first start, due for claude, which is not ready on this computer; second start, none due: a person closed it before.",
+      "- The app's setup at launch: first start, Settings → Providers, as no provider is ready; second start, nothing opened.",
     )
-    expect(
-      jobSummary({
-        ...summary,
-        result: resultLine(summary),
-        firstStart: { launchSetup: { due: null, dismissed: false } },
-      }),
-    ).toContain("- The app's setup at launch: first start, none due: every provider is ready.")
   })
 
   it('names each check that did not hold, when it failed before any copy or turn', () => {
@@ -1462,7 +1439,7 @@ describe('the app’s setup at launch, as the check expects it', () => {
     }
   })
 
-  it('counts it not ready on a sign-in that is absent, stale or unread, or a key that was refused', () => {
+  it('counts it not ready on a sign-in that is absent, stale or unread, or a key that was refused or can’t be read', () => {
     for (const auth of [
       { state: 'absent' },
       { state: 'absent', why: 'unreadable' },
@@ -1474,6 +1451,9 @@ describe('the app’s setup at launch, as the check expects it', () => {
     expect(providerReady(codex({ keyRefused: true }))).toBe(false)
     // A refused key matters only to a sign-in that is the key.
     expect(providerReady(claude({ keyRefused: true }))).toBe(true)
+    // A saved key that can't be read outranks any sign-in behind it.
+    expect(providerReady(codex({ keyUnreadable: true }))).toBe(false)
+    expect(providerReady(claude({ keyUnreadable: true }))).toBe(false)
   })
 
   it('is undecided while a fact it needs has not been read', () => {
@@ -1482,60 +1462,34 @@ describe('the app’s setup at launch, as the check expects it', () => {
     expect(providerReady(claude({ auth: null }))).toBeNull()
   })
 
-  it('opens for the first provider that is not ready, and for none once a person closed it', () => {
+  it('goes to Settings → Providers only when no provider is ready, and opens no dialog', () => {
     const missing = claude({ version: installed('missing'), auth: { state: 'absent' } })
     const signedOut = codex({ auth: { state: 'absent' } })
-    expect(launchSetupExpected(false, [missing, codex()])).toEqual({
-      opens: { provider: 'claude', name: 'Claude' },
+    expect(launchSetupExpected([missing, codex()])).toEqual({
+      opensProviders: false,
       ready: [
         { provider: 'claude', ready: false },
         { provider: 'codex', ready: true },
       ],
       undecided: false,
     })
-    expect(launchSetupExpected(false, [missing, signedOut]).opens?.provider).toBe('claude')
-    expect(launchSetupExpected(false, [claude(), signedOut]).opens).toEqual({
-      provider: 'codex',
-      name: 'Codex',
-    })
-    expect(launchSetupExpected(false, [claude(), codex()]).opens).toBeNull()
-    // Closed before: nothing opens, and what is ready is still said.
-    expect(launchSetupExpected(true, [missing, signedOut])).toMatchObject({
-      opens: null,
-      undecided: false,
-      ready: [
-        { provider: 'claude', ready: false },
-        { provider: 'codex', ready: false },
-      ],
-    })
-    // The app opens nothing until every provider's readiness is known.
-    expect(launchSetupExpected(false, [missing, codex({ auth: null })])).toMatchObject({
-      opens: null,
+    expect(launchSetupExpected([missing, signedOut]).opensProviders).toBe(true)
+    expect(launchSetupExpected([claude(), codex()]).opensProviders).toBe(false)
+    expect(
+      launchSetupExpected([claude({ keyUnreadable: true }), codex({ keyUnreadable: true })])
+        .opensProviders,
+    ).toBe(true)
+    // The app decides nothing while a sign-in is unknown, or until every fact is read.
+    expect(
+      launchSetupExpected([
+        missing,
+        codex({ auth: { state: 'unknown', reason: 'could not ask' } }),
+      ]),
+    ).toMatchObject({ opensProviders: false, undecided: false })
+    expect(launchSetupExpected([missing, codex({ auth: null })])).toMatchObject({
+      opensProviders: false,
       undecided: true,
     })
-  })
-
-  it('holds the window to exactly that setup, or to no dialog at all', () => {
-    const forClaude = {
-      label: 'Set up Claude',
-      provider: 'claude',
-      step: 'install',
-      kind: 'missing',
-    }
-    const due = { provider: 'claude', name: 'Claude' }
-    expect(dialogsAreAsDue([forClaude], due)).toBe(true)
-    expect(dialogsAreAsDue([], null)).toBe(true)
-    // Not open when due, open when not due, another provider's, another dialog, or one beside it.
-    expect(dialogsAreAsDue([], due)).toBe(false)
-    expect(dialogsAreAsDue([forClaude], null)).toBe(false)
-    expect(dialogsAreAsDue([{ ...forClaude, label: 'Set up Codex', provider: 'codex' }], due)).toBe(
-      false,
-    )
-    expect(dialogsAreAsDue([{ label: 'Set up Claude', provider: null }], due)).toBe(false)
-    expect(dialogsAreAsDue([{ label: 'Delete this conversation?', provider: null }], null)).toBe(
-      false,
-    )
-    expect(dialogsAreAsDue([forClaude, { label: 'What’s new', provider: null }], due)).toBe(false)
   })
 })
 
