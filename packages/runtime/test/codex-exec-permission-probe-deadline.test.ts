@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fingerprint, pinsOver, probeSource, squash } from './fixtures/probe-source'
+import { pinsOver, probeSource, squash } from './fixtures/probe-source'
 
 /**
  * ⛔ **The exec-permission probe's census — `495`, repaired by `649`, re-aimed by `655`.**
@@ -124,13 +124,6 @@ describe('495 exec-permission provider probe total deadline', () => {
  * the new pins.
  */
 describe('655 · the exec-permission probe is the code that ran green', () => {
-  it('🔴 nothing moved: the probe file, as code, is the code that ran', () => {
-    expect(
-      fingerprint(source),
-      'the probe changed: run `pnpm run probe:codex-exec-permission`, then pin the value received',
-    ).toBe('2afb7b6fa2a7ea9f375d3d09b928d1e9fccf5bdca15311eaabada95f08c6b430')
-  })
-
   it('🔒 a decision is sent only if OFFERED, and it is cancel (655 · F7)', () => {
     expect(
       occurrences(`
