@@ -1059,6 +1059,7 @@ export function buildToolDefs(): ToolDef[] {
             save,
             () => savedFile,
             () => deps.activity?.('download-received'),
+            waiting ? { download: waiting.download, signal: deps.signal } : undefined,
           ),
         }
       },

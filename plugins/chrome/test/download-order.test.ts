@@ -170,7 +170,7 @@ it('retains an earlier visible-window download without waiting for another event
   expect(saved.deleted).toBe(true)
 })
 
-it('observes advancing bytes of a selected earlier GUID without taking its capture ownership', async () => {
+it.each([false, true])('observes an earlier GUID without taking its capture ownership (cancelled=%s)', async (cancelled) => {
   const f = await routed()
   const ownerReady = Promise.withResolvers<void>()
   const ownerRelease = Promise.withResolvers<void>()
@@ -193,8 +193,9 @@ it('observes advancing bytes of a selected earlier GUID without taking its captu
   const tab = f.h.tabs.resolve(f.tabId, (name) => f.h.browser.state(name)?.generation ?? null)
   tab.pendingDownloads.push({ download: download as never, at: Date.now() })
   const activity = vi.fn()
+  const cancellation = new AbortController()
   const tool = createAgentChromeTools(f.h.deps).find((entry) => entry.definition.name === 'wait_for_download')!
-  const waiting = tool.execute({ tabId: f.tabId }, { activity })
+  const waiting = tool.execute({ tabId: f.tabId }, { activity, signal: cancellation.signal })
   let count = 0
   try {
     await pathReady.promise
@@ -206,6 +207,13 @@ it('observes advancing bytes of a selected earlier GUID without taking its captu
     })
     count = activity.mock.calls.filter(([stage]) => stage === 'download-received').length
     expect(ownerProgress).toHaveBeenCalledTimes(2)
+    if (cancelled) {
+      cancellation.abort()
+      f.session.emit('Browser.downloadProgress', {
+        guid: 'earlier-guid', state: 'inProgress', receivedBytes: 6, totalBytes: 11,
+      })
+      expect(activity.mock.calls.filter(([stage]) => stage === 'download-received')).toHaveLength(count)
+    }
   } finally {
     pathRelease.resolve()
     await waiting
@@ -214,7 +222,7 @@ it('observes advancing bytes of a selected earlier GUID without taking its captu
       guid: 'earlier-guid', state: 'inProgress', receivedBytes: 8, totalBytes: 11,
     })
     expect(activity).toHaveBeenCalledTimes(afterSave)
-    expect(ownerProgress).toHaveBeenCalledTimes(3)
+    expect(ownerProgress).toHaveBeenCalledTimes(cancelled ? 4 : 3)
     ownerRelease.resolve()
     await original
   }

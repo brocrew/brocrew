@@ -732,6 +732,7 @@ export class ChromeBrowser implements ProfileBrowser {
     fn: () => Promise<T>,
     savedFile?: () => string | undefined,
     onprogress?: () => void,
+    existing?: { download: Download; signal?: AbortSignal },
   ): Promise<T> {
     const e = this.entries.get(profile)
     const d = e?.downloads
@@ -758,9 +759,17 @@ export class ChromeBrowser implements ProfileBrowser {
     }, onprogress)
     let completed = false
     let savedGuid: string | undefined
+    let unobserve = () => {}
+    const stopObserving = () => unobserve()
     try {
       await apply()
       check()
+      if (existing && onprogress && !existing.signal?.aborted) {
+        const file = this.artifactPath(existing.download)
+        if (file && path.dirname(file) === d.dir)
+          unobserve = d.router.observe(path.basename(file), onprogress)
+        existing.signal?.addEventListener('abort', stopObserving, { once: true })
+      }
       const result = await fn()
       check()
       const saved = savedFile?.()
@@ -771,6 +780,8 @@ export class ChromeBrowser implements ProfileBrowser {
       completed = true
       return result
     } finally {
+      stopObserving()
+      existing?.signal?.removeEventListener('abort', stopObserving)
       capture.end(completed, savedGuid)
       void held.session?.then((s) => s.detach()).catch(() => undefined)
       d.captures--

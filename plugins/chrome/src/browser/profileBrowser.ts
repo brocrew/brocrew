@@ -48,6 +48,7 @@ export interface ProfileBrowser {
     fn: () => Promise<T>,
     savedFile?: () => string | undefined,
     onprogress?: () => void,
+    existing?: { download: Download; signal?: AbortSignal },
   ): Promise<T>
   touch(profile: string): void
 }

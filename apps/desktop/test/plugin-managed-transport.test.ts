@@ -145,9 +145,9 @@ for (const provider of ['claude', 'codex'] as const) {
 it('releases dispatch after a real downstream reply when client close fails', async () => {
   const f = await fixture(true)
   const { client } = await caller(f)
-  let unclosed: Client | undefined
+  const unclosed: Client[] = []
   const close = vi.spyOn(Client.prototype, 'close').mockImplementationOnce(function (this: Client) {
-    unclosed = this
+    unclosed.push(this)
     return Promise.reject(new Error('fictional close failure'))
   })
   try {
@@ -164,7 +164,7 @@ it('releases dispatch after a real downstream reply when client close fails', as
     })
   } finally {
     close.mockRestore()
-    await unclosed?.close()
+    await Promise.all(unclosed.map((one) => one.close()))
   }
   await expect(
     client.callTool({ name: 'other', arguments: { profile: 'fern' } }),

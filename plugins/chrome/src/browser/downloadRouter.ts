@@ -24,6 +24,7 @@ interface Rec {
   swept: boolean
   decided: Promise<void>
   receivedBytes: number
+  observers: Set<() => void>
 }
 // Shared across browser generations, separately for each profile. Claimed tool downloads
 // retain their existing limit; only unattended page downloads consume this allowance.
@@ -116,6 +117,12 @@ export class DownloadRouter {
     this.captures.add(c)
     return c
   }
+  observe(guid: string, onprogress: () => void): () => void {
+    const rec = this.recs.get(guid)
+    if (!rec) return () => {}
+    rec.observers.add(onprogress)
+    return () => { rec.observers.delete(onprogress) }
+  }
   private begin(p: { guid?: unknown; frameId?: unknown; suggestedFilename?: unknown }): void {
     if (typeof p.guid !== 'string' || !/^[a-zA-Z0-9-]{1,128}$/.test(p.guid)) return
     if (this.origins.has(p.guid)) return
@@ -141,6 +148,7 @@ export class DownloadRouter {
       swept: false,
       decided: Promise.resolve(),
       receivedBytes: 0,
+      observers: new Set(),
     }
     this.recs.set(p.guid, rec)
     const capturesAtStart = [...this.captures]
@@ -233,6 +241,7 @@ export class DownloadRouter {
     if (typeof p.receivedBytes === 'number' && p.receivedBytes > rec.receivedBytes) {
       rec.receivedBytes = p.receivedBytes
       if (rec.owner && !rec.owner.ended) rec.owner.onprogress?.()
+      for (const observer of rec.observers) observer()
     }
     if (p.state !== 'completed') return
     rec.state = 'completed'
