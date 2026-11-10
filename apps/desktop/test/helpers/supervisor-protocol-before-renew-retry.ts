@@ -1,7 +1,4 @@
-/**
- * The supervisor's record and commands as a build from before RENEW_RETRY parses them, kept
- * verbatim: such a build may still run against the shared plugin root beside this one.
- */
+/** Historical command schemas used by renewal compatibility tests. */
 import { z } from 'zod'
 
 export const Hex = z.string().regex(/^[a-f0-9]{64}$/)
@@ -19,14 +16,6 @@ export const Wire = z
   )
 export type WireVersion = z.infer<typeof Wire>
 export const OWNER_WIRE: WireVersion = { major: 1, minMinor: 0, maxMinor: 0, features: [] }
-export const OwnerRecord = z.strictObject({
-  version: z.literal(1),
-  epoch: Uuid,
-  key: Hex,
-  phase: z.enum(['accepting', 'draining', 'blocked', 'stopped']),
-  wire: Wire,
-})
-export type OwnerRecord = z.infer<typeof OwnerRecord>
 const Identity = { workspace: Hex, generation: Uuid }
 export const Command = z.discriminatedUnion('kind', [
   z.strictObject({
