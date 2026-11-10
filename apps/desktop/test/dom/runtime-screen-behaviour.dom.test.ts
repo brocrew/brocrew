@@ -493,7 +493,10 @@ it.each(keyboardSheets)(
     try {
       await page.viewport(1200, 800)
       const viewport = { width: window.innerWidth, height: window.innerHeight }
-      console.info('S04_OVERLAY_VIEWPORT', JSON.stringify({ sheet: ready, viewportBefore, viewport }))
+      console.info(
+        'S04_OVERLAY_VIEWPORT',
+        JSON.stringify({ sheet: ready, viewportBefore, viewport }),
+      )
       expect(viewport).toEqual({ width: 1200, height: 800 })
       const answers = {
         ...agentBookAnswers().book,
