@@ -35,43 +35,33 @@ export const PLUGIN_BROKER_LIMITS = Object.freeze({
   callMs: 120_000,
   cancelProofMs: 1000,
 })
-const failureCodes = new Set<BrokerFailure>([
-  'invalid',
-  'unauthorized',
-  'unavailable',
-  'denied',
-  'busy',
-  'cancelled',
-  'deadline',
-  'downstream',
-])
-const errorCodes = new WeakMap<object, BrokerFailure>()
 export class PluginBrokerError extends Error {
-  readonly code: BrokerFailure
   constructor(
-    code: BrokerFailure,
+    readonly code: BrokerFailure,
     readonly tool?: string,
     readonly callCause?: BrokerCallCause,
     dispatched = true,
     completionKnown = false,
+    error?: unknown,
   ) {
-    code = failureCodes.has(code) ? code : 'invalid'
+    const message = tool
+      ? !dispatched
+        ? `Tool ${tool} was not started: ${code}.`
+        : completionKnown
+          ? `Tool ${tool} failed: ${callCause ?? code}.`
+          : callCause === 'stalled' || code === 'deadline'
+            ? `Tool ${tool} took too long; completion is unknown. The operation may still be running.`
+            : `Tool ${tool} failed: ${callCause ?? code}; completion is unknown.`
+      : code === 'busy'
+        ? 'Plugin busy. Try again.'
+        : 'Plugin unavailable. Try again.'
     super(
-      tool
-        ? !dispatched
-          ? `Tool ${tool} was not started: ${code}.`
-          : completionKnown
-            ? `Tool ${tool} failed: ${callCause ?? code}.`
-            : callCause === 'stalled' || code === 'deadline'
-              ? `Tool ${tool} took too long; completion is unknown. The operation may still be running.`
-              : `Tool ${tool} failed: ${callCause ?? code}; completion is unknown.`
-        : code === 'busy'
-          ? 'Plugin busy. Try again.'
-          : 'Plugin unavailable. Try again.',
+      error === undefined
+        ? message
+        : `${message} ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     )
     this.name = 'PluginBrokerError'
-    this.code = code
-    errorCodes.set(this, code)
     Object.freeze(this)
   }
 }
@@ -112,7 +102,7 @@ interface Job {
   readonly input: BrokerInput
   readonly queuedAt: number
   readonly resolve: (value: BrokerValue) => void
-  readonly reject: (error: PluginBrokerError) => void
+  readonly reject: (error: unknown) => void
   readonly controller: AbortController
   offQueue: () => void
   offCall: () => void
@@ -138,13 +128,6 @@ interface Queue {
 const nothing = (): void => {}
 
 export function createPluginToolBroker(options: BrokerOptions): PluginToolBroker {
-  try {
-    return makeBroker(options)
-  } catch {
-    return refuse('invalid')
-  }
-}
-function makeBroker(options: BrokerOptions): PluginToolBroker {
   const binding = Object.freeze({
     pluginId: options.binding.pluginId,
     installId: options.binding.installId,
@@ -275,15 +258,20 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
             : 'call-deadline'
           : undefined,
       )
-      job.reject(
-        new PluginBrokerError(
-          code,
-          job.name,
-          job.reply?.ok === false ? job.reply.cause : undefined,
-          job.state !== 'queued',
-          job.quiet,
-        ),
-      )
+      try {
+        job.reject(
+          new PluginBrokerError(
+            code,
+            job.name,
+            job.reply?.ok === false ? job.reply.cause : undefined,
+            job.state !== 'queued',
+            job.quiet,
+            job.reply?.ok === false ? job.reply.error : undefined,
+          ),
+        )
+      } catch (error) {
+        job.reject(error)
+      }
     } else job.resolve(value ?? null)
   }
   function remove(job: Job): void {
@@ -444,17 +432,18 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
                 return
               }
               job.reply = ok
-                ? {
-                    ok: true,
-                    value: (reply as { ok: true; value: BrokerValue }).value,
-                  }
-                : { ok: false, cause: reply.ok === false ? reply.cause : undefined }
+                ? { ok: true, value: reply.value }
+                : { ok: false, cause: reply.cause, error: reply.error }
               settle(job)
-            } catch {
+            } catch (error) {
+              job.reply = { ok: false, error }
               stop(job, 'downstream')
             }
           },
-          () => stop(job, 'downstream'),
+          (error) => {
+            job.reply = { ok: false, error }
+            stop(job, 'downstream')
+          },
         )
         .catch(() => unavailable(job.operation, 'reply-invalid'))
       void Promise.resolve(job.execution.quiescent)
@@ -468,16 +457,21 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
           },
           (error) => {
             if (job.state === 'finished') return
+            if (job.reply?.ok !== false)
+              job.reply = {
+                ok: false,
+                cause: error instanceof PluginBrokerError ? error.callCause : undefined,
+                error: error instanceof PluginBrokerError ? error.cause : error,
+              }
             if (independent(job)) {
-              if (!job.reply && error instanceof PluginBrokerError)
-                job.reply = { ok: false, cause: error.callCause }
               log('refused', job.operation, 'downstream', 'proof-rejected')
               stop(job, 'downstream')
             } else unavailable(job.operation, 'proof-rejected')
           },
         )
         .catch(() => unavailable(job.operation, 'proof-rejected'))
-    } catch {
+    } catch (error) {
+      job.reply = { ok: false, error }
       unavailable(job.operation, 'execution-invalid')
     }
   }
@@ -541,12 +535,8 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
         )
           return refuse('busy')
       } catch (error) {
-        const code =
-          error !== null && typeof error === 'object'
-            ? (errorCodes.get(error) ?? 'invalid')
-            : 'invalid'
-        log('refused', operation, code)
-        reject(new PluginBrokerError(code))
+        log('refused', operation, error instanceof PluginBrokerError ? error.code : 'invalid')
+        reject(error)
         return
       }
       const job: Job = {

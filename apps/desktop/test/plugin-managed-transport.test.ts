@@ -105,9 +105,14 @@ it('keeps the same route usable after an SDK idle timeout without claiming remot
     isError: true,
     content: [
       {
-        text: 'Tool echo took too long; completion is unknown. The operation may still be running.',
+        text: expect.stringContaining(
+          'Tool echo took too long; completion is unknown. The operation may still be running.',
+        ),
       },
     ],
+  })
+  await expect(pending).resolves.toMatchObject({
+    content: [{ text: expect.stringContaining('Request timed out') }],
   })
   expect(f.broker.status().available).toBe(true)
   expect(f.broker.owner.hasCompletionProof()).toBe(false)
@@ -170,7 +175,9 @@ it('releases dispatch after a real downstream reply when client close fails', as
       client.callTool({ name: 'echo', arguments: { profile: 'fern' } }),
     ).resolves.toMatchObject({
       isError: true,
-      content: [{ text: 'Tool echo failed: downstream; completion is unknown.' }],
+      content: [
+        { text: 'Tool echo failed: downstream; completion is unknown. fictional close failure' },
+      ],
     })
     expect(f.broker.status()).toMatchObject({
       available: true,
@@ -329,7 +336,11 @@ it('records a closed connect-failure reason without arguments, credentials or ra
       },
       new AbortController().signal,
     )
-    await expect(execution.result).resolves.toEqual({ ok: false, cause: 'connection-failed' })
+    await expect(execution.result).resolves.toMatchObject({
+      ok: false,
+      cause: 'connection-failed',
+      error: expect.any(Error),
+    })
     await expect(execution.quiescent).rejects.toThrow()
     expect(reasons).toContain('transport-connect-failed')
     expect(reasons).toContain('transport-connection-reset')
@@ -359,6 +370,15 @@ it('still diagnoses an actual failed call even though its MCP client also closes
   const client = await connect(await f.route('fictional-failed'))
   const result = await client.callTool({ name: 'echo', arguments: { profile: 'fern' } })
   expect(result).toMatchObject({ isError: true })
+  expect(result).toMatchObject({
+    content: [{ text: expect.stringContaining('fictional upstream failure: page crashed') }],
+  })
+  expect(result).toMatchObject({
+    content: [{ text: expect.stringContaining('completion is unknown') }],
+  })
+  expect(f.broker.status().available).toBe(true)
+  expect(f.broker.owner.hasCompletionProof()).toBe(false)
+  expect(JSON.stringify(f.audit)).not.toContain('fictional upstream failure')
   expect(reasons).toContain('transport-call-failed')
   noPrivateCredential([result, f.audit], f.credential)
 })

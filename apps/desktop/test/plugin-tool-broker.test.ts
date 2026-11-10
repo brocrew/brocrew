@@ -413,23 +413,29 @@ describe('deadline, cancellation and independent quiescence proof', () => {
 
 describe('secret-free failures and diagnostics', () => {
   const secret = 'fictional-downstream-secret-never-for-logs'
-  it('sanitizes server throws, cancellation errors, result rejections and malformed outcomes', async () => {
+  it('preserves server failure causes while keeping cancellation and audit facts', async () => {
     const h = setup()
     h.server.startError = new Error(secret)
     const error = (await h.call().catch((e: unknown) => e)) as PluginBrokerError
     expect(error).toMatchObject({
       code: 'unavailable',
-      message: 'Tool read_page failed: unavailable; completion is unknown.',
+      message: `Tool read_page failed: unavailable; completion is unknown. ${secret}`,
+      cause: h.server.startError,
     })
-    expect(String(error.stack)).not.toContain(secret)
+    expect(String(error.stack)).toContain(secret)
     expect(JSON.stringify(h.audit)).not.toContain(secret)
     const rejected = setup()
     const pending = rejected.call()
     await tick()
-    rejected.server.calls[0]!.result.reject(new Error(secret))
+    const original = new Error(secret)
+    rejected.server.calls[0]!.result.reject(original)
     rejected.server.calls[0]!.quiet.resolve()
     await tick()
-    await expect(pending).rejects.toMatchObject({ code: 'downstream' })
+    await expect(pending).rejects.toMatchObject({
+      code: 'downstream',
+      message: expect.stringContaining(secret),
+      cause: original,
+    })
     expect(rejected.broker.status().available).toBe(true)
     const cancel = setup()
     cancel.server.cancelError = new Error(secret)
@@ -683,4 +689,91 @@ it('uses positive exact-host exit after a rejected call proof, never a rejected 
   other.clock.advance(1000)
   expect(other.broker.owner.hasCompletionProof()).toBe(false)
   expect(other.broker.status()).toMatchObject({ available: true, awaitingQuiescence: true })
+})
+
+it('preserves original construction and submission exceptions', async () => {
+  const construction = new Error('fictional inventory getter failure')
+  expect(() =>
+    setup((options) =>
+      Object.defineProperty(options, 'tools', {
+        get() {
+          throw construction
+        },
+      }),
+    ),
+  ).toThrow(construction)
+  const h = setup()
+  const submission = new Error('fictional signal getter failure')
+  const signal = Object.defineProperty(new AbortController().signal, 'aborted', {
+    get() {
+      throw submission
+    },
+  })
+  await expect(h.call(h.agent, { profile: 'fern' }, signal)).rejects.toBe(submission)
+  expect(h.server.calls).toHaveLength(0)
+})
+
+it.each(['cause', 'error'] as const)(
+  'settles a failed reply with a throwing %s getter',
+  async (field) => {
+    const h = setup()
+    const pending = h.call()
+    await tick()
+    const original = new Error(`fictional ${field} getter failure`)
+    h.server.calls[0]!.result.resolve(
+      Object.defineProperty({ ok: false as const }, field, {
+        get() {
+          throw original
+        },
+      }),
+    )
+    h.server.calls[0]!.quiet.resolve()
+    await expect(pending).rejects.toMatchObject({
+      cause: original,
+      message: expect.stringContaining(original.message),
+    })
+  },
+)
+
+it.each(['proof-first', 'result-first'])(
+  'extracts a throwing success value before answering (%s)',
+  async (order) => {
+    const h = setup()
+    const pending = h.call()
+    await tick()
+    const call = h.server.calls[0]!
+    const original = new Error('fictional success value getter failure')
+    if (order === 'proof-first') {
+      call.quiet.resolve()
+      await tick()
+    }
+    call.result.resolve({
+      ok: true,
+      get value() {
+        throw original
+      },
+    })
+    await tick()
+    if (order === 'result-first') call.quiet.resolve()
+    await expect(pending).rejects.toMatchObject({
+      code: 'downstream',
+      cause: original,
+      message: expect.stringContaining(original.message),
+    })
+    expect(h.broker.status().available).toBe(true)
+  },
+)
+it('keeps the first failed result cause when quiescence also rejects', async () => {
+  const h = setup()
+  const pending = h.call()
+  await tick()
+  const original = new Error('fictional first call failure')
+  h.server.calls[0]!.result.resolve({ ok: false, error: original })
+  await tick()
+  h.server.calls[0]!.quiet.reject(new Error('fictional later proof failure'))
+  await expect(pending).rejects.toMatchObject({
+    cause: original,
+    message: expect.stringContaining(original.message),
+  })
+  expect(h.broker.status().available).toBe(false)
 })

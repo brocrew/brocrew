@@ -72,11 +72,13 @@ export function createPrivatePluginPort(options: {
         connected = false,
         closingAfterReply = false
       const cancellation = new AbortController()
-      let prove!: () => void, unproved!: (cause?: BrokerCallCause) => void
+      let prove!: () => void, unproved!: (cause?: BrokerCallCause, error?: unknown) => void
       let failureCause: BrokerCallCause | undefined
+      let failureError: unknown
       const quiescent = new Promise<void>((resolve, reject) => {
         prove = resolve
-        unproved = (cause) => reject(new PluginBrokerError('downstream', request.name, cause))
+        unproved = (cause, error) =>
+          reject(new PluginBrokerError('downstream', request.name, cause, true, false, error))
       })
       void quiescent.catch(() => undefined)
       const cancel = () => {
@@ -90,7 +92,6 @@ export function createPrivatePluginPort(options: {
         phase: Parameters<PluginToolDiagnostic>[0],
       ): BrokerCallCause => {
         report(phase)
-        // Transport exceptions may contain page data. Only these closed causes may be retained.
         try {
           const value = error as {
             name?: unknown
@@ -117,7 +118,7 @@ export function createPrivatePluginPort(options: {
             return 'cancelled'
           } else if (code === 401 || code === 403) report('transport-auth-refused')
         } catch {
-          /* Never inspect or stringify an arbitrary error further. */
+          /* Fall back to downstream if classification fails. */
         }
         return 'downstream'
       }
@@ -165,8 +166,9 @@ export function createPrivatePluginPort(options: {
                 ? 'transport-call-failed'
                 : 'transport-connect-failed',
           )
+          failureError = error
           failureCause = cancelled || signal.aborted ? 'cancelled' : cause
-          return { ok: false, cause: cancelled || signal.aborted ? 'cancelled' : cause }
+          return { ok: false, cause: cancelled || signal.aborted ? 'cancelled' : cause, error }
         } finally {
           signal.removeEventListener('abort', cancel)
           let closed = false
@@ -174,11 +176,12 @@ export function createPrivatePluginPort(options: {
           try {
             await client?.close()
             closed = true
-          } catch {
+          } catch (error) {
+            failureError ??= error
             report('transport-close-failed')
           }
           if (natural && closed && !cancelled) prove()
-          else unproved(failureCause)
+          else unproved(failureCause, failureError)
         }
       })()
       return { result, quiescent, cancel }
@@ -358,7 +361,9 @@ export async function openManagedPluginRoute(
                 ? error.tool
                   ? error.message
                   : new PluginBrokerError(error.code, tool.name, undefined, false).message
-                : `Tool ${tool.name} failed; completion is unknown.`,
+                : error instanceof Error
+                  ? error.message
+                  : String(error),
             )
           }
         })
@@ -370,9 +375,9 @@ export async function openManagedPluginRoute(
         })
         await mcp.connect(transport)
         await transport.handleRequest(req, res, body)
-      })().catch(() => {
+      })().catch((error) => {
         report('route-request-failed')
-        fail(res)
+        fail(res, error)
       })
     },
   )
@@ -425,8 +430,8 @@ export async function openManagedPluginRoute(
     },
   }
 }
-function fail(res: ServerResponse) {
+function fail(res: ServerResponse, error: unknown) {
   if (res.destroyed || res.writableEnded) return
   if (!res.headersSent) res.writeHead(400)
-  res.end()
+  res.end(error instanceof Error ? error.message : String(error))
 }

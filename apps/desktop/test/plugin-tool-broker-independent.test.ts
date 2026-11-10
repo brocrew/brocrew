@@ -78,13 +78,18 @@ describe('independent transport calls', () => {
       )
       await tick()
       const call = h.server.calls[0]!
+      const original = new Error('close failed')
       if (order === 'reply-first') call.result.resolve({ ok: true, value: 'remote reply' })
-      else call.quiet.reject(new Error('close failed'))
+      else call.quiet.reject(original)
       await tick()
-      if (order === 'reply-first') call.quiet.reject(new Error('close failed'))
+      if (order === 'reply-first') call.quiet.reject(original)
       else call.result.resolve({ ok: true, value: 'remote reply' })
       await tick()
-      expect(outcome).toMatchObject({ message: expect.stringContaining('completion is unknown') })
+      expect(outcome).toMatchObject({
+        message: expect.stringContaining('completion is unknown'),
+        cause: original,
+      })
+      expect(outcome).toMatchObject({ message: expect.stringContaining('close failed') })
       expect(h.broker.status()).toMatchObject({
         available: true,
         executing: false,

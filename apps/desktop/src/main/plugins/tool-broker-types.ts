@@ -34,7 +34,7 @@ export interface BrokerRequest {
 }
 export type BrokerReply =
   | { readonly ok: true; readonly value: BrokerValue }
-  | { readonly ok: false; readonly cause?: BrokerCallCause }
+  | { readonly ok: false; readonly cause?: BrokerCallCause; readonly error?: unknown }
 export type BrokerCallCause = 'stalled' | 'cancelled' | 'connection-failed' | 'downstream'
 export interface BrokerProgress {
   readonly progress: number

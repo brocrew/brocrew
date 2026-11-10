@@ -100,7 +100,7 @@ export async function pluginProviderFixture(
           await done
         }
         if (options.result) return options.result
-        if (reply === 'error') throw new Error(credential)
+        if (reply === 'error') throw new Error('fictional upstream failure: page crashed')
         if (reply === 'hold') await new Promise<void>(() => undefined)
         await new Promise<void>((resolve) => setImmediate(resolve))
         return {
