@@ -31,6 +31,8 @@ let awaiting = false
 let admissionSent = false
 /** The server, once forked. */
 let child
+let stderr = '',
+  stderrTruncated = false
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 function releaseEntry() {
   if (!finishing && admitted && awaiting && !admissionSent && child.connected) {
@@ -98,6 +100,18 @@ async function finish(why = 'stop') {
   await Promise.all(
     ['auth.json', 'launch.json'].map((name) => rm(join(receiptRoot, name), { force: true })),
   )
+  try {
+    writeReceipt(receiptRoot, 'stderr.json', {
+      format: 1,
+      runId: config.runId,
+      pluginId: config.pluginId,
+      cause,
+      output: stderr,
+      truncated: stderrTruncated,
+    })
+  } catch {
+    // A diagnostic write must not prevent the exit receipt.
+  }
   writeReceipt(receiptRoot, 'exit.json', {
     ...receipt(),
     exited,
@@ -171,10 +185,7 @@ if (!finishing) {
     detached: true,
     stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
   })
-  let stderr = '',
-    firstLine,
-    errorLine,
-    stderrTruncated = false
+  let firstLine, errorLine
   child.stderr.setEncoding('utf8')
   child.stderr.on('data', (chunk) => {
     stderr += chunk

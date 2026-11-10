@@ -1,6 +1,6 @@
 import { openSync, writeFileSync, fsyncSync, closeSync, renameSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
-// Only the guardian writes while it is alive. No token, environment or plugin log is retained.
+// Only the guardian writes while it is alive.
 export function writeReceipt(root, name, value) {
   const temporary = join(root, `${name}.${process.pid}.new`)
   const fd = openSync(temporary, 'wx', 0o600)
