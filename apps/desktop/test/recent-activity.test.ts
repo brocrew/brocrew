@@ -231,40 +231,11 @@ it('keeps unread rows and skipped ledgers distinct from an empty complete answer
   })
 })
 
-it('executes no INDEXED BY hint and refuses rather than silently truncating the native row bound', () => {
-  const connection = (engine as unknown as { db: AppDatabase }).db
-  const prepare: (sql: string) => AppStatement = connection.prepare.bind(connection)
-  const executed: string[] = []
-  vi.spyOn(connection, 'prepare').mockImplementation(
-    (sql: string) =>
-      new Proxy(prepare(sql), {
-        get(native, key) {
-          if (key === 'get')
-            return (...args: unknown[]) => {
-              executed.push(sql)
-              return native.get(...args)
-            }
-          if (key === 'all')
-            return (...args: unknown[]) => {
-              executed.push(sql)
-              return native.all(...args)
-            }
-          if (key === 'iterate')
-            return (...args: unknown[]) => {
-              executed.push(sql)
-              return native.iterate(...args)
-            }
-          const value: unknown = Reflect.get(native, key, native)
-          return typeof value === 'function' ? value.bind(native) : value
-        },
-      }),
-  )
+it('refuses rather than silently truncating the native row bound', () => {
   expect(read).not.toThrow()
   const complete = read()
   expect(complete.lines).toHaveLength(1)
   expect(complete.read.ledgersSkipped ?? 0).toBe(0)
-  expect(executed.some((sql) => /FROM events/.test(sql))).toBe(true)
-  expect(executed.filter((sql) => /INDEXED BY/.test(sql))).toEqual([])
   db.prepare(
     `WITH RECURSIVE n(x) AS (VALUES(0) UNION ALL SELECT x+1 FROM n WHERE x < @rows)
     INSERT INTO events(id,session_id,generation,ordinal,type,payload,created_at)

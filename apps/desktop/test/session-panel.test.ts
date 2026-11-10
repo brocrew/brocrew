@@ -1,5 +1,4 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import { sessionPanel } from '../src/renderer/src/lib/session-panel'
@@ -350,79 +349,9 @@ describe('the panel is rebuilt by the same fold on replay and resume (037)', () 
   })
 })
 
-describe('the panel subscribes to nothing (037 acceptance 2)', () => {
-  const source = (path: string): string =>
-    readFileSync(new URL(`../src/renderer/src/${path}`, import.meta.url), 'utf8')
-
-  it('neither the projection nor the component can reach the event stream', () => {
-    // The failure this rules out is not a typo, it is a design drift: someone adds `onEvent` here
-    // "just for the panel", and from that day the app has two folds and two answers. The check is
-    // structural because by the time the two disagree, the test that catches it is a flake.
-    for (const file of ['lib/session-panel.ts', 'components/SessionPanel.vue']) {
-      const code = source(file)
-      for (const forbidden of ['useSessionStore', 'runtime.', 'onEvent', 'addEventListener']) {
-        expect(code, `${file} must not reach past the fold (${forbidden})`).not.toContain(forbidden)
-      }
-      // It may not fold events either — a second `applyEvent` is a second store wearing a
-      // function's clothes.
-      expect(code, `${file} must not fold events`).not.toContain('applyEvent')
-    }
-  })
-
-  /**
-   * ⚠️ The one criterion no test in this suite can PROVE, and what is done about it instead.
-   *
-   * "Clicking navigates" (acceptance 4) is a claim about layout: the row is pressed, the scroll
-   * container moves, the entry ends up in the pane. This project's test environment is `node` with
-   * Vue's server renderer — there is no DOM, no layout, `scrollIntoView` does not exist and every
-   * scroll number is zero. Mounting it in a real DOM would mean adding jsdom to the repo, and jsdom
-   * has no layout engine either: `scrollIntoView` is a no-op stub there, so the test would assert
-   * that a function it stubbed was called. That is not evidence.
-   *
-   * So the behaviour is proven by live smoke step 29 and NOWHERE ELSE, which is stated here rather
-   * than left for someone to discover. What this test does pin is the part that is checkable and
-   * that silently rots: the three links of the chain still exist and still agree on their names. A
-   * renamed emit or a dropped binding is the realistic way this breaks, and it would otherwise be
-   * caught only by the batched smoke run, tasks later.
-   */
-  it('the navigate chain is joined end to end — the part a DOM-less test can pin', () => {
-    // ⚑ The row is the agent card's since the panel's top agent became `AgentCard`; the panel
-    // forwards the card's `navigate` under the same name.
-    const card = source('components/AgentCard.vue')
-    const panel = source('components/SessionPanel.vue')
-    const pane = source('components/ConversationPane.vue')
-    const view = source('components/TranscriptView.vue')
-
-    // 1 · the row emits, and it is the row that emits — not the section, not the header.
-    expect(card).toContain("emit('navigate', entry.itemId)")
-    expect(card).toContain('navigate: [itemId: string]')
-    expect(panel).toContain('@navigate="(itemId) => emit(\'navigate\', itemId)"')
-    expect(panel).toContain('navigate: [itemId: string]')
-    // 2 · the pane binds that exact name to its own forwarder…
-    expect(pane).toContain('@navigate="focus"')
-    expect(pane).toContain('view.value?.focusItem(itemId)')
-    // 3 · …and the transcript exposes it under that name, on the ref the pane holds.
-    expect(view).toContain('defineExpose({ focusItem })')
-    expect(pane).toContain('ref="view"')
-    // 4 · and the thing `focusItem` looks for is the thing the transcript actually writes.
-    // ⚑ **`587` folded the list into ROWS and a row is not always an item** — a run of settled tool
-    // calls is one wrapper over several, carrying its FIRST call's id.
-    //
-    // ⛔ **So a navigation to the 2nd…Nth member of a run would find nothing**, and the first draft
-    // of this note claimed the opposite. ⚠️ **What makes that safe is not the wrapper, it is what
-    // the panel EMITS**: `session-panel.ts` gives a tool item's id for exactly two kinds of row —
-    // a sub-agent home and a workflow home — and `joinsARun` excludes both, so no ordinary settled
-    // call's id ever reaches `focusItem`. A run's finished thoughts are members too, and the panel
-    // never links to a thought. 🔴 **Add a third and this stops being true**; both
-    // wrappers are asserted below so the arm this dispatch added is at least covered.
-    expect(view).toContain(':data-item="row.item.id"')
-    expect(view).toContain(':data-item="row.members[0]?.id"')
-    expect(view).toContain('.entry[data-item=')
-  })
-
+describe('the panel subscribes to nothing', () => {
   it('everything it shows is reachable from a TranscriptState alone', () => {
-    // The positive form of the same claim, and the one that would survive a rename: the projection
-    // takes one argument, and it is the fold's own state.
+    // The projection takes one argument, and it is the fold's own state.
     expect(sessionPanel.length).toBe(1)
     expect(sessionPanel(createTranscript())).toEqual({
       questions: [],

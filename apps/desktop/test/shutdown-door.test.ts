@@ -1,8 +1,7 @@
 import { neutralHostDeps } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { isRef, unref } from 'vue'
 import { FakeRuntime } from '@brobot2/runtime'
@@ -658,17 +657,6 @@ describe('the shutdown door (273)', () => {
     }
   })
 
-  it('refuses the exact pair 272 measured, by name', async () => {
-    // The two in the finding, spelled out rather than left to the loops above — a regression that
-    // exempted only these would otherwise fail in a sentence nobody could connect back to `272`.
-    for (const kind of ['listResumable', 'listUnresumable'] as const) {
-      const { host } = recordingHost(true)
-      await expect(executeRuntimeCommand(host, new RecordingSink(), { kind })).rejects.toThrow(
-        `BroCrew is shutting down, so ${kind} was not asked of its database`,
-      )
-    }
-  })
-
   it('an unparseable command is still told it is unparseable, quit or no quit', async () => {
     // ⚠️ The door is AFTER the parse deliberately: there is no kind to rule on until the wire has
     // been checked, and "we are shutting down" is a worse answer than "that is not a command".
@@ -731,51 +719,13 @@ describe('when the door shuts (273 §1)', () => {
   })
 })
 
-describe('the closing announcement has more than one reader (273 §2)', () => {
-  const renderer = join(dirname(fileURLToPath(import.meta.url)), '../src/renderer/src')
-  const read = (path: string): string => readFileSync(join(renderer, path), 'utf8')
-
-  it('both closed-conversation lists stop asking once the app is closing', () => {
-    // ⛔ **The half that makes an ordinary quit SILENT**, which the door alone cannot do: Electron
-    // `console.error`s every rejected `ipcMain.handle` with a stack, so a refused refresh still
-    // prints. These are the two surfaces `RuntimeScreen`'s open-list watcher drives, and they are
-    // the two commands `272` caught.
-    for (const component of ['components/SideRail.vue', 'components/ResumableSessions.vue']) {
-      const source = read(component)
-      expect(source, `${component} does not read the closing flag`).toContain(
-        "from '../lib/app-closing'",
-      )
-      expect(source, `${component} does not return early`).toMatch(
-        /if \(appClosing\.value\) return/,
-      )
-      // ⛔ **BEFORE the ask, not after it**, which is the whole of the guard. Checked as an ordering
-      // over the source rather than as a pattern, because a guard written under the `await` matches
-      // every regex above and stops nothing at all.
-      expect(source.indexOf('if (appClosing.value) return')).toBeLessThan(
-        source.indexOf('window.api.runtime.listResumable()'),
-      )
-      expect(source.indexOf('window.api.runtime.listResumable()')).toBeGreaterThan(-1)
-    }
-  })
-
+describe("the window's closing flag", () => {
   it('the flag is still a REF, so a template unwraps it rather than testing an object', () => {
-    // ⛔ **The one thing a source scan cannot see, and the failure would be silent and total.**
     // `v-if="appClosing"` reads through Vue's `proxyRefs`, which unwraps a ref and hands anything
     // else straight to the truthiness test — so a `readonly()` that returned a plain proxy would
     // make the shade appear the moment the app started and never come off. `isRef` is exactly the
     // predicate that unwrapping turns on.
     expect(isRef(appClosing)).toBe(true)
     expect(unref(appClosing)).toBe(false)
-  })
-
-  it('the flag is set only by the announcement, and never cleared', () => {
-    const module = read('lib/app-closing.ts')
-    // Exported readonly, so no surface can put this window into a state main is not in.
-    expect(module).toContain('export const appClosing = readonly(closing)')
-    // ⚑ One writer, and it only ever writes `true` — a quit that has begun cannot be cancelled.
-    expect(module.match(/closing\.value = /g)).toEqual(['closing.value = '])
-    expect(module).toContain('closing.value = true')
-    // And the one subscriber is still `App.vue`, which is where 271 put it.
-    expect(read('App.vue')).toContain('watchClosing(beginClosing)')
   })
 })

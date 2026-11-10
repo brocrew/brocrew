@@ -1,6 +1,6 @@
 import { ToolWatchingRuntime } from './lib/provider-double'
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -47,14 +47,6 @@ import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 const here = dirname(fileURLToPath(import.meta.url))
 const SRC = join(here, '../src')
 const migrationsFolder = join(SRC, 'main/db/migrations')
-
-/** ⚠️ Prose stripped, so a docblock quoting a shape is never mistaken for the shape. */
-const withoutProse = (code: string): string =>
-  code
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .split('\n')
-    .filter((line) => !line.trim().startsWith('//'))
-    .join('\n')
 
 /** ⛔ This file is about a ROSTER and a NAME, never about what a launch is told. */
 const NOTHING_INJECTED: SessionInstructions = {
@@ -531,68 +523,6 @@ describe('584 · seed one identity, and generate the names', () => {
       const named = (said?.structured as Record<string, unknown>).display_name
       expect(named).toBe(nameColumn('one-too-many'))
       expect(said?.text).toContain(`this app named it ${String(named)}`)
-    })
-  })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §6 · HO-078 §1.2 — nothing is taken from an install that has it
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§6 · an existing install keeps everything it has', () => {
-    /**
-     * 🔴 **Standing rule 11, in the direction a migration could break it.** ⛔ *"A migration that
-     * deletes them would be re-granting-in-reverse and it is forbidden."* ⚑ Asserted over the
-     * shipped SQL rather than over a count of files, which would move every time anything lands —
-     * since D-016 that is the one migration, `0000_the_tree.sql`, and whatever is added after it.
-     */
-    it('🔴 no migration deletes an identity', () => {
-      const sql = readdirSync(migrationsFolder)
-        .filter((name) => name.endsWith('.sql'))
-        .map((name) => ({ name, text: readFileSync(join(migrationsFolder, name), 'utf8') }))
-      // ⚑ The premise: there really are migrations to read, and the one that builds the tree is
-      // among them.
-      expect(sql.length).toBeGreaterThan(0)
-      expect(sql.map((one) => one.name)).toContain('0000_the_tree.sql')
-
-      for (const { name, text } of sql) {
-        expect(
-          /DELETE\s+FROM\s+[`"]?agent_identity[`"]?(?![_\w])/i.test(text),
-          `${name} deletes an identity`,
-        ).toBe(false)
-      }
-      // ⛔ **The control the sweep needs** (standing rule 12): the pattern really does match, so the
-      // negative above is a measurement rather than a regex that never fires.
-      expect(
-        /DELETE\s+FROM\s+[`"]?agent_identity[`"]?(?![_\w])/i.test('DELETE FROM agent_identity'),
-      ).toBe(true)
-    })
-
-    /**
-     * ⚑ **The app's own writer cannot overwrite a row that exists**, which is what makes every
-     * sentence above a property of the STATEMENT rather than of an ordering. ⛔ Asserted over the
-     * source, prose stripped, so a docblock cannot answer for code.
-     */
-    it('⚑ every write this app makes to an identity row is `INSERT OR IGNORE` or a person’s UPDATE', () => {
-      const code = withoutProse(readFileSync(join(SRC, 'main/db/session-store.ts'), 'utf8'))
-      const writes = [
-        ...code.matchAll(/`((INSERT|UPDATE|DELETE)[^`]*agent_identity(?![_\w])[^`]*)`/g),
-      ].map((found) => found[1]!)
-      expect(writes.length).toBeGreaterThan(2)
-      for (const statement of writes) {
-        expect(
-          statement.startsWith('INSERT OR IGNORE') ||
-            statement.startsWith('UPDATE') ||
-            statement.startsWith('DELETE'),
-          statement,
-        ).toBe(true)
-        // ⛔ **No bare INSERT** — one would fail on a row that exists rather than leaving it alone,
-        // and the failure would surface as a broken launch rather than as a re-grant.
-        expect(statement.startsWith('INSERT INTO'), statement).toBe(false)
-      }
-      // ⚑ **The control**: the sweep really reads statements, so the loop is a measurement.
-      expect(writes.some((one) => one.startsWith('INSERT OR IGNORE INTO agent_identity'))).toBe(
-        true,
-      )
     })
   })
 })

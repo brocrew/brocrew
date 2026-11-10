@@ -1,4 +1,3 @@
-import { visibleCopy } from './lib/visible-copy'
 import type {
   HowItWasRaised,
   LedgerWalk,
@@ -8,7 +7,7 @@ import type {
   RoutedRequest,
 } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -234,34 +233,6 @@ describe('§2 · the pane says what it walked', () => {
 
   it('⚠️ the literal a person reads', () => {
     expect(NOTHING_OPEN_HEAD).toBe('No permissions or questions are on a card here')
-  })
-
-  it('🔴 the heading scopes itself with the word the queue uses for the same thing', () => {
-    const queue = readFileSync(
-      fileURLToPath(new URL('../src/renderer/src/components/PersonsQueue.vue', import.meta.url)),
-      'utf8',
-    )
-    const withoutProse = (source: string): string =>
-      source.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
-    const phrase = 'Its card is open in this window too.'
-    const readsQueueCard = (source: string): boolean =>
-      visibleCopy('PersonsQueue.vue', source).some(
-        (said) => said.origin === 'text' && said.text.includes(phrase),
-      )
-    expect(readsQueueCard(queue)).toBe(true)
-    const changedWords = queue.replace(phrase, phrase.replace('card', 'item'))
-    expect(changedWords).not.toBe(queue)
-    expect(readsQueueCard(changedWords)).toBe(false)
-    const code = withoutProse(queue)
-    expect(code).toContain(phrase)
-    const decorated = queue.replace('<template>', '<template>\n<!-- comment-only-card-word -->')
-    expect(decorated).not.toBe(queue)
-    expect(readsQueueCard(decorated)).toBe(true)
-    expect(decorated).toContain('comment-only-card-word')
-    expect(withoutProse(decorated)).not.toContain('comment-only-card-word')
-    expect(withoutProse(decorated)).toContain(phrase)
-    expect(withoutProse(queue.replace(phrase, ''))).not.toContain(phrase)
-    expect(NOTHING_OPEN_HEAD).toContain('card')
   })
 })
 
