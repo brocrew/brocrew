@@ -4,10 +4,8 @@ import { isTheSameFile, type FileIdentity } from '@brobot2/runtime'
 import { expandHome } from './scratch-cwd'
 import { isAbsolute, relative, sep, win32 } from 'node:path'
 import {
-  CONTROL_CHARACTER_IN_PATH,
   MAX_HANDED_PATHS,
   MAX_PATH_CHARS,
-  hasControlCharacter,
   quotedLiteral,
   type DroppedPathVerdict,
 } from '../../shared/runtime-ipc'
@@ -139,18 +137,6 @@ export async function classifyHandedPath(
   chosen: string,
   cwd: string,
 ): Promise<{ handed: HandedPath } | PathVerdictRefusal> {
-  // ⛔ **A control character is refused BEFORE anything else looks at the path** (232 §2, from `227`
-  // HIGH 2). {@link hasControlCharacter} carries the reasoning; what belongs here is the ORDER.
-  //
-  // ⚠️ **This is the FIRST gate, and it has to be** (found reviewing this diff — it was written
-  // SECOND, below the absoluteness refusal). Every refusal below it interpolates the path into a
-  // sentence a person reads, and `app:hand-dropped-paths` applies no schema — so a forged or
-  // replayed drop payload carrying a relative, control-bearing string put its bytes verbatim into
-  // the composer's refusal line, through the one door the send commands' zod does not guard.
-  // ⚑ The invariant is worth stating because everything below rests on it: past this line, a path
-  // in this module is control-free — which is also why this is the one refusal that does NOT name
-  // the path it is about.
-  if (hasControlCharacter(chosen)) return { refusal: CONTROL_CHARACTER_IN_PATH, gone: false }
   // ⛔ **A relative path is REFUSED, not resolved** (found in review). It used to `resolve(chosen)`,
   // and single-argument `resolve` bases on the MAIN PROCESS's own `process.cwd()` — never on
   // `session.cwd`, the one directory this whole feature is framed around. ⚠️ A renderer sending
@@ -166,12 +152,6 @@ export async function classifyHandedPath(
   const path = chosen
   const kind = await describeKind(path)
   if ('refusal' in kind) return kind
-  // ⛔ **The RESOLVED path is asked the same question** (found reviewing this diff). The gate above
-  // examined the SPELLING; `realpath` answers with the TARGET's name, and a symlink called
-  // `report.txt` may point at a legal POSIX filename with a newline in it. ⚠️ **So the invariant
-  // above was false by one hop**: the picker accepted such a path, its bytes reached the chip's
-  // label and its `title`, and the wire then refused a chip the person had already been shown.
-  if (hasControlCharacter(kind.real)) return { refusal: CONTROL_CHARACTER_IN_PATH, gone: false }
   // ⛔ **The path is the RESOLVED one, not the one the gesture happened to spell** (221 §5).
   //
   // ⚠️ **`220` staged one folder twice — `/tmp/…/folder-drop` by drop, `/private/tmp/…/folder-drop`
@@ -496,56 +476,7 @@ export async function recheckHandedPaths(
   return { paths }
 }
 
-/**
- * ⛔ **What goes into the message, and it is the ONLY thing that does** (216 §1).
- *
- * Measured at the pin: a Codex `mention` contributes zero content items to the model request, and
- * Claude's SDK has no local-path block at all. ⚑ **Plain text is not merely the cheap option — it is
- * the only form that reaches the model**, so the path travels as words.
- *
- * ⚠️ **Prefixed and labelled, never silently concatenated.** `214` removed 12,646 messages that
- * rendered injected material as the person's own; gluing a bare path onto the end of somebody's
- * sentence is that defect arriving from the other end. The block says who put it there and what it
- * is, so a model reading the turn and a person reading the transcript get the same story.
- *
- * ⛔ **It says "outside" out loud.** `215`'s mechanism puts the read behind the agent's own card;
- * this makes sure the card is not the first place anybody learns the path is somewhere else.
- *
- * ## ⛔ The path is QUOTED, because a filename could otherwise write these sentences (232 §2)
- *
- * ⚠️ **This used to interpolate the path RAW into a newline-delimited block**, and a pathname may
- * contain any byte but `NUL` and `/`. One real selection, entirely inside the cwd, became two
- * BroBot-authored records — the second naming a file nobody chose (`227` HIGH 2). ⛔ **And even with
- * no control character at all the block was ambiguous** (`227` MEDIUM 3): a file genuinely named
- * `report (outside this conversation's working directory)` serialised identically to an outside file
- * named `report`, so the model could recover neither the pathname nor the containment.
- *
- * ⚑ **`JSON.stringify`, not a hand-rolled escaper.** It is total — `"` and `\` escaped, every
- * control character escaped, no exceptions to remember — it is LOSSLESS, so the model can recover the
- * exact pathname, and it is the one quoting convention every model already reads. ⛔ **The suffix now
- * sits outside the quotes**, so no filename can forge it, and the block cannot be extended by its own
- * content: producing a second `- file: "…"` record would need an unescaped `"`, and there is no such
- * thing on this side of `JSON.stringify`.
- *
- * ⚠️ **The quoting is total on its own**, deliberately, even though {@link classifyHandedPath}
- * already refuses control characters before a path can reach here. Two rules for one attack, because
- * they fail differently: the refusal removes the class, and this survives a caller that never went
- * through the classifier.
- *
- * ⛔ **U+2028 and U+2029 are escaped BY HAND, because `JSON.stringify` leaves them** (found reviewing
- * this diff). ⚠️ **The first version of this note argued they were harmless — *"a forged record needs
- * a `\"` this function would escape"* — and that reasoning is unsound.** It assumes the model reads
- * the block as quoted strings; the block's own grammar teaches it to read LINES, and U+2028 is a
- * line separator to plenty of things that read text. A planted directory tree whose components spell
- * `a<U+2028>- file: <somewhere else><U+2028>b` needs no quote at all. ⚑ **Two characters, one
- * `replace` each, and the argument stops needing to be right.**
- *
- * ⚑ **The three lines that did that are now {@link quotedLiteral}, shared** (251 §2). The registry
- * above the composer renders a COMMAND the model wrote, which is the same problem — arbitrary text
- * on a line whose structure a reader trusts — and 251's dispatch refuses a second escaping rule for
- * it. Moving the HOW leaves the WHEN here: a handed path is quoted unconditionally, for the reason
- * the paragraph above gives, and the registry quotes only what would otherwise mislead.
- */
+/** Add each canonical attachment as a losslessly quoted path, separate from the person's words. */
 export function messageWithHandedPaths(text: string, handed: readonly HandedPath[]): string {
   if (handed.length === 0) return text
   const lines = handed.map((each) => {

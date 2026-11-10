@@ -765,34 +765,19 @@ describe('two drops in one tick (236 §4)', () => {
   })
 })
 
-/**
- * # ⚠️ One spelling, or two files? (236 §5, from `227` LOW 4)
- *
- * ⛔ **`232` §1 rejected `dev`/`ino` for two reasons that stand; case folding is the half that
- * survives** — and `187` §1 already ruled on exactly this question one field over: a case variant
- * is one thing on the default macOS volume format and two on a case-sensitive one, so neither
- * "silently one" nor "silently two" is true everywhere. It is REFUSED, and the refusal names the
- * spelling it collided with.
- */
-describe('a spelling that differs only in case (236 §5)', () => {
-  it('🔴 is refused out loud, and does not become a second chip', async () => {
+describe('a spelling that differs only in case', () => {
+  it('keeps distinct canonical paths as two chips without a refusal', async () => {
     installBridge()
     view = composer()
     await dropOn(view, dropped('Notes.md', '/work/alpha/Notes.md'))
     await dropOn(view, dropped('notes.md', '/work/alpha/notes.md'))
 
-    expect(staged()).toEqual([file('/work/alpha/Notes.md')])
-    const note = view.q('attach-refused')
-    expect(visible(note)).toBe(true)
-    // ⛔ It names the spelling already there — a refusal that only said "already attached" would
-    // leave a person staring at a chip whose name does not match what they just dropped.
-    expect(note.textContent).toContain('/work/alpha/Notes.md')
-    expect(note.textContent).toContain('differ only in case')
+    expect(staged()).toEqual([file('/work/alpha/Notes.md'), file('/work/alpha/notes.md')])
+    expect(view.host.querySelector('[data-cy="attach-refused"]')).toBeNull()
   })
 
   it('⛔ …and an EXACT repeat is still silent, because that is what a person means', async () => {
-    // The paired negative: folding and de-duplicating are different answers and only one of them
-    // gets a sentence. Dropping something already attached is not a mistake.
+    // A repeated canonical path still names one attachment.
     installBridge()
     view = composer()
     await dropOn(view, dropped('notes.md', '/work/alpha/notes.md'))

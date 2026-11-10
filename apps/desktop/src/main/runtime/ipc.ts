@@ -15,7 +15,6 @@ import {
 } from '@brobot2/runtime'
 import { providerSchema } from '@brobot2/shared'
 import {
-  CONTROL_CHARACTER_IN_PATH,
   RUNTIME_COMMAND_CHANNEL,
   RUNTIME_EVENT_CHANNEL,
   RUNTIME_LIVENESS_CHANNEL,
@@ -23,7 +22,6 @@ import {
   MAX_HANDED_PATHS,
   MAX_MESSAGE_PATH_LENGTH,
   MAX_MESSAGE_PATHS,
-  hasControlCharacter,
   LIBRARY_ARCHIVED,
   LIBRARY_KINDS,
   LIBRARY_ORIGINS,
@@ -314,18 +312,7 @@ const attachments = z
         .string()
         .min(1)
         .max(MAX_PATH_CHARS)
-        .refine((each) => isAbsolute(each), 'a handed path must be absolute')
-        // ⛔ **NO CONTROL CHARACTERS, at the door as well as in the classifier** (232 §2, from `227`
-        // HIGH 2). ⚠️ **The dispatch asks whether the wire is the right place to refuse, and the
-        // answer is that it is not the ONLY place — it is the second one.** `classifyHandedPath`
-        // refuses first, at the picker and the drop, where a person is standing and can be told a
-        // sentence; this is the same rule where a renderer's claim stops being taken at face value,
-        // exactly as the absoluteness refine above is. ⚑ **What a person sees if it reaches HERE**:
-        // `describeIssues` renders `path: <the sentence>` on the composer's refusal line, because
-        // the message is {@link CONTROL_CHARACTER_IN_PATH} rather than a zod default (169 §1 / 118).
-        // ⚠️ Reaching it means the renderer sent a path no classifier of ours produced — a forged or
-        // replayed command — so the sentence is a backstop, not the ordinary road.
-        .refine((each) => !hasControlCharacter(each), CONTROL_CHARACTER_IN_PATH),
+        .refine((each) => isAbsolute(each), 'a handed path must be absolute'),
       kind: z.enum(['file', 'directory']),
       outsideCwd: z.boolean(),
     }),

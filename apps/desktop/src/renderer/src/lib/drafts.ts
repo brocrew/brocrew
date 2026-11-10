@@ -3,7 +3,6 @@ import { reactive, shallowReactive, watch, type WatchStopHandle } from 'vue'
 import {
   MAX_HANDED_PATHS,
   alreadyStagedAs,
-  sameFileDifferentCase,
   type DroppedPathVerdict,
 } from '../../../shared/runtime-ipc'
 
@@ -78,22 +77,13 @@ export function stageVerdicts(
       refusal ??= `one message can carry ${MAX_HANDED_PATHS} attachments — the rest were not added`
       continue
     }
-    // ⚠️ **The same path twice is not two attachments.** The message would name it twice and the
-    // agent would read it twice; silently keeping one is what a person means by attaching
-    // something already attached — by either gesture.
-    //
-    // ⛔ **…and a spelling that differs only in CASE is refused rather than folded** (236 §5, from
-    // `227` LOW 4). It is one file on the default macOS volume format and two on a case-sensitive
-    // one, so neither "silently one" nor "silently two" is true everywhere — which is `187` §1's
-    // ruling, reached through {@link alreadyStagedAs}, which IS that matcher rather than a second
-    // copy of it.
-    const collides = alreadyStagedAs(
-      verdict.handed.path,
-      next.map((each) => each.path),
-    )
-    if (collides === verdict.handed.path) continue
-    if (collides !== null) {
-      refusal ??= sameFileDifferentCase(collides)
+    // Main returns canonical paths; deduplicate those exact spellings without folding case.
+    if (
+      alreadyStagedAs(
+        verdict.handed.path,
+        next.map((each) => each.path),
+      ) !== null
+    ) {
       continue
     }
     next.push(verdict.handed)
