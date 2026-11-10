@@ -3,7 +3,11 @@ import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+  type CallToolResult,
+} from '@modelcontextprotocol/sdk/types.js'
 import { createPluginToolBroker, type BrokerTool } from '../../src/main/plugins/tool-broker'
 import {
   createPrivatePluginPort,
@@ -25,6 +29,7 @@ export async function pluginProviderFixture(
     secondTool?: boolean
     toolMetadata?: Record<string, unknown>
     replyText?: string
+    result?: CallToolResult
   } = {},
 ) {
   const credential = createPluginCredential()
@@ -94,6 +99,7 @@ export async function pluginProviderFixture(
           admitted()
           await done
         }
+        if (options.result) return options.result
         if (reply === 'error') throw new Error(credential)
         if (reply === 'hold') await new Promise<void>(() => undefined)
         await new Promise<void>((resolve) => setImmediate(resolve))

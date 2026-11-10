@@ -33,7 +33,6 @@ export type PluginToolFailureReason =
   | 'transport-connect-failed'
   | 'transport-call-failed'
   | 'transport-close-failed'
-  | 'result-invalid'
   | 'tool-error'
   | 'binding-failed'
   | 'route-open-failed'

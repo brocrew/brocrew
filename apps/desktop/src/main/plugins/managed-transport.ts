@@ -10,7 +10,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import {
   CallToolRequestSchema,
-  CallToolResultSchema,
+  type CallToolResult,
   ListToolsRequestSchema,
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js'
@@ -154,13 +154,8 @@ export function createPrivatePluginPort(options: {
             report('cancelled')
             return { ok: false }
           }
-          const checked = CallToolResultSchema.safeParse(reply)
-          if (!checked.success) {
-            report('result-invalid')
-            return { ok: false }
-          }
-          if (checked.data.isError) report('tool-error')
-          return { ok: true, value: checked.data as BrokerValue }
+          if (reply.isError) report('tool-error')
+          return { ok: true, value: reply as BrokerValue }
         } catch (error) {
           const cause = reportError(
             error,
@@ -355,11 +350,7 @@ export async function openManagedPluginRoute(
                     .catch(() => undefined)
               },
             )
-            const parsed = CallToolResultSchema.safeParse(result)
-            if (!parsed.success) report('result-invalid')
-            return parsed.success
-              ? parsed.data
-              : textReply(`Tool ${tool.name} returned an invalid result.`)
+            return result as CallToolResult
           } catch (error) {
             // The broker audit records its own closed failure code.
             return textReply(

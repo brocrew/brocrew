@@ -390,3 +390,18 @@ it('passes requests over 64 KiB and responses over 8 MiB through the MCP transpo
   expect(result.isError).not.toBe(true)
   expect(f.broker.status().available).toBe(true)
 })
+
+it('forwards the complete SDK tool result through the broker and agent route', async () => {
+  const result = {
+    content: [
+      { type: 'text' as const, text: 'fictional complete result', annotations: { priority: 0.7 } },
+    ],
+    structuredContent: { page: { title: 'fictional page' }, rows: [1, 2, 3] },
+    isError: true,
+    _meta: { fixture: true, nested: { retained: ['one', 'two'] } },
+  }
+  const f = await pluginProviderFixture({ result })
+  cleanup.push(() => f.close())
+  const { client } = await caller(f)
+  expect(await client.callTool({ name: 'echo', arguments: { profile: 'fern' } })).toEqual(result)
+})
