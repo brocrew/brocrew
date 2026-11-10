@@ -17,7 +17,7 @@ import { createSessionStore } from '../src/main/db/session-store'
 
 type HostDeps = ConstructorParameters<typeof RuntimeHost>[0]
 
-/** A host over `directory` whose only provider is a fake Codex; `deps` adds the store and library. */
+/** A host over `directory` whose only provider is a fake Codex; `deps` adds store and library. */
 function aLibraryHost(
   directory: string,
   deps: Pick<HostDeps, 'store'> & Partial<HostDeps>,

@@ -209,8 +209,9 @@ describe('250 §2 · the state the person watched, and every surface that descri
   })
 
   it('🔴 an ENDING alone does not clear it — the level does, and the words follow the level', () => {
-    // A real ordering: `background_work.ended` can arrive with no level beside it. A word derived from the ENDING would go quiet here while work the provider
-    // has not retracted is still in the set.
+    // A real ordering: `background_work.ended` can arrive with no level beside it. A word derived
+    // from the ENDING would go quiet here while work the provider has not retracted is still in the
+    // set.
     const stillListed = surfaces(
       liveSession(...TURN_OVER, [
         {

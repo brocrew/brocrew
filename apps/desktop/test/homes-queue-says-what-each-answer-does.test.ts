@@ -11,7 +11,8 @@ import type { UserInputRequestEvent } from '../src/renderer/src/lib/transcript'
 
 /**
  * Every answer the queue can offer says what it does in its own words. The painted half, both
- * surfaces drawing the same words, is `test/dom/homes-queue-says-what-each-answer-does.dom.test.ts`.
+ * surfaces drawing the same words, is in
+ * `test/dom/homes-queue-says-what-each-answer-does.dom.test.ts`.
  */
 
 /**
