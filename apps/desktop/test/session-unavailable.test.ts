@@ -209,18 +209,20 @@ describe('the sentence a refused open shows a person (100)', () => {
     }
   })
 
-  it('states the bound the one refusal nobody chose was given (102)', () => {
-    // `took-too-long` is the launch's own ending — nobody pressed anything, so what it waited for
-    // and how long is the whole of what it has to say. It reads the SEPARATE `waitedForMs`, not
-    // `still-opening`'s elapsed time: one is the budget and the other is the spend, and a sentence
-    // that confused them would tell a person a number about the wrong thing.
-    const expired = describeUnavailable('took-too-long', { waitedForMs: 15_000, openingForMs: 900 })
+  it('states the idle interval separately from total opening time and requests cancellation', () => {
+    const expired = describeUnavailable('took-too-long', {
+      waitedForMs: 15_000,
+      openingForMs: 35_000,
+    })
 
-    expect(expired).toContain('agent did not answer within 15s')
-    expect(expired).not.toContain('900')
-    // …and it is still a sentence with no measurement at all, because the context is optional at
-    // every call site.
-    expect(describeUnavailable('took-too-long')).toContain('did not answer in time')
+    expect(expired).toContain('BroCrew observed no further launch progress for 15s')
+    expect(expired).toContain('stopped waiting and requested cancellation')
+    expect(expired).not.toContain('35s')
+    expect(expired).not.toContain('shut it down')
+    expect(expired).not.toContain('provider is not responding')
+    expect(describeUnavailable('took-too-long')).toContain(
+      'observed no further launch progress during the idle wait',
+    )
     expect(describeUnavailable('took-too-long')).not.toContain('undefined')
   })
 

@@ -282,7 +282,9 @@ describe('a launch that cannot complete (102)', () => {
           expect(await cancelled).toBe(true)
         } else {
           await vi.advanceTimersByTimeAsync(20)
-          expect(await failure).toBeInstanceOf(Error)
+          expect(await failure).toMatchObject({
+            message: expect.stringContaining('observed no further launch progress for 0s'),
+          })
           runtime.arriveNow()
           await vi.advanceTimersByTimeAsync(0)
         }
@@ -320,7 +322,7 @@ describe('a launch that cannot complete (102)', () => {
     const sentence = (failure as Error).message
     // What it waited for, and for how long. 40ms rounds to 0s, so the bound is stated by the shape
     // of the sentence rather than by a number this test picked.
-    expect(sentence).toContain('agent did not answer')
+    expect(sentence).toContain('BroCrew observed no further launch progress')
     // 🔴 **716 · `710` F-5 — what a person can do, said as a gesture** (rule 8.4): it was a bare
     // *"Try again."* until `716`. A start left nothing behind, so it is started again.
     expect(sentence).toContain('No conversation was made: start it again.')
@@ -377,7 +379,7 @@ describe('a launch that cannot complete (102)', () => {
     const host = buildHost(runtime)
 
     const failure = await host.createSession({ provider: 'codex' }, sink).catch((e: Error) => e)
-    expect((failure as Error).message).toContain('agent did not answer')
+    expect((failure as Error).message).toContain('BroCrew observed no further launch progress')
 
     runtime.arriveNow()
 
@@ -404,7 +406,7 @@ describe('a launch that cannot complete (102)', () => {
     const host = buildHost(runtime)
 
     const failure = await host.createSession({ provider: 'codex' }, sink).catch((e: Error) => e)
-    expect((failure as Error).message).toContain('agent did not answer')
+    expect((failure as Error).message).toContain('BroCrew observed no further launch progress')
 
     runtime.arriveNow()
     await waitFor(() => runtime.late?.closed() === true, 'the late provider to be closed')

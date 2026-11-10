@@ -419,7 +419,7 @@ export class AGiveThatGaveNothing extends Error {
 export interface UnavailableContext {
   /** How long a reservation has been waiting for its provider, ms. */
   openingForMs?: number
-  /** The bound a launch was given before it was given up on, ms (102). */
+  /** The launch's idle limit without observed progress, ms. */
   waitedForMs?: number
   /**
    * 🔴 **The ROW's own reason a reopen will not work** (504) — `SessionStore.reopenRefusalOf`,
@@ -656,22 +656,14 @@ export function describeUnavailable(reason: Unavailable, context: UnavailableCon
       return `This conversation is still opening — it is waiting for its agent to answer.${waited} It opens by itself when its agent answers; if its agent does not answer in time, BroCrew stops it.`
     }
     case 'took-too-long': {
-      // ⚠️ **What it waited for AND how long** (102 acceptance 3). "It did not open" would be the
-      // same non-answer 100 was reported for: the only fact a person has to decide on is that the
-      // agent itself never spoke, and for how long we let it not speak.
-      //
-      // 🔴 **716 · `710` F-5 — and what a person can do, which a bare *"Try again."* did not say**
-      // (rule 8.4). ⚑ The gesture differs by door, as `machine-ran-short`'s does: a start left
-      // nothing behind (the row is written at registration), so it is started again; a reopen left
-      // the conversation where it was, so it is reopened. ⚑ And what it means if it keeps
-      // happening, which is the one fact a second failure adds: the provider is not answering.
+      // This is an idle interval, not the whole launch duration. Requesting cancellation does
+      // not confirm process exit; the launch remains owned until its termination is verified.
       const boundMs = context.waitedForMs
-      const forHowLong = boundMs === undefined ? 'in time' : `within ${seconds(boundMs)}`
-      const stopped = `This conversation's agent did not answer ${forHowLong}, so BroCrew stopped waiting and shut it down.`
-      const keeps = 'If it keeps not answering, its provider is not responding on this machine.'
+      const forHowLong = boundMs === undefined ? 'during the idle wait' : `for ${seconds(boundMs)}`
+      const stopped = `BroCrew observed no further launch progress ${forHowLong}, so it stopped waiting and requested cancellation.`
       return context.reopening === true
-        ? `${stopped} The conversation is kept: ${reopenIt}. ${keeps}`
-        : `${stopped} No conversation was made: start it again. ${keeps}`
+        ? `${stopped} The conversation is kept: ${reopenIt}.`
+        : `${stopped} No conversation was made: start it again.`
     }
     case 'cancelled':
       // The one refusal a person ASKED for. It says what happened and gets out of the way — no

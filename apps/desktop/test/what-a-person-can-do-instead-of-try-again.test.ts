@@ -65,10 +65,10 @@ describe('the four sentences say what happens and what a person can do', () => {
     expect(start).toContain('No conversation was made: start it again.')
     expect(reopen).toContain('The conversation is kept: send it your message again.')
     for (const sentence of [start, reopen]) {
-      expect(sentence).toContain('agent did not answer within 15s')
-      expect(sentence).toContain(
-        'If it keeps not answering, its provider is not responding on this machine.',
-      )
+      expect(sentence).toContain('BroCrew observed no further launch progress for 15s')
+      expect(sentence).toContain('stopped waiting and requested cancellation')
+      expect(sentence).not.toContain('shut it down')
+      expect(sentence).not.toContain('provider is not responding')
     }
   })
 
@@ -150,7 +150,7 @@ describe('what a person reads at the door', () => {
     await host.close(sessionId, window)
     stall = new Promise<never>(() => {})
     const failure = await host.resumeSession(sessionId, window).catch((error: Error) => error)
-    expect((failure as Error).message).toContain('did not answer within 0s')
+    expect((failure as Error).message).toContain('observed no further launch progress for 0s')
     expect((failure as Error).message).toContain(
       'The conversation is kept: send it your message again.',
     )
@@ -167,7 +167,7 @@ describe('what a person reads at the door', () => {
       .catch((error: Error) => error)
     expect((failure as Error).message).toContain('No conversation was made: start it again.')
     expect((failure as Error).message).toContain(
-      "This conversation's agent did not answer within 0s",
+      'BroCrew observed no further launch progress for 0s',
     )
   })
 

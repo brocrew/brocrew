@@ -273,8 +273,11 @@ describe('a launch says where it waited', () => {
     options.startPhases?.('spawned')
     await vi.advanceTimersByTimeAsync(60)
     options.startPhases?.('initialized')
-    held.fail(new Error('fictional provider exited during initialization'))
-    expect(await failure).toBeInstanceOf(Error)
+    const original = new Error('fictional provider exited during initialization')
+    held.fail(original)
+    const failed = await failure
+    expect(failed).toBe(original)
+    expect(failed).toHaveProperty('message', 'fictional provider exited during initialization')
     expect(ended().at(-1)).toMatchObject({ outcome: 'failed' })
     expect(options.signal?.aborted).toBe(false)
     const count = lines.length
@@ -396,7 +399,9 @@ describe('a launch says where it waited', () => {
       await vi.advanceTimersByTimeAsync(14_999)
       expect(ended()).toHaveLength(0)
       await vi.advanceTimersByTimeAsync(1)
-      expect(await failure).toMatchObject({ message: expect.stringContaining('within 15s') })
+      expect(await failure).toMatchObject({
+        message: expect.stringContaining('no further launch progress for 15s'),
+      })
       expect(lines).toMatchObject([
         { stage: 'began', opening: 'fresh', timeoutMs: 15_000 },
         { stage: 'ended', opening: 'fresh', timeoutMs: 15_000, outcome: 'timed-out' },
@@ -430,7 +435,7 @@ describe('a launch says where it waited', () => {
         expect(ended().filter((one) => one.opening === 'resume')).toHaveLength(0)
         await vi.advanceTimersByTimeAsync(1)
         expect(await failure).toMatchObject({
-          message: expect.stringContaining(`within ${timeoutMs / 1000}s`),
+          message: expect.stringContaining(`no further launch progress for ${timeoutMs / 1000}s`),
         })
         expect(lines.filter((one) => one.opening === 'resume')).toMatchObject([
           { stage: 'began', timeoutMs },
