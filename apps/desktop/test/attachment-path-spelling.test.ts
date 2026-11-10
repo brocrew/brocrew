@@ -9,6 +9,7 @@ import {
   recheckHandedPaths,
 } from '../src/main/runtime/handed-path'
 import { runtimeCommandSchema } from '../src/main/runtime/ipc'
+import { restoreSavedDrafts, savedDraftsFrom } from '../src/main/saved-drafts'
 import { stageVerdicts } from '../src/renderer/src/lib/drafts'
 import { alreadyStagedAs, profileAlreadyNamed, quotedLiteral } from '../src/shared/runtime-ipc'
 
@@ -93,6 +94,29 @@ describe('attachment path spelling', () => {
       next: [{ path: target, kind: 'file', outsideCwd: false }],
       refusal: null,
     })
+  })
+
+  it('preserves path spelling through JSON persistence and draft restore', async () => {
+    const attached = names.map((name) => ({
+      path: join(dir, name),
+      kind: 'file' as const,
+      outsideCwd: false,
+    }))
+    const raw = JSON.parse(
+      JSON.stringify({ drafts: [{ slot: 'new', text: 'look', attached }] }),
+    )
+    expect(savedDraftsFrom(raw)).toEqual(raw)
+    const checked: string[] = []
+    expect(
+      await restoreSavedDrafts(raw, {
+        exists: () => true,
+        isGone: async (path) => {
+          checked.push(path)
+          return false
+        },
+      }),
+    ).toEqual(raw)
+    expect(checked).toEqual(attached.map((one) => one.path))
   })
 
   it('keeps actual filesystem failures as refusals', async () => {

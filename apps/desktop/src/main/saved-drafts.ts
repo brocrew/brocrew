@@ -49,15 +49,14 @@ function pastedFrom(raw: unknown): PastedImage | undefined {
 
 /**
  * ⛔ **One attached path, only if it is what the wire itself would accept** — absolute, bounded and
- * free of control characters (`ipc.ts`' `attachments`, from the same shared constants), a `kind` and
- * an `outsideCwd`. ⚠️ **`missing` is never read from the file**: it is a fact about the filesystem
+ * with a `kind` and an `outsideCwd` (`ipc.ts`' `attachments`, from the same shared constants). ⚠️ **`missing` is never read from the file**: it is a fact about the filesystem
  * NOW, so {@link restoreSavedDrafts} decides it afresh on every launch.
  */
 function handedFrom(raw: unknown): HandedPath | null {
   if (typeof raw !== 'object' || raw === null) return null
   const { path, kind, outsideCwd, pasted } = raw as Record<string, unknown>
   if (typeof path !== 'string' || path === '' || path.length > MAX_PATH_CHARS) return null
-  if (!isAbsolute(path) || hasControlCharacter(path)) return null
+  if (!isAbsolute(path)) return null
   if (kind !== 'file' && kind !== 'directory') return null
   if (typeof outsideCwd !== 'boolean') return null
   const image = pastedFrom(pasted)

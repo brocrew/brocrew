@@ -610,19 +610,6 @@ export const WIRE_REFUSALS: readonly WireRefusal[] = [
     verdict: 'composer-cannot',
   },
   {
-    field: 'attachments[].path',
-    rule: 'refine(!hasControlCharacter)',
-    verbs: SEND_VERBS,
-    probe: { text: 'here', attachments: [{ ...A_PATH, path: '/work/a\nb.md' }] },
-    composerHolds:
-      '⚑ **The same two answers as `isAbsolute` above, for the same reason** (232 §2). ' +
-      '`classifyHandedPath` refuses a control-bearing name at the picker and the drop, where a ' +
-      'person is standing and can be told a sentence; the door refuses it again, because a path ' +
-      'no classifier of ours produced is a forged or replayed command. ⛔ It is the wire half of ' +
-      '`227` HIGH 2: a legal filename could otherwise write BroBot’s own attachment records.',
-    verdict: 'composer-cannot',
-  },
-  {
     field: 'attachments[].kind',
     rule: "enum(['file','directory'])",
     verbs: SEND_VERBS,

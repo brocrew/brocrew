@@ -778,7 +778,11 @@ describe('§4 · the file — in the app’s own userData, whole, and read as un
     })
     expect(shaped).toEqual({
       drafts: [
-        { slot: NEW_CONVERSATION, text: 'kept', attached: [FILE('/work/ok.md')] },
+        {
+          slot: NEW_CONVERSATION,
+          text: 'kept',
+          attached: [FILE('/work/a\nb.md'), FILE('/work/ok.md')],
+        },
         { slot: draftKey(B), text: 'kept too', attached: [] },
       ],
     })
