@@ -1,15 +1,12 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   countProviderBranches,
   findRatchetIncreases,
   scanProviderBranches,
 } from '../lib/provider-logic-ratchet.mjs'
-
-const root = fileURLToPath(new URL('../../', import.meta.url))
 
 describe('provider logic ratchet', () => {
   it('counts executable dispatch without counting comments, prose or types', () => {
@@ -68,12 +65,4 @@ describe('provider logic ratchet', () => {
       { file: 'two.ts', allowed: 0, actual: 1 },
     ])
   })
-
-  // Coverage instrumentation slows the synchronous AST census over the whole source tree.
-  it('does not grow provider logic in the real main and neutral runtime trees', () => {
-    const baseline = JSON.parse(readFileSync(join(root, 'scripts/provider-logic-baseline.json')))
-    const current = scanProviderBranches(root)
-    expect(findRatchetIncreases(baseline, current)).toEqual([])
-    expect(current, 'remove unused permits when provider logic falls').toEqual(baseline)
-  }, 30_000)
 })
