@@ -1,0 +1,25 @@
+# Timeout inventory: per-call policy successor
+
+This updates the call-path portion of the inventory in `res_86414b33490543ec8dd67932193356aa`. Other startup, inventory, supervisor, runtime attachment, packaging and OS cleanup entries remain historical context from that report; they were not requalified here. This policy work never calls a host DEAD from elapsed time. Positive exact-host exit remains a separate fact.
+
+| Remaining time | Source | One-line reason and result |
+|---|---|---|
+| SDK default 60 seconds, reset on MCP activity | `managed-transport.ts`, SDK callTool | Bound silence awaiting a tool reply; advancing producer activity resets it, with no total cap. Expiry ends this caller with named took-too-long/unknown-completion words, not route/host recovery. |
+| SDK default 60 seconds for initialization | `managed-transport.ts`, client.connect | Bound an unanswered protocol handshake before tool dispatch; it is not evidence of process exit. |
+| 120 seconds queued | `tool-broker.ts`, queueMs | Bound admission waiting before dispatch; expiry says the named tool was not started and cannot claim unknown remote execution. |
+| 120 seconds unmanaged/admin call | `tool-broker.ts`, callMs | Legacy non-SDK transports supply no idle observer; this fallback bounds their caller wait. Managed SDK tools bypass it. It does not establish host death. |
+| 1 second legacy proof observation | `tool-broker.ts`, cancelProofMs | Give a legacy transport a chance to supply positive completion; missing proof is retained as unknown and dispatch resumes, rather than marking the broker unavailable on elapsed grace. SDK tools release independently. |
+| 15-second HTTP request body / 10-second headers | `managed-transport.ts`, createServer | Bound incomplete HTTP uploads before admission; these do not measure executing tool duration. |
+| 500 ms route-close flush | `managed-transport.ts`, close | Flush a refusal during an explicitly requested route retirement before closing that route; this is not automatic timeout recovery. |
+| Default 1-second attachment answer budget | `lifecycle/agent-bridge.ts`, answerWithin / read / answered | Return the current pending snapshot while attach/binding work continues; timer expiry alone does not kill a host. |
+| Default 15-second browser action, caller option up to 60 seconds | Chrome `tools/common.ts`, timeoutMs / timeoutOf | A named browser-action budget for Playwright navigation, capture and trigger waits; a tool error reports the action outcome without restarting the host. Explicit caller budgets remain explicit. |
+| 2-second title read / 1.5-second load observation / 400 ms title settle | Chrome `tools/common.ts`, titleOf / titleAfterLoad | Best-effort returned title metadata; these fall back to an empty title and do not classify host health. |
+| Bounded tab restoration budget | Chrome `tools/modeSwitch.ts` and open_tab | Bound the named restoration phase when switching browser mode; it does not classify a call or host as dead. |
+| Download origin observation 1 second | Chrome `browser/downloadRouter.ts`, origin | Await attribution from sibling browser/page sessions; missing attribution does not authorize taking a file and does not imply host death. |
+| Download ownership lookup action budget | Chrome `tools/index.ts`, saveDownload | Bound the ownership receipt lookup, before waiting for file completion; it does not impose a total transfer duration. |
+| Explicit download timeoutMs only | Chrome `tools/index.ts`, saveDownload / fetchToDisk | Honor a caller-supplied named transfer budget. The old default total file-completion / fetch cap is removed; absent an explicit budget, SDK activity/silence and its cancellation signal govern the request. |
+| 30-second SSE ping, unchanged | Chrome `shared/httpMcpServer.ts` | Keep the HTTP stream alive; comments are not MCP progress and never count as operation activity. |
+
+No new timer, timeout increase, watchdog, heartbeat-as-progress or retry was added. Browser and download stage updates occur only after actual completed work or increased received bytes. Opaque browser internals may supply no activity while awaiting a reply; silence then ends the caller honestly without proof of remote completion. A later same-tab request may wait behind the original plugin serializer and receive the same named unknown-completion timeout; other tabs/tools can proceed. Serializers are not force-released.
+
+The call timer/proof-grace audit covered `managed-transport.ts`, `tool-broker.ts` and `lifecycle/agent-bridge.ts`. Remaining non-timer failures such as a malformed trusted execution contract, a legacy cancellation failure or an explicit owner invalidation remain distinct from elapsed-time facts. This is not a re-audit of all startup/OS cleanup paths in the original table.
