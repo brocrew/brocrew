@@ -3,7 +3,6 @@
     "commit": "394772c43265041dbcaea3902d21438ff0162f5b",
     "source": "apps/desktop/src/main/plugins/lifecycle/person-control.ts",
     "file": "authors-person-control.ts",
-    "sourceSha256": "6c97113019237dcb4265dba223cbba25e63cd8fdd8e7aa273dc6573de09df6a7",
     "imports": {
       "./authors-features": "../hooks/definitions",
       "../../../src/main/plugins/lifecycle/proposals": "./proposals",
@@ -14,13 +13,13 @@
       "./authors-controller": "./controller",
       "../../../src/main/plugins/state/format": "../state/format",
       "../plugin-delete-parent/types": "./types"
-    }
+    },
+    "adaptation": "Uses the current JSON-line PersonChannel constructor."
   },
   {
     "commit": "394772c43265041dbcaea3902d21438ff0162f5b",
     "source": "apps/desktop/src/main/plugins/lifecycle/controller.ts",
     "file": "authors-controller.ts",
-    "sourceSha256": "8269935624fcc6b17751272071d4f43c399eadea89a37be5d5b7a98ec3df8c98",
     "imports": {
       "../../../src/main/plugins/contributions": "../contributions",
       "../../../src/main/plugins/node-policy": "../node-policy",
@@ -37,28 +36,24 @@
       "../../../src/shared/plugin-settings": "../../../shared/plugin-settings",
       "./authors-vault": "./vault",
       "../plugin-delete-parent/types": "./types"
-    },
-    "unsignedApiSha256": "23dc64be3fe283ebb508a91f084b89be73737f0cdf1dd3ceffcde067ce26187c"
+    }
   },
   {
     "commit": "394772c43265041dbcaea3902d21438ff0162f5b",
     "source": "apps/desktop/src/main/plugins/hooks/definitions.ts",
     "file": "authors-features.ts",
-    "sourceSha256": "d27d089bf14a20f8d0f22e32174c8f950b541deb047d47848a5e1ff20edcea05",
     "imports": {}
   },
   {
     "commit": "394772c43265041dbcaea3902d21438ff0162f5b",
     "source": "apps/desktop/src/main/plugins/lifecycle/vault.ts",
     "file": "authors-vault.ts",
-    "sourceSha256": "f60a94496b1e38eda79e2b8a2c8dbf33913cf25764a385794a1b68cb26b9fde9",
     "imports": {
       "../../../src/main/plugins/package-verifier": "../package-verifier",
       "../../../src/main/plugins/package-schema": "../package-schema",
       "../../../src/main/plugins/package-digests": "../package-digests",
       "../../../src/main/plugins/node-host-files": "../node-host-files",
       "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol"
-    },
-    "unsignedApiSha256": "58abc91b2bd41cad459ed24ddbc65d92d65b344578795c06db5608e693f39742"
+    }
   }
 ]

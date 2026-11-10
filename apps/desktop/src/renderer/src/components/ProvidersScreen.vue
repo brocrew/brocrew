@@ -529,8 +529,7 @@ const runningOf = (provider: Provider) => {
   padding-left: calc(var(--space-28) + var(--space-12));
   min-height: var(--space-28);
 }
-.page-icon,
-.debug-icon {
+.page-icon {
   position: absolute;
   display: grid;
   place-items: center;
@@ -711,43 +710,5 @@ const runningOf = (provider: Provider) => {
   overflow-y: auto;
   min-height: 0;
   flex: 1;
-}
-
-.debug {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-7) var(--space-8) var(--space-7) calc(var(--space-24) + var(--space-16));
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-card);
-  background: var(--panel);
-  gap: var(--space-3);
-}
-.debug-icon {
-  top: var(--space-6);
-  left: var(--space-6);
-  width: var(--space-24);
-  height: var(--space-24);
-}
-.debug h2 {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-bold);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-.switch {
-  display: flex;
-  align-items: center;
-  color: var(--text-soft);
-  cursor: pointer;
-  font-size: var(--type-small);
-  gap: var(--space-5);
-  line-height: var(--leading-relaxed);
-}
-.switch input {
-  flex: none;
-  accent-color: var(--accent);
 }
 </style>

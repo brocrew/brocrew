@@ -33,7 +33,7 @@ export interface SetupFacts {
 }
 
 /** Whether there is a program to install and keep updated: not for a copy this app carries. */
-export function hasAProgramToInstall(facts: SetupFacts): boolean {
+function hasAProgramToInstall(facts: SetupFacts): boolean {
   if (facts.setup === null) return false
   return facts.version?.program?.from !== 'carried'
 }
@@ -44,24 +44,6 @@ export function setupSteps(facts: SetupFacts): readonly SetupStep[] {
     : ['sign-in', 'ready']
 }
 
-export const STEP_WORD: Readonly<Record<SetupStep, string>> = {
-  install: 'Install',
-  version: 'Version',
-  'sign-in': 'Sign in',
-  ready: 'Ready',
-}
-
-const ORDER: Readonly<Record<SetupStep, number>> = {
-  install: 0,
-  version: 1,
-  'sign-in': 2,
-  ready: 3,
-}
-
-function stepOrder(step: SetupStep): number {
-  return ORDER[step]
-}
-
 /** A state that lets a person go on to the next step. */
 export function passes(state: SetupState): boolean {
   return (
@@ -70,11 +52,6 @@ export function passes(state: SetupState): boolean {
     state.kind === 'signed-in' ||
     state.step === 'ready'
   )
-}
-
-/** Whether a fact could not be read at all: never said as missing or signed out. */
-export function couldNotCheck(state: SetupState): boolean {
-  return state.kind === 'cannot-check'
 }
 
 /** `null` while a fact this step needs has not been read yet. */
@@ -136,37 +113,4 @@ export function firstToDo(facts: SetupFacts): SetupState | null {
 export function isReady(facts: SetupFacts): boolean | null {
   const state = firstToDo(facts)
   return state === null ? null : state.step === 'ready'
-}
-
-/**
- * Where Next lands after the facts were read again: on the step's own fact passing, the next step
- * that needs doing; after the install, the version step, so its result is seen. An earlier step
- * that stopped passing comes first. Otherwise the same step, as the facts now say it. `advanced`
- * says whether it moved on.
- */
-export function afterNext(
-  current: SetupState,
-  facts: SetupFacts,
-): { readonly state: SetupState; readonly advanced: boolean } {
-  const first = firstToDo(facts)
-  if (first !== null && stepOrder(first.step) < stepOrder(current.step)) {
-    return { state: first, advanced: false }
-  }
-  const here = stateAt(current.step, facts) ?? current
-  if (!passes(here) || here.step === 'ready' || first === null) {
-    return { state: here, advanced: false }
-  }
-  if (current.step === 'install') {
-    const version = stateAt('version', facts)
-    if (version !== null) return { state: version, advanced: true }
-  }
-  return { state: first, advanced: true }
-}
-
-/** The step before, as the facts say it now. */
-export function stepBefore(current: SetupState, facts: SetupFacts): SetupState | null {
-  const steps = setupSteps(facts)
-  const at = steps.indexOf(current.step)
-  if (at <= 0) return null
-  return stateAt(steps[at - 1]!, facts)
 }

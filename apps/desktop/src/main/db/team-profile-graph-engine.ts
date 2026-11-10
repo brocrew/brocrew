@@ -23,7 +23,8 @@ import {
   type GraphCoverage,
 } from '../../shared/team-profile-graph'
 import { readIdentityCreator, agentIdentityRowId } from './identity'
-import { graphKindOf, readGraphKindFile, type GraphKindEvidence } from './team-profile-graph-kind'
+import { readProfileExecution } from '../profile-execution-file'
+import { graphKindOf, type GraphKindEvidence } from './team-profile-graph-kind'
 import { graphLineage } from './team-profile-graph-lineage'
 
 type Row = Record<string, string | number | null>
@@ -98,7 +99,6 @@ export class TeamProfileGraphEngine {
   private cancelled: () => boolean = () => false
   constructor(
     file: string,
-    private readonly executionFile: string,
     private readonly now: () => number = Date.now,
     private readonly monotonic: () => number = () => performance.now(),
     private readonly trace?: (sql: string, bindings: readonly unknown[]) => void,
@@ -634,7 +634,11 @@ export class TeamProfileGraphEngine {
           facts.earlierBirths ||= s.created < node.createdAt
         }
     }
-    const kindFile = readGraphKindFile(this.executionFile, (bytes) => this.reserve(bytes), this.now)
+    const kept = this.db
+      .prepare('SELECT coalesce(sum(length(entry)), 0) AS bytes FROM profile_execution')
+      .get() as { bytes: number }
+    this.reserve(kept.bytes * 4 + 4096)
+    const kindFile = { reading: readProfileExecution(this.db), readAt: this.now() }
     for (const node of nodes) {
       const facts = evidence.get(node.id)!
       const entry = kindFile.reading.readable ? kindFile.reading.kept.profiles[node.id] : undefined

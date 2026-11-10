@@ -4,6 +4,8 @@ import {
   foreignKey,
   index,
   integer,
+  primaryKey,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -730,4 +732,91 @@ export const identityOwnNotesSeen = sqliteTable(
     seenThrough: integer('seen_through').notNull().default(0),
   },
   (t) => [check('identity_own_notes_seen_ck', sql`${t.seenThrough} >= 0`)],
+)
+
+/** A side file a start imported into these tables; a named file is only ever deleted after. */
+export const importedSideFile = sqliteTable('imported_side_file', {
+  name: text('name').primaryKey(),
+})
+
+export const archivedConversation = sqliteTable('archived_conversation', {
+  conversationId: text('conversation_id').primaryKey(),
+  archivedAt: integer('archived_at').notNull(),
+})
+
+export const signInChange = sqliteTable('sign_in_change', {
+  provider: text('provider').primaryKey(),
+  changedAt: integer('changed_at').notNull(),
+})
+
+export const providerUsageReading = sqliteTable(
+  'provider_usage_reading',
+  {
+    provider: text('provider').notNull(),
+    window: text('window').notNull(),
+    position: integer('position').notNull(),
+    usedPercent: real('used_percent'),
+    resetsAt: integer('resets_at'),
+    at: integer('at').notNull(),
+    account: text('account'),
+  },
+  (t) => [primaryKey({ columns: [t.provider, t.window] })],
+)
+
+export const providerUsageWindowSeen = sqliteTable(
+  'provider_usage_window_seen',
+  {
+    provider: text('provider').notNull(),
+    window: text('window').notNull(),
+    position: integer('position').notNull(),
+    first: integer('first').notNull(),
+    last: integer('last').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.provider, t.window] })],
+)
+
+export const providerUsageReadOn = sqliteTable('provider_usage_read_on', {
+  provider: text('provider').primaryKey(),
+  tag: text('tag').notNull(),
+})
+
+export const scheduleAttempt = sqliteTable('schedule_attempt', {
+  conversationId: text('conversation_id').primaryKey(),
+  record: text('record').notNull(),
+  at: integer('at').notNull(),
+})
+
+export const cutTurn = sqliteTable('cut_turn', {
+  id: text('id').primaryKey(),
+  record: text('record').notNull(),
+  at: integer('at').notNull(),
+})
+
+export const cutLife = sqliteTable('cut_life', {
+  conversationId: text('conversation_id').primaryKey(),
+  record: text('record').notNull(),
+  since: integer('since').notNull(),
+})
+
+export const draft = sqliteTable('draft', {
+  slot: text('slot').primaryKey(),
+  entry: text('entry').notNull(),
+})
+
+export const profileExecution = sqliteTable('profile_execution', {
+  identityId: text('identity_id').primaryKey(),
+  entry: text('entry').notNull(),
+})
+
+/** One row once how profiles run has been written; its absence is a workspace with none yet. */
+export const profileExecutionState = sqliteTable(
+  'profile_execution_state',
+  {
+    id: integer('id').primaryKey(),
+    servicesOff: integer('services_off').notNull(),
+  },
+  (t) => [
+    check('profile_execution_state_one_ck', sql`${t.id} = 1`),
+    check('profile_execution_state_off_ck', sql`${t.servicesOff} IN (0, 1)`),
+  ],
 )

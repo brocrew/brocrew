@@ -183,7 +183,7 @@ describe.skipIf(process.platform === 'win32')('first Settings startup catalogue 
     expect(f.fetch).toHaveBeenCalledTimes(3)
     expect(f.peer.refreshCatalogue).toHaveBeenCalledOnce()
   })
-  it('invalidates reuse after a failed authenticated-owner read', async () => {
+  it('invalidates reuse after a failed correlated-owner read', async () => {
     const f = await modern()
     f.controller.start(f.options)
     await f.controller.ready!()
@@ -254,7 +254,7 @@ describe.skipIf(process.platform === 'win32')('first Settings startup catalogue 
     expect(successor.refreshCatalogue).toHaveBeenCalledOnce()
   })
 
-  it('refetches if authenticated first-list read invalidates pre-read status', async () => {
+  it('refetches if correlated first-list read invalidates pre-read status', async () => {
     const f = await modern()
     let status: string | null = null
     Object.assign(f.peer, { mutationStatus: () => status })
@@ -378,7 +378,7 @@ describe('bounded live-owner guidance with fake peers and monotonic time', () =>
       { unavailableReason: 'owner-window-open' },
     ])
   })
-  it('requires a fresh authenticated busy observation after two minutes, not just an elapsed timer', async () => {
+  it('requires a fresh correlated busy observation after two minutes, not just an elapsed timer', async () => {
     const f = await setup()
     f.controller.start(f.options)
     await f.controller.ready!()
@@ -627,7 +627,7 @@ describe.skipIf(process.platform === 'win32')(
         expect(f.peer.uninstall).not.toHaveBeenCalled()
       },
     )
-    it('an owner re-read failure preserves authenticated current cards without exposing its private detail', async () => {
+    it('an owner re-read failure preserves correlated current cards without exposing its private detail', async () => {
       const f = await setup()
       f.controller.start(f.options)
       expect(await f.controller.ready!()).toBe(true)
@@ -1184,7 +1184,7 @@ describe.skipIf(process.platform === 'win32')(
         const owner = (epoch: string, phase: OwnerRecord['phase']) => {
           const storage = new SupervisorStorage(f.options.root, [f.options.workspaceRoot], true)
           try {
-            storage.write({ version: 1, epoch, key: 'a'.repeat(64), phase, wire: OWNER_WIRE })
+            storage.write({ version: 1, epoch, phase, wire: OWNER_WIRE })
           } finally {
             storage.close()
           }
@@ -1285,7 +1285,7 @@ describe.skipIf(process.platform === 'win32')(
       const owner = (phase: OwnerRecord['phase']) => {
         const storage = new SupervisorStorage(f.options.root, [f.options.workspaceRoot], true)
         try {
-          storage.write({ version: 1, epoch, key: 'a'.repeat(64), phase, wire: OWNER_WIRE })
+          storage.write({ version: 1, epoch, phase, wire: OWNER_WIRE })
         } finally {
           storage.close()
         }
@@ -1330,7 +1330,6 @@ describe.skipIf(process.platform === 'win32')(
         storage.write({
           version: 1,
           epoch,
-          key: 'a'.repeat(64),
           phase: 'accepting',
           wire: OWNER_WIRE,
         })
@@ -1496,7 +1495,7 @@ describe.skipIf(process.platform === 'win32')(
 )
 
 it.skipIf(process.platform === 'win32')(
-  'offline page opening keeps Running and its authenticated Configure route',
+  'offline page opening keeps Running and its correlated Configure route',
   async () => {
     const f = await setup()
     f.peer.catalogue.mockResolvedValue([
@@ -1531,7 +1530,7 @@ it.skipIf(process.platform === 'win32')(
   },
 )
 it.skipIf(process.platform === 'win32')(
-  'a legacy owner keeps its authenticated list without refresh or Update when the local catalogue advances',
+  'a legacy owner keeps its correlated list without refresh or Update when the local catalogue advances',
   async () => {
     const f = await setup()
     Reflect.deleteProperty(f.peer, 'refreshCatalogue')
@@ -1558,7 +1557,7 @@ it.skipIf(process.platform === 'win32')(
 )
 
 it.skipIf(process.platform === 'win32')(
-  'an ambiguous refresh reply still uses the authenticated owner cards when its list advanced',
+  'an ambiguous refresh reply still uses the correlated owner cards when its list advanced',
   async () => {
     const f = await setup()
     f.controller.start(f.options)
@@ -1600,7 +1599,7 @@ it.skipIf(process.platform === 'win32')(
   },
 )
 
-// Catalogue compatibility must not revoke management of an authenticated installation.
+// Catalogue compatibility must not revoke management of an correlated installation.
 describe.skipIf(process.platform === 'win32')(
   'installed plugins outside the compatible catalogue',
   () => {
@@ -1763,17 +1762,16 @@ async function busyOwner(
   const record: OwnerRecord = {
     version: 1,
     epoch: randomUUID(),
-    key: secret(),
     phase: 'accepting',
     wire: OWNER_WIRE,
   }
   storage.write(record)
-  const authenticated = vi.fn()
+  const correlated = vi.fn()
   const server = createServer((socket) => {
     const challenge = secret()
     socket.write(JSON.stringify({ challenge }) + '\n')
     socket.once('data', (packet) => {
-      const request = unpack(record.key, 'request', packet.toString().trim()) as {
+      const request = unpack(packet.toString().trim()) as {
         epoch: string
         nonce: string
         challenge: string
@@ -1783,10 +1781,10 @@ async function busyOwner(
         expect(request.epoch).toBe(record.epoch)
         expect(request.challenge).toBe(challenge)
         expect(request.command.kind).toBe('hello')
-        authenticated()
+        correlated()
       }
       socket.end(
-        pack(record.key, 'response', {
+        pack({
           ok: false,
           nonce: request.nonce,
           epoch: record.epoch,
@@ -1797,12 +1795,12 @@ async function busyOwner(
     })
   })
   await new Promise<void>((resolve) => server.listen(storage.endpoint(record), resolve))
-  return { storage, server, authenticated }
+  return { storage, server, correlated }
 }
 
-it('refuses restart projection from an authenticated inconsistent Hello diagnostic', async () => {
+it('refuses restart projection from an correlated inconsistent Hello diagnostic', async () => {
   const f = await setup()
-  const { storage, server, authenticated } = await busyOwner(f.options, {
+  const { storage, server, correlated } = await busyOwner(f.options, {
     phase: 'blocked',
     stage: 'recovery',
     probe: 'no-answer',
@@ -1814,7 +1812,7 @@ it('refuses restart projection from an authenticated inconsistent Hello diagnost
     await f.controller.ready!()
     const cards = await f.controller.catalogue()
     expect(storage.read()?.phase).toBe('accepting')
-    expect(authenticated).toHaveBeenCalled()
+    expect(correlated).toHaveBeenCalled()
     expect((supervisor.lastStartError as PluginSupervisorError).code).toBe('busy')
     expect(cards[0]?.unavailableReason).not.toBe('restart-required')
   } finally {
@@ -1825,7 +1823,7 @@ it('refuses restart projection from an authenticated inconsistent Hello diagnost
   }
 }, 15000)
 
-it('resets authenticated busy continuity when the root inode changes but its supervisor directory survives', async () => {
+it('resets correlated busy continuity when the root inode changes but its supervisor directory survives', async () => {
   const { rename } = await import('node:fs/promises')
   const f = await setup()
   const { storage, server } = await busyOwner(f.options)

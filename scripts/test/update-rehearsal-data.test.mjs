@@ -236,6 +236,14 @@ describe('what B kept of what A made', () => {
     ])
   })
 
+  it('the draft A left counts when it is a row of the drafts table', () => {
+    const data = { ...dataOf(aDataFolder()), state: {} }
+    const draft = { slot: 'new', text: 'unsent' }
+    const tables = { ...data.tables, draft: [{ slot: 'new', entry: JSON.stringify(draft) }] }
+    expect(whatTheDataLacks({ ...data, tables }, { conversations: [], draft })).toEqual([])
+    expect(whatTheDataLacks(data, { conversations: [], draft })).toEqual(['the draft is not saved'])
+  })
+
   it('drafts are compared by what they say: the draft A left must still be there', () => {
     const folder = aDataFolder()
     const before = dataOf(folder)

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tabDestination } from '../lib/tab-destination'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useTranscriptRetention } from '../composables/useTranscriptRetention'
 import {
@@ -145,17 +146,8 @@ const attentionHelp = /win/i.test(platformHere())
 
 async function tabKey(event: KeyboardEvent, current: SettingsTab): Promise<void> {
   const at = tabs.value.findIndex((item) => item.id === current)
-  const next =
-    event.key === 'ArrowRight'
-      ? (at + 1) % tabs.value.length
-      : event.key === 'ArrowLeft'
-        ? (at + tabs.value.length - 1) % tabs.value.length
-        : event.key === 'Home'
-          ? 0
-          : event.key === 'End'
-            ? tabs.value.length - 1
-            : -1
-  if (next < 0) return
+  const next = tabDestination(event.key, at, tabs.value.length)
+  if (next === null || next < 0) return
   event.preventDefault()
   const parent = (event.currentTarget as HTMLElement).parentElement
   emit('update:tab', tabs.value[next]!.id)

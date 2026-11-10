@@ -1,5 +1,5 @@
 import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -13,28 +13,25 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import {
+  importProviderUsageFile,
+  PROVIDER_USAGE_FILE,
+  usageKeptIn,
   type KeptUsage,
-  providerUsageFile,
-  readKeptUsage,
-  writeKeptUsage,
 } from '../src/main/provider-usage-file'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
 /**
- * # F096 · a provider's usage is kept — the cap, a reset that alone moved, and the write beside
+ * # F096 · a provider's usage is kept — the cap, and a reset that alone moved
  *
  * ⚑ `a-providers-usage-is-kept-told-to-agents-and-warned.test.ts` keeps, restarts and warns, and
  * `the-usage-warning-at-its-edges-and-each-verbs-refusal.test.ts` asks the warning's own edges.
- * Three things the host and the file do were measured by neither:
+ * Two things the host does were measured by neither:
  *
  *  - **§1 · the host holds at most sixteen windows of readings a provider.** The "past sixteen
  *    windows" test checks only the windows SEEN, which take the oldest's place; the readings refuse
  *    a seventeenth, and no test read them, so dropping that cap went unseen.
  *  - **§2 · a reset that alone moved is written.** Every test that writes moves the percentage; a
  *    frame whose only change is the reset was taken as saying the same again and survived.
- *  - **§3 · the file is written beside and renamed.** Writing straight over it leaves the same
- *    contents when nothing fails, so nothing went red; a write that fails half-way is what tells.
- *    ⚑ Made to fail with a folder planted at the temporary's name — no stub of `node:fs`.
  *
  * ⚑ Fake readings only, on a temp `userData`: no provider, credential or network is touched.
  */
@@ -72,10 +69,10 @@ describe('F096 · a provider’s usage, kept at its edges', () => {
         newSessionId: () => `sess_${String(++counter)}`,
         now: () => clock,
         usageKept: {
-          read: () => readKeptUsage(providerUsageFile(userData)),
+          read: () => usageKeptIn(db).read(),
           write: (usage) => {
             writes += 1
-            writeKeptUsage(providerUsageFile(userData), usage)
+            usageKeptIn(db).write(usage)
           },
         },
         readProviderConfig: (_provider, home) => ({
@@ -120,7 +117,7 @@ describe('F096 · a provider’s usage, kept at its edges', () => {
       handle.simulateProviderUsage(readings)
       await pump()
     }
-    const kept = () => readKeptUsage(providerUsageFile(userData)).readings
+    const kept = () => usageKeptIn(db).read().readings
 
     it('⛔ §1 · past sixteen windows, the readings refuse a new one — though the windows seen take it', async () => {
       const handle = await open()
@@ -159,19 +156,26 @@ describe('F096 · a provider’s usage, kept at its edges', () => {
     })
   })
 
-  describe('§3 · the readings file is written beside and renamed', () => {
+  describe('recorded account tags imported into SQLite', () => {
     let dir: string
+    let database: AppDatabase
     beforeEach(() => {
-      dir = mkdtempSync(join(tmpdir(), 'brobot2-usage-beside-'))
+      dir = mkdtempSync(join(tmpdir(), 'brobot2-usage-tags-'))
+      database = openDatabase(join(dir, 'brobot2.sqlite'))
+      applyMigrations(database, migrationsFolder)
     })
-    afterEach(() => rmSync(dir, { recursive: true, force: true }))
+    afterEach(() => {
+      if (database.open) database.close()
+      rmSync(dir, { recursive: true, force: true })
+    })
 
-    const usageAt = (usedPercent: number): KeptUsage => ({
+    const usageAt = (tag: string): KeptUsage => ({
       readings: {
-        claude: [{ window: 'seven_day', usedPercent, resetsAt: 2_000_000, at: 1_000 }],
-        codex: [],
+        claude: [],
+        codex: [{ window: 'weekly', usedPercent: 11, resetsAt: null, at: 1_000, account: tag }],
       },
-      seen: { claude: [{ window: 'seven_day', first: 500, last: 1_000 }], codex: [] },
+      seen: { claude: [], codex: [] },
+      readOn: { codex: tag },
     })
 
     it.each([
@@ -180,41 +184,21 @@ describe('F096 · a provider’s usage, kept at its edges', () => {
       `credential:${'b'.repeat(64)}`,
       `account:${'c'.repeat(64)}`,
       'api-revision:17',
-    ])('preserves the exact recorded account tag through a file read: %s', (tag) => {
-      const file = providerUsageFile(dir)
-      const usage: KeptUsage = {
-        ...usageAt(11),
-        readOn: { codex: tag },
-        readings: {
-          claude: [],
-          codex: [{ window: 'weekly', usedPercent: 11, resetsAt: null, at: 1_000, account: tag }],
-        },
-      }
-      writeKeptUsage(file, usage)
-      expect(readKeptUsage(file)).toEqual(usage)
+    ])('preserves the exact recorded account tag through import and reopen: %s', (tag) => {
+      const usage = usageAt(tag)
+      writeFileSync(join(dir, PROVIDER_USAGE_FILE), JSON.stringify(usage))
+      importProviderUsageFile(database, dir)
+      expect(usageKeptIn(database).read()).toEqual(usage)
+      database.close()
+      database = openDatabase(join(dir, 'brobot2.sqlite'))
+      expect(usageKeptIn(database).read()).toEqual(usage)
     })
 
-    it('does not retain an empty native account identifier', () => {
-      const file = providerUsageFile(dir)
-      writeKeptUsage(file, { ...usageAt(11), readOn: { codex: 'native-account:' } })
-      expect(readKeptUsage(file).readOn).toBeUndefined()
-    })
-
-    it('⛔ §3 · a write that fails leaves the file it would have replaced whole — and one that goes leaves no temporary', () => {
-      const file = providerUsageFile(dir)
-      writeKeptUsage(file, usageAt(11))
-
-      // ⛔ A folder where this process's temporary goes: writing it fails.
-      const temporary = `${file}.${String(process.pid)}.tmp`
-      mkdirSync(temporary)
-      expect(() => writeKeptUsage(file, usageAt(12))).toThrow()
-      expect(readKeptUsage(file)).toEqual(usageAt(11))
-
-      // ⚑ The control: with the way clear, the same write goes, and only the file is left.
-      rmSync(temporary, { recursive: true, force: true })
-      writeKeptUsage(file, usageAt(12))
-      expect(readKeptUsage(file)).toEqual(usageAt(12))
-      expect(readdirSync(dir)).toEqual(['provider-usage.json'])
+    it('does not import an empty native account identifier', () => {
+      writeFileSync(join(dir, PROVIDER_USAGE_FILE), JSON.stringify(usageAt('native-account:')))
+      importProviderUsageFile(database, dir)
+      expect(usageKeptIn(database).read().readOn).toBeUndefined()
+      expect(usageKeptIn(database).read().readings.codex[0]?.account).toBeUndefined()
     })
   })
 })

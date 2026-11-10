@@ -4,7 +4,7 @@ import type { SessionStore } from './session-store'
 import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
 import type { LimitsWriterStamp } from './fresh-limits-snapshot'
 import type { WindowWriterStamp } from './window-writer-stamp'
-import { sameWindowWriter } from './window-routing-reads'
+import { sameWindowContent, type WindowContentStamp } from './window-routing-reads'
 import {
   WindowReadUnavailable,
   type IncidentReading,
@@ -12,22 +12,7 @@ import {
 } from './window-read-protocol'
 
 export const INCIDENT_READ_LIMIT = { entries: 512, bytes: 4 * 1024 * 1024 } as const
-type Stamp = { window: WindowWriterStamp; content: LimitsWriterStamp }
 type Kept = { value: unknown; bytes: number }
-
-function same(before: Stamp | null, after: Stamp | null): boolean {
-  return (
-    before !== null &&
-    after !== null &&
-    sameWindowWriter(before.window, after.window) &&
-    before.content.writer === after.content.writer &&
-    before.content.totalChanges === after.content.totalChanges &&
-    before.content.dataVersion === after.content.dataVersion &&
-    Number.isFinite(before.content.at) &&
-    Number.isFinite(after.content.at) &&
-    before.content.at <= after.content.at
-  )
-}
 
 /** Supplies worker facts to one window answer, or reuses complete synchronous reads. */
 export class WindowIncidentReads {
@@ -36,7 +21,7 @@ export class WindowIncidentReads {
     owners?: ReadonlyMap<string, IncidentReading>
   }>()
   private readonly kept = new Map<string, Kept>()
-  private stamp: Stamp | null = null
+  private stamp: WindowContentStamp | null = null
   private bytes = 0
   private epoch = 0
 
@@ -68,7 +53,7 @@ export class WindowIncidentReads {
     }
   }
 
-  private sample(): Stamp | null {
+  private sample(): WindowContentStamp | null {
     try {
       const window = this.window()
       const content = this.content()
@@ -80,7 +65,7 @@ export class WindowIncidentReads {
 
   private read<T>(key: string, read: (unread: RowsUnread) => T, unread?: RowsUnread): T {
     const before = this.sample()
-    if (!same(this.stamp, before)) this.invalidate()
+    if (!sameWindowContent(this.stamp, before)) this.invalidate()
     this.stamp = before
     const kept = this.kept.get(key)
     if (kept !== undefined) {
@@ -104,7 +89,7 @@ export class WindowIncidentReads {
     }
     const value = read(counting)
     const after = this.sample()
-    if (epoch !== this.epoch || !same(before, after)) {
+    if (epoch !== this.epoch || !sameWindowContent(before, after)) {
       this.invalidate()
       return value
     }

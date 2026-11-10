@@ -1,3 +1,4 @@
+import { settleDom as settled } from './settle-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import PermissionCard from '../../src/renderer/src/components/PermissionCard.vue'
@@ -81,13 +82,6 @@ beforeEach(() => {
 afterEach(() => {
   Reflect.deleteProperty(navigator, 'clipboard')
 })
-
-const settled = async (): Promise<void> => {
-  for (let i = 0; i < 4; i += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await nextTick()
-  }
-}
 
 const text = (el: Element): string => (el.textContent ?? '').replace(/\s+/g, ' ').trim()
 const said = (m: Mounted): string =>

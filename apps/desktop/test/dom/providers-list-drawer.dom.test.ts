@@ -42,6 +42,24 @@ const row = (m: Mounted, provider: string) => {
 }
 
 describe('the Providers list opens the existing controls in one drawer', () => {
+  it('keeps the page icon styled, and omits it only when embedded', async () => {
+    const m = screen()
+    await settle()
+    const icon = m.host.querySelector<HTMLElement>('.page-icon')!
+    expect(icon).not.toBeNull()
+    const style = getComputedStyle(icon)
+    expect(style.position).toBe('absolute')
+    expect(style.display).toBe('grid')
+    expect(style.width).toBe(style.getPropertyValue('--space-28').trim())
+    expect(style.height).toBe(style.getPropertyValue('--space-28').trim())
+    expect(icon.getBoundingClientRect().width).toBeGreaterThan(0)
+    expect(icon.querySelector('use')?.getAttribute('href')).toBe('#i-sliders')
+    m.unmount()
+
+    const embedded = screen({ embedded: true })
+    await settle()
+    expect(embedded.host.querySelector('.page-icon')).toBeNull()
+  })
   it('one Escape closes only the top dialog when a setup route arrives over another modal', async () => {
     const fixture = defineComponent({
       setup(_props, { expose }) {

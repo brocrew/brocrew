@@ -4,10 +4,8 @@ import {
 } from './helpers/service-unreadable-question-cases'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { PieceRow } from '../src/shared/task-contracts'
-import { writeFileSync } from 'node:fs'
 import { TurnInProgress } from '@brobot2/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { profileExecutionFile } from '../src/main/profile-execution-file'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import {
   THE_APP_ITSELF,
@@ -692,7 +690,7 @@ describe('a service is reached through the piece it is on', () => {
       expect(followed.structured).toMatchObject({ outcome: 'ok', delivery: 'queued' })
       world.turnsWait = null
       await host.closeAll()
-      writeFileSync(profileExecutionFile(world.folder), '{not json')
+      world.loseTheKept()
       const quiet = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const after = world.aHost()
       // A person opens it again, and their words go; the caller's are neither sent nor ended.
@@ -1980,7 +1978,7 @@ describe('a service is reached through the piece it is on', () => {
       expect(rows(given.owner, 'work_taken_back')).toEqual([])
       // The services list can't be read at the next start, so its kind can't be told.
       await host.closeAll()
-      writeFileSync(profileExecutionFile(world.folder), '{not json')
+      world.loseTheKept()
       const quiet = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const after = world.aHost()
       expect(await after.takeBackForAPerson(one.label, world.window)).toEqual({

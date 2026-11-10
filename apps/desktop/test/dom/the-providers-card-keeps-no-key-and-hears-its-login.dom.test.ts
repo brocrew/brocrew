@@ -1,3 +1,4 @@
+import { settleDom as settled } from './settle-dom'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
 // The approved plain words replace the former labels; the state and gesture checks remain.
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -44,13 +45,6 @@ import { mount, unmountAll, visible, type Mounted } from './harness'
 afterEach(unmountAll)
 
 const NOW = new Date(2026, 9, 3, 9, 0).getTime()
-
-const settled = async (): Promise<void> => {
-  for (let i = 0; i < 4; i += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await nextTick()
-  }
-}
 
 const text = (el: Element): string => (el.textContent ?? '').replace(/\s+/g, ' ').trim()
 

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "cb5a4ada-e354-4310-afbc-6a65b9469782",
+  "id": "359b4021-cdf0-4596-b469-f66f84fb77d9",
   "prevId": "50ba00ad-8816-475e-a578-d30ff1082717",
   "tables": {
     "agent_identity": {
@@ -195,6 +195,30 @@
           "value": "\"app_policy\".\"id\" = 'policy'"
         }
       }
+    },
+    "archived_conversation": {
+      "name": "archived_conversation",
+      "columns": {
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
     "derived_generation": {
       "name": "derived_generation",
@@ -1009,6 +1033,10 @@
           "name": "identity_memory_amendment_act_ck",
           "value": "\"identity_memory_amendment\".\"act\" in ('removed', 'corrected', 'restored')"
         },
+        "identity_memory_amendment_provider_ck": {
+          "name": "identity_memory_amendment_provider_ck",
+          "value": "\"identity_memory_amendment\".\"provider\" in ('claude', 'codex')"
+        },
         "identity_memory_amendment_after_matches_act_ck": {
           "name": "identity_memory_amendment_after_matches_act_ck",
           "value": "(\"identity_memory_amendment\".\"act\" = 'removed' and \"identity_memory_amendment\".\"text_before\" is not null and \"identity_memory_amendment\".\"text_after\" is null) or (\"identity_memory_amendment\".\"act\" = 'corrected' and \"identity_memory_amendment\".\"text_before\" is not null and \"identity_memory_amendment\".\"text_after\" is not null) or (\"identity_memory_amendment\".\"act\" = 'restored' and \"identity_memory_amendment\".\"text_before\" is null and \"identity_memory_amendment\".\"text_after\" is not null and \"identity_memory_amendment\".\"source_id\" is not null)"
@@ -1361,6 +1389,23 @@
           "value": "\"identity_own_notes_seen\".\"seen_through\" >= 0"
         }
       }
+    },
+    "imported_side_file": {
+      "name": "imported_side_file",
+      "columns": {
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
     "provider_api_key": {
       "name": "provider_api_key",
@@ -1787,6 +1832,10 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
+        "provider_session_provider_ck": {
+          "name": "provider_session_provider_ck",
+          "value": "\"provider_session\".\"provider\" in ('claude', 'codex')"
+        },
         "provider_session_status_ck": {
           "name": "provider_session_status_ck",
           "value": "\"provider_session\".\"status\" in ('idle', 'working', 'waiting_permission', 'ended', 'errored')"

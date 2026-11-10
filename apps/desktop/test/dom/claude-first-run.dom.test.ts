@@ -2,7 +2,6 @@ import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, reactive } from 'vue'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
-import ProviderSetupWizard from '../../src/renderer/src/components/ProviderSetupWizard.vue'
 import { providersBridge } from '../../look/fixtures/providers'
 import { wearTheme } from '../../look/fixtures/themes'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
@@ -417,49 +416,4 @@ it('never lets a late initial idle read erase newer installer progress', async (
   await settle()
   expect(m.q('install-program').hasAttribute('disabled')).toBe(true)
   expect(m.q('install-progress').textContent).toContain('Downloading Claude Code')
-})
-
-it('uses the same missing-only installer in the first-run wizard, then advances automatically', async () => {
-  const { props, publish, bridge } = fixture()
-  const absent = {
-    state: 'absent' as const,
-    reason: 'The fictional tool owns its sign-in.',
-    checkedAgainst: 'the fictional provider capability',
-  }
-  const wizard = mount(
-    defineComponent({
-      setup: () => () =>
-        h(ProviderSetupWizard, {
-          provider: props.provider,
-          version: props.version,
-          setup: props.setup,
-          auth: ABSENT,
-          keyRefused: false,
-          signIn: absent,
-          reprovision: absent,
-          busy: 'idle',
-          notice: null,
-          recheck: async () => {
-            props.version = PROGRAM
-          },
-        }),
-    }),
-    {},
-    { width: 800, height: 900 },
-  )
-  await settle()
-  expect(wizard.all('setup-steps')).toHaveLength(0)
-  expect(wizard.all('setup-command')).toHaveLength(0)
-  expect(wizard.all('setup-next')).toHaveLength(0)
-  expect(wizard.all('setup-use-key')).toHaveLength(0)
-  wizard.q('install-program').click()
-  await settle()
-  publish({ phase: 'installed', progress: 'Installed.', exitCode: 0 })
-  await vi.waitFor(() => expect(wizard.all('provider-install')).toHaveLength(0))
-  expect(wizard.q('provider-setup-dialog').dataset.step).toBe('sign-in')
-  wizard.q('native-sign-in').click()
-  await settle()
-  expect(bridge.signIn).toHaveBeenCalledExactlyOnceWith('claude')
-  expect(wizard.all('setup-command')).toHaveLength(0)
-  expect(wizard.all('native-sign-in-link')).toHaveLength(1)
 })

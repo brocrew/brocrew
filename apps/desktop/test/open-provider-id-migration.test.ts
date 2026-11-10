@@ -53,7 +53,38 @@ function rows(db: AppDatabase, table: string, columns?: string[]): unknown[] {
     .all()
 }
 
+const movedStateRows: Record<string, Record<string, unknown>> = {
+  imported_side_file: { name: 'fictional-import.json' },
+  archived_conversation: { conversation_id: 'cedar', archived_at: 108 },
+  sign_in_change: { provider: 'codex', changed_at: 109 },
+  provider_usage_reading: {
+    provider: 'codex',
+    window: 'weekly',
+    position: 0,
+    used_percent: 11,
+    resets_at: null,
+    at: 110,
+    account: 'native-account:fictional/account-G7',
+  },
+  provider_usage_window_seen: {
+    provider: 'codex',
+    window: 'weekly',
+    position: 0,
+    first: 110,
+    last: 110,
+  },
+  provider_usage_read_on: { provider: 'codex', tag: 'native-account:fictional/account-G7' },
+  schedule_attempt: { conversation_id: 'cedar', record: '{"fictional":"schedule"}', at: 111 },
+  cut_life: { conversation_id: 'cedar', record: '{"fictional":"life"}', since: 112 },
+  cut_turn: { id: 'fictional-cut', record: '{"fictional":"cut"}', at: 113 },
+  draft: { slot: 'fictional-slot', entry: '{"fictional":"draft"}' },
+  profile_execution: { identity_id: 'fictional-identity', entry: '{"fictional":"execution"}' },
+  profile_execution_state: { id: 1, services_off: 0 },
+}
+
 function plant(db: AppDatabase, last: number): void {
+  if (last >= 28)
+    for (const [table, row] of Object.entries(movedStateRows)) put(db, table, row)
   legacyConversation(db, {
     id: 'cedar',
     profileId: 'cedar-baker',
@@ -228,7 +259,7 @@ afterEach(() => {
   for (const folder of directories.splice(0)) rmSync(folder, { recursive: true, force: true })
 })
 
-it.each([0, 17, 21])('preserves populated rows and references when upgrading after %s', (last) => {
+it.each([0, 17, 21, 28])('preserves populated rows and references when upgrading after %s', (last) => {
   const { folder, file, db } = fixture()
   applyMigrations(db, through(folder, last))
   plant(db, last)
@@ -242,7 +273,8 @@ it.each([0, 17, 21])('preserves populated rows and references when upgrading aft
     'identity_instruction',
     'identity_memory_amendment',
   ]
-  if (last === 21) tables.push('provider_connection', 'work_legacy_stall_cut')
+  if (last >= 21) tables.push('provider_connection', 'work_legacy_stall_cut')
+  if (last >= 28) tables.push(...Object.keys(movedStateRows))
   const kept = tables.map((table) => ({
     table,
     columns: (db.pragma(`table_info(${quote(table)})`) as { name: string }[]).map(
@@ -289,17 +321,22 @@ it.each([0, 17, 21])('preserves populated rows and references when upgrading aft
   expect(reopened.pragma('foreign_key_check')).toEqual([])
 })
 
-it.each([true, false])(
-  'restores original foreign_keys=%s on success and failed upgrade',
-  (enabled) => {
+it.each([
+  [true, 21],
+  [false, 21],
+  [true, 28],
+  [false, 28],
+] as const)(
+  'restores original foreign_keys=%s on success and failed upgrade after %s',
+  (enabled, last) => {
     const { folder, db } = fixture()
-    applyMigrations(db, through(folder, 21))
-    plant(db, 21)
+    applyMigrations(db, through(folder, last))
+    plant(db, last)
     db.pragma(enabled ? 'foreign_keys = ON' : 'foreign_keys = OFF')
     const before = rows(db, 'provider_session')
     const journal = rows(db, '__drizzle_migrations')
-    const broken = through(folder, 22)
-    const file = join(broken, '0022_open_provider_ids.sql')
+    const broken = through(folder, 29)
+    const file = join(broken, '0029_open_provider_ids.sql')
     const sql = readFileSync(file, 'utf8')
     writeFileSync(
       file,
@@ -322,8 +359,8 @@ it('rolls back when the in-transaction foreign-key check finds an orphan', () =>
   plant(db, 21)
   const before = rows(db, 'events')
   const journal = rows(db, '__drizzle_migrations')
-  const broken = through(folder, 22)
-  const file = join(broken, '0022_open_provider_ids.sql')
+  const broken = through(folder, 29)
+  const file = join(broken, '0029_open_provider_ids.sql')
   writeFileSync(
     file,
     readFileSync(file, 'utf8').replace(
@@ -397,8 +434,8 @@ it('fresh installs accept another provider while retaining non-provider checks a
 
 it('a failed fresh migration leaves no applied journal entries or partial application tables', () => {
   const { folder, db } = fixture()
-  const broken = through(folder, 22)
-  const file = join(broken, '0022_open_provider_ids.sql')
+  const broken = through(folder, 29)
+  const file = join(broken, '0029_open_provider_ids.sql')
   writeFileSync(
     file,
     readFileSync(file, 'utf8') +

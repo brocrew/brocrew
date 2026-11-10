@@ -1,3 +1,4 @@
+import { memoryStorage } from './memory-storage'
 import type { AgentState } from '../../src/shared/agent-state-contracts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
@@ -122,20 +123,6 @@ const OTHER_ROWS = ['sess_own', 'sess_rev', 'sess_dev']
  * and the dom project runs files side by side on one origin — so a fold written to the real store
  * could fold another file's rail. The rail reads `globalThis.localStorage` as it always does.
  */
-const memoryStorage = (): Storage => {
-  const kept = new Map<string, string>()
-  return {
-    get length() {
-      return kept.size
-    },
-    clear: () => kept.clear(),
-    getItem: (key: string) => kept.get(key) ?? null,
-    key: (index: number) => [...kept.keys()][index] ?? null,
-    removeItem: (key: string) => void kept.delete(key),
-    setItem: (key: string, value: string) => void kept.set(key, String(value)),
-  }
-}
-
 let storage: Storage
 
 beforeEach(() => {

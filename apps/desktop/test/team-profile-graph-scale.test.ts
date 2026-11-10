@@ -101,7 +101,6 @@ for (const [identities, conversations, events] of [
           sample,
           bundle,
           file: f.file,
-          executionFile: f.executionFile,
           context: graphContext,
         })
         process.stdout.write(
@@ -191,7 +190,7 @@ describe('10k-identity/50k-pair boundary', () => {
     const reader = new TeamProfileGraphLifetime(
       () =>
         new Worker(bundle, {
-          workerData: { file: f.file, executionFile: f.executionFile },
+          workerData: { file: f.file },
           resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16 },
         }),
     )
@@ -254,7 +253,7 @@ describe('unrelated fictional prose', () => {
     const f = fixture
     if (!f) throw new Error('No prose fixture')
     const reader = new TeamProfileGraphLifetime(
-      () => new Worker(bundle, { workerData: { file: f.file, executionFile: f.executionFile } }),
+      () => new Worker(bundle, { workerData: { file: f.file } }),
     )
     ownedReader = reader
     try {

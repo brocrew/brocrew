@@ -1,9 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { claudeProjectDirName } from '@brobot2/runtime/claude'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
-import { profileExecutionFile } from '../src/main/profile-execution-file'
+import { readProfileExecution } from '../src/main/profile-execution-file'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 describe('worker pools follow whole-tree lifecycle decisions', () => {
@@ -151,7 +151,7 @@ describe('worker pools follow whole-tree lifecycle decisions', () => {
       { type: 'replaced_by', sessionId: successor },
       world.clock++,
     )
-    const file = readFileSync(profileExecutionFile(world.folder))
+    const file = readProfileExecution(world.db)
     const stops = world.stopsAsked.slice()
     const deleting = vi.spyOn(world.store, 'deleteTheTree')
     for (const root of [giver, successor]) {
@@ -163,7 +163,7 @@ describe('worker pools follow whole-tree lifecycle decisions', () => {
     }
     expect(world.stopsAsked).toEqual(stops)
     expect(deleting).not.toHaveBeenCalled()
-    expect(readFileSync(profileExecutionFile(world.folder))).toEqual(file)
+    expect(readProfileExecution(world.db)).toEqual(file)
     expect(world.store.recordedOne(worker)).not.toBeNull()
   })
 
@@ -241,7 +241,7 @@ describe('worker pools follow whole-tree lifecycle decisions', () => {
     const pending = world.gives(host, giver, 'document-reader', { parallel: true })
     void pending.catch(() => {})
     try {
-      const before = readFileSync(profileExecutionFile(world.folder))
+      const before = readProfileExecution(world.db)
       const stops = world.stopsAsked.slice()
       expect(world.store.workersBorn()).toEqual([])
       expect(await host.deleteConversation(giver, ['records'])).toEqual({
@@ -250,7 +250,7 @@ describe('worker pools follow whole-tree lifecycle decisions', () => {
       })
       expect(world.stopsAsked).toEqual(stops)
       expect(world.store.recordedOne(giver)).not.toBeNull()
-      expect(readFileSync(profileExecutionFile(world.folder))).toEqual(before)
+      expect(readProfileExecution(world.db)).toEqual(before)
       release()
       expect(await pending).toMatchObject({ ok: true })
     } finally {

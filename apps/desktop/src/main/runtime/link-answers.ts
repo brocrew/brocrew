@@ -2,7 +2,7 @@ import type { AgentState } from '../../shared/agent-state-contracts'
 import { agentStateWords } from '../../shared/agent-state'
 import type { LinkResolution } from '../../shared/link-resolution'
 import type { LimitsWriterStamp } from '../db/fresh-limits-snapshot'
-import { sameWindowWriter } from '../db/window-routing-reads'
+import { sameWindowContent, type WindowContentStamp } from '../db/window-routing-reads'
 import type { WindowWriterStamp } from '../db/window-writer-stamp'
 
 export const LINK_ANSWER_LIMIT = 512
@@ -13,22 +13,7 @@ export interface ReadLinkAnswer {
   readonly cacheable?: boolean
 }
 
-type Stamp = { window: WindowWriterStamp; content: LimitsWriterStamp }
 type Kept = ReadLinkAnswer & { capturedAt: number }
-
-function sameStamp(before: Stamp | null, after: Stamp | null): boolean {
-  return (
-    before !== null &&
-    after !== null &&
-    sameWindowWriter(before.window, after.window) &&
-    before.content.writer === after.content.writer &&
-    before.content.totalChanges === after.content.totalChanges &&
-    before.content.dataVersion === after.content.dataVersion &&
-    Number.isFinite(before.content.at) &&
-    Number.isFinite(after.content.at) &&
-    before.content.at <= after.content.at
-  )
-}
 
 function copy(answer: LinkResolution): LinkResolution {
   return { ...answer, opens: answer.opens === null ? null : { ...answer.opens } }
@@ -37,7 +22,7 @@ function copy(answer: LinkResolution): LinkResolution {
 /** Retains target answers only while both routing and content writers are unchanged. */
 export class LinkAnswers {
   private readonly answers = new Map<string, Kept>()
-  private stamp: Stamp | null = null
+  private stamp: WindowContentStamp | null = null
   private epoch = 0
 
   constructor(
@@ -52,7 +37,7 @@ export class LinkAnswers {
     this.epoch++
   }
 
-  private sample(): Stamp | null {
+  private sample(): WindowContentStamp | null {
     try {
       const window = this.window()
       const content = this.content()
@@ -64,7 +49,7 @@ export class LinkAnswers {
 
   read(target: string, read: () => ReadLinkAnswer): LinkResolution {
     const before = this.sample()
-    if (!sameStamp(this.stamp, before)) this.invalidate()
+    if (!sameWindowContent(this.stamp, before)) this.invalidate()
     this.stamp = before
     const kept = this.answers.get(target)
     const now = this.now()
@@ -87,7 +72,7 @@ export class LinkAnswers {
     const after = this.sample()
     if (
       epoch === this.epoch &&
-      sameStamp(before, after) &&
+      sameWindowContent(before, after) &&
       current.cacheable !== false &&
       Number.isFinite(now)
     ) {

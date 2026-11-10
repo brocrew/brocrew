@@ -358,11 +358,11 @@ describe('§4 · a tablist that keeps the promise the role makes (583 relay 2)',
     const keys = strip(m)
     expect(keys.length).toBeGreaterThan(2)
 
-    const key = (name: string): void => {
-      const on = m.host.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
-      on?.dispatchEvent(
-        new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }),
-      )
+    const key = (name: string, prevented = true): void => {
+      const on = m.host.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')!
+      const event = new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true })
+      on.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(prevented)
     }
     key('ArrowRight')
     await nextTick()
@@ -380,6 +380,16 @@ describe('§4 · a tablist that keeps the promise the role makes (583 relay 2)',
     expect(selected(m)).toBe(keys[0])
     key('End')
     await nextTick()
+    expect(selected(m)).toBe(keys.at(-1))
+    key('ArrowDown')
+    await nextTick()
+    expect(selected(m)).toBe(keys[0])
+    expect(document.activeElement).toBe(m.q(`told-tab-${keys[0]}`))
+    key('ArrowUp')
+    await nextTick()
+    expect(selected(m)).toBe(keys.at(-1))
+    expect(document.activeElement).toBe(m.q(`told-tab-${keys.at(-1)}`))
+    key('Enter', false)
     expect(selected(m)).toBe(keys.at(-1))
   })
 

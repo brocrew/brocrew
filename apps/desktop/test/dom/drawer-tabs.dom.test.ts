@@ -75,6 +75,56 @@ async function show(host: HTMLElement, tab: DrawerTab): Promise<Set<string>> {
 }
 
 describe('the drawer shows one body at a time, and a click is what moves it', () => {
+  it('wraps only through eligible drawer tabs and keeps vertical keys native', async () => {
+    const view = mount(Harness, {}, { width: 380, height: 700 })
+    const entries = DRAWER_TABS.map((tab) => tab.id)
+    for (const [key, destination] of [
+      ['ArrowLeft', entries.at(-1)!],
+      ['ArrowRight', entries[0]!],
+      ['End', entries.at(-1)!],
+      ['Home', entries[0]!],
+    ]) {
+      const on = view.host.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')!
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+      on.dispatchEvent(event)
+      await nextTick()
+      const target = view.q(`drawer-tab-${destination}`)
+      expect(event.defaultPrevented).toBe(true)
+      expect(target.getAttribute('aria-selected')).toBe('true')
+      expect(document.activeElement).toBe(target)
+    }
+    for (const key of ['ArrowDown', 'ArrowUp', 'Enter']) {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+      view.q(`drawer-tab-${entries[0]}`).dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+      expect(view.q(`drawer-tab-${entries[0]}`).getAttribute('aria-selected')).toBe('true')
+    }
+    for (const tab of RESERVED_TABS) {
+      expect((view.q(`drawer-tab-${tab.id}`) as HTMLButtonElement).disabled).toBe(true)
+    }
+  })
+  it('calculates against the drawer’s filtered tabs', async () => {
+    const hidden = defineComponent({
+      setup() {
+        const tab = ref<DrawerTab>('open')
+        return () =>
+          h(SessionDrawer as never, {
+            ...drawerProps({ tab: tab.value, hiddenTabs: ['events', 'work'] }),
+            'onUpdate:tab': (next: DrawerTab) => {
+              tab.value = next
+            },
+          })
+      },
+    })
+    const view = mount(hidden, {}, { width: 380, height: 700 })
+    const on = view.q('drawer-tab-open')
+    on.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
+    await nextTick()
+    expect(view.q('drawer-tab-changes').getAttribute('aria-selected')).toBe('true')
+    expect(document.activeElement).toBe(view.q('drawer-tab-changes'))
+    expect(view.all('drawer-tab-events')).toHaveLength(0)
+    expect(view.all('drawer-tab-work')).toHaveLength(0)
+  })
   it('every tab mounts its own hooks and none of anyone else’s', async () => {
     const m = mount(Harness, {}, { width: 380, height: 700 })
 

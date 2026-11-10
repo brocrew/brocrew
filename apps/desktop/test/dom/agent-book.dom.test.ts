@@ -196,5 +196,26 @@ describe('the shared agent book', () => {
       expect(view.q('agent-book-tab-methods').getAttribute('aria-selected')).toBe('true'),
     )
     expect(document.activeElement).toBe(view.q('agent-book-tab-methods'))
+    for (const [key, destination] of [
+      ['Home', 'rules'],
+      ['ArrowLeft', 'skills'],
+      ['ArrowRight', 'rules'],
+      ['End', 'skills'],
+    ]) {
+      const on = view.host.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')!
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+      on.dispatchEvent(event)
+      await vi.waitFor(() =>
+        expect(view.q(`agent-book-tab-${destination}`).getAttribute('aria-selected')).toBe('true'),
+      )
+      expect(event.defaultPrevented).toBe(true)
+      expect(document.activeElement).toBe(view.q(`agent-book-tab-${destination}`))
+    }
+    for (const key of ['ArrowUp', 'ArrowDown', 'Enter']) {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+      view.q('agent-book-tab-skills').dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+      expect(view.q('agent-book-tab-skills').getAttribute('aria-selected')).toBe('true')
+    }
   })
 })

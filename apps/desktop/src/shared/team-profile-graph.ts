@@ -50,7 +50,6 @@ export const graphKindQuality = z.enum([
   'unknown-incarnation',
   'unknown-conflict',
   'unknown-lineage',
-  'unknown-changing',
 ])
 export const graphSettingSource = z.enum([
   'conversation-setting',

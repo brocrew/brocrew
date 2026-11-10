@@ -305,11 +305,6 @@ const LEDGER: readonly Row[] = [
     note: '⚑ Its `.only-for-a-reader` band is `width: 1px; clip-path: inset(50%)` and the sensor names it `for-a-reader-only` rather than a cut — one of the three separations `drawn.ts` had to make.',
   },
   {
-    component: 'ProviderSetupWizard.vue',
-    standing: 'never-swept',
-    note: 'The setup steps cut no visible text: its only clip is an `.only-for-a-reader` line announcing each check, which `drawn.ts` names `for-a-reader-only`. Commands wrap with `overflow-wrap: anywhere`.',
-  },
-  {
     component: 'OutsideCard.vue',
     standing: 'shortened-on-purpose',
     note: 'An agent-to-agent card folded to one line: who and whom (`.exchange-heading`, with the whole heading on its `:title`), a preview of the words (`.exchange-preview`) and its state, each cut at one line. Opening the card draws the whole message, and `agent-exchanges-fold-inline.dom.test.ts` drives that.',

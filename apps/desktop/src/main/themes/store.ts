@@ -856,33 +856,29 @@ export class ThemeStore implements ThemeAssetRegistry {
     }
   }
 
+  // A copy's id is its name as a slug of at most 30 characters, or "theme",
+  // followed by -2, -3, … until no saved or built-in theme has it.
+  private freeId(name: string): string {
+    const seed =
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 30)
+        .replace(/-$/, '') || 'theme'
+    let next = seed
+    for (let i = 2; this.registry.has(next) || this.reserved.has(next); i++) next = `${seed}-${i}`
+    return next
+  }
+
   duplicate(id: string, name: string): Promise<ThemeSaved | ThemeRefused> {
     return this.serial(async () => {
       await this.reload()
-      if (id === 'classic') {
-        const seed =
-          name
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-|-$/g, '')
-            .slice(0, 30)
-            .replace(/-$/, '') || 'theme'
-        let next = seed
-        for (let i = 2; this.registry.has(next) || this.reserved.has(next); i++)
-          next = `${seed}-${i}`
-        return this.saveInside({ theme: { ...CLASSIC_THEME, id: next, name } })
-      }
+      if (id === 'classic')
+        return this.saveInside({ theme: { ...CLASSIC_THEME, id: this.freeId(name), name } })
       const source = this.registry.get(id)?.loaded
       if (!source) return refused('theme-unknown', this.registry.get(id)?.row.problems)
-      const seed =
-        name
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-|-$/g, '')
-          .slice(0, 30)
-          .replace(/-$/, '') || 'theme'
-      let next = seed
-      for (let i = 2; this.registry.has(next) || this.reserved.has(next); i++) next = `${seed}-${i}`
+      const next = this.freeId(name)
       if (this.reserved.has(id)) {
         return this.saveInside({ theme: { format: 1, id: next, name, extends: id } })
       }

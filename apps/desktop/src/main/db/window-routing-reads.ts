@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { WindowWriterStamp } from './window-writer-stamp'
+import type { LimitsWriterStamp } from './fresh-limits-snapshot'
 import type { SessionStore } from './session-store'
 import type { RowsUnread } from './rows-unread'
 import type { RoutingReading, WindowRoutes } from './window-read-protocol'
@@ -25,6 +26,27 @@ export function sameWindowWriter(
     Number.isFinite(before.at) &&
     Number.isFinite(after.at) &&
     before.at <= after.at
+  )
+}
+
+/** The routing writer and the content writer sampled together. */
+export type WindowContentStamp = { window: WindowWriterStamp; content: LimitsWriterStamp }
+
+/** True when neither writer changed between two samples taken in order. */
+export function sameWindowContent(
+  before: WindowContentStamp | null,
+  after: WindowContentStamp | null,
+): boolean {
+  return (
+    before !== null &&
+    after !== null &&
+    sameWindowWriter(before.window, after.window) &&
+    before.content.writer === after.content.writer &&
+    before.content.totalChanges === after.content.totalChanges &&
+    before.content.dataVersion === after.content.dataVersion &&
+    Number.isFinite(before.content.at) &&
+    Number.isFinite(after.content.at) &&
+    before.content.at <= after.content.at
   )
 }
 

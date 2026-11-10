@@ -1,6 +1,6 @@
 import type { AgentState } from '../src/shared/agent-state-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,11 +18,7 @@ import {
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  readKeptAttempts,
-  scheduleAttemptsFile,
-  writeKeptAttempts,
-} from '../src/main/schedule-attempts-file'
+import { scheduleAttemptsIn } from '../src/main/schedule-attempts-file'
 import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
@@ -30,7 +26,7 @@ import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
  *
  * The app starts a stopped conversation for its scheduled jobs, and keeps what it did about them
  * in two places: the conversation's ledger (the words it holds for the next start, the words it
- * said, the level that says which jobs it is not started for) and `schedule-attempts.json` (the
+ * said, the level that says which jobs it is not started for) and its `schedule_attempt` row (the
  * starts it made). The two are written one after the other, so a crash can fall between any two
  * writes. Each case here stops a life of the app at one such point and starts the app again.
  *
@@ -38,10 +34,9 @@ import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
  *
  * A life of the app is a host with its OWN connection to the real SQLite file and its own store,
  * over one data folder. A crashed life is never closed: it is left where it stopped, waiting on
- * a provider that never answers, or unable to write its file. The next life opens the same
- * database file through a new connection and reads the same attempts file, with nothing held in
- * memory. SQLite's writes here are synchronous, so the files hold exactly what was written before
- * the point the life stopped at.
+ * a provider that never answers, or unable to write its attempts. The next life opens the same
+ * database file through a new connection, with nothing held in memory. SQLite's writes here are
+ * synchronous, so the file holds exactly what was written before the point the life stopped at.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -185,7 +180,7 @@ describe('scheduled jobs across a crash', () => {
     }
   }
 
-  /** The app starts at this moment: a new life over the same database file and attempts file. */
+  /** The app starts at this moment: a new life over the same database file. */
   const starts = (moment: number, stops: Stops = {}): Life => {
     clock = moment
     // ⚠️ Its own folder, taken now: a life left behind may still write when a timer of its fires.
@@ -224,10 +219,10 @@ describe('scheduled jobs across a crash', () => {
         }),
         statesMoved: () => {},
         scheduleAttempts: {
-          read: () => readKeptAttempts(scheduleAttemptsFile(folder)),
+          read: () => scheduleAttemptsIn(db).read(),
           write: (kept) => {
             if (stops.attemptsCannotBeKept === true) throw new Error('the disk is full')
-            writeKeptAttempts(scheduleAttemptsFile(folder), kept)
+            scheduleAttemptsIn(db).write(kept)
           },
         },
         startGapMs: GAP,
@@ -304,7 +299,7 @@ describe('scheduled jobs across a crash', () => {
         const jobs = (event as { jobs?: { id: string; notStarted?: string }[] }).jobs
         return jobs === undefined ? [] : [jobs.map((job) => job.notStarted ?? null)]
       })
-  const kept = (id: string) => readKeptAttempts(scheduleAttemptsFile(userData)).conversations[id]
+  const kept = (id: string) => scheduleAttemptsIn(now.db).read().conversations[id]
   const keptAsMade = (id: string): boolean =>
     kept(id)?.attempts.some((one) => one.attempted) === true
   const stateOf = (id: string): AgentState | undefined =>
@@ -670,22 +665,18 @@ describe('scheduled jobs across a crash', () => {
       })
     }
 
-    it('the real file: its write works and its rename fails, so no start is made and no half-written file is left; once it can be renamed, one start', async () => {
+    it('a real write that fails makes no start; once it can be kept, one start', async () => {
       const a = await aConversationWith((id) => makes(id, ONE_SHOT))
-      // A folder where the file belongs: the temporary file is written, and cannot take its place.
-      const file = scheduleAttemptsFile(userData)
-      mkdirSync(file)
+      now.db.exec(`CREATE TRIGGER full BEFORE INSERT ON schedule_attempt
+        BEGIN SELECT RAISE(ABORT, 'the disk is full'); END`)
       const refused = starts(AFTER_DUE)
       await waitFor(() => heldWords(a).length === 1, 'the words to be held')
       await settle()
       expect(askedFor(refused, a)).toBe(0)
       expect(warned().some((line) => line.includes('cannot be kept'))).toBe(true)
-      expect(readdirSync(userData).filter((name) => name.endsWith('.tmp'))).toEqual([])
       await refused.host.closeAll()
 
-      // The folder is gone, and a temporary file a killed launch left lies beside the file.
-      rmSync(file, { recursive: true })
-      writeFileSync(`${file}.99999.tmp`, '{"conversations":')
+      refused.db.exec('DROP TRIGGER full')
       starts(AFTER_DUE + 60_000)
       await waitFor(() => saidWords(a).length === 1, 'the words to be said')
       await settle()
@@ -713,35 +704,6 @@ describe('scheduled jobs across a crash', () => {
         .filter((event) => (event as { source?: string }).source === 'app/receipts')
         .at(-1) as { jobs?: { id: string }[] } | undefined
     )?.jobs?.map((job) => job.id)
-
-  describe('an older copy of the database under the newer file of attempts', () => {
-    it('⚑ nothing kept as started or told is done a second time; the older ledger never held the words, and they are not said', async () => {
-      const a = await aConversationWith((id) => makes(id, ONE_SHOT))
-      // The copy is taken before the launch that tells and starts it.
-      await now.db.backup(join(userData, 'older.sqlite'))
-      starts(AFTER_DUE)
-      await waitFor(() => saidWords(a).length === 1, 'the words to be said')
-      await settle()
-      await now.host.closeAll()
-      expect(keptAsMade(a)).toBe(true)
-
-      // The database file is replaced by its older copy; the file of attempts stays as it is.
-      for (const life of lives) if (life.db.open) life.db.close()
-      for (const suffix of ['', '-wal', '-shm']) {
-        rmSync(join(userData, `brobot2.sqlite${suffix}`), { force: true })
-      }
-      copyFileSync(join(userData, 'older.sqlite'), join(userData, 'brobot2.sqlite'))
-
-      starts(AFTER_DUE + 600_000)
-      await settle()
-      expect(askedFor(now, a)).toBe(0)
-      expect(wakeUpOf(a)).toBeUndefined()
-      // ⚠️ The file says the words were handed over; this ledger never held them.
-      expect(kept(a)?.told).toHaveLength(1)
-      expect(heldWords(a)).toEqual([])
-      expect(saidWords(a)).toEqual([])
-    })
-  })
 
   describe('the rows a plan is made from, read again', () => {
     it('the same rows again as a new generation, made the active one: each is read once, the plan is the same and no second start is made', async () => {

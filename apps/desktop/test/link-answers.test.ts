@@ -60,7 +60,7 @@ describe('cached link answers', () => {
     expect(read).toHaveBeenCalledTimes(4)
   })
 
-  it.each(['routing', 'title', 'external', 'writer', 'schema'])(
+  it.each(['routing', 'title', 'external', 'writer', 'content-writer', 'clock', 'schema'])(
     'drops retained answers after a %s stamp change',
     (change) => {
       const f = fixture()
@@ -71,6 +71,10 @@ describe('cached link answers', () => {
         f.content({ writer: f.writer, totalChanges: 2n, dataVersion: 1n, at: 101 })
       else if (change === 'external')
         f.content({ writer: f.writer, totalChanges: 1n, dataVersion: 2n, at: 101 })
+      else if (change === 'content-writer')
+        f.content({ writer: {}, totalChanges: 1n, dataVersion: 1n, at: 101 })
+      else if (change === 'clock')
+        f.content({ writer: f.writer, totalChanges: 1n, dataVersion: 1n, at: 99 })
       else
         f.window({
           writer: change === 'writer' ? {} : f.writer,

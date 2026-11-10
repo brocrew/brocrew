@@ -384,10 +384,7 @@ export function verifyCheckpoint(manifest, files, expected) {
         `Checkpoint did not preserve ${file.name}.`,
       )
   }
-  requireEvidence(
-    files['drafts.json'] && files['workspace.json'],
-    'Required fixture state is missing from the checkpoint.',
-  )
+  requireEvidence(files['workspace.json'], 'Required fixture state is missing from the checkpoint.')
   return { id: manifest.id, databaseSha256: manifest.database.sha256, files: manifest.files }
 }
 

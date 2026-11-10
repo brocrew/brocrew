@@ -93,13 +93,9 @@ it('makes incomplete, changing, incarnation and conflicting kind evidence unknow
       readable: true as const,
       kept: { profiles: { 'aid:a': { kind: 'normal' as const, identityCreatedAt: 10 } } },
     },
-    changing: false,
     readAt: 20,
   }
   expect(graphKindOf(identity, file, facts).kind).toBe('normal')
-  expect(graphKindOf(identity, { ...file, changing: true }, facts).kindQuality).toBe(
-    'unknown-changing',
-  )
   expect(graphKindOf(identity, file, { ...facts, complete: false }).kindQuality).toBe(
     'unknown-lineage',
   )
@@ -120,7 +116,6 @@ it('expires immutable pages on a monotonic clock despite wall-clock reversal', (
     wall = graphCutoff
   const engine = new TeamProfileGraphEngine(
     f.file,
-    f.executionFile,
     () => wall,
     () => mono,
   )
@@ -146,41 +141,10 @@ it('refuses a row-budget overflow completely, retaining no zero-filled metrics',
   f.db.transaction(() => {
     for (let i = 0; i < 250001; i++) insert.run(`e${i}`, i, graphCutoff - 1)
   })()
-  const engine = new TeamProfileGraphEngine(f.file, f.executionFile, () => graphCutoff)
+  const engine = new TeamProfileGraphEngine(f.file, () => graphCutoff)
   owned.push(engine)
   const r = engine.read({ operation: 'snapshot' }, graphContext)
   expect(r).toMatchObject({ type: 'unavailable', cause: 'budget', complete: false })
   expect(r).not.toHaveProperty('metrics')
   if (r.type === 'unavailable') expect(r.visited).toBeLessThanOrEqual(250000)
-})
-
-it('detects a file incarnation change around the bounded kind read', async () => {
-  const { writeFileSync, renameSync } = await import('node:fs')
-  const { readGraphKindFile } = await import('../src/main/db/team-profile-graph-kind')
-  const f = graphFixture()
-  owned.push(f)
-  writeFileSync(f.executionFile, JSON.stringify({ version: 2, profiles: {} }))
-  const other = f.executionFile + '.replacement'
-  writeFileSync(
-    other,
-    JSON.stringify({
-      version: 2,
-      profiles: { 'aid:a': { kind: 'normal', identityCreatedAt: 10 } },
-    }),
-  )
-  const reading = readGraphKindFile(
-    f.executionFile,
-    () => renameSync(other, f.executionFile),
-    () => 20,
-  )
-  expect(reading.changing).toBe(true)
-  expect(
-    graphKindOf({ id: 'aid:a', createdAt: 10 }, reading, {
-      complete: true,
-      serviceBirths: [],
-      workerBirths: 0,
-      earlierBirths: false,
-      serviceBindsCurrent: false,
-    }).kindQuality,
-  ).toBe('unknown-changing')
 })

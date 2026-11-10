@@ -16,7 +16,7 @@
  * Outside `ci`: needs a built app and roughly a minute. Exit 1 if a measured draft fails to return.
  */
 import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -301,8 +301,6 @@ async function runArm(arm) {
       first.session.close()
       first.done()
     }
-    const onDisk = join(userDataDir, 'drafts.json')
-    row.fileAfter = existsSync(onDisk) ? readFileSync(onDisk, 'utf8').includes(text) : 'absent'
     second = await launch(userDataDir)
     Object.assign(row, await readBack(second.session))
     row.back = row.text === text

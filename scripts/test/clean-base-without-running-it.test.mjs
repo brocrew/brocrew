@@ -26,9 +26,6 @@ import {
   WORKSPACE,
   WORKSPACES,
   WORKSPACES_PART,
-  SIGN_IN_CHANGES_PART,
-  SCHEDULE_ATTEMPTS_PART,
-  PROFILE_EXECUTION_PART,
 } from '../lib/clean-base.mjs'
 import { trustedAnchor } from '../lib/safe-remove.mjs'
 import { defaultUserData, pastedImagesRoot } from '../lib/user-data.mjs'
@@ -136,22 +133,8 @@ describe('§1 · the source census — a new durable write under userData must n
       "'brobot2.sqlite'",
       "'exports'",
       "'one-host.sock'",
-      // Which profiles are services, and each service's one conversation. REMOVED with the ledger
-      // whose profiles and conversations it names (`LEDGER`).
-      "'profile-execution.json'",
       // ⚑ The account the usage readings were read on. REMOVED with them (`USAGE`).
       "'provider-accounts.json'",
-      // ⚑ **F096 · each provider's newest usage readings**, kept across a restart. REMOVED (`USAGE`).
-      "'provider-usage.json'",
-      // What the app already did about each stopped conversation's scheduled jobs. REMOVED with
-      // the ledger whose conversations it is about (`LEDGER`).
-      "'schedule-attempts.json'",
-      // ⚑ **W4.172 · F095 — the moments each provider's sign-in changed**, which end the limits the
-      // sign-in before reached. REMOVED with the ledger whose limits they end (`LEDGER`).
-      "'sign-in-changes.json'",
-      // The turns the app's quit, or a crash, cut, and what it did about each. REMOVED with the
-      // ledger whose turns they are (`LEDGER`).
-      "'turns-the-app-cut.json'",
       // ⚑ **The updater's, in a hidden launch's data folder** — its own switch and the Mac image it
       // downloads. REMOVED: a fresh install has neither (`UPDATES`).
       "'update-settings.json'",
@@ -169,7 +152,9 @@ describe('§1 · the source census — a new durable write under userData must n
       'DATABASE_FILE',
       // Shared skill folders and their import receipts are removed with the workspace.
       'OFF_SKILLS_DIRNAME',
+      'PROFILE_EXECUTION_FILE',
       'PROVIDER_HOMES_DIRNAME',
+      'PROVIDER_USAGE_FILE',
       // The records of a restore, and the database a restore set aside (`RECOVERY`).
       'RECOVERY_DIRNAME',
       // ⚑ **D-016 · the files kept for pieces of work**, and this census is what put them in the
@@ -179,7 +164,9 @@ describe('§1 · the source census — a new durable write under userData must n
       'RESOURCES_DIRNAME',
       // ⚑ **744's unsent drafts** (R100) — removed with the ledger their slots name (`DRAFTS`).
       'SAVED_DRAFTS_FILE',
+      'SCHEDULE_ATTEMPTS_FILE',
       'SHARED_SKILLS_DIRNAME',
+      'SIGN_IN_CHANGES_FILE',
       'SKILLS_CONVERSION_FILE',
       // Each launch's timing, and the file it is moved to once full. REMOVED with the ledger whose
       // conversations they time (`LEDGER`).
@@ -188,6 +175,7 @@ describe('§1 · the source census — a new durable write under userData must n
       // A hidden launch's theme library is reset with its workspace.
       'THEME_LIBRARY_FOLDER',
       'TRANSCRIPT_RETENTION_FILE',
+      'TURNS_THE_APP_CUT_FILE',
       'WORKER_OUTPUT_DIRNAME',
       'WORKSPACE_DIRNAME',
       // The app's state files a recovery copy takes, each named in `APP_STATE_FILES`; the test
@@ -507,10 +495,7 @@ describe('§9 · the module defaults, for a caller that does not pass options', 
     expect(plan.keeps.some((keep) => keep.flag === '--keep-profile-auth')).toBe(false)
   })
 
-  it('⚑ 744 · the unsent drafts and a save a kill left half-written go as the unsent drafts — and the pattern is the product’s own', () => {
-    expect(code('apps/desktop/src/main/drafts-file.ts')).toContain(
-      'export const DRAFTS_PART = /^drafts\\.json\\.[0-9a-f]{12}\\.part$/',
-    )
+  it('⚑ 744 · the old drafts file and a save a kill left half-written go as the unsent drafts', () => {
     expect(DRAFTS_PART.source).toBe('^drafts\\.json\\.[0-9a-f]{12}\\.part$')
     const userData = plantUserData(fixture(), { profiles: HIS_PROFILES })
     writeFileSync(join(userData, 'drafts.json'), '{"version":1,"drafts":[]}')
@@ -560,60 +545,48 @@ it('classifies private update staging as disposable updates, never durable state
   expect(plan.actions.some((action) => action.rel.startsWith('updates/'))).toBe(false)
 })
 
-describe('§10d · what the app did about scheduled jobs', () => {
-  it('⚑ goes with the ledger whose conversations it is about, a write a kill left too — and the pattern is the product’s own', () => {
-    expect(code('apps/desktop/src/main/schedule-attempts-file.ts')).toContain(
-      'const temporary = `${file}.${String(process.pid)}.tmp`',
-    )
-    expect(SCHEDULE_ATTEMPTS_PART.source).toBe('^schedule-attempts\\.json\\.\\d+\\.tmp$')
+describe('§10d · the file older builds kept scheduled-job attempts in', () => {
+  it('goes with the ledger whose conversations it is about', () => {
     const userData = plantUserData(fixture(), { profiles: HIS_PROFILES })
-    for (const name of ['schedule-attempts.json', 'schedule-attempts.json.4242.tmp']) {
-      writeFileSync(join(userData, name), '{}')
-    }
+    writeFileSync(join(userData, 'schedule-attempts.json'), '{}')
     const plan = planCleanBase(
       trustedAnchor(userData, { repoRoot: REPO, home: fixture(), env: {} }),
     )
-    for (const rel of ['schedule-attempts.json', 'schedule-attempts.json.4242.tmp']) {
-      expect(plan.actions).toContainEqual({ rel, expect: 'file', why: LEDGER })
-    }
+    expect(plan.actions).toContainEqual({
+      rel: 'schedule-attempts.json',
+      expect: 'file',
+      why: LEDGER,
+    })
   })
 })
 
-describe('§10e · how each profile runs its work', () => {
-  it('⚑ goes with the ledger whose profiles and conversations it names, a write a kill left too — and the pattern is the product’s own', () => {
-    expect(code('apps/desktop/src/main/profile-execution-file.ts')).toContain(
-      'const temporary = `${file}.${String(process.pid)}.tmp`',
-    )
-    expect(PROFILE_EXECUTION_PART.source).toBe('^profile-execution\\.json\\.\\d+\\.tmp$')
+describe('§10e · the file older builds kept how each profile runs in', () => {
+  it('goes with the ledger whose profiles and conversations it names', () => {
     const userData = plantUserData(fixture(), { profiles: HIS_PROFILES })
-    for (const name of ['profile-execution.json', 'profile-execution.json.4242.tmp']) {
-      writeFileSync(join(userData, name), '{}')
-    }
+    writeFileSync(join(userData, 'profile-execution.json'), '{}')
     const plan = planCleanBase(
       trustedAnchor(userData, { repoRoot: REPO, home: fixture(), env: {} }),
     )
-    for (const rel of ['profile-execution.json', 'profile-execution.json.4242.tmp']) {
-      expect(plan.actions).toContainEqual({ rel, expect: 'file', why: LEDGER })
-    }
+    expect(plan.actions).toContainEqual({
+      rel: 'profile-execution.json',
+      expect: 'file',
+      why: LEDGER,
+    })
   })
 })
 
-describe('§10c · W4.172 · the moments each provider’s sign-in changed', () => {
-  it('⚑ go with the ledger whose limits they end, a write a kill left too — and the pattern is the product’s own', () => {
-    expect(code('apps/desktop/src/main/sign-in-changes.ts')).toContain(
-      'const temporary = `${file}.${String(process.pid)}.tmp`',
-    )
-    expect(SIGN_IN_CHANGES_PART.source).toBe('^sign-in-changes\\.json\\.\\d+\\.tmp$')
+describe('§10c · the file older builds kept sign-in changes in', () => {
+  it('goes with the ledger whose limits it ends', () => {
     const userData = plantUserData(fixture(), { profiles: HIS_PROFILES })
-    for (const name of ['sign-in-changes.json', 'sign-in-changes.json.4242.tmp']) {
-      writeFileSync(join(userData, name), '{}')
-    }
+    writeFileSync(join(userData, 'sign-in-changes.json'), '{}')
     const plan = planCleanBase(
       trustedAnchor(userData, { repoRoot: REPO, home: fixture(), env: {} }),
     )
-    for (const rel of ['sign-in-changes.json', 'sign-in-changes.json.4242.tmp']) {
-      expect(plan.actions).toContainEqual({ rel, expect: 'file', why: LEDGER })
-    }
+    expect(plan.actions).toContainEqual({
+      rel: 'sign-in-changes.json',
+      expect: 'file',
+      why: LEDGER,
+    })
   })
 })
 

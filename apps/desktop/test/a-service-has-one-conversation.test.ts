@@ -1,7 +1,6 @@
-import { readFileSync, writeFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionStore } from '../src/main/db/session-store'
-import { profileExecutionFile, writeProfileExecution } from '../src/main/profile-execution-file'
+import { readProfileExecution, writeProfileExecution } from '../src/main/profile-execution-file'
 import { THE_APP_ITSELF, type RuntimeHost } from '../src/main/runtime/runtime-host'
 import { SessionUnavailable } from '../src/main/runtime/session-unavailable'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
@@ -209,7 +208,7 @@ describe('a service’s one conversation', () => {
       world.anAgent('caller', 'nothing kept')
       const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const { service } = await theFirstGive(world.aHost(), 'browser-driver', true)
-      writeFileSync(profileExecutionFile(world.folder), 'not json')
+      world.loseTheKept()
       const host = world.aHost()
       const before = world.conversationsRecorded()
       await expect(host.reopenForAPerson(service, world.window, null)).rejects.toBeInstanceOf(
@@ -263,7 +262,7 @@ describe('a service’s one conversation', () => {
         profileId: 'browser-driver',
         service: true,
       })
-      writeProfileExecution(profileExecutionFile(world.folder), {
+      writeProfileExecution(world.db, {
         profiles: {
           [svc.id]: {
             kind: 'service',
@@ -314,7 +313,7 @@ describe('a service’s one conversation', () => {
       await world.aHost().deleteConversation(svc.conversation, ['records'])
       expect(world.store.recordedOne(svc.conversation)).toBeNull()
       // A crash between the note that it is going and the one that it is gone leaves the first.
-      writeProfileExecution(profileExecutionFile(world.folder), {
+      writeProfileExecution(world.db, {
         profiles: {
           [svc.id]: {
             kind: 'service',
@@ -330,7 +329,7 @@ describe('a service’s one conversation', () => {
 
     it('cut off before its records went is settled at the next start: the conversation stays the service’s', () => {
       const svc = aServiceGivenNothing()
-      writeProfileExecution(profileExecutionFile(world.folder), {
+      writeProfileExecution(world.db, {
         profiles: {
           [svc.id]: {
             kind: 'service',
@@ -361,7 +360,7 @@ describe('a service’s one conversation', () => {
           service: true,
         })
       }
-      writeProfileExecution(profileExecutionFile(world.folder), {
+      writeProfileExecution(world.db, {
         profiles: {
           [svc.id]: {
             kind: 'service',
@@ -400,7 +399,7 @@ describe('a service’s one conversation', () => {
 
     it('refuses a conversation that may be a service’s where which agents are services can’t be read', async () => {
       const svc = aServiceGivenNothing()
-      writeFileSync(profileExecutionFile(world.folder), 'not json')
+      world.loseTheKept()
       const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const host = world.aHost()
       expect(await host.deleteConversation(svc.conversation, ['records'])).toEqual({
@@ -410,7 +409,7 @@ describe('a service’s one conversation', () => {
           'nothing was deleted.',
       })
       expect(world.store.recordedOne(svc.conversation)).not.toBeNull()
-      expect(readFileSync(profileExecutionFile(world.folder), 'utf8')).toBe('not json')
+      expect(readProfileExecution(world.db)).toMatchObject({ readable: true, absent: true })
       warned.mockRestore()
     })
   })

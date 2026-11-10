@@ -148,7 +148,12 @@ export const MANIFEST = Object.freeze([
     why: RESOURCES,
     source: 'main/resources/resources.ts (resourcesRoot)',
   },
-  { name: 'drafts.json', expect: 'file', why: DRAFTS, source: 'main/drafts-file.ts (744)' },
+  {
+    name: 'drafts.json',
+    expect: 'file',
+    why: DRAFTS,
+    source: 'main/drafts-file.ts (importDraftsFile)',
+  },
   // The conversations a person archived, named by their rows in the ledger it goes with.
   { name: 'archived.json', expect: 'file', why: LEDGER, source: 'main/archived-file.ts' },
   { name: 'exports', expect: 'dir', why: EXPORTS, source: 'main/index.ts:415' },
@@ -171,19 +176,19 @@ export const MANIFEST = Object.freeze([
     name: 'sign-in-changes.json',
     expect: 'file',
     why: LEDGER,
-    source: 'main/sign-in-changes.ts (signInChangesIn)',
+    source: 'main/sign-in-changes.ts (importSignInChangesFile)',
   },
   {
     name: 'schedule-attempts.json',
     expect: 'file',
     why: LEDGER,
-    source: 'main/schedule-attempts-file.ts (scheduleAttemptsFile)',
+    source: 'main/schedule-attempts-file.ts (importScheduleAttemptsFile)',
   },
   {
     name: 'profile-execution.json',
     expect: 'file',
     why: LEDGER,
-    source: 'main/profile-execution-file.ts (profileExecutionFile)',
+    source: 'main/profile-execution-file.ts (importProfileExecutionFile)',
   },
   {
     name: 'api-keys.json',
@@ -195,7 +200,7 @@ export const MANIFEST = Object.freeze([
     name: 'turns-the-app-cut.json',
     expect: 'file',
     why: LEDGER,
-    source: 'main/turns-the-app-cut-file.ts (turnsTheAppCutFile)',
+    source: 'main/turns-the-app-cut-file.ts (importTurnsTheAppCutFile)',
   },
   {
     name: 'start-attempts.jsonl',
@@ -225,7 +230,7 @@ export const MANIFEST = Object.freeze([
     name: 'provider-usage.json',
     expect: 'file',
     why: USAGE,
-    source: 'main/provider-usage-file.ts (providerUsageFile)',
+    source: 'main/provider-usage-file.ts (importProviderUsageFile)',
   },
   {
     name: 'provider-accounts.json',
@@ -250,10 +255,8 @@ export const MANIFEST = Object.freeze([
 export const ACTIVE_THEME_PART = /^active-theme\.json\.(?:\d+\.[0-9a-f-]{36}|[0-9a-f]{12})\.tmp$/
 
 /**
- * 🔴 **744 · the private name one drafts save is written to before it is renamed into place** —
- * `DRAFTS_PART` in `apps/desktop/src/main/drafts-file.ts`. ⚠️ A kill inside a save leaves one, and it
- * holds somebody's words: it is the drafts file's, and is reported as the unsent drafts, not as
- * something BroBot did not write.
+ * The private name an older build wrote one drafts save to before renaming it into place. A kill
+ * inside a save left one, holding somebody's words: it goes as the unsent drafts.
  */
 export const DRAFTS_PART = /^drafts\.json\.[0-9a-f]{12}\.part$/
 
@@ -265,28 +268,7 @@ export const TRANSCRIPT_RETENTION_PART =
 
 export const WORKSPACES_PART = /^workspaces?\.json\.(?:\d+|[0-9a-f]{12})\.tmp$/
 
-export const PROVIDER_USAGE_PART = /^provider-(?:usage|accounts)\.json\.(?:\d+|[0-9a-f]{12})\.tmp$/
-
-/**
- * W4.172 · the name one write of the sign-in changes goes to before it is renamed into place —
- * `<file>.<pid>.tmp`, in `apps/desktop/src/main/sign-in-changes.ts`. ⚠️ A kill inside a write leaves
- * one: it goes with the moments it would have held, which go with the ledger whose limits they end.
- */
-export const SIGN_IN_CHANGES_PART = /^sign-in-changes\.json\.\d+\.tmp$/
-
-/**
- * The name one write of what the app did about scheduled jobs goes to before it is renamed into
- * place — `<file>.<pid>.tmp`, in `apps/desktop/src/main/schedule-attempts-file.ts`. ⚠️ A kill inside
- * a write leaves one: it goes with the ledger whose conversations it is about.
- */
-export const SCHEDULE_ATTEMPTS_PART = /^schedule-attempts\.json\.\d+\.tmp$/
-
-/**
- * The name one write of how each profile runs its work goes to before it is renamed into place —
- * `<file>.<pid>.tmp`, in `apps/desktop/src/main/profile-execution-file.ts`. ⚠️ A kill inside a write
- * leaves one: it goes with the ledger whose profiles and conversations it names.
- */
-export const PROFILE_EXECUTION_PART = /^profile-execution\.json\.\d+\.tmp$/
+export const PROVIDER_USAGE_PART = /^provider-accounts\.json\.(?:\d+|[0-9a-f]{12})\.tmp$/
 
 /**
  * A write of the saved API keys in progress, or a keys file that couldn't be read and was set aside
@@ -926,18 +908,6 @@ export function planCleanBase(anchor, { dropExports = false, keepAuth = false } 
     }
     if (PROVIDER_USAGE_PART.test(entry.name)) {
       actions.push({ rel: entry.name, expect: 'file', why: USAGE })
-      continue
-    }
-    if (SIGN_IN_CHANGES_PART.test(entry.name)) {
-      actions.push({ rel: entry.name, expect: 'file', why: LEDGER })
-      continue
-    }
-    if (SCHEDULE_ATTEMPTS_PART.test(entry.name)) {
-      actions.push({ rel: entry.name, expect: 'file', why: LEDGER })
-      continue
-    }
-    if (PROFILE_EXECUTION_PART.test(entry.name)) {
-      actions.push({ rel: entry.name, expect: 'file', why: LEDGER })
       continue
     }
     if (API_KEYS_PART.test(entry.name)) {

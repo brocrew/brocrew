@@ -4838,6 +4838,51 @@ function relayerIdentity(relayedFromProfile: unknown): string | undefined {
 }
 
 /**
+ * What a held message is and who it came from, read from its `message_queued` or, when the window
+ * paged past that, from its `message_unqueued` alone. Each fact is read the way the user_turn arm
+ * reads it, and a fact that is absent or malformed is left off.
+ *
+ * - `messageId` is its name, so an ending settles the row it names (see {@link QueuedItem.messageId}).
+ * - `report`: a reply held behind a running turn is not the person's message.
+ * - `relayed` and `relayedFromProfile` come only where the relay itself was read, so a row with an
+ *   identity and no conversation names nobody; `says` likewise.
+ * - `appNotice` is read as a non-empty string (see {@link carriesANotice}).
+ * - `goAhead` marks BroBot's go-ahead, never the person's (see {@link isTheGoAhead}).
+ */
+function queuedProvenance(
+  event: Pick<
+    QueuedMessageEvent,
+    | 'movedFrom'
+    | 'messageId'
+    | 'attachments'
+    | 'work'
+    | 'relayedFrom'
+    | 'relayedFromProfile'
+    | 'appNotice'
+    | 'answeredQuestion'
+    | 'attribution'
+    | 'says'
+  >,
+): Omit<QueuedItem, 'kind' | 'id' | 'text' | 'outcome' | 'detail'> {
+  const movedFrom = moveOriginOf(event.movedFrom)
+  const relayed = wasRelayed(event.relayedFrom)
+  const relayer = relayed ? relayerIdentity(event.relayedFromProfile) : undefined
+  const answeredQuestion = readAnsweredQuestion(event.answeredQuestion)
+  return {
+    ...(movedFrom === undefined ? {} : { movedFrom }),
+    ...(event.messageId === undefined ? {} : { messageId: event.messageId }),
+    ...(event.attachments ? { attachments: event.attachments } : {}),
+    ...(isAWorkReport(event.work) ? { report: event.work } : {}),
+    ...(relayed ? { relayed: true as const, ...relayNavigation(event.relayedFrom) } : {}),
+    ...(relayer === undefined ? {} : { relayedFromProfile: relayer }),
+    ...(carriesANotice(event.appNotice) ? { appNotice: event.appNotice } : {}),
+    ...(answeredQuestion ? { answeredQuestion } : {}),
+    ...(isTheGoAhead(event) ? { goAhead: true as const } : {}),
+    ...(relayed && isAgentMessageKind(event.says) ? { says: event.says } : {}),
+  }
+}
+
+/**
  * `at` is passed in for the one thing the stamping above cannot do: a `tool_result` MUTATES the
  * call's item instead of adding one, so the moment it landed has nowhere else to be recorded —
  * and without it a tool's duration would have to be invented.
@@ -5006,47 +5051,12 @@ function foldEvent(
       // Not sent, and shown as not sent (077). It arrives on the stream like everything else, so a
       // message queued live and the same message replayed on resume land by the same path.
       closeStreaming(state)
-      // ⚑ **545 · read once, and only where the relay itself was read** — a row carrying an
-      // identity and no conversation names nobody rather than heading a bubble nothing marked as
-      // somebody else's.
-      const relayer = wasRelayed(event.relayedFrom)
-        ? relayerIdentity(event.relayedFromProfile)
-        : undefined
       state.items.push({
         kind: 'queued',
-        ...(moveOriginOf(event.movedFrom) === undefined
-          ? {}
-          : { movedFrom: moveOriginOf(event.movedFrom) }),
         id: nextId(state, 'queued'),
         text: event.text,
         outcome: null,
-        // ⛔ **Its NAME, so an ending settles the row it names** (413) — see
-        // {@link QueuedItem.messageId}. A session can hold two since `394`.
-        ...(event.messageId === undefined ? {} : { messageId: event.messageId }),
-        ...(event.attachments ? { attachments: event.attachments } : {}),
-        // ⚑ **406** — see {@link QueuedItem.report}. A reply held behind a running turn is drawn
-        // here until it flushes, and it is not the person's message.
-        ...(isAWorkReport(event.work) ? { report: event.work } : {}),
-        // ⚑ **413** — see {@link QueuedItem.relayed}. A task held for a BUSY child is the ordinary
-        // way work arrives, and this is the row a person reads while it waits.
-        ...(wasRelayed(event.relayedFrom)
-          ? { relayed: true as const, ...relayNavigation(event.relayedFrom) }
-          : {}),
-        // ⚑ **545 · and WHO, which is the same row's other question** — see
-        // {@link QueuedItem.relayedFromProfile}.
-        ...(relayer === undefined ? {} : { relayedFromProfile: relayer }),
-        // ⚑ **624** — see {@link QueuedItem.appNotice}. ⛔ Read as a non-empty string, as
-        // `relayedFrom` is — see {@link carriesANotice}.
-        ...(carriesANotice(event.appNotice) ? { appNotice: event.appNotice } : {}),
-        ...(readAnsweredQuestion(event.answeredQuestion)
-          ? { answeredQuestion: readAnsweredQuestion(event.answeredQuestion) }
-          : {}),
-        // 🔴 **688 · R22** — see {@link QueuedItem.goAhead}: BroBot's go-ahead, never the person's.
-        ...(isTheGoAhead(event) ? { goAhead: true as const } : {}),
-        // ⚑ **688 · what the sender said it is** — only where the relay was read, like the name.
-        ...(wasRelayed(event.relayedFrom) && isAgentMessageKind(event.says)
-          ? { says: event.says }
-          : {}),
+        ...queuedProvenance(event),
       })
       return
     }
@@ -5080,48 +5090,16 @@ function foldEvent(
       // transcript, so a window can hold the ending without the beginning. The event carries the
       // text for this: the message is still shown, still marked never-sent, still offered back.
       closeStreaming(state)
-      // ⚑ **545 · the relayer's name on the rebuild too**, for the reason the relay flag is on this
-      // branch at all: this row is built from this event alone, and a rebuild that kept the relay
-      // and dropped the relayer would say *another agent* about a hop the ledger can name.
-      const rebuiltRelayer = wasRelayed(event.relayedFrom)
-        ? relayerIdentity(event.relayedFromProfile)
-        : undefined
+      // ⚑ This row is built from this event alone, so it reads every provenance fact the queued
+      // row would have read: without them an app-authored, relayed or go-ahead message comes back
+      // as the person's own bubble with *Put it back in the composer* under it.
       state.items.push({
         kind: 'queued',
         id: nextId(state, 'queued'),
         text: event.text,
         outcome: event.reason,
-        ...(moveOriginOf(event.movedFrom) === undefined
-          ? {}
-          : { movedFrom: moveOriginOf(event.movedFrom) }),
-        // ⚑ **413** — a rebuilt row carries its name for the same reason the queued one does: a
-        // second ending arriving in the same window must not find this row by position.
-        ...(event.messageId === undefined ? {} : { messageId: event.messageId }),
         ...(event.detail ? { detail: event.detail } : {}),
-        ...(event.attachments ? { attachments: event.attachments } : {}),
-        // ⚑ **406, from the review** — this branch never saw the `message_queued`, so without the
-        // report on the ENDING an app-authored reply is rebuilt as the person's own bubble.
-        ...(isAWorkReport(event.work) ? { report: event.work } : {}),
-        // ⚑ **413, the same hazard one subject over** — and the one that offers the words back.
-        ...(wasRelayed(event.relayedFrom)
-          ? { relayed: true as const, ...relayNavigation(event.relayedFrom) }
-          : {}),
-        // ⚑ **545 · and WHO relayed them** — see {@link QueuedItem.relayedFromProfile}.
-        ...(rebuiltRelayer === undefined ? {} : { relayedFromProfile: rebuiltRelayer }),
-        // ⚑ **624, the same hazard one subject over** — a window that paged past the queueing
-        // rebuilds this row from this event alone, and without the subject the app's own report
-        // comes back as the person's own bubble with *Put it back in the composer* under it.
-        ...(carriesANotice(event.appNotice) ? { appNotice: event.appNotice } : {}),
-        ...(readAnsweredQuestion(event.answeredQuestion)
-          ? { answeredQuestion: readAnsweredQuestion(event.answeredQuestion) }
-          : {}),
-        // 🔴 **688 · R22, the same hazard one subject over** — a go-ahead taken back in a window
-        // that paged past its queueing is rebuilt from this ending alone; without this it comes
-        // back as the person's words with *Put it back in the composer* under BroBot's sentence.
-        ...(isTheGoAhead(event) ? { goAhead: true as const } : {}),
-        ...(wasRelayed(event.relayedFrom) && isAgentMessageKind(event.says)
-          ? { says: event.says }
-          : {}),
+        ...queuedProvenance(event),
       })
       return
     }

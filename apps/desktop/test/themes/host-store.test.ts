@@ -9,6 +9,7 @@ import type { ThemeSaveInput } from '../../src/shared/theme-library'
 import { DEFINED } from './fixtures'
 import {
   childTheme,
+  cleanLibrary,
   createHostFixture,
   picturedBase,
   putTheme,
@@ -25,10 +26,6 @@ afterEach(async () => {
   vi.restoreAllMocks()
   await fixture.cleanup()
 })
-
-async function cleanLibrary(): Promise<void> {
-  expect((await readdir(fixture.library)).filter((name) => name.startsWith('.theme-'))).toEqual([])
-}
 
 describe('theme registry and workspace choices', () => {
   it('admits valid themes, preserves built-in asset ownership and reports refused folders', async () => {
@@ -308,7 +305,7 @@ describe('virtual classic', () => {
     })
     expect(await readFile(join(builtin, 'theme.json'))).toEqual(builtinBefore)
     expect(await readFile(join(custom, 'theme.json'))).toEqual(customBefore)
-    await cleanLibrary()
+    await cleanLibrary(fixture)
   })
 
   it('can read classic while another theme is active and persist a real switch to it', async () => {
@@ -364,37 +361,7 @@ describe('virtual classic', () => {
     ).toMatchObject({ outcome: 'refused', rail: 'theme-invalid' })
     expect(await readdir(fixture.library)).toEqual(['classic-child'])
     expect(store.snapshot().active).toBe('classic-child')
-    await cleanLibrary()
-  })
-
-  it('duplicates classic as a standalone minimal document and chooses a free id on repetition', async () => {
-    await rm(fixture.builtIns, { recursive: true })
-    const store = fixture.store({ defaultTheme: 'classic', builtInIds: [] })
-    await store.start()
-    expect(await store.duplicate('classic', 'Fictional Copy')).toMatchObject({
-      outcome: 'ok',
-      id: 'fictional-copy',
-      active: 'classic',
-      warnings: [],
-    })
-    const document = JSON.parse(
-      await readFile(join(fixture.library, 'fictional-copy', 'theme.json'), 'utf8'),
-    )
-    expect(document).toEqual({ format: 1, id: 'fictional-copy', name: 'Fictional Copy' })
-    expect(document).not.toHaveProperty('extends')
-    expect(await readdir(join(fixture.library, 'fictional-copy'))).toEqual(['theme.json'])
-    expect(await store.duplicate('classic', 'Fictional Copy')).toMatchObject({
-      outcome: 'ok',
-      id: 'fictional-copy-2',
-    })
-    expect(store.raw('fictional-copy-2')).toEqual({
-      format: 1,
-      id: 'fictional-copy-2',
-      name: 'Fictional Copy',
-    })
-    expect(await readdir(fixture.library)).toEqual(['fictional-copy', 'fictional-copy-2'])
-    expect(await readdir(fixture.userData)).toEqual([])
-    await cleanLibrary()
+    await cleanLibrary(fixture)
   })
 
   it.each([
@@ -464,7 +431,7 @@ describe('theme intake and publication', () => {
     const document = await readFile(join(fixture.library, 'from-base64', 'theme.json'), 'utf8')
     expect(JSON.parse(document)).toEqual(childTheme('from-base64'))
     expect(document).toBe(`${JSON.stringify(childTheme('from-base64'), null, 2)}\n`)
-    await cleanLibrary()
+    await cleanLibrary(fixture)
   })
 
   it.each([
@@ -630,7 +597,7 @@ describe('theme intake and publication', () => {
     ).toMatchObject({ outcome: 'refused', rail: 'theme-is-built-in' })
     expect(await readFile(join(fixture.library, 'mine', 'theme.json'))).toEqual(old)
     expect(store.raw('defined')?.name).toBe('Defined')
-    await cleanLibrary()
+    await cleanLibrary(fixture)
   })
 
   it.each(['create', 'replace'] as const)(
@@ -656,7 +623,7 @@ describe('theme intake and publication', () => {
       expect(store.raw('topology')?.name).toBe('Depth eight')
       expect(store.snapshot().active).toBe('topology')
       expect(await readFile(join(fixture.library, 'topology', path))).toEqual(RED_PNG)
-      await cleanLibrary()
+      await cleanLibrary(fixture)
     },
   )
 
@@ -702,7 +669,7 @@ describe('theme intake and publication', () => {
         expect(await readFile(join(fixture.library, 'topology', 'assets/red.png'))).toEqual(RED_PNG)
         expect(await readdir(join(fixture.library, 'topology'))).toEqual(['assets', 'theme.json'])
       } else expect(await readdir(fixture.library)).toEqual([])
-      await cleanLibrary()
+      await cleanLibrary(fixture)
     },
   )
 
@@ -731,7 +698,7 @@ describe('theme intake and publication', () => {
     )
     expect(new Set(names.map((name) => name.split('-')[0])).size).toBe(10)
     expect(store.raw('history')?.name).toBe('Version 11')
-    await cleanLibrary()
+    await cleanLibrary(fixture)
   })
 
   it('rolls back the real previous directory when the staged replacement rename fails', async () => {
@@ -772,7 +739,7 @@ describe('theme intake and publication', () => {
     expect(await readFile(join(fixture.userData, ACTIVE_THEME_FILE))).toEqual(active)
     expect((await failing.refresh()).active).toBe('mine')
     expect(changes).not.toHaveBeenCalled()
-    await cleanLibrary()
+    await cleanLibrary(fixture)
   })
 
   it('retains a successful library save and reports a warning if activation rename fails', async () => {
@@ -816,7 +783,7 @@ describe('theme intake and publication', () => {
       theme: 'defined',
     })
     expect(await readdir(fixture.userData)).toEqual([ACTIVE_THEME_FILE])
-    await cleanLibrary()
+    await cleanLibrary(fixture)
   })
 
   it('announces a successful save and activation once with real previous and actor despite listener failure', async () => {
@@ -846,7 +813,7 @@ describe('theme intake and publication', () => {
       theme: 'selected',
     })
     expect(store.raw('selected')).not.toBeNull()
-    await cleanLibrary()
+    await cleanLibrary(fixture)
   })
 
   it('announces an unactivated library save without inventing a selection change', async () => {

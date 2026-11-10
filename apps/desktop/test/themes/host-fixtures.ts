@@ -1,6 +1,7 @@
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { expect } from 'vitest'
 import { ThemeStore, type ThemeStoreOptions } from '../../src/main/themes/store'
 import { themeRoots } from '../../src/main/themes/state'
 import type { Theme } from '../../src/shared/themes/theme'
@@ -112,3 +113,8 @@ export async function createHostFixture() {
 }
 
 export type HostFixture = Awaited<ReturnType<typeof createHostFixture>>
+
+/** No staged or previous theme folder is left behind in the library. */
+export async function cleanLibrary(fixture: HostFixture): Promise<void> {
+  expect((await readdir(fixture.library)).filter((name) => name.startsWith('.theme-'))).toEqual([])
+}

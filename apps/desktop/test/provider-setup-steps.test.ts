@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  afterNext,
   firstToDo,
   isReady,
   setupSteps,
-  stepBefore,
   type SetupFacts,
 } from '../src/renderer/src/lib/provider-setup-steps'
 import type {
@@ -15,8 +13,7 @@ import type {
 } from '../src/shared/runtime-ipc'
 
 /**
- * Where a provider's setup stands, from the facts the window holds, and where Next lands after
- * they were read again: it moves on only when the step's own fact passes.
+ * Where a provider's setup stands, from the facts the window holds.
  */
 
 const SETUP = {
@@ -122,68 +119,6 @@ describe('the first step to do', () => {
     expect(firstToDo(carried)).toEqual({ step: 'sign-in', kind: 'sign-in' })
     expect(isReady(carried)).toBe(false)
     expect(isReady(facts({ version: program('tested', 'carried') }))).toBe(true)
-  })
-})
-
-describe('Next', () => {
-  it('stays on the step while its fact has not changed', () => {
-    const missing = facts({ version: program('missing') })
-    expect(afterNext({ step: 'install', kind: 'missing' }, missing)).toEqual({
-      state: { step: 'install', kind: 'missing' },
-      advanced: false,
-    })
-    const out = facts({ auth: SIGNED_OUT })
-    expect(afterNext({ step: 'sign-in', kind: 'sign-in' }, out).advanced).toBe(false)
-  })
-
-  it('after the install, shows the version step, passed or not', () => {
-    expect(afterNext({ step: 'install', kind: 'missing' }, facts())).toEqual({
-      state: { step: 'version', kind: 'passed' },
-      advanced: true,
-    })
-    const older = facts({ version: program('older-than-tested') })
-    expect(afterNext({ step: 'install', kind: 'missing' }, older)).toEqual({
-      state: { step: 'version', kind: 'older' },
-      advanced: true,
-    })
-  })
-
-  it('from a passed version, lands on the first step still to do', () => {
-    expect(afterNext({ step: 'version', kind: 'passed' }, facts({ auth: SIGNED_OUT }))).toEqual({
-      state: { step: 'sign-in', kind: 'sign-in' },
-      advanced: true,
-    })
-    expect(afterNext({ step: 'version', kind: 'passed' }, facts())).toEqual({
-      state: { step: 'ready', kind: 'account' },
-      advanced: true,
-    })
-  })
-
-  it('a version newer than tested moves on, quietly', () => {
-    const newer = facts({ version: program('newer-than-tested'), auth: SIGNED_OUT })
-    expect(afterNext({ step: 'version', kind: 'older' }, newer)).toEqual({
-      state: { step: 'sign-in', kind: 'sign-in' },
-      advanced: true,
-    })
-  })
-
-  it('an earlier step that stopped passing comes first', () => {
-    expect(
-      afterNext({ step: 'sign-in', kind: 'sign-in' }, facts({ version: program('missing') })),
-    ).toEqual({ state: { step: 'install', kind: 'missing' }, advanced: false })
-  })
-
-  it('Back shows the step before as the facts say it now', () => {
-    expect(stepBefore({ step: 'version', kind: 'passed' }, facts())).toEqual({
-      step: 'install',
-      kind: 'found',
-    })
-    expect(stepBefore({ step: 'install', kind: 'missing' }, facts())).toBeNull()
-    const carried = facts({ version: program('tested', 'carried') })
-    expect(stepBefore({ step: 'ready', kind: 'account' }, carried)).toEqual({
-      step: 'sign-in',
-      kind: 'signed-in',
-    })
   })
 })
 

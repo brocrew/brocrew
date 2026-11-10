@@ -176,11 +176,11 @@ it('keeps a chosen picture non-repeating and pixelated on the real Settings page
 
 it('moves tab focus with arrows, Home and End while keeping just one tab selected', async () => {
   const { m, tab } = await settings()
-  const key = async (id: SettingsTab, pressed: string) => {
-    m.q(`settings-tab-${id}`).dispatchEvent(
-      new KeyboardEvent('keydown', { key: pressed, bubbles: true }),
-    )
+  const key = async (id: SettingsTab, pressed: string, prevented = true) => {
+    const event = new KeyboardEvent('keydown', { key: pressed, bubbles: true, cancelable: true })
+    m.q(`settings-tab-${id}`).dispatchEvent(event)
     await nextTick()
+    expect(event.defaultPrevented).toBe(prevented)
   }
   await key('providers', 'ArrowRight')
   expect(tab.value).toBe('tools')
@@ -189,6 +189,23 @@ it('moves tab focus with arrows, Home and End while keeping just one tab selecte
   expect(tab.value).toBe('storage')
   await key('storage', 'Home')
   expect(tab.value).toBe('providers')
+  expect(m.all('settings-tab-plugins')).toHaveLength(0)
+  await key('providers', 'Home')
+  await key('providers', 'ArrowRight')
+  await key('tools', 'ArrowRight')
+  await key('skills', 'ArrowRight')
+  expect(tab.value).toBe('themes')
+  expect(document.activeElement).toBe(m.q('settings-tab-themes'))
+  await key('themes', 'Home')
+  await key('providers', 'ArrowLeft')
+  expect(tab.value).toBe('storage')
+  expect(document.activeElement).toBe(m.q('settings-tab-storage'))
+  await key('storage', 'ArrowRight')
+  expect(tab.value).toBe('providers')
+  for (const ignored of ['ArrowUp', 'ArrowDown', 'Enter']) {
+    await key('providers', ignored, false)
+    expect(tab.value).toBe('providers')
+  }
   expect(m.host.querySelectorAll('[role="tab"][aria-selected="true"]')).toHaveLength(1)
 })
 

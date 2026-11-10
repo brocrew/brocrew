@@ -21,11 +21,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import {
-  profileExecutionFile,
-  readProfileExecution,
-  writeProfileExecution,
-} from '../src/main/profile-execution-file'
+import { readProfileExecution, writeProfileExecution } from '../src/main/profile-execution-file'
 import { RuntimeHost, THE_APP_ITSELF, aTurnTheAppCutText } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import {
@@ -33,14 +29,12 @@ import {
   writeKeptAccounts,
   providerAccountsFile,
 } from '../src/main/providers/claude/account-record'
-import { readKeptUsage, writeKeptUsage, providerUsageFile } from '../src/main/provider-usage-file'
+import { usageKeptIn } from '../src/main/provider-usage-file'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import {
-  readKeptCuts,
-  turnsTheAppCutFile,
-  writeKeptCuts,
+  turnsTheAppCutIn,
   type CutState,
   type NotContinuedBecause,
 } from '../src/main/turns-the-app-cut-file'
@@ -53,7 +47,7 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
  *
  * ⚑ Each life of the app is a host with its own connection over one data folder, as
  * `scheduled-jobs-across-a-crash.test.ts` makes them: a crashed life is never closed, and the next
- * one reads the same database and the same `turns-the-app-cut.json`. Accounts are fictional.
+ * one reads the same database. Accounts are fictional.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -269,23 +263,20 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
         ...(stops.services === true
           ? {
               profileExecution: {
-                read: () => readProfileExecution(profileExecutionFile(folder)),
-                write: (kept) => writeProfileExecution(profileExecutionFile(folder), kept),
+                read: () => readProfileExecution(db),
+                write: (kept) => writeProfileExecution(db, kept),
                 owned: true,
               },
             }
           : {}),
         turnsTheAppCut: {
-          read: () => readKeptCuts(turnsTheAppCutFile(folder)),
+          read: () => turnsTheAppCutIn(db).read(),
           write: (kept) => {
             if (stops.cutsCannotBeKept === true) throw new Error('the disk is full')
-            writeKeptCuts(turnsTheAppCutFile(folder), kept)
+            turnsTheAppCutIn(db).write(kept)
           },
         },
-        usageKept: {
-          read: () => readKeptUsage(providerUsageFile(folder)),
-          write: (kept) => writeKeptUsage(providerUsageFile(folder), kept),
-        },
+        usageKept: usageKeptIn(db),
         accountsKept: {
           read: () => readKeptAccounts(providerAccountsFile(folder)),
           write: (kept) => {
@@ -347,7 +338,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
         event.type === 'message_queued' && (event as { appNotice?: string }).appNotice === NOTICE,
     ).length
   const stateOf = (id: string): CutState | undefined =>
-    readKeptCuts(turnsTheAppCutFile(userData)).cuts[id]?.state
+    turnsTheAppCutIn(now.db).read().cuts[id]?.state
   const providerIdOf = (id: string): string => {
     const found = now.store.find(id)
     if (found === null) throw new Error(`${id} has no provider ref`)
@@ -622,7 +613,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
 
     it('⛔ a crash after the earlier life’s account could not be let go does not take it', async () => {
       const a = await aFirstLifeOnAda()
-      expect(readKeptCuts(turnsTheAppCutFile(userData)).lives[a]).toBeDefined()
+      expect(turnsTheAppCutIn(now.db).read().lives[a]).toBeDefined()
       // Nothing can be written in this life, and its account is never learned; it crashes in a turn.
       starts(CUT - 60_000, { account: 'never', turnsStayOpen: true, cutsCannotBeKept: true })
       const sent = await now.host.startAndSend(a, 'build the thing', window)
@@ -638,7 +629,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
 
     it('⛔ an earlier life’s account kept with the very moment the crashed life began does not bind it', async () => {
       const a = await aFirstLifeOnAda()
-      const earlier = readKeptCuts(turnsTheAppCutFile(userData)).lives[a]
+      const earlier = turnsTheAppCutIn(now.db).read().lives[a]
       if (earlier === undefined) throw new Error('the first life kept no account')
       starts(CUT - 60_000, { account: 'never', turnsStayOpen: true })
       const sent = await now.host.startAndSend(a, 'build the thing', window)
@@ -648,8 +639,8 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
         now.host as unknown as { slots: Map<string, { session: { lifeSince: number } }> }
       ).slots.get(a)?.session.lifeSince
       if (since === undefined) throw new Error('the second life is not running')
-      const kept = readKeptCuts(turnsTheAppCutFile(userData))
-      writeKeptCuts(turnsTheAppCutFile(userData), {
+      const kept = turnsTheAppCutIn(now.db).read()
+      turnsTheAppCutIn(now.db).write({
         ...kept,
         lives: { ...kept.lives, [a]: { ...earlier, since } },
       })
@@ -663,10 +654,10 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
     it('an account its provider names only after the life’s launch row is kept for that life, and a crash is continued on it', async () => {
       const a = await aTurnRunsIn({ accountAfterMs: 120 })
       await waitFor(
-        () => readKeptCuts(turnsTheAppCutFile(userData)).lives[a] !== undefined,
+        () => turnsTheAppCutIn(now.db).read().lives[a] !== undefined,
         'the account to be kept',
       )
-      expect(readKeptCuts(turnsTheAppCutFile(userData)).lives[a]?.launched).toBe(itsNewestLaunch(a))
+      expect(turnsTheAppCutIn(now.db).read().lives[a]?.launched).toBe(itsNewestLaunch(a))
       starts(SOON, { accountAfterMs: 120 })
       await waitFor(() => continuations(a).length === 1, 'the continuation')
       await settle()
@@ -679,7 +670,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       const sent = await now.host.startAndSend(a, 'build the thing', window)
       expect('notSent' in sent, JSON.stringify(sent)).toBe(false)
       await waitFor(
-        () => readKeptCuts(turnsTheAppCutFile(userData)).lives[a]?.launched === itsNewestLaunch(a),
+        () => turnsTheAppCutIn(now.db).read().lives[a]?.launched === itsNewestLaunch(a),
         'the reopened life’s account to be kept',
       )
       starts(SOON, { accountAfterMs: 120 })
@@ -694,7 +685,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       const sent = await now.host.startAndSend(a, 'build the thing', window)
       expect('notSent' in sent, JSON.stringify(sent)).toBe(false)
       await settle()
-      expect(readKeptCuts(turnsTheAppCutFile(userData)).lives[a]?.launched).toBe(itsNewestLaunch(a))
+      expect(turnsTheAppCutIn(now.db).read().lives[a]?.launched).toBe(itsNewestLaunch(a))
       starts(SOON)
       await waitFor(() => continuations(a).length === 1, 'the continuation')
       await settle()
@@ -847,15 +838,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       await settle()
       expect(askedFor(now, a)).toBe(0)
       expect(continuations(a)).toEqual([])
-    })
-
-    it('⛔ an unreadable cut-turns file authorizes nothing', async () => {
-      const a = await aTurnRunsIn()
-      writeFileSync(turnsTheAppCutFile(userData), 'not json')
-      starts(SOON)
-      await settle()
-      expect(continuations(a)).toEqual([])
-      expect(stateOf(a)).toEqual({ ended: 'account-not-known' })
     })
   })
 
@@ -1061,7 +1043,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
         { by: 'a-person' },
       )
       if (svc === null) throw new Error('the service already exists')
-      writeProfileExecution(profileExecutionFile(userData), {
+      writeProfileExecution(now.db, {
         profiles: { [svc.id]: { kind: 'service', identityCreatedAt: svc.createdAt } },
       })
       if (opts.ask !== true) now.store.setDefaultApprovalMode('auto')
@@ -1867,7 +1849,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       await settle()
       const resetsAt = itsTurnMeetsTheLimit(a, 60 * 60_000)
       await settle()
-      expect(readKeptCuts(turnsTheAppCutFile(userData)).cuts[a]?.kind).toBe('limit')
+      expect(turnsTheAppCutIn(now.db).read().cuts[a]?.kind).toBe('limit')
       await new Promise((resolve) => setTimeout(resolve, 4 * PROGRAM_WAIT + 300))
       await settle()
       expect(stateOf(a)).toBe('pending')

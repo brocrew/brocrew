@@ -13,11 +13,6 @@ const Frame = z.strictObject({
   sequence: z.number().int().positive().safe(),
   packet: Packet,
 })
-/**
- * How long a call may go unanswered before its channel is taken as lost. The app's calls wait for
- * the owner's state lock and may download, start or stop a plugin; the owner's calls are the app's
- * own work on its windows.
- */
 // On Windows a first plugin start opens the job keeper, which can take two minutes on a cold machine.
 const ANSWER_WITHIN = {
   client: 180_000,
@@ -47,7 +42,6 @@ export class PersonChannel {
   private readonly lost = new Set<() => void>()
   constructor(
     private readonly socket: Socket,
-    private readonly key: string,
     private readonly challenge: string,
     private readonly side: 'server' | 'client',
     private readonly handle: (
@@ -72,7 +66,7 @@ export class PersonChannel {
     if (this.closed || this.socket.writableLength > OWNER_LIMITS.packet * 4)
       throw new PluginSupervisorError('unavailable')
     this.socket.write(
-      pack(this.key, this.side === 'client' ? 'request' : 'response', {
+      pack({
         challenge: this.challenge,
         sequence: ++this.sent,
         packet,
@@ -89,9 +83,7 @@ export class PersonChannel {
       this.input = this.input.slice(newline + 1)
       try {
         if (Buffer.byteLength(line) > OWNER_LIMITS.packet) throw new Error('unavailable')
-        const frame = Frame.parse(
-          unpack(this.key, this.side === 'client' ? 'response' : 'request', line),
-        )
+        const frame = Frame.parse(unpack(line))
         if (frame.challenge !== this.challenge || frame.sequence !== ++this.received)
           throw new Error('unavailable')
         const packet = frame.packet

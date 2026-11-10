@@ -48,6 +48,7 @@ export function useModalDepth(): ComputedRef<number> {
 <script setup lang="ts">
 import { inject, nextTick, onMounted, onUnmounted, ref as aRef, watch } from 'vue'
 import { usePersonsQueue } from '../lib/persons-queue'
+import { TAB_STOPS, isLaidOut, tabStopsIn } from '../lib/tab-stops'
 import PersonsQueue from './PersonsQueue.vue'
 import SpawnStopLane from './SpawnStopLane.vue'
 
@@ -103,20 +104,18 @@ let opener: HTMLElement | null = null
 let layer: HTMLElement | null = null
 
 // A `<details>` element's own summary is a native tab stop; any other summary is not.
-const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), details > summary:first-of-type:not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])'
+const FOCUSABLE = `${TAB_STOPS}, details > summary:first-of-type:not([tabindex="-1"])`
 
 /** The tab stops a person can reach: laid out, not hidden, and not inside an `inert` subtree. */
-function focusable(): HTMLElement[] {
-  if (!panel.value) return []
-  return [...panel.value.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+const focusable = (): HTMLElement[] =>
+  tabStopsIn(
+    panel.value,
+    FOCUSABLE,
     (el) =>
-      el === document.activeElement ||
-      (el.offsetParent !== null &&
-        getComputedStyle(el).visibility !== 'hidden' &&
-        el.closest('[inert]') === null),
+      isLaidOut(el) &&
+      getComputedStyle(el).visibility !== 'hidden' &&
+      el.closest('[inert]') === null,
   )
-}
 
 function onKey(event: KeyboardEvent): void {
   // A covered host leaves the keys to the one on top.

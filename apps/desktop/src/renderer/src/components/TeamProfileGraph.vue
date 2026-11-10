@@ -117,7 +117,6 @@ const kindSources: Record<GraphNode['kindQuality'], string> = {
   'unknown-incarnation': 'Profile incarnation could not be confirmed',
   'unknown-conflict': 'Kind records disagree',
   'unknown-lineage': 'History does not establish a kind',
-  'unknown-changing': 'Kind record changed while reading',
 }
 const counts = [
   ['conversations', 'Conversations'],
