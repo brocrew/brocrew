@@ -366,10 +366,12 @@ export async function openManagedPluginRoute(
               (progress) => {
                 const progressToken = call.params._meta?.progressToken
                 if (progressToken !== undefined)
-                  void extra.sendNotification({
-                    method: 'notifications/progress',
-                    params: { ...progress, progressToken },
-                  }).catch(() => undefined)
+                  void extra
+                    .sendNotification({
+                      method: 'notifications/progress',
+                      params: { ...progress, progressToken },
+                    })
+                    .catch(() => undefined)
               },
             )
             const parsed = CallToolResultSchema.safeParse(result)

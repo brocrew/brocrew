@@ -71,7 +71,8 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     const recover = vi.fn(async () => {})
     const f = await live({ recoverChromeHost: recover })
     const original = await f.binding()
-    const result = deferred<never>(), quiet = deferred<void>()
+    const result = deferred<never>(),
+      quiet = deferred<void>()
     let first = true
     f.binding.mockResolvedValueOnce({
       ...original,
@@ -85,7 +86,8 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
         },
       }),
     })
-    const owner = lease(), req = request(f.local.sink.workspaceId)
+    const owner = lease(),
+      req = request(f.local.sink.workspaceId)
     const [before] = await f.bridge.routes(owner, req)
     const starts = f.starts()
     const client = await connected(before!)

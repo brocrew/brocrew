@@ -481,7 +481,10 @@ describe('independent transport calls', () => {
     await tick()
     h.server.calls[0]!.quiet.reject(new Error('unproved'))
     h.server.calls[0]!.result.resolve({ ok: false, cause: 'stalled' })
-    await expect(first).rejects.toMatchObject({ code: 'downstream', message: expect.stringContaining('stalled') })
+    await expect(first).rejects.toMatchObject({
+      code: 'downstream',
+      message: expect.stringContaining('stalled'),
+    })
     await tick()
     const second = h.call()
     await tick()
@@ -496,7 +499,10 @@ describe('independent transport calls', () => {
     expect(h.broker.owner.hasCompletionProof()).toBe(true)
   })
   it('bounds retained uncertainty with the existing total capacity', async () => {
-    const h = setup((options) => ({ ...options, server: { ...options.server, independentToolCalls: true } }))
+    const h = setup((options) => ({
+      ...options,
+      server: { ...options.server, independentToolCalls: true },
+    }))
     for (let i = 0; i < 64; i++) {
       const pending = tracked(h.call())
       await tick()

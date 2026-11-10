@@ -71,6 +71,7 @@ it('completes beyond elapsed deadlines while forwarding actual downstream progre
   }
   f.complete()
   await expect(pending).resolves.toMatchObject({ content: [{ text: PLUGIN_MARKER }] })
+  expect(received).toEqual([1, 2, 3, 4])
   expect(f.broker.status().available).toBe(true)
 })
 

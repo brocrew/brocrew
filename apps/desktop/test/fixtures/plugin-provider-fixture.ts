@@ -119,18 +119,18 @@ export async function pluginProviderFixture(
     occupiedNamespaces: [],
     occupiedQualifiedNames: [],
     tools: ['echo', ...(options.secondTool ? ['other'] : [])].map<BrokerTool>((name) => ({
-        name,
-        description: 'Fictional echo',
-        inputSchema: {
-          type: 'object',
-          properties: { profile: { type: 'string' } },
-          required: ['profile'],
-          additionalProperties: false,
-        },
-        prepare(input) {
-          if (input.profile !== 'fern') throw new Error('invalid')
-          return { input, resources: [{ resource: 'profiles', key: 'fern', mode: 'read' }] }
-        },
+      name,
+      description: 'Fictional echo',
+      inputSchema: {
+        type: 'object',
+        properties: { profile: { type: 'string' } },
+        required: ['profile'],
+        additionalProperties: false,
+      },
+      prepare(input) {
+        if (input.profile !== 'fern') throw new Error('invalid')
+        return { input, resources: [{ resource: 'profiles', key: 'fern', mode: 'read' }] }
+      },
     })),
     adminOperations: [],
     resources: [{ id: 'profiles', read: true, write: false }],
