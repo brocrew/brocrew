@@ -164,11 +164,5 @@ jobs:
       - name: Install the Chromium the DOM tests run in
         run: pnpm --filter @brobot2/desktop exec playwright install --with-deps chromium
 
-      - name: Check main and renderer share the app log
-        run: |
-          command -v xvfb-run
-          pnpm --filter @brobot2/desktop exec node -e "const fs=require('node:fs'); const file=require('electron'); fs.accessSync(file, fs.constants.X_OK); console.log(file)"
-          node scripts/renderer-logging-probe.mjs
-
       - name: pnpm run test:dom
         run: pnpm run test:dom

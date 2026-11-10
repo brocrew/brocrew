@@ -151,6 +151,12 @@ jobs:
       - name: Install the Chromium the DOM tests run in
         run: pnpm --filter @brobot2/desktop exec playwright install chromium
 
+      - name: Check main and renderer share the app log
+        if: matrix.part == 1
+        run: |
+          pnpm --filter @brobot2/desktop exec node -e "const fs=require('node:fs'); const file=require('electron'); fs.accessSync(file, fs.constants.X_OK); console.log(file)"
+          node scripts/renderer-logging-probe.mjs
+
       # The same Vitest arguments `scripts/test-dom-in-groups.mjs` gives each group, run here
       # directly: that script starts `vitest` without a shell, which finds no `vitest.cmd` on
       # Windows.

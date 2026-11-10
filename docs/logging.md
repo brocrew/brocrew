@@ -29,3 +29,7 @@ Electron dependencies belong to the desktop package; the runner declares the sam
 The executable smoke entry keeps the same-file, Debug off/on/off and native error-default
 assertions. A host must be able to launch sandboxed Electron; a startup failure provides no
 renderer behavior evidence.
+
+CI runs that probe once in Windows DOM group 1, using the already-installed desktop Electron
+and the host display. The former Linux launch failed at Chromium's SUID sandbox-helper startup
+before any probe assertions; that failure does not establish logging behavior on either platform.
