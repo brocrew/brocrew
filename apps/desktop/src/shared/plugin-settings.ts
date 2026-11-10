@@ -182,9 +182,9 @@ export function pluginUnavailableNotice(reason?: PluginUnavailableReason): strin
     case 'owner-window-open':
       return 'The plugin service is busy or still stopping. Wait a moment, then try again. If another BroCrew window is open, close it, then try again.'
     case 'previous-service-stopping':
-      return "The previous plugin service didn't finish stopping. Restart your computer, then open BroCrew again."
+      return "The previous plugin service didn't finish stopping. Try again to check its status."
     case 'restart-required':
-      return 'Restart your computer, then reopen BroCrew.'
+      return "BroCrew couldn't stop or check the previous plugin processes. Try again."
     case 'catalogue-response':
       return "The plugin service couldn't return a verified plugin list. Try again."
     case 'operation-pending':

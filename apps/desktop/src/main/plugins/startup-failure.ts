@@ -94,16 +94,6 @@ export class PluginSupervisorLaunchFailure extends Error {
     super('Plugin service launch failed', { cause })
   }
 }
-function eligibleRebootAdvice(error: PluginSupervisorError): boolean {
-  return (
-    error.code === 'cleanup-pending' &&
-    !!error.ownerEpoch &&
-    error.diagnostic?.reason === 'restart-required' &&
-    error.diagnostic.stage === 'recovery' &&
-    error.diagnostic.probe === 'no-answer' &&
-    (error.diagnostic.phase === 'blocked' || error.diagnostic.phase === 'draining')
-  )
-}
 export function pluginStartupDiagnostic(error: unknown): PluginStartupDiagnostic | undefined {
   for (let depth = 0; depth < 6 && error && typeof error === 'object'; depth++) {
     if (error instanceof PluginSupervisorLaunchFailure) return error.diagnostic
@@ -112,7 +102,7 @@ export function pluginStartupDiagnostic(error: unknown): PluginStartupDiagnostic
         exitCode: null,
         signal: null,
         stderr: ownerDiagnosticLine(
-          error.diagnostic.reason === 'restart-required' && !eligibleRebootAdvice(error)
+          error.diagnostic.reason === 'restart-required'
             ? { ...error.diagnostic, reason: 'proof-pending' }
             : error.diagnostic,
         ),
@@ -211,8 +201,6 @@ export function pluginStartupReason(
       (error.diagnostic.phase === 'draining' || error.diagnostic.phase === 'blocked')
     )
       return 'previous-service-stopping'
-    if (error instanceof PluginSupervisorError && eligibleRebootAdvice(error))
-      return 'restart-required'
     const one = error as { code?: unknown; cause?: unknown }
     if (one.code === 'runtime') return 'runtime'
     if (one.code === 'busy' || one.code === 'cleanup-pending') return 'cleanup-pending'

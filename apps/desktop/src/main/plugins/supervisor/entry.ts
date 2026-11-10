@@ -11,7 +11,6 @@ import { pluginStartupStderr } from '../startup-failure'
 import { LaunchConfig } from './launch-format'
 import { checkedSharedDataOwner } from '../shared-data'
 import { previousRunsProvenStopped } from './recovery-proof'
-import { writeRecoveryAdvice } from './recovery-advice'
 import { recordDrainTrace } from './drain-trace'
 import { openLog, serviceLogFile } from '../../logging/log'
 import { PluginSupervisorError, ownerDiagnosticLine } from './protocol'
@@ -31,24 +30,13 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
     root: config.root,
     workspaceRoots: config.workspaceRoots,
     recoverPrevious: async (previous) => {
-      let eligible = false
-      if (
-        await previousRunsProvenStopped(config.root, {
-          previous,
-          onRebootRequired: () => {
-            eligible = true
-          },
-        })
-      )
-        return true
-      const advised =
-        eligible && previous && (await writeRecoveryAdvice(config.root, receipts, previous))
+      if (await previousRunsProvenStopped(config.root, { previous })) return true
       throw new PluginSupervisorError('cleanup-pending', {
         diagnostic: {
           phase: previous?.phase ?? 'missing',
           stage: 'recovery',
           probe: 'no-answer',
-          reason: advised ? 'restart-required' : 'proof-pending',
+          reason: 'proof-pending',
         },
       })
     },

@@ -126,15 +126,7 @@ export const OwnerDiagnostic = z.strictObject({
 export type OwnerDiagnostic = z.infer<typeof OwnerDiagnostic>
 export function ownerDiagnosticLine(diagnostic: OwnerDiagnostic): string {
   const checked = OwnerDiagnostic.parse(diagnostic)
-  const remedy =
-    checked.reason === 'restart-required' &&
-    (checked.phase === 'blocked' || checked.phase === 'draining') &&
-    checked.stage === 'recovery'
-      ? process.platform === 'win32'
-        ? ' Restart your computer using Start > Power > Restart, then open BroCrew again.'
-        : ' Restart your computer once, then open BroCrew again.'
-      : ''
-  return `phase=${checked.phase} stage=${checked.stage} probe=${checked.probe} reason=${checked.reason}${remedy}`
+  return `phase=${checked.phase} stage=${checked.stage} probe=${checked.probe} reason=${checked.reason}`
 }
 export class PluginSupervisorError extends Error {
   readonly diagnostic?: OwnerDiagnostic
