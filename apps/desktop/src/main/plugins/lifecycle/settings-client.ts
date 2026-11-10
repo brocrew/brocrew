@@ -1,5 +1,6 @@
 import {
   PluginMutationReviewSchema,
+  PluginActionSchema,
   type PluginMutationReview,
 } from '../../../shared/plugin-settings'
 import {
@@ -67,6 +68,7 @@ const Cards = z
         .string()
         .regex(/^[a-z][a-z0-9-]{0,63}(?:: [a-z][a-z0-9-]{0,63})?$/)
         .optional(),
+      action: PluginActionSchema.optional(),
       installedVersion: z.string().min(1).max(80).optional(),
       updateVersion: z.string().min(1).max(80).optional(),
       uninstallDeletesData: z.boolean().optional(),
@@ -656,17 +658,19 @@ export async function connectPluginSettings(options: {
       let reply: unknown
       try {
         reply = await channel.call({
-          kind: modern
-            ? features.includes('tool-starting-v1')
-              ? 'list-tool-starting'
-              : features.includes('startup-diagnostic-v1')
-                ? 'list-startup-diagnostic'
-                : features.includes('tool-cause-v1')
-                  ? 'list-tool-cause'
-                  : features.includes('tool-health-v1')
-                    ? 'list-tool-health'
-                    : 'list-v2'
-            : 'list',
+          kind: features.includes('plugin-actions-v1')
+            ? 'list-actions'
+            : modern
+              ? features.includes('tool-starting-v1')
+                ? 'list-tool-starting'
+                : features.includes('startup-diagnostic-v1')
+                  ? 'list-startup-diagnostic'
+                  : features.includes('tool-cause-v1')
+                    ? 'list-tool-cause'
+                    : features.includes('tool-health-v1')
+                      ? 'list-tool-health'
+                      : 'list-v2'
+              : 'list',
         })
       } catch (error) {
         throw new PluginStartupError(pluginStartupReason(error, 'catalogue-response'), error, 'rpc')
@@ -684,25 +688,19 @@ export async function connectPluginSettings(options: {
       // Project reviewed local adapter capabilities without expanding the legacy owner wire.
       return cards.map((card) => ({
         ...card,
-        ...(features.includes('chrome-recovery-v1') &&
-        card.id === 'chrome' &&
-        card.installed &&
-        (card.toolsUnavailable || card.state === 'Unavailable')
-          ? { canRestart: true as const }
-          : {}),
         ...(!modern ? { uninstallDeletesData: Boolean(pluginAdapter(card.id)?.uninstall) } : {}),
         hasRemoteLogout: Boolean(pluginAdapter(card.id)?.uninstall),
         ...(sourceFormat === 2 || blocked ? { preparationRequired: true as const } : {}),
         ...(blocked ? { mutationBlocked: blocked } : {}),
       }))
     },
-    ...(features.includes('chrome-recovery-v1')
+    ...(features.includes('plugin-actions-v1')
       ? {
-          async restartChrome() {
+          async action(id, actionId) {
             await checkOwner()
-            if (!features.includes('chrome-recovery-v1'))
+            if (!features.includes('plugin-actions-v1'))
               throw new PluginSupervisorError('incompatible')
-            if ((await channel.call({ kind: 'restart-chrome' })) !== true)
+            if ((await channel.call({ kind: 'plugin-action', pluginId: id, actionId })) !== true)
               throw new PluginSupervisorError('unavailable')
           },
         }

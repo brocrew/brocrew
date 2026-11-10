@@ -150,7 +150,7 @@ it('serializes Chrome restart after its profile apply', async () => {
   const applying = apply(f, 'chrome')
   await entered.promise
   const stopped = vi.fn()
-  const restarting = f.controller.restartChromeTools(undefined, stopped)
+  const restarting = f.controller.restartPluginTools('chrome', undefined, stopped)
   try {
     // An independent read completes while the same-plugin restart stays queued.
     let read = false

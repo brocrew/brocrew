@@ -1,3 +1,4 @@
+import { PluginActionSchema } from '../../shared/plugin-settings'
 import {
   PLUGIN_UNAVAILABLE_REASONS,
   PluginStartupDiagnosticSchema,
@@ -81,7 +82,7 @@ export interface PluginSettingsController {
   update?(id: string, consent?: PluginMutationConsent): Promise<void>
   /** Reattach person control only; no install or removal. */
   retry?(id: string): Promise<PluginCard[]>
-  restartChrome?(): Promise<void>
+  action?(id: string, actionId: string): Promise<void>
   install(id: string, consent?: PluginMutationConsent): Promise<void>
   uninstall(id: string): Promise<PluginRemovalOutcome | void>
   screen(id: string): Promise<PluginUiHostOptions>
@@ -185,7 +186,7 @@ export function registerPluginSettings(
               'toolsUnavailable',
               'toolsPending',
               'toolsCause',
-              'canRestart',
+              'action',
               'installedVersion',
               'updateVersion',
               'updatesUnavailable',
@@ -213,9 +214,8 @@ export function registerPluginSettings(
             ((card.toolsUnavailable === true || card.toolsPending || card.state === 'Installed') &&
               typeof card.toolsCause === 'string' &&
               /^[a-z][a-z0-9-]{0,63}(?:: [a-z][a-z0-9-]{0,63})?$/.test(card.toolsCause))) &&
-          (card.canRestart === undefined ||
-            (card.canRestart === true &&
-              card.id === 'chrome' &&
+          (card.action === undefined ||
+            (PluginActionSchema.safeParse(card.action).success &&
               card.installed === true &&
               (card.toolsUnavailable === true || card.state === 'Unavailable'))) &&
           (card.priorityClamped === undefined ||
@@ -343,7 +343,7 @@ export function registerPluginSettings(
         }
         if (!controller || !(controller.available?.() ?? true)) return refused
         if (
-          !['install', 'update', 'uninstall', 'configure', 'retry', 'restart', 'prepare'].includes(
+          !['install', 'update', 'uninstall', 'configure', 'retry', 'action', 'prepare'].includes(
             String(input.kind),
           ) ||
           typeof input.id !== 'string' ||
@@ -355,14 +355,16 @@ export function registerPluginSettings(
             input,
             input.kind === 'configure'
               ? ['kind', 'id', 'screenId', 'bounds']
-              : input.kind === 'prepare'
-                ? Object.hasOwn(input, 'requestId')
-                  ? ['kind', 'id', 'action', 'requestId']
-                  : ['kind', 'id', 'action']
-                : Object.hasOwn(input, 'consent') &&
-                    ['install', 'update'].includes(String(input.kind))
-                  ? ['kind', 'id', 'consent']
-                  : ['kind', 'id'],
+              : input.kind === 'action'
+                ? ['kind', 'id', 'actionId']
+                : input.kind === 'prepare'
+                  ? Object.hasOwn(input, 'requestId')
+                    ? ['kind', 'id', 'action', 'requestId']
+                    : ['kind', 'id', 'action']
+                  : Object.hasOwn(input, 'consent') &&
+                      ['install', 'update'].includes(String(input.kind))
+                    ? ['kind', 'id', 'consent']
+                    : ['kind', 'id'],
           )
         )
           return refused
@@ -390,12 +392,12 @@ export function registerPluginSettings(
           if (typeof input.screenId !== 'string' || !/^[a-f0-9-]{36}$/.test(input.screenId))
             return refused
         }
-        if (input.kind === 'restart') {
-          if (input.id !== 'chrome' || !controller.restartChrome) return refused
+        if (input.kind === 'action') {
+          if (!controller.action || typeof input.actionId !== 'string') return refused
           state.reviews.clear()
           controller.cancelPreparations?.()
           await close(owner)
-          await controller.restartChrome()
+          await controller.action(input.id, input.actionId)
           return { ok: true, cards: await catalogue(() => controller.catalogue(false)) }
         }
         if (input.kind === 'retry') {

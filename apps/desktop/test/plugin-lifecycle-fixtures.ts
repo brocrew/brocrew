@@ -55,6 +55,13 @@ export async function fixture(change: Partial<LifecycleOptions> = {}, id = 'chro
   stores.push(state)
   const manifest = manifestFor()
   manifest.id = id
+  manifest.action = {
+    id: 'fixture-restart',
+    kind: 'restart',
+    label: 'Restart fictional plugin',
+    note: 'Restarts the fictional host.',
+    failureAction: 'restart fictional plugin',
+  }
   manifest.platforms = [
     { os: process.platform as 'darwin' | 'linux', cpu: process.arch as 'arm64' | 'x64' },
   ]

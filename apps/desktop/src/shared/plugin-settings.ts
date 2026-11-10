@@ -212,6 +212,14 @@ export function pluginStartupDiagnosticNotice(diagnostic: PluginStartupDiagnosti
     diagnostic.exitCode === null ? 'Exit code not reported' : `Exit code ${diagnostic.exitCode}`
   return `${exit}${diagnostic.signal ? ` (${diagnostic.signal})` : ''}. ${diagnostic.stderr ?? 'No stderr was reported.'}`
 }
+export const PluginActionSchema = z.strictObject({
+  id: z.string().min(1).max(128),
+  kind: z.literal('restart'),
+  label: z.string().min(1).max(128),
+  note: z.string().min(1).max(128),
+  failureAction: z.string().min(1).max(128),
+})
+export type PluginAction = z.infer<typeof PluginActionSchema>
 export interface PluginCard {
   id: string
   name: string
@@ -228,8 +236,8 @@ export interface PluginCard {
   toolsPending?: string
   /** Fixed-vocabulary `stage: cause` behind unavailable tools, when known. */
   toolsCause?: string
-  /** Negotiated person-only Chrome recovery; absent for older supervisors. */
-  canRestart?: true
+  /** Supplied person-only recovery action; absent when the supervisor cannot offer it. */
+  action?: PluginAction
   installedVersion?: string
   updateVersion?: string
   /** Installed package is manageable but has no release admitted for this app. */
@@ -313,7 +321,8 @@ export interface PluginReviewTransfer {
 export type PluginSettingsRequest =
   | { kind: 'list' | 'status' | 'availability' }
   | { kind: 'install' | 'update'; id: string; consent?: PluginDisplayedConsent }
-  | { kind: 'uninstall' | 'retry' | 'restart'; id: string }
+  | { kind: 'uninstall' | 'retry'; id: string }
+  | { kind: 'action'; id: string; actionId: string }
   | { kind: 'prepare'; action: 'install' | 'update'; id: string; requestId?: string }
   | { kind: 'cancel-prepare'; id: string; requestId: string }
   | { kind: 'configure'; id: string; screenId: string; bounds: PluginScreenBounds }

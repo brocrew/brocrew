@@ -97,8 +97,8 @@ export class PluginLifecycleController {
     object,
     (workspaceId: string, read: WorkspaceAdmission) => boolean
   >()
-  private chromeToolRestart?: { runId: string | undefined; work: Promise<void> }
-  private chromeToolRestartBlock?: symbol
+  private toolRestarts = new Map<string, { runId: string | undefined; work: Promise<void> }>()
+  private toolRestartBlocks = new Map<string, symbol>()
   private readonly attempted = new Set<string>()
   private readonly localOperations = new Set<string>()
   private readonly admittedCatalogues = new Map<string, readonly string[]>()
@@ -493,6 +493,16 @@ export class PluginLifecycleController {
     if (condition) observeAdmission(observer, { condition })
     return condition === undefined
   }
+  async action(id: string) {
+    const install = this.current(id)
+    if (!install) return undefined
+    try {
+      const pkg = this.runs.get(id)?.package ?? (await this.vault.load(this.descriptor(install)))
+      return pkg.manifest.action
+    } catch {
+      return undefined
+    }
+  }
   async status(): Promise<{ cards: PluginCard[]; cleanupPending: string[] }> {
     let unfinished: Unfinished | undefined
     const read = this.options.state.withWorkspaceAdmission((state) => {
@@ -732,13 +742,13 @@ export class PluginLifecycleController {
       if (this.draining && proven) return
       const repairable =
         !this.blocks.has(install.pluginId) ||
-        this.blocks.get(install.pluginId) === this.chromeToolRestartBlock
+        this.blocks.get(install.pluginId) === this.toolRestartBlocks.get(install.pluginId)
       const token = this.block(install.pluginId)
-      if (install.pluginId === 'chrome' && repairable) this.chromeToolRestartBlock = token
+      if (repairable) this.toolRestartBlocks.set(install.pluginId, token)
       this.cleanup.add(install.pluginId)
-      if (proven && install.pluginId === 'chrome') {
+      if (proven) {
         try {
-          this.options.onChromeHostExit?.(run.runId)
+          this.options.onHostExit?.(install.pluginId, run.runId)
         } catch {
           /* Wakeup is not authority. */
         }
@@ -1109,33 +1119,31 @@ export class PluginLifecycleController {
       if (one.live) one.installs.set(install.pluginId, install.installId)
     this.agentScopeChanged()
   }
-  /** Supervisor-only Chrome repair. It does not mutate installations, profiles or other leases.
+  /** Supervisor-only plugin repair. It does not mutate installations, profiles or other leases.
    * The callback belongs to the retained broker for runId; it runs only after exact physical exit. */
-  restartChromeTools(runId: string | undefined, stopped: () => void): Promise<void> {
-    const prior = this.chromeToolRestart
+  restartPluginTools(id: string, runId: string | undefined, stopped: () => void): Promise<void> {
+    const prior = this.toolRestarts.get(id)
     if (prior) {
       if (runId !== undefined && prior.runId !== runId)
         return Promise.reject(new PluginSupervisorError('unavailable'))
       return prior.work.then(stopped)
     }
-    const work = this.withPlugin('chrome', async () => {
-      const id = 'chrome',
-        install = this.current(id),
+    const work = this.withPlugin(id, async () => {
+      const install = this.current(id),
         running = this.runs.get(id)
       if (
         !install ||
-        !running ||
-        (runId !== undefined && running.run.runId !== runId) ||
-        running.installId !== install.installId ||
-        (this.blocks.has(id) && this.blocks.get(id) !== this.chromeToolRestartBlock)
+        (runId !== undefined && running?.run.runId !== runId) ||
+        (running && running.installId !== install.installId) ||
+        (this.blocks.has(id) && this.blocks.get(id) !== this.toolRestartBlocks.get(id))
       )
         return refuse()
       const token = this.block(id)
-      this.chromeToolRestartBlock = token
+      this.toolRestartBlocks.set(id, token)
       this.cleanup.add(id)
       // Prevent the intentional exit watcher from starting a competing revocation.
-      running.ended = true
-      if (!running.exitProven) {
+      if (running) running.ended = true
+      if (running && !running.exitProven) {
         try {
           // Either exact stop or the retained positive exit witness is sufficient.
           // A rejected exit witness cannot turn a still-pending stop into success.
@@ -1154,7 +1162,7 @@ export class PluginLifecycleController {
                 this.current(id)?.installId === install.installId &&
                 this.blocks.get(id) === token
               )
-                this.options.onChromeHostExit?.(running.run.runId)
+                this.options.onHostExit?.(id, running.run.runId)
             })
             .catch(() => undefined)
           throw error
@@ -1169,17 +1177,20 @@ export class PluginLifecycleController {
       this.runs.delete(id)
       this.agentScopeChanged()
       this.attempted.delete(id)
-      await this.ensureRunning(install, running.package)
+      await this.ensureRunning(
+        install,
+        running?.package ?? (await this.vault.load(this.descriptor(install))),
+      )
       if (this.draining || this.blocks.get(id) !== token) return pending()
       this.given(install)
       this.cleanup.delete(id)
       if (this.blocks.get(id) === token) this.blocks.delete(id)
       this.agentScopeChanged()
-      if (this.chromeToolRestartBlock === token) this.chromeToolRestartBlock = undefined
+      if (this.toolRestartBlocks.get(id) === token) this.toolRestartBlocks.delete(id)
     }).finally(() => {
-      if (this.chromeToolRestart?.work === work) this.chromeToolRestart = undefined
+      if (this.toolRestarts.get(id)?.work === work) this.toolRestarts.delete(id)
     })
-    this.chromeToolRestart = { runId, work }
+    this.toolRestarts.set(id, { runId, work })
     return work
   }
   private async stop(id: string, operationId: string): Promise<void> {

@@ -463,10 +463,10 @@ export function productionPluginController() {
         return unavailableCards()
       }
     },
-    async restartChrome() {
+    async action(id, actionId) {
       const connection = current()
-      if (!connection.restartChrome) return fail()
-      await connection.restartChrome()
+      if (!connection.action) return fail()
+      await connection.action(id, actionId)
       await update()
     },
     async update(id, consent) {

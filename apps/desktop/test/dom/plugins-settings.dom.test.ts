@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import type { PluginSettingsReply } from '../../src/shared/plugin-settings'
+import type { PluginSettingsReply, PluginSettingsRequest } from '../../src/shared/plugin-settings'
 import { nextTick } from 'vue'
 import { visibleProviderDescriptors } from '@brobot2/shared'
 import { page } from 'vitest/browser'
@@ -849,13 +849,21 @@ it('offers the approved one-click Chrome restart only on the supported degraded 
         state: 'Running' as const,
         toolsUnavailable: true as const,
       },
-      { canRestart: true as const },
+      {
+        action: {
+          id: 'fixture-restart',
+          kind: 'restart' as const,
+          label: 'Restart Chrome',
+          note: 'Closes the Chrome windows BroCrew opened.',
+          failureAction: 'restart Chrome',
+        },
+      },
     ),
   ])
   const original = f.client.request
   f.client.request = async (input) => {
     calls.push(input.kind)
-    if (String(input.kind) === 'restart')
+    if (String(input.kind) === 'action')
       return {
         ok: true,
         cards: [{ id: 'chrome', name: 'Chrome', installed: true, state: 'Running' }],
@@ -869,11 +877,70 @@ it('offers the approved one-click Chrome restart only on the supported degraded 
     'Closes the Chrome windows BroCrew opened.',
   )
   m.q('plugin-restart').click()
-  await vi.waitFor(() => expect(calls.filter((kind) => kind === 'restart')).toHaveLength(1))
+  await vi.waitFor(() => expect(calls.filter((kind) => kind === 'action')).toHaveLength(1))
   await vi.waitFor(() => expect(m.all('plugin-tools-unavailable')).toHaveLength(0))
   expect(m.all('plugin-restart')).toHaveLength(0)
   expect(calls).not.toContain('install')
   expect(calls).not.toContain('uninstall')
+})
+
+it('renders supplied action words, targets that card and ignores a reply after leaving', async () => {
+  const f = fictionalPlugins()
+  const card = {
+    id: 'fictional-fir',
+    name: 'Fictional Fir',
+    installed: true,
+    state: 'Running' as const,
+    toolsUnavailable: true as const,
+  }
+  f.set([card])
+  const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
+  await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(1))
+  expect(m.all('plugin-restart')).toHaveLength(0)
+  m.q('settings-tab-general').click()
+  await nextTick()
+  f.set([
+    {
+      ...card,
+      action: {
+        id: 'fixture-restart',
+        kind: 'restart',
+        label: 'Reconnect the fictional browser',
+        note: 'Closes its fictional windows.',
+        failureAction: 'reconnect the fictional browser',
+      },
+    },
+  ])
+  const original = f.client.request
+  let finish!: (reply: PluginSettingsReply) => void
+  const held = new Promise<PluginSettingsReply>((resolve) => {
+    finish = resolve
+  })
+  const restarts: PluginSettingsRequest[] = []
+  f.client.request = (input) => {
+    if (input.kind === 'action') {
+      restarts.push(input)
+      return held
+    }
+    return original(input)
+  }
+  m.q('settings-tab-plugins').click()
+  await vi.waitFor(() => expect(m.all('plugin-restart')).toHaveLength(1))
+  expect(m.q('plugin-restart').textContent?.trim()).toBe('Reconnect the fictional browser')
+  expect(m.q('plugin-restart-note').textContent?.trim()).toBe('Closes its fictional windows.')
+  m.q('plugin-restart').click()
+  await nextTick()
+  expect(m.q('plugin-restart').hasAttribute('disabled')).toBe(true)
+  m.q('plugin-restart').click()
+  expect(restarts).toEqual([{ kind: 'action', actionId: 'fixture-restart', id: 'fictional-fir' }])
+  m.q('settings-tab-general').click()
+  await nextTick()
+  finish({ ok: false, error: 'Plugin unavailable. Try again.', detail: 'Fictional late failure.' })
+  await nextTick()
+  expect(m.all('plugins-error')).toHaveLength(0)
+  m.q('settings-tab-plugins').click()
+  await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(1))
+  expect(m.all('plugins-error')).toHaveLength(0)
 })
 
 it('finishes Loading plugins before displaying the truthful Running Chrome warning', async () => {

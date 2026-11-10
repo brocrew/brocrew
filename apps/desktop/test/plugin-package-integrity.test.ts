@@ -244,6 +244,20 @@ describe('strict catalogue and manifest profiles', () => {
       ui: false,
     })
   })
+  it('round-trips package action metadata without requiring it on old archives', () => {
+    const manifest = manifestFor()
+    expect(verified(packageFixture({ manifest })).manifest.action).toBeUndefined()
+    manifest.action = {
+      id: 'reconnect-fixture',
+      kind: 'restart',
+      label: 'Reconnect fixture',
+      note: 'Restarts the fictional host.',
+      failureAction: 'reconnect fixture',
+    }
+    manifest.removal = { data: 'retain', note: 'Keeps the fictional data.' }
+    expect(verified(packageFixture({ manifest })).manifest.action).toEqual(manifest.action)
+    expect(verified(packageFixture({ manifest })).manifest.removal).toEqual(manifest.removal)
+  })
   it('accepts metadata-only packages with explicit absent server and UI APIs', () => {
     const manifest = manifestFor()
     manifest.server = null

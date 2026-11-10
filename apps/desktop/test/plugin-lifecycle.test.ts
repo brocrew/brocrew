@@ -718,12 +718,12 @@ it.skipIf(process.platform === 'win32')(
     let unavailable = false
     const f = await fixture({ toolsUnavailable: () => unavailable })
     await f.controller.install(f.handle, 'chrome')
-    const restartChrome = vi.fn(async () => {
+    const restartPlugin = vi.fn(async () => {
       unavailable = false
     })
     const { key, bridge, client, close } = await settings(f, {
       controller: sharedLifecycleWorkspaces(f.controller),
-      restartChrome,
+      restartPlugin,
     })
     const legacy = await connectPersonPluginControl({
       path: bridge.path,
@@ -737,23 +737,37 @@ it.skipIf(process.platform === 'win32')(
         catalogueDigest: pluginSha256(f.opts.catalogue.bytes),
       })
       expect((await client.catalogue())[0]).not.toHaveProperty('toolsUnavailable')
-      expect((await client.catalogue())[0]).not.toHaveProperty('canRestart')
+      expect((await client.catalogue())[0]).not.toHaveProperty('action')
       unavailable = true
       expect((await client.catalogue())[0]).toMatchObject({
         state: 'Running',
         toolsUnavailable: true,
-        canRestart: true,
+        action: {
+          id: 'fixture-restart',
+          kind: 'restart',
+          label: 'Restart fictional plugin',
+          note: 'Restarts the fictional host.',
+          failureAction: 'restart fictional plugin',
+        },
       })
       expect(
         ((await legacy.call({ kind: 'list-v2' })) as Record<string, unknown>[])[0],
       ).not.toHaveProperty('toolsUnavailable')
       expect(
         ((await legacy.call({ kind: 'list-v2' })) as Record<string, unknown>[])[0],
-      ).not.toHaveProperty('canRestart')
-      expect(Command.safeParse({ kind: 'restart-chrome' }).success).toBe(false)
-      expect(client.restartChrome).toBeTypeOf('function')
-      await client.restartChrome!()
-      expect(restartChrome).toHaveBeenCalledOnce()
+      ).not.toHaveProperty('action')
+      expect(
+        Command.safeParse({
+          kind: 'plugin-action',
+          pluginId: 'chrome',
+          actionId: 'fixture-restart',
+        }).success,
+      ).toBe(false)
+      expect(client.action).toBeTypeOf('function')
+      await expect(client.action!('chrome', 'not-the-declared-id')).rejects.toThrow()
+      expect(restartPlugin).not.toHaveBeenCalled()
+      await client.action!('chrome', 'fixture-restart')
+      expect(restartPlugin).toHaveBeenCalledOnce()
       expect(
         ((await legacy.call({ kind: 'list' })) as Record<string, unknown>[])[0],
       ).not.toHaveProperty('toolsUnavailable')

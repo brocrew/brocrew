@@ -35,6 +35,13 @@
     "adminPath": "/v1"
   },
   "skills": [],
+  "action": {
+    "id": "restart",
+    "kind": "restart",
+    "label": "Restart WhatsApp",
+    "note": "Restarts the WhatsApp connection.",
+    "failureAction": "restart WhatsApp"
+  },
   "serviceTemplates": [],
   "ui": {
     "entry": "ui/index.html",

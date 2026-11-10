@@ -51,10 +51,7 @@ export async function live(
     firstExit?: Promise<void>
     firstStop?: () => Promise<void>
     now?: () => number
-    recoverChromeHost?: (
-      view: ReturnType<ReturnType<typeof sharedLifecycleWorkspaces>['agentAttachments']>[number],
-      stopped: () => void,
-    ) => Promise<void>
+    restartHost?: (id: string, runId: string | undefined, stopped: () => void) => Promise<void>
   } = {},
 ) {
   const { firstExit, firstStop, ...bridgeChange } = change
@@ -63,7 +60,7 @@ export async function live(
     deny: (id) => consumer.bridge?.deny(id),
     toolsUnavailable: (id) => consumer.bridge?.toolsUnavailable?.(id) ?? false,
     toolsCause: (id) => consumer.bridge?.toolsCause?.(id),
-    onChromeHostExit: (runId) => consumer.bridge?.hostExited?.(runId),
+    onHostExit: (id, runId) => consumer.bridge?.hostExited?.(id, runId),
   })
   if (firstExit || firstStop) {
     const start = f.opts.runtime.start.bind(f.opts.runtime)

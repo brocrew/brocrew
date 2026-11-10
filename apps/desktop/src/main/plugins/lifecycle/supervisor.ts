@@ -32,7 +32,7 @@ export async function createSupervisorLifecycle(options: {
         consumer.agents?.deny(id)
         options.lifecycle.deny(id)
       },
-      onChromeHostExit: (runId) => consumer.agents?.hostExited(runId),
+      onHostExit: (id, runId) => consumer.agents?.hostExited(id, runId),
       runtime: {
         start: (spec) => host.prepare(spec),
         removeCode: (id, digest) => options.host.removePackage(id, digest),
@@ -51,8 +51,7 @@ export async function createSupervisorLifecycle(options: {
       requirePluginAdapter(view.installation.pluginId).broker(view, refused, diagnostic),
     diagnostic: (id, reason, detail) => recordPluginToolFailure(id, reason, detail),
     refused,
-    recoverChromeHost: (view, stopped) => controller.restartChromeTools(view.runId, stopped),
-    restartChromeHost: () => controller.restartChromeTools(undefined, () => {}),
+    restartHost: (id, runId, stopped) => controller.restartPluginTools(id, runId, stopped),
   })
   consumer.agents = agents
   options.owner.bindAgentBridge(agents)
@@ -71,7 +70,7 @@ export async function createSupervisorLifecycle(options: {
     key: options.personKey,
     controller,
     read: options.read,
-    restartChrome: () => agents.restartChrome(),
+    restartPlugin: (id) => agents.restartPlugin(id),
   })
   function close(): Promise<void> {
     closing ??= (async () => {

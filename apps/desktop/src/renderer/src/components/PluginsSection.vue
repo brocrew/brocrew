@@ -27,7 +27,7 @@ const props = defineProps<{ client?: PluginsClient }>()
 const client = props.client ?? window.api?.plugins
 const cards = ref<PluginCard[]>([]),
   query = ref(''),
-  error = ref<string | { kind: 'chrome-restart' }>(''),
+  error = ref<string | { kind: 'restart'; id: string; name: string }>(''),
   removalNotice = ref(''),
   busy = ref(false),
   /** The plugin an install is starting, so the wait reads as progress, not a fault. */
@@ -152,23 +152,27 @@ const failedRetries = ref(new Set<string>())
 const cannotStart = (card: PluginCard) => card.state === 'Unavailable'
 const errorNotice = computed(() => {
   if (typeof error.value === 'string') return error.value
-  const chrome = cards.value.find((card) => card.id === 'chrome')
-  if (chrome && !cannotStart(chrome) && !chrome.toolsUnavailable) return ''
-  return `Chrome is still unavailable after the restart request. ${chrome?.toolsCause ? `${chrome.toolsCause}. Try again.` : pluginUnavailableNotice(chrome?.unavailableReason)}`
+  const attempted = error.value
+  const card = cards.value.find((card) => card.id === attempted.id)
+  if (card && !cannotStart(card) && !card.toolsUnavailable) return ''
+  return `${attempted.name} is still unavailable after the restart request. ${card?.toolsCause ? `${card.toolsCause}. Try again.` : pluginUnavailableNotice(card?.unavailableReason)}`
 })
-async function restartChrome() {
-  if (busy.value) return
+async function runAction(card: PluginCard) {
+  const action = card.action
+  if (busy.value || !action) return
+  const { id, name } = card
+  const { id: actionId, failureAction } = action
   const turn = ++generation
   busy.value = true
   error.value = ''
-  const answer = await request({ kind: 'restart', id: 'chrome' })
+  const answer = await request({ kind: 'action', id, actionId })
   if (!current(turn)) return
   busy.value = false
   if (answer.ok && answer.cards) cards.value = answer.cards
-  const chrome = cards.value.find((card) => card.id === 'chrome')
-  if (!answer.ok || !answer.cards) error.value = actionFailure('restart Chrome', answer)
-  else if (!chrome || cannotStart(chrome) || chrome.toolsUnavailable)
-    error.value = { kind: 'chrome-restart' }
+  const updated = cards.value.find((card) => card.id === id)
+  if (!answer.ok || !answer.cards) error.value = actionFailure(failureAction, answer)
+  else if (!updated || cannotStart(updated) || updated.toolsUnavailable)
+    error.value = { kind: 'restart', id, name }
 }
 async function retry(card: PluginCard) {
   if (busy.value) return
@@ -545,25 +549,18 @@ onUnmounted(() => {
             {{ card.toolsCause }}
           </p>
           <p v-if="card.installed">Installed for all workspaces.</p>
-          <template
-            v-if="
-              card.id === 'chrome' &&
-              card.canRestart &&
-              card.installed &&
-              (card.toolsUnavailable || card.state === 'Unavailable')
-            "
-          >
+          <template v-if="card.action">
             <button
               class="bb-button"
               type="button"
               :disabled="busy"
               data-cy="plugin-restart"
-              @click="restartChrome"
+              @click="runAction(card)"
             >
-              Restart Chrome
+              {{ card.action.label }}
             </button>
             <p class="plugin-trust" data-cy="plugin-restart-note">
-              Closes the Chrome windows BroCrew opened.
+              {{ card.action.note }}
             </p>
           </template>
           <p v-if="card.updatesUnavailable" role="status" data-cy="plugin-updates-unavailable">

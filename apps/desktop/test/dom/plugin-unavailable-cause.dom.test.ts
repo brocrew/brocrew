@@ -49,12 +49,18 @@ it('updates the restart banner when a later health read reports the cause', asyn
     installed: true,
     state: 'Running' as const,
     toolsUnavailable: true as const,
-    canRestart: true as const,
+    action: {
+      id: 'fixture-restart',
+      kind: 'restart' as const,
+      label: 'Restart Chrome',
+      note: 'Closes the Chrome windows BroCrew opened.',
+      failureAction: 'restart Chrome',
+    },
   }
   f.set([degraded])
   const original = f.client.request
   f.client.request = async (input) =>
-    input.kind === 'restart' ? { ok: true, cards: [degraded] } : original(input)
+    input.kind === 'action' ? { ok: true, cards: [degraded] } : original(input)
   const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 760, height: 900 })
   await vi.waitFor(() => expect(m.all('plugin-restart')).toHaveLength(1))
   m.q('plugin-restart').click()
@@ -67,4 +73,6 @@ it('updates the restart banner when a later health read reports the cause', asyn
     { timeout: 7000 },
   )
   expect(m.q('plugins-error').textContent).not.toContain('did not report why')
+  f.set([{ id: 'chrome', name: 'Chrome', installed: true, state: 'Running' }])
+  await vi.waitFor(() => expect(m.all('plugins-error')).toHaveLength(0), { timeout: 7000 })
 })

@@ -63,7 +63,7 @@ export interface LifecycleOptions {
   /** Synchronous central broker/consumer admission revocation, before any await. */
   deny(pluginId: string): void
   /** Owner-only wakeup. Receivers must still await the retained run's positive exit proof. */
-  onChromeHostExit?(runId: string): void
+  onHostExit?(pluginId: string, runId: string): void
   download?: (
     release: Readonly<PluginRelease>,
     signal: AbortSignal,

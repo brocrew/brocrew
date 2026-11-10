@@ -1,3 +1,4 @@
+import { PluginActionSchema } from '../../shared/plugin-settings'
 import { z } from 'zod'
 import { providerSchema } from '@brobot2/shared'
 import { SkillName, SkillDigest, SkillRelease } from '../../shared/skills-catalogue'
@@ -161,6 +162,14 @@ const manifest = z.strictObject({
   files: z.array(file).max(PLUGIN_LIMITS.files - 1),
   server: z.strictObject({ entry: path, mcpPath: endpoint, adminPath: endpoint }).nullable(),
   skills: z.array(z.never()).max(0),
+  action: PluginActionSchema.optional(),
+  removal: z
+    .strictObject({
+      data: z.enum(['retain', 'delete']),
+      note: PluginActionSchema.shape.note,
+      beforeRemove: z.literal(true).optional(),
+    })
+    .optional(),
   serviceTemplates: z
     .array(
       z.strictObject({

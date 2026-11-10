@@ -61,9 +61,7 @@ export function createLifecycleAgentBridge(options: {
   answerWithinMs?: number
   openRoute?: typeof openManagedPluginRoute
   /** Owner-only: callback only after positive exit of view.runId and its descendants. */
-  recoverChromeHost?: (view: View, stopped: () => void) => Promise<void>
-  /** Person fallback when no broker was bound. Chrome only, never owner shutdown. */
-  restartChromeHost?: () => Promise<void>
+  restartHost?: (id: string, runId: string | undefined, stopped: () => void) => Promise<void>
   binding(
     view: View,
     diagnostic: PluginToolDiagnostic,
@@ -180,7 +178,7 @@ export function createLifecycleAgentBridge(options: {
   const recoveries = new Map<Entry, Promise<boolean>>()
   const hostExitNotifications = new WeakMap<Entry, Promise<void>>()
   const limited = new WeakSet<Entry>()
-  const automaticRestarts: number[] = []
+  const restartHistory = new Map<string, number[]>()
   const now = options.now ?? (() => performance.now())
   const versions = new Map<string, number>()
   const retired = new Set<string>()
@@ -217,14 +215,15 @@ export function createLifecycleAgentBridge(options: {
     const id = entry.view.installation.pluginId
     const prior = recoveries.get(entry)
     if (prior) return prior
-    if (closed || id !== 'chrome' || (!manual && !hostGone && liveEntries.get(id) !== entry))
+    if (closed || (!manual && !hostGone && liveEntries.get(id) !== entry))
       return Promise.resolve(false)
     if (!manual && entry.broker.status().available) return Promise.resolve(false)
     const completed = entry.broker.owner.hasCompletionProof()
-    if ((manual || hostGone || !completed) && !options.recoverChromeHost)
-      return Promise.resolve(false)
+    if ((manual || hostGone || !completed) && !options.restartHost) return Promise.resolve(false)
     if (!manual) {
       const at = now()
+      const automaticRestarts = restartHistory.get(id) ?? []
+      restartHistory.set(id, automaticRestarts)
       while (automaticRestarts.length && automaticRestarts[0]! <= at - 600_000)
         automaticRestarts.shift()
       if (automaticRestarts.length >= 3) {
@@ -245,7 +244,7 @@ export function createLifecycleAgentBridge(options: {
           reportPluginToolFailure(diagnostic(id), 'recovery-broker-completed')
         } else {
           reportPluginToolFailure(diagnostic(id), 'recovery-host-started')
-          await options.recoverChromeHost!(entry.view, () => {
+          await options.restartHost!(id, entry.view.runId, () => {
             hostProven = true
             entry.confirmHostExit()
             reportPluginToolFailure(diagnostic(id), 'recovery-host-proven')
@@ -841,9 +840,9 @@ export function createLifecycleAgentBridge(options: {
     deny,
     revoke,
     /** A run id is a non-authorizing wakeup, never a substitute for its retained proof. */
-    hostExited(runId: string): void {
+    hostExited(id: string, runId: string): void {
       void (async () => {
-        const entry = liveEntries.get('chrome') ?? (await stopping.get('chrome'))
+        const entry = liveEntries.get(id) ?? (await stopping.get(id))
         if (closed || !entry || entry.view.runId !== runId) return
         let work = hostExitNotifications.get(entry)
         if (!work) {
@@ -858,22 +857,21 @@ export function createLifecycleAgentBridge(options: {
           hostExitNotifications.set(entry, work)
         }
         await work
-      })().catch(() => reportPluginToolFailure(diagnostic('chrome'), 'host-exit-unproven'))
+      })().catch(() => reportPluginToolFailure(diagnostic(id), 'host-exit-unproven'))
     },
-    async restartChrome(): Promise<void> {
-      if (closed) throw new Error('unavailable')
-      const entry = liveEntries.get('chrome') ?? (await stopping.get('chrome'))
-      if (entry && (!entry.broker.owner.hasCompletionProof() || !options.restartChromeHost)) {
+    async restartPlugin(id: string): Promise<void> {
+      if (closed || !options.restartHost) throw new Error('unavailable')
+      const entry = liveEntries.get(id) ?? (await stopping.get(id))
+      if (entry) {
         if (!(await recoverEntry(entry, true))) throw new Error('unavailable')
       } else {
-        if (!options.restartChromeHost) throw new Error('unavailable')
-        reportPluginToolFailure(diagnostic('chrome'), 'recovery-host-started')
+        reportPluginToolFailure(diagnostic(id), 'recovery-host-started')
         try {
-          await options.restartChromeHost()
-          reportPluginToolFailure(diagnostic('chrome'), 'recovery-host-proven')
-        } catch {
-          reportPluginToolFailure(diagnostic('chrome'), 'recovery-restart-failed')
-          throw new Error('unavailable')
+          await options.restartHost(id, undefined, () => {})
+          reportPluginToolFailure(diagnostic(id), 'recovery-host-proven')
+        } catch (error) {
+          reportPluginToolFailure(diagnostic(id), 'recovery-restart-failed')
+          throw error
         }
       }
     },

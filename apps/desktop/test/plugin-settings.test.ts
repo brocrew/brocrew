@@ -385,6 +385,41 @@ it('refuses raw scheduling output and extra diagnostic fields at Settings', asyn
   }
 })
 
+it('passes the supplied restart action only on the supported degraded card', async () => {
+  const f = setup()
+  const action = {
+    id: 'fixture-restart',
+    kind: 'restart' as const,
+    label: 'Restart Chrome',
+    note: 'Closes the Chrome windows BroCrew opened.',
+    failureAction: 'restart Chrome',
+  }
+  const card = {
+    id: 'chrome',
+    name: 'Chrome',
+    installed: true,
+    state: 'Running' as const,
+    toolsUnavailable: true as const,
+    action,
+  }
+  vi.mocked(f.controller.catalogue).mockResolvedValueOnce([card])
+  expect(await f.call({ kind: 'list' })).toMatchObject({ ok: true, cards: [{ action }] })
+  for (const invalid of [
+    { ...card, action: { ...action, kind: 'install' } },
+    { ...card, action: { ...action, extra: true } },
+    { ...card, action: { kind: 'restart', label: action.label, note: action.note } },
+    { ...card, action: { ...action, label: '' } },
+    { ...card, action: { ...action, note: null } },
+    { ...card, action: { ...action, failureAction: 1 } },
+    { ...card, action: { ...action, label: 'x'.repeat(129) } },
+    { ...card, toolsUnavailable: undefined },
+    { ...card, installed: false },
+  ]) {
+    vi.mocked(f.controller.catalogue).mockResolvedValueOnce([invalid as never])
+    expect(await f.call({ kind: 'list' })).toEqual({ ok: false, listState: 'fetch-error' })
+  }
+})
+
 it('a page list refreshes the source; update uses its own door and closes configuration', async () => {
   const f = setup()
   const catalogue = vi.mocked(f.controller.catalogue)
@@ -531,21 +566,30 @@ it('reads current tool health without refreshing the catalogue or cancelling a p
   expect(f.controller.cancelPreparations).not.toHaveBeenCalled()
 })
 
-it('routes Chrome restart only from its owned Settings frame to the separate lifecycle recovery seam', async () => {
-  const f = setup(),
-    restart = vi.fn(async () => {})
-  Object.assign(f.controller, { restartChrome: restart })
-  expect(await f.call({ kind: 'restart', id: 'chrome' })).toMatchObject({ ok: true })
-  expect(restart).toHaveBeenCalledOnce()
-  for (const input of [
-    { kind: 'restart', id: 'whatsapp' },
-    { kind: 'restart', id: 'chrome', force: true },
-  ])
-    expect(await f.call(input)).toMatchObject({ ok: false })
-  expect(
-    await f.call({ kind: 'restart', id: 'chrome' }, { ...f.event, senderFrame: {} }),
-  ).toMatchObject({ ok: false })
-  expect(restart).toHaveBeenCalledOnce()
-  expect(f.controller.install).not.toHaveBeenCalled()
-  expect(f.controller.uninstall).not.toHaveBeenCalled()
-})
+it.each(['chrome', 'whatsapp', 'fictional-fir'])(
+  'routes the declared %s action through the owned Settings frame',
+  async (plugin) => {
+    const f = setup(),
+      restart = vi.fn(async () => {})
+    Object.assign(f.controller, { action: restart })
+    expect(await f.call({ kind: 'action', actionId: 'fixture-restart', id: plugin })).toMatchObject(
+      { ok: true },
+    )
+    expect(restart).toHaveBeenCalledWith(plugin, 'fixture-restart')
+    expect(restart).toHaveBeenCalledOnce()
+    for (const input of [
+      { kind: 'action', id: 'whatsapp' },
+      { kind: 'action', actionId: 'fixture-restart', id: plugin, force: true },
+    ])
+      expect(await f.call(input)).toMatchObject({ ok: false })
+    expect(
+      await f.call(
+        { kind: 'action', actionId: 'fixture-restart', id: plugin },
+        { ...f.event, senderFrame: {} },
+      ),
+    ).toMatchObject({ ok: false })
+    expect(restart).toHaveBeenCalledOnce()
+    expect(f.controller.install).not.toHaveBeenCalled()
+    expect(f.controller.uninstall).not.toHaveBeenCalled()
+  },
+)

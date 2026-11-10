@@ -35,6 +35,13 @@
     "adminPath": "/v1"
   },
   "skills": [],
+  "action": {
+    "id": "restart",
+    "kind": "restart",
+    "label": "Restart Chrome",
+    "note": "Closes the Chrome windows BroCrew opened.",
+    "failureAction": "restart Chrome"
+  },
   "serviceTemplates": [],
   "ui": {
     "entry": "ui/index.html",

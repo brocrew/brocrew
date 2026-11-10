@@ -27,7 +27,8 @@ const Request = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('list-startup-diagnostic') }),
   z.strictObject({ kind: z.literal('list-tool-starting') }),
   z.strictObject({ kind: z.literal('features') }),
-  z.strictObject({ kind: z.literal('restart-chrome') }),
+  z.strictObject({ kind: z.literal('list-actions') }),
+  z.strictObject({ kind: z.literal('plugin-action'), pluginId: id, actionId: z.string() }),
   z.strictObject({ kind: z.literal('mutation-policy'), catalogueDigest: Hex }),
   z.strictObject({ kind: z.literal('mutation-status'), catalogueDigest: Hex }),
   z.strictObject({
@@ -96,7 +97,7 @@ export async function servePersonPluginControl(options: {
   root: string
   key: string
   controller: PluginLifecycleController
-  restartChrome?: () => Promise<void>
+  restartPlugin?: (id: string) => Promise<void>
   read(
     pluginId: string,
     connection: Awaited<ReturnType<PluginLifecycleController['screen']>['connection']>,
@@ -277,7 +278,7 @@ export async function servePersonPluginControl(options: {
                 'tool-starting-v1',
                 'startup-diagnostic-v1',
                 'download-progress-v1',
-                ...(options.restartChrome ? ['chrome-recovery-v1'] : []),
+                ...(options.restartPlugin ? ['plugin-actions-v1'] : []),
                 ...(options.controller.preparedMutationFeature()
                   ? ['authors-v1', 'prepared-mutations-v1']
                   : []),
@@ -341,11 +342,28 @@ export async function servePersonPluginControl(options: {
               })
           case 'list-tool-starting':
             return (await options.controller.status()).cards.filter((card) => visible(card.id))
-          case 'restart-chrome':
-            if (!options.restartChrome || !visible('chrome'))
+          case 'list-actions':
+            return Promise.all(
+              (await options.controller.status()).cards
+                .filter((card) => visible(card.id))
+                .map(async (card) => ({
+                  ...card,
+                  ...(card.installed && (card.toolsUnavailable || card.state === 'Unavailable')
+                    ? { action: await options.controller.action(card.id) }
+                    : {}),
+                })),
+            )
+          case 'plugin-action': {
+            const action = await options.controller.action(request.pluginId)
+            if (
+              !options.restartPlugin ||
+              !visible(request.pluginId) ||
+              action?.id !== request.actionId
+            )
               throw new PluginSupervisorError('incompatible')
-            await options.restartChrome()
+            await options.restartPlugin(request.pluginId)
             return true
+          }
           case 'refresh':
             for (const one of sessions) one.preparations.clear()
             await options.controller.refreshCatalogue(request.catalogueDigest)

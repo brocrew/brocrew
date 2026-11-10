@@ -100,7 +100,18 @@ it.each([
       installed: !install,
       ...(review ? { preparationRequired: true } : {}),
       ...(action === 'retry' ? { state: 'Unavailable' } : {}),
-      ...(action === 'restart' ? { toolsUnavailable: true, canRestart: true } : {}),
+      ...(action === 'restart'
+        ? {
+            toolsUnavailable: true,
+            action: {
+              id: 'fixture-restart',
+              kind: 'restart' as const,
+              label: 'Restart Chrome',
+              note: 'Closes the Chrome windows BroCrew opened.',
+              failureAction: 'restart Chrome',
+            },
+          }
+        : {}),
     })
     const kind = action.startsWith('review')
       ? 'prepare'
@@ -108,12 +119,14 @@ it.each([
         ? install
           ? 'install'
           : 'update'
-        : action
+        : action === 'restart'
+          ? 'action'
+          : action
     if (
-      !['prepare', 'install', 'update', 'uninstall', 'configure', 'retry', 'restart'].includes(kind)
+      !['prepare', 'install', 'update', 'uninstall', 'configure', 'retry', 'action'].includes(kind)
     )
       throw new Error('unexpected action')
-    const inputKind = kind as PluginSettingsRequest['kind']
+    const inputKind = (kind === 'action' ? 'action' : kind) as PluginSettingsRequest['kind']
     const m = mount(PluginsSection, { client: f.client })
     await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(1))
     if (guarded) {
@@ -157,7 +170,16 @@ it.each(['retry', 'restart'] as const)(
     const f = actionFailures(
         action === 'retry'
           ? { state: 'Unavailable' }
-          : { toolsUnavailable: true, canRestart: true },
+          : {
+              toolsUnavailable: true,
+              action: {
+                id: 'fixture-restart',
+                kind: 'restart' as const,
+                label: 'Restart Chrome',
+                note: 'Closes the Chrome windows BroCrew opened.',
+                failureAction: 'restart Chrome',
+              },
+            },
       ),
       m = mount(PluginsSection, { client: f.client })
     await vi.waitFor(() => expect(m.all(`plugin-${action}`)).toHaveLength(1))
@@ -169,6 +191,41 @@ it.each(['retry', 'restart'] as const)(
     expect(m.all('plugin-install')).toHaveLength(0)
   },
 )
+
+it('uses the supplied failure phrase and reports a missing target after a restart', async () => {
+  const f = actionFailures({
+    id: 'fictional-fir',
+    name: 'Fictional Fir',
+    toolsUnavailable: true,
+    action: {
+      id: 'fixture-restart',
+      kind: 'restart',
+      label: 'Reconnect the fictional browser',
+      note: 'Closes its fictional windows.',
+      failureAction: 'reconnect the fictional browser',
+    },
+  })
+  const m = mount(PluginsSection, { client: f.client })
+  await vi.waitFor(() => expect(m.all('plugin-restart')).toHaveLength(1))
+  f.faults.set('action', () => actionRefused)
+  m.q('plugin-restart').click()
+  await vi.waitFor(() =>
+    expect(m.q('plugins-error').textContent).toContain("Couldn't reconnect the fictional browser."),
+  )
+  expect(m.q('plugins-error').textContent).toContain('The fictional owner refused this action.')
+  f.faults.set('action', () => ({ ok: true, cards: [] }))
+  m.q('plugin-restart').click()
+  await vi.waitFor(() =>
+    expect(m.q('plugins-error').textContent).toContain(
+      'Fictional Fir is still unavailable after the restart request.',
+    ),
+  )
+  expect(m.q('plugins-error').textContent).toContain('did not report why')
+  expect(f.calls.filter((call) => call.kind === 'action')).toEqual([
+    { kind: 'action', actionId: 'fixture-restart', id: 'fictional-fir' },
+    { kind: 'action', actionId: 'fixture-restart', id: 'fictional-fir' },
+  ])
+})
 
 it('does not install after a failed prerequisite close', async () => {
   const f = actionFailures({ installed: false }),
