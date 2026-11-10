@@ -40,7 +40,8 @@ import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { mount, META } from './harness'
 
 // Register the fixture's mocks before loading the root's composable imports.
-const { default: RuntimeScreen } = await import('../../src/renderer/src/components/RuntimeScreen.vue')
+const { default: RuntimeScreen } =
+  await import('../../src/renderer/src/components/RuntimeScreen.vue')
 
 beforeEach(installRuntimeScreenFixture)
 

@@ -12,7 +12,8 @@ import { scene } from '../capture'
 import { wearTheme } from '../fixtures/themes'
 
 // Register the fixture's mocks before loading the root's composable imports.
-const { default: RuntimeScreen } = await import('../../src/renderer/src/components/RuntimeScreen.vue')
+const { default: RuntimeScreen } =
+  await import('../../src/renderer/src/components/RuntimeScreen.vue')
 
 const sheets = {
   newAgent: { overlay: { kind: 'newAgent' }, ready: 'new-agent' },
