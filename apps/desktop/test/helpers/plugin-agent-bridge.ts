@@ -84,7 +84,6 @@ export async function live(
         name: 'echo',
         description: 'Fictional echo',
         inputSchema: { type: 'object' },
-
       },
     ],
     adminOperations: [],
@@ -94,7 +93,10 @@ export async function live(
         return {
           result: Promise.resolve({
             ok: true as const,
-            value: { content: [{ type: 'text', text: 'fictional fern' }], ...(!allowed ? { isError: true } : {}) },
+            value: {
+              content: [{ type: 'text', text: 'fictional fern' }],
+              ...(!allowed ? { isError: true } : {}),
+            },
           }),
           quiescent: Promise.resolve(),
           cancel() {},

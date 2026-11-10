@@ -623,7 +623,10 @@ it('keeps phone-removal guidance after uninstall removes the configuration page'
   f.client.request = async (input) => {
     const answer = await request(input)
     return input.kind === 'uninstall' && answer.ok
-      ? { ...answer, removal: { data: 'deleted' as const, notice: 'Check Linked devices on your phone.' } }
+      ? {
+          ...answer,
+          removal: { data: 'deleted' as const, notice: 'Check Linked devices on your phone.' },
+        }
       : answer
   }
   const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })

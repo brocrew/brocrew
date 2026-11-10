@@ -379,7 +379,9 @@ async function change(kind: 'install' | 'update' | 'uninstall', card: PluginCard
       removalNotice.value = [
         `${card.name}'s local data was ${answer.removal.data === 'deleted' ? 'deleted' : 'kept'}.`,
         answer.removal.notice,
-      ].filter(Boolean).join(' ')
+      ]
+        .filter(Boolean)
+        .join(' ')
     }
   } else {
     error.value = actionFailure(`${kind} ${card.name}`, answer, guarded)

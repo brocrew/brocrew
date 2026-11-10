@@ -598,11 +598,16 @@ export class PluginLifecycleController {
         cleanupPending: [...this.cleanup].sort(),
       }
     })
-    read.cards = await Promise.all(read.cards.map(async (card) => {
-      const removal = (await this.declarations(card.id))?.removal
-      return { ...card, uninstallDeletesData: removal?.data === 'delete',
-        ...(removal ? { uninstallNote: removal.note } : {}) }
-    }))
+    read.cards = await Promise.all(
+      read.cards.map(async (card) => {
+        const removal = (await this.declarations(card.id))?.removal
+        return {
+          ...card,
+          uninstallDeletesData: removal?.data === 'delete',
+          ...(removal ? { uninstallNote: removal.note } : {}),
+        }
+      }),
+    )
     this.retryLater(unfinished)
     return read
   }
@@ -1266,7 +1271,9 @@ export class PluginLifecycleController {
       ])
       const admin = connection.admin()
       const response = await fetch(admin.url + '/before-remove', {
-        method: 'POST', redirect: 'error', body: '{}',
+        method: 'POST',
+        redirect: 'error',
+        body: '{}',
         headers: { ...admin.headers, 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(45_000),
       })
@@ -1287,7 +1294,9 @@ export class PluginLifecycleController {
     install: Installation,
   ): Promise<PluginRemovalOutcome> {
     if (effect.removal === undefined) {
-      const pkg = this.runs.get(install.pluginId)?.package ?? await this.vault.load(this.descriptor(install))
+      const pkg =
+        this.runs.get(install.pluginId)?.package ??
+        (await this.vault.load(this.descriptor(install)))
       effect = { ...effect, removal: pkg.manifest.removal ?? null }
       await this.effects.write(effect)
     }
@@ -1322,8 +1331,10 @@ export class PluginLifecycleController {
     this.cleanup.delete(install.pluginId)
     this.startFailures.delete(install.pluginId)
     this.startDiagnostics.delete(install.pluginId)
-    return { data: effect.removal?.data === 'delete' ? 'deleted' : 'retained',
-      ...(notice ? { notice } : {}) }
+    return {
+      data: effect.removal?.data === 'delete' ? 'deleted' : 'retained',
+      ...(notice ? { notice } : {}),
+    }
   }
   private async remove(
     id: string,

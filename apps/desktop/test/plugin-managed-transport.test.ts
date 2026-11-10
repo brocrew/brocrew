@@ -308,7 +308,7 @@ it('records a closed connect-failure reason without arguments, credentials or ra
         },
         name: 'echo',
         input: { private: 'fictional-private-argument' },
-        },
+      },
       new AbortController().signal,
     )
     await expect(execution.result).resolves.toEqual({ ok: false, cause: 'connection-failed' })

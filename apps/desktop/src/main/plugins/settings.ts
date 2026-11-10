@@ -237,7 +237,8 @@ export function registerPluginSettings(
             (card.installed === true && card.installedVersion !== undefined)) &&
           (card.uninstallDeletesData === undefined ||
             typeof card.uninstallDeletesData === 'boolean') &&
-          (card.uninstallNote === undefined || PluginActionSchema.shape.note.safeParse(card.uninstallNote).success) &&
+          (card.uninstallNote === undefined ||
+            PluginActionSchema.shape.note.safeParse(card.uninstallNote).success) &&
           (card.preparationRequired === undefined || card.preparationRequired === true) &&
           (card.mutationBlocked === undefined ||
             ['source-mismatch', 'owner-incompatible'].includes(card.mutationBlocked)) &&

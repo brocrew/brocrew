@@ -147,10 +147,10 @@ describe.skipIf(process.platform === 'win32')(
       expect(f.controller.admitted(fresh, 'chrome', installId)).toBe(false)
       expect(f.controller.agentAttachments(f.local.sink.workspaceId)).toEqual([])
     })
-    it('logs a WhatsApp plugin out while it runs, then removes its code and its data; Chrome keeps its data', async () => {
+    it('runs declared cleanup before stopping and deleting data; an undeclared package retains data', async () => {
       const shown = (events: string[]) =>
         events.filter((one) => /^(log-out|stop$|remove-code$|remove-data)/.test(one))
-      const f = await fixture({}, 'whatsapp')
+      const f = await fixture({}, 'whatsapp', { removal: { data: 'delete', note: 'Fictional cleanup.', beforeRemove: true } })
       await f.controller.install(f.handle, 'whatsapp')
       f.events.length = 0
       vi.stubGlobal(
@@ -162,12 +162,10 @@ describe.skipIf(process.platform === 'win32')(
       )
       await f.controller.uninstall(f.handle, 'whatsapp')
       expect(shown(f.events)).toEqual([
-        'log-out /status',
-        'log-out /uninstall',
-        'log-out /status',
+        'log-out /before-remove',
         'stop',
-        'remove-code',
         'remove-data whatsapp',
+        'remove-code',
       ])
       const c = await fixture()
       await c.controller.install(c.handle, 'chrome')

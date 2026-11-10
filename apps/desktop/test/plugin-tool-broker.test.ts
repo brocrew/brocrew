@@ -139,10 +139,6 @@ describe('plugin authority and all-agent reach', () => {
 })
 
 describe('package inputs at execution', () => {
-
-
-
-
   it('clones queued inputs and freezes execution identity, and arguments', async () => {
     const h = setup()
     const first = h.call()
@@ -415,7 +411,6 @@ describe('deadline, cancellation and independent quiescence proof', () => {
     h.server.finish(1)
     await next
   })
-
 })
 
 describe('secret-free failures and diagnostics', () => {
@@ -508,7 +503,6 @@ describe('secret-free failures and diagnostics', () => {
 })
 
 describe('revocation and malformed downstream boundaries', () => {
-
   it('cancels when authority is revoked inside dispatch, before the handle returns', async () => {
     let revoke = () => {}
     const h = setup((o) => ({
@@ -654,7 +648,6 @@ it('attribution copies only installation identity fields from owner metadata', a
   h.server.finish(0)
   await pending
 })
-
 
 it('distinguishes a queue deadline from a dispatched call deadline using fixed reasons', async () => {
   const h = setup()

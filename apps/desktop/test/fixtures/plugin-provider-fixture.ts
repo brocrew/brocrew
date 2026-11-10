@@ -68,7 +68,10 @@ export async function pluginProviderFixture(
       server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
         seen.push({ method: 'tools/call', authenticated })
         if (!allowed || request.params.arguments?.profile !== 'fern')
-          return { isError: true, content: [{ type: 'text', text: 'Package settings refused the call.' }] }
+          return {
+            isError: true,
+            content: [{ type: 'text', text: 'Package settings refused the call.' }],
+          }
         if (reply === 'controlled') {
           requestedProgress = request.params._meta?.progressToken !== undefined
           const done = new Promise<void>((resolve) => {
@@ -129,7 +132,6 @@ export async function pluginProviderFixture(
         required: ['profile'],
         additionalProperties: false,
       },
-
     })),
     adminOperations: [],
     server: createPrivatePluginPort({

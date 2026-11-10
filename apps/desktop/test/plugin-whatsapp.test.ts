@@ -157,5 +157,4 @@ describe('the plugin registry', () => {
     expect(pluginAdapter('whatsapp')).toBeDefined()
     expect(pluginAdapter('chrome')).toBeDefined()
   })
-
 })
