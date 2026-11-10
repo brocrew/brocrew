@@ -36,14 +36,14 @@ import { WHERE_AGENTS_ARE_CREATED } from './where-agents-are-created'
  */
 export interface AgentStore {
   /** What the last read said, or null. See {@link AgentStore.loaded} for what null cannot say. */
-  readonly identities: Ref<AgentIdentities | null>
+  readonly identities: Readonly<Ref<AgentIdentities | null>>
   /**
    * ⛔ **Whether an answer has arrived at all** (086, and 339's rule one store over). Null is three
    * facts until this splits them: not asked, asked and empty, asked and refused.
    */
-  readonly loaded: Ref<boolean>
+  readonly loaded: Readonly<Ref<boolean>>
   /** Why the last read failed, or null — including *"a person is not asking"*, which is a real one. */
-  readonly loadError: Ref<string | null>
+  readonly loadError: Readonly<Ref<string | null>>
   /**
    * Read the list. Safe to call again; the last answer wins.
    *
