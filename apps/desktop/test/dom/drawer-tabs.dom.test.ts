@@ -104,19 +104,7 @@ describe('the drawer shows one body at a time, and a click is what moves it', ()
     }
   })
   it('navigates the remaining tabs after Events is retired', async () => {
-    const hidden = defineComponent({
-      setup() {
-        const tab = ref<DrawerTab>('open')
-        return () =>
-          h(SessionDrawer as never, {
-            ...drawerProps({ tab: tab.value }),
-            'onUpdate:tab': (next: DrawerTab) => {
-              tab.value = next
-            },
-          })
-      },
-    })
-    const view = mount(hidden, {}, { width: 380, height: 700 })
+    const view = mount(Harness, {}, { width: 380, height: 700 })
     const on = view.q('drawer-tab-open')
     on.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
     await nextTick()
