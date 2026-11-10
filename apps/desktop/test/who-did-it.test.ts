@@ -3,21 +3,13 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import {
-  FakeProviderSessions,
-  FakeRuntime,
-  type AgentToolset,
-  type FakeSessionHandle,
-  type ResumeOptions,
-  type SessionRef,
-  type StartOptions,
-} from '@brobot2/runtime'
+import { FakeProviderSessions, type FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { distil } from '../src/main/runtime/digest'
 import { RuntimeHost, THE_APP_ITSELF, whoDidIt } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -33,6 +25,9 @@ import {
 } from '../src/shared/who-did-it'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
+import { waitFor } from './lib/f093-host'
+import { ProviderDouble, anOpenGate } from './lib/provider-double'
+import { callOn } from './helpers/call-tool'
 
 /**
  * Who did it: the actor is recorded by whoever performs the act, at the moment it happens, and a
@@ -53,27 +48,6 @@ const INSIDE = FROM + 6 * HOUR
 /** The window after it: the digest is one window over every conversation. */
 const NEXT_TO = TO + 12 * HOUR
 const INSIDE_NEXT = TO + 6 * HOUR
-
-/** Keep the provider handles, so a card can be raised through the real path. */
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handles: FakeSessionHandle[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(options)
-    this.handles.push(handle)
-    return handle
-  }
-  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
-    const handle = await super.resume(ref, options)
-    this.handles.push(handle)
-    return handle
-  }
-}
 
 describe('477 · who did it', () => {
   let userData: string
@@ -106,7 +80,8 @@ describe('477 · who did it', () => {
       new RuntimeHost({
         store,
         ...neutralHostDeps(() => userData),
-        createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, sessions),
+        createRuntime: (provider: Provider) =>
+          new ProviderDouble(provider, handles, sessions, anOpenGate()),
         prepareProviderHome: (provider: Provider, profileId?: string) => {
           const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
           mkdirSync(home, { recursive: true })
@@ -149,25 +124,6 @@ describe('477 · who did it', () => {
       approvalMode: 'ask',
       profileId: id,
     })
-  }
-
-  const callOn = async (
-    tools: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = tools.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    // ⛔ **Bounded, and it reports rather than hangs** (standing rule 13).
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
   }
 
   const digestOf = (from: number, to: number): ReturnType<typeof distil> =>

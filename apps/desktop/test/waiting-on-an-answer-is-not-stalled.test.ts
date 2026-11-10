@@ -15,7 +15,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { REQUEST_IS_OPEN, openQuestionsByWork } from '../src/shared/questions'
@@ -29,9 +28,14 @@ import {
   stalledWithACause,
 } from '../src/shared/tasks'
 import { WORK_STATE_WORD, workReading } from '../src/renderer/src/lib/work-report'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+  neutralHostDeps,
+} from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /**
  * A worker whose question nobody has answered reads as waiting on an answer on every surface that
@@ -41,17 +45,6 @@ import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from '.
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  readonly alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 describe('603 · waiting on an answer is not stalled', () => {
   let userData: string
@@ -126,16 +119,6 @@ describe('603 · waiting on an answer is not stalled', () => {
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const toolsOf = (sessionId: string): AgentToolset => agentToolsFor(host, sessionId)

@@ -11,17 +11,18 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
-import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import {
-  DEFAULT_PROFILE_ID,
-  type RuntimeChangeMessage,
-  type RuntimeEventMessage,
-} from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, type RuntimeChangeMessage } from '../src/shared/runtime-ipc'
+import { waitFor } from './lib/f093-host'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+  neutralHostDeps,
+} from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /**
  * An act that moves work announces `work`, so a window re-reads without waiting for its poll.
@@ -32,17 +33,6 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
 describe('638 · a change to a conversation’s work announces itself', () => {
-  class RecordingSink implements RuntimeEventSink {
-    readonly aPersonIsBehindIt = true
-    readonly messages: RuntimeEventMessage[] = []
-    alive = true
-    constructor(readonly ownerId: string) {}
-    send(message: RuntimeEventMessage): void {
-      this.messages.push(message)
-    }
-    sendLiveness(): void {}
-  }
-
   let userData: string
   let root: string
   let db: AppDatabase
@@ -115,16 +105,6 @@ describe('638 · a change to a conversation’s work announces itself', () => {
     return sessionId
   }
 
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
-
   const lastToolset = (): AgentToolset => {
     const last = handed.at(-1)
     if (last === undefined) throw new Error('no toolset was handed to that launch')
@@ -133,14 +113,6 @@ describe('638 · a change to a conversation’s work announces itself', () => {
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   /** ⚑ Every subject announced since the last reset, in order. */
   const said = (): string[] => announced.map((one) => one.what)

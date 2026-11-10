@@ -56,6 +56,7 @@ import {
   TYPE_TO_CARRY_ON,
 } from '../src/shared/the-go-ahead'
 import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { waitFor } from './lib/f093-host'
 // ⚑ 700 · `688` H2 — main's sentence and the row's are one value now, in `shared/`.
 
 // These SSR checks read expanded row details; browser controls exercise the real fold.
@@ -99,14 +100,6 @@ vi.mock('../src/renderer/src/components/OutsideCard.vue', async () => {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 const latch = (): { promise: Promise<void>; open: () => void } => {
   let open = (): void => {}

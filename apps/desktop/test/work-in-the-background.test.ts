@@ -18,12 +18,11 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { isGiverStallNotice, RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
-import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { derivePieces } from '../src/shared/tasks'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { waitFor } from './lib/f093-host'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /**
  * # 🔴 D-013 · work running in the background isn't stalled (plan §3.7, §7)
@@ -238,16 +237,6 @@ describe('§3 · only where the provider wakes the model', () => {
 })
 
 describe('§4 · through the host: no stall notice while the build runs, and what runs is said', () => {
-  class RecordingSink implements RuntimeEventSink {
-    readonly aPersonIsBehindIt = true
-    readonly messages: RuntimeEventMessage[] = []
-    alive = true
-    constructor(readonly ownerId: string) {}
-    send(message: RuntimeEventMessage): void {
-      this.messages.push(message)
-    }
-    sendLiveness(): void {}
-  }
   class Watching extends FakeRuntime {
     constructor(
       provider: Provider,
@@ -307,22 +296,6 @@ describe('§4 · through the host: no stall notice while the build runs, and wha
     rmSync(userData, { recursive: true, force: true })
   })
 
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
   const ledger = (sessionId: string) => store.events(sessionId).map((entry) => entry.event)
   const cards = (sessionId: string): string[] =>
     ledger(sessionId).flatMap((event) => (event.type === 'permission_request' ? [event.id] : []))

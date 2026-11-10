@@ -25,7 +25,7 @@ import {
 } from '../src/main/db/session-store'
 import { giverStallReceipts, RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import type { Caller, RuntimeEventSink } from './helpers/giver-notice-host'
-import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import {
   provenanceOf,
@@ -36,6 +36,7 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { GO_AHEAD_MESSAGE } from '../src/renderer/src/lib/plan-mode'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /**
  * 🔴 **662 · who the PROVIDER is told wrote each turn, captured where the SDK receives it.**
@@ -238,16 +239,6 @@ describe('662 · whose words the provider is told — the real Claude adapter, e
       by,
     )
     return sessionId
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   /**

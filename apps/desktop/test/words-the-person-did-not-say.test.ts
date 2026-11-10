@@ -1,13 +1,15 @@
 import { waitFor } from './lib/f093-host'
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { ProviderDouble, anOpenGate } from './lib/provider-double'
+import { callOn } from './helpers/call-tool'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime, FakeSessionHandle } from '@brobot2/runtime'
-import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeSessionHandle } from '@brobot2/runtime'
+import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -18,8 +20,8 @@ import {
   aPersonTypedIt,
   whoseWordsTheseAre,
 } from '../src/main/runtime/runtime-host'
-import type { Caller, RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import type { Caller } from '../src/main/runtime/runtime-host'
+import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import {
   WINDOW_CALLER_PREFIX,
   aWindowIsAsking,
@@ -36,7 +38,6 @@ import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import type { TranscriptItem } from '../src/renderer/src/lib/transcript'
 
 import { TURN_AUTHORSHIP_KEYS, agentName } from '../src/shared/runtime-ipc'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { pieceLine, theOwnerOf } from '../src/shared/piece-called'
 import { theDirectionLine } from '../src/main/runtime/turn-origin'
 import { replyText } from '../src/main/runtime/reply-rails'
@@ -70,42 +71,6 @@ import { replyText } from '../src/main/runtime/reply-rails'
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
-/**
- * ⛔ **A test has to BE the provider to raise a question** (`394`'s double, reused). Nothing else
- * can produce the event `routeRequest` reads, and §4 is about what happens to the turn that
- * question becomes.
- */
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handles: FakeSessionHandle[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(options)
-    this.handles.push(handle)
-    return handle
-  }
-  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
-    const handle = await super.resume(ref, options)
-    this.handles.push(handle)
-    return handle
-  }
-}
-
 describe('413 · words the person did not say', () => {
   let handles: FakeSessionHandle[]
   let userData: string
@@ -126,7 +91,8 @@ describe('413 · words the person did not say', () => {
       store: withStore,
       ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
-      createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
+      createRuntime: (provider: Provider) =>
+        new ProviderDouble(provider, handles, issued, anOpenGate()),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
         const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
         mkdirSync(home, { recursive: true })
@@ -175,16 +141,6 @@ describe('413 · words the person did not say', () => {
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const entries = (sessionId: string): readonly PersistedEventInfo[] => store.events(sessionId)
