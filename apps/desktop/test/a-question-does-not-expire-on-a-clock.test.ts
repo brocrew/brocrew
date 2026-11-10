@@ -628,6 +628,48 @@ describe('591 · a question does not expire on a clock', () => {
       expect(still.outcome, JSON.stringify(still)).toBe('ok')
     })
 
+    it('⛔ a withdrawal ends the question and there is NOTHING LEFT TO RELEASE', async () => {
+      // 🔴 **608 · this test measured `437`'s release and the release is gone** (HO-084 §4,
+      // standing rule 26 — strip AND re-aim). ⚠️ It shortened the bound to 30 s, asserted the
+      // worker's call was still parked, withdrew the work, and asserted the call came back — the
+      // measurement that stopped the ledger asserting an ending the app had not performed.
+      // ⛔ **No call parks any more**, so `endTheQuestionsAbout`'s second half was deleted with the
+      // promise it settled.
+      //
+      // ⚑ **The subject survives and is measured where it now lives**: after a withdrawal the
+      // ledger's ending is the WHOLE of what happened — nothing in this process is holding a
+      // different opinion, and the worker is told by the row rather than by a returning call.
+      const { worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
+      const said = await callOn(workerTools, 'ask_question', {
+        who_answers: 'the-parent',
+        piece,
+        question: 'which schema?',
+      })
+      expect(said.outcome, JSON.stringify(said)).toBe('ok')
+      const asked = openRequestOf(worker)
+      const before = ledger(worker).length
+
+      const took = await callOn(pmTools, 'withdraw_task', { piece })
+      expect(took.outcome, JSON.stringify(took)).toBe('ok')
+      expect(took.endedQuestions).toBe(1)
+      expect(stateOfRequest(worker, asked.requestId)).toBe('work-withdrawn')
+
+      // ⛔ **And nothing ANSWERS the worker's question** — a released call used to hand it *nobody
+      // answered*; an ending is a row, and the words a worker gets about a question are answers.
+      // ⚑ **D-016 · ruling 8 — the one thing it is handed is the take-back itself**: the app's own
+      // notice that the piece is no longer its to do. ⚑
+      // `a-positive-assertion-must-differ-from-the-default`: the arm above this one proves this
+      // same reader DOES see an answer when there is one.
+      const handed = ledger(worker)
+        .slice(before)
+        .filter(
+          (event): event is Extract<TranscriptEvent, { type: 'user_turn' | 'message_queued' }> =>
+            event.type === 'user_turn' || event.type === 'message_queued',
+        )
+      expect(handed.map((event) => event.appNotice)).toEqual(['a-piece-taken-back'])
+      expect(handed.map((event) => event.text).join('\n')).not.toContain('answer')
+    })
+
     it('⚑ THE CONTROL · a question an ANSWER already ended is not ended twice, and keeps its first ending', async () => {
       const { worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
       await callOn(workerTools, 'ask_question', {
@@ -676,6 +718,44 @@ describe('591 · a question does not expire on a clock', () => {
       })
       expect(late.outcome, JSON.stringify(late)).toBe('ok')
       expect(stateOfRequest(worker, asked.requestId)).toBe('answered')
+    })
+
+    it('⛔ a ledger this process can no longer READ cannot become a transport error, because it is no longer read', async () => {
+      // 🔴 **Found by the gate's third run, not by me** (591 §10.3). ⛔ **`raiseAQuestion` did no
+      // ledger read after its race until `591` added one**, and the three things that settled that
+      // race — the bound, an interruption and a withdrawal — all fired at moments the app may be
+      // going away. ⚠️ A teardown released every held ask and closed the database in the same
+      // breath, so the released call read a closed store: *`TypeError: The database connection is
+      // not open`*, one unhandled rejection with all 11,596 tests passing. `591` wrapped it.
+      //
+      // 🔴 **608 · the READ is gone rather than the guard** (HO-084 §4, standing rule 26). ⛔ The
+      // read existed to say which of three silences a five-minute race had met; nothing is awaited
+      // between the writes and the return, so it could only ever have answered `open`.
+      // ⚑ **The hazard is still put on the path the code walks** — a store whose `routedRequestsOf`
+      // throws exactly the way a closed one does — and the ask must still come back as an ANSWER.
+      const brittle: SessionStore = {
+        ...store,
+        routedRequestsOf: () => {
+          throw new Error('The database connection is not open')
+        },
+      }
+      const { workerTools, piece } = await aWorkerHoldingWork()
+      const asking = host as unknown as { deps: { store: SessionStore } }
+      const real = asking.deps.store
+      asking.deps.store = brittle
+      try {
+        const said = await callOn(workerTools, 'ask_question', {
+          who_answers: 'the-parent',
+          piece,
+          question: 'which schema?',
+        })
+        // ⛔ **An ANSWER, never a throw** — `307`'s rule: a model meeting a transport error is told
+        // its tool is broken rather than what happened.
+        expect(said.outcome, JSON.stringify(said)).toBe('ok')
+        expect(said.question).toEqual(expect.any(String))
+      } finally {
+        asking.deps.store = real
+      }
     })
 
     it('⛔ and the ONE table that decides it has no member a clock can reach', () => {

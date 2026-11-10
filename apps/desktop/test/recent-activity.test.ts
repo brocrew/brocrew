@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { FakeRuntime } from '@brobot2/runtime'
+import ts from 'typescript'
 import { openDatabase, type AppDatabase, type AppStatement } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -351,6 +352,64 @@ it('the IPC host uses only the worker answer, and never falls back on failure', 
   await expect(executeRuntimeCommand(host, sink, command)).rejects.toThrow(WindowReadUnavailable)
   expect(scan).not.toHaveBeenCalled()
   expect(oldScan).not.toHaveBeenCalled()
+})
+
+it('the preload forwards exactly the requested window to the dedicated IPC verb', () => {
+  const source = readFileSync(join(here, '../src/preload/index.ts'), 'utf8')
+  const preload = ts.createSourceFile('preload.ts', source, ts.ScriptTarget.Latest, true)
+  const runtime = preload.statements
+    .flatMap((statement) =>
+      ts.isVariableStatement(statement) ? [...statement.declarationList.declarations] : [],
+    )
+    .find((declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === 'runtime')
+  const initial = runtime?.initializer
+  if (
+    initial === undefined ||
+    !ts.isCallExpression(initial) ||
+    initial.expression.getText(preload) !== 'Object.freeze'
+  ) {
+    throw new Error('The real preload runtime construction was not found')
+  }
+  const object = initial.arguments[0]
+  if (object === undefined || !ts.isObjectLiteralExpression(object)) {
+    throw new Error('The real preload runtime is not an object literal')
+  }
+  const property = object.properties.find(
+    (member) =>
+      ts.isPropertyAssignment(member) &&
+      ts.isIdentifier(member.name) &&
+      member.name.text === 'recentActivity',
+  )
+  if (
+    property === undefined ||
+    !ts.isPropertyAssignment(property) ||
+    !ts.isArrowFunction(property.initializer)
+  ) {
+    throw new Error('The real recent activity forwarding function was not found')
+  }
+  // Run only this forwarding function: no Electron import or preload startup is executed.
+  const compiled = ts.transpileModule(`const forward = ${property.initializer.getText(preload)};`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
+  }).outputText
+  const result = Promise.resolve({ lines: [] })
+  const command = vi.fn(() => result)
+  const forward: (input: { from: number; to: number }) => unknown = new Function(
+    'command',
+    `${compiled}\nreturn forward;`,
+  )(command)
+  const inputs = [
+    Object.freeze({ from: 110, to: 990, extra: 'must not cross the bridge' }),
+    Object.freeze({ from: 1234, to: 5678, extra: 'still must not cross the bridge' }),
+  ]
+  for (const [index, input] of inputs.entries()) {
+    expect(forward(input)).toBe(result)
+    expect(command).toHaveBeenNthCalledWith(index + 1, {
+      kind: 'recentActivity',
+      from: input.from,
+      to: input.to,
+    })
+  }
+  expect(command).toHaveBeenCalledTimes(inputs.length)
 })
 
 it('a sparse historical window ignores many later digest rows', () => {

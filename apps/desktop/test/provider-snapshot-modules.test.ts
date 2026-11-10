@@ -1,5 +1,8 @@
+import { fileURLToPath } from 'node:url'
+import { runInNewContext } from 'node:vm'
+import { build } from 'vite'
 import { describe, expect, it, vi } from 'vitest'
-import { createSnapshotPolicy } from '../src/main/providers/snapshot-policy'
+import { createSnapshotPolicy, type SnapshotPolicy } from '../src/main/providers/snapshot-policy'
 import { providerKnowledge } from '../src/main/providers/index'
 import claudeMac from '../src/main/provider-snapshots/claude-code.json'
 import codexMac from '../src/main/provider-snapshots/codex.json'
@@ -44,4 +47,43 @@ describe('provider snapshot modules preserve the shipped captures', () => {
     expect(() => policy.fileFor('linux')).toThrow(SyntaxError)
     expect(mac).not.toHaveBeenCalled()
   })
+
+  it.each([
+    ['claude', claudeLinux, claudeMac],
+    ['codex', codexLinux, codexMac],
+  ] as const)(
+    'bundles both platform captures for %s with the desktop compiler',
+    async (provider, linux, mac) => {
+      const result = await build({
+        configFile: false,
+        root: fileURLToPath(new URL('../../../', import.meta.url)),
+        logLevel: 'silent',
+        build: {
+          lib: {
+            entry: fileURLToPath(
+              new URL(`../src/main/providers/${provider}/snapshot.ts`, import.meta.url),
+            ),
+            formats: ['cjs'],
+          },
+          write: false,
+          minify: false,
+          reportCompressedSize: false,
+        },
+      })
+      const builds = Array.isArray(result) ? result : [result]
+      const chunks = builds.flatMap((one) =>
+        'output' in one ? one.output.filter((item) => item.type === 'chunk') : [],
+      )
+      expect(chunks).toHaveLength(1)
+      const module = { exports: {} as { snapshot?: SnapshotPolicy } }
+      runInNewContext(chunks[0]!.code, { module, exports: module.exports })
+      const policy = module.exports.snapshot
+      expect(policy).toBeDefined()
+      if (policy === undefined) throw new Error('Bundled snapshot policy is absent')
+      expect(policy.fileFor('linux')).toEqual(linux)
+      expect(policy.fileFor('darwin')).toEqual(mac)
+      expect(policy.fileFor('win32')).toBe(policy.fileFor('darwin'))
+    },
+    20_000,
+  )
 })
