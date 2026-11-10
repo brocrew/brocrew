@@ -1362,6 +1362,23 @@ async function quit(stage) {
       installedPluginDrainExercised: plugins !== 'not-exercised',
     },
   )
+  if (os === 'windows' && plugins === 'not-stopped') {
+    for (const [file, name] of [
+      ['plugin-drain.log', 'drain.log'],
+      ['supervisor/owner.json', 'owner.json'],
+    ]) {
+      try {
+        const source = join(appRoot, 'plugins', file)
+        const target = `${running.stage}-plugin-${name}`
+        if (name === 'owner.json') {
+          const { version, epoch, phase, wire } = JSON.parse(readFileSync(source, 'utf8'))
+          keep(target, { version, epoch, phase, wire })
+        } else copyFileSync(source, join(evidence, target))
+      } catch {
+        say(`(could not retain ${running.stage} plugin ${name})`)
+      }
+    }
+  }
   await stop()
 }
 
