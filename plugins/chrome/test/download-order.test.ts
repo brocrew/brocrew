@@ -386,7 +386,7 @@ it('keeps a user download when the wait times out before receiving its event', a
     return event.promise
   })
   const failed = expect(f.h.call('wait_for_download', { tabId: f.tabId })).rejects.toThrow(
-    'timed out',
+    'fictional timeout',
   )
   await armed.promise
   f.begin('fresh-guid')

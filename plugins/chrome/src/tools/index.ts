@@ -1,5 +1,11 @@
 import { fenceToolDefs, sharedAccess } from './authorization.js'
 import { PublicToolError } from '../shared/toolServer.js'
+import { WindowTargetError } from '../shared/browser/chromiumWindows.js'
+import { LocalFileGuardError } from '../localFileGuard.js'
+import { BrowserNotFoundError, ProfileInUseError } from '../browser/profileBrowser.js'
+import { OperationBlockedError } from '../shared/browser/browser-lease.js'
+import { ProfileInUseElsewhereError } from '../profiles/sharedStore.js'
+import { TabError } from '../tabs.js'
 import { randomBytes } from 'node:crypto'
 import type { ToolHandler, ToolResult } from '../shared/toolServer.js'
 import { openGuardedFile } from '../localFileGuard.js'
@@ -300,7 +306,7 @@ export function buildToolDefs(): ToolDef[] {
             })
             deps.activity?.('page-loaded')
           } catch (e) {
-            loadError = describeError(e, DEFAULT_TIMEOUT_MS)
+            loadError = describeError(e)
           }
           const skipped = restored.filter((t) => t.note !== undefined).length
           return {
@@ -1271,10 +1277,8 @@ export function createAgentChromeTools(deps: ToolDeps): ToolHandler[] {
       inputSchema: jsonSchemaOf(def.spec),
     },
     async execute(rawArgs, context): Promise<ToolResult> {
-      let ms: number | undefined
       try {
         const args = parseArgs(def.spec, rawArgs)
-        ms = typeof args.timeoutMs === 'number' ? args.timeoutMs : undefined
         const out = await def.run(args, {
           ...deps,
           signal: context.signal,
@@ -1301,7 +1305,19 @@ export function createAgentChromeTools(deps: ToolDeps): ToolHandler[] {
           ],
         }
       } catch (e) {
-        throw new PublicToolError(describeError(e, ms ?? DEFAULT_TIMEOUT_MS))
+        if (
+          e instanceof WindowTargetError ||
+          e instanceof ToolError ||
+          e instanceof TabError ||
+          e instanceof LocalFileGuardError ||
+          e instanceof ProfileInUseError ||
+          e instanceof ProfileInUseElsewhereError ||
+          e instanceof BrowserNotFoundError
+        )
+          throw new PublicToolError(e.message)
+        if (e instanceof OperationBlockedError)
+          throw new PublicToolError('the profile is being restarted — call again in a few seconds')
+        throw e
       }
     },
   }))

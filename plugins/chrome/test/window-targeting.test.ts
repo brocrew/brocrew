@@ -71,7 +71,7 @@ describe('window-targeted tools and local navigation', () => {
     }
     expect(
       await h.callError('open_tab', { profile: 'p', url: 'about:blank', windowOf: a.tabId }),
-    ).toBe('the browser action failed (Error)')
+    ).toBe('fictional admission failure')
   })
   it('rejects conflict, foreign/unknown/closed selectors without opening or switching profiles', async () => {
     const h = setup()
@@ -283,7 +283,7 @@ it.each(['console', 'network', 'handle_dialog', 'wait_for_download'])(
         c = await open({ newWindow: true })
       expect(a.windowId).not.toBe(c.windowId)
       if (tool === 'wait_for_download')
-        expect(await h.callError(tool, { tabId: a.tabId, timeoutMs: 1 })).toContain('timed out')
+        expect(await h.callError(tool, { tabId: a.tabId, timeoutMs: 1 })).toContain('timeout')
       else
         await h.call(tool, {
           tabId: a.tabId,

@@ -1,16 +1,10 @@
 import { navigationUrl } from '../shared/browser/navigationUrl.js'
-import { WindowTargetError } from '../shared/browser/chromiumWindows.js'
 import type { Locator, Page } from 'playwright-core'
-import { LocalFileGuardError } from '../localFileGuard.js'
 import type { LocalFileGuardConfig } from '../localFileGuard.js'
 import type { ProfileBrowser } from '../browser/profileBrowser.js'
-import { BrowserNotFoundError, ProfileInUseError } from '../browser/profileBrowser.js'
-import { OperationBlockedError } from '../shared/browser/browser-lease.js'
 import type { KeyedSerializer } from '../shared/browser/browser-lease.js'
 import { isProfileName } from '../profiles/store.js'
 import type { ProfileStore } from '../profiles/store.js'
-import { ProfileInUseElsewhereError } from '../profiles/sharedStore.js'
-import { TabError } from '../tabs.js'
 import type { TabRegistry, TabState } from '../tabs.js'
 import type { WindowTasks } from '../windows.js'
 import { MAX_TEXT, ToolError } from './schema.js'
@@ -154,37 +148,8 @@ export function jsonValue(value: unknown): string {
   if (text === undefined) text = 'null'
   return capped(text)
 }
-export function describeError(e: unknown, ms?: number): string {
-  if (
-    e instanceof WindowTargetError ||
-    e instanceof ToolError ||
-    e instanceof TabError ||
-    e instanceof LocalFileGuardError
-  )
-    return e.message
-  if (
-    e instanceof ProfileInUseError ||
-    e instanceof ProfileInUseElsewhereError ||
-    e instanceof BrowserNotFoundError
-  )
-    return e.message
-  if (e instanceof OperationBlockedError)
-    return 'the profile is being restarted — call again in a few seconds'
-  const name = e instanceof Error ? e.name : ''
-  if (name === 'TimeoutError') return `timed out${ms ? ` after ${ms} ms` : ''}`
-  const text = e instanceof Error ? e.message : ''
-  if (/Target (page, context or browser|closed)|has been closed/i.test(text))
-    return 'the page or the browser was closed during the action'
-  if (/strict mode violation/i.test(text))
-    return 'the ref matches more than one element — call snapshot again'
-  if (
-    /not an <input>|Element is not|not a select|is not editable|not visible|intercepts pointer events|not enabled|detached/i.test(
-      text,
-    )
-  )
-    return 'the element cannot take this action right now'
-  if (/net::|ERR_/.test(text)) return 'the page could not be loaded'
-  return `the browser action failed${name ? ` (${name.replace(/[^\w]/g, '').slice(0, 30)})` : ''}`
+export function describeError(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
 }
 /** Page-tool use which is not routed through onTab still updates context window preference. */
 export async function useTab(deps: ToolDeps, id: string): Promise<TabState> {
