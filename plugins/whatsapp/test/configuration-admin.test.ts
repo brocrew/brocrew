@@ -34,9 +34,9 @@ async function boot() {
       headers: { 'content-type': 'application/json' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
-    const body = response.headers.get('content-type')?.includes('application/json')
+    const responseBody = response.headers.get('content-type')?.includes('application/json')
       ? await response.json() : await response.text()
-    return { status: response.status, body }
+    return { status: response.status, body: responseBody }
   }
   return { bridge, settings, request,
     apply: (payload: unknown) => request('/configuration', { payload, configRevision: 0 }),
