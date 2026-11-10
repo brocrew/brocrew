@@ -483,6 +483,19 @@ async function fixtureCommand(cdp, body) {
   }
 }
 
+/** Keep the fixture model's existing receipts independently of other failure diagnostics. */
+export async function keepModelFailureEvidence(model, folder, summary, write) {
+  if (!model) return
+  try {
+    await write(
+      join(folder, 'model-failure.json'),
+      JSON.stringify({ log: model.log, requests: model.requests }, null, 2),
+    )
+  } catch (error) {
+    summary.modelDiagnosticFailure = String(error)
+  }
+}
+
 /** A timeout receipt keeps event kinds and states, never message bodies or credentials. */
 export async function localModelTurnFacts(cdp, sessionId, responseId) {
   return cdp.evaluate(`

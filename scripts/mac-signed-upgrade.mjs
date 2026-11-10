@@ -31,6 +31,7 @@ import {
   statePreserved,
   startLocalModelTurn,
   localModelTurnFacts,
+  keepModelFailureEvidence,
   stateBytes,
   stateSummary,
   VERSION_B as SAME_CODE_VERSION,
@@ -818,16 +819,7 @@ try {
   summary.failure = error.stack ?? String(error)
   console.error(summary.failure)
   process.exitCode = 1
-  if (model) {
-    try {
-      await writeFile(
-        join(evidenceRoot, 'model-failure.json'),
-        JSON.stringify({ log: model.log, requests: model.requests }, null, 2),
-      )
-    } catch (diagnosticError) {
-      summary.modelDiagnosticFailure = String(diagnosticError)
-    }
-  }
+  await keepModelFailureEvidence(model, evidenceRoot, summary, writeFile)
   if (active?.cdp) {
     try {
       const turn = currentWorkspace?.fixture?.turns.at(-1)

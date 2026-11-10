@@ -11,6 +11,7 @@ import {
   databaseSnapshot,
   downloadedImagePath,
   mountedImageOf,
+  keepModelFailureEvidence,
   requireEvidence,
   nativeFiles,
   checkNativePrefixes,
@@ -318,6 +319,7 @@ async function keepsFailureEvidence(harness) {
       'assertOwnedProcess',
       'processInfo',
       'app',
+      'keepModelFailureEvidence',
       failure.block.getText(source),
     )
     const exit = {}
@@ -344,6 +346,7 @@ async function keepsFailureEvidence(harness) {
       vi.fn(),
       vi.fn(async () => ({ pid: 42 })),
       '/Applications/BroCrew.app',
+      keepModelFailureEvidence,
     )
     expect(summary.success).toBe(false)
     expect(summary.failure).toBe(original.stack)

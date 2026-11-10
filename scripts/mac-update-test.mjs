@@ -34,6 +34,7 @@ import {
   statePreserved,
   startLocalModelTurn,
   localModelTurnFacts,
+  keepModelFailureEvidence,
   withMacKeychainRecovery,
   stateBytes,
   stateSummary,
@@ -738,16 +739,7 @@ try {
   summary.failure = error.stack ?? String(error)
   console.error(summary.failure)
   process.exitCode = 1
-  if (model) {
-    try {
-      await writeFile(
-        join(evidence, 'model-failure.json'),
-        JSON.stringify({ log: model.log, requests: model.requests }, null, 2),
-      )
-    } catch (diagnosticError) {
-      summary.modelDiagnosticFailure = String(diagnosticError)
-    }
-  }
+  await keepModelFailureEvidence(model, evidence, summary, writeFile)
   if (active?.cdp && summary.fixture?.sessionId) {
     try {
       const sessionId = summary.fixture.sessionId
