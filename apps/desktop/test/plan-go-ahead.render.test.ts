@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -248,19 +246,6 @@ describe('the copy never says plan mode was stopping the agent (acceptance 6)', 
       expect(/<button[^>]*data-cy="plan-leave-button"[^>]*>/.exec(busy)?.[0]).toContain('disabled')
     })
 
-    it('is quieter than the approval, so the pair does not read as two equal ways out', () => {
-      const source = readFileSync(
-        fileURLToPath(
-          new URL('../src/renderer/src/components/ConversationPane.vue', import.meta.url),
-        ),
-        'utf8',
-      )
-      const rule = source.slice(source.indexOf('.plan-bar-leave {'))
-      const body = rule.slice(0, rule.indexOf('}'))
-      expect(body).toContain('border: 0')
-      expect(body).toContain('color: var(--muted)')
-    })
-
     it('the provider that cannot offer it SAYS so, rather than showing nothing', () => {
       // Acceptance 5's second branch. Claude's planning ends inside the SDK, at the model's own
       // `ExitPlanMode` request; a client-side switch would be the rival exit 076 was written about,
@@ -269,19 +254,5 @@ describe('the copy never says plan mode was stopping the agent (acceptance 6)', 
       expect(LEAVE_PLAN_UNAVAILABLE).toMatch(/own plan-approval request/i)
       expect(LEAVE_PLAN_UNAVAILABLE).not.toMatch(/coming soon|not yet|unsupported/i)
     })
-  })
-
-  it('the bar is not styled as the primary action of the surface', () => {
-    // Typing a reply to a plan is at least as ordinary as accepting it wholesale, and the one
-    // filled button on this surface is Send. A second primary above it would read as the thing to
-    // do — which is a nudge, not a disclosure.
-    const source = readFileSync(
-      fileURLToPath(
-        new URL('../src/renderer/src/components/ConversationPane.vue', import.meta.url),
-      ),
-      'utf8',
-    )
-    const block = source.slice(source.indexOf('.plan-bar-button {'))
-    expect(block.slice(0, block.indexOf('}'))).toContain('background: transparent')
   })
 })

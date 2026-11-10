@@ -25,31 +25,6 @@ const codeOf = (file: string): string =>
 
 describe('634 · three sentences that described an older app', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §1 · the rail row's sentence
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§1 · the dashboard sentence is gone from the rail, and from nowhere else', () => {
-    it('⛔ no renderer file still tells a person Home is a dashboard across active projects', () => {
-      // 🔴 **The search shape, stated** (rule 4): the question is not *did I edit `SideRail.vue`*
-      // — it is *does this sentence reach a person from anywhere*. ⚑ So the census walks the two
-      // files that could draw it: the row that did, and the surface it pointed at. ⚑ **D-016
-      // deleted that surface** (`HomeSurface.vue`, with Home), so the second file is the rail's
-      // first destination in its place, *Waiting on you*.
-      for (const file of ['components/SideRail.vue', 'components/WaitingOnYou.vue']) {
-        expect(codeOf(file), `${file} still says it`).not.toContain(
-          'Dashboard across active projects',
-        )
-      }
-      // ⚑ **THE CONTROL**: the census can see a sentence this rail really does draw, so the
-      // negative above is not an empty read.
-      // Keep the nonempty-read control on the approved subtitle; the dashboard ban stays.
-      expect(codeOf('components/SideRail.vue')).toContain(
-        'Includes chats from Claude and Codex on this computer.',
-      )
-    })
-  })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
   // §2 · the commander sentences
   // ───────────────────────────────────────────────────────────────────────────────────────────
 

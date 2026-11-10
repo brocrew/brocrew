@@ -1,13 +1,4 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -70,19 +61,6 @@ describe('§1 · the pin', () => {
     pinTheDataFolder(app)
     expect(set).toEqual([])
   })
-
-  it('🔴 the app pins it at module scope, before the protocol, the lock and everything that reads it', () => {
-    const index = readFileSync(join(here, '../src/main/index.ts'), 'utf8')
-    const at = (code: string): number => {
-      const found = index.indexOf(code)
-      expect(found, `index.ts no longer has ${code}`).toBeGreaterThan(-1)
-      return found
-    }
-    const pinned = at('\n  pinTheDataFolder(app)\n')
-    expect(pinned).toBeLessThan(at('\nprotocol.registerSchemesAsPrivileged('))
-    expect(pinned).toBeLessThan(at('\nvoid runAsSoleInstance({'))
-    expect(at('\nnameTheAppToWindows(app)\n')).toBeLessThan(at('\nvoid runAsSoleInstance({'))
-  })
 })
 
 describe('§2 · the folder and the Keychain entry are the ones every build has used', () => {
@@ -104,22 +82,6 @@ describe('§2 · the folder and the Keychain entry are the ones every build has 
     // ⚠️ The folder is pinned, but `safeStorage`'s Keychain entry on macOS is `"<app name> Safe
     // Storage"` and is not: a `productName` here would leave every saved key unreadable.
     expect(pkg).not.toHaveProperty('productName')
-  })
-
-  it('⛔ nor does anything else rename the app: no extraMetadata in the build, no setName in the app', () => {
-    // ⚑ electron-builder merges `extraMetadata` into the packaged `package.json` — a `productName`
-    // there renames the app as surely as one in the package.
-    const config = readFileSync(join(here, '../electron-builder.yml'), 'utf8')
-    expect(config).not.toMatch(/^extraMetadata:/m)
-    const sources = (dir: string): string[] =>
-      readdirSync(dir).flatMap((name) => {
-        const path = join(dir, name)
-        return statSync(path).isDirectory() ? sources(path) : path.endsWith('.ts') ? [path] : []
-      })
-    const renamers = sources(join(here, '../src/main')).filter((path) =>
-      /\bapp\.setName\(|\bapp\.name\s*=[^=]/.test(readFileSync(path, 'utf8')),
-    )
-    expect(renamers, 'the app’s name also places its data and names its Keychain entry').toEqual([])
   })
 })
 

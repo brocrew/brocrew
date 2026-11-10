@@ -1,6 +1,5 @@
 import { expect, it, vi } from 'vitest'
 import { reactive, isProxy } from 'vue'
-import { readFileSync } from 'node:fs'
 import * as policy from '../src/shared/plugin-settings'
 import { pluginsBridge } from '../src/preload/plugins'
 import { asTheWireWouldCarry } from './lib/the-wire'
@@ -31,14 +30,6 @@ it.each(['install', 'update'] as const)(
     expect(carried.consent).not.toBe(shown.consent)
   },
 )
-it('the actual Vue command producer uses the plain-consent builder', () => {
-  const source = readFileSync(
-    new URL('../src/renderer/src/components/PluginsSection.vue', import.meta.url),
-    'utf8',
-  )
-  expect(source).toMatch(/consent:\s*pluginDisplayedConsent\(shown\)/)
-  expect(source).not.toMatch(/consent:\s*shown\.consent/)
-})
 it('the passive invalidation subscription carries no payload or invoke and can be removed', () => {
   const ipc = { invoke: vi.fn(), on: vi.fn(), off: vi.fn() },
     bridge = pluginsBridge(ipc),

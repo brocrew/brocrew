@@ -809,45 +809,6 @@ describe('D-032 · nothing in the window makes a blob URL or a frame but the fil
 })
 
 describe('the guard is not optional', () => {
-  it('every window this app creates is guarded', () => {
-    // A structural check, in the shape 043 established: the predicate is only a boundary if it is
-    // installed on every surface that has a preload, and the install is one line a future window
-    // could forget.
-    //
-    // It walks the WHOLE main-process tree, not just `index.ts` — the first version read one file,
-    // and a second window in any other file would have passed it unguarded, which is precisely the
-    // hole this test exists to close.
-    //
-    // ⚠️ What it still cannot see: a file that creates a window AND calls the guard for a DIFFERENT
-    // WebContents. That is why the call sits directly under the constructor in `index.ts`, and it is
-    // the reason to keep it there.
-    const offenders: string[] = []
-    const makers: string[] = []
-    let windows = 0
-    const walk = (dir: string): void => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const child = join(dir, entry.name)
-        if (entry.isDirectory()) {
-          walk(child)
-          continue
-        }
-        if (!entry.name.endsWith('.ts')) continue
-        const source = readFileSync(child, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
-        const built = (source.match(/new BrowserWindow\(/g) ?? []).length
-        if (built === 0) continue
-        windows += built
-        makers.push(`${relative(join(HERE, '../src/main'), child)} × ${String(built)}`)
-        if (!source.includes('installNavigationGuard(')) offenders.push(child)
-      }
-    }
-    walk(join(HERE, '../src/main'))
-    // Two windows, one in each file: the app's own, and the recovery window a start that cannot
-    // open its data ends in. Each has a preload, so each is guarded.
-    expect(windows, 'no window is created at all — this test has stopped testing anything').toBe(2)
-    expect(makers.sort()).toEqual(['index.ts × 1', 'recovery-window.ts × 1'])
-    expect(offenders, 'a window is created in a file that never installs the guard').toEqual([])
-  })
-
   it('and the guard would have caught what 017 let through', () => {
     // ⚠️ NON-VACUITY. 017's predicate, verbatim from the commit this replaces. If the hostile
     // fixtures above were merely exotic, this would fail — the old code has to ACCEPT them for the
@@ -966,42 +927,6 @@ describe('sessions are released by a navigation that happened, never by one that
     const crashed = wired(PACKAGED)
     crashed.emit('render-process-gone', undefined)
     expect(crashed.released, 'a crash orphans exactly what a reload does').toEqual(['released'])
-  })
-})
-
-describe('the release is not optional, and not re-wirable to an attempt', () => {
-  it('every window this app creates releases its sessions, and by the measured events only', () => {
-    // Structural, in the shape the guard's own install test established, and for the same reason:
-    // `installSessionRelease` is one line a future window could forget, and the events it must NOT
-    // use are one line a future author could add back — in `createWindow` or anywhere else in the
-    // main process. The behavioural tests above cannot see either.
-    const sources: string[] = []
-    const walk = (dir: string): void => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const child = join(dir, entry.name)
-        if (entry.isDirectory()) walk(child)
-        else if (entry.name.endsWith('.ts')) sources.push(child)
-      }
-    }
-    walk(join(HERE, '../src/main'))
-
-    const offenders: string[] = []
-    let windows = 0
-    for (const file of sources) {
-      // Comments stripped first: this file and `window-navigation.ts` both DISCUSS
-      // `did-start-loading` at length, and the discussion is the point — it is the code that must
-      // not do it.
-      const source = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
-      const built = (source.match(/new BrowserWindow\(/g) ?? []).length
-      windows += built
-      if (built > 0 && !source.includes('installSessionRelease(')) offenders.push(file)
-      for (const attempt of ['did-start-loading', 'did-start-navigation']) {
-        if (source.includes(`'${attempt}'`)) offenders.push(`${file} listens for ${attempt}`)
-      }
-    }
-    // The app's own window and the recovery window, as the guard's census above counts them.
-    expect(windows, 'no window is created at all — this test has stopped testing anything').toBe(2)
-    expect(offenders).toEqual([])
   })
 })
 

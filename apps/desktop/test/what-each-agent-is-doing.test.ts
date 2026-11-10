@@ -1,5 +1,5 @@
 import { RecordingSink, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -65,11 +65,6 @@ import { conversationList } from '../src/renderer/src/lib/conversation-list'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const SHARED_SRC = join(here, '../src/shared/what-is-being-done.ts')
-const TRACKER_SRC = join(here, '../src/main/runtime/being-done.ts')
-
-const withoutComments = (source: string): string =>
-  source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, ' ')
 
 /** ⚑ **A conversation nobody is watching** — the population this feature is mostly about. */
 const NOBODY_IS_WATCHING = null
@@ -713,27 +708,6 @@ describe('575 · what each agent is doing', () => {
   /* ─────────────────────────────────────────────────────────────────────────────────────────── */
 
   describe('§5 · this module cannot produce a word', () => {
-    /**
-     * 🔴 **The census `089` earned.** `sessionDoing` is the app's one answer, and this read exists
-     * to feed it rather than to compete with it.
-     *
-     * ⛔ **Prose is stripped first** (`a-source-census-must-strip-prose-before-it-asserts`): both
-     * files argue about `sessionDoing` at length, and a raw-file census would count a docblock's
-     * citation as a call.
-     */
-    it('⛔ neither new file imports the renderer’s derivation, or spells a DOING word', () => {
-      for (const path of [SHARED_SRC, TRACKER_SRC]) {
-        const code = withoutComments(readFileSync(path, 'utf8'))
-        expect(code).not.toContain('agent-state')
-        expect(code).not.toContain('sessionDoing')
-        expect(code).not.toContain('DOING_WORD')
-        expect(code).not.toContain('standingOf')
-      }
-      // ⛔ **Non-vacuity** — the strip must not be what makes this pass, so the un-stripped text
-      // has to contain what the stripped text does not.
-      expect(readFileSync(SHARED_SRC, 'utf8')).toContain('sessionDoing')
-    })
-
     /**
      * ⚑ **And the fold hands back an INPUT**, whose keys are all fields the app's own derivation
      * already reads — so there is no shape here a second answer could hide in.

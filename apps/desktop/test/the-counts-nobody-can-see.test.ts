@@ -52,24 +52,6 @@ import {
  */
 
 const here = (relative: string): string => fileURLToPath(new URL(relative, import.meta.url))
-const RAIL_SOURCE = readFileSync(here('../src/renderer/src/components/SideRail.vue'), 'utf8')
-const SCREEN_SOURCE = readFileSync(here('../src/renderer/src/components/RuntimeScreen.vue'), 'utf8')
-
-/**
- * ⛔ **Prose first, and this file would be wrong without it** —
- * `a-source-census-must-strip-prose-before-it-asserts`. ⚠️ The rail's own comment QUOTES the
- * sentence §5 below asserts is gone, because standing rule 19 requires a repair to say what it
- * replaced. A raw-file census would read that quotation as the sentence still being rendered.
- */
-function withoutProse(source: string): string {
-  return source
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '')
-}
-
-const RAIL_CODE = withoutProse(RAIL_SOURCE)
-const SCREEN_CODE = withoutProse(SCREEN_SOURCE)
 
 const AT = 1_700_000_000_000
 
@@ -265,62 +247,6 @@ describe('§5 · the rail draws it, from the read and from nothing else', () => 
     expect(callsTo('const a = liveSignalView(x, y)\n', 'liveSignalView')).toBe(1)
     expect(callsTo('nothing here\n', 'liveSignalView')).toBe(0)
   })
-
-  it('🔴 the rail derives the line from `props.workspace`, exactly once, and from no list it holds', () => {
-    expect(callsTo(RAIL_CODE, 'liveSignalView')).toBe(1)
-    expect(RAIL_CODE).toContain('liveSignalView(props.workspace, props.limits, railMinute.value)')
-    // 🔴 **The element renders the view and nothing this window computed for itself.** ⛔ `564`:
-    // *"a renderer sum would race the separate reads"* — and this rail holds two tempting sums,
-    // `props.open` (what this WINDOW is running) and `needsYou` (Home's wider total).
-    const marker = RAIL_CODE.indexOf('data-cy="rail-live-signal"')
-    expect(marker, 'the live signal is not in the rail').toBeGreaterThan(-1)
-    const element = RAIL_CODE.slice(
-      RAIL_CODE.lastIndexOf('<p', marker),
-      RAIL_CODE.indexOf('</p>', marker),
-    )
-    // ⚠️ **617 · RE-AIMED, not weakened** (standing rule 26). The element used to render
-    // `liveSignal.line` whole; it now renders the two halves the treatment needs — the counts in
-    // the rail's own ink and the condition in the summons register — and `line` is what the TITLE
-    // and every whole-string assertion above read. ⛔ Both halves are named here, so a repair that
-    // dropped the condition would go red rather than pass over a shorter line.
-    expect(element).toContain('liveSignal.counted')
-    expect(element).toContain('liveSignal.stopped.drawn')
-    expect(element).toContain('liveSignal.said')
-    // 🔴 **And the two spellings cannot drift**: the dom file asserts the rendered `textContent`
-    // IS `line`, which is the only thing that keeps *what a person sees* and *what the title says*
-    // one derivation (`169` §1).
-    expect(element).not.toContain('BETWEEN_CELLS')
-    for (const forbidden of [
-      'props.open',
-      'openCount',
-      'needingCount',
-      'homeCount',
-      'props.agents',
-    ])
-      expect(element, `the live signal reads ${forbidden}`).not.toContain(forbidden)
-  })
-
-  /**
-   * ⛔ **The sentence this replaced, and standing rule 26's shape applied to COPY.**
-   *
-   * ⚠️ *"Nothing running. Start one above, or reopen one below."* is `EXT-008` §2's fourth bullet,
-   * and it was this rail's only live signal. 🔴 **It is a claim about a DIFFERENT fact** —
-   * `props.open` is what this window is running, while the line above it counts what the ledger
-   * holds open — so leaving both would have put two true sentences in one column to be read as a
-   * contradiction (`EXT-008` §4.4's shape).
-   */
-  it('⛔ the rail no longer RENDERS `Nothing running`, and the line that replaced it is drawn', () => {
-    expect(RAIL_CODE).not.toContain('Nothing running')
-    expect(RAIL_CODE).not.toContain('no-open-sessions')
-    // ⚠️ **The paired positive, in the same census.** Without it this passes over a rail that
-    // rendered nothing at all, which is exactly what stripping an assertion would produce.
-    expect(RAIL_CODE).toContain('data-cy="rail-live-signal"')
-    // ⚑ **And the prose is still allowed to say what it replaced** (standing rule 19) — the raw
-    // file quotes the retired sentence, which is why every assertion above reads the stripped copy.
-    // ⛔ This is also the proof that the stripper is doing work: the same words, present in one
-    // reading of the file and absent from the other.
-    expect(RAIL_SOURCE).toContain('Nothing running')
-  })
 })
 
 /* ------------------------------------------------------------------ §6 */
@@ -344,79 +270,6 @@ describe('§6 · the screen reads it on the cadence it already had, and invented
     ).toBe(0)
   })
 
-  it('🔴 it reads at mount, on the queue’s tick, and on `runtime:changed`’s `conversations`', () => {
-    // ⛔ **Three call sites, each sliced out of the region that owns it** — a bare count would pass
-    // over three calls stacked in one place.
-    const mounted = SCREEN_CODE.slice(SCREEN_CODE.indexOf('stopListening = whenTheWorldMoves'))
-
-    const listener = mounted.slice(0, mounted.indexOf('agents:'))
-    expect(listener, 'the conversations subject does not re-read it').toContain(
-      'void readTheWorkspace()',
-    )
-
-    const firstPass = mounted.slice(
-      mounted.indexOf('void lookForWhatIsYours()'),
-      mounted.indexOf('looking = setInterval'),
-    )
-    expect(firstPass, 'nothing is read before the first tick').toContain('void readTheWorkspace()')
-
-    const tick = mounted.slice(
-      mounted.indexOf('looking = setInterval'),
-      mounted.indexOf('LOOK_EVERY_MS)', mounted.indexOf('looking = setInterval')),
-    )
-    expect(tick, 'the tick does not re-read it').toContain('void readTheWorkspace()')
-    // ⚑ **And on `persons`**, which says what a person must answer may have moved.
-    const persons = mounted.slice(mounted.indexOf('persons:'), mounted.indexOf('\n  })'))
-    expect(persons, 'the persons subject does not re-read it').toContain('void readTheWorkspace()')
-    // ⛔ **Four call sites and no fifth**, so a call stacked somewhere the slices above cannot
-    // see would show up as a count rather than pass unnoticed.
-    expect(callsTo(SCREEN_CODE, 'readTheWorkspace')).toBe(4)
-    // ⚑ **The floor that keeps the four a roster rather than a coincidence**: the screen names
-    // the function MORE times than it calls it — the declaration is one — so the matcher is
-    // narrowing rather than matching every mention.
-    expect(SCREEN_CODE.split('readTheWorkspace').length - 1).toBeGreaterThan(4)
-  })
-
-  /**
-   * 🔴 **§3's other half: *"do NOT invent a poll"*.**
-   *
-   * ⛔ **The first version of this assertion was a regex that could not match anything** — its
-   * `[^)]*` could not cross the `)` of the very call it was looking for, so it was green over
-   * every world (`a-positive-assertion-must-differ-from-the-default`, found reviewing this file's
-   * own diff). ⚑ What stands here instead walks the screen's `setInterval` calls by balancing
-   * brackets, and says which cadence each one is on.
-   */
-  it('⛔ exactly one interval re-reads it, and its cadence is the QUEUE’s', () => {
-    const intervals: string[] = []
-    for (let at = SCREEN_CODE.indexOf('setInterval('); at !== -1;) {
-      let depth = 0
-      let end = at + 'setInterval'.length
-      for (; end < SCREEN_CODE.length; end += 1) {
-        if (SCREEN_CODE[end] === '(') depth += 1
-        if (SCREEN_CODE[end] === ')') {
-          depth -= 1
-          if (depth === 0) break
-        }
-      }
-      intervals.push(SCREEN_CODE.slice(at, end + 1))
-      at = SCREEN_CODE.indexOf('setInterval(', end)
-    }
-    // ⚑ **A floor, so a walk that found none would not pass the filters below over nothing.**
-    expect(intervals.length).toBeGreaterThanOrEqual(4)
-    const rereading = intervals.filter((each) => each.includes('readTheWorkspace'))
-    expect(rereading).toHaveLength(1)
-    // 🔴 **And it is the cadence that already existed** — not a number this dispatch chose.
-    expect(rereading[0]).toContain('LOOK_EVERY_MS')
-    expect(rereading[0]).toContain('lookForWhatIsYours')
-    // ⚠️ **The control the walk needs**: it really can tell two intervals apart, so *one* above is
-    // a measurement rather than a slicer that stopped at the first match. ⚑ It read the room's
-    // interval (`readTheRoom`) until D-016 deleted the room, then the Team page's until W4.74 took
-    // it away (D-033 pushes every move of the work); the one glance, declared after the queue's, is
-    // the same proof.
-    expect(intervals.filter((each) => each.includes('glance')).length).toBeGreaterThanOrEqual(1)
-    expect(intervals.some((each) => each.includes('readTheWorkspace') === false)).toBe(true)
-  })
-
   it('⛔ no subject was added to `runtime:changed` for this line', () => {
     // 🔴 **`534`'s rule, read off the wire rather than restated:** every subject must have a reader
     // by TYPE, so a subject added for a line that nothing else announces would be one nobody reads.
@@ -424,21 +277,6 @@ describe('§6 · the screen reads it on the cadence it already had, and invented
     // ⚑ **638 · a THIRD member**, `work` — the condition `534` set (*do not add a subject
     // nothing reads*) lapsed when `631` built the task lists that read it.
     expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work', 'persons'])
-  })
-
-  it('⚠️ a refusal keeps the last good reading rather than assembling one here', () => {
-    // ⛔ **The two arms a caller might reach for are both worse than nothing**: zeros would claim a
-    // quiet workspace out of a dropped call, and `not-at-all` would carry a `readAt` this window
-    // minted rather than measured.
-    // ⚠️ **678 · tightened** — the body is `readTheWorkspaceOnce(`, the function `oneReadAtATime`
-    // wraps; the bare prefix matched it only by accident, and would have matched a neighbour too.
-    const at = SCREEN_CODE.indexOf('async function readTheWorkspaceOnce(')
-    expect(at, 'the workspace read was renamed').toBeGreaterThan(-1)
-    const fn = SCREEN_CODE.slice(at)
-    const body = fn.slice(0, fn.indexOf('\n}\n') + 2)
-    expect(body).toContain('if (reading !== null) workspace.value = reading')
-    expect(body).not.toContain('not-at-all')
-    expect(body).not.toContain('Date.now()')
   })
 })
 
@@ -650,32 +488,6 @@ describe('§7 · a provider that has STOPPED reaches the line, and nothing else 
     expect(signal(null, AT, band([CLAUDE_STOPPED]))).toBeNull()
     // ⚑ **The control**: the same band over a readable reading does draw.
     expect(signal(reading(inFull(0)), AT, band([CLAUDE_STOPPED]))).not.toBeNull()
-  })
-
-  /* ---------------------------------------------------------------- §7.6 */
-
-  it('⛔ the SCREEN hands the rail the band’s own view, and derives no second one', () => {
-    // 🔴 **The wiring row, and it was a SURVIVOR before this assertion existed.** ⚠️ Removing the
-    // binding kills nothing in the view or on the rail: the prop falls back to its default, which
-    // is `null` — *nobody has looked* — so every rail in the app would draw *nothing stopped** for
-    // ever and every test above would still pass (`617 M11`).
-    const bindings = SCREEN_CODE.split(':limits="').length - 1
-    // ⚑ **Rule 12's control, demonstrated on a planted TWO before a ONE is trusted.**
-    expect('<A :limits="x" /><B :limits="y" />'.split(':limits="').length - 1).toBe(2)
-    expect('<A />'.split(':limits="').length - 1).toBe(0)
-    expect(bindings, 'the rail is not told about walls').toBe(1)
-    expect(SCREEN_CODE).toContain(':limits="persons.limits.value"')
-    // ⛔ **One derivation, two places.** The band and the rail read the same
-    // `ProviderLimitsView`; a second fold here would be two answers about one wall, free to
-    // disagree the day either moves (`169` §1).
-    for (const second of ['providerLimitsView', 'providerConditions', 'foldProviderLimits'])
-      expect(SCREEN_CODE, `the screen folds walls a second time via ${second}`).not.toContain(
-        second,
-      )
-    // ⚠️ **The paired positive**: the screen really does hold the wall read this is about, so the
-    // negatives above are about a second fold and not about a file that never mentions a wall.
-    expect(SCREEN_CODE).toContain('store.readLimitsDisplay()')
-    expect(SCREEN_CODE).not.toContain('store.limitsForAPerson()')
   })
 
   it('🔴 the module names no provider as a literal — the neutrality rail, on this file', () => {

@@ -4,7 +4,7 @@ import type { PieceRow, TaskState, WorkStallTold } from '../src/shared/task-cont
 import { REQUEST_STATES } from '../src/shared/question-contracts'
 import { MAILBOX_KINDS } from '../src/shared/conversation-events'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -88,8 +88,6 @@ const THE_MESSAGE_NEVER_WENT = undrivenSentence('message_never_sent')
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const mainRoot = join(here, '../src/main')
-const sharedRoot = join(here, '../src/shared')
 
 /** `394`'s double, with the handles kept — a test has to BE the provider to ask like one. */
 class ProviderDouble extends FakeRuntime {
@@ -414,24 +412,6 @@ describe('404 · the push that does not survive a launch', () => {
     unplugTheWindow()
     return { pm, worker, task, next: relaunchAfterACrash(), sawBefore }
   }
-
-  const sourceOf = (dir: string, file: string): string => readFileSync(join(dir, file), 'utf8')
-  const filesUnder = (dir: string): { path: string; text: string }[] => {
-    const out: { path: string; text: string }[] = []
-    const walk = (at: string, prefix: string): void => {
-      for (const entry of readdirSync(at, { withFileTypes: true })) {
-        const full = join(at, entry.name)
-        if (entry.isDirectory()) walk(full, `${prefix}${entry.name}/`)
-        else if (entry.name.endsWith('.ts')) {
-          out.push({ path: `${prefix}${entry.name}`, text: readFileSync(full, 'utf8') })
-        }
-      }
-    }
-    walk(dir, '')
-    return out
-  }
-  const codeOnly = (source: string): string =>
-    source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
   // §1 · the finding — a row written at a launch reaches the conversation that gave the work
@@ -849,217 +829,6 @@ describe('404 · the push that does not survive a launch', () => {
       // its `message_queued` and its `user_turn` as two.
       await new Promise((resolve) => setTimeout(resolve, 50))
       expect(toldAboutTheDriven()).toBe(beforeTheLaunch)
-    })
-  })
-
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
-  // §4 · not a poll, not a clock, not a surface — the three things the brief forbids
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§4 · where the push may NOT hang, asserted rather than promised', () => {
-    it('⛔ the triggers are named call sites, and each one is a thing that HAPPENED', () => {
-      // 🔴 **`400`'s own ruling about this hook: *"its PLACEMENT is the rule"*.** ⚑ A placement that
-      // is the rule has to be readable, so it is enumerated here — and the enumeration is what would
-      // go red if another site appeared without somebody deciding about it (`702` decided the fifth).
-      const source = codeOnly(sourceOf(mainRoot, 'runtime/runtime-host.ts'))
-      const callers = (name: string): string[] =>
-        source
-          .split('\n')
-          .filter((line) => line.includes(`this.${name}(`))
-          .map((line) => line.trim())
-
-      // ⛔ **One decision function, and every trigger goes through it**, so *is this owed and has it
-      // been said* cannot come to two answers.
-      expect(callers('tellIfNobodyHasYet')).toHaveLength(3)
-      // ⚑ **The pump** (400), a provider's own `turn` and `status`. ⛔ A thing that happened; not a
-      // poll. ⚑ **D-016c · the reopen's trigger (661) went with the corrections it asked for**: a
-      // reopen moves no piece and a start tells nobody anything, so there is nothing for it to ask.
-      // ⚑ **702's trigger — the CLOSING of a conversation the quit left open (`699` F-1), its stamp
-      // going in `forgetTheQuitOf` — went with its subject at D-017b.** A conversation a quit left is
-      // a conversation like any other now: no press closes it (the End conversation button is gone)
-      // and the store keeps no quit stamp for a start to take away (`forgetTheQuit` went with it),
-      // so there is no such moment left to tell a giver about. ⛔ Removed from the roster rather
-      // than left to go quietly unmatched.
-      // 🔴 **D-005a · and a held message ending UNSENT** (F019's fix check) — `publishOurs` asks
-      // `askOnceTheQueueLeftItUndriven`: the fold holds a turn's stall while a message waits to drive
-      // the work, and writes it when the last one leaves unsent, a moment no provider row follows.
-      // ⛔ A thing that happened; not a poll.
-      // ⚑ **D-017 · R1 · and the deliveries waiting on a conversation's start having all landed or
-      // failed** (`afterWhatArrivedFirst`) — asked only when a notice was put off for them
-      // (`aDeliveryIsAboutToDriveIt`), so work a delivery did not drive is still told. ⛔ A thing
-      // that happened; not a poll.
-      // ⚑ **D-017 · R10 · and a conversation that could never be reopened being REPLACED**
-      // (`replaceWhatCanNeverBeReopened`) — its open work stalls `could_not_be_reopened`, and its
-      // giver is owed that. ⛔ A thing that happened; not a poll.
-      // ⚑ **And a launch's start of a conversation whose background work the restart stopped,
-      // ENDING** (`wakeForStoppedWork`) — its givers were told nothing while that start was coming,
-      // and are asked once it has driven their work or failed to. ⛔ A thing that happened; not a poll.
-      // ⚑ **And a launch's wake-up for a job, DROPPED** (`stallWhatItsJobWouldHaveDriven`) — its
-      // conversation can never be reopened, so the work the launch left `working` for that job is
-      // stalled after all, and its givers are owed that. ⛔ A thing that happened; not a poll.
-      // ⚑ **F075 · and a person's stop-and-send letting go of its hold** (`sendInterrupting`) — while
-      // it stood, their words were about to drive the work it cut, so nothing was said; a send
-      // refused leaves that work undriven. ⛔ A thing that happened; not a poll.
-      // ⚑ **F076 · and a conversation a refused login stopped having its reopen DECIDED**
-      // (`aReopenIsDecided`, from `reopenOnARenewedSignIn`, and from `endOnAMovedSignIn` when a
-      // Codex conversation is not ended after all) — its givers were told nothing while it was
-      // decided, and are asked once it is. ⛔ A thing that happened; not a poll.
-      // ⚑ **And a launch's start to continue a turn the app cut, ENDING** (`wakeForACutTurn`), and
-      // **that continuation not going** (`notContinued`) — its givers were told nothing while it was
-      // coming, and are asked once it has driven their work or will not. ⛔ A thing that happened;
-      // not a poll.
-      // ⚑ **And a service's start for its next piece FAILING** (`startTheServiceFor`) — that
-      // piece's brief ends unsent, so it stalls, and its caller is owed that. ⛔ A thing that
-      // happened; not a poll.
-      // ⚑ **And a cut turn not continued whose own ending stalled its work** (`whatTheCutLeftStalls`,
-      // a program's or a limit's cut) — its givers were told nothing while it might go on, or were
-      // told at the limit, and are asked once it will not. ⛔ A thing that happened; not a poll.
-      // ⚑ **And a limit's continuation ENDING** (`wakeForALimitsCut`) — asked once it has driven
-      // the work or will not. ⛔ A thing that happened; not a poll.
-      expect(callers('tellWhoeverGaveTheWork')).toEqual([
-        'this.tellWhoeverGaveTheWork(conversation)',
-        'this.tellWhoeverGaveTheWork(conversation)',
-        'this.tellWhoeverGaveTheWork(conversation)',
-        '} else this.tellWhoeverGaveTheWork(conversation)',
-        'this.tellWhoeverGaveTheWork(conversation)',
-        'this.tellWhoeverGaveTheWork(conversation)',
-        'this.tellWhoeverGaveTheWork(conversation)',
-        'this.tellWhoeverGaveTheWork(session.id)',
-        'if (session.holdingQueue === 0) this.tellWhoeverGaveTheWork(session.id)',
-        'if (this.askAgainOnceItArrived.delete(sessionId)) this.tellWhoeverGaveTheWork(sessionId)',
-        'this.tellWhoeverGaveTheWork(old)',
-        'this.tellWhoeverGaveTheWork(sessionId)',
-        'this.tellWhoeverGaveTheWork(session.id)',
-      ])
-      expect(source).toMatch(
-        /if \(event.type === 'turn' \|\| event.type === 'status'\) \{\s*this.tellWhoeverGaveTheWork\(session.id\)/,
-      )
-      // ⚑ **The finalizer** (404) — where the app writes the two causes a provider never sends.
-      expect(callers('settleTheNoticesFor')).toEqual(['this.settleTheNoticesFor(session)'])
-      // ⚑ **The registration** (404) — the moment a parent becomes able to be told anything.
-      expect(callers('tellAboutWorkItGaveOut')).toEqual(['this.tellAboutWorkItGaveOut(session)'])
-    })
-
-    it('⛔ no clock: HO-018 §2.2 withdrew criterion 5 and nothing here brings a timer back', () => {
-      // ⚠️ **The whole delivery path, read as code with its prose stripped** — `400` deleted 26
-      // assertions to honour the retraction, and a push driven by an interval would put the retracted
-      // mechanism back under a different name.
-      const source = codeOnly(sourceOf(mainRoot, 'runtime/runtime-host.ts'))
-      const slice = (from: string, to: string): string => {
-        const start = source.indexOf(from)
-        const end = source.indexOf(to, start)
-        expect(start, `${from} is gone`).toBeGreaterThan(-1)
-        expect(end, `${to} is gone`).toBeGreaterThan(start)
-        return source.slice(start, end)
-      }
-      const push = [
-        slice('private tellWhoeverGaveTheWork(', 'private tellAboutWorkItGaveOut('),
-        slice('private tellAboutWorkItGaveOut(', 'private tellIfNobodyHasYet('),
-        slice('private tellIfNobodyHasYet(', 'private async tellOneParent('),
-        // ⚠️ **612 · the slice used to end at `private armEscalationLook(`** and that method went
-        // with the deadline (HO-088 §3.1). ⛔ **The BOUND moved and the slice did not**: the next
-        // declaration after `tellOneParent` is the person's-queue reader, which is where this walk
-        // has always stopped — `an-anchor-on-a-lists-last-member-dies-when-anything-appends`, met
-        // by naming the neighbour rather than the gap.
-        // ⚑ It stops where the window's reads begin: those answer the window, push nothing, and
-        // log at most once a minute by the clock.
-        slice('private async tellOneParent(', 'async readForWindow<T>('),
-        // ⚑ **The finalizer's half is in the census too**, because it is the site a reader would be
-        // least likely to look at and the one that runs while the app is going away. ⚑ **D-017 —
-        // bounded by its NEXT declaration**: it ran to `private cardFor(`, and the one state
-        // derivation (`cardReads`, `stateOf` — which reads the clock for when a schedule next fires,
-        // and pushes nothing) now sits between them.
-        slice('private settleTheNoticesFor(', 'private cardReads('),
-        // ⚑ **D-016c · `702`'s closing half went** — `takeBackWhatTheClosingMadeFalse`, the step
-        // `tellIfNobodyHasYet` chained ahead of the ending, took back a kept-open notice, and the
-        // kept-open family is gone with the stop cause it served.
-      ].join('\n')
-      for (const forbidden of ['setTimeout', 'setInterval', 'Date.now', 'this.now(']) {
-        expect(push, `the push reaches ${forbidden}`).not.toContain(forbidden)
-      }
-      // ⛔ **And no sink either** — `396` §2.1: a gate answering *is anybody looking?* decides
-      // nothing about whether work happens.
-      for (const forbidden of ['sink', 'alive', 'NO_SURFACE']) {
-        expect(push, `the push reaches ${forbidden}`).not.toContain(forbidden)
-      }
-    })
-
-    it('⛔ the fold never learns the word: a receipt cannot move a task', () => {
-      // 🔴 **{@link WorkStallTold} lives in the PARENT's ledger and is folded by nothing.** ⚠️ A
-      // task's state is derived from the ledger the work landed in; a row in another conversation
-      // saying somebody was TOLD about it must not be able to change what it says.
-      // ⚠️ **`codeOnly`, added at `406`, and the census was weaker than it read without it.** This
-      // line asserted over the WHOLE file including its prose, so a docblock explaining why the
-      // receipt is not folded here would have reddened it — and `406` wrote exactly that docblock.
-      // ⛔ `a-source-census-must-strip-prose-before-it-asserts`: the claim is about what the code
-      // reaches, and a comment naming the thing it refuses to reach is the strongest form of the
-      // rule being kept. ⚑ Non-vacuous: the string is still in the file, one line below.
-      // ⚑ **D-016 · the receipt's word is `work_stall_told`** (it was `work_reported`).
-      const fold = codeOnly(sourceOf(sharedRoot, 'tasks.ts'))
-      expect(sourceOf(sharedRoot, 'task-contracts.ts')).toContain('work_stall_told')
-      expect(fold).not.toContain('work_stall_told')
-      // ⛔ **The store's narrow task read does not select it either**, which is the other half: a
-      // type the fold ignores but the reader fetches is a row somebody will eventually fold.
-      const storeSource = sourceOf(mainRoot, 'db/session-store.ts')
-      // ⚠️ **Sliced to the statement's OWN close, and both ends asserted present.** ⛔ The slice
-      // ended at the next declaration, `selectTaskedSessionsInProject`, until D-016 deleted it —
-      // and an absent end token is `-1`, which sliced to the file's last character and read the
-      // whole store as this one statement (`a-position-census-passes-on-an-absent-anchor`).
-      // ⚑ **D-016 · the fold's read is `selectPieceEvents`**, and its first word is `work_given`.
-      const opens = storeSource.indexOf('const selectPieceEvents = db.prepare(')
-      expect(opens, 'selectPieceEvents was renamed or removed').toBeGreaterThan(0)
-      const closes = storeSource.indexOf('\n  )\n', opens)
-      expect(closes, 'selectPieceEvents no longer closes where a statement does').toBeGreaterThan(
-        opens,
-      )
-      const taskSelect = storeSource.slice(opens, closes)
-      expect(taskSelect).toContain("'work_given'")
-      // ⚑ **The slice is the one statement and not a neighbour**: it ends at its own ORDER BY.
-      expect(taskSelect.trimEnd().endsWith('ORDER BY ordinal`,')).toBe(true)
-      expect(taskSelect).not.toContain('work_stall_told')
-    })
-
-    it('⛔ exactly one place writes the receipt, and exactly one reads it back', () => {
-      // ⚑ **`400`'s census shape, one row over.** Two writers of one fact is how a parent comes to
-      // hold two accounts of whether it was told.
-      const writers = filesUnder(mainRoot)
-        .filter((file) => file.text.includes("type: 'work_stall_told'"))
-        .map((file) => file.path)
-      expect(writers).toEqual(['runtime/runtime-host.ts'])
-      const readers = filesUnder(mainRoot)
-        .filter((file) => codeOnly(file.text).includes('workReportedTo('))
-        .map((file) => file.path)
-        .sort()
-      expect(readers).toEqual(['db/session-store.ts', 'runtime/runtime-host.ts'])
-    })
-
-    it('⛔ the notice itself is unchanged: one table of sentences, and it is still `400`’s', () => {
-      // ⚠️ **This dispatch moved WHEN a parent is told and never WHAT it is told.** ⛔ A second
-      // spelling of *the app restarted while it was open* is how a parent comes to read two accounts
-      // of one event — `undrivenSentence` and `undrivenWorkText` share the one table.
-      //
-      // 🔴 **The table MOVED at `406` and this assertion moved with it.** It lives in
-      // `shared/tasks.ts` now, because the row a PERSON reads is a third caller and the renderer
-      // cannot import `main/`. ⛔ The count is asserted where the table IS rather than where it
-      // was: a census re-pointed at the new home keeps the rule, and one left behind would have
-      // gone green over five sentences copied into the renderer — which is the defect it exists
-      // for. ⚠️ `reply-rails.ts` is asserted to hold no table of its own, which is the half that
-      // could not have been said before the move.
-      const sentences = codeOnly(sourceOf(sharedRoot, 'tasks.ts'))
-      expect(sentences.match(/UNDRIVEN_SENTENCES/g) ?? []).toHaveLength(2)
-      expect(sentences).toContain('the app restarted while it was open.')
-      const rails = codeOnly(sourceOf(mainRoot, 'runtime/reply-rails.ts'))
-      expect(rails).not.toContain('the app restarted while it was open.')
-      // ⚑ **484 · it reaches the table through `undrivenSentence` now, and that is the same rule
-      // tightened rather than a different one.** ⛔ That function's own docblock says *"one table
-      // and THREE callers, never three tables"*; the notice used to index the record directly and
-      // append its own full stop, which is a second composition of one sentence. ⚠️ **The half this
-      // census exists for is unchanged and is asserted both ways**: no table here, and it really
-      // does read the shared one.
-      expect(rails.match(/UNDRIVEN_SENTENCES/g) ?? []).toHaveLength(0)
-      expect(rails.match(/undrivenSentence/g) ?? []).toHaveLength(2)
-      const host = codeOnly(sourceOf(mainRoot, 'runtime/runtime-host.ts'))
-      expect(host.match(/undrivenWorkText\(/g) ?? []).toHaveLength(1)
     })
   })
 

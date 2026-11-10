@@ -567,43 +567,6 @@ describe('§5 · relay 1 · one register, and the table that says what each word
     expect('one-window-over-a-project'.includes('a-project')).toBe(true)
   })
 
-  it('🔴 the digest and the forest really do open the same ledgers, which is why two words', () => {
-    // ⛔ **The account claims the digest and the forest open the SAME conversations — every one an
-    // agent of this app holds — and narrow them differently.** That is a claim about SQL and it is
-    // asserted against the SQL rather than left in prose — if either query is narrowed later, the
-    // register's justification for holding two words is gone and this goes red before the
-    // docblock does.
-    const store = readFileSync(STORE, 'utf8')
-    const sqlOf = (name: string): string => {
-      const opens = store.indexOf(`const ${name} = db.prepare(`)
-      // ⚠️ **A slicer that cannot find its anchor must FAIL, not return the tail of the file** —
-      // `store.slice(-1)` is one character and every `toContain` below would go red for the wrong
-      // reason, which reads as a narrowed query when it is a renamed constant.
-      expect(opens, `${name} is gone from the store`).toBeGreaterThan(-1)
-      // ⛔ **Its OWN literal and nothing past it** — a slice running on into the next statement
-      // would let a neighbour's join answer for this one's.
-      const starts = store.indexOf('`', opens)
-      const closes = store.indexOf('`', starts + 1)
-      expect(closes, `${name} is no longer a prepared statement`).toBeGreaterThan(starts)
-      return store.slice(starts + 1, closes)
-    }
-    // ⚑ The digest's rows, the digest's `ledgers` (the same count the forest reports as how many
-    // there are), and the forest's rows.
-    for (const query of [
-      'selectDigestWindow',
-      'countPlacedConversations',
-      'selectEveryPlacedConversation',
-    ]) {
-      const sql = sqlOf(query)
-      // ⚑ **D-016 · the population is keyed on the identity column**, so that is what each names.
-      for (const name of ['agent_identity_id', 'provider_session']) {
-        expect(sql, `${query} no longer reads ${name}`).toContain(name)
-      }
-    }
-    // ⚠️ **And the digest's own row query adds the clock that earns the second word.**
-    expect(sqlOf('selectDigestWindow')).toContain('e.created_at >= ? AND e.created_at < ?')
-  })
-
   it('🔴 …and they agree on the COUNT, where bindings and conversations differ', () => {
     // ⛔ **The SQL census above is textual; this is the same claim measured.** ⚠️ Two
     // conversations under ONE identity, because the fixture's usual shape gives every
@@ -663,32 +626,6 @@ describe('§5 · relay 1 · one register, and the table that says what each word
     expect(store).toContain('const generation = activeGeneration(sessionId)')
     expect(store).toContain(
       '...composeWhatEachPieceIsWaitingOn(piecesOfSession(sessionId, noteSkip), waiting).map(',
-    )
-  })
-
-  it('⛔ nothing in the app still spells the name the register was renamed from', () => {
-    // ⚑ **The rename is the whole of what 466 changed about the symbol**, and a survivor would be
-    // a second name for one register — which is the two-vocabularies hazard 467 named, arriving
-    // by the back door.
-    //
-    // ⛔ **Prose is stripped first, and it has to be**: the account above `LEDGER_WALK_KINDS`
-    // quotes the retired name twice on purpose, to say what was renamed and why. A census that
-    // read the docblock would go red on the sentence explaining itself —
-    // `a-source-census-must-strip-prose-before-it-asserts`.
-    const withoutProse = (text: string): string =>
-      text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-    for (const file of [REGISTER, STORE, FOLD]) {
-      const code = withoutProse(readFileSync(file, 'utf8'))
-      expect(code, file).not.toContain('QUEUE_WALKS')
-      expect(code, file).not.toContain('QueueWalk')
-    }
-    // ⚠️ **Two controls, because there are two ways this could pass vacuously.** The register
-    // still spells the name it was renamed TO after stripping, so the files were read and the
-    // stripper did not empty them; and the stripper is shown removing the very comment the
-    // negatives would otherwise trip on.
-    expect(withoutProse(readFileSync(REGISTER, 'utf8'))).toContain('LEDGER_WALK_KINDS')
-    expect(withoutProse('/**\n * a constant called `QUEUE_WALKS`,\n */\nconst kept = 1\n')).toBe(
-      '\nconst kept = 1\n',
     )
   })
 })

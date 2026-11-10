@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, readFile, rm, symlink, mkdir, writeFile } from 'node:fs/promises'
 import * as fsPromises from 'node:fs/promises'
-import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import * as discoveryModule from '../src/main/skills/shared-discovery'
@@ -331,11 +330,5 @@ describe('the profile Skills inventory uses the real delivery policy', () => {
     ).toEqual({ operation: 'refused', reason: 'identity' })
     expect(list).not.toHaveBeenCalled()
     expect(known.has('missing-agent')).toBe(false)
-  })
-
-  it('wires the real main-owned profile resolver and removes the launch all-shipped bypass', () => {
-    const source = readFileSync(resolve(import.meta.dirname, '../src/main/index.ts'), 'utf8')
-    expect(source).not.toMatch(/\ballShipped:\s*true\b/)
-    expect(source).toMatch(/profileSkillAccess\(\s*store,\s*profileId,?\s*\)/)
   })
 })

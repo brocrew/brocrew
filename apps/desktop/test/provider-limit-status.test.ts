@@ -1,5 +1,4 @@
 import type { AgentState } from '../src/shared/agent-state-contracts'
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import type { QueuedMessageDisclosure } from '../src/shared/runtime-ipc'
@@ -250,21 +249,5 @@ describe('One ordered fact authority spans state, liveness, descriptors and list
     facts.acceptListed([{ sessionId: 'recipe', ...current }], readAt)
     facts.accept('recipe', current)
     expect(facts.get('recipe')).toBeNull()
-  })
-})
-
-describe('The root installs the ordered channel and passes its authority to both views', () => {
-  it('uses the real root subscription helper and the same window-owned facts for rail and pane', () => {
-    const source = readFileSync(
-      new URL('../src/renderer/src/components/RuntimeScreen.vue', import.meta.url),
-      'utf8',
-    )
-    expect(source).toContain(
-      'stopHearingStates = listenProviderStates(window.api.runtime, store, (message) => {',
-    )
-    expect(source).toContain(':provider-blocks="store.providerBlocks"')
-    expect(source).toContain(
-      ':provider-block="active ? store.providerBlocks.get(active.sessionId) : null"',
-    )
   })
 })

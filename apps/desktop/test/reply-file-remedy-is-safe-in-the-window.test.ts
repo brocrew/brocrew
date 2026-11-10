@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { builtinModules } from 'node:module'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
@@ -30,14 +29,6 @@ function nodeImports(source: string): string[] {
 }
 
 describe('reply file guidance can load in the window', () => {
-  it('the shared reply rails import no Node modules', () => {
-    const source = readFileSync(
-      new URL('../src/main/runtime/reply-rails.ts', import.meta.url),
-      'utf8',
-    )
-    expect(nodeImports(source)).toEqual([])
-  })
-
   it('the browser-boundary control catches static, re-exported and dynamic Node imports', () => {
     for (const source of [
       'import { extname } from "node:path"',

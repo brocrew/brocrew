@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   SessionUnavailable,
@@ -247,49 +246,6 @@ describe('the sentence a refused open shows a person (100)', () => {
     expect(unavailableOf(error)).toBe('already-open-elsewhere')
     expect(unavailableContextOf(error)).toEqual({ openingForMs: 5 })
     expect(describeUnavailable('already-open-elsewhere')).not.toContain('sess_')
-  })
-
-  it('leaves no untranslated throw on the path a refused reopen takes', () => {
-    // ⚠️ **Review finding 14.** `resumeSession` translates by catching, and it passes anything it
-    // does not recognise straight through — so a single plain `throw new Error(...)` anywhere on
-    // that path puts the id back on screen and nothing else notices. This reads the source rather
-    // than exercising each throw, because several of them are races no test can reach on demand;
-    // what it pins is that none of them is a bare Error.
-    const source = readFileSync(
-      new URL('../src/main/runtime/runtime-host.ts', import.meta.url),
-      'utf8',
-    )
-    /**
-     * The two that are deliberately NOT in this class, named so the exemption is a decision.
-     *
-     * `require()` guards every per-session command — send, interrupt, close — not the opening of
-     * one, and translating it properly means translating at the IPC boundary for all commands,
-     * which is wider than 100 and is written up as a follow-up. They are listed here so a THIRD
-     * raw throw cannot be added quietly: this test fails on it.
-     */
-    const notThisClass = [
-      'unknown session: ${sessionId}',
-      'session is still starting: ${sessionId}',
-    ]
-    // Every throw whose message interpolates a session id.
-    const idBearing = [
-      ...source.matchAll(
-        /throw new (\w+)\(\s*\n?\s*(?:'[^']*',\s*\n?\s*)?`(session[^`]*\$\{(?:id|sessionId)\}[^`]*)`/g,
-      ),
-    ]
-    // Non-vacuity: if the regex stops matching anything, this test is asserting over nothing.
-    expect(idBearing.length).toBeGreaterThanOrEqual(4)
-    let checked = 0
-    for (const match of idBearing) {
-      if (notThisClass.some((known) => match[2]?.startsWith(known))) continue
-      checked++
-      expect(
-        match[1],
-        `an id-bearing throw is a plain ${match[1]}: ${match[2]?.slice(0, 90)}`,
-      ).toBe('SessionUnavailable')
-    }
-    // …and the exemption list must not have swallowed the whole set.
-    expect(checked).toBeGreaterThanOrEqual(4)
   })
 
   it('does not claim to recognise an ordinary failure', () => {

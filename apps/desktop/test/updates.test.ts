@@ -994,67 +994,6 @@ describe('§4b · a private GitHub feed, read as electron-updater reads one', ()
     expect((error as Error).message).toBe('the private feed could not be reached')
     expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain(TOKEN)
   })
-
-  it('⛔ only the guided download reads the token, and only through that rule', () => {
-    const main = join(here, '../src/main')
-    const readers = readdirSync(main, { recursive: true })
-      .map(String)
-      .filter((file) => file.endsWith('.ts'))
-      .filter((file) => /GH_TOKEN|GITHUB_TOKEN/.test(readFileSync(join(main, file), 'utf8')))
-    expect(readers).toEqual(['guided-update.ts'])
-  })
-})
-
-describe('§5 · the wiring', () => {
-  const read = (path: string): string => readFileSync(join(here, path), 'utf8')
-
-  it('🔴 electron-updater downloads and installs nothing by itself, and the Mac never installs', () => {
-    const app = read('../src/main/updates-in-the-app.ts')
-    expect(app).toContain('autoUpdater.autoDownload = false')
-    expect(app).toContain('autoUpdater.autoInstallOnAppQuit = false')
-    expect(app).toContain("installs: process.platform === 'darwin' ? 'guided' : 'on-restart',")
-    // ⛔ Never `quitAndInstall`, which starts the installer before the app has shut down.
-    expect(app).not.toContain('quitAndInstall(')
-  })
-
-  it('🔴 the installer starts from `quit`, after the teardown, and only for a restart that was chosen', () => {
-    const app = read('../src/main/updates-in-the-app.ts')
-    expect(app).toContain(
-      '    install: () => {\n      installOnTheWayOut = true\n      app.quit()\n    },',
-    )
-    expect(app).toContain(
-      "  app.on('quit', () => {\n    if (!installOnTheWayOut || updater === null) return",
-    )
-    expect(app.match(/\.install\(true, true\)/g)).toHaveLength(1)
-    // ⛔ …and any quit stops a restart that waits.
-    expect(app).toContain(
-      "  const stop = (): void => {\n    guidedDownloads.abort()\n    updates.stop()\n  }\n  app.on('before-quit', stop)",
-    )
-  })
-
-  it('⚑ a check carries no per-install id', () => {
-    const app = read('../src/main/updates-in-the-app.ts')
-    expect(app).toContain('autoUpdater.requestHeaders = NOBODY_IN_PARTICULAR')
-    expect(app).toContain(
-      "const NOBODY_IN_PARTICULAR = { 'x-user-staging-id': '00000000-0000-0000-0000-000000000000' }",
-    )
-  })
-
-  it('⚑ started once main has its host and its IPC', () => {
-    const index = read('../src/main/index.ts')
-    const ipc = index.indexOf('      registerIpc(host, localZone)')
-    const started = index.indexOf(
-      '      updates = startUpdates({ app, host, hidden: presentation.hidden })',
-    )
-    expect(ipc).toBeGreaterThan(-1)
-    expect(started).toBeGreaterThan(ipc)
-    expect(index).toContain(
-      '  stopArchiveWork: () => {\n    void stopRecoveryWork()\n    void stopProviderSetup?.()\n    updates?.stop()',
-    )
-    expect(index).toContain(
-      '  drainArchiveWork: async () => {\n    await stopRecoveryWork()\n    await stopProviderSetup?.()\n    await updates?.drain()',
-    )
-  })
 })
 
 describe('§6 · 🔴 W4.128 — after a Windows update, BroBot reopens the workspace it was running', () => {

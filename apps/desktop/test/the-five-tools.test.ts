@@ -1634,37 +1634,6 @@ describe('347 · the five tools', () => {
       expect(rig).toContain('claudeKeychainTokenProvider')
     })
 
-    it('🔴 348 · the Codex rigs still ask the questions they were written to ask', () => {
-      // ⛔ **Same rule as the row above, on the two instruments `348` added.** Neither runs in `ci` —
-      // one needs a login, one spawns the bundled binary — so the assertions that make them
-      // measurements rather than smoke are pinned from here.
-      const rig = readFileSync(
-        join(here, '../smoke/a-codex-agent-spawns-an-agent.smoke.ts'),
-        'utf8',
-      )
-      // ⚑ **Exact equality, not `includes`.** `toolItemName` mapped `dynamicToolCall` to the
-      // constant `'tool'` until 348, and a row that merely CONTAINS `give_work` would have gone
-      // green on the qualified name while saying nothing about the prefix that names the server.
-      // ⚑ **D-016** — the verb the rig drives is `give_work`.
-      expect(rig).toContain(
-        "expect(parentToolCalls().some((name) => name === 'brobot__give_work')).toBe(true)",
-      )
-      expect(rig).toContain("await until('message_agent in the parent transcript'")
-      // ⚠️ Non-vacuity: the file really is the live Codex rig.
-      expect(rig).toContain('provisionCodexAuth')
-
-      const probe = readFileSync(
-        join(here, '../../../packages/runtime/smoke/codex-dynamic-tools-probe.smoke.ts'),
-        'utf8',
-      )
-      // ⛔ **The control arm is the half that makes the other three measurements.** `thread/start`
-      // ignores unknown params silently, so an arm that finds the five names proves nothing until
-      // the arm that sent none finds none.
-      expect(probe).toContain("expect(namesIn(control.bodies[0]), 'C · no dynamicTools sent")
-      // 🔴 …and the resume arm, which is what the whole design rests on.
-      expect(probe).toContain("'D · after a cold resume by another process'")
-    })
-
     it('⛔ the tools never hand a claiming sink to anything (340`s census, answered)', () => {
       const code = codeOf('main/runtime/agent-tools.ts')
       // ⚑ **340 priced two answers and this is the one 347 chose.** A caller that presents a

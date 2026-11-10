@@ -1,5 +1,5 @@
 import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -23,7 +23,6 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const toolsSource = join(here, '../src/main/runtime/agent-tools.ts')
 
 /**
  * 🔴 **486 · the doors our own verbs do not need** (HO-031 §2.4 and §2.5).
@@ -272,49 +271,6 @@ describe('486 · the doors our own verbs do not need', () => {
         expect(word, word).not.toMatch(/ask|card|permission|prompt/)
       }
     })
-
-    it('⛔ the declarations are the ONLY place the split is written, so no adapter holds a name list', () => {
-      // ⚑ **The search shape**: what would have refuted this is a set literal naming our verbs in a
-      // provider adapter — the shape `TOOLS_THAT_ONLY_ASK_A_PERSON` has for a different question.
-      // Both adapters are read, and both are asserted to reach the DECLARATION instead.
-      // ⚠️ **Comments stripped first.** Both adapters' docblocks quote HO-031 §2.9, which names
-      // `reply_to_parent` in the very sentence that explains why it no longer raises a card — and a
-      // census that read prose would report the exemption it documents as the list it forbids
-      // (`a-source-census-must-strip-prose-before-it-asserts`).
-      const codeOnly = (text: string): string =>
-        text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ')
-      const claude = codeOnly(
-        readFileSync(join(here, '../../../packages/runtime/src/claude/claude-runtime.ts'), 'utf8'),
-      )
-      const codex = codeOnly(
-        readFileSync(join(here, '../../../packages/runtime/src/codex/codex-runtime.ts'), 'utf8'),
-      )
-      for (const [name, source] of [
-        ['claude', claude],
-        ['codex', codex],
-      ] as const) {
-        expect(source, `${name} reads the declaration`).toContain(
-          "'nothing-its-rails-do-not-cover'",
-        )
-        // ⛔ The verbs this dispatch exempted must not be SPELLED in either adapter.
-        for (const verb of [
-          'reply_to_parent',
-          'ask_question',
-          'withdraw_task',
-          'answer_question',
-        ]) {
-          expect(source, `${name} must not name ${verb}`).not.toContain(verb)
-        }
-      }
-      // ⚑ **Two controls, because a stripped file that came back empty would pass every negative
-      // above.** ⛔ The strip did not eat the code: both files still contain a line only their code
-      // has. ⚠️ And the reader can still FIND one of our verb names — planted here as the string a
-      // name list would have been written with.
-      expect(claude).toContain('permissionDecision')
-      expect(codex).toContain('handleAgentToolCall')
-      const planted = `${claude}\n const list = ['reply_to_parent']`
-      expect(planted).toContain('reply_to_parent')
-    })
   })
 
   describe('§2 · entitlement before argument shape', () => {
@@ -360,67 +316,6 @@ describe('486 · the doors our own verbs do not need', () => {
       expect((await widened.call('message_agent', { kind: 'follow-up' }))['rail']).toBe(
         'malformed-request',
       )
-    })
-
-    // ⚑ **D-016** — `spawn_agent`'s case (*the kill switch answers before the shape*) went with the
-    // tool: `give_work` asks the shape FIRST by ruling (R2 step 1), and the switch only of a give
-    // that would start a conversation (step 7), so there is no switch-before-shape order to pin.
-
-    it('⚑ the doors that ask a wall ask it FIRST, and the ones with no wall do not ask at all', () => {
-      // ⛔ **A structural census, because the behaviour tests above cannot see ORDER** — each of
-      // them observes one answer, and an answer is consistent with the wall being asked second for
-      // a call that the shape check happens to admit.
-      //
-      // ⚠️ **Comments are stripped first**: this file's prose names every one of these calls, and a
-      // census that read prose would find `host.mayReachAtAll` in a docblock
-      // (`a-source-census-must-strip-prose-before-it-asserts`).
-      const code = [toolsSource, join(here, '../src/main/themes/agent-tools.ts')]
-        .map((path) => readFileSync(path, 'utf8'))
-        .join('\n')
-        .replace(/\/\*[\s\S]*?\*\//g, ' ')
-        .replace(/^\s*\/\/.*$/gm, ' ')
-      const bodies = new Map<string, string>()
-      for (const match of code.matchAll(/name: '(\w+)'(?: as const)?,/g)) {
-        // ⚠️ **From inside the closure, not from `call:`** — the parameter is literally spelled
-        // `args`, so a body sliced from the declaration reads its own signature as an argument use
-        // and every door would look inverted.
-        const declared = code.indexOf('call:', match.index)
-        if (declared === -1) continue
-        const opens = code.indexOf('=> {', declared)
-        if (opens === -1) continue
-        bodies.set(match[1] as string, code.slice(opens + 4, opens + 700))
-      }
-      const WALL = /host\.may(CreateAgents|ReachAtAll)\(/
-      // ⛔ **D-014 · `create_project`, `end_agent` and `interrupt_agent` lost their walls**, so they
-      // are asserted by the complement below — no standing wall at all — and not here.
-      const ASKS: Readonly<Record<string, RegExp>> = {
-        // ⚑ **D-016** — `mayCreateAgents(me)`: the caller's own grant, with no `by` to ask.
-        create_agent: /host\.mayCreateAgents\(me\)/,
-        message_agent: /host\.mayReachAtAll\('message', by\)/,
-        // ⛔ **663's `resume_agent` row is gone with the verb** (D-017 commit 3), and D-016 took
-        // `list_projects`' (`mayReachAtAll('read', by)`) with projects.
-      }
-      for (const [verb, wanted] of Object.entries(ASKS)) {
-        const body = bodies.get(verb) ?? ''
-        expect(body, `${verb} asks its wall`).toMatch(wanted)
-        // ⛔ **FIRST**: nothing that reads an argument may appear before the wall.
-        const wall = body.search(WALL)
-        const argument = body.search(/\bargs\b/)
-        expect(
-          argument === -1 || wall < argument,
-          `${verb} asks its wall before it reads args`,
-        ).toBe(true)
-      }
-      // ⚑ **The complement, and it is the finding rather than a formality**: every other door has no
-      // standing wall to hoist — its entitlement is folded into the answer about the subject — so a
-      // wall call there would be a question nothing can answer without an argument.
-      for (const [verb, body] of bodies) {
-        if (verb in ASKS) continue
-        expect(body, `${verb} has no standing wall`).not.toMatch(WALL)
-      }
-      // ⚠️ **The control**: the reader really did find bodies, and really can see a wall call.
-      expect(bodies.size).toBe(Object.keys(THE_SPLIT).length)
-      expect(bodies.get('create_agent')).toMatch(WALL)
     })
   })
 

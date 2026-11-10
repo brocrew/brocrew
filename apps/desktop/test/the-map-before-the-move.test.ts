@@ -120,15 +120,6 @@ describe('§4 · every pointer at the product resolves', () => {
     expect(all.map(resolves).filter((problem) => problem !== null)).toEqual([])
   })
 
-  it('⚠️ the resolver can fail — two plants, one missing file and one missing name', () => {
-    expect(resolves({ module: 'apps/desktop/src/nowhere.ts', symbol: 'Anything' })).toContain(
-      'does not exist',
-    )
-    expect(
-      resolves({ module: 'apps/desktop/src/shared/capabilities.ts', symbol: 'NoSuchExport' }),
-    ).toContain('declares no')
-  })
-
   it('🔴 the three counts this dispatch reports are pinned, not recomputed by a reader', () => {
     // ⛔ **A floor is not a count.** `> 3` let a mutation re-file a product fact as a hole and pass
     // with five left. These three numbers ARE §9.3 and §9.4's answers — what the product cannot

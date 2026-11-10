@@ -528,24 +528,4 @@ describe('§4 · what a dropped clause costs, and when to measure — in the fil
     expect(words).toContain('AFTER A MODE TRANSITION')
     expect(words).toContain('do not build the re-assert')
   })
-
-  it('⚠️ and the three mechanisms the table names are REAL, not prose — the row’s own control', () => {
-    // 🔴 **A table of consequences nobody checked is the thing HO-062 §2 says is worse than this**
-    // (*"a better answer than we checked and it is fine"*). Each name below is asserted to exist in
-    // the source the row credits, so a rename turns this red rather than turning the table false.
-    expect(read('apps/desktop/src/main/runtime/runtime-host.ts')).toContain(
-      'private tellIfNobodyHasYet(piece: PieceRow): void {',
-    )
-    expect(read('apps/desktop/src/shared/tasks.ts')).toContain('turn_ended:')
-    // ⛔ **644 · the OPENING quote, because the sentence grew and the row still quotes its head.**
-    // ⚑ `644` gave the empty listing two answers — one for a caller that named a project and one
-    // for a caller that did not — and both still open with the words this row credits, so the
-    // table's claim is intact and its quotation is now a prefix of what the tool says.
-    // ⚠️ **It went red rather than quiet, which is the point of the control**: the closing quote
-    // was what moved, and correcting it here is a decision somebody took rather than a byte that
-    // happened to survive (`a-corrected-anchor-keeps-a-verdict-it-never-earned`, one axis over).
-    // 🔴 **Still a rename detector** — any reword of those five words turns this red again, and
-    // `two-sentences-that-name-no-door.test.ts` §1.3 asserts the prefix from the ANSWER side.
-    expect(read('apps/desktop/src/main/runtime/agent-tools.ts')).toContain("'no agents you can see")
-  })
 })

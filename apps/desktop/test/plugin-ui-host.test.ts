@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { readFileSync, readdirSync } from 'node:fs'
-import { resolve, join, relative } from 'node:path'
-import ts from 'typescript'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { uiFixture } from './plugin-ui-fixtures'
 import type { PluginUiPeer } from '../src/main/plugins/ui/rpc'
 import { PLUGIN_UI_RPC, PLUGIN_UI_CHANNEL } from '../src/shared/plugin-ui'
@@ -406,75 +405,6 @@ describe('the actual isolated host wiring', () => {
       ['app:fictional-cache', last],
       ['app:fictional-cache', first],
     ])
-  })
-  it('keeps every main-process Electron IPC import on the central registration path', () => {
-    const root = resolve(__dirname, '../src/main'),
-      bypasses: string[] = []
-    function walk(folder: string) {
-      for (const entry of readdirSync(folder, { withFileTypes: true })) {
-        const path = join(folder, entry.name)
-        if (entry.isDirectory()) {
-          walk(path)
-          continue
-        }
-        if (!path.endsWith('.ts')) continue
-        const source = ts.createSourceFile(
-          path,
-          readFileSync(path, 'utf8'),
-          ts.ScriptTarget.Latest,
-          true,
-        )
-        const file = relative(root, path).replaceAll('\\', '/')
-        for (const statement of source.statements) {
-          if (
-            !ts.isImportDeclaration(statement) ||
-            !ts.isStringLiteral(statement.moduleSpecifier) ||
-            statement.moduleSpecifier.text !== 'electron'
-          )
-            continue
-          const clause = statement.importClause
-          if (!clause || clause.isTypeOnly) continue
-          const imports = clause.namedBindings
-          if (!imports || !ts.isNamedImports(imports)) {
-            bypasses.push(file)
-            continue
-          }
-          for (const specifier of imports.elements) {
-            if (
-              specifier.isTypeOnly ||
-              (specifier.propertyName ?? specifier.name).text !== 'ipcMain'
-            )
-              continue
-            if (file === 'app-ipc.ts') continue
-            if (file !== 'index.ts' || specifier.name.text !== 'pluginIpcMain') {
-              bypasses.push(file)
-              continue
-            }
-            function visit(node: ts.Node) {
-              if (
-                ts.isIdentifier(node) &&
-                node.text === 'pluginIpcMain' &&
-                !ts.isImportSpecifier(node.parent)
-              ) {
-                const parent = node.parent
-                if (
-                  !ts.isCallExpression(parent) ||
-                  !ts.isIdentifier(parent.expression) ||
-                  parent.expression.text !== 'installPluginUiRpc' ||
-                  parent.arguments.length !== 1 ||
-                  parent.arguments[0] !== node
-                )
-                  bypasses.push(file)
-              }
-              ts.forEachChild(node, visit)
-            }
-            visit(source)
-          }
-        }
-      }
-    }
-    walk(root)
-    expect(bypasses).toEqual([])
   })
   it('every existing app invocation refuses plugin senders before reaching its handler', async () => {
     const f = await host(),

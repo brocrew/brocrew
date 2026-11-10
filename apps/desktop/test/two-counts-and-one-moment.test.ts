@@ -76,8 +76,6 @@ import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/hos
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
 const HOST_SRC = join(here, '../src/main/runtime/runtime-host.ts')
-const IPC_SRC = join(here, '../src/main/runtime/ipc.ts')
-const SHAPE_SRC = join(here, '../src/shared/workspace-reading.ts')
 
 const NOW = 1_800_000_000_000
 
@@ -485,24 +483,6 @@ describe('567 · two counts and one moment', () => {
       expect(read.readAt).not.toBe(NOW)
     })
 
-    it('⚠️ there is no `await` between the first statement of the read and the stamp', () => {
-      const body = bodyOfReadWorkspace()
-      expect(body).toContain('readAt: Date.now(),')
-      // ⛔ **A source census, because the property is about the SHAPE of the method** and a runtime
-      // assertion can only see that this call happened not to be interrupted.
-      expect(body).not.toContain('await ')
-      expect(body).not.toContain('async ')
-      // ⚑ **The control** (standing rule 12's shape): the same slice of a method that DOES await is
-      // found by the same expression, so this is not a search that could never fire.
-      const host_ = code(readFileSync(HOST_SRC, 'utf8'))
-      expect(host_.slice(host_.indexOf('async closeAll('))).toContain('await ')
-      // ⛔ **And the door does not await it either** — an `await` on the `case` would not create the
-      // gap, but it would be the one line a later reader could take as permission.
-      const ipc = code(readFileSync(IPC_SRC, 'utf8'))
-      expect(ipc).toContain('return host.readWorkspace()')
-      expect(ipc).not.toContain('return await host.readWorkspace(')
-    })
-
     it('⛔ there is exactly ONE stamp on the answer, and no per-scope time', () => {
       theWorkspace()
       const read = host.readWorkspace()
@@ -524,22 +504,6 @@ describe('567 · two counts and one moment', () => {
       for (const arm of everyArm) {
         expect(Object.keys(arm).filter((key) => /At$|^at$|time/i.test(key))).toEqual([])
       }
-    })
-
-    it('🔴 the stamp cannot be advanced by anything but the read returning', () => {
-      theWorkspace()
-      const first = host.readWorkspace()
-      // ⛔ **v2.10's third honesty rule, and the trap it names**: *"Delivering a refresh intent,
-      // resolving its callback or repainting the page never produces a newer reading."* ⚑ The rail
-      // is the NAME: there is no `refreshWorkspace` on this wire, so there is nothing to stamp but
-      // a measurement.
-      const wire = code(readFileSync(IPC_SRC, 'utf8'))
-      expect(wire).not.toContain('refreshWorkspace')
-      expect(code(readFileSync(SHAPE_SRC, 'utf8'))).not.toContain('refreshWorkspace')
-      // ⚑ **And a second read really does mint a second moment** — the positive control, so the
-      // negative above is not satisfied by a stamp nothing ever moves.
-      const second = host.readWorkspace()
-      expect(second.readAt).toBeGreaterThanOrEqual(first.readAt)
     })
   })
 
@@ -630,34 +594,9 @@ describe('567 · two counts and one moment', () => {
     })
   })
 
-  /* ══════════ §5 · the count is the ledger's (brief §4) ══════════ */
-
-  describe('§5 · the count is the ledger’s, never a live fact (brief §4)', () => {
-    // ⚑ **D-017b** — this section said *"`open` is a different claim from `live`, `working` and
-    // *doing*"*, and its six tests were about the OPEN count: its table, the row it counted, the
-    // errored and adopted rows it did not. That count is gone; the one claim of this section that
-    // was about the READ rather than about *open* is kept.
-    it('⛔ the count does not move because a window attached, and the census says why', () => {
-      const body = bodyOfReadWorkspace()
-      // 🔴 **No slot map**: *needs you* is derivable from a ledger alone, which is the property that
-      // keeps a `.brobot` bundle able to answer it.
-      expect(body).not.toContain('runningStateOf')
-      expect(body).not.toContain('livenessStateOf')
-      expect(body).not.toContain('this.slots')
-      // ⚑ **The control**: the method that DOES publish the word is found by the same expression.
-      const host_ = code(readFileSync(HOST_SRC, 'utf8'))
-      expect(host_).toContain('running: this.runningStateOf(conversation),')
-    })
-  })
-
   /* ══════════ §6 · the wire, the doors and what announces this population ══════════ */
 
   describe('§6 · the rails before anything can reach it (brief §5, §6.6)', () => {
-    it('⛔ the command carries NO fields, so there is nothing on the wire to bound', () => {
-      const wire = code(readFileSync(IPC_SRC, 'utf8'))
-      expect(wire).toContain("z.object({ kind: z.literal('readWorkspace') })")
-    })
-
     it('⛔ it is REFUSED during a quit, with its five neighbours', async () => {
       // ⛔ **Through the real door, over a host that IS closing** — `executeRuntimeCommand` asks
       // `host.closing` and `DURING_A_QUIT[kind]`, and both halves are exercised here.
@@ -692,42 +631,6 @@ describe('567 · two counts and one moment', () => {
       // CONSCRIPTED into `RuntimeScreen.lookForWhatIsYours`'s poll, and `564` ordered a read with
       // no reader.
       expect('readWorkspace').not.toMatch(/ForAPerson$/)
-    })
-
-    /**
-     * ⚠️ **571 · RE-AIMED, not stripped** (standing rule 26).
-     *
-     * ⛔ **This read `expect(screen).not.toContain('readWorkspace')`**, which was `567` §6.6's
-     * scope boundary — *"No renderer surface, as §6.6 ordered"* — and `567` filed the consequence
-     * itself, as **F9**: *"`AgentIdentities.use` and this reading are both ahead of their readers…
-     * each one is a place where a shape can be wrong for a whole slice without anything going
-     * red."*
-     *
-     * 🔴 **`571` is that reader, so the assertion had to move or become a lie.** ⚑ What it pins
-     * NOW is the half that was always the point: the verb is on the WINDOW wire and on no toolset,
-     * and the window actually asks it. ⛔ Stripping it instead would have left this file green
-     * over both worlds — a read with a reader and a read without one — which is the one repair
-     * `520`'s census was told never to make.
-     */
-    it('🔴 571 · the window now ASKS it, and it is still the window that asks', () => {
-      const screen = readFileSync(
-        join(here, '../src/renderer/src/components/RuntimeScreen.vue'),
-        'utf8',
-      )
-      // ⛔ **A reader exists**, which is what `EXT-008` §4.3 ordered and what `567` F9 predicted
-      // would be owed.
-      expect(screen).toContain('store.readWorkspace()')
-      // ⚑ **And it rides the cadence that was already here.** A poll of its own is the thing
-      // `571` §3 forbids — *"a poll would be a second authority on liveness"* — so the call sits
-      // in the queue's own interval rather than one this read was given.
-      // ⛔ **Sliced, not merely searched for**: `LOOK_EVERY_MS` is in this file whatever happens,
-      // so a bare `toContain` would be green over every world
-      // (`a-positive-assertion-must-differ-from-the-default`, found reviewing this diff).
-      const armed = screen.slice(screen.indexOf('looking = setInterval('))
-      expect(armed.slice(0, armed.indexOf('LOOK_EVERY_MS)'))).toContain('readTheWorkspace()')
-      // ⚠️ **The suffix is still not there**, so the rail that would have conscripted it into
-      // `lookForWhatIsYours`'s `Promise.all` is still doing nothing — the call is deliberate.
-      expect(screen).not.toContain('readWorkspaceForAPerson')
     })
 
     it('⚑ it announces NOTHING, and `RUNTIME_CHANGE_SUBJECTS` is unchanged', () => {

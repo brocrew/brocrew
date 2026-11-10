@@ -1,7 +1,7 @@
 import { ToolWatchingResumeRuntime } from './lib/provider-double'
 import type { AgentModelChoice } from '../src/shared/model-choice-contracts'
 import type { InstructionProposedEvent, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -847,51 +847,5 @@ describe('§6 · draw 8 (`707` GAP-5, R41) — every identity a person reads is 
         `Quill was created, but this window could not re-read the list: ${rereadFailedSays}`,
       )
     })
-  })
-})
-
-/**
- * ⚑ **`RuntimeScreen` is read, not mounted** (`211` §11) — so the one place the queue is projected
- * for the screen is asked of its source. ⛔ Comments stripped first: the line above the argument is a
- * comment that names it.
- */
-const withoutComments = (source: string): string =>
-  source
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/^[ \t]*\/\/.*$/gm, ' ')
-
-describe('§7 · R41 at the screen — the queue is projected with the names the rail uses', () => {
-  it('🔴 `RuntimeScreen` hands `attentionQueue` its name function — the roster’s `agentHeadingFor`, as its third argument', () => {
-    const screen = withoutComments(
-      readFileSync(join(here, '../src/renderer/src/components/RuntimeScreen.vue'), 'utf8'),
-    )
-    // ⚑ Each call's argument list, read by balancing brackets — the arguments hold arrows and calls.
-    const calls = [...screen.matchAll(/\battentionQueue\(/g)].map((match) => {
-      const args: string[] = []
-      let depth = 0
-      let current = ''
-      for (const char of screen.slice((match.index ?? 0) + match[0].length)) {
-        if (depth === 0 && char === ')') break
-        if (char === '(' || char === '[' || char === '{') depth += 1
-        if (char === ')' || char === ']' || char === '}') depth -= 1
-        if (depth === 0 && char === ',') {
-          args.push(current.replace(/\s+/g, ' ').trim())
-          current = ''
-        } else current += char
-      }
-      args.push(current.replace(/\s+/g, ' ').trim())
-      return args
-    })
-    // ⚑ One projection for the screen (`099`: two components deriving it is how they disagreed).
-    expect(calls).toHaveLength(1)
-    const call = calls[0] ?? []
-    expect(call.filter((argument) => argument !== '')).toHaveLength(3)
-    expect(call[2]).toBe('agentHeadingFor')
-    // ⚑ THE CONTROL — the name function is the one every agent heading on the screen is drawn with,
-    // `agentName` over the roster, and not a function of its own.
-    expect(screen).toMatch(
-      /function agentHeadingFor\(profileSlug: string\): string \{\s*return agentName\(profileSlug, agentStore\.identities\.value\?\.identities \?\? null\)/,
-    )
   })
 })

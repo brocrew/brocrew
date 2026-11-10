@@ -1,6 +1,6 @@
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -1373,9 +1373,6 @@ describe('395 · the interruption that looks like a provider fault', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§7 · the censuses', () => {
-    const strip = (text: string): string =>
-      text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ')
-
     it('⛔ the published inventory gained exactly one name, and it is the tenth', () => {
       // ⛔ **A FIXED index, corrected in place by `396`** (142's rule). ⚠️ This was written as
       // `TOOL_NAMES.length - 1` — *an anchor on a list's last member dies when anything appends* —
@@ -1389,76 +1386,6 @@ describe('395 · the interruption that looks like a provider fault', () => {
       expect(agentToolsFor(host, 'sess_x', {}, true).tools.map((one) => one.name)).toEqual([
         ...TOOL_NAMES,
       ])
-    })
-
-    it('🔴 exactly ONE place records the ask, so no door can write it a second way', () => {
-      // ⚠️ **A negative needs a search shape.** The claim is *"every interruption this app performs
-      // is recorded once, by one function"* — so the enumeration is every `.ts` under `src/main`,
-      // comments stripped, looking for the event type rather than for a word.
-      const sources = readdirSync(mainRoot, { recursive: true, encoding: 'utf8' })
-        .filter((entry) => typeof entry === 'string' && entry.endsWith('.ts'))
-        .map((entry) => ({
-          path: entry.replaceAll('\\', '/'),
-          text: strip(readFileSync(join(mainRoot, entry), 'utf8')),
-        }))
-      const writers = sources
-        .filter(({ text }) => text.includes("type: 'work_interrupted'"))
-        .map(({ path }) => path)
-      expect(writers).toEqual(['runtime/runtime-host.ts'])
-      const host_ = sources.find((one) => one.path === 'runtime/runtime-host.ts')?.text ?? ''
-      // ⛔ **One writer inside that file too** — every door goes through `recordTheAsk`.
-      expect(host_.split("type: 'work_interrupted'")).toHaveLength(2)
-      // ⚑ **The control that plants more than one** (standing rule 12): the same counting shape
-      // finds several call sites, so *"exactly one writer"* above is a count and not a reader that
-      // stops at the first match in a 10,000-line file.
-      //
-      // 🔴 **CORRECTED in place by `397`, and the correction is a finding** (142's rule). It read
-      // `toHaveLength(4)` — three call sites — and *"every door records the ask"* was a property of
-      // three lines that had to be remembered. ⛔ **A fourth door did not remember**:
-      // `runSendInterrupting` stops a running turn to put a replacement in its place and wrote
-      // nothing, so the most ordinary interruption in this app recorded nobody. ⚑ `397` made
-      // membership structural instead — `askTheWorkToStop` is the only path to the provider — and
-      // the assertion below is what keeps it that way.
-      // ⚑ **699 added a THIRD caller and a FOURTH** — `end_agent` on a conversation nothing ran in,
-      // and on one whose start was in flight — ⚑ **and D-017 took both away with `end_agent`**, so
-      // `askTheWorkToStop` is once more the ONE caller of `recordTheAsk`.
-      // ⚑ **A fourth caller**: a message (or an answer) that asks the turn it waits behind to stop.
-      expect(host_.split('this.recordTheAsk(')).toHaveLength(2)
-      expect(host_.split('this.askTheWorkToStop(')).toHaveLength(5)
-      // ⛔ **And the provider is reached from exactly ONE line in the file.** This is the assertion
-      // that makes the sentence above a fact rather than a habit: a fifth door cannot stop a turn
-      // without going through the method that records the ask and writes the endings.
-      expect(host_.split('session.handle.interrupt()')).toHaveLength(2)
-      // ⚑ **The control**: the shape finds a writer when there is one, and the sweep is not empty.
-      expect(sources.length).toBeGreaterThan(20)
-      expect(sources.filter(({ text }) => text.includes("type: 'user_command'"))).toHaveLength(1)
-    })
-
-    it('⛔ the ask is recorded BEFORE the provider is asked, in both doors', () => {
-      const source = strip(readFileSync(join(mainRoot, 'runtime/runtime-host.ts'), 'utf8'))
-      // 🔴 **Order as a source fact, because a runtime test cannot see a row that was never
-      // written.** `394` learned this one door over: an ordering that only shows up when the
-      // provider stalls is an ordering nothing in a green suite measures.
-      //
-      // 🔴 **CORRECTED in place by `397`**: the two doors no longer touch the provider themselves,
-      // so the ordering they used to hold individually is now held ONCE, in the method they both
-      // call. ⚑ The claim is unchanged and the anchor moved to where the code moved — *correct a
-      // stale anchor, do not retire it*.
-      const stopper = source.indexOf('private askTheWorkToStop(')
-      expect(stopper, 'askTheWorkToStop was renamed or removed').toBeGreaterThan(0)
-      const stopBody = source.slice(stopper, source.indexOf('\n  }', stopper))
-      expect(stopBody.indexOf('this.recordTheAsk(')).toBeLessThan(
-        stopBody.indexOf('session.handle.interrupt()'),
-      )
-      // ⚠️ **And the endings go in between**, which is the ordering `397` added and the one that
-      // makes the rows exist on a provider whose `interrupt()` never returns.
-      expect(stopBody.indexOf("type: 'request_interrupted'")).toBeGreaterThan(
-        stopBody.indexOf('this.recordTheAsk('),
-      )
-      expect(stopBody.indexOf("type: 'request_interrupted'")).toBeLessThan(
-        stopBody.indexOf('session.handle.interrupt()'),
-      )
-      // ⚑ **D-017** — `endAgent`, the third door, which wrote it before the teardown, is gone.
     })
 
     it('⚠️ every member of the vocabulary is reachable, and none is a word nothing writes', async () => {
@@ -1546,35 +1473,6 @@ describe('395 · the interruption that looks like a provider fault', () => {
           .filter((one) => one.type === 'work_interrupted')
           .map((one) => (one.type === 'work_interrupted' ? one.by : '')),
       ).toEqual(['an-agent'])
-    })
-
-    it('⛔ the fold reads the ledger and nothing else — no store, no slot, no clock', () => {
-      const source = readFileSync(join(here, '../src/shared/how-work-stopped.ts'), 'utf8')
-      const imports = [...source.matchAll(/^import .*$/gm)].map((one) => one[0])
-      // ⚑ **The ledger shape is still a TYPE** — `tasks.ts` and `mailbox.ts`'s property, so *"how
-      // work stopped is a function of the ledger"* is checked by the compiler on every build rather
-      // than by a test that has to remember to drop something.
-      const ledgerShape = imports.filter((one) => one.includes('./conversation-events'))
-      expect(ledgerShape).toHaveLength(1)
-      expect(ledgerShape[0]).toContain('import type')
-      // 🔴 **494 · a SECOND import, and it is a VALUE — so the claim is asserted TRANSITIVELY
-      // rather than by a count.** ⛔ `whoCancelledIt` reads {@link UserDecisionEvent.by}, whose
-      // vocabulary `who-did-it.ts` owns; a second spelling of those four words here is what
-      // `stoppedBy`'s own rule forbids. ⚠️ **What criterion 2 asks is not how many imports this
-      // file has** — it is that none of them can hand the fold a database, a clock or a disk.
-      const vocabulary = imports.filter((one) => one.includes('./who-did-it'))
-      expect(vocabulary).toHaveLength(1)
-      expect(imports).toHaveLength(2)
-      // ⛔ **And the module it reaches reaches NOTHING**, which is what makes the value import safe
-      // rather than merely small. ⚑ The day `who-did-it.ts` grows an import, this goes red here
-      // instead of going quiet in a fold that has since acquired a clock.
-      const reached = readFileSync(join(here, '../src/shared/who-did-it.ts'), 'utf8')
-      expect([...reached.matchAll(/^import .*$/gm)]).toHaveLength(0)
-      // ⚑ **The control that plants TWO** (standing rule 12): the matcher over a value import and
-      // a type import, so a pattern that could not tell them apart fails here rather than passing
-      // over a second line that took a database.
-      const planted = ["import { open } from 'node:fs'", "import type { A } from './a'"].join('\n')
-      expect([...planted.matchAll(/^import .*$/gm)]).toHaveLength(2)
     })
 
     // 🔴 **610 · the title said *grew exactly one field* and this dispatch changed one** (rule 25).

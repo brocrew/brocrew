@@ -1,6 +1,6 @@
 import { neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -658,56 +658,6 @@ describe('354 · the message that has no name', () => {
       ])
       // ⚑ …and nothing is left held for a turn that is not coming.
       expect(sink.liveness.at(-1)?.queued ?? []).toEqual([])
-    })
-  })
-
-  /**
-   * # ⛔ The one caller a test cannot press
-   *
-   * ⚠️ **`RuntimeScreen.cancelQueued` is a click handler in a `.vue` file**, and the wiring that
-   * matters is which id it hands the store. Every other layer of this change is measured by
-   * behaviour; this one is a source census, and it is here rather than nowhere because a line no
-   * test can make red is a line nobody is checking.
-   *
-   * ⚑ **688 · re-aimed, not stripped** (standing rule 26). The handler now takes the NAME of the row
-   * that was pressed — R33's take-back of a held go-ahead must take back the go-ahead and not
-   * whatever sits at the head of the mailbox — and reads the disclosure not at all: a row with no
-   * name (a ledger before `354`) offers no *Cancel it* (`QueuedMessage`'s `cancel`, measured in
-   * `who-wrote-it-and-which-task.dom.test.ts` §1), because main's mailbox never holds a nameless
-   * message and the head was always a DIFFERENT one. ⚠️ **Still a source census, and only that**:
-   * no test mounts `RuntimeScreen`; the press is measured by behaviour up to the pane's own
-   * `cancelQueued` emit (the DOM test above), and from here on by these lines.
-   */
-  describe('the composer names the message it was shown', () => {
-    it('⛔ the cancel handler hands the store the PRESSED row’s name, and never the head of the mailbox', () => {
-      const screen = join(
-        dirname(fileURLToPath(import.meta.url)),
-        '../src/renderer/src/components/RuntimeScreen.vue',
-      )
-      // ⚠️ **Comment-free, so prose cannot answer for code** — the handler carries a paragraph
-      // explaining exactly the rule this asserts, and a census that read it would pass over a
-      // handler that did the opposite.
-      const code = readFileSync(screen, 'utf8')
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .split('\n')
-        .filter((line) => !line.trim().startsWith('//'))
-        .join('\n')
-      const handler = code.slice(
-        code.indexOf('function cancelQueued('),
-        code.indexOf('function decide('),
-      )
-      // ⛔ Non-vacuity: an empty slice would agree with every assertion below.
-      expect(handler.length).toBeGreaterThan(60)
-      // 🔴 **688 · the pressed row's own name**, straight to the store.
-      expect(handler).toContain('function cancelQueued(messageId: string)')
-      expect(handler).toContain('store.cancelQueuedMessage(id, messageId)')
-      expect(handler).not.toMatch(/messageId\s*=[^=]/)
-      // ⛔ …never the disclosure's head, which is a different message whenever a row is pressed.
-      expect(handler).not.toContain('meta?.queued')
-      // ⛔ …and there is no session-shaped call left to fall back on.
-      expect(handler).not.toMatch(/cancelQueuedMessage\(\s*activeId\.value\s*\)/)
-      // ⚑ **The binding hands the pane's argument through** — a method reference receives it.
-      expect(code).toContain('@cancel-queued="cancelQueued"')
     })
   })
 

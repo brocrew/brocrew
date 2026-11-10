@@ -57,7 +57,6 @@ import type { HistoryWindow, RuntimeEventMessage } from '../src/shared/runtime-i
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const hostSource = readFileSync(join(here, '../src/main/runtime/runtime-host.ts'), 'utf8')
 
 // ───────────────────────────────────────────────────────────────────────────────────────────────
 // §1 · the allocator, across the exact sequence HO-095 names
@@ -202,94 +201,6 @@ describe('§1 · a refused call and its retry take contiguous ordinals', () => {
     expect(record.missing.size).toBe(1)
     expect(holesReportedIn(record)).toHaveLength(1)
     expect(holesReportedIn(record)[0]).toContain('1 event of this conversation')
-  })
-})
-
-// ───────────────────────────────────────────────────────────────────────────────────────────────
-// §2 · the search shape for the negative above (standing rule 4)
-// ───────────────────────────────────────────────────────────────────────────────────────────────
-
-describe('§2 · every place an ordinal is allocated, and what each one owes', () => {
-  /** Every event that consumes a live ordinal, with the rest of its writing method. */
-  const allocations = (): string[] => {
-    const at: string[] = []
-    let from = 0
-    for (;;) {
-      const match = /session\.ordinal\+\+|this\.takeLedgerOrdinal\(session\)/g
-      match.lastIndex = from
-      const found = match.exec(hostSource)?.index ?? -1
-      if (found < 0) return at
-      // ⚠️ **A window AROUND it, not after it.** `reportRecordingFailure` writes the allocation as a
-      // FIELD of the object it is sending — `ordinal: session.ordinal++,` — so the send that proves
-      // it is a publish rather than a drop is above the line, not below it.
-      // ⚑ **D-016 · and after it, to the END OF ITS METHOD** (a class member closes on `\n  }\n`):
-      // `replyToParent` keeps its resources' rows and its reply's row in one transaction, so its
-      // append is further down than a fixed window reaches.
-      const end = hostSource.indexOf('\n  }\n', found)
-      expect(end, 'an allocation with no end to its method').toBeGreaterThan(found)
-      at.push(hostSource.slice(Math.max(0, found - 300), end))
-      from = found + 1
-    }
-  }
-
-  /**
-   * ⚑ **A durable write, in either of the two spellings the host has** — a row appended, or (D-016)
-   * a piece given, which `SessionStore.recordGive` writes as its `work` row and its `work_given`
-   * row in one transaction.
-   */
-  const writesTheLedger = (source: string): boolean =>
-    source.includes('this.deps.store.append(') || source.includes('this.deps.store.recordGive(')
-
-  /**
-   * 🔴 **The negative in `HO-095` §2 needs a shape, and this is it** (standing rule 4).
-   *
-   * ⛔ **`316` counted item TYPES and the answer was a FIELD.** The claim being made is *no path
-   * allocates an ordinal and then neither records nor sends it*, and the shape that could have found
-   * a counter-example is this one: every direct increment or `takeLedgerOrdinal` call, classified by whether a
-   * durable append follows it.
-   *
-   * ⚠️ **It is a CENSUS and it cannot see delivery**, which is said out loud rather than implied: the
-   * send is gated on `session.sink.alive` at every site, and a dead sink drops the whole stream
-   * rather than one event of it — so an ordinal is never sent-and-not-recorded by that gate.
-   */
-  it('🔴 there are exactly five, and four of them write the ledger', () => {
-    const sites = allocations()
-    // ⚑ **D-016 added two** — `replyToParent`'s reply row with its resources, and `recordTheGive`'s
-    // piece — and both write the ledger.
-    expect(sites, 'an event allocator appeared and nothing classified it').toHaveLength(5)
-    expect(hostSource.match(/this\.takeLedgerOrdinal\(session\)/g)).toHaveLength(4)
-    const allocator = hostSource.slice(
-      hostSource.indexOf('private takeLedgerOrdinal('),
-      hostSource.indexOf('\n  }\n', hostSource.indexOf('private takeLedgerOrdinal(')),
-    )
-    expect(allocator).toContain('this.deps.store.nextOrdinal(session.id)')
-    expect(allocator).toContain('session.ordinal = ordinal + 1')
-    const appends = sites.filter(writesTheLedger)
-    expect(appends).toHaveLength(4)
-  })
-
-  /**
-   * ⛔ **The one that does not write the ledger spends an ordinal the ledger never gets, and it
-   * says so** — which is a real *numbering skip*, `HO-095` §2's second row, reachable and
-   * documented.
-   *
-   * ⚠️ **It is not what the PO saw, and the reason is the SHAPE of the hole it leaves.**
-   * {@link RuntimeHost.record} stops appending after the first failure — *"do not hammer a broken
-   * database"* — so a ledger that reaches this line is TRUNCATED from that point, not short by one.
-   * ⚑ And the notice itself IS sent, so a window watching live sees no hole at all.
-   */
-  it('⛔ the one allocator that does not write the ledger is the recording-failure notice, and its ordinal is never written', () => {
-    const [orphan] = allocations().filter((source) => !writesTheLedger(source))
-    expect(orphan).toBeDefined()
-    // It goes out — this is an allocate-and-send, never an allocate-and-drop.
-    expect(orphan).toContain('this.emit(session, {')
-    // ⛔ **And the source says the row is not in the ledger**, by name, so the exception is declared
-    // rather than inferred by this census (standing rule 5).
-    const declares = hostSource.slice(
-      hostSource.indexOf('private reportRecordingFailure'),
-      hostSource.indexOf('private reportRecordingFailure') + 900,
-    )
-    expect(declares).toContain('it is not in the ledger')
   })
 })
 

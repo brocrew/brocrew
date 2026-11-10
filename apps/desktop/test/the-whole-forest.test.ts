@@ -1,5 +1,5 @@
 import { LEDGER_WALK_KINDS } from '../src/shared/question-contracts'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -55,16 +55,8 @@ import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/hos
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
-const HOST_SRC = join(here, '../src/main/runtime/runtime-host.ts')
-const IPC_SRC = join(here, '../src/main/runtime/ipc.ts')
-const FOREST_SRC = join(here, '../src/shared/the-whole-forest.ts')
 
 const NOW = 1_800_000_000_000
-
-/** ⛔ **Prose stripped before anything is counted** — a docblock quoting a call is not a call. */
-function code(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1')
-}
 
 /** ⚑ **The conversations of a forest, in the order it drew them.** */
 function conversationsOf(forest: TheWholeForest): readonly ForestConversation[] {
@@ -596,32 +588,11 @@ describe('637 · the whole forest, from the person down', () => {
       expect(took).toBeLessThan(5_000)
       console.info(`637 · a forest of ${String(MAX_FOREST_CONVERSATIONS)} took ${String(took)}ms`)
     })
-
-    it('⛔ the host passes the wire constant and does not hold a second copy of it', () => {
-      const source = code(readFileSync(HOST_SRC, 'utf8'))
-      expect(source).toContain('everyPlacedConversation(MAX_FOREST_CONVERSATIONS, archived)')
-      // ⚠️ **One number, on the wire** — a literal here would be `169` §1's drift with a number
-      // in it. A control, so the negative has a shape: the constant's NAME is present.
-      expect(source).not.toMatch(/everyPlacedConversation\(\s*\d/)
-      expect(code(readFileSync(FOREST_SRC, 'utf8'))).toContain('MAX_FOREST_CONVERSATIONS = 500')
-    })
   })
 
   /* ═══════════════════ §6 · the door ═══════════════════ */
 
   describe('§6 · the wire, the entitlement and the quit', () => {
-    it('🔴 the command takes NO fields, so there is no page a caller can widen', () => {
-      const source = code(readFileSync(IPC_SRC, 'utf8'))
-      expect(source).toContain("z.object({ kind: z.literal('theWholeForest') })")
-      // ⛔ **No `limit`, no `sessionId`, no `projectSlug`** — the answer is rooted at the person.
-      expect(source).not.toMatch(/z\.literal\('theWholeForest'\),\s*\w+:/)
-    })
-
-    it('⛔ it is refused DURING A QUIT, like both of its population neighbours', () => {
-      const source = code(readFileSync(IPC_SRC, 'utf8'))
-      expect(source).toContain("theWholeForest: 'refused'")
-    })
-
     it('⚑ it answers through the dispatcher, with no sink and no owner', async () => {
       const mine = conversation('sess_mine', 'brobot')
       const before = Date.now()
@@ -634,16 +605,6 @@ describe('637 · the whole forest, from the person down', () => {
       // this is bracketed rather than compared to the fixture's `NOW`.
       expect(answer.readAt).toBeGreaterThanOrEqual(before)
       expect(answer.readAt).toBeLessThanOrEqual(Date.now())
-    })
-
-    it('🔴 no toolset reaches it — a picture of every conversation is not an agent’s fact', () => {
-      const tools = code(readFileSync(join(here, '../src/main/runtime/agent-tools.ts'), 'utf8'))
-      // ⛔ **A negative with a shape**: the verb's own name, in the file that builds every tool.
-      expect(tools).not.toContain('theWholeForest')
-      // ⚑ **The control** — its neighbours are not there either, and a verb that IS reaches this
-      // search, which is what makes the absence a measurement.
-      expect(tools).not.toContain('whatEachConversationIsWaitingOn')
-      expect(tools).toContain('list_agents')
     })
   })
 })

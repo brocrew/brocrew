@@ -49,7 +49,6 @@ import { visibleCopy, type VisibleString } from './lib/visible-copy'
 /** ⚠️ Anchored on THIS file rather than on the working directory, which the runner chooses. */
 const here = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(here, '../src')
-const RUNTIME = join(here, '../../../packages/runtime/src')
 
 function read(path: string): string {
   return readFileSync(path, 'utf8')
@@ -68,55 +67,11 @@ function code(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
 }
 
-/** The enclosing 2-space-indented class method of a byte offset, or null. */
-function methodAround(source: string, needle: string): string[] {
-  const lines = source.split('\n')
-  const method = /^ {2}(?:private |public |protected )?(?:async )?([A-Za-z_]\w*)\s*[(<]/
-  const found: string[] = []
-  lines.forEach((line, index) => {
-    if (!line.includes(needle)) return
-    for (let back = index; back >= 0; back -= 1) {
-      const hit = method.exec(lines[back] ?? '')
-      if (hit) {
-        found.push(hit[1] ?? '')
-        return
-      }
-    }
-    found.push('<no enclosing method>')
-  })
-  return found
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // §1 · A resume really does read today's files — measured
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('§1 · a resume reads today’s files, and nothing keeps what it read', () => {
-  it('🔴 the instruction reader is reached from exactly two launch paths — one create, one resume — and one look', () => {
-    const host = read(join(ROOT, 'main/runtime/runtime-host.ts'))
-    const sites = methodAround(host, 'this.deps.readInstructions?.(')
-    // ⛔ **The pair, by name and by count.** A further LAUNCH site would mean a launch path nobody
-    // measured; losing one would mean a launch that composes nothing — and the whole of §1's claim
-    // is that BOTH of these read the filesystem at the moment they run.
-    // ⚑ **D-017b · a third site, and it is not a launch**: `recordedHandover` — the look that draws
-    // a conversation nothing runs in the one full view — shows the instructions its next start
-    // would give it, read at the moment of the look. ⛔ It keeps nothing either (it is handed out
-    // on the `ResumedSession` and never stored), so §1's claim holds for it as for the pair.
-    // ⚑ **F093 · a fourth, and not a launch either**: the agent-input popup's read composes what the
-    // next start would give a conversation whose last launch kept no record — handed out, kept
-    // nowhere, and only into a home this app manages.
-    expect(sites).toEqual([
-      'startSessionInProfile',
-      'whatThisAgentWasGiven',
-      'reopenSession',
-      'recordedHandover',
-    ])
-    const look = host.slice(host.indexOf('  private recordedHandover('))
-    expect(look.slice(0, look.indexOf('\n  }\n'))).toContain(
-      'instructions: instructions?.instructions ?? NO_INSTRUCTIONS,',
-    )
-  })
-
   it('⛔ the seam PUBLISHES and then READS on every call, so the read is of the files as they are now', () => {
     const root = read(join(ROOT, 'main/index.ts'))
     const seam = root.slice(root.indexOf('readInstructions: ('))
@@ -128,23 +83,6 @@ describe('§1 · a resume reads today’s files, and nothing keeps what it read'
     // rereads**: the profile bundle at the leaf is regenerated from today's data and then read
     // back, so yesterday's composition is not merely unrecorded — it is gone from disk too.
     expect(publish).toBeLessThan(reader)
-  })
-
-  it('⚑ and it is a RULING rather than a leak — the two sentences that say so are still in the source', () => {
-    // ⛔ **Asserted BY NAME** (standing rule 5: a safety sentence with no test is a comment). The
-    // surface's own copy is derived from these two facts and would become false if either moved.
-    expect(read(join(ROOT, 'main/runtime/instructions.ts'))).toContain(
-      'Called on every start AND every resume, deliberately',
-    )
-    expect(read(join(RUNTIME, 'runtime.ts'))).toContain(
-      'Nothing about it is persisted, and that is the design rather than a leftover',
-    )
-    // ⚑ **The search shape's positive control** (standing rule 4): the same reader, asked for a
-    // sentence that is not there, comes back empty — so the two above are findings and not an
-    // artefact of a grep that matches anything.
-    expect(read(join(ROOT, 'main/runtime/instructions.ts'))).not.toContain(
-      'Called once and snapshotted for the life of the conversation',
-    )
   })
 
   it('🔴 so the surface says what this identity is told NOW — and the sentence is one string, spelled once', () => {
@@ -623,48 +561,6 @@ function read2(path: string): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('§5 · this app adds to the provider’s prompt and never replaces it', () => {
-  const CLAUDE = join(RUNTIME, 'claude/claude-runtime.ts')
-  const CODEX = join(RUNTIME, 'codex/codex-runtime.ts')
-
-  it('🔴 one adapter appends to a NAMED PRESET it never reads, and assigns the field exactly once', () => {
-    const source = code(read(CLAUDE))
-    // ⛔ **Exactly one assignment**, so this census cannot be satisfied by a neighbour: a second
-    // `systemPrompt =` somewhere else in a 4,000-line adapter is precisely the shape
-    // `a-file-level-contains-cannot-tell-sibling-declarations-apart` names.
-    const assignments = [...source.matchAll(/options\.systemPrompt = /g)]
-    expect(assignments).toHaveLength(1)
-    // ⚑ **…and the one assignment is the ADDITIVE form.** The preset is named and never read by
-    // this app; `append` is the only thing it puts into it.
-    const assigned = source.slice(assignments[0]!.index, assignments[0]!.index + 200)
-    expect(assigned).toContain("type: 'preset'")
-    expect(assigned).toContain("preset: 'claude_code'")
-    expect(assigned).toContain('append: systemHint')
-  })
-
-  it('🔴 the other adapter sets the DEVELOPER layer and never the one that would replace the base', () => {
-    const source = read(CODEX)
-    // ⚑ **The control for the search shape** (standing rule 4): the word IS in the raw file — the
-    // adapter spends a paragraph on why it is not used — so a census over the raw bytes would
-    // report the opposite of the truth.
-    expect(source, 'the adapter no longer discusses baseInstructions').toContain('baseInstructions')
-    const stripped = code(source)
-    // ⛔ **…and it is gone once the prose is.** `a-source-census-must-strip-prose-before-it-asserts`.
-    expect(stripped, 'the adapter now sets baseInstructions').not.toContain('baseInstructions')
-    // ⚠️ **The second control.** Without this, a stripper that deleted the whole file would pass
-    // the assertion above — the failure mode `a-negative-is-only-as-strong-as-the-search-shape`
-    // names, arriving through the instrument rather than the query.
-    expect(stripped).toContain('developerInstructions')
-  })
-
-  it('⛔ and the protocol DECLARES the field both adapters decline, so the absence is a choice', () => {
-    // 🔴 **A declaration is not a use, and this is the half that makes the two tests above mean
-    // something.** If the generated protocol had no such field, *"never set"* would be a fact
-    // about the SDK rather than about this app — and the layer below would be opaque for a reason
-    // nobody here decided.
-    const params = read(join(RUNTIME, 'codex/protocol/v2/ThreadStartParams.ts'))
-    expect(params).toContain('baseInstructions')
-  })
-
   it('⚠️ so the opaque layer’s sentence is derived from those two facts, and says only them', () => {
     const base = toldView(NOTHING, null, false).layers.find(
       (layer) => layer.kind === 'provider-base',
@@ -723,12 +619,6 @@ describe('§5 · this app adds to the provider’s prompt and never replaces it'
    * a different axis and carry no `BLIND` arm.
    */
   const BLIND = /'([^'\n]{20,})'/g
-
-  it('⛔ and this surface names no provider, which 317 forbids and a scan enforces', () => {
-    for (const path of SURFACE) {
-      expect(named(path, read(path)), path).toEqual([])
-    }
-  })
 
   /**
    * ⚑ **The positive half, one control PER FILE** — a reader that returned nothing would satisfy

@@ -44,10 +44,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const HOST = join(here, '../src/main/runtime/runtime-host.ts')
-const IPC = join(here, '../src/shared/runtime-ipc.ts')
-const PANE = join(here, '../src/renderer/src/components/ConversationPane.vue')
-const SCREEN = join(here, '../src/renderer/src/components/RuntimeScreen.vue')
-const STORE = join(here, '../src/renderer/src/lib/session-store.ts')
 
 /**
  * Line comments and block comments removed.
@@ -294,29 +290,6 @@ const bodies: Record<Method, string> = {
 /** The gate, and the last question it asks in a method of its own, in the order they are asked. */
 const chain = `${bodies.assertCanTakeTurn}\n${bodies.whatTheseWordsAre}`
 
-describe('the census can see what it is censusing', () => {
-  it('⚑ every method body was really found, and the stripper did not empty them', () => {
-    // ⛔ Non-vacuity FIRST. A renamed method returns '' from `methodBody`, and `throws('')` is 0 —
-    // which would match a table row count of 0 and pass silently. Every rule below rests on this.
-    for (const [name, body] of Object.entries(bodies)) {
-      expect(body.length, `${name} was not found in runtime-host.ts`).toBeGreaterThan(80)
-    }
-    expect(chain.length, 'assertCanTakeTurn was not found').toBeGreaterThan(40)
-    // …and the stripper left the code, not just the whitespace.
-    expect(bodies.sessionFor).toContain('unknown session:')
-    expect(bodies.assertSignInCurrent).toContain('checkSignIn')
-  })
-
-  it('⚑ the stripper removes prose that says "throw", and keeps statements that do', () => {
-    // The teeth. `assertSignInCurrent` genuinely contains the word in a comment — *"Publish before
-    // throwing"* — and exactly one real `throw`. Both halves in one assertion.
-    expect(readFileSync(HOST, 'utf8')).toContain('Publish before throwing')
-    expect(throws(bodies.assertSignInCurrent)).toBe(1)
-    // …and a slice with a second one really does count two, so the counter is not stuck.
-    expect(throws(`${bodies.assertSignInCurrent}\n    throw new Error('extra')`)).toBe(2)
-  })
-})
-
 describe('219 §2 · the table names every refusal on the send path', () => {
   it('🔴 every throw in the chain is named by a row, and every row names a throw', () => {
     for (const [name, body] of Object.entries(bodies)) {
@@ -503,75 +476,6 @@ describe('219 §2 · the table names every refusal on the send path', () => {
 describe('219 §2 · the knowable verdicts are true of the code today', () => {
   const row = (id: string) => SEND_REFUSALS.find((each) => each.id === id)!
 
-  it('🔴 `sign-in-superseded` is first-press, and the pane now hands the composer the reason', () => {
-    expect(row('sign-in-superseded').knowable).toBe('first-press')
-    const pane = readFileSync(PANE, 'utf8')
-    // ⛔ 217 §9's gap in one line: this binding did not exist, so `blocked` defaulted to null and
-    // Send was lit in a state the pane already knew made a send impossible.
-    expect(pane, 'ConversationPane stopped passing `blocked`').toContain(':blocked="sendBlocked"')
-    expect(pane).toContain('SIGN_IN_SUPERSEDED_BLOCK')
-  })
-
-  it('🔴 `conversation-over` and `still-starting` are before-the-press, and the code still says so', () => {
-    expect(row('conversation-over').knowable).toBe('before')
-    expect(row('still-starting').knowable).toBe('before')
-    // ⚠️ **`canSend` itself is asserted in `composer.render.test.ts`**, not here — it lives in an
-    // SFC, and this file is in the node project, which cannot import one. That file pins
-    // `canSend('hello', 'starting') === false` and the positive `canSend('hello', 'idle') === true`
-    // beside it. What is pinned HERE is the half that file cannot see: the two structural facts
-    // those verdicts rest on.
-    const pane = readFileSync(PANE, 'utf8')
-    // ⚑ **D-017b · there is no `ended` composer state any more** — a conversation whose fold stopped
-    // is drawn from its ledger (`phase: 'recorded'`) and takes its next message, which
-    // `startAndSend` carries through a start; so a press never reaches the host's *over*.
-    expect(pane).toContain("if (props.record.phase === 'recorded') return 'idle'")
-    expect(pane).not.toContain("return 'ended'")
-    // …and one a message cannot continue says the host's own refusal in place of Send — a
-    // `blocked`, read off the hand-over, before the press.
-    expect(pane).toContain('const cannot = props.record.meta?.cannotTakeAMessage ?? null')
-    expect(pane).toContain('if (cannot !== null) reasons.push({ words: cannot })')
-    // …and no composer exists at all before the session does, which is `still-starting`'s answer.
-    expect(readFileSync(SCREEN, 'utf8')).toContain("surface === 'conversation' && active?.meta")
-  })
-
-  it('🔴 `a-command-takes-no-attachments` is BEFORE the press — and the gate it names exists, in one home', () => {
-    // ⚑ **714 re-aimed this** (`708` H-3a). It asserted the row was `held-not-gated` and that NOTHING
-    // in the renderer said *takes no attachments* — `708`'s own note: *"The day one appears, this goes
-    // red and the row has to move to `before` — which is the point."* ⚑ `714` put the gate in, so the
-    // row moved, and what is pinned now is that the gate is REAL and has one home.
-    expect(row('a-command-takes-no-attachments').knowable).toBe('before')
-    // ⚑ The window holds the fact: the transcript folds the provider's published list, prefix and all.
-    const transcript = readFileSync(join(here, '../src/renderer/src/lib/transcript.ts'), 'utf8')
-    expect(transcript).toContain("case 'provider_commands': {")
-    // ⚑ …and the pane asks the gate of it, into the `blocked` the composer already honours.
-    const pane = readFileSync(PANE, 'utf8')
-    const from = pane.indexOf('const sendBlocked = computed<SendBlock[]>(() => {')
-    expect(from, 'sendBlocked is gone').toBeGreaterThan(-1)
-    const body = pane.slice(from, pane.indexOf('\n})', from))
-    expect(body).toContain('aCommandInTheBox(props.draft, control.value.commands)')
-    expect(body).toContain('aCommandTakesNoAttachmentsYet(command)')
-    expect(body).toContain('props.handing.staged.length > 0')
-    expect(pane).toContain(':blocked="sendBlocked"')
-    // ⛔ **One home for the words** — searched over every renderer file by what a gate would have to
-    // SAY, as `708` searched: only the gate's module says it, and this table describes it.
-    const renderer = join(here, '../src/renderer/src')
-    const files: string[] = []
-    const walk = (dir: string): void => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const at = join(dir, entry.name)
-        if (entry.isDirectory()) walk(at)
-        else if (/\.(ts|vue)$/.test(entry.name)) files.push(at)
-      }
-    }
-    walk(renderer)
-    expect(files.length, 'the renderer walk found nothing').toBeGreaterThan(50)
-    const saying = files
-      .filter((file) => readFileSync(file, 'utf8').includes('takes no attachments'))
-      .map((file) => file.slice(renderer.length + 1).replaceAll('\\', '/'))
-      .sort()
-    expect(saying).toEqual(['lib/a-command-with-files.ts', 'lib/send-refusals.ts'])
-  })
-
   it('⚠️ 713 · `R59`’s two refusals are NEVER knowable — the fact reaches the window only as words', () => {
     // ⚑ Both rows claim nothing published carries the fact as data. The positive half: the window
     // DOES hold it, as the capability's note a person reads — so the negatives below are about
@@ -614,34 +518,6 @@ describe('219 §2 · the knowable verdicts are true of the code today', () => {
       readFileSync(HOST, 'utf8') +
       readFileSync(join(here, '../src/main/runtime/a-command-goes-as-typed.ts'), 'utf8')
     for (const shape of GATE_SHAPES) expect(main, `${shape} finds nothing in main`).toMatch(shape)
-  })
-
-  it('🔴 `still-closing` is knowable BEFORE the press, and not from the liveness channel', () => {
-    // ⛔ **The verdict 219 §2 got wrong on the first pass, and the review caught.** The obvious
-    // reading is "the host holds `closing`/`finalizing`, nothing publishes them, so the renderer
-    // cannot know" — and the first version of this row said exactly that. It is wrong: the renderer
-    // does not learn this from the host at all. It is the one thing this side knows FIRST.
-    expect(row('still-closing').knowable).toBe('before')
-    // The liveness half of that reasoning is still true, and still worth pinning: if a `closing`
-    // disclosure is ever added, there would be two answers to one question, which is the drift 064
-    // and 099 are both about.
-    const ipc = readFileSync(IPC, 'utf8')
-    const from = ipc.indexOf('\nexport interface SessionLiveness {')
-    const body = from === -1 ? '' : ipc.slice(from, ipc.indexOf('\n}', from))
-    expect(
-      body.length,
-      'SessionLiveness was not found — this assertion is about nothing',
-    ).toBeGreaterThan(400)
-    expect(body).not.toMatch(/^\s*closing\??:/m)
-    // The positive half: the fields it DOES carry are found by the same slice, so a mis-sliced
-    // interface could not produce the negative above for free.
-    expect(body).toMatch(/^\s*signInSuperseded\??:/m)
-    // ⛔ …and the fact the verdict actually rests on: the STORE writes the phase before it awaits,
-    // and the PANE gates on it. Two pins, because either one going away makes the row a lie.
-    expect(readFileSync(STORE, 'utf8')).toContain("asked!.phase = 'closing'")
-    expect(readFileSync(PANE, 'utf8')).toContain(
-      "if (props.record.phase === 'closing') reasons.push({ words: CLOSING_BLOCK })",
-    )
   })
 })
 

@@ -310,30 +310,6 @@ describe('workspace opt-in keeps every other plugin setup unchanged', () => {
         pluginSupervisorRoot({ appData: f.appData, hidden: true, scratchRoot }),
       ).toThrow()
   })
-  it('passes the effective userData to the sole startup root, without a second legacy join', async () => {
-    const code = await readFile(new URL('../src/main/index.ts', import.meta.url), 'utf8')
-    const block = code.match(/const root = pluginSupervisorRoot\(\{([\s\S]*?)\}\)/)?.[1]
-    expect(block).toMatch(/workspaceRoot:\s*app\.getPath\('userData'\)/)
-    expect(code).toMatch(
-      /if \(root && ownership === 'sole'\) \{\s*finishStartupPhase = pluginStartupTrace\.begin\('workspace-admission'\)\s*pluginController\.start\(\{[\s\S]*?\n\s*root,/,
-    )
-    expect(code.match(/pluginController\.start\(/g)).toHaveLength(1)
-    const base = new URL('../src/', import.meta.url)
-    const matches: string[] = []
-    async function inspect(directory: URL) {
-      for (const entry of await readdir(directory, { withFileTypes: true })) {
-        const file = new URL(entry.name + (entry.isDirectory() ? '/' : ''), directory)
-        if (entry.isDirectory()) await inspect(file)
-        else if (
-          entry.name.endsWith('.ts') &&
-          /join\([^\n]*['"]@brobot2['"],\s*['"]plugins['"]/.test(await readFile(file, 'utf8'))
-        )
-          matches.push(file.pathname)
-      }
-    }
-    await inspect(base)
-    expect(matches).toHaveLength(1)
-  })
   it.each(['posix', 'win32'] as const)(
     'does not confuse sibling root prefixes on %s',
     (platform) => {

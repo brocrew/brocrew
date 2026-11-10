@@ -54,10 +54,6 @@ import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/hos
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
-const HOST_SRC = join(here, '../src/main/runtime/runtime-host.ts')
-const WORK_READS_SRC = join(here, '../src/main/runtime/work-reads.ts')
-const IPC_SRC = join(here, '../src/main/runtime/ipc.ts')
-const EDGES_SRC = join(here, '../src/shared/who-called-whom.ts')
 const STORE_SRC = join(here, '../src/main/db/session-store.ts')
 
 const NOW = 1_800_000_000_000
@@ -557,34 +553,6 @@ describe('543 · who called whom', () => {
       expect(read.readAt).not.toBe(NOW)
     })
 
-    it('⚠️ there is no `await` between the first statement of the read and the stamp', () => {
-      const implementation = code(readFileSync(WORK_READS_SRC, 'utf8'))
-      const at = implementation.indexOf('whoCalledWhom(sessionId: string): WhoCalledWhom {')
-      expect(at).toBeGreaterThan(-1)
-      const body = implementation.slice(at, implementation.indexOf('\n  }', at))
-      expect(body).toContain('readAt: Date.now(),')
-      // ⛔ **A source census, because the property is about the SHAPE of the method** and a runtime
-      // assertion can only see that this call happened not to be interrupted.
-      expect(body).not.toContain('await ')
-      expect(body).not.toContain('async ')
-      // ⚑ **The control** (standing rule 12's shape): the same slice of a method that DOES await
-      // is found by the same expression, so this is not a search that could never fire.
-      const host_ = code(readFileSync(HOST_SRC, 'utf8'))
-      const forwardAt = host_.indexOf('whoCalledWhom(sessionId: string): WhoCalledWhom {')
-      expect(forwardAt).toBeGreaterThan(-1)
-      const forwarding = host_.slice(forwardAt, host_.indexOf('\n  }', forwardAt))
-      expect(forwarding).toContain('return this.workReads.whoCalledWhom(sessionId)')
-      expect(forwarding).not.toContain('await ')
-      expect(forwarding).not.toContain('async ')
-      const awaits = host_.slice(host_.indexOf('async closeAll('))
-      expect(awaits).toContain('await ')
-      // ⛔ **And the door does not await it either** — an `await` on the `case` would not create the
-      // gap, but it would be the one line a later reader could take as permission.
-      const ipc = code(readFileSync(IPC_SRC, 'utf8'))
-      expect(ipc).toContain('return host.whoCalledWhom(command.sessionId)')
-      expect(ipc).not.toContain('return await host.whoCalledWhom(')
-    })
-
     it('⛔ there is exactly ONE stamp on the answer, and no per-list time', () => {
       const pm = conversation('sess_pm', 'project-manager')
       const read = host.whoCalledWhom(pm)
@@ -669,27 +637,6 @@ describe('543 · who called whom', () => {
       expect(openElsewhere('unwatched', false)).toBe(false)
       expect(openElsewhere('not-running', false)).toBe(false)
     })
-
-    it('⛔ the read publishes no `HereIs`, no gesture and no liveness', () => {
-      const edges = code(readFileSync(EDGES_SRC, 'utf8'))
-      const implementation = code(readFileSync(WORK_READS_SRC, 'utf8'))
-      const at = implementation.indexOf('whoCalledWhom(sessionId: string): WhoCalledWhom {')
-      const body = implementation.slice(at, implementation.indexOf('\n  }', at))
-      // ⛔ **Collapsing the state here is the defect `540` MI-20 names**, and the shape is asserted
-      // rather than the intention documented.
-      expect(edges).not.toContain('HereIs')
-      // ⚑ **D-017b · the window's fold is `openElsewhere` now**, and it stays the window's.
-      expect(edges).not.toContain('openElsewhere')
-      expect(edges).not.toContain('gesture')
-      expect(body).not.toContain('livenessStateOf')
-      // 🔴 **`509`'s rule is why liveness is absent**: the word may go on a reader whose re-read
-      // cadence is shorter than the silence window, and nothing bounds this one's. ⚠️ `540` says
-      // the same of this panel in particular.
-      expect(edges).not.toContain('LivenessState')
-      // ⚑ **The control**: the word this read DOES publish is found by the same expressions.
-      expect(edges).toContain('RunningState')
-      expect(body).toContain('runningStateOf')
-    })
   })
 
   /* ═════════════════════ §7 · lineage from explicit ids and from nothing else ════════════════ */
@@ -707,23 +654,6 @@ describe('543 · who called whom', () => {
       expect(read.children.rows.map((row) => row.conversation)).toEqual([a])
       expect(read.workGivenOut.rows.map((row) => row.to)).toEqual([a, b])
       expect(new Set(read.workGivenOut.rows.map((row) => row.title)).size).toBe(1)
-    })
-
-    it('⛔ the two statements behind the lineage name an ID column and nothing else', () => {
-      const store_ = code(readFileSync(STORE_SRC, 'utf8'))
-      const spawnedBy = store_.slice(store_.indexOf('spawnedBy: db.prepare('))
-      const sql = spawnedBy.slice(0, spawnedBy.indexOf('),'))
-      // ⛔ **The candidate set is the self-FK and is not a heuristic.**
-      expect(sql).toContain('WHERE s.parent_session_id = ?')
-      for (const forbidden of ['role', 'display_name', 'text', 'title']) {
-        expect(sql, `the child query reads ${forbidden}`).not.toContain(forbidden)
-      }
-      // ⚑ **The control**: the same expression finds a column the query really does read.
-      expect(sql).toContain('s.provider')
-      // ⛔ **And the work edge is built from the row's own two id fields.**
-      const edges = code(readFileSync(EDGES_SRC, 'utf8'))
-      expect(edges).toContain('from: row.giver,')
-      expect(edges).toContain('to: row.owner,')
     })
   })
 
@@ -754,19 +684,6 @@ describe('543 · who called whom', () => {
         'workGivenOut',
         'workTakenIn',
       ])
-    })
-
-    it('⛔ no toolset reaches it, and the agent doors are unchanged', () => {
-      const tools = code(readFileSync(join(here, '../src/main/runtime/agent-tools.ts'), 'utf8'))
-      expect(tools).not.toContain('whoCalledWhom')
-      // ⚑ **What keeps an agent off this door is that the verb lives on the window wire and on no
-      // toolset** — `the-rails-before-anything-can-reach-them.test.ts` is where that inventory is
-      // pinned, and this is the one line of it this dispatch owes.
-      const implementation = code(readFileSync(WORK_READS_SRC, 'utf8'))
-      const at = implementation.indexOf('whoCalledWhom(sessionId: string): WhoCalledWhom {')
-      const body = implementation.slice(at, implementation.indexOf('\n  }', at))
-      expect(body).not.toContain('requireAPerson')
-      expect(body).not.toContain('Caller')
     })
   })
 

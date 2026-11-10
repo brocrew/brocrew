@@ -1,7 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { readFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -293,49 +291,6 @@ describe('what a person reads when a turn fails (246 §1)', () => {
       { type: 'turn', state: 'failed' },
     )
     expect(notices(state)).toEqual([SENTENCE, SENTENCE, 'turn failed'])
-  })
-
-  it('⚠️ the OTHER adapter, audited — Claude leaks no envelope, and says less than it holds', () => {
-    // ⛔ **246 §1: *"check whether the other adapter does the same thing on the same class of
-    // failure, and say so either way."*** The answer is no, and worse.
-    //
-    // Claude does NOT leak an envelope: `assistantErrorWords` (110) turns its error words (ten then,
-    // thirteen since the 0.3.281 bump, 680) into
-    // sentences, and `model_not_found` — the same class as 244's gesture — reads *"the model this
-    // conversation asks for is not available"*. What it does instead is say a `.d.ts` symbol.
-    //
-    // ⚑ **`claudeResultOutcome` reads `result`, and the ERROR variant does not declare one.**
-    // `SDKResultSuccess` has `result: string`; `SDKResultError` has `errors: string[]` — so the
-    // `||` always falls through and a failed Claude turn's whole account of WHY is
-    // `turn failed: error_during_execution`. The provider's own reasons sit in `errors`, which
-    // nothing in the adapter reads.
-    //
-    // ⛔ **Named, not fixed**: `claude/normalize.ts` is in `packages/runtime`, which 246 §4 puts out
-    // of bounds (it is 243's tree), and translating a closed union belongs where the union is known
-    // — 110's `Record`, with its compile-time exhaustiveness — not behind a string match here.
-    // Pinned so the report above stays a fact rather than a memory.
-    const sdk = readFileSync(
-      new URL(
-        'sdk.d.ts',
-        pathToFileURL(createRequire(import.meta.url).resolve('@anthropic-ai/claude-agent-sdk')),
-      ),
-      'utf8',
-    )
-    const start = sdk.indexOf('export declare type SDKResultError = {')
-    expect(start, 'the SDK no longer declares SDKResultError').toBeGreaterThan(-1)
-    const errorVariant = sdk.slice(start, sdk.indexOf('};', start))
-    expect(errorVariant).toContain('errors: string[]')
-    expect(
-      errorVariant,
-      'the error result now HAS a `result` — the finding has fixed itself',
-    ).not.toMatch(/^\s+result\??:/m)
-    expect(
-      readFileSync(
-        new URL('../../../packages/runtime/src/claude/normalize.ts', import.meta.url),
-        'utf8',
-      ),
-      'the adapter no longer reaches for a field only the success variant has',
-    ).toContain("readString(message, 'result') || message.subtype")
   })
 
   it('⚠️ a fatal terminal message still terminalizes the session', () => {

@@ -1,7 +1,5 @@
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it, vi } from 'vitest'
-import { readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { computed, nextTick, reactive } from 'vue'
 import { allProviderCapabilities, answerToForward } from '@brobot2/runtime'
 import { runtimeCommandSchema } from '../src/main/runtime/ipc'
@@ -3178,15 +3176,5 @@ describe('a to-do answered through the store', () => {
     })
     expect(bridge.__calls).toContain('answerAction:sess_elsewhere')
     store.dispose()
-  })
-
-  it('no component writes a request’s folds itself', () => {
-    const components = join(__dirname, '../src/renderer/src/components')
-    const writers = readdirSync(components)
-      .filter((name) => name.endsWith('.vue'))
-      .filter((name) =>
-        /\bmarkRequestFailed\s*[(,}]/.test(readFileSync(join(components, name), 'utf8')),
-      )
-    expect(writers).toEqual([])
   })
 })

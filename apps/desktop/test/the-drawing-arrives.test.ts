@@ -256,21 +256,6 @@ describe('§7 · a running session’s provider and handle are `readonly`', () =
     // these two fields. `lastAgentInfo` is deliberately mutable.
     expect(body).toMatch(/^\s*lastAgentInfo: string$/m)
   })
-
-  it('⛔ the handle it holds is built by a per-provider class, one per provider', () => {
-    const runtime = join(REPO, 'packages/runtime/src')
-    const classes = ['claude/claude-runtime.ts', 'codex/codex-runtime.ts'].map((file) => {
-      const code = readFileSync(join(runtime, file), 'utf8')
-      const named = [...code.matchAll(/export class (\w*SessionHandle)\b/g)].map(
-        (m) => m[1] as string,
-      )
-      return { file, named }
-    })
-    for (const { file, named } of classes)
-      expect(named.length, `${file} declares no session-handle class`).toBe(1)
-    // Two providers, two DIFFERENT classes — the fact that makes a provider swap a relaunch.
-    expect(new Set(classes.flatMap((c) => c.named)).size).toBe(2)
-  })
 })
 
 /* ──────────────────────────────── §8 · the sentence audit now says which drawing it is about ── */

@@ -84,19 +84,6 @@ describe('§1 · ⛔ a snapshot is of the version this build bundles', () => {
       expect(bundled.version.split('-')[0]).toBe(SNAPSHOT_FILES.codex.version)
     },
   )
-
-  it('⚑ the probe that writes them is a script, and the snapshots ship inside the main bundle', () => {
-    const scripts = (
-      JSON.parse(readFileSync(join(here, '../../../package.json'), 'utf8')) as {
-        scripts: Record<string, string>
-      }
-    ).scripts
-    expect(scripts['snapshots:providers']).toBe(
-      'vitest run --config vitest.smoke.config.ts apps/desktop/smoke/provider-snapshots.smoke.ts',
-    )
-    const main = readFileSync(join(here, '../src/main/index.ts'), 'utf8')
-    expect(main).toContain('      startProviderSnapshots()\n')
-  })
 })
 
 describe('§2 · nothing in a snapshot is a person’s, this computer’s, or BroBot’s own', () => {

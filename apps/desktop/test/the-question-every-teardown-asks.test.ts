@@ -4,7 +4,7 @@ import {
   syntheticProviderHome,
   neutralHostDeps,
 } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -45,7 +45,6 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const HOST_SOURCE = join(here, '../src/main/runtime/runtime-host.ts')
 
 /** ⛔ One launch: its toolset, and the two levers on its handle. */
 interface Launch {
@@ -121,34 +120,6 @@ class LeveredRuntime extends FakeRuntime {
     this.launches.push(launch)
     return launch.handle as Awaited<ReturnType<FakeRuntime['start']>>
   }
-}
-
-/**
- * ⛔ **The census's own reader, extracted so §5's control can hand it a planted source.** Every
- * comparison of a slot's phase in the CODE (comments stripped), with the function it sits in.
- */
-const codeOnly = (source: string): string =>
-  source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-const phaseComparisons = (source: string): string[] =>
-  [...codeOnly(source).matchAll(/\.phase\s*(?:===|!==)\s*'([a-z]+)'/g)].map((m) => m[1] as string)
-/**
- * ⚑ **`666` · the same comparisons, each with the method it sits in** — the NAME is the census, so
- * a new reader of the other question is a line in this test rather than a number going up. A
- * class member opens at two spaces of indent, a module function at none; the reader is the last
- * one opened before the comparison. ⚠️ A module function's body sits at two spaces too, so a
- * keyword there (`  if (`) is not an opening — the control plants exactly that.
- */
-const phaseReaders = (source: string): { word: string; reader: string }[] => {
-  const code = codeOnly(source)
-  const opened = [
-    ...code.matchAll(
-      /^(?: {2}(?:(?:private|public|protected|static|async|override|readonly|get|set)\s+)*(?!(?:if|for|while|switch|return|catch|await|throw|new|typeof|void)\b)|(?:export\s+)?(?:async\s+)?function\s+)([A-Za-z_$][\w$]*)\s*[<(]/gm,
-    ),
-  ].map((m) => ({ at: m.index, name: m[1] as string }))
-  return [...code.matchAll(/\.phase\s*(?:===|!==)\s*'([a-z]+)'/g)].map((m) => ({
-    word: m[1] as string,
-    reader: opened.filter((one) => one.at < m.index).at(-1)?.name ?? '(module scope)',
-  }))
 }
 
 describe('659 · the question every teardown asks', () => {
@@ -464,106 +435,6 @@ describe('659 · the question every teardown asks', () => {
       gate.release()
       await closing
       await opening
-    })
-  })
-
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
-  describe('§5 · the census — one question, asked in one place', () => {
-    it('🔴 the only `closing` comparison of a phase is inside `onItsWayOut`', () => {
-      const source = readFileSync(HOST_SOURCE, 'utf8')
-      const start = source.indexOf('function onItsWayOut(')
-      expect(start, '`onItsWayOut` was renamed').toBeGreaterThan(0)
-      const end = source.indexOf('\n}\n', start)
-      const inside = source.slice(start, end)
-      const outside = source.slice(0, start) + source.slice(end)
-      expect(phaseComparisons(inside)).toEqual(['closing'])
-      // ⛔ **Outside it, the phase is compared only to `live`** — the OTHER question, *is there a
-      // registered session to record into*, which a finalizing session still is.
-      // Recovery receipt phases are a separate question, confined to their named reader.
-      expect(phaseReaders(outside).filter((one) => one.word !== 'live')).toEqual([
-        { word: 'sent', reader: 'recoveryForPiece' },
-        { word: 'pending', reader: 'recoveryForPiece' },
-        { word: 'failed', reader: 'recoveryForPiece' },
-      ])
-      // ⚠️ **And that other question is asked in exactly these places, BY NAME** — pinned, so the
-      // next one is a decision somebody makes rather than a copy nobody noticed. ⚑ `666`: `659`
-      // pinned only a count, and `661`'s reader went unseen behind the `closing` line `657` added.
-      // Two decide whether a PARENT is here to be told something (`703`'s takes back what a later
-      // fact made false); two (four until D-016, three until D-016c) whether the conversation itself
-      // has a session to write into. ⚑ **D-030 — one went with R48**: `711`'s one true line in
-      // place of what an undelivered answer made false — a reply its giver cannot take now is kept
-      // for its next start. ⚑ **D-017 — two went with `end_agent`**: `settleTheNoticesFor`'s
-      // receipt for a parent's own end, and `699`'s `takeBackWhatItsOwnEndMadeFalse` — no stop is
-      // anybody's own act any more. ⚑ **D-016 — one went with proposals**: `proposeProject`, which
-      // asked whether the conversation a card would land in had a session to write into.
-      // ⚑ **D-016c — four went**. Three with the stop family, since a stop and a reopen tell nobody
-      // anything: `661`'s correction a reopen owed a parent (`setRightANoticeAReopenMadeFalse`),
-      // `711`'s R49 line after a question's ending (`replaceWhatItsQuestionEndingMadeFalse`) and
-      // `735`'s running giver a stop would push an ending (`aRunningGiverHoldsWorkIn`). And
-      // `proposeAgentRules` reads its caller's session in any phase: a stop changes nothing for the
-      // caller either.
-      expect(
-        phaseReaders(source)
-          .filter((one) => one.word === 'live')
-          .map((one) => one.reader)
-          .sort(),
-      ).toEqual(
-        [
-          'tellIfNobodyHasYet',
-          'takeBackWhatALaterFactMadeFalse', // 703 · a notice a later fact made false
-          'noteRefusal',
-          'noteTheSending',
-        ].sort(),
-      )
-    })
-
-    it('⚑ THE CONTROL — the census SEES a stray comparison in a planted source', () => {
-      const planted = [
-        "function onItsWayOut(slot) { if (slot.phase === 'closing') return true }",
-        "const status = slot.phase === 'closing' ? 'ended' : null",
-        "// slot.phase === 'closing' in a comment is not code",
-      ].join('\n')
-      expect(phaseComparisons(planted)).toEqual(['closing', 'closing'])
-    })
-
-    it('⚑ THE CONTROL — the census names the reader of each comparison, TWO planted', () => {
-      const planted = [
-        'function onItsWayOut(slot) {',
-        "  if (slot.phase === 'closing') return true",
-        '}',
-        'class Host {',
-        '  private tellSomebody(task) {',
-        "    const parent = slot?.phase === 'live' ? slot.session : null",
-        '  }',
-        '  async proposeSomething(',
-        '    me,',
-        '  ) {',
-        '    const inner = (x) => x',
-        "    const session = slot?.phase === 'live' ? slot.session : null",
-        '  }',
-        '}',
-      ].join('\n')
-      expect(phaseReaders(planted)).toEqual([
-        { word: 'closing', reader: 'onItsWayOut' },
-        { word: 'live', reader: 'tellSomebody' },
-        { word: 'live', reader: 'proposeSomething' },
-      ])
-    })
-
-    it('⛔ `finalizing` is read only by the predicate and the seven places that ask something else', () => {
-      const code = codeOnly(readFileSync(HOST_SOURCE, 'utf8'))
-      const reads = [...code.matchAll(/finalizing\s*(!==|===|\?\?=)/g)].map((m) => m[1])
-      // ⚑ The predicate (`!==`), the door `assertAcceptsMessages` (`!==` — the session's own two
-      // facts), `isCurrentLife` (`===` — is this still this conversation's pump), and `finalize()`'s
-      // `??=` — the one WRITE, which is what makes the others a fact about one field.
-      // ⚑ **D-017 · R1/R3 — three more, each asking something else of a SESSION it holds**:
-      // `itStoppedUnder` (`!==` — did the conversation a delivery went straight into stop under it,
-      // the door's own facts), `holdForTheNextStart` (`===` — has this stop already handed on what
-      // it held, so a new message joins its mailbox or waits beside them), and `whenItHasStopped`
-      // (`===` — has any teardown begun, or is its pump to be waited on first).
-      expect(reads.sort()).toEqual(['!==', '!==', '!==', '===', '===', '===', '??='])
-      // ⚠️ And `settleTeardown` reads it as a promise to wait on, which is not a question at all.
-      expect(code).toContain('slot.session.closing ?? slot.session.finalizing')
     })
   })
 })

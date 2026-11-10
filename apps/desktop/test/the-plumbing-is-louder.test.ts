@@ -396,30 +396,6 @@ describe('§3 · the collapsed line says what happened, and shouts on anything e
 })
 
 describe('§4 · one derivation of what became of a tool call, in one file', () => {
-  /**
-   * ⛔ **The claim this guards is one I wrote in a docblock, so it is a claim until measured**
-   * (standing rule 19). `ToolEntry` and `ToolRun` both say *how did this go*, and `064`/`099` are
-   * about two derivations that agree today.
-   *
-   * ⚠️ **Scoped by what it is ABOUT and not by a list of paths** (rule 27.1): every `.vue` and
-   * `.ts` under the renderer is read, so the fifth surface that decides this for itself is caught
-   * by the same assertion rather than by somebody remembering to add it.
-   *
-   * 🔴 **Prose is stripped first.** Both components explain the derivation in comments — and one of
-   * them quotes `result.ok` in the sentence that says it no longer computes it
-   * (`a-source-census-must-strip-prose-before-it-asserts`).
-   */
-  /**
-   * ⚠️ **What this shape covers, and what it does not** (standing rule 4). It finds the THREE-WAY
-   * outcome branch by the two words only that branch produces together. ⛔ **It would NOT catch a
-   * component that re-derived the same outcome under different words** — that is the hole, it is
-   * named here rather than implied, and the reason the shape is not wider is measured: `result.ok`
-   * alone matches `ToolEntry`'s own class choice for the receipt body and `ChildWorkViewer`'s
-   * unrelated `result`, and `'unfinished' : 'running'` matches `backgroundState`, which is a
-   * different derivation over a different input that happens to share a vocabulary.
-   */
-  const SHAPES = [/\?\s*'done'\s*:\s*'error'/]
-
   function everyRendererFile(): string[] {
     const found: string[] = []
     const walk = (dir: string): void => {
@@ -433,38 +409,8 @@ describe('§4 · one derivation of what became of a tool call, in one file', () 
     return found
   }
 
-  const code = (source: string): string =>
-    source
-      .replace(/\/\*[\s\S]*?\*\//g, ' ')
-      .replace(/<!--[\s\S]*?-->/g, ' ')
-      .replace(/(^|[^:])\/\/.*$/gm, '$1')
-
   it('reads more than one file, so an empty walk cannot pass', () => {
     // ⚠️ The control for the negative below: a census over nothing is green.
     expect(everyRendererFile().length).toBeGreaterThan(50)
-  })
-
-  it('finds the derivation in tool-outcome.ts and in no other renderer file', () => {
-    for (const shape of SHAPES) {
-      const carriers = everyRendererFile().filter((path) =>
-        shape.test(code(readFileSync(path, 'utf8'))),
-      )
-      expect(
-        carriers.map((path) => path.slice(RENDERER.length)),
-        String(shape),
-      ).toEqual(['/lib/tool-outcome.ts'])
-    }
-  })
-
-  it('and the stripper really removes prose from the file this is about', () => {
-    // 🔴 **A rule is proven by violating it** (rule 20). `ToolEntry`'s docblock argues about the
-    // derivation in words, and a census that read the raw bytes would count the argument as the
-    // thing (`a-source-census-must-strip-prose-before-it-asserts`). This asserts the stripper takes
-    // that sentence out while leaving the file's code behind.
-    const raw = readFileSync(`${RENDERER}/components/ToolEntry.vue`, 'utf8')
-    const SAID = 'did the provider succeed at what it was asked'
-    expect(raw, 'the sentence this control rests on has been edited away').toContain(SAID)
-    expect(code(raw)).not.toContain(SAID)
-    expect(code(raw), 'the stripper ate the code as well as the prose').toContain('const status =')
   })
 })

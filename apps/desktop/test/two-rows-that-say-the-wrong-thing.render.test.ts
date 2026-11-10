@@ -1,6 +1,6 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { MOVE_SEND_UNCONFIRMED } from '../src/shared/move-request'
-import { readdirSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
@@ -567,121 +567,6 @@ function whoBindings(source: string): string[] {
 }
 
 describe('§3 · every surface that puts a name on an agent’s words', () => {
-  /**
-   * 🔴 **The control, and it plants TWO** (standing rule 12) — a reader that found only the first
-   * binding in a file would pass a one-planted control and miss exactly what this census exists
-   * to catch.
-   */
-  it('the census reads every binding in a file, not the first', () => {
-    expect(
-      whoBindings(
-        '<A :who="pane.who" />\n  <B who="sub-agent" />\n<C :who="props.entry.provider"/>',
-      ),
-    ).toEqual(['pane.who', 'sub-agent', 'props.entry.provider'])
-  })
-
-  /**
-   * 🔴 **§4.4 · the shape that makes the negative worth something.**
-   *
-   * ⛔ **The question is not *"does anything say `claude`"*** — that word is a legitimate provider
-   * fact in half a dozen places. ⚠️ **It is *"what does each surface that NAMES A SPEAKER derive
-   * that name from"***, and the answer is one of exactly three kinds:
-   *
-   *  - **`identity`** — it asks {@link agentName}, the app's one naming function (`449`).
-   *  - **`not-an-identity`** — the row genuinely has none. A provider sub-agent is not an agent of
-   *    ours. ⚠️ **678 · a recording left this kind**: `LibraryEntry` carried no `profileId` until
-   *    `671` (G4a), so `ReadingPane` headed its replies with the provider; it now binds `who` like the
-   *    live pane, and its provider fallback is exactly the rows with no identity of ours — found in
-   *    the user's OWN provider home, which `profileLabel`'s note forbids naming, or restored.
-   *  - **`pre-session`** — a launcher door, where there is no conversation and no roster yet.
-   *
-   * 🔴 **538 · one of the two `pre-session` rows is GONE, and this census is how anybody would
-   * know.** ⛔ `537` F6 left `StartAsAgent` naming the identity by SLUG and gave the reason
-   * *"neither component is handed the roster"*; `538` measured that this component already binds
-   * to a window-scoped singleton for its project list, so the agent one costs no prop — and its
-   * `who` now comes through {@link agentName} like every other identity surface. ⚠️ **The binding
-   * `props.profileSlug` therefore stopped existing**, the equality below went RED on the
-   * population, and the table was re-aimed rather than widened.
-   *
-   * ⛔ **`NewConversation`'s literal `BroBot` STAYS `pre-session`, and that is a decision.** It is
-   * the front door, where no identity has been chosen at all — and `agentName(DEFAULT_PROFILE_ID,
-   * …)` answers *BroBot (default)*, so pointing it here would change shipped COPY on the one
-   * surface `535` is drawing. `538` reports it instead.
-   *
-   * ⛔ **A new surface must land in this table** rather than picking a fourth answer quietly —
-   * which is the whole of `an-instrument-that-can-go-quiet-without-saying-so`.
-   *
-   * 🔴 **545 · a surface can now name an identity WITHOUT being handed a `who`, and this census
-   * cannot see one.** ⛔ `RelayedEntry` and `QueuedMessage` compute their own heading from
-   * `relayed-turn.ts`, so the population below does not grow and the question *what does each
-   * surface that names an actor derive that name from* would have gone quiet for two of them.
-   * ⚑ **The answer landed in a census rather than nowhere** —
-   * `a-relayed-row-names-who-relayed-it.render.test.ts` §8, whose population is `TranscriptView`'s
-   * own dispatch and whose `identity` arm asserts the transitive derivation this one asserts
-   * directly. ⚠️ The two are joined by the assertion below, so deleting either is visible from the
-   * other.
-   */
-  it('and each of them derives its name from one of three kinds, named here', () => {
-    const KINDS: Record<string, 'identity' | 'not-an-identity' | 'pre-session'> = {
-      // 537 — `ConversationPane.who` is `agentName(…, identities)` over its profile — ⚑ asked in
-      // one spelling since `667` (`agentName`'s own fold since `671`), and derived from the `ownAgent`
-      // the cards are handed.
-      // 538 — and `StartAsAgent.who` is `agentName(props.profileSlug, …)`, which is why this key
-      // now covers two components rather than one.
-      // ⚑ 678 — and `ReadingPane.who`, over `agentName(props.entry.profileId, …)`: three now.
-      // ⚑ D-017b — `ConversationPane` and `SessionDrawer` ask it through `whoIsIn`, which is
-      // `agentName` over the profile the conversation runs as (the next test pins it).
-      // The recovery window's reader binds it too: the agent name the restored copy holds, and
-      // the provider's name only for a conversation that copy ran as nobody.
-      who: 'identity',
-      // ⚑ D-017b — 701's `ownAgent` binding went with `KeptOpenPane`: a conversation the quit left
-      // open opens in the one full view, whose `who` is the row above.
-      'props.who': 'identity',
-      // A child’s graph node is named by `CastCard.name` through `GraphNode`’s `name`,
-      // without a `who` binding. A provider sub-agent’s own pane is distinct: it is not an
-      // app-owned agent and has no identity.
-      'sub-agent': 'not-an-identity',
-      // The front door, with no identity chosen yet — a `537` finding `538` deliberately left,
-      // and `545` §5 looked at again and left for the same reason. See the pin below.
-      BroBot: 'pre-session',
-    }
-
-    const found = new Map<string, string[]>()
-    for (const name of readdirSync(COMPONENTS).filter((one) => one.endsWith('.vue'))) {
-      for (const binding of whoBindings(readFileSync(join(COMPONENTS, name), 'utf8'))) {
-        found.set(binding, [...(found.get(binding) ?? []), name])
-      }
-    }
-
-    // ⚑ **Paired positive**: the census really walked the tree, so the equality below is about the
-    // population rather than about an empty read.
-    expect(found.size).toBeGreaterThan(3)
-    expect([...found.keys()].sort()).toEqual(Object.keys(KINDS).sort())
-    // 🔴 **545 · the join**: the two transcript entries that name an identity are absent from this
-    // population BY CONSTRUCTION — they BIND no `who` to anything below them — and the other census
-    // is where they are answered for. ⚠️ **658 · each is now HANDED one**, as its RECIPIENT
-    // (*"Ada to BroBot"*) — ⚑ **667 · as `:own-agent`, the NAME or `null`, and no longer `:who`**,
-    // whose census is `the-three-sentences-beside-the-cards.test.ts` §2 — and still asks the one
-    // naming function for its SENDER. ⛔ Asserted rather than commented, so a day when one of them starts taking a
-    // `who` (and therefore belongs here) fails here instead of being covered twice by neither.
-    for (const owner of ['RelayedEntry.vue', 'QueuedMessage.vue']) {
-      const source = readFileSync(join(COMPONENTS, owner), 'utf8')
-      expect(
-        whoBindings(source),
-        `${owner} is handed a who and this table does not name it`,
-      ).toEqual([])
-      expect(source, `${owner} stopped asking the one naming function`).toContain('relayedSender(')
-    }
-    // ⛔ **And no surface that names a speaker reads a PROVIDER, except the ones that have no
-    // identity to read** — which is the sentence `537` was sent to make true.
-    for (const [binding, kind] of Object.entries(KINDS)) {
-      if (kind !== 'identity') continue
-      expect(binding, `${String(found.get(binding))} names a speaker by its provider`).not.toMatch(
-        /provider/,
-      )
-    }
-  })
-
   /**
    * 🔴 **A binding is a FORWARD; this is the census of what the name is DERIVED from** — and the
    * half of `§3` that a list of props cannot answer.

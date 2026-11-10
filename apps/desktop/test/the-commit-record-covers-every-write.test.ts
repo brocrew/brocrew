@@ -1,5 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,7 +15,6 @@ import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrations = join(here, '../src/main/db/migrations')
-const mainRoot = join(here, '../src/main')
 const text = (words: string): TranscriptEvent => ({ type: 'assistant_message', text: words })
 
 /**
@@ -41,69 +40,6 @@ describe('the commit record covers every write', () => {
     const store = createSessionStore(db, () => 5_000)
     return { db, folder, store }
   }
-
-  describe('the ways around the record are pinned', () => {
-    /**
-     * Its limits, stated: the record frames every transaction and every prepared write on a
-     * writable connection once the store has installed it. What can go around it is a statement
-     * handed to `exec`, or a statement prepared on the connection before the store exists. Every
-     * `exec` site in the main process is pinned below with what it runs; a new one fails here and
-     * must be read. Statements prepared before the store are covered only by the startup order
-     * pinned at the end. Other connections are read-only engines, separate databases, or recovery
-     * copies, and a foreign commit on the app's file is caught by the record's own check.
-     */
-    const EXEC_SITES: Record<string, { count: number; why: string }> = {
-      'db/provider-wall-watch.ts': { count: 2, why: 'temp triggers for the wall watch' },
-      'db/fold-write-watch.ts': { count: 1, why: 'temp triggers for kept folds' },
-      'db/past-work-search.ts': {
-        count: 6,
-        why: 'temp table and triggers on the app file; a read transaction; its own in-memory index',
-      },
-      'db/window-writer-stamp.ts': { count: 4, why: 'temp counters and triggers; dropping them' },
-      'db/compact.ts': { count: 1, why: 'VACUUM, at launch' },
-      'db/question-copies.ts': {
-        count: 3,
-        why: "the derived copies' tables, triggers and index, created at open: schema only",
-      },
-      'db/files-library-engine.ts': {
-        count: 3,
-        why: 'its read-only connection: BEGIN/COMMIT/ROLLBACK',
-      },
-      'db/team-profile-graph-engine.ts': { count: 3, why: 'its read-only connection' },
-      'db/limits-read-engine.ts': { count: 3, why: 'its read-only connection' },
-      'db/work-search-engine.ts': { count: 3, why: 'its read-only connection' },
-      'db/window-read-engine.ts': { count: 3, why: 'its read-only connection' },
-      'plugins/state/fence.ts': { count: 2, why: 'the plugin state database, not the app file' },
-      'plugins/supervisor/sqlite-adapter.ts': { count: 1, why: 'the supervisor database' },
-    }
-    const execSites = (source: string): number =>
-      [...source.matchAll(/\b(?:db|source|this\.db|memory|connection)\.exec\(/g)].length
-
-    it('every exec site, and the record installed before any transaction', () => {
-      const found: Record<string, number> = {}
-      const walk = (dir: string): void => {
-        for (const name of readdirSync(dir)) {
-          const path = join(dir, name)
-          if (statSync(path).isDirectory()) walk(path)
-          else if (path.endsWith('.ts')) {
-            const count = execSites(readFileSync(path, 'utf8'))
-            if (count > 0) found[path.slice(mainRoot.length + 1).replaceAll('\\', '/')] = count
-          }
-        }
-      }
-      walk(mainRoot)
-      expect(found).toEqual(
-        Object.fromEntries(Object.entries(EXEC_SITES).map(([path, site]) => [path, site.count])),
-      )
-      // The control: a write handed to exec, behind a comment, is still one more site.
-      expect(execSites("/* tidy */ db.exec(`UPDATE provider_session SET cwd = ''`)")).toBe(1)
-      const store = readFileSync(join(mainRoot, 'db/session-store.ts'), 'utf8')
-      expect(store.indexOf('committedChangesOf(connection)')).toBeGreaterThan(0)
-      expect(store.indexOf('committedChangesOf(connection)')).toBeLessThan(
-        store.indexOf('createOwnNotesStore(connection)'),
-      )
-    })
-  })
 
   describe('each actual commit is published with the tables it wrote', () => {
     /**

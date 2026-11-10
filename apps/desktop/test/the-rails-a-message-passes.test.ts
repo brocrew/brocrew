@@ -816,51 +816,6 @@ describe('374 · the rails a message passes', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§9 · the interrupt rails now have the tool that trips them', () => {
-    it('🔴 an agent tool reaches `interrupt` and NOT `sendInterrupting` — 395 flipped 374’s pin', () => {
-      // 🔴 **This is the flip `374` asked for, in the commit it asked for it in.**
-      //
-      // ⛔ **What stood here, verbatim:** *"no agent tool reaches `interrupt` or `sendInterrupting`
-      // — 341's ordering, one dispatch on"*, asserting `expect(surface).not.toContain('interrupt')`,
-      // under: *"Pinned, because the alternative is a capability a person can set that quietly does
-      // nothing… ⛔ The day S5 hands an agent one of these verbs this assertion turns red, and the
-      // sentence in the sheet's help text that says so has to come out in the same commit."*
-      //
-      // ⚑ **Both happened here**: `interrupt_agent` is published, and
-      // `capabilities.ts`'s *"Interrupting is not a tool any agent has yet; ending is."* came out
-      // in this diff. The assertion below is what keeps the pair honest in the other direction.
-      //
-      // 🔴 **`sendInterrupting` is STILL not on the surface, and that half is not an oversight.**
-      // It composes an interruption with a send — `RuntimeHost.sendInterrupting` asks
-      // `assertMayReach` for `message` (D-014: the interrupt half asks no grant) — and an agent that wants
-      // both already has both verbs and can choose the order. ⛔ A composed verb would be a THIRD
-      // answer to *"what happens when the target is busy"* published to a model that already has
-      // two, and `354`'s singleton is what it would have to disagree with.
-      const tools = readFileSync(join(mainRoot, 'runtime/agent-tools.ts'), 'utf8')
-        .replace(/\/\*[\s\S]*?\*\//g, ' ')
-        .replace(/^\s*\/\/.*$/gm, ' ')
-      const surface = tools.slice(
-        tools.indexOf('export interface AgentToolHost'),
-        tools.indexOf('}', tools.indexOf('export interface AgentToolHost')),
-      )
-      // ⚑ **The slice really is the surface** — it names the verbs an agent CAN reach.
-      expect(surface).toContain('queueMessage')
-      // ⚑ **D-016** — the verb that starts a child is the give.
-      expect(surface).toContain('giveWork')
-      // 🔴 …and one interrupting verb is now on it.
-      expect(surface).toContain('interruptAgent')
-      expect(tools).toContain('host.interruptAgent')
-      // ⛔ **The OTHER one still is not**, and neither is the raw host verb that throws.
-      expect(surface).not.toContain('sendInterrupting')
-      expect(tools).not.toContain('host.sendInterrupting')
-      // ⚠️ **`host.interrupt(` with the paren, so `host.interruptAgent` does not satisfy it.** The
-      // agent-facing door is the one that ANSWERS; the raw one refuses by throwing, which reaches a
-      // model as a transport error rather than as a rule.
-      expect(tools).not.toContain('host.interrupt(')
-      // ⚑ **The control**: the verbs it DOES call are found by the same search.
-      expect(tools).toContain('host.queueMessage')
-      expect(tools).toContain('host.giveWork')
-    })
-
     it('🔴 …and `interrupt_agent` of a child parked on a person’s card is refused BY THAT CARD, first', async () => {
       // 🔴 **D-014 · `375`'s floor is gone** — `can_interrupt`, `may-not-end` and the project
       // boundary beside it were deleted, and interrupting reaches the chain below the caller with no

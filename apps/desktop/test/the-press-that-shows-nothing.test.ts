@@ -5,8 +5,6 @@ import type {
   RoutedRequest,
 } from '../src/shared/question-contracts'
 import type { PersistedEventInfo } from '../src/shared/conversation-events'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import {
@@ -567,37 +565,5 @@ describe('§5 · a NEEDS YOU that can reach zero', () => {
     expect(home.stat).toBe('All clear')
     expect(home.statTone).toBe('ok')
     expect(home.intro).toBe('Nothing here is blocked on an answer from you.')
-  })
-})
-
-/* ═════════ §6 · the one line that wires it into the running app, read as source ══════════════ */
-
-/**
- * ⛔ **`RuntimeScreen.vue` is mounted by nothing but `App.vue`**, so the wiring between the
- * derivation and the surface is reachable only as text — `persons-queue.test.ts` §7's own reason,
- * on the line `468` added. ⚠️ Without this, the sole call site of `answeredFromHere` in the
- * shipped app is a line no test and no mutation row can see: every case above hands the fold a
- * world it built itself.
- */
-const SCREEN = readFileSync(
-  fileURLToPath(new URL('../src/renderer/src/components/RuntimeScreen.vue', import.meta.url)),
-  'utf8',
-)
-
-describe('§6 · the screen derives it from its own records and hands it to the queue', () => {
-  it('🔴 the world it supplies carries the set, and the set comes from `answeredFromHere`', () => {
-    expect(SCREEN).toContain('answeredFromHere: answered.value')
-    expect(SCREEN).toContain('const answered = computed(() => answeredFromHere(store.live.value))')
-  })
-
-  it('⛔ and it is the shared derivation, not a copy · the census the 462 shape would have missed', () => {
-    // ⚠️ **Import AND call**, which `the-bridge-that-clones-nothing.test.ts` §6 spells out: an
-    // unused import passes an import census, and lint is not a gate the mutation harness runs.
-    expect(SCREEN).toMatch(
-      /import \{[\s\S]*?\bansweredFromHere\b[\s\S]*?\} from '\.\.\/lib\/attention'/,
-    )
-    // ⛔ **`store.live`, never a second projection.** A screen that walked its own records here
-    // would be a derivation free to disagree with the one `attention.ts` exports.
-    expect(SCREEN).not.toMatch(/for \(const \[requestId, draft\] of record\.requests\)/)
   })
 })

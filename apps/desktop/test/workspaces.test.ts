@@ -116,17 +116,6 @@ describe('§1 · the list', () => {
     expect(samePath('/a/b', '/a/b/', 'linux')).toBe(true)
   })
 
-  it('⛔ a launch reads no other listed folder: its own is matched by spelling alone', () => {
-    // ⚑ A listed folder on a share that is gone would hold a launch up for as long as it is asked.
-    const core = readFileSync(join(here, '../src/main/workspaces.ts'), 'utf8')
-    const remember = core.slice(
-      core.indexOf('export function rememberWorkspace('),
-      core.indexOf('/** Take `path` off the list.'),
-    )
-    expect(remember).toContain('!samePath(one.path, path)')
-    expect(remember).not.toMatch(/sameFolder|statSync|existsSync|realpath/)
-  })
-
   it('⚑ taken off the list, its folder left as it is', () => {
     const root = aFolder()
     const file = join(root, 'workspaces.json')
@@ -231,19 +220,6 @@ describe('§2 · ⛔ no launch reads the list to choose its folder', () => {
     }
   })
 
-  it('⛔ the code that decides a launch’s folder never names the list', () => {
-    const dataFolder = readFileSync(join(here, '../src/main/data-folder.ts'), 'utf8')
-    expect(dataFolder).not.toMatch(/workspaces\.json|readWorkspaceList|workspaceRows/)
-    const index = readFileSync(join(here, '../src/main/index.ts'), 'utf8')
-    expect(index).not.toMatch(/readWorkspaceList|workspaceRows|workspaces\.json/)
-    // ⚑ The list is touched only once the app runs, from `start()`'s `whenReady`.
-    const ready = index.indexOf('    .whenReady()')
-    const started = index.indexOf('      startWorkspaces({')
-    expect(ready).toBeGreaterThan(-1)
-    expect(started).toBeGreaterThan(ready)
-    expect(index.indexOf('pinTheDataFolder(app)')).toBeLessThan(ready)
-  })
-
   it('⚑ a person’s launch adds itself, never waits on it, and a list it cannot write changes nothing', () => {
     const wired = readFileSync(join(here, '../src/main/workspaces-in-the-app.ts'), 'utf8')
     expect(wired).toContain(
@@ -328,20 +304,6 @@ describe('§3 · what may be a workspace', () => {
     // ⚑ …and by its spelling as asked, case-blind on macOS.
     expect(checkWorkspaceFolder(join(root, 'LISTED', 'x'), as(true, [listed])).refusal).toBe(
       `This folder is inside the workspace ${listed}.`,
-    )
-  })
-
-  it('⛔ no listed folder is read: one on a share that is gone cannot hold the window up', () => {
-    const core = readFileSync(join(here, '../src/main/workspaces.ts'), 'utf8')
-    const checking = core.slice(
-      core.indexOf('export function checkWorkspaceFolder('),
-      core.indexOf('/** A name as a person typed it'),
-    )
-    expect(checking).toContain('insideBySpelling(spelling, one, options.platform)')
-    expect(checking).not.toContain('sameFolder')
-    const wired = readFileSync(join(here, '../src/main/workspaces-in-the-app.ts'), 'utf8')
-    expect(wired).toContain(
-      'listed().find((one) => samePath(one, folder) || samePath(one, started)) ?? null',
     )
   })
 

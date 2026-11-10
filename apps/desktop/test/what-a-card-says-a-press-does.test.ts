@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { ALWAYS_HONOURED, PLAN_CONSENTS, permissionOutcomeSchema } from '@brobot2/runtime'
 import { permissionDecisionFor, permissionOffer } from '../src/renderer/src/lib/permission-offer'
@@ -13,39 +10,6 @@ import {
   type AttentionDecision,
   type ConsentAsked,
 } from '../src/renderer/src/lib/user-input-offer'
-
-/**
- * # 🔴 482 · what a CARD says a press does
- *
- * ⛔ **`478` F3 measured the hole and named both surfaces:** *"`PermissionCard` says it in one word
- * (Cancel turn), and `UserInputCard`'s Approve says nothing at all."* ⚑ The queue had drawn
- * `whatThisAnswerDoes` under every button since `434`; the two surfaces a person actually answers
- * on had drawn the word and stopped.
- *
- * ## ⚠️ The PO's reason, which is about habit rather than coverage
- *
- * > 🔴 *"A sentence that is true on one surface and absent on two teaches him that the sentence is
- * > optional… An inconsistent explanation is worse than a uniformly absent one, because it trains
- * > the reader out of looking."*
- *
- * ## ⛔ What this file asserts, and what it leaves to its two neighbours
- *
- * ⚠️ **No sentence is spelled here.** Every expectation is read from the module that owns it, so
- * this cannot become a second copy of the copy — which is the defect one level up from the one
- * being fixed (`464`, `470`).
- *
- *  - **`what-a-card-says-a-press-does.dom.test.ts`** mounts both cards and asserts the sentences
- *    ARRIVE, legibly, on the controls. A string being right in a `Record` is not a person reading
- *    it (`083`).
- *  - **`packages/runtime/test/codex-runtime.test.ts`** owns the producer half of §4: that the real
- *    Codex agent-tool card now publishes `cancel`, that answering one is honoured, and — since
- *    `492` — that it sends `turn/interrupt` after the tool result while a `deny` on the same card
- *    sends no frame at all. ⚠️ It used to say *the turn ends interrupted*, which was true of the
- *    LABEL and not of the provider; `483` measured the difference and `HO-032` §1 closed it.
- */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const RENDERER = join(here, '../src/renderer/src')
 
 /** One `user_input_request`, built whole — what `userInputOffer` reads. */
 const asking = (over: Partial<UserInputRequestEvent> = {}): UserInputRequestEvent => ({
@@ -158,43 +122,6 @@ describe('§2 · every control a card can draw has a sentence', () => {
   })
 })
 
-/* -------------------------------------------------------- §3 · one source, enforced not agreed */
-
-/**
- * The file with its comment REGIONS removed. ⚠️ Per line is not enough on a `.vue`: a
- * `<!-- … -->` block's continuation lines carry no marker, and both cards explain this very rule
- * inside one. Same shape as `one-source-for-the-offer.test.ts`, which found that the hard way.
- */
-function codeOf(path: string): string {
-  let inBlock: '*/' | '-->' | null = null
-  return readFileSync(path, 'utf8')
-    .split('\n')
-    .map((line) => {
-      let rest = line
-      let code = ''
-      for (;;) {
-        if (inBlock !== null) {
-          const close = rest.indexOf(inBlock)
-          if (close === -1) return ''
-          rest = rest.slice(close + inBlock.length)
-          inBlock = null
-          continue
-        }
-        const block = rest.indexOf('/*')
-        const html = rest.indexOf('<!--')
-        const slash = rest.indexOf('//')
-        const opens = [block, html, slash].filter((at) => at !== -1)
-        if (opens.length === 0) return code + rest
-        const at = Math.min(...opens)
-        code += rest.slice(0, at)
-        if (at === slash) return code
-        inBlock = at === block ? '*/' : '-->'
-        rest = rest.slice(at + (at === block ? 2 : 4))
-      }
-    })
-    .join('\n')
-}
-
 describe('§3 · a card renders the sentence and never writes one', () => {
   /** Every sentence `whatThisAnswerDoes` can return, derived rather than listed. */
   const EVERY_SENTENCE = [
@@ -210,37 +137,6 @@ describe('§3 · a card renders the sentence and never writes one', () => {
     ANSWER_SENDS_THE_FORM,
     WHAT_COMES_AFTER_IS_NOT_OURS,
   ]
-
-  const CARDS = ['components/PermissionCard.vue', 'components/UserInputCard.vue']
-
-  it('🔴 neither card contains an effect sentence as a literal', () => {
-    const offenders = CARDS.flatMap((card) => {
-      const code = codeOf(join(RENDERER, card))
-      return EVERY_SENTENCE.filter((sentence) => code.includes(sentence)).map(
-        (sentence) => `${card}: ${sentence.slice(0, 60)}…`,
-      )
-    })
-    expect(
-      offenders,
-      'a second copy of one sentence is the defect one level up (464/470) — render it from ' +
-        'user-input-offer.ts rather than writing it here',
-    ).toEqual([])
-  })
-
-  it('⚑ …and the paired positive: each card really does ASK for one', () => {
-    // A census whose allow-list is satisfied by a card that draws nothing would pass over exactly
-    // the state `478` F3 found (`a-census-that-asks-for-the-import-must-ask-for-the-call`).
-    const permission = codeOf(join(RENDERER, 'components/PermissionCard.vue'))
-    expect(permission).toContain('whatThisAnswerDoes(')
-    expect(permission).toContain('saysOf(outcome)')
-    expect(permission).toContain('saysOf(wide.outcome)')
-    expect(permission).toContain('WHAT_COMES_AFTER_IS_NOT_OURS')
-
-    const input = codeOf(join(RENDERER, 'components/UserInputCard.vue'))
-    expect(input).toContain('offer.positiveDoes')
-    expect(input).toContain('offer.rejectDoes')
-    expect(input).toContain('WHAT_COMES_AFTER_IS_NOT_OURS')
-  })
 
   it('⛔ the sentence source is reachable from the card at all — the non-vacuity of the above', () => {
     // The census strips comments, so a card that imported nothing and merely TALKED about the

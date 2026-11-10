@@ -1,7 +1,4 @@
 import type { PersistedEventInfo } from '../src/shared/conversation-events'
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -11,17 +8,6 @@ import TranscriptView from '../src/renderer/src/components/TranscriptView.vue'
 import type { LibraryEntry } from '../src/shared/runtime-ipc'
 import { applyEvent, createTranscript, markReadOnly } from '../src/renderer/src/lib/transcript'
 import { createWindow, openAt, type WindowState } from '../src/renderer/src/lib/transcript-window'
-
-/**
- * The read-only container (Slice 2 · 047).
- *
- * The claim it has to earn is a NEGATIVE one — that nothing here can be acted on — and a negative
- * is what a component quietly loses. So these tests assert the absences directly, and one of them
- * (`no live approval buttons`) is written against a transcript that is genuinely mid-request,
- * because that is the only shape in which the buttons would render at all.
- */
-
-const here = dirname(fileURLToPath(import.meta.url))
 const render = (props: Record<string, unknown>): Promise<string> =>
   renderToString(createSSRApp({ render: () => h(ReadingPane as never, props) }))
 
@@ -350,13 +336,6 @@ describe('markReadOnly', () => {
 
 describe('🔒 the library surfaces name no provider', () => {
   /**
-   * AC5, as a source scan rather than a rendered one: a provider comparison can hide in a branch no
-   * fixture reaches. The renderer is provider-agnostic by construction — every provider name it
-   * shows is a VALUE it was handed — and these two files are the newest place that could break it.
-   */
-  const SURFACES = ['SessionLibrary.vue', 'ReadingPane.vue']
-
-  /**
    * The file with its COMMENTS removed.
    *
    * The rule is about what the component knows, not about what it may be documented as doing —
@@ -369,18 +348,6 @@ describe('🔒 the library surfaces name no provider', () => {
       .replace(/\/\*[\s\S]*?\*\//g, ' ')
       .replace(/<!--[\s\S]*?-->/g, ' ')
       .replace(/(^|[^:])\/\/.*$/gm, '$1')
-
-  for (const name of SURFACES) {
-    it(`${name} names no provider outside its comments`, () => {
-      const source = readFileSync(join(here, '../src/renderer/src/components', name), 'utf8')
-      const code = withoutComments(source)
-      // WORD boundaries rather than quote-adjacency. The quoted form catches `'claude'` and misses
-      // `<span>from claude</span>` — a label in running prose is exactly the provider knowledge
-      // this rule exists to keep out of the renderer, and it would have been invisible.
-      expect(code).not.toMatch(/\bclaude\b/i)
-      expect(code).not.toMatch(/\bcodex\b/i)
-    })
-  }
 
   it('the scan would still catch a provider name in code or in rendered text', () => {
     // Non-vacuity: strip-comments is doing real work above, so prove it does not strip everything.

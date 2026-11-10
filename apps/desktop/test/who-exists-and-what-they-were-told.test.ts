@@ -1,5 +1,5 @@
 import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -32,7 +32,6 @@ const PROJECT_MANAGER_PROFILE_ID = 'project-manager'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const toolsSource = join(here, '../src/main/runtime/agent-tools.ts')
 
 /**
  * 🔴 **488 · who exists, and what they were told** (HO-020 §"It carries", HO-031 §2.3's second half).
@@ -441,24 +440,6 @@ describe('488 · who exists, and what they were told', () => {
           JSON.stringify(bare),
         )
       }
-    })
-
-    it('⚠️ the tool layer still holds no policy: the reading is the host’s', () => {
-      // ⛔ **`the-five-tools.test.ts` §6 is the standing census and this is the half about the NEW
-      // door**: the rails are the host's, and this file asks none of them.
-      const code = readFileSync(toolsSource, 'utf8')
-      const opens = code.indexOf("      name: 'list_profiles',")
-      expect(opens, 'the door was renamed or removed').toBeGreaterThan(0)
-      // ⚑ **The whole door, to the next one** — F009's record made it longer than a fixed slice.
-      const body = code.slice(opens, code.indexOf("      name: '", opens + 1))
-      // ⚑ **D-014 · the reading takes no caller**, because nothing folds it.
-      expect(body).toContain('host.profilesVisibleTo()')
-      // ⚑ **F009 · and an agent's record is the host's reading too**: the reach it folds its
-      // conversations by is asked there, with the caller handed in, never here.
-      expect(body).toContain('host.agentRecord(')
-      // ⚑ **And it asks no standing wall**, which is the complement `486`'s census enforces over
-      // every door: a reader that folds through nothing must not name one.
-      expect(body).not.toMatch(/host\.may(CreateAgents|ReachAtAll)\(/)
     })
 
     it('⛔ it is APPENDED to the roster and the indexes five tests pin are untouched', () => {

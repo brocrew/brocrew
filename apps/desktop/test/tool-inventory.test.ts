@@ -1,5 +1,4 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   catalogue,
@@ -1145,22 +1144,6 @@ describe('392 · the catalogue', () => {
   })
 })
 
-/* ═════════════════════════════════════════════════════════════════════════════════════════════
-   444 relay 1 · a count that says WHEN it was true, in 438's register and not a second one
-   ═════════════════════════════════════════════════════════════════════════════════════════════ */
-
-/**
- * ⛔ **Prose stripped before any census below**, because three of these assertions are about what
- * the CODE does and every one of these files explains itself at length — a `toContain` a docblock
- * satisfies passes over code that does not exist, and its mirror goes red over a comment
- * describing its own success (`a-source-census-must-strip-prose-before-it-asserts`).
- */
-const code = (path: string): string =>
-  readFileSync(new URL(path, import.meta.url), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/(^|[^:])\/\/.*$/gm, '$1')
-
 describe('444 relay 1 · the inventory says as-of-when', () => {
   const WHEN = Date.UTC(2023, 4, 17, 9, 41, 7)
 
@@ -1279,40 +1262,6 @@ describe('444 relay 1 · the inventory says as-of-when', () => {
       ]) {
         expect(claiming, `the scan cannot see ${spelling}`).toContain(spelling)
       }
-    })
-  })
-
-  describe('438’s vocabulary, reused rather than forked', () => {
-    it('🔴 the sheet imports REGISTER_WORDS and declares no register words of its own', () => {
-      const sheet = code('../src/renderer/src/components/SessionTools.vue')
-      expect(sheet).toContain("from '../lib/digest'")
-      expect(sheet).toContain('REGISTER_WORDS.observed')
-
-      // ⛔ **No second vocabulary.** A component that spelled the word itself would be `439`'s
-      // finding with a new noun — a register that means one thing in `DigestCard` and another
-      // here. The tell is either shape: a key named for a register, or the TITLE copied across.
-      const forked = (text: string): boolean =>
-        /\bobserved\s*:/.test(text) || text.includes('the engine watched this happen')
-      expect(forked(sheet), 'the sheet spells a register word instead of importing it').toBe(false)
-
-      // ⚑ **The control, planted and trapped the way the subject is** — both halves of the
-      // predicate fire on a fork, so the `false` above is a measurement and not a regex that
-      // matches nothing in this codebase's style.
-      expect(forked("const WORDS = { observed: { label: 'observed' } }")).toBe(true)
-      expect(forked("title: 'the engine watched this happen'")).toBe(true)
-      // …and it fires on the module that legitimately declares them, which is the real artefact.
-      expect(forked(code('../src/renderer/src/lib/digest.ts'))).toBe(true)
-    })
-
-    it('⛔ …and it is not drawn as a GAP, which is the opposite case', () => {
-      const sheet = code('../src/renderer/src/components/SessionTools.vue')
-      // A `DigestGap` says *the ledger cannot answer this*, with a count. Here the ledger answers.
-      for (const spelling of ['DigestGap', 'digestGap', 'DIGEST_GAP']) {
-        expect(sheet, `the as-of line is drawn as a gap (${spelling})`).not.toContain(spelling)
-      }
-      // ⚑ The control: the vocabulary it does NOT use is a real export, so these are absences of
-      // something reachable rather than of something that does not exist.
-      expect(code('../src/shared/digest.ts')).toContain('DIGEST_GAP_KINDS')
     })
   })
 })

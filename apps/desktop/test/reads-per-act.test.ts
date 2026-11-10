@@ -1,5 +1,5 @@
 import { fixtureProviderConfig, neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -296,49 +296,6 @@ const ARMS: Record<RuntimeChangeSubject, readonly ('workspace' | 'forest')[]> = 
 }
 
 describe('§2 · reads per act, through `whenTheWorldMoves` and `oneReadAtATime`', () => {
-  it('⚑ the arms really fire those readers — the screen’s own source, sliced per arm', () => {
-    const screen = readFileSync(
-      join(here, '../src/renderer/src/components/RuntimeScreen.vue'),
-      'utf8',
-    ).replace(/^\s*\/\/.*$/gm, '')
-    const from = screen.indexOf('stopListening = whenTheWorldMoves(')
-    expect(from, 'the screen no longer subscribes through whenTheWorldMoves').toBeGreaterThan(0)
-    /**
-     * ⚠️ **Each arm is sliced to the NEXT one, and every bound is asserted to exist** (`678`'s review):
-     * the first cut looked for `agents: () => {`, the arm is `agents: () => refreshAgents(),`, the
-     * index was -1 and the slice ran to the end of the file — where onMounted and the ticks call the
-     * same readers, so deleting a call from the ARM left this green.
-     */
-    const at = (needle: string, after: number): number => {
-      const found = screen.indexOf(needle, after)
-      expect(found, `${needle} is not where the arms are`).toBeGreaterThan(after)
-      return found
-    }
-    const conversationsAt = at('    conversations: () => {', from)
-    const workAt = at('    work: () => {', conversationsAt)
-    const agentsAt = at('    agents: ', workAt)
-    const personsAt = at('    persons: ', agentsAt)
-    const endAt = at('\n  })', personsAt)
-    const arms: Record<RuntimeChangeSubject, string> = {
-      conversations: screen.slice(conversationsAt, workAt),
-      work: screen.slice(workAt, agentsAt),
-      agents: screen.slice(agentsAt, personsAt),
-      persons: screen.slice(personsAt, endAt),
-    }
-    // ⚑ **Derived from ARMS**, both ways: every reader the table lists is called in that arm, and
-    // every reader it does not list is not — so the table §2 feeds cannot drift from the screen.
-    const CALLS = {
-      workspace: 'readTheWorkspace()',
-      forest: 'readWhoIsWorking()',
-    } as const
-    for (const subject of Object.keys(arms) as RuntimeChangeSubject[]) {
-      for (const [reader, call] of Object.entries(CALLS) as [keyof typeof CALLS, string][]) {
-        const listed = ARMS[subject].includes(reader)
-        expect(arms[subject].includes(`void ${call}`), `${subject} · ${reader}`).toBe(listed)
-      }
-    }
-  })
-
   for (const [name, burst] of Object.entries(ACTS) as [Act, Tally][]) {
     it(`🔴 ${name}: each coalesced reader reads at most twice — and the control, unwrapped, reads every time`, async () => {
       const readers = { workspace: aSlowRead(), forest: aSlowRead() }

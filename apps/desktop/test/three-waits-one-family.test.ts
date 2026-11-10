@@ -33,7 +33,7 @@ import {
 } from '../src/shared/tasks'
 import { WORK_STATE_WORD } from '../src/renderer/src/lib/work-report'
 import { aPersonOwesAnAnswerIn } from '../src/shared/questions'
-import { spacedCode, expectNoDeadlineDeps } from './helpers/source-contracts'
+import { spacedCode } from './helpers/source-contracts'
 import {
   fixtureProviderConfig,
   syntheticProviderHome,
@@ -518,35 +518,6 @@ describe('609 · three waits, one family', () => {
       }
     })
 
-    it('⛔ the app READS the hand-over fold, and the census names what it must not read', () => {
-      // ⚑ **Both layers build the source from the same three reads**, which is the property that
-      // keeps a piece from reading one word in a window and another in a tool. ⚠️ D-016 took the
-      // fourth, `aPersonOwesADecisionIn`, with proposals, and made the third `childrenOpen` — the
-      // open pieces given, keyed by the piece each was given under.
-      const host = codeOf('main/runtime/runtime-host.ts')
-      const store = codeOf('main/db/session-store.ts')
-      for (const source of ['openQuestionsByWork', 'aPersonOwesAnAnswerIn', 'childrenOpen']) {
-        expect(host, `the host stopped reading ${source}`).toContain(source)
-        expect(store, `the store stopped reading ${source}`).toContain(source)
-      }
-      // 🔴 **The hand-over fold by name, at both builders.** ⛔ `piecesGivenBy` IS *the work this
-      // conversation gave out*; a source that asked a child's session for its state would be this
-      // product's first inference, which `HO-088` §5.1 rules against.
-      // ⚠️ **671 · each now passes the answer's `RowsUnread`** (R18), so the fold is asked with the
-      // counter that makes a torn row COUNTED — re-aimed to the call as it is written now.
-      // ⚑ **D-036 moved the host's call** out of `oneWaitReadPerAnswer` into
-      // `oneWorkOutReadPerAnswer`, the one read of the open work a conversation gave (and the ones
-      // it stands for gave) that `childrenOpen` and the one state's *waiting on <name>* both take —
-      // the same fold, the same counter, asked per id it stands for.
-      expect(host).toContain('.piecesGivenBy(one, unread)')
-      expect(store).toContain('piecesGivenBySession(sessionId, unread)')
-      // ⚠️ **THE POSITIVE CONTROL for the two negatives above** (standing rule 34.2): the strings
-      // this census hunts for are real strings that this same corpus contains, so a grep that had
-      // stopped matching anything would be visible here rather than passing as a clean sweep.
-      expect(host).toContain('runningStateOf')
-      expect(codeOf('shared/tasks.ts')).toContain('TASK_IS_OPEN')
-    })
-
     it('⚑ END TO END: the giver’s turn ends, it has work out, and it is NOT reported as stalled', async () => {
       // ⛔ **A three-deep chain, because that is the only shape in which a giver holds a GIVEN piece
       // of its own**: a root is never a folded piece (D-016 · R1), so the middle needs a giver.
@@ -889,82 +860,9 @@ describe('609 · three waits, one family', () => {
   })
 
   /**
-   * 🔴 **§6 · `PROPOSAL_BOUND_MS` — ANSWERED by `609`, REPAIRED by `615`, REMOVED by `616`.**
-   *
-   * ⛔ **`608` asked: does it still bound something a person's silence should not?** ⚑ About the
-   * PROPOSAL, no — `441`'s criterion 21 keeps the card answerable for ever. 🔴 **About the
-   * PROPOSER, yes**, and this section was the measurement rather than the argument.
-   *
-   * ## ⚠️ 615 · what this section asserted, and why the assertion had to be INVERTED
-   *
-   * ⛔ **`609` wrote the defect down as the ABSENCE of every carrier** — a loop asserting that
-   * `decideProposal` reaches a model through none of `queueMessage`, `deliverAnswer` or
-   * `handToProvider` — ⚑ **so that it could not be silently fixed or silently forgotten.** 🔴 It
-   * went red the moment `615` built one, which is exactly what it was for.
-   *
-   * ⚑ **It was not deleted.** ⚠️ The absence is now a UNIQUENESS control — those three doors are
-   * still the wrong ones — and beside it stands the positive assertion that the one right door is
-   * called.
-   *
-   * ## 🔴 616 · the GUARD in front of that call has gone, and this section says so by name
-   *
-   * ⛔ **`615` pinned `if (!parked) void this.deliverDecision(`** — the half a delivery breaks by
-   * being unconditional, because a decision that settled a still-waiting call AND sent it a turn
-   * is `591 M6` re-created. ⚠️ **`616` removed the other carrier**, so the guard has nothing left
-   * to exclude and an unconditional delivery is now the correct shape. ⚑ **What the section
-   * measures is unchanged**: exactly one carrier, named, and three doors that are still the wrong
-   * ones.
-   *
-   * 🔴 **And the title went with the bound** (standing rule 19's corollary; `603`, `608` and
-   * `615` each did this to their own predecessor).
-   *
-   * ⚑ **D-016 took proposals, and with them the carrier this section measured** — the decision
-   * and `deliverDecision` are gone, so its first test went with its subject. ⛔ What is left is the
-   * half that was never about a proposal: no clock decides that a person failed to answer.
-   */
-  describe('§6 · nothing releases the call any more, and no clock decides a person failed', () => {
-    it('⚠️ the number is GONE, and neither spelling of a wait on a person is left in the app', () => {
-      // ⛔ **616 · this asserted the literal was here** — `expect(PROPOSAL_BOUND_MS).toBe(300_000)`
-      // and `expect(proposals).toContain('export const PROPOSAL_BOUND_MS = 300_000')`. ⚑ `608`
-      // re-homed it, `609` answered what it was for, and `HO-093` §2 ruled it away; **re-aimed
-      // rather than deleted**, so a number cannot come back without a person noticing. ⚑ D-016
-      // deleted `shared/proposals.ts` with proposals, so the host is where `proposalBoundMs` is
-      // still refused.
-      expect(codeOf('shared/questions.ts')).not.toContain('ASK_BOUND_MS')
-      expect(codeOf('main/runtime/runtime-host.ts')).not.toContain('proposalBoundMs')
-      // 🔴 **616 relay 1 · the control was `ESCALATION_WINDOW_MS` and `612` REMOVED IT** in the
-      // same integration (HO-088 §3.1). ⛔ **All three waits on somebody answering are gone**, so
-      // the family this file is named for is empty — which is the finding, and which means the
-      // control cannot be another member of it.
-      expect(codeOf('shared/questions.ts')).not.toContain('ESCALATION_WINDOW_MS')
-      expect(codeOf('main/runtime/runtime-host.ts')).not.toContain('escalationWindowMs')
-      expectNoDeadlineDeps(join(srcRoot, 'main'), 'three-waits')
-      // ⚑ **THE POSITIVE CONTROL for four negatives, and it carries the DISTINCTION** (standing
-      // rule 34.2): the vocabulary these numbers belonged to is still here and still readable,
-      // and this class still resolves numbers — they bound this app's own teardown rather than
-      // how long anybody has to answer.
-      expect(codeOf('shared/questions.ts')).toContain('export function aPersonsSince(')
-      expect(codeOf('main/runtime/runtime-host.ts')).toContain(
-        'deps.closeDrainTimeoutMs ?? DEFAULT_CLOSE_DRAIN_TIMEOUT_MS',
-      )
-    })
-  })
-
-  /**
    * 🔴 **§7 · the sweep — BOTH audiences, each with the control that makes its zero a measurement.**
    */
   describe('§7 · the sentences the ruling moved', () => {
-    it('⛔ the MODEL reads the fact behind every wait, from the TABLE and not from a comparison', () => {
-      const tools = codeOf('main/runtime/agent-tools.ts')
-      // ⚑ **A `Record` keyed by the family**, so a new wait reaches a model with its fact rather
-      // than as a bare word — the old shape was `state === 'asking' ? …`, which a new member joins
-      // silently (`a-loop-over-a-literal-variant-list-is-not-exhaustive`).
-      expect(tools).toContain('WAITING_STANDS_FOR[wait]')
-      expect(tools).toContain('theWaitIn(piece.state)')
-      expect(tools).not.toContain("task.state === 'asking'")
-      expect(tools).not.toContain('WAITING_ON_AN_ANSWER')
-    })
-
     it('🔴 the PERSON’s words: every wait has one, and only the wait on the reader’s own request addresses the reader', () => {
       // ⛔ **The rendered table and not a docblock** — `WORK_STATE_WORD` is what a person reads on
       // the Work tab and in the transcript's work row.

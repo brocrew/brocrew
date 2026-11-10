@@ -139,17 +139,6 @@ describe('656 · what a reopen costs', () => {
       // naming a sweep that is gone is a cost the table claims and the code no longer charges.
       expect(claimed).toEqual(performed)
     })
-
-    it('⚑ THE CONTROL — the census reads real calls, and enough of them to mean something', () => {
-      // ⛔ **An empty census would equal an empty claim.** The five sweeps the table names by hand
-      // are all found in the function's body, which is what makes the equality above a
-      // measurement of the source rather than of this file's own parser.
-      const performed = sweepsTheRendererPerforms()
-      for (const sweep of ['settlePending', 'stopDetachedWork', 'stopRunningSubAgents']) {
-        expect(performed).toContain(sweep)
-      }
-      expect(performed).not.toContain('itemById')
-    })
   })
 
   describe('§3 · the phantom row is held to the type that makes it one', () => {

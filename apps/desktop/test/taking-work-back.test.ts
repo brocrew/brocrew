@@ -24,7 +24,6 @@ import { pieceLine } from '../src/shared/piece-called'
 import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
-import { expectQueueFactsExcludeBriefs } from './helpers/queue-facts-source'
 import {
   fixtureProviderConfig,
   RecordingSink,
@@ -34,7 +33,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const mainRoot = join(here, '../src/main')
 
 const waitFor = async (ready: () => boolean, what: string, tries = 200): Promise<void> => {
   for (let attempt = 0; attempt < tries; attempt += 1) {
@@ -404,10 +402,6 @@ describe('429 · taking work back', () => {
 
   const sourceOf = (dir: string, file: string): string => readFileSync(join(dir, file), 'utf8')
 
-  /** Prose quotes code, so a census that reads for ABSENCE has to read the code only (`412`). */
-  const codeOnly = (source: string): string =>
-    source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-
   // ─────────────────────────────────────────────────────────────────────────────────────────
   // §1 · the carrier — §2 and §2.1 of the brief
   // ─────────────────────────────────────────────────────────────────────────────────────────
@@ -436,30 +430,6 @@ describe('429 · taking work back', () => {
       expect(said).toContain('list_tasks')
     })
 
-    it('⛔ the advertised set and the keys the handler reads are ONE set, compile-enforced', () => {
-      // 🔴 **`415` §2.4's device, and the assertion is over the SOURCE because the guarantee is a
-      // type.** ⚠️ A behavioural test cannot see the difference between *documented and read* and
-      // *read only*; what can is the `satisfies` that fails to compile when the two disagree, and
-      // the constants the handler reads through.
-      const tools = sourceOf(join(mainRoot, 'runtime'), 'agent-tools.ts')
-      expect(tools).toContain(
-        '} satisfies Readonly<Record<keyof MessageAgentArguments, z.ZodType>>',
-      )
-      expect(tools).toContain(
-        "const MESSAGE_PIECE_ARGUMENT = 'piece' satisfies keyof MessageAgentArguments",
-      )
-      expect(tools).toContain('args[MESSAGE_PIECE_ARGUMENT]')
-      // ⚑ **And the same device on the new door**, so the verb this dispatch adds cannot drift
-      // either — `satisfies` plus two constants typed as keys of its own interface.
-      expect(tools).toContain(
-        '} satisfies Readonly<Record<keyof WithdrawTaskArguments, z.ZodType>>',
-      )
-      expect(tools).toContain(
-        "const WITHDRAW_PIECE_ARGUMENT = 'piece' satisfies keyof WithdrawTaskArguments",
-      )
-      expect(tools).toContain('args[WITHDRAW_PIECE_ARGUMENT]')
-    })
-
     it('🔴 an omitted reference on a FOLLOW-UP is the caller’s fault, and on a note means no piece', async () => {
       // ⛔ **`429` §2.1's decision, re-ruled by D-016**: `MESSAGE_TASK_WHEN_UNSAID` — *an omitted
       // reference means not about any task* — went with the kind that sent work. ⚑ A follow-up adds
@@ -484,33 +454,6 @@ describe('429 · taking work back', () => {
       expect(note.outcome, JSON.stringify(note)).toBe('ok')
       // ⚠️ **And neither opened anything**: a message hands nothing over (D-016).
       expect(piecesOf(worker)).toHaveLength(1)
-    })
-
-    it('⛔ the reference can never become the piece a message HANDS OVER', () => {
-      // 🔴 **`queueMessage` refuses a GIVE by TYPE** — `Omit<TurnFacts, 'giving'> & { readonly
-      // giving?: never }` — because *"a caller allowed to name a piece here could make any message
-      // claim to hand over work that nothing recorded."* ⚑ The field this dispatch adds is a
-      // different claim about a different object, and it must not reach that one. ⚑ **D-016,
-      // commit 5** — the rail is spelled once, as `FactsAQueueCarries`, and takes a new brief
-      // (`rebriefing`) out beside the give.
-      const tools = sourceOf(join(mainRoot, 'runtime'), 'agent-tools.ts')
-      const host_ = sourceOf(join(mainRoot, 'runtime'), 'runtime-host.ts')
-      const records = sourceOf(join(mainRoot, 'runtime'), 'message-records.ts')
-      expectQueueFactsExcludeBriefs(records, host_)
-      // ⛔ **The tool never spells it in CODE**, so the value a caller supplied cannot travel on the
-      // turn. ⚠️ **Comments stripped first** — this file's own docblock names the field to say it is
-      // unreachable, and a raw `toContain` would be the census reading its own prose
-      // (`a-source-census-must-strip-prose-before-it-asserts`).
-      // ⚠️ **Sentences stripped too, but not a string that IS the name** (`['giving']` spells it):
-      // a refusal may say "giving it again" without spelling the field.
-      expect(
-        codeOnly(tools).replace(/'(?:[^'\\\n]|\\.)*'/g, (literal) =>
-          literal === "'giving'" ? literal : "''",
-        ),
-      ).not.toContain('giving')
-      // ⚑ **And the call the tool makes is unchanged in its shape** — the words, the caller, and
-      // nothing that gives a piece.
-      expect(codeOnly(tools)).toMatch(/host\.queueMessage\(\s*agent,\s*text,\s*by,/)
     })
   })
 

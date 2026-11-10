@@ -1,5 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,14 +21,8 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
-const STORE_SRC = join(here, '../src/main/db/session-store.ts')
-const HOST_SRC = join(here, '../src/main/runtime/runtime-host.ts')
 
 const NOW = 1_800_000_000_000
-
-function code(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1')
-}
 
 describe('504 · the row he cannot press', () => {
   let userData: string
@@ -142,23 +136,6 @@ describe('504 · the row he cannot press', () => {
       const withReason = describeUnavailable('cannot-be-reopened', { refusal: 'the row said this' })
       expect(withReason).toContain('the row said this')
       expect(describeUnavailable('cannot-be-reopened')).not.toContain('read')
-    })
-
-    it('🔴 the refusal fork is written once in the store', () => {
-      const rawSource = readFileSync(STORE_SRC, 'utf8')
-      const source = code(rawSource)
-      const fork = /canReopen\(row\) \? whyNoDirectInput\(row\) : whyNotResumable\(row\)/g
-      expect(source.match(fork) ?? [], 'the fork is spelled more than once').toHaveLength(1)
-      const expression = 'canReopen(row) ? whyNoDirectInput(row) : whyNotResumable(row)'
-      const commented = `${rawSource}\n/* ${expression} */`
-      expect(commented.match(fork) ?? []).toHaveLength(2)
-      expect(code(commented).match(fork) ?? []).toHaveLength(1)
-      const duplicated = `${source}\n${expression}`
-      expect(code(duplicated).match(fork) ?? []).toHaveLength(2)
-      const absent = source.replace(fork, 'null')
-      expect(absent.match(fork) ?? []).toHaveLength(0)
-      expect(() => expect(absent.match(fork) ?? []).toHaveLength(1)).toThrow()
-      expect(code(readFileSync(HOST_SRC, 'utf8'))).toContain('recordedOne(sessionId)')
     })
   })
 

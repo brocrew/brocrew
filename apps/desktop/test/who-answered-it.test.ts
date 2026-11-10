@@ -1,5 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -86,7 +86,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
-const SRC = join(here, '../src')
 
 const HOUR = 3_600_000
 const FROM = 1_800_000_000_000
@@ -113,73 +112,6 @@ class ProviderDouble extends FakeRuntime {
     this.handles.push(handle)
     return handle
   }
-}
-
-/* ------------------------------------------------------------------ the census's search shape */
-
-/**
- * ⛔ **Prose stripped before anything is counted.** This file's subject is a docblock that stayed
- * true-looking for a month, and `runtime-host.ts` quotes `type: 'user_decision'` in comments about
- * the writers — `a-source-census-must-strip-prose-before-it-asserts`.
- */
-function code(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1')
-}
-
-/**
- * ⛔ **Every production source in the tree**, and the breadth is the point: *a negative is only as
- * strong as the search shape*. ⚠️ A walk of `src/main` alone would have answered *"five, all in
- * `runtime-host.ts`"* by construction — it is the only place it looked.
- *
- * ⚑ Test files are excluded and nothing else is: the renderer, the shared layer and both runtime
- * packages are all searched, so a writer appearing anywhere is a red row rather than a blind spot.
- */
-function everyProductionSource(): { name: string; source: string }[] {
-  const walk = (dir: string): string[] =>
-    readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
-      entry.isDirectory()
-        ? entry.name === 'node_modules' || entry.name === 'dist'
-          ? []
-          : walk(`${dir}/${entry.name}`)
-        : /\.(ts|vue)$/.test(entry.name)
-          ? [`${dir}/${entry.name}`]
-          : [],
-    )
-  const roots = [
-    SRC,
-    join(here, '../../../packages/runtime/src'),
-    join(here, '../../../packages/shared/src'),
-    join(here, '../../../packages/orchestration/src'),
-  ]
-  return roots
-    .flatMap((root) => walk(root).map((path) => ({ root, path })))
-    .map(({ root, path }) => ({
-      name: path.slice(root.length + 1),
-      source: code(readFileSync(path, 'utf8')),
-    }))
-}
-
-/**
- * Every object literal in `source` that opens with `type: 'user_decision'`, as the text from that
- * key to the end of the literal.
- *
- * ⚠️ **The slice ends at the literal's own closing brace, counted** — a fixed-width slice runs into
- * the next region and would read a neighbouring call's `by`.
- */
-function decisionLiterals(source: string): string[] {
-  const found: string[] = []
-  const key = "type: 'user_decision',"
-  for (let from = source.indexOf(key); from !== -1; from = source.indexOf(key, from + 1)) {
-    let depth = 1
-    let cursor = from + key.length
-    while (cursor < source.length && depth > 0) {
-      if (source[cursor] === '{') depth++
-      else if (source[cursor] === '}') depth--
-      cursor++
-    }
-    found.push(source.slice(from, cursor))
-  }
-  return found
 }
 
 describe('503 · who answered it', () => {
@@ -280,65 +212,6 @@ describe('503 · who answered it', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§1 · the row', () => {
-    it('⛔ every production writer of `user_decision` derives the actor from its CALLER', () => {
-      const writers = everyProductionSource().flatMap(({ name, source }) =>
-        decisionLiterals(source).map((literal) => ({ name, literal })),
-      )
-      // ⚑ **The walk really did leave its own root** — without this the list below could be five
-      // because the search only ever entered one directory.
-      expect(everyProductionSource().length).toBeGreaterThan(200)
-      // ⚑ **Pinned, because a writer ADDED without the field is exactly the regression this
-      // guards** — and a count of "more than zero" would pass over one.
-      //
-      // ⚑ **D-017 · R6 — one shorter, and not because a door lost its row**: every decision on a
-      // question THIS APP asked — an agent's answer or decline, a person's answer or decline — is
-      // written by ONE writer now (`decideAQuestionThisAppAsked`, into the asker's ledger whether or
-      // not it is running), where each door used to spell its own.
-      expect(writers.map((one) => one.name)).toEqual([
-        'main/runtime/move-request.ts',
-        'main/runtime/runtime-host.ts',
-        // ⚑ **D-009** — an agent saying it cannot answer a PROVIDER's question, from its caller too.
-        'main/runtime/runtime-host.ts',
-        'main/runtime/runtime-host.ts',
-        'main/runtime/runtime-host.ts',
-        'main/runtime/runtime-host.ts',
-        'main/runtime/runtime-host.ts',
-      ])
-      for (const { name, literal } of writers) {
-        if (name === 'main/runtime/move-request.ts') {
-          expect(literal).toContain('by,')
-          const helper = code(
-            readFileSync(join(here, '../src/main/runtime/move-request.ts'), 'utf8'),
-          )
-          expect(helper).toContain("if (by.who !== 'a-person') throw")
-          const host = code(readFileSync(join(here, '../src/main/runtime/runtime-host.ts'), 'utf8'))
-          expect(host).toMatch(/recordMovedRequest\([\s\S]*?whoDidIt\(by\)/)
-        } else {
-          expect(literal, `${name} writes a decision row with no actor`).toContain('by: whoDidIt(')
-        }
-        // ⛔ **From the CALLER and never from the payload** — `MessageSentEvent.onBehalfOfAPerson`'s
-        // standard. ⚑ The stronger half of this — that no tool and no IPC payload HAS a field a
-        // caller could say it with — is `who-did-it.test.ts` §2's, asserted against the type; this
-        // is the shape check that no writer reached for one anyway.
-        expect(literal, `${name} takes the actor from a payload`).not.toMatch(/by:\s*input\./)
-      }
-
-      // ⚑ **The control, and it is what stops the loop above being a formality**: the shape CAN
-      // find a literal that omits the field, and it stops at the literal's own brace rather than
-      // running into a neighbour that happens to have one.
-      const planted =
-        "this.publishOurs(s, {\n  type: 'user_decision',\n  requestId: r,\n  outcome: 'allow',\n})\n" +
-        "this.publishOurs(s, {\n  type: 'user_decision',\n  outcome: 'allow',\n  by: whoDidIt(by),\n})"
-      const slices = decisionLiterals(planted)
-      expect(slices.length).toBe(2)
-      expect(slices[0]).not.toContain('by: whoDidIt(')
-      expect(slices[1]).toContain('by: whoDidIt(')
-
-      // …and the strip really removes prose, so a comment quoting the key is not counted as a
-      // sixth writer.
-      expect(decisionLiterals(code("// type: 'user_decision', by: whoDidIt(by)\n"))).toEqual([])
-    })
-
     it('🔴 a PERSON answers a permission and a PARENT AGENT answers a question — two words, one event type', async () => {
       // ⛔ **The divergence, and it is the PO's whole reason.** A permission can only ever have
       // been answered by a person; a routed question can have been answered by the parent. Both

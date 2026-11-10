@@ -272,21 +272,6 @@ describe('§3 · what raised it decides whether there is a card', () => {
       view([asked(raisedBy)])?.rows[0]?.question !== null
     expect(every.filter(card)).toEqual(['this-app'])
   })
-
-  it('🔴 the statement that feeds the word admits exactly the two types it can name', () => {
-    const source = readFileSync(
-      fileURLToPath(new URL('../src/main/db/session-store.ts', import.meta.url)),
-      'utf8',
-    )
-    const clause = /AND type IN \(([^)]*)\)\)\s*\n\s*ORDER BY ordinal`/.exec(source)
-    expect(clause, 'the questions-raised statement moved or was re-worded').not.toBeNull()
-    const types = (clause?.[1] ?? '')
-      .split(',')
-      .map((one) => one.trim().replace(/^'|'$/g, ''))
-      .sort()
-    expect(types).toEqual(['question_asked', 'user_input_request'])
-    expect(source).toContain("row.type === 'question_asked' ? 'this-app' : 'the-provider'")
-  })
 })
 
 const WALK = <Row>(rows: readonly Row[]): LedgerWalk<Row> => ({

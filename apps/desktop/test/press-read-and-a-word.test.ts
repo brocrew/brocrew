@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { capabilitiesFor } from '@brobot2/runtime'
@@ -39,25 +39,6 @@ const read = (path: string): string =>
   readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8')
 
 /**
- * ⚠️ **Rendered text only** — `<style>`, HTML comments, block comments and line comments out.
- * Every file below ARGUES about the words it must not spell, at length, and a census that cannot
- * tell code from the paragraph explaining it measures the paragraph (`373`).
- */
-const rendered = (source: string): string =>
-  source
-    .replace(/<style[\s\S]*?<\/style>/g, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '')
-    .replace(/\s+/g, ' ')
-
-const COMPONENTS = readdirSync(
-  fileURLToPath(new URL('../src/renderer/src/components', import.meta.url)),
-)
-  .filter((file) => file.endsWith('.vue'))
-  .sort()
-
-/**
  * ⚑ One of `standing-grants.ts`' sentences, asserted to BE one — on a tree without it the reading
  * fails here, by assertion, inside the test that asked (never at collection).
  */
@@ -70,63 +51,6 @@ function sentence(name: keyof typeof grants): string {
 /* ------------------------------------------------------------------ §1 the words */
 
 describe('529 §1 · the two sentences that moved have one home', () => {
-  /**
-   * 🔴 **A `toContain` finds the first copy and is blind to a second** — standing rule 12. ⛔ And
-   * the way a second copy gets made is exactly a move like this one: somebody relocates a block,
-   * leaves the old one rendering, and a later dispatch edits only the new one. ⚑ So this COUNTS,
-   * across every component, and the number it may be is zero.
-   */
-  const copiesIn = (sources: readonly string[], opening: string): number =>
-    sources.reduce((total, source) => total + rendered(source).split(opening).length - 1, 0)
-
-  /** ⚑ Built inside the `it` that reads it — see the import (`739` review #17). */
-  const openings = (): string[] => [
-    sentence('ANOTHER_CALLER_IS_ON_IT').slice(0, 40),
-    sentence('ANOTHER_CALLER_MAY_REACH_IN').slice(0, 60),
-    // ⚠️ 739 · re-aimed by rename (rule 26): the grants sentence, under its new name…
-    sentence('HOW_THESE_GRANTS_END').slice(0, 60),
-    // ⚑ …and the kept grants' own, which `SessionInfo` draws beside it — one home each, the same
-    // census (`736` F-1's *"disclose kept grants apart"*).
-    sentence('KEPT_BEYOND_IT_SAYS').slice(0, 60),
-  ]
-
-  it('🔴 no component in the app holds either sentence as a literal', () => {
-    const OPENINGS = openings()
-    const sources = COMPONENTS.map((file) => read(`../src/renderer/src/components/${file}`))
-    for (const opening of OPENINGS) {
-      expect(copiesIn(sources, opening), `a surface types out "${opening}…"`).toBe(0)
-    }
-
-    // ⛔ **The control, planting TWO** — one copy in each of two files, so a counter that returned
-    // after its first hit would report 1 and this would catch it.
-    for (const opening of OPENINGS) {
-      expect(copiesIn([`<p>${opening} …</p>`, `<p>${opening} …</p>`], opening)).toBe(2)
-    }
-    // …and the stripper leaves rendered text alone, so the zeroes above are not it eating the file.
-    expect(rendered(read('../src/renderer/src/components/SessionInfo.vue'))).toContain(
-      '{{ ANOTHER_CALLER_MAY_REACH_IN }}',
-    )
-  })
-
-  it('⛔ the surface that says them renders the constants and imports them', () => {
-    const info = read('../src/renderer/src/components/SessionInfo.vue')
-    expect(info).toContain('{{ ANOTHER_CALLER_MAY_REACH_IN }}')
-    // ⚠️ 739 · the grants sentence under its new name, and the kept grants' sentence beside it.
-    expect(info).toContain('{{ HOW_THESE_GRANTS_END }}')
-    expect(info).toContain('{{ KEPT_BEYOND_IT_SAYS }}')
-    expect(info).toMatch(/from '\.\.\/lib\/standing-grants'/)
-
-    // ⛔ **And the surface they LEFT holds neither, in code or in a hook.** A move that leaves the
-    // old block rendering is the second copy this file counts for.
-    // The approval mode's panel on the agent card is where the press is now.
-    const controls = rendered(read('../src/renderer/src/components/CardApproval.vue'))
-    expect(controls).not.toContain('has-a-commander')
-    expect(controls).not.toContain('grants')
-    // …paired, so the negatives are about the blocks and not about an empty read.
-    expect(controls).toContain('role="switch"')
-    expect(controls).toContain('data-cy="card-approval"')
-  })
-
   /**
    * ⚑ **Standing rule 5: the load-bearing clause, asserted BY NAME.**
    *

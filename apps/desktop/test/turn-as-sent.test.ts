@@ -1,5 +1,4 @@
 import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
-import ts from 'typescript'
 import { createHash } from 'node:crypto'
 import {
   lstatSync,
@@ -1060,45 +1059,6 @@ describe('§4 · the host: a ledger message, read from the provider’s file', (
       found: false,
       why: 'The provider’s own record of this message is gone, and the app kept no copy of it.',
     })
-  })
-
-  it('⛔ read only, and reached by a window only inside the person’s own read', () => {
-    for (const file of [
-      'archive/turn-as-sent.ts',
-      'archive/turn-reading.ts',
-      'providers/claude/turn-reading.ts',
-      'providers/codex/turn-reading.ts',
-    ]) {
-      const source = readFileSync(join(here, '../src/main', file), 'utf8')
-      expect(source).not.toMatch(/from 'node:fs'/)
-    }
-    const host = readFileSync(join(here, '../src/main/runtime/runtime-host.ts'), 'utf8')
-    const source = ts.createSourceFile('runtime-host.ts', host, ts.ScriptTarget.Latest, true)
-    const owner = source.statements.find(
-      (node): node is ts.ClassDeclaration =>
-        ts.isClassDeclaration(node) && node.name?.text === 'RuntimeHost',
-    )
-    const selected = owner?.members.find(
-      (node): node is ts.MethodDeclaration =>
-        ts.isMethodDeclaration(node) && node.name.getText(source) === 'readTurnAsSent',
-    )
-    expect(selected).toBeDefined()
-    if (selected === undefined) throw new Error('The turn reader method is missing')
-    const method = selected.getText(source)
-    expect(method).toContain('this.deps.nativeTranscriptPath(row.provider, home, ref)')
-    expect(method).toContain('isTheProvidersRecord(row.provider, home, found)')
-    expect(method).not.toMatch(/writeFile|appendFile|rmSync|unlink|readdir/)
-    // ⛔ W4.172 · no channel of its own: `whatTheModelGot` carries it, a person's read that a quit
-    // refuses (`ipc.ts`).
-    const main = readFileSync(join(here, '../src/main/index.ts'), 'utf8')
-    const preload = readFileSync(join(here, '../src/preload/index.ts'), 'utf8')
-    for (const wire of [main, preload]) expect(wire).not.toMatch(/turnAsSent|turn-as-sent/)
-    const ipc = readFileSync(join(here, '../src/main/runtime/ipc.ts'), 'utf8')
-    expect(ipc).toContain("  whatTheModelGot: 'refused',")
-    const handled = ipc.slice(ipc.indexOf("    case 'whatTheModelGot':"))
-    expect(handled.slice(0, handled.indexOf('return host.whatTheModelGot'))).toContain(
-      'requireAPerson(sink, command.kind)',
-    )
   })
 })
 

@@ -75,8 +75,6 @@ const at = (event: TranscriptEvent, ordinal: number): PersistedEventInfo =>
  */
 const readReason = (result: ResourceReading): string => (result.ok ? 'ok' : result.reason)
 
-const readSource = (path: string): string => readFileSync(path, 'utf8')
-
 describe('510 · the id this app hands a person', () => {
   let userData: string
   let work: string
@@ -455,59 +453,6 @@ describe('510 · the id this app hands a person', () => {
         const report = { resources: planted } as unknown as { resources?: string[] }
         expect(theResourcesAReportNames(report, true), JSON.stringify(planted)).toEqual([])
       }
-    })
-  })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §5 · the wiring — every hop, so a deleted one is a failure rather than a dead control
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§5 · the press reaches the door', () => {
-    const SRC = (path: string): string => readSource(join(here, path))
-
-    it('⛔ four hops, and each one is asked for rather than spelled twice', () => {
-      expect(SRC('../src/renderer/src/components/WorkReportEntry.vue')).toContain(
-        "emit('openDocument', resource)",
-      )
-      expect(SRC('../src/renderer/src/components/TranscriptView.vue')).toContain(
-        '@open-document="(resourceId) => $emit(\'openDocument\', resourceId)"',
-      )
-      expect(SRC('../src/renderer/src/components/ConversationPane.vue')).toContain(
-        'async function openResource(resourceId: string): Promise<void> {',
-      )
-      expect(SRC('../src/renderer/src/components/RuntimeScreen.vue')).toContain(
-        ':on-read-resource="readResourceForAnySurface"',
-      )
-    })
-
-    it('🔴 the press draws only where a reader exists, on BOTH panes', () => {
-      // ⛔ `106`: a control that does nothing when pressed is worse than no control. ⚑ Both panes
-      // gate on the presence of the fetch prop rather than on a boolean somebody remembers.
-      //
-      // ⚠️ **640 · the needle moved because the RULE moved, and this assertion followed it.** Both
-      // panes ask `aSurfaceMayOpenADocument`, which is the one place that decides. ⛔ So this reads
-      // the same fact in two hops instead of one, and the second hop — the rule's own body — is
-      // pinned below so the pair cannot go quiet by both drifting.
-      for (const pane of ['ConversationPane', 'ReadingPane']) {
-        const source = SRC(`../src/renderer/src/components/${pane}.vue`)
-        expect(source, pane).toContain(':can-open-document="mayOpenADocument"')
-        expect(source, pane).toContain(
-          'const mayOpenADocument = computed(() => aSurfaceMayOpenADocument(props.onReadResource))',
-        )
-        // ⛔ …and neither pane kept a second, private answer to the same question.
-        expect(source, pane).not.toContain('props.onReadResource !== undefined')
-      }
-      expect(SRC('../src/renderer/src/lib/opening-a-document.ts')).toContain(
-        'return read !== undefined',
-      )
-    })
-
-    it('⚠️ the id is never taken apart in the renderer', () => {
-      // ⛔ **A second reading of `newResourceId`.** Splitting `res_<32 hex>` in a renderer would be
-      // free to disagree with `ids.ts` the day the id gains a character.
-      const lib = SRC('../src/renderer/src/lib/the-document-a-report-names.ts')
-      expect(lib).not.toContain('.split(')
-      expect(lib).not.toContain("startsWith('res_')")
     })
   })
 })

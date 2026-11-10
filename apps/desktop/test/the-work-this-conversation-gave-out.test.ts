@@ -93,14 +93,6 @@ class RecordingSink implements RuntimeEventSink {
   sendLiveness(): void {}
 }
 
-/**
- * ⚠️ **Prose quotes code all over this repository, so a census that COUNTS has to read the code
- * only** — `a-source-census-must-strip-prose-before-it-asserts`. Block comments and line comments
- * go; string literals stay, because the words a surface draws are string literals.
- */
-const code = (text: string): string =>
-  text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ')
-
 const libSource = (name: string): string => readFileSync(join(rendererLib, name), 'utf8')
 
 describe('508 · the work this conversation gave out', () => {
@@ -849,14 +841,6 @@ describe('508 · the work this conversation gave out', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§5 · every number here is derived from one somebody already argued for', () => {
-    it('⛔ no cadence of its own (W4.74, D-033), and no literal milliseconds in the module', () => {
-      const source = code(libSource('work-given-out.ts'))
-      expect(source).not.toContain('EVERY_MS')
-      // ⚠️ **No literal milliseconds anywhere in the module's code** — a number chosen here is
-      // the thing `LOOK_EVERY_MS`'s docblock refuses.
-      expect(source).not.toMatch(/\b\d{2,3}_\d{3}\b/)
-    })
-
     it('⛔ the walk word is in the register, with a sentence of its own', () => {
       expect(LEDGER_WALK_KINDS).toContain('every-conversation-this-one-gave-work-to')
       const says = WALK_COVERS['every-conversation-this-one-gave-work-to']

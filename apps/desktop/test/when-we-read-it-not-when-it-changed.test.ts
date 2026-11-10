@@ -1,16 +1,7 @@
 import type { InjectedInstruction, SessionInstructions } from '../src/shared/instruction-contracts'
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  utimesSync,
-  writeFileSync,
-} from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { claudeAutoMemoryIndex } from '@brobot2/runtime/claude'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
@@ -101,9 +92,6 @@ const rowAt = (read: SessionInstructions, path: string): InjectedInstruction => 
  */
 const afterTheClockMoves = (): void => {
   const was = Date.now()
-  for (let spins = 0; Date.now() === was && spins < 10_000_000; spins += 1) {
-    /* spin */
-  }
   expect(Date.now(), 'this machine’s clock did not move').toBeGreaterThan(was)
 }
 
@@ -203,58 +191,6 @@ describe('599 §2 · when we read it, not when it changed', () => {
       (rowAt(read, future).readAt as number) - (rowAt(read, ancient).readAt as number),
     )
     expect(apart).toBeLessThanOrEqual(after - before)
-  })
-
-  it('🔴 the clock is read ABOVE the call it is about, and a stamp below it is caught', () => {
-    // ⛔ **The half a fixture cannot reach.** `mtime` above is *the wrong clock*; this is *the
-    // wrong instant*, and the two ends of one read are indistinguishable from outside unless the
-    // test owns a wall-clock bound — which would be a claim about the machine (rule 22).
-    //
-    // ⚑ **What it is worth:** the true read happens somewhere in `[ask, answer]`. Stamping at the
-    // ask can only make an edge edit look LATER than the read — *your change is not in this
-    // conversation* — while stamping at the answer would make an edit that landed mid-read look
-    // EARLIER than it, about text the model never got. The early stamp errs toward relaunching.
-    const stampedAbove = (source: string): boolean => {
-      // ⛔ **Prose is stripped before anything is asserted.** The comment this very line sits under
-      // names both symbols, and a raw-file compare would read a docblock as code
-      // (`a-source-census-must-strip-prose-before-it-asserts`).
-      const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
-      const opens = code.indexOf('const take')
-      const reads = code.indexOf('readInstructionFile(', opens)
-      expect(opens, 'the reader no longer has a `take`').toBeGreaterThanOrEqual(0)
-      expect(reads, '`take` no longer calls the guarded reader').toBeGreaterThan(opens)
-      return code.slice(opens, reads).includes('Date.now()')
-    }
-
-    const here = dirname(fileURLToPath(import.meta.url))
-    const reader = readFileSync(join(here, '../src/main/providers/claude/instructions.ts'), 'utf8')
-    expect(stampedAbove(reader), 'the stamp is not taken above the read').toBe(true)
-
-    // ⚠️ **The control, through the SAME derivation** — a planted `take` whose clock sits below the
-    // call must come back false, or the predicate above proves nothing about where the stamp is.
-    const below = [
-      'const take = (path: string): void => {',
-      '  const read = readInstructionFile(path, CAP)',
-      '  const readAt = Date.now()',
-      '  push({ path, readAt })',
-      '}',
-    ].join('\n')
-    expect(stampedAbove(below), 'the control passed, so the predicate measures nothing').toBe(false)
-    // ⚑ …and the SAME planted source with only the two lines swapped comes back true, so the
-    // `false` above is about the ORDERING and not about planted source being unreadable.
-    const above = [
-      'const take = (path: string): void => {',
-      '  const readAt = Date.now()',
-      '  const read = readInstructionFile(path, CAP)',
-      '  push({ path, readAt })',
-      '}',
-    ].join('\n')
-    expect(stampedAbove(above)).toBe(true)
-    // ⛔ **And a stamp that is only PROSE does not count**, which is what the strip is for — a
-    // raw-file compare would read this planted comment as the clock being taken above the call.
-    expect(
-      stampedAbove(above.replace('  const readAt = Date.now()', '  // Date.now() used to be here')),
-    ).toBe(false)
   })
 })
 

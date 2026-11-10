@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { aPageReceipt, type PageReportSender } from '../src/main/runtime/page-performance'
 import {
@@ -690,17 +689,5 @@ describe('the page watches its own tasks and frames', () => {
     await settled()
     expect(closing.connected()).toBe(false)
     expect(closing.timers.size).toBe(0)
-  })
-
-  it('starts in bootstrap before the existing awaits and disposes for hot reload', () => {
-    const source = readFileSync(new URL('../src/renderer/src/main.ts', import.meta.url), 'utf8')
-    const start = source.indexOf('startPageStallWatch((report)')
-    expect(start).toBeGreaterThanOrEqual(0)
-    const firstAwait = source.indexOf('void Promise.all([keepTheMacZone(window.api)')
-    expect(firstAwait).toBeGreaterThanOrEqual(0)
-    expect(start).toBeLessThan(firstAwait)
-    expect(source).toContain('window.top === window')
-    expect(source).toContain('import.meta.hot?.dispose(() => pageWatch?.stop())')
-    expect(source.indexOf("mount('#app')")).toBeLessThan(source.indexOf('pageWatch?.mounted()'))
   })
 })

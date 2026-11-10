@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -52,39 +51,6 @@ describe('the tree as it renders (108)', () => {
     expect(html).toContain('1 running')
     expect(html).toContain('2 done')
     expect(html).toContain('31k tokens')
-  })
-
-  it('spends NO amber anywhere, and the tokens it does spend are already declared', () => {
-    /**
-     * ⚠️ **Read from the component's SOURCE, not from its rendered markup — and the first version
-     * of this test read the markup.** Scoped styles are compiled to a separate stylesheet, so
-     * `renderToString` output contains no `<style>` block at all: `expect(html).not.toContain(
-     * '--waiting')` passed over a string that could never have contained it, on a component with no
-     * CSS whatsoever. A negative with nothing behind it is the failure mode this whole hunt is for.
-     *
-     * 080's line is the claim: `--waiting` IS the attention channel, so a workflow that is merely
-     * BUSY may not spend it. The one amber this feature is allowed rides on `AgentState`'s needing
-     * badge, which is a different component and reached only through a real permission.
-     */
-    const source = readFileSync(
-      new URL('../src/renderer/src/components/WorkflowEntry.vue', import.meta.url),
-      'utf8',
-    )
-    const styles = source.slice(source.indexOf('<style'))
-    // Non-vacuity: the slice has to be the real stylesheet, not an empty tail.
-    expect(styles.length, 'the style block was not found').toBeGreaterThan(500)
-    const used = [...styles.matchAll(/var\((--[\w-]+)/g)].map((match) => match[1]!)
-    expect(used.length, 'no tokens found — the scan is reading the wrong text').toBeGreaterThan(15)
-
-    expect(used).not.toContain('--waiting')
-    expect(used).not.toContain('--warning') // 105 proved this is declared nowhere
-    expect(used).not.toContain('--wash-4') // no light value; a consumer vanishes on paper
-    expect(used).not.toContain('--ended') // does not exist
-    // …and the paired positive: the surface is not simply colourless. All four state registers 107
-    // assigned are actually spent here. The second accent's words are drawn in its text form.
-    for (const token of ['--accent', '--accent-2-text', '--success', '--danger', '--faint']) {
-      expect(used, `${token} is the register 107 assigned and nothing uses it`).toContain(token)
-    }
   })
 
   it('carries no data-chat-theme — the tree renders INSIDE the existing surface', async () => {

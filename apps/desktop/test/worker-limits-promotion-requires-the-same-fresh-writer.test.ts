@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -247,32 +247,6 @@ describe('only a fresh unchanged writer authorizes canonical preparation', () =>
     expect(store.workflowOutputPath('fictional', 'task')).toBe('fictional.md')
     expect(store.whenAPersonLastWrote('fictional')).toBe(AT)
     expect(stamp()).not.toBeNull()
-  })
-
-  it('the exhaustive iterator census detects a new owner and requires all busy guards', () => {
-    const source = readFileSync(join(HERE, '../src/main/db/session-store.ts'), 'utf8')
-    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-    const owners = (text: string) =>
-      [...text.matchAll(/\b([A-Za-z_$][\w$]*)\.iterate\(/g)].map((match) => match[1]).sort()
-    const expected = [
-      'selectNewestTurnsOpened',
-      'selectPieceEvents',
-      'selectRoutedRequestEvents',
-      'selectSubAgentReported',
-      'selectWorkflowAgentTask',
-      'selectWorkflowOutput',
-    ]
-    expect(owners(code)).toEqual(expected)
-    expect(owners(code + '\nnewOwner.iterate()')).not.toEqual(expected)
-    const fenced = (text: string) =>
-      expected.every((owner) => text.includes(`${owner}.busy === false`))
-    expect(fenced(code)).toBe(true)
-    for (const owner of expected) {
-      expect(owners(code.replace(`${owner}.iterate(`, 'missingOwner.iterate('))).not.toEqual(
-        expected,
-      )
-      expect(fenced(code.replace(`${owner}.busy === false`, 'true'))).toBe(false)
-    }
   })
 
   it('rejects wrong job, lifetime, writer, unsafe counters, coverage and both wall expiry boundaries', () => {

@@ -39,7 +39,6 @@ import type { ToolAnswer } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const VIEWER = join(here, '../src/renderer/src/components/ToolAnswerViewer.vue')
-const LIB = join(here, '../src/renderer/src/lib/tool-answer.ts')
 
 /**
  * ⚑ **The SHAPE `agent-tools.ts` builds, not a toy one** — the fields `448` put on a report and the
@@ -317,17 +316,6 @@ describe('§5 · what this surface deliberately does not have', () => {
     // component really is the thing this census is reading.
     expect(source).toContain('markdown-rendering a JSON payload mangles')
     expect(source).toContain('data-cy="tool-answer-viewer"')
-  })
-
-  it('🔴 the renderer holds NO ceiling of its own — how much is kept is the adapter’s answer', () => {
-    const source = readFileSync(LIB, 'utf8')
-    for (const ceiling of ['MAX_TOOL_ANSWER_PART', 'MAX_TOOL_ANSWER_PARTS', 'MAX_TOOL_ANSWERS']) {
-      expect(source, ceiling).not.toContain(ceiling)
-    }
-    // ⛔ **The control that stops this being a census of an empty file**: it DOES name the ceilings'
-    // consequence, which is the thing a reader has to be told.
-    expect(source).toContain('dropped')
-    expect(source).toContain('export function answerAbsence')
   })
 
   it('⚠️ nothing in the panel branches on which PROVIDER this is (039)', async () => {

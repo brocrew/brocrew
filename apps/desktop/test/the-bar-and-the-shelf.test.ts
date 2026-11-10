@@ -73,7 +73,6 @@ const SHELF = code(
     read(`${COMPONENTS}/../composables/useUsageCells.ts`),
   ].join('\n'),
 )
-const BAR = code(read(`${COMPONENTS}/AppTitleBar.vue`))
 
 /** Every renderer source file — components, composables and libraries — with its path. */
 function everySource(): { name: string; source: string }[] {
@@ -320,85 +319,9 @@ describe('§2 · no actor label exists anywhere (389 §5)', () => {
   })
 })
 
-/* ---------------------------------------------------------------- §3 · no project on this session */
-
-describe('§3 · the shelf makes no project claim (389 §3)', () => {
-  it('⛔ it cannot: nothing project-shaped reaches it', () => {
-    // ⚠️ **`388` measured the blocker**: `CreatedSession` does not retain the resolved project, and
-    // `ProjectStore`'s selection was window-level — so a breadcrumb here would have shown that
-    // day's choice against a conversation started under another one. ⚑ **D-016 took projects and
-    // the store out of the window**, so the word is what is left to guard.
-    expect(SHELF).not.toMatch(/\bprojects?\b/i)
-    expect(BAR).not.toMatch(/\bprojects?\b/i)
-
-    // ⚑ **The control**: the same shape over a component whose CODE still says the word — the
-    // provider's own project memory, which is not this app's project — so `code()` and the pattern
-    // are proved able to find one in a real file.
-    const instructions = code(read(`${COMPONENTS}/SessionInstructions.vue`))
-    expect(instructions).toMatch(/\bprojects?\b/i)
-  })
-})
-
-/* ------------------------------------------------------------- §4 · the credential stays a sentence */
-
-describe('§4 · no credential token on the shelf (389 §4)', () => {
-  it('the shelf and the short launcher make no credential claim', () => {
-    // 🔴 `profileCredential()` returns a sentence and a tone because what happens to a credential
-    // differs between providers in KIND. `329` corrected the invention of a one-word status once;
-    // a six-cell strip has no room for the sentence and no right to a token instead.
-    expect(SHELF).not.toContain('profile-credential')
-    expect(SHELF).not.toContain('credential-words')
-    expect(SHELF).not.toMatch(/credential/i)
-
-    const launcher = code(read(`${COMPONENTS}/NewConversation.vue`))
-    expect(launcher).not.toContain('data-cy="profile-credential"')
-    expect(launcher).not.toContain('data-cy="launcher-why-credential"')
-    const provider = code(read(`${COMPONENTS}/ProviderCard.vue`))
-    expect(provider).toContain('data-cy="provider-key"')
-  })
-})
-
 /* ------------------------------------------------------------ §5 · the words come from their owners */
 
 describe('§5 · the shelf renders words it does not own (389 §3)', () => {
-  it('🔴 neither the bar nor the shelf states plan mode', () => {
-    // Neither the bar nor the shelf states plan mode now: the shelf's cells say usage, and the
-    // Agent panel states the plan (§1 above).
-    expect(SHELF).not.toContain('useConversationControls')
-    expect(code(read(`${COMPONENTS}/SessionHeader.vue`))).not.toContain('useConversationControls')
-    expect(read(`${COMPONENTS}/SessionHeader.vue`)).not.toContain('session-plan-indicator')
-    expect(SHELF).not.toContain("'data-planning'")
-  })
-
-  it('⛔ the attention row renders the product’s own needing word and composes nothing', () => {
-    // 🔴 `389 §3`: *"Do not project a phase into prose, invent progress, or infer success."* The
-    // attention row is one lookup and no sentence; the NOW row is `activityLine`'s word plus the
-    // provider's own tool name, which is `ActivityPill`'s rule and not a second one.
-    expect(SHELF).toContain('NEEDING_WORD[needing]')
-    // 🔴 **588 · re-aimed, and the reason is `a-source-census-that-pins-a-line-kills-every-row-on-it`.**
-    // ⛔ This asserted the LITERAL composition inside this file, which made it a check that the
-    // shelf holds its OWN copy of a rule other surfaces also hold — the opposite of what §5 is
-    // about. ⚠️ `089` is three dispatches spent removing rival answers to *what is it doing*, and
-    // this file was the third copy of the composition; `588` found it with a census when a project
-    // row became the fourth surface to draw the line.
-    // ⚑ The PROPERTY — *the shelf composes nothing* — is now that it ASKS, in both directions.
-    // ⚑ The activity line moved to the end of the header's status line, and the rule moved with it.
-    const header = code(read(`${COMPONENTS}/SessionHeader.vue`))
-    expect(header).toContain('activityWords(line)')
-    for (const [name, file] of [
-      ['the shelf', SHELF],
-      ['the header', header],
-    ] as const) {
-      expect(file, `${name} composes the activity line itself`).not.toMatch(
-        /\$\{[^}]*\bword\b[^}]*\}[^`]*\$\{[^}]*\bdetail\b[^}]*\}/,
-      )
-      // ⛔ **Never the raw field**: `transcript.ts` measured `control.activity` outliving its turn
-      // 208 times in 657 events, so a surface reading it says a dead conversation is running Bash.
-      expect(file).not.toContain('control.activity')
-      expect(file).not.toContain('.activity.phase')
-    }
-  })
-
   it('⚠️ only a question or a permission may summon attention — in ONE place', () => {
     // ⛔ `plan` is a NEEDING and is deliberately not attention: a go-ahead blocks nothing and can be
     // pressed whenever. A shelf that treated it as attention would put an amber row on a

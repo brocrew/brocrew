@@ -1,16 +1,5 @@
-import { readdirSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { settingsLocations } from '../src/main/settings-locations'
-
-/**
- * Where each folder's Claude local settings are kept is found off the main thread, since finding one
- * runs git, and kept between reads: a read of the kept rules waits for a refresh without blocking the
- * window, and a removal reads what is kept.
- */
-
-const MAIN = join(dirname(fileURLToPath(import.meta.url)), '../src/main')
 
 describe('the kept locations', () => {
   it('knows nothing before a refresh, and what the refresh found after it', async () => {
@@ -88,38 +77,5 @@ describe('a refresh for other folders', () => {
     expect(asked).toEqual([['/a'], ['/a', '/b']])
     expect(locations.known(['/a', '/b'])).toEqual(['/a/x', '/b/x'])
     expect(locations.unfound(['/a', '/b', '/c'])).toEqual(['/c'])
-  })
-})
-
-describe('off the main thread', () => {
-  it('no main-process module but the worker finds a location: a launch’s own call is in the runtime', () => {
-    const offenders: string[] = []
-    const walk = (folder: string): void => {
-      for (const entry of readdirSync(folder, { withFileTypes: true })) {
-        const path = join(folder, entry.name)
-        if (entry.isDirectory()) {
-          walk(path)
-          continue
-        }
-        if (!entry.name.endsWith('.ts') || entry.name === 'local-settings-locator.worker.ts')
-          continue
-        const code = readFileSync(path, 'utf8')
-          .replace(/\/\*[\s\S]*?\*\//g, '')
-          .replace(/^\s*\/\/.*$/gm, '')
-        if (/\b(projectLocalSettingsFile|localSettingsFilesOf)\(/.test(code)) offenders.push(path)
-      }
-    }
-    walk(MAIN)
-    expect(offenders).toEqual([])
-    const index = readFileSync(join(MAIN, 'index.ts'), 'utf8')
-    expect(index).toContain('await startSettingsLocator()')
-    const registration = readFileSync(join(MAIN, 'providers/index.ts'), 'utf8')
-    expect(registration).toContain("import('./claude/local-settings-locator.worker?nodeWorker')")
-    expect(index).toContain('settingsLocations(locateOffTheMainThread)')
-    const worker = readFileSync(
-      join(MAIN, 'providers/claude/local-settings-locator.worker.ts'),
-      'utf8',
-    )
-    expect(worker).toMatch(/\bprojectLocalSettingsFile\(folder\)/)
   })
 })

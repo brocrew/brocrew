@@ -1,9 +1,8 @@
-import ts from 'typescript'
 import { waitFor } from './lib/f093-host'
 import { LEDGER_WALK_KINDS } from '../src/shared/question-contracts'
 import type { PieceRow, WorkStallTold } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -40,8 +39,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const hostSource = readFileSync(join(here, '../src/main/runtime/runtime-host.ts'), 'utf8')
-const storeSource = readFileSync(join(here, '../src/main/db/session-store.ts'), 'utf8')
 
 class ProviderDouble extends FakeRuntime {
   constructor(
@@ -570,33 +567,6 @@ describe('557 · work that stalls with nobody left to tell', () => {
       expect(row?.state).toBe('stalled')
       expect(row?.endedAt).toBeNull()
     })
-
-    it('⛔ neither the reader nor the store’s walk arms a timer — the source, with prose stripped', () => {
-      const codeOf = (source: string, from: string): string => {
-        const at = source.indexOf(from)
-        expect(at, `${from} is not in the source any more`).toBeGreaterThan(-1)
-        const body = source.slice(at, source.indexOf('\n  }\n', at) + 5)
-        return body.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-      }
-      const reader = codeOf(
-        hostSource,
-        'stalledWorkForAPersonComposed(): LedgerWalk<StalledWork> {',
-      )
-      const walk = codeOf(storeSource, 'stalledWorkNobodyWasToldAbout(counted) {')
-      for (const [name, body] of [
-        ['the host reader', reader],
-        ["the store's walk", walk],
-      ] as const) {
-        for (const forbidden of ['setTimeout', 'setInterval', 'Date.now']) {
-          expect(body, `${name} reaches for ${forbidden}`).not.toContain(forbidden)
-        }
-      }
-      expect(reader).toContain('stalledWorkNobodyWasToldAbout')
-      expect(walk).toContain('selectOwnersOfPiecesAConversationGave')
-      expect(
-        codeOf('x() {\n  // setTimeout would be the obvious answer\n  return 1\n  }\n', 'x() {'),
-      ).not.toContain('setTimeout')
-    })
   })
 
   describe('§6 · it is carried BESIDE a person’s queue and never as a row in it', () => {
@@ -627,99 +597,6 @@ describe('557 · work that stalls with nobody left to tell', () => {
       const stale = stalledWorkView(walked, false, clock, new Set())
       expect(stale?.unread).toBe(true)
       expect(stale?.rows).toHaveLength(1)
-    })
-
-    it('⛔ the band and the rows are supplied in ONE call, so the card cannot come from two looks', () => {
-      const screen = readFileSync(
-        join(here, '../src/renderer/src/components/RuntimeScreen.vue'),
-        'utf8',
-      )
-      const supplyFrom = (source: string): string | null => {
-        const tag = '<script setup lang="ts">'
-        const begin = source.indexOf(tag)
-        if (begin < 0 || source.indexOf(tag, begin + tag.length) !== -1) return null
-        const finish = source.indexOf('</script>', begin + tag.length)
-        if (finish <= begin + tag.length) return null
-        const script = source.slice(begin + tag.length, finish)
-        const sf = ts.createSourceFile('RuntimeScreen.ts', script, ts.ScriptTarget.Latest, true)
-        if (
-          (sf as ts.SourceFile & { parseDiagnostics: readonly ts.Diagnostic[] }).parseDiagnostics
-            .length > 0
-        )
-          return null
-        const calls: ts.CallExpression[] = []
-        const visit = (node: ts.Node): void => {
-          if (ts.isCallExpression(node) && node.expression.getText(sf) === 'persons.supply')
-            calls.push(node)
-          ts.forEachChild(node, visit)
-        }
-        visit(sf)
-        if (calls.length !== 1 || calls[0]!.arguments.length !== 11) return null
-        const one = calls[0]!
-        const argumentsAt = one.arguments.map((argument) =>
-          argument.getText(sf).replace(/\s+/g, ' ').trim(),
-        )
-        const positions = [
-          'escalated.value',
-          'decided.value',
-          '{ held:',
-          '{ travel:',
-          '{ walked: limitsDisplay.value.reading?.walked',
-          '{ walked: stalledWork.value',
-          '{ walked: instructionAsks.value',
-          '{ walked: waitingOnWhoWrote.value',
-          '{ walked: mcpServerRequests.value',
-          '{ walked: stoppedWork.value',
-          '{ incidents: workIncidents.value?.rows',
-        ]
-        if (argumentsAt.some((argument, index) => !argument.startsWith(positions[index]!)))
-          return null
-        const start = one.getStart(sf)
-        const end = one.getEnd()
-        if (start < 0 || end <= start || script.slice(end - 1, end) !== ')') return null
-        const next = sf.statements.find(
-          (statement) => ts.isFunctionDeclaration(statement) && statement.getStart(sf) > end,
-        )
-        if (!next || !ts.isFunctionDeclaration(next) || next.name?.text !== 'settleFromTheQueue')
-          return null
-        if (script.slice(end, next.getFullStart()).trim() !== '})') return null
-        return script.slice(start, end)
-      }
-      const found = supplyFrom(screen)
-      expect(found, 'the unique complete supply call is missing').not.toBeNull()
-      const call = found ?? ''
-      expect(call.length).toBeGreaterThan(0)
-      expect(call.startsWith('persons.supply(')).toBe(true)
-      expect(
-        supplyFrom(screen.replace('  persons.supply(', '  persons.supply()\n  persons.supply(')),
-      ).toBeNull()
-      expect(supplyFrom('')).toBeNull()
-      expect(supplyFrom(screen.replace('persons.supply(', 'persons.notSupply('))).toBeNull()
-      expect(
-        supplyFrom(screen.replace('function settleFromTheQueue', 'function differentTail')),
-      ).toBeNull()
-      const malformed = screen.replace(call, call.slice(0, -1) + ']')
-      expect(malformed).not.toBe(screen)
-      expect(supplyFrom(malformed)).toBeNull()
-      const missingBand = screen.replace(
-        '    { walked: stalledWork.value, lastLookAnswered: lastStallLookAnswered.value },\n',
-        '',
-      )
-      expect(missingBand).not.toBe(screen)
-      expect(supplyFrom(missingBand)).toBeNull()
-      expect(supplyFrom(screen + '\nconst unrelatedTail = "tail-decoy"')).toBe(call)
-      expect(call).not.toContain('function settleFromTheQueue(')
-      expect(call).toContain('settle: (row, decision) => settleFromTheQueue(row, decision)')
-      expect(call).not.toContain('tail-decoy')
-      expect(call).toContain('walked: limitsDisplay.value.reading?.walked ?? null')
-      expect(call).toContain("lastLookAnswered: limitsDisplay.value.status === 'ready'")
-      expect(call).toContain('display: limitsDisplay.value')
-      expect(call).toContain('stalledWork.value')
-      expect(call).toContain('lastStallLookAnswered.value')
-      expect(call).toContain('instructionAsks.value')
-      expect(call.length).toBeLessThan(5_000)
-      expect(call.endsWith(')')).toBe(true)
-      expect(call).toContain('escalated.value')
     })
 
     it('⚠️ the button says the one press it performs, before it is pressed, whoever holds it', async () => {

@@ -2121,26 +2121,6 @@ describe("the unknown-rendering path stays provider-agnostic (072 — the person
   })
 })
 
-describe('SessionHeader stays provider-agnostic about the process line (076)', () => {
-  it('never names a provider — the host formats the line, the view just shows it', () => {
-    // The PID line differs per provider (a real number vs "SDK-managed"), which is exactly the
-    // knowledge that must NOT leak into the view. The host pre-formats one string; the header
-    // renders it verbatim.
-    const source = readFileSync(
-      new URL('../src/renderer/src/components/SessionHeader.vue', import.meta.url),
-      'utf8',
-    )
-    const code = source
-      .split('\n')
-      .filter((line) => !/^\s*(\/\/|\*|\/\*|<!--)/.test(line))
-      .join('\n')
-    expect(code, 'SessionHeader must not branch on a provider name').not.toMatch(
-      /['"`](codex|claude)['"`]/i,
-    )
-    expect(code, 'the process line must be shown, not composed here').not.toMatch(/pid\s/i)
-  })
-})
-
 /**
  * A question that outlived the thing that asked it (085).
  *

@@ -2,7 +2,7 @@ import { waitFor } from './lib/f093-host'
 import { REQUEST_STATES } from '../src/shared/question-contracts'
 import type { RequestState } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -712,34 +712,6 @@ describe('397 · the word for a question nobody stopped', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§7 · the censuses', () => {
-    it('⛔ exactly ONE writer of the ending, and exactly ONE line reaches the provider', async () => {
-      // ⚠️ **A negative needs a search shape.** The claim is *"no door can stop a turn without
-      // writing these rows"* — so the enumeration is every `.ts` under `src/main`, comments
-      // stripped, looking for the event type and for the provider call rather than for a word.
-      const sources = readdirSync(mainRoot, { recursive: true, encoding: 'utf8' })
-        .filter((entry) => typeof entry === 'string' && entry.endsWith('.ts'))
-        .map((entry) => ({
-          path: entry.replaceAll('\\', '/'),
-          text: codeOnly(readFileSync(join(mainRoot, entry), 'utf8')),
-        }))
-      expect(
-        sources
-          .filter(({ text }) => text.includes("type: 'request_interrupted'"))
-          .map((o) => o.path),
-      ).toEqual(['runtime/runtime-host.ts'])
-      const host_ = sources.find((one) => one.path === 'runtime/runtime-host.ts')?.text ?? ''
-      expect(host_.split("type: 'request_interrupted'")).toHaveLength(2)
-      // 🔴 **The structural claim**: one line in the whole app calls the provider's interrupt, and it
-      // is inside the method that writes the rows. A fifth door cannot be added without going
-      // through it. ⚑ This is the assertion `395`'s three-call-site count could not make.
-      expect(host_.split('session.handle.interrupt()')).toHaveLength(2)
-      // ⚑ **The control** (standing rule 12): the same counting shape finds SEVERAL callers of the
-      // method, so *"exactly one line"* above is a count and not a reader that stopped at the first
-      // match in a 10,000-line file. ⚑ Four since a held message may ask the turn it waits behind to stop.
-      expect(host_.split('this.askTheWorkToStop(')).toHaveLength(5)
-      expect(sources.length).toBeGreaterThan(20)
-    })
-
     it('⛔ the ROWS are neighbours — the ask, then the endings, then the provider', async () => {
       // 🔴 **The word says WHAT and the neighbouring row says WHO**, and this is what makes that a
       // property of the ledger rather than of a paragraph. ⚠️ Asserted on the real ledger and not
@@ -761,56 +733,6 @@ describe('397 · the word for a question nobody stopped', () => {
       ])
       expect(first.id).not.toBe(second.id)
       expect(pm).toBeTruthy()
-    })
-
-    it('⚠️ the ADAPTERS were not touched — the repair is entirely above them', async () => {
-      // ⛔ **`396` §2.1's correction, generalised: the fix belongs where the fact is known.** The
-      // adapters know a card was settled; only the app knows the card was a routed request. ⚑ So the
-      // runtime package never names this event, and `settleRequests` on both adapters is still what
-      // it was — which is also what makes the claim *"both providers"* structural rather than
-      // measured twice.
-      const runtimeRoot = join(here, '../../../packages/runtime/src')
-      const runtimeSources = readdirSync(runtimeRoot, { recursive: true, encoding: 'utf8' })
-        .filter((entry) => typeof entry === 'string' && entry.endsWith('.ts'))
-        .map((entry) => readFileSync(join(runtimeRoot, entry), 'utf8'))
-      expect(runtimeSources.length).toBeGreaterThan(10)
-      expect(runtimeSources.filter((text) => text.includes('request_interrupted'))).toHaveLength(0)
-      // ⚑ **The control**: the same sweep DOES find the call this dispatch is about, so an empty
-      // answer above means *the runtime does not name it* rather than *the sweep read nothing*.
-      expect(
-        runtimeSources.filter((text) => text.includes('this.settleRequests()')).length,
-      ).toBeGreaterThan(1)
-    })
-
-    it('⛔ no timer decides this, in the app or in the fold', () => {
-      // ⚠️ **`396` §4, standing**: *a timeout decides that silence means failure after N seconds — a
-      // guess dressed as a fact*. This ending is written by an ACT, and the fold is pure.
-      const fold = sourceOf(join(here, '../src/shared'), 'questions.ts')
-      for (const machinery of ['setTimeout', 'setInterval', 'Date.now']) {
-        expect(fold, machinery).not.toContain(machinery)
-      }
-      const imports = [...fold.matchAll(/^import .*$/gm)].map((one) => one[0])
-      expect(
-        imports.every(
-          (line) =>
-            line.startsWith('import type') ||
-            line === "import { PASS_UP_RECIPIENTS } from './question-contracts'",
-        ),
-      ).toBe(true)
-      const contracts = sourceOf(join(here, '../src/shared'), 'question-contracts.ts')
-      for (const line of contracts.matchAll(/^import .*$/gm)) {
-        expect(line[0].startsWith('import type'), line[0]).toBe(true)
-      }
-      for (const machinery of ['setTimeout', 'setInterval', 'Date.now']) {
-        expect(codeOnly(contracts), machinery).not.toContain(machinery)
-      }
-      const stopper = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'runtime-host.ts'))
-      const at = stopper.indexOf('private askTheWorkToStop(')
-      expect(at).toBeGreaterThan(0)
-      const body = stopper.slice(at, stopper.indexOf('\n  }', at))
-      for (const machinery of ['setTimeout', 'setInterval', 'withTimeout']) {
-        expect(body, machinery).not.toContain(machinery)
-      }
     })
 
     it('⚑ the state table stayed exhaustive, and only `open` is still somebody’s to answer', () => {

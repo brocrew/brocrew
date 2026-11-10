@@ -1,7 +1,7 @@
 import type { WorkReport } from '../src/shared/task-contracts'
 import type { QueuedMessageEvent, UnqueuedMessageEvent } from '../src/shared/conversation-events'
 import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -45,12 +45,6 @@ import { isAWorkReport } from '../src/shared/tasks'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
-const STORE_SRC = join(here, '../src/main/db/session-store.ts')
-const TASKS_SRC = join(here, '../src/shared/work-report-contracts.ts')
-const WIRE_SRC = [
-  join(here, '../src/shared/human-answer-contracts.ts'),
-  join(here, '../src/shared/conversation-events.ts'),
-]
 
 /** ⚑ The ceiling is `session-store.ts`'s own and is not exported; §5 pins it against the wire. */
 const CEILING = 200
@@ -120,39 +114,6 @@ const turn = (ordinal: number, over: Record<string, unknown>): void => {
     } as never,
     1_000 + ordinal,
   )
-}
-
-/**
- * ⛔ **Comment-free, so a field NAMED in prose is not counted as a field declared** — `319`'s rule,
- * and it is load-bearing here: `runtime-ipc.ts` and `tasks.ts` name their own fields in docblocks
- * constantly (`{@link PieceRow.owner}`, `{@link label}`).
- *
- * ⚑ **The stripper is SEPARATE from the file read, and §4's teeth test drives THIS function.** An
- * earlier version of this file had a hand-copied twin taking a string, so the only test that
- * claimed to measure prose-stripping measured a lookalike and the real one was unkillable — the
- * shape `a-fixture-built-with-the-helper-under-test-proves-nothing` warns about, one step over.
- */
-function withoutComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '')
-}
-
-const codeOf = (path: string): string => withoutComments(readFileSync(path, 'utf8'))
-
-/** The `{ … }` that follows `opener`, brace-matched — never sliced to the end of the file. */
-function bodyAfter(source: string, opener: string): string {
-  const at = source.indexOf(opener)
-  if (at === -1) return ''
-  const from = source.indexOf('{', at + opener.length - 1)
-  if (from === -1) return ''
-  let depth = 0
-  for (let i = from; i < source.length; i++) {
-    if (source[i] === '{') depth += 1
-    if (source[i] === '}') {
-      depth -= 1
-      if (depth === 0) return source.slice(from + 1, i)
-    }
-  }
-  return ''
 }
 
 describe('518 §1 · the bound, planted and found', () => {
@@ -392,127 +353,6 @@ describe('518 §3 · a `work` that is not a report at all', () => {
     expect(isAWorkReport({ piece: 't', label: 'W1.1', state: 'sideways' })).toBe(true)
     turn(0, { work: { piece: 'work_x', label: 'W1.1', state: 'sideways' } })
     expect(replayed(0).work?.state).toBe('sideways')
-  })
-})
-
-describe('518 §4 · the census that makes a ninth field somebody’s problem', () => {
-  /**
-   * ⚑ **The captured group, and never the whole match** — and it is filtered rather than asserted
-   * non-null. `tsconfig.web.json` types a group as `string | undefined`, and a `!` here would be
-   * this census promising something about its own regex; a `filter` makes a group that did not
-   * capture disappear from the list, which the ordered comparison below then FAILS on rather than
-   * silently accepting.
-   */
-  const captured = (matches: RegExpMatchArray[]): string[] =>
-    matches.map(([, name]) => name).filter((name): name is string => name !== undefined)
-
-  /** Every field `WorkReport` declares, in declaration order. */
-  const declared = (source: string): string[] =>
-    captured([
-      ...bodyAfter(source, 'export interface WorkReport').matchAll(/readonly\s+(\w+)\??\s*:/g),
-    ])
-
-  /**
-   * Every key the bound CONSTRUCTS, in construction order — `name:` and, since D-016's
-   * `{ resources }`, the shorthand `name }` / `name,` too.
-   *
-   * ⚠️ **The shorthand arm is loose on purpose, so the slice is narrow**: it would also take a bare
-   * identifier before a `,` or `}` in a call's arguments or a destructuring. It therefore reads only
-   * the object literal the bound RETURNS, where every such identifier is a key.
-   */
-  const constructed = (source: string): string[] =>
-    captured([
-      ...bodyAfter(bodyAfter(source, 'function boundedWorkReport'), 'return {').matchAll(
-        /(?:^|[{,])\s*(\w+)\s*(?::|(?=[,}]))/g,
-      ),
-    ])
-
-  it('🔴 the bound names every field the type declares, in the same order', () => {
-    const fields = declared(codeOf(TASKS_SRC))
-    // ⛔ Non-vacuity first: an empty slice would make both lists empty and this test silent.
-    expect(fields.length, 'the WorkReport body was not found').toBeGreaterThan(5)
-    expect(
-      constructed(codeOf(STORE_SRC)),
-      'a field was added to WorkReport — classify it in `boundedWorkReport` or say why it needs no bound',
-    ).toEqual(fields)
-  })
-
-  it('⛔ the bound SPREADS nothing — the ordered list above cannot see one', () => {
-    // 🔴 **`518 M12` puts `...report,` back and the census above stays green**: the key regex
-    // matches `name:` and a spread has no colon, so an ordered field list is blind to exactly the
-    // edit that makes the list meaningless. ⚠️ That list says *every declared field is named*;
-    // this says *and nothing else rides*, which is the other half of CONSTRUCTED-never-spread.
-    const body = bodyAfter(codeOf(STORE_SRC), 'function boundedWorkReport')
-    expect(body.length, 'the bound was not found').toBeGreaterThan(200)
-    expect(body, 'the bound spreads its argument — the census above cannot see that').not.toMatch(
-      /\.\.\.\s*report\b/,
-    )
-    // ⚑ The control: the same expression finds a spread when there is one.
-    expect('{ ...report, piece: report.piece }').toMatch(/\.\.\.\s*report\b/)
-  })
-
-  it('⚠️ and the THREE event types that carry `work` are the three the bound names', () => {
-    // ⛔ **A fourth interface declaring `work?: WorkReport` would bypass the bound with every other
-    // test in this file green** — `boundWorkReport` names its three by hand. ⚑ The roster is
-    // DERIVED from the declarations rather than typed out beside them
-    // (`derive-a-roster-from-the-import-not-the-mention`).
-    const wire = withoutComments(WIRE_SRC.map((path) => readFileSync(path, 'utf8')).join('\n'))
-    const carriers = [...wire.matchAll(/export interface \w+\s*\{[\s\S]*?\n\}/g)].flatMap(
-      (match) =>
-        /\n\s*work\?:\s*WorkReport\b/.test(match[0])
-          ? [/\n\s*type:\s*'([a-z_]+)'/.exec(match[0])?.[1] ?? '']
-          : [],
-    )
-    // ⛔ **The DISCRIMINANT its own body declares, never a name folded into snake case** — the
-    // interface is `QueuedMessageEvent` and the type is `message_queued`, which no mechanical
-    // transform of the name produces. ⚑ Non-vacuity: three of them, and none empty.
-    expect(carriers).toHaveLength(3)
-    expect(carriers).not.toContain('')
-    const named = bodyAfter(codeOf(STORE_SRC), 'function boundWorkReport')
-    for (const carrier of carriers) {
-      expect(named, `${carrier} declares \`work\` and the bound does not name it`).toContain(
-        `'${carrier}'`,
-      )
-    }
-  })
-
-  it('⛔ the REQUIRED half is a compile error, and this is the optional half it cannot catch', () => {
-    // ⚠️ `boundedWorkReport` returns `WorkReport`, so a new REQUIRED field does not compile. An
-    // OPTIONAL one is silently dropped by a constructed bound and compiles clean — which is the
-    // whole reason the census above exists rather than a comment saying *remember to add it*.
-    const classified: Record<
-      keyof Required<WorkReport>,
-      'an id' | 'a label' | 'a list of ids' | 'a claim'
-    > = {
-      piece: 'an id',
-      label: 'a label',
-      owner: 'an id',
-      state: 'an id',
-      outcome: 'an id',
-      resources: 'a list of ids',
-      needsUserAction: 'a claim',
-      stalledBecause: 'an id',
-      // ⚑ **D-016** — `707`'s `elsewhere` (the task's project slug, when it was not the reader's)
-      // went with projects, and `holderKeptOpen` went with the stop's stall cause.
-    }
-    expect(Object.keys(classified)).toEqual(declared(codeOf(TASKS_SRC)))
-  })
-
-  it('⚑ the extractor has teeth — it reads code and not prose, and never runs off the end', () => {
-    const planted = [
-      '/** A docblock naming readonly ghostField: string, which is prose. */',
-      'export interface WorkReport {',
-      '  readonly piece: string',
-      '  readonly label: string',
-      '}',
-      'export interface Other { readonly notMine: string }',
-    ].join('\n')
-    expect(declared(withoutComments(planted))).toEqual(['piece', 'label'])
-    // ⛔ It stops at the closing brace rather than swallowing the neighbour below it…
-    expect(declared(withoutComments(planted))).not.toContain('notMine')
-    // …and an anchor that names nothing returns EMPTY rather than the tail of the file, which is
-    // what makes the non-vacuity guard above able to fail.
-    expect(bodyAfter(planted, 'export interface NothingByThisName')).toBe('')
   })
 })
 

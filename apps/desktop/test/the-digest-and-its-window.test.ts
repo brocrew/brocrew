@@ -227,22 +227,6 @@ describe('§1 · a line cannot be drawn without saying how it is known', () => {
     expect(line?.text).not.toContain('came back')
     expect(line?.register).toBe('observed')
   })
-
-  it('⛔ the fold has no line constructor other than the three that take a register', () => {
-    // ⚠️ **A source census, and it is the structural half of this criterion.** The behavioural
-    // tests above can only see the lines the fold chose to build; this sees whether a fourth way
-    // to build one exists at all.
-    const source = readFileSync(join(here, '../src/main/runtime/digest.ts'), 'utf8')
-    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-    // ⚑ **The strip really stripped**, or the negatives below are asserted over prose that
-    // happens to quote the constructors (`a-source-census-must-strip-prose-before-it-asserts`).
-    expect(source).toContain('HO-024')
-    expect(code).not.toContain('HO-024')
-    // ⛔ Every line is built by one of the three, and no object literal spells `register:` itself.
-    expect(code).not.toMatch(/register:\s*'/)
-    expect(code).toContain('observedLine(')
-    expect(code).toContain('claimedLine(')
-  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────

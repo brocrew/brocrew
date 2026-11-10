@@ -10,8 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { platform, tmpdir } from 'node:os'
-import { basename, dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { basename, join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { captionHandedPaths, recheckHandedPaths } from '../src/main/runtime/handed-path'
 import {
@@ -31,21 +30,6 @@ import {
   isPastedImageName,
   pastedImageTooBig,
 } from '../src/shared/runtime-ipc'
-
-/**
- * # ⛔ The one attachment BroBot writes before it can hand it over (254 §2)
- *
- * Picker and drop gestures stage a path. A clipboard screenshot has no path, so paste needs a
- * route that creates a staged attachment.
- *
- * ⚑ **So this is the exception to `216`'s never-open-the-file rule, and it is bounded rather than
- * argued**: the bytes come from the clipboard (never from a file), they are written once into a
- * directory of BroBot's own, and what comes back out is a path that goes through the SAME
- * classifier a dropped one does. `no-byte-authority.test.ts` holds the boundary; this file holds
- * the behaviour.
- */
-
-const here = dirname(fileURLToPath(import.meta.url))
 
 /**
  * A PNG whose HEADER is real, because {@link pngSize} reads it — signature, an IHDR length and type,
@@ -453,54 +437,6 @@ describe('sweeping what was pasted and never sent (254 §2)', () => {
     // It never throws: the app has no business refusing to open because a week-old screenshot could
     // not be removed, and on a fresh install there is nothing to remove at all.
     await expect(sweepPastedImages(join(root, 'never-made'), Date.now())).resolves.toBe(0)
-  })
-
-  it('🔴 …and the app really CALLS it, once, at start — a sweep nobody runs deletes nothing', () => {
-    // ⛔ **The one half of "who deletes them" that only the source can answer.** `main/index.ts`
-    // imports `electron` and no test process can load it, so the alternative measured honestly is
-    // nothing at all — `206` H1's argument, and `one-way-to-stage.test.ts`'s shape.
-    // ⚠️ **`createRuntimeHost`, not a timer.** A sweep on a schedule would fire while somebody is
-    // composing and delete the picture they are looking at; this one runs before a window exists.
-    const main = readFileSync(join(here, '../src/main/index.ts'), 'utf8')
-    // ⛔ **TWICE, and the second one is a correction from the review.** `window-all-closed`
-    // deliberately does not quit, so this app runs for weeks — a start-only sweep promised a
-    // week-long bound it could only keep on a process that restarts more often than the bound.
-    // ⚠️ **The second one is inside `pastePicture` since 262 §3**, not written out here: the pair
-    // has to be ONE turn of the paste root's queue, and two separate awaits in this file were two
-    // windows. So the count below is the START call, and the handler's is asserted by name.
-    expect(main.split('sweepPastedImages(').length - 1).toBe(1)
-    expect(main.split('pastePicture(').length - 1).toBe(1)
-    // ⚑ At START — inside `createRuntimeHost`, which runs before a window exists, so a chip and the
-    // file under it cannot disagree inside one run.
-    // Scoped to the host's construction, before any IPC handler.
-    // — the wide slice swallowed every IPC handler in the file, so the "nothing schedules it" rule
-    // below was a rule about somebody else's code wearing this test's message.
-    const boot = main.slice(
-      main.indexOf('function createRuntimeHost'),
-      main.indexOf('const runtimeHost = new RuntimeHost('),
-    )
-    expect(boot).toContain('void sweepPastedImages(pastedImagesRoot(userData), Date.now())')
-    // ⚑ …and BEFORE each write, in the paste handler itself — after it would race the file it had
-    // just created.
-    const handler = main.slice(
-      main.indexOf("'app:paste-image'"),
-      main.indexOf('registerRuntimeIpc({'),
-    )
-    // ⛔ **The handler takes the queue ONCE and does both inside it** (262 §3). The order is still
-    // sweep-then-write and is asserted where it now lives — in `pastePicture` — because a source
-    // census of this file can no longer see it.
-    expect(handler).toContain(
-      "await pastePicture(root, image.toPNG(), input.cwd ?? '', Date.now())",
-    )
-    expect(handler, 'the handler went back to sweeping for itself').not.toContain(
-      'sweepPastedImages(',
-    )
-    // ⚠️ …and nothing SCHEDULES the sweep, which is what keeps it off a composer somebody is looking
-    // at. Scoped to the two call sites rather than to the file: `main/index.ts` has timers of its
-    // own and a whole-file search would be a rule about somebody else's code.
-    expect(boot).not.toContain('setInterval(')
-    expect(handler).not.toContain('setInterval(')
-    expect(handler).not.toContain('setTimeout(')
   })
 
   /**

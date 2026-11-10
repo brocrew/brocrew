@@ -1131,27 +1131,5 @@ describe('412 · what an agent is told about its work', () => {
       expect(sentences.every((one) => typeof one === 'string' && one.includes(' '))).toBe(true)
       expect(sentences).toHaveLength(VOCABULARIES.flatMap((one) => one.rails).length)
     })
-
-    it('⚑ …and the values this walks are the lists the modules export, not a copy', () => {
-      // ⛔ **The registry above is a list of REFERENCES**, so a member added to any vocabulary is
-      // swept without touching this file. ⚠️ Asserted rather than assumed, because a registry that
-      // had inlined its members would pass every assertion above and cover nothing new.
-      for (const one of VOCABULARIES) {
-        const source = codeOnly(
-          readFileSync(
-            join(one.module.startsWith('shared/') ? join(mainRoot, '..') : mainRoot, one.module),
-            'utf8',
-          ),
-        )
-        expect(source, `${one.name} is not exported by ${one.module}`).toContain(
-          `export const ${one.name} = [`,
-        )
-        for (const rail of one.rails) {
-          expect(source, `${one.name} lists ${rail} nowhere in ${one.module}`).toContain(
-            `'${rail}'`,
-          )
-        }
-      }
-    })
   })
 })

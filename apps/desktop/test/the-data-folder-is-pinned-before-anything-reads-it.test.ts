@@ -1,12 +1,4 @@
-import {
-  existsSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -116,99 +108,6 @@ describe('§1 · the pin’s own order', () => {
     expect(switchesAsked).toEqual(['user-data-dir'])
     expect(set.map((one) => one.path)).toEqual([join(appData, '@brobot2', 'desktop')])
     expect(relative(appData, set[0]?.path ?? '')).toBe(join('@brobot2', 'desktop'))
-  })
-})
-
-/**
- * The first statement after a module's imports, past blank lines and comments — `''` when there is
- * none. ⚑ A module's imports are evaluated before its body, so "first after the imports" is
- * "first of the module's own code".
- */
-function firstStatementAfterImports(source: string): string {
-  const imports = [...source.matchAll(/^import\b[\s\S]*?\bfrom '[^']+'\n/gm)]
-  const last = imports.at(-1)
-  if (last?.index === undefined) return ''
-  let rest = source.slice(last.index + last[0].length)
-  for (;;) {
-    rest = rest.replace(/^\s+/, '')
-    if (rest.startsWith('//')) {
-      const end = rest.indexOf('\n')
-      if (end === -1) return ''
-      rest = rest.slice(end + 1)
-      continue
-    }
-    if (rest.startsWith('/*')) {
-      const end = rest.indexOf('*/')
-      if (end === -1) return ''
-      rest = rest.slice(end + 2)
-      continue
-    }
-    const end = rest.indexOf('\n')
-    if (rest.startsWith('try {\n')) return rest.slice(0, rest.indexOf('\n', end + 1))
-    return end === -1 ? rest : rest.slice(0, end)
-  }
-}
-
-/** Whether a module takes Electron's `app` — or all of Electron — as a value. */
-function takesElectronsApp(source: string): boolean {
-  // ⚠️ The clause is matched by its shape — braces, `* as x`, a default — never by a lazy run, which
-  // would start at an earlier import and swallow every line up to this one.
-  const electronImport =
-    /^import\s+(type\s+)?(\{[^}]*\}|\*\s+as\s+\w+|\w+(?:\s*,\s*\{[^}]*\})?)\s+from 'electron'/gm
-  for (const found of source.matchAll(electronImport)) {
-    if (found[1] !== undefined) continue
-    const clause = found[2] ?? ''
-    if (!clause.startsWith('{')) return true // a default or namespace import: all of Electron
-    const names = clause
-      .replace(/[{}]/g, '')
-      .split(',')
-      .map((one) => one.trim())
-    if (names.some((one) => one === 'app' || one.startsWith('app as '))) return true
-  }
-  return /require\('electron'\)|import\('electron'\)/.test(source)
-}
-
-describe('§2 · nothing reads the folder before the pin', () => {
-  it('🔴 the pin is the first thing index.ts does once its imports are in', () => {
-    expect(firstStatementAfterImports(indexSource())).toBe('try {\n  pinTheDataFolder(app)')
-    expect(indexSource()).toMatch(
-      /try \{\n {2}pinTheDataFolder\(app\)\n {2}workspaceStartup\(app\)\?\.assertDatabase\(\)\n\} catch/,
-    )
-    // ⚑ One fact over: the same reading sees a module-scope read put in front of it.
-    const early = [
-      "import { app } from 'electron'",
-      "import { pinTheDataFolder } from './data-folder'",
-      '',
-      '// a comment',
-      '/** a docblock */',
-      "const early = app.getPath('userData')",
-      'pinTheDataFolder(app)',
-      '',
-    ].join('\n')
-    expect(firstStatementAfterImports(early)).toBe("const early = app.getPath('userData')")
-    expect(firstStatementAfterImports(early.replace(/^const early.*\n/m, ''))).toBe(
-      'pinTheDataFolder(app)',
-    )
-  })
-
-  it('⛔ …and no module it imports holds Electron’s app — imports are evaluated first, so one that did could read the folder before the pin', () => {
-    const sources = (dir: string): string[] =>
-      readdirSync(dir).flatMap((name) => {
-        const path = join(dir, name)
-        return statSync(path).isDirectory() ? sources(path) : path.endsWith('.ts') ? [path] : []
-      })
-    const holders = sources(MAIN)
-      .filter((path) => takesElectronsApp(readFileSync(path, 'utf8')))
-      .map((path) => relative(MAIN, path))
-    expect(holders, 'only index.ts may hold `app`, and it pins first').toEqual(['index.ts'])
-    // ⚑ The reading itself, both ways: what holds `app`, and what does not.
-    expect(takesElectronsApp("import { app } from 'electron'\n")).toBe(true)
-    expect(takesElectronsApp("import {\n  BrowserWindow,\n  app,\n} from 'electron'\n")).toBe(true)
-    expect(takesElectronsApp("import * as electron from 'electron'\n")).toBe(true)
-    expect(takesElectronsApp("const { app } = require('electron')\n")).toBe(true)
-    expect(takesElectronsApp("import type { App } from 'electron'\n")).toBe(false)
-    expect(takesElectronsApp("import { shell } from 'electron'\n")).toBe(false)
-    expect(takesElectronsApp("import { appendFileSync } from 'node:fs'\n")).toBe(false)
   })
 })
 

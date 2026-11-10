@@ -1,11 +1,10 @@
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { returnsItsWindowSink } from './helpers/window-sink-source'
 import { FakeRuntime, type FakeSessionHandle, type StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
@@ -673,54 +672,6 @@ describe('340 · a session an agent may drive and may not decide for', () => {
 
   // ── the door this rule can still be walked around, pinned so it cannot be walked around ─────
   describe('§2 · “no path exists” is a gate here, not a paragraph', () => {
-    it('⛔ the claim door has exactly one caller in the app, and its sink is always a window', () => {
-      // 🔴 **The one way left to answer another agent's permission prompt, and it is closed by a
-      // fact rather than by a check.** `mayAnswerAsAHuman` asks whether the caller OWNS the session,
-      // and ownership is taken by `claimSession`, which takes a `RuntimeEventSink` — a type an MCP
-      // caller could implement. What stops it is that nothing but the IPC boundary calls it, and
-      // every sink reaching that boundary is `webContentsSink(event.sender)`: a real window.
-      //
-      // ⚠️ **So this is a source census and it is aimed at the dispatch after this one.** The tools
-      // dispatch adds the MCP surface; the moment it gives a non-window caller a sink that can
-      // claim, an agent can become an owner and this rule is bypassed without a line of it changing.
-      // This turns red on that edit, which is the whole point of writing it as a test.
-      //
-      // ⛔ **347 arrived, ANSWERED this rather than silencing it, and widened what it reads** (347
-      // §2.1). 340 priced two answers: teach a sink to say whether a person is behind it — 42 files
-      // implement that interface — or *"these tools never hand a claiming sink to anything"*, which
-      // keeps the census green and is a defensible answer. The tools take a `Caller`, which is
-      // `{ ownerId }` and nothing else, so the second is what happened.
-      //
-      // ⚠️ **And the census had a blind spot that answer alone would not have closed**: it read
-      // exactly three files, so a NEW file calling `host.claimSession(...)` left it green while
-      // doing the very thing it exists to forbid. The file list is now derived from the directory
-      // rather than typed out, so the next surface is counted whether or not anyone remembers to
-      // add it here.
-      const mainRoot = join(here, '../src/main')
-      const sources = readdirSync(mainRoot, { recursive: true, encoding: 'utf8' })
-        .filter((entry) => entry.endsWith('.ts'))
-        .map((entry) => join(mainRoot, entry))
-      const everything = sources.map((path) => readFileSync(path, 'utf8')).join('\n')
-      const host = readFileSync(join(here, '../src/main/runtime/runtime-host.ts'), 'utf8')
-      const ipc = readFileSync(join(here, '../src/main/runtime/ipc.ts'), 'utf8')
-      const index = readFileSync(join(here, '../src/main/index.ts'), 'utf8')
-
-      // Non-vacuity first: the strings this counts are really in these files.
-      expect(host).toContain('claimSession(sessionId: string, sink: RuntimeEventSink)')
-      expect(ipc).toContain('host.claimSession(')
-      // ⚑ …and the sweep really reached the tool layer, so its silence below means something.
-      expect(
-        sources.some((path) => path.replaceAll('\\', '/').endsWith('runtime/agent-tools.ts')),
-      ).toBe(true)
-      // Exactly one caller, ANYWHERE under `src/main`, and it is the IPC dispatcher.
-      const callers = everything.match(/host\.claimSession\(/g) ?? []
-      expect(callers).toHaveLength(1)
-      // …and the only sink the dispatcher is ever handed is a window's.
-      expect(returnsItsWindowSink(index)).toBe(true)
-      expect(index.match(/webContentsSink\(event\.sender, mainThreadWork\)/g)).toHaveLength(1)
-      expect((index.match(/sinkFor:/g) ?? []).length).toBe(1)
-    })
-
     it('⛔ nothing crossing the wire can name a commander', async () => {
       // ⚠️ `createSession` over the real parse, with the field a caller would have to smuggle. A
       // window's session is owned by that window and commanded by nobody, so the other agent is

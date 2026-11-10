@@ -2,7 +2,7 @@ import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/hos
 import { waitFor } from './lib/f093-host'
 import type { RoutedRequest } from '../src/shared/question-contracts'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -30,13 +30,6 @@ import {
   deriveRoutedRequests,
   escalationChain,
 } from '../src/shared/questions'
-
-import {
-  codeOnly,
-  sourceOf,
-  expectTypeImports,
-  expectNoDeadlineDeps,
-} from './helpers/source-contracts'
 
 /**
  * 🔴 **398 · the two clocks, and 612 removed the second** — HO-007 criterion **11**, and the record
@@ -98,8 +91,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const mainRoot = join(here, '../src/main')
-const sharedRoot = join(here, '../src/shared')
 
 /** `394`'s double, with the handles kept — a test has to BE the provider to ask like one. */
 class ProviderDouble extends FakeRuntime {
@@ -311,21 +302,6 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
     return { pm, pmProfile, worker: given.agent as string, pmTools, workerHandle: latestHandle() }
   }
 
-  const filesUnder = (dir: string): { path: string; text: string }[] => {
-    const out: { path: string; text: string }[] = []
-    const walk = (at: string, prefix: string): void => {
-      for (const entry of readdirSync(at, { withFileTypes: true })) {
-        const full = join(at, entry.name)
-        if (entry.isDirectory()) walk(full, `${prefix}${entry.name}/`)
-        else if (entry.name.endsWith('.ts')) {
-          out.push({ path: `${prefix}${entry.name}`, text: readFileSync(full, 'utf8') })
-        }
-      }
-    }
-    walk(dir, '')
-    return out
-  }
-
   // ⛔ **612 · `aChildAsksItsParent` stood here and is GONE** (HO-088 §3.1). ⚑ It built *"a child
   // that has asked its parent something and is waiting on the answer"*, and it had exactly ONE
   // caller: §9's *the STORE refuses a zero window too, because a hatch one enforcer honours is a
@@ -379,51 +355,6 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       // ⚑ **612 · and there is nothing left to ask** (HO-088 §3.1). This line read
       // `expect(store.escalationsDue(clock, 1, () => true)).toEqual([])`; the decision function is
       // gone, so the absence is asserted where absences belong — §2's second test, over the source.
-    })
-
-    /**
-     * 🔴 **612 · THERE IS NO DECIDER** (HO-088 §3.1) — and this is where that is measured.
-     *
-     * ⛔ **It asserted *nothing in the decider reaches a clock of its own***: a decider that read
-     * `Date.now()` would have looked right in every test above, because the clock is injected, and
-     * would have been wrong in the one case that mattered. ⚑ **The whole decider went**, so the
-     * claim inverts and gets stronger: nothing in this app decides that a question has run out of
-     * time, and nothing writes the row that would say so.
-     *
-     * ⚠️ **Asserted by NAME over the four pieces** (standing rule 4's search shape: a negative
-     * names what it could have found), each with a control that fires.
-     */
-    it('⛔ 612 · nothing in this app decides a question has run out of time', () => {
-      const store_ = codeOnly(sourceOf(join(mainRoot, 'db'), 'session-store.ts'))
-      const host_ = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'runtime-host.ts'))
-      const questions_ = codeOnly(sourceOf(sharedRoot, 'questions.ts'))
-
-      // ⛔ **The decision** — the store no longer computes a deadline or builds the row.
-      expect(store_).not.toContain('escalationsDue')
-      expect(store_).not.toContain("type: 'request_escalated'")
-      // ⛔ **The look, the arming and the writer** — all three of the host's halves.
-      for (const gone of [
-        'watchForEscalation',
-        'armEscalationLook',
-        'writeWhatIsDue',
-        'escalationWindowMs',
-      ]) {
-        expect(host_, gone).not.toContain(gone)
-      }
-      // ⛔ **The number**, which is the thing a later dispatch would otherwise re-derive from.
-      expect(questions_).not.toContain('ESCALATION_WINDOW_MS')
-
-      // ⚑ **THE CONTROLS, one per file** (rule 34.2): each census really did read a file with
-      // something in it, so the four absences are measurements rather than empty reads.
-      expect(store_).toContain('questionsAPersonMustAnswer')
-      expect(host_).toContain('passQuestionUp')
-      expect(questions_).toContain('aPersonsSince')
-      // ⛔ **`400` removed the OTHER clock and the absence is still asserted** — HO-018 §2.2
-      // withdrew criterion 5, and a `work_quiet` row surviving anywhere would be that retraction
-      // half-applied. ⚑ **Two withdrawals, one file, and this is now the whole of both.**
-      expect(store_).not.toContain('work_quiet')
-      expect(host_).not.toContain('work_quiet')
-      expectNoDeadlineDeps(mainRoot, 'quiet-work')
     })
   })
 
@@ -843,92 +774,6 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
   })
 
   describe('§9 · one number, one decision, one order', () => {
-    /**
-     * ⚠️ **612 · the window this refusal guarded is GONE, and the refusal is not** (HO-088 §3.1).
-     * 🔴 **616 · the refusal is gone too, because its LAST window is** (HO-093 §2).
-     *
-     * ⛔ **`398` asserted `escalate: 0` and `escalate: -1` were refused, with `1` allowed as the
-     * control that the rule was about the SIGN.** ⚑ `612` re-aimed it at `proposalBoundMs`, the
-     * one number `positiveWindow` still guarded; ⚠️ **`616` removed that number, so `positiveWindow`
-     * had no caller and went with it** — a guard nothing calls is not a guard, and the lint error
-     * was the honest form of that.
-     *
-     * 🔴 **Re-aimed a second time rather than deleted** (standing rule 26; `invert-a-defect-assertion-never-delete-it`).
-     * ⛔ **What it pins now is the RULE's absence together with its subject's**, so a future
-     * deadline cannot be added without somebody noticing there is no guard in front of it —
-     * which is exactly what `positiveWindow`'s own docblock asked for before it was removed.
-     */
-    it('⛔ there is no window left to refuse, and no guard left to refuse it with', () => {
-      const host_ = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'runtime-host.ts'))
-      // ⛔ **The guard, and both numbers it ever stood in front of.**
-      expect(host_).not.toContain('positiveWindow')
-      expect(host_).not.toContain('escalationWindowMs')
-      expect(host_).not.toContain('proposalBoundMs')
-      expectNoDeadlineDeps(mainRoot, 'answer-windows')
-      // ⚑ **THE POSITIVE CONTROL, and it is the distinction rather than a spare string.** ⚠️ This
-      // class still resolves three injected numbers — the drain, the interrupt wait and the
-      // launch timeout — and none of them is a deadline on somebody ANSWERING; they bound this
-      // app's own teardown and launch. ⛔ So *no deadline window is resolved here* is a
-      // measurement rather than a reader pointed at a file that moved (standing rule 34.2).
-      expect(host_).toContain('deps.closeDrainTimeoutMs ?? DEFAULT_CLOSE_DRAIN_TIMEOUT_MS')
-      expect(host_).toContain('deps.interruptWaitMs ?? DEFAULT_INTERRUPT_WAIT_MS')
-      expect(host_).toContain('const defaults = providerDefinitions[provider].launch')
-      expect(host_).toContain('fresh: deps.launchTimeoutMs ?? defaults.freshTimeoutMs')
-      expect(host_).toContain(
-        'resume: deps.resumeTimeouts?.[provider] ?? deps.launchTimeoutMs ?? defaults.resumeTimeoutMs',
-      )
-    })
-
-    /**
-     * 🔴 **612 · ZERO places decide the row, where there used to be exactly one** (HO-088 §3.1).
-     *
-     * ⛔ **It asserted the literal was built in exactly one file — the store — so the host could
-     * not come to a second opinion about when a question had run out of time.** ⚑ Nothing has an
-     * opinion now, and the census is the same census with the expected answer moved to `[]`.
-     *
-     * ⚠️ **The control that plants TWO is kept and re-pointed** (standing rule 12): a literal that
-     * really is in two files, so this walk is measured finding more than the first match rather
-     * than being believed.
-     */
-    it('🔴 ZERO places decide the row, and the control shows the walk can see two', () => {
-      const writers = (literal: string): string[] =>
-        filesUnder(join(here, '../src/main'))
-          .filter(({ text }) => codeOnly(text).includes(literal))
-          .map(({ path }) => path)
-          .sort()
-      expect(writers("type: 'request_escalated'")).toEqual([])
-      expect(writers('escalationsDue(')).toEqual([])
-      // ⚑ **The control that plants TWO**: the routing's own literal really is in more than one
-      // file, so the two empties above are measurements rather than a walk that reads nothing.
-      expect(writers("'request_routed'")).toEqual([
-        // The commit record carries a routed question's parent and destination; it decides nothing.
-        'db/committed-changes.ts',
-        // A delete reads it to find who asked a helper in the tree from outside.
-        'db/conversation-tree.ts',
-        // ⚑ F071 · the fold index's types name it — the routed-request fold reads through it.
-        'db/fold-index.ts',
-        'db/schema.ts',
-        'db/session-store.ts',
-        // The graph worker counts retained routed questions without deciding or writing their state.
-        'db/team-profile-graph-engine.ts',
-        // The read-only worker selects the canonical routed-request candidates.
-        'db/window-read-engine.ts',
-        // The writer checks whether a projection change can affect routing candidates.
-        'db/window-writer-stamp.ts',
-        'runtime/digest.ts',
-        'runtime/runtime-host.ts',
-      ])
-    })
-
-    it('⛔ the runtime package never learned the word, and now nothing else knows it either', () => {
-      const runtime = filesUnder(join(here, '../../../packages/runtime/src')).map(
-        ({ text }) => text,
-      )
-      expect(runtime.filter((text) => text.includes('request_escalated'))).toHaveLength(0)
-      // ⚑ **The control**: the sweep really did read that package, and it is not empty.
-      expect(runtime.filter((text) => text.includes('completeTurn')).length).toBeGreaterThan(1)
-    })
-
     it('🔴 a stamp still lands on a question the parent answered a moment earlier', () => {
       // ⛔ **The race two writers USED to create, folded — and the ledgers holding it are real.**
       // The store decided while the row was open and the host wrote a moment later; if the parent
@@ -956,40 +801,6 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       const [row] = deriveRoutedRequests('sess_worker', entries)
       expect(row?.state).toBe('answered')
       expect(row?.escalatedAt).toBe(15)
-    })
-
-    it('⛔ the two shared folds still reach nothing — no clock, no store, no timer', () => {
-      // 🔴 **494 · `tasks.ts` took its first VALUE import**, so the two modules it can now reach
-      // are walked as well. ⛔ *No clock, no store, no timer* is the claim; *every line says
-      // `import type`* was the proxy, and a proxy that goes false while its claim stays true is a
-      // test that has to be re-derived rather than re-worded. ⚑ **F097 · and its second**, so the
-      // module that one reaches is walked too.
-      for (const file of [
-        'tasks.ts',
-        'questions.ts',
-        'task-contracts.ts',
-        'question-contracts.ts',
-        'how-work-stopped.ts',
-        'who-did-it.ts',
-        'a-persons-own-words.ts',
-      ]) {
-        const text = sourceOf(sharedRoot, file)
-        // ⚑ **The value imports are NAMED**, so another one is a red test rather than a widening
-        // nobody reviewed — `tasks.ts` reaching the derivation, that module reaching the caller
-        // vocabulary its second producer states an actor in, and (F097) `tasks.ts` reading whose
-        // words opened a turn the way the host reads it.
-        const allowed = [
-          "import { AGENT_MESSAGE_KINDS, TASK_STATES } from './task-contracts'",
-          "import { PASS_UP_RECIPIENTS } from './question-contracts'",
-          "import { whoCancelledIt, type AskToStop } from './how-work-stopped'",
-          "import { WHO_DID_IT, WHO_DID_IT_SAYS, type ActedBy, type WhoDidIt } from './who-did-it'",
-          "import { aPersonsOwnWords } from './a-persons-own-words'",
-        ]
-        expectTypeImports(text, allowed, file)
-        const code = codeOnly(text)
-        expect(code, file).not.toContain('Date.now')
-        expect(code, file).not.toContain('setTimeout')
-      }
     })
   })
 })

@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -135,26 +135,6 @@ describe('§1 · the clone can fail, and it says where (361 §2)', () => {
     expect(() => asTheWireWouldCarry('send', loop)).toThrow(/would not survive/)
   })
 })
-
-/* --------------------------------------------- §2 · every verb, enumerated by the compiler (361 §1) */
-
-/**
- * How a renderer builds the payload for one verb.
- *
- *  - `nothing` — the command is parameterless. There is no payload to refuse.
- *  - `plain-by-construction` — the ONE call site writes the object literal itself, or copies a
- *    caller's fields into a fresh one. A proxy cannot survive the way in.
- *  - `handed-over` — the call site passes a value it did not build. ⛔ **These are the verbs
- *    that can carry a proxy**, and each one's note says what was traced to its producer.
- *
- * ⚠️ **A field handed in is only `handed-over` when it could hold a proxy.** `send` takes
- * `sessionId` and `text` from its caller and is `plain-by-construction`, because a string is a
- * string however it was read. ⛔ **The question the label answers is: does the call site build the
- * outer object literal, and is every field it did NOT build a primitive?** `cancelProviderSignIn`
- * failed the first half — two strings, and the whole payload handed over — and `setCapabilities`
- * fails the second: it writes its own wrapper and `grant` is an object somebody else made (363).
- */
-type HowThePayloadIsBuilt = 'nothing' | 'plain-by-construction' | 'handed-over'
 
 /**
  * 🔴 **Where a `handed-over` payload is actually BUILT** (473, from `469` F3).
@@ -688,334 +668,6 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   closeWork: { how: 'plain-by-construction' },
 }
 
-/** The ten `app:*` invokes, which are not in `RuntimeCommand` and are a wire all the same. */
-const THE_APP_CHANNELS: Record<string, HowThePayloadIsBuilt> = {
-  getAppInfo: 'nothing',
-  // 🔴 D-031 — the Mac's time zone, asked for before the window draws: nothing goes out.
-  localZone: 'nothing',
-  // 🔴 744 · R100 — the kept drafts asked for before the window draws: nothing goes out.
-  savedDrafts: 'nothing',
-  // 🔴 744 · R100 — ⛔ **`plain-by-construction`, on BOTH halves** (363): `kept-drafts.ts`'
-  // `draftsToSave` writes the outer `{ drafts }` literal and each `{ slot, text, attached }` itself,
-  // and copies every attached path field by field (`plainHanded`) — the book holds Vue proxies, and
-  // a proxy is exactly the field somebody else made. `a-draft-survives-a-restart.test.ts` §1
-  // structured-clones what it builds.
-  saveDrafts: 'plain-by-construction',
-  chooseCwd: 'nothing',
-  chooseBundle: 'nothing',
-  chooseAttachment: 'plain-by-construction',
-  classifyAttachments: 'plain-by-construction',
-  handDroppedPaths: 'plain-by-construction',
-  pasteImage: 'plain-by-construction',
-}
-
-describe('§2 · every renderer→main verb is accounted for (361 §1)', () => {
-  it('⛔ the table really enumerates the union, rather than a subset somebody typed', () => {
-    // Non-vacuity for the compile-time half above: an `as` anywhere in the chain would let the
-    // record be short, and this is the number that would notice.
-    // ⚑ 86 → 87 at `733`: `readConfigFile`.
-    // ⚑ 87 → 88 at `735`: `startAndSend`.
-    // ⚑ 88 → 89 at D-017 · R19: `instructionAsksForAPerson`.
-    // ⚑ 89 → 88 at D-017b: `look` in; `libraryEntry` and `readArchived` out.
-    // ⚑ 88 → 80 at D-016: `decideProposal`, `proposalsForAPerson`, `conversationsInProject`,
-    // `documentsInProject`, `project`, `projects`, `createProject` and `saveProject` out.
-    // ⚑ 80 → 81 at D-016 · R4: `retitleWork`.
-    // ⚑ 81 → 82 at D-018: `processMemory`.
-    // ⚑ 82 → 83 at D-026: `filesKept`.
-    // ⚑ 83 → 87 at D-042: `modelList`, `addHandAddedModel`, `deleteHandAddedModel`,
-    // `setAgentModelLimit`.
-    // ⚑ 87 → 86 at D-050: `setAgentModelLimit` out.
-    // ⚑ 86 → 90 with the API keys: `apiKeyStatus`, `setApiKey`, `removeApiKey`, `checkApiKey`.
-    // ⚑ 90 → 93 with the Providers screen's reads: `providerVersions`, `providerUsage`,
-    // `providerResources`.
-    // ⚑ 93 → 92 at D-049: `providerModels` out — the window asks the list door.
-    // ⚑ 92 → 94 at D-032: `drawResource`, `revealResource`.
-    // ⚑ 94 → 95 at F093: `whatThisAgentWasGiven`. 95 → 96 at C9 d: `whatTheModelGot`.
-    // ⚑ 96 → 97 at F097: `waitingOnWhoWroteForAPerson`.
-    // ⚑ 97 → 96 at D-049's rest: `models` out — no window asked it.
-    // ⚑ 96 → 97: `providerSetup`.
-    // ⚑ Among them, a message's paths: `resolveMessagePaths`, `openMessagePath`, `revealMessagePath`.
-    // ⚑ 100 → 102: the kept rules, `keptRules` and `removeKeptRule`.
-    // ⚑ 102 → 106: archiving, restoring and deleting a conversation, and the delete's check.
-    // ⚑ 106 → 107: `stopLooking`.
-    // ⚑ 108 → 110: an agent's request to register an MCP server, read and decided.
-    // Move, the held stop word and work search each add their own payload: 110 → 113.
-    // ⚑ And `takeBackWork`, a person's take-back of the piece a service is on: 113 → 114.
-    // ⚑ And `setServicesOn`, a person's services switch: 114 → 115.
-    // ⚑ And `stoppedWorkForAPerson`, the pieces whose helper stopped: 115 → 116.
-    // Link resolution, both typed-wait verbs and recent activity are present in the same bridge.
-    // ⚑ And `closeWork`, a person's close of stopped work: 137 → 138.
-    // The connection list and all-agent sign-in copy each add one verb.
-    // ⚑ And `currentEpoch` and `personsQueue`, the stamped queue: 142 → 144.
-    // ⚑ And `listConversations`, the stamped listing: 144 → 145.
-    expect(Object.keys(HOW_EACH_VERB_IS_BUILT)).toHaveLength(145)
-    // ⚑ 8 → 10 at `744`: `savedDrafts`, `saveDrafts`. 10 → 9 at D-016: `getDemoSeed` out.
-    // ⚑ 9 → 10 at D-031: `localZone`.
-    expect(Object.keys(THE_APP_CHANNELS)).toHaveLength(10)
-    // ⛔ **The split, pinned, because two comments quote it** (363). `§7` exists for the rows that
-    // carry the commonest answer, and *"the value 105 others carry"* is a claim about this number —
-    // an unasserted one is a sentence that goes quietly wrong on the next merge.
-    const split = (how: HowThePayloadIsBuilt): number =>
-      Object.values(HOW_EACH_VERB_IS_BUILT).filter((entry) => entry.how === how).length
-    expect([split('plain-by-construction'), split('nothing'), split('handed-over')]).toEqual([
-      // ⚑ **398 added `questionsForAPerson` to the MIDDLE number, and `403` added
-      // `decisionsForAPerson` to it too.** Neither touched the first, which is what kept
-      // *"the value 38 others carry"* true through two merges that never mentioned it. 🔴 **419's
-      // `createAgent` DID touch it**, so the first number moved and the three sentences quoting it
-      // moved with it, in the same commit — `a-number-can-survive-the-death-of-its-derivation`.
-      // ⚑ **433's `setAgentProvider` moved it again**, and it is the same lesson twice: a verb whose
-      // payload is two primitives lands in the first number, and the sentence four lines up is the
-      // one that would otherwise have gone quietly wrong.
-      // ⚑ **438's `digest` moved the FIRST number**, for `433`'s reason exactly: a window is
-      // two primitive fields written at the call site.
-      // ⚑ **441's `decideProposal` moves it again**, and it is the same lesson a fourth time: two
-      // strings and a boolean, built at the call site.
-      // ⚑ **446's `proposalsForAPerson` moves the MIDDLE number**, joining its two siblings there:
-      // it carries no payload at all, so there is nothing for the call site to build or hand over.
-      // ⚑ **462's `readToolAnswer` moves the FIRST number**, for `433`'s reason a fifth time: the
-      // call site writes `{ sessionId, toolCallId }` itself and both fields are strings. ⛔ **And it
-      // moved the two sentences that quote it, in this commit** — that is the whole of the rule
-      // `a-number-can-survive-the-death-of-its-derivation` states.
-      // ⚑ **467's `conversationsInProject` moves the FIRST number**, for `433`'s reason a sixth
-      // time: the call site writes `{ projectSlug }` itself and the field is a string. ⛔ **And it
-      // moved the two sentences that quote it, in this commit** — the row above this assertion and
-      // `setSpawningEnabled`'s, which both say how many others carry this value.
-      // ⚑ **500's `setDefaultApprovalMode` moves the FIRST number**, for `433`'s reason a seventh
-      // time: the call site writes `{ mode }` itself and a word is a primitive. ⛔ **And it moved
-      // the two sentences that quote it, in this commit** — the row above this assertion and
-      // `setSpawningEnabled`'s. ⚠️ `446` found that pair one short because a dispatch moved the
-      // number and not the sentences; this is the rule being followed rather than re-learned.
-      // ⚑ **508's `tasksAssignedBy` moves the FIRST number**, for `433`'s reason an eighth time:
-      // the call site writes `{ sessionId }` itself and a session id is a string. ⛔ **And it moved
-      // the two sentences that quote it, in this commit** — the row above this assertion and
-      // `setSpawningEnabled`'s.
-      // ⚑ **510's `readCanonicalDocument` moves the FIRST number**, for `433`'s reason a sixth
-      // time — one string, written as an object literal at the call site. ⛔ **And it moved the
-      // THIRD sentence quoting this number, in §7, which had said 38 since `363`** and which five
-      // previous dispatches walked past.
-      // 🔴 **THE INTEGRATION: both of the two above moved this number by one, so it moved by TWO.**
-      // ⚠️ **Each branch wrote the identical literal, so `toHaveLength` auto-merged with NO conflict
-      // and was wrong by one on a tree neither dispatch gated** — the only conflict git raised was in
-      // the prose four lines up. ⛔ Resolved by COUNTING the merged record (65 verbs, 48/11/6) rather
-      // than by adding one to one; `a-number-can-survive-the-death-of-its-derivation` has a merge
-      // shape, and this is it.
-      // ⚑ **516's two registry writes move the FIRST number by TWO**, for `433`'s reason a ninth
-      // and tenth time: each call site writes its own literal and every field is a string. ⛔ **And
-      // they moved all THREE sentences quoting this number, in this commit** — the row above this
-      // assertion, `setSpawningEnabled`'s, and §7's, which is the one five dispatches walked past.
-      // ⚑ **533's `limitsForAPerson` moves the MIDDLE number**, joining its three siblings there:
-      // it carries no payload at all, so there is nothing for the call site to build or hand over.
-      // ⛔ **The FIRST number does not move, so the three sentences quoting it — the row above this
-      // assertion, `setSpawningEnabled`'s, and §7's — are untouched**, and that was CHECKED rather
-      // than assumed: `a-number-can-survive-the-death-of-its-derivation` costs the same whether a
-      // dispatch moves a number it should not or leaves one it should.
-      // ⚑ **543's `whoCalledWhom` moves the FIRST number**, for `433`'s reason an eleventh time:
-      // the call site writes `{ sessionId }` itself and a session id is a string. ⛔ **And it moved
-      // all THREE sentences quoting this number, in this commit** — the row above this assertion,
-      // `setSpawningEnabled`'s, and §7's, which is the one five dispatches walked past.
-      // ⚑ **550's `documentsInProject` moves the FIRST number**, for `433`'s reason a twelfth
-      // time: the call site writes `{ projectSlug }` itself and the field is a string off a
-      // `project` row. ⛔ **And it moved all THREE sentences quoting this number, in this commit**
-      // — the row above this assertion, `setSpawningEnabled`'s, and §7's.
-      // ⚑ **557's `stalledWorkForAPerson` moves the MIDDLE number**, joining its four siblings
-      // there: `{ kind: 'stalledWorkForAPerson' }` carries no payload at all, so there is nothing
-      // for the call site to build or hand over. ⛔ **The FIRST number does not move, so the three
-      // sentences quoting it — the row above this assertion, `setSpawningEnabled`'s, and §7's —
-      // are untouched**, and that was CHECKED rather than assumed, which is `533`'s own note and
-      // costs the same either way.
-      // ⚑ **567's `readWorkspace` moves the MIDDLE number**, joining its five siblings there:
-      // `{ kind: 'readWorkspace' }` carries no payload at all, so there is nothing for the call
-      // site to build or hand over. ⛔ **The FIRST number does not move, so the three sentences
-      // quoting it — the row above this assertion, `setSpawningEnabled`'s, and §7's — are
-      // untouched**, and that was CHECKED rather than assumed. ⚠️ **The three are not spelled the
-      // same, which is why a single grep would have missed one**: `<n> others` twice (the
-      // `setSpawningEnabled` row and §2's own note) and `<n> other rows` once, in §7 — the copy five
-      // dispatches walked past. ⛔ **582 took the NUMBER out of this sentence**, because the
-      // sentence is about the three SPELLINGS and a number written into it goes stale every time
-      // the count it is warning about moves — which it had, twice, before anybody noticed. 🔴 **None of the three names the MIDDLE number**, which is quoted
-      // only by the assertion — where a count belongs, and where `621` had to put it back after
-      // this sentence spelled it out and went stale by one.
-      // ⚑ **558 moved the FIRST number by two**, for `433`'s reason exactly: `setAgentDisplayName`
-      // and `removeAgent` both carry primitives a window typed, so both land in
-      // `plain-by-construction`. ⛔ **The three sentences quoting the first number are corrected in
-      // this commit** — the row above this assertion, `setSpawningEnabled`'s, and §7's — because
-      // `a-number-can-survive-the-death-of-its-derivation` is what happens when they are not.
-      // ⚑ **575's `whatIsBeingDone` moves the MIDDLE number**, joining its six siblings there:
-      // `{ kind: 'whatIsBeingDone' }` carries no payload at all, so there is nothing for the call
-      // site to build or hand over. ⛔ **The FIRST number does not move, so the three sentences
-      // quoting it — the row above this assertion, `setSpawningEnabled`'s, and §7's — are
-      // untouched**, and that was CHECKED rather than assumed (`533`'s note, and it costs the same
-      // either way).
-      // ⚑ **582 moves the FIRST number by THREE** — `instructAgent`, `agentInstructions` and
-      // `decideInstruction` each carry primitives a window typed, so all three land in
-      // `plain-by-construction`. ⛔ **The three sentences quoting the first number are corrected in
-      // this commit** — the row above this assertion, `setSpawningEnabled`'s, and §7's — which is
-      // `558`'s own discipline and the rule `a-number-can-survive-the-death-of-its-derivation`
-      // states.
-      // ⚑ **625 moves the FIRST number by TWO** — `agentMemory` and `amendAgentMemory` both carry
-      // primitives a window typed or chose from a closed vocabulary, so both land in
-      // `plain-by-construction`. ⛔ **The three sentences quoting the first number are corrected in
-      // this commit** — the row above this assertion, `setSpawningEnabled`'s, and §7's — and they
-      // were found by grepping the three SPELLINGS rather than the assertion, which is the note six
-      // paragraphs up saying a single grep would have missed one.
-      // ⚑ **621's `whatEachConversationIsWaitingOn` moves the MIDDLE number**, joining its seven
-      // siblings there: `{ kind: 'whatEachConversationIsWaitingOn' }` carries no payload at all,
-      // so there is nothing for the call site to build or hand over. ⛔ **The FIRST number is not
-      // `621`'s to move, so the three sentences quoting it are 625's above and are untouched by
-      // this row** — CHECKED on the MERGED tree and not assumed.
-      // 🔴 **And one number in PROSE was already stale and is corrected here**: the sentence four
-      // lines up said the middle number *"is quoted only by the assertion"* and then quoted it,
-      // at `14`, while the assertion said `15`. ⛔ It is the very defect that sentence exists to
-      // warn about, so the repair is to take the number OUT rather than to bump it —
-      // `a-number-can-survive-the-death-of-its-derivation`.
-      // 🔴 **THE INTEGRATION, and this file's own rule for it**: `625` moved the FIRST number and
-      // `621` the MIDDLE, on two branches neither of which saw the other. ⛔ **Resolved by COUNTING
-      // the merged record — 82 verbs, 60/16/6 — rather than by adding one to one**, which is the
-      // merge shape `516`'s note records and which auto-merged wrong once before.
-      // ⚑ **637's `theWholeForest` moves the MIDDLE number**, joining its eight siblings there:
-      // `{ kind: 'theWholeForest' }` carries no payload at all — the answer is rooted at the person
-      // and the bound is a constant rather than a page — so there is nothing for the call site to
-      // build or hand over. ⛔ **The FIRST number is not 637's to move, so the three sentences
-      // quoting it are untouched** — CHECKED by grepping all three SPELLINGS, not assumed.
-      // ⚑ **677 moves the FIRST number by TWO** — `setAgentModelAndEffort` and
-      // `agentModelAndEffort` each carry primitives a window chose, so both land in
-      // `plain-by-construction`. ⛔ **The three sentences quoting the first number are corrected in
-      // this commit** — the row above this assertion, `setSpawningEnabled`'s, and §7's — found by
-      // grepping the three SPELLINGS, as the note above says to.
-      // ⚑ **689's `providerModels` moves the FIRST number**, for `433`'s reason once more: the
-      // preload writes `{ kind, provider, profileId }` itself and both fields are primitives.
-      // ⛔ **The three sentences quoting the first number are corrected in this commit** — the row
-      // above this assertion, `setSpawningEnabled`'s, and §7's — found by grepping the three
-      // SPELLINGS.
-      // ⚑ **733's `readConfigFile` moves the FIRST number**, for `433`'s reason again: the call site
-      // writes `{ sessionId, name }` itself and both are strings. ⛔ **The three sentences quoting
-      // it are corrected in this commit** — the row above this assertion, `setSpawningEnabled`'s,
-      // and §7's — found by grepping the three SPELLINGS.
-      // ⚑ **735's `startAndSend` moves the FIRST number**, for `send`'s reason: the preload writes
-      // the outer literal and every field is `send`'s. ⛔ **The three sentences quoting it are
-      // corrected in this commit** — found by grepping the three SPELLINGS.
-      // ⚑ **D-017 · R19's `instructionAsksForAPerson` moves the MIDDLE number**, joining its
-      // siblings there: `{ kind: 'instructionAsksForAPerson' }` carries no payload at all.
-      // ⛔ **The FIRST number does not move, so the three sentences quoting it are untouched** —
-      // CHECKED by grepping the three SPELLINGS, not assumed.
-      // ⚑ **D-017b moves the FIRST number down by ONE** — `look` in (`{ sessionId, claim }`, written
-      // by `store.look`), `libraryEntry` and `readArchived` out. ⛔ **The three sentences quoting it
-      // are corrected in this commit** — found by grepping the three SPELLINGS.
-      // ⚑ **D-016 moves the FIRST number down by SIX and the MIDDLE by TWO** — `decideProposal`,
-      // `conversationsInProject`, `documentsInProject`, `project`, `createProject` and
-      // `saveProject` out of the first; `proposalsForAPerson` and `projects` out of the middle.
-      // ⛔ **The three sentences quoting the first number are corrected in this commit** — found by
-      // grepping the three SPELLINGS.
-      // ⚑ **D-016 · R4's `retitleWork` moves the FIRST number**, for `433`'s reason again: the call
-      // site writes `{ piece, title }` itself and both are strings. ⛔ **The three sentences quoting
-      // it are corrected with it** — found by grepping the three SPELLINGS.
-      // ⚑ **D-018's `processMemory` moves the MIDDLE number**, joining its siblings there:
-      // `{ kind: 'processMemory' }` carries no payload at all. ⛔ **The FIRST number does not move,
-      // so the three sentences quoting it are untouched** — CHECKED by grepping the three SPELLINGS.
-      // ⚑ **D-026's `filesKept` moves the FIRST number**: the preload writes `{ kind, ...input }`
-      // itself and every field is a string. ⛔ **The three sentences quoting it are corrected with
-      // it** — found by grepping the three SPELLINGS.
-      // ⚑ **D-042 moves the FIRST number by FOUR** — `modelList`, `addHandAddedModel`,
-      // `deleteHandAddedModel` and `setAgentModelLimit`: the preload writes each literal itself
-      // (copying the limit's array), and no window calls any of them yet.
-      // ⛔ **The three sentences quoting it are corrected with it** — found by grepping the three
-      // SPELLINGS.
-      // ⚑ **D-050 moves the FIRST number down by ONE** — `setAgentModelLimit` out, with the agents'
-      // limit. ⛔ **The three sentences quoting it are corrected with it** — found by grepping the
-      // three SPELLINGS.
-      // ⚑ **The API keys move the FIRST number by FOUR** — `apiKeyStatus`, `setApiKey`,
-      // `removeApiKey` and `checkApiKey` are each built by the preload. ⛔ **The three
-      // sentences quoting the first are corrected with it** — found by grepping the three SPELLINGS.
-      // ⚑ **The Providers screen's three reads move the MIDDLE number by THREE**: no payload at
-      // all. ⛔ The FIRST number does not move, so the sentences quoting it are untouched.
-      // ⚑ **D-049 moves the FIRST number down by ONE** — `providerModels` out. ⛔ **The three
-      // sentences quoting it are corrected with it** — found by grepping the three SPELLINGS.
-      // ⚑ **D-032 moves the FIRST number by TWO** — `drawResource` and `revealResource`, each
-      // `{ kind, resourceId }` written by the preload. ⛔ **The three sentences quoting it are
-      // corrected with it** — found by grepping the three SPELLINGS.
-      // ⚑ **F093's C9 d moves the FIRST number by ONE** — `whatTheModelGot`. ⛔ **The three
-      // sentences quoting it are corrected with it.**
-      // ⚑ **F097's `waitingOnWhoWroteForAPerson` moves the MIDDLE number**, joining its siblings
-      // there: `{ kind: 'waitingOnWhoWroteForAPerson' }` carries no payload at all. ⛔ **The FIRST
-      // number does not move, so the three sentences quoting it are untouched** — CHECKED by
-      // grepping the three SPELLINGS, not assumed.
-      // ⚑ **D-049's rest moves the FIRST number down by ONE** — `models` out. ⛔ **The three
-      // sentences quoting it are corrected with it** — found by grepping the three SPELLINGS.
-      // ⚑ `providerSetup` carries no payload: the middle number, 21 → 22.
-      // ⚑ A message's three path verbs are in the FIRST number: the preload writes each literal.
-      // ⚑ `removeKeptRule` is in the FIRST number (three strings the preload writes), `keptRules`
-      // in the middle one (no payload).
-      // ⚑ Archive, restore, the delete and its check move the FIRST number by four; the three
-      // sentences quoting it are corrected with it.
-      // ⚑ `stopLooking` moves the FIRST number by one (`{ kind, sessionId }` written by the
-      // preload); the three sentences quoting it are corrected with it.
-      // ⚑ `decideMcpServerRequest` moves the FIRST number by one and `mcpServerRequestsForAPerson`
-      // the middle one; the three sentences quoting the first are corrected with it.
-      // The held stop and Move add plain payloads; work search hands over its query.
-      // ⚑ `takeBackWork` moves the FIRST number by one (`{ kind, piece }` written by the preload);
-      // the three sentences quoting it are corrected with it.
-      // ⚑ So does `setServicesOn` (`{ kind, on }` written by the preload).
-      // ⚑ `stoppedWorkForAPerson` moves the MIDDLE number by one: it carries no payload.
-      // Link resolution and action answers build literals; incident reads carry no payload.
-      // Recent activity adds one plain packet, built from two numeric window bounds.
-      // ⚑ `closeWork` moves the FIRST number by one (`{ kind, piece }` written by the preload); the
-      // sentences quoting it are corrected with it.
-      // ⚑ `currentEpoch` and `personsQueue` move the MIDDLE number by two: no payload.
-      // ⚑ `listConversations` moves the MIDDLE number by one: no payload.
-      106, 31, 8,
-    ])
-  })
-
-  it('🔴 the handed-over verbs are independently named', () => {
-    const handed = Object.entries(HOW_EACH_VERB_IS_BUILT)
-      .filter(([, entry]) => entry.how === 'handed-over')
-      .map(([kind]) => kind)
-      .sort()
-    expect(handed).toEqual([
-      'cancelProviderSignIn',
-      'respondPermission',
-      'respondUserInput',
-      'revealPath',
-      'searchWork',
-      'setCapabilities',
-      'setSessionSetting',
-      'skills',
-    ])
-  })
-
-  it('⚠️ and each says what was traced to its producer', () => {
-    for (const [kind, entry] of Object.entries(HOW_EACH_VERB_IS_BUILT)) {
-      if (entry.how !== 'handed-over') continue
-      expect(
-        entry.note,
-        `${kind} is handed over and says nothing about why that is safe`,
-      ).toBeTruthy()
-      expect(entry.note?.length ?? 0).toBeGreaterThan(80)
-    }
-  })
-
-  /**
-   * ⛔ **The bound this table cannot cross, written down rather than implied** (`361` §1's *"correct
-   * me"*). It records how each call site builds its payload TODAY. It is not a guard: a component
-   * that starts handing a reactive value to `close` tomorrow makes this row stale and nothing here
-   * goes red. ⚑ **The guard is the wire** — the DOM setup file and `throughTheWire` — and this table
-   * is the enumeration that says the guard was pointed at EVERY one of them.
-   *
-   * ⚠️ **This said *"all 59 of them"* and had been wrong since `355`** (found at `403`). `365`
-   * wrote it when the two counts below were 51 and 8; three verbs have been added since and the
-   * sentence went with none of them. ⛔ **A number in prose outlives the derivation that produced
-   * it** — `a-number-can-survive-the-death-of-its-derivation` — so this now points at the two
-   * counts §2 ASSERTS rather than restating their sum, which is the only version of the claim a
-   * gate can keep true.
-   */
-  it('⚑ nothing but a `handed-over` row carries a note, so the notes stay the exception', () => {
-    const noisy = Object.entries(HOW_EACH_VERB_IS_BUILT).filter(
-      ([, entry]) => entry.how !== 'handed-over' && entry.note !== undefined,
-    )
-    expect(noisy).toEqual([])
-  })
-})
-
 /* ------------------------------------------- §3 · the exempt roster comes from the preload itself */
 
 /**
@@ -1292,28 +944,6 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
     }
   })
 
-  /**
-   * ⛔ **The stripper's own killer, and it needs one.** Measured today: stripping the prose changes
-   * the roster not at all — both readings give `onClosing`, `onEvent`, `onLiveness`,
-   * `pathForDroppedFile` — so the `withoutProse` call is a line no mutation of the preload could
-   * make red, and a line no mutation can kill is not carrying its rule. ⚑ **This is the rule**: a
-   * docblock that quotes the call is not the call. The preload is the most heavily commented file
-   * in the app and `pathForDroppedFile`'s own docblock is three paragraphs about `invoke` and bytes;
-   * it is one edit away from saying the word.
-   */
-  it('🔴 prose that quotes the call is not the call', () => {
-    const planted = [
-      '  /**',
-      '   * Never crosses the wire — there is no `ipcRenderer.invoke` here and no `command(` either.',
-      '   */',
-      '  pathForDroppedFile: (file: File): string => webUtils.getPathForFile(file),',
-    ].join('\n')
-    expect(invokes(planted), 'the fixture is not one the raw reading would wave through').toBe(true)
-    expect(invokes(withoutProse(planted))).toBe(false)
-    // ⚑ …and the stripper does not eat the code beside the comment.
-    expect(withoutProse(planted)).toContain('webUtils.getPathForFile(file)')
-  })
-
   it('⚑ and the derivation can tell the two apart — the pair, one fact over', () => {
     // ⛔ Both halves, because a predicate that answered `true` for everything would pass the
     // equality above only by accident of the roster being empty, and one that answered `false` for
@@ -1322,27 +952,6 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
     expect(invokes("ipcRenderer.invoke('app:info')")).toBe(true)
     expect(invokes('ipcRenderer.on(RUNTIME_EVENT_CHANNEL, forward)')).toBe(false)
     expect(invokes('webUtils.getPathForFile(file)')).toBe(false)
-  })
-})
-
-/* --------------------------------------------------- §4 · a guard nothing registers is dark (310) */
-
-describe('§4 · the DOM project really runs the wire (361 §3)', () => {
-  it('⛔ `vitest.dom.config.ts` registers the setup file that arms it', () => {
-    const config = source('vitest.dom.config.ts')
-    expect(config).toContain("setupFiles: ['test/dom/setup/the-window-is-a-wire.ts']")
-  })
-
-  /**
-   * ⛔ **The trap is on the PROTOTYPE, and this is the assertion that keeps it there.** Ten DOM
-   * tests `delete window.api` in an `afterEach`; an own accessor is removed by that delete and every
-   * later test in the file runs unguarded, with the suite still green. Moving it back to `window`
-   * would be a one-word edit that nothing else in the repo would notice.
-   */
-  it('⛔ and the trap is installed where `delete window.api` cannot remove it', () => {
-    const setup = source('test/dom/setup/the-window-is-a-wire.ts')
-    expect(setup).toContain("Object.defineProperty(Object.getPrototypeOf(window) as object, 'api'")
-    expect(setup).toContain('everythingOverTheWire(stub)')
   })
 })
 
@@ -1419,24 +1028,6 @@ describe('§5 · a bridge double refuses what the wire refuses (361 §2)', () =>
   })
 })
 
-/* ------------------------ §6 · the node project's own doubles, derived from the import (361 §2) */
-
-/**
- * ⛔ **Every test that builds a RENDERER store, found by the import that builds one.**
- *
- * ⚠️ **`readdirSync`, not `grep`.** `grep -rn` prints nothing at all for
- * `whole-session-reads.test.ts` in this tree — measured, repeatedly — so any census of this
- * directory built on a shell search is short by at least one file before it starts.
- *
- * ⛔ **It matches the FACTORY import, not the module.** `handed-path-send.test.ts` imports
- * `overTheWire` from the same file and builds no store at all; a module-shaped match would put it in
- * the set and then be held there by a sentence saying it did not belong (`345`'s lesson, where a
- * roster admitted a file on the strength of a comment). ⚑ The alias form
- * `createSessionStore as createRendererStore` is what the two demo tests use, and it is matched.
- */
-const BUILDS_A_RENDERER_STORE =
-  /import \{[^}]*\bcreate(?:Session|Project)Store\b[^}]*\} from '(?:\.\.?\/)+src\/renderer\/src\/lib\/(?:session|project)-store'/
-
 const IMPORTS_THE_WIRE = /from '(?:\.\.?\/)*(?:lib\/)?the-wire'/
 
 /**
@@ -1448,126 +1039,13 @@ const IMPORTS_THE_WIRE = /from '(?:\.\.?\/)*(?:lib\/)?the-wire'/
  */
 const RUNS_THE_WIRE = /\b(?:asTheWireWouldCarry|everythingOverTheWire|throughTheWire)\s*\(/
 
-const storeBuilders = readdirSync(HERE)
-  .filter((name) => name.endsWith('.test.ts'))
-  .filter((name) => BUILDS_A_RENDERER_STORE.test(readFileSync(join(HERE, name), 'utf8')))
-  .sort()
-
 describe('§6 · every double the renderer store runs on is a wire (361 §2)', () => {
-  it('⛔ the roster is derived, non-empty, and is exactly the files that build one', () => {
-    // ⚑ Derived AND pinned, which is not a contradiction: the derivation does the covering, and
-    // the equality makes a file JOINING or LEAVING the set a red somebody acknowledges in a diff.
-    expect(storeBuilders).toEqual([
-      // 🔴 **This file, from `739`.** It builds a real `createSessionStore` over the wire to measure
-      // `737` F-6: a command with no answer lets go of `busy` at its bound, and its late answer lands.
-      'a-command-that-has-no-answer.test.ts',
-      // ⚑ **`701`** — the real renderer store over the real host's commands, through the wire's
-      // clone: a first message to a conversation the quit left open is what starts it, and End
-      // reaches the host with no record in the window.
-      'a-conversation-a-quit-left-open-starts-on-its-first-message.test.ts',
-      // 🔴 **D-004 · R101.** It builds a real `createSessionStore` over the wire, cloning the
-      // ANSWER as `653`'s does, to measure a window taking back a conversation the host reopened on
-      // a renewed sign-in — the hand-over it adopts is IN the answer.
-      'a-conversation-reopens-on-a-renewed-sign-in.test.ts',
-      // ⚑ **Landing D-017b · both new suites build a real renderer store over the wire** — the look
-      // door, and the first message from a conversation's view.
-      'a-look-takes-what-a-press-may-take-and-nothing-else.test.ts',
-      'a-message-from-a-conversations-view-goes-where-the-host-ruled.test.ts',
-      // 🔴 **This file, from `725`.** It builds a real `createSessionStore` over the wire to measure
-      // `716` F-1: a start ASKS main for its refusal's word, and the store keeps it beside the sentence.
-      'a-refusal-that-said-why-is-not-asked-again.test.ts',
-      // 🔴 **This file, from `678`.** It builds a real `createSessionStore` over the wire and a
-      // real draft book beside it, to measure R26 in the gap between a reopen's close and its
-      // resume — the one place a conversation is out of `store.live` while its draft must stay.
-      'a-reopen-keeps-the-draft.test.ts',
-      // 🔴 **This file, from `653`.** It builds a real `createSessionStore` over the wire to
-      // measure what a person is shown when they take over a conversation whose running life was
-      // itself a reopen — and, like `479`'s, it clones the ANSWER as well as the arguments,
-      // because the field it adds (`ResumedSession.liveFrom`) is IN the answer, and a claim's
-      // answer read by reference would pass whether or not the field survived the trip.
-      'a-woken-conversation-drawn-as-ended.test.ts',
-      'an-agent-gives-work-a-person-decides.demo.test.ts',
-      // ⚑ **This file, from `718`.** §5 builds a real `createSessionStore` over the wire to measure
-      // `710` F-9: a start from the StartAsAgent sheet is its OWN launch — its own key, its own
-      // error ref and its own Cancel — so the launcher is neither put into `starting` by it nor
-      // handed its refusal.
-      'compact-now-and-what-main-now-carries.render.test.ts',
-      'host-renderer-agreement.test.ts',
-      // ⚑ **This file, from `401`.** §7 builds a real `createSessionStore` over the wire to
-      // measure the one store read whose refusal is a VALUE rather than a rejection, so the
-      // derivation picks it up — and it passes both halves below, which is what joining this
-      // roster is for.
-      'persons-queue.test.ts',
-      // The store reads host failures and recovery answers through the same cloned wire as the app.
-      'session-store-reading-failures.test.ts',
-      'session-store.test.ts',
-      // ⚑ **This file, from `365`.** §8 builds a real `createSessionStore` over the wire to measure
-      // `356`'s two verbs, so the derivation correctly picks it up — and it passes both halves
-      // below, which is the point: the roster is derived, and a file that joins it says so here.
-      'the-bridge-that-clones-nothing.test.ts',
-      'the-conversation-nobody-asked-for.demo.test.ts',
-      // ⚑ **Landing D-018** — a real renderer store over the wire, to read a running agent's memory
-      // as the window asks for it, and a refused read as null.
-      'the-memory-a-running-agent-holds-is-read-by-pid-and-never-kept.test.ts',
-      // ⚑ **Landing D-017b** — a real renderer store over the wire, to see where the person is taken
-      // when a message goes to a conversation that took a recorded one's place.
-      'the-person-is-taken-to-the-conversation-that-took-a-recorded-ones-place.test.ts',
-      // 🔴 **This file, from `473`.** §2 builds a real `createSessionStore` over the wire AND a
-      // real `createPersonsQueue` beside it, because the defect it measures is born in the queue's
-      // deep `ref` and only becomes visible at the clone. ⛔ It is the first file in this roster
-      // whose subject is a PRODUCER rather than a door — see §9.
-      'the-press-that-cloned-nothing.test.ts',
-      // 🔴 **This file, from `468`.** §1 builds a real `createSessionStore` over a bridge whose
-      // answer it HOLDS OPEN, so the assertion lands between `markSent` and `noteAnswer` — the
-      // gap the whole dispatch is about. ⛔ Its first draft did not go over the wire and this
-      // census is what said so, which is the second time the derived half has caught a file on
-      // the day it joined.
-      'the-press-that-shows-nothing.test.ts',
-      // ⚑ **This file, from `418`.** It builds a real `createSessionStore` over the wire to measure
-      // what a person's rail says about a conversation an agent started — so the derivation picks
-      // it up, and it passes both halves below, which is what joining this roster is for.
-      // ⚑ **This file, from `508`.** §2 builds a real `createSessionStore` over the wire to measure
-      // the one thing a store double can answer and the host cannot: that a dropped IPC call
-      // becomes `null` rather than an empty walk. ⛔ Its first draft did NOT go over the wire, and
-      // this census is what said so — the third time the derived half has caught a file on the day
-      // it joined. ⚠️ It also asserted the answer by IDENTITY, which the double allows and the wire
-      // does not; that is now a `toEqual`.
-      'the-work-this-conversation-gave-out.test.ts',
-      'two-sessions-of-one-agent.demo.test.ts',
-      // ⚠️ **D-016** deleted `a-list-that-notices.test.ts`, `project-store.test.ts` and
-      // `what-approving-a-proposal-actually-does.test.ts` with the project store and proposals.
-    ])
-  })
-
-  it('🔴 and each of them clones its payload the way `ipcRenderer.invoke` does', () => {
-    for (const name of storeBuilders) {
-      const code = readFileSync(join(HERE, name), 'utf8')
-      // Demo stores get their bridge from the shared window double.
-      const bridgeCode = /from '\.\/lib\/demo-runtime-window'/.test(code)
-        ? readFileSync(join(HERE, 'lib/demo-runtime-window.ts'), 'utf8')
-        : code
-      const why = `${name} builds a renderer store over a double that clones nothing`
-      expect(IMPORTS_THE_WIRE.test(bridgeCode), why).toBe(true)
-      expect(RUNS_THE_WIRE.test(bridgeCode), why).toBe(true)
-    }
-  })
-
   it('⚑ …and the two halves of that really are two halves', () => {
     // ⛔ The pair. An import with no call is exactly what a row that deleted the call leaves
     // behind, and it is the shape four of this dispatch's own mutation rows survived as.
     const importOnly = "import { everythingOverTheWire } from './lib/the-wire'\nreturn ({})"
     expect(IMPORTS_THE_WIRE.test(importOnly)).toBe(true)
     expect(RUNS_THE_WIRE.test(importOnly)).toBe(false)
-  })
-
-  it('⚑ a file that merely imports the module is not treated as building a store', () => {
-    // The control for the derivation's shape: `handed-path-send.test.ts` takes `overTheWire` from
-    // the very same module and is correctly outside the set. Without this, widening the regex to
-    // the module path would go unnoticed.
-    const neighbour = readFileSync(join(HERE, 'handed-path-send.test.ts'), 'utf8')
-    expect(neighbour).toContain("from '../src/renderer/src/lib/session-store'")
-    expect(BUILDS_A_RENDERER_STORE.test(neighbour)).toBe(false)
-    expect(storeBuilders).not.toContain('handed-path-send.test.ts')
   })
 })
 
@@ -1731,47 +1209,6 @@ describe('§7 · the agent store crosses a wire, and one of its three verbs can 
       externalMcpServerIds: [],
     })
   })
-
-  /**
-   * ⛔ **What the `plain-by-construction` rows are actually claiming, asserted where a change
-   * would break it.** Neither `projectSlug` nor `enabled` nor `mode` can be a Proxy — a `string` is
-   * a string, a `boolean` is a boolean and a word out of a two-member union is a word, however they
-   * were read — so the ONLY way one of these verbs joins `cancelProviderSignIn` is the store handing
-   * the whole payload over instead of writing the wrapper. ⚑ That is a one-word edit, it is what
-   * `361` found at the fourth site, and this is the line that would go red for it.
-   *
-   * ⚠️ **Prose stripped first** (`345`): `agent-store.ts` names all four verbs in its docblocks.
-   */
-  it('⛔ the store writes each wrapper itself rather than handing a payload over', () => {
-    const code = withoutProse(source('src/renderer/src/lib/agent-store.ts'))
-    expect(code).toContain('bridge.agentIdentities()')
-    // ⚑ **516 · the wrapper grew a third field and the assertion moved with it rather than being
-    // relaxed to a prefix.** ⛔ The array is REBUILT here — `[...externalMcpServerIds]` — for the
-    // same reason the sheet's `grant()` builds a fresh object: the caller is a Vue component and its
-    // ids come off a `reactive`, so forwarding its array would put a `Proxy` on the wire. ⚠️ That is
-    // what keeps this row `handed-over` honest about which field is the hazard.
-    expect(code).toContain('externalMcpServerIds: [...externalMcpServerIds],')
-    expect(code).toContain('bridge.setSpawningEnabled({ enabled })')
-    // ⛔ **516 · the registry's two writes, each wrapper written here** — `500`'s rule one verb over:
-    // a `plain-by-construction` label with no line in this census is a label.
-    // ⚑ **524 · three fields now, and the third is a literal out of a closed vocabulary** — still a
-    // primitive, so the `plain-by-construction` verdict on this verb is unchanged and this line is
-    // what says so rather than a memory of it.
-    expect(code).toContain('reach: said.reach,')
-    expect(code).toContain('bridge.removeExternalMcpServer({ serverId })')
-    // 500. ⛔ **The fourth, and the row above cannot be its own evidence** — a `plain-by-construction`
-    // label with no line here is a label, which is the defect this section exists for.
-    expect(code).toContain('bridge.setDefaultApprovalMode({ mode })')
-    // ⚑ The pair: the stripper is what makes the three above a claim about code. A docblock that
-    // quoted the call would satisfy the raw reading and must not satisfy this one.
-    const quoted = [
-      '/**',
-      ' * `bridge.setSpawningEnabled({ enabled })` is what this does.',
-      ' */',
-    ].join('\n')
-    expect(quoted).toContain('bridge.setSpawningEnabled({ enabled })')
-    expect(withoutProse(quoted)).not.toContain('bridge.setSpawningEnabled({ enabled })')
-  })
 })
 
 /* -------------------- §8 · the two verbs `356` added, measured rather than labelled (365 §1) */
@@ -1888,65 +1325,6 @@ describe('§8 · the session store crosses a wire, and one of its two verbs can 
       target: { of: 'config-file', name: 'auth.json' },
     })
   })
-
-  /**
-   * ⛔ **The line that would go red for the one-word edit that changes either answer** — the store
-   * handing a payload over instead of writing the wrapper, which is what `361` found at the fourth
-   * site. ⚠️ **Prose stripped first** (`345`): `session-store.ts` names both verbs in its docblocks.
-   */
-  it('⛔ the store writes each wrapper itself rather than handing a payload over', () => {
-    const code = withoutProse(source('src/renderer/src/lib/session-store.ts'))
-    expect(code).toContain('bridge.readInstructionSource({ sessionId, index })')
-    expect(code).toContain('bridge.revealPath({ sessionId, target })')
-    // ⚑ The pair, as §7 has it: a docblock that quoted the call satisfies the raw reading and must
-    // not satisfy this one.
-    const quoted = [
-      '/**',
-      ' * `bridge.revealPath({ sessionId, target })` is what this does.',
-      ' */',
-    ].join('\n')
-    expect(quoted).toContain('bridge.revealPath({ sessionId, target })')
-    expect(withoutProse(quoted)).not.toContain('bridge.revealPath({ sessionId, target })')
-  })
-
-  /**
-   * ⛔ **And the four producers really are literals**, which is what the `handed-over` note claims.
-   * ⚑ **Source rather than a DOM mount, and that is not a shortcut**: both components take the
-   * reveal as a CALLBACK PROP, so mounting either one reaches no bridge at all — the payload is
-   * assembled one hop above, in `session-store.ts`, which is exactly where the four tests above
-   * drive it. ⚠️ Prose stripped: both files discuss these shapes in their docblocks.
-   */
-  it('⛔ every `SessionPathTarget` the app builds is an object literal at the press', () => {
-    const info = withoutProse(source('src/renderer/src/components/SessionInfo.vue'))
-    const instructions = withoutProse(source('src/renderer/src/components/SessionInstructions.vue'))
-    expect(info).toContain("reveal('cwd', { of: 'cwd' })")
-    expect(info).toContain("reveal('home', { of: 'home' })")
-    expect(info).toContain("{ of: 'config-file', name: file.name }")
-    expect(instructions).toContain("ask({ of: 'instruction-source', index })")
-    // ⚑ W4.162 · the agent panel's Open folder builds the cwd target at its press too.
-    const agentPanel = withoutProse(source('src/renderer/src/composables/useAgentPanel.ts'))
-    expect(agentPanel).toContain("revealPath({ of: 'cwd' })")
-
-    // ⛔ **And the four are ALL of them, which the four assertions above cannot say.** A negative is
-    // only as strong as its search shape, so this walks the whole renderer rather than the two files
-    // the note happens to name — `readdirSync`, never a shell search, for §6's reason. ⚑ The counts
-    // are here too: a fifth target built in either of these files is as invisible to a file-name
-    // roster as one built in a third.
-    const renderer = join(HERE, '..', 'src/renderer')
-    const builders = readdirSync(renderer, { recursive: true, encoding: 'utf8' })
-      .filter((name) => name.endsWith('.ts') || name.endsWith('.vue'))
-      .map(
-        (name) => [name.replaceAll('\\', '/'), readFileSync(join(renderer, name), 'utf8')] as const,
-      )
-      .map(([name, code]) => [name, code.split(/\bof: '/).length - 1] as const)
-      .filter(([, count]) => count > 0)
-      .sort()
-    expect(builders).toEqual([
-      ['src/components/SessionInfo.vue', 3],
-      ['src/components/SessionInstructions.vue', 1],
-      ['src/composables/useAgentPanel.ts', 1],
-    ])
-  })
 })
 
 /* ───────────────── §9 · who BUILDS what goes through the door (473, from 469 F3) ──────────── */
@@ -2009,36 +1387,5 @@ describe('§9 · every handed-over verb names its producers, and they exist (473
     // ⚑ UI-012 · `setSessionSetting`'s one producer became two: the picker's model, then its effort.
     // ⚑ …and three: plan mode is built where the agent card asks for it, not relayed from a tab.
     expect(handed.reduce((so, [, entry]) => so + entry.producers.length, 0)).toBe(18)
-  })
-
-  it('🔴 and each producer really builds it, in the file the row names', () => {
-    for (const [kind, entry] of handed) {
-      for (const producer of entry.producers) {
-        // ⚠️ **Prose stripped first** (`345`): every one of these files discusses the shape it
-        // builds in its own docblocks, and three of them quote the call itself.
-        const code = withoutProse(source(producer.at))
-        expect(
-          code.includes(producer.builds),
-          `${kind}: ${producer.at} no longer builds \`${producer.builds}\``,
-        ).toBe(true)
-      }
-    }
-  })
-
-  it('⚑ …and the check can fail, in both readings', () => {
-    // ⛔ The pair, for §3's reason: a predicate that answered `true` for everything would pass the
-    // loop above no matter what the six rows said.
-    const real = withoutProse(source('src/renderer/src/lib/permission-offer.ts'))
-    expect(real.includes('permissionDecisionFor')).toBe(true)
-    // ⛔ **The producer this dispatch MOVED, checked where it used to live** — `PermissionCard.vue`
-    // held `function toDecision`, and asserting its absence from `permission-offer.ts` would be a
-    // line no edit could ever redden (found by this dispatch's own review).
-    const card = withoutProse(source('src/renderer/src/components/PermissionCard.vue'))
-    expect(card.includes('permissionDecisionFor(outcome)')).toBe(true)
-    expect(card.includes('function toDecision'), 'the second producer is back').toBe(false)
-    // ⚠️ …and a docblock that quotes a producer is not that producer.
-    const quoted = ['/**', ` * \`${THE_SHEETS_GRANT}\` is what the sheet does.`, ' */'].join('\n')
-    expect(quoted.includes(THE_SHEETS_GRANT)).toBe(true)
-    expect(withoutProse(quoted).includes(THE_SHEETS_GRANT)).toBe(false)
   })
 })

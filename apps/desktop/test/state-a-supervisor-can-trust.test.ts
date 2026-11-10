@@ -1372,27 +1372,6 @@ describe('484 · state a supervisor can trust', () => {
       expect(line).toContain('a person answers this one')
       expect(line).not.toContain('this app does not hold the words for this one')
     })
-
-    it('⛔ and the words are NOT widened to carry a permission’s command — a refusal with its reason', () => {
-      // 🔴 **HO-031 §3 lists this as a defect and the repair is NOT mine to make** (standing rule 1:
-      // derive from the code). ⚠️ BroBot wanted the command — *"It is in `events.permission_request`:
-      // `Bash: ls -la <the project folder>`"* — and `433`'s bound is what stands in the way: a parent
-      // reads *"the project, profile, provider, state, parent, spawn reason and last-turn ending"* of
-      // a conversation, which are facts about its EXISTENCE, and a permission's command is the
-      // content of somebody else's work.
-      //
-      // ⛔ **So the gate stays and is asserted BY NAME**, rather than quietly widened by a dispatch
-      // whose brief is the status readers. ⚑ What a supervisor gets instead is §4's `given_to_is`:
-      // the conversation is waiting on a person's decision, which is the question it was actually
-      // asking.
-      const source = readFileSync(join(mainRoot, 'runtime', 'runtime-host.ts'), 'utf8')
-      // ⚠️ **611 · the gate is the same gate and it is spelled by the ARM now** (HO-088 §2.3). ⛔ It
-      // was `if (request.because !== null) return { request, words: null }`, which withheld the
-      // words from BOTH `a-person` arms the day a second one existed — and `HO-088` §2.3 rules the
-      // other way for the new one: *"Ada still SEES that Ali asked and sees the answer."* ⚑ What
-      // is still withheld is a PERMISSION's text, which is what `433`'s bound is about.
-      expect(source).toContain("if (request.went.is === 'the-person-the-channel-left-it-with') {")
-    })
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────

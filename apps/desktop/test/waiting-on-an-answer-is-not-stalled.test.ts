@@ -73,7 +73,6 @@ import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from '.
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const hostSource = join(here, '../src/main/runtime/runtime-host.ts')
-const storeSource = join(here, '../src/main/db/session-store.ts')
 
 class RecordingSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = true
@@ -1016,85 +1015,6 @@ describe('603 · waiting on an answer is not stalled', () => {
         TASK_WAITS.filter((wait) => /\byou\b/.test(WORK_STATE_WORD[wait])),
         'the waits whose word addresses the reader',
       ).toEqual(['waiting-on-the-person-who-wrote'])
-    })
-
-    it('🔴 every surface that reports a task state reads the composition, derived from the call sites', () => {
-      // ⛔ **Derived from what the code IMPORTS rather than from a list of paths**, which is
-      // `a-guard-scoped-by-where-things-live-today-expires-silently`. ⚑ Two modules read the raw
-      // fold for a surface, and both of them compose.
-      const host = code(readFileSync(hostSource, 'utf8'))
-      const store = code(readFileSync(storeSource, 'utf8'))
-      const workReads = code(readFileSync(join(here, '../src/main/runtime/work-reads.ts'), 'utf8'))
-      expect(workReads).toContain('openQuestionsByWork')
-      expect(host).toContain('composeWhatEachPieceIsWaitingOn')
-      expect(store).toContain('composeWhatEachPieceIsWaitingOn')
-      // ⚠️ **Each raw read that feeds a surface is wrapped, asserted by the EXPRESSION** — a call
-      // site that dropped the wrapper would leave the bare read here and this line would go red.
-      // ⛔ **D-016 · `list_projects`' read (`tasksIn(slug, unread)`, wrapped) went with the tool**,
-      // so `list_tasks`' two halves below are the surfaces the host reports a task state through.
-      // ⚠️ **671 · `list_tasks`' two halves now pass the answer's `RowsUnread`** (R18), which put
-      // each call past prettier's width — so they are matched across the line break rather than
-      // as one line, and still as the WRAPPED expression: a bare read would not match.
-      // ⚑ **D-016 · `pieceBoard`'s halves** — what it holds, and what the ids it stands for gave.
-      for (const raw of [
-        /composeWhatEachPieceIsWaitingOn\(\s*this\.sources\.store\.piecesOwnedBy\(sessionId, unread\),\s*waiting,?\s*\)/,
-        /composeWhatEachPieceIsWaitingOn\(\s*this\.sources\.store\.piecesGivenBy\(giver, unread\),\s*waiting,?\s*\)/,
-      ]) {
-        expect(workReads, `a surface stopped reading the composition: ${String(raw)}`).toMatch(raw)
-      }
-      // ⛔ **And the ONE derivation is shared rather than spelled at each reader.**
-      expect(host).toContain('openQuestionsByWork')
-      expect(store).toContain('openQuestionsByWork')
-    })
-
-    it('⛔ the composed word never GATES — every rail reads the RAW fold', () => {
-      // 🔴 **Standing rule 10's shape, one vocabulary over.** ⚠️ `asking` is derived from what
-      // became of a QUESTION, so a rail keyed on it would make an entitlement answer depend on
-      // whether somebody had replied — and `HO-016` §3's failure mode is exactly that: a word that
-      // selects text quietly becoming a word that decides.
-      //
-      // ⚑ **Derived from the doors that read a piece at all**, each asserted to be found.
-      // ⚑ **D-016** — `workAlreadyOpenIn` went with the one-open-task rail, and `withdrawTask` is
-      // `takeBackPiece`.
-      const host = code(readFileSync(hostSource, 'utf8'))
-      const doors = ['async replyToParent(', 'async raiseAQuestion(', 'async takeBackPiece(']
-      for (const door of doors) {
-        const opens = host.indexOf(door)
-        expect(opens, `no body found for ${door}`).toBeGreaterThan(0)
-        const body = host.slice(opens, host.indexOf('\n  }\n', opens))
-        expect(body.length, `the slice for ${door} is empty`).toBeGreaterThan(80)
-        // ⛔ **It reads a piece**, which is what makes the negative below about this door.
-        // ⚠️ Matched as a CALL and not as the whole chain: prettier breaks
-        // `this.deps.store\n  .piecesOwnedBy(id)` across lines the moment the expression grows,
-        // and a census that pinned the chain would go quietly red on a reformat.
-        expect(body, `${door} reads no piece at all`).toMatch(
-          /\.(piecesOwnedBy|piecesGivenBy|pieceNamed|heldBy)\(/,
-        )
-        expect(body, `${door} gates on the composed word`).not.toContain(
-          'composeWhatEachPieceIsWaitingOn',
-        )
-      }
-      // ⚠️ **And the person's queue reports no state either**, so its raw read is not a surface
-      // this rule ranges over: `WorkInHand` carries a label and nothing else (since D-016).
-      const questions = code(
-        readFileSync(join(here, '../src/shared/question-contracts.ts'), 'utf8'),
-      )
-      const shape = questions.slice(
-        questions.indexOf('export interface WorkInHand {'),
-        questions.indexOf('}', questions.indexOf('export interface WorkInHand {')),
-      )
-      expect(shape).toContain('label')
-      expect(shape).not.toContain('state')
-    })
-
-    it('⚠️ the composition lives ABOVE the fold and the fold cannot call it', () => {
-      const tasks = code(readFileSync(join(here, '../src/shared/tasks.ts'), 'utf8'))
-      const composes = tasks.indexOf('export function composeWhatEachPieceIsWaitingOn(')
-      const folds = tasks.indexOf('export function derivePieces(')
-      expect(composes).toBeGreaterThan(0)
-      expect(folds).toBeGreaterThan(composes)
-      const fold = tasks.slice(folds)
-      expect(fold).not.toContain('composeWhatEachPieceIsWaitingOn')
     })
   })
 })

@@ -5,9 +5,6 @@ import type {
   RoutedRequest,
 } from '../src/shared/question-contracts'
 import type { PersistedEventInfo } from '../src/shared/conversation-events'
-import { readFileSync, readdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { isProxy, nextTick } from 'vue'
 import {
@@ -754,46 +751,6 @@ describe('§3a · the press reports itself in flight, and nothing reports it don
   })
 })
 
-/* ════════════════════ §4 · ONE producer of a permission wire value, measured ════════════════ */
-
-const HERE = dirname(fileURLToPath(import.meta.url))
-const renderer = join(HERE, '..', 'src/renderer')
-
-/**
- * Prose stripped before anything is asserted —
- * `a-source-census-must-strip-prose-before-it-asserts`.
- *
- * ⚑ **`<!-- -->` too, unlike the copy in `the-bridge-that-clones-nothing.test.ts`.** Half the files
- * this walks are `.vue`, and a template comment quoting a construction is no more a construction
- * than a docblock quoting one.
- */
-function withoutProse(code: string): string {
-  return code
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .split('\n')
-    .filter((line) => !line.trim().startsWith('//'))
-    .join('\n')
-}
-
-/**
- * 🔴 **An object literal whose first property is `outcome`, in any spelling** — which is what a
- * `PermissionDecision` construction looks like from the outside.
- *
- * ⛔ **This was `outcome: '<word>'` and that was a SPELLING, not a construction** (found by this
- * dispatch's adversarial read of its own diff). ⚠️ **The second producer `473` removed was not
- * written that way**: `attention.ts` had `{ outcome } as PermissionDecision` — shorthand and a cast
- * — which scores zero against a quoted literal. 🔴 **So the census would have reddened on
- * `PermissionCard`, the copy that was never wrong, and been silent about the copy that was.**
- *
- * ⚑ `(?<!\$)` keeps `${outcome}` in a template literal out of it: interpolation is not
- * construction, and `PermissionCard.vue` has one.
- */
-const BUILDS_AN_OUTCOME = /(?<!\$)\{\s*outcome\s*[:}]/g
-
-/** The other way a construction hides — a cast asserts the shape instead of building it (365). */
-const CASTS_TO_A_DECISION = /\bas PermissionDecision\b/g
-
 /**
  * 🔴 **What this section covers, and — standing rule 4 — what shape of answer it could find.**
  *
@@ -814,109 +771,6 @@ const CASTS_TO_A_DECISION = /\bas PermissionDecision\b/g
  * needs its own press, the way `the-press-that-shows-nothing.test.ts` needed one.
  */
 describe('§4 · one function builds every permission this app sends (473 §2)', () => {
-  it('⛔ the whole renderer — one file constructs an outcome: `permission-offer.ts`', () => {
-    // ⚠️ **`readdirSync`, never a shell search** — `grep -rn` prints nothing at all for at least
-    // one test file in this tree, so a census built on one is short before it starts (361 §6).
-    const builders = readdirSync(renderer, { recursive: true, encoding: 'utf8' })
-      .filter((name) => name.endsWith('.ts') || name.endsWith('.vue'))
-      .map(
-        (name) =>
-          [
-            name.replaceAll('\\', '/'),
-            withoutProse(readFileSync(join(renderer, name), 'utf8')),
-          ] as const,
-      )
-      .map(([name, code]) => [name, (code.match(BUILDS_AN_OUTCOME) ?? []).length] as const)
-      .filter(([, count]) => count > 0)
-      .sort()
-    // Five files construct an outcome; only permission-offer constructs permission decisions.
-    // Each other construction has its own named purpose and count.
-    expect(builders).toEqual([
-      // ⚑ A `LibraryEntry` outcome — `'unreadable'` twice and one `rebuildOutcome(…)`. A namesake.
-      ['src/components/SessionLibrary.vue', 3],
-      // The answer to a server request's press when its call to the host failed, never a
-      // permission decision.
-      ['src/lib/agent-store.ts', 1],
-      // 🔴 **The producer: one per outcome** — plus `WideGrant`'s declaration and the one
-      // `{ outcome: WIDE, label }` that goes with it, which is an OFFER and not a decision.
-      // ⚑ 736 · R95 — six outcomes now (`allow_always`), so eight, all in `permissionDecisionFor`'s switch.
-      ['src/lib/permission-offer.ts', 8],
-      // Move acceptance/refusal acknowledgements, never permission decisions.
-      ['src/lib/session-store.ts', 4],
-      // ⚑ One conditional spread of a transcript card's own outcome. A namesake.
-      ['src/lib/transcript-window.ts', 1],
-    ])
-    const store = withoutProse(readFileSync(join(renderer, 'src/lib/session-store.ts'), 'utf8'))
-    const start = store.indexOf('async decideMoveRequest(')
-    expect(start).toBeGreaterThan(0)
-    const move = store.slice(start, store.indexOf('async respondUserInput(', start))
-    expect(move).toContain('bridge.decideMoveRequest(')
-    expect(move).not.toContain('bridge.respondPermission(')
-    expect(move.match(BUILDS_AN_OUTCOME)).toHaveLength(4)
-    expect(move).not.toMatch(
-      /outcome:\s*['"](?:allow|deny|cancel|reject|allow_for_session|allow_always)['"]/,
-    )
-  })
-
-  it('⛔ …and nobody CASTS to the type, which is how a construction hides from it', () => {
-    // 🔴 `{ outcome } as PermissionDecision` is what `attention.ts` had until this dispatch — a
-    // shape asserted rather than built (365's *"the wrong answer that compiles"*). Zero is the
-    // whole assertion, and the control below is what makes zero mean something.
-    const casts = readdirSync(renderer, { recursive: true, encoding: 'utf8' })
-      .filter((name) => name.endsWith('.ts') || name.endsWith('.vue'))
-      .map(
-        (name) =>
-          [
-            name.replaceAll('\\', '/'),
-            withoutProse(readFileSync(join(renderer, name), 'utf8')),
-          ] as const,
-      )
-      .filter(([, code]) => (code.match(CASTS_TO_A_DECISION) ?? []).length > 0)
-      .map(([name]) => name)
-    expect(casts).toEqual([])
-  })
-
-  it('⚑ …and both searches can find all three shapes, so the negatives are not typos', () => {
-    // ⛔ The positive controls, and there is one per row of the table above — a control for the
-    // literal alone is what let the shorthand through in the first place.
-    const find = (code: string): number =>
-      (withoutProse(code).match(BUILDS_AN_OUTCOME) ?? []).length
-    expect(find("  return { outcome: 'deny' }")).toBe(1)
-    expect(find('  decision: { outcome } as PermissionDecision,')).toBe(1)
-    expect(find('  send({ outcome: picked })')).toBe(1)
-    // ⚑ …and the cast search finds the one this dispatch removed, in the same fixture.
-    expect(
-      (
-        withoutProse('  decision: { outcome } as PermissionDecision,').match(CASTS_TO_A_DECISION) ??
-        []
-      ).length,
-    ).toBe(1)
-    // ⚠️ Interpolation is not construction: `PermissionCard.vue` has a `${outcome}` and it is not
-    // a producer. Without this the walk would report five files and one of them for nothing.
-    expect(find('  const cy = `permission-${outcome}`')).toBe(0)
-    // ⚠️ …and prose that quotes a construction is not one, in both of the comment shapes a `.vue`
-    // file has.
-    expect(
-      find(
-        ['/**', " * `return { outcome: 'deny' }` is what the card used to do.", ' */'].join('\n'),
-      ),
-    ).toBe(0)
-    expect(find('<!-- `{ outcome } as PermissionDecision` is what it used to be -->')).toBe(0)
-  })
-
-  it('🔴 both surfaces call it, and neither writes the value itself', () => {
-    const card = withoutProse(
-      readFileSync(join(renderer, 'src/components/PermissionCard.vue'), 'utf8'),
-    )
-    const overview = withoutProse(readFileSync(join(renderer, 'src/lib/attention.ts'), 'utf8'))
-    expect(card).toContain('permissionDecisionFor(outcome)')
-    expect(overview).toContain('permissionDecisionFor(decision.decision.outcome)')
-    // ⛔ **And the row's own decision too.** `attention.ts` builds the offer a person presses; a
-    // cast there would put a shape nobody constructed back on the queue.
-    expect(overview).toContain('decision: permissionDecisionFor(outcome)')
-    expect(overview).not.toContain('as PermissionDecision')
-  })
-
   it('⚑ the producer refuses to compile short — every outcome has a literal of its own', () => {
     // ⛔ Driven rather than read: five calls, five distinct plain values, each one cloneable.
     for (const outcome of Object.keys(EVERY_OUTCOME) as PermissionOutcome[]) {

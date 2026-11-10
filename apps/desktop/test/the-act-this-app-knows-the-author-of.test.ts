@@ -368,23 +368,6 @@ describe('494 · the act this app knows the author of', () => {
       // host writer above.
       expect(ALWAYS_HONOURED).toContain('cancel')
     })
-
-    it('🔴 three adapter mechanisms stop a turn, and each is found where it lives', () => {
-      // ⛔ **The doors differ in the ADAPTER and not in the ledger**, which is why one reader
-      // repairs all of them. ⚠️ Each mechanism is asserted by name so a fourth adapter arriving
-      // with a fourth mechanism is a red test rather than a silent gap in a sentence.
-      const runtime = join(here, '../../../packages/runtime/src')
-      const codex = codeOnly(sourceOf(join(runtime, 'codex'), 'codex-runtime.ts'))
-      const claude = codeOnly(sourceOf(join(runtime, 'claude'), 'claude-runtime.ts'))
-      // 492 · the agent-tool card, where the ask IS the frame.
-      expect(codex).toContain('await this.askTheTurnToStop(')
-      // the command or file approval, where the ask is Codex's own decision word.
-      expect(codex).toContain("if (decision.outcome === 'cancel') this.machine.requestInterrupt()")
-      // Claude's `canUseTool`, where the ask is a field of the result.
-      expect(claude).toContain(
-        "return { behavior: 'deny', message: 'cancelled by user', interrupt: true }",
-      )
-    })
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────

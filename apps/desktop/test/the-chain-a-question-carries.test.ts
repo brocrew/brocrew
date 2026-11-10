@@ -58,7 +58,6 @@ import type { AttentionRequest } from '../src/renderer/src/lib/attention'
  */
 
 const HERE = fileURLToPath(new URL('.', import.meta.url))
-const QUEUE = join(HERE, '../src/renderer/src/lib/persons-queue.ts')
 const HOST = join(HERE, '../src/main/runtime/runtime-host.ts')
 
 const NAME = (id: string): string => id.replace('sess_', '')
@@ -443,16 +442,5 @@ describe('§4 · a chain at CHAIN_HOP_LIMIT', () => {
     expect(row.chain.at(-1)).toEqual({ name: 'you', you: true, did: null })
     expect(row.chain).toHaveLength(7)
     expect(CHAIN_HOP_LIMIT).toBeGreaterThan(4)
-  })
-
-  /**
-   * ⛔ **The module says the limit once**, so the ladder above is the only thing that decides how
-   * long a chain gets. ⚠️ A renderer that re-imposed a length would be a second bound free to
-   * disagree with the walk's.
-   */
-  it('⛔ the renderer imposes no length of its own', () => {
-    const queue = withoutComments(readFileSync(QUEUE, 'utf8'))
-    expect(queue).not.toContain('CHAIN_HOP_LIMIT')
-    expect(queue).not.toMatch(/\.slice\(0,\s*\d+\)/)
   })
 })

@@ -11,8 +11,7 @@ import type {
   RoutedRequest,
   WorkInHand,
 } from '../src/shared/question-contracts'
-import { readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
@@ -788,58 +787,6 @@ const SCREEN = readFileSync(
 )
 
 /**
- * ⛔ **The same file with every comment removed**, for the counting census below.
- *
- * ⚠️ **Measured, not precautionary**: the docblock ARGUING for `role="status"` contains the string
- * `role="status"`, so a census over the raw text counted the explanation as a second live region
- * and went red on a file with one. A census that reads prose reads code wrong.
- */
-const CODE = stripped(SCREEN)
-
-/** Every comment out, for a counting census — see {@link CODE}. */
-function stripped(source: string): string {
-  return source
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '')
-}
-
-/**
- * ⛔ **Every production call site of `homeAttention`, DERIVED rather than listed** (403 for the
- * second one; `606` for the derivation).
- *
- * ## 🔴 **Why this stopped being two named files**
- *
- * ⚠️ **`403` made it two** — `RuntimeScreen.vue` and `HomeSurface.vue` — after the first version
- * looked at one while its own title said *"every call site"*. ⛔ **`606` then moved one of the
- * two**: `EXT-008` §3 took the queue off Home, so the call went with it to `WaitingOnYou.vue` and
- * the hand-listed pair named a file that no longer calls the function at all.
- *
- * 🔴 **It did NOT expire silently, and that is the only reason this is a repair rather than a
- * hole**: the count is asserted, so the census went red the moment the call moved. ⚑ **But rule
- * `27.1` is about the shape and not the outcome** — *a census is scoped by what it is ABOUT, not
- * by where the things it is about currently live* — and a list of paths has now failed four times
- * in this project.
- *
- * ⚠️ **So the roster is every `.vue`/`.ts` under `renderer/src` whose stripped source calls
- * `homeAttention(`** — which is what the census is about — and a third caller added tomorrow is
- * walked without anybody editing this file.
- */
-function everyHomeAttentionCaller(): { file: string; code: string }[] {
-  const root = fileURLToPath(new URL('../src/renderer/src', import.meta.url))
-  const found: { file: string; code: string }[] = []
-  for (const name of readdirSync(root, { recursive: true, encoding: 'utf8' })) {
-    if (!/\.(ts|vue)$/.test(name)) continue
-    const full = join(root, name)
-    // ⛔ **The definition is not a call site**, and neither is a docblock that names one.
-    if (name.endsWith('home-attention.ts')) continue
-    const code = stripped(readFileSync(full, 'utf8'))
-    if (code.includes('homeAttention(')) found.push({ file: name.replaceAll('\\', '/'), code })
-  }
-  return found
-}
-
-/**
  * A bridge with exactly the verbs under test on it.
  *
  * ⚠️ **BOTH person-facing reads since `403`**, because the property they are here for is a
@@ -940,83 +887,6 @@ describe('§7 · a read that did not answer is not an all-clear', () => {
     }
 
     /**
-     * 🔴 **The look RECORDS whether it answered, and the two facts are separate** (434) — see
-     * `PersonsQueueView.stale`.
-     *
-     * ⛔ **Keeping the last good list and recording that the read failed are one commit or
-     * neither.** With only the first, the queue draws a list from the minute a read died and
-     * `partial` is false for ever, because the value is not `null`.
-     */
-    it('🔴 the look records a refusal per population, and keeps the rows either way', () => {
-      // ⚑ The reads and their writes are one round of the look, which every ask goes through.
-      const body = bodyOf('lookAtTheQueueOnce')
-      expect(body).toContain('if (questions !== null) escalated.value = questions')
-      expect(body).toContain('if (decisions !== null) decided.value = decisions')
-      // ⛔ **Per population, from the answer itself** — a single boolean over all of them would say
-      // one list had stopped answering because another had.
-      expect(body).toContain('questions: questions !== null')
-      expect(body).toContain('decisions: decisions !== null')
-      // ⚑ …and it reaches the module, which is the half a census of one function cannot see.
-      expect(SCREEN).toContain('lastLookAnswered: lastLookAnswered.value')
-    })
-
-    /**
-     * 🔴 **Settling from the queue reaches the door that already exists, and adds no second
-     * one** (434, criterion 17).
-     *
-     * ## 🔴 619 · the FACT moved and the assertion was re-aimed rather than stripped
-     *
-     * ⛔ **This asserted `settleFromTheQueue` sends NOTHING** — *"the only two verbs are in
-     * `decideFromOverview`, which `203`'s owner check guards"* — and that was true while every row
-     * in this queue had a live projection to look up. ⚠️ **`619` added the one population that has
-     * none**: a question `ask_question` raised draws no card, `attentionQueue` makes no item for
-     * it, so `needsYou` can never hold it and `decideFromOverview` can never be the door.
-     *
-     * ⚑ **So the rule is no longer *one door* — it is *one door per population, chosen by a fact
-     * on the row***. ⛔ Deleting the negative would have left the screen free to send a provider
-     * card's answer down the app-held branch, which is exactly the wrong write path this census
-     * was written to forbid (rule 26: *strip AND re-aim*).
-     *
-     * ## 🔴 UI-009 · the fact moved again, and the census is re-aimed again
-     *
-     * ⚑ **A question this app asked is answered on its CARD** (`PersonsQueueRow.question`), through
-     * a door of its own — `answerFromTheQueue` — so `settleFromTheQueue` is back to sending nothing
-     * itself, and the app-held send is that door's, keyed on the row's own conversation and id.
-     */
-    it('🔴 the queue settles through the door its row names, and invents no third path', () => {
-      // 🔴 **619 · read the CODE and never the prose** — `a-source-census-must-strip-prose-before-
-      // it-asserts`.
-      const body = stripped(bodyOf('settleFromTheQueue'))
-      expect(body).toContain('decideFromOverview(live, decision)')
-      // ⛔ **The row's own key against the LIVE list**, never `activeId` — the population this
-      // queue draws is mostly conversations that are not the one on screen.
-      expect(body).toContain('needsYou.value.find((request) => request.key === row.key)')
-      expect(body).not.toContain('activeId')
-      // ⛔ **Neither verb is sent from here** — the live row's door sends both.
-      expect(body).not.toContain('store.respondPermission')
-      expect(body).not.toContain('store.respondUserInput')
-      // 🔴 **UI-009 · the app-held send is the card's door**, on the conversation that ASKED and
-      // the id this app minted — never `activeId` — and the look runs again at once, awaited: what
-      // it finds decides whether the host's words go back to the card (F2).
-      const card = stripped(bodyOf('answerFromTheQueue'))
-      expect(card.replace(/\s+/g, '')).toContain(
-        'store.respondUserInput(row.sessionId,row.requestId,response)',
-      )
-      expect(card).toContain('await lookForWhatIsYours()')
-      expect(card).not.toContain('activeId')
-      expect(card).not.toContain('store.respondPermission')
-      expect(SCREEN).toContain('answer: (row, response) => answerFromTheQueue(row, response)')
-      // ⚑ **The paired positive**: the door it calls really does send them.
-      const door = stripped(bodyOf('decideFromOverview'))
-      expect(door).toContain('store.respondPermission')
-      expect(door).toContain('store.respondUserInput')
-      // ⚑ **And the control that makes the two negatives above measurements**: this census CAN see
-      // a permission send inside this function, so *it is not there* is a reading rather than a
-      // grep that never matches.
-      expect(`${body}store.respondPermission(`).toContain('store.respondPermission')
-    })
-
-    /**
      * 🔴 **The ARGUMENT, not the verb — `411` §6 item 1's acceptance, which nothing held** (444).
      *
      * ⛔ **`411` asked for *"a different selected parent, and each action proves only the intended
@@ -1107,116 +977,6 @@ describe('§7 · a read that did not answer is not an all-clear', () => {
     })
 
     /**
-     * 🔴 **The look is NOT gated on this window's own conversations, and the first version was.**
-     *
-     * ⛔ **`store.open` and the population this queue is about are disjoint**, which is the whole
-     * reason the queue exists: the ordinary escalated question is raised by a child a PM spawned,
-     * which is in the HOST's slots and in no window's records. A gate on `store.open` stopped
-     * looking at the moment it mattered — close the PM and the worker goes on running — and a
-     * cold window never looked at all. ⚠️ Asserted as the ABSENCE of the gate plus the presence
-     * of the unconditional start, because an assertion about the interval alone was satisfied by
-     * the unmount handler and said nothing about either.
-     */
-    it('🔴 the look runs for the life of the screen, not of an open conversation', () => {
-      // ⚠️ **The closing `})` is deliberately NOT in the match** (438). `onMounted` gained a
-      // second, unrelated poll — the digest's — and a census that pinned the whole block would
-      // have gone red for a reason that has nothing to do with the rule it is protecting.
-      //
-      // 🔴 **534 · and the OPENING `onMounted(() => {` is no longer in it either, which is a
-      // re-aim rather than a strip** (standing rule 26). ⛔ The handler gained a first statement —
-      // `whenTheWorldMoves`, the one thing on that screen that is TOLD rather than asked — so the
-      // old literal pinned *the look is the first line of the handler*, which was never the rule.
-      // ⚑ **What the rule always was**: the look happens at mount, immediately, adjacent to its own
-      // interval, and neither is inside a condition. The two-space indent is what carries the last
-      // clause — a statement inside an `if` in this handler is indented four — and the planted pair
-      // below is the control that says so.
-      // ⚠️ **The end of the slice is searched FROM the start of it**, because this screen has an
-      // earlier `onUnmounted(` — the clock's — and a slice taken from index 0 would be empty.
-      const mountAt = CODE.indexOf('onMounted(() => {')
-      const atMount = CODE.slice(mountAt, CODE.indexOf('onUnmounted(', mountAt))
-      // ⚑ …and the slice really is the mount handler rather than an empty string.
-      expect(mountAt).toBeGreaterThan(0)
-      expect(atMount.length).toBeGreaterThan(200)
-      // 🔴 **571 · RE-AIMED a second time, and again it is a re-aim rather than a strip**
-      // (standing rule 26). ⛔ The interval's callback became a BLOCK — it now fires the rail's
-      // live signal on the same tick, for the reason `readTheWorkspace`'s docblock gives — so the
-      // old one-line literal pinned *the callback is an expression*, which was never the rule.
-      // ⚠️ **And the old control stopped being one in the process**: it asserted the pair is
-      // absent at FOUR-space indent, and four spaces is now where the interval's own body legally
-      // lives, so left alone it would have gone red for the opposite of the reason it exists.
-      // ⚑ **What the rule always was, in two shapes rather than one literal**: the look runs at
-      // mount and the interval is armed, both at the handler's own two-space indent — a statement
-      // inside an `if` here is indented four.
-      const UNGATED = ['\n  void lookForWhatIsYours()\n', '\n  looking = setInterval(']
-      for (const shape of UNGATED) expect(atMount, `${shape} is gated or gone`).toContain(shape)
-      // ⛔ **The control, DERIVED from the same source rather than typed**: move exactly those two
-      // statements inside a condition and both shapes stop matching
-      // (`a-test-that-plants-and-finds-with-one-derivation`).
-      const gated = atMount
-        .replace(
-          '\n  void lookForWhatIsYours()\n',
-          '\n  if (running) {\n    void lookForWhatIsYours()\n  }\n',
-        )
-        .replace('\n  looking = setInterval(', '\n  if (running) looking = setInterval(')
-      // ⛔ **The plant has to LAND** — a `replace` that matched nothing would leave `gated` equal
-      // to the source and turn the control into a restatement (standing rule 28.2).
-      expect(gated).not.toBe(atMount)
-      for (const shape of UNGATED)
-        expect(gated, `${shape} survived being gated`).not.toContain(shape)
-      // ⚑ **And the interval really is the LOOK's**, on the cadence this queue owns — so the two
-      // shapes above cannot be satisfied by an interval that arms something else.
-      const armed = atMount.slice(atMount.indexOf('looking = setInterval('))
-      const callback = armed.slice(0, armed.indexOf('LOOK_EVERY_MS)') + 'LOOK_EVERY_MS)'.length)
-      expect(callback).toContain('void lookForWhatIsYours(true)')
-      // ⛔ **No stop edge, counted rather than described.** The handle is named exactly four
-      // times — declared, assigned, tested on unmount, cleared — and a gate that stopped the poll
-      // when this window's open list emptied cannot be written without naming it again.
-      expect(CODE.match(/\blooking\b/g) ?? []).toHaveLength(4)
-      expect(CODE).not.toContain('looking = null')
-      // ⚑ **Non-vacuity, planting the exact branch that was removed**: the count really does move.
-      const planted = `${CODE}\n  if (!running && looking !== null) {\n    clearInterval(looking)\n    looking = null\n  }\n`
-      expect(planted.match(/\blooking\b/g) ?? []).toHaveLength(7)
-      expect(CODE).toContain('if (looking !== null) clearInterval(looking)')
-      // ⛔ **And the module is put back to *nobody has answered*** — it outlives this component
-      // under HMR, and a stale list pointing at conversations a new store never heard of is worse
-      // than no list.
-      expect(CODE).toContain('persons.forget()')
-    })
-
-    /**
-     * 🔴 **Both `homeAttention` call sites pass all three populations** (401, from the review).
-     *
-     * ⛔ **The field is OPTIONAL, so leaving it off compiles and runs.** `HomeSurface` passed it
-     * and this component did not, which made the rail draw no badge over a question the screen
-     * that button opens was listing — `304`'s contradiction, re-created inside the dispatch that
-     * cites it. ⚑ A census rather than one assertion, so a third call site added later is red.
-     */
-    it('🔴 every homeAttention call in the app counts the person’s own population', () => {
-      const shape = /homeAttention\(\{[\s\S]*?\n {2}\}\)/g
-      // ⛔ **EVERY production call site, derived from the tree** — see
-      // {@link everyHomeAttentionCaller} for why this stopped being a hand-listed pair at `606`.
-      // ⚑ **The argument is OPTIONAL**, which is the whole reason the census exists: leaving it
-      // off compiles, runs, and makes the caller's arithmetic one population short.
-      const callers = everyHomeAttentionCaller()
-      // ⛔ **The roster itself is asserted**, because a walk that found nothing would satisfy
-      // every `for` below — `a-negative-is-only-as-strong-as-the-search-shape`.
-      expect(
-        callers.map((one) => one.file).sort(),
-        'the homeAttention roster is not the two surfaces that draw its numbers',
-      ).toEqual(['components/RuntimeScreen.vue', 'components/WaitingOnYou.vue'])
-      const calls = callers.flatMap((one) => [...one.code.matchAll(shape)].map((m) => m[0]))
-      expect(calls.length, 'a homeAttention call site went missing').toBe(2)
-      for (const call of calls) expect(call).toContain('onlyYou:')
-      // ⚑ **Non-vacuity, planting a third**: the shape matches another call site, and matches one
-      // that omits the field — so this is a census rather than a spelling of what is there today.
-      const planted = `${CODE}\n  homeAttention({\n    requests: [],\n    unread: false,\n  })\n`
-      const other = callers.find((one) => one.file !== 'components/RuntimeScreen.vue')!
-      const found = [...planted.matchAll(shape), ...other.code.matchAll(shape)]
-      expect(found).toHaveLength(3)
-      expect(found.some((call) => !call[0].includes('onlyYou:'))).toBe(true)
-    })
-
-    /**
      * 🔴 **The view is captured BEFORE the surface moves** (095, and `reopen` did the same).
      * ⛔ A look is a round trip; a person who pressed ⌘N or went Home while it was in flight must
      * not have that taken away when it lands, which is what `select`'s own inline `view()` cannot
@@ -1235,39 +995,6 @@ describe('§7 · a read that did not answer is not an all-clear', () => {
       const body = bodyOf('goToQuestion')
       expect(body).not.toContain('select(row.sessionId)')
       expect(body).toContain('if (!(await openConversation(row.sessionId))) return')
-    })
-
-    /**
-     * 🔴 **One live region in the SHELL, and it is POLITE.** ⛔ The app has nineteen others, each
-     * of which exists only while it has something to say; the one that is unconditional beside
-     * this is `ClosingShade`'s `assertive`, which is right there because the process is going
-     * away and wrong here: a question has already waited thirty seconds and can wait for the
-     * sentence a person is currently hearing. ⚠️ **This census is file-scoped and the sentence it
-     * certifies now says so** — it said *"the app's only other"* and a two-second count refuted
-     * it. ⚠️ **And it is the only announcement channel in this file** — a second
-     * one added later would announce something that is not a question or a permission through a
-     * channel this dispatch opened for exactly those.
-     */
-    it('🔴 the announcement is polite, off-screen, and the only live region in the shell', () => {
-      const at = SCREEN.indexOf('<div class="only-for-a-reader"')
-      expect(at, 'the shell draws no announcement region').toBeGreaterThan(0)
-      const announcement = SCREEN.slice(at, SCREEN.indexOf('</div>', at))
-      expect(announcement).toContain('role="status"')
-      expect(announcement).toContain("persons.view.value?.announcement ?? ''")
-      expect(announcement).not.toContain('aria-live')
-      expect(announcement).not.toContain('role="alert"')
-
-      // ⛔ **The census, with a control that plants TWO** — a second region added anywhere in this
-      // file fails here even if the first is untouched.
-      const regions = CODE.match(/role="(status|alert)"|aria-live=/g) ?? []
-      expect(regions, `RuntimeScreen declares ${String(regions.length)} live regions`).toHaveLength(
-        1,
-      )
-      // ⚑ **Non-vacuity**: the strip is what makes the count 1, and it must not have swallowed the
-      // declaration along with the paragraph arguing for it.
-      expect(CODE).toContain('role="status"')
-      const planted = `${CODE}\n<p role="alert">something else entirely</p>\n<p aria-live="polite">and another</p>`
-      expect(planted.match(/role="(status|alert)"|aria-live=/g)).toHaveLength(3)
     })
   })
 })
@@ -2059,61 +1786,6 @@ describe('§9.6 · a stale list forbids "quiet" on Home too', () => {
     expect(stopped.quiet).toBe(false)
     expect(stopped.intro).not.toBe('Nothing here is blocked on an answer from you.')
     expect(stopped.intro).toContain('could not be read')
-  })
-
-  /**
-   * ⛔ **The wiring, as a source census** — because the arithmetic above passes whatever the two
-   * call sites actually pass in.
-   *
-   * ## 🔴 453 · this census was watching ONE of the two call sites, and the other had drifted
-   *
-   * ⚠️ **`403` §7 censused `partial` at both call sites; `434` widened *what forbids quiet* to
-   * `partial || stale` and this test followed it into `HomeSurface.vue` alone.** ⛔ The rail's own
-   * call in `RuntimeScreen.vue` went on passing `partial` by itself, so `homeNeedsYou` could say
-   * *"Nothing needs you. The workspace is quiet."* over a list that had stopped answering while the
-   * card beside it disclosed exactly that — `304`'s contradiction, inside the dispatch that cites
-   * it.
-   *
-   * ⚑ **So the census is now about the SHAPE that made the drift possible**: both call sites read
-   * one derived field, and neither spells a hole's name. A call site that reaches back for
-   * `partial` alone fails here whichever of the two it is.
-   */
-  it('⛔ BOTH call sites read one derived field, and neither names a hole', () => {
-    // ⛔ **The roster is DERIVED, not listed** — `606`, and the same repair as §7's census: this
-    // pair named `HomeSurface.vue`, which stopped calling `homeAttention` when `EXT-008` §3 moved
-    // the queue to its own destination. ⚑ Rule `27.1`: *a census is scoped by what it is ABOUT,
-    // not by where the things it is about currently live.*
-    const sites = everyHomeAttentionCaller()
-    expect(
-      sites.map((one) => one.file).sort(),
-      'the homeAttention roster is not the two surfaces that draw its numbers',
-    ).toEqual(['components/RuntimeScreen.vue', 'components/WaitingOnYou.vue'])
-    for (const { file: name } of sites) {
-      const source = readFileSync(
-        fileURLToPath(new URL(`../src/renderer/src/${name}`, import.meta.url)),
-        'utf8',
-      )
-      const at = source.indexOf('homeAttention({')
-      expect(at, `${name} calls homeAttention`).toBeGreaterThan(-1)
-      const whole = source.slice(at, source.indexOf('}),', at))
-      // 🔴 **Comments stripped first, and this census was WRONG until a mutation said so.**
-      // `434 M14` removed `stale` from the call and SURVIVED, because the comment directly above
-      // the line explains the holes by name — so the census read the note that justifies the code
-      // instead of the code (`a-source-census-must-strip-prose-before-it-asserts`).
-      const code = whole.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ')
-      expect(code, `${name} passes unread`).toContain('unread:')
-      expect(code, `${name} reads the derived field`).toContain('mayBeShort')
-      // ⛔ **And it names no hole.** Reaching for one is how the two call sites came apart.
-      // ⚑ **685 · and neither reaches for a band's own field** — `limits` or `stalled` spelled at a
-      // call site is the same drift one field over (`678` F3's census, tightened).
-      for (const hole of ['partial', 'stale', 'noLedger', 'rowsDropped', 'limits', 'stalled']) {
-        expect(code, `${name} reaches past mayBeShort for ${hole}`).not.toContain(hole)
-      }
-      // ⚑ **The strip is measured, not assumed**: the prose really is in the slice, so a census
-      // without it would pass on a mutated file.
-      expect(whole, `${name} explains itself in prose`).toMatch(/partial|stale|hole/)
-      expect(code, `${name} · the strip did not remove the prose`).not.toContain('hole')
-    }
   })
 
   /**

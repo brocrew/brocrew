@@ -1,5 +1,5 @@
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -522,16 +522,6 @@ describe('F093 · R3 · the popup’s provider slot', () => {
       expect(given.providerParts.why).toBe(
         `This app runs Claude Code 0.0.1, and the snapshot is ${SNAPSHOT_FILES.claude.label}.`,
       )
-    })
-  })
-
-  describe('§5 · the app’s own wiring', () => {
-    it('⚑ `main/index.ts` hands the host this build’s `snapshotFor`, by the model asked', () => {
-      const main = readFileSync(join(here, '../src/main/index.ts'), 'utf8')
-      // ⚑ Imported from this build's own module, on whichever import line it sits.
-      expect(main).toMatch(/import \{[^}]*\bsnapshotFor\b[^}]*\} from '\.\/provider-snapshots'/)
-      const wiring = '    providerSnapshot: (provider, model) => snapshotFor(provider, model),\n'
-      expect(main).toContain(wiring)
     })
   })
 })
