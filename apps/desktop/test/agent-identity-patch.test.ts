@@ -81,7 +81,7 @@ const actions: Action[] = [
 
 function setup(held: AgentIdentities | null = initial) {
   const read = vi.fn(async (): Promise<AgentIdentities> => initial)
-  const write = vi.fn(async (_input: unknown): Promise<typeof saved | null> => saved)
+  const write = vi.fn<(input: unknown) => Promise<typeof saved | null>>(async () => saved)
   const store = createAgentStore({
     agentIdentities: read,
     setCapabilities: write,
