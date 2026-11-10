@@ -521,8 +521,8 @@ export interface WireRefusal {
 const A_PATH = { path: '/work/alpha/notes.md', kind: 'file', outsideCwd: false }
 
 /**
- * ⚠️ **FOURTEEN rows** — one per constraint on the six declarations a message-carrying command is
- * built from (`sessionId` ×2, `attachments` ×7, the refine inside `sendShaped`, `goAheadText`,
+ * ⚠️ **THIRTEEN rows** — one per constraint on the six declarations a message-carrying command is
+ * built from (`sessionId` ×2, `attachments` ×6, the refine inside `sendShaped`, `goAheadText`,
  * `childMessage`, and — 🔴 `735` — `launchKey` ×2, which `startAndSend` carries beside its message).
  *
  * ⛔ **The number in this sentence has never been right until now** (234, found in review). It said

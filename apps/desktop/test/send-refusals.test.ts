@@ -725,8 +725,8 @@ describe('221 §1b · the wire, censused against the schema itself', () => {
     // table's own docblock said "Nine" over ten rows before this dispatch and "Ten" over eleven
     // during it: a count compared only against itself is a count nothing measures. Changing the
     // number here is the moment somebody has to go and change the sentence too.
-    // ⚑ 12 → 14 at `735`: `launchKey`'s two, on `startAndSend`.
-    expect(WIRE_REFUSALS).toHaveLength(14)
+    // Removing the attachment filename ban leaves thirteen actual constraints.
+    expect(WIRE_REFUSALS).toHaveLength(13)
     // …and the table is not merely the right SIZE: every row names a field and says who holds it.
     for (const row of WIRE_REFUSALS) {
       expect(row.field.length, 'a row with no field').toBeGreaterThan(2)
