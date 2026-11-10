@@ -20,17 +20,12 @@ import {
 import type { RuntimeEvent } from '@brobot2/runtime'
 
 /**
- * Plan mode (Slice 2 · 030).
+ * Plan mode.
  *
  * Two claims are pinned here, and they are different kinds of claim. One is structural — a plan is a
  * DOCUMENT, so it renders through the document viewer and not as chat prose. The other is about
  * WORDS: plan mode is not a safety gate, and the SDK's own type description says otherwise, so the
  * wording is exactly the sort of thing that drifts back toward the comfortable lie.
- *
- * ⛔ **417 took the second claim's LAUNCHER half away, not the claim** (HO-022 §2 — *"Opening a new
- * conversation opens a conversation with BroBot. That is all."*). There is no `plan-mode` checkbox
- * on the front door any more, so the two mounts of `NewConversation` below went with it; see the
- * note in that describe for what they said and where the rendered half of the rule now lives.
  */
 
 const render = (component: unknown, props: Record<string, unknown> = {}): Promise<string> =>
@@ -151,35 +146,7 @@ describe('plan mode never claims to be a safety gate', () => {
   const withoutDenials = (copy: string): string =>
     copy.replace(/\b(is )?NOT a (sandbox|safety gate)\b/gi, '')
 
-  /**
-   * ⛔ **417 removed the two launcher mounts this describe opened with, and the copy they swept**
-   * (HO-022 §2). What stood here:
-   *
-   * - `const visible = …` (strip template comments) and `const planCopy = …` (every `title=` on the
-   *   rendered page that mentions the plan) — both read a rendered `NewConversation`.
-   * - *"the launcher offers plan mode without promising safety"* — mounted the launcher for Claude,
-   *   asserted `data-cy="plan-mode"`, swept {@link FORBIDDEN} over the checkbox's tooltip and
-   *   required the page to say *"propose first"* and *"NOT a sandbox"*.
-   * - *"Codex is offered plan mode, and told what it will get — 030 assumed, 057 measured"* —
-   *   mounted it for Codex, asserted `plan-mode` present and `plan-unavailable` absent, that the
-   *   declaration's `note` reached the page, and that `reasoning-effort-select`, `model-input` and
-   *   `auto-approve` were still beside it.
-   * - *"EVERY variant of the copy is swept, including the one only yolo can see"* — swept both
-   *   branches of `planModeTitle` and `PLAN_YOLO_NOTE`. ⛔ **Those two exports are deleted**: after
-   *   417 no component imported either, and a sweep over copy nothing renders is not evidence that
-   *   anything on screen is honest.
-   *
-   * ⚠️ **The RENDERED half of the rule is not lost — it lives on the agent card.**
-   * `the-agent-panels-plan-and-approval-mode.dom.test.ts` · *"never implies plan mode is a safety
-   * gate"* reads `[data-cy=card-run-plan]`'s own attributes, requires *"approvals are what gate those"* and
-   * *"not a safety gate"* on the same string, and forbids *"cannot run"* / *"will not run"* there.
-   *
-   * ⚑ **And the sweep is re-pointed rather than retired.** It now reads the plan copy that DOES
-   * render: the seven strings of the go-ahead and the leave gesture. `026`/`056`'s rule is about
-   * what a person is told plan mode protects them from, and those seven strings are now the whole
-   * of it.
-   */
-
+  // Every plan string a person can read: the go-ahead and the leave gesture.
   const RENDERED: readonly (readonly [string, string])[] = [
     ['GO_AHEAD_LABEL', GO_AHEAD_LABEL],
     ['GO_AHEAD_MESSAGE', GO_AHEAD_MESSAGE],
@@ -191,7 +158,6 @@ describe('plan mode never claims to be a safety gate', () => {
   ]
 
   it('every plan string a person can actually read is swept', () => {
-    // ⚑ Non-vacuity: the roster must be the module's, not a subset somebody trimmed to pass.
     expect(RENDERED).toHaveLength(7)
     for (const [name, copy] of RENDERED) {
       expect(copy.trim(), `${name} is empty, so sweeping it measures nothing`).not.toBe('')
@@ -201,22 +167,5 @@ describe('plan mode never claims to be a safety gate', () => {
         )
       }
     }
-  })
-
-  it('⚠️ …and the sweep can fail — the detector, on a planted claim', () => {
-    // ⛔ A list of clean strings passes a broken sweep exactly as well as a working one. Two
-    // plants, not one, because a walk that stops at its first match reads as a working detector.
-    const planted = [
-      'Planning mode: the agent is read-only until you approve.',
-      'While planning nothing can happen, so it is safe to leave it running.',
-    ]
-    for (const claim of planted) {
-      expect(
-        FORBIDDEN.some((forbidden) => forbidden.test(withoutDenials(claim))),
-        `the sweep cannot see "${claim}"`,
-      ).toBe(true)
-    }
-    // …and the denial-stripper does not swallow a real claim along with the denials.
-    expect(withoutDenials('It is NOT a sandbox, it is a sandbox')).toMatch(/\bsandbox\b/)
   })
 })

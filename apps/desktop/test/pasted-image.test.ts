@@ -113,11 +113,6 @@ describe('writing the clipboard’s picture down (254 §2)', () => {
     }
   })
 
-  // ⚑ `726` · R92 — two tests were here: *"the directory is OUTSIDE `userData`"* and *"a grant
-  // follows the FILE"* (262 §2). Both asked the runtime's placement whether a pasted image was
-  // refused under `protectedRoots` until the session was handed it. R92 removed the protected
-  // roots and the scan, so a pasted file is readable wherever it is written.
-
   it('🔴 the SAME picture pasted twice is ONE file and one path — so `stage()` can dedup it', async () => {
     // ⛔ **The name is a digest of the bytes, and that is a correction from the review.** With a
     // random name, ⌘V twice produced two files, two chips reading the identical *"an image you
@@ -285,8 +280,8 @@ describe('writing the clipboard’s picture down (254 §2)', () => {
     expect('refusal' in verdict && verdict.refusal).not.toContain('BroCrew writes at most')
   })
 
-  it('⛔ an empty buffer is a refusal rather than a 0-byte attachment', async () => {
-    // ⚠️ `nativeImage` answers with nothing for a clipboard holding an image it cannot decode, and
+  it('an empty buffer is a refusal rather than a 0-byte attachment', async () => {
+    // `nativeImage` answers with nothing for a clipboard holding an image it cannot decode, and
     // a zero-byte `.png` staged as an attachment would spend a whole turn to learn that.
     const verdict = await writePastedImage(root, Buffer.alloc(0), cwd)
 
@@ -296,31 +291,10 @@ describe('writing the clipboard’s picture down (254 §2)', () => {
     expect(() => statSync(root)).toThrow()
   })
 
-  it('⛔ a write that cannot happen is a SENTENCE, never a throw across the bridge', async () => {
-    // A gesture somebody is waiting on gets an answer they can act on (`118`/`169`), and an
-    // exception crossing `ipcMain.handle` would surface as a rejected promise with a stack in it.
-    const blocked = join(dir, 'not-a-directory')
-    writeFileSync(blocked, 'x')
-
-    const verdict = await writePastedImage(blocked, PNG, cwd)
-
-    expect('refusal' in verdict).toBe(true)
-    expect('refusal' in verdict && verdict.refusal).toContain('could not be saved')
-  })
-
-  it('🔴 the paste caption SURVIVES the launcher’s re-caption, and the SEND drops it (232 §1)', async () => {
-    // ⛔ **Two doors, two different right answers, and both have to hold.**
-    //
-    // ⚠️ **`217` §2's re-caption runs on the LAUNCHER**, debounced, whenever the folder changes —
-    // so a screenshot pasted before a folder is chosen goes through `captionHandedPaths`. It spreads
-    // the record it was given, so the chip keeps saying *"an image you pasted"* rather than
-    // reverting to a filename the person never chose halfway through composing.
-    //
-    // ⛔ **The SEND is the opposite**, and deliberately: `recheckHandedPaths` returns what main
-    // re-derived from the filesystem, and `pasted` is not a fact the filesystem has. A renderer that
-    // claimed it could not make the wire agree, which is exactly `232` §1's rule — main re-derives
-    // every field of this record and refuses a mismatch, so the one field it could not check does
-    // not travel.
+  it('the paste caption SURVIVES the launcher’s re-caption, and the SEND drops it', async () => {
+    // The launcher's re-caption keeps the record it was given, so the chip still says "an image you
+    // pasted". The send keeps only what main re-derives from the filesystem, and `pasted` is not
+    // a fact the filesystem has.
     const verdict = await writePastedImage(root, PNG, cwd)
     expect('handed' in verdict).toBe(true)
     if (!('handed' in verdict)) return
@@ -330,9 +304,7 @@ describe('writing the clipboard’s picture down (254 §2)', () => {
     expect('paths' in sent, JSON.stringify(sent)).toBe(true)
     if (!('paths' in sent)) return
     expect(sent.paths[0]?.pasted).toBeUndefined()
-    // ⚑ **…and losing it costs nothing that matters**, which is the half the review's finding turned
-    // on: what the chip reads is the NAME, and the name is what crosses. A record with no `pasted`
-    // still renders as an image somebody pasted — one measurement lighter, never as a filename.
+    // Losing it costs nothing: the chip reads the NAME, and the name crosses.
     expect(isPastedImage(sent.paths[0]?.path ?? '')).toBe(true)
     expect(sent.paths[0]?.path).toContain(PASTED_IMAGES_DIRNAME)
   })

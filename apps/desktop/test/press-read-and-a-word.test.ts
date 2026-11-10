@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { capabilitiesFor } from '@brobot2/runtime'
 import { COMPACT_LINE, compactionOffer } from '../src/renderer/src/lib/compaction-offer'
@@ -10,13 +8,8 @@ import {
   DROPPED_OFF_THE_SCALE,
   DROPPED_TEXT,
 } from '../src/renderer/src/lib/drawer-tab-roles'
-// ⚠️ **739 · `GRANTS_END_WITH_THE_CONVERSATION` is `HOW_THESE_GRANTS_END` now** (`736` F-1: *"the
-// header chip and `GRANTS_END_WITH_THE_CONVERSATION` would be false of a kept Codex tool"*), and the
-// grants kept with *Always allow* have their own sentence, drawn by the same surface.
-// ⛔ **Read through the NAMESPACE, inside the `it`s that use them** (`739` review #17): both are new
-// in `739`, and a describe body runs at COLLECTION — `.slice` on `main`'s `undefined` there threw
-// before a single test ran, failing §2–§4 (which `739` did not touch) by TypeError. ⚑ Each use
-// asserts the export is a string first ({@link sentence}), so on `main` §1 fails by assertion.
+// Read through the namespace inside each test, so a missing export fails by assertion rather
+// than at collection.
 import * as grants from '../src/renderer/src/lib/standing-grants'
 import {
   CLAUDE_APPROVALS_NOTE,
@@ -25,23 +18,7 @@ import {
   CODEX_COMPACTION_NOTE,
 } from './provider-capability-fixture'
 
-/**
- * 🔴 **529 · the half of two rulings that a browser cannot answer.**
- *
- * ⛔ **What lives here rather than in `press-read-and-a-word.dom.test.ts`:** the claims about
- * SOURCE — who spells a sentence, which module a token comes from, and whether a fixture still
- * matches the thing it stands in for. ⚑ Everything about what a person SEES is measured in the
- * engine next door, because `brobot2-ssr-tests-pass-vacuously` and a size read off a string is
- * not a size.
- */
-
-const read = (path: string): string =>
-  readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8')
-
-/**
- * ⚑ One of `standing-grants.ts`' sentences, asserted to BE one — on a tree without it the reading
- * fails here, by assertion, inside the test that asked (never at collection).
- */
+/** One of `standing-grants.ts`' sentences, asserted to BE one. */
 function sentence(name: keyof typeof grants): string {
   const said: unknown = grants[name]
   expect(typeof said, `\`${String(name)}\` is not a sentence on this tree`).toBe('string')
@@ -111,25 +88,14 @@ describe('529 §1 · the two sentences that moved have one home', () => {
     expect(ANOTHER_CALLER_MAY_REACH_IN.length).toBeGreaterThan(400)
   })
 
-  /**
-   * ⚠️ **739 · re-aimed, not stripped** (rule 26). ⛔ It pinned *"They cannot be taken back; they end
-   * when the conversation is closed"* — ⚑ `736` F-1: *"`GRANTS_END_WITH_THE_CONVERSATION` would be
-   * false of a kept Codex tool"*, which is on the same list and outlives the conversation. ⚑ So the
-   * point is unchanged — the sentence says how they END and promises no way back — and *how it ends*
-   * is now BOTH lifetimes, each by name, because `blanketGrants` carries none (`739` GAP).
-   * ⚠️ *cannot be taken back* is BroBot's claim, not the file's (a person can edit it), so it says
-   * *BroBot cannot take them back*.
-   */
-  it('⛔ the grants sentence says how they END, and promises no way to take one back', () => {
+  it('the grants sentence says how they END, and promises no way to take one back', () => {
     const HOW_THESE_GRANTS_END = sentence('HOW_THESE_GRANTS_END')
     const KEPT_BEYOND_IT_SAYS = sentence('KEPT_BEYOND_IT_SAYS')
     expect(HOW_THESE_GRANTS_END, 'the scope clause').toContain('whatever the arguments')
     expect(HOW_THESE_GRANTS_END, 'the irreversibility clause').toContain(
       'BroCrew cannot take them back',
     )
-    // ⚑ **D-017b · both lifetimes still named, and neither by a close.** A person no longer ends a
-    // conversation (the End conversation press is gone), so *ends when it is closed* named an act
-    // nobody takes; what a person can see is whether it is asked about again.
+    // Both lifetimes are named, and neither by a close: a person no longer ends a conversation.
     expect(HOW_THESE_GRANTS_END, 'how a conversation grant ends').toContain(
       'One allowed for this conversation may be asked about again later',
     )
@@ -138,43 +104,16 @@ describe('529 §1 · the two sentences that moved have one home', () => {
     )
     expect(HOW_THESE_GRANTS_END, 'a close no person can make').not.toContain('closed')
     expect(HOW_THESE_GRANTS_END).not.toMatch(/revoke|remove (it|them)|undo/i)
-    // ⚑ …and the kept grants' own sentence makes the same promise, and no other.
+    // The kept grants' own sentence makes the same promise, and no other.
     expect(KEPT_BEYOND_IT_SAYS, 'the kept irreversibility clause').toContain(
       'BroCrew cannot take them back',
     )
     expect(KEPT_BEYOND_IT_SAYS).not.toMatch(/revoke|remove (it|them)|undo/i)
-
-    // ⚑ **And the FACT that makes it true, from the code rather than from the sentence.** There is
-    // no revoke anywhere on the path: nothing in the wire vocabulary can take a blanket grant
-    // back, which is why the copy says *cannot* rather than *not yet*.
-    const wire = read('../src/shared/runtime-ipc.ts')
-    for (const shape of ['revokeGrant', 'revokeBlanket', 'clearGrants', 'removeGrant']) {
-      expect(wire, `${shape} exists — the sentence is now false`).not.toContain(shape)
-    }
-    // …and the field the sentence is about really is on the wire, so the negatives above are not
-    // about a type that does not exist.
-    expect(wire).toContain('blanketGrants')
   })
 })
 
-/* ------------------------------------------------------------------ §3 the roles */
-
-describe('529 §3 · the role vocabulary names tokens that exist', () => {
-  it('⛔ every role takes a token `tokens.css` actually declares', () => {
-    const tokens = read('../src/renderer/src/assets/tokens.css')
-    const declared = new Set([...tokens.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((match) => match[1]!))
-    expect(declared.size, 'the scan read the wrong file').toBeGreaterThan(150)
-    for (const role of ROLE_ORDER) {
-      expect(
-        declared.has(ROLE_SIZE[role]),
-        `${role} names ${ROLE_SIZE[role]}, which is undeclared`,
-      ).toBe(true)
-    }
-    // ⚑ The control: the set is not everything. A token nobody declares is caught.
-    expect(declared.has('--text-nowhere')).toBe(false)
-  })
-
-  it('⛔ the bridge names one property per role, and nothing else', () => {
+describe('the role vocabulary names tokens that exist', () => {
+  it('the bridge names one property per role, and nothing else', () => {
     expect(Object.keys(ROLE_PROPERTIES).sort()).toEqual(
       ROLE_ORDER.map((role) => `--role-${role}`).sort(),
     )

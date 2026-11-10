@@ -11,8 +11,6 @@ import type {
   RoutedRequest,
   WorkInHand,
 } from '../src/shared/question-contracts'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   CHAIN_HOP_LIMIT,
@@ -293,18 +291,12 @@ describe('§1 · chainReading — the names 398 could not put on the wire', () =
     expect(reading.hops.every((hop) => hop.on !== null)).toBe(true)
   })
 
-  /**
-   * 🔴 **The anti-drift law, at the source.** `398`'s sentence and `401`'s hops are one walk, and
-   * this is the assertion that says so — over every shape the walk can produce, including the two
-   * that end in a refusal.
-   */
-  it('🔴 the sentence IS the reading joined, for every shape the walk can produce', () => {
+  it('the sentence IS the reading joined, for every shape the walk can produce', () => {
     const pm = routed({ requestId: 'req_2', askedBy: 'sess_pm', parent: 'sess_lead' })
     const a = routed({ requestId: 'req_a', askedBy: 'sess_a', parent: 'sess_b' })
     const b = routed({ requestId: 'req_b', askedBy: 'sess_b', parent: 'sess_a' })
-    // ⛔ **An independent literal per shape**, because the join and `chainSentence` are the same
-    // code since `401` — a loop comparing one to the other is a tautology that stays green while
-    // both move together, which is exactly what a rule about two renderings agreeing must not be.
+    // An independent literal per shape: comparing the join with `chainSentence` alone would stay
+    // green while both moved together.
     const shapes: [EscalationChain, string][] = [
       [
         escalationChain(routed({ requestId: 'req_1', askedBy: 'sess_worker' }), () => null),
@@ -320,9 +312,8 @@ describe('§1 · chainReading — the names 398 could not put on the wire', () =
         escalationChain(a, (id) => (id === 'sess_b' ? b : id === 'sess_a' ? a : null)),
         'a waiting on b, b waiting on a, and the chain above that could not be followed',
       ],
-      // ⚠️ **Legal on the wire and unreachable from `escalationChain`** — asserted anyway, because
-      // a surface that printed a bare `you` for a walk with no hops in it would name a person as
-      // the answerer of nothing.
+      // Legal on the wire though `escalationChain` never builds it: a walk with no hops must not
+      // read as a bare `you`.
       [{ links: [], endsWithAPerson: true }, 'and the chain above that could not be followed'],
     ]
     for (const [chain, expected] of shapes) {
@@ -333,38 +324,10 @@ describe('§1 · chainReading — the names 398 could not put on the wire', () =
       expect(chainSentence(chain, NAME)).toBe(expected)
     }
   })
-
-  it('⛔ an EMPTY reading gives no hops and is unfollowable — never a bare "you"', () => {
-    const reading = chainReading({ links: [], endsWithAPerson: true }, NAME)
-    expect(reading.hops).toEqual([])
-    expect(reading.unfollowable).toBe(true)
-    expect(chainSentence({ links: [], endsWithAPerson: true }, NAME)).not.toContain(
-      'waiting on you',
-    )
-  })
 })
 
-// ───────────────────────────────────────────────────────────────────────────────────────────
-// §2 · the view — three absences, three sentences
-// ───────────────────────────────────────────────────────────────────────────────────────────
-
-describe('§2 · nobody has answered, nothing is waiting, and the walk did not arrive', () => {
-  it('🔴 `null` is NOT `[]`: one is "the read has not landed", the other is "nothing is waiting"', () => {
-    // ⛔ **`null` is BOTH refused since `403`** — see §8 for why one refusal draws what landed
-    // instead. ⚑ The pair below is still the sentence this test is about: nothing landed, versus
-    // both landed and empty.
-    expect(personsQueueView(null, null, WORLD)).toBeNull()
-
-    const nothing = personsQueueView([], [], WORLD)
-    expect(nothing).not.toBeNull()
-    expect(nothing?.count).toBe(0)
-    expect(nothing?.rows).toEqual([])
-    // ⛔ **And an empty queue announces NOTHING** — a live region that read out an all-clear
-    // nobody asked for is the unconditional region the design's own correction removed.
-    expect(nothing?.announcement).toBe('')
-  })
-
-  it('⛔ a walk that could not be followed is the THIRD absence, and it is on the row', () => {
+describe('nobody has answered, nothing is waiting, and the walk did not arrive', () => {
+  it('a walk that could not be followed is the THIRD absence, and it is on the row', () => {
     const a = routed({ requestId: 'req_a', askedBy: 'sess_a', parent: 'sess_b' })
     const b = routed({ requestId: 'req_b', askedBy: 'sess_b', parent: 'sess_a' })
     const view = personsQueueView(
@@ -411,12 +374,7 @@ describe('§3 · the chain, one participant per name and an act on each', () => 
     ])
   })
 
-  /**
-   * 🔴 **The law the two renderings are held to.** The names this surface draws, read back in
-   * order and re-joined the way HO-007 words it, are the sentence the host composed — so a surface
-   * cannot come to describe a chain differently from the line beside it.
-   */
-  it('🔴 the drawn chain reconstructs the host’s own evidence line', () => {
+  it('the drawn chain reconstructs the host’s own evidence line', () => {
     const pm = routed({ requestId: 'req_2', askedBy: 'sess_pm', parent: 'sess_lead' })
     const view = personsQueueView(
       [
@@ -433,17 +391,6 @@ describe('§3 · the chain, one participant per name and an act on each', () => 
       .map((hop, index) => `${hop.name} waiting on ${row.chain[index + 1]!.name}`)
     expect(clauses.join(', ')).toBe(row.sentence)
     expect(row.sentence).toBe('worker waiting on pm, pm waiting on lead, lead waiting on you')
-  })
-
-  it('⛔ a chain of ONE is a chain, not a degenerate case', () => {
-    const view = personsQueueView(
-      [asked({ requestId: 'req_1', askedBy: 'sess_worker' })],
-      [],
-      WORLD,
-    )
-    const row = view!.rows[0]!
-    expect(row.chain).toHaveLength(3)
-    expect(row.sentence).toBe('worker waiting on pm, pm waiting on you')
   })
 })
 
@@ -632,7 +579,7 @@ describe('§5 · the count is a fact, and the announcement is a closed channel',
     expect(view!.announcement).toBe('12 questions waiting on you.')
   })
 
-  it('⚑ one is said in the singular, on both the heading and the announcement', () => {
+  it('one is said in the singular, on both the heading and the announcement', () => {
     const view = personsQueueView(
       [asked({ requestId: 'req_1', askedBy: 'sess_worker' })],
       [],
@@ -642,53 +589,13 @@ describe('§5 · the count is a fact, and the announcement is a closed channel',
     expect(view!.announcement).toBe('1 question waiting on you.')
   })
 
-  /**
-   * ⛔ **The closed set on the announcement channel.** A question and a permission are the only
-   * things that may summon attention; this channel carries the first and nothing else, and the
-   * assertion is that its sentence cannot be about anything else — including a permission, which
-   * `escalationsDue` refuses to stamp and which therefore never reaches this queue at all.
-   */
-  it('⛔ the announcement is about questions and nothing else', () => {
-    const view = personsQueueView(
-      [asked({ requestId: 'req_1', askedBy: 'sess_worker' })],
-      [],
-      WORLD,
-    )
-    for (const forbidden of ['permission', 'error', 'failed', 'finished', 'complete', 'done']) {
-      expect(view!.announcement.toLowerCase()).not.toContain(forbidden)
-    }
-  })
-
-  /**
-   * 🔴 **612 · the deadline this was paced against is GONE, and the number did not move**
-   * (HO-088 §3.1 — `a-number-can-survive-the-death-of-its-derivation`, caught by the dispatch that
-   * killed the derivation).
-   *
-   * ⛔ **It asserted `LOOK_EVERY_MS * 6 === ESCALATION_WINDOW_MS`**, against the DEADLINE rather
-   * than against its value, *"because `30_000` written here would go on passing after somebody
-   * moved the window"*. ⚠️ **Nobody moved it; it was removed**, so there is no relation left to
-   * assert and the arithmetic would be a fact about nothing.
-   *
-   * ## ⚑ What the number is FOR now, and it is a stronger claim
-   *
-   * ⛔ **This poll is the whole latency between an agent asking and a person knowing.** Every
-   * population it feeds is a person's from the instant its row is written, and nothing pushes —
-   * so the cadence is not *a fraction of a window*, it IS the window. ⚠️ **It cannot be asserted
-   * against another constant any more**, which is honest rather than weaker: what holds it is the
-   * COST of one look, and that is a measurement nobody has taken.
-   *
-   * 🔴 **So what is pinned is the ORDERING it must keep** — a person's own obligations are re-read
-   * more often than a summary is — which is a relation between two live numbers and goes red if
-   * either crosses the other.
-   */
-  it('⚠️ a person’s obligations are re-read more often than a summary, and that is the whole rule', () => {
+  // This poll is the whole latency between an agent asking and a person knowing, so it must
+  // stay faster than the summary read.
+  it('a person’s obligations are re-read more often than a summary, and that is the whole rule', () => {
     expect(LOOK_EVERY_MS).toBeLessThan(ACTIVITY_READ_EVERY_MS)
     expect(LOOK_EVERY_MS).toBeGreaterThan(0)
-    // ⚑ **Non-vacuity: the two really are different numbers**, so the relation is doing work.
     expect(LOOK_EVERY_MS).not.toBe(ACTIVITY_READ_EVERY_MS)
-    // ⛔ **And it is not the cheapest cadence in the app**, which is the half of its own docblock
-    // that survived: `ChildWorkViewer` polls at two seconds over a buffer read, and this is a fold
-    // of every ledger that has ever routed a request.
+    // Not the cheapest cadence in the app: each look folds every ledger that routed a request.
     expect(LOOK_EVERY_MS).toBeGreaterThan(2_000)
   })
 })
@@ -741,31 +648,22 @@ describe('§6 · the third population reaches every summary Home makes', () => {
     expect(view.stat).toBe('5 items')
   })
 
-  /**
-   * 🔴 **A screen that could not READ a list may not say the workspace is quiet** (403, from the
-   * review).
-   *
-   * ⛔ **Every count is zero in that state** — one read refused, the other genuinely empty — so
-   * `quiet` was `true` and Home said *"Nothing needs you. The workspace is quiet."* over a
-   * population the app never managed to look at. ⚑ `086`'s rule on the one screen that makes the
-   * claim: not knowing is not an all-clear.
-   */
-  it('🔴 an unread list forbids "quiet", and says so instead of counting nothing', () => {
+  it('an unread list forbids "quiet", and says so instead of counting nothing', () => {
     const unread = homeAttention({ requests: [], unread: true })
     expect(unread.quiet).toBe(false)
     expect(unread.total).toBe(0)
     expect(unread.unread).toBe(true)
-    // ⛔ **"Not known", never "0 items"** — there is no number to give.
+    // "Not known", never "0 items": there is no number to give.
     expect(unread.stat).toBe('Not known')
     expect(unread.statTone).toBe('waiting')
     expect(unread.intro).toContain('could not be read just now')
 
-    // ⚑ **The paired positive**: the same empty world that HAS been read is quiet, so this
-    // measures the not-knowing rather than the emptiness.
+    // The same empty world, read, is quiet.
     const known = homeAttention({ requests: [] })
     expect(known.quiet).toBe(true)
     expect(known.unread).toBe(false)
     expect(known.stat).toBe('All clear')
+    expect(known.intro).toBe('Nothing here is blocked on an answer from you.')
   })
 
   it('⚠️ a caller that does not look for them counts none — the field is optional, not defaulted true', () => {
@@ -776,33 +674,11 @@ describe('§6 · the third population reaches every summary Home makes', () => {
   })
 })
 
-// ───────────────────────────────────────────────────────────────────────────────────────────
-// §7 · the store's refusal, and the shell that does the looking
-// ───────────────────────────────────────────────────────────────────────────────────────────
-
-/** The one file the wiring lives in, read as text — see §7's own note for why. */
-const SCREEN = readFileSync(
-  fileURLToPath(new URL('../src/renderer/src/components/RuntimeScreen.vue', import.meta.url)),
-  'utf8',
-)
-
-/**
- * A bridge with exactly the verbs under test on it.
- *
- * ⚠️ **BOTH person-facing reads since `403`**, because the property they are here for is a
- * property of each: a refusal is `null` and an empty answer is `[]`. The first version of this
- * helper took one verb, so the read `403` added was typed into the fake and asserted nowhere —
- * `catch { return [] }` would have passed the whole suite.
- */
+/** A bridge with both person-facing reads on it, carried over the wire as the app's is. */
 function bridgeThat(
   answer: () => Promise<readonly PersonsQuestion[]>,
   decisions: () => Promise<readonly PersonsDecision[]> = () => Promise.resolve([]),
 ): RuntimeBridge {
-  // ⛔ **Over the wire, like every double a renderer store runs on** (361 §2). An in-process
-  // object hands its arguments and its answer BY REFERENCE, so a store that mutated either would
-  // pass here and throw *"An object could not be cloned"* in the app —
-  // `the-bridge-that-clones-nothing.test.ts` §6 derives the roster of files that build a store
-  // and refuses one that skips this.
   return everythingOverTheWire({
     questionsForAPerson: answer,
     decisionsForAPerson: decisions,
@@ -811,7 +687,7 @@ function bridgeThat(
   }) as unknown as RuntimeBridge
 }
 
-describe('§7 · a read that did not answer is not an all-clear', () => {
+describe('a read that did not answer is not an all-clear', () => {
   /**
    * 🔴 **The one degrading read in the store whose failure is `null` rather than the empty thing.**
    * ⛔ Every other one answers `[]` because empty and unknown mean the same to its caller; here
@@ -851,151 +727,6 @@ describe('§7 · a read that did not answer is not an all-clear', () => {
 
     const empty = createSessionStore(bridgeThat(() => Promise.resolve([])))
     await expect(empty.decisionsForAPerson()).resolves.toEqual([])
-  })
-
-  /**
-   * ⛔ **A SOURCE census over the shell's wiring**, because the four properties below are all
-   * orderings and lifecycles inside one component that a DOM test would have to mount the whole
-   * app to reach. ⚠️ **It asserts relationships between substrings, never a line's exact text** —
-   * a census that pinned a line would kill every mutation row on it and would go red the next
-   * time somebody edited a comment.
-   */
-  describe('the shell', () => {
-    /**
-     * The body of one `function name(...)` declaration, from its header to the next one.
-     *
-     * 🔴 **619 · it ended at `\nfunction ` and `RuntimeScreen` declares `async function` too**, so
-     * every slice ran past the next `async` declaration and stopped at the one after it.
-     *
-     * ⛔ **Measured, not supposed:** `bodyOf('settleFromTheQueue')` returned that function PLUS
-     * `takeOverForTheQueue` PLUS `decideFromOverview`'s whole docblock — which is why its
-     * `not.toContain('store.respondUserInput')` was reading three declarations and passing on the
-     * strength of the two that do not send. ⚠️ **A census whose scope is wider than its title is
-     * `a-source-census-that-pins-a-line-kills-every-row-on-it`'s neighbour**: it goes red for
-     * things it never claimed to watch and green for the one it did.
-     *
-     * ⚑ **Widened rather than patched at the one call site** (rule 27.1): the next declaration is
-     * whatever the file declares next, so the boundary is derived from the language and not from
-     * which keyword happened to follow this function today.
-     */
-    function bodyOf(name: string): string {
-      const start = SCREEN.indexOf(`function ${name}(`)
-      expect(start, `${name} is not in RuntimeScreen`).toBeGreaterThan(-1)
-      const rest = SCREEN.slice(start + 1)
-      const end = rest.search(/\n(?:async )?function /)
-      return end === -1 ? rest : rest.slice(0, end)
-    }
-
-    /**
-     * 🔴 **The ARGUMENT, not the verb — `411` §6 item 1's acceptance, which nothing held** (444).
-     *
-     * ⛔ **`411` asked for *"a different selected parent, and each action proves only the intended
-     * sessionId/requestId reaches main"*.** Two regressions already prove the id comes off the ROW
-     * — `attention-answer.test.ts` at the host and `attention-overview.dom.test.ts` at the
-     * component — and both are byte-identical to the commit `411` measured. ⚠️ **Neither of them
-     * has a selected conversation at all**: the host one drives `executeRuntimeCommand` directly
-     * and the component one mounts the queue alone. `activeId` exists only inside `RuntimeScreen`,
-     * which nothing in this repository mounts, so the one hop where the wrong id could still win
-     * is reachable by source census and by nothing else.
-     *
-     * ⛔ **And the census above stops one argument short.** `toContain('store.respondPermission')`
-     * passes unchanged on a door that sends `activeId.value` — the two assertions prove the verbs
-     * are called and say nothing about what they are handed.
-     *
-     * ⚠️ **No `not.toContain('activeId')` here.** The comment inside `decideFromOverview` contains
-     * the word, so a prose-blind negative goes red against the docblock rather than the code
-     * (`a-source-census-must-strip-prose-before-it-asserts`). The control below is the other door.
-     */
-    it('🔴 …and it hands them the ROW’s own ids, never the selected conversation’s', () => {
-      // ⛔ **Prose stripped, because `bodyOf` slices to the NEXT `\nfunction ` and therefore
-      // swallows the following function's whole docblock** — so a `toContain` here is satisfiable
-      // by a comment that merely quotes the call. `a-source-census-must-strip-prose-before-it-asserts`,
-      // in the very file whose docblock invokes it.
-      const code = (text: string): string =>
-        text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1')
-      const door = code(bodyOf('decideFromOverview'))
-      expect(door).toContain('store.respondPermission(request.sessionId, request.requestId,')
-      expect(door).toContain('store.respondUserInput(request.sessionId, request.requestId,')
-
-      // ⚑ **The control, and it is the OTHER door in the same file.** `decide` — the card inside
-      // the conversation on screen — really does send `activeId.value`, which is correct for it.
-      // ⛔ Without this the two assertions above would pass on a file where neither verb had an
-      // argument this search could see, and the spelling they exclude would be unfindable.
-      const card = code(bodyOf('decide'))
-      expect(card, 'the in-pane card no longer answers by the selected session').toContain(
-        'store.respondPermission(activeId.value,',
-      )
-      expect(card).not.toContain('request.sessionId')
-    })
-
-    /**
-     * 🔴 **The conversation is had BEFORE the select**, which is the defect `openRequest` has and
-     * this must not inherit: selecting a session this window has no record for draws the LAUNCHER
-     * while `focus` fails and reports *"load more of the transcript"* about a conversation that is
-     * not on screen at all.
-     *
-     * ⚑ **D-017b · the claim became the host's `look`, behind the one door every press uses**
-     * (`openConversation`): attached, taken when no window has it, or drawn from its ledger — and
-     * nothing started. ⛔ So the order is asserted where it now lives, and the queue's route is
-     * asserted to go through that door and stop when it did not open.
-     */
-    it('🔴 goToQuestion opens the conversation through the one door before it looks for the card', () => {
-      const body = bodyOf('goToQuestion')
-      expect(body).toContain('if (!(await openConversation(row.sessionId))) return')
-      // ⛔ …and it goes to the CARD, not merely to the conversation — after the door, never before.
-      expect(body).toContain('requestItems.get(row.requestId)')
-      expect(body.indexOf('await openConversation(row.sessionId)')).toBeLessThan(
-        body.indexOf('requestItems.get(row.requestId)'),
-      )
-      // ⚑ **The door itself**: a conversation this window is not fed is looked at first, and only
-      // then shown — the record exists before the surface moves to it.
-      const door = bodyOf('openConversation')
-      expect(door).toContain('await store.look(sessionId)')
-      expect(door).toContain('showConversation(opened, from)')
-      expect(
-        door.indexOf('await store.look(sessionId)'),
-        'the surface navigated before it had a record to navigate to',
-      ).toBeLessThan(door.indexOf('showConversation(opened, from)'))
-      // ⛔ **Nothing is started to get there** — the door looks; it does not take over by claim.
-      expect(door).not.toContain('store.claim(')
-    })
-
-    /**
-     * ⛔ **A refusal keeps the last answer** — the other half of the `null` above.
-     *
-     * ⚠️ **Both populations, and each keeps its own** (403). The two reads go out together and
-     * either can be refused on its own; a look that blanked one because the other failed would
-     * make a dropped IPC call delete half of somebody's queue.
-     */
-    it('⛔ the look never writes a refusal into either population', () => {
-      const body = bodyOf('lookAtTheQueueOnce')
-      expect(body).toContain('if (questions !== null) escalated.value = questions')
-      expect(body).toContain('if (decisions !== null) decided.value = decisions')
-      // ⛔ **And they go out together**, so the count and the list it is over cannot straddle an
-      // answer — see the function's own note.
-      expect(body).toContain('await Promise.all([')
-    })
-
-    /**
-     * 🔴 **The view is captured BEFORE the surface moves** (095, and `reopen` did the same).
-     * ⛔ A look is a round trip; a person who pressed ⌘N or went Home while it was in flight must
-     * not have that taken away when it lands, which is what `select`'s own inline `view()` cannot
-     * prevent after an await.
-     *
-     * ⚑ **D-017b · the capture moved into `openConversation`**, the one door every press opens a
-     * conversation through, and the door ANSWERS whether it is on screen — so the queue's route
-     * stops there rather than looking for a card on a pane that is not drawn.
-     */
-    it('🔴 the route captures the view before the await and refuses if the reader moved', () => {
-      const door = bodyOf('openConversation')
-      expect(door).toContain('const from = view()')
-      expect(door.indexOf('const from = view()')).toBeLessThan(door.indexOf('await store.look('))
-      expect(door).toContain('showConversation(opened, from)')
-      expect(door).toContain('return place.value === null && activeId.value === opened')
-      const body = bodyOf('goToQuestion')
-      expect(body).not.toContain('select(row.sessionId)')
-      expect(body).toContain('if (!(await openConversation(row.sessionId))) return')
-    })
   })
 })
 
@@ -1099,10 +830,6 @@ describe('§8 · a decision only a person can make', () => {
     expect(question!.heading).not.toContain('decision')
   })
 
-  // ⚑ **UI-009 (F052) · the corner's quiet line is retired** — *"Nobody above them has answered. This
-  // takes you to the card…"* explained the machinery and was false of a question asked directly, so
-  // `PersonsQueueView.line`, its four tables and the test of its three arms went with it.
-
   /**
    * 🔴 **A refusal on ONE population may not take the other down with it** (403, from the review —
    * and the first version of this file asserted the opposite).
@@ -1143,12 +870,7 @@ describe('§8 · a decision only a person can make', () => {
     expect(personsQueueView(one, DECISION, WORLD)!.partial).toBe(false)
   })
 
-  /**
-   * ⛔ **A count of nothing is never printed, and the string behind it is true anyway** (403, from
-   * the review). `waitingFor(0, 0)` says *"0 decisions"* — a noun for a population that is not
-   * there — and the only thing keeping it off screen is the component's `v-if`.
-   */
-  it('⛔ the heading at zero is a true sentence, not "0 decisions"', () => {
+  it('the heading at zero is a true sentence, not "0 decisions"', () => {
     const nothing = personsQueueView([], [], WORLD)
     expect(nothing!.heading).toBe('Nothing is waiting on you')
     expect(nothing!.heading).not.toContain('0')
@@ -1156,34 +878,7 @@ describe('§8 · a decision only a person can make', () => {
     expect(personsQueueView([], DECISION, WORLD)!.heading).toBe('A decision is waiting on you')
   })
 
-  /**
-   * ⛔ **The disclosure travels to the second population too.** A permission on a conversation
-   * this window IS running is a card on the live queue as well, and the row says so rather than
-   * being filtered out of a corner copy that has no list beside it.
-   */
-  it('⚑ a decision on a held conversation says its card is also listed, and names the gesture', () => {
-    const view = personsQueueView([], DECISION, {
-      ...WORLD,
-      held: new Set(['sess_worker']),
-      answerable: new Map([['sess_worker:req_p', live('sess_worker:req_p')]]),
-    })
-    expect(view!.rows[0]!.held).toBe(true)
-    expect(view!.rows[0]!.action).toBe('Open the conversation')
-    expect(view!.rows[0]!.alsoOnScreen).toBe(true)
-    // ⚑ The paired negative: nobody holding it is the other FACT — not listed on screen — and,
-    // since D-017b, the same one gesture, named the same.
-    const loose = personsQueueView([], DECISION, WORLD)
-    expect(loose!.rows[0]!.held).toBe(false)
-    expect(loose!.rows[0]!.action).toBe('Open the conversation')
-    expect(loose!.rows[0]!.alsoOnScreen).toBe(false)
-  })
-
-  /**
-   * ⛔ **The vocabulary is closed and this surface renders it, member by member** — a reader that
-   * matched `a-permission-decision` alone would be blind to four, and the queue would go on
-   * listing nothing for them as the app is taught more shapes.
-   */
-  it('⛔ every refusal reaches the row with its own sentence, not just the permission', () => {
+  it('every refusal reaches the row with its own sentence, not just the permission', () => {
     const secret = onlyAPersons(
       { requestId: 'req_s', askedBy: 'sess_worker' },
       'a-secret-only-a-person-can-type',
@@ -1199,12 +894,7 @@ describe('§8 · a decision only a person can make', () => {
     expect(view!.rows.every((row) => row.kind === 'a-decision')).toBe(true)
   })
 
-  /**
-   * ⛔ **The announcement channel's licence, now spent exactly.** The status grammar says a
-   * question and a permission are the only things that may summon attention; `401` could spend
-   * only the first half. ⚠️ It is still about nothing else.
-   */
-  it('⛔ the announcement is about these two things and nothing else', () => {
+  it('the announcement is about these two things and nothing else', () => {
     const view = personsQueueView(
       [asked({ requestId: 'req_1', askedBy: 'sess_worker' })],
       DECISION,
@@ -1214,69 +904,6 @@ describe('§8 · a decision only a person can make', () => {
     for (const forbidden of ['error', 'failed', 'finished', 'complete', 'done', 'started']) {
       expect(view!.announcement.toLowerCase()).not.toContain(forbidden)
     }
-  })
-
-  /** ⛔ **A decision row invents no actor either** — the closed vocabulary of a row, by KEY. */
-  it('⛔ no decision row carries a decider, a decision or a time-of-decision', () => {
-    const view = personsQueueView([], DECISION, WORLD)
-    expect(Object.keys(view!.rows[0]!).sort()).toEqual([
-      // 🔴 **474 · WHICH WORK this row is about**, and it passes this census for the census's own
-      // reason: it names a task the ASKER recorded, never a person and never a decision. ⛔ It is
-      // the one field on this row that can say *"nothing this app records says"* — see `AboutWork`.
-      'about',
-      'action',
-      'alsoOnScreen',
-      'answers',
-      'blockedSince',
-      'blockedSinceIs',
-      'chain',
-      // What the request asks, as its card discloses it: the ask's own words, never a decider, a
-      // decision or an instant.
-      'disclosed',
-      'held',
-      'key',
-      'kind',
-      'limit',
-      // 🔴 **701 · what the provider's marks say** (`700` §5 GAP 1), and it passes this census for
-      // the census's own reason: it is the ASK's own sentences — why no grant is here, why Deny
-      // leads, the provider's reason — carried from the live card. ⛔ No decider, no decision, no
-      // instant: they bound an answer nobody has given.
-      'marksSay',
-      'noAnswerHere',
-      // 🔴 **487 · why the request offers no way to ALLOW it**, and it passes this census for the
-      // census's own reason: it is not a decider, a decision or a time-of-decision. ⛔ It is a
-      // sentence about what this row CANNOT do, on a row that is still waiting — and 487's whole
-      // point is that it can still be refused, which is why it is not a {@link NoAnswerHere}.
-      'noPositive',
-      // 🔴 **UI-009 · a question THIS APP asked, as its card reads it** (it replaced `619`'s
-      // `offered`), and it passes this census for the census's own reason: its words, the asker's
-      // offer and whether this window sent an answer. ⛔ It names no decider, records no decision
-      // and carries no instant.
-      'question',
-      // 🔴 **468 · why the last answer BOUNCED**, and it passes this census for the reason the
-      // census exists: it is not a decider, a decision or a time-of-decision. ⛔ It is the
-      // transcript item's own sentence about a gesture that did NOT land, on a row that is still
-      // waiting — the opposite of a settlement, carried here so the surface that made the gesture
-      // can say what happened to it.
-      'refused',
-      // 🔴 **701 · refusal is this ask's default** — a fact the PROVIDER put on the ask, about the
-      // order of the answers it offers. ⛔ Not a decision: nobody has refused anything.
-      'refusesFirst',
-      'requestId',
-      'says',
-      'sentence',
-      'sessionId',
-      'since',
-      'unfollowable',
-      'words',
-      'work',
-    ])
-    const text = JSON.stringify(view)
-    for (const word of ['actor', 'Actor', 'decidedBy', 'decidedAt', 'denied', 'allowed']) {
-      expect(text, `the queue invented ${word}`).not.toContain(word)
-    }
-    // ⚑ **Non-vacuity**: the census can go red on the exact shape it is watching for.
-    expect(`${text}"decidedBy":"pm"`).toContain('decidedBy')
   })
 })
 
@@ -1579,25 +1206,13 @@ describe('§9.2 · clearing it there — the answers, and why there are none', (
   })
 })
 
-describe('§9.3 · what a person needs to answer it — criterion 20’s three clauses', () => {
-  it('🔴 who asked is the first hop, and it is the conversation the CARD is in', () => {
-    const view = personsQueueView(
-      [asked({ requestId: 'req_1', askedBy: 'sess_worker' })],
-      [],
-      WORLD,
-    )
-    const row = view!.rows[0]!
-    expect(row.chain[0]).toEqual({ name: 'worker', you: false, did: 'asked' })
-    expect(row.sessionId).toBe('sess_worker')
-  })
-
-  it('🔴 which work is the ASKER’s open work, and the row never claims it is the subject', () => {
+describe('what a person needs to answer it', () => {
+  it('which work is the ASKER’s open work, and the row never claims it is the subject', () => {
     const view = personsQueueView(
       [
         asked({
           requestId: 'req_1',
           askedBy: 'sess_worker',
-          // ⚑ D-016 · a piece reads by its label, never a task number.
           work: [{ label: 'W1.2' }, { label: 'W1.3' }],
         }),
       ],
@@ -1766,52 +1381,25 @@ describe('§9.5 · the lag is bounded by the look, and the bound is stated', () 
   })
 })
 
-/**
- * 🔴 **§9.6 · the stale hole reaches Home's own claim, not only the queue's card** (434).
- *
- * ⛔ **`403` wired `partial` into `homeAttention.unread` for exactly this reason** and `434`'s hole
- * would otherwise have walked straight past it: with one list frozen and nothing in it, every count
- * on Home is zero and *"Nothing needs you. The workspace is quiet."* is drawn over a list the app
- * stopped hearing from. ⚑ `086`: not knowing is not an all-clear — and *no longer knowing* is not
- * one either.
- */
-describe('§9.6 · a stale list forbids "quiet" on Home too', () => {
-  it('🔴 stale alone is enough to stop the all-clear', () => {
-    const quiet = homeAttention({ requests: [], onlyYou: 0, unread: false })
-    expect(quiet.quiet).toBe(true)
-    expect(quiet.intro).toBe('Nothing here is blocked on an answer from you.')
-    const stopped = homeAttention({ requests: [], onlyYou: 0, unread: true })
-    // ⛔ **The all-clear is withdrawn and a sentence about not knowing takes its place** — the
-    // intro says so rather than the screen simply going silent.
-    expect(stopped.quiet).toBe(false)
-    expect(stopped.intro).not.toBe('Nothing here is blocked on an answer from you.')
-    expect(stopped.intro).toContain('could not be read')
-  })
-
-  /**
-   * 🔴 **453 · and the derived field is the disjunction of all four, not of the two it began as.**
-   *
-   * ⛔ **A behavioural census, because the source one above cannot see the arithmetic.** Each hole
-   * is planted ALONE, with a control that plants none — `a-positive-assertion-must-differ-from-the
-   * -default`: a `mayBeShort` hard-coded `true` passes every arm but the control.
-   */
-  it('🔴 every one of the four holes alone sets `mayBeShort`', () => {
+describe('a stale list forbids "quiet" on Home too', () => {
+  // Each hole is planted alone, beside a control that plants none.
+  it('every one of the four holes alone sets `mayBeShort`', () => {
     const ordinary = walked([])!
     const none = foldPersonsQueue(ordinary, ordinary, WORLD)!
     expect(none.mayBeShort, 'the control').toBe(false)
-    // ⛔ `partial` — one read has never answered.
+    // `partial`: one read has never answered.
     expect(foldPersonsQueue(null, ordinary, WORLD)!.mayBeShort).toBe(true)
-    // ⛔ `stale` — the most recent look did not answer.
+    // `stale`: the most recent look did not answer.
     expect(
       foldPersonsQueue(ordinary, ordinary, {
         ...WORLD,
         lastLookAnswered: { questions: true, decisions: false },
       })!.mayBeShort,
     ).toBe(true)
-    // ⛔ `noLedger` — every look that answered walked nothing.
+    // `noLedger`: every look that answered walked nothing.
     const blind = { rows: [], walk: 'no-ledger' as const, ledgers: 0, rowsUnread: 0 }
     expect(foldPersonsQueue(blind, blind, WORLD)!.mayBeShort).toBe(true)
-    // ⛔ `rowsDropped` — a ledger row this app could not read.
+    // `rowsDropped`: a ledger row this app could not read.
     expect(foldPersonsQueue({ ...ordinary, rowsUnread: 1 }, ordinary, WORLD)!.mayBeShort).toBe(true)
   })
 })

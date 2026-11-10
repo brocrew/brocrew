@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
+import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { WORKER_OUTPUT_DIRNAME, WORKER_OUTPUT_FAILURE } from '../src/main/worker-piece-folder'
 
 describe('parallel workers keep a folder for each piece', () => {
@@ -21,6 +22,16 @@ describe('parallel workers keep a folder for each piece', () => {
       world.window,
     )
     return { host, caller }
+  }
+  /** The worker replies done on its piece, and its provider turn drains. */
+  const finishes = async (host: RuntimeHost, piece: string, owner: string) => {
+    expect(
+      await host.replyToParent(
+        { piece, outcome: 'done', summary: 'Checked.', resourcePaths: [], needsUserAction: false },
+        { ownerId: agentCallerId(owner) },
+      ),
+    ).toMatchObject({ ok: true })
+    await vi.waitFor(() => expect(world.handleOf('document-reader').status()).toBe('idle'))
   }
   it('starts a fresh worker in the recorded default folder while preserving the caller’s brief', async () => {
     const { host, caller } = await setup()
@@ -47,20 +58,7 @@ describe('parallel workers keep a folder for each piece', () => {
     expect(first.ok).toBe(true)
     if (!first.ok || first.givenFolder === null) throw new Error('setup refused')
     writeFileSync(join(first.givenFolder.folder, 'draft.md'), 'Fictional first result')
-    const reply = await host.replyToParent(
-      {
-        piece: first.piece,
-        outcome: 'done',
-        summary: 'Checked.',
-        resourcePaths: [],
-        needsUserAction: false,
-      },
-      { ownerId: agentCallerId(first.owner) },
-    )
-    expect(reply.ok).toBe(true)
-    await vi.waitFor(() => {
-      expect(world.handleOf('document-reader').status()).toBe('idle')
-    })
+    await finishes(host, first.piece, first.owner)
     const next = await world.gives(host, caller, 'document-reader', { parallel: true })
     expect(next).toMatchObject({ ok: true, owner: first.owner })
     if (!next.ok || next.givenFolder === null) throw new Error('reuse refused')
@@ -80,19 +78,7 @@ describe('parallel workers keep a folder for each piece', () => {
     const { host, caller } = await setup()
     const first = await world.gives(host, caller, 'document-reader', { parallel: true })
     if (!first.ok) throw new Error('setup refused')
-    expect(
-      await host.replyToParent(
-        {
-          piece: first.piece,
-          outcome: 'done',
-          summary: 'Checked.',
-          resourcePaths: [],
-          needsUserAction: false,
-        },
-        { ownerId: agentCallerId(first.owner) },
-      ),
-    ).toMatchObject({ ok: true })
-    await vi.waitFor(() => expect(world.handleOf('document-reader').status()).toBe('idle'))
+    await finishes(host, first.piece, first.owner)
     const given = await world.gives(host, caller, 'document-reader', { parallel: true })
     if (!given.ok || given.givenFolder === null) throw new Error('reuse refused')
     const folder = given.givenFolder.folder

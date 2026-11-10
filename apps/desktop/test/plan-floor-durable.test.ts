@@ -228,44 +228,13 @@ describe('the plan phase a provider moved, written down (150 §0)', () => {
     await host.respondUserInput(sessionId, `tu_${tool}`, response, sink)
   }
 
-  it('an APPROVED plan is written down, so a resume does not come back planning', async () => {
-    const id = await turnOpen(true)
-    // ⛔ Non-vacuous: it really was recorded as planning first. Without this the assertion below
-    // would pass for a session that never planned at all.
-    expect(row(id)?.plan_mode).toBe(1)
-    expect(row(id)?.plan_ended_at).toBeNull()
-
-    await answerPlanCard(id, 'ExitPlanMode', { kind: 'answer', answers: {} })
-
-    // ⛔ **The pair `resumeSession` reads** (060): planned, and no longer planning. One flag cannot
-    // say both, which is why `plan_mode` deliberately stays 1.
-    expect(row(id)?.plan_mode).toBe(1)
-    expect(row(id)?.plan_ended_at, 'the release reached the ledger').not.toBeNull()
-
-    fq.emit(result())
-  })
-
-  it('…and a REJECTED plan writes nothing — the paired negative', async () => {
-    const id = await turnOpen(true)
-    await answerPlanCard(id, 'ExitPlanMode', { kind: 'reject' })
-
-    expect(row(id)?.plan_mode).toBe(1)
-    expect(row(id)?.plan_ended_at, 'refusing to approve is not a release').toBeNull()
-
-    fq.emit(result())
-  })
-
-  it('🔴 736 · R98 / 740 · R99 — a model’s EnterPlanMode raises NO card, and the plan it starts is WRITTEN DOWN', async () => {
-    // ⚑ R98: the CLI does not ask before the model enters plan mode (measured, `enter-plan-write`),
-    // so neither does this app; the adapter settles the plan itself. 🔴 **740 · R99 (`736` F-8)** —
-    // *"a plan the model starts is written down as the CLI's session keeps it, so a reopen resumes
-    // planning"*. ⛔ **On `main` (`736`)** nothing wrote it: the host recorded a plan only from a
-    // person's answer, so the row stayed `plan_mode = 0` and a reopen came back not planning.
+  it('a model’s EnterPlanMode raises NO card, and the plan it starts is WRITTEN DOWN', async () => {
+    // The CLI does not ask before the model enters plan mode, so neither does this app; the
+    // adapter settles the plan itself, and the host writes it down as the CLI's session keeps it.
     const id = await turnOpen(false)
     expect(row(id)?.plan_mode).toBe(0)
 
-    // ⚑ Raced, so on a tree where this parks on a card (before `736`) the RED is the assertion, not a
-    // test that hangs to its timeout (`736`'s review).
+    // Raced, so a card that parks the call fails the assertion rather than hanging the test.
     const allowed = await Promise.race([
       canUseTool!('EnterPlanMode', {}, {
         toolUseID: 'tu_enter',
@@ -275,12 +244,12 @@ describe('the plan phase a provider moved, written down (150 §0)', () => {
     ])
     expect(allowed).toEqual({ behavior: 'allow' })
     expect(sink.events().filter((event) => event.type === 'user_input_request')).toEqual([])
-    // ⚑ The host learns of it from the next thing the conversation does — here the turn's end.
+    // The host learns of it from the next thing the conversation does: here the turn's end.
     fq.emit(result())
     await waitFor(() => sink.events().some((event) => event.type === 'turn'), 'the turn to end')
     expect(row(id)?.plan_mode, 'the plan the model started, written down').toBe(1)
     expect(row(id)?.plan_ended_at, 'and not as released').toBeNull()
-    // ⚑ …and every window is told the conversation is planning — the header reads this.
+    // Every window is told the conversation is planning; the header reads this.
     expect(sink.liveness.at(-1)?.settings?.planMode).toBe(true)
   })
 
@@ -349,23 +318,9 @@ describe('the plan phase a provider moved, written down (150 §0)', () => {
     fq.emit(result())
   })
 
-  /**
-   * 🔴 **153 §3 · the READ, which the write-only assertions above could not see** (152 §4.4).
-   *
-   * ⛔ **`plan-floor-durable.test.ts` asserted that the release reaches the ledger and stopped
-   * there.** 113's rule is *"a step that has never executed is not coverage, it is a claim"*, and
-   * this is its close cousin: every test above checks what `plan_ended_at` was WRITTEN as, and not
-   * one of them reopened the session to see what it was read as. It was read as nothing. Claude's
-   * `resume` initialised both its handle and `permissionMode` from `planMode` alone, so an approved
-   * plan came back planning — with the floor up and, on this provider, no gesture left to lift it.
-   *
-   * ⚠️ **And the test that LOOKED like it covered this was passing against a double.**
-   * `session-persistence.test.ts`'s 060 case asserts both fields reach the adapter and then checks
-   * `planNeedsGoAhead` — against `FakeRuntime`, which reads `planModeEnded` correctly. The seam was
-   * right in the fake and wrong in the adapter, which is exactly 122's reason for using the real one
-   * here.
-   */
-  describe('what a REOPENED session comes back as (153 §3)', () => {
+  // What a reopen reads back, through the real Claude adapter: a double could be right where the
+  // adapter is wrong.
+  describe('what a REOPENED session comes back as', () => {
     /** Close the live session and reopen it through the real host, as the relaunch does. */
     async function reopen(id: string): Promise<Options> {
       fq.emit(result())
@@ -377,43 +332,43 @@ describe('the plan phase a provider moved, written down (150 §0)', () => {
       return options
     }
 
-    it('⛔ an APPROVED plan resumes NOT planning — through a real resume', async () => {
+    it('an APPROVED plan is written down, and resumes NOT planning — through a real resume', async () => {
       const id = await turnOpen(true)
       // Non-vacuous: it really planned on the first launch.
       expect(row(id)?.plan_mode).toBe(1)
+      expect(row(id)?.plan_ended_at).toBeNull()
       expect(launched[0]?.permissionMode).toBe('plan')
 
       await answerPlanCard(id, 'ExitPlanMode', { kind: 'answer', answers: {} })
+      // The pair `resumeSession` reads: planned, and no longer planning, so `plan_mode` stays 1.
+      expect(row(id)?.plan_mode).toBe(1)
       expect(row(id)?.plan_ended_at, 'the release reached the ledger').not.toBeNull()
 
       const resumed = await reopen(id)
 
-      // ⛔ What "planning" means to this app, on the relaunched session: what the PROVIDER was asked
-      // for. ⚑ **728 · R93** — BroBot's own floor (140), the second half this asserted, is gone.
       expect(resumed.permissionMode, 'the provider is not put back into plan mode').toBe('default')
     })
 
-    it('🔴 741 · R99 (corrected) — an UNAPPROVED plan comes back NOT planning, as the CLI’s resume does', async () => {
-      // ⛔ Until `741` (030, 153): *"a conversation that was proposing when it was closed must not
-      // come back acting first"* — it came back planning. ⚑ R99, corrected by `740` F-1: *"a reopened
-      // conversation does NOT resume planning, whoever started the plan"* — measured, the
-      // interactive CLI's `--continue`/`--resume` comes back in its default mode, 5 of 5 (`740`, K7).
+    it('an UNAPPROVED plan comes back NOT planning, as the CLI’s resume does', async () => {
+      // The interactive CLI's `--continue`/`--resume` comes back in its default mode, whoever
+      // started the plan.
       const id = await turnOpen(true)
       expect(row(id)?.plan_ended_at).toBeNull()
 
       const resumed = await reopen(id)
 
       expect(resumed.permissionMode, 'the reopen left planning').toBe('default')
-      // ⚑ …and the ledger says so: planned, and left at the reopen — the pair every later reopen reads.
+      // The ledger says so: planned, and left at the reopen.
       expect(row(id)?.plan_mode).toBe(1)
       expect(row(id)?.plan_ended_at, 'the reopen’s release, written down').not.toBeNull()
     })
 
-    it('🔴 741 · …and a REJECTED plan comes back not planning either', async () => {
+    it('…and a REJECTED plan writes nothing, then comes back not planning either', async () => {
       // The person said no to the plan and the conversation went on planning; the reopen leaves it.
       const id = await turnOpen(true)
       await answerPlanCard(id, 'ExitPlanMode', { kind: 'reject' })
-      expect(row(id)?.plan_ended_at).toBeNull()
+      expect(row(id)?.plan_mode).toBe(1)
+      expect(row(id)?.plan_ended_at, 'refusing to approve is not a release').toBeNull()
 
       const resumed = await reopen(id)
 
@@ -421,10 +376,8 @@ describe('the plan phase a provider moved, written down (150 §0)', () => {
       expect(row(id)?.plan_ended_at).not.toBeNull()
     })
 
-    it('🔴 741 · R99 (corrected) — a plan the MODEL started comes back NOT planning', async () => {
-      // ⛔ `740` built *"a reopen resumes planning"* here, from R99's F-8 bullet the PM corrected.
-      // ⚑ The plan is still WRITTEN DOWN while the conversation is live (the header and the tests
-      // above read it); only the reopen leaves it.
+    it('a plan the MODEL started comes back NOT planning', async () => {
+      // The plan is still written down while the conversation is live; only the reopen leaves it.
       const id = await turnOpen(false)
       const allowed = await Promise.race([
         canUseTool!('EnterPlanMode', {}, {

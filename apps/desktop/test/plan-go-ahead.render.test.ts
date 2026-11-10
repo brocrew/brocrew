@@ -127,6 +127,9 @@ describe('the go-ahead bar (060)', () => {
     const html = await render(pane({ planNeedsGoAhead: false }))
     expect(html).not.toContain('data-cy="plan-go-ahead"')
     expect(html).not.toContain(GO_AHEAD_LABEL)
+    // Neither outcome: a Claude session must not acquire a way out its own plan card does not know.
+    expect(html).not.toContain('data-cy="plan-leave-button"')
+    expect(html).not.toContain('data-cy="plan-go-ahead-button"')
   })
 
   it('is disabled while a turn is running, because pressing it SENDS', async () => {
@@ -189,15 +192,6 @@ describe('the copy never says plan mode was stopping the agent (acceptance 6)', 
     }
   })
 
-  /*
-   * ⛔ **`and the launcher tooltip no longer claims the setting is fixed for the session` went with
-   * `planModeTitle`** (417, HO-022 §2). It swept both branches of the launcher checkbox's tooltip
-   * for *"fixed when the session starts"* — 060's correction — and required the half that still
-   * held, *"cannot be switched on later"*. ⚑ **The launcher has no checkbox and the tooltip is
-   * deleted**, so there is no string left to make the claim; what a person can read about plan
-   * mode is the drawer's, which `live-settings.render.test.ts` sweeps.
-   */
-
   /**
    * The second outcome of the one gesture (085).
    *
@@ -219,22 +213,9 @@ describe('the copy never says plan mode was stopping the agent (acceptance 6)', 
       expect(html).toContain('Nothing is sent')
     })
 
-    it('never appears without the gesture it belongs to', async () => {
-      // Rule 1 again, and it must hold for BOTH outcomes: a Claude session has no bar at all, so it
-      // must not acquire an escape hatch the model's own plan card knows nothing about.
-      const html = await render(pane({ planNeedsGoAhead: false }))
-      expect(html).not.toContain('data-cy="plan-leave-button"')
-      expect(html).not.toContain('data-cy="plan-go-ahead-button"')
-    })
-
-    it('⚠️ stays live while a turn is running, where the go-ahead does not', async () => {
-      // The asymmetry, rendered. Its neighbour SENDS and is frozen mid-turn; this one changes a mode
-      // that rides the next turn, so freezing it would make "leave at will" mean "leave once the
-      // agent lets you". Asserted as a PAIR on one render, so neither half can pass over the other's
-      // absence.
-      // ⚠️ The WHOLE opening tag, matched the way the test above matches it: SSR emits `disabled`
-      // before the `data-cy`, so an assertion that reads forward from the marker skips the very
-      // attribute it is about — and the negative half would then pass over nothing.
+    it('stays live while a turn is running, where the go-ahead does not', async () => {
+      // Its neighbour SENDS and is frozen mid-turn; this one changes a mode that rides the next
+      // turn. The whole opening tag is matched, because SSR may emit `disabled` before `data-cy`.
       const html = await render(pane({}, 'working'))
       const tag = (cy: string): string =>
         new RegExp(`<button[^>]*data-cy="${cy}"[^>]*>`).exec(html)?.[0] ?? ''

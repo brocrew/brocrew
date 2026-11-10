@@ -16,7 +16,11 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import {
+  RuntimeHost,
+  type RuntimeEventSink,
+  type RuntimeHostDeps,
+} from '../src/main/runtime/runtime-host'
 import { createLaunchRegistry } from '../src/main/runtime/launch-registry'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
 import { readLines } from '../src/main/archive/native-file'
@@ -105,6 +109,29 @@ function gateClose(
     },
   })
   return { handle: proxied, closed: () => finished }
+}
+
+/** The homes, folders, ids and config every host here is built with; each host counts its own ids. */
+function fakeProviderPlaces(
+  dir: string,
+): Pick<
+  RuntimeHostDeps,
+  'prepareProviderHome' | 'providerHomePath' | 'resolveCwd' | 'newSessionId' | 'readProviderConfig'
+> {
+  let counter = 0
+  return {
+    prepareProviderHome: (provider) => join(dir, 'homes', provider),
+    providerHomePath: (provider) => join(dir, 'homes', provider),
+    resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
+    newSessionId: () => `sess_${++counter}`,
+    readProviderConfig: (_provider, home) => ({
+      home,
+      homeEnv: 'CODEX_HOME',
+      model: 'fake',
+      authNote: null,
+      files: [],
+    }),
+  }
 }
 
 describe('the launch registry (070)', () => {
@@ -225,7 +252,6 @@ describe('a launch nobody has a handle for is still terminable (070, from 068 fi
     seen: { tornDown: string[]; signals: (AbortSignal | undefined)[] },
     alsoOnLaunch?: (signal: AbortSignal | undefined) => void,
   ) {
-    let counter = 0
     const never = deferred()
     return new RuntimeHost({
       store,
@@ -259,18 +285,8 @@ describe('a launch nobody has a handle for is still terminable (070, from 068 fi
         },
         resume: () => Promise.reject(new Error('not used here')),
       }),
-      prepareProviderHome: (provider) => join(dir, 'homes', provider),
-      providerHomePath: (provider) => join(dir, 'homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
+      ...fakeProviderPlaces(dir),
       closeDrainTimeoutMs: 40,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'fake',
-        authNote: null,
-        files: [],
-      }),
     })
   }
 
@@ -345,7 +361,6 @@ describe('hand-back keeps the id until the provider is really gone (070, from 06
   let gated: { handle: SessionHandle; closed: () => boolean } | null
 
   function buildHost() {
-    let counter = 0
     const runtimes = new Map<string, AgentRuntime>()
     return new RuntimeHost({
       store,
@@ -371,18 +386,8 @@ describe('hand-back keeps the id until the provider is really gone (070, from 06
         runtimes.set(provider, wrapped)
         return wrapped
       },
-      prepareProviderHome: (provider) => join(dir, 'homes', provider),
-      providerHomePath: (provider) => join(dir, 'homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
+      ...fakeProviderPlaces(dir),
       closeDrainTimeoutMs: 40,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'fake',
-        authNote: null,
-        files: [],
-      }),
     })
   }
 
@@ -568,7 +573,6 @@ describe('a provider the host could not confirm stopped (070)', () => {
   let closing: { promise: Promise<void>; resolve: () => void }
 
   function buildHost() {
-    let counter = 0
     return new RuntimeHost({
       store,
       ...neutralHostDeps(() => dir),
@@ -584,18 +588,8 @@ describe('a provider the host could not confirm stopped (070)', () => {
           resume: (ref, options) => real.resume(ref, options),
         }
       },
-      prepareProviderHome: (provider) => join(dir, 'homes', provider),
-      providerHomePath: (provider) => join(dir, 'homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
+      ...fakeProviderPlaces(dir),
       closeDrainTimeoutMs: 40,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'fake',
-        authNote: null,
-        files: [],
-      }),
     })
   }
 
@@ -707,7 +701,6 @@ describe('051 is unchanged by 070', () => {
     order = []
     transcript = join(dir, 'rollout.jsonl')
     writeFileSync(transcript, `${JSON.stringify({ type: 'a' })}\n`)
-    let counter = 0
     host = new RuntimeHost({
       store,
       discoverSessions: NO_DISCOVERY,
@@ -740,17 +733,7 @@ describe('051 is unchanged by 070', () => {
           resume: (ref, options) => real.resume(ref, options),
         }
       },
-      prepareProviderHome: (provider) => join(dir, 'homes', provider),
-      providerHomePath: (provider) => join(dir, 'homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'fake',
-        authNote: null,
-        files: [],
-      }),
+      ...fakeProviderPlaces(dir),
     })
   })
 
@@ -791,7 +774,6 @@ describe('model probes are owned (070, from 068 finding 7)', () => {
     ])
 
   function buildHost() {
-    let counter = 0
     return new RuntimeHost({
       store,
       ...neutralHostDeps(() => dir),
@@ -817,18 +799,8 @@ describe('model probes are owned (070, from 068 finding 7)', () => {
         start: () => Promise.reject(new Error('not used here')),
         resume: () => Promise.reject(new Error('not used here')),
       }),
-      prepareProviderHome: (provider) => join(dir, 'homes', provider),
-      providerHomePath: (provider) => join(dir, 'homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
+      ...fakeProviderPlaces(dir),
       closeDrainTimeoutMs: 200,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'fake',
-        authNote: null,
-        files: [],
-      }),
     })
   }
 
@@ -937,31 +909,14 @@ describe('233 · a close that resolves is not a process that exited (from 229 H1
   let realWarn: typeof console.warn
 
   function buildHost(): RuntimeHost {
-    let counter = 0
     return new RuntimeHost({
       store,
       ...neutralHostDeps(() => dir),
-      // ⚑ **The plain double, with a process.** No `gateClose` anywhere: `close()` resolves
-      // promptly and on its own, exactly as Claude's does, and the ONLY thing that has not happened
-      // is the exit.
-      //
-      // ⚠️ The provider-side record is SHARED across calls (186), because `createRuntime` is called
-      // again for the reopen: a fresh `FakeProviderSessions` per call would refuse the resume as an
-      // unissued ref, and the positive test would then pass for the wrong reason — a refusal that
-      // says nothing about whether ownership was released.
+      // The plain double with a process: `close()` resolves on its own, as Claude's does, and only
+      // the exit has not happened. The provider record is shared so the reopen's resume is issued.
       createRuntime: (which): AgentRuntime => new FakeRuntime(which, { exit, sessions: provider }),
-      prepareProviderHome: (provider) => join(dir, 'homes', provider),
-      providerHomePath: (provider) => join(dir, 'homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
+      ...fakeProviderPlaces(dir),
       closeDrainTimeoutMs: 40,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'fake',
-        authNote: null,
-        files: [],
-      }),
     })
   }
 
@@ -1138,7 +1093,6 @@ describe('233 · a launch handed back while starting is owned against the proces
     arriving = deferred()
     starts = 0
     const provider = new FakeProviderSessions()
-    let counter = 0
     host = new RuntimeHost({
       store,
       ...neutralHostDeps(() => dir),
@@ -1158,18 +1112,8 @@ describe('233 · a launch handed back while starting is owned against the proces
           resume: (ref, options) => real.resume(ref, options),
         }
       },
-      prepareProviderHome: (which) => join(dir, 'homes', which),
-      providerHomePath: (which) => join(dir, 'homes', which),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
+      ...fakeProviderPlaces(dir),
       closeDrainTimeoutMs: 40,
-      readProviderConfig: (_which, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'fake',
-        authNote: null,
-        files: [],
-      }),
     })
   })
 

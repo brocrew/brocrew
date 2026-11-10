@@ -24,6 +24,28 @@ describe('normal parallel workers', () => {
         world.window,
       )
     ).sessionId
+  const completed = async () => {
+    const host = world.aHost()
+    const caller = await idleCaller(host)
+    const given = await world.gives(host, caller, 'document-reader', { parallel: true })
+    expect(given.ok).toBe(true)
+    if (!given.ok) throw new Error('setup refused')
+    const reply = await host.replyToParent(
+      {
+        piece: given.piece,
+        outcome: 'done',
+        summary: 'Draft checked.',
+        resourcePaths: [],
+        needsUserAction: false,
+      },
+      { ownerId: agentCallerId(given.owner) },
+    )
+    expect(reply.ok).toBe(true)
+    await vi.waitFor(() => {
+      expect(world.handleOf('document-reader').status()).toBe('idle')
+    })
+    return { host, caller, worker: given.owner }
+  }
 
   it('starts another worker for an idle process that still holds its first piece, keeping one profile', async () => {
     const host = world.aHost()
@@ -65,27 +87,9 @@ describe('normal parallel workers', () => {
   })
 
   it('reuses a worker only after its piece ends and its provider turn drains', async () => {
-    const host = world.aHost()
-    const caller = await idleCaller(host)
-    const first = await world.gives(host, caller, 'document-reader', { parallel: true })
-    expect(first.ok).toBe(true)
-    if (!first.ok) throw new Error('setup refused')
-    const reply = await host.replyToParent(
-      {
-        piece: first.piece,
-        outcome: 'done',
-        summary: 'Draft checked.',
-        resourcePaths: [],
-        needsUserAction: false,
-      },
-      { ownerId: agentCallerId(first.owner) },
-    )
-    expect(reply.ok).toBe(true)
-    await vi.waitFor(() => {
-      expect(world.handleOf('document-reader').status()).toBe('idle')
-    })
+    const { host, caller, worker } = await completed()
     const next = await world.gives(host, caller, 'document-reader', { parallel: true })
-    expect(next).toMatchObject({ ok: true, owner: first.owner })
+    expect(next).toMatchObject({ ok: true, owner: worker })
     expect(world.store.workersBorn()).toHaveLength(1)
   })
 
@@ -107,29 +111,6 @@ describe('normal parallel workers', () => {
       { number: 1, giver: otherCaller },
     ])
   })
-
-  const completed = async () => {
-    const host = world.aHost()
-    const caller = await idleCaller(host)
-    const given = await world.gives(host, caller, 'document-reader', { parallel: true })
-    expect(given.ok).toBe(true)
-    if (!given.ok) throw new Error('setup refused')
-    const reply = await host.replyToParent(
-      {
-        piece: given.piece,
-        outcome: 'done',
-        summary: 'Draft checked.',
-        resourcePaths: [],
-        needsUserAction: false,
-      },
-      { ownerId: agentCallerId(given.owner) },
-    )
-    expect(reply.ok).toBe(true)
-    await vi.waitFor(() => {
-      expect(world.handleOf('document-reader').status()).toBe('idle')
-    })
-    return { host, caller, worker: given.owner }
-  }
 
   it('an idle process with an open provider card is unavailable until that card is answered', async () => {
     const { host, caller, worker } = await completed()
