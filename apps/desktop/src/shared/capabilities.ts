@@ -225,7 +225,7 @@ function reachSentence(admits: Readonly<Record<MessagingReach, string>>): string
  * checks each column against its own field's vocabulary, and a shared type would let a word out of
  * one vocabulary pass as a word of the other.
  */
-export const CREATION_REACH = ['none', 'any'] as const
+const CREATION_REACH = ['none', 'any'] as const
 
 /** One of {@link CREATION_REACH}. */
 export type CreationReach = (typeof CREATION_REACH)[number]

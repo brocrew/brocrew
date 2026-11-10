@@ -81,7 +81,7 @@ import type { ActedBy } from './who-did-it'
  * costs. ⚑ **What forces the question for a THIRD provider is `MEMORY_STORE_IS`' exhaustiveness
  * and the reader table beside it**, not a word standing in the future.
  */
-export const MEMORY_STORE_STATE = [
+const MEMORY_STORE_STATE = [
   'no-home',
   'nothing-written',
   'unreadable',

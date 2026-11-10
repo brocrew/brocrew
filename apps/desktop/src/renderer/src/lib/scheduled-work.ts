@@ -146,7 +146,7 @@ function breaksTheRow(text: string): boolean {
 }
 
 /** One provider string, as far as the row shows it — {@link ScheduleLine}'s cells. */
-export interface ScheduleShown {
+interface ScheduleShown {
   /** What a person reads. NEVER empty on any path that produces one of these. */
   text: string
   /** Characters of {@link full} that {@link text} does not show. 0 normally; non-zero is on screen. */

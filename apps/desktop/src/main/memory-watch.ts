@@ -91,8 +91,8 @@ export interface MemoryWatchOptions {
  * kill, no UI, no user-visible alarm — so the cost of firing early is a line in a file, while the
  * cost of a floor set too high is the silence 052 was written to end.
  */
-export const MEMORY_FLOOR_BYTES = 2 * 1024 ** 3
-export const MEMORY_STEP_BYTES = 1024 ** 3
+const MEMORY_FLOOR_BYTES = 2 * 1024 ** 3
+const MEMORY_STEP_BYTES = 1024 ** 3
 
 /**
  * ⚑ **16 GiB at most, for the agents' own line** — what they and the commands they run hold

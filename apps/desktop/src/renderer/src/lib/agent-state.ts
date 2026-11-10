@@ -366,21 +366,6 @@ export function beingCondition(being: Being | undefined): { glyph: string; token
   return null
 }
 
-/**
- * Every token drawn ON the white plate, and therefore every token `tokens.css` §14 has to
- * re-declare at its paper value.
- *
- * Derived from the maps above rather than listed, so a new badge colour cannot be added here and
- * forgotten there — which would ship a bright-on-white smear that nothing but an eye would catch.
- */
-export const PLATE_TOKENS: readonly string[] = [
-  ...new Set([
-    ...Object.values(NEEDING_TOKEN),
-    ...Object.values(CONDITION_BADGE).map((badge) => badge.token),
-    UNKNOWN_TOKEN,
-  ]),
-].sort()
-
 export interface Underline {
   token: string
   /** Dotted: a state that is not steadily running. */

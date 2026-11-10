@@ -565,7 +565,7 @@ export interface RecordedSession {
   child: ChildDescent | null
 }
 
-export interface SessionSnapshot {
+interface SessionSnapshot {
   session: AdoptedSessionRecord
   /** How many of the provider's lines the ledger was read from, as the bundle carried them. */
   derivedThrough: number

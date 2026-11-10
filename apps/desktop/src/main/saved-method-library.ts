@@ -24,7 +24,7 @@ import type {
 import { parseSavedMethodLine, SAVED_METHODS_INDEX } from './saved-method-index'
 
 const INDEX_BYTES = 64 * 1024
-export const METHOD_LIBRARY_SCAN_LIMIT = 5000
+const METHOD_LIBRARY_SCAN_LIMIT = 5000
 
 /** Paths are derived in main; reading never provisions a missing profile home. */
 export interface MethodLibraryInputs {

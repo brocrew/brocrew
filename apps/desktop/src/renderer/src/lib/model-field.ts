@@ -53,7 +53,7 @@ import { needsProviderSetup } from './provider-models'
  *    produced, so *"still asking"* is the renderer holding no answer yet, and it is the state a
  *    person spends the first second of every launcher in.
  */
-export type ModelFieldState = 'listed' | 'empty' | 'asking' | 'no-profile' | 'closing' | 'refused'
+type ModelFieldState = 'listed' | 'empty' | 'asking' | 'no-profile' | 'closing' | 'refused'
 
 /** How loudly to draw {@link ModelField.message}. */
 type ModelFieldTone = 'note' | 'warn'

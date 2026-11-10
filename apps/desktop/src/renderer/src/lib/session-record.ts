@@ -342,7 +342,7 @@ export function whereItWorks(record: {
  * stayed silent in two. ⚠️ `SessionDrawer` holds a `CreatedSession`, which carries `cwd` and no
  * record — so it needs an entry point, not a fourth copy.
  */
-export function theFolderOf(cwd: string | null | undefined): string | null {
+function theFolderOf(cwd: string | null | undefined): string | null {
   return basenameOf(cwd ?? '') || null
 }
 
