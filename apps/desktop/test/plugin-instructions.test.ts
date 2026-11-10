@@ -1,5 +1,5 @@
 import { neutralHostDeps } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -135,21 +135,6 @@ it('lists available-only plugins with purpose, approved guidance/trust and no to
       '\n\n' +
       'Plugins: Fictional Atlas — Available; tools: none; service: none. Read fictional maps and routes.',
   )
-  const evidence = process.env.BROBOT_PLUGIN_PROMPT_EVIDENCE
-  if (evidence) {
-    mkdirSync(evidence, { recursive: true })
-    const before = thisConversationSpans(context(null))
-    writeFileSync(join(evidence, 'before.md'), before.text)
-    writeFileSync(join(evidence, 'available.md'), own.text)
-    writeFileSync(
-      join(evidence, 'running.md'),
-      thisConversationSpans(
-        context([
-          { ...AVAILABLE, state: 'Running', tools: 'all agents', service: 'fictional-map-helper' },
-        ]),
-      ).text,
-    )
-  }
   expect(span.whose).toBe('dynamic')
   expect(section.split('\n').filter((line) => line.startsWith('Plugins:'))).toHaveLength(1)
   expect(section.slice(0, section.indexOf('\n\nPlugins:')).split(/\s+/).length).toBeLessThanOrEqual(

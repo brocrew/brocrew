@@ -3,7 +3,6 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
-import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AddressInfo } from 'node:net'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -34,12 +33,6 @@ import {
 import { WorkspacePluginAttachments } from '../src/main/plugins/attachments'
 
 const close: Array<() => Promise<unknown>> = []
-const record = (value: Record<string, unknown>) => {
-  const receipt = process.env.BROCREW_PLUGIN_DIAGNOSTIC_RECEIPT
-  if (receipt)
-    appendFileSync(receipt, JSON.stringify({ at: new Date().toISOString(), ...value }) + '\n')
-  console.log(JSON.stringify(value))
-}
 afterEach(async () => {
   const errors: unknown[] = []
   for (const fn of close.splice(0).reverse()) {
@@ -61,11 +54,10 @@ const c=JSON.parse(process.argv[2]);
 (async()=>{
 
  const state=GlobalPluginState.open({root:c.root+'/state',workspaceRoots:[c.workspace]});
- let loads=0,loadMs=0;const originalLoad=state.disk.load.bind(state.disk);state.disk.load=(...args)=>{const began=performance.now();try{return originalLoad(...args)}finally{loads++;loadMs+=performance.now()-began}};
  const controller=sharedLifecycleWorkspaces(await PluginLifecycleController.open({root:c.root,state,target:c.target,catalogue:{bytes:Buffer.from(c.bytes,'hex')},names:{chrome:'Chrome',whatsapp:'WhatsApp'},deny(){},runtime:{previousOwnerClean:async()=>true,removeCode:async()=>{},removeData:async()=>{},start:async spec=>{let end;const exited=new Promise(resolve=>end=resolve);return {runId:randomUUID(),exited,ready:async()=>({serverPid:404941,origin:c.origin,mcp:()=>({url:c.origin+'/'+spec.package.manifest.id+'/mcp',headers:{Authorization:'Bearer '+c.token}}),admin:()=>({url:c.origin+'/'+spec.package.manifest.id+'/admin',headers:{Authorization:'Bearer '+c.token}})}),stop:async()=>end()}}}}));
  const owner=await PluginSupervisor.start({root:c.root,workspaceRoots:[c.workspace]});
  const agents=createLifecycleAgentBridge({owner,controller,binding:(view,diagnostic)=>requirePluginAdapter(view.installation.pluginId).broker(view,async()=>{},diagnostic)});
- owner.bindAgentBridge({...agents,agentRoutes:async(lease,request)=>{const began=performance.now(),beforeLoads=loads,beforeMs=loadMs;try{return await agents.agentRoutes(lease,request)}finally{process.send({profile:true,release:request.release,routeMs:performance.now()-began,loads:loads-beforeLoads,loadMs:loadMs-beforeMs})}}});
+ owner.bindAgentBridge(agents);
  const person=await servePersonPluginControl({root:c.root,key:'a'.repeat(64),controller,read:async()=>({})});
  process.on('message',async message=>{if(message==='stop'){await controller.drain();await agents.close();await person.close({endConsumers:true});await owner.shutdown();await owner.closed;state.close();process.send({stopped:true});process.disconnect();}});
  process.send({ready:true});
@@ -75,9 +67,7 @@ const c=JSON.parse(process.argv[2]);
 function receive(child: ChildProcess): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => finish(new Error('Scratch supervisor did not answer')), 15_000)
-    const message = (answer: Record<string, unknown>) => {
-      if (!answer.profile) finish(undefined, answer)
-    }
+    const message = (answer: Record<string, unknown>) => finish(undefined, answer)
     const exit = () => finish(new Error('Scratch supervisor exited before answering'))
     function finish(error?: Error, answer?: Record<string, unknown>) {
       clearTimeout(timeout)
@@ -98,18 +88,6 @@ it.each([
 ] as const)(
   '$provider fixture handoff receives routes through the real wrapper and supervisor process restart with $history historical projections',
   async ({ history, provider }) => {
-    async function observed<T>(stage: string, work: Promise<T>): Promise<T> {
-      const began = performance.now()
-      try {
-        const answer = await work
-        record({ history, stage, elapsedMs: performance.now() - began })
-        return answer
-      } catch (cause) {
-        throw new Error(`${history}: ${stage} after ${Math.round(performance.now() - began)}ms`, {
-          cause,
-        })
-      }
-    }
     const token = randomBytes(32).toString('hex')
     const http = createServer((req, res) => {
       if (req.headers.authorization !== `Bearer ${token}`) return res.writeHead(401).end()
@@ -221,9 +199,6 @@ it.each([
         stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
         env: { ...process.env, NODE_OPTIONS: '' },
       })
-      child.on('message', (value: Record<string, unknown>) => {
-        if (value.profile) record({ history, generation, provider, ...value })
-      })
       close.push(async () => {
         if (child.exitCode === null && child.signalCode === null) {
           const exit = once(child, 'exit')
@@ -235,7 +210,7 @@ it.each([
       const attachment = new PluginSupervisorAttachment()
       attachment.start({ root: f.root, workspaceRoot: f.workspace, build: 'fictional' })
       close.push(() => attachment.quit())
-      expect(await observed(`${generation}:lease-ready`, attachment.ready())).toBe(true)
+      expect(await attachment.ready()).toBe(true)
       expect(attachment.supports('agent-routes-format-2')).toBe(true)
       const workspaceId = pluginWorkspaceIdentity(f.workspace)
       const settings = await connectPluginSettings({
@@ -262,48 +237,11 @@ it.each([
         }
       }
       close.push(closeSettings)
-      expect(
-        await observed(`${generation}:settings-owner-check-and-list`, settings.catalogue()),
-      ).toEqual(
+      expect(await settings.catalogue()).toEqual(
         expect.arrayContaining([expect.objectContaining({ id: 'chrome', state: 'Running' })]),
       )
       const baseSource = new WorkspacePluginAttachments(
-        {
-          agentRoutes: async (input) => {
-            const began = performance.now()
-            try {
-              const reply = await attachment.agentRoutes(input)
-              const value = reply.value as {
-                servers?: Array<{ name: string }>
-                pending?: string[]
-                none?: string[]
-                unknown?: boolean
-              }
-              record({
-                history,
-                generation,
-                stage: 'ipc-reply',
-                elapsedMs: performance.now() - began,
-                format: reply.format,
-                names: value.servers?.map((one) => one.name),
-                pending: value.pending,
-                none: value.none,
-                unknown: value.unknown,
-              })
-              return reply
-            } catch (error) {
-              record({
-                history,
-                generation,
-                stage: 'ipc-rejected',
-                elapsedMs: performance.now() - began,
-                name: (error as Error).name,
-                code: (error as { code?: string }).code,
-              })
-              throw error
-            }
-          },
-        },
+        { agentRoutes: (input) => attachment.agentRoutes(input) },
         workspaceId,
       ).agent(['brobot'])
       const parsedReads: Array<{ value: ManagedPluginAttachment; elapsedMs: number }> = []
@@ -311,16 +249,7 @@ it.each([
         async read() {
           const began = performance.now()
           const value = await baseSource.read()
-          const elapsedMs = performance.now() - began
-          parsedReads.push({ value, elapsedMs })
-          record({
-            history,
-            generation,
-            provider,
-            stage: 'parsed-read',
-            elapsedMs,
-            first: parsedReads.length === 1,
-          })
+          parsedReads.push({ value, elapsedMs: performance.now() - began })
           return value
         },
         close: () => baseSource.close(),
@@ -351,14 +280,11 @@ it.each([
         return prepare(await resume(ref, options))
       })
       const wrapped = withManagedPluginAttachments(raw, source)
-      const session = await observed(
-        `${generation}:wrapper-start`,
-        wrapped.start({
-          cwd: f.workspace,
-          providerHome: join(f.parent, provider),
-          model: 'fictional',
-        }),
-      )
+      const session = await wrapped.start({
+        cwd: f.workspace,
+        providerHome: join(f.parent, provider),
+        model: 'fictional',
+      })
       const wrapperEvents: RuntimeEvent[] = []
       const eventPump = (async () => {
         for await (const event of session.events()) wrapperEvents.push(event)
@@ -372,13 +298,6 @@ it.each([
         }
       }
       close.push(closeSession)
-      record({
-        history,
-        generation,
-        provider,
-        stage: 'fixture-start-offer',
-        names: offered.map((server) => server.name),
-      })
       expect(parsedReads[0]).toBeDefined()
       expect(parsedReads[0]!.elapsedMs).toBeLessThan(PLUGIN_ATTACHMENT_WAIT_MS)
       if (history === 0 || offered.length > 0) expect(offered.length).toBeGreaterThan(0)
@@ -392,14 +311,7 @@ it.each([
         expect(first.value.plugins!.none).toEqual([])
         expect(first.value.plugins!.unknown || first.value.plugins!.pending.length > 0).toBe(true)
       }
-      await observed(`${generation}:wrapper-first-send`, session.send('Fictional provider turn'))
-      record({
-        history,
-        generation,
-        provider,
-        stage: 'fixture-first-send-offer',
-        names: offered.map((server) => server.name),
-      })
+      await session.send('Fictional provider turn')
       expect(offered.some((server) => server.name === 'plugin-chrome')).toBe(true)
       const mcp = new Client({ name: 'fixture-client', version: '1' })
       close.push(() => mcp.close())
@@ -414,7 +326,7 @@ it.each([
         content: [{ type: 'text', text: '[]' }],
       })
       await mcp.close()
-      await observed(`${generation}:wrapper-close`, closeSession())
+      await closeSession()
       expect(
         wrapperEvents.filter(
           (event) =>
