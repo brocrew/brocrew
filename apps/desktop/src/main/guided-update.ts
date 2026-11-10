@@ -225,7 +225,7 @@ async function copyBeside(from: string, to: string): Promise<string> {
       // COPYFILE_EXCL means this name was created by this copy, so a partial copy is ours to remove.
       await rm(name, { force: true })
       console.warn(`updates: saving ${name} failed: ${String(error)}`)
-      throw new Error(`the download could not be saved to ${dirname(to)}`)
+      throw new Error(`the download could not be saved to ${dirname(to)}`, { cause: error })
     }
   }
   throw new Error(`the download could not be saved to ${dirname(to)}`)

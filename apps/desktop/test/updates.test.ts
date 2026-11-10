@@ -841,7 +841,9 @@ describe('§4 · the Mac’s guided download, against a local server', () => {
       url: 'http://127.0.0.1:9/f',
     })
     expect(readFeed('provider: s3\n')).toBeNull()
-    expect(readFeed("provider: github\nowner: 'brocrew'\nrepo: \"feed\"\nprivate: 'true'\n")).toEqual({
+    expect(
+      readFeed("provider: github\nowner: 'brocrew'\nrepo: \"feed\"\nprivate: 'true'\n"),
+    ).toEqual({
       provider: 'github',
       owner: 'brocrew',
       repo: 'feed',

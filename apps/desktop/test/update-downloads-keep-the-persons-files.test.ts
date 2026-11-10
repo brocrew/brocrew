@@ -53,7 +53,7 @@ describe('an update download keeps the person’s files', () => {
   })
 
   it('asks without cookies and with its own user agent', async () => {
-    const fetch = vi.fn(async (_url: string, _init: RequestInit) => response())
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => response())
     await download({ fetch })
     expect(fetch.mock.calls[0]![1]).toMatchObject({
       credentials: 'omit',
