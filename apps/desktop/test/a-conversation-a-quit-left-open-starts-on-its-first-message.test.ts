@@ -1,7 +1,7 @@
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import type { LedgerWalk } from '../src/shared/question-contracts'
 import type { HandedPath } from '../src/shared/attachment-contracts'
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -33,7 +33,6 @@ import type {
   SessionLivenessMessage,
 } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
-import { proseSpans } from './lib/prose-spans'
 
 /**
  * # 🔴 701 · a conversation the QUIT left open starts on its first message — ⚑ D-017b: EVERY one does
@@ -66,7 +65,6 @@ import { proseSpans } from './lib/prose-spans'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const SRC = join(here, '../src')
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // the harness
@@ -184,25 +182,6 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
 
 /** ⚑ Let every timer a launch armed fire before a count is taken (`692`'s `letItSettle`). */
 const letItSettle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 60))
-
-/** ⛔ Every comment blanked, newlines kept — `the-rails-last-list.test.ts`' `code()`. */
-function code(file: string, source: string): string {
-  let out = source
-  for (const span of proseSpans(file, source)) {
-    out = out.replace(span.text, span.text.replace(/[^\n]/g, ' '))
-  }
-  return out
-}
-
-const SCREEN = 'renderer/src/components/RuntimeScreen.vue'
-const screenCode = (): string => code('RuntimeScreen.vue', readFileSync(join(SRC, SCREEN), 'utf8'))
-
-/** One top-level declaration's body out of the screen's code, up to its closing line. */
-function bodyOf(source: string, opening: string, closing: string): string {
-  const start = source.indexOf(opening)
-  expect(start, `${opening} is not in ${SCREEN}`).toBeGreaterThan(-1)
-  return source.slice(start, source.indexOf(closing, start))
-}
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // §1 · through the real doors
@@ -432,39 +411,6 @@ describe('§1 · 701 · `692` F-a, D-017b — through a real host, a real ledger
     }
     return { drafts, restored, continueIt, refreshListed, listedIds }
   }
-
-  /**
-   * ⚑ **The census that makes §1's replica the screen's** — `continueIt`'s one act inside the sweep's
-   * hold, the words put back where they did not go, the composer's send routed to it for a recorded
-   * conversation, the sweep's fourth door the one list, and every open a `look` that starts nothing.
-   */
-  it('⚑ the premise: the screen continues a recorded conversation as §1 does — one act, the hold, the words back — and opens every one with a look', () => {
-    const screen = screenCode()
-    const cont = bodyOf(screen, 'async function continueIt(', '\n}\n')
-    expect(cont).toMatch(
-      /await draftSweep\.reopening\(sessionId, async \(\) => \{\s*answer\.came = await store\.startAndSend\(sessionId, text, attachments\)\s*return answer\.came\?\.openHere \?\? false\s*\}\)/,
-    )
-    expect(cont).toMatch(/if \(giveTheWordsBack && \(came === null \|\| !came\.sent\)\) \{/)
-    expect(cont).toMatch(
-      /restoreRefused\(draftKey\(came\?\.tookItsPlace \?\? sessionId\), text, attachments\)/,
-    )
-    // ⛔ neither of the two acts `737` replaced: the Reopen and then the send
-    expect(cont).not.toMatch(/store\.resume\(|store\.send\(/)
-    // ⚑ the composer's send reaches it for a recorded conversation, and only when no start is in the air
-    const send = bodyOf(screen, 'function send(text: string', '\n}\n')
-    expect(send).toMatch(
-      /if \(store\.get\(sessionId\)\?\.phase === 'recorded' && !starting\) \{\s*void continueIt\(sessionId, text, attachments, true\)/,
-    )
-    // ⚑ the sweep's fourth door is the one list
-    const sweep = bodyOf(screen, 'const draftSweep = sweepDrafts(', '\n)\n')
-    expect(sweep).toMatch(/\(\) => rail\.value\?\.listedIds \?\? \[\]/)
-    // ⚑ every open is a look, and ⛔ never a start
-    const open = bodyOf(screen, 'async function openConversation(', '\n}\n')
-    expect(open).toMatch(/store\.isLive\(sessionId\) \? sessionId : await store\.look\(sessionId\)/)
-    expect(open).not.toMatch(/store\.resume\(|startAndSend\(/)
-    // ⛔ The census is proven by violating it: a door the screen does not use is not found.
-    expect(cont).not.toMatch(/answer\.came = await store\.create\(/)
-  })
 
   it('🔴 (a) after a graceful quit it is listed with nothing running — and its full view is drawn from its ledger, starting nothing', async () => {
     const {

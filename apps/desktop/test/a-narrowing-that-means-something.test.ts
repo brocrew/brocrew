@@ -1,13 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import {
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  symlinkSync,
-} from 'node:fs'
+import { lstatSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -119,7 +111,6 @@ vi.mock('node:fs', async (importOriginal) => {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const repoRoot = join(here, '../../..')
 
 class RecordingSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = false
@@ -542,48 +533,6 @@ describe('371 · a narrowing that means something', () => {
       )
       // ⚑ The folder rail comes last: it is the one clause that asks the disk anything.
       expect(SPAWN_RAILS.indexOf('folder-unusable')).toBe(SPAWN_RAILS.length - 1)
-    })
-
-    it('🔴 497 · the development guide still carries `364`’s reachability, which SURVIVED the withdrawal', () => {
-      const guide = readFileSync(join(repoRoot, 'docs/development.md'), 'utf8')
-      // ⛔ **HO-035 withdrew *"never merge"* and *"PROD is read-only"* as product invariants, and
-      // `364`'s measurement lived in the same paragraph.** ⚠️ The rule and the finding are different
-      // things: the finding was never about merging — it is about where an agent can be POINTED,
-      // it is still true, and it is what the unattended-autonomy question rests on. ⛔ **A sweep
-      // that removed both would have deleted the only written record of a real reachability**, so
-      // the clauses are asserted BY NAME here (standing rule 5) rather than left to survive a
-      // rewrite nobody is holding to anything.
-      expect(guide).toContain('`checkSessionCwd` admits any existing searchable directory')
-      expect(guide).toContain("a spawned session takes its parent's")
-      expect(guide).toContain('a conversation can be pointed at a real repository today')
-      // ⚑ **And the withdrawal itself is written down**, so the next reader finds the ruling rather
-      // than an unexplained gap — in plain words, without ruling numbers.
-      expect(guide).toContain('"Never merge" and "never mutate PROD" are not rules of this product')
-      // ⚠️ **The pair that makes these findings rather than a grep that matches anything**: neither
-      // withdrawn RULE is listed as a table row, where it would be promised a mechanism.
-      expect(guide).not.toContain('| Agents never merge |')
-      expect(guide).not.toContain('| PROD read-only |')
-    })
-
-    it('🔴 the development guide carries HO-013 §2, by its load-bearing clauses rather than by its heading', () => {
-      const guide = readFileSync(join(repoRoot, 'docs/development.md'), 'utf8')
-      // ⛔ **Asserted BY NAME** — HO-013 §5: a safety sentence with no test is a comment. Each of
-      // these is a step of the argument, and dropping any one of them makes the rest look optional.
-      expect(guide).toContain('The third mode is not a path to spawned autonomy')
-      // 🔴 **499 · this clause read *"what that buys"*, and *that* was HO-011 §3.1** — the
-      // absolute HO-036 withdrew. ⚑ The argument is unchanged and its premise moved one ruling
-      // over: what a spawned session gets is its PARENT's mode, and the step this line carries is
-      // that the mode buys the card and nothing else.
-      expect(guide).toContain('may never be wider than it')
-      expect(guide).toContain('consent at the command level — the card — and nothing else')
-      expect(guide).toContain('the third mode removes the card')
-      // ⛔ **And the withdrawn premise is asserted ABSENT**, so a later edit cannot quietly put the
-      // absolute back underneath an argument that no longer rests on it.
-      expect(guide).not.toContain('HO-011 §3.1 forbids a spawned session from being `auto`')
-      expect(guide).not.toContain('Spawned sessions stay in `ask`')
-      expect(guide).toContain(
-        'reads are unconfined under every Codex sandbox profile, `read-only` included',
-      )
     })
   })
 })

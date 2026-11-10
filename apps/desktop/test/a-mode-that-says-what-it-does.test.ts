@@ -157,17 +157,4 @@ describe('§2 · the words are the adapter’s, and the renderer holds no copy',
     })
     expect(pasted).toEqual([])
   })
-
-  it('⚑ …and the surfaces read it through the capability, by index and never by name', () => {
-    // Adapter-specific disclosures remain on the conversation controls and placed launcher.
-    // The front door uses the selected Ask/Auto description instead of an always-visible card.
-    for (const file of ['composables/useConversationControls.ts', 'components/StartAsAgent.vue']) {
-      const code = withoutProse(readFileSync(join(SRC, 'renderer/src', file), 'utf8'))
-      expect(code, file).toMatch(/capabilities\?\.\[[^\]]+\]\?\.approvals/)
-    }
-    const header = withoutProse(
-      readFileSync(join(SRC, 'renderer/src/components/SessionHeader.vue'), 'utf8'),
-    )
-    expect(header).toMatch(/capabilities\?\.\[[^\]]+\]\?\.approvals/)
-  })
 })

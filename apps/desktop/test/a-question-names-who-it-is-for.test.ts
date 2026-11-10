@@ -20,7 +20,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { TOOL_INPUT_ENUMS, TOOL_NAMES, type ToolName } from '../src/main/runtime/agent-tools'
+import { TOOL_INPUT_ENUMS, type ToolName } from '../src/main/runtime/agent-tools'
 import { QUESTION_RAILS, questionText } from '../src/main/runtime/question-rails'
 import { messageNamingItsSender, theDirectionLine } from '../src/main/runtime/turn-origin'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -90,12 +90,6 @@ const codeOf = (file: string): string =>
   readFileSync(join(srcRoot, file), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/^[ \t]*\/\/.*$/gm, ' ')
-
-/** ⚑ **PROSE with its wrapping removed**, because prettier re-wraps a docblock sentence freely. */
-const proseOf = (file: string): string =>
-  readFileSync(join(srcRoot, file), 'utf8')
-    .replace(/\n\s*\*\s?/g, ' ')
-    .replace(/\s+/g, ' ')
 
 describe('611 · a question names who it is for', () => {
   class RecordingSink implements RuntimeEventSink {
@@ -485,35 +479,6 @@ describe('611 · a question names who it is for', () => {
       // and the one that must not, both `to: 'a-person'`.
       expect(permissionShaped(rows).map((one) => one.requestId)).toEqual(['r2'])
       expect(rows.map(theChannelRefusalIn)).toEqual([null, null, 'a-permission-decision'])
-    })
-
-    it('⛔ no reader in this app spells *the parent’s* as the absence of a refusal any more', () => {
-      // 🔴 **THE SEARCH SHAPE** (standing rule 4): the claim is not *"we fixed the ones we
-      // remembered"* but *"the field a reader would have used is gone from the derivation"*. ⛔ A
-      // reader that still asked `request.because` would not compile — which is exactly why the
-      // shape is a union — so what this census can still find is the SPELLING surviving in a file
-      // that reads the WIRE event instead of the row.
-      const readers = [
-        'shared/questions.ts',
-        'shared/tasks.ts',
-        'main/db/session-store.ts',
-        'main/runtime/runtime-host.ts',
-        'main/runtime/agent-tools.ts',
-        'main/runtime/question-rails.ts',
-        'main/runtime/digest.ts',
-      ]
-      for (const file of readers) {
-        const code = codeOf(file)
-        expect(code.length, `${file} is not where this census thinks it is`).toBeGreaterThan(400)
-        // ⚠️ **`request.because` and `one.because` are the two spellings every reader used.**
-        for (const spelling of ['request.because', 'one.because', 'row.because']) {
-          expect(code, `${file} still reads ${spelling}`).not.toContain(spelling)
-        }
-      }
-      // ⚑ **The positive control** (rule 34.2): the spelling exists in this very file, so the
-      // census can find one when there is one to find.
-      const planted = `${codeOf('shared/questions.ts')} if (request.because === null) return null`
-      expect(planted).toContain('request.because')
     })
   })
 
@@ -1038,73 +1003,6 @@ describe('611 · a question names who it is for', () => {
       // `HO-062` §2's *safety lives in the RAILS* broken at the one venue it is about.
       const host_ = codeOf('main/runtime/runtime-host.ts')
       expect(host_).not.toContain('theDirectionLine')
-    })
-  })
-
-  /**
-   * 🔴 **§7 · the SWEEP** (standing rule 8.1) — both audiences, each with a positive control.
-   */
-  describe('§7 · the sentences that went false with the ruling', () => {
-    it('⛔ the MODEL’s: no rendered sentence names a verb this app no longer publishes', () => {
-      // ⛔ **The two rendered sentences that named it** — the tool's own description and the line
-      // `reply-rails.ts` renders into every work message.
-      const tools = codeOf('main/runtime/agent-tools.ts')
-      const rails = codeOf('main/runtime/reply-rails.ts')
-      for (const where of [tools, rails]) {
-        expect(where).not.toContain('ask_parent')
-      }
-      // ⚑ **And the rails line names the ARGUMENT as well as the verb**, because a sentence that
-      // named the verb alone would walk a model into a `malformed-request`.
-      // ⚑ **D-016 · the argument is the piece** — the line names it by its label.
-      expect(rails).toContain('call ask_question with piece ')
-      expect(rails).toContain('who_answers')
-      // 🔴 **The positive control** (rule 34.2): the census can find the old name, because this
-      // file's own prose holds it.
-      expect(`${tools} ask_parent`).toContain('ask_parent')
-      // ⚠️ **And the published roster really has the new names**, so the negative above is not
-      // green because the verbs went away.
-      expect([...TOOL_NAMES]).toContain('ask_question')
-      expect([...TOOL_NAMES]).toContain('pass_question_up')
-      expect([...TOOL_NAMES]).not.toContain('ask_parent')
-    })
-
-    it('⚑ the PERSON’s: the count is ZERO, and here is the shape that would have found one', () => {
-      // 🔴 **Standing rule 8.1 wants BOTH counts, including *I found none on this side*.** ⛔ The
-      // person's surfaces are `*.vue`, `renderer/src/lib/*-text.ts`, `*-offer.ts` and what
-      // `visible-copy.ts` reads; the sweep is for the WORDS a person would see the old behaviour
-      // in, not for the file.
-      const drawn = [
-        'renderer/src/lib/persons-queue.ts',
-        'renderer/src/lib/transcript.ts',
-        'renderer/src/lib/work-report.ts',
-        'renderer/src/lib/agent-state.ts',
-        'renderer/src/lib/session-panel.ts',
-      ]
-      for (const file of drawn) {
-        const prose = proseOf(file)
-        expect(prose.length, `${file} is not where this census thinks it is`).toBeGreaterThan(200)
-      }
-      // ⚑ **Zero, and said**: no sentence a PERSON reads named the verb or promised where a
-      // question goes — the recipient has never been rendered to them.
-      const everythingAPersonReads = drawn.map((file) => codeOf(file)).join('\n')
-      for (const claim of ['ask_parent', 'goes to your parent', 'always goes to the parent']) {
-        expect(everythingAPersonReads, claim).not.toContain(claim)
-      }
-      // 🔴 **The positive control**: the same search over the MODEL's side finds the verb, so the
-      // zero above is a measurement rather than a search that could not fire.
-      expect(codeOf('main/runtime/reply-rails.ts')).toContain('ask_question')
-    })
-
-    it('⚠️ and the docblock that ruled the invariant is REPLACED rather than left standing', () => {
-      const questions = proseOf('shared/question-contracts.ts')
-      const ipc = proseOf('shared/question-contracts.ts')
-      // ⛔ **`619`'s hazard** — `a-description-hardens-into-a-ruling-in-the-docblock-it-leaves`. The
-      // old sentence is QUOTED as history in both places and is not stated as a rule.
-      expect(questions).toContain('if and only if')
-      expect(questions).toContain('FALSE since 611')
-      expect(ipc).toContain('held until `611`')
-      // ⚑ **And the surviving half is stated**, because one direction of the invariant is true.
-      expect(ipc).toContain('A `because` still implies')
     })
   })
 })

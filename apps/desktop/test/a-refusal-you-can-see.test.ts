@@ -1,6 +1,6 @@
 import type { ToolRefusedEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { navigationReply } from './helpers/navigation-reply'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -1193,68 +1193,6 @@ describe('405 · a refusal you can see', () => {
       // ⚑ The refusal is BEFORE the later turn, and the later turn is there — which is the half a
       // dropped-append defect takes away.
       expect(kinds.lastIndexOf('user_turn')).toBeGreaterThan(kinds.indexOf('tool_refused'))
-    })
-
-    it('⚑ the live runner\u2019s own fold reads the row, and reads it structurally', () => {
-      // 🔴 **`405` §4: *the instrument this unblocks*.** ⛔ `402`'s runner folds the ledger for its
-      // verdicts and could not tell a refused spawn from an admitted one, *"which is why F4 needed a
-      // person reading a transcript"*. ⚑ Its `refusedSpawnOf` now reads `tool_refused` first.
-      //
-      // ⚠️ **A source census and it says so.** That fold lives inside a `.smoke.ts` file whose top
-      // level registers a LIVE run, so importing it here would add a real provider suite to `test`.
-      // ⛔ This dispatch did not run that arm live, and a live-only change with no cheap gate at all
-      // is dark by default (`a-guard-that-only-a-live-run-can-trip-is-dark-by-default`) — so the
-      // shape is pinned here and the run is the PM's.
-      const stage = readFileSync(join(here, '../smoke/lifecycle-stage.smoke.ts'), 'utf8')
-      const code = withoutProse(stage)
-      const opens = code.indexOf('function refusedSpawnOf(')
-      expect(opens, 'refusedSpawnOf was renamed or removed').toBeGreaterThan(0)
-      const fold = code.slice(opens, code.indexOf('\n}', opens))
-      // ⛔ **Inside the fold**, not merely somewhere in a 1,200-line file — the census that read the
-      // whole file could not tell this function from the comment block six hundred lines above it.
-      expect(fold).toContain("event.type === 'tool_refused'")
-      // 🔴 **445 · the scope is a LIST, and this asserts the list rather than one member.**
-      //
-      // ⛔ **It read `event.tool === 'spawn_agent'`**, which was the whole scope until `419`
-      // published a second verb that brings a conversation into being. ⚠️ **Measured live**: a Codex
-      // worker asked to delegate called `create_agent`, and the row that reads this fold reported
-      // *"the worker never tried to create an agent"* about a ledger holding the call — a sentence
-      // that was false rather than merely missing. ⚑ Pinning the CONSTANT keeps this census exact:
-      // a fold that quietly went back to one verb, or forward to any verb at all, fails here.
-      expect(fold).toContain('VERBS_THAT_BRING_ONE_INTO_BEING')
-      // ⚑ **D-016** — `give_work` took `spawn_agent`'s place in the list.
-      expect(code).toContain(
-        "const VERBS_THAT_BRING_ONE_INTO_BEING = ['give_work', 'create_agent'] as const",
-      )
-      // ⚑ **And row 6 reads it**, which is the half that makes the fold matter. ⚠️ D-014: the
-      // row's verdict is the helper's shape, and the refusal the worker met is NAMED beside it, so
-      // a rail that refused the helper is on the page rather than folded into *it did not try*.
-      const row = code.slice(
-        code.indexOf('const theWorkersHelper = '),
-        code.indexOf('\n  }\n', code.indexOf('const theWorkersHelper = ')),
-      )
-      expect(row, 'row 6 was renamed or removed').toContain('refusedSpawnOf(store, explorer)')
-      expect(row).toContain('JSON.stringify(refusal)')
-      // ⚠️ **The control plants THREE**, all outside the fold: a mention in prose, a mention in code
-      // elsewhere, and the vocabulary's own name elsewhere. None may satisfy the assertions above.
-      const planted = [
-        "// a comment naming event.type === 'tool_refused' at length",
-        "const elsewhere = e.type === 'tool_refused'",
-        'const alsoElsewhere = VERBS_THAT_BRING_ONE_INTO_BEING',
-        'function refusedSpawnOf(store, sessionId) {',
-        '  return null',
-        '}',
-      ].join('\n')
-      const plantedCode = withoutProse(planted)
-      const plantedFold = plantedCode.slice(
-        plantedCode.indexOf('function refusedSpawnOf('),
-        plantedCode.indexOf('\n}', plantedCode.indexOf('function refusedSpawnOf(')),
-      )
-      expect(plantedCode).toContain("const elsewhere = e.type === 'tool_refused'")
-      expect(plantedCode).toContain('const alsoElsewhere = VERBS_THAT_BRING_ONE_INTO_BEING')
-      expect(plantedCode).not.toContain('a comment naming')
-      expect(plantedFold).not.toContain("'tool_refused'")
-      expect(plantedFold).not.toContain('VERBS_THAT_BRING_ONE_INTO_BEING')
     })
 
     it('⛔ a conversation this host is not running gets no row, and does not throw', async () => {

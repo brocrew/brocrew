@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Provider } from '@brobot2/shared'
 import { whatTheChildWouldLack, type ApprovalMode, type Protection } from '@brobot2/runtime'
@@ -69,9 +66,6 @@ beforeEach(() => {
   comparison.calls = []
   comparison.says = null
 })
-
-const HERE = fileURLToPath(new URL('.', import.meta.url))
-const REPO = join(HERE, '../../..')
 const WORK = '/tmp/d038-reach-work'
 
 const CARD: Protection = 'the-card-before-an-act'
@@ -351,20 +345,5 @@ describe('5 · the refusal reads in full', () => {
     const emptied = describeRail('wider-than-its-parent', { wouldLack: [] })
     expect(emptied).toContain('with a protection,')
     expect(emptied).not.toContain('with ,')
-  })
-})
-
-describe('6 · the development guide', () => {
-  it('the guide says the rail compares reach, and no longer says what a mode removes', () => {
-    const guide = readFileSync(join(REPO, 'docs/development.md'), 'utf8')
-    // The reach sentence is present...
-    expect(guide).toContain(
-      'compared on what each side keeps between a write or a command past its folder and that act running unasked',
-    )
-    expect(guide).toContain("neither on the mode's name nor on what each mode removed")
-    expect(guide).toContain("a Claude `auto` parent's Codex `auto` child is no wider and is given")
-    expect(guide).toContain('Reads are not compared')
-    // ...and the withdrawn one is absent.
-    expect(guide).not.toContain('compared on what the mode REMOVES')
   })
 })

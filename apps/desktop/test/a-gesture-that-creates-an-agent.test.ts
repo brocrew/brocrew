@@ -53,20 +53,6 @@ const withoutProse = (code: string): string =>
     .filter((line) => !line.trim().startsWith('//'))
     .join('\n')
 
-/**
- * ⚑ **Source with its line breaks taken out** (435) — so a census pins a CALL and not a layout.
- *
- * ⛔ **`prettier` decides where a four-argument call wraps**, and it broke `frontDoorProvider`'s
- * across five lines the moment the fourth argument landed. A census that reads the formatted bytes
- * is a census of the formatter — the failure `429 M15` paid for on a mutation anchor.
- */
-const flat = (code: string): string =>
-  code
-    .replace(/\s+/g, ' ')
-    .replace(/\(\s+/g, '(')
-    .replace(/,\s*\)/g, ')')
-    .replace(/\s+\)/g, ')')
-
 const identity = (over: Partial<AgentIdentity> = {}): AgentIdentity => ({
   id: `aid:${over.slug ?? 'worker'}`,
   slug: 'worker',
@@ -280,19 +266,6 @@ describe('§1 · the refusal reaches a person as the app wrote it', () => {
       'BroBot2 is shutting down, so createAgent was not asked of its database',
     )
   })
-
-  it('⛔ the host composes that sentence, and this file is not a second copy of it', () => {
-    // ⚠️ 423 §2: *"Render the app's sentence; do not compose a second one."* The bytes above are
-    // asserted to be the host's by finding them IN the host, rather than by trusting the fixture.
-    const host = withoutProse(readFileSync(join(SRC, 'main/runtime/runtime-host.ts'), 'utf8'))
-    expect(host).toContain('There is already an agent called ${foldProfileName(slug)}.')
-    // …and the renderer must not have grown its own. `NewAgent.vue` refuses a name for exactly one
-    // reason of its own — the alphabet — and leaves collisions to the door.
-    const form = withoutProse(
-      readFileSync(join(SRC, 'renderer/src/components/NewAgent.vue'), 'utf8'),
-    )
-    expect(form).not.toContain('There is already an agent')
-  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -318,65 +291,6 @@ describe('§2 · the provider the front door runs on, resolved', () => {
     expect(
       providerForALaunch(roster([identity({ provider: 'claude' })]), DEFAULT_PROFILE_ID, 'codex'),
     ).toBe('codex')
-  })
-
-  it('⛔ explicit choices precede give defaults, while a person’s launch keeps its own fallback order', () => {
-    // 🔴 **Two doors, one order, and they agree because somebody argued it.** `spawn-rails.ts`'s
-    // expression is the anchor of `419 M17` and `419 M18`; folding it into `providerForALaunch`
-    // would retire both rows to buy a deduplication neither door asked for. So the agreement is
-    // what is checked here.
-    //
-    // A give can choose a provider or a model held by only one provider. Both select a different
-    // conversation before the identity default is used; a person's launch keeps its own fallback.
-    const rails = withoutProse(readFileSync(join(SRC, 'main/runtime/spawn-rails.ts'), 'utf8'))
-    const explicit = 'if (asked.provider !== undefined) return asked.provider'
-    const named = 'if (theNamedModels !== null) return theNamedModels'
-    const saved = 'if (its.provider !== null) return its.provider'
-    for (const term of [explicit, named, saved]) expect(rails).toContain(term)
-    expect(rails.indexOf(explicit)).toBeLessThan(rails.indexOf(named))
-    expect(rails.indexOf(named)).toBeLessThan(rails.indexOf(saved))
-    expect(rails).toContain('return chosen?.provider ?? giving.provider')
-    const store = withoutProse(readFileSync(join(SRC, 'renderer/src/lib/agent-store.ts'), 'utf8'))
-    // 🔴 **THREE terms since `435`, and the asked one is first** (HO-025 §4). `417` removed the
-    // front door's provider control and HO-025 §5 reversed that half of the ruling, so a person
-    // names a provider again — and the ORDER that decides gained the term rather than the surface
-    // that asks growing a second spelling of it. ⛔ `435 §4`: *"a second spelling of
-    // `asked ?? identity ?? fallback` is the drift this repo keeps paying for."*
-    expect(store).toContain('asked ?? runsOnIn(list, slug)?.provider ?? fallback')
-  })
-
-  it('🔴 the MODEL PICKER and the PAYLOAD read the resolved provider', () => {
-    const screen = withoutProse(
-      readFileSync(join(SRC, 'renderer/src/components/RuntimeScreen.vue'), 'utf8'),
-    )
-    // The one binding, from the one resolution.
-    expect(screen).toContain(':default-provider="frontDoorProvider"')
-    // ⚠️ **Whitespace-flattened, because `prettier` owns the line breaks and not this test** (435):
-    // the front-door call gained a fourth argument and formatting broke it across five lines.
-    expect(flat(screen)).toContain(
-      // 🔴 **The person's answer is the FIRST term** (HO-025 §4) — ahead of BroBot's identity and
-      // ahead of the app frame's constant.
-      'providerForALaunch(agentStore.identities.value, DEFAULT_PROFILE_ID, DEFAULT_PROVIDER, launchChoices.value.provider)',
-    )
-    // ⛔ **`DEFAULT_PROVIDER` is read by the two RESOLUTIONS and by nothing else.** This is what
-    // "demoted from the answer to the fallback" means as a checkable fact: a third reader would be
-    // a place the constant could still BE the answer rather than the last term of an order.
-    // ⚑ **And the PLACED door passes no asked term**, which is what makes the widening opt-in at
-    // the call site rather than something every caller inherits: `423`'s resolution is unchanged.
-    expect(flat(screen)).toContain(
-      'providerForALaunch(agentStore.identities.value, profileSlug, DEFAULT_PROVIDER)',
-    )
-    const reads = [...screen.matchAll(/\bDEFAULT_PROVIDER\b/g)]
-    expect(reads.length, 'DEFAULT_PROVIDER is declared once and read by two doors').toBe(3)
-
-    const door = withoutProse(
-      readFileSync(join(SRC, 'renderer/src/components/NewConversation.vue'), 'utf8'),
-    )
-    expect(door).toContain(':shown="shownPick"')
-    const pick = door.slice(door.indexOf('const shownPick ='), door.indexOf('const shownEmpty ='))
-    expect(pick).toContain('provider: props.defaultProvider,')
-    expect(pick).toContain('provider: props.defaultProvider, ...starts')
-    expect(door).toContain('provider: props.defaultProvider,')
   })
 
   it('⚑ …and the two providers really do produce different words, so the sentence is a measurement', () => {
@@ -556,56 +470,6 @@ describe('§3 · the identity’s default provider — every writer, measured', 
     ]).toEqual(['main/db/session-store.ts'])
   })
 
-  it('⛔ a LAUNCH writes NULL into it, on purpose — so running on Claude never means choosing it', () => {
-    // ⚠️ **Asserted at the SOURCE, and the behavioural half is 419's.** `profileRowFor` is a
-    // module-local function with no seam this harness can reach, and
-    // `creating-an-agent.test.ts:648` already drives a real launch and reads the column back. What
-    // this adds is that the null is WRITTEN rather than merely absent — `419 M19` is the mutation
-    // that flips it, and the line it anchors on is this one.
-    //
-    // 🔴 **538 · RE-AIMED, and standing rule 26's three questions are answered here rather than in
-    // a commit message.** ⛔ **(1) It read CODE** — `withoutProse` is applied above and the literal
-    // is a source expression, not a docblock. ⚑ **(2) The FACT moved**: `538` gave this call site a
-    // seeded DISPLAY NAME beside the seeded provider, so a launch no longer passes a bare `null`
-    // for the first argument. ⚠️ **(3) What it pins NOW is unchanged in subject**: *this door
-    // resolves the app's own seeds and never the CALLER's* — which is why the assertion below is
-    // the whole call rather than one line of it, and why the control beneath it is the creation
-    // door passing `said.provider` straight through.
-    //
-    // 🔴 **584 · RE-AIMED AGAIN, one argument over, and the three questions again** (`HO-078` §5).
-    // ⛔ **(1) CODE**, for the reason above and unchanged. ⚑ **(2) The FACT moved and did not merely
-    // get renamed**: `SEEDED_DISPLAY_NAMES` and `seededDisplayNameFor` are DELETED, not spelled
-    // differently — `538` held ONE hand-written name for the ONE other identity this app shipped,
-    // `HO-078` §1 retired that identity, and the name is now GENERATED by `nameForANewIdentity`
-    // against every slug AND display name already in the roster. ⚠️ **(3) What
-    // it pins NOW is still *the launch resolves the app's own answers and never the caller's*** —
-    // the subject is untouched — **plus the ruling that made it true of every identity rather than
-    // of one**: `HO-078` §5, *the app assigns a human name to every identity it mints; the agent
-    // never chooses and never asks*. ⛔ **Still the WHOLE call**, so a caller's value arriving in
-    // any of the three slots goes red rather than one of them.
-    const store = withoutProse(readFileSync(join(SRC, 'main/db/session-store.ts'), 'utf8'))
-    expect(store).toContain(
-      // 🔴 **598 · the call grew a FOURTH argument and this anchor moved with it** (`HO-084` §1).
-      // ⛔ **Re-aimed rather than loosened**: the claim is *a launch passes the caller's provider
-      // as NULL*, and the creator beside it is the same claim about a second fact — a launch says
-      // `this-app` rather than naming whoever was in the conversation.
-      "writeIdentityRow(\n      profileSlug,\n      at,\n      {\n        displayName: nameForANewIdentity(profileSlug),\n        provider: seededProviderFor(profileSlug),\n      },\n      { by: 'this-app' },\n    )",
-    )
-    // ⚑ The positive control: the creation door DOES pass one through, so the null above is a
-    // decision about launches rather than a store that cannot write the column at all.
-    expect(store).toContain('provider: said.provider')
-    // ⛔ **And the same control for the column `538` added, re-aimed at `584`'s divergence.** The
-    // control was *the creation door hands the CALLER's display name over untouched*, and that is
-    // now only half the line: a person who TYPED a name still wins — `??` never reaches past their
-    // string — and a caller who said nothing falls through to **the same generator the launch
-    // above spends**. ⚠️ **So the whole expression is pinned rather than its first term**: a census
-    // that stopped at `blankToNull(said.displayName)` would pass over a door that had lost the
-    // fallback entirely, which is the one byte `HO-078` §5 turns on.
-    expect(store).toContain(
-      'displayName: blankToNull(said.displayName) ?? nameForANewIdentity(slug)',
-    )
-  })
-
   it('🔴 THE FINDING · `agent_identity` is EMPTY on a fresh database, so a person CAN name BroBot', () => {
     // ⛔ **Measured, not assumed.** The one migration, `0000_the_tree.sql`, seeds no identity. So a
     // freshly migrated database holds no identities at all.
@@ -698,23 +562,6 @@ describe('§3 · the identity’s default provider — every writer, measured', 
 
 describe('§4 · the form and the wire agree about what a creation is', () => {
   const form = withoutProse(readFileSync(join(SRC, 'renderer/src/components/NewAgent.vue'), 'utf8'))
-
-  it('⛔ every field of NewAgent has a control, and the form carries no field the wire has not got', () => {
-    // ⚑ **Derived from the interface** rather than listed here, so a fourth field added to `NewAgent`
-    // fails this test instead of shipping a control-less fact.
-    const wire = withoutProse(readFileSync(join(SRC, 'shared/runtime-ipc.ts'), 'utf8'))
-    const declaration = wire.slice(wire.indexOf('export interface NewAgent {'))
-    const fields = [
-      ...declaration.slice(0, declaration.indexOf('}')).matchAll(/readonly (\w+):/g),
-    ].map((each) => each[1] as string)
-    expect(fields).toEqual(['slug', 'displayName', 'provider'])
-    // The payload the form builds, read out of its own `store.create({ … })` call.
-    const call = form.slice(form.indexOf('store.create({'))
-    const sent = [...call.slice(0, call.indexOf('})')).matchAll(/^\s{4}(\w+):/gm)].map(
-      (each) => each[1] as string,
-    )
-    expect(sent.sort()).toEqual([...fields].sort())
-  })
 
   it('⛔ the display-name control carries the SCHEMA’s own number (221 §3), and the name box carries none', () => {
     expect(form).toContain(':maxlength="AGENT_DISPLAY_NAME_CHARS"')

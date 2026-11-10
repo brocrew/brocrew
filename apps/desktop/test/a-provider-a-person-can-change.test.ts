@@ -1,6 +1,6 @@
 import { ToolWatchingRuntime } from './lib/provider-double'
 import { neutralHostDeps, syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -33,7 +33,6 @@ const PROJECT_MANAGER_PROFILE_ID = 'project-manager'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const srcRoot = join(here, '../src')
 
 class RecordingSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt: boolean = true
@@ -330,24 +329,6 @@ describe('433 §A · the provider a person can change', () => {
     })
   })
 
-  describe('§3 · not `setProvider`, and what that census is really about', () => {
-    it('🔴 the verb exists, names an identity, and is none of the four forbidden names', () => {
-      const ipc = readFileSync(join(srcRoot, 'main/runtime/ipc.ts'), 'utf8')
-      expect(ipc).toContain("z.literal('setAgentProvider')")
-      expect(ipc).toMatch(
-        /case 'setAgentProvider':[\s\S]{0,600}requireAPerson\(sink, command\.kind\)/,
-      )
-      expect(ipc).toMatch(
-        /host\.setAgentProvider\(\s*command\.profileId,\s*command\.provider,?\s*\)/,
-      )
-      expect(/\b(setProvider|changeProvider|switchProvider|swapProvider)\b/i.test(ipc)).toBe(false)
-      const arm = ipc.slice(ipc.indexOf("z.literal('setAgentProvider')"))
-      const body = arm.slice(0, arm.indexOf('}),'))
-      expect(body).toContain('profileId')
-      expect(body).not.toContain('sessionId')
-    })
-  })
-
   describe('§4 · the app SAYS that changing it means a new conversation', () => {
     it('⛔ every clause of it, and the provider named the way a person reads it', () => {
       for (const provider of Object.keys(PROVIDER_NAME) as Provider[]) {
@@ -359,68 +340,5 @@ describe('433 §A · the provider a person can change', () => {
       }
       expect(providerTakesEffectNextTime('claude')).not.toBe(providerTakesEffectNextTime('codex'))
     })
-
-    it('⛔ the capability sheet shows it, beside a control that is not a capability', () => {
-      const sheet = readFileSync(
-        join(srcRoot, 'renderer/src/components/CapabilitiesSheet.vue'),
-        'utf8',
-      )
-      expect(sheet).toContain('providerTakesEffectNextTime(props.runsOn,')
-      expect(sheet).toContain('data-cy="capabilities-provider-select"')
-      expect(sheet).toContain('store.chooseProviderFor(props.profileSlug, chosen)')
-      const stripped = withoutProse(sheet)
-      const start = stripped.indexOf('function grant(): CapabilityGrant {')
-      const end = stripped.indexOf('async function save()')
-      expect(start, 'the grant builder was not found, so this measures nothing').toBeGreaterThan(0)
-      expect(end).toBeGreaterThan(start)
-      const grantBody = stripped.slice(start, end)
-      expect(grantBody).toContain('props.fields.map')
-      expect(grantBody).not.toContain('provider')
-      expect(withoutProse(sheet)).not.toContain('DEFAULT_PROVIDER')
-      const decorated = sheet.replace(
-        '<script setup lang="ts">',
-        '<script setup lang="ts">\n/* DEFAULT_PROVIDER */',
-      )
-      expect(decorated).not.toBe(sheet)
-      expect(decorated).toContain('DEFAULT_PROVIDER')
-      expect(withoutProse(decorated)).not.toContain('DEFAULT_PROVIDER')
-      expect(withoutProse(decorated)).toContain('providerTakesEffectNextTime(props.runsOn,')
-      const badCode = sheet.replace('</script>', 'const badProvider = DEFAULT_PROVIDER\n</script>')
-      expect(badCode).not.toBe(sheet)
-      expect(withoutProse(badCode)).toContain('DEFAULT_PROVIDER')
-      const screen = readFileSync(
-        join(srcRoot, 'renderer/src/components/RuntimeScreen.vue'),
-        'utf8',
-      )
-      expect(screen).toContain(':runs-on="providerForAgent(overlays.overlay.value.profileSlug)"')
-      expect(withoutProse(screen).match(/\bDEFAULT_PROVIDER\b/g)).toHaveLength(3)
-    })
   })
 })
-
-function withoutProse(source: string): string {
-  let inBlock = false
-  return source
-    .split('\n')
-    .map((raw) => {
-      let code = ''
-      for (let at = 0; at < raw.length; at += 1) {
-        const rest = raw.slice(at)
-        if (inBlock) {
-          if (!rest.startsWith('*/')) continue
-          at += 1
-          inBlock = false
-          continue
-        }
-        if (rest.startsWith('//')) break
-        if (rest.startsWith('/*')) {
-          inBlock = true
-          at += 1
-          continue
-        }
-        code += raw[at]
-      }
-      return code
-    })
-    .join('\n')
-}

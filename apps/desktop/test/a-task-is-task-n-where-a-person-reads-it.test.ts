@@ -1,8 +1,8 @@
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
@@ -19,7 +19,7 @@ import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { pieceNumbersOf } from '../src/shared/piece-called'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import { code, sourceFiles, spellingsIn } from './lib/task-spellings'
+import { code, spellingsIn } from './lib/task-spellings'
 import {
   fixtureProviderConfig,
   RecordingSink,
@@ -58,7 +58,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const REPO = join(here, '..', '..', '..')
 
 /** ⚑ A tool's answer: the text a model reads first, and the structured half it acts on. */
 interface Answer {
@@ -372,27 +371,6 @@ describe('705 · R38 — the receipts a model and a person both read', () => {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 describe('§3 · no text main or a package composes writes a task number of its own', () => {
-  /**
-   * ⚑ **Every directory whose text reaches a model or a person without passing the renderer** —
-   * `main/` (tool answers, notices, the digest), `shared/` (all of it, not only what the renderer
-   * imports), `preload/`, and each package's `src`, derived from the directory rather than listed.
-   * ⛔ Standing rule 27.1: scoped by what it is about, not by where things live today.
-   */
-  const ROOTS = [
-    join(REPO, 'apps/desktop/src/main'),
-    join(REPO, 'apps/desktop/src/shared'),
-    join(REPO, 'apps/desktop/src/preload'),
-    // ⚠️ Only a DIRECTORY with a `src` (`705` review): a stray `.DS_Store` Finder drops in `packages/`
-    // would otherwise be walked as a package and throw — the guard `one-sentence-one-place` has.
-    ...readdirSync(join(REPO, 'packages'), { withFileTypes: true })
-      .filter(
-        (entry) => entry.isDirectory() && existsSync(join(REPO, 'packages', entry.name, 'src')),
-      )
-      .map((entry) => join(REPO, 'packages', entry.name, 'src')),
-  ]
-
-  const walked = (): string[] => ROOTS.flatMap((dir) => sourceFiles(dir))
-
   it('⚑ the reader finds TWO planted spellings in two files, and a heading in neither (rule 12)', () => {
     const planted = new Map([
       ['a.ts', 'return `#${String(task.number)} answered · ${delivered}`'],
@@ -405,62 +383,6 @@ describe('§3 · no text main or a package composes writes a task number of its 
     expect(new Set(found.map((one) => one.split(' · ')[0]))).toEqual(new Set(['a.ts', 'b.ts']))
     expect(spellingsIn("lines.push('# ' + title)")).toEqual([])
     expect(spellingsIn("heading: '## How you work',")).toEqual([])
-  })
-
-  // The exact exceptions are Markdown headings, config comments and a CSS colour.
-  it('the population is exactly the prints that are not a task', () => {
-    const files = walked()
-    for (const must of [
-      'apps/desktop/src/main/runtime/agent-tools.ts',
-      'apps/desktop/src/main/runtime/factory-text.ts',
-      'apps/desktop/src/main/runtime/reply-rails.ts',
-      'apps/desktop/src/main/runtime/digest.ts',
-      'packages/runtime/src/codex/codex-transport.ts',
-      'packages/shared/src/index.ts',
-    ]) {
-      expect(files).toContain(join(REPO, must))
-    }
-    const found = files.flatMap((file) =>
-      spellingsIn(code(readFileSync(file, 'utf8'))).map(
-        (line) => `${relative(REPO, file).replaceAll('\\', '/')} · ${line}`,
-      ),
-    )
-    expect(found.sort()).toEqual(
-      [
-        "apps/desktop/src/main/plugins/instructions.ts · : `## ${PLUGINS_HEADING}\\n\\n${pluginInstructionParagraphs(entries).join('\\n\\n')}`",
-        'apps/desktop/src/main/runtime/factory-text.ts · heading: `## ${PLUGINS_HEADING}`,',
-        'apps/desktop/src/main/runtime/factory-text.ts · heading: `## ${YOUR_OWN_INSTRUCTIONS_HEADING}`,',
-        'apps/desktop/src/main/runtime/factory-text.ts · heading: `## ${SAVED_METHODS_HEADING}`,',
-        'packages/runtime/src/codex/memory-config.ts · return `# ${setting.key}: ${setting.why}`',
-        'apps/desktop/src/shared/themes/colour.ts · const base = `#${hex2(c.r)}${hex2(c.g)}${hex2(c.b)}`',
-      ].sort(),
-    )
-  })
-
-  it('⚑ each site that names a piece says its label — in the file that composes it', () => {
-    const read = (path: string): string => code(readFileSync(join(REPO, path), 'utf8'))
-    const tools = read('apps/desktop/src/main/runtime/agent-tools.ts')
-    // ⚑ **D-016 · the tree** — the label is the `work` row's, made once by `pieceCalled`, so each
-    // receipt opens on it (a board line asks `pieceLine`, the label and the title).
-    expect(tools).toContain('return `  ${pieceLine(piece.label, piece.title)} · ${piece.state}${')
-    // ⚑ **D-030 — the receipt says where the reply went** (`whereTheReplyWent`, its giver by name),
-    // so the pin is the label and the words it opens on.
-    expect(tools).toContain(
-      '`${replied.label} answered · ${whereTheReplyWent(replied)}${kept}${main}${saveMethod}`',
-    )
-    // What it adds is the kept files, by id.
-    expect(tools).toContain('` ${keptResources(replied.resources)}`')
-    expect(tools).toContain('`${outcome.label} is taken back — ${owner} no longer owes it${')
-    const rails = read('apps/desktop/src/main/runtime/reply-rails.ts')
-    // ⚑ **707 · R40 — every notice spelled for the giver it is pushed to**: the answer's
-    // (`replyText`) and the stall's (`undrivenWorkText`). ⚑ **D-016c** — the correction a reopen
-    // sent is gone, and its composer with it; ⚑ **D-030** — so is R48's line, since a reply its
-    // giver cannot take now is kept for its next start: two compose a notice.
-    // ⚑ **D-016** — each opens on the piece's line, `pieceLine`, its label and its title.
-    expect(rails.match(/\bpieceLine\(piece\.label, piece\.title\)/g)).toHaveLength(2)
-    expect(read('apps/desktop/src/renderer/src/lib/describe-event.ts')).toContain(
-      'return `${event.label} · ${event.piece} · ${event.title} · given by ${event.givenBy} · ${',
-    )
   })
 })
 

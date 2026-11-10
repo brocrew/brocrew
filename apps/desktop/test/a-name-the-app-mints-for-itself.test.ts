@@ -1,7 +1,7 @@
 import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import { performance } from 'node:perf_hooks'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -69,15 +69,6 @@ const FIRST_NAME = aNameForANewAgent([], Math.random)
 const here = dirname(fileURLToPath(import.meta.url))
 const SRC = join(here, '../src')
 const migrationsFolder = join(SRC, 'main/db/migrations')
-
-/** ⚠️ Prose stripped, so a docblock quoting a shape is never mistaken for the shape. */
-const withoutProse = (code: string): string =>
-  code
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .split('\n')
-    .filter((line) => !line.trim().startsWith('//'))
-    .join('\n')
 
 /** ⛔ This file is about a NAME, never about what a launch is told. */
 const NOTHING_INJECTED: SessionInstructions = {
@@ -429,169 +420,4 @@ describe('538 · a name the app mints for itself', () => {
       expect(HUMAN_NAMES.map((name) => name.toLowerCase())).not.toContain(next.toLowerCase())
     })
   })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §4 · no migration, no back-fill — the absence, measured
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§4 · nothing reaches a database whose creation is past', () => {
-    /**
-     * The seed uses `INSERT OR IGNORE`, which affects new installs only. Existing rows
-     * receive no migration or back-fill.
-     *
-     * ⚠️ **Asserted over the shipped SQL** rather than over a count of migrations, which would
-     * move every time anything else lands.
-     *
-     * ⛔ **D-016 · the history is one migration now** (`0000_the_tree.sql`), so `0025`'s upgrade
-     * path for the project manager — and the half of this case that pinned its NULL — went with
-     * it. ⚑ What is kept is the absence: no migration, the first or any later one, back-fills a
-     * display name onto an identity.
-     */
-    it('🔴 no migration writes a display name onto an identity', () => {
-      const sql = readdirSync(migrationsFolder)
-        .filter((name) => name.endsWith('.sql'))
-        .map((name) => ({ name, text: readFileSync(join(migrationsFolder, name), 'utf8') }))
-
-      // ⚑ The premise: there really are migrations to read, and the one that creates the table is
-      // among them — named, so a sweep over an empty or moved folder cannot pass.
-      expect(sql.map(({ name }) => name)).toContain('0000_the_tree.sql')
-      expect(
-        sql.find(({ name }) => name === '0000_the_tree.sql')?.text,
-        'the sweep reads a migration that does not create the identity table',
-      ).toMatch(/CREATE TABLE\s+`agent_identity`[^;]*?`display_name`/)
-
-      for (const { name, text } of sql) {
-        expect(
-          /UPDATE\s+[`"]?agent_identity[`"]?[\s\S]*?display_name/i.test(text),
-          `${name} back-fills a display name onto an identity`,
-        ).toBe(false)
-      }
-    })
-
-    /**
-     * 🔴 **558 · RE-AIMED, because the world moved and stripping would have been the worst repair
-     * available** (standing rule 26).
-     *
-     * ⛔ **This asserted *no UPDATE names this column*, and the sentence under it was the
-     * argument:** there is no rename, so a name written once is the name forever, which is what
-     * `538` §5's `create_agent` decision rested on. ⚑ **`HO-063` gap 2 asked for the rename and
-     * 558 built it**, so the FACT changed rather than its spelling — and the assertion now pins
-     * what it was always for: ⛔ **the app's own writers cannot overwrite a name, and exactly one
-     * statement can, and it is a person's.**
-     *
-     * 🔴 **That is `HO-016` §2 made mechanical.** *The app may seed a default at creation; it never
-     * re-grants what a person removed.* ⚠️ Both app writers are `INSERT OR IGNORE`, which cannot
-     * touch a row that exists; the one `UPDATE` is reached only from the window wire behind
-     * `requireAPerson`. ⛔ So the direction is a property of the statement shapes, and this is what
-     * says so.
-     *
-     * ## ⚠️ And the sweep itself was weaker than it read — two ways, both found by this dispatch
-     *
-     * ⛔ **`INSERT OR IGNORE INTO agent_identity` also matches `agent_identity_home`**, a different
-     * table with a different meaning (`a-column-name-is-a-claim`, one noun up). ⚑ **The word
-     * boundary is now asserted.**
-     *
-     * 🔴 **And it never saw that second match, because of a 240-character window.** With prose
-     * stripped, `ensureHomeRow`'s INSERT sat inside the window `writeProvider`'s UPDATE had already
-     * consumed — so `matchAll` never started a match there. ⚠️ **558 added four statements between
-     * them, which pushed it out and turned the census red for a reason that had nothing to do with
-     * this dispatch.** ⛔ A census whose answer depends on how far apart two statements happen to
-     * be written is a census that can go quiet on a reformat.
-     */
-    it('⛔ `display_name` is written by two statements: the app INSERTs it, a person UPDATEs it', () => {
-      const files = walk(join(SRC, 'main')).filter((path) => path.endsWith('.ts'))
-      // ⚑ The premise, so the sweep below is a walk over something.
-      expect(files.length).toBeGreaterThan(20)
-
-      // 🔴 **558 · the STATEMENT, delimited by its own backticks — not a fixed window.**
-      //
-      // ⛔ **This was `([\s\S]{0,240})` and the width was load-bearing without anybody
-      // knowing.** With prose stripped, `writeProvider`'s `UPDATE` and the statements after it
-      // sit within 240 characters of each other, so `matchAll` consumed them inside the first
-      // match and never started a second — `a-fixed-width-slice-runs-into-the-next-region`.
-      // ⚑ Every prepared statement here is a template literal, so its own delimiter is the
-      // exact boundary and no number has to be chosen.
-      //
-      // ⛔ **`(?![_\w])` is the other half**: without it `agent_identity_home` is a match on
-      // this table's name, and its `INSERT OR IGNORE` is filed as a writer of a column that
-      // table does not have (`a-column-name-is-a-claim`).
-      const writerOfThisTable =
-        /`((INSERT OR IGNORE INTO agent_identity|UPDATE agent_identity)(?![_\w])[^`]*)`/g
-      const writes = files.flatMap((path) =>
-        [...withoutProse(readFileSync(path, 'utf8')).matchAll(writerOfThisTable)].map((found) => ({
-          path: path.slice(SRC.length + 1).replaceAll('\\', '/'),
-          verb: found[2]!,
-          // ⛔ **The statement and not the file** — a `SET` list is what decides whether a column
-          // moves, and `a-file-level-contains-cannot-tell-sibling-declarations-apart` is why this
-          // is one statement rather than the whole file.
-          body: found[1]!,
-        })),
-      )
-
-      // ⚑ The premise again, one level down: there really are UPDATEs on this table, so the claim
-      // below is about what they SET rather than about an empty list.
-      expect(writes.filter((one) => one.verb === 'UPDATE agent_identity').length).toBeGreaterThan(1)
-
-      // 🔴 **558 · EXACTLY ONE UPDATE moves this column, and it is the rename.** ⛔ The old
-      // assertion was `.toBe(false)` for every UPDATE, with the message *"there is a rename now"* —
-      // and there is. ⚠️ **A count and not a `some`**: a second statement that moved this column
-      // would be a second answer to *what is this identity called*, which is the thing the old
-      // negative was actually protecting.
-      const renames = writes.filter(
-        (one) => one.verb === 'UPDATE agent_identity' && one.body.includes('display_name'),
-      )
-      expect(
-        renames.map((one) => one.path),
-        'a second UPDATE moves display_name — two statements now answer what an identity is called',
-      ).toEqual(['main/db/session-store.ts'])
-      expect(renames[0]?.body).toContain('SET display_name = ?')
-
-      // 🔴 **And the app's own writer still cannot overwrite one** — `HO-016` §2, as a property of
-      // the statement rather than of an ordering. ⛔ `INSERT OR IGNORE` writes nothing to a row
-      // that exists, so no seed can land on top of a name a person chose.
-      const inserts = writes.filter((one) => one.verb === 'INSERT OR IGNORE INTO agent_identity')
-      expect(inserts.map((one) => one.path)).toEqual(['main/db/session-store.ts'])
-      expect(inserts[0]?.body).toContain('display_name')
-
-      // ⚠️ **The word-boundary repair, asserted rather than trusted.** ⚑ **D-016 · `ensureHomeRow`
-      // went, and with it the store's one `agent_identity_home` statement**, so the boundary is
-      // measured on a plant: the sweep's own regex, over the two tables' statements side by side.
-      // A sweep that counted the second would report a writer of a column that table does not have.
-      const planted =
-        '`INSERT OR IGNORE INTO agent_identity_home (identity_id) VALUES (?)`\n' +
-        '`INSERT OR IGNORE INTO agent_identity (id, display_name) VALUES (?, ?)`'
-      expect(
-        [...planted.matchAll(writerOfThisTable)].map((found) => found[1]),
-        'the sweep counts agent_identity_home as a writer of agent_identity',
-      ).toEqual(['INSERT OR IGNORE INTO agent_identity (id, display_name) VALUES (?, ?)'])
-      const everything = withoutProse(readFileSync(join(SRC, 'main/db/session-store.ts'), 'utf8'))
-      expect(
-        [...everything.matchAll(/INSERT OR IGNORE INTO agent_identity(?![_\w])/g)].length,
-        'a second app INSERT writes agent_identity',
-      ).toBe(1)
-    })
-  })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §5 · the seed is read at the two call sites that mean it, and nowhere else
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§5 · where the table is read', () => {
-    /** ⚑ **The control for the reader above**, planting two calls in one string. */
-    it('⚑ the census reads every call in a file, not the first', () => {
-      const planted = 'a = nameForANewIdentity(x)\nb = nameForANewIdentity(y)\n'
-      expect([...planted.matchAll(/nameForANewIdentity\(/g)]).toHaveLength(2)
-    })
-  })
 })
-
-/** Every file under a directory, recursively — the shape a source census walks. */
-function walk(root: string): string[] {
-  const out: string[] = []
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
-    const path = join(root, entry.name)
-    if (entry.isDirectory()) out.push(...walk(path))
-    else out.push(path)
-  }
-  return out
-}

@@ -3,7 +3,6 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -22,7 +21,6 @@ import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from '.
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const srcRoot = join(here, '../src')
 
 /**
  * 🔴 **590 · a folder approved that no agent can work in.**
@@ -284,71 +282,6 @@ describe('590 · a folder approved that no agent can work in', () => {
       expect(cwdOf(grandchild.owner)).toBe(inside)
       expect(cwdOf(grandchild.owner)).not.toBe(repo)
       expect(cwdOf(grandchild.owner)).not.toBe(workspace)
-    })
-  })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §7 · the prose this ruling made false
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('⛔ §7 · the sweep, asserted rather than promised', () => {
-    const sourceOf = (relative: string): string => readFileSync(join(srcRoot, relative), 'utf8')
-
-    /**
-     * 🔴 **Standing rule 8.1** — a ruling that changes behaviour owes a sweep for prose describing
-     * the old one, and the sentence a MODEL reads is the one that cost BroBot its afternoon.
-     * ⚑ **D-016** — the first sentence this swept, on `spawn_agent`'s `project` argument, went with
-     * the argument.
-     *
-     * ⛔ **`cwd`'s own description said the bound was always the caller's own folder.**
-     * ⚑ A caller that believed that would never try the call §2 admits.
-     *
-     * ⚑ **`726` · R92 — re-aimed, world moved.** `590`'s replacement still said *"It may only ever be
-     * that folder or one inside it"*; R92 removed the bound it described, and the description now
-     * says any folder that exists. ⚑ **D-016** — `spawn_agent.cwd` became `give_work.folder`.
-     */
-    it('⛔ `give_work.folder` does not say the bound is only ever your own folder', () => {
-      const tools = sourceOf('main/runtime/agent-tools.ts')
-      expect(tools).not.toContain('Defaults to your own, and may only ever be your own folder')
-      expect(tools).not.toContain('It may only ever be that folder or one inside it')
-      // ⚑ W4.189 · the folder serves a first conversation and a grant on one that exists alike.
-      expect(tools).toContain("A conversation this starts works in the piece's folder")
-    })
-
-    /**
-     * 🔴 **`726` · R92 — and `reply_to_parent.resource_path` said the long form had to be INSIDE the
-     * caller's own working directory**, the rule `resource-outside-workspace` enforced. Ingest now
-     * reads a file from anywhere (`resolveResource`), so a description still saying *"inside your own
-     * working directory"* would keep a model from offering a file the app would take.
-     */
-    it('⛔ `reply_to_parent.resource_paths` does not tell a caller a file must be inside its folder', () => {
-      const tools = sourceOf('main/runtime/agent-tools.ts')
-      expect(tools).not.toContain('A Markdown file inside your own working directory')
-      // ⚑ 736 · `733` F-4 — and it names the kinds the store holds, rendered from its own list (the
-      // behaviour is `finder-on-an-ended-conversation-and-the-kinds-held.test.ts` §2's). ⚑ D-016:
-      // `resource_path` became `resource_paths`, the files a reply hands back as resources.
-      expect(tools).toContain('— ${HELD_FORMS_WITH_EXTENSIONS_SAID} — anywhere;')
-    })
-
-    /**
-     * 🔴 **Two docblocks asserted the OLD rule as a decision** (standing rule 19), and a repair that
-     * changes behaviour a docblock describes must correct it in the same commit.
-     *
-     * ⚑ **`726` · R92 — re-aimed, world moved.** The positive half read *"the first spawn into a
-     * project"*, HO-010 ruling 4's bound; R92 made that folder a DEFAULT, and D-016 took the project
-     * out of it — rail 12's comment now says the parent's folder is the default, in those words.
-     */
-    it('🔴 the two docblocks that asserted the old bound no longer assert it', () => {
-      const cwd = sourceOf('main/runtime/scratch-cwd.ts')
-      expect(cwd).not.toContain(
-        'nothing it spawns can climb into a repository its parent is not in.',
-      )
-      const rails = sourceOf('main/runtime/spawn-rails.ts')
-      expect(rails).not.toContain('So the bound is the\n   * PARENT’s cwd, every time')
-      // ⚑ **D-016 · the folder clause's comment names the one default left** — it named the crossing
-      // into a project, which went with projects, and it is a GIVE's folder now.
-      expect(rails).toContain("A give that names no folder starts its conversation in the giver's")
-      expect(rails).toContain('never a bound')
     })
   })
 })

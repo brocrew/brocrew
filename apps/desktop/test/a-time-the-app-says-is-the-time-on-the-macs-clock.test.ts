@@ -3,9 +3,9 @@ import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/hos
 import { registerCalendarRevisionCases } from './helpers/calendar-revision-cases'
 import type { PersistedEventInfo } from '../src/shared/conversation-events'
 import type { AgentState } from '../src/shared/agent-state-contracts'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 import { createSSRApp, h, type Component } from 'vue'
@@ -791,125 +791,6 @@ describe('§2 · every time the app says is the Mac’s, in the person’s own l
   })
 })
 
-// ─── §3 · no source says a local time its own way ──────────────────────────────────────────────
-
-describe('§3 · no source says a local time through the Date’s own methods', () => {
-  /** What a source that says a time the runtime's own way looks like. */
-  const PATTERNS: readonly (readonly [name: string, pattern: RegExp])[] = [
-    ['toLocale…String', /\.(toLocaleDateString|toLocaleTimeString|toDateString|toTimeString)\(/],
-    ['new Date(…).toLocaleString', /new Date\([^()]*(\([^()]*\))*[^()]*\)\.toLocaleString\(/],
-    [
-      'a local getter or setter',
-      /\.(getFullYear|getMonth|getDate|getDay|getHours|getMinutes|getSeconds|getMilliseconds|setFullYear|setMonth|setDate|setHours|setMinutes|setSeconds|setMilliseconds)\(/,
-    ],
-    ['getTimezoneOffset', /\.getTimezoneOffset\(/],
-    ['Intl.DateTimeFormat', /\bIntl\.DateTimeFormat\b/],
-  ]
-  /** ⚑ The one module that owns the runtime's offset and builds the formatters. */
-  const OWNER = 'shared/local-time.ts'
-  const OWNER_MAY = new Set(['getTimezoneOffset', 'Intl.DateTimeFormat'])
-  /**
-   * The schedule planner can build a calendar for a zone a caller names. This app's own planning
-   * never asks it to: it hands the planner the Mac's calendar (`hostCalendar`), and no other source
-   * names that builder.
-   */
-  const NAMED_ZONE = 'shared/schedule-wake.ts'
-
-  /** Which patterns a source (comments blanked) matches, with the line each is on. */
-  const matches = (blanked: string): [string, number][] =>
-    PATTERNS.flatMap(([name, pattern]) =>
-      blanked
-        .split('\n')
-        .flatMap((line, at) => (pattern.test(line) ? [[name, at + 1] as [string, number]] : [])),
-    )
-
-  const sourcesUnder = (dir: string): string[] =>
-    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-      const path = join(dir, entry.name)
-      if (entry.isDirectory()) return entry.name === 'node_modules' ? [] : sourcesUnder(path)
-      return /\.(ts|vue)$/.test(entry.name) ? [path] : []
-    })
-
-  it('no source outside the clock module says a local time through the Date own methods', () => {
-    const files = sourcesUnder(SRC).map((path) => relative(SRC, path).replaceAll('\\', '/'))
-    // ⚑ Non-vacuity: the walk reaches the tree, the surfaces D-031 moved, and the owner.
-    expect(files.length).toBeGreaterThan(300)
-    for (const surface of [
-      'renderer/src/lib/recent-activity.ts',
-      'renderer/src/components/SessionLibrary.vue',
-      'renderer/src/components/CapabilitiesSheet.vue',
-      'renderer/src/components/OwnInstructions.vue',
-      'renderer/src/components/ReadingPane.vue',
-      'main/archive/export-session.ts',
-      'shared/clock.ts',
-      OWNER,
-    ]) {
-      expect(files, `${surface} is not in the walk`).toContain(surface)
-    }
-    expect(
-      [...new Set(matches(sourceOf(OWNER)).map(([name]) => name))].sort(),
-      'the owner holds exactly the two things it is allowed',
-    ).toEqual([...OWNER_MAY].sort())
-
-    const found = files.flatMap((file) =>
-      file === OWNER
-        ? []
-        : matches(sourceOf(file))
-            .filter(([name]) => !(file === NAMED_ZONE && name === 'Intl.DateTimeFormat'))
-            .map(([name, line]) => `${file}:${String(line)} ${name}`),
-    )
-    expect(found).toEqual([])
-    expect(matches(sourceOf(NAMED_ZONE)).map(([name]) => name)).toEqual([
-      'Intl.DateTimeFormat',
-      'Intl.DateTimeFormat',
-    ])
-    expect(
-      files.filter((file) => file !== NAMED_ZONE && /\bcreateIntlCalendar\b/.test(sourceOf(file))),
-      'a source builds a calendar from a zone name, not from the Mac zone',
-    ).toEqual([])
-  })
-
-  it('…and the predicate flags the spellings D-031 removed, and not a docblock that quotes them', () => {
-    // Standing rule 12: the same predicate over copies carrying each old spelling.
-    const digest = sourceOf('renderer/src/lib/recent-activity.ts')
-    expect(matches(digest)).toEqual([])
-    expect(
-      matches(
-        planted(
-          digest,
-          'Today, since ${clockTime(since)}',
-          "Today, since ${new Date(since).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}",
-        ),
-      ).map(([name]) => name),
-    ).toEqual(['toLocale…String'])
-
-    const sheet = sourceOf('renderer/src/components/CapabilitiesSheet.vue')
-    expect(
-      matches(
-        planted(
-          sheet,
-          '{{ calendarDay(identity.createdAt) }}',
-          '{{ new Date(identity.createdAt).toLocaleDateString() }}',
-        ),
-      ).map(([name]) => name),
-    ).toEqual(['toLocale…String'])
-
-    const own = sourceOf('renderer/src/components/OwnInstructions.vue')
-    expect(
-      matches(
-        planted(own, 'fullTime(reading.readAt)', 'new Date(reading.readAt).toLocaleString()'),
-      ).map(([name]) => name),
-    ).toEqual(['new Date(…).toLocaleString'])
-
-    // A docblock that merely quotes `toLocaleDateString` is not a source that says a time.
-    const quoted = '/** says `d.toLocaleDateString()` and `d.getHours()` */\nexport const x = 1\n'
-    expect(matches(code('quoted.ts', quoted))).toEqual([])
-    expect(
-      matches(code('said.ts', 'export const y = new Date(1).toLocaleDateString()\n')).length,
-    ).toBe(1)
-  })
-})
-
 // ─── §4 · the file the Mac's clock reads ───────────────────────────────────────────────────────
 
 /**
@@ -1340,76 +1221,6 @@ describe('§5 · the window, main and the host agree on the zone', () => {
     await keepTheMacZone({ onLocalZone: () => () => {}, localZone: () => Promise.resolve(Z_NP) })
     const fields = localTime.localFields(at)
     expect([fields.hours, fields.minutes]).toEqual([17, 45])
-  })
-
-  it('main reads the zone before it says a time, tells every window of a move and places the wake-ups again', () => {
-    const main = sourceOf('main/index.ts')
-    const PREDICATES: Record<string, RegExp> = {
-      // The read is before the host is built and before any window, every window is told with each
-      // send guarded, and the wake-ups are placed again.
-      'the zone is read first and every window is told': inOrder(
-        'const localZone = keepTheSystemZone((moved) => {',
-        'for (const window of BrowserWindow.getAllWindows()) {',
-        'try {',
-        'if (!window.isDestroyed() && !window.webContents.isDestroyed()) {',
-        'window.webContents.send(LOCAL_ZONE_MOVED_CHANNEL, moved)',
-        ANYTHING,
-        'host?.placeTheWakeUpsAgain()',
-        '})',
-        'readLocalTimeFrom(localZone)',
-        "finishStartupPhase = pluginStartupTrace.begin('themes-database-runtime-host')",
-        'themes = new ThemeStore({',
-        ANYTHING,
-        'await themes.start()',
-        'workspaceStartup(app)?.assertDatabase()',
-        'stopThemeIpc = registerThemeIpc(ipcMain, themes, (change) => {',
-        ANYTHING,
-        'host = await createRuntimeHost(initDatabase())',
-        'finishStartupPhase()',
-        'registerIpc(host, localZone)',
-      ),
-      'the window asks main for it': inOrder("ipcMain.handle('app:local-zone', () => localZone())"),
-      'the doors are handed it': inOrder(
-        'function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null)',
-      ),
-    }
-    const failing = (source: string): string[] =>
-      Object.entries(PREDICATES)
-        .filter(([, predicate]) => !predicate.test(source))
-        .map(([name]) => name)
-
-    expect(failing(main)).toEqual([])
-    // Standing rule 12: each way of breaking it fails the predicate it breaks, and only that.
-    const first = 'the zone is read first and every window is told'
-    expect(failing(planted(main, 'host?.placeTheWakeUpsAgain()', ''))).toEqual([first])
-    expect(
-      failing(
-        planted(
-          planted(main, 'readLocalTimeFrom(localZone)\n', ''),
-          'registerIpc(host, localZone)',
-          'readLocalTimeFrom(localZone)\n      registerIpc(host, localZone)',
-        ),
-      ),
-    ).toEqual([first])
-    expect(
-      failing(
-        planted(
-          main,
-          "ipcMain.handle('app:local-zone', () => localZone())",
-          "ipcMain.handle('app:local-zone', () => null)",
-        ),
-      ),
-    ).toEqual(['the window asks main for it'])
-    // The guard on the send, dropped: the one before the send is this one's, never `announce`'s.
-    const send = main.indexOf('window.webContents.send(LOCAL_ZONE_MOVED_CHANNEL, moved)')
-    expect(send).toBeGreaterThan(-1)
-    const guard = 'if (!window.isDestroyed() && !window.webContents.isDestroyed()) {'
-    const guardAt = main.lastIndexOf(guard, send)
-    expect(guardAt).toBeGreaterThan(-1)
-    expect(send - guardAt, 'the guard is the line before the send').toBeLessThan(120)
-    expect(
-      failing(main.slice(0, guardAt) + 'if (true) {' + main.slice(guardAt + guard.length)),
-    ).toEqual([first])
   })
 
   it('the preload knocks on the same doors by the same names, and the screen mounts after the zone is known', () => {

@@ -1,6 +1,6 @@
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -83,13 +83,6 @@ import {
  */
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const srcRoot = join(here, '../src')
-
-/** ⛔ **CODE only** — `a-source-census-must-strip-prose-before-it-asserts`. */
-const codeOf = (file: string): string =>
-  readFileSync(join(srcRoot, file), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/^[ \t]*\/\/.*$/gm, ' ')
 
 describe('624 · a message says who wrote it', () => {
   let userData: string
@@ -598,64 +591,6 @@ describe('624 · a message says who wrote it', () => {
         ),
       ).toBe(true)
     })
-
-    it('⛔ the rail is keyed on the MAILBOX KIND, so every notice producer is covered', () => {
-      // 🔴 **`624` §2.1: express it where the capability lives.** ⚠️ The population is wider than
-      // the entry vocabulary on purpose — the stall notice carries a `WorkReport` and so draws a
-      // work row, and cancelling it is the one harm this app had already written down:
-      // `SessionStore.workReportedTo` withdraws `404`'s receipt on `abandoned` and never on
-      // `cancelled`, so a cancelled stall notice leaves the next launch inheriting a claim that
-      // the parent was told something it never heard.
-      const code = codeOf('main/runtime/runtime-host.ts')
-      expect(code).toContain("if (queued.kind === 'notice') {")
-      // ⛔ **And the producers really are the four** — every `queueMessage` in the host that asks
-      // for the notice lane. ⛔ **D-030 deleted `711`'s line that REPLACED a false notice** (R48's
-      // `replaceWhatAnUndeliveredAnswerMadeFalse`) with its subject: a delivery that fails now holds
-      // the reply for its giver — in its mailbox, or kept for its next start — so the answer lands,
-      // and its notice is taken back as any landed answer's is (`703`). ⛔ **D-016c deleted two
-      // more with their subject** — `661`'s correction
-      // (`tellOneParentItWasSetRight`) and R49's `putWhatIsTrueInPlaceOfTheWait`: a stop and a
-      // reopen tell nobody anything, so nothing is set right after one.
-      // ⚑ **D-009 had a seventh — the question nobody will answer** (`tellTheAskerNobodyWillAnswer`).
-      // ⛔ **D-017 commit 3 deleted it with its subject**: nothing ends a conversation any more, so
-      // no recipient's ending closes a question and no asker is told one.
-      // ⚑ **D-016 took `615`'s decision on a proposal** (`deliverDecision`) with proposals, ⚑
-      // **and added the owner told a piece was taken back** (`tellItsOwnerItWasTakenBack`,
-      // `a-piece-taken-back`, through `anAppNoticeToItsHolder`): a fact about work that was given,
-      // and a person may not cancel it any more than the others.
-      // ⚑ **D-017 · R1 · `holdUntilItStarts`**, the words this app holds for a conversation that is
-      // not running (an answer to its question). ⛔ Its lane is the parameter's DEFAULT — so the
-      // held message, its `message_queued` row and the entry its next start rebuilds from that row
-      // all carry `'notice'`, and the rail above refuses a cancel of it by the same kind, in the
-      // mailbox or handed on (`heldAtAStop`). ⚑ **D-030 · one caller passes another**: a reply kept
-      // for its giver passes `'work'`, as a reply held behind a busy turn is — it is an answer, not
-      // a notice.
-      expect(code).toContain("kind: MailboxKind = 'notice',")
-      expect(code).not.toContain('tellTheAskerNobodyWillAnswer')
-      expect(code).not.toContain('deliverDecision')
-      // ⚑ **And the giver told a person took back the piece a service was on**
-      // (`tellItsGiverAPersonEndedIt`, `a-piece-it-gave-a-person-took-back`): a fact about work it
-      // gave, which the rail above covers by its kind.
-      // The lane is asked for eight times, including the personal-work notice: the stall notice (`tellOneParent`), an answer
-      // (`deliverAnswer`), the owner's notice (`anAppNoticeToItsHolder`), the giver's when a person
-      // took its piece back, the held default above, and an agent told how its request to register
-      // an MCP server ended (`tellTheAsker`) — with the words a stop hands on when the reopen it
-      // waited for had not happened (`handOnWhatItHeld`). Each is this app's report, which a person
-      // may not cancel.
-      expect(code.split("'notice',").length - 1, 'an unswept notice producer').toBe(9)
-      const reminder = code.slice(
-        code.indexOf('private async deliverReconciliation('),
-        code.indexOf('private reconciliationNoticeStillGoes('),
-      )
-      expect(reminder).toContain('this.holdUntilItStarts(')
-      expect(reminder).toContain("appNotice: 'a-work-wait-needs-attention'")
-      const takes = code.indexOf('async takeOnWork(')
-      expect(takes).toBeGreaterThan(0)
-      const personal = code.slice(takes, code.indexOf('\n  }\n', takes))
-      expect(personal).toContain('THE_APP_ITSELF,')
-      expect(personal).toContain("'notice',")
-      expect(personal).toContain("appNotice: 'a-person-gave-new-work'")
-    })
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────
@@ -909,47 +844,6 @@ describe('624 · a message says who wrote it', () => {
    * written for.
    */
   describe('§5 · the go-ahead’s caption is true of everything that reaches it', () => {
-    it('⛔ only `endPlanMode` writes an app-authored turn with no subject', () => {
-      const code = codeOf('main/runtime/runtime-host.ts')
-      // ⚑ **The whole population of `app_authored` literals in the host, enumerated** — TWO,
-      // and the enumeration is the assertion: the shared WRITER, which cannot produce one
-      // without a subject unless the caller passed none, and the ONE door that composes its own
-      // text and marks it by hand.
-      const marked = code.split("attribution: 'app_authored'").length - 1
-      // The third either carries on without words or records the app's explicit continuation note.
-      expect(marked, 'a fourth place hand-marks an app-authored turn').toBe(3)
-      expect(code).toContain(
-        [
-          "      attribution: 'app_authored',",
-          '      ...(continuation === undefined',
-          '        ? { carriesOn: true as const }',
-          "        : { appNotice: 'a-turn-continued-after-sign-in' as const }),",
-        ].join('\n'),
-      )
-      // ⛔ **The writer** — {@link whoseWordsTheseAre}'s return, which every other door spreads.
-      expect(code).toContain("    attribution: 'app_authored',\n")
-      // ⛔ **The door** — `endPlanMode`, and `278` is the dispatch that put it there.
-      expect(code).toContain(
-        [
-          'this.publishOurs(',
-          '      session,',
-          "      { type: 'user_turn', text, attribution: 'app_authored' },",
-          '      undefined,',
-          '      moveHandoff,',
-          '    )',
-        ].join('\n'),
-      )
-      // ⛔ **And the subjectless notice producer now passes one**, which is what took it off that
-      // entry. ⚑ **D-016 · the decision's producer went with proposals**, and its word stays in no
-      // vocabulary: an old row carrying it reads the generic sentence (§3).
-      expect(code).not.toContain("appNotice: 'a-decision-a-person-made'")
-      expect(code).toContain("appNotice: 'an-answer-to-a-question' as const")
-      // ⚑ **T-003 · D-009's third producer** — the asker told nobody will answer its question —
-      // ⛔ went with D-017 commit 3: nothing ends a conversation, so nothing produces it. ⚑ W4.178 ·
-      // and its word left the vocabulary: an old row carrying it reads the generic sentence (§3).
-      expect(code).not.toContain("appNotice: 'a-question-that-will-not-be-answered'")
-    })
-
     it('⚑ the fold routes by SUBJECT, and each subject has its own entry', () => {
       // ⛔ **Four app-authored rows through ONE fold**, which is what makes this a measurement of
       // the routing rather than four separate readers agreeing

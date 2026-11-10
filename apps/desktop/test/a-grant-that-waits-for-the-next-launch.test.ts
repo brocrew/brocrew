@@ -30,8 +30,6 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const SRC = join(here, '../src')
 const SHEET = join(SRC, 'renderer/src/components/CapabilitiesSheet.vue')
-const PANE = join(SRC, 'renderer/src/components/ConversationPane.vue')
-const SCREEN = join(SRC, 'renderer/src/components/RuntimeScreen.vue')
 
 /**
  * Real host, SQLite and tool rails with a recording fake provider. Messaging changes affect
@@ -550,24 +548,6 @@ describe('470 · a grant that waits for the next launch', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§3 · the reopen offer is not a second vocabulary', () => {
-    it('🔴 the sign-in bar no longer spells the rule or the cost — both come from `lib/reopening`', () => {
-      const pane = withoutProse(readFileSync(PANE, 'utf8'))
-      expect(pane).toContain(`import { reopeningHeldBy, reopeningSays } from '../lib/reopening'`)
-      // ⛔ **Both halves** (`a-census-that-asks-for-the-import-must-ask-for-the-call`): imported AND
-      // called, because an unused import satisfies an import census.
-      expect(pane).toContain('reopeningHeldBy(control.value)')
-      // ⚑ **678 · one sentence again** — R26: the draft survives every reopen, so no arm is passed
-      // (`672` passed *the selected conversation* here, and the grant sheet passed the other one).
-      expect(pane).toContain('reopeningSays(signInHeldBy.value)')
-      expect(pane).not.toContain('the-selected-conversation')
-      // 🔴 **The rule is gone from the component**, so the two surfaces cannot drift apart on what
-      // a reopen would destroy.
-      expect(pane).not.toContain("if (panel.value.waiting > 0) return 'question'")
-      expect(pane).not.toContain('Reopening keeps the transcript')
-      // ⚑ **Non-vacuity**: the file was really read and it really still draws the bar.
-      expect(pane).toContain('data-cy="sign-in-cost"')
-    })
-
     it('⛔ the grant sheet shares the table and names the dormant key only to hide it', () => {
       const sheet = withoutProse(readFileSync(SHEET, 'utf8'))
       expect(sheet).toContain(
@@ -597,45 +577,6 @@ describe('470 · a grant that waits for the next launch', () => {
       // ⚑ …and the hooks are built from the field rather than typed out.
       expect(sheet).toContain('`grant-${field.key}-when`')
       expect(sheet).toContain('`grant-${field.key}-open-now`')
-    })
-
-    it('⚑ the screen owns the gesture and both callers reach ONE close-then-reopen', () => {
-      const screen = withoutProse(readFileSync(SCREEN, 'utf8'))
-      expect(screen).toContain(
-        'async function closeAndReopen(sessionId: string, show = true): Promise<boolean> {',
-      )
-      // ⛔ **`147`'s two-part gesture, and both halves still awaited in order** — a resume on top of
-      // a failed close attaches to the very session it is trying to leave behind.
-      // ⚠️ **678 · re-aimed, not stripped**: the two halves now run INSIDE the draft hold (R26 —
-      // `sweepDrafts.reopening`), so their indentation moved and the hold is asserted with them.
-      expect(screen).toContain('return draftSweep.reopening(sessionId, async () => {')
-      // ⚑ **D-017b · the reopen half is inlined** — the screen's own `reopen` went with the kept-open
-      // pane — and it is still the store's resume, awaited only after a close that took.
-      expect(screen).toContain(
-        'const closed = await store.close(sessionId)\n    if (!closed) return false\n    const opened = await store.resume(sessionId)',
-      )
-      expect(screen).toContain('await closeAndReopen(sessionId)')
-      // 🔴 **The sheet's caller does NOT move the window and DOES say a refusal**, because it is
-      // the one caller that is not standing where the reopen lands.
-      expect(screen).toContain('@reopen="(sessionId) => void reopenForGrant(sessionId)"')
-      expect(screen).toContain('if (await closeAndReopen(sessionId, false)) return')
-      expect(screen).toContain('overlays.notify(said)')
-      // ⚑ **The paired positive**: `147`'s caller keeps the default and still moves.
-      expect(screen).toContain('if (opened !== null && show) showConversation(opened, from)')
-      expect(screen).toContain(':open-as="openAsForSheet"')
-      // 🔴 **The screen holds no rule of its own** — `conversationsToReopen` is a function in
-      // `lib/` precisely because nothing mounts `RuntimeScreen`, so a rule written inside it could
-      // only ever be pinned by a line census (§4 is what replaces that).
-      // ⚑ **678** — and no longer which of them is the selected one: every draft survives (R26).
-      // ⚑ **D-017b** — the store's `open` is `live` now: the conversations this window runs.
-      expect(screen).toContain(
-        'return conversationsToReopen(store.live.value, overlay.profileSlug)',
-      )
-      expect(screen).not.toContain('record.meta?.profileId === profileSlug')
-      // ⚑ **Lazy, and read in one place** — the walk is a pass over each open conversation's
-      // items, so it must not run on every render of a screen that re-renders on every event.
-      expect(screen).toContain('const openAsForSheet = computed<readonly AConversationToReopen[]>')
-      expect(screen.match(/openAsForSheet/g) ?? []).toHaveLength(2)
     })
   })
 

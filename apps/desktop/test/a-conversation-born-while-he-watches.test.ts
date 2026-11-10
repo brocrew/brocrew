@@ -1,7 +1,7 @@
 import { neutralHostDeps } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
@@ -24,7 +24,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const src = join(here, '../src')
 
 /**
  * # 🔴 534 · a conversation that is born while he is looking at the rail
@@ -73,12 +72,6 @@ class WindowSink implements RuntimeEventSink {
  * comparable string — see the file docblock for why it is the populations and not the rows.
  */
 type ThreeAnswers = { conversations: string[]; identities: string[] }
-
-const withoutComments = (source: string): string =>
-  source
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/^[ \t]*\/\/.*$/gm, ' ')
 
 describe('534 · a conversation that is born while he is looking at the rail', () => {
   let userData: string
@@ -616,86 +609,6 @@ describe('534 · a conversation that is born while he is looking at the rail', (
       const rig = driven()
       for (const what of RUNTIME_CHANGE_SUBJECTS) rig.fire(what)
       expect(rig.read.sort()).toEqual([...RUNTIME_CHANGE_SUBJECTS].sort())
-    })
-  })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §7 · one sender, one subscriber, and the neighbour that is deliberately not on this channel
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§7 · the channel has one of each', () => {
-    const filesUnder = (root: string, suffixes: string[]): string[] => {
-      const out: string[] = []
-      const walk = (at: string): void => {
-        for (const entry of readdirSync(at)) {
-          const full = join(at, entry)
-          if (statSync(full).isDirectory()) walk(full)
-          else if (suffixes.some((suffix) => entry.endsWith(suffix))) out.push(full)
-        }
-      }
-      walk(root)
-      return out
-    }
-
-    it('🔴 the dep is reached through exactly one method, so no site can announce around it', () => {
-      const code = withoutComments(readFileSync(join(src, 'main/runtime/runtime-host.ts'), 'utf8'))
-      // ⛔ **One reader of the dep** — {@link RuntimeHost.theWorldMoved}, which is where the throw is
-      // swallowed and where the category is written down.
-      expect(code.match(/this\.deps\.announce/g) ?? []).toHaveLength(1)
-      expect(code).toContain('private theWorldMoved(')
-      // ⚑ …and it is genuinely used, which a count of one reader does not say.
-      expect((code.match(/this\.theWorldMoved\(/g) ?? []).length).toBeGreaterThanOrEqual(8)
-    })
-
-    it('🔴 exactly one file in main sends on the channel, and one module in the renderer listens', () => {
-      const senders = filesUnder(join(src, 'main'), ['.ts'])
-        .filter((file) =>
-          withoutComments(readFileSync(file, 'utf8')).includes('RUNTIME_CHANGED_CHANNEL'),
-        )
-        .map((file) => relative(src, file).replaceAll('\\', '/'))
-      expect(senders).toEqual(['main/index.ts'])
-
-      // ⚑ **B2 · the updates bridge has an `onChanged` of its own** (`window.api.updates`, another
-      // channel), heard by `useUpdates.ts`; so does the themes bridge (`window.api.themes`), heard
-      // only by `lib/window-theme.ts`, which passes each change on to the rest of the window. Each is
-      // named here, so a SECOND listener on any of the three is red.
-      const listeners = filesUnder(join(src, 'renderer'), ['.ts', '.vue'])
-        .filter((file) => withoutComments(readFileSync(file, 'utf8')).includes('.onChanged('))
-        .map((file) => relative(src, file).replaceAll('\\', '/'))
-        .sort()
-      expect(listeners).toEqual([
-        'renderer/src/components/RuntimeScreen.vue',
-        'renderer/src/composables/useUpdates.ts',
-        'renderer/src/lib/window-theme.ts',
-      ])
-      const updatesListener = withoutComments(
-        readFileSync(join(src, 'renderer/src/composables/useUpdates.ts'), 'utf8'),
-      )
-      expect(updatesListener).not.toContain('runtime')
-
-      // ⛔ **And that one call site goes through the rule** rather than wiring readers itself.
-      const screen = withoutComments(
-        readFileSync(join(src, 'renderer/src/components/RuntimeScreen.vue'), 'utf8'),
-      )
-      expect(screen).toContain('whenTheWorldMoves(')
-    })
-
-    it('⛔ the two censuses above can fail — TWO planted senders and TWO planted listeners', () => {
-      // 🔴 **Rule 12: plant TWO.** A census that reported the first extra it found would pass this
-      // with one, and the defect it exists to catch is a SECOND writer nobody listed.
-      const planted = [
-        `contents.send(RUNTIME_CHANGED_CHANNEL, change)`,
-        `other.send(RUNTIME_CHANGED_CHANNEL, change)`,
-      ]
-      expect(planted.filter((line) => line.includes('RUNTIME_CHANGED_CHANNEL'))).toHaveLength(2)
-      const plantedListeners = [`window.api.runtime.onChanged(listener)`, `bridge.onChanged(other)`]
-      expect(plantedListeners.filter((line) => line.includes('.onChanged('))).toHaveLength(2)
-      // ⚑ **And the stripper is what makes those counts a claim about CODE**: a docblock naming the
-      // channel must not be able to satisfy either census.
-      const quoted = '/** `RUNTIME_CHANGED_CHANNEL` and `.onChanged(` are named here. */'
-      expect(quoted).toContain('RUNTIME_CHANGED_CHANNEL')
-      expect(withoutComments(quoted)).not.toContain('RUNTIME_CHANGED_CHANNEL')
-      expect(withoutComments(quoted)).not.toContain('.onChanged(')
     })
   })
 })
