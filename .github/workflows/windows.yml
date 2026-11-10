@@ -129,6 +129,16 @@ jobs:
           BROBOT_CHECK_CLAUDE: ${{ steps.claude.outputs.program }}
         run: node scripts/windows-packaged-check.mjs apps/desktop/dist/win-unpacked
 
+      - name: Keep the packaged service failure evidence
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-evidence-windows-build-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-evidence
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Name the installer by its commit
         id: installer
         shell: bash
