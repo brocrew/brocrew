@@ -8,14 +8,13 @@ import { ClaudeRuntime, claudeProjectDirName } from '@brobot2/runtime/claude'
 import { FakeRuntime, parseSessionRef } from '@brobot2/runtime'
 import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { discoverCodexSessions } from '../src/main/providers/codex/discovery'
-import { discoverSessionsIn } from '../src/main/adopt/discover-sessions'
 import type { ChildDescent, Discovery } from '../src/main/adopt/discovery-types'
 import { nativeTranscriptPath } from '../src/main/archive/native-file'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, mergeDescent, type SessionStore } from '../src/main/db/session-store'
 import { readLibrary } from '../src/main/library/session-library'
-import { listProviderHomes } from '../src/main/runtime/provider-homes'
+import { discoverEveryHomeIn } from './helpers/discover-every-home'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 
 /**
@@ -166,18 +165,7 @@ function writeCodexThreads(
   return home
 }
 
-/** Discovery across every home the app owns — the same walk the real app wires up. */
-function discoverEverything(): Discovery {
-  return listProviderHomes(userData)
-    .map((home) => discoverSessionsIn(home.provider, home.path, home.profileId))
-    .reduce<Discovery>(
-      (all, part) => ({
-        found: [...all.found, ...part.found],
-        skipped: [...all.skipped, ...part.skipped],
-      }),
-      { found: [], skipped: [] },
-    )
-}
+const discoverEverything = (): Discovery => discoverEveryHomeIn(userData)
 
 function buildHost(overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {}) {
   let counter = 0

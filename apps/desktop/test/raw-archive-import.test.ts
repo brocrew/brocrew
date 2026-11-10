@@ -12,18 +12,14 @@ import { FileEdits, claudeProjectDirName } from '@brobot2/runtime/claude'
 // widening what the app depends on.
 import { normalizeMessage } from '../../../packages/runtime/src/claude/normalize'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
-import {
-  NO_DISCOVERY,
-  discoverSessionsIn,
-  type Discovery,
-} from '../src/main/adopt/discover-sessions'
+import { NO_DISCOVERY, type Discovery } from '../src/main/adopt/discover-sessions'
 import { importClaudeTranscript } from '../src/main/providers/claude/import-transcript'
 
 import { nativeTranscriptPath } from '../src/main/archive/native-file'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { listProviderHomes } from '../src/main/runtime/provider-homes'
+import { discoverEveryHomeIn } from './helpers/discover-every-home'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { AssistantItem, ToolItem, UserItem } from '../src/renderer/src/lib/transcript'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
@@ -122,17 +118,7 @@ describe('transcript import from the provider’s own file', () => {
     return path
   }
 
-  function discoverEverything(): Discovery {
-    return listProviderHomes(userData)
-      .map((home) => discoverSessionsIn(home.provider, home.path, home.profileId))
-      .reduce<Discovery>(
-        (all, part) => ({
-          found: [...all.found, ...part.found],
-          skipped: [...all.skipped, ...part.skipped],
-        }),
-        { found: [], skipped: [] },
-      )
-  }
+  const discoverEverything = (): Discovery => discoverEveryHomeIn(userData)
 
   function buildHost(overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {}) {
     let counter = 0

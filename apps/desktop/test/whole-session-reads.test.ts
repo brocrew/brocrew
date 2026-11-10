@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime } from '@brobot2/runtime'
 import { claudeProjectDirName } from '@brobot2/runtime/claude'
-import { discoverSessionsIn, type Discovery } from '../src/main/adopt/discover-sessions'
+import type { Discovery } from '../src/main/adopt/discover-sessions'
 import { nativeTranscriptPath, readLines } from '../src/main/archive/native-file'
 import {
   BUNDLE_VERSION,
@@ -24,7 +24,7 @@ import {
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { listProviderHomes } from '../src/main/runtime/provider-homes'
+import { discoverEveryHomeIn } from './helpers/discover-every-home'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { HISTORY_WINDOW_MAX_EVENTS, HISTORY_WINDOW_TURNS } from '../src/shared/runtime-ipc'
 
@@ -177,17 +177,7 @@ describe('a whole session is never held in memory (053)', () => {
   let store: SessionStore
   let transcript: string
 
-  function discoverEverything(): Discovery {
-    return listProviderHomes(userData)
-      .map((home) => discoverSessionsIn(home.provider, home.path, home.profileId))
-      .reduce<Discovery>(
-        (all, part) => ({
-          found: [...all.found, ...part.found],
-          skipped: [...all.skipped, ...part.skipped],
-        }),
-        { found: [], skipped: [] },
-      )
-  }
+  const discoverEverything = (): Discovery => discoverEveryHomeIn(userData)
 
   function buildHost(ownStore: SessionStore = store): RuntimeHost {
     let counter = 0

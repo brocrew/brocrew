@@ -10,12 +10,7 @@ import {
   type ConversationAtLaunch,
   type ProfileCapabilities,
 } from '../../shared/capabilities'
-import {
-  providerDescriptor,
-  DEFAULT_IDENTITY_PROVIDER,
-  BUILD_IS_DEV,
-  BUILD_IS_UNRECORDED,
-} from '@brobot2/shared'
+import { providerDescriptor, DEFAULT_IDENTITY_PROVIDER } from '@brobot2/shared'
 // ⚑ **583 · the axis the instructions sheet is grouped on** — see {@link profileBundleSpans}.
 import type { InstructionSpan, WhoseText } from '../../shared/whose-text'
 // ⚑ **D-024 · R1 — a profile's other conversations, said as every other agent-facing line says a
@@ -608,25 +603,6 @@ export interface TheBuildRunning {
   readonly dirty: boolean
   /** How many database migrations have been applied, or `null` when that could not be read. */
   readonly schema: number | null
-}
-
-/**
- * ⚑ **F006 · which build is running, said to an agent as the window's title bar says it** — the
- * chip's id, schema and uncommitted mark, and its hover's commit, or why there is no commit. ⚠️ A
- * development build hot-reloads its window only: its main process runs what it started with.
- */
-export function theBuildRunningSaid(build: TheBuildRunning): string {
-  const schema = build.schema === null ? '' : ` Its database schema is ${String(build.schema)}.`
-  if (build.id === BUILD_IS_DEV) {
-    return `- This app is a development build (\`${BUILD_IS_DEV}\`), run from a working tree, so no commit describes it; its main process runs the code as it was when the app started.${schema}`
-  }
-  if (build.commit === '' || build.id === BUILD_IS_UNRECORDED) {
-    return `- This app's build did not record a commit (\`${build.id}\`).${schema}`
-  }
-  const tree = build.dirty
-    ? ' with uncommitted changes, so what runs is not exactly that commit'
-    : ''
-  return `- This app is build \`${build.id}\`, built from commit \`${build.commit}\`${tree}.${schema}`
 }
 
 /**
