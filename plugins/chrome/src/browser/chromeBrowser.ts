@@ -747,16 +747,19 @@ export class ChromeBrowser implements ProfileBrowser {
     const held: {
       session?: Promise<CDPSession>
     } = {}
-    const capture = d.router.capture(async () => {
-      held.session ??= ctx.newCDPSession(unwrapBrowserHandle(page))
-      const session = await held.session
-      check()
-      const tree = (await session.send('Page.getFrameTree')) as {
-        frameTree: FrameTree
-      }
-      check()
-      return frameIdsOf(tree.frameTree)
-    }, existing ? undefined : onprogress)
+    const capture = d.router.capture(
+      async () => {
+        held.session ??= ctx.newCDPSession(unwrapBrowserHandle(page))
+        const session = await held.session
+        check()
+        const tree = (await session.send('Page.getFrameTree')) as {
+          frameTree: FrameTree
+        }
+        check()
+        return frameIdsOf(tree.frameTree)
+      },
+      existing ? undefined : onprogress,
+    )
     let completed = false
     let savedGuid: string | undefined
     let unobserve = () => {}

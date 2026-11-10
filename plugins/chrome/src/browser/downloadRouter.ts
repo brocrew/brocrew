@@ -121,7 +121,9 @@ export class DownloadRouter {
     const rec = this.recs.get(guid)
     if (!rec) return () => {}
     rec.observers.add(onprogress)
-    return () => { rec.observers.delete(onprogress) }
+    return () => {
+      rec.observers.delete(onprogress)
+    }
   }
   private begin(p: { guid?: unknown; frameId?: unknown; suggestedFilename?: unknown }): void {
     if (typeof p.guid !== 'string' || !/^[a-zA-Z0-9-]{1,128}$/.test(p.guid)) return

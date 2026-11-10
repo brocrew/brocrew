@@ -170,66 +170,95 @@ it('retains an earlier visible-window download without waiting for another event
   expect(saved.deleted).toBe(true)
 })
 
-it.each([false, true])('observes an earlier GUID without taking its capture ownership (cancelled=%s)', async (cancelled) => {
-  const f = await routed()
-  const ownerReady = Promise.withResolvers<void>()
-  const ownerRelease = Promise.withResolvers<void>()
-  const ownerProgress = vi.fn()
-  const original = f.routedBrowser.captureDownloads('fern', f.page as never, async () => {
-    f.begin('earlier-guid', 'earlier.txt')
-    await flush()
-    ownerReady.resolve()
-    await ownerRelease.promise
-  }, undefined, ownerProgress)
-  await ownerReady.promise
-  const download = new FakeDownload('earlier.txt', Buffer.from('fresh bytes'), path.join(f.stage, 'earlier-guid'))
-  const pathReady = Promise.withResolvers<void>()
-  const pathRelease = Promise.withResolvers<void>()
-  vi.spyOn(download, 'path').mockImplementation(async () => {
-    pathReady.resolve()
-    await pathRelease.promise
-    return download.file
-  })
-  const tab = f.h.tabs.resolve(f.tabId, (name) => f.h.browser.state(name)?.generation ?? null)
-  tab.pendingDownloads.push({ download: download as never, at: Date.now() })
-  const activity = vi.fn()
-  const cancellation = new AbortController()
-  const tool = createAgentChromeTools(f.h.deps).find((entry) => entry.definition.name === 'wait_for_download')!
-  const waiting = tool.execute({ tabId: f.tabId }, { activity, signal: cancellation.signal })
-  let count = 0
-  try {
-    await pathReady.promise
-    f.begin('unrelated-guid', 'unrelated.txt')
-    await flush()
-    for (const bytes of [2, 2, 1, 5]) f.session.emit('Browser.downloadProgress', {
-      guid: 'earlier-guid', state: 'inProgress', receivedBytes: bytes, totalBytes: 11,
+it.each([false, true])(
+  'observes an earlier GUID without taking its capture ownership (cancelled=%s)',
+  async (cancelled) => {
+    const f = await routed()
+    const ownerReady = Promise.withResolvers<void>()
+    const ownerRelease = Promise.withResolvers<void>()
+    const ownerProgress = vi.fn()
+    const original = f.routedBrowser.captureDownloads(
+      'fern',
+      f.page as never,
+      async () => {
+        f.begin('earlier-guid', 'earlier.txt')
+        await flush()
+        ownerReady.resolve()
+        await ownerRelease.promise
+      },
+      undefined,
+      ownerProgress,
+    )
+    await ownerReady.promise
+    const download = new FakeDownload(
+      'earlier.txt',
+      Buffer.from('fresh bytes'),
+      path.join(f.stage, 'earlier-guid'),
+    )
+    const pathReady = Promise.withResolvers<void>()
+    const pathRelease = Promise.withResolvers<void>()
+    vi.spyOn(download, 'path').mockImplementation(async () => {
+      pathReady.resolve()
+      await pathRelease.promise
+      return download.file
     })
-    f.session.emit('Browser.downloadProgress', {
-      guid: 'unrelated-guid', state: 'inProgress', receivedBytes: 6, totalBytes: 11,
-    })
-    count = activity.mock.calls.filter(([stage]) => stage === 'download-received').length
-    expect(ownerProgress).toHaveBeenCalledTimes(2)
-    if (cancelled) {
-      cancellation.abort()
+    const tab = f.h.tabs.resolve(f.tabId, (name) => f.h.browser.state(name)?.generation ?? null)
+    tab.pendingDownloads.push({ download: download as never, at: Date.now() })
+    const activity = vi.fn()
+    const cancellation = new AbortController()
+    const tool = createAgentChromeTools(f.h.deps).find(
+      (entry) => entry.definition.name === 'wait_for_download',
+    )!
+    const waiting = tool.execute({ tabId: f.tabId }, { activity, signal: cancellation.signal })
+    try {
+      await pathReady.promise
+      f.begin('unrelated-guid', 'unrelated.txt')
+      await flush()
+      for (const bytes of [2, 2, 1, 5])
+        f.session.emit('Browser.downloadProgress', {
+          guid: 'earlier-guid',
+          state: 'inProgress',
+          receivedBytes: bytes,
+          totalBytes: 11,
+        })
       f.session.emit('Browser.downloadProgress', {
-        guid: 'earlier-guid', state: 'inProgress', receivedBytes: 6, totalBytes: 11,
+        guid: 'unrelated-guid',
+        state: 'inProgress',
+        receivedBytes: 6,
+        totalBytes: 11,
       })
-      expect(activity.mock.calls.filter(([stage]) => stage === 'download-received')).toHaveLength(count)
+      const count = activity.mock.calls.filter(([stage]) => stage === 'download-received').length
+      expect(ownerProgress).toHaveBeenCalledTimes(2)
+      expect(count).toBe(2)
+      if (cancelled) {
+        cancellation.abort()
+        f.session.emit('Browser.downloadProgress', {
+          guid: 'earlier-guid',
+          state: 'inProgress',
+          receivedBytes: 6,
+          totalBytes: 11,
+        })
+        expect(activity.mock.calls.filter(([stage]) => stage === 'download-received')).toHaveLength(
+          count,
+        )
+      }
+    } finally {
+      pathRelease.resolve()
+      await waiting
+      const afterSave = activity.mock.calls.length
+      f.session.emit('Browser.downloadProgress', {
+        guid: 'earlier-guid',
+        state: 'inProgress',
+        receivedBytes: 8,
+        totalBytes: 11,
+      })
+      expect(activity).toHaveBeenCalledTimes(afterSave)
+      expect(ownerProgress).toHaveBeenCalledTimes(cancelled ? 4 : 3)
+      ownerRelease.resolve()
+      await original
     }
-  } finally {
-    pathRelease.resolve()
-    await waiting
-    const afterSave = activity.mock.calls.length
-    f.session.emit('Browser.downloadProgress', {
-      guid: 'earlier-guid', state: 'inProgress', receivedBytes: 8, totalBytes: 11,
-    })
-    expect(activity).toHaveBeenCalledTimes(afterSave)
-    expect(ownerProgress).toHaveBeenCalledTimes(cancelled ? 4 : 3)
-    ownerRelease.resolve()
-    await original
-  }
-  expect(count).toBe(2)
-})
+  },
+)
 
 it.each([false, true])(
   'saving a queued download preserves a fresh user download (completed before save=%s)',
