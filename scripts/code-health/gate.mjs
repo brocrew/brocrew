@@ -136,12 +136,12 @@ const TOOLS = {
     }
   },
   depcruise(files, out) {
-    const scan = (name) => {
+    const scan = (name, config = `${name}.cjs`) => {
       const report = path.join(out, `${name}.json`)
       const args = [
         ...files,
         '--config',
-        path.join(here, `${name}.cjs`),
+        path.join(here, config),
         '--output-type',
         'json',
         '--output-to',
@@ -154,7 +154,7 @@ const TOOLS = {
       )
     }
     const r = scan('depcruise')
-    const plugin = scan('depcruise-plugin')
+    const plugin = scan('depcruise-plugin', 'depcruise-plugin.mjs')
     const s = r.summary
     const totals = `${s.totalCruised} modules, ${s.totalDependenciesCruised} dependencies, ${s.violations.length} violations; ${plugin.summary.violations.length} executable plugin violations`
     const combined = {

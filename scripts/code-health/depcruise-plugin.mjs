@@ -1,9 +1,9 @@
-const { options } = require('./depcruise.cjs')
+import config from './depcruise.cjs'
 
 const pluginCode = '^apps/desktop/(src/main/plugins/|resources/plugin-host/)'
 const providerSdks = '(^|/)node_modules/@(anthropic-ai/claude-agent-sdk|openai/codex-sdk)/'
 
-module.exports = {
+export default {
   forbidden: [
     {
       name: 'plugin-code-not-to-runtime-barrel',
@@ -18,5 +18,5 @@ module.exports = {
       to: { path: providerSdks, reachable: true },
     },
   ],
-  options: { ...options, tsPreCompilationDeps: false },
+  options: { ...config.options, tsPreCompilationDeps: false },
 }
