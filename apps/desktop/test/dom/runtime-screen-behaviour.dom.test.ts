@@ -13,6 +13,7 @@ import {
 import type { PersonsQuestion, RoutedRequest } from '../../src/shared/question-contracts'
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import { AttentionSignals, ATTENTION_SIGNAL_INTERVAL_MS } from '../../src/main/attention-signals'
 import { isAttentionSignal, type AttentionSignal } from '../../src/shared/attention-signals'
@@ -488,55 +489,71 @@ function overlayKey(key: 'Escape' | 'Tab', shiftKey = false) {
 it.each(keyboardSheets)(
   'traps focus and restores the connected opener for $ready in the root overlay layer',
   async ({ overlay, ready }) => {
-    const answers = {
-      ...agentBookAnswers().book,
-      checkDeleteConversation: async () => LISTED,
-      agentModelAndEffort: async () => null,
-    }
-    const previous = Object.getOwnPropertyDescriptors(runtime)
-    Object.assign(runtime, answers)
-    const m = mount(RuntimeScreen, {}, { width: 1200, height: 800 })
+    const viewportBefore = { width: window.innerWidth, height: window.innerHeight }
     try {
-      wearTheme('defined')
-      await expect.poll(() => agentStore.loaded.value).toBe(true)
-      m.q('rail-team').click()
-      await expect.poll(() => m.all('team-create').length).toBe(1)
-      const opener = m.q('team-create')
-      opener.focus()
-      expect(document.activeElement).toBe(opener)
-      // Supply each real sheet payload through the root's existing overlay store.
-      useOverlays().open(overlay)
-      await expect.poll(() => m.all(ready).length).toBe(1)
-      const host = m.q('overlay-host')
-      expect(host.parentElement).toBe(m.q('overlay-layer'))
-      expect(m.q('overlay-layer').children).toHaveLength(1)
-      const bounds = m.q(ready).getBoundingClientRect()
-      expect(bounds.width).toBeGreaterThan(250)
-      expect(bounds.height).toBeGreaterThan(100)
-      expect(bounds.left).toBeGreaterThanOrEqual(0)
-      expect(bounds.top).toBeGreaterThanOrEqual(0)
-      expect(bounds.right).toBeLessThanOrEqual(window.innerWidth)
-      expect(bounds.bottom).toBeLessThanOrEqual(window.innerHeight)
-      await expect.poll(() => host.contains(document.activeElement)).toBe(true)
-      const first = m.q('close-overlay')
-      const last = m.q('overlay-spawning')
-      first.focus()
-      overlayKey('Tab', true)
-      expect(document.activeElement).toBe(last)
-      overlayKey('Tab')
-      expect(document.activeElement).toBe(first)
-      overlayKey('Escape')
-      await expect.poll(() => m.all('overlay-host').length).toBe(0)
-      expect(useOverlays().overlay.value).toBeNull()
-      expect(opener.isConnected).toBe(true)
-      expect(document.activeElement).toBe(opener)
-    } finally {
-      m.unmount()
-      for (const key of Object.keys(answers)) {
-        const descriptor = previous[key]
-        if (descriptor) Object.defineProperty(runtime, key, descriptor)
-        else Reflect.deleteProperty(runtime, key)
+      await page.viewport(1200, 800)
+      const viewport = { width: window.innerWidth, height: window.innerHeight }
+      console.info('S04_OVERLAY_VIEWPORT', JSON.stringify({ sheet: ready, viewportBefore, viewport }))
+      expect(viewport).toEqual({ width: 1200, height: 800 })
+      const answers = {
+        ...agentBookAnswers().book,
+        checkDeleteConversation: async () => LISTED,
+        agentModelAndEffort: async () => null,
       }
+      const previous = Object.getOwnPropertyDescriptors(runtime)
+      Object.assign(runtime, answers)
+      const m = mount(RuntimeScreen, {}, { width: 1200, height: 800 })
+      try {
+        wearTheme('defined')
+        await expect.poll(() => agentStore.loaded.value).toBe(true)
+        m.q('rail-team').click()
+        await expect.poll(() => m.all('team-create').length).toBe(1)
+        const opener = m.q('team-create')
+        opener.focus()
+        expect(document.activeElement).toBe(opener)
+        // Supply each real sheet payload through the root's existing overlay store.
+        useOverlays().open(overlay)
+        await expect.poll(() => m.all(ready).length).toBe(1)
+        const host = m.q('overlay-host')
+        expect(host.parentElement).toBe(m.q('overlay-layer'))
+        expect(m.q('overlay-layer').children).toHaveLength(1)
+        const bounds = m.q(ready).getBoundingClientRect()
+        console.info(
+          'S04_OVERLAY_GEOMETRY',
+          JSON.stringify({ sheet: ready, viewport, bounds: bounds.toJSON() }),
+        )
+        expect(bounds.width).toBeGreaterThan(250)
+        expect(bounds.height).toBeGreaterThan(100)
+        expect(bounds.left).toBeGreaterThanOrEqual(0)
+        expect(bounds.top).toBeGreaterThanOrEqual(0)
+        expect(bounds.right).toBeLessThanOrEqual(window.innerWidth)
+        expect(bounds.bottom).toBeLessThanOrEqual(window.innerHeight)
+        await expect.poll(() => host.contains(document.activeElement)).toBe(true)
+        const first = m.q('close-overlay')
+        const last = m.q('overlay-spawning')
+        first.focus()
+        overlayKey('Tab', true)
+        expect(document.activeElement).toBe(last)
+        overlayKey('Tab')
+        expect(document.activeElement).toBe(first)
+        overlayKey('Escape')
+        await expect.poll(() => m.all('overlay-host').length).toBe(0)
+        expect(useOverlays().overlay.value).toBeNull()
+        expect(opener.isConnected).toBe(true)
+        expect(document.activeElement).toBe(opener)
+      } finally {
+        m.unmount()
+        for (const key of Object.keys(answers)) {
+          const descriptor = previous[key]
+          if (descriptor) Object.defineProperty(runtime, key, descriptor)
+          else Reflect.deleteProperty(runtime, key)
+        }
+      }
+    } finally {
+      await page.viewport(viewportBefore.width, viewportBefore.height)
+      const restored = { width: window.innerWidth, height: window.innerHeight }
+      console.info('S04_OVERLAY_VIEWPORT_RESTORED', JSON.stringify({ sheet: ready, restored }))
+      expect(restored).toEqual(viewportBefore)
     }
   },
 )
