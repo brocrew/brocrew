@@ -40,6 +40,24 @@ async function caller(f: Awaited<ReturnType<typeof fixture>>) {
   return { client, route }
 }
 
+it('forwards package tool metadata through the actual MCP tools/list route', async () => {
+  const metadata = {
+    title: 'Package echo',
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    outputSchema: { type: 'object', properties: { value: { type: 'string' } } },
+    icons: [{ src: 'https://example.invalid/echo.svg', mimeType: 'image/svg+xml' }],
+    _meta: { fictional: { category: 'package-owned' } },
+  }
+  const f = await pluginProviderFixture({ toolMetadata: metadata })
+  cleanup.push(() => f.close())
+  const client = await connect(await f.route('metadata-caller'))
+  const { tools } = await client.listTools()
+  expect(tools).toHaveLength(1)
+  expect(tools[0]).toMatchObject({ name: 'echo', ...metadata })
+  expect(tools[0]).not.toHaveProperty('namespace')
+  expect(tools[0]).not.toHaveProperty('qualifiedName')
+})
+
 it('completes beyond elapsed deadlines while forwarding actual downstream progress', async () => {
   const f = await fixture()
   const { client } = await caller(f)

@@ -20,7 +20,11 @@ export function noPrivateCredential(value: unknown, secret: string): void {
   })
 }
 export async function pluginProviderFixture(
-  options: { diagnostic?: PluginToolDiagnostic; secondTool?: boolean } = {},
+  options: {
+    diagnostic?: PluginToolDiagnostic
+    secondTool?: boolean
+    toolMetadata?: Record<string, unknown>
+  } = {},
 ) {
   const credential = createPluginCredential()
   const seen: { method: string; authenticated: boolean }[] = []
@@ -56,6 +60,7 @@ export async function pluginProviderFixture(
       server.onerror = () => undefined
       server.setRequestHandler(ListToolsRequestSchema, async () => ({
         tools: ['echo', ...(options.secondTool ? ['other'] : [])].map((name) => ({
+          ...options.toolMetadata,
           name,
           description: 'Fictional echo',
           inputSchema: {
@@ -124,6 +129,7 @@ export async function pluginProviderFixture(
     occupiedNamespaces: [],
     occupiedQualifiedNames: [],
     tools: ['echo', ...(options.secondTool ? ['other'] : [])].map<BrokerTool>((name) => ({
+      ...options.toolMetadata,
       name,
       description: 'Fictional echo',
       inputSchema: {
