@@ -139,12 +139,6 @@ const TOOLS = {
     const scan = (name) => {
       const report = path.join(out, `${name}.json`)
       const args = [
-        '--prefix',
-        here,
-        'run',
-        '--silent',
-        'scan:dependencies',
-        '--',
         ...files,
         '--config',
         path.join(here, `${name}.cjs`),
@@ -153,7 +147,8 @@ const TOOLS = {
         '--output-to',
         report,
       ]
-      run(name, args, out, (s) => s !== null, 'npm')
+      // npm scripts join all source paths into one shell argument, exceeding Linux's size limit.
+      run(name, args, out, (s) => s !== null, path.join(here, 'node_modules', '.bin', 'depcruise'))
       return readJson(name, report, (r) =>
         [r?.summary?.violations, r?.modules].every(Array.isArray),
       )
