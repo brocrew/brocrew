@@ -321,4 +321,4 @@ export {
 } from './managed-plugin-session'
 export { ManagedPluginFailure } from './managed-plugin-failure'
 
-export type { ProviderConfigLayout, SdkOptionClaim } from './provider-configuration'
+export type { ProviderConfigLayout } from './provider-configuration'

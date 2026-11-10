@@ -34,7 +34,7 @@ export { persistedRulesFile } from './claude/persisted-rules'
 
 export { projectLocalSettingsFile } from './claude/local-settings-location'
 
-export { CLAUDE_SDK_OPTIONS, CLAUDE_CONFIG_LAYOUT } from './claude/configuration'
+export { CLAUDE_CONFIG_LAYOUT } from './claude/configuration'
 
 export { CLAUDE_TOOL_NAMING } from './claude/tool-naming'
 

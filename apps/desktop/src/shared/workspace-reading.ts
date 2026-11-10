@@ -147,7 +147,7 @@ export interface WorkspaceReading {
  * holding one would go down on its own, telling a person they had handled something they never
  * touched. ⚑ A person still meets it, in the band `557` built for it.
  */
-export const WHAT_NEEDS_A_PERSON = [
+const WHAT_NEEDS_A_PERSON = [
   'a-question',
   'a-decision',
   'an-instruction-ask',
@@ -181,7 +181,7 @@ export type WhatAReadingCounts = (typeof WHAT_A_READING_COUNTS)[number]
  * — `LEDGER_WALK_KINDS`' own discipline: *a walk needs a word of its own when no existing word's
  * sentence is TRUE of it.*
  */
-export const WHY_NOTHING_WAS_COUNTED = ['no-ledger'] as const
+const WHY_NOTHING_WAS_COUNTED = ['no-ledger'] as const
 
 /** One of {@link WHY_NOTHING_WAS_COUNTED}. */
 export type WhyNothingWasCounted = (typeof WHY_NOTHING_WAS_COUNTED)[number]

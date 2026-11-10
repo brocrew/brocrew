@@ -1,6 +1,3 @@
-import { readdirSync } from 'node:fs'
-import { join } from 'node:path'
-
 /**
  * ⚑ **The shapes a task number can be printed in** — one reader, two censuses (`705`).
  *
@@ -35,14 +32,3 @@ export const spellingsIn = (source: string): string[] =>
     .split('\n')
     .filter((line) => SPELLINGS.some((shape) => shape.test(line)))
     .map((line) => line.trim())
-
-/** Every `.ts` and `.vue` file under a directory, recursively — the set the code defines. */
-export function sourceFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
-    entry.isDirectory()
-      ? sourceFiles(join(dir, entry.name))
-      : /\.(ts|vue)$/.test(entry.name)
-        ? [join(dir, entry.name)]
-        : [],
-  )
-}

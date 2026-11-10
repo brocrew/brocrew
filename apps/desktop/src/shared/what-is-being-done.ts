@@ -252,7 +252,7 @@ export type WhatThisAppWasTold =
  * cleared it* and *this provider has never published one at all* — {@link NOTHING_RIGHT_NOW}'s
  * sentence is true of both, and nothing a surface does with them differs.
  */
-export const NOTHING_WAS_SAID = [
+const NOTHING_WAS_SAID = [
   /**
    * ⛔ **This app is running it and NOT ONE event has arrived on its stream.**
    *
@@ -285,7 +285,7 @@ export const NOTHING_WAS_SAID = [
 ] as const
 
 /** One of {@link NOTHING_WAS_SAID}. */
-export type NothingWasSaid = (typeof NOTHING_WAS_SAID)[number]
+type NothingWasSaid = (typeof NOTHING_WAS_SAID)[number]
 
 /** ⚑ **The ordinary quiet, spelled once** — see {@link NOTHING_WAS_SAID}'s second member. */
 export const NOTHING_RIGHT_NOW: WhatThisAppWasTold = {

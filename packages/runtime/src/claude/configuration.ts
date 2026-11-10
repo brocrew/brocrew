@@ -4,7 +4,7 @@ import {
   type SdkOptionClaim,
 } from '../provider-configuration'
 type OptionStance = SdkOptionClaim['stance']
-export const CLAUDE_SDK_OPTIONS: readonly SdkOptionClaim[] = [
+const CLAUDE_SDK_OPTIONS: readonly SdkOptionClaim[] = [
   { option: 'tools', label: 'tools', stance: 'passed' },
   { option: 'systemPrompt', label: 'the prompt', stance: 'passed' },
   { option: 'settingSources', label: 'settingSources: []', stance: 'pinned' },

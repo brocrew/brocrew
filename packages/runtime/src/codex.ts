@@ -44,11 +44,7 @@ export { CODEX_PROTOCOL_VERSION } from './codex/protocol-version'
 
 export { removeStaleCodexPermissionConfig } from './codex/stale-permission-config'
 
-export {
-  CODEX_MEMORY_SETTINGS,
-  ensureCodexMemoryConfig,
-  mergeCodexMemoryConfig,
-} from './codex/memory-config'
+export { ensureCodexMemoryConfig } from './codex/memory-config'
 
 export {
   CODEX_MEMORY_PIPELINE_FILES,
@@ -60,7 +56,7 @@ export {
   codexMemorySummary,
 } from './codex/memory-store'
 
-export { CODEX_THREAD_START_CLAIMS, CODEX_CONFIG_LAYOUT } from './codex/configuration'
+export { CODEX_CONFIG_LAYOUT } from './codex/configuration'
 
 export { CODEX_TOOL_NAMING } from './codex/tool-naming'
 

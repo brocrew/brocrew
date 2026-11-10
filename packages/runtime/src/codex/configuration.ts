@@ -7,7 +7,7 @@ import { CODEX_MEMORY_SETTINGS } from './memory-settings'
 
 const CODEX_MEMORY_KEYS = CODEX_MEMORY_SETTINGS.map((one) => `${one.table}.${one.key}`)
 
-export const CODEX_THREAD_START_CLAIMS: readonly SdkOptionClaim[] = [
+const CODEX_THREAD_START_CLAIMS: readonly SdkOptionClaim[] = [
   {
     option: 'dynamicTools',
     label: "this session's own tools",
