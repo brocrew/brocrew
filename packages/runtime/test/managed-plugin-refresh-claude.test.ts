@@ -73,9 +73,10 @@ it.each([false, true])(
     } as unknown as SDKMessage)
     await vi.waitFor(() => {
       const discoveries = observations.filter((event) => event.discovery)
-      expect(discoveries.map((event) => event.discovery!.server)).toEqual(
-        [initial.name, added.name],
-      )
+      expect(discoveries.map((event) => event.discovery!.server)).toEqual([
+        initial.name,
+        added.name,
+      ])
       expect(discoveries.map((event) => event.servers)).toEqual([[], []])
       expect(discoveries.every((event) => event.discovery!.route === null)).toBe(true)
     })

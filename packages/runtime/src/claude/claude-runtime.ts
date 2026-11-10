@@ -837,17 +837,26 @@ export class ClaudeSessionHandle implements SessionHandle {
           )
             return
           const matches = rows.filter(
-            (row) => row.name === route.name && row.config?.type === 'http' && row.config.url === route.url,
+            (row) =>
+              row.name === route.name &&
+              row.config?.type === 'http' &&
+              row.config.url === route.url,
           )
           const row = matches.length === 1 ? matches[0] : undefined
-          const tools = row?.status === 'connected' && Array.isArray(row.tools)
-            ? row.tools.map(({ name }) => name)
-            : undefined
+          const tools =
+            row?.status === 'connected' && Array.isArray(row.tools)
+              ? row.tools.map(({ name }) => name)
+              : undefined
           observeManagedPlugins(this.managedPluginObserver, {
             server: route.name,
             route: row ? route : null,
             ...(tools === undefined ? {} : { tools }),
-            outcome: tools !== undefined ? 'discovered' : row?.status === 'failed' || row?.status === 'disabled' ? 'unavailable' : 'unknown',
+            outcome:
+              tools !== undefined
+                ? 'discovered'
+                : row?.status === 'failed' || row?.status === 'disabled'
+                  ? 'unavailable'
+                  : 'unknown',
           })
         }
       } catch {
@@ -1024,11 +1033,15 @@ export class ClaudeSessionHandle implements SessionHandle {
       const prefix = `mcp__${name}__`
       observeManagedPlugins(this.managedPluginObserver, {
         server: name,
-        ...(connected || unavailable ? { tools: connected
-          ? namedTools
-              .filter((tool) => tool.startsWith(prefix))
-              .map((tool) => tool.slice(prefix.length))
-          : [] } : {}),
+        ...(connected || unavailable
+          ? {
+              tools: connected
+                ? namedTools
+                    .filter((tool) => tool.startsWith(prefix))
+                    .map((tool) => tool.slice(prefix.length))
+                : [],
+            }
+          : {}),
         outcome: connected ? 'discovered' : unavailable ? 'unavailable' : 'unknown',
         ...(this.managedPluginGeneration === 0 ? {} : { route: null }),
       })

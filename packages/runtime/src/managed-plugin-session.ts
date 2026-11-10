@@ -55,7 +55,14 @@ type ManagedPluginLaunchObservation = {
   readonly provider: string
   readonly stage: 'initial-read' | 'before-send-read' | 'provider-discovery' | 'provider-launch'
   readonly outcome:
-    'configured' | 'empty' | 'failed' | 'discovered' | 'unavailable' | 'timeout' | 'cancelled' | 'unknown'
+    | 'configured'
+    | 'empty'
+    | 'failed'
+    | 'discovered'
+    | 'unavailable'
+    | 'timeout'
+    | 'cancelled'
+    | 'unknown'
   readonly servers: readonly Pick<ManagedPluginMcpServer, 'name' | 'url' | 'pluginId'>[]
   readonly pending?: readonly string[]
   readonly off?: readonly string[]
@@ -198,7 +205,12 @@ export function withManagedPluginAttachments(
         observe({
           stage: 'provider-discovery',
           outcome: discovery.outcome,
-          servers: discovery.route === undefined ? servers : discovery.route === null ? [] : [discovery.route],
+          servers:
+            discovery.route === undefined
+              ? servers
+              : discovery.route === null
+                ? []
+                : [discovery.route],
           discovery,
         })
     let currentDiscoveryObserver = discoveryObserver(attachment.servers)

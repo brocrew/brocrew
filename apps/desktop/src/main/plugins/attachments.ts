@@ -72,14 +72,16 @@ export class WorkspacePluginAttachments {
         if (event.discovery) {
           const server = event.servers.find((one) => one.name === event.discovery!.server)
           trace.emit('launch-discovery', {
-              ...detail,
-              server: event.discovery.server,
-              ...(server ? { plugin: server.pluginId, attachmentRoute: server.url } : {}),
-              ...(event.discovery.outcome === 'unknown' || event.discovery.tools === undefined ? {} : {
-                discoveredTools: [...event.discovery.tools].sort(),
-                discoveredCount: event.discovery.tools.length,
-              }),
-            })
+            ...detail,
+            server: event.discovery.server,
+            ...(server ? { plugin: server.pluginId, attachmentRoute: server.url } : {}),
+            ...(event.discovery.outcome === 'unknown' || event.discovery.tools === undefined
+              ? {}
+              : {
+                  discoveredTools: [...event.discovery.tools].sort(),
+                  discoveredCount: event.discovery.tools.length,
+                }),
+          })
         } else {
           trace.emit('launch-attachment', {
             ...detail,
