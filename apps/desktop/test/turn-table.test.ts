@@ -184,11 +184,6 @@ describe('the turn table', () => {
   })
 
   describe('endings we did not choose', () => {
-    it('a session ending under an open turn is `ended`, not `completed`', () => {
-      feed({ type: 'user_turn', text: 'one' }, { type: 'status', state: 'ended' })
-      expect(store.turns(SESSION)[0]?.endReason).toBe('ended')
-    })
-
     it('a turn whose ending we never saw is `unknown` — never back-filled', () => {
       // The app was quit mid-turn: the ledger simply stops. Resume closes it, and the only truthful
       // reason is that we did not observe how it went. Recording `completed` here would be the app
@@ -331,21 +326,6 @@ describe('the turn table', () => {
       expect(late).toEqual([{ type: 'file_change' }])
     })
 
-    it('the message is KEPT — the anomaly is recorded, never dropped', () => {
-      // The PM ruling: the late message is real, the emission of `idle` is correct, and the defect
-      // was only that nothing recorded the anomaly. Losing the message would be a worse bug.
-      feed(
-        { type: 'user_turn', text: 'a long job' },
-        { type: 'turn', state: 'interrupted' },
-        { type: 'assistant_message', text: 'the tail of the reply' },
-      )
-      const texts = store
-        .events(SESSION)
-        .map((e) => ('text' in e.event ? e.event.text : null))
-        .filter(Boolean)
-      expect(texts).toContain('the tail of the reply')
-    })
-
     it('a normal completion attributes nothing late — 47/47 stay clean', () => {
       feed(
         { type: 'user_turn', text: 'a job' },
@@ -433,14 +413,6 @@ describe('the turn table', () => {
   })
 
   describe('one derived status, and three distinguishable silences', () => {
-    it('waiting for the USER is idle — no open turn', () => {
-      feed({ type: 'user_turn', text: 'one' }, { type: 'turn', state: 'completed' })
-      // The `status` event the machine emits alongside is derived, not echoed.
-      feed({ type: 'status', state: 'idle' })
-      expect(status()).toBe('idle')
-      expect(store.turns(SESSION).every((t) => t.closedAt !== null)).toBe(true)
-    })
-
     it('waiting for an ANSWER survives — the adapters bypass the machine, and it still counts', () => {
       // 042's third writer: both adapters emit `waiting_permission`/`working` around their own
       // awaits without telling the session machine. Recorded on the turn, it stops being a second

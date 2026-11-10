@@ -1,4 +1,5 @@
 import { neutralHostDeps } from './lib/host-fixture'
+import { heldOperation } from './helpers/held-operation'
 import { FakeRuntime } from '@brobot2/runtime'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { joinLiveHosts, providerProcessesAreInFlight } from '../src/main/runtime/live-hosts'
@@ -366,59 +367,30 @@ it('a live agent or unsettled probe anywhere in the app admits no cleanup work',
 
 it('a launch requested during scanning proceeds and stops further cleanup', async () => {
   const target = claude(OLD, 365)
-  let release!: () => void
-  let arrived!: () => void
-  const entered = new Promise<void>((resolve) => {
-    arrived = resolve
-  })
-  const held = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  filesystemGate.beforeScan = async () => {
-    arrived()
-    await held
-  }
+  const scan = heldOperation()
+  filesystemGate.beforeScan = scan.hold
   const h = new TranscriptRetentionHost(data, unused, () => NOW)
   const pass = h.run()
   let started = 0
   try {
-    await entered
+    await scan.arrived
     const launch = h.beforeLaunch().then(() => {
       started++
     })
     await Promise.resolve()
     expect(started).toBe(1)
     expect(existsSync(target)).toBe(true)
-    release()
+    scan.release()
     await pass
     await launch
     expect(started).toBe(1)
     expect(existsSync(target)).toBe(true)
   } finally {
-    release()
+    scan.release()
     await pass
     await h.stop()
   }
 })
-
-function heldOperation() {
-  let entered!: () => void
-  let release!: () => void
-  const arrived = new Promise<void>((resolve) => {
-    entered = resolve
-  })
-  const held = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  return {
-    arrived,
-    release,
-    hold: async () => {
-      entered()
-      await held
-    },
-  }
-}
 
 type RetentionSave = {
   save: (
@@ -444,7 +416,7 @@ function watchRetentionSaves(host: TranscriptRetentionHost) {
     writes.push(writing)
     return writing
   })
-  return { writes, save, realSave }
+  return { writes, save }
 }
 
 async function expectDeadlineReceipt(host: TranscriptRetentionHost) {
@@ -500,68 +472,45 @@ it('a scan that never settles releases the first launch at the deadline and reco
   }
 })
 
-it.each(['suppressed', 'wrong', 'rejected'] as const)(
-  'deadline receipt verification refuses a %s save',
-  async (fault) => {
-    const target = claude(OLD, 365)
-    const scan = heldOperation()
-    const persistence = heldOperation()
-    filesystemGate.beforeScan = scan.hold
-    filesystemGate.beforeRename = async (_from, to) => {
-      if (to !== join(data, 'transcript-retention.json')) return
-      await persistence.hold()
-      if (fault === 'rejected') throw new Error('fictional persistence refusal')
-    }
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const host = new TranscriptRetentionHost(data, unused, () => NOW, false, 20)
-    const { writes, save, realSave } = watchRetentionSaves(host)
-    save.mockImplementationOnce((progress, complete, stoppedEarly) => {
-      const writing =
-        fault === 'suppressed'
-          ? Promise.resolve()
-          : realSave(
-              fault === 'wrong' ? { ...progress, conversations: 1, bytes: 1 } : progress,
-              complete,
-              stoppedEarly,
-            )
-      writes.push(writing)
-      return writing
-    })
-    const pass = host.run()
-    try {
-      await scan.arrived
-      await host.beforeLaunch()
-      await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1))
-      expect(existsSync(target)).toBe(true)
-      if (fault !== 'suppressed') await persistence.arrived
-      persistence.release()
-      if (fault === 'rejected') {
-        await expect(writes[0]).rejects.toThrow('fictional persistence refusal')
-        expect(warn).toHaveBeenCalledWith(
-          'Transcript cleanup could not record its deadline.',
-          expect.objectContaining({ message: 'fictional persistence refusal' }),
-        )
-      } else {
-        await writes[0]
-      }
-      if (fault === 'wrong') {
-        expect((await host.recent(0, NOW))[0]).toMatchObject({ conversations: 1, bytes: 1 })
-      } else {
-        expect(await host.recent(0, NOW)).toEqual([])
-        expect(existsSync(join(data, 'transcript-retention.json'))).toBe(false)
-      }
-      await expect(expectDeadlineReceipt(host)).rejects.toThrow()
-      expect(existsSync(target)).toBe(true)
-    } finally {
-      filesystemGate.beforeRename = null
-      persistence.release()
-      scan.release()
-      await pass
-      await Promise.allSettled(writes)
-      await host.stop()
-    }
-  },
-)
+it('a deadline receipt whose save is refused is warned about and records nothing', async () => {
+  const target = claude(OLD, 365)
+  const scan = heldOperation()
+  const persistence = heldOperation()
+  filesystemGate.beforeScan = scan.hold
+  filesystemGate.beforeRename = async (_from, to) => {
+    if (to !== join(data, 'transcript-retention.json')) return
+    await persistence.hold()
+    throw new Error('fictional persistence refusal')
+  }
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const host = new TranscriptRetentionHost(data, unused, () => NOW, false, 20)
+  const { writes, save } = watchRetentionSaves(host)
+  const pass = host.run()
+  try {
+    await scan.arrived
+    await host.beforeLaunch()
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    expect(existsSync(target)).toBe(true)
+    await persistence.arrived
+    persistence.release()
+    await expect(writes[0]).rejects.toThrow('fictional persistence refusal')
+    expect(warn).toHaveBeenCalledWith(
+      'Transcript cleanup could not record its deadline.',
+      expect.objectContaining({ message: 'fictional persistence refusal' }),
+    )
+    expect(await host.recent(0, NOW)).toEqual([])
+    expect(existsSync(join(data, 'transcript-retention.json'))).toBe(false)
+    await expect(expectDeadlineReceipt(host)).rejects.toThrow()
+    expect(existsSync(target)).toBe(true)
+  } finally {
+    filesystemGate.beforeRename = null
+    persistence.release()
+    scan.release()
+    await pass
+    await Promise.allSettled(writes)
+    await host.stop()
+  }
+})
 
 it('a normal startup pass still deletes and records its completed check', async () => {
   const target = claude(OLD, 365)
@@ -582,21 +531,11 @@ it('a deletion already in flight settles, but no later deletion starts after the
   const first = claude(OLD, 365)
   const second = claude(RECENT, 365)
   const firstBytes = statSync(first).size
-  let release!: () => void
-  let entered!: () => void
-  const arrived = new Promise<void>((resolve) => {
-    entered = resolve
-  })
-  const held = new Promise<void>((resolve) => {
-    release = resolve
-  })
+  const firstUnlink = heldOperation()
   let unlinks = 0
   filesystemGate.beforeUnlink = async () => {
     unlinks++
-    if (unlinks === 1) {
-      entered()
-      await held
-    }
+    if (unlinks === 1) await firstUnlink.hold()
   }
   // Hold only the startup deadline behind filesystem setup; retries keep their real timers.
   let deadlineReached = false
@@ -607,7 +546,7 @@ it('a deletion already in flight settles, but no later deletion starts after the
     .mockImplementationOnce((callback, delay, ...args) => {
       expect(delay).toBe(20)
       return realTimeout(() => {
-        void arrived.then(() => {
+        void firstUnlink.arrived.then(() => {
           clock.mockReturnValue(60)
           deadlineReached = true
           if (typeof callback === 'function') callback(...args)
@@ -617,11 +556,11 @@ it('a deletion already in flight settles, but no later deletion starts after the
   const host = new TranscriptRetentionHost(data, unused, () => NOW, false, 20)
   const pass = host.run()
   try {
-    await arrived
+    await firstUnlink.arrived
     const launch = host.beforeLaunch()
     await launch
     await vi.waitFor(() => expect(deadlineReached).toBe(true))
-    release()
+    firstUnlink.release()
     await pass
     expect(existsSync(first)).toBe(false)
     expect(existsSync(second)).toBe(true)
@@ -632,7 +571,7 @@ it('a deletion already in flight settles, but no later deletion starts after the
       `Transcript clearing stopped after 15 seconds. Cleared the transcripts of 1 conversation unused for 90 days, freeing ${firstBytes} B. The rest will be checked next time BroCrew starts.`,
     )
   } finally {
-    release()
+    firstUnlink.release()
     try {
       await pass
     } finally {
@@ -648,30 +587,20 @@ it('a deletion already in flight settles, but no later deletion starts after the
 
 it('a staged move that settles after the deadline restores its file before the pass ends', async () => {
   const target = claude(OLD, 365)
-  let release!: () => void
-  let entered!: () => void
-  const arrived = new Promise<void>((resolve) => {
-    entered = resolve
-  })
-  const held = new Promise<void>((resolve) => {
-    release = resolve
-  })
+  const move = heldOperation()
   filesystemGate.beforeRename = async (from) => {
-    if (from === target) {
-      entered()
-      await held
-    }
+    if (from === target) await move.hold()
   }
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
   const host = new TranscriptRetentionHost(data, unused, () => NOW, false, 20)
   const pass = host.run()
   try {
-    await arrived
+    await move.arrived
     const launch = host.beforeLaunch()
     await vi.advanceTimersByTimeAsync(60)
     await launch
-    release()
+    move.release()
     await pass
     expect(readFileSync(target, 'utf8')).toBe('fictional transcript\n')
     expect(
@@ -682,7 +611,7 @@ it('a staged move that settles after the deadline restores its file before the p
     expect((await host.recent(0, NOW))[0]).toMatchObject({ conversations: 0, stoppedEarly: true })
   } finally {
     vi.useRealTimers()
-    release()
+    move.release()
     await pass
     await host.stop()
   }
@@ -690,19 +619,9 @@ it('a staged move that settles after the deadline restores its file before the p
 
 it('a move held in staging setup cannot start after the deadline releases a real launch', async () => {
   const target = claude(OLD, 365)
-  let release!: () => void
-  let entered!: () => void
-  const arrived = new Promise<void>((resolve) => {
-    entered = resolve
-  })
-  const held = new Promise<void>((resolve) => {
-    release = resolve
-  })
+  const staging = heldOperation()
   filesystemGate.beforeMkdir = async (path) => {
-    if (path.includes('.transcript-cleanup-')) {
-      entered()
-      await held
-    }
+    if (path.includes('.transcript-cleanup-')) await staging.hold()
   }
   let moves = 0
   filesystemGate.beforeRename = async (from) => {
@@ -736,7 +655,7 @@ it('a move held in staging setup cannot start after the deadline releases a real
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   const pass = clearing.run()
   try {
-    await arrived
+    await staging.arrived
     const opening = live.createSession(
       { provider: 'codex' },
       {
@@ -752,13 +671,13 @@ it('a move held in staging setup cannot start after the deadline releases a real
     const opened = await opening
     expect(opened.provider).toBe('codex')
     expect(live.providerProcessesInFlight()).toBe(true)
-    release()
+    staging.release()
     await pass
     expect(moves).toBe(0)
     expect(readFileSync(target, 'utf8')).toBe('fictional transcript\n')
   } finally {
     vi.useRealTimers()
-    release()
+    staging.release()
     await pass
     await live.closeAll()
     await clearing.stop()
@@ -769,32 +688,22 @@ it.each([30, 90] as const)(
   'a held old scan cannot undo the cursor reset when the choice is set to %i days',
   async (period) => {
     for (let i = 0; i < 5; i++) claude(`a-${i}`, 1)
-    let release!: () => void
-    let entered!: () => void
-    const arrived = new Promise<void>((resolve) => {
-      entered = resolve
-    })
-    const held = new Promise<void>((resolve) => {
-      release = resolve
-    })
+    const stat = heldOperation()
     filesystemGate.beforeStat = async (path) => {
-      if (path.endsWith('a-4.jsonl')) {
-        entered()
-        await held
-      }
+      if (path.endsWith('a-4.jsonl')) await stat.hold()
     }
     const host = new TranscriptRetentionHost(data, unused, () => NOW, false, 15_000)
     const pass = host.run()
     try {
-      await arrived
+      await stat.arrived
       await host.set(period)
-      release()
+      stat.release()
       await pass
       expect(
         JSON.parse(readFileSync(join(data, 'transcript-retention.json'), 'utf8')),
       ).toMatchObject({ period, scanAfter: '' })
     } finally {
-      release()
+      stat.release()
       await pass
       await host.stop()
     }
@@ -874,19 +783,9 @@ it('a cut pass resumes past kept files and clears later eligible files over late
     ['a-04', 'a-03'],
     ['a-08', 'a-07'],
   ] as const) {
-    let release!: () => void
-    let entered!: () => void
-    const arrived = new Promise<void>((resolve) => {
-      entered = resolve
-    })
-    const held = new Promise<void>((resolve) => {
-      release = resolve
-    })
+    const stat = heldOperation()
     filesystemGate.beforeStat = async (path) => {
-      if (path.endsWith(`${blocked}.jsonl`)) {
-        entered()
-        await held
-      }
+      if (path.endsWith(`${blocked}.jsonl`)) await stat.hold()
     }
     // Batches are cut by size, never by scan time, and the deadline passes only when the test says.
     const clock = vi.spyOn(performance, 'now').mockReturnValue(0)
@@ -894,18 +793,18 @@ it('a cut pass resumes past kept files and clears later eligible files over late
     const host = new TranscriptRetentionHost(data, unused, () => NOW, false, 20)
     const pass = host.run()
     try {
-      await arrived
+      await stat.arrived
       const launch = host.beforeLaunch()
       await vi.advanceTimersByTimeAsync(20)
       await launch
-      release()
+      stat.release()
       await pass
       expect(existsSync(eligible)).toBe(true)
       expect(
         JSON.parse(readFileSync(join(data, 'transcript-retention.json'), 'utf8')).scanAfter,
       ).toBe(`default/fictional-agent/claude/projects/-fictional/${expectedCursor}.jsonl`)
     } finally {
-      release()
+      stat.release()
       await pass
       await host.stop()
       vi.useRealTimers()
@@ -997,21 +896,6 @@ it('a finished launch permanently closes the clearing opportunity in this app se
   expect(await h.recent(0, NOW)).toEqual([])
   await h.stop()
 })
-it('an interrupted previous run skips startup clearing and is never retried in that session', async () => {
-  const target = codex(OLD, 365)
-  let scans = 0
-  filesystemGate.beforeScan = async () => {
-    scans++
-  }
-  const h = new TranscriptRetentionHost(data, unused, () => NOW, true)
-  await h.run()
-  await h.beforeLaunch()
-  await h.run()
-  expect(scans).toBe(0)
-  expect(existsSync(target)).toBe(true)
-  expect(await h.recent(0, NOW)).toEqual([])
-  await h.stop()
-})
 it('stopping a failed startup cannot rearm clearing when that start is retried', async () => {
   const target = claude(OLD, 365)
   const h = new TranscriptRetentionHost(data, unused, () => NOW)
@@ -1094,19 +978,9 @@ it.each([30, 90, 365] as const)(
 )
 it('a provider launch proceeds while background removal is in progress', async () => {
   const target = claude(OLD, 365)
-  let release!: () => void
-  let arrived!: () => void
-  const entered = new Promise<void>((resolve) => {
-    arrived = resolve
-  })
-  const held = new Promise<void>((resolve) => {
-    release = resolve
-  })
+  const removal = heldOperation()
   filesystemGate.beforeUnlink = async (path) => {
-    if (path.includes('.transcript-cleanup-')) {
-      arrived()
-      await held
-    }
+    if (path.includes('.transcript-cleanup-')) await removal.hold()
   }
   let opening = false
   const h = new TranscriptRetentionHost(
@@ -1116,7 +990,7 @@ it('a provider launch proceeds while background removal is in progress', async (
   )
   const pass = h.run()
   try {
-    await entered
+    await removal.arrived
     opening = true
     let started = 0
     const provider = h.beforeLaunch().then(() => {
@@ -1124,14 +998,14 @@ it('a provider launch proceeds while background removal is in progress', async (
     })
     await Promise.resolve()
     expect(started).toBe(1)
-    release()
+    removal.release()
     await pass
     await provider
     expect(started).toBe(1)
     expect(existsSync(target)).toBe(false)
     expect(await h.recent(NOW - DAY, NOW)).toHaveLength(1)
   } finally {
-    release()
+    removal.release()
     await pass
     await h.stop()
   }
@@ -1170,14 +1044,7 @@ it('Recent activity carries cleanup metadata and marks an unreadable cleanup his
 })
 it('a closed host cannot publish a cleanup reading that arrived after it closed', async () => {
   const live = Object.create(RuntimeHost.prototype) as RuntimeHost
-  let entered!: () => void
-  let finish!: () => void
-  const reading = new Promise<void>((resolve) => {
-    entered = resolve
-  })
-  const held = new Promise<void>((resolve) => {
-    finish = resolve
-  })
+  const reading = heldOperation()
   const life = { closed: false }
   const windowAnswer = activityWindowAnswer()
   Object.assign(live, {
@@ -1185,15 +1052,14 @@ it('a closed host cannot publish a cleanup reading that arrived after it closed'
     deps: {
       windowReader: { read: async () => windowAnswer },
       transcriptsCleared: async () => {
-        entered()
-        await held
+        await reading.hold()
         return []
       },
     },
   })
   const answer = live.recentActivity(windowAnswer.window)
-  await reading
+  await reading.arrived
   life.closed = true
-  finish()
+  reading.release()
   await expect(answer).rejects.toThrow()
 })

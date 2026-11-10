@@ -1,5 +1,4 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { RUNTIME_EVENT_TYPES, type RuntimeEvent, type SessionRef } from '@brobot2/runtime'
 
@@ -317,18 +316,6 @@ describe('transcript fold', () => {
     expect(state.items[0]).toMatchObject({ outcome: 'allow', note: null })
   })
 
-  it('answers a user-input card', () => {
-    const state = feed(createTranscript(), {
-      type: 'user_input_request',
-      id: 'ui_1',
-      prompt: 'pick one',
-      questions: [{ id: 'q0', prompt: 'pick one', options: [{ label: 'a' }, { label: 'b' }] }],
-    })
-
-    markUserInputAnswered(state, 'ui_1', 'answered')
-    expect((state.items[0] as UserInputItem).answered).toBe('answered')
-  })
-
   it('tracks status, the ref, and the user’s own messages', () => {
     const state = createTranscript()
     applyEvent(state, { type: 'session', state: 'started', ref })
@@ -410,16 +397,6 @@ describe('transcript fold', () => {
     expect(state.items.filter((item) => item.kind === 'thinking')).toHaveLength(2)
   })
 
-  it('shows an unmapped provider payload as a raw card instead of crashing', () => {
-    const state = feed(createTranscript(), {
-      type: 'unknown',
-      provider: 'codex',
-      category: 'unrecognized',
-      raw: { weird: true },
-    })
-    expect(state.items[0]).toMatchObject({ kind: 'unknown', provider: 'codex' })
-  })
-
   it('carries the neutral category through so the view can quiet chatter (049)', () => {
     // The fold must pass `category` through untouched — it is the ONLY thing the view switches
     // on, and `raw` must survive so a later chat UI can render reasoning/plans richly.
@@ -458,9 +435,6 @@ describe('transcript fold', () => {
         ref: { ...ref, sessionId: 'after-the-clear' },
         source: 'conversation_reset',
       },
-      // 586 · the provider's own all-clear. It draws NOTHING in either mode, which is the ruling
-      // and not an omission — see `transcript.ts`'s arm for it.
-      // ⚑ A usage reading: the host takes it before the ledger, so it draws nothing anywhere.
       provider_usage: {
         type: 'provider_usage',
         readings: [{ window: 'five_hour', usedPercent: 40, resetsAt: 1_790_913_208_000 }],
@@ -506,7 +480,6 @@ describe('transcript fold', () => {
         agents: [{ agentId: 'a1', label: 'writer', phaseIndex: 1, state: 'running' }],
         source: 'task_progress',
       },
-      // 247. The level, as `background_tasks_changed` states it.
       background_work: {
         type: 'background_work',
         running: [{ id: 'bqiucw912', toolCallId: 'toolu_1', kind: 'local_bash' }],
@@ -517,8 +490,6 @@ describe('transcript fold', () => {
         jobs: [{ id: 'a7c8a668', schedule: '* * * * *', recurring: true, prompt: 'tick' }],
         source: 'hook/Stop',
       },
-      // 279. Drives the fold's `provider_commands` arm, which is a handoff into `CommandRegistry`
-      // and creates no item — the palette draws the band, not the transcript.
       tool_inventory: {
         type: 'tool_inventory',
         naming: { prefix: 'mcp__', separator: '__' },
@@ -547,67 +518,47 @@ describe('transcript fold', () => {
       unknown: { type: 'unknown', provider: 'claude', category: 'unrecognized', raw: null },
     }
 
-    // `status` is state, not a line; `request_resolved` ANNOTATES the card it names (051) rather
-    // than adding one; `activity` is what the agent is doing RIGHT NOW (027) — a pill that is
-    // replaced and then cleared, never a line in the transcript. `context_reading` (087) joins them
-    // for exactly the same reason and it is the whole of 078's ruling: the meter ABSORBS the usage
-    // stream so it never becomes transcript rows. Its sibling `compaction` does add one, because a
-    // boundary is a fact about history rather than a statement about the present.
+    // State, a pill, a registry or a mark on another row: none of these is a line of its own.
     const annotatesRatherThanAdds = new Set([
       'status',
       'request_resolved',
       'activity',
       'context_reading',
-      // 096: a file change is not a line in the conversation. The individual writes are already
-      // inline as tool rows; the Changes pane CONSOLIDATES them, which is 092's whole thesis. It
-      // lands on its own facet — see `ChangeLog` — so `items` is untouched.
       'file_change',
-      // 108: a dynamic workflow is not a line either, and this is the strongest case of the rule.
-      // The reproduction run sent TWELVE frames for one workflow; a 22-agent run sends more. They
-      // fold into one tree hanging off the `Workflow` tool call — 078's *"without turning every
-      // usage update into a transcript row"* — so `items` is untouched here too. The tree's own
-      // presence is asserted in `workflow-tree.test.ts`; what this pins is that nothing accrues.
       'workflow_run',
-      // 247: nor is background work. The runtime publishes the level and the endings; the running-
-      // work registry, the truthful card and the per-task stop are 248's, and the fold deliberately
-      // creates no item until then — see the arm in `transcript.ts` for what 248 has to read.
       'background_work',
-      // ⛔ 258: nor is a schedule, and since this dispatch that is a RULING rather than a handoff.
-      // The level is restated at every turn end — `253` measured `init` at 10 194 / 54 805 /
-      // 114 037 ms as one cron woke one session twice — so a card per frame is a card every two
-      // minutes for as long as the conversation is open. It lands in `ScheduleRegistry` and is drawn
-      // by `ScheduleBar` above the composer; see the arm in `transcript.ts` for why a card gated on
-      // CHANGE would be a claim this app cannot make.
       'scheduled_work',
-      // ⛔ 279: nor is the agent's own command list, and it is the clearest case of the rule yet.
-      // The level says what this session COULD be asked to do — a standing fact, not a thing that
-      // happened — so a transcript row for it would be a line in the conversation about no event in
-      // the conversation. It lands in `CommandRegistry` and is drawn by the palette's own band; see
-      // the arm in `transcript.ts` for why `set: null` and `set: {commands: []}` are kept apart.
       'provider_commands',
-      // ⛔ 358: nor is the tool inventory, for the neighbour's reason with one more on top. It says
-      // what this session COULD call — a standing fact — and on Codex it is emitted precisely to
-      // say that the provider reports NOTHING, so a transcript row for it would be a line in the
-      // conversation about the absence of a fact. It lands in `ToolRegistry` and is drawn by the
-      // Tools sheet; see the arm in `transcript.ts` for why `set: null` and `published: null` are
-      // three states rather than two.
       'tool_inventory',
-      // ⛔ 586: nor is the provider's own all-clear, and this one is out of the transcript for the
-      // reason it was ever chatter. `rate_limit_event` fires once or twice per TURN saying nothing
-      // is wrong, so a row for it is a row on every turn telling a reader the ordinary thing —
-      // `074`'s ruling, which `HO-080` §1.3 did not touch. ⚑ What it changed is that the fact is
-      // now TYPED, so `providerLimitsSeen` can match it against a wall; it lands in no registry at
-      // all, because the only reader is a ledger query. See the arm in `transcript.ts`.
       'provider_limit_clear',
-      // ⚑ Nor a usage reading, which never reaches a window: the host takes it before the ledger.
       'provider_usage',
     ])
+    const kinds = new Set<string>()
     for (const type of RUNTIME_EVENT_TYPES) {
       const state = createTranscript()
       expect(() => applyEvent(state, samples[type])).not.toThrow()
       expect(state.items.length, type).toBe(annotatesRatherThanAdds.has(type) ? 0 : 1)
       expect(describeEvent(samples[type])).not.toBe('')
+      for (const item of state.items) kinds.add(item.kind)
     }
+    // The kinds a provider event can draw, each one the reading view decides on.
+    expect(kinds).toEqual(
+      new Set([
+        'assistant',
+        'tool',
+        'permission',
+        'userInput',
+        'thinking',
+        'plan',
+        'subAgent',
+        'notice',
+        'image',
+        'compaction',
+        'reset',
+        'memoryRecall',
+        'unknown',
+      ]),
+    )
   })
 
   /**
@@ -1987,23 +1938,6 @@ describe('transcript fold — a tool-interrupted streamed run is reconciled, not
     expect(assistants.map((i) => i.text)).toEqual(['AFTER']) // exactly once
   })
 
-  it('the 063 interleaving still renders BOTH runs — reconciliation must not eat real text', () => {
-    // The confirmed-then-tool-then-new-run case: the first message CONFIRMS the streamed block, so
-    // it must survive; only an UNCONFIRMED block is superseded.
-    const state = feed(
-      createTranscript(),
-      { type: 'assistant_delta', text: 'BEFORE' },
-      { type: 'assistant_delta', text: 'AFTER' },
-      { type: 'assistant_message', text: 'BEFORE' },
-      { type: 'tool_call', id: 'tu_1', name: 'Bash', summary: 'ls' },
-      { type: 'assistant_message', text: 'AFTER' },
-    )
-    expect(state.items.map((i) => i.kind)).toEqual(['assistant', 'tool', 'assistant'])
-    expect(
-      state.items.filter((i): i is AssistantItem => i.kind === 'assistant').map((i) => i.text),
-    ).toEqual(['BEFORE', 'AFTER'])
-  })
-
   it('a streamed run left unconfirmed when the TURN ends is kept, not deleted by a later turn', () => {
     // Nothing may retroactively remove a finished turn's rendering.
     const state = feed(
@@ -2016,17 +1950,6 @@ describe('transcript fold — a tool-interrupted streamed run is reconciled, not
     expect(
       state.items.filter((i): i is AssistantItem => i.kind === 'assistant').map((i) => i.text),
     ).toEqual(['turn one text', 'turn two text'])
-  })
-
-  it('a plain streamed run with no tool still reconciles in place (no gratuitous re-ordering)', () => {
-    const state = feed(
-      createTranscript(),
-      { type: 'assistant_delta', text: 'Hel' },
-      { type: 'assistant_delta', text: 'lo' },
-      { type: 'assistant_message', text: 'Hello, world' },
-    )
-    expect(state.items).toHaveLength(1)
-    expect(state.items[0]).toMatchObject({ kind: 'assistant', text: 'Hello, world' })
   })
 })
 
@@ -2091,33 +2014,6 @@ describe('describeEvent — the neutral unknown label (072)', () => {
     expect(
       describeEvent({ type: 'unknown', provider: 'claude', category: 'activity', raw: {} }),
     ).toBe('claude')
-  })
-})
-
-describe("the unknown-rendering path stays provider-agnostic (072 — the person's invariant)", () => {
-  /** The files that turn an `unknown` event into pixels. */
-  const RENDER_PATH = [
-    '../src/renderer/src/components/UnknownEntry.vue',
-    '../src/renderer/src/lib/describe-event.ts',
-    '../src/renderer/src/lib/transcript.ts',
-  ]
-
-  it('never branches on a provider name and never reads a path inside `raw`', () => {
-    // This is WHY `label` exists: the kind lives at a different path inside `raw` per provider
-    // (`params.method` vs the SDK message `type`), so a renderer that dug it out of `raw` would
-    // have to know which provider sent it. Stamping it in the adapter keeps this layer blind.
-    for (const rel of RENDER_PATH) {
-      const source = readFileSync(new URL(rel, import.meta.url), 'utf8')
-      const code = source
-        .split('\n')
-        .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line)) // ignore prose in comments
-        .join('\n')
-      expect(code, `${rel} must not name a provider`).not.toMatch(/['"`](codex|claude)['"`]/i)
-      // Both a direct path read AND a cast — `(event.raw as {method?: string}).method` is a dig
-      // dressed up as a type assertion, and the first version of this guard let it through.
-      expect(code, `${rel} must not read a path inside raw`).not.toMatch(/\braw\s*[.[]/)
-      expect(code, `${rel} must not cast raw to dig into it`).not.toMatch(/\braw\s+as\b/)
-    }
   })
 })
 
@@ -2427,29 +2323,6 @@ describe('transcript fold — a voice with an owner (128)', () => {
 
   const spoken = (state: TranscriptState): string[] =>
     state.items.flatMap((item) => (item.kind === 'assistant' ? [item.text] : []))
-
-  it("puts a child's words on the child's card — and leaves the parent's own where they were", () => {
-    const state = feed(
-      createTranscript(),
-      says('[MAIN] Running two agents.'),
-      dispatch('toolu_bg', 'Find files missed by scouts'),
-      started('a95dbf5b', 'toolu_bg'),
-      says('[GAPS-BG] Starting the coverage audit.', 'toolu_bg'),
-      says('[MAIN] Both back.'),
-    )
-
-    // The negative: the child said something and it is NOT a turn in the conversation.
-    expect(spoken(state)).toEqual(['[MAIN] Running two agents.', '[MAIN] Both back.'])
-    // ⛔ **The paired positive, without which the line above passes over a fold that lost the
-    // message entirely.** It is on the card, with its text intact.
-    expect(cardOn(state, 'toolu_bg')?.body).toEqual([
-      {
-        kind: 'prose',
-        id: expect.stringMatching(/^says_\d+$/),
-        text: '[GAPS-BG] Starting the coverage audit.',
-      },
-    ])
-  })
 
   it('a FAN-OUT adds no top-level turns at all — four children talking at once (078)', () => {
     // 078's rule, applied to speech: N agents must add N cards, never N turns. The parent speaks

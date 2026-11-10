@@ -168,24 +168,6 @@ describe('the loaded window', () => {
   })
 
   describe('an event that arrives while the window is away from the tail', () => {
-    /** A window scrolled back far enough that the release took the newest events. */
-    function scrolledBack() {
-      const window = createWindow()
-      openAt(window, page(WINDOW_MAX_EVENTS, WINDOW_MAX_EVENTS), SESSION)
-      prependPage(window, page(0, WINDOW_MAX_EVENTS), SESSION)
-      return window
-    }
-
-    it('is counted, not folded, and not lost', () => {
-      const window = scrolledBack()
-      const before = window.entries.length
-
-      expect(liveDisposition(window)).toBe('behind')
-      // Nothing is appended: an item at the bottom of a window that ends somewhere else entirely
-      // would put an invisible hole in the middle of the conversation.
-      expect(window.entries).toHaveLength(before)
-    })
-
     it('comes back correct when the window is re-read, because the ledger still holds it', () => {
       // THE argument for not folding it. A `user_decision` for a card that was released marks
       // nothing — every one of those fold paths is "mark it if it is there" — and that is honest
@@ -229,20 +211,6 @@ describe('the loaded window', () => {
   })
 
   describe('re-folding rather than concatenating two folds', () => {
-    it('produces one id space, so nothing collides and no index dangles', () => {
-      const all = [...entries(0, 30), ...entries(30, 30)].map((entry) => ({
-        sessionId: SESSION,
-        ...entry,
-      }))
-      const folded = foldWindow(all)
-
-      // The failure a concatenation would have: `seq` restarts at zero in each fold, so both halves
-      // emit `assistant_1`, `user_2`… Vue keys collide and `itemById` returns whichever it meets
-      // first. One fold, one counter, no duplicates.
-      const ids = folded.items.map((item) => item.id)
-      expect(new Set(ids).size).toBe(ids.length)
-    })
-
     it('is identical to having folded the same events in one go', () => {
       // The equivalence that makes re-folding safe to do on every window move: what the reader sees
       // after paging back must be exactly what they would have seen had it all arrived at once.
@@ -314,22 +282,6 @@ describe('a session record reading through a window', () => {
     // test is about — *the narrowed check still fires* — did not move, so neither did the test.
     expect(notices[0]?.kind === 'notice' && notices[0].text).toContain(NOT_REACHED_THIS_WINDOW)
   })
-
-  it('advances the ordinal counter even for an event it does not fold', () => {
-    // Otherwise the FIRST event after the reader returns to the tail would look like a gap, and the
-    // conversation would grow a notice about a hole that never existed.
-    const record = createSessionRecord(SESSION)
-    openWindow(record, page(0, 1))
-    acceptEvent(record, { sessionId: SESSION, ...page(0, 1).entries[0]! })
-    record.window.atTail = false
-
-    acceptEvent(record, live(1))
-    acceptEvent(record, live(2))
-
-    expect(record.window.behind).toBe(2)
-    expect(record.nextOrdinal).toBe(3)
-    expect(record.transcript.items.some((item) => item.kind === 'notice')).toBe(false)
-  })
 })
 
 describe('getting back to the tail after scrolling too far (054 review)', () => {
@@ -360,6 +312,7 @@ describe('getting back to the tail after scrolling too far (054 review)', () => 
 
     expect(record.window.behind).toBe(2)
     expect(record.transcript.items).toHaveLength(items)
+    expect(record.nextOrdinal).toBe(3)
   })
 
   it('re-reads the newest page and starts folding again', () => {

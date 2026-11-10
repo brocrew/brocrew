@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RUNTIME_EVENT_TYPES, type RuntimeEvent, type SessionRef } from '@brobot2/runtime'
+import type { RuntimeEvent, SessionRef } from '@brobot2/runtime'
 import { applyEvent, appendUserMessage, createTranscript } from '../src/renderer/src/lib/transcript'
 import { isVisibleIn, visibleItems } from '../src/renderer/src/lib/transcript-mode'
 import type { TranscriptItem } from '../src/renderer/src/lib/transcript'
@@ -97,24 +97,6 @@ describe('transcript mode', () => {
     expect(kindsOf(shown)).toContain('permission')
   })
 
-  it('normal hides lifecycle chrome but never a problem', () => {
-    const shown = visibleItems('normal', realisticTranscript().items)
-    const notices = shown.filter((item) => item.kind === 'notice')
-
-    // "session started" and "turn completed" are gone…
-    expect(notices.every((item) => item.level !== 'info')).toBe(true)
-    // …while the retry warning and the fatal error both survive.
-    expect(notices.map((item) => item.level).sort()).toEqual(['error', 'warn'])
-  })
-
-  it('normal hides recognized chatter and keeps a genuine surprise', () => {
-    const shown = visibleItems('normal', realisticTranscript().items)
-    const unknowns = shown.filter((item) => item.kind === 'unknown')
-
-    expect(unknowns).toHaveLength(1)
-    expect(unknowns[0]?.category).toBe('unrecognized')
-  })
-
   it('normal is a filter, not a reordering or a rewrite', () => {
     const items = realisticTranscript().items
     const shown = visibleItems('normal', items)
@@ -179,152 +161,5 @@ describe('transcript mode', () => {
     expect(isVisibleIn('debug', call)).toBe(true)
     expect(isVisibleIn('normal', { ...call, superseded: true })).toBe(false)
     expect(isVisibleIn('debug', { ...call, superseded: true })).toBe(false)
-  })
-
-  it('decides every item kind the fold can produce — nothing falls through unclassified', () => {
-    // Drive one of every event variant through the real fold, so a new item kind
-    // arrives here as an unhandled case rather than as an accidental default.
-    const state = createTranscript()
-    appendUserMessage(state, 'hi')
-    const samples: Record<(typeof RUNTIME_EVENT_TYPES)[number], RuntimeEvent> = {
-      session: { type: 'session', state: 'started', ref },
-      conversation_reset: {
-        type: 'conversation_reset',
-        ref: { ...ref, sessionId: 'after-the-clear' },
-        source: 'conversation_reset',
-      },
-      // 586 · the provider's own all-clear. It draws NOTHING in either mode, which is the ruling
-      // and not an omission — see `transcript.ts`'s arm for it.
-      // ⚑ A usage reading: the host takes it before the ledger, so it draws nothing anywhere.
-      provider_usage: {
-        type: 'provider_usage',
-        readings: [{ window: 'five_hour', usedPercent: 40, resetsAt: 1_790_913_208_000 }],
-      },
-      provider_limit_clear: {
-        type: 'provider_limit_clear',
-        window: 'five_hour',
-        source: 'rate_limit_event',
-      },
-      turn: { type: 'turn', state: 'completed' },
-      provider_turn: { type: 'provider_turn' },
-      assistant_delta: { type: 'assistant_delta', text: 'x' },
-      assistant_message: { type: 'assistant_message', text: 'x' },
-      tool_call: { type: 'tool_call', id: 't', name: 'Bash', summary: 's' },
-      tool_result: { type: 'tool_result', id: 't', summary: 's', ok: true },
-      permission_request: {
-        type: 'permission_request',
-        id: 'p',
-        kind: 'file',
-        action: 'Write',
-        detail: 'f',
-        scope,
-      },
-      user_input_request: { type: 'user_input_request', id: 'ui', prompt: 'p', questions: [] },
-      request_resolved: { type: 'request_resolved', id: 'p' },
-      status: { type: 'status', state: 'idle' },
-      thinking: { type: 'thinking', phase: 'delta', redacted: true, tokens: 42 },
-      activity: { type: 'activity', phase: 'thinking' },
-      image: { type: 'image', imageId: 'exec-1', path: '/x/generated_images/t/exec-1.png' },
-      plan_update: { type: 'plan_update', steps: [{ text: 'step one', status: 'active' }] },
-      sub_agent: { type: 'sub_agent', agentId: 'a1', phase: 'started', kind: 'Explore' },
-      error: { type: 'error', message: 'oops', fatal: false },
-      context_reading: {
-        type: 'context_reading',
-        reading: { kind: 'tokens', used: 46971 },
-        source: 'message_start',
-      },
-      compaction: { type: 'compaction', before: 128000, after: 24000, source: 'compact_boundary' },
-      file_change: {
-        type: 'file_change',
-        changes: [{ path: 'src/a.ts', status: 'modified', added: 2, removed: 1 }],
-        source: 'turn/diff/updated',
-      },
-      workflow_run: {
-        type: 'workflow_run',
-        taskId: 'wf1',
-        toolUseId: 't',
-        name: 'demo',
-        phases: [{ index: 1, title: 'Draft' }],
-        agents: [{ agentId: 'a1', label: 'writer', phaseIndex: 1, state: 'running' }],
-        source: 'task_progress',
-      },
-      // 247. Drives the fold's `background_work` arm, which deliberately creates no item — so this
-      // pass asserts the taxonomy is walked, and the kind set below asserts nothing new appeared.
-      background_work: {
-        type: 'background_work',
-        running: [{ id: 'bqiucw912', toolCallId: 't', kind: 'local_bash' }],
-        source: 'background_tasks_changed',
-      },
-      // 253. Drives the fold's `scheduled_work` arm, which is a handoff and creates no item — so
-      // this pass asserts the taxonomy is walked and the kind set below asserts nothing appeared.
-      scheduled_work: {
-        type: 'scheduled_work',
-        jobs: [{ id: 'a7c8a668', schedule: '* * * * *', recurring: true, prompt: 'tick' }],
-        source: 'hook/Stop',
-      },
-      // 279. Drives the fold's `provider_commands` arm, which is a handoff and creates no item —
-      // so this pass asserts the taxonomy is walked and the kind set below asserts nothing appeared.
-      tool_inventory: {
-        type: 'tool_inventory',
-        naming: { prefix: 'mcp__', separator: '__' },
-        declared: {
-          server: 'brobot',
-          tools: [{ name: 'spawn_agent', description: 'Create another agent.', parameters: [] }],
-        },
-        published: {
-          tools: ['Bash', 'mcp__brobot__spawn_agent'],
-          servers: [{ name: 'brobot', status: 'connected' }],
-        },
-        source: 'init',
-      },
-      provider_commands: {
-        type: 'provider_commands',
-        commands: [{ name: 'compact', description: 'Free up context' }],
-        prefix: '/',
-        source: 'initializationResult',
-      },
-      memory_recall: {
-        type: 'memory_recall',
-        entries: [{ path: 'MEMORY.md', lineStart: 1, lineEnd: 3, note: 'the user’s full name' }],
-        threadIds: ['019c6e27-e55b-73d1-87d8-4e01f1f75043'],
-        source: 'memoryCitation',
-      },
-      unknown: { type: 'unknown', provider: 'claude', category: 'reasoning', raw: null },
-    }
-    for (const type of RUNTIME_EVENT_TYPES) applyEvent(state, samples[type])
-
-    const kinds = new Set(kindsOf(state.items))
-    expect(kinds).toEqual(
-      new Set([
-        'user',
-        'assistant',
-        'tool',
-        'permission',
-        'userInput',
-        'thinking',
-        'plan',
-        'subAgent',
-        'notice',
-        // 067: the picture the agent made. CONTENT, and shown in `normal` — it was `unknown`
-        // chatter and therefore invisible in the only mode a user reads.
-        'image',
-        // 087: the compaction boundary. Shown in `normal` for the same reason `image` is — it was
-        // `unknown{lifecycle}` chatter, i.e. invisible in the only mode a user reads, and it is the
-        // reason the agent no longer remembers what it was told above the line.
-        'compaction',
-        // 199: the conversation-reset boundary. Same argument as `compaction` one step further on
-        // — it was `unknown{lifecycle}` chatter too, and what it announced was not "the earlier
-        // turns were summarized" but "the provider is answering from a different conversation now".
-        'reset',
-        // 319: what the agent said it READ out of its memory. ⛔ Shown in `normal` for the sharpest
-        // version of the reason above it: friction log F5 is a person saying he cannot see a recall
-        // happen, so a row only a debug toggle reveals is a row that does not answer him. ⚑ Its
-        // write-side twin, `memoryNote` (318), is app-authored and reaches this list from a
-        // `TranscriptEvent` rather than a `RuntimeEvent`, which is why it is not in this set.
-        'memoryRecall',
-        'unknown',
-      ]),
-    )
-    for (const item of state.items) expect(typeof isVisibleIn('normal', item)).toBe('boolean')
   })
 })

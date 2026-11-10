@@ -114,9 +114,12 @@ describe('222 §2 · the store derives the ending, on every shape that leaves it
     ref: { provider: 'claude', sessionId: id, cwd: dir, rotation: 0 },
   })
 
+  const create = (id: string): void =>
+    store.create({ id, provider: 'claude', cwd: dir, approvalMode: 'ask', profileId: 'default' })
+
   /** One conversation that took a turn and ended it the given way. */
   function conversation(id: string, ending: 'completed' | 'failed' | 'interrupted'): void {
-    store.create({ id, provider: 'claude', cwd: dir, approvalMode: 'ask', profileId: 'default' })
+    create(id)
     const feed = (event: TranscriptEvent): void => store.append(id, ordinal++, event, ++at)
     feed(REF(id))
     feed({ type: 'user_turn', text: 'do the thing' })
@@ -143,13 +146,7 @@ describe('222 §2 · the store derives the ending, on every shape that leaves it
    */
   it('a session that ended UNDERNEATH an open turn reads `ended`, beside an identical status', () => {
     conversation('sess_clean', 'completed')
-    store.create({
-      id: 'sess_cut',
-      provider: 'claude',
-      cwd: dir,
-      approvalMode: 'ask',
-      profileId: 'default',
-    })
+    create('sess_cut')
     store.append('sess_cut', ordinal++, REF('sess_cut'), ++at)
     store.append('sess_cut', ordinal++, { type: 'user_turn', text: 'run the build' }, ++at)
     store.append('sess_cut', ordinal++, { type: 'status', state: 'ended' }, ++at)
@@ -168,13 +165,7 @@ describe('222 §2 · the store derives the ending, on every shape that leaves it
 
   /** The crash half: the row is repaired on the next launch, and says so. */
   it('a turn stranded by a crash reads `unknown` after the startup sweep', () => {
-    store.create({
-      id: 'sess_crashed',
-      provider: 'claude',
-      cwd: dir,
-      approvalMode: 'ask',
-      profileId: 'default',
-    })
+    create('sess_crashed')
     store.append('sess_crashed', ordinal++, REF('sess_crashed'), ++at)
     store.append('sess_crashed', ordinal++, { type: 'user_turn', text: 'npm test' }, ++at)
     store.append('sess_crashed', ordinal++, { type: 'status', state: 'working' }, ++at)
@@ -221,13 +212,7 @@ describe('222 §2 · the store derives the ending, on every shape that leaves it
 
   /** A session that never took a turn has no ending, and says nothing rather than `completed`. */
   it('a conversation with no closed turn reports null', () => {
-    store.create({
-      id: 'sess_empty',
-      provider: 'claude',
-      cwd: dir,
-      approvalMode: 'ask',
-      profileId: 'default',
-    })
+    create('sess_empty')
     store.append('sess_empty', ordinal++, REF('sess_empty'), ++at)
 
     expect(store.recorded()[0]?.lastEnding).toBeNull()
@@ -248,13 +233,7 @@ describe('222 §2 · the store derives the ending, on every shape that leaves it
     expect(resumable?.lastEnding).toBe('interrupted')
 
     // …and the other half, on a row that genuinely has no ref to resume from.
-    store.create({
-      id: 'sess_noref',
-      provider: 'claude',
-      cwd: dir,
-      approvalMode: 'ask',
-      profileId: 'default',
-    })
+    create('sess_noref')
     store.append('sess_noref', ordinal++, { type: 'user_turn', text: 'hello' }, ++at)
     store.append('sess_noref', ordinal++, { type: 'turn', state: 'failed' }, ++at)
     const unresumable = store.unresumable().find((row) => row.sessionId === 'sess_noref')
@@ -292,12 +271,4 @@ describe('222 §4 · the word, and which surface says it', () => {
       expect(endedUnfinished(ending), `${ending} is not a finish`).toBe(true)
     }
   })
-
-  /**
-   * ⛑ **The parity invariant, in `219`'s shape, was asked of the rail's CLOSED list** — wherever
-   * both surfaces said something about one conversation's ending, they said the same word.
-   * ⚑ **D-017b · the rail has no closed list** (`closed-threads.ts` went with the open/closed split):
-   * its ONE list (`conversation-list.ts`) says the one state and never an ending, so the rail has no
-   * word left to disagree with the Sessions row. The Sessions page's half is `endingLabel` above.
-   */
 })

@@ -1,4 +1,5 @@
 import { neutralHostDeps } from './lib/host-fixture'
+import { heldOperation } from './helpers/held-operation'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -236,19 +237,8 @@ it.each(['fresh', 'resume', 'model', 'check', 'signIn', 'version', 'renew'] as c
       await host.close(session, sink)
     }
     for (const call of Object.values(calls)) call.mockClear()
-    let release!: () => void
-    let entered!: () => void
-    const held = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    const arrived = new Promise<void>((resolve) => {
-      entered = resolve
-    })
-    const gate = vi.fn(async () => {
-      entered()
-      await held
-    })
-    barrier = gate
+    const gate = heldOperation()
+    barrier = vi.fn(gate.hold)
     const pending =
       kind === 'fresh' || kind === 'renew'
         ? host.createSession({ provider: 'claude', cwd: dir }, sink)
@@ -262,15 +252,15 @@ it.each(['fresh', 'resume', 'model', 'check', 'signIn', 'version', 'renew'] as c
                 ? host.checkProviderAuth('codex', 'fictional-agent')
                 : host.signInProvider('codex', 'fictional-agent')
     try {
-      await Promise.race([arrived, pending.then(() => undefined)])
-      expect(gate).toHaveBeenCalledTimes(1)
+      await Promise.race([gate.arrived, pending.then(() => undefined)])
+      expect(barrier).toHaveBeenCalledTimes(1)
       expect(calls[kind]).toHaveBeenCalledTimes(0)
       expect(host.providerProcessesInFlight()).toBe(true)
-      release()
+      gate.release()
       await pending
       expect(calls[kind]).toHaveBeenCalledTimes(1)
     } finally {
-      release()
+      gate.release()
       await pending
     }
   },
@@ -279,29 +269,11 @@ it.each(['fresh', 'resume', 'model', 'check', 'signIn', 'version', 'renew'] as c
 it.each(['save', 'remove', 'check'] as const)(
   'Codex key %s waits for clearing and owns synchronization until its native work settles',
   async (kind) => {
-    let releaseBarrier!: () => void
-    let releaseNative!: () => void
-    let barrierEntered!: () => void
-    let nativeEntered!: () => void
-    const gate = new Promise<void>((resolve) => {
-      releaseBarrier = resolve
-    })
-    const native = new Promise<void>((resolve) => {
-      releaseNative = resolve
-    })
-    const atBarrier = new Promise<void>((resolve) => {
-      barrierEntered = resolve
-    })
-    const atNative = new Promise<void>((resolve) => {
-      nativeEntered = resolve
-    })
-    barrier = vi.fn(async () => {
-      barrierEntered()
-      await gate
-    })
+    const gate = heldOperation()
+    const native = heldOperation()
+    barrier = vi.fn(gate.hold)
     const syncing = vi.fn(async () => {
-      nativeEntered()
-      await native
+      await native.hold()
       return null
     })
     synchronize = syncing
@@ -312,20 +284,20 @@ it.each(['save', 'remove', 'check'] as const)(
           ? host.removeApiKey('codex')
           : host.checkApiKey('codex')
     try {
-      await Promise.race([atBarrier, atNative, operation.then(() => undefined)])
+      await Promise.race([gate.arrived, native.arrived, operation.then(() => undefined)])
       expect(barrier).toHaveBeenCalledTimes(1)
       expect(syncing).toHaveBeenCalledTimes(0)
       expect(host.providerProcessesInFlight()).toBe(true)
-      releaseBarrier()
-      await atNative
+      gate.release()
+      await native.arrived
       expect(syncing).toHaveBeenCalledTimes(1)
       expect(host.providerProcessesInFlight()).toBe(true)
-      releaseNative()
+      native.release()
       await operation
       expect(host.providerProcessesInFlight()).toBe(false)
     } finally {
-      releaseBarrier()
-      releaseNative()
+      gate.release()
+      native.release()
       await operation
     }
   },
@@ -348,48 +320,30 @@ it('a failed key synchronization releases its launch and keeps the existing noti
 })
 
 it('model-home preparation waits for clearing and keeps its native key synchronization owned', async () => {
-  let releaseBarrier!: () => void
-  let releaseNative!: () => void
-  let barrierEntered!: () => void
-  let nativeEntered!: () => void
-  const gate = new Promise<void>((resolve) => {
-    releaseBarrier = resolve
-  })
-  const native = new Promise<void>((resolve) => {
-    releaseNative = resolve
-  })
-  const atBarrier = new Promise<void>((resolve) => {
-    barrierEntered = resolve
-  })
-  const atNative = new Promise<void>((resolve) => {
-    nativeEntered = resolve
-  })
-  barrier = vi.fn(async () => {
-    barrierEntered()
-    await gate
-  })
+  const gate = heldOperation()
+  const native = heldOperation()
+  barrier = vi.fn(gate.hold)
   const preparing = vi.fn(async () => {
-    nativeEntered()
-    await native
+    await native.hold()
     return join(dir, 'fictional-home')
   })
   prepareHome = preparing
   const operation = host.modelList('claude')
   try {
-    await Promise.race([atBarrier, atNative, operation.then(() => undefined)])
+    await Promise.race([gate.arrived, native.arrived, operation.then(() => undefined)])
     expect(barrier).toHaveBeenCalledTimes(1)
     expect(preparing).toHaveBeenCalledTimes(0)
     expect(host.providerProcessesInFlight()).toBe(true)
-    releaseBarrier()
-    await atNative
+    gate.release()
+    await native.arrived
     expect(preparing).toHaveBeenCalledTimes(1)
     expect(host.providerProcessesInFlight()).toBe(true)
-    releaseNative()
+    native.release()
     await operation
     expect(host.providerProcessesInFlight()).toBe(false)
   } finally {
-    releaseBarrier()
-    releaseNative()
+    gate.release()
+    native.release()
     await operation
   }
 })

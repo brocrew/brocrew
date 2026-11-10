@@ -584,6 +584,35 @@ describe('§4 · the host: a ledger message, read from the provider’s file', (
 
   const CLAUDE_FIRST = sentIn('claude', lines('claude-transcript.jsonl'), FIRST)
 
+  /** The provider conversation `sessionId`, in the planted conversations' folder. */
+  const lifeRef = (provider: Provider, sessionId: string) => ({
+    provider,
+    sessionId,
+    cwd: join(userData, 'w'),
+    rotation: 0,
+  })
+
+  /** A conversation planted in the ledger, its launch named `life-b`, holding these rows. */
+  function plantedRows(id: string, provider: Provider, rows: readonly object[]): void {
+    store.create({
+      id,
+      provider,
+      cwd: join(userData, 'w'),
+      approvalMode: 'ask',
+      profileId: 'planted',
+      launchedAs: 'life-b',
+    })
+    expect(store.nameItsLaunch(id, lifeRef(provider, 'life-b'))).toBe(true)
+    for (const [index, event] of rows.entries()) {
+      store.append(id, index + 1, event as Parameters<SessionStore['append']>[2], tick())
+    }
+  }
+
+  /** The same, with the launch row first. */
+  function planted(id: string, provider: Provider, rows: readonly object[]): void {
+    plantedRows(id, provider, [{ type: 'launched' }, ...rows])
+  }
+
   it('🔴 the provider’s own file, found as an import finds it', async () => {
     const { sessionId, places, life } = await conversation('claude', [FIRST, NOTE])
     const first = handedOver(sessionId, places[0])
@@ -632,35 +661,16 @@ describe('§4 · the host: a ledger message, read from the provider’s file', (
     // ⚑ Claude names a conversation after its first turn is handed over: the turn, then the
     // `session` (or `conversation_reset`) its init raises, then the turn's end.
     const id = 'sess_planted'
-    const cwd = join(userData, 'w')
-    store.create({
-      id,
-      provider: 'claude',
-      cwd,
-      approvalMode: 'ask',
-      profileId: 'planted',
-      launchedAs: 'life-b',
-    })
-    const ref = (sessionId: string) => ({
-      provider: 'claude' as const,
-      sessionId,
-      cwd,
-      rotation: 0,
-    })
-    expect(store.nameItsLaunch(id, ref('life-b'))).toBe(true)
-    const said = [
+    plantedRows(id, 'claude', [
       { type: 'user_turn', text: FIRST, sent: CLAUDE_FIRST },
-      { type: 'session', state: 'started', ref: ref('life-a') },
+      { type: 'session', state: 'started', ref: lifeRef('claude', 'life-a') },
       { type: 'turn', state: 'completed' },
       { type: 'user_turn', text: FIRST, sent: CLAUDE_FIRST },
-      { type: 'conversation_reset', ref: ref('life-b'), source: 'planted' },
+      { type: 'conversation_reset', ref: lifeRef('claude', 'life-b'), source: 'planted' },
       { type: 'turn', state: 'completed' },
       { type: 'user_turn', text: FIRST, sent: `${CLAUDE_FIRST}\n\nAGAIN` },
       { type: 'turn', state: 'completed' },
-    ]
-    for (const [index, event] of said.entries()) {
-      store.append(id, index + 1, event as Parameters<SessionStore['append']>[2], tick())
-    }
+    ])
     // ⚑ The current conversation's file holds the first message, and a later one with more; the
     // first conversation's file is gone.
     fileLife = 'life-b'
@@ -690,38 +700,18 @@ describe('§4 · the host: a ledger message, read from the provider’s file', (
 
   it('⛔ a send that reached no provider conversation, and a turn a quit left open', async () => {
     const id = 'sess_planted_two'
-    const cwd = join(userData, 'w')
-    store.create({
-      id,
-      provider: 'claude',
-      cwd,
-      approvalMode: 'ask',
-      profileId: 'planted',
-      launchedAs: 'life-b',
-    })
-    const ref = (sessionId: string) => ({
-      provider: 'claude' as const,
-      sessionId,
-      cwd,
-      rotation: 0,
-    })
-    expect(store.nameItsLaunch(id, ref('life-b'))).toBe(true)
-    const said = [
-      { type: 'launched' },
+    planted(id, 'claude', [
       { type: 'user_turn', text: FIRST, sent: CLAUDE_FIRST },
       { type: 'turn', state: 'failed' },
       { type: 'user_turn', text: FIRST, sent: CLAUDE_FIRST },
-      { type: 'session', state: 'started', ref: ref('life-a') },
+      { type: 'session', state: 'started', ref: lifeRef('claude', 'life-a') },
       { type: 'user_turn', text: FIRST, sent: CLAUDE_FIRST },
-      // ⚑ The app quit inside that turn; the next launch is a new conversation.
+      // The app quit inside that turn; the next launch is a new conversation.
       { type: 'launched' },
       { type: 'user_turn', text: FIRST, sent: CLAUDE_FIRST },
-      { type: 'session', state: 'started', ref: ref('life-b') },
+      { type: 'session', state: 'started', ref: lifeRef('claude', 'life-b') },
       { type: 'turn', state: 'completed' },
-    ]
-    for (const [index, event] of said.entries()) {
-      store.append(id, index + 1, event as Parameters<SessionStore['append']>[2], tick())
-    }
+    ])
     nativeFile = join(userData, 'provider-homes', 'claude', 'projects', 'p', 'transcript.jsonl')
     mkdirSync(dirname(nativeFile), { recursive: true })
     writeFileSync(nativeFile, `${asThisLife('claude-transcript.jsonl', 'life-b').join('\n')}\n`)
@@ -739,22 +729,7 @@ describe('§4 · the host: a ledger message, read from the provider’s file', (
 
   it('⛔ a message whose text this app did not keep: said so, never found by its words', async () => {
     const id = 'sess_planted_three'
-    const cwd = join(userData, 'w')
-    store.create({
-      id,
-      provider: 'claude',
-      cwd,
-      approvalMode: 'ask',
-      profileId: 'planted',
-      launchedAs: 'life-b',
-    })
-    expect(
-      store.nameItsLaunch(id, { provider: 'claude', sessionId: 'life-b', cwd, rotation: 0 }),
-    ).toBe(true)
-    const said = [{ type: 'launched' }, { type: 'user_turn', text: FIRST }]
-    for (const [index, event] of said.entries()) {
-      store.append(id, index + 1, event as Parameters<SessionStore['append']>[2], tick())
-    }
+    planted(id, 'claude', [{ type: 'user_turn', text: FIRST }])
     nativeFile = join(userData, 'provider-homes', 'claude', 'projects', 'p', 'transcript.jsonl')
     mkdirSync(dirname(nativeFile), { recursive: true })
     writeFileSync(nativeFile, `${asThisLife('claude-transcript.jsonl', 'life-b').join('\n')}\n`)
@@ -763,23 +738,6 @@ describe('§4 · the host: a ledger message, read from the provider’s file', (
       why: 'This app kept no copy of the text it handed over for this message — it was sent before this app kept one, or keeping it failed — so it cannot be matched exactly in the provider’s own record.',
     })
   })
-
-  /** A conversation planted in the ledger, its launch named `life-b`, with these rows after it. */
-  function planted(id: string, provider: Provider, rows: readonly object[]): void {
-    const cwd = join(userData, 'w')
-    store.create({
-      id,
-      provider,
-      cwd,
-      approvalMode: 'ask',
-      profileId: 'planted',
-      launchedAs: 'life-b',
-    })
-    expect(store.nameItsLaunch(id, { provider, sessionId: 'life-b', cwd, rotation: 0 })).toBe(true)
-    for (const [index, event] of [{ type: 'launched' }, ...rows].entries()) {
-      store.append(id, index + 1, event as Parameters<SessionStore['append']>[2], tick())
-    }
-  }
 
   it('🔴 a turn read from the provider’s own record: found by the text its importer took from it', async () => {
     // ⚑ The Claude importer's turn is the record's string content, as it is (`import-claude.ts`).
@@ -890,10 +848,10 @@ describe('§4 · the host: a ledger message, read from the provider’s file', (
   )
 
   /**
-   * ⚑ **W4.204 · a conversation adopted from one of this app's profile homes, then reopened here**,
-   * as the ledger really holds it: the rows read from the provider's record, with no conversation
-   * named; then the reopen, the message this app handed over, and the provider naming the
-   * conversation it resumed (Codex names it before the message, Claude after).
+   * A conversation adopted from one of this app's profile homes, then reopened here, as the ledger
+   * really holds it: the rows read from the provider's record, with no conversation named; then the
+   * reopen, the message this app handed over, and the provider naming the conversation it resumed
+   * (Codex names it before the message, Claude after).
    */
   function adoptedThenReopened(
     id: string,
@@ -901,29 +859,12 @@ describe('§4 · the host: a ledger message, read from the provider’s file', (
     read: readonly object[],
     live: readonly object[],
   ): void {
-    const cwd = join(userData, 'w')
-    store.create({
-      id,
-      provider,
-      cwd,
-      approvalMode: 'ask',
-      profileId: 'planted',
-      launchedAs: 'life-b',
-    })
-    expect(store.nameItsLaunch(id, { provider, sessionId: 'life-b', cwd, rotation: 0 })).toBe(true)
-    for (const [index, event] of [
-      ...read,
-      { type: 'reopened' },
-      { type: 'launched' },
-      ...live,
-    ].entries()) {
-      store.append(id, index + 1, event as Parameters<SessionStore['append']>[2], tick())
-    }
+    plantedRows(id, provider, [...read, { type: 'reopened' }, { type: 'launched' }, ...live])
   }
   const resumed = (provider: Provider): object => ({
     type: 'session',
     state: 'resumed',
-    ref: { provider, sessionId: 'life-b', cwd: join(userData, 'w'), rotation: 0 },
+    ref: lifeRef(provider, 'life-b'),
   })
 
   /**
