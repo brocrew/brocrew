@@ -79,7 +79,7 @@ const actions: Action[] = [
   },
 ]
 
-function setup(held: AgentIdentities | null = initial) {
+async function setup(held: AgentIdentities | null = initial) {
   const read = vi.fn(async (): Promise<AgentIdentities> => initial)
   const write = vi.fn<(input: unknown) => Promise<typeof saved | null>>(async () => saved)
   const store = createAgentStore({
@@ -88,13 +88,17 @@ function setup(held: AgentIdentities | null = initial) {
     setAgentProvider: write,
     setAgentDisplayName: write,
   } as unknown as RuntimeBridge)
-  store.identities.value = held
+  if (held !== null) {
+    read.mockResolvedValueOnce(held)
+    await store.load()
+    read.mockClear()
+  }
   return { store, read, write }
 }
 
 describe.each(actions)('$name identity update', (action) => {
   it('patches before refreshing and waits for the complete roster before answering', async () => {
-    const { store, read, write } = setup()
+    const { store, read, write } = await setup()
     let finish!: (list: AgentIdentities) => void
     const refreshed = { ...roster([saved, neighbour]), spawningEnabled: false }
     read.mockImplementation(() => {
@@ -121,7 +125,7 @@ describe.each(actions)('$name identity update', (action) => {
   })
 
   it('keeps the saved row and successful action result when refresh fails', async () => {
-    const { store, read } = setup()
+    const { store, read } = await setup()
     read.mockRejectedValue(new Error('roster unavailable'))
     expect(await action.invoke(store)).toEqual(action.success)
     expect(store.identities.value).toEqual({ ...initial, identities: [neighbour, saved] })
@@ -133,7 +137,7 @@ describe.each(actions)('$name identity update', (action) => {
   it.each([null, roster([]), roster([neighbour])])(
     'does not invent a row in an unread or nonmatching roster (%j)',
     async (held) => {
-      const { store, read } = setup(held)
+      const { store, read } = await setup(held)
       read.mockRejectedValue(new Error('roster unavailable'))
       expect(await action.invoke(store)).toEqual(action.success)
       expect(store.identities.value).toEqual(held)
@@ -142,24 +146,24 @@ describe.each(actions)('$name identity update', (action) => {
   )
 
   it('keeps its missing-identity refusal without patching or refreshing', async () => {
-    const { store, read, write } = setup()
+    const { store, read, write } = await setup()
     write.mockResolvedValue(null)
     expect(await action.invoke(store)).toEqual(action.missing)
     expect(store.identities.value).toEqual(initial)
     expect(read).not.toHaveBeenCalled()
-    expect(store.loaded.value).toBe(false)
+    expect(store.loaded.value).toBe(true)
     expect(store.loadError.value).toBeNull()
   })
 
   it('keeps its action-specific error result without patching or refreshing', async () => {
-    const { store, read, write } = setup()
+    const { store, read, write } = await setup()
     write.mockRejectedValue(
       new Error("Error invoking remote method 'runtime:command': Error: write refused"),
     )
     expect(await action.invoke(store)).toEqual(action.refusal('write refused'))
     expect(store.identities.value).toEqual(initial)
     expect(read).not.toHaveBeenCalled()
-    expect(store.loaded.value).toBe(false)
+    expect(store.loaded.value).toBe(true)
     expect(store.loadError.value).toBeNull()
   })
 })

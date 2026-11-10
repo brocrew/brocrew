@@ -262,7 +262,7 @@ describe('a launch that cannot complete (102)', () => {
     async (ending) => {
       const exit = new FakeProcessExit()
       const runtime = new StallingRuntime('arrives-anyway', undefined, exit)
-      const host = buildHost(runtime, { launchTimeoutMs: 80 })
+      const host = aLaunchHost(userData, runtime, 80)
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       const launching = host.createSession({ provider: 'codex', launchKey: 'progress' }, sink)
       const failure = launching.catch((error: unknown) => error)
