@@ -1,8 +1,8 @@
 // Run against built resources as shipped; never rebuild or patch the service under test.
 import { createRequire } from 'node:module'
-import { mkdtemp, realpath, rm } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -39,7 +39,25 @@ export async function checkPackagedPluginService(resources, packages) {
     passed = true
   } finally {
     if (passed) await rm(scratch, { recursive: true, force: true })
-    else console.error(`[plugin-service-check] retained ${scratch}`)
+    else {
+      console.error(`[plugin-service-check] retained ${scratch}`)
+      if (process.platform === 'win32' && process.env.RUNNER_TEMP) {
+        const evidence = join(process.env.RUNNER_TEMP, 'recovery-evidence', basename(scratch))
+        for (const file of ['plugin-drain.log', 'supervisor/owner.json']) {
+          try {
+            await mkdir(join(evidence, dirname(file)), { recursive: true })
+            const source = join(scratch, 'p', file)
+            const target = join(evidence, file)
+            if (file === 'supervisor/owner.json') {
+              const { version, epoch, phase, wire } = JSON.parse(await readFile(source, 'utf8'))
+              await writeFile(target, JSON.stringify({ version, epoch, phase, wire }) + '\n')
+            } else await copyFile(source, target)
+          } catch {
+            console.error(`[plugin-service-check] could not retain ${file}`)
+          }
+        }
+      }
+    }
   }
 }
 
