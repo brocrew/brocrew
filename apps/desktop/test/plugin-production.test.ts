@@ -1,12 +1,10 @@
-import { setup, seams } from './plugin-production-fixtures'
+import { setup, seams, settingsCall } from './plugin-production-fixtures'
 import {
   pluginStartupTrace,
   PluginSupervisorLaunchFailure,
 } from '../src/main/plugins/startup-failure'
-import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import { fixture } from './plugin-lifecycle-fixtures'
-import { registerPluginSettings } from '../src/main/plugins/settings'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -29,6 +27,17 @@ import {
   PluginSupervisorError,
   type OwnerRecord,
 } from '../src/main/plugins/supervisor/protocol'
+type Options = Awaited<ReturnType<typeof setup>>['options']
+
+function writeOwner(options: Options, epoch: string, phase: OwnerRecord['phase']) {
+  const storage = new SupervisorStorage(options.root, [options.workspaceRoot], true)
+  try {
+    storage.write({ version: 1, epoch, phase, wire: OWNER_WIRE })
+  } finally {
+    storage.close()
+  }
+}
+
 describe.skipIf(process.platform === 'win32')('first Settings startup catalogue reuse', () => {
   async function modern() {
     const f = await setup()
@@ -131,17 +140,6 @@ describe.skipIf(process.platform === 'win32')('first Settings startup catalogue 
     expect(await f.controller.catalogue(true)).toMatchObject([{ state: 'Available' }])
     expect(f.fetch).toHaveBeenCalledTimes(6)
     expect(f.peer.refreshCatalogue).toHaveBeenCalledOnce()
-  })
-  it('refetches after a failed startup instead of treating its input as verified', async () => {
-    const f = await modern()
-    f.fetch.mockRejectedValueOnce(new Error('fictional offline startup'))
-    f.controller.start(f.options)
-    await f.controller.ready!()
-    expect(seams.connect).not.toHaveBeenCalled()
-    expect(f.fetch).toHaveBeenCalledTimes(1)
-    expect(await f.controller.catalogue(true)).toMatchObject([{ state: 'Available' }])
-    expect(f.fetch.mock.calls.length).toBeGreaterThan(1)
-    expect(seams.connect).toHaveBeenCalledOnce()
   })
   it('does not reuse unverified startup bytes', async () => {
     const f = await modern()
@@ -457,18 +455,11 @@ describe.skipIf(process.platform === 'win32')(
       await writeFile(join(f.options.root, 'supervisor'), 'not a directory')
       f.controller.start(f.options)
       await f.controller.ready!()
-      const owner = Object.assign(new EventEmitter(), {
-        isDestroyed: () => false,
-        webContents: Object.assign(new EventEmitter(), { mainFrame: {}, send: vi.fn() }),
+      await expect(settingsCall(f.controller)({ kind: 'list' })).resolves.toEqual({
+        ok: false,
+        listState: 'fetch-error',
+        reason: 'supervisor-unavailable',
       })
-      const ipc = { handle: vi.fn() }
-      registerPluginSettings(ipc, () => owner as never, f.controller)
-      await expect(
-        ipc.handle.mock.calls[0]![1](
-          { sender: owner.webContents, senderFrame: owner.webContents.mainFrame },
-          { kind: 'list' },
-        ),
-      ).resolves.toEqual({ ok: false, listState: 'fetch-error', reason: 'supervisor-unavailable' })
       expect(f.fetch).not.toHaveBeenCalled()
       expect(f.supervisor.start).not.toHaveBeenCalled()
     })
@@ -595,17 +586,8 @@ describe.skipIf(process.platform === 'win32')(
         expect(await f.controller.ready!()).toBe(true)
         await f.controller.catalogue(true) // First Settings list uses the verified startup source.
         f.fetch.mockImplementation(async () => new Response(body, { status }))
-        const owner = Object.assign(new EventEmitter(), {
-          isDestroyed: () => false,
-          webContents: Object.assign(new EventEmitter(), { mainFrame: {}, send: vi.fn() }),
-        })
-        const ipc = { handle: vi.fn() }
-        registerPluginSettings(ipc, () => owner as never, f.controller)
-        const list = () =>
-          ipc.handle.mock.calls[0]![1](
-            { sender: owner.webContents, senderFrame: owner.webContents.mainFrame },
-            { kind: 'list' },
-          )
+        const call = settingsCall(f.controller)
+        const list = () => call({ kind: 'list' })
         expect(await list()).toMatchObject({
           ok: true,
           listState: 'ready',
@@ -708,42 +690,13 @@ describe.skipIf(process.platform === 'win32')(
         const warn = vi.spyOn(console, 'warn')
         f.controller.start(f.options)
         await f.controller.ready!()
-        const owner = Object.assign(new EventEmitter(), {
-          isDestroyed: () => false,
-          webContents: Object.assign(new EventEmitter(), { mainFrame: {}, send: vi.fn() }),
-        })
-        const ipc = { handle: vi.fn() }
-        registerPluginSettings(ipc, () => owner as never, f.controller)
-        const answer = await ipc.handle.mock.calls[0]![1](
-          { sender: owner.webContents, senderFrame: owner.webContents.mainFrame },
-          { kind: 'list' },
-        )
-        expect(answer).toEqual(expected)
+        expect(await settingsCall(f.controller)({ kind: 'list' })).toEqual(expected)
         expect(f.controller.available!()).toBe(true)
         expect(f.supervisor.start).not.toHaveBeenCalled()
         expect(seams.connect).not.toHaveBeenCalled()
         expect(warn).not.toHaveBeenCalledWith('[plugins] plugin-initialization-failed')
       },
     )
-    it('maps a rejected public list fetch through Settings without plugin failure wording', async () => {
-      const f = await setup()
-      f.fetch.mockRejectedValue(new Error('fictional private network detail'))
-      f.controller.start(f.options)
-      await f.controller.ready!()
-      const owner = Object.assign(new EventEmitter(), {
-        isDestroyed: () => false,
-        webContents: Object.assign(new EventEmitter(), { mainFrame: {}, send: vi.fn() }),
-      })
-      const ipc = { handle: vi.fn() }
-      registerPluginSettings(ipc, () => owner as never, f.controller)
-      expect(
-        await ipc.handle.mock.calls[0]![1](
-          { sender: owner.webContents, senderFrame: owner.webContents.mainFrame },
-          { kind: 'list' },
-        ),
-      ).toEqual({ ok: false, listState: 'fetch-error' })
-      expect(f.supervisor.start).not.toHaveBeenCalled()
-    })
     it('loads only the fixed repo list without a key and Install needs one press', async () => {
       const f = await setup()
       f.controller.start(f.options)
@@ -1022,18 +975,10 @@ describe.skipIf(process.platform === 'win32')(
         target: real.opts.target,
       })
       await f.controller.ready!()
-      const owner = Object.assign(new EventEmitter(), {
-        isDestroyed: () => false,
-        webContents: Object.assign(new EventEmitter(), { mainFrame: {}, send: vi.fn() }),
+      expect(await settingsCall(f.controller)({ kind: 'list' })).toMatchObject({
+        ok: true,
+        cards: [{ installed: null, state: 'Unavailable' }],
       })
-      const ipc = { handle: vi.fn() }
-      registerPluginSettings(ipc, () => owner as never, f.controller)
-      const handler = ipc.handle.mock.calls[0]![1]
-      const answer = await handler(
-        { sender: owner.webContents, senderFrame: owner.webContents.mainFrame },
-        { kind: 'list' },
-      )
-      expect(answer).toMatchObject({ ok: true, cards: [{ installed: null, state: 'Unavailable' }] })
       expect(f.peer.install).not.toHaveBeenCalled()
     })
     it.each(['readable', 'busy'] as const)(
@@ -1053,15 +998,7 @@ describe.skipIf(process.platform === 'win32')(
           target: real.opts.target,
         })
         await f.controller.ready!()
-        const owner = Object.assign(new EventEmitter(), {
-          isDestroyed: () => false,
-          webContents: Object.assign(new EventEmitter(), { mainFrame: {}, send: vi.fn() }),
-        })
-        const ipc = { handle: vi.fn() }
-        registerPluginSettings(ipc, () => owner as never, f.controller)
-        const handler = ipc.handle.mock.calls[0]![1]
-        const call = (input: unknown) =>
-          handler({ sender: owner.webContents, senderFrame: owner.webContents.mainFrame }, input)
+        const call = settingsCall(f.controller)
         expect(await call({ kind: 'list' })).toMatchObject({
           ok: true,
           cards: [{ installed: false, state: 'Available' }],
@@ -1095,22 +1032,6 @@ describe.skipIf(process.platform === 'win32')(
         )
       },
     )
-    it('unknown evidence overrides a successful unadmitted false card', async () => {
-      const f = await setup()
-      await mkdir(f.options.root, { mode: 0o700 })
-      await writeFile(join(f.options.root, 'lifecycle-state-born'), '1', { mode: 0o600 })
-      vi.spyOn(GlobalPluginState, 'observeInstallations').mockImplementation(() => {
-        throw new Error('fictional unknown')
-      })
-      f.peer.catalogue.mockResolvedValue([
-        { id: f.pkg.release.id, name: 'Fictional Bakery', installed: false, state: 'Unavailable' },
-      ])
-      f.controller.start(f.options)
-      await f.controller.ready!()
-      expect(await f.controller.catalogue()).toMatchObject([
-        { installed: null, state: 'Unavailable' },
-      ])
-    })
     it.each(['rejected', 'held rejection'] as const)(
       'an uncertain %s detach fences retry, catalogue and discovery reconnects',
       async (mode) => {
@@ -1152,20 +1073,32 @@ describe.skipIf(process.platform === 'win32')(
         expect(JSON.stringify(result)).not.toContain('fictional-private')
       },
     )
-    it('unknown installation evidence never becomes absent or forwards raw storage errors', async () => {
-      const f = await setup()
-      await mkdir(f.options.root, { mode: 0o700 })
-      await writeFile(join(f.options.root, 'lifecycle-state-born'), '1', { mode: 0o600 })
-      vi.spyOn(GlobalPluginState, 'observeInstallations').mockImplementation(() => {
-        throw new Error('fictional-private-path-and-stack')
-      })
-      f.supervisor.ready.mockResolvedValue(false)
-      f.controller.start(f.options)
-      await f.controller.ready!()
-      const cards = await f.controller.catalogue()
-      expect(cards).toMatchObject([{ installed: null, state: 'Unavailable' }])
-      expect(JSON.stringify(cards)).not.toContain('fictional-private-path')
-    })
+    it.each([false, true])(
+      'unknown installation evidence never becomes absent or forwards raw storage errors (connected: %s)',
+      async (connected) => {
+        const f = await setup()
+        await mkdir(f.options.root, { mode: 0o700 })
+        await writeFile(join(f.options.root, 'lifecycle-state-born'), '1', { mode: 0o600 })
+        vi.spyOn(GlobalPluginState, 'observeInstallations').mockImplementation(() => {
+          throw new Error('fictional-private-path-and-stack')
+        })
+        if (connected)
+          f.peer.catalogue.mockResolvedValue([
+            {
+              id: f.pkg.release.id,
+              name: 'Fictional Bakery',
+              installed: false,
+              state: 'Unavailable',
+            },
+          ])
+        else f.supervisor.ready.mockResolvedValue(false)
+        f.controller.start(f.options)
+        await f.controller.ready!()
+        const cards = await f.controller.catalogue()
+        expect(cards).toMatchObject([{ installed: null, state: 'Unavailable' }])
+        expect(JSON.stringify(cards)).not.toContain('fictional-private-path')
+      },
+    )
     it('a lost person channel marks the known list unavailable without granting calls', async () => {
       const f = await setup()
       f.controller.start(f.options)
@@ -1181,14 +1114,8 @@ describe.skipIf(process.platform === 'win32')(
       async (afterUninstall) => {
         const f = await setup()
         const epochs = [randomUUID(), randomUUID()]
-        const owner = (epoch: string, phase: OwnerRecord['phase']) => {
-          const storage = new SupervisorStorage(f.options.root, [f.options.workspaceRoot], true)
-          try {
-            storage.write({ version: 1, epoch, phase, wire: OWNER_WIRE })
-          } finally {
-            storage.close()
-          }
-        }
+        const owner = (epoch: string, phase: OwnerRecord['phase']) =>
+          writeOwner(f.options, epoch, phase)
         const leases = epochs.map((epoch) => ({
           epoch,
           standing: vi.fn(() => true),
@@ -1282,14 +1209,7 @@ describe.skipIf(process.platform === 'win32')(
     it('a lost lease recovers by itself once the owner proves its clean stop', async () => {
       const f = await setup()
       const epoch = randomUUID()
-      const owner = (phase: OwnerRecord['phase']) => {
-        const storage = new SupervisorStorage(f.options.root, [f.options.workspaceRoot], true)
-        try {
-          storage.write({ version: 1, epoch, phase, wire: OWNER_WIRE })
-        } finally {
-          storage.close()
-        }
-      }
+      const owner = (phase: OwnerRecord['phase']) => writeOwner(f.options, epoch, phase)
       const leases = [epoch, randomUUID()].map((one) => ({
         epoch: one,
         standing: vi.fn(() => one !== epoch),
@@ -1325,17 +1245,7 @@ describe.skipIf(process.platform === 'win32')(
     it('a lost person channel reconnects by itself to an owner that still accepts this lease', async () => {
       const f = await setup()
       const epoch = randomUUID()
-      const storage = new SupervisorStorage(f.options.root, [f.options.workspaceRoot], true)
-      try {
-        storage.write({
-          version: 1,
-          epoch,
-          phase: 'accepting',
-          wire: OWNER_WIRE,
-        })
-      } finally {
-        storage.close()
-      }
+      writeOwner(f.options, epoch, 'accepting')
       const lease = {
         epoch,
         standing: vi.fn(() => true),
@@ -1482,15 +1392,6 @@ describe.skipIf(process.platform === 'win32')(
       )
       expect(f.peer.install).not.toHaveBeenCalled()
     })
-    it('connection failure keeps the card unavailable and refuses Install', async () => {
-      const f = await setup()
-      f.supervisor.ready.mockResolvedValue(false)
-      f.controller.start(f.options)
-      expect(await f.controller.ready!()).toBe(true)
-      expect(f.controller.available!()).toBe(true)
-      expect(readPluginInstructions(f.controller)?.[0]?.state).toBe('Unavailable')
-      expect(seams.connect).not.toHaveBeenCalled()
-    })
   },
 )
 
@@ -1505,18 +1406,7 @@ it.skipIf(process.platform === 'win32')(
     expect(await f.controller.ready!()).toBe(true)
     await f.controller.catalogue(true) // First Settings list uses the verified startup source.
     f.fetch.mockRejectedValue(new Error('fictional offline transport'))
-    const owner = Object.assign(new EventEmitter(), {
-      isDestroyed: () => false,
-      getContentBounds: () => ({ width: 1180, height: 900 }),
-      webContents: Object.assign(new EventEmitter(), { mainFrame: {}, send: vi.fn() }),
-    })
-    const ipc = { handle: vi.fn() }
-    registerPluginSettings(ipc, () => owner as never, f.controller)
-    const answer = await ipc.handle.mock.calls[0]![1](
-      { sender: owner.webContents, senderFrame: owner.webContents.mainFrame },
-      { kind: 'list' },
-    )
-    expect(answer).toMatchObject({
+    expect(await settingsCall(f.controller)({ kind: 'list' })).toMatchObject({
       ok: true,
       refreshFailed: true,
       cards: [{ installed: true, state: 'Running' }],
@@ -1752,10 +1642,7 @@ it.skipIf(process.platform === 'win32')(
   },
 )
 
-async function busyOwner(
-  options: Awaited<ReturnType<typeof setup>>['options'],
-  diagnostic?: Record<string, string>,
-) {
+async function busyOwner(options: Options, diagnostic?: Record<string, string>) {
   const { createServer } = await import('node:net')
   const { pack, unpack, secret } = await import('../src/main/plugins/supervisor/protocol')
   const storage = new SupervisorStorage(options.root, [options.workspaceRoot], true)

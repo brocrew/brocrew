@@ -1,6 +1,7 @@
 import { afterEach, expect, vi } from 'vitest'
 import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { EventEmitter } from 'node:events'
 import { tmpdir } from 'node:os'
 import type { PluginCard } from '../src/shared/plugin-settings'
 import type { PluginSupervisorAttachment } from '../src/main/plugins/supervisor/client'
@@ -24,6 +25,7 @@ vi.mock('../src/main/plugins/supervisor/launcher', () => ({
 }))
 export { seams }
 import { productionPluginController } from '../src/main/plugins/production'
+import { registerPluginSettings } from '../src/main/plugins/settings'
 const roots: string[] = []
 const controllers: ReturnType<typeof productionPluginController>[] = []
 afterEach(async () => {
@@ -81,4 +83,19 @@ export async function setup(pkg = packageFixture()) {
     supervisor: supervisor as unknown as PluginSupervisorAttachment,
   }
   return { controller, options, peer, supervisor, fetch, pkg }
+}
+
+export function settingsCall(controller: ReturnType<typeof productionPluginController>) {
+  const owner = Object.assign(new EventEmitter(), {
+    isDestroyed: () => false,
+    getContentBounds: () => ({ width: 1180, height: 900 }),
+    webContents: Object.assign(new EventEmitter(), { mainFrame: {}, send: vi.fn() }),
+  })
+  const ipc = { handle: vi.fn() }
+  registerPluginSettings(ipc, () => owner as never, controller)
+  return (input: unknown) =>
+    ipc.handle.mock.calls[0]![1](
+      { sender: owner.webContents, senderFrame: owner.webContents.mainFrame },
+      input,
+    )
 }
