@@ -67,8 +67,7 @@ describe.skipIf(process.platform === 'win32')('bounded durable configuration led
     async (point) => {
       const f = await fixture()
       const ledger = await upgradedFixture(f.root)
-      for (let revision = 1; revision < 63; revision++)
-        await ledger.reserve(id, revision)
+      for (let revision = 1; revision < 63; revision++) await ledger.reserve(id, revision)
       fault.point = point
       await expect(ledger.reserve(id, 63)).rejects.toThrow()
       fault.point = ''

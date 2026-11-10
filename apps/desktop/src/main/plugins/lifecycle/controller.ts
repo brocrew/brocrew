@@ -1526,10 +1526,7 @@ export class PluginLifecycleController {
       const connection = await screen.connection
       if (!this.admitted(handle, input.pluginId, input.installId)) return refuse()
       // Consume even on an ambiguous HTTP failure; read actual state next time, never replay.
-      await new PluginProfileLedger(this.options.root).reserve(
-        input.installId,
-        input.revision,
-      )
+      await new PluginProfileLedger(this.options.root).reserve(input.installId, input.revision)
       const abort = new AbortController()
       this.profileCalls.set(input.pluginId, abort)
       try {

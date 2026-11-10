@@ -224,18 +224,34 @@ export class PluginProfileLedger {
     const { folder, parent } = state.location
     if (!state.hasV2) await this.publishFloor(parent, installId, expected, state.previous)
     if (state.records.length >= TAIL_LIMIT) {
-      await this.publishCheckpoint(folder, parent, installId, expected, state.previous, state.records)
+      await this.publishCheckpoint(
+        folder,
+        parent,
+        installId,
+        expected,
+        state.previous,
+        state.records,
+      )
       state.records.length = 0
     }
     const revision = expected + 1
-    const bytes = Buffer.from(JSON.stringify(Intent.parse({
-      format: 2, installId, revision, previous: state.previous, proposal: null,
-    })))
+    const bytes = Buffer.from(
+      JSON.stringify(
+        Intent.parse({
+          format: 2,
+          installId,
+          revision,
+          previous: state.previous,
+          proposal: null,
+        }),
+      ),
+    )
     const name = String(revision).padStart(16, '0') + '.json'
     await writeAtomically(join(folder, name), bytes)
     await this.publishFloor(parent, installId, revision, digest(bytes))
     await this.publishCheckpoint(folder, parent, installId, revision, digest(bytes), [
-      ...state.records, name,
+      ...state.records,
+      name,
     ])
     return revision
   }

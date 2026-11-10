@@ -21,8 +21,10 @@ export function pluginContributions(pkg: VerifiedPluginPackage) {
   return Object.freeze({
     executor: Object.freeze({ ...executor }),
     tools: manifest.server && pkg.compatibility.tools ? pluginBrokerBinding : null,
-    configuration: manifest.server && manifest.ui && pkg.compatibility.ui
-      ? { read: readPluginConfiguration, apply: applyPluginConfiguration } : null,
+    configuration:
+      manifest.server && manifest.ui && pkg.compatibility.ui
+        ? { read: readPluginConfiguration, apply: applyPluginConfiguration }
+        : null,
     cleanup: manifest.removal ?? null,
     hooks: Object.freeze((manifest.hooks ?? []).map(hookSupport)),
   })
