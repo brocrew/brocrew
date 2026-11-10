@@ -1,12 +1,8 @@
 import fs from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
-import { startAgentChrome } from '../src/app.js'
-import { loadConfig } from '../src/config.js'
-import { createProfileStore } from '../src/profiles/store.js'
-import { silentLogger } from '../src/logger.js'
-import { FakeBrowser, harness } from './fakes.js'
+import { harness } from './fakes.js'
+import { personProfile } from './person-profile-fixture.js'
 
 const cleanup: Array<() => void | Promise<void>> = []
 afterEach(async () => {
@@ -14,23 +10,7 @@ afterEach(async () => {
   for (const fn of cleanup.splice(0).reverse()) await fn()
 })
 async function boot() {
-  const home = fs.mkdtempSync(
-    join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-person-delete-'),
-  )
-  cleanup.push(() => fs.rmSync(home, { recursive: true, force: true }))
-  const mcpToken = 'fictional-mcp-'.repeat(8),
-    adminToken = 'fictional-person-'.repeat(8)
-  const authPath = join(home, 'fictional-auth.json')
-  fs.writeFileSync(authPath, JSON.stringify({ mcpToken, adminToken }), { mode: 0o600 })
-  const config = loadConfig({ BROCREW_CHROME_DATA: home, BROCREW_CHROME_AUTH: authPath })
-  const store = createProfileStore({ home })
-  const browser = new FakeBrowser(store.dirOf)
-  const server = await startAgentChrome(config, { store, browser, logger: silentLogger })
-  cleanup.push(() => server.close())
-  store.create('fern', 'panel')
-  const directory = store.dirOf('fern')
-  fs.writeFileSync(join(directory, 'Cookies'), 'fictional cookies')
-  const url = 'http://127.0.0.1:' + (server.httpServer.address() as { port: number }).port
+  const { store, browser, directory, url, adminToken, mcpToken } = await personProfile(cleanup)
   async function remove(token = adminToken, confirm = 'fern') {
     const response = await fetch(url + '/v1/profiles/fern/delete', {
       method: 'POST',
