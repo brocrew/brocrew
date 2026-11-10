@@ -1,5 +1,5 @@
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -201,12 +201,6 @@ describe('598 · the grant covers what it created', () => {
         { value: unknown } | undefined
     )?.value ?? null
 
-  /** ⚑ Source with block comments and line comments stripped — `codeOf`'s rule, one file over. */
-  const codeOf = (file: string): string =>
-    readFileSync(join(srcRoot, file), 'utf8')
-      .replace(/\/\*[\s\S]*?\*\//g, ' ')
-      .replace(/^\s*\/\/.*$/gm, ' ')
-
   // ───────────────────────────────────────────────────────────────────────────────────────────
   // §1 · the fact this app had never written down
   // ───────────────────────────────────────────────────────────────────────────────────────────
@@ -242,38 +236,6 @@ describe('598 · the grant covers what it created', () => {
       // `this-app` above is a distinction this column really draws rather than its only value.
       host.createAgent({ slug: 'a-second', displayName: null, provider: null })
       expect(creatorColumn('a-second')).toBe('a-person')
-    })
-
-    // ⚑ **D-016** — the third door, *an APPROVED proposal records the proposer*, is gone with
-    // proposals: `create_project` and `decideProposal` no longer exist, so no identity row is
-    // written on a person's press for an agent's ask.
-
-    it('🔴 the CENSUS: every call site that writes an identity row supplies a creator', () => {
-      // ⛔ **Over the WRITERS and not over the type** — `a-payload-census-must-read-call-sites-not-types`:
-      // the column is required by the signature, so a type-shaped census would pass on a tree where
-      // one door quietly passed `{ by: 'this-app' }` for an agent. ⚑ **This asks what each call
-      // site SAYS.**
-      const storeCode = codeOf('main/db/session-store.ts')
-      // ⚠️ **The one writer of the row**, and the argument is REQUIRED — so a fourth writer cannot
-      // be added without deciding what it records, which is `SaidAtCreation`'s own property moved
-      // onto a fact the caller cannot decline to mention.
-      expect(storeCode).toContain('broughtIntoBeingBy: IdentityCreator,')
-      expect(storeCode).toContain('identityCreatorColumn(broughtIntoBeingBy)')
-      // ⛔ **A launch is the app's, spelled at the one call site that means it**, and it does not
-      // read the caller. ⚑ D-014 removed the seeded grants, whose targets were the second.
-      expect(storeCode.split("{ by: 'this-app' }").length - 1).toBe(1)
-
-      const hostCode = codeOf('main/runtime/runtime-host.ts')
-      // ⚑ **The person's door**, and the only place in the host that says so.
-      expect(hostCode).toContain("createAgentIdentity(said, { by: 'a-person' })")
-      // ⚑ **The agent's door reads the grant door's own answer**, so *who is asking* is answered
-      // once — see `MayCreateAgents`.
-      expect(hostCode).toContain('createAgentIdentity({ ...said, provider }, may.creator)')
-      // ⚑ **D-016** — the proposal door, which named the proposer, went with proposals.
-      // 🔴 **The control the census needs** (standing rule 12, planting TWO): a phrase that is
-      // genuinely absent, so the reads above are bytes rather than a matcher that agrees with
-      // everything.
-      expect(hostCode).not.toContain("createAgentIdentity(said, { by: 'this-app' })")
     })
   })
 

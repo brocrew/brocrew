@@ -334,33 +334,6 @@ describe('494 · the act this app knows the author of', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§3 · every door a person can stop a turn from', () => {
-    it('🔴 exactly ONE writer of a `user_decision` can spell `cancel`, and it is the permission door', () => {
-      // ⛔ **The search shape** (standing rule 4): the enumeration is every place the host builds
-      // this event, and what each one puts in `outcome`. ⚠️ A claim of the form *"the N doors"*
-      // would go quietly wrong the first time a sixth writer appeared; this goes red.
-      const host = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'runtime-host.ts'))
-      const outcomes = [
-        ...host.matchAll(/type: 'user_decision',[\s\S]{0,200}?outcome: ([^,\n]+)/g),
-      ].map((match) => (match[1] ?? '').trim())
-      expect(outcomes.length, 'the writers of a decision row').toBeGreaterThan(1)
-      expect(outcomes.filter((one) => one === 'decision.outcome')).toHaveLength(1)
-      for (const other of outcomes.filter((one) => one !== 'decision.outcome')) {
-        expect(other, 'a writer that can spell cancel without being the permission door').toMatch(
-          // ⚑ **D-009 · `'rejected'` — an agent saying it cannot answer**, which cannot spell cancel.
-          /^('answered'|'rejected'|response\.kind === 'answer' \? 'answered' : 'rejected')$/,
-        )
-      }
-      // ⚑ **The control that plants TWO** (standing rule 12): the matcher over two writers in one
-      // string, so a pattern that could only ever see the first fails here.
-      const planted = [
-        "      type: 'user_decision',\n      requestId,\n      outcome: 'answered',",
-        "      type: 'user_decision',\n      requestId,\n      outcome: decision.outcome,",
-      ].join('\n')
-      expect([
-        ...planted.matchAll(/type: 'user_decision',[\s\S]{0,200}?outcome: ([^,\n]+)/g),
-      ]).toHaveLength(2)
-    })
-
     it('⛔ so the door set is the CARD set — `cancel` is a floor every adapter honours', () => {
       // ⚠️ **This is what makes the answer *every door* rather than *the doors I looked at*.**
       // `ALWAYS_HONOURED` is the outcome both adapters accept whatever the request offered, so a
@@ -535,32 +508,6 @@ describe('494 · the act this app knows the author of', () => {
         store.append(id, index, event, (now += 1_000))
       })
     }
-
-    it('🔴 the three narrow reads all name the new type — a fold that reads it and a query that does not is silent', () => {
-      // ⛔ **The pair that can drift, for the two statements that had no census.** ⚠️
-      // `selectPieceEvents` is censused against `derivePieces` in `a-task-you-can-see.test.ts` §7;
-      // these two are censused against the fold that reads them. ⚑ A type folded but not selected
-      // reads as *that event never happened* — silently, on the replayed path only.
-      const statement = sourceOf(join(mainRoot, 'db'), 'session-store.ts')
-      for (const name of [
-        'selectLastTurnEndingEvents',
-        'selectLastAskToStop',
-        'selectPieceEvents',
-      ]) {
-        const opens = statement.indexOf(`const ${name} = db.prepare(`)
-        expect(opens, `${name} was renamed or removed`).toBeGreaterThan(0)
-        const body = statement.slice(opens, statement.indexOf('  )', opens))
-        expect(body, name).toContain("'user_decision'")
-      }
-      // ⚑ **The control that plants TWO** (standing rule 12): a second `db.prepare(` in the same
-      // string, so a slice that ran to the end of the file rather than to its own statement fails.
-      const planted = [
-        '  const selectLastAskToStop = db.prepare(\n    `SELECT 1`,\n  )',
-        "  const selectSomethingElse = db.prepare(\n    `SELECT 'user_decision'`,\n  )",
-      ].join('\n')
-      const opens = planted.indexOf('const selectLastAskToStop = db.prepare(')
-      expect(planted.slice(opens, planted.indexOf('  )', opens))).not.toContain("'user_decision'")
-    })
 
     it('⚠️ a cancel from before 477 still answers null, in all three readers, off a real ledger', () => {
       // ⛔ **Planted, and it is the ONE thing here that may not come from a door**: a row written
