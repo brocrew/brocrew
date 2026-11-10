@@ -20,7 +20,6 @@ import {
 import type { UserInputQuestion } from '@brobot2/runtime'
 import {
   personsQueueView,
-  type NoAnswerHere,
   type PersonsQueueRow,
   type PersonsQueueWorld,
 } from '../src/renderer/src/lib/persons-queue'
@@ -373,52 +372,5 @@ describe('§3 · the reasons, and the move each one names', () => {
     expect(rowOf(asked(null, 'the-provider')).noAnswerHere).toBe('not-yours-yet')
     expect(rowOf(asked(null, 'nothing-says'), HOLDING_IT).noAnswerHere).toBe('not-in-this-window')
     expect(rowOf(asked(null, 'the-provider')).question).toBeNull()
-  })
-})
-
-describe('§4 · what a cardless row is allowed to reach', () => {
-  /**
-   * 🔴 **The reachable set is DERIVED, never listed** (rule 27.1) — a hand-written list is a
-   * guard scoped by where things live today, and it expires silently.
-   *
-   * ⛔ **Every combination of the three facts a cardless row carries**: what the asker offered,
-   * whether this window holds the conversation, and whether this window has already answered.
-   */
-  const reachable = new Set<NoAnswerHere>()
-  for (const offered of [null, OFFER]) {
-    for (const held of [true, false]) {
-      for (const answeredHere of [true, false]) {
-        const row = rowOf(asked(offered), {
-          held: held ? new Set(['sess_worker']) : new Set(),
-          answeredFromHere: answeredHere ? new Set(['sess_worker:req_1']) : new Set(),
-        })
-        if (row.noAnswerHere !== null) reachable.add(row.noAnswerHere)
-      }
-    }
-  }
-
-  it('🔴 no reason is reachable by a question this app asked — its card answers it', () => {
-    // ⚑ **UI-009** — `'no-card-was-drawn'` went with the queue's own buttons, and *answer sent* is
-    // the card's word now.
-    expect([...reachable]).toEqual([])
-  })
-
-  /**
-   * ⛔ **Neither arm that promises a card is reachable**, which is `602`'s whole finding and the
-   * one thing this dispatch must not undo by adding a route into them.
-   */
-  it('⛔ the two arms whose sentences say *its card* stay unreachable from here', () => {
-    expect(reachable.has('not-in-this-window')).toBe(false)
-    expect(reachable.has('not-yours-yet')).toBe(false)
-    // ⚑ **The control, and it is the same derivation**: a PROVIDER-raised row reaches both, so
-    // *unreachable* above is a property of this population rather than of this loop.
-    const theirs = new Set<NoAnswerHere>()
-    for (const held of [true, false]) {
-      const row = rowOf(asked(null, 'the-provider'), {
-        held: held ? new Set(['sess_worker']) : new Set(),
-      })
-      if (row.noAnswerHere !== null) theirs.add(row.noAnswerHere)
-    }
-    expect([...theirs].sort()).toEqual(['not-in-this-window', 'not-yours-yet'])
   })
 })

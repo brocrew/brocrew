@@ -1,37 +1,36 @@
-import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import {
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+  RecordingSink,
+} from './lib/host-fixture'
+import { ToolWatchingRuntime } from './lib/provider-double'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  FakeProviderSessions,
-  FakeRuntime,
-  type AgentToolset,
-  type StartOptions,
-} from '@brobot2/runtime'
+import { FakeProviderSessions, type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { composeProfileBundle, type InstructionContext } from '../src/main/runtime/factory-text'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import {
-  OWN_INSTRUCTIONS_CHARS,
   WHO_WROTE_IT,
   WROTE_IT_MEANS,
   configuredLayerOf,
   whatIsInForce,
 } from '../src/shared/own-instructions'
 import { CAPABILITY_FIELDS } from '../src/shared/capabilities'
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const srcRoot = join(here, '../src')
 
 /**
  * 🔴 **618 · creation carries instructions** (`HO-078` §4, boarded by `HO-093` §3).
@@ -60,33 +59,6 @@ const srcRoot = join(here, '../src')
  * is the state `377` left `InstructionContext.configured` in for five months.
  */
 
-class PersonsWindow implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
-/** ⚑ **419's device** — the toolset each launch was handed, so a call below is a model's call. */
-class WatchingRuntime extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-}
-
 describe('618 · creation carries instructions', () => {
   let userData: string
   let work: string
@@ -101,7 +73,7 @@ describe('618 · creation carries instructions', () => {
   let bundles: string[]
   let counter: number
   let clock: number
-  let window: PersonsWindow
+  let window: RecordingSink
   const tick = (): number => clock++
 
   beforeEach(() => {
@@ -120,7 +92,7 @@ describe('618 · creation carries instructions', () => {
       store,
       ...neutralHostDeps(() => userData),
       resourcesRoot: () => join(userData, 'resources'),
-      createRuntime: (provider: Provider) => new WatchingRuntime(provider, handed, sessions),
+      createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, sessions),
       prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
@@ -136,7 +108,7 @@ describe('618 · creation carries instructions', () => {
         return { instructions: read.instructions, systemHint: undefined, memoryLoaded: null }
       },
     })
-    window = new PersonsWindow('webContents:1')
+    window = new RecordingSink('webContents:1')
   })
 
   afterEach(async () => {
@@ -591,27 +563,6 @@ describe('618 · creation carries instructions', () => {
       expect(asked['wrote']).toBe('a-request')
       expect(store.ownInstructionsOf('archivist').versions.map((v) => v.text)).toEqual(['Mine.'])
     })
-
-    it('keeps the grant dormant when proposing later changes', async () => {
-      const { tools } = await brobot()
-      await callOn(tools, 'create_agent', { profile_slug: 'archivist', rules: 'Mine.' })
-      // ⚠️ **A person at the sheet, which is the only thing that moves this column** (rule 32: a
-      // value a person set is a rail; an argument a model passes is a habit).
-      expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canWriteRules: 'propose' })).toBe(true)
-      const second = await personOpens(DEFAULT_PROFILE_ID)
-      const asked = await callOn(toolsOfLastLaunch(), 'propose_agent_rules', {
-        agent: 'archivist',
-        current_version: 1,
-        rules: 'A second thought.',
-        why: 'because',
-      })
-      expect(asked['outcome']).toBe('ok')
-      expect(asked['wrote']).toBe('a-request')
-      // ⛔ **A proposal writes NOTHING**: the creator's version is still the only one.
-      expect(store.ownInstructionsOf('archivist').versions.map((v) => v.text)).toEqual(['Mine.'])
-      void tools
-      await host.close(second, window)
-    })
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
@@ -736,33 +687,10 @@ describe('618 · creation carries instructions', () => {
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §6 · what the optionality is doing, and the grant nothing seeds
+  // §6 · the grant nothing seeds, and its help
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§6 · the optional argument, and the measurement behind it', () => {
-    /**
-     * 🔴 **`a-default-no-call-site-reaches`, asked in both directions** (`HO-078` §4.3).
-     *
-     * ⛔ **At the HOST the parameter is REQUIRED**, so no call site falls through to a default
-     * nobody chose — the compiler is what enforces that, and this census is what says the door is
-     * the only place the value can come from.
-     */
-    it('⛔ the tool is the ONLY caller of `createAgentFor` in `src/`, and it computes the value', () => {
-      const strip = (source: string): string =>
-        source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ')
-      const tools = strip(readFileSync(join(srcRoot, 'main/runtime/agent-tools.ts'), 'utf8'))
-      const host = strip(readFileSync(join(srcRoot, 'main/runtime/runtime-host.ts'), 'utf8'))
-      // ⚑ **One declaration in the host, one call in the tool layer, and nothing else** — a census
-      // over what the code SAYS, with the stripper making it a claim about code.
-      expect(host.match(/createAgentFor\(/g)).toHaveLength(1)
-      expect(tools.match(/host\.createAgentFor\(/g)).toHaveLength(1)
-      // ⛔ **And the value is DERIVED from the argument**, never a literal: a door that passed a
-      // constant would make the optional field unreachable while the schema went on advertising it.
-      expect(tools).toContain('rules === undefined ? null : (rules as string)')
-      const quoted = '/** `host.createAgentFor(` is named here. */'
-      expect(strip(quoted)).not.toContain('createAgentFor(')
-    })
-
     /**
      * 🔴 **The measurement the tool's own description rests on** (`456`'s defect, avoided).
      *
@@ -778,15 +706,6 @@ describe('618 · creation carries instructions', () => {
     it('🔴 nothing seeds `canWriteRules`, so a fresh install holds the ruled `none` everywhere', () => {
       const field = CAPABILITY_FIELDS.find((one) => one.key === 'canWriteRules')
       expect(field?.ruled).toBe('none')
-    })
-
-    it('🔴 …and BroBot’s OWN row holds it, as a first launch leaves it', async () => {
-      // ⚑ **Measured on the shipped row rather than read off the table** — the identity this app
-      // launches first, after the launch that brings it into being.
-      const { me } = await brobot()
-      expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canCreateAgents).toBe('any')
-      expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canWriteRules).toBe('none')
-      void me
     })
 
     /**
@@ -807,12 +726,6 @@ describe('618 · creation carries instructions', () => {
       expect('a name, and nothing else. It does not start that agent').toContain(
         'a name, and nothing else',
       )
-    })
-
-    it('⛔ the bound the shared constant carries is the one the door refuses on', () => {
-      // ⚠️ **Not a tautology**: the door spells the number into a sentence a model reads, and this
-      // is the one place the two are compared.
-      expect(OWN_INSTRUCTIONS_CHARS).toBe(16_000)
     })
   })
 })

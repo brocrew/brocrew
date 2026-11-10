@@ -1,5 +1,10 @@
 import { waitFor } from './lib/f093-host'
-import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+  RecordingSink,
+} from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -10,14 +15,9 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import {
-  RuntimeHost,
-  THE_APP_ITSELF,
-  type RuntimeEventSink,
-} from '../src/main/runtime/runtime-host'
+import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /** The toolset one conversation is offered — `agentToolsFor` exports no name for it. */
 type AgentToolset = ReturnType<typeof agentToolsFor>
@@ -45,17 +45,6 @@ type AgentToolset = ReturnType<typeof agentToolsFor>
 
 const migrationsFolder = join(__dirname, '../src/main/db/migrations')
 
-class Window implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** `394`'s double, with the handles kept — a test has to BE the provider to ask like one. */
 class ProviderDouble extends FakeRuntime {
   constructor(
@@ -82,7 +71,7 @@ describe('675 M20 · abandoned prints why it cannot come back', () => {
   let issued: FakeProviderSessions
   let counter: number
   let clock: number
-  let window: Window
+  let window: RecordingSink
   const tick = (): number => clock++
 
   beforeEach(() => {
@@ -106,7 +95,7 @@ describe('675 M20 · abandoned prints why it cannot come back', () => {
       now: tick,
       readProviderConfig: fixtureProviderConfig,
     })
-    window = new Window('webContents:1')
+    window = new RecordingSink('webContents:1')
   })
 
   afterEach(async () => {

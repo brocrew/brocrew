@@ -1,7 +1,7 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
 import type { HandedPath } from '../src/shared/attachment-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -300,11 +300,7 @@ function anApp(
     store,
     ...neutralHostDeps(() => userData),
     createRuntime,
-    prepareProviderHome: (provider: Provider, profileId?: string) => {
-      const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-      mkdirSync(home, { recursive: true })
-      return home
-    },
+    prepareProviderHome: syntheticProviderHome(() => userData),
     providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
     resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
     newSessionId: () => `sess_${String(++counter)}`,

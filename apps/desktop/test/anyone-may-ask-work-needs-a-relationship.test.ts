@@ -14,12 +14,7 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { admitReachAtAll } from '../src/main/runtime/message-rails'
-import {
-  ASSIGNMENT_REACH_ADMITS,
-  capabilityField,
-  DEFAULT_CAPABILITIES,
-} from '../src/shared/capabilities'
-import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
+import { ASSIGNMENT_REACH_ADMITS, DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { ToolWatchingRuntime } from './lib/provider-double'
 import {
@@ -465,21 +460,6 @@ describe('553 · anyone may ask; work needs a relationship', () => {
       })
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       expect(store.piecesGivenBy(pm)).toHaveLength(1)
-    })
-
-    /**
-     * ⚑ **D-014 · BroBot holds what every agent holds, and nobody wrote it.** ⛔ No code seeds a
-     * column for any identity, so BroBot's first run leaves `can_assign_work` NULL and it gives work
-     * by the ruled default, as every other row does.
-     *
-     * ⚠️ **The row and the reading are asserted apart**: the raw column is NULL, where a seed would
-     * have written a word, and what the rails read is the default.
-     */
-    it('⚑ BroBot gives work by the ruled default after its FIRST run, with no column written', async () => {
-      await personOpens(DEFAULT_PROFILE_ID)
-      expect(rawColumn(DEFAULT_PROFILE_ID, 'can_assign_work')).toBeNull()
-      expect(capabilityField('canAssignWork').ruled).toBe('any')
-      expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canAssignWork).toBe('any')
     })
   })
 

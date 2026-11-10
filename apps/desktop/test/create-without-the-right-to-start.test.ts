@@ -10,15 +10,20 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import {
   composeProfileBundle,
   thisConversationSpans,
   type InstructionContext,
 } from '../src/main/runtime/factory-text'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
+import {
+  fixtureProviderConfig,
+  syntheticProviderHome,
+  neutralHostDeps,
+  RecordingSink,
+} from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -32,23 +37,6 @@ const NOTHING_INJECTED: SessionInstructions = {
   recallsReported: false,
   writesReported: true,
   composed: null,
-}
-
-class Sink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
-class WatchingRuntime extends ToolWatchingRuntime {
-  constructor(provider: Provider, handed: AgentToolset[], sessions: FakeProviderSessions) {
-    super(provider, handed, sessions)
-  }
 }
 
 /** ⚑ A name nobody has created yet, so a `create_agent` of it can only fail on the grant. */
@@ -74,7 +62,7 @@ describe('573 · the grant prose scopes its own claim', () => {
   let handed: AgentToolset[]
   let seen: InstructionContext[]
   let counter: number
-  let window: Sink
+  let window: RecordingSink
   let clock: number
   const tick = (): number => clock++
 
@@ -82,7 +70,7 @@ describe('573 · the grant prose scopes its own claim', () => {
     new RuntimeHost({
       store,
       ...neutralHostDeps(() => userData),
-      createRuntime: (provider: Provider) => new WatchingRuntime(provider, handed, sessions),
+      createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, sessions),
       prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
@@ -111,7 +99,7 @@ describe('573 · the grant prose scopes its own claim', () => {
     seen = []
     sessions = new FakeProviderSessions()
     host = buildHost()
-    window = new Sink('webContents:1')
+    window = new RecordingSink('webContents:1')
   })
 
   afterEach(async () => {

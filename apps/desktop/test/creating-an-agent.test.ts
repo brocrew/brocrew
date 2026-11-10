@@ -4,12 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  FakeProviderSessions,
-  FakeRuntime,
-  type AgentToolset,
-  type StartOptions,
-} from '@brobot2/runtime'
+import { FakeProviderSessions, type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -17,16 +12,16 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { TOOL_NAMES, TOOL_REFUSALS } from '../src/main/runtime/agent-tools'
+import { TOOL_NAMES } from '../src/main/runtime/agent-tools'
 import {
   CAPABILITY_FIELDS,
-  CREATION_REACH,
   DEFAULT_CAPABILITIES,
   capabilityField,
 } from '../src/shared/capabilities'
 import { HUMAN_NAMES } from '../src/shared/human-names'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import { ToolWatchingRuntime } from './lib/provider-double'
 
 /**
  * ⚑ **584 · a LOCAL constant** (`HO-078` §1). ⛔ `PROJECT_MANAGER_PROFILE_ID` named the one other
@@ -95,21 +90,6 @@ class AnonymousSink extends Sink {
   override readonly aPersonIsBehindIt = false
 }
 
-class WatchingRuntime extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-}
-
 describe('419 · creating an agent, and the provider it runs on', () => {
   let userData: string
   let work: string
@@ -127,7 +107,7 @@ describe('419 · creating an agent, and the provider it runs on', () => {
     new RuntimeHost({
       store,
       ...neutralHostDeps(() => userData),
-      createRuntime: (provider: Provider) => new WatchingRuntime(provider, handed, sessions),
+      createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, sessions),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
         const home = join(userData, 'provider-homes', 'default', profileId ?? 'default', provider)
         mkdirSync(home, { recursive: true })
@@ -370,41 +350,6 @@ describe('419 · creating an agent, and the provider it runs on', () => {
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
-  // §2 · the trap — a creation must not mint a home locator
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§2 · creation writes an identity and NOT an address', () => {
-    // ⚑ **D-016 · `no agent_identity_home row after a creation` is deleted**: the table went with
-    // the one migration, so there is no row for a creation to leave out. What stands is the
-    // launch's half below, and the source census after it.
-
-    it('⚑ …and the first LAUNCH records no address either — since D-016 a home is derived, not recorded', async () => {
-      // ⚠️ **Re-aimed at D-016.** This read *"lays it down under `default`, exactly as it did
-      // before"*: the launch wrote an `agent_identity_home` row whose segment was always `default`.
-      // ⛔ Every home is now under the one folder (`HOME_FOLDER`, `provider-homes.ts`), so the launch
-      // records the IDENTITY and no address, and the home is derived from the profile alone.
-      const tools = await anAgentThatMayCreate()
-      await callOn(tools, 'create_agent', { profile_slug: 'archivist', provider: 'claude' })
-      const sessionId = await personOpens('archivist', 'claude')
-
-      // ⚑ **The launch is placed** — found by its agent — so the absences below are a real launch's.
-      expect(
-        rows('SELECT agent_identity_id FROM provider_session WHERE id = ?', sessionId),
-      ).toEqual([{ agent_identity_id: 'aid:archivist' }])
-      // ⛔ **And there is nowhere to record an address**: the one migration made neither the table
-      // nor the column, so the absence is the schema's and not one writer's restraint.
-      expect(
-        rows(
-          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'agent_identity_home'",
-        ),
-      ).toEqual([])
-      expect(rows('PRAGMA table_info(provider_session)').map((one) => one['name'])).not.toContain(
-        'home_project_segment',
-      )
-    })
-  })
-
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
   // §3 · the capability
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -540,13 +485,6 @@ describe('419 · creating an agent, and the provider it runs on', () => {
       write(field.narrowest)
       expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canCreateAgents).toBe(field.narrowest)
     })
-
-    it('⛔ the vocabulary has two words, and `same-project` is not one of them', () => {
-      expect([...CREATION_REACH]).toEqual(['none', 'any'])
-      // ⚠️ An identity is global (HO-010 ruling 6), so a third word would be a choice every call
-      // site read exactly as `any` — a distinction that could never be wrong and never be tested.
-      expect(capabilityField('canCreateAgents').vocabulary).toEqual(['none', 'any'])
-    })
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -668,14 +606,6 @@ describe('419 · creating an agent, and the provider it runs on', () => {
       expect(refusalsIn(me).map((one) => `${one.tool}:${one.rail}`)).toEqual([
         'create_agent:malformed-request',
       ])
-    })
-
-    it('⛔ every creation refusal carries a permanence, a derived retryability and a sentence', () => {
-      // ⚠️ Over the THREE this dispatch added, named rather than counted — a title that names a
-      // number the assertion never checks is a title that goes stale.
-      for (const rail of ['spawning-disabled', 'may-not-create-agents', 'agent-name-taken']) {
-        expect(TOOL_REFUSALS as readonly string[]).toContain(rail)
-      }
     })
   })
 

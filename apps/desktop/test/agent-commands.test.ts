@@ -234,6 +234,13 @@ describe('279 · the four states, told apart', () => {
 })
 
 describe('279 · the fold, which no browser test reaches', () => {
+  const at = (ordinal: number, event: TranscriptEvent): RuntimeEventMessage => ({
+    sessionId: 'sess_a',
+    ordinal,
+    at: 1_800_000_000_000 + ordinal,
+    event,
+  })
+
   it('⛔ starts at `null` — untold, which is not an empty list', () => {
     const state = createTranscript()
     expect(state.commands.set).toBeNull()
@@ -306,12 +313,6 @@ describe('279 · the fold, which no browser test reaches', () => {
   })
 
   it('⛔ survives a window release — the level is stated ONCE and there is no next one', () => {
-    const at = (ordinal: number, event: TranscriptEvent): RuntimeEventMessage => ({
-      sessionId: 'sess_a',
-      ordinal,
-      at: 1_800_000_000_000 + ordinal,
-      event,
-    })
     const level: TranscriptEvent = {
       type: 'provider_commands',
       commands: [{ name: 'compact' }, { name: 'usage' }],
@@ -333,12 +334,6 @@ describe('279 · the fold, which no browser test reaches', () => {
   })
 
   it('⛔ …and a suffix that restates the level still WINS over the carry', () => {
-    const at = (ordinal: number, event: TranscriptEvent): RuntimeEventMessage => ({
-      sessionId: 'sess_a',
-      ordinal,
-      at: 1_800_000_000_000 + ordinal,
-      event,
-    })
     const before = foldWindow([
       at(0, {
         type: 'provider_commands',
@@ -361,12 +356,6 @@ describe('279 · the fold, which no browser test reaches', () => {
   })
 
   it('⛔ the carry COPIES the list — two folds cannot come to share one array', () => {
-    const at = (ordinal: number, event: TranscriptEvent): RuntimeEventMessage => ({
-      sessionId: 'sess_a',
-      ordinal,
-      at: 1_800_000_000_000 + ordinal,
-      event,
-    })
     const before = foldWindow([
       at(0, {
         type: 'provider_commands',
