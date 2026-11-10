@@ -193,7 +193,7 @@ it('observes advancing bytes of a selected earlier GUID without taking its captu
   const tab = f.h.tabs.resolve(f.tabId, (name) => f.h.browser.state(name)?.generation ?? null)
   tab.pendingDownloads.push({ download: download as never, at: Date.now() })
   const activity = vi.fn()
-  const tool = createAgentChromeTools(f.h.deps).find((entry) => entry.name === 'wait_for_download')!
+  const tool = createAgentChromeTools(f.h.deps).find((entry) => entry.definition.name === 'wait_for_download')!
   const waiting = tool.execute({ tabId: f.tabId }, { activity })
   let count = 0
   try {
