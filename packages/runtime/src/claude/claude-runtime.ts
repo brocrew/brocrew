@@ -1033,7 +1033,7 @@ export class ClaudeSessionHandle implements SessionHandle {
       const prefix = `mcp__${name}__`
       observeManagedPlugins(this.managedPluginObserver, {
         server: name,
-        ...(connected || unavailable
+        ...(Array.isArray(tools) && (connected || unavailable)
           ? {
               tools: connected
                 ? namedTools
