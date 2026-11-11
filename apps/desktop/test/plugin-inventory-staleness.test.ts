@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto'
 import { DEFAULT_REQUEST_TIMEOUT_MSEC } from '@modelcontextprotocol/sdk/shared/protocol.js'
 import { admittedPluginTools } from '../src/main/plugins/lifecycle/broker-inventory'
 import { createLifecycleAgentBridge } from '../src/main/plugins/lifecycle/agent-bridge'
-import { managedPluginFailure } from '@brobot2/runtime/plugin-failure'
 import type { PluginToolDiagnostic } from '../src/main/plugins/tool-diagnostics'
 import { deferred } from './plugin-lifecycle-fixtures'
 import { lease, request } from './helpers/plugin-agent-bridge'
@@ -137,18 +136,11 @@ it.each(
 )
 
 it('reports connection refused immediately with the actual connect cause', async () => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockRejectedValue(
-      new TypeError('fetch failed', {
-        cause: Object.assign(new Error(), { code: 'ECONNREFUSED' }),
-      }),
-    ),
-  )
-  await expect(admittedPluginTools(view().attachment)).rejects.toMatchObject({
-    pluginStage: 'binding-connect',
-    pluginCause: 'connection-refused',
+  const error = new TypeError('fetch failed', {
+    cause: Object.assign(new Error(), { code: 'ECONNREFUSED' }),
   })
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(error))
+  await expect(admittedPluginTools(view().attachment)).rejects.toBe(error)
 })
 
 it('ends connection readiness immediately when the exact host exits', async () => {
@@ -157,8 +149,8 @@ it('ends connection readiness immediately when the exact host exits', async () =
   const work = admittedPluginTools(attachment)
   exited.resolve()
   await expect(work).rejects.toMatchObject({
-    pluginStage: 'binding-connection',
-    pluginCause: 'process-exited',
+    message: 'Plugin host exited',
+    code: 'process-exited',
   })
 })
 
@@ -201,7 +193,10 @@ it('retries a failed inventory on the next read and marks the held retry as star
   const held = deferred<void>()
   const binding = vi
     .fn()
-    .mockRejectedValueOnce(managedPluginFailure({ code: 'ECONNREFUSED' }, 'binding-connect'))
+    .mockImplementationOnce(async (_view, diagnostic: PluginToolDiagnostic) => {
+      diagnostic.pending?.('binding-connect')
+      throw Object.assign(new Error('fictional connection refused'), { code: 'ECONNREFUSED' })
+    })
     .mockImplementationOnce(async () => {
       await held.promise
       return emptyBinding()

@@ -414,7 +414,7 @@ export function createLifecycleAgentBridge(options: {
         void bindingWork.catch((error) => {
           if (entries.get(id) === bindingWork) entries.delete(id)
           if (bindingStages.get(id) === progress) bindingStages.delete(id)
-          const failure = managedPluginFailure(error, 'route-binding')
+          const failure = managedPluginFailure(error, progress.stage)
           const detail = {
             stage: failure.pluginStage,
             cause: failure.pluginCause,

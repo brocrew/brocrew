@@ -189,44 +189,39 @@ export class PluginUiRpc {
       case 'subscribe': {
         const slot: Subscription = { abort }
         this.subscriptions.set(input.requestId, slot)
-        try {
-          const stop = await this.options.peer.subscribe(
-            input.payload,
-            input.configRevision,
-            binding,
-            abort.signal,
-            (value) => {
-              if (
-                !this.live() ||
-                abort.signal.aborted ||
-                this.subscriptions.get(input.requestId) !== slot ||
-                this.waitingSnapshots > 0 ||
-                this.options.now() - this.lastSnapshot < 1000
-              )
-                return
-              try {
-                const snapshot = this.data(value)
-                this.lastSnapshot = this.options.now()
-                this.options.emit(input.requestId, snapshot)
-              } catch {
-                this.unsubscribe(input.requestId, abort)
-              }
-            },
-          )
-          if (
-            !this.live() ||
-            abort.signal.aborted ||
-            this.subscriptions.get(input.requestId) !== slot
-          ) {
-            stop()
-            throw new Error(PLUGIN_UI_UNAVAILABLE)
-          }
-          slot.stop = stop
-          return { subscriptionId: input.requestId }
-        } catch {
-          this.unsubscribe(input.requestId, abort)
+        const stop = await this.options.peer.subscribe(
+          input.payload,
+          input.configRevision,
+          binding,
+          abort.signal,
+          (value) => {
+            if (
+              !this.live() ||
+              abort.signal.aborted ||
+              this.subscriptions.get(input.requestId) !== slot ||
+              this.waitingSnapshots > 0 ||
+              this.options.now() - this.lastSnapshot < 1000
+            )
+              return
+            try {
+              const snapshot = this.data(value)
+              this.lastSnapshot = this.options.now()
+              this.options.emit(input.requestId, snapshot)
+            } catch {
+              this.unsubscribe(input.requestId, abort)
+            }
+          },
+        )
+        if (
+          !this.live() ||
+          abort.signal.aborted ||
+          this.subscriptions.get(input.requestId) !== slot
+        ) {
+          stop()
           throw new Error(PLUGIN_UI_UNAVAILABLE)
         }
+        slot.stop = stop
+        return { subscriptionId: input.requestId }
       }
       case 'unsubscribe': {
         if (

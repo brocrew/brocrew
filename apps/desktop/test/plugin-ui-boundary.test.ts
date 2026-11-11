@@ -176,6 +176,29 @@ describe('strict and bounded own-plugin RPC', () => {
     f.rpc.close()
     expect(f.stop).toHaveBeenCalledTimes(2)
   })
+  it('preserves a rejected subscription error and releases its slot without replay', async () => {
+    const f = rpcFixture()
+    const error = new Error('fictional package subscription failed', {
+      cause: new Error('actual cause'),
+    })
+    const signals: AbortSignal[] = []
+    f.peer.subscribe = vi.fn<PluginUiPeer['subscribe']>(
+      async (_payload, _revision, _binding, signal) => {
+        signals.push(signal)
+        throw error
+      },
+    )
+    await expect(f.rpc.invoke(packet('subscribe', 'reused'))).rejects.toBe(error)
+    expect(f.peer.subscribe).toHaveBeenCalledOnce()
+    expect(signals[0]!.aborted).toBe(true)
+    expect(f.stop).not.toHaveBeenCalled()
+    f.peer.subscribe = vi.fn(async () => f.stop)
+    await expect(f.rpc.invoke(packet('subscribe', 'reused'))).resolves.toEqual({
+      subscriptionId: 'reused',
+    })
+    f.rpc.close()
+    expect(f.stop).toHaveBeenCalledOnce()
+  })
   it('bounds snapshot bytes and rate, and ignores revoked subscription pushes', async () => {
     const f = rpcFixture()
     await f.rpc.invoke(packet('subscribe', 'one'))

@@ -371,14 +371,14 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       )
       expect(failures).toHaveLength(2)
       expect(failures[0]![2]).toMatchObject({
-        stage: 'route-binding',
+        stage: 'binding-connection',
         cause: 'unknown',
         correlation: expect.stringMatching(/^[a-f0-9-]{36}$/),
         reason: 'fictional-private-downstream-name',
       })
       expect(failures[1]![2]).toEqual(failures[0]![2])
       // The same fixed stage and cause reach the card, and from there the agent's launch line.
-      expect(f.bridge.toolsCause(failures[0]![0])).toBe('route-binding: unknown')
+      expect(f.bridge.toolsCause(failures[0]![0])).toBe('binding-connection: unknown')
     } finally {
       log.mockRestore()
     }
