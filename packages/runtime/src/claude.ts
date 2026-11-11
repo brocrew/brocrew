@@ -66,4 +66,4 @@ export {
 
 export { refusalForDisplay } from './claude/refusal-presentation'
 
-export { toolInventoryForDisplay, publishedServerForDisplay } from './claude/inventory-display'
+export { toolInventoryForDisplay } from './claude/inventory-display'
