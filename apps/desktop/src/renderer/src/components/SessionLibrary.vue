@@ -211,7 +211,6 @@ import { basenameOf } from '../lib/paths'
 import { readableError } from '../lib/session-record'
 import FacetBar from './FacetBar.vue'
 import ResumableSessions from './ResumableSessions.vue'
-
 /**
  * The session library (047, rebuilt to 104's design): every conversation this app knows about, from
  * all three sources, in one searchable index.
@@ -331,7 +330,8 @@ const error = ref<string | null>(null)
  * do not. Reported rather than fixed.
  */
 const CHECK_HOMES = 'Check homes'
-const homeScan = useHomeScan(useClientApi().sessions)
+const selectedClientApi = useClientApi()
+const homeScan = useHomeScan(selectedClientApi.sessions)
 /**
  * The outcome of the last import, keyed by `entry.id` — which is the PROVIDER's identity and does
  * not change when the conversation becomes one we hold. It used to be our row id, which is null
@@ -371,17 +371,13 @@ async function load(): Promise<void> {
   error.value = null
   const asked: LibraryFilters = { ...filters.value }
   try {
-    // ⛔ **Both axes go main-side, together, every time.** Filtering the page in hand would search
-    // the first 200 entries of two thousand — and `matched` in the answer counts `query ∧ filters`
-    // over the WHOLE library before the slice, which is what keeps the note below honest.
-    const result = await window.api.runtime.listLibrary({
+    const sessions = selectedClientApi.sessions
+    if (!sessions) throw new Error('Session library is unavailable')
+    // Query and filters count matches across the whole library before the page is sliced.
+    const result = await sessions.listLibrary({
       query: query.value,
-      // ⛔ **A plain snapshot, not the reactive object** (121, found by the browser test). `filters`
-      // is a `ref` holding an object, so `filters.value` is a Vue PROXY — and this call crosses a
-      // process boundary by structured clone, which refuses a proxy outright (`DataCloneError`:
-      // "An object could not be cloned"). Every filter press would have failed at the wire and the
-      // surface would have shown the read error, having never asked. Spreading is enough because
-      // every field here is a primitive; there is no nested value left behind a handler.
+      // A plain snapshot crosses structured clone; the reactive proxy cannot. A shallow spread
+      // suffices because every filter field is a primitive.
       filters: asked,
     })
     if (mine !== issued) return
@@ -445,9 +441,11 @@ async function importEntry(entry: LibraryEntry): Promise<void> {
   if (entry.providerSessionId === null || importing.value[entry.id]) return
   importing.value = { ...importing.value, [entry.id]: true }
   try {
+    const sessions = selectedClientApi.sessions
+    if (!sessions) throw new Error('Session library is unavailable')
     outcomes.value = {
       ...outcomes.value,
-      [entry.id]: await window.api.runtime.importUserHomeSession({
+      [entry.id]: await sessions.importUserHomeSession({
         provider: entry.provider,
         providerSessionId: entry.providerSessionId,
       }),
@@ -481,7 +479,9 @@ async function rebuildEntry(entry: LibraryEntry): Promise<void> {
   if (entry.recordId === null || rebuilding.value[entry.id]) return
   rebuilding.value = { ...rebuilding.value, [entry.id]: true }
   try {
-    const result = await window.api.runtime.rebuildLedger({ sessionId: entry.recordId })
+    const sessions = selectedClientApi.sessions
+    if (!sessions) throw new Error('Session library is unavailable')
+    const result = await sessions.rebuildLedger({ sessionId: entry.recordId })
     outcomes.value = {
       ...outcomes.value,
       [entry.id]: {
