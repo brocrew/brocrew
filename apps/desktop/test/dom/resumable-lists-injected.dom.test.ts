@@ -107,6 +107,7 @@ function screen(surface: (typeof surfaces)[number]) {
       () => window.api.runtime,
       () => undefined,
     ),
+    providerCatalogue: vi.fn(async () => PROVIDER_DESCRIPTORS),
     get sessions() {
       return getSessions()
     },

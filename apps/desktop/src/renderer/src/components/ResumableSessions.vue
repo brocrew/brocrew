@@ -7,7 +7,7 @@ import type {
   ResumableSessionInfo,
   UnresumableSessionInfo,
 } from '../../../shared/runtime-ipc'
-import { agentName, providerName } from '../../../shared/runtime-ipc'
+import { agentName } from '../../../shared/runtime-ipc'
 import { appClosing } from '../lib/app-closing'
 import { approvalModeLabel } from '../lib/approval-mode'
 import { childLabel } from '../lib/child-descent'
@@ -15,6 +15,7 @@ import { agoWords } from '../lib/clock'
 import { endedUnfinished, endingLabel } from '../lib/ending'
 import { scanSummary, useHomeScan } from '../lib/home-scan'
 import { useClientApi } from '../client-provider/injection'
+import { useProviderNames } from '../composables/useProviderNames'
 import { readableError } from '../lib/session-record'
 
 /**
@@ -26,6 +27,7 @@ import { readableError } from '../lib/session-record'
  * the original question with silence, which is what it was asking about in the first place.
  */
 const client = useClientApi()
+const providerName = useProviderNames(client)
 const sessions = ref<ResumableSessionInfo[]>([])
 const unresumable = ref<UnresumableSessionInfo[]>([])
 const loading = ref(false)
@@ -473,7 +475,7 @@ const ago = agoWords
           <span data-cy="unresumable-profile">
             <template v-if="session.restoredFromBundle">from a bundle</template>
             <template v-else-if="session.foundInUserHome"
-              >from {{ providerName(session.provider) }}'s own folder</template
+              >from {{ providerName(session.provider) ?? 'the provider' }}'s own folder</template
             >
             <template v-else>agent: {{ agentName(session.profileId, props.identities) }}</template>
           </span>
