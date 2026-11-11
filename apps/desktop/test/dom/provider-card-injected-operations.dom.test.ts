@@ -36,6 +36,7 @@ function card() {
   }
   const api: ClientProviderApi = {
     providerCatalogue: async () => [descriptor],
+    providerSetup: async () => ({ claude: null, codex: null }),
     providerUsage: async () => ({ claude: [], codex: [] }),
     providerConnections: async () => [],
     providerVersions: async () => {

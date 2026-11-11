@@ -238,7 +238,7 @@ let versionsAsked = 0
  */
 async function readVersions(): Promise<void> {
   const mine = ++versionsAsked
-  void readProviderSetup().then((said) => {
+  void readProviderSetup(client).then((said) => {
     // A read that failed keeps the facts already in hand.
     if (said !== null && mine === versionsAsked) setup.value = said
   })

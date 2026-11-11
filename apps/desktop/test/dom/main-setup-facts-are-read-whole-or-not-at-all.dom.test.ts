@@ -24,19 +24,16 @@ afterEach(() => {
 
 describe('§2 · readProviderSetup is main’s answer or null, never a throw', () => {
   it('⛔ no bridge method → null; ⛔ a read that rejects → null; ⚑ a read that answers → its answer', async () => {
-    ;(window as unknown as { api: unknown }).api = { runtime: {} }
-    await expect(readProviderSetup()).resolves.toBeNull()
+    const answer = { claude: WITH_INSTALL, codex: null }
+    const client = { providerSetup: () => Promise.resolve(answer) }
+    Reflect.deleteProperty(client, 'providerSetup')
+    await expect(readProviderSetup(client)).resolves.toBeNull()
 
-    ;(window as unknown as { api: unknown }).api = {
-      runtime: { providerSetup: () => Promise.reject(new Error('main did not answer')) },
-    }
-    await expect(readProviderSetup()).resolves.toBeNull()
+    client.providerSetup = () => Promise.reject(new Error('main did not answer'))
+    await expect(readProviderSetup(client)).resolves.toBeNull()
 
-    const answer = { claude: WITH_INSTALL }
-    ;(window as unknown as { api: unknown }).api = {
-      runtime: { providerSetup: () => Promise.resolve(answer) },
-    }
-    await expect(readProviderSetup()).resolves.toEqual(answer)
+    client.providerSetup = () => Promise.resolve(answer)
+    await expect(readProviderSetup(client)).resolves.toEqual(answer)
   })
 })
 

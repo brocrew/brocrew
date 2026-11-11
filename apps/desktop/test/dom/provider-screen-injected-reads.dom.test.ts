@@ -77,6 +77,16 @@ function fixture() {
       () => undefined,
     ),
     providerCatalogue: async () => [descriptor],
+    providerSetup: async () => ({
+      claude: {
+        tool: 'Fern',
+        install: { command: 'fern install', docs: 'https://example.invalid/install' },
+        signInCommand: 'fern',
+        platform: 'macOS' as const,
+        shell: 'Terminal' as const,
+      },
+      codex: null,
+    }),
     providerUsage: async () => ({ claude: [], codex: [] }),
     providerVersions: vi.fn(async () => ({ claude: version(false), codex: version(false) })),
     providerResources: vi.fn(async () => ({

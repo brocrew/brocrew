@@ -1,12 +1,13 @@
 import { connectedProviderReads } from './lib/connected-provider-reads'
 import type { ProviderLaunchChoices } from '../src/shared/provider-launch'
-import type { Provider } from '../src/shared/runtime-ipc'
+import type { Provider, RuntimeBridge } from '../src/shared/runtime-ipc'
 import { describe, expect, it, vi } from 'vitest'
 import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import type { ModelList } from '../src/shared/model-choice-contracts'
 import type { ClientProviderApi } from '../src/shared/client-provider-api'
 import { createDesktopProviderApi } from '../src/renderer/src/client-provider/desktop'
 import { providerCatalogue } from '../src/renderer/src/client-provider/catalogue'
+import { readProviderSetup } from '../src/renderer/src/lib/provider-setup'
 import { modelListsForClient as useModelLists } from '../src/renderer/src/client-provider/model-lists'
 
 function fixture() {
@@ -37,6 +38,7 @@ function fixture() {
     addHandAddedModel: vi.fn(async () => [] as readonly string[]),
     deleteHandAddedModel: vi.fn(async () => [] as readonly string[]),
     ...connectedProviderReads(),
+    providerSetup: vi.fn<RuntimeBridge['providerSetup']>(async () => ({ claude: null, codex: null })),
     providerVersions: vi.fn<ClientProviderApi['providerVersions']>(),
     providerResources: vi.fn<ClientProviderApi['providerResources']>(),
     providerConnections: vi.fn<ClientProviderApi['providerConnections']>(),
@@ -291,3 +293,47 @@ for (const method of ['providerVersions', 'providerResources', 'providerConnecti
     expect(read).toHaveBeenCalledExactlyOnceWith()
   })
 }
+
+it('forwards native setup guidance lazily with its receiver, exact promise and null entries', async () => {
+  const { api, runtime, transport } = fixture()
+  const answer: Awaited<ReturnType<RuntimeBridge['providerSetup']>> = {
+    claude: {
+      tool: 'Fern Tool',
+      install: { command: 'fern install', docs: 'https://example.invalid/install' },
+      signInCommand: 'fern login',
+      signInInstructions: 'Fern supplied instructions.',
+      platform: 'macOS',
+      shell: 'Terminal',
+    },
+    codex: null,
+  }
+  const pending = Promise.resolve(answer)
+  transport.providerSetup.mockImplementation(function (this: object) {
+    expect(this).toBe(transport)
+    return pending
+  })
+  expect(runtime).not.toHaveBeenCalled()
+  expect(api.providerSetup()).toBe(pending)
+  await expect(pending).resolves.toBe(answer)
+  expect(transport.providerSetup).toHaveBeenCalledExactlyOnceWith()
+  await expect(readProviderSetup(api)).resolves.toBe(answer)
+  const failure = new Error('Fern guide read refused')
+  const rejected = Promise.reject<never>(failure)
+  transport.providerSetup.mockReturnValueOnce(rejected)
+  expect(api.providerSetup()).toBe(rejected)
+  await expect(rejected).rejects.toBe(failure)
+  transport.providerSetup.mockRejectedValueOnce(failure)
+  await expect(readProviderSetup(api)).resolves.toBeNull()
+})
+
+it('keeps throwing setup suppliers and operation getters inside the guide reader null boundary', async () => {
+  const { api, runtime, transport } = fixture()
+  const failure = new Error('Fern guide transport unavailable')
+  runtime.mockImplementationOnce(() => { throw failure })
+  await expect(readProviderSetup(api)).resolves.toBeNull()
+  const getter = vi.fn(() => { throw failure })
+  Object.defineProperty(transport, 'providerSetup', { get: getter, configurable: true })
+  await expect(readProviderSetup(api)).resolves.toBeNull()
+  expect(getter).toHaveBeenCalledExactlyOnceWith()
+  expect(api.setup).toBeUndefined()
+})

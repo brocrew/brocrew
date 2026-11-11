@@ -9,7 +9,7 @@ import type {
 } from '../../../shared/runtime-ipc'
 import { DEFAULT_PROFILE_ID, PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import { useProfileSignIn, type ProfileSignIn } from '../composables/useProfileSignIn'
-import { readProviderSetup, type ProviderSetupSays } from '../lib/provider-setup'
+import { readProviderSetup } from '../lib/provider-setup'
 import { isReady, type SetupFacts } from '../lib/provider-setup-steps'
 import { keyCantBeRead, unreadableKeySays } from '../lib/saved-key'
 import { readableError } from '../lib/session-record'
@@ -25,7 +25,7 @@ const client = useClientProviders()
 const providers = Object.keys(PROVIDER_NAME) as Provider[]
 
 const versions = shallowRef<Readonly<Record<Provider, ProviderVersion>> | null>(null)
-const setup = shallowRef<Readonly<Partial<Record<Provider, ProviderSetupSays>>> | null>(null)
+const setup = shallowRef<Awaited<ReturnType<typeof readProviderSetup>>>(null)
 const setupRead = ref(false)
 const keys = shallowRef<Partial<Record<Provider, ApiKeyStatus>>>({})
 const keysRead = ref(false)
@@ -92,7 +92,7 @@ watchEffect(() => {
 
 onMounted(() => {
   void readVersions()
-  void readProviderSetup().then((said) => {
+  void readProviderSetup(client).then((said) => {
     setup.value = said
     setupRead.value = true
   })

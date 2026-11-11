@@ -20,12 +20,14 @@ import type {
   ProviderVersion,
   ProviderResources,
   ProvidersChangedMessage,
+  RuntimeBridge,
 } from './runtime-ipc'
 
 /** Provider facts and person intents, independent of the desktop transport. */
 export interface ClientProviderApi {
   providerCatalogue(): Promise<readonly ProviderDescriptor[]>
   providerUsage(): Promise<Readonly<Record<Provider, readonly ProviderUsageReading[]>>>
+  providerSetup: RuntimeBridge['providerSetup']
   providerVersions(): Promise<Readonly<Record<Provider, ProviderVersion>>>
   providerResources(): Promise<Readonly<Record<Provider, ProviderResources>>>
   providerConnections(): Promise<readonly ProviderConnection[]>
