@@ -37,6 +37,7 @@ export function startUpdates(options: {
     hidden: options.hidden,
   })
 
+  const nativeFailure = (error: Error): void => updates.restartFailed(error)
   let loaded: Promise<AppUpdater> | null = null
   let updater: AppUpdater | null = null
   const theUpdater = (): Promise<AppUpdater> => {
@@ -69,6 +70,7 @@ export function startUpdates(options: {
         warn: (message?: unknown) => console.warn(`updater: ${String(message)}`),
         error: (message?: unknown) => console.error(`updater: ${String(message)}`),
       }
+      if (process.platform === 'darwin') autoUpdater.on('error', nativeFailure)
       updater = autoUpdater
       return autoUpdater
     })
@@ -191,6 +193,7 @@ export function startUpdates(options: {
 
   const stop = (): void => {
     stopNativePreparation?.()
+    if (process.platform === 'darwin') updater?.off('error', nativeFailure)
     updates.stop()
   }
   app.on('before-quit', stop)
