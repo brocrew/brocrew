@@ -855,7 +855,9 @@ it('both scan surfaces capture the injected sessions capability and share its pe
     throw new Error('global adoption must not be used')
   }
   let release!: (value: AdoptionReport) => void
-  const pending = new Promise<AdoptionReport>((resolve) => { release = resolve })
+  const pending = new Promise<AdoptionReport>((resolve) => {
+    release = resolve
+  })
   let calls = 0
   let reads = 0
   const sessions = {
@@ -866,10 +868,15 @@ it('both scan surfaces capture the injected sessions capability and share its pe
     },
   }
   const client = createDesktopProviderApi(
-    () => { throw new Error('no provider read expected') },
+    () => {
+      throw new Error('no provider read expected')
+    },
     () => undefined,
     () => undefined,
-    () => { reads++; return sessions as ClientSessionApi },
+    () => {
+      reads++
+      return sessions as ClientSessionApi
+    },
   )
   const root = defineComponent({
     setup() {

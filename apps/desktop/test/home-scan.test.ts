@@ -3,31 +3,54 @@ import type { AdoptionReport, RuntimeBridge } from '../src/shared/runtime-ipc'
 import { useHomeScan } from '../src/renderer/src/lib/home-scan'
 
 const report: AdoptionReport = {
-  found: 1, adopted: 1, alreadyKnown: 0, imported: 0,
-  descentsLearned: 0, named: 0, skipped: [],
+  found: 1,
+  adopted: 1,
+  alreadyKnown: 0,
+  imported: 0,
+  descentsLearned: 0,
+  named: 0,
+  skipped: [],
 }
 
 function deferred<T>() {
   let resolve!: (value: T) => void
   let reject!: (cause: unknown) => void
-  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes
+    reject = no
+  })
   return { promise, resolve, reject }
 }
 
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
 
 it('captures adoption once, preserves its receiver, and never reads the global bridge', async () => {
-  vi.stubGlobal('window', { get api() { throw new Error('global bridge read') } })
+  vi.stubGlobal('window', {
+    get api() {
+      throw new Error('global bridge read')
+    },
+  })
   const adopt = vi.fn(function (this: typeof client) {
     expect(this).toBe(client)
     return Promise.resolve(report)
   })
   const read = vi.fn(() => adopt)
-  const client = { get adoptSessions() { return read() } }
+  const client = {
+    get adoptSessions() {
+      return read()
+    },
+  }
   const scan = useHomeScan(client)
   expect(read).toHaveBeenCalledTimes(1)
   expect(adopt).not.toHaveBeenCalled()
-  read.mockReturnValue(vi.fn(() => { throw new Error('replacement must not be read') }))
+  read.mockReturnValue(
+    vi.fn(() => {
+      throw new Error('replacement must not be read')
+    }),
+  )
   await expect(scan.scan()).resolves.toEqual({ report })
   await expect(scan.scan()).resolves.toEqual({ report })
   expect(read).toHaveBeenCalledTimes(1)
@@ -65,7 +88,9 @@ it('coalesces a shared client while each surface keeps its own busy follow-up an
 it('keeps distinct clients independent even when they share a method', async () => {
   const a = deferred<AdoptionReport>()
   const b = deferred<AdoptionReport>()
-  function adoptSessions(this: { pending: Promise<AdoptionReport> }) { return this.pending }
+  function adoptSessions(this: { pending: Promise<AdoptionReport> }) {
+    return this.pending
+  }
   const firstClient = { pending: a.promise, adoptSessions }
   const secondClient = { pending: b.promise, adoptSessions }
   const first = useHomeScan(firstClient)
@@ -101,19 +126,30 @@ it('shares rejection, clears busy state, and permits a later attempt', async () 
   client.adoptSessions.mockReturnValue(Promise.resolve(report))
   await expect(second.scan()).resolves.toEqual({ report })
   expect(client.adoptSessions).toHaveBeenCalledTimes(2)
+  const scannedAt = second.scannedAt.value
+  client.adoptSessions.mockRejectedValueOnce(new Error('fictional later failure'))
+  await expect(second.scan()).resolves.toEqual({ error: 'fictional later failure' })
+  expect(second.lastScan.value).toEqual(report)
+  expect(second.scannedAt.value).toBe(scannedAt)
+  expect(second.scanning.value).toBe(false)
 })
 
 it('reports synchronous and follow-up failures without losing a completed adoption', async () => {
   const client: Pick<RuntimeBridge, 'adoptSessions'> = {
-    adoptSessions: vi.fn(() => { throw new Error('fictional synchronous failure') }),
+    adoptSessions: vi.fn(() => {
+      throw new Error('fictional synchronous failure')
+    }),
   }
   const first = useHomeScan(client)
   await expect(first.scan()).resolves.toEqual({ error: 'fictional synchronous failure' })
   expect(first.scanning.value).toBe(false)
   expect(first.lastScan.value).toBeNull()
   const second = useHomeScan({ adoptSessions: () => Promise.resolve(report) })
-  await expect(second.scan(async () => { throw new Error('fictional refresh failure') }))
-    .resolves.toEqual({ error: 'fictional refresh failure' })
+  await expect(
+    second.scan(async () => {
+      throw new Error('fictional refresh failure')
+    }),
+  ).resolves.toEqual({ error: 'fictional refresh failure' })
   expect(second.scanning.value).toBe(false)
   expect(second.lastScan.value).toEqual(report)
   expect(second.scannedAt.value).toEqual(expect.any(Number))
