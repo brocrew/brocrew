@@ -8,7 +8,7 @@
  * `assertProtocolVersion` (see `codex-runtime.ts`) compares this against the version the
  * app-server reports in its `initialize` response and fails the launch closed on a mismatch.
  *
- * **Reproduce the vendored types exactly** (verified byte-identical for 0.160.0):
+ * **Reproduce the vendored types exactly** (verified byte-identical for 0.167.1):
  * ```
  * pnpm run protocol:check     # regenerate into a temp dir and assert no diff
  * pnpm run protocol:generate  # rewrite packages/runtime/src/codex/protocol in place
@@ -23,7 +23,7 @@
  * `pnpm run protocol:generate` (which uses the bundled binary, never a PATH one), update this
  * constant, and re-run the suites.
  */
-export const CODEX_PROTOCOL_VERSION = '0.160.0'
+export const CODEX_PROTOCOL_VERSION = '0.167.1'
 
 /**
  * The Codex version an `initialize` response advertises, or `null` when it carries none we can

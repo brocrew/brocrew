@@ -366,6 +366,26 @@ export function normalizeMessage(
       if (message.subtype === 'api_retry') {
         return [{ type: 'error', message: apiRetryMessage(message), fatal: false }]
       }
+      // SDK 0.3.322 reports lost writes after the last result; that result still stands.
+      if (message.subtype === 'session_writes_lost') {
+        const lost = message.lost
+          .map((part) => (part === 'transcript' ? 'conversation history' : 'global settings'))
+          .join(' and ')
+        const reason =
+          message.error_code === 'EDQUOT' ? 'the disk quota was used up' : 'the disk was full'
+        return [
+          {
+            type: 'error',
+            message:
+              `Claude Code couldn't save ${lost} because ${reason}.` +
+              (message.lost.includes('transcript')
+                ? ' Resuming affected conversations may miss part of their history.'
+                : ''),
+            fatal: false,
+          },
+          wrapUnknown('claude', message, 'lifecycle', message.subtype),
+        ]
+      }
       // ⛔ **A refusal the user can SEE** (199, from 192 H6). Before this, a Claude refusal was
       // invisible on BOTH channels the SDK offers: the structured one lands here and was classified
       // `activity` — chatter, filtered out of the reading view — and the other one does not exist,
@@ -1677,7 +1697,7 @@ function assertBlockDeltaExhaustive(type: never): UnknownCategory {
  * (The SDK is exact-pinned — see 043 — so the union only moves on a deliberate bump.)
  */
 function systemCategory(
-  subtype: Exclude<SystemSubtype, 'init' | 'compact_boundary'>,
+  subtype: Exclude<SystemSubtype, 'init' | 'compact_boundary' | 'session_writes_lost'>,
 ): UnknownCategory {
   switch (subtype) {
     case 'thinking_tokens':
