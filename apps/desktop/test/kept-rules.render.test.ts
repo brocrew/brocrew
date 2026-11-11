@@ -10,7 +10,7 @@ it('captures the injected client without reading its session getter or any rules
     throw new Error('Session resolution belongs inside the mounted read')
   })
   const app = createSSRApp(
-    sessionClientView(sessions, () => h(KeptRules, { providers: ['claude', 'codex'] })),
+    sessionClientView(sessions, () => () => h(KeptRules, { providers: ['claude', 'codex'] })),
   )
   expect(await renderToString(app)).toContain('Kept rules')
   expect(sessions).not.toHaveBeenCalled()

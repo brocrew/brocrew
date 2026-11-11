@@ -36,8 +36,10 @@ function screen(initial?: Partial<ClientSessionApi>) {
   const capability = vi.fn(() => selected as ClientSessionApi | undefined)
   const conversation = ref('fern-one')
   const view = mount(
-    sessionClientView(capability, () =>
-      h(SessionWork, { conversation: conversation.value, reading: null, identities: null }),
+    sessionClientView(
+      capability,
+      () => () =>
+        h(SessionWork, { conversation: conversation.value, reading: null, identities: null }),
     ),
     {},
     { width: 700, height: 700 },

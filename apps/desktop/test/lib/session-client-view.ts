@@ -5,7 +5,7 @@ import { createDesktopProviderApi } from '../../src/renderer/src/client-provider
 
 export function sessionClientView(
   sessions: () => ClientSessionApi | undefined,
-  render: () => VNode,
+  renderInSetup: () => () => VNode,
 ) {
   const api = createDesktopProviderApi(
     (): never => {
@@ -18,7 +18,7 @@ export function sessionClientView(
   return defineComponent({
     setup() {
       provide(CLIENT_PROVIDERS, api)
-      return render
+      return renderInSetup()
     },
   })
 }

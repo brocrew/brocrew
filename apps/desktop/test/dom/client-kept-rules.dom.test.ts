@@ -34,7 +34,7 @@ const rules: Kept = {
 function screen(sessions: () => Partial<ClientSessionApi> | undefined) {
   const capability = vi.fn(() => sessions() as ClientSessionApi | undefined)
   const view = mount(
-    sessionClientView(capability, () => h(KeptRules, { providers: ['claude', 'codex'] })),
+    sessionClientView(capability, () => () => h(KeptRules, { providers: ['claude', 'codex'] })),
     {},
     { width: 900, height: 700 },
   )

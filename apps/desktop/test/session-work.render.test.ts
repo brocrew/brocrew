@@ -13,8 +13,9 @@ it.each([false, true])(
     const transport: Partial<ClientSessionApi> = { searchWork }
     const sessions = vi.fn(() => (present ? (transport as ClientSessionApi) : undefined))
     const app = createSSRApp(
-      sessionClientView(sessions, () =>
-        h(SessionWork, { conversation: 'fern', reading: null, identities: null }),
+      sessionClientView(
+        sessions,
+        () => () => h(SessionWork, { conversation: 'fern', reading: null, identities: null }),
       ),
     )
     expect(await renderToString(app)).toContain('Search work')
