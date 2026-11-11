@@ -38,15 +38,16 @@ import {
 /**
  * Normalize one Claude Agent SDK message into **content** `RuntimeEvent`s only:
  * assistant deltas/messages, tool calls/results, and informational (non-fatal)
- * errors (001 Claude→RuntimeEvent table). Pure.
+ * errors (001 Claude→RuntimeEvent table).
  *
  * Session/turn LIFECYCLE (`session`, `turn`, lifecycle `status`) is NOT emitted
  * here — the handle drives the shared `SessionMachine` from {@link claudeSessionRef}
  * (`system/init`) and {@link claudeResultOutcome} (`result`), so ordering is
- * enforced in one place (008). Anything unmapped → `wrapUnknown` → `unknown{raw}`
- * (never re-parsed as a real variant — 007 P2-8).
+ * enforced in one place (008). Unmapped system messages go to the diagnostic log;
+ * other unmapped messages become `unknown{raw}`.
  *
- * Pure EXCEPT for `tasks` (035), which is the session's memory of which tracked tasks are actually
+ * Apart from logging unmapped system messages, state is held in `tasks` (035), the session's memory
+ * of which tracked tasks are actually
  * sub-agents. It has to be carried across messages because two of Claude's four `task_*` subtypes —
  * including one of the two endings — carry nothing to identify themselves with; see
  * {@link SubAgentTasks}. Omitting it is safe, not lax: a fresh registry admits only messages that
@@ -565,8 +566,13 @@ export function normalizeMessage(
       // which is where it always belonged: the tool call that made it is already in the transcript.
       const dispatched = subAgentEvent(message, tasks)
       if (dispatched) return [...background_, dispatched]
-      // Every OTHER system subtype is recognized chatter: CLASSIFIED so the UI can render it
-      // quietly, never dropped — `raw` still carries the whole message (049).
+      const category = systemCategory(message.subtype)
+      if (category === 'unrecognized') {
+        // The app's console warning transport keeps new provider events in electron-log.
+        console.warn('Claude system event', message)
+        return background_
+      }
+      // Recognized chatter keeps its classification and raw message for transcript mode.
       //
       // ⛔ **`background_tasks_changed` STAYS `lifecycle` here** (247, and `245` ruled it). The
       // classification is deliberate — commit `3d4afa6` placed it under session housekeeping on
@@ -575,7 +581,7 @@ export function normalizeMessage(
       // frame it came from, which is where you check what the provider really said.
       return [
         ...background_,
-        wrapUnknown('claude', message, systemCategory(message.subtype), message.subtype),
+        wrapUnknown('claude', message, category, message.subtype),
       ]
     }
 
@@ -1747,7 +1753,7 @@ function systemCategory(
   }
 }
 
-/** Compile-time exhaustiveness over the SDK's system subtypes; runtime-novel → loud (049). */
+/** Compile-time exhaustiveness; runtime-novel system subtypes are logged by the caller. */
 function assertSubtypeExhaustive(subtype: never): UnknownCategory {
   void subtype
   return 'unrecognized'
