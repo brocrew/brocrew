@@ -25,7 +25,7 @@ for (const [id, exportPlugin] of [
   ['chrome', exportChromePlugin],
   ['whatsapp', exportWhatsAppPlugin],
 ]) {
-  it(`${id} exports the loader script declared by its settings page`, () => {
+  it(`${id} exports the shared assets declared by its settings page`, () => {
     const base = fs.mkdtempSync(path.join(tmpdir(), 'fictional-ui-export-'))
     folders.push(base)
     const root = path.join(base, 'export')
@@ -39,13 +39,17 @@ for (const [id, exportPlugin] of [
       fs.readFileSync(path.join(root, `plugins/${id}/manifest-template.json`), 'utf8'),
     )
     const html = fs.readFileSync(path.join(root, `plugins/${id}/ui/index.html`), 'utf8')
-    const name = 'settings-load-state.js'
-    const relative = `plugins/shared/ui/${name}`
-    expect(fs.readFileSync(path.join(root, relative))).toEqual(
-      execFileSync('git', ['-C', repository, 'show', `HEAD:${relative}`]),
-    )
-    expect(html).toContain(name)
-    expect(template.ui.assets.map((asset) => asset.path)).toContain(`ui/${name}`)
+    for (const name of ['settings-load-state.js', 'rpc.js', 'base.css']) {
+      const relative = `plugins/shared/ui/${name}`
+      expect(fs.readFileSync(path.join(root, relative))).toEqual(
+        execFileSync('git', ['-C', repository, 'show', `HEAD:${relative}`]),
+      )
+      expect(html).toContain(name)
+      expect(template.ui.assets).toContainEqual({
+        path: `ui/${name}`,
+        mime: name.endsWith('.css') ? 'text/css' : 'text/javascript',
+      })
+    }
   })
 }
 

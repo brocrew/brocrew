@@ -1,8 +1,9 @@
-const channel = 'brocrew-plugin-ui:v1'
-const pending = new Map()
 let revision = 0
-let next = 0
 let closed = false
+const { rpc, pending } = window.createPluginUiRpc(
+  () => revision,
+  () => closed,
+)
 let drawnCode = ''
 let drawnGroups = ''
 let groups = []
@@ -11,32 +12,6 @@ let confirming = null
 const $ = (id) => document.querySelector('#' + id)
 const status = $('status')
 const UNAVAILABLE = 'Plugin unavailable. Try again.'
-function rpc(method, payload) {
-  if (pending.size >= 4 || closed) return Promise.reject(new Error('busy'))
-  const requestId = String(++next)
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      pending.delete(requestId)
-      reject(new Error('timeout'))
-    }, 10000)
-    pending.set(requestId, { resolve, reject, timer })
-    window.postMessage(
-      { channel, requestId, method, payload, configRevision: revision },
-      location.origin,
-    )
-  })
-}
-window.addEventListener('message', (event) => {
-  if (event.source !== window || event.origin !== location.origin) return
-  const packet = event.data
-  if (!packet || packet.channel !== channel || typeof packet.ok !== 'boolean') return
-  const request = pending.get(packet.requestId)
-  if (!request) return
-  clearTimeout(request.timer)
-  pending.delete(packet.requestId)
-  if (!packet.ok) request.reject(new Error('unavailable'))
-  else request.resolve(packet.data)
-})
 async function propose(payload) {
   try {
     await rpc('proposeConfig', payload)

@@ -59,6 +59,14 @@
         "mime": "text/css"
       },
       {
+        "path": "ui/base.css",
+        "mime": "text/css"
+      },
+      {
+        "path": "ui/rpc.js",
+        "mime": "text/javascript"
+      },
+      {
         "path": "ui/settings-load-state.js",
         "mime": "text/javascript"
       }

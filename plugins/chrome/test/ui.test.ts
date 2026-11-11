@@ -45,7 +45,9 @@ function screen() {
     },
   }
   vm.runInNewContext(
-    fs.readFileSync('plugins/shared/ui/settings-load-state.js', 'utf8') +
+    fs.readFileSync('plugins/shared/ui/rpc.js', 'utf8') +
+      '\n' +
+      fs.readFileSync('plugins/shared/ui/settings-load-state.js', 'utf8') +
       '\n' +
       fs.readFileSync('plugins/chrome/ui/app.js', 'utf8'),
     {

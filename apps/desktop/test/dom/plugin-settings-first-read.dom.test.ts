@@ -6,6 +6,8 @@ import whatsappHtml from '../../../../plugins/whatsapp/ui/index.html?raw'
 import whatsappScript from '../../../../plugins/whatsapp/ui/app.js?raw'
 import whatsappCss from '../../../../plugins/whatsapp/ui/style.css?raw'
 import loadScript from '../../../../plugins/shared/ui/settings-load-state.js?raw'
+import rpcScript from '../../../../plugins/shared/ui/rpc.js?raw'
+import baseCss from '../../../../plugins/shared/ui/base.css?raw'
 
 const cleanup: Array<() => void> = []
 afterEach(() => {
@@ -54,7 +56,9 @@ async function settingsPage(page: (typeof pages)[number]) {
     }, location.origin))
   `
   const source = page.html
+    .replace('<link rel="stylesheet" href="base.css" />', `<style>${baseCss}</style>`)
     .replace('<link rel="stylesheet" href="style.css" />', `<style>${page.css}</style>`)
+    .replace('<script src="rpc.js"></script>', `<script>${rpcScript}</script>`)
     .replace('<script src="settings-load-state.js"></script>', `<script>${loadScript}</script>`)
     .replace(
       '<script type="module" src="app.js"></script>',

@@ -1,14 +1,4 @@
 :root {
-  color-scheme: light dark;
-  font-family:
-    Inter,
-    ui-sans-serif,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
   --paper: #faf9f6;
   --card: #ffffff;
   --ink: #202338;
@@ -36,12 +26,6 @@
     --focus: #c1ceff;
   }
 }
-* {
-  box-sizing: border-box;
-}
-body {
-  margin: 0;
-}
 main {
   padding: 24px;
   margin: auto;
@@ -56,12 +40,6 @@ main {
 .screen-heading {
   justify-content: space-between;
   margin-bottom: 18px;
-}
-h1 {
-  font-size: 24px;
-  letter-spacing: -0.025em;
-  line-height: 1.2;
-  margin: 0;
 }
 #status {
   display: inline-block;
@@ -158,9 +136,6 @@ li {
 }
 li.empty {
   color: var(--muted);
-}
-[hidden] {
-  display: none !important;
 }
 @media (max-width: 480px) {
   main {

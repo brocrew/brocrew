@@ -3,6 +3,8 @@ import html from '../../../../plugins/whatsapp/ui/index.html?raw'
 import script from '../../../../plugins/whatsapp/ui/app.js?raw'
 import css from '../../../../plugins/whatsapp/ui/style.css?raw'
 import loadScript from '../../../../plugins/shared/ui/settings-load-state.js?raw'
+import rpcScript from '../../../../plugins/shared/ui/rpc.js?raw'
+import baseCss from '../../../../plugins/shared/ui/base.css?raw'
 
 const cleanup: Array<() => void> = []
 afterEach(() => {
@@ -44,7 +46,9 @@ async function settingsPage() {
     document.addEventListener('finish-refresh', () => answer(window.fixture.refresh, !window.fixture.fail))
   `
   const source = html
+    .replace('<link rel="stylesheet" href="base.css" />', `<style>${baseCss}</style>`)
     .replace('<link rel="stylesheet" href="style.css" />', `<style>${css}</style>`)
+    .replace('<script src="rpc.js"></script>', `<script>${rpcScript}</script>`)
     .replace('<script src="settings-load-state.js"></script>', `<script>${loadScript}</script>`)
     .replace(
       '<script type="module" src="app.js"></script>',
