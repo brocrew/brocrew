@@ -59,6 +59,7 @@ import {
   openUpdates,
 } from './lib/update-rehearsal-app.mjs'
 
+// 695-visible: the hosted Mac rehearsal checks the installed app's update UI and native restart.
 // Installation, launches and process signals are confined to a fresh hosted runner.
 assertHostedMac(process.env, process.platform, process.arch)
 const { values } = parseArgs({

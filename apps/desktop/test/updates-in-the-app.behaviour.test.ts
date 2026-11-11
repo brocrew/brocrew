@@ -15,6 +15,7 @@ const fake = await vi.hoisted(async () => {
     updaterEvents: new EventEmitter(),
     autoStage: true,
     installOnQuit: false,
+    otherWorkspaces: 0,
     stops: [] as { conversationId: string; agentName: string }[],
     handlers: new Map<string, Handler>(),
     appEvents: new Map<string, () => void>(),
@@ -36,6 +37,9 @@ const fake = await vi.hoisted(async () => {
   }
 })
 
+vi.mock('../src/main/other-brobots', () => ({
+  otherBroBotsRunning: async () => fake.otherWorkspaces,
+}))
 vi.mock('electron', () => ({
   autoUpdater: fake.native,
   ipcMain: { handle: (channel: string, handler: Handler) => fake.handlers.set(channel, handler) },
@@ -139,6 +143,7 @@ beforeEach(() => {
   fake.autoStage = true
   fake.stops = []
   fake.installOnQuit = false
+  fake.otherWorkspaces = 0
   fake.handlers.clear()
   fake.appEvents.clear()
   fake.answer = null
@@ -412,3 +417,31 @@ for (const waiting of [false, true]) {
     expect(fake.updaterEvents.listenerCount('error')).toBe(1)
   })
 }
+
+it('keeps the Windows quiet restart waiting for other workspaces and lets Cancel stand', async () => {
+  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+  fake.answer = {
+    isUpdateAvailable: true,
+    updateInfo: { version: '0.2.0', files: [{ url: 'fictional.exe', sha512: 'fictional' }] },
+  }
+  start()
+  await ask(UPDATES_CHANNELS.checkNow)
+  await ask(UPDATES_CHANNELS.download)
+  fake.otherWorkspaces = 4
+  await ask(UPDATES_CHANNELS.restartWhenQuiet)
+  await vi.waitFor(async () => {
+    expect((await ask<UpdatesSnapshot>(UPDATES_CHANNELS.read)).state).toMatchObject({
+      kind: 'waiting-to-restart',
+      stops: { otherWorkspaces: 4 },
+    })
+  })
+  expect(fake.quits).toBe(0)
+  await ask(UPDATES_CHANNELS.cancelRestart)
+  vi.useFakeTimers()
+  fake.otherWorkspaces = 0
+  await vi.advanceTimersByTimeAsync(QUIET_LOOK_EVERY_MS * 2)
+  expect(fake.quits).toBe(0)
+  await ask(UPDATES_CHANNELS.restartWhenQuiet)
+  await vi.waitFor(() => expect(fake.quits).toBe(1))
+  expect(fake.nativeInstalls).toBe(0)
+})

@@ -137,11 +137,8 @@ describe('§1 · the source census — a new durable write under userData must n
       "'one-host.sock'",
       // ⚑ The account the usage readings were read on. REMOVED with them (`USAGE`).
       "'provider-accounts.json'",
-      // ⚑ **The updater's, in a hidden launch's data folder** — its own switch and the Mac image it
-      // downloads. REMOVED: a fresh install has neither (`UPDATES`).
+      // The updater's settings in a hidden launch's data folder.
       "'update-settings.json'",
-      "'updates'",
-      "'updates', 'staging'",
       // ⚑ **W4.131 · A2** — a hidden launch's own list of workspaces. REMOVED (`WORKSPACES`).
       "'workspaces.json'",
       // The API keys a person saved. REMOVED: a fresh install has none (`LEDGER`).

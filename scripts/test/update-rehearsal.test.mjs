@@ -3,6 +3,7 @@ import { createServer } from 'node:http'
 import { dirname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
+import builderTools from '../../apps/desktop/build/builder-tools.mjs'
 import {
   appUpdateProblems,
   barrierOf,
@@ -284,8 +285,18 @@ describe('the workflows', () => {
 
   it('A and B carry the markers and the commit every lane checks', () => {
     expect(workflow.match(/-c\.extraMetadata\.rehearsalMarker="\$one-\$GITHUB_SHA"/g)).toHaveLength(
-      2,
+      1,
     )
+    const caller = builderTools.loadYaml(workflow).jobs.macos
+    expect(caller.uses).toBe('./.github/workflows/mac-update-test.yml')
+    expect(caller.with.build_only).toBe(true)
+    const mac = builderTools.loadYaml(read('.github/workflows/mac-update-test.yml')).jobs.rehearse
+    const builds = mac.steps.filter((step) => step.uses === './.github/actions/signed-mac')
+    expect(builds.map((step) => step.with.marker)).toEqual([
+      '${{ steps.feed.outputs.prefix }}a-${{ github.sha }}',
+      '${{ steps.feed.outputs.prefix }}b-${{ github.sha }}',
+    ])
+    expect(mac.steps.find((step) => step.id === 'feed').run).toContain("echo 'prefix='")
     expect(
       workflow.match(
         /--marker-a "a-\$GITHUB_SHA" --marker-b "b-\$GITHUB_SHA" --source-sha "\$GITHUB_SHA"/g,

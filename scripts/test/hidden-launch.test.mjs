@@ -122,6 +122,7 @@ describe('every Electron launcher under scripts/', () => {
       'lane-geometry-probe.mjs',
       'lib/mac-update-test.mjs',
       'mac-signed-upgrade-contract.mjs',
+      'mac-update-test.mjs',
       'upgrade-path.mjs',
       'window-controls-probe.mjs',
     ])
