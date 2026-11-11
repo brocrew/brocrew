@@ -384,6 +384,41 @@ describe('the history reader', () => {
     reader.close()
   })
 
+  it('supplies recorded nested ancestry before the recovery window folds each row', async () => {
+    const { copy } = await aRestoredCopy()
+    const events: TranscriptEvent[] = [
+      { type: 'tool_call', id: 'outer', name: 'Task', summary: 'Explore' },
+      { type: 'sub_agent', agentId: 'parent', phase: 'started', parentToolCallId: 'outer' },
+      { type: 'tool_call', id: 'inner', name: 'Task', summary: 'Count', parentToolCallId: 'outer' },
+      { type: 'sub_agent', agentId: 'child', phase: 'ended', parentToolCallId: 'inner' },
+    ]
+    const db = new Database(copy)
+    try {
+      const insert = db.prepare(
+        'INSERT INTO events (id,session_id,generation,ordinal,type,payload,created_at) VALUES (?, ?, 0, ?, ?, ?, ?)',
+      )
+      for (const [ordinal, event] of events.entries())
+        insert.run(newEventId(), 'sess_idle', ordinal, event.type, JSON.stringify(event), T0 + ordinal)
+    } finally {
+      db.close()
+    }
+    const reader = createHistoryReader(copy)
+    try {
+      const rows = await reader.transcript('sess_idle')
+      expect(rows.map(({ event, at }) => ({ event, at }))).toEqual(
+        events.map((event, ordinal) => ({ event, at: T0 + ordinal })),
+      )
+      expect(rows[3]?.workAncestry?.agents).toContainEqual({
+        agentId: 'child',
+        dispatch: 'inner',
+        parentAgentId: 'parent',
+        complete: true,
+      })
+    } finally {
+      reader.close()
+    }
+  })
+
   it('changes nothing: the copy keeps its bytes and its time, and nothing appears beside it', async () => {
     const { copy, folder, expected } = await aRestoredCopy()
     expect(readdirSync(folder)).toEqual(['brobot2.sqlite'])

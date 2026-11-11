@@ -1,3 +1,4 @@
+import { recordedWorkAncestry } from '../../src/main/runtime/work-ancestry'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import type { MessagePath, MessagePathAsk, MessagePathTarget } from '../../src/shared/runtime-ipc'
 import type {
@@ -149,7 +150,7 @@ export function fakeRecoveryBridge(script: RecoveryScript): FakeRecoveryBridge {
         )
       },
       transcript(id) {
-        return read({ call: 'transcript', id }, () => script.transcripts?.[id] ?? [])
+        return read({ call: 'transcript', id }, () => recordedWorkAncestry(script.transcripts?.[id] ?? []))
       },
     },
   }

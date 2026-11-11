@@ -355,3 +355,14 @@ export class WorkAncestryRead {
     }
   }
 }
+
+/** Enrich a complete recorded stream before a recovery receiver folds it. */
+export function recordedWorkAncestry<T extends { event: TranscriptEvent; at: number }>(
+  rows: readonly T[],
+): (T & { workAncestry?: WorkAncestry })[] {
+  const ancestry = new WorkAncestryRead()
+  return rows.map((row) => {
+    const workAncestry = ancestry.observe(row.event)
+    return workAncestry === undefined ? row : { ...row, workAncestry }
+  })
+}

@@ -6,6 +6,7 @@ import type { HistoryConversation, HistoryEvent, HistoryReader } from '../../sha
 import { agentName } from '../../shared/runtime-ipc'
 import { PIECE_EVENT_TYPES } from '../../shared/tasks'
 import { toPersistedEvents, type EventRow } from '../db/session-store'
+import { recordedWorkAncestry } from '../runtime/work-ancestry'
 import { errorCode, nodeFs, pathExists, type RecoveryFs } from './files'
 import { SIDECARS } from './layout'
 
@@ -111,8 +112,10 @@ export function createHistoryReader(
       ),
     transcript: (id) =>
       read((c) =>
-        toPersistedEvents(c.events.all(id, activeGeneration(c, id)) as EventRow[]).map(
-          ({ event, at }): HistoryEvent => ({ event, at }),
+        recordedWorkAncestry(
+          toPersistedEvents(c.events.all(id, activeGeneration(c, id)) as EventRow[]).map(
+            ({ event, at }): HistoryEvent => ({ event, at }),
+          ),
         ),
       ),
     workingFolder: (id) =>
