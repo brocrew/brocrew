@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createSSRApp, defineComponent, h } from 'vue'
-import { renderToString } from '@vue/server-renderer'
+import { renderToString } from 'vue/server-renderer'
 import type { ClientAgentApi } from '../src/shared/client-agent-api'
 import type { ClientApi } from '../src/shared/client-api'
 import type { AgentIdentities } from '../src/shared/runtime-ipc'
