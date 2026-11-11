@@ -22,6 +22,7 @@ export type ClientSessionApi = Pick<
   | 'earlierHistory'
   | 'endPlanMode'
   | 'exportSession'
+  | 'importBundleFile'
   | 'importRecordedSession'
   | 'importUserHomeSession'
   | 'instructionAsksForAPerson'
