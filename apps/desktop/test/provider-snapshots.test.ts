@@ -397,7 +397,7 @@ describe('how a request is cut', () => {
 
   it('Codex, both shapes: BroBot’s tools, AGENTS files and message out', () => {
     const agents =
-      '# AGENTS.md instructions for /scratch/w\n\n<INSTRUCTIONS>\nBroBot’s rules\n</INSTRUCTIONS>'
+      '# AGENTS.md instructions\n\n<INSTRUCTIONS>\nBroBot’s rules\n</INSTRUCTIONS>'
     const functions = codexParts(
       {
         instructions: 'You are Codex.',
@@ -445,7 +445,7 @@ describe('how a request is cut', () => {
     ])
     expect(functions.parts[2]?.text).toContain(PLACEHOLDER.memorySummary)
     expect(functions.parts[3]?.text).toBe(
-      `# AGENTS.md instructions for ${PLACEHOLDER.folder}\n\n<INSTRUCTIONS>\n${PLACEHOLDER.agentsFiles}\n</INSTRUCTIONS>`,
+      `# AGENTS.md instructions\n\n<INSTRUCTIONS>\n${PLACEHOLDER.agentsFiles}\n</INSTRUCTIONS>`,
     )
     // With the workspace's file too, Codex's own separator between the two stays.
     const two = codexParts(
@@ -457,7 +457,7 @@ describe('how a request is cut', () => {
             content: [
               {
                 type: 'input_text',
-                text: '# AGENTS.md instructions for /scratch/w\n\n<INSTRUCTIONS>\nmine\n\n--- project-doc ---\n\ntheirs\n</INSTRUCTIONS>',
+                text: '# AGENTS.md instructions\n\n<INSTRUCTIONS>\nmine\n\n--- project-doc ---\n\ntheirs\n</INSTRUCTIONS>',
               },
             ],
           },
@@ -467,7 +467,7 @@ describe('how a request is cut', () => {
       () => false,
     )
     expect(two.parts.at(-1)?.text).toBe(
-      `# AGENTS.md instructions for ${PLACEHOLDER.folder}\n\n<INSTRUCTIONS>\n${PLACEHOLDER.agentsFiles}\n\n--- project-doc ---\n\n${PLACEHOLDER.workspaceAgentsFile}\n</INSTRUCTIONS>`,
+      `# AGENTS.md instructions\n\n<INSTRUCTIONS>\n${PLACEHOLDER.agentsFiles}\n\n--- project-doc ---\n\n${PLACEHOLDER.workspaceAgentsFile}\n</INSTRUCTIONS>`,
     )
 
     const exec = codexParts(

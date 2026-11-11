@@ -376,7 +376,7 @@ it(
           label: `as of Claude Code ${version}`,
           defaultModel: null,
           notes: [
-            'Captured on macOS, outside a git repository: in one, Claude Code also sends a snapshot of it.',
+            `Captured on ${type() === 'Darwin' ? 'macOS' : type()}, outside a git repository: in one, Claude Code also sends a snapshot of it.`,
             'Captured on a stand-in sign-in with no account features, and with BroCrew’s server alone. A real conversation can have more deferred tools: its servers’ own; ListMcpResourcesTool, ReadMcpResourceTool and ReadMcpResourceDirTool when one of its servers offers resources; Monitor, PushNotification and DesignSync by its account. It can also have more skills, sub-agent types and servers’ instructions, by what its profile has installed.',
             'On a model whose server refuses a mid-conversation system message, Claude Code sends the context sections as reminders in the first message instead.',
             'Claude Code can also send one reserved tool, DeferredToolPlaceholder (“never call this tool”), marked deferred so the model is never shown it: it was in this capture, and is left out of the tools here.',
@@ -649,7 +649,7 @@ it(
           label: `as of Codex ${CODEX_PROTOCOL_VERSION}`,
           defaultModel: null,
           notes: [
-            'Captured on macOS with an API key on a stand-in model, with the settings BroCrew gives Codex: an account can add apps and attribution text.',
+            `Captured on ${type() === 'Darwin' ? 'macOS' : type()} with an API key on a stand-in model, with the settings BroCrew gives Codex: an account can add apps and attribution text.`,
             'Captured from the catalogue Codex ships: with a ChatGPT sign-in, Codex can refresh it from its server.',
             'Captured in a conversation that asks first: Codex’s sandbox rules differ in one that runs on its own.',
             'Codex also runs its own background memory writer on its own model; it is not part of an agent’s request, and not here.',

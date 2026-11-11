@@ -534,7 +534,7 @@ function codexTextTitle(text: string): { id: string; title: string } {
     [/^<multi_agent_mode>/, 'codex.multi-agent-mode', 'Its multi-agent mode'],
     [/^<environment_context>/, 'codex.environment', 'Its environment context'],
     [
-      /^# AGENTS\.md instructions for /,
+      /^# AGENTS\.md instructions\n/,
       'codex.agents-wrapper',
       'Its wrapper around the AGENTS files',
     ],
