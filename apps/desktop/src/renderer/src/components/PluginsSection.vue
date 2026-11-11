@@ -552,6 +552,12 @@ onUnmounted(() => {
             {{ card.toolsCause }}
           </p>
           <p v-if="card.installed">Installed for all workspaces.</p>
+          <p v-if="card.installed" data-cy="plugin-version">
+            Version {{ card.installedVersion
+            }}<template v-if="card.updateVersion">
+              · Update available: {{ card.updateVersion }}</template
+            >
+          </p>
           <template v-if="card.action">
             <button
               class="bb-button"

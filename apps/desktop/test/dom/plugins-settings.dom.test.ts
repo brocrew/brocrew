@@ -14,6 +14,34 @@ afterEach(() => {
   applyTheme(null)
   Reflect.deleteProperty(window, 'api')
 })
+it('shows installed and available versions from fictional plugin cards', async () => {
+  const f = fictionalPlugins()
+  f.set([
+    {
+      id: 'fictional-orchid',
+      name: 'Fictional Orchid',
+      installed: true,
+      state: 'Running',
+      installedVersion: '1.2.0',
+      updateVersion: '1.3.0',
+    },
+    {
+      id: 'fictional-fern',
+      name: 'Fictional Fern',
+      installed: true,
+      state: 'Running',
+      installedVersion: '2.4.1',
+    },
+    { id: 'fictional-moss', name: 'Fictional Moss', installed: false, state: 'Available' },
+  ])
+  const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1100, height: 720 })
+  await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(3))
+  expect(m.all('plugin-version').map((line) => line.textContent?.trim())).toEqual([
+    'Version 1.2.0 · Update available: 1.3.0',
+    'Version 2.4.1',
+  ])
+  expect(f.calls.filter((call) => call.kind === 'list')).toHaveLength(1)
+})
 it('uses explicitly fake install/uninstall seams, searches, configures its measured screen and closes on leaving', async () => {
   const f = fictionalPlugins(false),
     m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
