@@ -4,7 +4,9 @@ import type { ModelAndEffort, ModelList } from './model-choice-contracts'
 
 export interface ProviderLaunchChoices {
   readonly list: ModelList
+  /** Settled knowledge; null is unknown readiness, not an outstanding read. */
   readonly ready: boolean | null
+  readonly reason?: string
   readonly defaultModel: ModelAndEffort | null
   readonly defaultModelToSend: ModelAndEffort | null
 }
@@ -24,3 +26,7 @@ export interface ResolvedProviderLaunch {
   readonly pickerProvider: Provider | null
   readonly readiness: readonly { readonly provider: Provider; readonly ready: boolean | null }[]
 }
+
+export type ProviderReadiness =
+  | { readonly state: 'pending' }
+  | { readonly state: 'settled'; readonly ready: boolean | null; readonly reason: string | null }

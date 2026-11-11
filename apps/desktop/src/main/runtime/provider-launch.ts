@@ -26,6 +26,16 @@ export function providerLaunchChoices(
       : auth.state === 'usable' || notAsked === null
         ? true
         : null
+  const reason =
+    ready === true
+      ? undefined
+      : auth.state === 'absent' || auth.state === 'stale'
+        ? auth.reason
+        : notAsked?.reason === 'refused'
+          ? notAsked.detail
+          : auth.state === 'unknown'
+            ? auth.reason
+            : undefined
   const row = list.models.find((model) => model.isDefault)
   const fallback: ModelAndEffort | null =
     row === undefined ? null : { model: row.id, effort: row.defaultEffort ?? null }
@@ -35,6 +45,7 @@ export function providerLaunchChoices(
   return {
     list,
     ready,
+    ...(reason === undefined ? {} : { reason }),
     defaultModel: start === null ? null : { model: start.model, effort: start.effort },
     defaultModelToSend:
       last === null ||

@@ -1,5 +1,6 @@
 import type {
   ProviderLaunchChoices,
+  ProviderReadiness,
   ResolveProviderLaunchInput,
   ResolvedProviderLaunch,
 } from '../../../shared/provider-launch'
@@ -68,6 +69,7 @@ export interface ModelLists {
   /** What is held for one provider's list in one profile — `null`: nobody asked yet. */
   held(provider: Provider, profileId?: string): HeldList | null
   choices(provider: Provider, profileId?: string): ProviderLaunchChoices | null
+  readiness(provider: Provider, profileId?: string): ProviderReadiness
   resolve(input: ResolveProviderLaunchInput): Promise<ResolvedProviderLaunch>
   /**
    * Read one list. ⚑ Joins a read already out, and never re-asks a list the provider answered.
@@ -170,6 +172,14 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
   return {
     held(provider, profileId) {
       return lists.value[keyOf(provider, profileId)] ?? null
+    },
+    readiness(provider, profileId) {
+      const key = keyOf(provider, profileId)
+      const held = lists.value[key]
+      if (held === undefined || held.state === 'asking') return { state: 'pending' }
+      if (held.state === 'unread') return { state: 'settled', ready: null, reason: held.why }
+      const supplied = choices.get(key)!
+      return { state: 'settled', ready: supplied.ready, reason: supplied.reason ?? null }
     },
     resolve(input) {
       return bridge().resolveProviderLaunch(input)

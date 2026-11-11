@@ -64,6 +64,24 @@ describe('core provider launch choices', () => {
     expect(providerLaunchChoices(refused, unknown).list).toBe(refused)
   })
 
+  it('reports actual settled diagnostics without changing unknown readiness or usable launch choices', () => {
+    const refused = list({
+      notAsked: { ok: false, reason: 'refused', detail: 'Fictional catalogue refused.' },
+    })
+    expect(providerLaunchChoices(refused, unknown)).toMatchObject({
+      ready: null,
+      reason: 'Fictional catalogue refused.',
+    })
+    expect(
+      providerLaunchChoices(list({ notAsked: { ok: false, reason: 'no-profile' } }), unknown),
+    ).toMatchObject({ ready: null, reason: unknown.reason })
+    expect(providerLaunchChoices(refused, usable).ready).toBe(true)
+    expect(providerLaunchChoices(list(), unknown).ready).toBe(true)
+    expect(
+      providerLaunchChoices(list(), { state: 'stale', reason: 'Fictional expired login.' }),
+    ).toMatchObject({ ready: false, reason: 'Fictional expired login.' })
+  })
+
   it('preserves known missing-program priority over cached models and usable auth', () => {
     const cached = list()
     expect(providerLaunchChoices(cached, usable, { standing: 'missing' })).toMatchObject({
