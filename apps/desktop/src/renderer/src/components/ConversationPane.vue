@@ -1094,7 +1094,7 @@ const signInBarCost = computed(() => reopeningSays(signInHeldBy.value))
 /** The provider whose sign-in the bar is about, by its name, or plain words for none recorded. */
 const signInOf = computed(() => {
   const name = props.record.meta && providerName(props.record.meta.provider)
-  return name === undefined ? 'the sign-in' : `the ${name} sign-in`
+  return name ? `the ${name} sign-in` : 'the sign-in'
 })
 
 /**
