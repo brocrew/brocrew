@@ -382,6 +382,7 @@ describe.skipIf(process.platform === 'win32')(
             attach: async () => Object.freeze({}),
             detach: async () => {},
             agentAttachments: () => [view],
+            onHostChanged: () => () => {},
           },
           binding: pluginBrokerBinding,
         })
