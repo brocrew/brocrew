@@ -24,6 +24,7 @@ import { useAgentPanel } from '../composables/useAgentPanel'
 import { useConversationControls } from '../composables/useConversationControls'
 import { useConversationModelPick } from '../composables/useConversationModelPick'
 import { useProfileSignIn } from '../composables/useProfileSignIn'
+import { useClientProviders } from '../client-provider/injection'
 import type { CapabilityStatus } from '../../../shared/runtime-ipc'
 import type { CompactionFacts } from '../lib/compaction-offer'
 import {
@@ -262,9 +263,10 @@ const controls = useConversationControls({
   setSessionSetting: (body) => emit('setSessionSetting', body),
 })
 /** This agent's own profile sign-in, shared with its conversation; `null` without a profile. */
+const signInClient = useClientProviders()
 const profileSignIn = computed(() => {
   const provider = props.session?.provider
-  return provider && props.profile ? useProfileSignIn(provider, props.profile) : null
+  return provider && props.profile ? useProfileSignIn(provider, props.profile, signInClient) : null
 })
 const telemetry = computed(
   () => new Map(agent.panel.value.subAgents.cards.map((card) => [card.conversation, card])),

@@ -1316,7 +1316,7 @@ function authChangedFor(profileId: string, changedProvider?: Provider): void {
   for (const provider of changedProvider
     ? [changedProvider]
     : (Object.keys(PROVIDER_NAME) as Provider[]))
-    void useProfileSignIn(provider, profileId).check()
+    void useProfileSignIn(provider, profileId, providerClient).check()
   // ⛔ **This DISOWNS the read in flight as well as forgetting the answer** (293 §5). Without the
   // ticket, a read started under the previous account was free to land after the replacement.
   modelLists.forget(profileId)

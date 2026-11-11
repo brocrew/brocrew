@@ -4,7 +4,13 @@ import type { ClientProviderApi } from '../../src/shared/client-provider-api'
 import type { AuthState, ProviderSignInResult } from '../../src/shared/runtime-ipc'
 import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
 import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
-import { forgetProfileSignIns, useProfileSignIn, type ProfileSignIn } from '../../src/renderer/src/composables/useProfileSignIn'
+import {
+  forgetProfileSignIns,
+  signInFact,
+  useProfileSignIn,
+  type ProfileSignIn,
+} from '../../src/renderer/src/composables/useProfileSignIn'
+import { createSignInGesture } from '../../src/renderer/src/lib/sign-in-gesture'
 import { providersBridge } from '../../look/fixtures/providers'
 import { mount, unmountAll } from './harness'
 
@@ -17,36 +23,50 @@ function client() {
   const raw = vi.spyOn(window.api.runtime, 'checkProviderAuth').mockResolvedValue(absent)
   const transport = {
     ...window.api.runtime,
-    checkProviderAuth: vi.fn<ClientProviderApi['checkProviderAuth']>(async function () {
+    checkProviderAuth: vi.fn<ClientProviderApi['checkProviderAuth']>(async function (this: object) {
       expect(this).toBe(transport)
       return usable
     }),
-    signInProvider: vi.fn<ClientProviderApi['signInProvider']>(async function () {
+    signInProvider: vi.fn<ClientProviderApi['signInProvider']>(async function (this: object) {
       expect(this).toBe(transport)
       return { success: true, state: usable }
     }),
-    reprovisionProviderAuth: vi.fn<ClientProviderApi['reprovisionProviderAuth']>(async function () {
+    reprovisionProviderAuth: vi.fn<ClientProviderApi['reprovisionProviderAuth']>(async function (
+      this: object,
+    ) {
       expect(this).toBe(transport)
       return 'replaced'
     }),
-    cancelProviderSignIn: vi.fn<ClientProviderApi['cancelProviderSignIn']>(async function () {
+    cancelProviderSignIn: vi.fn<ClientProviderApi['cancelProviderSignIn']>(async function (
+      this: object,
+    ) {
       expect(this).toBe(transport)
     }),
   }
-  const api = createDesktopProviderApi(() => transport, () => undefined)
+  const api = createDesktopProviderApi(
+    () => transport,
+    () => undefined,
+  )
   return { api, transport, raw }
 }
 
 function reader(api: ClientProviderApi, profileId = pair.profileId): ProfileSignIn {
   let answer!: ProfileSignIn
-  const Child = defineComponent({ setup() {
-    answer = useProfileSignIn(pair.provider, profileId)
-    return () => h('p', answer.auth?.state ?? 'unread')
-  } })
-  mount(defineComponent({ setup() {
-    provide(CLIENT_PROVIDERS, api)
-    return () => h(Child)
-  } }), {})
+  const Child = defineComponent({
+    setup() {
+      answer = useProfileSignIn(pair.provider, profileId)
+      return () => h('p', answer.auth?.state ?? 'unread')
+    },
+  })
+  mount(
+    defineComponent({
+      setup() {
+        provide(CLIENT_PROVIDERS, api)
+        return () => h(Child)
+      },
+    }),
+    {},
+  )
   return answer
 }
 
@@ -72,8 +92,41 @@ describe('profile sign-in through the supplied provider client', () => {
     expect(transport.checkProviderAuth).toHaveBeenCalledTimes(2)
     transport.reprovisionProviderAuth.mockResolvedValueOnce('unchanged')
     await one.copyMachineSignIn()
-    expect(one.notice).toBe('Your machine sign-in is the same as this profile’s, so nothing changed.')
+    expect(one.notice).toBe(
+      'Your machine sign-in is the same as this profile’s, so nothing changed.',
+    )
+    await vi.waitFor(() => expect(one.busy).toBe('idle'))
+    transport.reprovisionProviderAuth.mockRejectedValueOnce(new Error('Fictional copy failed.'))
+    await one.copyMachineSignIn()
+    await vi.waitFor(() => expect(one.busy).toBe('idle'))
+    expect(one.notice).toBe('Fictional copy failed.')
+    expect(transport.checkProviderAuth).toHaveBeenCalledTimes(4)
     expect(raw).not.toHaveBeenCalled()
+  })
+
+  it('keeps the newest ticket when a second injected surface signs in before an older check answers', async () => {
+    const { api, transport } = client()
+    let finish!: (answer: AuthState) => void
+    transport.checkProviderAuth.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    const profile = reader(api)
+    const old = profile.check()
+    const launcher = createSignInGesture({
+      pair: () => pair,
+      bridge: () => api,
+      fact: (asked) => signInFact(asked, api),
+      words: { signedIn: () => 'Fictional sign-in finished.', unchanged: 'Same.' },
+      checkWhileBusy: 'drop',
+    })
+    await launcher.signIn()
+    expect(profile.auth).toEqual(usable)
+    finish(absent)
+    await old
+    expect(profile.auth).toEqual(usable)
+    expect(launcher.auth).toEqual(usable)
   })
 
   it('shares held identity per client and pair, without letting the first client capture later injection', async () => {
@@ -94,7 +147,11 @@ describe('profile sign-in through the supplied provider client', () => {
   it('keeps cancel and a held check on the same gesture, then asks once after sign-in', async () => {
     const { api, transport, raw } = client()
     let finish!: (result: ProviderSignInResult) => void
-    transport.signInProvider.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+    transport.signInProvider.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
     const one = reader(api)
     const signing = one.signIn()
     expect(one.busy).toBe('signing-in')

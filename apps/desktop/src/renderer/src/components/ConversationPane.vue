@@ -39,6 +39,7 @@ import type { PickedModel } from '../lib/model-lists'
 import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
 import { aGiverWaitsOnPurposeSays, ownWaitSaid } from '../lib/conversation-list'
 import { useProfileSignIn, type ProfileSignIn } from '../composables/useProfileSignIn'
+import { useClientProviders } from '../client-provider/injection'
 import { useProviderSetup } from '../composables/useProviderSetup'
 import {
   activityLine,
@@ -759,15 +760,14 @@ const needsGoAhead = computed(() => props.record.meta?.planNeedsGoAhead ?? false
  */
 const signInSuperseded = computed(() => props.record.meta?.liveness.signInSuperseded === true)
 
-/**
- * This conversation's own profile sign-in, so an expired or missing one can be renewed where the
- * refusal is read. Asked only when a refusal is on screen (a check starts a probe), and again for
- * each new one; `null` for a conversation run as nobody.
- */
+/** Probe only for each on-screen refusal; renew this profile here, or null if it runs as nobody. */
+const signInClient = useClientProviders()
 const profileSignIn = computed<ProfileSignIn | null>(() => {
   const meta = props.record.meta
   const profileId = profileItRunsAs(meta)
-  return meta && profileId !== null ? useProfileSignIn(meta.provider, profileId) : null
+  return meta && profileId !== null
+    ? useProfileSignIn(meta.provider, profileId, signInClient)
+    : null
 })
 const signInRefused = computed(() => {
   for (let index = transcript.value.items.length - 1; index >= 0; index--) {

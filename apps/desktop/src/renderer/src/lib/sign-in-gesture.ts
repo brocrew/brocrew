@@ -1,5 +1,6 @@
 import { reactive } from 'vue'
-import type { AuthState, Provider, RuntimeBridge } from '../../../shared/runtime-ipc'
+import type { AuthState, Provider } from '../../../shared/runtime-ipc'
+import type { ClientProviderApi } from '../../../shared/client-provider-api'
 import { readableError } from './session-record'
 
 export type SignInPhase = 'idle' | 'checking' | 'copying' | 'signing-in'
@@ -55,7 +56,7 @@ export const SIGN_IN_WORDS = {
 } as const
 
 type SignInBridge = Pick<
-  RuntimeBridge,
+  ClientProviderApi,
   'checkProviderAuth' | 'signInProvider' | 'reprovisionProviderAuth' | 'cancelProviderSignIn'
 >
 

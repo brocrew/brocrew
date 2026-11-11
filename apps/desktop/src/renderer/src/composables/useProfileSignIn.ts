@@ -1,5 +1,7 @@
 import { reactive } from 'vue'
 import type { AuthState, Provider } from '../../../shared/runtime-ipc'
+import type { ClientProviderApi } from '../../../shared/client-provider-api'
+import { useClientProviders } from '../client-provider/injection'
 import {
   createSignInGesture,
   observe,
@@ -27,8 +29,20 @@ export interface ProfileSignIn {
   cancel(): Promise<void>
 }
 
-const facts = new Map<string, SignInFact>()
-const held = new Map<string, ProfileSignIn>()
+interface ProfileSignIns {
+  readonly facts: Map<string, SignInFact>
+  readonly held: Map<string, ProfileSignIn>
+}
+let clients = new WeakMap<ClientProviderApi, ProfileSignIns>()
+
+function signInsFor(api: ClientProviderApi): ProfileSignIns {
+  let shared = clients.get(api)
+  if (shared === undefined) {
+    shared = { facts: new Map(), held: new Map() }
+    clients.set(api, shared)
+  }
+  return shared
+}
 
 const keyOf = (pair: SignInPair): string => `${pair.provider}:${pair.profileId}`
 
@@ -36,7 +50,7 @@ const keyOf = (pair: SignInPair): string => `${pair.provider}:${pair.profileId}`
  * What one provider×profile's sign-in is known to be, for every surface in the window: the agent
  * cards and the title bar read it, and the launcher's own gesture writes what it learns into it.
  */
-export function signInFact(pair: SignInPair): SignInFact {
+function factFor(pair: SignInPair, { facts }: ProfileSignIns): SignInFact {
   const key = keyOf(pair)
   let fact = facts.get(key)
   if (fact === undefined) {
@@ -46,15 +60,28 @@ export function signInFact(pair: SignInPair): SignInFact {
   return fact
 }
 
-export function useProfileSignIn(provider: Provider, profileId: string): ProfileSignIn {
+export function signInFact(
+  pair: SignInPair,
+  api: ClientProviderApi = useClientProviders(),
+): SignInFact {
+  return factFor(pair, signInsFor(api))
+}
+
+export function useProfileSignIn(
+  provider: Provider,
+  profileId: string,
+  api: ClientProviderApi = useClientProviders(),
+): ProfileSignIn {
+  const shared = signInsFor(api)
+  const { held } = shared
   const pair = { provider, profileId }
   const known = held.get(keyOf(pair))
   if (known) return known
-  const fact = signInFact(pair)
+  const fact = factFor(pair, shared)
   const gesture = createSignInGesture({
     pair: () => pair,
-    bridge: () => window.api.runtime,
-    fact: signInFact,
+    bridge: () => api,
+    fact: (pair) => factFor(pair, shared),
     keepsFailedChecks: true,
     words: {
       signedIn: () => 'Signed in. This profile has its own sign-in again.',
@@ -91,6 +118,5 @@ export function useProfileSignIn(provider: Provider, profileId: string): Profile
 
 /** Forget every held sign-in and what is known of it: for tests, where each mount is its own run. */
 export function forgetProfileSignIns(): void {
-  held.clear()
-  facts.clear()
+  clients = new WeakMap()
 }

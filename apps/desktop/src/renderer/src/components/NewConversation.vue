@@ -68,6 +68,7 @@ import { joiningTheBox, shouldRestoreDraft, type DraftHanding } from '../lib/dra
 import type { SendBlock } from '../lib/composer-notice'
 import { createSignInGesture } from '../lib/sign-in-gesture'
 import { signInFact } from '../composables/useProfileSignIn'
+import { useClientProviders } from '../client-provider/injection'
 import type { SendIntent } from '../lib/session-store'
 import PromptComposer from './PromptComposer.vue'
 import SessionHeader from './SessionHeader.vue'
@@ -343,10 +344,11 @@ const stillAsking = (asked: { readonly provider: Provider }): boolean =>
  * pair that is running rather than the one on screen. ⚑ The stamp is a plain object, never a
  * reactive one: a proxy cannot cross the bridge, and a cancel that sent one did nothing.
  */
+const signInClient = useClientProviders()
 const signInHere = createSignInGesture({
   pair: () => ({ provider: props.defaultProvider, profileId: DEFAULT_PROFILE_ID }),
-  bridge: () => window.api.runtime,
-  fact: signInFact,
+  bridge: () => signInClient,
+  fact: (pair) => signInFact(pair, signInClient),
   words: {
     signedIn: (pair) => `Signed in to ${PROVIDER_NAME[pair.provider]}.`,
     unchanged:
