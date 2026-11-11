@@ -76,9 +76,14 @@ function screen(surface: (typeof surfaces)[number]) {
     open: deferred<ResumableSessionInfo[]>(),
     closed: deferred<UnresumableSessionInfo[]>(),
   }
+  let adoptionCaptures = 0
   const selected = {
     ...window.api.runtime,
     marker: 'selected',
+    get adoptSessions() {
+      adoptionCaptures++
+      return window.api.runtime.adoptSessions
+    },
     listResumable: vi.fn(function (this: { marker: string }) {
       expect(this.marker).toBe('selected')
       return pending.open.promise
@@ -139,6 +144,7 @@ function screen(surface: (typeof surfaces)[number]) {
     selected,
     pending,
     getSessions,
+    adoptionCaptures: () => adoptionCaptures,
     refresh,
     failGetter: (error: Error | undefined) => {
       getterFailure = error
@@ -159,7 +165,9 @@ it.each(surfaces)(
   async (surface) => {
     const out = screen(surface)
     await settle()
-    expect(out.getSessions).toHaveBeenCalledTimes(1)
+    const captured = out.adoptionCaptures()
+    expect(captured).toBe(surface === 'page' ? 1 : 0)
+    expect(out.getSessions.mock.calls.length - captured).toBe(1)
     expect(out.selected.listResumable).toHaveBeenCalledTimes(1)
     expect(out.selected.listUnresumable).toHaveBeenCalledTimes(1)
     out.pending.open.resolve([row('fern-open')])
@@ -173,21 +181,25 @@ it.each(surfaces)(
     out.selected.listUnresumable.mockRejectedValueOnce(failure)
     await out.refresh()
     expect(out.error()).toContain(failure.message)
+    expect(out.adoptionCaptures()).toBe(captured)
     expect(out.rows()).toBe(surface === 'page' ? 0 : 2)
     out.failGetter(new Error('Fern getter failed'))
     await out.refresh()
     expect(out.error()).toContain('Fern getter failed')
-    expect(out.getSessions).toHaveBeenCalledTimes(3)
+    expect(out.adoptionCaptures()).toBe(captured)
+    expect(out.getSessions.mock.calls.length - captured).toBe(3)
     out.failGetter(undefined)
     await out.refresh()
-    expect(out.getSessions).toHaveBeenCalledTimes(4)
+    expect(out.adoptionCaptures()).toBe(captured)
+    expect(out.getSessions.mock.calls.length - captured).toBe(4)
     expect(out.rows()).toBe(2)
     expect(out.m.all(surface === 'page' ? 'resumable-error' : 'conversations-error')).toHaveLength(
       0,
     )
     closing.value = true
     await out.refresh()
-    expect(out.getSessions).toHaveBeenCalledTimes(4)
+    expect(out.adoptionCaptures()).toBe(captured)
+    expect(out.getSessions.mock.calls.length - captured).toBe(4)
     expect(out.raw.listResumable).not.toHaveBeenCalled()
     expect(out.raw.listUnresumable).not.toHaveBeenCalled()
   },

@@ -25,10 +25,28 @@ it('both scan surfaces capture the injected sessions capability and share its pe
   stubbed().api!.runtime.listLibrary = () => {
     throw new Error('global library reads must not be used')
   }
+  stubbed().api!.runtime.listResumable = () => {
+    throw new Error('global resumable reads must not be used')
+  }
+  stubbed().api!.runtime.listUnresumable = () => {
+    throw new Error('global unresumable reads must not be used')
+  }
   let calls = 0
   let reads = 0
   let adoptionCaptures = 0
   const libraryReads: LibraryQuery[] = []
+  const listReads = { open: 0, closed: 0 }
+  const completed = new Map<number, Set<'open' | 'closed'>>()
+  let completedPairs = 0
+  async function list(which: 'open' | 'closed'): Promise<never[]> {
+    const ordinal = ++listReads[which]
+    await Promise.resolve()
+    const pair = completed.get(ordinal) ?? new Set<'open' | 'closed'>()
+    pair.add(which)
+    completed.set(ordinal, pair)
+    if (pair.size === 2) completedPairs++
+    return []
+  }
   const sessions = {
     get adoptSessions() {
       adoptionCaptures++
@@ -37,6 +55,14 @@ it('both scan surfaces capture the injected sessions capability and share its pe
         calls++
         return pending
       }
+    },
+    listResumable() {
+      expect(this).toBe(sessions)
+      return list('open')
+    },
+    listUnresumable() {
+      expect(this).toBe(sessions)
+      return list('closed')
     },
     listLibrary(input: LibraryQuery) {
       expect(this).toBe(sessions)
@@ -67,7 +93,9 @@ it('both scan surfaces capture the injected sessions capability and share its pe
   await nextTick()
   const captured = adoptionCaptures
   expect(captured).toBe(2)
-  expect(reads).toBe(3)
+  expect(listReads).toEqual({ open: 1, closed: 1 })
+  expect(completedPairs).toBe(1)
+  expect(reads - completedPairs).toBe(3)
   expect(libraryReads).toHaveLength(1)
   expect(m.all('library-row-claude:unimported')).toHaveLength(1)
   m.q('library-check-homes').click()
@@ -81,8 +109,11 @@ it('both scan surfaces capture the injected sessions capability and share its pe
   expect(m.q('scan-summary').textContent).toContain('8 descents recorded')
   expect(adoptionCaptures).toBe(captured)
   expect(calls).toBe(1)
-  expect(reads).toBe(4)
+  expect(listReads).toEqual({ open: 2, closed: 2 })
+  expect(completedPairs).toBe(2)
+  expect(reads - completedPairs).toBe(4)
   expect(libraryReads).toEqual([libraryReads[0], libraryReads[0]])
   expect(m.all('library-error')).toHaveLength(0)
+  expect(m.all('resumable-error')).toHaveLength(0)
   expect(m.all('library-row-claude:unimported')).toHaveLength(1)
 })
