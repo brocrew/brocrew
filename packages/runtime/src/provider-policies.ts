@@ -1,6 +1,6 @@
 import type { RuntimeEvent } from './events'
 import type { SessionRef } from './session-ref'
-import type { LaunchSettingKey } from './launch-settings'
+import type { LaunchSettingKey, LaunchSettingValue } from './launch-settings'
 import type { ProviderCommand } from './provider-commands'
 import type { ZodType } from 'zod'
 import type { Provider } from '@brobot2/shared'
@@ -153,6 +153,16 @@ export interface GivenPolicy<H extends ProviderHostValues> {
   ): { readonly size: H['partSize'] | null; readonly why: string | null }
   namespaceText(declaredWith: string | null, count: number): string | null
   readonly planningKey: LaunchSettingKey
+  launchSetting?(
+    key: LaunchSettingKey,
+    value: LaunchSettingValue,
+  ):
+    | {
+        readonly label: string
+        readonly words: string | null
+        readonly lines: readonly string[]
+      }
+    | undefined
 }
 export interface InstructionPolicy<H extends ProviderHostValues> {
   readonly given: GivenPolicy<H>

@@ -138,7 +138,6 @@ async function openAll(): Promise<void> {
     inner.open = true
 }
 
-/* the provider's stored copy */
 const snapshot = computed<ProviderSnapshot | null>(
   () => given.value?.providerParts.snapshot ?? null,
 )
@@ -147,8 +146,9 @@ const copyNotice = computed(() =>
     ? `Provider text is a stored copy from ${PROVIDER_NAME[props.provider]} ${snapshot.value.version}, captured on a stand-in account that asks first. It is not a record of this launch.${given.value && modeDiffersFromCopy(given.value) ? ` ${MODE_DIFFERS}` : ''}`
     : null,
 )
-/** The launch's settings in words, as the host recorded them. */
-const settings = computed(() => settingRows(given.value?.launchSettings))
+const settings = computed(() =>
+  settingRows(given.value?.launchSettings, given.value?.launchSettingDisplay),
+)
 const SHAPE_WORDS: Readonly<Record<ProviderSnapshot['shape'], string>> = {
   messages: 'Sent as messages, with the tools beside them.',
   functions: 'Its tools go as functions, and its prompt as the request’s instructions.',

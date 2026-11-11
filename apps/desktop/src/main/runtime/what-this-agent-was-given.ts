@@ -10,6 +10,7 @@ import {
   historicalProfileMemory,
 } from '../providers/index'
 import { providerDefinitions } from '../providers/index'
+import { launchSettingsAtRead } from '../providers/given-policy'
 import { createHash } from 'node:crypto'
 import { basename } from 'node:path'
 import { z } from 'zod'
@@ -40,7 +41,6 @@ import {
   type GivenFile,
   type GivenFileKind,
   type GivenLaunch,
-  type GivenLaunchSettings,
   type GivenMemoryEntry,
   type GivenMemoryStore,
   type GivenOrigin,
@@ -1110,34 +1110,12 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
   ])
   const window = handed.context?.kind === 'proportional' ? handed.context.window : null
 
-  // ── the launch's settings, beside where the conversation stands now ──
-  const planKey = providerKnowledge[provider].instructions.given.planningKey
-  const { approval, planning } = handed.standsNow
-  const nowOf = (key: LaunchSettingKey): { now: LaunchSettingValue } | object =>
-    key === 'approval'
-      ? { now: approval }
-      : key === planKey
-        ? { now: planning === null ? null : planning ? 'plan' : 'default' }
-        : {}
-  const keptSettings = recorded ? record.settings : undefined
-  const launchSettings: GivenLaunchSettings =
-    keptSettings === undefined
-      ? {
-          recorded: false,
-          settings: (['approval', planKey] as const).map((key) => ({
-            key,
-            atLaunch: null,
-            ...nowOf(key),
-          })),
-        }
-      : {
-          recorded: true,
-          settings: keptSettings.map((one) => ({
-            key: one.key,
-            atLaunch: one.value,
-            ...nowOf(one.key),
-          })),
-        }
+  const { launchSettings, launchSettingDisplay } = launchSettingsAtRead(
+    recorded ? record.settings : undefined,
+    providerKnowledge[provider].instructions.given,
+    handed.standsNow,
+    providerParts.snapshot === null ? undefined : SNAPSHOTS_ARE_CAPTURED_IN,
+  )
 
   // ── skills: Codex's list is its skills, each with its file; Claude loads none from disk ──
   const skills = providerKnowledge[provider].skills.asGiven(
@@ -1171,6 +1149,7 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
         ? providerParts
         : { ...providerParts, capturedIn: SNAPSHOTS_ARE_CAPTURED_IN },
     launchSettings,
+    launchSettingDisplay,
     skills,
     ...(record.builtInSkills ? { builtInSkills: record.builtInSkills } : {}),
     ...(record.textPack ? { textPack: record.textPack } : {}),

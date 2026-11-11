@@ -1,23 +1,80 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { given as claude } from '../src/main/providers/claude/given'
 import { given as codex } from '../src/main/providers/codex/given'
-import { launchSettingDisplay } from '../src/main/providers/given-policy'
+import { launchSettingDisplay, launchSettingsAtRead } from '../src/main/providers/given-policy'
 import { settingRows, modeDiffersFromCopy } from '../src/renderer/src/lib/launch-settings'
 import type { LaunchSettingKey, LaunchSettingValue } from '@brobot2/runtime'
-import type { WhatThisAgentWasGiven } from '../src/shared/what-this-agent-was-given'
+import { F093World } from './lib/f093-host'
 
 const captured = { approval: 'ask' as const, planning: false }
 
 describe('provider launch-setting display at the read', () => {
+  let world: F093World | undefined
+  afterEach(async () => {
+    await world?.dispose()
+    world = undefined
+  })
+
+  it('the actual host read supplies words alongside unchanged kept launch values', async () => {
+    world = new F093World()
+    const host = world.buildHost()
+    const session = await world.open(host, 'claude', 'fern')
+    const read = await host.whatThisAgentWasGiven(session)
+    expect(read.launchSettings).toEqual({
+      recorded: true,
+      settings: [{ key: 'approval', atLaunch: 'auto', now: 'auto' }],
+    })
+    expect(read.launchSettingDisplay?.rows).toEqual([
+      { key: 'approval', label: 'Approval', words: 'Runs without asking.', lines: [] },
+    ])
+    expect(settingRows(read.launchSettings, read.launchSettingDisplay)).toBe(
+      read.launchSettingDisplay?.rows,
+    )
+  })
   it.each([
-    [claude, 'settings-sources', [], 'Settings files', 'Off. This app adds the instruction files itself.', []],
-    [claude, 'settings-sources', ['user', 'project'], 'Settings files', 'Reads user and project.', []],
-    [claude, 'built-in-tools', ['preset:default', 'Fern'], 'Built-in tools', 'Default tools, plus Fern.', []],
-    [claude, 'memory-folder', '/fictional/fern', 'Memory', 'On, in this profile’s memory folder.', ['/fictional/fern']],
+    [
+      claude,
+      'settings-sources',
+      [],
+      'Settings files',
+      'Off. This app adds the instruction files itself.',
+      [],
+    ],
+    [
+      claude,
+      'settings-sources',
+      ['user', 'project'],
+      'Settings files',
+      'Reads user and project.',
+      [],
+    ],
+    [
+      claude,
+      'built-in-tools',
+      ['preset:default', 'Fern'],
+      'Built-in tools',
+      'Default tools, plus Fern.',
+      [],
+    ],
+    [
+      claude,
+      'memory-folder',
+      '/fictional/fern',
+      'Memory',
+      'On, in this profile’s memory folder.',
+      ['/fictional/fern'],
+    ],
     [claude, 'denied-tools', [], 'Not allowed', 'None.', []],
     [claude, 'connectors', false, 'Account connectors', 'Off.', []],
     [claude, 'attribution', 'set', 'Commit signatures', 'Set by this app.', []],
-    [codex, 'approval-sandbox', ['sandbox=workspace-write'], 'Approval and files', '', ['sandbox=workspace-write']],
+    [
+      codex,
+      'approval-sandbox',
+      ['sandbox=workspace-write'],
+      'Approval and files',
+      '',
+      ['sandbox=workspace-write'],
+    ],
     [codex, 'memory', null, 'Memory', 'Couldn’t be read.', []],
     [codex, 'thread-overrides', [], 'Thread settings', 'None.', []],
     [codex, 'plan-tool', true, 'Plan tool', 'Enabled.', []],
@@ -27,7 +84,9 @@ describe('provider launch-setting display at the read', () => {
     [codex, 'tools-left-on', ['fern_input'], 'Left on', 'fern_input (no switch).', []],
   ] as const)('keeps native words for %s %s', (policy, key, value, label, words, lines) => {
     const display = launchSettingDisplay(
-      { recorded: true, settings: [{ key, atLaunch: value }] }, policy, captured,
+      { recorded: true, settings: [{ key, atLaunch: value }] },
+      policy,
+      captured,
     )
     expect(display.rows).toEqual([{ key, label, words, lines }])
     expect(settingRows(undefined, display)).toBe(display.rows)
@@ -39,15 +98,36 @@ describe('provider launch-setting display at the read', () => {
       settings: [{ key: 'approval' as const, atLaunch: null, now: 'auto' }],
     }
     expect(launchSettingDisplay(settings, claude, captured)).toEqual({
-      rows: [{ key: 'approval', label: 'Approval', words: 'Not recorded. Now: Runs without asking.', lines: [] }],
+      rows: [
+        {
+          key: 'approval',
+          label: 'Approval',
+          words: 'Not recorded. Now: Runs without asking.',
+          lines: [],
+        },
+      ],
       modeDiffersFromCopy: false,
     })
-    expect(launchSettingDisplay({ recorded: true, settings: [
-      { key: 'approval', atLaunch: 'auto', now: 'ask' },
-      { key: 'mode', atLaunch: 'default', now: 'plan' },
-    ] }, claude, captured)).toEqual({
+    expect(
+      launchSettingDisplay(
+        {
+          recorded: true,
+          settings: [
+            { key: 'approval', atLaunch: 'auto', now: 'ask' },
+            { key: 'mode', atLaunch: 'default', now: 'plan' },
+          ],
+        },
+        claude,
+        captured,
+      ),
+    ).toEqual({
       rows: [
-        { key: 'approval', label: 'Approval', words: 'At launch: Runs without asking. Now: Asks first.', lines: [] },
+        {
+          key: 'approval',
+          label: 'Approval',
+          words: 'At launch: Runs without asking. Now: Asks first.',
+          lines: [],
+        },
         { key: 'mode', label: 'Plan', words: 'At launch: Off. Now: Plan mode.', lines: [] },
       ],
       modeDiffersFromCopy: true,
@@ -67,24 +147,47 @@ describe('provider launch-setting display at the read', () => {
     expect(settingRows(raw, display)).toEqual([
       { key: 'settings-sources', label: 'Fern', words: 'Supplied words.', lines: ['opaque'] },
     ])
-    const given = { launchSettings: raw, launchSettingDisplay: { ...display, modeDiffersFromCopy: true } } as WhatThisAgentWasGiven
+    const given = {
+      launchSettings: raw,
+      launchSettingDisplay: { ...display, modeDiffersFromCopy: true },
+    }
     expect(modeDiffersFromCopy(given)).toBe(true)
   })
 
   it('retains raw unknown values and absent optional policy facts without native guesses', () => {
-    const settings = { recorded: true, settings: [
-      { key: 'settings-sources' as const, atLaunch: 'future-format' },
-      { key: 'memory' as const, atLaunch: null },
-    ] }
+    expect(
+      launchSettingsAtRead(undefined, claude, { approval: null, planning: null }, undefined)
+        .launchSettings,
+    ).toEqual({
+      recorded: false,
+      settings: [
+        { key: 'approval', atLaunch: null, now: null },
+        { key: 'mode', atLaunch: null, now: null },
+      ],
+    })
+    const settings = {
+      recorded: true,
+      settings: [
+        { key: 'settings-sources' as const, atLaunch: 'future-format' },
+        { key: 'memory' as const, atLaunch: null },
+      ],
+    }
     expect(launchSettingDisplay(settings, {}, undefined).rows).toEqual([
       { key: 'settings-sources', label: 'settings-sources', words: 'future-format.', lines: [] },
       { key: 'memory', label: 'memory', words: 'unknown.', lines: [] },
     ])
     expect(settingRows(settings)).toEqual(launchSettingDisplay(settings, {}, undefined).rows)
-    expect(launchSettingDisplay({ recorded: true, settings: [
-      { key: 'settings-sources', atLaunch: 'future-format' },
-    ] }, claude, undefined).rows[0]).toEqual({
-      key: 'settings-sources', label: 'Settings files', words: 'future-format.', lines: [],
+    expect(
+      launchSettingDisplay(
+        { recorded: true, settings: [{ key: 'settings-sources', atLaunch: 'future-format' }] },
+        claude,
+        undefined,
+      ).rows[0],
+    ).toEqual({
+      key: 'settings-sources',
+      label: 'Settings files',
+      words: 'future-format.',
+      lines: [],
     })
     expect(settingRows(undefined)).toEqual([])
   })

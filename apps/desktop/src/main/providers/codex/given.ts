@@ -5,6 +5,7 @@ import { qualifyWith } from '@brobot2/runtime'
 import { sizesAdded } from '../../../shared/what-this-agent-was-given'
 import { repositoryConventionChain } from '../repository-instructions'
 import type { GivenPolicy } from '../given-policy'
+import { launchSetting } from './launch-settings'
 
 export function filesCodexWouldRead(cwd: string): string[] {
   return repositoryConventionChain(cwd).flatMap((dir) => {
@@ -68,6 +69,7 @@ export const given: GivenPolicy = {
   namespaceText: (declaredWith, count) =>
     count === 0 ? null : (declaredWith ?? CODEX_TOOLS_DESCRIPTION),
   planningKey: 'collaboration-mode',
+  launchSetting,
 }
 
 /** A budget attached to persisted native-read records, including records read across providers. */

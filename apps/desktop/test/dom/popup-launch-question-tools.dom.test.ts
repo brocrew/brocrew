@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import AgentInputPopup from '../../src/renderer/src/components/AgentInputPopup.vue'
 import type { Provider } from '../../src/shared/runtime-ipc'
-import type { GivenLaunchSettings } from '../../src/shared/what-this-agent-was-given'
+import type {
+  GivenLaunchSettings,
+  GivenLaunchSettingDisplay,
+} from '../../src/shared/what-this-agent-was-given'
+import { launchSettingDisplay as displayAtRead } from '../../src/main/providers/given-policy'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 import { givenAnswer } from './what-this-agent-was-given.fixture'
 
@@ -11,10 +15,17 @@ afterEach(() => {
   delete (window as { api?: unknown }).api
 })
 
-async function popup(provider: Provider, launchSettings?: GivenLaunchSettings): Promise<Mounted> {
+async function popup(
+  provider: Provider,
+  launchSettings?: GivenLaunchSettings,
+  display?: GivenLaunchSettingDisplay,
+): Promise<Mounted> {
   const answer = givenAnswer({
     provider,
     launchSettings,
+    launchSettingDisplay:
+      display ??
+      (launchSettings === undefined ? undefined : displayAtRead(launchSettings, {}, undefined)),
     providerParts: { version: null, model: null, snapshot: null, why: 'No fictional snapshot.' },
   })
   const read = vi.fn(async () => answer)
@@ -49,6 +60,27 @@ function expectRow(m: Mounted, key: string, label: string, words: string): void 
 }
 
 describe('launch question tools in the agent-input popup', () => {
+  it('renders supplied fictional labels and words instead of decoding a native key', async () => {
+    const m = await popup(
+      'claude',
+      {
+        recorded: true,
+        settings: [{ key: 'settings-sources', atLaunch: [] }],
+      },
+      {
+        rows: [
+          {
+            key: 'settings-sources',
+            label: 'Fern files',
+            words: 'The supplied sentence.',
+            lines: [],
+          },
+        ],
+        modeDiffersFromCopy: false,
+      },
+    )
+    expectRow(m, 'settings-sources', 'Fern files', 'The supplied sentence.')
+  })
   it.each(['claude', 'codex'] as const)(
     'shows the recorded %s rows in the overview',
     async (provider) => {

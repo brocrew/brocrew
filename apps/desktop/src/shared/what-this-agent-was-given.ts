@@ -462,6 +462,18 @@ export interface GivenLaunchSettings {
   readonly settings: readonly GivenLaunchSetting[]
 }
 
+/** Opaque display facts projected from the launch's kept settings at the read. */
+export interface GivenLaunchSettingRow {
+  readonly key: LaunchSettingKey
+  readonly label: string
+  readonly words: string
+  readonly lines: readonly string[]
+}
+export interface GivenLaunchSettingDisplay {
+  readonly rows: readonly GivenLaunchSettingRow[]
+  readonly modeDiffersFromCopy: boolean
+}
+
 /** Sizes, added up. */
 export interface GivenTotals {
   /** Everything BroBot wrote: its files, this conversation, its tools paragraph. */
@@ -537,6 +549,7 @@ export interface WhatThisAgentWasGiven {
   readonly providerParts: GivenProviderParts
   /** The launch's settings that change what the provider sends its model. Always set by the read. */
   readonly launchSettings?: GivenLaunchSettings
+  readonly launchSettingDisplay?: GivenLaunchSettingDisplay
   /** The agent's skills, as its provider listed them. Always set by the read. */
   readonly skills?: GivenSkills
   readonly size: GivenTotals

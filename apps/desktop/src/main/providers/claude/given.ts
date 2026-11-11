@@ -5,6 +5,7 @@ import {
   type PartSize,
 } from '../../../shared/what-this-agent-was-given'
 import type { GivenPolicy } from '../given-policy'
+import { launchSetting } from './launch-settings'
 import { CLAUDE_TOOL_NAMING } from '@brobot2/runtime/claude'
 import { qualifyWith } from '@brobot2/runtime'
 
@@ -87,6 +88,7 @@ export const given: GivenPolicy = {
   otherServers,
   namespaceText: () => null,
   planningKey: 'mode',
+  launchSetting,
 }
 
 /** The spelling of an older profile-memory record stays the same for every reader. */
