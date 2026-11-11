@@ -9,7 +9,10 @@ const EVENTS: unknown[] = [
     relayedFromProfile: 'designer',
   },
   { type: 'status', state: 'working' },
-  { type: 'assistant_message', text: 'Thanks, Ada. I checked the header against the brief: it fits.' },
+  {
+    type: 'assistant_message',
+    text: 'Thanks, Ada. I checked the header against the brief: it fits.',
+  },
   { type: 'command_summary', description: 'Ran pnpm test on the header: 42 passed.' },
   {
     type: 'turn_summary',

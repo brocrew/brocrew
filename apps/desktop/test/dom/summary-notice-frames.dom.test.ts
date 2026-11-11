@@ -22,17 +22,26 @@ const summaries = [
 ] as const
 
 function stage() {
-  return defineComponent(() => () =>
-    h('div', { style: 'width:100%' }, [
-      h(OutsideCard, {
-        shifted: true,
-        exchange: { from: 'Mira', to: 'Noor', kind: 'message', text: 'The fictional note', at: AT },
-      }),
-      ...summaries.map((item) => h(SummaryEntry, { item })),
-      ...WARNINGS.map((text, index) =>
-        h(NoticeEntry, { item: { kind: 'notice', id: `warning-${index}`, level: 'warn', text, at: AT } }),
-      ),
-    ]),
+  return defineComponent(
+    () => () =>
+      h('div', { style: 'width:100%' }, [
+        h(OutsideCard, {
+          shifted: true,
+          exchange: {
+            from: 'Mira',
+            to: 'Noor',
+            kind: 'message',
+            text: 'The fictional note',
+            at: AT,
+          },
+        }),
+        ...summaries.map((item) => h(SummaryEntry, { item })),
+        ...WARNINGS.map((text, index) =>
+          h(NoticeEntry, {
+            item: { kind: 'notice', id: `warning-${index}`, level: 'warn', text, at: AT },
+          }),
+        ),
+      ]),
   )
 }
 
@@ -73,7 +82,9 @@ for (const theme of ['classic', 'crew-night'] as const) {
           const time = row.querySelector<HTMLElement>('[data-cy="summary-time"]')
           expect(time?.textContent?.trim()).toBe(clockTime(AT))
           expect(time?.title).toBe(fullTime(AT))
-          expect(time!.getBoundingClientRect().left).toBeGreaterThan(words!.getBoundingClientRect().right)
+          expect(time!.getBoundingClientRect().left).toBeGreaterThan(
+            words!.getBoundingClientRect().right,
+          )
         }
       })
 
@@ -94,7 +105,9 @@ for (const theme of ['classic', 'crew-night'] as const) {
           expect(style.borderTopStyle).toBe('solid')
           expect(row.getBoundingClientRect().left).toBeCloseTo(note.getBoundingClientRect().left, 1)
           expect(row.querySelector('use')?.getAttribute('href')).toBe('#i-clock')
-          expect(row.querySelector('[data-cy="what-the-notice-says"]')?.textContent).toBe(WARNINGS[index])
+          expect(row.querySelector('[data-cy="what-the-notice-says"]')?.textContent).toBe(
+            WARNINGS[index],
+          )
           expect(row.querySelector('.time')?.textContent).toBe(clockTime(AT))
         }
       })
@@ -113,4 +126,3 @@ it('retains the existing info and error presentation', () => {
     expect(view.q('what-the-notice-says').textContent).toBe('The fictional notice')
   }
 })
-

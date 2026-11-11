@@ -7,5 +7,8 @@ import { wearTheme } from '../fixtures/themes'
 scene('summary and warning cards', (stage) => {
   if (import.meta.env['LOOK_THEME'] === 'crew-night') wearTheme('crew-night')
   else applyTheme(null)
-  stage.mount(windowStage({ titleBar: true, more: SUMMARY_CARD_EVENTS, pane: { drawerOpen: false } }), {})
+  stage.mount(
+    windowStage({ titleBar: true, more: SUMMARY_CARD_EVENTS, pane: { drawerOpen: false } }),
+    {},
+  )
 })

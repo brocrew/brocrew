@@ -79,11 +79,16 @@ const told = computed(() => toldClause(props.item.told, props.item.toldInPart ==
 <template>
   <div
     class="notice-entry"
-    :class="[item.level, { 'line-lane': item.level === 'warn', 'line-card': item.level === 'warn' }]"
+    :class="[
+      item.level,
+      { 'line-lane': item.level === 'warn', 'line-card': item.level === 'warn' },
+    ]"
     :data-cy="`notice-${item.level}`"
     :aria-live="item.signIn ? 'polite' : undefined"
   >
-    <svg v-if="item.level === 'warn'" class="line-icon" aria-hidden="true"><use href="#i-clock" /></svg>
+    <svg v-if="item.level === 'warn'" class="line-icon" aria-hidden="true">
+      <use href="#i-clock" />
+    </svg>
     <span v-else class="dot"></span>
     <!-- ⚠️ **Not `notice-…`**: `[data-cy^="notice-"]` is how every test counts NOTICES, and a child
          hook under that prefix counted each one twice. -->
@@ -95,7 +100,10 @@ const told = computed(() => toldClause(props.item.told, props.item.toldInPart ==
          sentence on the title. -->
     <span
       class="what"
-      :class="{ 'providers-words': item.providersWords === true, 'line-words': item.level === 'warn' }"
+      :class="{
+        'providers-words': item.providersWords === true,
+        'line-words': item.level === 'warn',
+      }"
       data-cy="what-the-notice-says"
       :title="said"
       >{{ said }}<span v-if="told" class="told" data-cy="refusal-told">{{ told }}</span></span
@@ -117,7 +125,9 @@ const told = computed(() => toldClause(props.item.told, props.item.toldInPart ==
         <p v-for="(detail, index) in item.signIn.details" :key="index">{{ detail }}</p>
       </div>
     </details>
-    <span class="time" :class="{ 'line-time': item.level === 'warn' }" :title="fullTime(item.at)">{{ clockTime(item.at) }}</span>
+    <span class="time" :class="{ 'line-time': item.level === 'warn' }" :title="fullTime(item.at)">{{
+      clockTime(item.at)
+    }}</span>
   </div>
 </template>
 
