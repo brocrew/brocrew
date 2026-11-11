@@ -1,12 +1,3 @@
-/**
- * 🔴 **W4.109 · B1 — what the window is told about updates** (`main/updates.ts` decides; the rail's
- * footer draws it).
- *
- * ⚑ Windows installs an update when the person chooses to restart. The Mac is guided: BroBot
- * downloads the new version, checks it against its published sha512, and opens it for the person
- * to drag into Applications — an app signed ad hoc cannot replace itself.
- */
-
 /** Which releases a BroBot is offered: full releases, or betas too. */
 export type UpdateChannel = 'stable' | 'beta'
 
@@ -46,16 +37,12 @@ export type UpdateState =
   /** A newer version is published. */
   | { readonly kind: 'available'; readonly version: string }
   | { readonly kind: 'downloading'; readonly version: string; readonly percent: number }
-  /**
-   * Downloaded and checked. Windows: `restart` installs it. The Mac: the disk image is `opened`
-   * at `path`, for the person to drag BroBot into Applications once every BroBot is quit (Finder
-   * does not replace an app that is running); `updates:download` opens it again.
-   */
+  /** Downloaded and ready to install on restart. */
   | {
       readonly kind: 'ready'
       readonly version: string
-      readonly how: 'restart' | 'opened'
-      readonly path: string | null
+      readonly how: 'restart'
+      readonly path: null
     }
   /** The person chose to restart; it waits for these to be done. */
   | {

@@ -1,26 +1,17 @@
 import { ipcMain } from './app-ipc'
-import { existsSync, mkdirSync, rmSync } from 'node:fs'
-import { basename, join } from 'node:path'
-import { BrowserWindow, net, shell } from 'electron'
+import { join } from 'node:path'
+import { BrowserWindow } from 'electron'
 import type { App } from 'electron'
 import type { AppUpdater, BaseUpdater } from 'electron-updater'
 import { UPDATES_CHANNELS, type UpdateChannel } from '../shared/updates'
 import { shownVersion } from './build-identity'
 import { defaultDataFolder } from './data-folder'
-import {
-  diskImageOf,
-  downloadChecked,
-  downloadUrlOf,
-  feedOfTheApp,
-  privateDownloadUrlOf,
-  privateFeedToken,
-} from './guided-update'
+import { feedOfTheApp } from './release-feed'
 import { otherDataFolder } from './launch-presentation'
 import { otherBroBotsRunning } from './other-brobots'
 import { startTheInstaller, theWayBack } from './reopen-after-update'
 import type { RuntimeHost } from './runtime/runtime-host'
 import { readUpdateSettings, updateSettingsOf, writeUpdateSettings } from './update-settings'
-import type { UpdateFeedRoute } from './update-feed'
 import {
   createUpdates,
   parseSettingsChange,
@@ -39,7 +30,6 @@ export function startUpdates(options: {
   readonly hidden: boolean
 }): Updates & { drain(): Promise<void> } {
   const { app } = options
-  rmSync(join(app.getPath('userData'), 'updates', 'staging'), { recursive: true, force: true })
   const feed = app.isPackaged ? feedOfTheApp(join(process.resourcesPath, 'app-update.yml')) : null
   const settings = updateSettingsOf({
     appData: app.getPath('appData'),
@@ -48,7 +38,6 @@ export function startUpdates(options: {
   })
 
   let loaded: Promise<AppUpdater> | null = null
-  let publicFeed: UpdateFeedRoute | null = null
   let updater: AppUpdater | null = null
   const theUpdater = (): Promise<AppUpdater> => {
     loaded ??= import('electron-updater').then(async (exported) => {
@@ -59,7 +48,7 @@ export function startUpdates(options: {
       autoUpdater.requestHeaders = NOBODY_IN_PARTICULAR
       const { publicUpdateFeed, websiteUpdatesEnabled, UPDATE_REQUEST_HEADERS } =
         await import('./update-feed')
-      publicFeed = publicUpdateFeed({
+      const publicFeed = publicUpdateFeed({
         feed,
         version: app.getVersion(),
         qa:
@@ -111,13 +100,9 @@ export function startUpdates(options: {
     }
   })
 
-  const guidedDownloads = new AbortController()
-  const pendingGuides = new Set<Promise<string>>()
-  const openedThisRun = new Map<string, string>()
   const updates = createUpdates({
     version: shownVersion(app.getVersion(), app.isPackaged),
     notHere: !app.isPackaged ? 'a-development-build' : feed === null ? 'no-release-feed' : null,
-    installs: process.platform === 'darwin' ? 'guided' : 'on-restart',
     settings: {
       read: () => readUpdateSettings(settings.file, settings.defaults),
       write: (chosen) => writeUpdateSettings(settings.file, chosen),
@@ -150,54 +135,12 @@ export function startUpdates(options: {
       }
     },
     install: () => {
+      if (process.platform === 'darwin') {
+        updater!.quitAndInstall()
+        return
+      }
       installOnTheWayOut = true
       app.quit()
-    },
-    guide: async (found, onPercent) => {
-      guidedDownloads.signal.throwIfAborted()
-      if (feed === null) throw new Error('this build has no release feed')
-      const image = diskImageOf(found)
-      if (image === null) throw new Error(`release ${found.version} has no disk image for the Mac`)
-      let path = openedThisRun.get(found.version)
-      if (path === undefined || !existsSync(path)) {
-        const folder = options.hidden
-          ? join(app.getPath('userData'), 'updates')
-          : app.getPath('downloads')
-        mkdirSync(folder, { recursive: true })
-        const stagingFolder = join(app.getPath('userData'), 'updates', 'staging')
-        mkdirSync(stagingFolder, { recursive: true })
-        const token = privateFeedToken(feed, process.env)
-        const url =
-          publicFeed !== null
-            ? publicFeed.downloadUrl(found.version, image.url)
-            : token === null || feed.provider !== 'github'
-              ? downloadUrlOf(feed, found.version, image.url)
-              : await privateDownloadUrlOf({ feed, version: found.version, file: image.url, token })
-        guidedDownloads.signal.throwIfAborted()
-        const pending = downloadChecked({
-          url,
-          sha512: image.sha512,
-          signal: guidedDownloads.signal,
-          to: join(folder, basename(image.url)),
-          stagingFolder,
-          onPercent,
-          fetch: (address, init) => net.fetch(address, init),
-        })
-        pendingGuides.add(pending)
-        try {
-          path = await pending
-        } finally {
-          pendingGuides.delete(pending)
-        }
-        openedThisRun.set(found.version, path)
-      }
-      guidedDownloads.signal.throwIfAborted()
-      if (!options.hidden) {
-        const failure = await shell.openPath(path)
-        if (failure !== '')
-          throw new Error(`it was downloaded and checked, but did not open: ${failure}`)
-      }
-      return path
     },
     conversationsARestartWouldStop: () => options.host.whatARestartWouldStop(),
     otherWorkspacesRunning: () =>
@@ -226,7 +169,6 @@ export function startUpdates(options: {
   })
 
   const stop = (): void => {
-    guidedDownloads.abort()
     updates.stop()
   }
   app.on('before-quit', stop)
@@ -242,9 +184,9 @@ export function startUpdates(options: {
   return {
     ...updates,
     stop,
-    drain: async () => {
+    drain: () => {
       stop()
-      await Promise.allSettled([...pendingGuides])
+      return Promise.resolve()
     },
   }
 }

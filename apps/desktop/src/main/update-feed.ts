@@ -4,7 +4,7 @@ import { CancellationToken } from 'electron-updater/out/types'
 import { GenericProvider } from 'electron-updater/out/providers/GenericProvider'
 import { GitHubProvider } from 'electron-updater/out/providers/GitHubProvider'
 import { resolveFiles } from 'electron-updater/out/providers/Provider'
-import { downloadUrlOf, type ReleaseFeed } from './guided-update'
+import { downloadUrlOf, type ReleaseFeed } from './release-feed'
 import type { UpdateSettings } from './update-settings'
 
 const RESPONSE_STATUS = Symbol('update metadata response')
@@ -83,7 +83,6 @@ function validate(info: UpdateInfo, platform: RuntimeOptions['platform']): void 
 
 export interface UpdateFeedRoute {
   readonly provider: ProviderOptions
-  downloadUrl(version: string, file: string): string
 }
 
 export function publicUpdateFeed(options: {
@@ -108,7 +107,6 @@ export function publicUpdateFeed(options: {
   websiteUrl.searchParams.set('v', version)
   if (qa) websiteUrl.searchParams.set('qa', 'verification')
   const website = { provider: 'generic', url: websiteUrl.href } as const
-  let selected: ReleaseFeed = github
 
   const routeRequest = (request: RequestOptions): RequestOptions => {
     if (request.hostname !== 'brocrew.app') return request
@@ -232,14 +230,12 @@ export function publicUpdateFeed(options: {
           const info = await super.getLatestVersion()
           validate(info, this.platform)
           this.fromWebsite.add(info)
-          selected = website
           return info
         } catch (error) {
           if (!(error instanceof WebsiteDisabled) && !unavailable(error)) throw error
         }
       }
       const info = await this.github.getLatestVersion()
-      selected = github
       return info
     }
 
@@ -258,14 +254,5 @@ export function publicUpdateFeed(options: {
 
   return {
     provider: { provider: 'custom', updateProvider: WebsiteProvider },
-    downloadUrl(releaseVersion, file) {
-      const source = mayUseWebsite() ? selected : github
-      const url = new URL(downloadUrlOf(source, releaseVersion, file))
-      if (source.provider === 'generic') {
-        url.searchParams.set('v', version)
-        if (qa) url.searchParams.set('qa', 'verification')
-      }
-      return url.href
-    },
   }
 }

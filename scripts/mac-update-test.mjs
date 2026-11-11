@@ -1,7 +1,8 @@
+import { readUpdateFile } from './release-check.mjs'
 import { parseArgs, isDeepStrictEqual } from 'node:util'
 import { createServer } from 'node:http'
 import { createReadStream } from 'node:fs'
-import { mkdir, readFile, writeFile, readdir, lstat, realpath, rm } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, readdir, lstat, realpath } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
@@ -21,10 +22,8 @@ import {
   assertOwnedProcess,
   dataPreserved,
   diskImageFrom,
-  downloadedImagePath,
   FEED_URL,
   hash,
-  mountedImageOf,
   packageOfAsar,
   packagedRegistryFile,
   nativeTranscriptsPresent,
@@ -103,13 +102,12 @@ const settings = join(dataRoot, 'settings.json')
 const registry = packagedRegistryFile(dataRoot)
 const codexHome = join(data, 'provider-homes', 'default', 'brobot', 'codex')
 const nativeRoot = join(codexHome, 'sessions')
-const downloads = join(homedir(), 'Downloads')
 const summary = {
   runId: process.env.GITHUB_RUN_ID,
   source: values['source-sha'],
   feed: updateFeed,
   sameCode: true,
-  scriptedCopyIsFinderDrag: false,
+  installedBy: 'Squirrel.Mac',
   assertions: [],
   knownLimits: [],
   launches: [],
@@ -119,7 +117,8 @@ const summary = {
 let active = null,
   feed = null,
   model = null,
-  mountedA = null
+  mountedA = null,
+  squirrelApp = null
 const channels = []
 const { run, plist, processInfo } = macCommands()
 const click = (cdp, selector) => press(cdp, selector, { wait: 180_000 })
@@ -156,7 +155,7 @@ async function launch(
       environment: feedReadToken === null ? [] : [['GH_TOKEN', feedReadToken]],
     }),
   ).catch((error) => {
-    // ⛔ A failed command is said with its arguments: never with the feed's token.
+    // A failed command is said with its arguments: never with the feed's token.
     const said = String(error.message)
     throw new Error(feedReadToken === null ? said : said.split(feedReadToken).join('<token>'))
   })
@@ -187,6 +186,21 @@ async function launch(
 }
 async function quit() {
   active = await quitMacChild(active, app, processInfo, passed)
+}
+async function quitSquirrelApp() {
+  if (squirrelApp === null) return
+  const current = await processInfo(squirrelApp.pid)
+  requireEvidence(
+    current && current.started === squirrelApp.started && current.command === squirrelApp.command,
+    'Restarted test process identity changed before quit.',
+  )
+  process.kill(squirrelApp.pid, 'SIGTERM')
+  await waitFor(
+    async () => !(await processInfo(squirrelApp.pid)),
+    'Squirrel-restarted B quits normally',
+    60_000,
+  )
+  squirrelApp = null
 }
 /** On this fresh hosted runner, forget only this packaged app's sealing entry, never its password. */
 async function forgetHostedSealingEntry() {
@@ -290,7 +304,10 @@ try {
   )
   await mkdir(evidence, { recursive: true })
   const metaA = diskImageFrom(await readFile(join(distA, 'latest-mac.yml'), 'utf8'), VERSION_A)
-  const metaB = diskImageFrom(await readFile(join(distB, 'latest-mac.yml'), 'utf8'), VERSION_B)
+  const metaB = readUpdateFile(await readFile(join(distB, 'latest-mac.yml'), 'utf8')).files.find(
+    (file) => file.url.endsWith('-arm64-mac.zip'),
+  )
+  requireEvidence(metaB, 'B has no updater ZIP.')
   let serving = distA
   if (values['serve-local']) {
     feed = createServer(async (request, response) => {
@@ -509,25 +526,27 @@ try {
     JSON.stringify({ source: summary.source, conversations, data }, null, 2),
   )
   serving = distB
-  // ⚑ A feed this harness does not serve publishes B once every lane is ready.
+  // A feed this harness does not serve publishes B once every lane is ready.
   const publishedText = await waitFor(
     async () => {
       const text = await servedUpdateFile(updateFeed, 'latest-mac.yml', {
         token: feedReadToken,
       }).catch(() => null)
       try {
-        if (text !== null && diskImageFrom(text, VERSION_B)) return text
+        if (text !== null && readUpdateFile(text).version === VERSION_B) return text
       } catch {
         // still A's, or not yet whole
       }
-      // ⚑ Asked every 30 s: a GitHub feed answers a limited number of times an hour.
+      // Asked every 30 s: a GitHub feed answers a limited number of times an hour.
       await new Promise((done) => setTimeout(done, values['serve-local'] ? 250 : 30_000))
       return null
     },
     'the feed serves B',
     70 * 60_000,
   )
-  const published = diskImageFrom(publishedText, VERSION_B)
+  const published = readUpdateFile(publishedText).files.find((file) =>
+    file.url.endsWith('-arm64-mac.zip'),
+  )
   requireEvidence(
     JSON.stringify(published) === JSON.stringify(metaB),
     'Served B feed differs from packaged metadata.',
@@ -546,51 +565,36 @@ try {
     async () => {
       const state = (await cdpA.evaluate('return await window.api.updates.read()')).state
       if (state.kind === 'error') throw new Error(state.message)
-      return state.kind === 'ready' && state.how === 'opened' && state.version === VERSION_B
+      return state.kind === 'ready' && state.how === 'restart' && state.version === VERSION_B
     },
-    'guided Download completes',
+    'electron-updater ZIP download completes',
     600_000,
   )
-  const image = downloadedImagePath(
-    (await cdpA.evaluate('return await window.api.updates.read()')).state,
-    downloads,
-  )
+  const appUpdate = await readFile(join(app, 'Contents', 'Resources', 'app-update.yml'), 'utf8')
+  const cacheName = /^updaterCacheDirName: ['"]?([^'"\n]+)['"]?$/m.exec(appUpdate)?.[1]
+  requireEvidence(cacheName, 'The packaged updater cache name is missing.')
+  const pending = join(homedir(), 'Library', 'Caches', cacheName, 'pending')
+  const cached = JSON.parse(await readFile(join(pending, 'update-info.json'), 'utf8'))
+  const zip = join(pending, cached.fileName)
   requireEvidence(
-    (await realpath(image)) === image &&
-      (await lstat(image)).size === published.size &&
-      (await digest(image, 'sha512', 'base64')) === published.sha512,
-    'Downloads image bytes or feed SHA-512 differ.',
+    (await realpath(zip)) === zip &&
+      (await lstat(zip)).size === published.size &&
+      (await digest(zip, 'sha512', 'base64')) === published.sha512,
+    'Downloaded ZIP bytes or feed SHA-512 differ.',
   )
-  const mountedB = await waitFor(
-    async () => mountedImageOf(await plist('/usr/bin/hdiutil', ['info', '-plist']), image),
-    'OS opens and mounts the downloaded DMG',
-  )
-  const guided = await cdpA.evaluate(
-    'return document.querySelector("[data-cy=updates-said]")?.textContent.replace(/\\s+/g," ").trim()',
-  )
-  requireEvidence(
-    guided ===
-      `BroCrew ${VERSION_B} is downloaded and opened. Quit every open copy of BroCrew, then drag the new one into Applications.`,
-    'Guided text is missing or claims installation.',
-  )
-  requireEvidence(
-    await cdpA.evaluate('return document.querySelector("[data-cy=updates-restart]") === null'),
-    'Mac unexpectedly offers automatic replacement.',
-  )
-  await screenshot(cdpA, 'a-guided-dmg-opened.png')
-  const sourceB = join(mountedB.mount, 'BroCrew.app')
-  await quarantine(image, 'downloaded-b-image')
-  await quarantine(sourceB, 'mounted-b-app')
+  const unpacked = join(process.env.RUNNER_TEMP, 'mac-update-downloaded-b')
+  await run('/usr/bin/ditto', ['-x', '-k', zip, unpacked])
+  const downloadedBundle = join(unpacked, 'BroCrew.app')
+  await run('/usr/bin/xcrun', ['stapler', 'validate', downloadedBundle])
+  await run('/usr/sbin/spctl', ['-a', '-vv', downloadedBundle])
+  await quarantine(zip, 'downloaded-b-zip')
   summary.download = {
     ...published,
-    image,
-    mountedB,
-    guided,
-    package: await bundleChecked(sourceB, VERSION_B, values['marker-b']),
+    zip,
+    package: await bundleChecked(downloadedBundle, VERSION_B, values['marker-b']),
   }
-  passed('window-download-sha512-guided-text-and-os-mount', summary.download)
-  await quit()
-  cdpA.close()
+  passed('window-download-zip-sha512-and-signed-bundle', summary.download)
+  await screenshot(cdpA, 'a-ready-to-restart.png')
   const before = databaseSnapshot(join(data, 'brobot2.sqlite'), { usage: true }),
     state = stateBytes(data)
   const natives = await nativeFiles(nativeRoot, data),
@@ -604,10 +608,10 @@ try {
   await checkNativePrefixes(nativeBeforeButtons, data)
   requireEvidence(
     settingsBefore.equals(settingsBeforeButtons),
-    'Download/quit changed computer settings.',
+    'Download changed computer settings.',
   )
   registryPreserved(registryFixture, registryBefore, data)
-  passed('check-download-and-quit-preserve-original-data-and-state', beforeReplacement)
+  passed('check-and-download-preserve-original-data-and-state', beforeReplacement)
   requireEvidence(Object.keys(natives).length >= 2, 'Native transcript evidence is missing.')
   nativeTranscriptsPresent(before, natives)
   const copiesBefore = await checkpointIds(data)
@@ -625,13 +629,47 @@ try {
     ),
   )
   await bundleChecked(app, VERSION_A, values['marker-a'])
-  await rm(app, { recursive: true })
-  await run('/usr/bin/ditto', ['--rsrc', '--extattr', sourceB, app])
-  await quarantine(app, 'installed-b-app')
-  const cdpB = await launch('b-first', 9340, VERSION_B, values['marker-b'])
-  const order = recoveryOrder(await readFile(join(evidence, 'b-first.log'), 'utf8'), {
-    checkpoint: true,
-  })
+  const previous = active
+  await click(cdpA, '[data-cy=updates-restart]')
+  await waitFor(async () => !(await processInfo(previous.pid)), 'A quits for Squirrel.Mac', 60_000)
+  active = null
+  previous.browser.close()
+  cdpA.close()
+  await waitFor(
+    async () => {
+      try {
+        return packageOfAsar(join(app, 'Contents', 'Resources', 'app.asar')).version === VERSION_B
+      } catch {
+        return false
+      }
+    },
+    'Squirrel.Mac replaces A with B',
+    600_000,
+  )
+  const restarted = (squirrelApp = await waitFor(async () => {
+    const listing = await run('/bin/ps', ['-axo', 'pid=,command='])
+    const line = listing.split('\n').find((one) => {
+      const match = /^\s*(\d+)\s+(.+)$/.exec(one)
+      return (
+        match &&
+        Number(match[1]) !== previous.pid &&
+        (match[2] === `${app}/Contents/MacOS/BroCrew` ||
+          match[2].startsWith(`${app}/Contents/MacOS/BroCrew `))
+      )
+    })
+    return line ? processInfo(Number(/^\s*(\d+)/.exec(line)[1])) : null
+  }, 'Squirrel.Mac automatically starts B'))
+  const startup = await waitFor(async () => {
+    const receipt = JSON.parse(await readFile(join(data, 'backups', 'retention.json'), 'utf8'))
+    return receipt.appVersion === VERSION_B && receipt.successfulStarts === 1 ? receipt : null
+  }, 'Squirrel first start completes recovery and opens its database')
+  summary.restart = {
+    previous: { pid: previous.pid, command: previous.command, started: previous.started },
+    restarted,
+    startup,
+    package: await bundleChecked(app, VERSION_B, values['marker-b']),
+  }
+  passed('squirrel-replacement-restart-and-first-start-recovery', summary.restart)
   const copies = await checkpointIds(data),
     added = copies.filter((one) => !copiesBefore.includes(one))
   requireEvidence(added.length === 1, 'B must make exactly one new checked recovery copy.')
@@ -654,7 +692,18 @@ try {
     { usage: true },
   )
   await writeFile(join(evidence, 'b-checkpoint-manifest.json'), JSON.stringify(manifest, null, 2))
-  passed('b-checked-recovery-copy-before-ready', { ...checked, order, data: copyComparison })
+  requireEvidence(
+    startup.checkpointId === added[0],
+    'First Squirrel start did not record its recovery copy.',
+  )
+  passed('b-checked-recovery-copy-before-database-open', {
+    ...checked,
+    startup,
+    data: copyComparison,
+  })
+  await quitSquirrelApp()
+  const cdpB = await launch('b-first', 9340, VERSION_B, values['marker-b'])
+  recoveryOrder(await readFile(join(evidence, 'b-first.log'), 'utf8'), { checkpoint: false })
   const kept = await checkRetention(before, state, natives, settingsBefore, registryBefore)
   await writeFile(join(evidence, 'b-first-retained-data.json'), JSON.stringify(kept.after, null, 2))
   const restoredDrafts = await cdpB.evaluate('return await window.api.savedDrafts()')
@@ -690,7 +739,7 @@ try {
       read.checkAutomatically
     )
   }, 'B does not offer itself or change update settings')
-  const resumedPrompt = 'Fictional turn after the guided update'
+  const resumedPrompt = 'Fictional turn after the automatic update'
   await fixtureWithKeyRecovery(
     () =>
       startLocalModelTurn(cdpSecond, resumedPrompt, {
@@ -772,6 +821,15 @@ try {
     }
   }
 } finally {
+  if (squirrelApp) {
+    try {
+      await quitSquirrelApp()
+    } catch (error) {
+      summary.cleanupFailure = String(error)
+      summary.success = false
+      process.exitCode = 1
+    }
+  }
   if (active)
     try {
       await quit()
