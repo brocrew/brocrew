@@ -2460,8 +2460,7 @@ try {
   })
   summary.betaUpdates = betaUpdates
   const composer = await until(
-    () =>
-      running.cdp.evaluate('return document.querySelector("[data-cy=prompt-input]") !== null'),
+    () => running.cdp.evaluate('return document.querySelector("[data-cy=prompt-input]") !== null'),
     60_000,
   )
   must(Boolean(composer), 'the beta, started again: the composer is ready')
@@ -2489,10 +2488,7 @@ try {
   summary.keychain = { candidateAppName, afterTheBeta: keychainEntries() }
   const betaEntry = summary.keychain.afterTheBeta[0] ?? null
   if (os === 'mac') {
-    check(
-      existsSync(join(data, 'api-keys.json')),
-      'the beta saved its API keys in api-keys.json',
-    )
+    check(existsSync(join(data, 'api-keys.json')), 'the beta saved its API keys in api-keys.json')
   }
 
   // ── 5 · what the beta left, read while nothing runs ─────────────────────────────────────────
