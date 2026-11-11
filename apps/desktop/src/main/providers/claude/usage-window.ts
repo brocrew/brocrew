@@ -1,3 +1,5 @@
+import { usageWindowDetails, type UsageWindowDetails } from '../../../shared/usage-window'
+
 const WINDOW_WORDS: ReadonlyMap<string, string> = new Map([
   ['five_hour', '5-hour'],
   ['seven_day', 'weekly'],
@@ -7,7 +9,7 @@ const WINDOW_WORDS: ReadonlyMap<string, string> = new Map([
   ['overage', 'extra-usage'],
 ])
 
-/** Native window keys lead any annotation on current or retained readings. */
-export function usageWindowWord(window: string): string | null {
-  return WINDOW_WORDS.get(window.split(' ')[0] ?? '') ?? null
+/** The native window key leads any bucket annotation in current and retained readings. */
+export function usageWindow(window: string): UsageWindowDetails {
+  return usageWindowDetails(window, WINDOW_WORDS.get(window.split(' ')[0] ?? '') ?? null)
 }

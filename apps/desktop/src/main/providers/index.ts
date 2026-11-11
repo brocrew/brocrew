@@ -113,27 +113,18 @@ export function providerVersionsFromModules(
 import { workspaceInstructionFile as claudeWorkspaceFile } from './claude/layout.mjs'
 import { workspaceInstructionFile as codexWorkspaceFile } from './codex/layout.mjs'
 import type { ProviderDefinition } from './transcript-policy'
-import { usageWindowDetails } from '../../shared/usage-window'
-import { usageWindowWord as claudeWindowWord } from './claude/usage-window'
-import { usageWindowWord as codexWindowWord } from './codex/usage-window'
 import { transcripts as claudeTranscripts } from './claude/transcripts'
 import { transcripts as codexTranscripts } from './codex/transcripts'
 import { discovery as claudeDiscovery } from './claude/discovery'
 import { discovery as codexDiscovery } from './codex/discovery'
-// Retained windows keep the existing native-alias precedence, regardless of their recorded owner.
-const usageWindow = (window: string) =>
-  usageWindowDetails(window, claudeWindowWord(window) ?? codexWindowWord(window))
-
 export const providerDefinitions: Readonly<Record<Provider, ProviderDefinition>> = {
   claude: {
-    usageWindow,
     transcripts: claudeTranscripts,
     discovery: claudeDiscovery,
     workspaceInstructionFile: claudeWorkspaceFile,
     ...claudeMetadata,
   },
   codex: {
-    usageWindow,
     transcripts: codexTranscripts,
     discovery: codexDiscovery,
     workspaceInstructionFile: codexWorkspaceFile,

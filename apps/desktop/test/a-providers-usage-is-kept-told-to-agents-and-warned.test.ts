@@ -286,8 +286,8 @@ describe('§2–§4 · on a host', () => {
     })
 
     it('projects live and kept raw windows without rewriting their stored readings', async () => {
-      await reading(await open(), [
-        { window: 'seven_day', usedPercent: 23, resetsAt: clock + WEEK },
+      await reading(await open('codex'), [
+        { window: 'a 7-day window', usedPercent: 23, resetsAt: clock + WEEK },
         { window: 'a 5-hour window (Fern)', usedPercent: 41, resetsAt: null },
         { window: 'future opaque period', usedPercent: null, resetsAt: null },
       ])
@@ -297,11 +297,11 @@ describe('§2–§4 · on a host', () => {
         { word: '5-hour', durationMs: 5 * 3_600_000, bucket: true, bucketName: 'Fern' },
         { word: null, durationMs: null, bucket: false, bucketName: null },
       ]
-      expect(host.providerUsage().claude).toEqual(
-        stored.claude.map((one, i) => ({ ...one, period: periods[i], warning: null })),
+      expect(host.providerUsage().codex).toEqual(
+        stored.codex.map((one, i) => ({ ...one, period: periods[i], warning: null })),
       )
-      expect(stored.claude).toEqual([
-        { window: 'seven_day', usedPercent: 23, resetsAt: clock + WEEK, at: clock },
+      expect(stored.codex).toEqual([
+        { window: 'a 7-day window', usedPercent: 23, resetsAt: clock + WEEK, at: clock },
         { window: 'a 5-hour window (Fern)', usedPercent: 41, resetsAt: null, at: clock },
         { window: 'future opaque period', usedPercent: null, resetsAt: null, at: clock },
       ])
@@ -309,8 +309,8 @@ describe('§2–§4 · on a host', () => {
       await host.closeAll()
       const restarted = hostOn()
       try {
-        expect(restarted.providerUsage().claude).toEqual(
-          stored.claude.map((one, i) => ({
+        expect(restarted.providerUsage().codex).toEqual(
+          stored.codex.map((one, i) => ({
             ...one,
             period: periods[i],
             unconfirmed: true,
