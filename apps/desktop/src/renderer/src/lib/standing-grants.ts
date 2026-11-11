@@ -173,13 +173,15 @@ export function keptInThisConversation(items: readonly TranscriptItem[]): KeptHe
           `the provider’s own rule for ${item.request.action}, which its card did not name`
         : grantRulesSaid(rules, item.request.scope.cwd)
     const file = grants?.alwaysFile ?? null
-    if (kept.some((one) => one.said === said && one.file === file)) continue
     const listedAs = rules.flatMap((rule) => {
       if (rule.kind !== 'tool' || rule.content !== undefined) return []
       const identity = rule.listedAs ?? (rule.server === undefined ? rule.tool : undefined)
       return identity === undefined ? [] : [identity]
     })
-    kept.push({ said, file, listedAs })
+    const index = kept.findIndex((one) => one.said === said && one.file === file)
+    const previous = kept[index]
+    if (previous === undefined) kept.push({ said, file, listedAs })
+    else kept[index] = { ...previous, listedAs: [...new Set([...previous.listedAs, ...listedAs])] }
   }
   return kept
 }
