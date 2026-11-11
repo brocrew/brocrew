@@ -1,3 +1,14 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { FakeRuntime } from '@brobot2/runtime'
+import type { Provider } from '@brobot2/shared'
+import { openDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
+import { createSessionStore } from '../src/main/db/session-store'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { describe, expect, it } from 'vitest'
 import type { ToolInventoryEvent } from '../../../packages/runtime/src/events'
 import { runtimeEventSchema } from '../../../packages/runtime/src/events'
@@ -90,3 +101,62 @@ describe('provider-owned inventory connection facts', () => {
     expect(catalogue(unclaimed).some((row) => row.connectionKind === 'ready')).toBe(true)
   })
 })
+
+
+it.each([
+  ['claude', 'connected', undefined, 'connected', 'ok', true],
+  ['claude', 'needs-auth', undefined, 'needs sign-in', 'bad', false],
+  ['claude', 'future-word', undefined, 'future-word', 'unknown', false],
+  ['claude', 'connected', 'disabled', 'disabled', 'off', false],
+  ['codex', 'connected', undefined, 'connected', 'unknown', false],
+] as const)('projects the real %s prior-page seed (%s/%s) before folding', async (provider, status, connectionKind, label, tone, connected) => {
+  await withHistoryPage(provider, { ...inventory(), published: { tools: [], servers: [
+    { name: 'crew', status, ...(connectionKind === undefined ? {} : { connectionKind }) },
+  ] } }, (page) => {
+    expect(page.from).toBe(2)
+    expect(page.entries.map((row) => row.ordinal)).toEqual([2, 3])
+    expect(page.entries.every(({event}) => event.type !== 'tool_inventory')).toBe(true)
+    expect(page.toolsInForce).toMatchObject({ ordinal: 0, at: 1000 })
+    const state = foldWindow(page.entries.map((row) => ({ ...row, sessionId: 's' })), null, null, page.toolsInForce)
+    expect(state.tools.at).toBe(1000)
+    const own = readInventory(state.tools).own!
+    expect(statusWord(own.status ?? '', own.connectionKind)).toEqual({ label, tone, connected })
+  })
+})
+
+it.each([undefined, null, { tools: [], servers: [] }])('preserves absent/null/empty prior-page inventories: %j', async (published) => {
+  const event = published === undefined ? undefined : { ...inventory(), published }
+  await withHistoryPage('claude', event, (page) => {
+    if (event === undefined) expect(page).not.toHaveProperty('toolsInForce')
+    else expect(page.toolsInForce?.event).toEqual(event)
+    const state = foldWindow(page.entries.map((row) => ({ ...row, sessionId: 's' })), null, null, page.toolsInForce)
+    expect(state.tools.set?.published).toEqual(published)
+  })
+})
+
+async function withHistoryPage(provider: Provider, event: ToolInventoryEvent | undefined, check: (page: ReturnType<RuntimeHost['earlierHistory']>) => void): Promise<void> {
+  const directory = mkdtempSync(join(tmpdir(), 'fictional-inventory-page-'))
+  const db = openDatabase(join(directory, 'fictional.sqlite'))
+  let host: RuntimeHost | undefined
+  try {
+    applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations'))
+    const store = createSessionStore(db)
+    store.create({ id: 's', provider, cwd: directory, approvalMode: 'ask' })
+    if (event !== undefined) store.append('s', 0, event, 1000)
+    store.append('s', 1, { type: 'user_turn', text: 'Earlier' }, 1001)
+    store.append('s', 2, { type: 'user_turn', text: 'This page' }, 1002)
+    store.append('s', 3, { type: 'assistant_message', text: 'Answer' }, 1003)
+    host = new RuntimeHost({
+      store, ...neutralHostDeps(() => directory), createRuntime: () => new FakeRuntime(provider),
+      resolveCwd: () => directory, prepareProviderHome: () => directory, providerHomePath: () => directory,
+      newSessionId: () => 'fictional-new', readProviderConfig: fixtureProviderConfig,
+    })
+    const before = db.prepare('SELECT ordinal, payload FROM events WHERE session_id = ? ORDER BY ordinal').all('s')
+    check(host.earlierHistory('s', 4, 1))
+    expect(db.prepare('SELECT ordinal, payload FROM events WHERE session_id = ? ORDER BY ordinal').all('s')).toEqual(before)
+  } finally {
+    await host?.closeAll()
+    db.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+}

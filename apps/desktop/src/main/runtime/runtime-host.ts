@@ -35961,7 +35961,10 @@ export class RuntimeHost implements LiveHost {
             toolsInForce: {
               ordinal: window.toolsInForce.ordinal,
               at: window.toolsInForce.at,
-              event: window.toolsInForce.event,
+              event:
+                window.toolsInForce.event.type === 'tool_inventory'
+                  ? transcriptMessageForDisplay(window.toolsInForce, provider).event
+                  : window.toolsInForce.event,
             },
           }),
     }
