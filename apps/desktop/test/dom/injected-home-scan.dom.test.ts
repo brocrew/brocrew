@@ -64,4 +64,3 @@ it('both scan surfaces capture the injected sessions capability and share its pe
   expect(m.q('scan-summary').textContent).toContain('8 descents recorded')
   expect(reads).toBe(captured)
 })
-

@@ -5,14 +5,21 @@ import SessionLibrary, {
   narrowingDeclaredBy,
   windowNoteCta,
 } from '../../src/renderer/src/components/SessionLibrary.vue'
-import type {
-  AdoptionReport,
-  LibraryPage,
-  LibraryQuery,
-} from '../../src/shared/runtime-ipc'
+import type { AdoptionReport, LibraryPage, LibraryQuery } from '../../src/shared/runtime-ipc'
 import { scanSummary } from '../../src/renderer/src/lib/home-scan'
 import { mount, parseColor, unmountAll, type Mounted } from './harness'
-import { NOW, entry, ROWS, page, stubbed, reads, scans, REPORT, stub, countScan } from './library-filter-fixture'
+import {
+  NOW,
+  entry,
+  ROWS,
+  page,
+  stubbed,
+  reads,
+  scans,
+  REPORT,
+  stub,
+  countScan,
+} from './library-filter-fixture'
 
 /**
  * **The filters on Sessions** (121, to `120`'s design) — in a real browser, because every claim

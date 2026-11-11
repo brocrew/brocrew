@@ -1,4 +1,9 @@
-import type { AdoptionReport, LibraryEntry, LibraryPage, LibraryQuery } from '../../src/shared/runtime-ipc'
+import type {
+  AdoptionReport,
+  LibraryEntry,
+  LibraryPage,
+  LibraryQuery,
+} from '../../src/shared/runtime-ipc'
 
 export const NOW = Date.now()
 
