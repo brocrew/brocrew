@@ -38,7 +38,10 @@ function fixture() {
     addHandAddedModel: vi.fn(async () => [] as readonly string[]),
     deleteHandAddedModel: vi.fn(async () => [] as readonly string[]),
     ...connectedProviderReads(),
-    providerSetup: vi.fn<RuntimeBridge['providerSetup']>(async () => ({ claude: null, codex: null })),
+    providerSetup: vi.fn<RuntimeBridge['providerSetup']>(async () => ({
+      claude: null,
+      codex: null,
+    })),
     providerVersions: vi.fn<ClientProviderApi['providerVersions']>(),
     providerResources: vi.fn<ClientProviderApi['providerResources']>(),
     providerConnections: vi.fn<ClientProviderApi['providerConnections']>(),
@@ -329,9 +332,13 @@ it('forwards native setup guidance lazily with its receiver, exact promise and n
 it('keeps throwing setup suppliers and operation getters inside the guide reader null boundary', async () => {
   const { api, runtime, transport } = fixture()
   const failure = new Error('Fern guide transport unavailable')
-  runtime.mockImplementationOnce(() => { throw failure })
+  runtime.mockImplementationOnce(() => {
+    throw failure
+  })
   await expect(readProviderSetup(api)).resolves.toBeNull()
-  const getter = vi.fn(() => { throw failure })
+  const getter = vi.fn(() => {
+    throw failure
+  })
   Object.defineProperty(transport, 'providerSetup', { get: getter, configurable: true })
   await expect(readProviderSetup(api)).resolves.toBeNull()
   expect(getter).toHaveBeenCalledExactlyOnceWith()
