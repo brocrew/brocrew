@@ -546,6 +546,7 @@ it('keeps the stop-spawning switch usable while an agent form is open', async ()
 
 it('preserves an unsent draft when the new-conversation shortcut returns from Team', async () => {
   const m = mount(RuntimeScreen, {})
+  await expect.poll(() => m.all('prompt-input').length).toBe(1)
   const box = m.q('prompt-input') as HTMLTextAreaElement
   box.value = 'Please review this fictional draft'
   box.dispatchEvent(new Event('input', { bubbles: true }))
@@ -605,6 +606,7 @@ it.each(['launch', 'sign-in'] as const)(
     const screen = mount(RuntimeScreen, {})
     try {
       await expect.poll(() => agentStore.loaded.value).toBe(true)
+      await expect.poll(() => screen.all('prompt-input').length).toBe(1)
       const input = screen.q('prompt-input') as HTMLTextAreaElement
       input.value = 'Read the fictional draft.'
       input.dispatchEvent(new Event('input', { bubbles: true }))
