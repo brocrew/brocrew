@@ -1,8 +1,6 @@
 import { CLAUDE_CONFIG_LAYOUT } from '@brobot2/runtime/claude'
-import { usageWindow } from './usage-window'
 
 export const metadata = {
-  usageWindow,
   signInKey: (profileId: string) => `claude:${profileId}`,
   signInConflict(holder: string, asked: string): Error {
     if (holder === asked)

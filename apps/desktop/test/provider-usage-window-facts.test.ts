@@ -78,3 +78,17 @@ it('projects old readings without changing raw tooltip data, percentages, reset 
   const period = { word: null, durationMs: null, bucket: false, bucketName: null }
   expect(usageForDisplay('claude', [{ ...row, period }], false, 200)[0]?.period).toBe(period)
 })
+
+it.each(['claude', 'codex'] as const)('preserves native aliases in legacy rows owned by %s', (provider) => {
+  expect(usagePeriod(provider, 'a 5-hour window (Fern)')).toEqual({
+    word: '5-hour',
+    durationMs: 5 * HOUR,
+    bucket: true,
+    bucketName: 'Fern',
+  })
+  expect(usagePeriod(provider, 'seven_day')).toMatchObject({ word: 'weekly', durationMs: 7 * DAY })
+  expect(usagePeriod(provider, 'five_hour a 7-day window')).toMatchObject({
+    word: '5-hour',
+    durationMs: 5 * HOUR,
+  })
+})
