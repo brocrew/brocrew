@@ -38,8 +38,8 @@ afterEach(() => {
   Reflect.deleteProperty(window, 'api')
 })
 
-it.each(['unknown auth', 'refused catalogue', 'rejected read'] as const)(
-  'ends checking on a settled %s, shows its real reason, and updates after recovery',
+it.each(['unknown auth', 'refused catalogue', 'rejected read', 'omitted reason'] as const)(
+  'ends checking on settled %s, preserves supplied facts, and updates after recovery',
   async (failure) => {
     const gates = new Map<Provider, {
       resolve: (value: ProviderLaunchChoices) => void
@@ -81,7 +81,7 @@ it.each(['unknown auth', 'refused catalogue', 'rejected read'] as const)(
     const view = mount(host, {}, { width: 1000, height: 900 })
     const reads = providers.map((provider) => lists.read(provider))
     await settle()
-    expect(view.host.textContent).toContain('Checking providers…')
+    expect(view.host.innerText).toContain('Checking providers…')
     expect(view.all('provider-readiness-failure')).toHaveLength(0)
     for (const provider of providers) expect(lists.readiness(provider).state).toBe('pending')
 
@@ -92,7 +92,13 @@ it.each(['unknown auth', 'refused catalogue', 'rejected read'] as const)(
         : 'Fictional IPC read rejected.'
     for (const provider of providers) {
       const gate = gates.get(provider)!
-      if (failure === 'rejected read') gate.reject(new Error(reason))
+      if (failure === 'omitted reason') gate.resolve({
+        list: list(provider, { ok: false, reason: 'no-profile' }),
+        ready: null,
+        defaultModel: null,
+        defaultModelToSend: null,
+      })
+      else if (failure === 'rejected read') gate.reject(new Error(reason))
       else gate.resolve(providerLaunchChoices(
         list(provider, failure === 'refused catalogue'
           ? { ok: false, reason: 'refused', detail: reason }
@@ -102,11 +108,16 @@ it.each(['unknown auth', 'refused catalogue', 'rejected read'] as const)(
     }
     await Promise.all(reads)
     await settle()
-    expect(view.host.textContent).not.toContain('Checking providers…')
-    expect(view.all('provider-readiness-failure')).toHaveLength(providers.length)
+    expect(view.host.innerText).not.toMatch(/checking/i)
+    expect(view.all('send-prompt')).toHaveLength(0)
+    const expectedReason = failure === 'omitted reason' ? null : reason
+    expect(view.all('provider-readiness-failure')).toHaveLength(
+      expectedReason === null ? 0 : providers.length,
+    )
     for (const row of view.all('provider-readiness-failure')) expect(row.textContent).toContain(reason)
     for (const provider of providers)
-      expect(lists.readiness(provider)).toEqual({ state: 'settled', ready: null, reason })
+      expect(lists.readiness(provider)).toEqual({ state: 'settled', ready: null, reason: expectedReason })
+    for (const provider of providers) expect(lists.choices(provider)?.ready ?? null).toBeNull()
     expect(start).not.toHaveBeenCalled()
 
     read.mockImplementation(async ({ provider }) => providerLaunchChoices(list(provider, null), usable))
@@ -114,7 +125,7 @@ it.each(['unknown auth', 'refused catalogue', 'rejected read'] as const)(
     await Promise.all(providers.map((provider) => lists.read(provider)))
     await settle()
     expect(view.all('provider-readiness-failure')).toHaveLength(0)
-    expect(view.host.textContent).not.toContain('Checking providers…')
+    expect(view.host.innerText).not.toMatch(/checking/i)
     expect(view.q('model-picker-face').textContent).toContain('manual')
     view.q('send-prompt').click()
     await settle()
