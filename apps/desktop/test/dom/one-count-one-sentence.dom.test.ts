@@ -7,7 +7,9 @@ import type {
 import type { WorkGivenOut } from '../../src/shared/task-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick, provide } from 'vue'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
 import SessionWork from '../../src/renderer/src/components/SessionWork.vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
@@ -119,17 +121,33 @@ describe('§1 · the forest — F-R18c', () => {
 
 const work = (rowsUnread: number, rows: readonly WorkGivenOut[] = []) =>
   mount(
-    SessionWork,
-    {
-      conversation: 'sess_a',
-      identities: null,
-      reading: {
-        conversation: 'sess_a',
-        walk: walk<WorkGivenOut>(rows, 'every-conversation-this-one-gave-work-to', { rowsUnread }),
-        answered: true,
-        at: Date.now(),
+    defineComponent({
+      setup() {
+        provide(
+          CLIENT_PROVIDERS,
+          createDesktopProviderApi(
+            (): never => {
+              throw new Error('No provider read expected')
+            },
+            () => undefined,
+          ),
+        )
+        return () =>
+          h(SessionWork, {
+            conversation: 'sess_a',
+            identities: null,
+            reading: {
+              conversation: 'sess_a',
+              walk: walk<WorkGivenOut>(rows, 'every-conversation-this-one-gave-work-to', {
+                rowsUnread,
+              }),
+              answered: true,
+              at: Date.now(),
+            },
+          })
       },
-    },
+    }),
+    {},
     { width: 520, height: 700 },
   )
 
