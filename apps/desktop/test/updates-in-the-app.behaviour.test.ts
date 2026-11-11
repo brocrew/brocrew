@@ -427,6 +427,7 @@ it('keeps the Windows quiet restart waiting for other workspaces and lets Cancel
   start()
   await ask(UPDATES_CHANNELS.checkNow)
   await ask(UPDATES_CHANNELS.download)
+  vi.useFakeTimers()
   fake.otherWorkspaces = 4
   await ask(UPDATES_CHANNELS.restartWhenQuiet)
   await vi.waitFor(async () => {
@@ -436,8 +437,7 @@ it('keeps the Windows quiet restart waiting for other workspaces and lets Cancel
     })
   })
   expect(fake.quits).toBe(0)
-  await ask(UPDATES_CHANNELS.cancelRestart)
-  vi.useFakeTimers()
+  expect((await ask<UpdatesSnapshot>(UPDATES_CHANNELS.cancelRestart)).state.kind).toBe('ready')
   fake.otherWorkspaces = 0
   await vi.advanceTimersByTimeAsync(QUIET_LOOK_EVERY_MS * 2)
   expect(fake.quits).toBe(0)
