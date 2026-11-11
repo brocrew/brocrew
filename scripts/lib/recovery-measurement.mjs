@@ -26,6 +26,19 @@ import {
   joinMeasurementChild,
   stateBytes,
 } from './mac-update-test.mjs'
+import {
+  HEADROOM,
+  OVERSHOOT,
+  STATE_AND_WAL,
+  measurementSizes,
+  requireMeasurementCapacity,
+  secondMeasurementSelection,
+} from './recovery-measurement-space.mjs'
+export {
+  measurementSize,
+  measurementSizes,
+  requireMeasurementCapacity,
+} from './recovery-measurement-space.mjs'
 import { until } from './update-rehearsal-app.mjs'
 import { readStateEntry } from './skill-tree-state.mjs'
 import {
@@ -112,15 +125,6 @@ except (OSError, AttributeError) as error:
     )
 }
 
-export function measurementSize(value) {
-  const bytes = Number(value)
-  requireEvidence(
-    /^\d+$/.test(String(value)) && Number.isSafeInteger(bytes),
-    'Measurement ceiling must be a nonnegative safe decimal integer.',
-  )
-  return bytes
-}
-
 export function seedMeasurementDatabase(
   db,
   { journal, sqlOf, bytes, earlier = false, beforeBatch },
@@ -205,9 +209,6 @@ export function measurementFacts(db) {
   }
 }
 
-const HEADROOM = 10_000_000_000
-const OVERSHOOT = 32 * 1024 * 1024
-const STATE_AND_WAL = 64 * 1024 * 1024
 const DRAFT_SLOT = 'session:measurement-oracle'
 const measurementError = (error) => ({
   code: error.code ?? null,
@@ -218,26 +219,6 @@ const measurementError = (error) => ({
 const freeAt = (root) => {
   const { bavail, bsize } = statfsSync(root)
   return bavail * bsize
-}
-
-export function requireMeasurementCapacity({ bytes, free, filesystem, cloned }) {
-  requireEvidence(
-    filesystem === 'apfs' && cloned,
-    'Measurement needs APFS and a successful FORCE clone.',
-  )
-  requireEvidence(
-    free >= 3 * (bytes + OVERSHOOT) + HEADROOM + STATE_AND_WAL,
-    'Post-build space is below the live/copy/migration-rebuild measurement budget.',
-  )
-}
-
-export function measurementSizes(ceiling, free) {
-  const maximum = Math.min(
-    ceiling,
-    Math.floor((free - HEADROOM - 2 * STATE_AND_WAL) / 3) - OVERSHOOT,
-  )
-  requireEvidence(maximum >= 8 * 1024 * 1024, 'No populated fixture fits above the10GB free floor.')
-  return [...new Set([Math.max(8 * 1024 * 1024, Math.floor(maximum / 4)), maximum])]
 }
 
 export function measurementOrder(log, record, { background, checkpointLine, confirmed }) {
@@ -973,11 +954,29 @@ export async function runRecoveryMeasurement(options) {
     routeSetupReserve: STATE_AND_WAL,
     success: false,
     sizes,
+    selections: [],
     results,
   }
   try {
     requireEvidence(sizes.length === 2, 'Two distinct populated sizes are required for scaling.')
-    for (const bytes of sizes) {
+    for (const planned of sizes) {
+      const first = results[0]
+      if (first)
+        requireEvidence(
+          first.cleanupVerified === true,
+          'First measurement root cleanup is unverified.',
+        )
+      const selection = {
+        ceiling: options.bytes,
+        planned,
+        free: first ? freeAt(tmpdir()) : free,
+        firstBytes: first?.seed.bytes ?? null,
+        selected: null,
+      }
+      result.selections.push(selection)
+      if (first) Object.assign(selection, secondMeasurementSelection(selection))
+      else selection.selected = planned
+      const bytes = selection.selected
       results.push(
         await runMeasurementSize({
           ...options,

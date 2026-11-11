@@ -19,6 +19,7 @@ import {
   packagedCopyComparisons,
   measurementStateComparison,
 } from '../lib/recovery-measurement.mjs'
+import { secondMeasurementSelection } from '../lib/recovery-measurement-space.mjs'
 import { startOrder, READY_LINE } from '../lib/upgrade-path.mjs'
 import { nodeFs } from '../../apps/desktop/src/main/recovery/files.ts'
 import { measurementFilesystem, stateBytes } from '../lib/mac-update-test.mjs'
@@ -307,6 +308,69 @@ describe('populated recovery measurement', () => {
     }
     expect(() => measurementSizes(18_000_000_000, 10_000_000_000)).toThrow('10GB')
     expect(measurementSizes(8 * 1024 * 1024, 45_000_000_000)).toEqual([8 * 1024 * 1024])
+  })
+
+  it('shrinks the second target from fresh space while retaining the original plan', () => {
+    const facts = {
+      ceiling: 18_000_000_000,
+      planned: 11_063_628_800,
+      free: 43_226_189_824,
+      firstBytes: 2_766_909_440,
+    }
+    const selected = secondMeasurementSelection(facts)
+    expect(selected).toEqual({ ...facts, selected: 10_997_102_933 })
+    expect(() =>
+      requireMeasurementCapacity({
+        bytes: selected.selected,
+        free: facts.free,
+        filesystem: 'apfs',
+        cloned: true,
+      }),
+    ).not.toThrow()
+    expect(secondMeasurementSelection({ ...facts, free: 65_000_000_000 }).selected).toBe(
+      facts.planned,
+    )
+    expect(secondMeasurementSelection({ ...facts, ceiling: 10_000_000_000 }).selected).toBe(
+      10_000_000_000,
+    )
+  })
+
+  it.each([11_063_628_800, 11_063_628_801])(
+    'rejects a second target no larger than populated first size %s',
+    (firstBytes) => {
+      expect(() =>
+        secondMeasurementSelection({
+          ceiling: 18_000_000_000,
+          planned: 11_063_628_800,
+          free: 65_000_000_000,
+          firstBytes,
+        }),
+      ).toThrow('larger than the first populated size')
+    },
+  )
+
+  it('rejects no-fit space and keeps exact selection and admission boundaries', () => {
+    const bytes = 16 * 1024 * 1024,
+      overshoot = 32 * 1024 * 1024,
+      reserve = 64 * 1024 * 1024,
+      floor = 10_000_000_000
+    const facts = { ceiling: bytes, planned: bytes, firstBytes: 8 * 1024 * 1024 }
+    expect(() => secondMeasurementSelection({ ...facts, free: floor })).toThrow('10GB')
+    const selectionBudget = 3 * (bytes + overshoot) + floor + 2 * reserve
+    expect(secondMeasurementSelection({ ...facts, free: selectionBudget }).selected).toBe(bytes)
+    expect(secondMeasurementSelection({ ...facts, free: selectionBudget - 1 }).selected).toBe(
+      bytes - 1,
+    )
+    const admission = {
+      bytes,
+      filesystem: 'apfs',
+      cloned: true,
+      free: 3 * (bytes + overshoot) + floor + reserve,
+    }
+    expect(() => requireMeasurementCapacity(admission)).not.toThrow()
+    expect(() => requireMeasurementCapacity({ ...admission, free: admission.free - 1 })).toThrow(
+      'migration-rebuild',
+    )
   })
 
   it('resolves actual metadata from the observed device and retains unsuccessful command facts', () => {
