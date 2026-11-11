@@ -10,6 +10,8 @@ import type {
 import { STORAGE_PARTS, storageError, storageSize } from '../lib/storage-words'
 import { platformHere } from '../lib/this-computer'
 import { readableError } from '../lib/session-record'
+import { useClientApi } from '../client-provider/injection'
+const storage = useClientApi().storage
 const overview = ref<StorageOverview | null>(null)
 const directory = ref<StorageDirectory | null>(null)
 const location = ref<StorageLocation | null>(null)
@@ -56,6 +58,11 @@ const trail = computed(() =>
   location.value ? [STORAGE_PARTS[location.value.part].name, ...location.value.segments] : [],
 )
 async function measure() {
+  if (!storage) {
+    loading.value = false
+    message.value = storageError('unavailable')
+    return
+  }
   const mine = ++request
   location.value = null
   directory.value = null
@@ -63,7 +70,7 @@ async function measure() {
   message.value = ''
   cacheMessage.value = ''
   try {
-    const result = await window.api.storage.measure()
+    const result = await storage.measure()
     if (!live || mine !== request) return
     overview.value = result
     if (result.partial || result.error)
@@ -78,7 +85,7 @@ async function measure() {
   }
 }
 async function open(next: StorageLocation) {
-  if (acting.value) return
+  if (acting.value || !storage) return
   const mine = ++request
   location.value = { part: next.part, segments: [...next.segments] }
   directory.value = null
@@ -86,7 +93,7 @@ async function open(next: StorageLocation) {
   message.value = ''
   cacheMessage.value = ''
   try {
-    const result = await window.api.storage.children(next)
+    const result = await storage.children(next)
     if (!live || mine !== request) return
     directory.value = result
     if (result.partial || result.error)
@@ -100,9 +107,10 @@ async function open(next: StorageLocation) {
   }
 }
 async function reveal(next?: StorageLocation) {
+  if (!storage) return
   cacheMessage.value = ''
   try {
-    const result = await window.api.storage.reveal(next)
+    const result = await storage.reveal(next)
     if (live && !result.ok) message.value = storageError(result.error)
   } catch (error) {
     if (live) message.value = readableError(error)
@@ -144,11 +152,11 @@ async function cacheCompleted(id: number) {
     message.value = 'Cache cleared.'
 }
 async function clearCache() {
-  if (acting.value) return
+  if (acting.value || !storage) return
   actionBusy.value = true
   cacheMessage.value = ''
   try {
-    const result = await window.api.storage.clearCache()
+    const result = await storage.clearCache()
     if (!live) return
     if (result.ok) acceptCacheClear(result.operation)
     else message.value = storageError(result.error)
@@ -159,11 +167,11 @@ async function clearCache() {
   }
 }
 async function pruneBackups() {
-  if (acting.value) return
+  if (acting.value || !storage) return
   actionBusy.value = true
   cacheMessage.value = ''
   try {
-    const result = await window.api.storage.pruneBackups()
+    const result = await storage.pruneBackups()
     if (!live) return
     if (!result.ok) {
       message.value = storageError(result.error)
@@ -178,15 +186,20 @@ async function pruneBackups() {
   }
 }
 async function showFolders(event: Event) {
-  if (!(event.target as HTMLDetailsElement).open || workspaceFolders.value || foldersLoading.value)
+  if (
+    !storage ||
+    !(event.target as HTMLDetailsElement).open ||
+    workspaceFolders.value ||
+    foldersLoading.value
+  )
     return
   const mine = ++folderRequest
   foldersLoading.value = true
   try {
-    const root = await window.api.storage.children({ part: 'workspace', segments: [] })
+    const root = await storage.children({ part: 'workspace', segments: [] })
     const projects = root.entries.find((entry) => entry.name === 'projects' && entry.isDirectory)
     const result = projects
-      ? await window.api.storage.children({ part: 'workspace', segments: ['projects'] })
+      ? await storage.children({ part: 'workspace', segments: ['projects'] })
       : root
     if (live && mine === folderRequest) {
       workspaceFolders.value = result
@@ -209,7 +222,7 @@ function root(part: StoragePartId): StorageLocation {
 }
 onMounted(() => {
   void measure()
-  stopCacheWatch = window.api.storage.watchCacheClear(acceptCacheClear, (error) => {
+  stopCacheWatch = storage?.watchCacheClear(acceptCacheClear, (error) => {
     if (live) message.value = readableError(error)
   })
 })

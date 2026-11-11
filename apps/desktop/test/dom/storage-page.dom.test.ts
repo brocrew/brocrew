@@ -1,6 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick, provide } from 'vue'
 import StorageSection from '../../src/renderer/src/components/StorageSection.vue'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
 import {
   STORAGE_PART_IDS,
   type CacheClearState,
@@ -29,7 +31,8 @@ const settle = async () => {
   await new Promise((done) => setTimeout(done, 0))
   await nextTick()
 }
-function setup(over: Partial<StorageBridge> = {}) {
+const rawCall = vi.fn()
+function setup(over: Partial<StorageBridge> = {}, available = true, injected = true) {
   const bridge = {
     measure: vi.fn(async () => overview),
     children: vi.fn(async () => directory),
@@ -45,8 +48,42 @@ function setup(over: Partial<StorageBridge> = {}) {
     pruneBackups: vi.fn(async () => ({ ok: true as const })),
     ...over,
   } satisfies StorageBridge
-  Reflect.set(window, 'api', { storage: bridge })
-  const m = mount(StorageSection, {}, { width: 1100, height: 1000 })
+  const wrongBridge = (): never => {
+    rawCall()
+    throw new Error('Storage must use the ancestor client')
+  }
+  Reflect.set(window, 'api', {
+    storage: injected
+      ? {
+          measure: wrongBridge,
+          children: wrongBridge,
+          reveal: wrongBridge,
+          clearCache: wrongBridge,
+          watchCacheClear: wrongBridge,
+          pruneBackups: wrongBridge,
+        }
+      : bridge,
+  })
+  const client = createDesktopProviderApi(
+    wrongBridge,
+    () => undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    () => (available ? bridge : undefined),
+  )
+  const owner = defineComponent({
+    setup() {
+      if (injected) provide(CLIENT_PROVIDERS, client)
+      return () => h(StorageSection)
+    },
+  })
+  const m = mount(owner, {}, { width: 1100, height: 1000 })
   return { m, bridge }
 }
 function setupCache(over: Partial<StorageBridge> = {}) {
@@ -77,6 +114,8 @@ function setupCacheRefresh(children: StorageBridge['children']) {
 }
 afterEach(() => {
   unmountAll()
+  expect(rawCall).not.toHaveBeenCalled()
+  rawCall.mockClear()
   vi.restoreAllMocks()
   Reflect.deleteProperty(window, 'api')
 })
@@ -89,6 +128,7 @@ it('measures on open, shows loading, and uses the returned sizes rather than moc
   finish(overview)
   await settle()
   expect(bridge.measure).toHaveBeenCalledTimes(1)
+  expect(vi.mocked(bridge.measure).mock.contexts[0]).toBe(bridge)
   expect(m.all('storage-loading')).toHaveLength(0)
   expect(m.host.textContent).toContain('8.0 GB')
   expect(m.host.querySelectorAll('[data-part]')).toHaveLength(8)
@@ -97,6 +137,23 @@ it('measures on open, shows loading, and uses the returned sizes rather than moc
   )!
   expect(retention.disabled).toBe(false)
   expect(m.host.textContent).not.toContain('coming soon')
+})
+
+it('keeps absent injected storage unavailable without reading the raw global or subscribing', async () => {
+  const { m, bridge } = setup({}, false)
+  await settle()
+  expect(m.q('storage-message').textContent).toContain('Storage could not be read.')
+  expect(m.all('storage-loading')).toHaveLength(0)
+  expect(bridge.measure).not.toHaveBeenCalled()
+  expect(bridge.watchCacheClear).not.toHaveBeenCalled()
+})
+
+it('uses the default desktop storage capability when there is no ancestor client', async () => {
+  const { m, bridge } = setup({}, true, false)
+  await settle()
+  expect(bridge.measure).toHaveBeenCalledTimes(1)
+  expect(bridge.watchCacheClear).toHaveBeenCalledTimes(1)
+  expect(m.host.textContent).toContain('8.0 GB')
 })
 
 it('Keep the last 2 waits for pruning, refuses repeat clicks, and refreshes only on success', async () => {
