@@ -87,29 +87,31 @@ describe('a turn’s context sections, as its model got them', () => {
   it.each(['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-2'])(
     '%s takes a context message: after the message, without their reminder lines',
     (model) => {
-    const turn = found(readTheFirst(answeredBy(model), asTheHostAsks))
-    expect(turn.contextSections).toMatchObject({ as: 'context-message', model })
-    const message = at(turn.parts, 'the-message')
-    const theSections = sections(turn.parts)
-    expect(theSections.length).toBeGreaterThan(5)
-    for (const section of theSections) {
-      expect(turn.parts.indexOf(section)).toBeGreaterThan(message)
-      expect(section.text.startsWith('<system-reminder>'), section.label).toBe(false)
-    }
-    expect(theSections.find((one) => one.label === 'date')?.text).toBe(
-      "Today's date is 2026-10-05.",
-    )
-    // ⚑ The reminders in the user's role keep their lines: the model got them so.
-    const reminders = turn.parts.filter(
-      (part) => part.role === 'user' && part.author === 'the-provider',
-    )
-    expect(reminders.length).toBeGreaterThan(0)
-    for (const reminder of reminders) expect(reminder.text).toMatch(/^<system-reminder>\n/)
+      const turn = found(readTheFirst(answeredBy(model), asTheHostAsks))
+      expect(turn.contextSections).toMatchObject({ as: 'context-message', model })
+      const message = at(turn.parts, 'the-message')
+      const theSections = sections(turn.parts)
+      expect(theSections.length).toBeGreaterThan(5)
+      for (const section of theSections) {
+        expect(turn.parts.indexOf(section)).toBeGreaterThan(message)
+        expect(section.text.startsWith('<system-reminder>'), section.label).toBe(false)
+      }
+      expect(theSections.find((one) => one.label === 'date')?.text).toBe(
+        "Today's date is 2026-10-05.",
+      )
+      // ⚑ The reminders in the user's role keep their lines: the model got them so.
+      const reminders = turn.parts.filter(
+        (part) => part.role === 'user' && part.author === 'the-provider',
+      )
+      expect(reminders.length).toBeGreaterThan(0)
+      for (const reminder of reminders) expect(reminder.text).toMatch(/^<system-reminder>\n/)
     },
   )
 
   it('a model known to take no context message: at the head of the message, as reminders', () => {
-    const turn = found(readTheFirst(answeredBy('without-context'), { hasAContextMessage: () => false }))
+    const turn = found(
+      readTheFirst(answeredBy('without-context'), { hasAContextMessage: () => false }),
+    )
     expect(turn.contextSections).toMatchObject({
       as: 'reminders',
       model: 'without-context',
