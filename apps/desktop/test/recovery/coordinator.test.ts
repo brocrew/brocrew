@@ -1244,8 +1244,17 @@ it.each([
 ])(
   'captures $migrations migrations before writers; pending=$pending compatible fallback=$hasFallback',
   async ({ migrations, pending, hasFallback }) => {
+    const migrationsFolder =
+      migrations === THIS_BUILD ? undefined : await aBuildWithOneMoreMigration()
+    if (migrationsFolder) {
+      const file = join(migrationsFolder, 'meta', '_journal.json')
+      const journal = JSON.parse(await readFile(file, 'utf8'))
+      journal.entries = journal.entries.slice(0, migrations)
+      await writeFile(file, JSON.stringify(journal))
+    }
     const userData = await aWorkspace({
       migrations,
+      migrationsFolder,
       checkpoints: hasFallback ? [{ migrations, createdAt: new Date(0).toISOString() }] : [],
     })
     const captured: CapturedCheckpoint[] = []

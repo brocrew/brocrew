@@ -135,6 +135,8 @@ interface CheckpointSpec {
 }
 
 export interface RecoveryFixtureOptions {
+  /** A real migration folder for fixtures on an earlier schema. */
+  readonly migrationsFolder?: string
   /** The schema of the workspace's own database. */
   readonly migrations: Schema
   /** Oldest first. A bare schema stands for a checkpoint with every default. */
@@ -242,7 +244,16 @@ export async function makeRecoveryFixture(
   options: RecoveryFixtureOptions,
 ): Promise<RecoveryFixture> {
   const now = options.now ?? Date.now()
-  const planned = planCheckpoints(options, now)
+  const migrationsFolder = options.migrationsFolder ?? MIGRATIONS_FOLDER
+  const thisBuild =
+    options.migrationsFolder === undefined
+      ? THIS_BUILD
+      : (
+          JSON.parse(await readFile(join(migrationsFolder, 'meta', '_journal.json'), 'utf8')) as {
+            entries: unknown[]
+          }
+        ).entries.length
+  const planned = planCheckpoints(options, now, thisBuild)
   const reach = restoreReach(options)
   const restoring = reach === null ? null : restoredCheckpoint(planned)
   if (reach === null && planned.some((checkpoint) => checkpoint.restored)) {
@@ -263,10 +274,10 @@ export async function makeRecoveryFixture(
     const source = join(scratch, DATABASE_FILE)
     const db = openDatabase(source)
     try {
-      applyMigrations(db, MIGRATIONS_FOLDER)
+      applyMigrations(db, migrationsFolder)
       let clock = now
       const store = createSessionStore(db, () => clock)
-      let schema: Schema = THIS_BUILD
+      let schema: Schema = thisBuild
       const migrateTo = (wanted: Schema): void => {
         if (wanted === ONE_NEWER && schema === THIS_BUILD) {
           db.prepare('INSERT INTO "__drizzle_migrations" ("hash", "created_at") VALUES (?, ?)').run(
@@ -368,13 +379,17 @@ export async function makeRecoveryFixture(
   }
 }
 
-function planCheckpoints(options: RecoveryFixtureOptions, now: number): PlannedCheckpoint[] {
+function planCheckpoints(
+  options: RecoveryFixtureOptions,
+  now: number,
+  thisBuild: number,
+): PlannedCheckpoint[] {
   const specs: CheckpointSpec[] = options.checkpoints.map((spec) =>
     typeof spec === 'number' ? { migrations: spec } : spec,
   )
   for (const schema of [options.migrations, ...specs.map((spec) => spec.migrations)]) {
-    if (schema !== THIS_BUILD && schema !== ONE_NEWER) {
-      throw new Error(`schema ${String(schema)} is neither THIS_BUILD nor ONE_NEWER`)
+    if (schema !== thisBuild && (options.migrationsFolder !== undefined || schema !== ONE_NEWER)) {
+      throw new Error(`schema ${String(schema)} is not supported by this fixture build`)
     }
   }
   // In a workspace a newer build migrated, the last copy on this build's schema is the one the
