@@ -9,7 +9,6 @@ import {
   FakeProviderSessions,
   type FakeSessionHandle,
   type StartOptions,
-  type ResumeOptions,
   type SessionRef,
   type RuntimeEvent,
 } from '@brobot2/runtime'
@@ -320,21 +319,6 @@ it('publishes the updated core relationship before delivery without a live conte
     rmSync(directory, { recursive: true, force: true })
   }
 })
-
-class ResumingRuntime extends FakeRuntime {
-  handle!: FakeSessionHandle
-  failure?: Error
-  private arrived!: () => void
-  readonly entered = new Promise<void>((resolve) => {
-    this.arrived = resolve
-  })
-  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
-    this.arrived()
-    if (this.failure !== undefined) throw this.failure
-    this.handle = await super.resume(ref, options)
-    return this.handle
-  }
-}
 
 async function resumeFixture(gate?: FakeLaunchGate) {
   const directory = mkdtempSync(join(tmpdir(), 'work-ancestry-resume-'))

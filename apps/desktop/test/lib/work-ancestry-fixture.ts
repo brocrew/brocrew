@@ -1,4 +1,4 @@
-import type { RuntimeEvent } from '@brobot2/runtime'
+import { FakeRuntime, type FakeSessionHandle, type ResumeOptions, type RuntimeEvent, type SessionRef } from '@brobot2/runtime'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 import { NO_DISCOVERY } from '../../src/main/adopt/discover-sessions'
@@ -67,4 +67,19 @@ export function publishAncestryEvent(
     })
     queue.push(event)
   })
+}
+
+export class ResumingRuntime extends FakeRuntime {
+  handle!: FakeSessionHandle
+  failure?: Error
+  private arrived!: () => void
+  readonly entered = new Promise<void>((resolve) => {
+    this.arrived = resolve
+  })
+  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
+    this.arrived()
+    if (this.failure !== undefined) throw this.failure
+    this.handle = await super.resume(ref, options)
+    return this.handle
+  }
 }
