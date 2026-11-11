@@ -41,18 +41,17 @@ function readings(now: number, kept: boolean): Usage {
     resetsAt,
     at,
     ...(kept ? { unconfirmed: true } : {}),
-    warning:
-      kept || word !== 'weekly'
-        ? null
-        : {
-            provider,
-            window,
-            standing: 'about-to-stop',
-            resetsAt,
-            at,
-            said: `${provider} is approaching its rate limit (${window}) — 82% used, by its latest reading`,
-            meaning: { word, used: 82, untimed: false },
-          },
+    warning: kept
+      ? null
+      : {
+          provider,
+          window,
+          standing: 'about-to-stop',
+          resetsAt,
+          at,
+          said: `${provider} is approaching its rate limit (${window}) — 82% used, by its latest reading`,
+          meaning: { word, used: 82, untimed: false },
+        },
   })
   return {
     claude: [

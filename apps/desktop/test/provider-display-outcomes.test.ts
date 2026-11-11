@@ -116,38 +116,42 @@ describe('core-supplied error display outcomes', () => {
     expect(fictional.presentation?.message).not.toMatch(/Claude|Codex|Anthropic/)
   })
 
-  it('preserves supplied sign-in states/messages ahead of ordinary display notices', () => {
-    for (const state of ['retrying', 'refused', 'stale'] as const) {
-      for (const owner of ['claude', undefined] as const) {
-        const event: ErrorEvent = {
-          type: 'error',
-          message: 'fictional raw detail',
-          cause: 'auth',
-          fatal: false,
-          signIn: {
-            state,
-            message: 'Fern supplied this sign-in sentence.',
-            captions: {
-              stopped: 'Fern stopped.',
-              ended: 'Fern ended.',
-              recovered: 'Fern recovered.',
-            },
-          },
-          presentation: { message: 'An ordinary notice must not replace the sign-in row.' },
-        }
-        expect(projected(event, owner)).toBe(event)
-        expect(event.signIn).toEqual({
-          state,
-          message: 'Fern supplied this sign-in sentence.',
-          captions: {
+  it.each([false, true])(
+    'preserves supplied sign-in states/messages ahead of ordinary display notices (captions=%s)',
+    (withCaptions) => {
+      for (const state of ['retrying', 'refused', 'stale'] as const) {
+        for (const owner of ['claude', undefined] as const) {
+          const captions = {
             stopped: 'Fern stopped.',
             ended: 'Fern ended.',
             recovered: 'Fern recovered.',
-          },
-        })
+          }
+          const signIn = {
+            state,
+            message: 'Fern supplied this sign-in sentence.',
+            ...(withCaptions ? { captions } : {}),
+          }
+          const event: ErrorEvent = {
+            type: 'error',
+            message: 'fictional raw detail',
+            cause: 'auth',
+            fatal: false,
+            signIn,
+            presentation: { message: 'An ordinary notice must not replace the sign-in row.' },
+          }
+          expect(projected(event, owner)).toBe(event)
+          expect(event.signIn).toBe(signIn)
+          expect(event.signIn).toEqual({
+            state,
+            message: 'Fern supplied this sign-in sentence.',
+            ...(withCaptions ? { captions } : {}),
+          })
+          if (withCaptions) expect(event.signIn?.captions).toBe(captions)
+          else expect(event.signIn).not.toHaveProperty('captions')
+        }
       }
-    }
-  })
+    },
+  )
 
   it('does not infer a native owner from raw words on an unowned historical row', () => {
     const event: ErrorEvent = {
