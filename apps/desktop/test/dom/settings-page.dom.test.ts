@@ -458,7 +458,9 @@ it('waits for a transcript-retention save and shows a failed read', async () => 
     }),
   )
   await vi.waitFor(() =>
-    expect(failed.m.q('transcript-retention').textContent).toContain("That didn't work. Try again."),
+    expect(failed.m.q('transcript-retention').textContent).toContain(
+      "That didn't work. Try again.",
+    ),
   )
   expect((failed.m.q('transcript-retention-period') as HTMLSelectElement).disabled).toBe(true)
 })
