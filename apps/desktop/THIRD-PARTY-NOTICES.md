@@ -116,8 +116,8 @@ components, ships at `Resources/plugin-node/LICENSE` and accompanies its durable
 
 ### Bundled versions
 
-- Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) 0.3.287
-- Codex CLI 0.160.0
+- Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) 0.3.322
+- Codex CLI 0.167.1
 - Electron 43.2.0
 - Standalone Node.js 24.22.0 (Mac arm64 and Windows x64 plugin host)
 
