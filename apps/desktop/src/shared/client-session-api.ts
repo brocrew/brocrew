@@ -18,6 +18,7 @@ export type ClientSessionApi = Pick<
   | 'earlierHistory'
   | 'endPlanMode'
   | 'exportSession'
+  | 'importRecordedSession'
   | 'importUserHomeSession'
   | 'instructionAsksForAPerson'
   | 'interrupt'

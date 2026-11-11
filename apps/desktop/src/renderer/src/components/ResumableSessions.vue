@@ -154,7 +154,10 @@ async function exportSession(
   if (exporting.value[session.sessionId]) return
   exporting.value = { ...exporting.value, [session.sessionId]: true }
   try {
-    const result = await window.api.runtime.exportSession({
+    const selected = client.sessions
+    if (typeof selected?.exportSession !== 'function')
+      throw new Error('Session export is not available in this window.')
+    const result = await selected.exportSession({
       sessionId: session.sessionId,
       exportKind,
     })
@@ -190,7 +193,10 @@ async function importMessages(session: ResumableSessionInfo): Promise<void> {
   if (importing.value[session.sessionId]) return
   importing.value = { ...importing.value, [session.sessionId]: true }
   try {
-    const result = await window.api.runtime.importRecordedSession({ sessionId: session.sessionId })
+    const selected = client.sessions
+    if (typeof selected?.importRecordedSession !== 'function')
+      throw new Error('Importing recorded messages is not available in this window.')
+    const result = await selected.importRecordedSession({ sessionId: session.sessionId })
     imports.value = { ...imports.value, [session.sessionId]: result }
     if (result.readable) await refresh()
   } catch (cause) {
