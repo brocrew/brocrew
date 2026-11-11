@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import {
-  PROVIDER_NAME,
-  type Provider,
-  type AuthState,
-  type CapabilityStatus,
-} from '../../../shared/runtime-ipc'
+import type { Provider, AuthState, CapabilityStatus } from '../../../shared/runtime-ipc'
 // ⛔ **The labels are shared rather than written here** (310). 310's model field points a person at
 // one of these two gestures when a catalogue probe is refused, and it must do so in the button's own
 // words — see `credential-words.ts` for why a second phrasing would be a second gesture.
@@ -39,6 +34,7 @@ import { COPY_MACHINE_SIGN_IN, SIGN_IN_HERE } from '../lib/credential-words'
 
 const props = defineProps<{
   provider: Provider
+  displayName?: string | null
   /** The credential's standing, or `null` before anyone has asked. */
   state: AuthState | null
   /** Whether this provider can be signed into inside the profile — asked, never inferred (039). */
@@ -81,11 +77,13 @@ const visible = computed(() => props.state !== null && props.state.state !== 'us
 const heading = computed(() => {
   switch (props.state?.state) {
     case 'stale':
-      return `Sign in again to use ${PROVIDER_NAME[props.provider]} with this agent`
+      return `Sign in again to use ${props.displayName ?? 'this provider'} with this agent`
     case 'absent':
-      return `Sign in to use ${PROVIDER_NAME[props.provider]} with this agent`
+      return `Sign in to use ${props.displayName ?? 'this provider'} with this agent`
     case 'unknown':
-      return `Couldn't check this agent's ${PROVIDER_NAME[props.provider]} sign-in`
+      return props.displayName
+        ? `Couldn't check this agent's ${props.displayName} sign-in`
+        : "Couldn't check this agent's sign-in with this provider"
     default:
       return ''
   }

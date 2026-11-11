@@ -1288,6 +1288,7 @@ defineExpose({ beginSetup })
           <SignInPanel
             v-else
             :provider="props.provider"
+            :display-name="name"
             :state="auth"
             :sign-in="signIn"
             :reprovision="reprovision"

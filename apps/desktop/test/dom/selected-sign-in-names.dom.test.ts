@@ -11,7 +11,10 @@ import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
 import NewConversation from '../../src/renderer/src/components/NewConversation.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import SignInPanel from '../../src/renderer/src/components/SignInPanel.vue'
-import { forgetProfileSignIns, signInFact } from '../../src/renderer/src/composables/useProfileSignIn'
+import {
+  forgetProfileSignIns,
+  signInFact,
+} from '../../src/renderer/src/composables/useProfileSignIn'
 import { createAttachmentBook, NEW_CONVERSATION } from '../../src/renderer/src/lib/drafts'
 import { NO_LAUNCH_CHOICES } from '../../src/renderer/src/lib/launch-choices'
 import { providersBridge } from '../../look/fixtures/providers'
@@ -60,30 +63,50 @@ function selected(name = 'Fern', state = absent) {
       return state
     }),
     apiKeyStatus: vi.fn<ClientProviderApi['apiKeyStatus']>(async ({ provider }) => ({
-      provider, set: false, setAt: null, inUse: false,
+      provider,
+      set: false,
+      setAt: null,
+      inUse: false,
     })),
-    providerLaunchChoices: vi.fn<ClientProviderApi['providerLaunchChoices']>(async ({ provider }) => ({
-      list: { provider, models: [], notAsked: null, standIn: null, startsOn: null, lastPicked: null },
-      ready: true,
-      defaultModel: null,
-      defaultModelToSend: null,
-    })),
+    providerLaunchChoices: vi.fn<ClientProviderApi['providerLaunchChoices']>(
+      async ({ provider }) => ({
+        list: {
+          provider,
+          models: [],
+          notAsked: null,
+          standIn: null,
+          startsOn: null,
+          lastPicked: null,
+        },
+        ready: true,
+        defaultModel: null,
+        defaultModelToSend: null,
+      }),
+    ),
     resolveProviderLaunch: vi.fn<ClientProviderApi['resolveProviderLaunch']>(async () => ({
-      provider: 'claude', pickerProvider: 'claude', readiness: [],
+      provider: 'claude',
+      pickerProvider: 'claude',
+      readiness: [],
     })),
   }
-  const api = createDesktopProviderApi(() => transport, () => undefined)
+  const api = createDesktopProviderApi(
+    () => transport,
+    () => undefined,
+  )
   signInFact({ provider: 'claude', profileId: DEFAULT_PROFILE_ID }, api).auth = state
   return { api, transport, descriptors, raw, rawAuth }
 }
 
 function ancestor(component: Component, props: Record<string, unknown>, api: ClientProviderApi) {
-  return mount(defineComponent({
-    setup() {
-      provide(CLIENT_PROVIDERS, api)
-      return () => h(component, props)
-    },
-  }), {})
+  return mount(
+    defineComponent({
+      setup() {
+        provide(CLIENT_PROVIDERS, api)
+        return () => h(component, props)
+      },
+    }),
+    {},
+  )
 }
 
 async function caller(
@@ -119,7 +142,9 @@ async function caller(
       choices: NO_LAUNCH_CHOICES,
       capabilities: selectedCapabilities,
       models: null,
-      onStart: (): void => { props.busy = true },
+      onStart: (): void => {
+        props.busy = true
+      },
     })
     const m = ancestor(NewConversation, props, out.api)
     await settle()
@@ -138,7 +163,8 @@ async function caller(
 }
 
 it.each(['card', 'launcher', 'pane'] as const)(
-  '%s uses the selected ancestor name, supplied reason and original check gesture', async (kind) => {
+  '%s uses the selected ancestor name, supplied reason and original check gesture',
+  async (kind) => {
     const out = selected()
     const { m } = await caller(kind, out)
     await settle()
@@ -150,7 +176,13 @@ it.each(['card', 'launcher', 'pane'] as const)(
     m.q('sign-in-check').click()
     await settle()
     expect(out.transport.checkProviderAuth.mock.calls.slice(before)).toEqual([
-      [{ provider: 'claude', profileId: DEFAULT_PROFILE_ID, ...(kind === 'card' ? { probe: true } : {}) }],
+      [
+        {
+          provider: 'claude',
+          profileId: DEFAULT_PROFILE_ID,
+          ...(kind === 'card' ? { probe: true } : {}),
+        },
+      ],
     ])
     expect(out.raw).not.toHaveBeenCalled()
     expect(out.rawAuth).not.toHaveBeenCalled()
@@ -158,10 +190,15 @@ it.each(['card', 'launcher', 'pane'] as const)(
 )
 
 it.each(['launcher', 'pane'] as const)(
-  '%s keeps actions available while the selected catalogue is late, then names its answer', async (kind) => {
+  '%s keeps actions available while the selected catalogue is late, then names its answer',
+  async (kind) => {
     const out = selected()
     let answer!: (value: typeof out.descriptors) => void
-    out.transport.providerCatalogue.mockReturnValueOnce(new Promise((resolve) => { answer = resolve }))
+    out.transport.providerCatalogue.mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve
+      }),
+    )
     const { m } = await caller(kind, out)
     await settle()
     expect(m.q('sign-in-heading').textContent).toBe('Sign in to use this provider with this agent')

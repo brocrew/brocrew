@@ -32,7 +32,6 @@ import type {
   ConfigFileResult,
   SessionPathTarget,
 } from '../../../shared/runtime-ipc'
-import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import { DEFAULT_CONVERSATION_PROVIDER } from '@brobot2/shared'
 import { stopJoinsThatAsk } from '../lib/stop-unanswered'
 import type { PickedModel } from '../lib/model-lists'
@@ -40,6 +39,7 @@ import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
 import { aGiverWaitsOnPurposeSays, ownWaitSaid } from '../lib/conversation-list'
 import { useProfileSignIn, type ProfileSignIn } from '../composables/useProfileSignIn'
 import { useClientProviders } from '../client-provider/injection'
+import { useProviderNames } from '../composables/useProviderNames'
 import { useProviderSetup } from '../composables/useProviderSetup'
 import {
   activityLine,
@@ -759,9 +759,9 @@ const needsGoAhead = computed(() => props.record.meta?.planNeedsGoAhead ?? false
  * the session was described, and absent must read as "nothing has moved" rather than as unknown.
  */
 const signInSuperseded = computed(() => props.record.meta?.liveness.signInSuperseded === true)
-
 /** Probe only for each on-screen refusal; renew this profile here, or null if it runs as nobody. */
 const signInClient = useClientProviders()
+const providerName = useProviderNames(signInClient)
 const profileSignIn = computed<ProfileSignIn | null>(() => {
   const meta = props.record.meta
   const profileId = profileItRunsAs(meta)
@@ -1093,8 +1093,8 @@ const canReopenSignIn = computed(() => signInHeldBy.value === null && !props.rec
 const signInBarCost = computed(() => reopeningSays(signInHeldBy.value))
 /** The provider whose sign-in the bar is about, by its name, or plain words for none recorded. */
 const signInOf = computed(() => {
-  const provider = props.record.meta?.provider
-  return provider === undefined ? 'the sign-in' : `the ${PROVIDER_NAME[provider]} sign-in`
+  const name = props.record.meta && providerName(props.record.meta.provider)
+  return name === undefined ? 'the sign-in' : `the ${name} sign-in`
 })
 
 /**
@@ -2050,6 +2050,7 @@ onUnmounted(() => {
         >
           <SignInPanel
             :provider="props.record.meta!.provider"
+            :display-name="providerName(props.record.meta!.provider)"
             :state="profileSignIn.auth"
             :sign-in="
               props.capabilities?.[props.record.meta!.provider]?.signIn ?? PENDING_CAPABILITY

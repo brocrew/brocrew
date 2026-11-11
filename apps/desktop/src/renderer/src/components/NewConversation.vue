@@ -69,6 +69,7 @@ import type { SendBlock } from '../lib/composer-notice'
 import { createSignInGesture } from '../lib/sign-in-gesture'
 import { signInFact } from '../composables/useProfileSignIn'
 import { useClientProviders } from '../client-provider/injection'
+import { useProviderNames } from '../composables/useProviderNames'
 import type { SendIntent } from '../lib/session-store'
 import PromptComposer from './PromptComposer.vue'
 import SessionHeader from './SessionHeader.vue'
@@ -345,12 +346,13 @@ const stillAsking = (asked: { readonly provider: Provider }): boolean =>
  * reactive one: a proxy cannot cross the bridge, and a cancel that sent one did nothing.
  */
 const signInClient = useClientProviders()
+const providerName = useProviderNames(signInClient)
 const signInHere = createSignInGesture({
   pair: () => ({ provider: props.defaultProvider, profileId: DEFAULT_PROFILE_ID }),
   bridge: () => signInClient,
   fact: (pair) => signInFact(pair, signInClient),
   words: {
-    signedIn: (pair) => `Signed in to ${PROVIDER_NAME[pair.provider]}.`,
+    signedIn: (pair) => `Signed in to ${providerName(pair.provider) ?? 'this provider'}.`,
     unchanged:
       'Your machine sign-in is identical to the one already here, so nothing changed — it is expired on both.',
   },
@@ -727,18 +729,18 @@ const providerFailure = computed(() => {
 })
 const headerProvider = computed(() =>
   props.providerReadiness === null
-    ? PROVIDER_NAME[props.defaultProvider]
+    ? (providerName(props.defaultProvider) ?? 'this provider')
     : canChooseProvider.value
-      ? `${PROVIDER_NAME[props.defaultProvider]} · Ready`
+      ? `${providerName(props.defaultProvider) ?? 'this provider'} · Ready`
       : undefined,
 )
 const approvalBlocked = computed(
   () =>
     providerFailure.value ??
     (props.providerReadiness?.[props.defaultProvider] === false
-      ? `${PROVIDER_NAME[props.defaultProvider]} isn't set up. Set it up in Settings → Providers.`
+      ? `${providerName(props.defaultProvider) ?? 'this provider'} isn't set up. Set it up in Settings → Providers.`
       : props.providerReadiness !== null && props.providerReadiness[props.defaultProvider] !== true
-        ? `${PROVIDER_NAME[props.defaultProvider]} · Checking…`
+        ? `${providerName(props.defaultProvider) ?? 'this provider'} · Checking…`
         : props.defaultApprovalMode === null || launchMode.value === null
           ? 'Choose Ask or Auto before sending.'
           : null),
@@ -850,7 +852,7 @@ watch(
               class="note"
               data-cy="provider-readiness-failure"
             >
-              {{ PROVIDER_NAME[problem.provider] }}: {{ problem.reason }}
+              {{ providerName(problem.provider) ?? 'this provider' }}: {{ problem.reason }}
             </p>
             <p v-if="checkingProviders" class="note">Checking providers…</p>
             <template v-else>
@@ -896,6 +898,7 @@ watch(
               </div>
               <SignInPanel
                 :provider="props.defaultProvider"
+                :display-name="providerName(props.defaultProvider)"
                 :state="signInHere.auth"
                 :sign-in="signInCapability"
                 :reprovision="reprovisionCapability"
