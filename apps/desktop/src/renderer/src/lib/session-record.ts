@@ -36,16 +36,17 @@ import {
   type WindowState,
 } from './transcript-window'
 
-
-
 export type SessionPhase = 'opening' | 'open' | 'closing' | 'recorded'
 
 export interface RequestDraft {
-  
+
+  // Map stores and Vue-tracks every provider-supplied answer key.
   answers: Map<string, string | string[]>
-  
+
+  // Submission is in flight until its command settles.
   sent: boolean
-  
+
+  // This window has answered, even after the submission finishes.
   answered: boolean
   /** A settled card is showing its whole self (034). */
   open: boolean
@@ -59,36 +60,37 @@ export interface SessionRecord {
   agentState?: AgentState | null
   agentStatePublication?: NonNullable<RuntimeStatesMessage['published']>
   earlyProviderBlock?: ProviderBlockFacts
-  
+
   transcript: TranscriptState
-  
+
   control: TranscriptState
-  
+
   tail: WindowState | null
-  
+
   liveFrom: number | null
-  
+
   opening: string | null
-  
+
   requests: Map<string, RequestDraft>
-  
+
   window: WindowState
   /** The next ordinal expected on this session's stream; a mismatch is reported, not hidden. */
   nextOrdinal: number
-  
+
   missing: Set<number>
-  
+
   missingBeyondTheList: number
-  
+
   busy: boolean
   /** The last failure from a command for this session. */
   error: string | null
-  
+
   unanswered: number
   phase: SessionPhase
-  
+
   earlyEvents: RuntimeEventMessage[]
-  
+
+  // Count overlapping resumes; queued events drain only after all handovers settle.
   handover: number
   /** Only the latest matters — this is a state, not a log. */
   earlyLiveness: SessionLiveness | null
@@ -178,7 +180,7 @@ export function requestDraft(record: SessionRecord, requestId: string): RequestD
   // itself — poisoning every draft in the app. A `Map` has no inherited entries to find.
   const existing = record.requests.get(requestId)
   if (existing) return existing
-  // A `Map` is load-bearing — see {@link RequestDraft.answers} (146).
+  // Keep the draft across transcript refolds.
   record.requests.set(requestId, {
     answers: new Map(),
     sent: false,

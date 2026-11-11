@@ -20,10 +20,9 @@ import {
 } from './transcript'
 import { copyHumanAnswers } from './human-answers'
 
-
-
 export const WINDOW_MAX_EVENTS = HISTORY_WINDOW_MAX_EVENTS * 2
 
+// Release a slab so streaming does not refold the full window on every event.
 export const WINDOW_RELEASE_CHUNK = HISTORY_WINDOW_MAX_EVENTS / 2
 
 export interface WindowState {
@@ -35,9 +34,9 @@ export interface WindowState {
   hasOlder: boolean
   /** Whether {@link from} is a turn boundary, or the event ceiling cut mid-turn. */
   turnAligned: boolean
-  
+
   atTail: boolean
-  
+
   behind: number
 }
 
@@ -66,30 +65,30 @@ export interface FoldCarry {
   ref: SessionRef | null
   ended: boolean
   activity: TranscriptState['activity']
-  
+
   requests: {
     event: TranscriptEvent
     at?: number
-    
+
     routed?: TranscriptEvent
   }[]
-  
+
   meter: TranscriptState['meter']
-  
+
   background: TranscriptState['background']
-  
+
   schedule: TranscriptState['schedule']
-  
+
   commands: TranscriptState['commands']
-  
+
   tools: TranscriptState['tools']
-  
+
   changes: TranscriptState['changes']
-  
+
   subAgents: TranscriptEvent[]
-  
+
   stopUnanswered: TranscriptState['stopUnanswered']
-  
+
   heldPastTheirTurn: string[]
 }
 
@@ -123,6 +122,7 @@ function subAgentCarry(
   return [...state.subAgentCards.values()].filter(wanted).map(asSubAgentEvent)
 }
 
+// Omit summary: restoring it before body prose would discard that prose as an echo.
 function asSubAgentEvent(card: SubAgentCard): TranscriptEvent {
   return {
     type: 'sub_agent',
@@ -361,7 +361,7 @@ export function foldWindow(
   if (toolsInForce !== null) {
     applyEvent(state, toolsInForce.event, toolsInForce.at, toolsInForce.ordinal)
   }
-  
+
   let placed = false
   const placeCarried = (): void => {
     if (carry === null || placed) return
