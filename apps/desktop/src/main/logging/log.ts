@@ -37,6 +37,7 @@ export function openLog(
   file: string,
   options: { debug?: boolean; console?: boolean; maxBytes?: number; sync?: boolean } = {},
 ): void {
+  log.transports.file.setAppName('BroCrew')
   log.transports.file.maxSize = options.maxBytes ?? LOG_MAX_BYTES
   log.transports.file.sync = options.sync === true
   log.transports.file.resolvePathFn = () => file
