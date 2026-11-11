@@ -7,7 +7,10 @@ import type {
 } from '../../src/shared/model-choice-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
-import { defineComponent, h, nextTick, ref } from 'vue'
+import { defineComponent, h, nextTick, provide, ref } from 'vue'
+import { SUPPORTED_PROVIDERS, providerDescriptor } from '@brobot2/shared'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { desktopProviderApi } from '../../src/renderer/src/client-provider/window'
 import AgentModelChoice from '../../src/renderer/src/components/AgentModelChoice.vue'
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/agent-store'
@@ -243,6 +246,9 @@ const settle = async (): Promise<void> => {
 }
 
 const words = (el: Element | null): string => (el?.textContent ?? '').replace(/\s+/g, ' ').trim()
+const catalogueClient = Object.create(desktopProviderApi, {
+  providerCatalogue: { value: async () => SUPPORTED_PROVIDERS.map(providerDescriptor) },
+})
 
 async function control(
   runsOn: 'claude' | 'codex' = 'claude',
@@ -251,8 +257,14 @@ async function control(
   const { store, lists } = storeOver()
   await store.load()
   const m = mount(
-    AgentModelChoice,
-    { profileSlug: 'worker', runsOn, itsProvider, store, lists },
+    defineComponent({
+      setup() {
+        provide(CLIENT_PROVIDERS, catalogueClient)
+        return () =>
+          h(AgentModelChoice, { profileSlug: 'worker', runsOn, itsProvider, store, lists })
+      },
+    }),
+    {},
     { width: 620, height: 400 },
   )
   await settle()
@@ -495,14 +507,17 @@ describe('685 §2 · a choice held for ANOTHER provider', () => {
     const runsOn = ref<'claude' | 'codex'>('codex')
     const m = mount(
       defineComponent({
-        setup: () => () =>
-          h(AgentModelChoice, {
-            profileSlug: 'worker',
-            runsOn: runsOn.value,
-            itsProvider: runsOn.value,
-            store,
-            lists,
-          }),
+        setup() {
+          provide(CLIENT_PROVIDERS, catalogueClient)
+          return () =>
+            h(AgentModelChoice, {
+              profileSlug: 'worker',
+              runsOn: runsOn.value,
+              itsProvider: runsOn.value,
+              store,
+              lists,
+            })
+        },
       }),
       {},
       { width: 620, height: 400 },
@@ -735,8 +750,14 @@ describe('685 §7 · where it is — beside the provider choice on the agent’s
     const { store, lists } = storeOver()
     await store.load()
     const m = mount(
-      CapabilitiesSheet,
-      { profileSlug: 'worker', runsOn: 'codex', store, lists },
+      defineComponent({
+        setup() {
+          provide(CLIENT_PROVIDERS, catalogueClient)
+          return () =>
+            h(CapabilitiesSheet, { profileSlug: 'worker', runsOn: 'codex', store, lists })
+        },
+      }),
+      {},
       { width: 680, height: 880 },
     )
     await settle()
@@ -768,8 +789,14 @@ describe('685 §7 · where it is — beside the provider choice on the agent’s
     const { store, lists } = storeOver()
     await store.load()
     const m = mount(
-      CapabilitiesSheet,
-      { profileSlug: 'worker', runsOn: 'codex', store, lists },
+      defineComponent({
+        setup() {
+          provide(CLIENT_PROVIDERS, catalogueClient)
+          return () =>
+            h(CapabilitiesSheet, { profileSlug: 'worker', runsOn: 'codex', store, lists })
+        },
+      }),
+      {},
       { width: 680, height: 880 },
     )
     await settle()
