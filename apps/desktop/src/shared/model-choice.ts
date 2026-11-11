@@ -221,9 +221,13 @@ export function refuseModelChoice(
  * ⚑ It names the provider it holds (`R31a`). ⛔ **It describes a default IN FORCE**
  * ({@link aChoiceIsInForce}); a surface draws it only for one.
  */
-export function whatAModelChoiceReaches(choice: AgentModelChoice): string {
+export function whatAModelChoiceReaches(
+  choice: AgentModelChoice,
+  names?: Readonly<Partial<Record<Provider, string>>>,
+): string {
+  const name = names === undefined ? PROVIDER_NAME[choice.provider] : (names[choice.provider] ?? 'the provider')
   return (
-    `Its new conversations start on this, on ${PROVIDER_NAME[choice.provider]} — the ones you start ` +
+    `Its new conversations start on this, on ${name} — the ones you start ` +
     'and the ones another agent starts for it. A conversation already open keeps its own until it ' +
     'is changed there, and an agent that gives it work may name another for that one conversation.'
   )
@@ -234,8 +238,12 @@ export function whatAModelChoiceReaches(choice: AgentModelChoice): string {
  * for a model that offers no effort. ⛔ Rendered from the choice, so no sentence can name a half the
  * choice does not hold.
  */
-export function aChoiceInWords(choice: AgentModelChoice): string {
-  return `${aPairInWords(choice)} on ${PROVIDER_NAME[choice.provider]}`
+export function aChoiceInWords(
+  choice: AgentModelChoice,
+  names?: Readonly<Partial<Record<Provider, string>>>,
+): string {
+  const name = names === undefined ? PROVIDER_NAME[choice.provider] : (names[choice.provider] ?? 'the provider')
+  return `${aPairInWords(choice)} on ${name}`
 }
 
 /** ⚑ **D-042 · a pair in words** — `“opus” at max effort`, or `“haiku”` for a model with none. */
