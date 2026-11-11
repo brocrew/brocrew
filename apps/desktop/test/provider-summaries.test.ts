@@ -51,6 +51,11 @@ describe('common summary transcript facts', () => {
     expect(describeEvent(command)).toBe('Checking the fictional change')
   })
 
+  it('shows only detail when no status was supplied and omits blank action text', () => {
+    expect(describeEvent({ type: 'turn_summary', detail: 'The supplied detail', needsAction: 'Review this' })).toBe('The supplied detail')
+    expect(describeEvent({ ...turn, needsAction: '  ' })).toBe('completed · Checked the fictional change')
+  })
+
   it('retains the same summary facts in readable exports without tool activity', () => {
     const state = createTranscript()
     applyEvent(state, command)

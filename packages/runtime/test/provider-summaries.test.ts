@@ -20,6 +20,7 @@ describe('provider-neutral summaries', () => {
   it.each([
     { type: 'turn_summary', status: 'completed', detail: 'Checked the change', needsAction: '' },
     { type: 'command_summary', description: 'Checking the change' },
+    { type: 'turn_summary', detail: 'Only the supplied detail', needsAction: 'Review this' },
   ])('admits portable summary facts without naming a provider: %j', (event) => {
     expect(parseRuntimeEvent(event)).toEqual({ ok: true, event })
   })
@@ -41,6 +42,10 @@ describe('provider-neutral summaries', () => {
     expect(normalize({ ...turn, status_category: status })).toEqual([{ type: 'turn_summary', status, detail: turn.status_detail, needsAction: '' }])
   })
 
+  it('retains only an unknown status detail for display without inventing a status', () => {
+    expect(normalize({ ...turn, status_category: 'fictional_future_status', needs_action: 'Review this' })).toEqual([{ type: 'turn_summary', detail: turn.status_detail, needsAction: 'Review this' }])
+  })
+
   it('maps the reported command description without provider fields', () => {
     const event = { type: 'command_summary', description: command.detail }
     expect(normalize(command)).toEqual([event])
@@ -48,7 +53,11 @@ describe('provider-neutral summaries', () => {
   })
 
   it('omits an explicitly null native command description', () => {
-    expect(normalize({ ...command, detail: null })).toEqual([])
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(normalize({ ...command, detail: null })).toEqual([])
+      expect(warning).not.toHaveBeenCalled()
+    } finally { warning.mockRestore() }
   })
 
   it.each([
@@ -64,8 +73,13 @@ describe('provider-neutral summaries', () => {
     { ...command, detail: undefined },
     { ...command, detail: [] },
     { ...command, detail: '' },
-  ])('omits an absent or changed undocumented summary shape: %j', (value) => {
-    expect(normalize(value)).toEqual([])
+  ])('keeps malformed summaries on the existing unknown and warning path: %j', (raw) => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const events = normalize(raw)
+      expect(events).toEqual([{ type: 'unknown', provider: 'claude', category: 'unrecognized', label: raw.subtype, raw }])
+      expect(warning).toHaveBeenCalledExactlyOnceWith('Unmodeled provider event', events[0])
+    } finally { warning.mockRestore() }
   })
 
   it('keeps a future unknown system event available to the existing Debug-only path', () => {

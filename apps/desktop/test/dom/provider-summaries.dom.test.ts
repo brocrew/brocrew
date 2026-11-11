@@ -21,9 +21,8 @@ it('shows one quiet common line per summary in normal mode while unknowns remain
     },
     {
       type: 'turn_summary',
-      status: 'continuing',
       detail: 'No decision is needed',
-      needsAction: '',
+      needsAction: 'Do not interpret an unknown status',
     },
   ])
     applyEvent(state, event as TranscriptEvent)
