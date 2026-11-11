@@ -43,6 +43,7 @@ function synthwave(): Theme {
 const lists: ModelLists = {
   held: () => null,
   choices: () => null,
+  readiness: () => ({ state: 'pending' }),
   resolve: async () => ({ provider: 'codex', pickerProvider: 'codex', readiness: [] }),
   read: async () => undefined,
   reread: async () => undefined,
