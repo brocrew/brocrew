@@ -1,6 +1,6 @@
+import { createModelLists } from './lib/provider-launch-fixture'
 import type { ModelList } from '../src/shared/model-choice-contracts'
 import { describe, expect, it } from 'vitest'
-import { createModelLists } from '../src/renderer/src/lib/model-lists'
 
 /**
  * # 🟠 293 §5 · a pre-auth model probe overwrites the freshly re-probed menu (289 rank 5)

@@ -39,15 +39,9 @@ import { calendarDay, fullTime } from '../src/renderer/src/lib/clock'
 import { proseSpans } from './lib/prose-spans'
 
 /**
- * ⛔ **The zone file is NEVER the machine's own in this file** — `main/system-zone.ts` reads
- * `/etc/localtime` and the files under `/usr/share/zoneinfo`, and every read of one of those paths
- * lands HERE: a path nobody served throws `ENOENT`, so no assertion below can pass or fail on what
- * the machine running it happens to be set to. ⚑ Every other path is the real filesystem's, which
- * the host half (a real SQLite ledger and a scratch folder) needs.
- *
- * ⚠️ **`vi.spyOn(fs, …)` is not available** ("Module namespace is not configurable in ESM"), which
- * is why this is a `vi.mock` factory that delegates, and why `realpathSync` is rebuilt rather than
- * replaced: `.native` is a property of the function and a bare arrow would drop it.
+ * Zone-file reads are served here; an unserved zone path throws ENOENT, independent of the
+ * runner's timezone. Other paths use the real filesystem for the SQLite ledger and scratch files.
+ * ESM namespaces cannot be spied on, so the mock delegates and preserves realpathSync.native.
  */
 interface FakeWatcher {
   readonly dir: string
@@ -1243,7 +1237,10 @@ describe('§5 · the window, main and the host agree on the zone', () => {
     const MOUNT = inOrder(
       'void Promise.all([keepTheMacZone(window.api), themeBeforeDrawing(windowTheme)]).then(() =>',
       'draftHandoffBeforeDrawing(window.api?.savedDrafts).then((handoff) => {',
-      "createApp(App).provide(SAVED_DRAFTS, handoff).mount('#app')",
+      'createApp(App)',
+      '.provide(SAVED_DRAFTS, handoff)',
+      '.provide(CLIENT_PROVIDERS, desktopProviderApi)',
+      ".mount('#app')",
     )
     const failing = (source: string): string[] =>
       Object.entries(PRELOAD)

@@ -146,6 +146,14 @@ describe('§1 · F5 · the grant sheet says what a reopen does to THIS row’s d
 // §2 · F6 — the notice, read where it is drawn
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
+const STALE_AUTH_NOTICE =
+  'The sign-in this conversation was launched with is no longer valid, so it cannot continue on ' +
+  'it. Its transcript is kept. If your machine’s Claude login was renewed elsewhere on this computer, ' +
+  'this app carries it on with the new login by itself, and a line below says so. Otherwise, send ' +
+  'it a message to carry on: that reads your machine login again, and says so if that login has ' +
+  'expired too. It carries on without its “Allow for this conversation” approvals or ' +
+  'anything that was running in the background.'
+
 const noticeOf = async (cause: 'auth_stale' | 'auth', drawnWhole = false): Promise<string> => {
   const state = createTranscript()
   applyEvent(state, {
@@ -153,7 +161,18 @@ const noticeOf = async (cause: 'auth_stale' | 'auth', drawnWhole = false): Promi
     message: 'Failed to authenticate. API Error: 401 OAuth access token has been revoked.',
     fatal: cause === 'auth_stale',
     cause,
-  } as unknown as TranscriptEvent)
+    signIn: cause === 'auth_stale' ? { state: 'stale', message: STALE_AUTH_NOTICE } : undefined,
+    presentation:
+      cause === 'auth'
+        ? {
+            message:
+              'This profile’s sign-in was rejected, so this conversation cannot continue. Start a new conversation to sign in again — the launcher will offer it.',
+            level: 'error',
+            terminal: false,
+            repeat: 'each',
+          }
+        : undefined,
+  })
   await page.viewport(760, 520)
   const m = mount(TranscriptView, { items: state.items, ownAgent: null }, { width: 720, height: 480 }) // prettier-ignore
   await nextTick()

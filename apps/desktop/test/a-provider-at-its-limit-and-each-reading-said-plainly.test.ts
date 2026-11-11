@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { usagePeriod } from '../src/main/providers/usage-period'
+import { limitMeaning, limitsForDisplay } from '../src/main/providers/limit-meaning'
 import { fullTime } from '../src/renderer/src/lib/clock'
 import {
   atItsLimitSays,
@@ -9,10 +11,15 @@ import {
   timeGone,
   usageSays,
   usageTitle,
-  windowLength,
 } from '../src/renderer/src/lib/usage-limit'
 import { clockTime, clockTimeFrom } from '../src/shared/clock'
-import type { ProviderCondition } from '../src/shared/provider-limit'
+import {
+  providerConditions,
+  wallsFromUsage,
+  type ProviderCondition,
+  type ProviderLimitSeen,
+} from '../src/shared/provider-limit'
+import type { LedgerWalk } from '../src/shared/question-contracts'
 import type { ProviderUsageReading } from '../src/shared/runtime-ipc'
 
 /**
@@ -51,6 +58,7 @@ const wall = (
   standing: 'stopped',
   says: '',
   said,
+  meaning: said.map(limitMeaning),
   resetsAt: at(3, 17, 50),
   ...over,
 })
@@ -125,7 +133,7 @@ const reading = (
   window: string,
   usedPercent: number | null,
   resetsAt: number | null,
-): ProviderUsageReading => ({ window, usedPercent, resetsAt, at: NOW })
+): ProviderUsageReading => ({ window, usedPercent, resetsAt, at: NOW, period: usagePeriod(window) })
 
 describe('25cca325 · readingSays — one window’s newest reading, near a limit or not', () => {
   it('🔴 Claude’s window names are said in a person’s words, with how much is used and when it resets', () => {
@@ -248,6 +256,7 @@ describe('the reset, said relative to now — one wording for every usage surfac
 })
 
 describe('the time gone in a window, beside how much of it is used', () => {
+  const windowLength = (window: string) => usagePeriod(window).durationMs
   const HOUR = 3_600_000
   const DAY = 24 * HOUR
 
@@ -297,4 +306,101 @@ describe('the time gone in a window, beside how much of it is used', () => {
     // Control: the same reading with a reset still ahead.
     expect(timeGone(reading('five_hour', 10, NOW + HOUR), NOW)).not.toBeNull()
   })
+})
+
+it('consumes supplied period facts even when raw history uses an unknown or misleading native window', () => {
+  const reading: ProviderUsageReading = {
+    window: 'five_hour (raw history stays opaque)',
+    usedPercent: 60,
+    resetsAt: NOW + 8 * 3_600_000,
+    at: NOW,
+    period: {
+      word: 'fictional-period',
+      durationMs: 16 * 3_600_000,
+      bucket: true,
+      bucketName: 'Fern bucket',
+    },
+  }
+  expect(timeGone(reading, NOW)?.fraction).toBe(0.5)
+  expect(readingSays(reading, NOW)).toBe(
+    'Fictional-period limit (Fern bucket): 60% used; it resets in 8 h.',
+  )
+  const unknown = {
+    ...reading,
+    period: { word: null, durationMs: null, bucket: false, bucketName: null },
+  }
+  expect(timeGone(unknown, NOW)).toBeNull()
+  expect(readingSays(unknown, NOW)).toContain('five_hour (raw history stays opaque): 60% used;')
+  expect(timeGone({ ...reading, period: undefined }, NOW)).toBeNull()
+})
+
+it('renders supplied limit facts without interpreting contradictory raw diagnostics', () => {
+  const condition: ProviderCondition = {
+    ...wall([UNTIMED]),
+    meaning: [{ word: 'Fern period', used: 73, untimed: false }],
+  }
+  expect(usageSays(condition, NOW)).toContain('its Fern period limit (73% used)')
+  expect(atItsLimitSays(condition, NOW)).toBe(`At its limit until ${clockTime(at(3, 17, 50))}`)
+  expect(usageTitle(condition)).toContain(UNTIMED)
+  const legacy = { ...condition, meaning: undefined, says: 'Opaque retained condition.' }
+  expect(usageSays(legacy, NOW)).toBe('Opaque retained condition.')
+  expect(atItsLimitSays(legacy, NOW)).toBe('Opaque retained condition.')
+})
+
+describe('core meaning of recorded provider limit diagnostics', () => {
+  it.each<[string, { word: string | null; used: number | null; untimed: boolean }]>([
+    [
+      'claude is approaching its rate limit (seven_day) — 92.5% used',
+      { word: 'weekly', used: 92.5, untimed: true },
+    ],
+    [
+      'codex is approaching its rate limit — 99% of a 7-day window used; resets 2026-10-07T11:00:00.000Z',
+      { word: 'weekly', used: 99, untimed: false },
+    ],
+    [
+      'codex is approaching its rate limit — 85% of a 3-day window used',
+      { word: '3-day', used: 85, untimed: true },
+    ],
+    ['claude is rate-limited (future_window)', { word: null, used: null, untimed: true }],
+    ['unrelated diagnostic — 41% used', { word: null, used: 41, untimed: false }],
+  ])('preserves the recorded meaning of %s', (line, expected) => {
+    expect(limitMeaning(line)).toEqual(expected)
+  })
+})
+
+it('preserves supplied producer meaning through display enrichment and actual client grouping', () => {
+  const supplied: ProviderUsageReading = {
+    ...reading('seven_day', 92, NOW + 3_600_000),
+    period: { word: 'Fern period', durationMs: 3_600_000, bucket: false, bucketName: null },
+  }
+  const source = wallsFromUsage({ claude: [supplied] }, [], NOW)
+  expect(source).toHaveLength(1)
+  const original = source[0]!
+  expect(original.window).toBe('seven_day')
+  expect(original.said).toContain('(seven_day)')
+  const walk: LedgerWalk<ProviderLimitSeen> = {
+    walk: 'every-provider-wall-recently-recorded',
+    rows: source,
+    ledgers: 3,
+    rowsUnread: 2,
+    ledgersSkipped: 1,
+  }
+  const shown = limitsForDisplay(walk)
+  expect(shown).toMatchObject({ ledgers: 3, rowsUnread: 2, ledgersSkipped: 1 })
+  expect(shown.rows[0]).toBe(original)
+  expect(shown.rows[0]?.meaning).toBe(original.meaning)
+  const [condition] = providerConditions(shown.rows, NOW)
+  expect(usageSays(condition!, NOW)).toBe(
+    'Claude is near its Fern period limit (92% used); it resets in 1 h.',
+  )
+  expect(usageTitle(condition!)).toContain(original.said)
+
+  const unknown = { ...original, meaning: { word: null, used: null, untimed: false } }
+  expect(limitsForDisplay({ ...walk, rows: [unknown] }).rows[0]).toBe(unknown)
+  expect(unknown.meaning.word).toBeNull()
+
+  const raw = { ...original, meaning: undefined }
+  const enriched = limitsForDisplay({ ...walk, rows: [raw] })
+  expect(enriched.rows[0]?.meaning).toEqual({ word: 'weekly', used: 92, untimed: false })
+  expect(raw.meaning).toBeUndefined()
 })

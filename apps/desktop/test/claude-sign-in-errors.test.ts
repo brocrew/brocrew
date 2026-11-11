@@ -1,4 +1,20 @@
-import { providerDefinitions } from '../src/main/providers'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { FakeRuntime } from '@brobot2/runtime'
+import { openDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
+import { createSessionStore } from '../src/main/db/session-store'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
+import {
+  createSessionRecord,
+  openWindow,
+  acceptEvent,
+} from '../src/renderer/src/lib/session-record'
+import { legacyConversation } from './fixtures/legacy-migration-data'
+import { transcriptEventForDisplay } from '../src/main/providers/error-presentation'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 
@@ -14,13 +30,7 @@ function applyEvent(
   state: Parameters<typeof applyDisplayedEvent>[0],
   event: TranscriptEvent,
 ): void {
-  const provider = state.ref?.provider
-  applyDisplayedEvent(
-    state,
-    provider === undefined
-      ? event
-      : (providerDefinitions[provider].transcripts.eventForDisplay?.(event) ?? event),
-  )
+  applyDisplayedEvent(state, transcriptEventForDisplay(event, state.ref?.provider))
 }
 
 const retry = (attempt: number): Extract<TranscriptEvent, { type: 'error' }> => ({
@@ -169,4 +179,133 @@ describe('Claude sign-in failures', () => {
       visibleItems(state.items, true).map((item) => (item.kind === 'unknown' ? item.label : '')),
     ).toEqual(['dev_intent', 'new-useful-event'])
   })
+})
+
+describe('core-supplied retry endings across old and current recordings', () => {
+  it.each([
+    ['completed', 'recovered', 'recovered'],
+    ['interrupted', 'stopped', 'ended'],
+    ['failed', 'ended', 'ended'],
+  ] as const)(
+    'preserves %s row identity, raw details and opaque words in live and actual history',
+    async (ending, caption, state) => {
+      const directory = mkdtempSync(join(tmpdir(), 'retry-caption-history-'))
+      const db = openDatabase(join(directory, 'fictional.sqlite'))
+      applyMigrations(
+        db,
+        join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations'),
+      )
+      const store = createSessionStore(db)
+      const host = new RuntimeHost({
+        store,
+        createRuntime: () => new FakeRuntime('claude'),
+        discoverSessions: NO_DISCOVERY,
+        resolveCwd: () => directory,
+        prepareProviderHome: () => directory,
+        providerHomePath: () => directory,
+        nativeTranscriptPath: () => null,
+        exportDirectory: () => directory,
+        newSessionId: () => 'caption-fixture-unused',
+        readProviderConfig: () => ({
+          home: directory,
+          homeEnv: 'CLAUDE_CONFIG_DIR',
+          model: 'fictional',
+          authNote: null,
+          files: [],
+        }),
+      })
+      const captions = {
+        recovered: 'Fern connected again.',
+        stopped: 'Fern stopped reconnecting.',
+        ended: 'Fern finished reconnecting.',
+      }
+      try {
+        for (const mode of ['old', 'current'] as const) {
+          const id = `caption-${mode}`
+          legacyConversation(db, {
+            id,
+            provider: 'claude',
+            cwd: directory,
+            approvalMode: 'ask',
+            profileId: id,
+          })
+          const error: TranscriptEvent =
+            mode === 'old'
+              ? retry(1)
+              : {
+                  type: 'error',
+                  message: 'fictional raw diagnostic',
+                  fatal: false,
+                  signIn: { state: 'retrying', message: 'Fern is reconnecting.', captions },
+                }
+          const end: TranscriptEvent = { type: 'turn', state: ending }
+          const events = [error, end]
+          const saved = JSON.stringify(events)
+          const insert = db.prepare(
+            'INSERT INTO events (id,session_id,generation,ordinal,type,payload,created_at) VALUES (?, ?, 0, ?, ?, ?, ?)',
+          )
+          for (const [ordinal, event] of events.entries())
+            insert.run(
+              `${id}-${ordinal}`,
+              id,
+              ordinal,
+              event.type,
+              JSON.stringify(event),
+              1000 + ordinal,
+            )
+          const rawRows = db
+            .prepare('SELECT ordinal,payload FROM events WHERE session_id = ? ORDER BY ordinal')
+            .all(id)
+          const live = transcript()
+          applyEvent(live, error)
+          const original = notices(live.items)[0]!
+          const rowId = original.id
+          applyEvent(live, end)
+          const expected =
+            mode === 'current'
+              ? captions[caption]
+              : caption === 'recovered'
+                ? 'Claude sign-in recovered.'
+                : caption === 'stopped'
+                  ? 'Claude sign-in retry stopped.'
+                  : 'Claude sign-in retry ended.'
+          expect(notices(live.items)[0]).toBe(original)
+          expect(original.id).toBe(rowId)
+          expect(original.text).toBe(expected)
+          expect(original.signIn?.state).toBe(state)
+          expect(original.signIn?.details).toEqual([error.message, `turn ${ending}`])
+          const page = host.latestHistory(id)
+          expect(page.entries.map((row) => [row.ordinal, row.at])).toEqual([
+            [0, 1000],
+            [1, 1001],
+          ])
+          const replay = createSessionRecord(id)
+          openWindow(replay, page)
+          for (const row of page.entries) acceptEvent(replay, { sessionId: id, ...row })
+          expect(notices(replay.transcript.items)[0]).toMatchObject({
+            text: expected,
+            level: 'info',
+            signIn: { state, details: original.signIn!.details },
+          })
+          expect(
+            visibleItems(replay.transcript.items).map((row) =>
+              row.kind === 'notice' ? row.text : row.kind,
+            ),
+          ).toEqual(
+            visibleItems(live.items).map((row) => (row.kind === 'notice' ? row.text : row.kind)),
+          )
+          expect(JSON.stringify(events)).toBe(saved)
+          expect(
+            db
+              .prepare('SELECT ordinal,payload FROM events WHERE session_id = ? ORDER BY ordinal')
+              .all(id),
+          ).toEqual(rawRows)
+        }
+      } finally {
+        await host.closeAll()
+        db.close()
+        rmSync(directory, { recursive: true, force: true })
+      }
+    },
+  )
 })

@@ -1,5 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -65,14 +65,6 @@ import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from '.
  */
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const srcRoot = join(here, '../src')
-
-/** ⚑ **PROSE with its wrapping removed**, because prettier re-wraps a docblock sentence freely. */
-const proseOf = (file: string): string =>
-  readFileSync(join(srcRoot, file), 'utf8')
-    .replace(/\n\s*\*\s?/g, ' ')
-    .replace(/\s+/g, ' ')
-
 describe('608 · the turn that no longer waits', () => {
   class RecordingSink implements RuntimeEventSink {
     readonly aPersonIsBehindIt = true
@@ -591,26 +583,6 @@ describe('608 · the turn that no longer waits', () => {
       expect(
         wordsIn(pm).filter((one) => one.text.includes('its turn ended and it replied nothing')),
       ).toEqual([])
-    })
-  })
-
-  /**
-   * 🔴 **§5 · the prose sweep, and standing rule 8.1 says to name BOTH audiences.**
-   *
-   * ⛔ **Doing one well is how the other is missed** — measured on `591`, whose sweep repaired
-   * every sentence a MODEL reads and left `proposal-offer.ts`'s sentence to a PERSON saying the
-   * exact negation of its own commit's first line.
-   */
-  describe('§5 · the sentences that went false with the behaviour', () => {
-    it('⛔ the exemption a routed question has is no longer justified by *the asker is blocked*', () => {
-      // ⚠️ **`394` gave the reason as *a question cannot be dropped on the floor — the conversation
-      // that asked it is BLOCKED until somebody answers*.** ⛔ That is now true of a
-      // PROVIDER-raised question only; an `ask_parent` question blocks nobody, and the exemption
-      // survives for a different reason on that side.
-      const ipc = proseOf('shared/conversation-events.ts')
-      expect(ipc).toContain('question no longer blocks anybody')
-      // ⚑ **D-010 · the host half went with the exemption itself**: every message is held now, so
-      // the rail whose note gave the reason is retired, and there is no exemption left to justify.
     })
   })
 

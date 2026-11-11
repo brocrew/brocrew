@@ -1,3 +1,5 @@
+import { launchFacts, resolveProviderLaunch } from '../lib/provider-launch-fixture'
+import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { afterAll, afterEach, describe, expect, it, onTestFinished } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { type Component } from 'vue'
@@ -104,7 +106,7 @@ function wear(theme: ThemeName): void {
 
 const pause = (ms = 120): Promise<void> => new Promise((done) => setTimeout(done, ms))
 
-const MODELS = async ({ provider }: { provider: string }) => ({
+const MODELS: RuntimeBridge['modelList'] = async ({ provider }) => ({
   provider,
   notAsked: null,
   standIn: null,
@@ -253,6 +255,12 @@ const STATES: readonly [string, () => Promise<Element>][] = [
       ;(window as { api?: unknown }).api = {
         runtime: {
           modelList: MODELS,
+          providerLaunchChoices: async (
+            input: Parameters<RuntimeBridge['providerLaunchChoices']>[0],
+          ) => launchFacts(await MODELS(input)),
+          resolveProviderLaunch: async (
+            input: Parameters<RuntimeBridge['resolveProviderLaunch']>[0],
+          ) => resolveProviderLaunch(input, null),
           listResumable: async () => [],
           listUnresumable: async () => [],
         },

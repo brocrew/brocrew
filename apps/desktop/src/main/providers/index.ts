@@ -1,6 +1,12 @@
 /// <reference types="electron-vite/node" />
 
-import { providerRecord, providerValue, type Provider } from '@brobot2/shared'
+import {
+  providerRecord,
+  providerValue,
+  PROVIDER_DESCRIPTORS,
+  type Provider,
+  type ProviderDescriptor,
+} from '@brobot2/shared'
 import { createClaudeModule, type ClaudeModuleSeams } from './claude'
 import { createCodexModule, type CodexModuleSeams } from './codex'
 import { claudeDesktopInputs, type ClaudeDesktopSeams } from './claude/desktop'
@@ -17,6 +23,11 @@ import type {
 } from './module'
 
 export type { ProviderModule, ProviderModules } from './module'
+
+/** Declared registration facts only; listing never constructs or probes a provider. */
+export function providerCatalogue(): readonly ProviderDescriptor[] {
+  return PROVIDER_DESCRIPTORS
+}
 
 /** Only the registration point knows each provider's construction inputs. */
 export interface ProviderModuleInputs {

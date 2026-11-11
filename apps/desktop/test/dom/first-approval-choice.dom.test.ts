@@ -1,3 +1,4 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, reactive, ref } from 'vue'
@@ -8,7 +9,7 @@ import { createAttachmentBook, NEW_CONVERSATION } from '../../src/renderer/src/l
 import { createLaunchGuard, saveFirstApproval } from '../../src/renderer/src/lib/first-approval'
 import type { CreateSessionInput } from '../../src/shared/runtime-ipc'
 import { NO_LAUNCH_CHOICES } from '../../src/renderer/src/lib/launch-choices'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+
 import { providersBridge } from '../../look/fixtures/providers'
 import { CAPABILITY_FIXTURE } from '../provider-capability-fixture'
 import { mount, unmountAll } from './harness'

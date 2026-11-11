@@ -1,3 +1,4 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
 import type { ModelCatalogue, ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
@@ -7,7 +8,7 @@ import NewConversation from '../../src/renderer/src/components/NewConversation.v
 import { providerForALaunch } from '../../src/renderer/src/lib/agent-store'
 import { createAttachmentBook, NEW_CONVERSATION } from '../../src/renderer/src/lib/drafts'
 import { NO_LAUNCH_CHOICES, type LaunchChoices } from '../../src/renderer/src/lib/launch-choices'
-import { createModelLists, type ModelLists } from '../../src/renderer/src/lib/model-lists'
+import { type ModelLists } from '../../src/renderer/src/lib/model-lists'
 import { theList } from '../../src/shared/model-choice'
 import {
   DEFAULT_PROFILE_ID,

@@ -2,12 +2,7 @@ import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { agentToolsFor, type AgentToolHost } from '../src/main/runtime/agent-tools'
 import { describe, expect, it } from 'vitest'
 
-import {
-  applyEvent,
-  createTranscript,
-  everyCard,
-  markReopened,
-} from '../src/renderer/src/lib/transcript'
+import { applyEvent, createTranscript, everyCard, markReopened } from './lib/core-transcript'
 
 /**
  * 🔴 **695 · R35 — the card of an agent still running in the BACKGROUND is not ended by its turn.**

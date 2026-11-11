@@ -1,3 +1,5 @@
+import { createLiveSessionRecords } from './live-session-records'
+import type { ClientSessionApi } from '../../../shared/client-session-api'
 import type { MoveRequestAck } from '../../../shared/move-contracts'
 import type {
   LedgerWalk,
@@ -33,7 +35,6 @@ import type {
   PermissionDecision,
   ReleasedSession,
   ResumedSession,
-  RuntimeBridge,
   SetSessionSettingInput,
   UserInputResponse,
   ChildWorkInput,
@@ -59,10 +60,8 @@ import { markAnswerRefused, markReopened, markRequestFailed } from './transcript
 import { createProviderBlockStore, type ProviderBlockStore } from './provider-limit-facts'
 import {
   acceptEvent,
-  acceptProviderBlock,
   acceptLiveness,
   adoptSession,
-  createSessionRecord,
   foldHeldEvents,
   openWindow,
   prependOlder,
@@ -834,12 +833,9 @@ export const A_COMMAND_HAS_NOT_ANSWERED =
   `Something you asked of this conversation has had no answer in ${A_COMMAND_IS_WAITED_ON_MS / 1_000} ` +
   'seconds. An answer may still come — this line goes once every answer has.'
 
-export function createSessionStore(bridge: RuntimeBridge): SessionStore {
-  /**
-   * `reactive` proxies a Map's own methods, so `set`/`delete` are tracked and the open list
-   * recomputes. Insertion order is the Map's, which is the order sessions were started in.
-   */
-  const sessions = reactive(new Map<string, SessionRecord>())
+export function createSessionStore(bridge: ClientSessionApi): SessionStore {
+  const records = createLiveSessionRecords(bridge)
+  const { sessions, slot } = records
   const providerBlocks = createProviderBlockStore()
   const approvalChoices = new Map<
     string,
@@ -875,18 +871,6 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
    * and a counter is the same value in a test as in the app.
    */
   const nextLaunchKey = (): string => `launch-${++launchCounter}`
-
-  /**
-   * A slot for a session, created on first sight — which may be an event that arrives before
-   * the host has finished telling us what the session is.
-   */
-  function slot(sessionId: string): SessionRecord {
-    const existing = sessions.get(sessionId)
-    if (existing) return existing
-    const record = reactive(createSessionRecord(sessionId)) as SessionRecord
-    sessions.set(sessionId, record)
-    return record
-  }
 
   /**
    * Fold a handed-over conversation's past into the record its live events will land in.
@@ -928,6 +912,8 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
         ordinal: past.ordinal,
         at: past.at,
         event: past.event,
+        ...(past.workAncestry === undefined ? {} : { workAncestry: past.workAncestry }),
+        ...(past.ancestryContext === undefined ? {} : { ancestryContext: past.ancestryContext }),
         ...(past.humanFinal === undefined ? {} : { humanFinal: past.humanFinal }),
       })
     }
@@ -1047,6 +1033,7 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
     }
     record.phase = 'open'
     adoptSession(record, handed)
+    records.seed(record)
     // ⚑ The life it took ended in what was held for it while the hand-over was on its way — a
     // reopen on the current sign-in, say: the life that runs now is asked for.
     if (phaseOf(record) === 'recorded') void store.look(record.sessionId, 'again')
@@ -1163,6 +1150,7 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
 
   const unsubscribeEvents = bridge.onEvent((message) => {
     const record = sessions.get(message.sessionId)
+    records.hearEvent(message)
     // A session we have never heard of is still recorded rather than dropped: it is ours the
     // moment the host answers, and the events before that answer are part of the conversation.
     //
@@ -1529,10 +1517,7 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
     providerBlocks,
     hearProviderStates(message) {
       providerBlocks.acceptMany(message.moved)
-      for (const moved of message.moved) {
-        const record = sessions.get(moved.conversation)
-        if (record) acceptProviderBlock(record, moved)
-      }
+      records.hearMoved(message)
     },
     live: computed(() =>
       [...sessions.values()].filter(
@@ -1582,7 +1567,9 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
       )
       if (!created) return null
       providerBlocks.acceptSession(created, providerReadAt)
-      adoptSession(slot(created.sessionId), created)
+      const record = slot(created.sessionId)
+      adoptSession(record, created)
+      records.seed(record)
       return created.sessionId
     },
 
@@ -1602,6 +1589,7 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
       }
       const record = slot(sessionId)
       const providerReadAt = providerBlocks.beginRead()
+      void records.read()
       // ⛔ **Hold this session's live events until the page they belong AFTER has been replayed**
       // (242 §3). See {@link SessionRecord.handover}: the host's pump starts at `register`, which is
       // before this round trip returns, so the new life's first events are already on the wire.
@@ -2518,6 +2506,7 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
     },
 
     dispose() {
+      records.dispose()
       approvalChoices.clear()
       providerBlocks.dispose()
       unsubscribeEvents()
@@ -2527,5 +2516,6 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
       sessions.clear()
     },
   }
+  void records.read()
   return store
 }

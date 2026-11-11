@@ -357,15 +357,21 @@ export async function aWaitingPageWithEveryCard(
       walked: walked(
         foldProviderLimits(
           [
-            wall(
-              'claude is approaching its rate limit (seven_day); resets 2026-09-24T11:00:00.000Z',
-            ),
+            {
+              ...wall(
+                'claude is approaching its rate limit (seven_day); resets 2026-09-24T11:00:00.000Z',
+              ),
+              meaning: { word: 'weekly', used: null, untimed: false },
+            },
             ...(oneWall
               ? []
               : [
-                  wall(
-                    'codex is approaching its rate limit — 99% of a 7-day window used; resets 2026-09-25T21:10:56.000Z',
-                  ),
+                  {
+                    ...wall(
+                      'codex is approaching its rate limit — 99% of a 7-day window used; resets 2026-09-25T21:10:56.000Z',
+                    ),
+                    meaning: { word: 'weekly', used: 99, untimed: false },
+                  },
                 ]),
           ],
           [],

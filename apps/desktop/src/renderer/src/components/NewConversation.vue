@@ -48,7 +48,6 @@ export function blockingGroupShows(input: {
 
 <script setup lang="ts">
 import type { HandedPath } from '../../../shared/attachment-contracts'
-import { defaultModel } from '../lib/provider-models'
 import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
 import type {
   CapabilityStatus,
@@ -77,13 +76,7 @@ import ModelPicker from './ModelPicker.vue'
 import { conversationTitle, type ListedConversation } from '../lib/conversation-list'
 import { agentStateWords } from '../../../shared/agent-state'
 
-/**
- * The launcher's plate: faceless — nothing is known about a conversation that does not exist (082).
- *
- * Built by the same function every live conversation goes through rather than written out as two
- * literals, so the one surface whose answer is known in advance still gets it from the one place
- * that decides — and changes with it.
- */
+/** The unknown conversation uses the same header facts as a live one. */
 const LAUNCHER_FACETS = sessionFacets({
   phase: null,
   status: null,
@@ -195,43 +188,10 @@ const props = withDefaults(
      * `RuntimeScreen`'s bindings.
      */
     handing: DraftHanding
-    /**
-     * 🔴 **What this conversation will run on, and cannot stop running on** (417, 423).
-     *
-     * ⚠️ **It stopped being a default the moment the select went**, and at `423` it stopped being a
-     * constant. Its source is now `RuntimeScreen.frontDoorProvider` — *BroBot's identity's provider,
-     * or `DEFAULT_PROVIDER` when that identity has not said* — which is `admitGive`'s resolution
-     * order with the giver term removed, because a launch has no parent. ⛔ **The name stays
-     * `defaultProvider` because that is what it is to THIS surface**: a value it did not choose,
-     * cannot move, and must say out loud.
-     *
-     * 🔴 **This screen CAN move it since `435`, and only before the conversation starts** (HO-025 §4).
-     * ⚑ Since UI-012 the model picker writes the asked term that `providerForALaunch` ranks first —
-     * a model is a provider's — so this prop is still the resolved answer: see {@link startOn}.
-     * ⛔ **Once the conversation is open
-     * nothing anywhere can move it**, as `417 §3` measured, which is why it is SAID rather than merely
-     * obeyed: see {@link providerIsFixed}. ⚑ The sentence, the control and the payload below read this
-     * one prop, so the screen cannot name a provider the launch did not use.
-     */
+    /** Readiness and provider are supplied by core for this launch, never chosen by this view. */
     providerReadiness?: Readonly<Partial<Record<Provider, boolean | null>>> | null
     defaultProvider: Provider
-    /**
-     * 🔴 **The mode this conversation will begin in, because a person set it once** (500,
-     * HO-036 §3.1) — *"a person sets their approval mode once, and every conversation they start
-     * begins there."*
-     *
-     * ⛔ **`null` is *nobody has answered yet* and it is not `ask`** — `086`'s rule, on the one
-     * control where the wrong default is dangerous in both directions. It arrives null until
-     * `agentStore.load()` answers, which is the SAME window {@link defaultProvider} has and which
-     * `RuntimeScreen.frontDoorProvider`'s docblock rules open on purpose. ⚑ **The launch still sends
-     * `'ask'` in that window** — see {@link settings} — and the control SAYS the row has not been
-     * read rather than drawing a state nobody has established.
-     *
-     * ⚑ **Resolved by the screen and passed in, exactly as {@link defaultProvider} is**, so the
-     * sentence this surface shows and the value the launch sends are one value and cannot come
-     * apart. ⛔ **That placement is also the safety property**: the default is spent HERE, above the
-     * IPC boundary, so nothing below it — and therefore no spawn — can read it.
-     */
+    /** Null means the person's approval default has not been read; it must not display as Ask. */
     defaultApprovalMode: 'ask' | 'auto' | null
     approvalDefaultChosen?: boolean
     /**
@@ -625,14 +585,6 @@ function choose(patch: Partial<LaunchChoices>): void {
 const lists = computed(() => props.lists ?? useModelLists())
 
 /**
- * ⚑ **BroBot's list on the provider this conversation will start on**, once it has answered.
- */
-const heldList = computed(() => {
-  const held = lists.value.held(props.defaultProvider)
-  return held?.state === 'answered' ? held.list : null
-})
-
-/**
  * 🔴 **UI-012 · R-1 — what the picker's face shows: the person's pick, else the last pick** (`09`
  * §8: *"last one picked"*), else what the host would start BroBot on — shown by name, like any
  * choice. ⚑ `null` while nothing names one; the face then says why in {@link shownEmpty}.
@@ -650,7 +602,7 @@ const shownPick = computed<PickedModel | null>(() => {
       effort: props.choices.reasoningEffort === '' ? null : props.choices.reasoningEffort,
     }
   }
-  const starts = defaultModel(heldList.value)
+  const starts = lists.value.choices(props.defaultProvider)?.defaultModel ?? null
   return starts === null ? null : { provider: props.defaultProvider, ...starts }
 })
 
@@ -735,8 +687,8 @@ onMounted(() => {
  */
 const sends = computed(() =>
   modelMatchesProvider.value
-    ? theFormSends(props.choices, heldList.value)
-    : defaultModel(heldList.value),
+    ? theFormSends(props.choices, lists.value.choices(props.defaultProvider))
+    : (lists.value.choices(props.defaultProvider)?.defaultModel ?? null),
 )
 
 const firstApproval = ref<'ask' | 'auto' | null>(null)
@@ -749,11 +701,28 @@ const launchMode = computed(
 const canChooseProvider = computed(
   () => props.providerReadiness === null || props.providerReadiness[props.defaultProvider] === true,
 )
+const providerChecks = computed(() =>
+  providers.value.map((provider) => ({ provider, check: lists.value.readiness(provider) })),
+)
+const providerProblems = computed(() =>
+  providerChecks.value.flatMap(({ provider, check }) =>
+    check.state === 'settled' && check.reason !== null ? [{ provider, reason: check.reason }] : [],
+  ),
+)
 const checkingProviders = computed(
   () =>
     props.providerReadiness !== null &&
-    providers.value.some((provider) => props.providerReadiness?.[provider] == null),
+    providerChecks.value.some(
+      ({ provider, check }) =>
+        props.providerReadiness?.[provider] == null && check.state === 'pending',
+    ),
 )
+const providerFailure = computed(() => {
+  if (props.providerReadiness === null || props.providerReadiness[props.defaultProvider] === true)
+    return null
+  const check = lists.value.readiness(props.defaultProvider)
+  return check.state === 'settled' ? check.reason : null
+})
 const headerProvider = computed(() =>
   props.providerReadiness === null
     ? PROVIDER_NAME[props.defaultProvider]
@@ -761,14 +730,16 @@ const headerProvider = computed(() =>
       ? `${PROVIDER_NAME[props.defaultProvider]} · Ready`
       : undefined,
 )
-const approvalBlocked = computed(() =>
-  props.providerReadiness?.[props.defaultProvider] === false
-    ? `${PROVIDER_NAME[props.defaultProvider]} isn't set up. Set it up in Settings → Providers.`
-    : props.providerReadiness !== null && props.providerReadiness[props.defaultProvider] !== true
-      ? `${PROVIDER_NAME[props.defaultProvider]} · Checking…`
-      : props.defaultApprovalMode === null || launchMode.value === null
-        ? 'Choose Ask or Auto before sending.'
-        : null,
+const approvalBlocked = computed(
+  () =>
+    providerFailure.value ??
+    (props.providerReadiness?.[props.defaultProvider] === false
+      ? `${PROVIDER_NAME[props.defaultProvider]} isn't set up. Set it up in Settings → Providers.`
+      : props.providerReadiness !== null && props.providerReadiness[props.defaultProvider] !== true
+        ? `${PROVIDER_NAME[props.defaultProvider]} · Checking…`
+        : props.defaultApprovalMode === null || launchMode.value === null
+          ? 'Choose Ask or Auto before sending.'
+          : null),
 )
 const launchBlocked = computed<SendBlock[]>(() =>
   approvalBlocked.value === null ? [] : [{ words: approvalBlocked.value }],
@@ -871,9 +842,19 @@ watch(
           </div>
 
           <div v-if="!canChooseProvider" class="provider-setup-needed" role="status">
+            <p
+              v-for="problem in providerProblems"
+              :key="problem.provider"
+              class="note"
+              data-cy="provider-readiness-failure"
+            >
+              {{ PROVIDER_NAME[problem.provider] }}: {{ problem.reason }}
+            </p>
             <p v-if="checkingProviders" class="note">Checking providers…</p>
             <template v-else>
-              <p class="note">Set up a provider to start a conversation.</p>
+              <p v-if="providerProblems.length === 0" class="note">
+                Set up a provider to start a conversation.
+              </p>
               <button
                 type="button"
                 class="bb-button bb-button--primary"
@@ -947,6 +928,7 @@ watch(
                   <ModelPicker
                     :providers="providers"
                     :readiness="props.providerReadiness"
+                    :programs="props.programs"
                     :set-up="(provider) => emit('open-providers', provider)"
                     :shown="shownPick"
                     :empty="shownEmpty"

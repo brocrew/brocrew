@@ -36,41 +36,16 @@ import type {
 } from '../src/shared/runtime-ipc'
 
 /**
- * # D-018 · a quiet conversation is stopped by the app, and woken by its next message
- *
- * ## What this file pins, and why it is its own file
- *
- * D-018 gave the host one countdown per running conversation. A flush that derives the conversation
- * idle enough to stop arms it (`idleEnoughToStop`, `countTheIdleMinutes`), every mark drops it, and
- * when it runs out the host asks again and, if nothing moved, closes the conversation as the app
- * itself. No existing test wires `statesMoved` AND reads the countdown, so the stop itself had no
- * test at all. Everything here is read off the REAL host (real SQLite, a provider double):
- *
- *  - **which conversations are counted**: each idle one on a countdown of its own; none while a turn
- *    is parked on its card, background work or a schedule is held, it is planning, or a person's
- *    interrupt-and-send holds the queue; one waiting on an answer counts, because its question
- *    outlives a stop; ⚑ and (W4.210) so does one whose *needs you* the ledger holds — a question to
- *    a person, an ask against an agent's rules, a piece waiting on the person who wrote to it;
- *  - **what a mark does**: it drops the countdown it finds and the flush it asks for arms a fresh
- *    one, so a countdown a mark replaced says nothing when it runs out;
- *  - **what a run-out does**: it asks again before it stops anything, keeps a conversation it cannot
- *    read, and stops through the conversation's own close, which the next message undoes;
- *  - **how long it waits**: one minute by default, on a timer that never keeps the process alive.
- *
- * ## How no test waits out the quiet
- *
- * The host arms `setTimeout`, so this file reads the timers it armed through a call-through spy and
- * runs a countdown out BY HAND (the callback is the host's own `() => void this.stopItIfStillIdle(
- * conversation, countdown)`). The delay under test is `IDLE`, a number no other timer uses and no
- * test waits out. `clearTimeout` is spied the same way, so "a mark dropped this countdown" is read
- * off the timer itself and not inferred from a word.
- *
- * ## Every negative has its positive on the same conversation
- *
- * "Nothing is counted" is only worth something beside "the same conversation, one fact over, IS
- * counted and IS stopped", so every test below ends by running the countdown that is then live out
- * and watching the provider end. A countdown that cannot be armed, or a stop that cannot happen, is
- * therefore not what passed.
+ * Drive idle countdowns through the real SQLite host with a provider double.
+ * Each eligible conversation gets its own timer; pending cards, background work,
+ * schedules, planning and an interrupt-and-send exclude it. Ledger-held waits can
+ * outlive a stop, including a question waiting on an answer.
+ * A mark replaces the countdown; expiry rechecks the facts, keeps unreadable sessions,
+ * and closes eligible sessions through their normal close path. A message wakes them.
+ * The default delay is one minute and does not keep the process alive.
+ * Call-through timer spies retain the real callbacks and cancellation handles, then
+ * invoke the callbacks directly rather than waiting for minutes. Each negative ends
+ * with the same conversation eligible and stopped, proving that the timer can fire.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -520,8 +495,9 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
     expect(cleared().has(first.timer)).toBe(true)
     const fresh = theOneLive()
     expect(fresh.timer).not.toBe(first.timer)
-    // The fresh count was armed by a flush that derived an equal word: nothing was pushed.
-    expect(saidOf(a).length).toBe(before)
+    // The equal state is republished to clear the pending reading; the timer is still renewed.
+    expect(saidOf(a).length).toBe(before + 1)
+    expect(lastSaid(a)?.is).toBe('idle')
 
     // The stale callback, by hand: it is no longer this conversation's, and says nothing.
     await fire(first)
@@ -975,13 +951,13 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
     asksDouble.simulateBackgroundWork({ running: [] })
     await settle()
 
-    // The word stays "waiting on an answer", because waiting outranks the level: nothing is pushed
-    // for it, and only the level itself can hold the stop back.
+    // Waiting still outranks the level; its canonical state is republished after invalidation.
+    // Only the level itself can hold the stop back.
     const saidBefore = saidOf(asks).length
     expect(saidBefore).toBeGreaterThan(0)
     asksDouble.simulateBackgroundWork()
     await settle()
-    expect(saidOf(asks)).toHaveLength(saidBefore)
+    expect(saidOf(asks)).toHaveLength(saidBefore + 1)
     expect(lastSaid(asks)?.is).toBe('waiting-on-an-answer')
 
     // The quiet worker is stopped, so the run-out reached the others; the asker, which holds a

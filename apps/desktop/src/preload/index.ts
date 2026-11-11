@@ -1,4 +1,6 @@
+import { command } from './runtime-command'
 import { loggingClient } from '../shared/logging'
+import type { ResolveProviderLaunchInput } from '../shared/provider-launch'
 import type { DecideMoveRequestInput, MoveRequestAck } from '../shared/move-contracts'
 import type { LedgerWalk, PersonsDecision, PersonsQuestion } from '../shared/question-contracts'
 import type { WhatEachConversationIsWaitingOn, WorkGivenOut } from '../shared/task-contracts'
@@ -160,9 +162,6 @@ import {
   type RespondUserInputInput,
   type AnswerActionInput,
   type RuntimeBridge,
-  type RuntimeCommand,
-  type RuntimeCommandKind,
-  type RuntimeCommandResult,
   type RuntimeEventMessage,
   type SendInput,
   type CancelQueuedMessageInput,
@@ -201,18 +200,11 @@ import type {
 
 if (process.isMainFrame) themeBeforePaint(ipcRenderer)
 
-/**
- * Send one command; it answers what `RuntimeCommandResults` says that command answers, the
- * same map main's dispatch is checked against, so a reply typed one way on one side and another way
- * on the other does not typecheck. The one cast is the wire's own: `invoke` answers `any`.
- */
-function command<K extends RuntimeCommandKind>(
-  payload: Extract<RuntimeCommand, { kind: K }> & { kind: K },
-): Promise<RuntimeCommandResult<K>> {
-  return ipcRenderer.invoke(RUNTIME_COMMAND_CHANNEL, payload) as Promise<RuntimeCommandResult<K>>
-}
-
 const runtime: RuntimeBridge = Object.freeze({
+  providerLaunchChoices: (input: ProviderProfileInput) =>
+    command({ kind: 'providerLaunchChoices', ...input }),
+  resolveProviderLaunch: (input: ResolveProviderLaunchInput) =>
+    command({ kind: 'resolveProviderLaunch', ...input }),
   skills: (request: SkillsRequest): Promise<SkillsReply> => command({ kind: 'skills', request }),
   // 🔴 **716 · one verb, two answers** — an input that asks for its refusal ANSWERED
   // (`answerARefusal`, `710` F-7) is handed over whole, and the bridge's signature types what comes
@@ -521,6 +513,7 @@ const runtime: RuntimeBridge = Object.freeze({
   latestHistory: (input: SessionInput): Promise<HistoryWindow> =>
     command({ kind: 'latestHistory', ...input }),
   capabilities: (): Promise<ProviderCapabilityMap> => command({ kind: 'capabilities' }),
+  providerCatalogue: () => command({ kind: 'providerCatalogue' }),
   providerConnections: (): Promise<readonly ProviderConnection[]> =>
     command({ kind: 'providerConnections' }),
   // Which profiles exist (167) — the launcher's menu. Re-asked after a launch, because starting a

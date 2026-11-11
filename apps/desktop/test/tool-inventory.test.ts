@@ -17,6 +17,7 @@ import {
   type ToolStanding,
 } from '../src/renderer/src/lib/tool-inventory'
 import {
+  boundInventory,
   qualifyWith as runtimeQualifyWith,
   splitQualified as runtimeSplitQualified,
 } from '../../../packages/runtime/src/tool-inventory'
@@ -27,34 +28,70 @@ import { carryForward, foldWindow } from '../src/renderer/src/lib/transcript-win
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
- * 🔴 **358 · what tools this conversation has — the reading, and the three states it can be in.**
- *
- * ⛔ **The fixtures below are a REAL measurement cut down, not an invention.**
- * `probe:tool-inventory` ran the app's own `agentToolsFor` → `claudeMcpServersFor` against a live
- * Claude child, twice, and recorded:
- *
- * ```
- * a · the app’s real launch      init.tools (37) : Task, …, Bash, …, mcp__brobot__end_agent,
- *                                                  mcp__brobot__get_agent_status, …
- *                                init.mcp_servers: brobot[connected]
- * b · control, no mcpServers     init.tools (32) : Task, …, Bash, …  ⟵ none of the five
- *                                init.mcp_servers: (none)
- * ```
- *
- * ⚑ **The control is what makes the positive mean anything** — five names present with the toolset
- * attached and zero present without it, on the same options — and the same pairing is done here at
- * the fold: every assertion that a state renders one way is made beside one that renders another.
- *
- * ## ⚠️ What this file may NOT be written with
- *
- * ⛔ **No provider name reaches this layer.** `039` forbids the renderer deciding anything by
- * recognising a provider and `provider-neutrality.test.ts` refused the first draft of the join by
- * name, so the spelling arrives as {@link ToolNaming} — data on the event. The Claude and Codex
- * conventions below are therefore fixture VALUES, exactly as they would arrive on the wire.
+ * Native-name samples came from paired launches with and without the toolset.
+ * Paired published/unpublished fixtures cover the declared toolset and the provider's reported set.
+ * Naming conventions arrive as {@link ToolNaming} data; the renderer never selects by provider.
+ * Each visible reading is paired with a contrasting state so presence alone cannot pass the test.
  */
 
 const CLAUDE_NAMING = { prefix: 'mcp__', separator: '__' }
 const CODEX_NAMING = { prefix: '', separator: '__' }
+
+it('reads fictional naming from the runtime payload without merging colliding or malformed names', () => {
+  const payload = boundInventory({
+    naming: { prefix: 'wire:', separator: '/' },
+    declared: {
+      server: 'crew',
+      tools: ['message_agent', 'a/b', 'missing'].map((name) => ({
+        name,
+        description: name,
+        parameters: [],
+      })),
+    },
+    published: {
+      tools: [
+        'wire:other/message_agent',
+        'wire:crew/a/b',
+        'wire:crew/message_agent',
+        'wire:crew/unknown',
+        'message_agent',
+        'mcp__crew__message_agent',
+        'wire:/message_agent',
+        'wire:crew/',
+      ],
+      servers: [{ name: 'other', status: 'new-status' }],
+    },
+  })
+  const state = createTranscript()
+  applyEvent(state, { type: 'tool_inventory', ...payload, source: 'init' } as TranscriptEvent)
+  const reading = readInventory(state.tools)
+  expect(reading.own?.tools.map((tool) => [tool.name, tool.standing])).toEqual([
+    ['message_agent', 'confirmed'],
+    ['a/b', 'confirmed'],
+    ['missing', 'offered'],
+  ])
+  expect(reading.unclaimed).toEqual(['wire:crew/unknown'])
+  expect(reading.foreign).toEqual([
+    { name: 'other', status: 'new-status', tools: ['wire:other/message_agent'] },
+  ])
+  expect(reading.builtins).toEqual([
+    'message_agent',
+    'mcp__crew__message_agent',
+    'wire:/message_agent',
+    'wire:crew/',
+  ])
+  expect(catalogue(reading).map((entry) => entry.name)).toEqual([
+    'wire:crew/message_agent',
+    'wire:crew/a/b',
+    'wire:crew/missing',
+    'wire:crew/unknown',
+    'wire:other/message_agent',
+    'message_agent',
+    'mcp__crew__message_agent',
+    'wire:/message_agent',
+    'wire:crew/',
+  ])
+})
 
 /** The five, as `agentToolsFor` declares them — names and shapes verbatim, prose cut down. */
 const DECLARED = {
@@ -384,21 +421,9 @@ describe('what tools this conversation has (358)', () => {
     expect(clean.tools.dropped).toBe(0)
   })
 
-  /**
-   * 🔴 **Two byte-identical copies of one rule, and this is what keeps them honest.**
-   *
-   * ⛔ **The renderer cannot import the runtime's copy.** A value import from `@brobot2/runtime`
-   * (or `@brobot2/shared`) costs the renderer bundle six figures of bytes and the vite config
-   * cannot resolve it at all — `import type` only. So `splitQualified`/`qualify` exist twice on
-   * purpose, which is exactly the `169` §1 hazard ("one rule spelled in N places drifts") that the
-   * codebase otherwise forbids.
-   *
-   * ⚑ **This test is the exception's price.** It is in the `desktop` project, which is node, so it
-   * can import BOTH and drive them through the same table. Fix one and not the other and this goes
-   * red — which is the only thing standing between the two copies and a silent disagreement about
-   * what a tool is called.
-   */
-  it('⛔ the renderer’s copy of the naming rule agrees with the runtime’s, input for input', () => {
+  it('runtime and renderer expose the same portable naming functions', () => {
+    expect(splitQualified).toBe(runtimeSplitQualified)
+    expect(qualify).toBe(runtimeQualifyWith)
     const CASES = [
       { naming: CLAUDE_NAMING, name: 'mcp__brobot__spawn_agent' },
       { naming: CLAUDE_NAMING, name: 'Bash' },
@@ -472,15 +497,8 @@ describe('what tools this conversation has (358)', () => {
     })
 
     /**
-     * 🔴 **The registry survives a window release** — and nothing in the typechecker would have
-     * said so: `FoldCarry` is hand-written.
-     *
-     * ⛔ **On Claude a restatement only happens when the ANSWER MOVES** — the adapter dedupes an
-     * identical `system/init`, which is what keeps a cron waking a session three times from writing
-     * four rows saying nothing happened. So an ordinary conversation publishes once and never
-     * again, and a carry that dropped it would leave one long enough to roll its window reading
-     * *"BroCrew has not been told what this conversation has"* — about a conversation it launched
-     * five tools into.
+     * The hand-written carry must retain the registry when no later row restates it: adapters can
+     * deduplicate unchanged inventory, so rebuilding from retained rows alone would lose the set.
      */
     it('⛔ survives a window release, which no compiler could have checked', () => {
       const state = createTranscript()
@@ -519,13 +537,7 @@ describe('what tools this conversation has (358)', () => {
 
     /* ─────────────────────────── 444 relay 1 · the moment the count was true ────────────── */
 
-    /**
-     * 🔴 **A count that does not say WHEN it was true** (444 relay 1).
-     *
-     * ⛔ **The moment is the ENVELOPE's, not a clock this fold reads.** `RuntimeHost.deliver`
-     * stamps `at` once, writes it to `events.created_at` and puts the same number on the wire, so
-     * a replayed row carries the moment it was RECORDED rather than the moment of the replay.
-     */
+    /** The envelope supplies the recorded moment; replay never substitutes a fold-time clock. */
     it('🔴 the fold keeps the envelope’s moment, and has none of its own', () => {
       const state = createTranscript()
       expect(state.tools.at, 'a fresh transcript has no moment either').toBeNull()
@@ -542,13 +554,8 @@ describe('what tools this conversation has (358)', () => {
     })
 
     /**
-     * ⚑ **THE PAIRED POSITIVE the relay asked for, in ONE sample** — a conversation that has never
-     * been reopened shows what it was handed at its launch, and a reopened one shows the current
-     * set. ⛔ **Latest-wins is what makes a resume honest**, so this asserts the rule rather than
-     * changing it: the second row replaces the first, moment and all.
-     *
-     * ⚠️ **The two moments must DIFFER.** An equality against one re-read of a moving field
-     * measures nothing; the claim is that reopening moves it.
+     * A launch keeps its original set and moment; a reopened conversation takes the latest row.
+     * Distinct timestamps make replacement observable rather than comparing a value with itself.
      */
     it('🔴 a conversation never reopened keeps its launch moment; a reopened one takes the new row’s', () => {
       const launched = createTranscript()
@@ -664,18 +671,8 @@ describe('392 · the catalogue', () => {
   })
 
   /**
-   * 🔴 **The invariant `392` found broken, and the shape of the loss.**
-   *
-   * ⛔ **A name the child listed under BroBot's OWN server that BroBot did not declare fell out of
-   * every list.** `own.tools` is built from the DECLARATION; `foreign` deletes our server by name;
-   * `builtins` only takes names with no server at all. So the frame carried it, three lists each
-   * had a reason not to, and `dropped` — the one field that exists to say a list understates — never
-   * saw it. ⚑ In production the two lists are the same five and this never bites; it bites in
-   * exactly the state this surface exists for.
-   *
-   * ⚠️ **The assertion is a CONSERVATION law rather than a check on one field**: every published
-   * name appears once, and every declared name appears once, and nothing else does. A future field
-   * that loses a name fails here without anybody thinking to test for it.
+   * Catalogue conservation: every published name and every declared name appears exactly once.
+   * This includes undeclared tools under our own server, which fit none of the other categories.
    */
   it('🔴 every published name reaches the catalogue exactly once, and so does every declared one', () => {
     const set = {

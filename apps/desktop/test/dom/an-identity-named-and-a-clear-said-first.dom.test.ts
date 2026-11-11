@@ -1,3 +1,4 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
 import type {
   AgentModelChoice,
   ModelCatalogue,
@@ -12,7 +13,7 @@ import NoticeEntry from '../../src/renderer/src/components/NoticeEntry.vue'
 import OwnInstructions from '../../src/renderer/src/components/OwnInstructions.vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
 import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/agent-store'
-import { createModelLists, type ModelLists } from '../../src/renderer/src/lib/model-lists'
+import { type ModelLists } from '../../src/renderer/src/lib/model-lists'
 import {
   whatAProviderPressWouldClear,
   whatTheProviderPressCleared,

@@ -1,12 +1,12 @@
+import { createModelLists, launchFacts } from './lib/provider-launch-fixture'
 import type { ModelList } from '../src/shared/model-choice-contracts'
 import { describe, expect, it, vi } from 'vitest'
-import { NO_LAUNCH_CHOICES } from '../src/renderer/src/lib/launch-choices'
+import { type LaunchChoices, NO_LAUNCH_CHOICES } from '../src/renderer/src/lib/launch-choices'
 import {
-  createModelLists,
   pickInAConversation,
   theDraftEffort,
-  theFormSends,
-  theFormStartsOn,
+  theFormSends as sendFromFacts,
+  theFormStartsOn as startFromFacts,
   whatAPickBecameSays,
   type PickedModel,
 } from '../src/renderer/src/lib/model-lists'
@@ -35,6 +35,11 @@ const list = (over: Partial<ModelList> = {}): ModelList => ({
   startsOn: null,
   ...over,
 })
+
+const theFormStartsOn = (list: ModelList | null) =>
+  startFromFacts(list === null ? null : launchFacts(list))
+const theFormSends = (choices: LaunchChoices, list: ModelList | null) =>
+  sendFromFacts(choices, list === null ? null : launchFacts(list))
 
 const NOT_ASKED = { ok: false, reason: 'no-profile' } as unknown as NonNullable<
   ModelList['notAsked']

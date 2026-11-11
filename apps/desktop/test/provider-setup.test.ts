@@ -54,12 +54,16 @@ describe('trusted native completion notifications', () => {
         if (state.phase === 'installed' || state.phase === 'signed-in') order.push('terminal')
       })
       f.service[action]()
+      expect(f.service.state().completedSignInMessage).toBeUndefined()
       f.child.stdout.write(auth + '\n')
       expect(f.completed).not.toHaveBeenCalled()
       f.findProgram.mockReturnValue('/fictional/tools/official-cli')
       f.child.emit('close', 0)
       expect(f.completed).toHaveBeenCalledExactlyOnceWith('claude', action)
       expect(order).toEqual(['invalidate', 'terminal'])
+      expect(f.service.state().completedSignInMessage).toBe(
+        action === 'signIn' ? 'Signed in with Claude Code.' : undefined,
+      )
       f.service.state()
       f.child.emit('close', 0)
       expect(f.completed).toHaveBeenCalledTimes(1)
@@ -81,6 +85,7 @@ describe('trusted native completion notifications', () => {
     f.findProgram.mockReturnValue(outcome === 'missing' ? null : '/fictional/tools/official-cli')
     f.child.emit('close', outcome === 'failure' ? 1 : 0)
     expect(f.completed).not.toHaveBeenCalled()
+    expect(f.service.state().completedSignInMessage).toBeUndefined()
   })
   it('does not announce an already installed idle action, and disposes completion listeners', () => {
     const f = fixture('darwin', true)

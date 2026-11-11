@@ -45,9 +45,8 @@ import { providerRefusalSchema } from './provider-refusal'
 export type { ProviderRefusal } from './provider-refusal'
 
 /**
- * The provider-neutral `RuntimeEvent` taxonomy — the normalized stream both
- * adapters (Claude and Codex) emit and the UI/orchestration consume: structured
- * events, never state scraped from terminal text.
+ * Provider-neutral `RuntimeEvent`s are structured adapter facts for UI/orchestration,
+ * never state scraped from terminal text.
  *
  * Each variant's zod schema documents how each provider's own events map onto it.
  */
@@ -850,19 +849,36 @@ const statusEventSchema = z.object({
 const errorCauseSchema = z.enum(['auth', 'auth_stale'])
 export type ErrorCause = z.infer<typeof errorCauseSchema>
 
+/** Opaque display words and the existing transcript fold outcome, independent of session status. */
+export const errorPresentationSchema = z.object({
+  message: z.string(),
+  level: z.enum(['warn', 'error']).optional(),
+  terminal: z.boolean().optional(),
+  repeat: z.enum(['each', 'same-message-once']).optional(),
+})
+export type ErrorPresentation = z.infer<typeof errorPresentationSchema>
+
 /** A recoverable or fatal error. Cancellation is NOT fatal (001 §Q7). */
 const errorEventSchema = z.object({
   type: z.literal('error'),
   message: z.string(),
   fatal: z.boolean(),
   /** Provider-supplied display words; the diagnostic remains in message. */
-  presentation: z.object({ message: z.string() }).optional(),
+  presentation: errorPresentationSchema.optional(),
   /** Absent is the norm: most errors are just errors. See {@link errorCauseSchema}. */
   cause: errorCauseSchema.optional(),
   signIn: z
     .object({
       state: z.enum(['retrying', 'refused', 'stale']),
       message: z.string().optional(),
+      /** Opaque ending words supplied with the retry observation. */
+      captions: z
+        .object({
+          stopped: z.string(),
+          ended: z.string(),
+          recovered: z.string(),
+        })
+        .optional(),
     })
     .optional(),
   /** Absent unless the adapter recognised the refusal. See {@link providerRefusalSchema}. */

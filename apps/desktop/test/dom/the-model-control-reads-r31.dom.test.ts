@@ -1,3 +1,4 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
 import type {
   AgentModelChoice as Choice,
   ModelCatalogue,
@@ -12,7 +13,7 @@ import AgentModelChoice from '../../src/renderer/src/components/AgentModelChoice
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/agent-store'
-import { createModelLists, type ModelLists } from '../../src/renderer/src/lib/model-lists'
+import { type ModelLists } from '../../src/renderer/src/lib/model-lists'
 import { GO_AHEAD_MESSAGE } from '../../src/renderer/src/lib/plan-mode'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import {

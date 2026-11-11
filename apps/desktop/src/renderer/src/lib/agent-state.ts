@@ -1,8 +1,8 @@
+import { scheduleHere } from './record-state'
 import type { ConversationWait, HeldWork } from '../../../shared/task-contracts'
 import type {
   AgentState,
   AgentStateArmFacts,
-  ScheduleLevel,
   StoppedPiece,
 } from '../../../shared/agent-state-contracts'
 import {
@@ -10,13 +10,7 @@ import {
   type SessionStatus,
   type WorkflowAgent,
 } from '../../../shared/runtime-ipc'
-// ⚑ **636 · a TYPE only.** The waits are {@link TASK_STATES}' own `waiting-on-` family — a
-// conversation's are all but the one said on a piece only ({@link ConversationWait}, D-016 · commit
-// 6) — and this file names none of them a second time — see {@link AgentFacets.waiting}.
-
-// ⚑ **D-017 · R11 — the ONE state is `shared/agent-state.ts`'s** — its order, its details and its
-// words — which `main` says in `list_agents` and `get_agent_status`: this file feeds it what the
-// window holds and never ranks or words those states again.
+// Shared state owns precedence and words; this module supplies rendering facets.
 import {
   SCHEDULED,
   agentStateArm,
@@ -26,26 +20,18 @@ import {
   somethingRunning,
 } from '../../../shared/agent-state'
 import { BACKGROUND_WORD } from './background-work'
-// 🔴 **636 · the WORD each wait is drawn with, DERIVED from the table that owns it** — the same
-// move `BACKGROUND_WORD` and `SCHEDULED` a few lines up are here for, and `222` §4's rule: a
-// person meets one phrase for one fact. ⛔ Writing *"waiting on a worker"* in this file would be a
-// second spelling of a sentence `work-report.ts` already owns and already draws on the Work tab.
+// Use the work table's wording rather than a second copy of its labels.
 import { WORK_STATE_WORD } from './work-report'
 import type { SessionPhase, SessionRecord } from './session-record'
 import type { RoutedAway, SubAgentCard, TranscriptState, WorkflowRunCard } from './transcript'
 
+export { stateForRecord } from './record-state'
+
 /**
- * How a LIVE AGENT is drawn, as rules rather than as markup (081/082).
- *
- * Define the three composable facets: `doing` avatar, `being` underline and `needing` corner badge on a white plate. Keep vocabularies, tokens, small-size priority, accessible sentences and fact-to-facet mapping together.
- *
- * It is pure on purpose, and for the same reason `drawer.ts` is: the component is almost entirely
- * conditional rendering, the renderer tests are SSR-only, and a rule that lives in a template is a
- * rule nothing can assert without a browser (067).
- *
- * ⚠️ **This is a SIBLING of `StateBadge.vue`, not a replacement.** StateBadge draws a DOCUMENT —
- * lifecycle, condition, outcome. This draws an agent. They stay visually distinct so that a row
- * never suggests a document is thinking.
+ * Pure rendering rules for an agent: doing artwork, being underline and needing badge.
+ * Keep their vocabulary, priority and accessible wording together so tests can drive
+ * the same rules as components. Canonical state is selected before these projections.
+ * StateBadge describes a document's lifecycle and outcome, not an agent's activity.
  */
 
 /* ---------------------------------------------------------------------------
@@ -1034,23 +1020,28 @@ export function stateHere(
   )
 }
 
-/**
- * ⚑ **D-017 · R11 — the schedule this window can stand behind.**
- *
- * ⛔ **A one-shot's time only where this fold holds the conversation from its first event.** A
- * one-shot fires at the first match after it was FIRST listed (`nextWake`), and the fold knows that
- * moment only when it saw the ledger from the start — `!record.window.hasOlder` on the one fold,
- * {@link SessionRecord.opening}'s own rule. ⚠️ A conversation reopened part-way through its history
- * first sees a job at a later restatement, and would promise a passed one-shot's time a year on;
- * there the job keeps no first listing and its word is plain *scheduled* — saying less, where
- * `main` reads the first listing off the whole ledger.
- */
-function scheduleHere(
-  record: Pick<SessionRecord, 'control' | 'transcript' | 'window'>,
-): ScheduleLevel {
-  const schedule = record.control.schedule
-  if (record.control === record.transcript && !record.window.hasOlder) return schedule
-  return { ...schedule, jobs: schedule.jobs.map((job) => ({ ...job, listedSince: undefined })) }
+/** Activity artwork may refine an active state, but cannot choose a different state family. */
+export function facetsForRecord(
+  record: Pick<SessionRecord, 'agentState'>,
+  local: AgentFacets,
+): AgentFacets {
+  if (record.agentState === undefined) return local
+  const being = local.being === undefined ? {} : { being: local.being }
+  if (record.agentState === null) return { ...being, doing: 'unknown' }
+  const state = record.agentState
+  const shown = facetsOfState(state, state.is === 'needs-you' ? local.needing : undefined)
+  return {
+    ...being,
+    ...shown,
+    ...(local.work === undefined ? {} : { work: local.work }),
+    ...(state.is === 'active' &&
+    local.doing !== undefined &&
+    local.doing !== 'idle' &&
+    local.doing !== 'unknown'
+      ? { doing: local.doing }
+      : {}),
+    ...(local.needing === 'plan' ? { needing: local.needing } : {}),
+  }
 }
 
 /**
@@ -1142,43 +1133,46 @@ export function recordFacets(
     questions: yours.questions,
     planNeedsGoAhead: record.meta?.planNeedsGoAhead ?? false,
   })
-  return sessionFacets({
-    phase: record.phase,
-    status: record.control.status,
-    activity: record.control.activity,
-    streaming: record.control.streamingId !== null,
-    liveness: record.meta?.liveness.state ?? null,
-    ...(needing ? { needing } : {}),
-    parkedOnAnotherAnswer: parkedOnAnotherAnswer(yours, record.control.routedAway),
-    // ⛔ **From CONTROL, like every other field here, and that is what makes the RAIL able to say it**
-    // (250, on 064). The registry lands on whichever projection folded the event, and `acceptEvent`
-    // folds into `control` on both of its branches — so a conversation the reader is not looking at,
-    // or has scrolled back inside, still knows what it left running. A rail that read `transcript`
-    // would go quiet about every conversation but one, which is the class of bug 064 exists for.
-    //
-    // ⚑ It is also O(1): two number reads on a field only a level payload writes, so this stays off
-    // the streaming hot path exactly as `control.pending` does (203).
-    detached: somethingRunning(record.control.background),
-    // ⛔ **The fifth, from CONTROL like every other field here — and that is what lets the RAIL say
-    // it** (258, on 064). A schedule is republished only at turn END, so a conversation the reader
-    // is not looking at may hold a level nothing will restate for minutes; reading `transcript`
-    // would go quiet about every conversation but one, which is the class of bug 064 exists for.
-    //
-    // ⚑ O(1): a length and a count on a field only a level payload writes, so this stays off the
-    // streaming hot path exactly as `control.pending` does (203).
-    scheduled: scheduleHeld(record.control.schedule),
-    // ⛔ **The sixth, and the ONLY one on this list that is not read off `record`** (636) — which
-    // is the whole reason it is a parameter. ⚑ `control` is this window's fold of THIS
-    // conversation's ledger, and a child's `work_replied` is written into the CHILD's ledger, so
-    // `RuntimeScreen`'s own note holds: *"the conversation that gave the work is told nothing at
-    // all when the work moves."* ⚠️ No fold and no push can produce it; only a read can.
-    // ⚑ **D-017 · R19 — the HOST's verdict on who owes it the next move rides here** (`theWaitIn`):
-    // a person's (*needs you*), another conversation's answer, or ⚑ D-036 the reply to work it gave
-    // out — never this record's own reading.
-    ...(waiting ? { waiting } : {}),
-    ...(work ? { work } : {}),
-    ...(owes ? { owes } : {}),
-  })
+  return facetsForRecord(
+    record,
+    sessionFacets({
+      phase: record.phase,
+      status: record.control.status,
+      activity: record.control.activity,
+      streaming: record.control.streamingId !== null,
+      liveness: record.meta?.liveness.state ?? null,
+      ...(needing ? { needing } : {}),
+      parkedOnAnotherAnswer: parkedOnAnotherAnswer(yours, record.control.routedAway),
+      // ⛔ **From CONTROL, like every other field here, and that is what makes the RAIL able to say it**
+      // (250, on 064). The registry lands on whichever projection folded the event, and `acceptEvent`
+      // folds into `control` on both of its branches — so a conversation the reader is not looking at,
+      // or has scrolled back inside, still knows what it left running. A rail that read `transcript`
+      // would go quiet about every conversation but one, which is the class of bug 064 exists for.
+      //
+      // ⚑ It is also O(1): two number reads on a field only a level payload writes, so this stays off
+      // the streaming hot path exactly as `control.pending` does (203).
+      detached: somethingRunning(record.control.background),
+      // ⛔ **The fifth, from CONTROL like every other field here — and that is what lets the RAIL say
+      // it** (258, on 064). A schedule is republished only at turn END, so a conversation the reader
+      // is not looking at may hold a level nothing will restate for minutes; reading `transcript`
+      // would go quiet about every conversation but one, which is the class of bug 064 exists for.
+      //
+      // ⚑ O(1): a length and a count on a field only a level payload writes, so this stays off the
+      // streaming hot path exactly as `control.pending` does (203).
+      scheduled: scheduleHeld(record.control.schedule),
+      // ⛔ **The sixth, and the ONLY one on this list that is not read off `record`** (636) — which
+      // is the whole reason it is a parameter. ⚑ `control` is this window's fold of THIS
+      // conversation's ledger, and a child's `work_replied` is written into the CHILD's ledger, so
+      // `RuntimeScreen`'s own note holds: *"the conversation that gave the work is told nothing at
+      // all when the work moves."* ⚠️ No fold and no push can produce it; only a read can.
+      // ⚑ **D-017 · R19 — the HOST's verdict on who owes it the next move rides here** (`theWaitIn`):
+      // a person's (*needs you*), another conversation's answer, or ⚑ D-036 the reply to work it gave
+      // out — never this record's own reading.
+      ...(waiting ? { waiting } : {}),
+      ...(work ? { work } : {}),
+      ...(owes ? { owes } : {}),
+    }),
+  )
 }
 
 /**

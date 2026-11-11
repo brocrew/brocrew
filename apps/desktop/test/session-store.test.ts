@@ -1,3 +1,5 @@
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
+import { launchFacts, resolveProviderLaunch } from './lib/provider-launch-fixture'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it, vi } from 'vitest'
 import { computed, nextTick, reactive } from 'vue'
@@ -28,13 +30,8 @@ import type {
 } from '../src/shared/runtime-ipc'
 
 /**
- * Many conversations at once (090).
- *
- * The host has been multi-session since 046 while the renderer held exactly one, and every
- * symptom — "session is already open", a session running behind a switched-away view, a second
- * chat that could not be started — came from that one mismatch. These drive the store directly:
- * no component, no DOM, no provider, because the routing and the ordinal continuity are the part
- * that has to be right and none of it is about pixels.
+ * Drive multiple sessions through the store without components, a DOM or a provider.
+ * These cases exercise routing, buffering and ordinal continuity independently of rendering.
  */
 
 /**
@@ -207,6 +204,9 @@ function fakeBridge() {
   }
 
   const impl: RuntimeBridge = {
+    providerCatalogue: async () => PROVIDER_DESCRIPTORS,
+    providerLaunchChoices: async (input) => launchFacts(await impl.modelList(input)),
+    resolveProviderLaunch: async (input) => resolveProviderLaunch(input, null),
     skills: async () => ({ operation: 'refused', reason: 'source-unavailable' }),
     createSession: async (input) => {
       calls.push(`create:${input.provider}`)

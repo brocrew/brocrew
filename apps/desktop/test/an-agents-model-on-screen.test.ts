@@ -1,3 +1,4 @@
+import { createModelLists } from './lib/provider-launch-fixture'
 import type { ModelList } from '../src/shared/model-choice-contracts'
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -19,7 +20,6 @@ import {
   heldReachesSays,
 } from '../src/renderer/src/lib/agent-model-choice'
 import {
-  createModelLists,
   isNoLongerListed,
   NO_LONGER_LISTED,
   theEffortsOffered,

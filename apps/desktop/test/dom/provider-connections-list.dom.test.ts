@@ -1,8 +1,10 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
+import { providerDescriptor } from '@brobot2/shared'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, reactive, type Component } from 'vue'
 import type { Provider, ProviderConnection } from '@brobot2/shared'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+
 import { providersBridge } from '../../look/fixtures/providers'
 import { mount, unmountAll } from './harness'
 
@@ -52,9 +54,19 @@ function card(read: () => Promise<readonly ProviderConnection[]>) {
     resourcesPaused: false,
     resourcesError: null,
     loginMoved: 0,
-    lists: createModelLists(() => window.api.runtime),
+    lists: createModelLists(() => ({
+      modelList: window.api.runtime.modelList,
+      addHandAddedModel: window.api.runtime.addHandAddedModel,
+      deleteHandAddedModel: window.api.runtime.deleteHandAddedModel,
+    })),
   })
-  const component = defineComponent({ setup: () => () => h(ProviderCard as Component, props) })
+  const component = defineComponent({
+    setup: () => () =>
+      h(ProviderCard as Component, {
+        ...props,
+        descriptor: providerDescriptor(props.provider),
+      }),
+  })
   return { props, m: mount(component, {}, { width: 520, height: 900 }) }
 }
 

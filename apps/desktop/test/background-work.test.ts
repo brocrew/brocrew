@@ -20,7 +20,7 @@ import {
   type SubAgentToolRow,
   type ToolItem,
   type TranscriptState,
-} from '../src/renderer/src/lib/transcript'
+} from './lib/core-transcript'
 
 /**
  * # 248 · Work that outlives the turn, as a person reads it

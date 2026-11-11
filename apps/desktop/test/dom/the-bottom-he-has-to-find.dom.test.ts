@@ -1,4 +1,4 @@
-import type { TranscriptEvent } from '../../src/shared/conversation-events'
+import { scrollLines as run, scrollMessage as message } from './scroll-lines'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
@@ -43,23 +43,6 @@ import { mount, unmountAll, type Mounted } from './harness'
  * ⚠️ **§2 measured the avatar and the reading's age on the project room's rows**, and D-016 deleted
  * the room — so its cases went with it. The plate itself is measured wherever it is still drawn.
  */
-
-const AT = 1_700_000_000_000
-
-function message(ordinal: number): RuntimeEventMessage {
-  return {
-    sessionId: 'sess_1',
-    ordinal,
-    at: AT + ordinal,
-    event: {
-      type: 'assistant_message',
-      text: `line ${String(ordinal).padStart(6, '0')} — ${'the quick brown fox jumps. '.repeat(3)}`,
-    } as TranscriptEvent,
-  } as RuntimeEventMessage
-}
-
-const run = (from: number, count: number): RuntimeEventMessage[] =>
-  Array.from({ length: count }, (_, index) => message(from + index))
 
 const fromBottom = (el: HTMLElement): number => el.scrollHeight - el.scrollTop - el.clientHeight
 

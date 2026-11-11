@@ -1,3 +1,4 @@
+import { registerQuestionScrollCases } from './question-scroll-cases'
 import { memoryStorage } from './memory-storage'
 import type { AgentState } from '../../src/shared/agent-state-contracts'
 import type {
@@ -11,12 +12,11 @@ import type {
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { expandAgentCards } from './harness'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { defineComponent, h, nextTick, reactive, ref, type Component } from 'vue'
+import { nextTick, reactive } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
 import QuestionCard from '../../src/renderer/src/components/QuestionCard.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
-import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
 import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
 import { homeAttention } from '../../src/renderer/src/lib/home-attention'
 import { usePersonsQueue, type PersonsQueueRow } from '../../src/renderer/src/lib/persons-queue'
@@ -31,13 +31,11 @@ import {
   markAnswerRefused,
   markRequestFailed,
   type ToolItem,
-  type TranscriptItem,
   type TranscriptState,
 } from '../../src/renderer/src/lib/transcript'
-import { foldWindow } from '../../src/renderer/src/lib/transcript-window'
 import { usageSays } from '../../src/renderer/src/lib/usage-limit'
 
-import type { ProviderCondition } from '../../src/shared/provider-limit'
+import type { ProviderCondition, ProviderLimitMeaning } from '../../src/shared/provider-limit'
 import {
   NOTHING_NAMED_THE_WORK,
   aPersonsSince,
@@ -48,7 +46,6 @@ import {
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import type {
   ResumableSessionInfo,
-  RuntimeEventMessage,
   UnresumableSessionInfo,
   UserInputResponse,
 } from '../../src/shared/runtime-ipc'
@@ -1205,27 +1202,37 @@ describe('what the asker’s ledger says settles the card', () => {
 /** A day a person reads — local-time constructors, so a same-day arm is timezone-proof. */
 const at = (day: number, hour: number): number => new Date(2026, 9, day, hour, 0).getTime()
 
-const CLAUDE_WEEK =
-  'claude is approaching its rate limit (seven_day); resets 2026-10-07T11:00:00.000Z'
-const CLAUDE_FIVE_HOURS = 'claude is rate-limited (five_hour); resets 2026-10-01T14:00:00.000Z'
-const CLAUDE_OPUS =
-  'claude is approaching its rate limit (seven_day_opus); resets 2026-10-07T11:00:00.000Z'
+const CLAUDE_WEEK = {
+  said: 'claude is approaching its rate limit (seven_day); resets 2026-10-07T11:00:00.000Z',
+  meaning: { word: 'weekly', used: null, untimed: false },
+}
+const CLAUDE_FIVE_HOURS = {
+  said: 'claude is rate-limited (five_hour); resets 2026-10-01T14:00:00.000Z',
+  meaning: { word: '5-hour', used: null, untimed: false },
+}
+const CLAUDE_OPUS = {
+  said: 'claude is approaching its rate limit (seven_day_opus); resets 2026-10-07T11:00:00.000Z',
+  meaning: { word: 'weekly Opus', used: null, untimed: false },
+}
 
 const limit = (
-  said: string[],
+  rows: readonly { said: string; meaning: ProviderLimitMeaning }[],
   over: Partial<Pick<ProviderCondition, 'provider' | 'standing' | 'resetsAt'>> = {},
 ): ProviderCondition => ({
   key: over.provider ?? 'claude',
   provider: 'claude',
   standing: 'about-to-stop',
   says: '',
-  said,
+  said: rows.map((one) => one.said),
+  meaning: rows.map((one) => one.meaning),
   resetsAt: at(7, 11),
   ...over,
 })
 
-const codex = (window: string): string =>
-  `codex is approaching its rate limit — 99% of ${window} used; resets 2026-10-07T11:00:00.000Z`
+const codex = (window: string, word: string) => ({
+  said: `codex is approaching its rate limit — 99% of ${window} used; resets 2026-10-07T11:00:00.000Z`,
+  meaning: { word, used: 99, untimed: false },
+})
 
 describe('a usage limit is said in a person’s words', () => {
   const NOW_AT = at(1, 9)
@@ -1257,24 +1264,26 @@ describe('a usage limit is said in a person’s words', () => {
 
     // Codex says a duration, and the window is put in a person's words — with how much of it is
     // used, which its line says (F096).
-    const named = (window: string): string =>
-      usageSays(limit([codex(window)], { provider: 'codex' }), NOW_AT)
-    expect(named('a 7-day window')).toBe(
+    const named = (window: string, word: string): string =>
+      usageSays(limit([codex(window, word)], { provider: 'codex' }), NOW_AT)
+    expect(named('a 7-day window', 'weekly')).toBe(
       `Codex is near its weekly limit (99% used); it resets in ${reset}.`,
     )
-    expect(named('a 1-day window')).toBe(
+    expect(named('a 1-day window', 'daily')).toBe(
       `Codex is near its daily limit (99% used); it resets in ${reset}.`,
     )
-    expect(named('a 3-day window')).toBe(
+    expect(named('a 3-day window', '3-day')).toBe(
       `Codex is near its 3-day limit (99% used); it resets in ${reset}.`,
     )
-    expect(named('a 5-hour window')).toBe(
+    expect(named('a 5-hour window', '5-hour')).toBe(
       `Codex is near its 5-hour limit (99% used); it resets in ${reset}.`,
     )
 
     // How much is used (F096): the most any line says of a limit, beside that limit only.
-    const claudeWeekAt = (used: number): string =>
-      `claude is approaching its rate limit (seven_day) — ${String(used)}% used; resets 2026-10-07T11:00:00.000Z`
+    const claudeWeekAt = (used: number) => ({
+      said: `claude is approaching its rate limit (seven_day) — ${String(used)}% used; resets 2026-10-07T11:00:00.000Z`,
+      meaning: { word: 'weekly', used, untimed: false },
+    })
     expect(usageSays(limit([claudeWeekAt(92), claudeWeekAt(96)]), NOW_AT)).toBe(
       `Claude is near its weekly limit (96% used); it resets in ${reset}.`,
     )
@@ -1283,9 +1292,17 @@ describe('a usage limit is said in a person’s words', () => {
     )
 
     // A line that names no window names no limit.
-    expect(usageSays(limit(['claude is approaching its rate limit']), NOW_AT)).toBe(
-      `Claude is near a usage limit; it resets in ${reset}.`,
-    )
+    expect(
+      usageSays(
+        limit([
+          {
+            said: 'claude is approaching its rate limit',
+            meaning: { word: null, used: null, untimed: true },
+          },
+        ]),
+        NOW_AT,
+      ),
+    ).toBe(`Claude is near a usage limit; it resets in ${reset}.`)
 
     // When it resets: a provider that did not say…
     expect(usageSays(limit([CLAUDE_WEEK], { resetsAt: null }), NOW_AT)).toBe(
@@ -1312,184 +1329,4 @@ describe('a usage limit is said in a person’s words', () => {
 
 /* ------------------------------------------------------------------ 7 · Jump to latest */
 
-const AT = 1_700_000_000_000
-
-function message(ordinal: number): RuntimeEventMessage {
-  return {
-    sessionId: 'sess_1',
-    ordinal,
-    at: AT + ordinal,
-    event: {
-      type: 'assistant_message',
-      text: `line ${String(ordinal).padStart(6, '0')} — ${'the quick brown fox jumps. '.repeat(3)}`,
-    } as TranscriptEvent,
-  } as RuntimeEventMessage
-}
-
-const run = (from: number, count: number): RuntimeEventMessage[] =>
-  Array.from({ length: count }, (_, index) => message(from + index))
-
-interface Reader {
-  box: () => HTMLElement
-  /** The bar's button if it is on screen, or null — `q()` throws, and absence is the subject here. */
-  jump: () => HTMLElement | null
-  older: () => HTMLElement | null
-  jumps: () => number
-  loads: () => number
-  /** Lines arrive below the reader. */
-  grow: (count: number) => Promise<void>
-}
-
-/** How far the box's end is from the reader, in px. */
-const away = (box: HTMLElement): number => box.scrollHeight - box.scrollTop - box.clientHeight
-
-/**
- * A transcript over a window that holds the tail, as `eleven-hours` builds one — with the loads it
- * was asked for counted, and the lines it draws growable by the test.
- */
-function reader(options: { rows: number; hasOlder: boolean }): Reader {
-  const events = ref<RuntimeEventMessage[]>(run(0, options.rows))
-  const items = ref<TranscriptItem[]>(foldWindow(events.value).items)
-  let jumps = 0
-  let loads = 0
-  const Host = defineComponent({
-    name: 'ReaderHost',
-    setup() {
-      return () =>
-        h(TranscriptView as Component, {
-          items: items.value,
-
-          hasOlder: options.hasOlder,
-          turnAligned: true,
-          loadOlder: options.hasOlder
-            ? async () => {
-                loads += 1
-              }
-            : undefined,
-          atTail: true,
-          jumpToLatest: async () => {
-            jumps += 1
-          },
-        })
-    },
-  })
-  const view = mount(Host, {}, { width: 900, height: 400 })
-  const one = (cy: string): HTMLElement | null => view.all(cy)[0] ?? null
-  return {
-    box: () => view.q('transcript'),
-    jump: () => one('jump-to-latest'),
-    older: () => one('load-older'),
-    jumps: () => jumps,
-    loads: () => loads,
-    grow: async (count) => {
-      events.value = run(0, events.value.length + count)
-      items.value = foldWindow(events.value).items
-      await nextTick()
-    },
-  }
-}
-
-/** The reader scrolls up to the first line, and the engine says so. */
-const scrollToTop = async (box: HTMLElement): Promise<void> => {
-  box.scrollTop = 0
-  box.dispatchEvent(new Event('scroll'))
-  await nextTick()
-}
-
-/**
- * ⚑ **Eight rows in a 400px box**, measured on this engine: 223px of overflow with *Load earlier
- * messages* above them, so a reader pinned to the end sits 223px down — past the follow's 40px, and
- * inside the 400px band in which a scroll asks for older history.
- */
-const SHORT_PAGE = 8
-
-describe('Jump to latest is offered where the newest line is out of view', () => {
-  it('🔴 a reader who scrolled up a window that still holds the tail is offered Jump to latest', async () => {
-    const s = reader({ rows: 40, hasOlder: false })
-    const box = s.box()
-    // The premise, read on this mount: it overflows, and the newest line is on screen.
-    expect(box.scrollHeight).toBeGreaterThan(box.clientHeight)
-    expect(away(box)).toBeLessThanOrEqual(1)
-    expect(s.jump(), 'the bar is offered over a newest line that is in view').toBeNull()
-
-    // The reader scrolls up: the window still holds the tail, and the newest line is out of view.
-    await scrollToTop(box)
-    expect(s.jump(), 'a reader who scrolled up has no way back').not.toBeNull()
-    expect(s.jump()!.textContent?.trim()).toBe('Jump to latest')
-
-    s.jump()!.click()
-    await nextTick()
-    await frames(2)
-    // The press ran, put the reader at the end again, and the bar went.
-    expect(s.jumps()).toBe(1)
-    expect(away(box)).toBeLessThanOrEqual(1)
-    expect(s.jump(), 'the bar outlived a reader back at the end').toBeNull()
-  })
-
-  it('🔴 a short page does not page back on its own scroll while its newest line is in view', async () => {
-    const s = reader({ rows: SHORT_PAGE, hasOlder: true })
-    const box = s.box()
-    await frames(2)
-    // ⚑ The premise, read on this mount: the page overflows its box by more than the follow's
-    // 40px, and by less than the 400px band in which a scroll asks for older history — so the
-    // follow's own scroll is inside the band while the newest line is on screen.
-    const overflow = box.scrollHeight - box.clientHeight
-    expect(overflow, 'the page does not overflow the follow’s threshold').toBeGreaterThanOrEqual(60)
-    expect(overflow, 'the page is taller than the fetch band').toBeLessThanOrEqual(300)
-    expect(away(box)).toBeLessThanOrEqual(1)
-    expect(s.older(), 'a window with older history offers no way to ask for it').not.toBeNull()
-
-    box.dispatchEvent(new Event('scroll'))
-    await frames(2)
-    expect(s.loads(), 'a scroll at the end asked for older history').toBe(0)
-
-    // ⚑ The button still asks: a reader at the end who wants the beginning presses for it.
-    s.older()!.click()
-    await frames(2)
-    expect(s.loads()).toBe(1)
-    unmountAll()
-
-    // One fact over: the same page, scrolled up to the top, is a reader asking for the beginning.
-    const up = reader({ rows: SHORT_PAGE, hasOlder: true })
-    await frames(2)
-    expect(up.loads()).toBe(0)
-    up.box().scrollTop = 0
-    await frames(2)
-    expect(up.loads()).toBe(1)
-  })
-
-  it('⚑ the pill appears when lines arrive below a reader who is no longer following', async () => {
-    const s = reader({ rows: SHORT_PAGE, hasOlder: true })
-    const box = s.box()
-    await frames(2)
-    expect(away(box)).toBeLessThanOrEqual(1)
-    expect(s.jump(), 'the bar is offered over a newest line that is in view').toBeNull()
-
-    // Pressing *Load earlier messages* is the reader saying they are not following the end; nothing
-    // is prepended here, so the newest line is still in view.
-    s.older()!.click()
-    await frames(2)
-    expect(s.loads()).toBe(1)
-    expect(away(box)).toBeLessThanOrEqual(1)
-    expect(s.jump()).toBeNull()
-
-    // Lines arrive below them. No scroll event fires, and the end has left the view.
-    await s.grow(4)
-    await frames(2)
-    expect(away(box)).toBeGreaterThan(40)
-    expect(
-      s.jump(),
-      'lines arrived below a reader who is not following and no bar came',
-    ).not.toBeNull()
-    expect(s.jump()!.textContent?.trim()).toBe('Jump to latest')
-    unmountAll()
-
-    // One fact over: a reader who is following has the same lines arrive and stays pinned at the end.
-    const following = reader({ rows: SHORT_PAGE, hasOlder: true })
-    await frames(2)
-    await following.grow(4)
-    await frames(2)
-    expect(away(following.box())).toBeLessThanOrEqual(1)
-    expect(following.jump()).toBeNull()
-  })
-})
+registerQuestionScrollCases(frames)

@@ -5,7 +5,7 @@ import {
   createTranscript,
   type ToolItem,
   type TranscriptState,
-} from '../src/renderer/src/lib/transcript'
+} from './lib/core-transcript'
 import { joinsARun, transcriptRows } from '../src/renderer/src/lib/tool-runs'
 import {
   A_HANDLE_READ_ALOUD,
@@ -150,6 +150,23 @@ const IDS = [ident('ada', 'Ada'), ident('brobot', null)]
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 describe('§1 · which calls are these two tools', () => {
+  it('uses fictional session naming for controls and leaves collisions as ordinary tools', () => {
+    const state = fold([
+      inventory({ prefix: 'wire:', separator: '/' }, 'crew', ['message_agent']),
+      call('ours', 'wire:crew/message_agent'),
+      call('foreign', 'wire:other/message_agent'),
+      call('bare', 'message_agent'),
+      call('legacy', 'mcp__crew__message_agent'),
+      call('undeclared', 'wire:crew/reply_to_parent'),
+      call('tail', 'wire:crew/message_agent/extra'),
+      call('malformed', 'wire:/message_agent'),
+    ])
+    expect(toolNamed(state, 'ours').outgoing?.tool).toBe('message_agent')
+    for (const id of ['foreign', 'bare', 'legacy', 'undeclared', 'tail', 'malformed']) {
+      expect(toolNamed(state, id).outgoing, id).toBeUndefined()
+    }
+  })
+
   it('🔴 Claude’s spelling and Codex’s are both recognised — through the inventory, not a literal', () => {
     const claude = fold([
       inventory(CLAUDE),

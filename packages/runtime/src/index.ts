@@ -56,6 +56,8 @@ export {
 
 export {
   runtimeEventSchema,
+  errorPresentationSchema,
+  type ErrorPresentation,
   toRuntimeEvent,
   unknownCategorySchema,
   wrapUnknown,

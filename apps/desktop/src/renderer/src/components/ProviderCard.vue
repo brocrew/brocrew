@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
-import { PROVIDER_DESCRIPTORS, type ProviderDescriptor } from '@brobot2/shared'
+import type { ProviderDescriptor } from '@brobot2/shared'
+import { useClientProviders } from '../client-provider/injection'
+import { providerCatalogue } from '../client-provider/catalogue'
 import { PROVIDER_PARTS, type ProviderPart } from '../lib/provider-parts'
 import type {
   CapabilityStatus,
@@ -15,13 +17,9 @@ import {
   A_STANDING_IN_A_WORD,
   A_STANDING_WARNS,
   DEFAULT_PROFILE_ID,
-  PROVIDER_NAME,
 } from '../../../shared/runtime-ipc'
-import {
-  providerConditions,
-  wallsFromUsage,
-  type ProviderCondition,
-} from '../../../shared/provider-limit'
+import type { ProviderCondition } from '../../../shared/provider-limit'
+import { currentUsageWarnings } from '../lib/current-usage-warnings'
 import {
   limitsDisplayLabel,
   limitsDisplayWords,
@@ -69,7 +67,7 @@ import ProviderConnections from './ProviderConnections.vue'
  * 🔒 **The key field**: the key is in the field until it is sent, and the field is cleared as it is
  * sent. Nothing answers with the key, and nothing here logs it.
  *
- * ⛔ **No provider is named here**: every name is `PROVIDER_NAME`'s (`provider-neutrality.test.ts`).
+ * Display names and sign-in words come from supplied provider facts.
  */
 const props = withDefaults(
   defineProps<{
@@ -118,7 +116,13 @@ const props = withDefaults(
   { lists: undefined, setup: undefined, readVersions: undefined, open: undefined },
 )
 
-const markKind = computed(() => props.capabilities?.[props.provider]?.mark?.kind ?? null)
+const client = useClientProviders()
+const catalogue = providerCatalogue(client)
+const catalogueState = catalogue.held
+const markKind = computed(() => {
+  if (props.capabilities === null) return descriptor.value?.capabilities.mark.kind ?? null
+  return props.capabilities[props.provider]?.mark?.kind ?? null
+})
 
 const emit = defineEmits<{
   /** A person pressed a part's heading: fold it, or open it. */
@@ -140,7 +144,7 @@ const nativeSetup = useProviderSetup(
     if (!cardOpen) return
     await aPersonChecksAgain(false)
     if (operation === 'signIn' && auth.value?.state === 'usable')
-      noticeSays(`Signed in with ${props.setup?.tool ?? name.value}.`, false)
+      noticeSays(nativeSetup.state.value?.completedSignInMessage ?? 'Signed in.', false)
   },
 )
 const programMissing = computed(() => props.version?.program?.standing === 'missing')
@@ -148,11 +152,11 @@ const nativeSignIn = computed(
   () => nativeSetup.state.value?.available === true && nativeSetup.state.value.supported.signIn,
 )
 
-const name = computed(() => props.displayName ?? PROVIDER_NAME[props.provider])
+const name = computed(() => props.displayName ?? descriptor.value?.displayName ?? 'Provider')
 
 const partIds = useId()
 const isOpen = (part: ProviderPart): boolean => props.open?.[part] ?? true
-const lists = computed(() => props.lists ?? useModelLists())
+const lists = computed(() => props.lists ?? useModelLists(client))
 
 const PENDING: CapabilityStatus = {
   state: 'absent',
@@ -189,7 +193,7 @@ const access =
   createProviderAccess(
     () => props.provider,
     () => emit('authChanged', DEFAULT_PROFILE_ID),
-    () => window.api.runtime,
+    () => client,
   )
 const { auth, authBusy, asked, withGesture, check } = access
 const authNotice = ref<string | null>(null)
@@ -250,12 +254,12 @@ async function signInHere(): Promise<void> {
   await withGesture('signing-in', async () => {
     noticeSays('Finish signing in in your browser, then come back.', false)
     try {
-      const result = await window.api.runtime.signInProvider(asked())
+      const result = await client.signInProvider(asked())
       auth.value = result.state
       connected = result.success && auth.value?.state === 'usable'
       noticeSays(
         result.success
-          ? `Signed in to ${PROVIDER_NAME[props.provider]}.`
+          ? (result.presentation?.message ?? 'Signed in.')
           : (result.detail ?? 'The sign-in did not complete.'),
         !result.success,
       )
@@ -273,7 +277,7 @@ async function cancelSignIn(): Promise<void> {
   }
   noticeSays(null, false)
   try {
-    await window.api.runtime.cancelProviderSignIn(asked())
+    await client.cancelProviderSignIn(asked())
   } catch (error) {
     noticeSays(readableError(error), true)
   }
@@ -284,7 +288,11 @@ const copiedHomes = ref<ProviderHomesReprovision | null>(null)
 const copyHomesError = ref<string | null>(null)
 let copyHomesTimer: ReturnType<typeof setTimeout> | undefined
 const descriptor = computed(
-  () => props.descriptor ?? PROVIDER_DESCRIPTORS.find((item) => item.id === props.provider),
+  () =>
+    props.descriptor ??
+    (catalogueState.value.state === 'answered'
+      ? catalogueState.value.providers.find((item) => item.id === props.provider)
+      : undefined),
 )
 const keepsProfileSignIns = computed(() => descriptor.value?.credential === 'profile-or-key')
 async function readHomeCopies(statusOnly = false): Promise<void> {
@@ -348,10 +356,7 @@ const plan = computed(() => {
 
 const dayFormat = localFormat({ day: 'numeric', month: 'long', year: 'numeric' })
 
-/**
- * What a usable login runs on, with an expiry only where the provider gives one. BroBot runs on the
- * person's own login and keeps none of its own, so the line never says BroBot signed anyone in.
- */
+/** Names the person's usable login, with expiry only when supplied by the provider. */
 const loginSays = computed<string | null>(() => {
   const state = auth.value
   if (state?.state !== 'usable') return null
@@ -596,15 +601,12 @@ const listSays = computed(() => {
 })
 
 const startsOn = computed(() => {
-  const pair = theFormStartsOn(list.value)
+  const pair = theFormStartsOn(lists.value.choices(props.provider))
   if (pair === null) return `${name.value}’s own default`
   const model = inTheListsSpelling(list.value, pair.model)
   return pair.effort === null ? model : `${model} · ${pair.effort}`
 })
-/**
- * ⚑ Why it is that pair, and how to change it. ⛔ Read-only by design: a new conversation starts on
- * the last pair a person picked, and there is no app-wide default to set here.
- */
+/** Read-only: change the last-picked pair on the new-conversation form, not app-wide. */
 const startsOnWhy = computed(() =>
   list.value?.lastPicked != null
     ? 'the last one you picked. Pick another on the new-conversation form to change it.'
@@ -661,11 +663,7 @@ const usage = computed<{ text: string; title: string | null; tone: 'note' | 'war
     // A retained warning can outlive its usage reading or account. The card's current
     // readings supply near-limit figures; reported stops retain their separate evidence.
     if (props.limit?.standing === 'about-to-stop') {
-      const near = wallsFromUsage(
-        { [props.provider]: (props.readings ?? []).filter((one) => one.unconfirmed !== true) },
-        [],
-        props.clock,
-      ).flatMap((wall) => providerConditions([wall], props.clock))
+      const near = currentUsageWarnings(props.readings ?? [], props.clock)
       return {
         text:
           near.length === 0
@@ -906,6 +904,7 @@ watch(
 )
 
 onMounted(() => {
+  if (props.descriptor === undefined) void catalogue.read()
   if (props.access === undefined) {
     void check()
     void readKey()
@@ -920,21 +919,9 @@ watch(programMissing, (missing) => {
 /* ------------------------------------------------------------------ folding */
 
 /**
- * What each part has to say that a person must not miss, or `null`. A part whose words change to
- * something new opens itself, though it was folded: a refusal that answers an operation after its
- * part was folded, a warning that arrives while it is folded, or one already there when the screen
- * is shown. Words a person has already seen stay folded if they fold the part again.
- *
- * - Login: a login that is not usable, and a sign-in, copy or cancel that failed or changed nothing.
- *   A notice that says how a gesture is going, or that it landed, opens nothing.
- * - API key: a refused save, a warning a key operation answers with, and a saved key not in use.
- * - Version: a program standing that warns, or one that could not be read.
- * - Usage: a usage warning (a provider at or near its limit, or warnings that could not be read).
- *   A window whose usage runs ahead of its time is a steady pace note and opens nothing.
- * - Running now: a sample that could not be measured.
- * - Models: a refused add or removal, a model already in the list, and a list that warns.
- *
- * Outside the parts, the card's top always shows: the at-limit line and the limits reading.
+ * New warnings or refusals reveal folded parts; folding seen words again keeps them folded.
+ * Progress, successful gestures and steady usage pace do not reveal a part.
+ * The card's top always shows the at-limit line and limits reading.
  */
 const whatEachPartSays = computed<Record<ProviderPart, string | null>>(() => {
   const loginSays = [
@@ -982,6 +969,7 @@ defineExpose({ beginSetup })
 
 <template>
   <article
+    v-if="descriptor"
     ref="cardRoot"
     class="card"
     :class="{ frameless: props.frameless }"
@@ -1843,6 +1831,18 @@ defineExpose({ beginSetup })
       </div>
     </section>
   </article>
+  <p v-else data-cy="provider-catalogue-status" role="status">
+    {{
+      catalogueState.state === 'loading'
+        ? 'Reading provider information…'
+        : catalogueState.state === 'unread'
+          ? `Could not read provider information. ${catalogueState.why}`
+          : 'This provider is not available.'
+    }}
+    <button v-if="catalogueState.state === 'unread'" type="button" @click="catalogue.read()">
+      Try again
+    </button>
+  </p>
 </template>
 
 <style scoped>

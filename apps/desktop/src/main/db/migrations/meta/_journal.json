@@ -211,6 +211,13 @@
       "when": 1794254514029,
       "tag": "0029_open_provider_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1794336200000,
+      "tag": "0030_work_ancestry",
+      "breakpoints": true
     }
   ]
 }
