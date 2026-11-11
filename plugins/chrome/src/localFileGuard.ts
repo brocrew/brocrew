@@ -1,4 +1,4 @@
-import { fileReader } from '../../shared/file-reader.js'
+import { openResolvedFile } from '../../shared/file-reader.js'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -171,67 +171,10 @@ export function openGuardedFile(
       `it is outside the allowed folder (${cfg.roots.map((r) => r.replace(cfg.hostHome, '~')).join(', ')}), or a link points outside it`,
     )
   }
-  let pre: fs.Stats
-  try {
-    pre = io.lstatSync(real)
-  } catch {
-    refuse('the file does not exist or cannot be read')
-  }
-  if (!pre.isFile()) refuse('it is not a regular file')
-  cfg.beforeOpen?.()
-  const { O_RDONLY, O_NOFOLLOW, O_NONBLOCK } = io.constants
-  let flags = O_RDONLY
-  if (!win) {
-    if (typeof O_NOFOLLOW !== 'number' || typeof O_NONBLOCK !== 'number') {
-      refuse('this system cannot open a file without following links, so no file is opened')
-    }
-    flags |= O_NOFOLLOW | O_NONBLOCK
-  }
-  let fd = -1
-  try {
-    fd = io.openSync(real, flags)
-    const info = io.fstatSync(fd)
-    if (!info.isFile()) refuse('it is not a regular file')
-    if (info.dev !== pre.dev || info.ino !== pre.ino)
-      refuse('the file changed while it was being opened')
-    if (info.nlink > 1) refuse('it is a hard-linked file (it has more than one name)')
-    if (info.size === 0) refuse('the file is empty')
-    if (info.size > cfg.maxBytes) {
-      refuse(`it is larger than the limit (${Math.round(cfg.maxBytes / 1048576)} MB)`)
-    }
-    let opened: string | null = null
-    try {
-      opened = io.readlinkSync(`/proc/self/fd/${fd}`) as string
-    } catch {
-      /* Continue without this optional result. */
-    }
-    if (opened !== null && opened !== real) refuse('the file changed while it was being opened')
-    const now = io.statSync(real)
-    if (realpath(real) !== real || now.ino !== info.ino || now.dev !== info.dev) {
-      refuse('the file changed while it was being opened')
-    }
-  } catch (error) {
-    if (fd >= 0) {
-      try {
-        io.closeSync(fd)
-      } catch {
-        /* Continue without this optional result. */
-      }
-    }
-    throw error instanceof LocalFileGuardError
-      ? error
-      : new LocalFileGuardError('This file cannot be used: it cannot be read.')
-  }
-  const size = io.fstatSync(fd).size
-  const fdFinal = fd
-  const { stream, close } = fileReader(io, fdFinal, size)
+  const file = openResolvedFile(real, cfg, io, win, LocalFileGuardError)
+  const { fd: fdFinal, size, close } = file
   return {
-    fd: fdFinal,
-    size,
-    realPath: real,
-    name: P.basename(real),
-    extension: P.extname(real).slice(1).toLowerCase(),
-    stream,
+    ...file,
     readAll: () => {
       try {
         const data = Buffer.alloc(size)
