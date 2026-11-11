@@ -151,7 +151,7 @@ it('keeps console output when the file cannot be opened, without recursive repor
   expect(child.stderr).not.toContain('Maximum call stack')
 })
 
-it('writes the standalone service log outside a package tree without falling back to stderr', async () => {
+it('writes the standalone service log outside a package tree', async () => {
   const root = await folder()
   const file = join(root, 'service.log')
   const child = spawnSync(
