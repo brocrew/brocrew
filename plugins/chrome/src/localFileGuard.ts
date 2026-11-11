@@ -1,7 +1,8 @@
+import { fileReader } from '../../shared/file-reader.js'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { Readable } from 'node:stream'
+import type { Readable } from 'node:stream'
 export class LocalFileGuardError extends Error {}
 export interface LocalFileGuardConfig {
   roots: string[]
@@ -223,49 +224,14 @@ export function openGuardedFile(
   }
   const size = io.fstatSync(fd).size
   const fdFinal = fd
-  let closed = false
-  const close = (): void => {
-    if (closed) return
-    closed = true
-    try {
-      io.closeSync(fdFinal)
-    } catch {
-      /* Continue without this optional result. */
-    }
-  }
+  const { stream, close } = fileReader(io, fdFinal, size)
   return {
     fd: fdFinal,
     size,
     realPath: real,
     name: P.basename(real),
     extension: P.extname(real).slice(1).toLowerCase(),
-    stream: () => {
-      let position = 0
-      return new Readable({
-        read(): void {
-          if (closed) {
-            this.destroy(new Error('The file was closed before it was read.'))
-            return
-          }
-          const length = Math.min(65536, size - position)
-          if (length <= 0) {
-            this.push(null)
-            return
-          }
-          const chunk = Buffer.allocUnsafe(length)
-          io.read(fdFinal, chunk, 0, length, position, (error, bytes) => {
-            if (error) {
-              this.destroy(error)
-            } else if (bytes === 0) {
-              this.push(null)
-            } else {
-              position += bytes
-              this.push(chunk.subarray(0, bytes))
-            }
-          })
-        },
-      })
-    },
+    stream,
     readAll: () => {
       try {
         const data = Buffer.alloc(size)
