@@ -8,16 +8,14 @@ export function earliest(moments: readonly number[]): number | null {
   return moments.length === 0 ? null : Math.min(...moments)
 }
 
-export const GRANTS_MAY_MOVE: ReadonlySet<TranscriptEvent['type']> = new Set<TranscriptEvent['type']>([
-  'work_given',
-  'work_replied',
-  'work_taken_back',
-  'work_closed',
-  'message_unqueued',
-])
+export const GRANTS_MAY_MOVE: ReadonlySet<TranscriptEvent['type']> = new Set<
+  TranscriptEvent['type']
+>(['work_given', 'work_replied', 'work_taken_back', 'work_closed', 'message_unqueued'])
 
 // Text, token and tool frames do not change the canonical state inputs.
-export const MOVES_A_LIVE_FACT: ReadonlySet<TranscriptEvent['type']> = new Set<TranscriptEvent['type']>([
+export const MOVES_A_LIVE_FACT: ReadonlySet<TranscriptEvent['type']> = new Set<
+  TranscriptEvent['type']
+>([
   'status',
   'background_work',
   'scheduled_work',
@@ -54,10 +52,9 @@ export const theSameLevel = (one: ScheduleLevel, other: ScheduleLevel): boolean 
     )
   })
 
-export const MOVES_ITS_NAME: ReadonlySet<TranscriptEvent['type']> = new Set<TranscriptEvent['type']>([
-  ...PIECE_EVENT_TYPES,
-  'replaced_by',
-])
+export const MOVES_ITS_NAME: ReadonlySet<TranscriptEvent['type']> = new Set<
+  TranscriptEvent['type']
+>([...PIECE_EVENT_TYPES, 'replaced_by'])
 
 export const MOVES_WHAT_A_PERSON_IS_ASKED: ReadonlySet<TranscriptEvent['type']> = new Set<
   TranscriptEvent['type']
@@ -97,4 +94,3 @@ export function howItsWorkIsDrawn(composed: readonly PieceRow[]): ReadonlyMap<st
 function asItIsDrawn(piece: PieceRow): string {
   return piece.stalledBecause === null ? piece.state : `${piece.state} · ${piece.stalledBecause}`
 }
-

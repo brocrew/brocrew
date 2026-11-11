@@ -291,9 +291,7 @@ describe('core-supplied retry endings across old and current recordings', () => 
               row.kind === 'notice' ? row.text : row.kind,
             ),
           ).toEqual(
-            visibleItems(live.items).map((row) =>
-              row.kind === 'notice' ? row.text : row.kind,
-            ),
+            visibleItems(live.items).map((row) => (row.kind === 'notice' ? row.text : row.kind)),
           )
           expect(JSON.stringify(events)).toBe(saved)
           expect(

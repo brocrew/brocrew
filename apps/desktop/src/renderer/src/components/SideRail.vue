@@ -663,10 +663,7 @@ const rows = computed<RailRow[]>(() => {
         // (`stateHere`), whose answer it waits on (R19) and who holds the work it gave out
         // (D-036) — the plate's own.
         ...(limit ? { detail: limit.detail } : purpose ? { detail: purpose.detail } : {}),
-        word:
-          limit?.short ??
-          purpose?.word ??
-          standingWord(facets, currentState),
+        word: limit?.short ?? purpose?.word ?? standingWord(facets, currentState),
         label: workerLabel(who(record), worker, host?.named),
         // 🔴 **D-016 · commit 7 · R2 — the work that names it is the host's**, off the row already
         // looked up for its order: a record this window is fed holds no tree.

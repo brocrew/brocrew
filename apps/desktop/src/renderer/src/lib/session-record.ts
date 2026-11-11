@@ -39,7 +39,6 @@ import {
 export type SessionPhase = 'opening' | 'open' | 'closing' | 'recorded'
 
 export interface RequestDraft {
-
   // Map stores and Vue-tracks every provider-supplied answer key.
   answers: Map<string, string | string[]>
 

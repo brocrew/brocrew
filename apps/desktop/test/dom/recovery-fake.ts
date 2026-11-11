@@ -150,7 +150,9 @@ export function fakeRecoveryBridge(script: RecoveryScript): FakeRecoveryBridge {
         )
       },
       transcript(id) {
-        return read({ call: 'transcript', id }, () => recordedWorkAncestry(script.transcripts?.[id] ?? []))
+        return read({ call: 'transcript', id }, () =>
+          recordedWorkAncestry(script.transcripts?.[id] ?? []),
+        )
       },
     },
   }

@@ -111,19 +111,13 @@ export function createLiveSessionRecords(bridge: ClientSessionApi) {
   }
 
   function hearMoved(message: RuntimeStatesMessage): void {
-    if (
-      !statesDisposed &&
-      message.published !== undefined &&
-      stateEpoch === null &&
-      !stateReading
-    )
+    if (!statesDisposed && message.published !== undefined && stateEpoch === null && !stateReading)
       void readAgentStates()
     for (const moved of message.moved) {
       const record = sessions.get(moved.conversation)
       if (record) {
         acceptProviderBlock(record, moved)
-        if (message.published !== undefined)
-          hearAgentState(record, moved.state, message.published)
+        if (message.published !== undefined) hearAgentState(record, moved.state, message.published)
       }
     }
   }

@@ -398,7 +398,14 @@ describe('the history reader', () => {
         'INSERT INTO events (id,session_id,generation,ordinal,type,payload,created_at) VALUES (?, ?, 0, ?, ?, ?, ?)',
       )
       for (const [ordinal, event] of events.entries())
-        insert.run(newEventId(), 'sess_idle', ordinal, event.type, JSON.stringify(event), T0 + ordinal)
+        insert.run(
+          newEventId(),
+          'sess_idle',
+          ordinal,
+          event.type,
+          JSON.stringify(event),
+          T0 + ordinal,
+        )
     } finally {
       db.close()
     }

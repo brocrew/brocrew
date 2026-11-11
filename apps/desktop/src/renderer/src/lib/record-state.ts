@@ -20,4 +20,3 @@ export function scheduleHere(
   if (record.control === record.transcript && !record.window.hasOlder) return schedule
   return { ...schedule, jobs: schedule.jobs.map((job) => ({ ...job, listedSince: undefined })) }
 }
-

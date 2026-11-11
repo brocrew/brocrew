@@ -40399,8 +40399,8 @@ export class RuntimeHost implements LiveHost {
       onRegistered: (registered) => {
         registered.workAncestryAfter =
           ancestryContext?.epochs.at(-1)?.after ??
-          [...history.entries].reverse().find((row) => row.workAncestry !== undefined)
-            ?.workAncestry?.after ??
+          [...history.entries].reverse().find((row) => row.workAncestry !== undefined)?.workAncestry
+            ?.after ??
           -1
         const rows =
           ancestryWindow === undefined

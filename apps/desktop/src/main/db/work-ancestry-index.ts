@@ -1,6 +1,5 @@
 /** Expressions shared by the migration's identity seeks and schema declarations. */
-const ANCESTRY_TOOL_ID =
-  "CASE WHEN json_valid(payload) THEN json_extract(payload, '$.id') END"
+const ANCESTRY_TOOL_ID = "CASE WHEN json_valid(payload) THEN json_extract(payload, '$.id') END"
 const ANCESTRY_AGENT_ID =
   "CASE WHEN json_valid(payload) THEN json_extract(payload, '$.agentId') END"
 const ANCESTRY_DISPATCH_ID =

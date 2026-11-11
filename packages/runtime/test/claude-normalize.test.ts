@@ -1998,4 +1998,3 @@ describe('context readings and compaction boundaries (087)', () => {
     ).toEqual({ type: 'activity', phase: 'compacting' })
   })
 })
-
