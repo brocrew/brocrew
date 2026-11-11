@@ -2,6 +2,7 @@
 import { tabDestination } from '../lib/tab-destination'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useTranscriptRetention } from '../composables/useTranscriptRetention'
+import { useClientApi } from '../client-provider/injection'
 import {
   TRANSCRIPT_RETENTION_CHOICES,
   isTranscriptRetention,
@@ -54,6 +55,7 @@ const emit = defineEmits<{
   addServer: []
 }>()
 
+const pluginClient = props.plugins ? undefined : useClientApi()
 const pluginEnabled = ref(Boolean(props.plugins))
 let live = true
 onUnmounted(() => {
@@ -62,7 +64,7 @@ onUnmounted(() => {
 onMounted(async () => {
   if (props.plugins) return
   try {
-    const answer = await window.api?.plugins?.request({ kind: 'availability' })
+    const answer = await pluginClient?.plugins?.request({ kind: 'availability' })
     if (live) pluginEnabled.value = Boolean(answer?.ok && answer.available)
   } catch {
     /* keep the unavailable feature hidden */
