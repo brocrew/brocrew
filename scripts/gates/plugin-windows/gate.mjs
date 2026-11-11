@@ -1,7 +1,4 @@
-// The hosted Windows plugin gate: the packaged Windows app installs Chrome from a local fake list,
-// starts it, lets a scripted agent use it, shows its live tabs, restarts, uninstalls and reinstalls,
-// all against the Node CDP fixture browser, never a real browser or a provider account. Only a
-// closed summary of booleans and counts, and the archives' public digests, leave the runner.
+// Hosted Windows packaged-plugin lifecycle with fictional provider and CDP browser fixtures.
 import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
@@ -275,10 +272,7 @@ export function readOwned(file, maximum = 128 * 1024 * 1024) {
 export const digest = (bytes) => createHash('sha256').update(bytes).digest('hex')
 export const privateFolder = (folder) => (fs.mkdirSync(folder, { recursive: true }), folder)
 
-/**
- * Builds the Chrome release twice from the standalone export of this commit, with the release's
- * own Node 22 and locked installs, and requires both builds' archives to be byte-identical.
- */
+/** Requires byte-identical archives from two locked standalone builds of this commit. */
 async function buildRelease(root, node22) {
   // The export of this tree is the pinned release's source; built as that commit, it must give
   // exactly the pinned archives.
@@ -454,10 +448,7 @@ function binOf(name) {
   return path.join(path.dirname(manifest), typeof bin === 'string' ? bin : bin[name])
 }
 
-/**
- * The fixture browser as `chrome.exe`: a single executable application of the runner's Node with
- * the CDP fixture inside, so Playwright starts it as it starts Chrome, with its pipe on fds 3 and 4.
- */
+/** Node CDP fixture as chrome.exe, with Playwright's pipe on fds 3 and 4. */
 async function buildFakeBrowser(root) {
   const folder = privateFolder(path.join(root, 'fake-chrome'))
   const entry = path.join(folder, 'entry.mjs')
@@ -594,12 +585,8 @@ async function closeView(record, page) {
   await press(record.cdp, '[data-cy="plugin-close"]')
 }
 
-/**
- * After a failed run: the app's logs, every receipt the plugin host and supervisor wrote (never the
- * run's auth.json or launch.json, which the host removes and these skip), and the scratch tree's
- * names and sizes, kept as a run artifact and their last lines printed to the job log. Everything
- * here is the gate's own fictional scratch: fake providers, fixture browser, no account.
- */
+/** Failed-run fictional scratch logs, receipts and file sizes; never auth.json or launch.json.
+ * Retain the artifact and print log tails for diagnosis. */
 export function keepDiagnostics(root, out) {
   try {
     fs.mkdirSync(out, { recursive: true })
@@ -673,11 +660,7 @@ export function keepDiagnostics(root, out) {
     )
   }
 }
-/**
- * The Chrome card as the window last listed it, as closed booleans, and the page's own size and the
- * plugins section's place in it, in whole CSS pixels; all false and zero when unreadable. The error
- * shown is printed to the job log too: it is the app's own fixed text.
- */
+/** Last Chrome card, page geometry and fixed error text; false/zero when unreadable. */
 async function observeCard(record) {
   try {
     const answer = await record.cdp.evaluate(
