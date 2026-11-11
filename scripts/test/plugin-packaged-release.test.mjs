@@ -42,6 +42,8 @@ describe.skipIf(process.platform === 'win32')('release verifier module admission
       )
       const template = path.join(plugin, 'manifest-template.json')
       const originalTemplate = fs.readFileSync(template, 'utf8')
+      const sourceEntry = path.join(plugin, 'src/index.ts')
+      const originalEntry = fs.readFileSync(sourceEntry)
       expect(JSON.parse(originalTemplate).format).toBe(2)
       if (format === 1) fs.writeFileSync(template, projectFixtureManifest(originalTemplate))
       const { buildChromePackage } = await import(
@@ -100,11 +102,12 @@ describe.skipIf(process.platform === 'win32')('release verifier module admission
       expect(accepted.manifest.ui).toEqual(checked.manifest.ui)
       expect(accepted.filePaths).toEqual(checked.filePaths)
       for (const name of checked.filePaths) {
-        if (name === 'plugin.json') continue
+        if (name === 'plugin.json' || name === checked.manifest.server.entry) continue
         expect(
           Buffer.from(accepted.readFile(name)).equals(Buffer.from(checked.readFile(name))),
         ).toBe(true)
       }
+      expect(fs.readFileSync(sourceEntry).equals(originalEntry)).toBe(true)
       expect(projected.targets[0].sha256 === release.targets[0].sha256).toBe(format === 1)
       expect(projected.targets[0].manifestSha256 === release.targets[0].manifestSha256).toBe(
         format === 1,
