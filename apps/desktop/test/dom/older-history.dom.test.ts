@@ -1,4 +1,4 @@
-import type { TranscriptEvent } from '../../src/shared/conversation-events'
+import { scrollLines as run, scrollMessage as message } from './scroll-lines'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
@@ -29,28 +29,6 @@ import { mount, unmountAll, type Mounted } from './harness'
  * the tail"*. What was never joined is that same patch reaching a container with layout, and that is
  * what these fixtures do: one `load` that prepends a page and drops the same number off the end.
  */
-
-const AT = 1_700_000_000_000
-
-function message(ordinal: number): RuntimeEventMessage {
-  return {
-    sessionId: 'sess_1',
-    ordinal,
-    at: AT + ordinal,
-    event: {
-      type: 'assistant_message',
-      // ⚠️ **Fixed width on purpose.** Row height must not depend on the ordinal, or the fixture
-      // measures text wrapping instead of the anchor: a 3-digit and a 4-digit ordinal can wrap
-      // differently, and a page whose rows are a different height from the ones it displaces is a
-      // fixture that cannot tell a correct anchor from an accidental one.
-      text: `line ${String(ordinal).padStart(6, '0')} — ${'the quick brown fox jumps. '.repeat(3)}`,
-    } as TranscriptEvent,
-  } as RuntimeEventMessage
-}
-
-function run(from: number, count: number): RuntimeEventMessage[] {
-  return Array.from({ length: count }, (_, index) => message(from + index))
-}
 
 interface Paged {
   view: Mounted

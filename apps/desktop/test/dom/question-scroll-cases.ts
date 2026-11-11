@@ -1,6 +1,6 @@
+import { scrollLines as run } from './scroll-lines'
 import { describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
-import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 import type { TranscriptItem } from '../../src/renderer/src/lib/transcript'
 import { foldWindow } from '../../src/renderer/src/lib/transcript-window'
@@ -8,23 +8,6 @@ import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue
 import { mount, unmountAll } from './harness'
 
 export function registerQuestionScrollCases(frames: (count: number) => Promise<void>) {
-  const AT = 1_700_000_000_000
-
-  function message(ordinal: number): RuntimeEventMessage {
-    return {
-      sessionId: 'sess_1',
-      ordinal,
-      at: AT + ordinal,
-      event: {
-        type: 'assistant_message',
-        text: `line ${String(ordinal).padStart(6, '0')} — ${'the quick brown fox jumps. '.repeat(3)}`,
-      } as TranscriptEvent,
-    } as RuntimeEventMessage
-  }
-
-  const run = (from: number, count: number): RuntimeEventMessage[] =>
-    Array.from({ length: count }, (_, index) => message(from + index))
-
   interface Reader {
     box: () => HTMLElement
     /** The bar's button if it is on screen, or null — `q()` throws, and absence is the subject here. */

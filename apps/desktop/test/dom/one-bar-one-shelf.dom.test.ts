@@ -254,6 +254,23 @@ async function settled(): Promise<void> {
   await nextTick()
 }
 
+async function cardsWithUnreadWeeks() {
+  await page.viewport(1200, 808)
+  const now = Date.now()
+  return cards({
+    claude: [
+      {
+        window: 'five_hour',
+        period: { word: '5-hour', durationMs: 5 * HOUR, bucket: false, bucketName: null },
+        usedPercent: 28,
+        resetsAt: now + 3 * HOUR,
+        at: now - 60_000,
+      },
+    ],
+    codex: [],
+  })
+}
+
 describe('§2 · the usage cells, and each one answers for itself', () => {
   it('🔴 the title bar draws three usage blocks, provider by provider, then agents and memory; the shelf spans the transcript AND the companion', async () => {
     await page.viewport(1200, 808)
@@ -302,20 +319,7 @@ describe('§2 · the usage cells, and each one answers for itself', () => {
   })
 
   it('🔴 an unread window is unread ON ITS OWN — the pair, in one mount', async () => {
-    await page.viewport(1200, 808)
-    const now = Date.now()
-    const m = await cards({
-      claude: [
-        {
-          window: 'five_hour',
-          period: { word: '5-hour', durationMs: 5 * HOUR, bucket: false, bucketName: null },
-          usedPercent: 28,
-          resetsAt: now + 3 * HOUR,
-          at: now - 60_000,
-        },
-      ],
-      codex: [],
-    })
+    const m = await cardsWithUnreadWeeks()
     expect(m.q('shelf-usage-claude-5h').querySelector('[data-cy="shelf-missing"]')).toBeNull()
     expect(m.q('shelf-usage-claude-5h').innerText).toContain('28% · resets in 3 h')
     // ⛔ The neighbours have no reading and say so, each in its own cell: nothing composite.
@@ -328,20 +332,7 @@ describe('§2 · the usage cells, and each one answers for itself', () => {
   })
 
   it('⚠️ an absence is drawn by its colour, at the same weight as a value', async () => {
-    await page.viewport(1200, 808)
-    const now = Date.now()
-    const m = await cards({
-      claude: [
-        {
-          window: 'five_hour',
-          period: { word: '5-hour', durationMs: 5 * HOUR, bucket: false, bucketName: null },
-          usedPercent: 28,
-          resetsAt: now + 3 * HOUR,
-          at: now - 60_000,
-        },
-      ],
-      codex: [],
-    })
+    const m = await cardsWithUnreadWeeks()
     const missing = m.q('shelf-usage-codex-week').querySelector('[data-cy="shelf-missing"]')
     const present = m.q('shelf-usage-claude-5h').querySelector('[data-cy="shelf-usage-value"]')
     expect(missing).not.toBeNull()
