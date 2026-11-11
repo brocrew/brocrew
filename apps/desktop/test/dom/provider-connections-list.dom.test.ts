@@ -44,7 +44,6 @@ function card(read: () => Promise<readonly ProviderConnection[]>) {
   Reflect.set(window.api.runtime, 'providerConnections', read)
   const props = reactive({
     provider: 'claude' as Provider,
-    descriptor: providerDescriptor('claude'),
     capabilities: null,
     limit: null,
     limitsRead: true,
@@ -55,9 +54,19 @@ function card(read: () => Promise<readonly ProviderConnection[]>) {
     resourcesPaused: false,
     resourcesError: null,
     loginMoved: 0,
-    lists: createModelLists(() => window.api.runtime),
+    lists: createModelLists(() => ({
+      modelList: window.api.runtime.modelList,
+      addHandAddedModel: window.api.runtime.addHandAddedModel,
+      deleteHandAddedModel: window.api.runtime.deleteHandAddedModel,
+    })),
   })
-  const component = defineComponent({ setup: () => () => h(ProviderCard as Component, props) })
+  const component = defineComponent({
+    setup: () => () =>
+      h(ProviderCard as Component, {
+        ...props,
+        descriptor: providerDescriptor(props.provider),
+      }),
+  })
   return { props, m: mount(component, {}, { width: 520, height: 900 }) }
 }
 

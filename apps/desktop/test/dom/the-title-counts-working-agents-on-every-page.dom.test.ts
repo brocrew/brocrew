@@ -396,10 +396,40 @@ describe('working counts in the title bar', () => {
       const now = Date.now()
       const { m } = await windowWith(rows, [], () => Promise.resolve(rows), {
         claude: [
-          { window: 'five_hour', usedPercent: 28, resetsAt: now + 3600000, at: now },
-          { window: 'seven_day', usedPercent: 61, resetsAt: now + 7200000, at: now },
+          {
+            window: 'five_hour',
+            period: { word: '5-hour', durationMs: 5 * 3_600_000, bucket: false, bucketName: null },
+            usedPercent: 28,
+            resetsAt: now + 3600000,
+            at: now,
+          },
+          {
+            window: 'seven_day',
+            period: {
+              word: 'weekly',
+              durationMs: 7 * 24 * 3_600_000,
+              bucket: false,
+              bucketName: null,
+            },
+            usedPercent: 61,
+            resetsAt: now + 7200000,
+            at: now,
+          },
         ],
-        codex: [{ window: 'seven_day', usedPercent: 35, resetsAt: now + 7200000, at: now }],
+        codex: [
+          {
+            window: 'seven_day',
+            period: {
+              word: 'weekly',
+              durationMs: 7 * 24 * 3_600_000,
+              bucket: false,
+              bucketName: null,
+            },
+            usedPercent: 35,
+            resetsAt: now + 7200000,
+            at: now,
+          },
+        ],
       })
       const line = m.q('app-usage')
       const whole = `Claude 5h 28% · week 61% · Codex week 35% · 8 agents · ${working ? '3 working' : '0 working'} · 800 MB`

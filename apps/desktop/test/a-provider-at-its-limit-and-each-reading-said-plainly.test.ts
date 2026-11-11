@@ -369,18 +369,11 @@ describe('core meaning of recorded provider limit diagnostics', () => {
 })
 
 it('preserves supplied producer meaning through display enrichment and actual client grouping', () => {
-  const source = wallsFromUsage(
-    {
-      claude: [
-        {
-          ...reading('seven_day', 92, NOW + 3_600_000),
-          period: { word: 'Fern period', durationMs: 3_600_000, bucket: false, bucketName: null },
-        },
-      ],
-    },
-    [],
-    NOW,
-  )
+  const supplied: ProviderUsageReading = {
+    ...reading('seven_day', 92, NOW + 3_600_000),
+    period: { word: 'Fern period', durationMs: 3_600_000, bucket: false, bucketName: null },
+  }
+  const source = wallsFromUsage({ claude: [supplied] }, [], NOW)
   expect(source).toHaveLength(1)
   const original = source[0]!
   expect(original.window).toBe('seven_day')

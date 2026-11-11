@@ -52,11 +52,11 @@ function walked<Row>(rows: readonly Row[], walk: LedgerWalk<Row>['walk']): Ledge
   return { rows, walk, ledgers: Math.max(rows.length, 1), rowsUnread: 0 }
 }
 
-/** One wall, off the provider's own sentence — never a hand-written row. */
-const wall = (said: string, at = NOW - 60_000): ProviderLimitSeen => {
+/** The known weekly fixtures carry the meaning supplied by the core reading. */
+const wall = (said: string, used: number | null, at = NOW - 60_000): ProviderLimitSeen => {
   const read = readProviderLimit(said, at)
   expect(read, `not recognised: ${said}`).not.toBeNull()
-  return read as ProviderLimitSeen
+  return { ...read!, meaning: { word: 'weekly', used, untimed: false } }
 }
 
 /** One thing a person really does owe, so §3 can measure the band BESIDE a row. */
@@ -136,7 +136,7 @@ afterEach(() => {
 
 describe('§1 · his two walls, on the surface he was not being told on', () => {
   it('🔴 both providers are drawn, consequence first, and a person can read the words', async () => {
-    supply([wall(CLAUDE_SAID), wall(CODEX_SAID)])
+    supply([wall(CLAUDE_SAID, null), wall(CODEX_SAID, 99)])
     const m = await draw()
     // ⛔ **PAINTED, not present.** `visible` is what separates *the app drew it* from *the string
     // is in the markup* — see this file's header.
@@ -156,7 +156,7 @@ describe('§1 · his two walls, on the surface he was not being told on', () => 
     // ⚑ **`533` §3: this app routes and re-words, it does not re-measure.** The measurement — the
     // window, the percentage, the timestamp — stays where a person can reach it: ⚑ **UI-009** on
     // the plain sentence's title, and no longer drawn under it.
-    supply([wall(CODEX_SAID)])
+    supply([wall(CODEX_SAID, 99)])
     const m = await draw()
     expect(m.q('persons-queue-wall-says-codex').getAttribute('title')).toContain(CODEX_SAID)
     expect(m.host.querySelectorAll('[data-cy^="persons-queue-wall-said-"]')).toHaveLength(0)
@@ -165,7 +165,7 @@ describe('§1 · his two walls, on the surface he was not being told on', () => 
   it('⚠️ the exact instant is paired with the sentence, on the `:title`', async () => {
     // ⛔ **`526`'s pattern.** The sentence names the day it resets; the exact instant is one hover
     // away.
-    supply([wall(CLAUDE_SAID)])
+    supply([wall(CLAUDE_SAID, null)])
     const m = await draw()
     const title = m.q('persons-queue-wall-says-claude').getAttribute('title') ?? ''
     expect(title).not.toBe('')
@@ -180,9 +180,9 @@ describe('§1 · his two walls, on the surface he was not being told on', () => 
     // ⛔ **§2.3 and §4.4 of the brief, at the surface.** His run recorded the claude sentence five
     // times; the fold is on the provider and the window, and this is what that looks like drawn.
     supply([
-      ...[1, 2, 3, 4, 5].map((n) => wall(CLAUDE_SAID, NOW - 60_000 * n)),
-      wall(CODEX_SAID),
-      wall(CODEX_SAID, NOW - 120_000),
+      ...[1, 2, 3, 4, 5].map((n) => wall(CLAUDE_SAID, null, NOW - 60_000 * n)),
+      wall(CODEX_SAID, 99),
+      wall(CODEX_SAID, 99, NOW - 120_000),
     ])
     const m = await draw()
     const rows = [...m.q('persons-queue-walls').querySelectorAll('li')]
@@ -197,7 +197,7 @@ describe('§1 · his two walls, on the surface he was not being told on', () => 
     // 🔴 **A limit is not answerable.** ⚠️ The rule half asserts the row has no gesture FIELDS; this
     // asserts the drawing has no gesture, because a template can grow a button over a shape that
     // has none — and a control that cannot act is `106` from the other side.
-    supply([wall(CLAUDE_SAID)])
+    supply([wall(CLAUDE_SAID, null)])
     const m = await draw()
     const band = m.q('persons-queue-walls')
     expect(band.querySelectorAll('button')).toHaveLength(0)
@@ -211,7 +211,7 @@ describe('§2 · the state that reached no surface at all', () => {
     // ⛔ **`533` §0's exact state.** Before `533` nothing drew it — the wall was in a transcript
     // nobody was reading. ⚑ **UI-009** — and it is not the queue's card: nothing is a person's to
     // settle, so the band draws with no queue under it.
-    supply([wall(CLAUDE_SAID)])
+    supply([wall(CLAUDE_SAID, null)])
     const m = await draw()
     expect(visible(m.q('persons-queue-wall-says-claude'))).toBe(true)
     expect(m.host.querySelectorAll('[data-cy="persons-queue"]')).toHaveLength(0)
@@ -255,7 +255,7 @@ describe('§3 · the provider’s own line is bounded, and the sentence is whole
     // ⛔ **The sentence a person acts on is short by construction** — see `usageSays`, which carries
     // no bucket name and no timestamp, and (F096) at most a short figure beside each limit. ⚑ If it ever grew one, this is where the
     // growth would be invisible: clipped text reads identically to text that fits.
-    supply([wall(LONG_SAID)])
+    supply([wall(LONG_SAID, null)])
     const m = await draw()
     const says = m.q('persons-queue-wall-says-codex')
     expect(says.scrollHeight).toBeLessThanOrEqual(says.clientHeight)
@@ -270,7 +270,7 @@ describe('§4 · beside the rows, above them, and never blended into them', () =
     // ⛔ **It is the stronger fact.** A question waits; a walled provider means the agent he is
     // about to hand work to will not run. ⚑ Measured by geometry rather than by DOM order, because
     // DOM order is not what a person reads.
-    supply([wall(CLAUDE_SAID)], { decisions: [decisionRow('req_1', 'sess_worker')] })
+    supply([wall(CLAUDE_SAID, null)], { decisions: [decisionRow('req_1', 'sess_worker')] })
     const m = await draw()
     const band = m.q('persons-queue-walls').getBoundingClientRect()
     const rows = m.q('persons-queue-rows').getBoundingClientRect()
@@ -283,7 +283,7 @@ describe('§4 · beside the rows, above them, and never blended into them', () =
     // reads as *how much do I owe*. ⚠️ A wall is owed by nobody, so folding it in would inflate the
     // one number this queue promises never to round — which is the second half of `533` §2.1's
     // shape argument, asserted at the surface.
-    supply([wall(CLAUDE_SAID), wall(CODEX_SAID)], {
+    supply([wall(CLAUDE_SAID, null), wall(CODEX_SAID, 99)], {
       decisions: [decisionRow('req_1', 'sess_worker')],
     })
     const m = await draw(true)
@@ -295,7 +295,7 @@ describe('§4 · beside the rows, above them, and never blended into them', () =
     // ⛔ **A usage warning is not a summons** (UI-009): the overlay's corner is the copy that may
     // take a person out of what they are doing, and nothing here is theirs to do. ⚑ A fourth
     // `PersonsQueueKind` would have made it read *"A limit is waiting on you"*.
-    supply([wall(CLAUDE_SAID)])
+    supply([wall(CLAUDE_SAID, null)])
     const corner = await draw(true)
     expect(corner.host.querySelectorAll('[data-cy="persons-queue"]')).toHaveLength(0)
     unmountAll()
@@ -325,7 +325,7 @@ describe('§5 · Home, which is the screen he actually reads', () => {
     // ⛔ **Two mounts, two conditions, and `533` had to move both.** The overlay copy and Home's
     // copy are gated separately: a band reachable only with every sheet closed would be `390`'s
     // finding with the subject changed, and a band reachable only in the overlay would be worse.
-    supply([wall(CLAUDE_SAID)])
+    supply([wall(CLAUDE_SAID, null)])
     const m = await home()
     expect(visible(m.q('persons-queue-wall-says-claude'))).toBe(true)
   })
@@ -341,7 +341,7 @@ describe('§5 · Home, which is the screen he actually reads', () => {
     // number. ⚠️ A wall is owed by nobody, so a count that included one would tell a person they
     // have something to settle — and the group's label says *Yours to settle*, which would then be
     // the false half of `533` §2.1's shape argument drawn in two words.
-    supply([wall(CLAUDE_SAID), wall(CODEX_SAID)])
+    supply([wall(CLAUDE_SAID, null), wall(CODEX_SAID, 99)])
     const m = await home()
     expect(visible(m.q('persons-queue-wall-says-claude'))).toBe(true)
     expect(m.host.querySelectorAll('[data-cy="yours-count"]')).toHaveLength(0)
@@ -366,7 +366,7 @@ describe('§5 · Home, which is the screen he actually reads', () => {
    * `who-wrote-it-and-which-task.dom.test.ts` §6; this pins the word.
    */
   it('🔴 685 · a wall ALONE — the quiet intro, `Nothing` owed (688), the band, and no group that counts what is owed', async () => {
-    supply([wall(CLAUDE_SAID)])
+    supply([wall(CLAUDE_SAID, null)])
     const m = await home()
     expect(m.q('waiting-intro').textContent?.trim()).toBe(
       'Nothing here is blocked on an answer from you.',
@@ -391,7 +391,7 @@ describe('§5 · Home, which is the screen he actually reads', () => {
   })
 
   it('⚑ 685 · the control — the same wall beside something really owed moves the intro off quiet', async () => {
-    supply([wall(CLAUDE_SAID)], { decisions: [decisionRow('req_1', 'sess_worker')] })
+    supply([wall(CLAUDE_SAID, null)], { decisions: [decisionRow('req_1', 'sess_worker')] })
     const m = await home()
     expect(m.q('waiting-intro').textContent?.trim()).not.toBe(
       'Nothing here is blocked on an answer from you.',
@@ -402,7 +402,7 @@ describe('§5 · Home, which is the screen he actually reads', () => {
   it('⚑ …and with something really owed, the group and its count come back unchanged', async () => {
     // 🔴 `a-positive-assertion-must-differ-from-the-default`: the absence above is a measurement
     // only if the label and the count are drawn when there IS something to settle.
-    supply([wall(CLAUDE_SAID)], { decisions: [decisionRow('req_1', 'sess_worker')] })
+    supply([wall(CLAUDE_SAID, null)], { decisions: [decisionRow('req_1', 'sess_worker')] })
     const m = await home()
     expect(m.q('yours-count').textContent?.trim()).toBe('1')
     expect(visible(m.q('persons-queue-wall-says-claude'))).toBe(true)
