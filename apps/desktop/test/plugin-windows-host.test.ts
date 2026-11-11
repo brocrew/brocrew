@@ -1,4 +1,9 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import {
+  spawn,
+  type ChildProcess,
+  type ExecFileException,
+  type ExecFileOptionsWithStringEncoding,
+} from 'node:child_process'
 import { once } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import {
@@ -38,6 +43,38 @@ import { writeReceipt } from '../resources/plugin-host/receipts.mjs'
 import { manifestFor, packageFixture } from './plugin-package-fixtures'
 
 const optionalRecoveryReader = vi.hoisted(() => vi.fn(async () => null))
+vi.mock('node:child_process', async (original) => {
+  const actual = await original<typeof import('node:child_process')>()
+  const execFile = (
+    file: string,
+    args: string[],
+    options: ExecFileOptionsWithStringEncoding,
+    callback: (error: ExecFileException | null, stdout: string, stderr: string) => void,
+  ) =>
+    actual.execFile(file, args, options, (error, stdout, stderr) => {
+      if (options.env?.BROCREW_PLUGIN_JOB_RECOVER === '1') {
+        console.error(
+          '[windows-job-recovery diagnostic]',
+          JSON.stringify({
+            test: expect.getState().currentTestName,
+            error: error
+              ? {
+                  message: error.message,
+                  code: error.code,
+                  signal: error.signal,
+                  killed: error.killed,
+                }
+              : null,
+            stdout,
+            stderr,
+          }),
+        )
+      }
+      callback(error, stdout, stderr)
+    })
+  Object.defineProperties(execFile, Object.getOwnPropertyDescriptors(actual.execFile))
+  return { ...actual, execFile }
+})
 vi.mock('../resources/plugin-host/boot-witness.mjs', async (original) => ({
   ...(await original<typeof import('../resources/plugin-host/boot-witness.mjs')>()),
   readBootWitness: optionalRecoveryReader,
