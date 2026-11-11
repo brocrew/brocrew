@@ -22,6 +22,19 @@ const command = {
 }
 const normalize = (value: unknown) => normalizeMessage(value as SDKMessage)
 
+function expectUnknown(raw: Record<string, unknown> & { subtype: string }): void {
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  try {
+    const events = normalize(raw)
+    expect(events).toEqual([
+      { type: 'unknown', provider: 'claude', category: 'unrecognized', label: raw.subtype, raw },
+    ])
+    expect(warning).toHaveBeenCalledExactlyOnceWith('Unmodeled provider event', events[0])
+  } finally {
+    warning.mockRestore()
+  }
+}
+
 describe('provider-neutral summaries', () => {
   it.each([
     { type: 'turn_summary', status: 'completed', detail: 'Checked the change', needsAction: '' },
@@ -90,29 +103,10 @@ describe('provider-neutral summaries', () => {
     { ...command, detail: [] },
     { ...command, detail: '' },
   ])('keeps malformed summaries on the existing unknown and warning path: %j', (raw) => {
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      const events = normalize(raw)
-      expect(events).toEqual([
-        { type: 'unknown', provider: 'claude', category: 'unrecognized', label: raw.subtype, raw },
-      ])
-      expect(warning).toHaveBeenCalledExactlyOnceWith('Unmodeled provider event', events[0])
-    } finally {
-      warning.mockRestore()
-    }
+    expectUnknown(raw)
   })
 
   it('keeps a future unknown system event available to the existing Debug-only path', () => {
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      const raw = { type: 'system', subtype: 'fictional_future_event', detail: 'New words' }
-      const events = normalize(raw)
-      expect(events).toEqual([
-        { type: 'unknown', provider: 'claude', category: 'unrecognized', label: raw.subtype, raw },
-      ])
-      expect(warning).toHaveBeenCalledExactlyOnceWith('Unmodeled provider event', events[0])
-    } finally {
-      warning.mockRestore()
-    }
+    expectUnknown({ type: 'system', subtype: 'fictional_future_event', detail: 'New words' })
   })
 })
