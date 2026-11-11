@@ -18,7 +18,11 @@ afterEach(() => {
   Reflect.deleteProperty(window, 'api')
 })
 function card() {
-  const descriptor = { ...providerDescriptor('claude'), displayName: 'Fern' }
+  const descriptor = {
+    ...providerDescriptor('claude'),
+    displayName: 'Fern',
+    credential: 'profile-or-key' as const,
+  }
   const empty: ApiKeyStatus = { provider: 'claude', set: false, setAt: null, inUse: false }
   const saved = { ...empty, set: true, inUse: true }
   const list = {
