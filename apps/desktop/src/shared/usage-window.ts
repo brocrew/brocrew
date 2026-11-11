@@ -4,6 +4,8 @@ export interface UsageWindowDetails {
   readonly bucket: string | null
   /** Parentheses anywhere exclude a reading from the aggregate window's cells. */
   readonly hasBucket: boolean
+  /** Provider-owned identity for a derived warning; absent means keep the raw window. */
+  readonly warningWindow?: string
 }
 
 /** Generic display geometry for a word supplied by the window's provider. */

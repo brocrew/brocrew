@@ -1,6 +1,6 @@
 import { usageWarnings } from '../../shared/provider-limit'
 import type { Provider, ProviderUsageReading } from '../../shared/runtime-ipc'
-import { usagePeriod } from './usage-period'
+import { usagePeriod, warningWindow } from './usage-period'
 
 /** Supply current warning decisions without changing the readings kept on disk. */
 export function usageForDisplay(
@@ -20,9 +20,12 @@ export function usageForDisplay(
     }),
   )
   const warnings = new Map(
-    usageWarnings({ [provider]: shown.filter((one) => one.unconfirmed !== true) }, [], now).map(
-      ({ reading, wall }) => [reading, wall],
-    ),
+    usageWarnings(
+      { [provider]: shown.filter((one) => one.unconfirmed !== true) },
+      [],
+      now,
+      warningWindow,
+    ).map(({ reading, wall }) => [reading, wall]),
   )
   return shown.map((reading) => ({ ...reading, warning: warnings.get(reading) ?? null }))
 }

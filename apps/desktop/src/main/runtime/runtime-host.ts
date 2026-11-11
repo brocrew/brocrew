@@ -1149,6 +1149,7 @@ import {
 } from '../../shared/persons-published'
 import type { KeptReading, KeptUsage } from '../provider-usage-file'
 import { usageForDisplay } from '../providers/usage-display'
+import { warningWindow } from '../providers/usage-period'
 import { limitsForDisplay } from '../providers/limit-meaning'
 import type { KnownAccount } from '../provider-accounts-file'
 import {
@@ -16897,7 +16898,7 @@ export class RuntimeHost implements LiveHost {
     this.prepareProviderLimitFacts(walk, now, epoch)
     // 🔴 **F096 — and a window the provider's own figure puts near its limit** (80%), folded in
     // beside the walls it reported, so the band and the Providers card say it ({@link wallsFromUsage}).
-    const near = wallsFromUsage(this.usageThatCounts(), walk.rows, now)
+    const near = wallsFromUsage(this.usageThatCounts(), walk.rows, now, warningWindow)
     return limitsForDisplay(
       near.length === 0
         ? walk

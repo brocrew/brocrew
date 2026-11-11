@@ -1,4 +1,6 @@
 import { expect, it } from 'vitest'
+import { usageWarnings } from '../src/shared/provider-limit'
+import { warningWindow } from '../src/main/providers/usage-period'
 import { usageForDisplay } from '../src/main/providers/usage-display'
 import type { ProviderUsageReading } from '../src/shared/runtime-ipc'
 
@@ -71,3 +73,29 @@ it('preserves supplied fictional and unknown period facts over contradictory raw
     usageForDisplay('claude', [reading('seven_day', 92)], false, NOW)[0]?.warning?.meaning?.word,
   ).toBe('weekly')
 })
+
+it.each([
+  ['its primary window', 'this window'],
+  ['its secondary window', 'this window'],
+  ['future slot', 'future slot'],
+  ['future on the Fern limit', 'future on the Fern limit'],
+])('keeps owner-bound identity for %s without inventing a duration', (window, expected) => {
+  const row = reading(window, 95)
+  const codex = usageForDisplay('codex', [row], false, NOW)[0]!
+  const claude = usageForDisplay('claude', [row], false, NOW)[0]!
+  expect(codex.warning?.window).toBe(expected)
+  expect(claude.warning?.window).toBe(window)
+  expect(codex.period?.durationMs).toBeNull()
+  expect(row.window).toBe(window)
+})
+
+it.each(['Fictional warning identity', 'slot on the Fern limit', ''])(
+  'keeps a supplied internal warning identity authoritative (%j)',
+  (identity) => {
+    const row = { ...reading('its primary window', 95), warningWindow: identity }
+    const [selected] = usageWarnings({ codex: [row] }, [], NOW, warningWindow)
+    expect(selected?.reading).toBe(row)
+    expect(selected?.wall.window).toBe(identity)
+    expect(row.window).toBe('its primary window')
+  },
+)

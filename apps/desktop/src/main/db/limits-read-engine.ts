@@ -6,6 +6,7 @@ import {
   PROVIDER_WALL_LOOKBACK_MS,
   wallsFromUsage,
 } from '../../shared/provider-limit'
+import { warningWindow } from '../providers/usage-period'
 import { createSessionStore } from './session-store'
 import { LimitsMaterialization, type LimitsReadBounds } from './bounded-limits-statements'
 import {
@@ -95,7 +96,7 @@ export class LimitsReadEngine {
         wanted.accountLives,
       )
       materialization.assert()
-      const near = wallsFromUsage(wanted.usage, canonical.rows, evaluatedAt)
+      const near = wallsFromUsage(wanted.usage, canonical.rows, evaluatedAt, warningWindow)
       const display =
         near.length === 0
           ? canonical

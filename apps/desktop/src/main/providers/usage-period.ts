@@ -15,3 +15,8 @@ export function usagePeriod(
     bucketName: details.bucket,
   }
 }
+
+/** Warning identity uses the same owner-bound interpretation as a retained usage reading. */
+export function warningWindow(provider: Provider, window: string): string {
+  return providerDefinitions[provider].usageWindow(window).warningWindow ?? window
+}

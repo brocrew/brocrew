@@ -1,3 +1,4 @@
+import { warningWindow } from '../src/main/providers/usage-period'
 import {
   fixtureProviderConfig,
   RecordingSink,
@@ -579,7 +580,7 @@ describe('§2–§4 · on a host', () => {
         { window: 'its primary window', usedPercent: 95, resetsAt: clock + WEEK, at: clock },
         { window: 'its secondary window', usedPercent: 82, resetsAt: clock + WEEK, at: clock },
       ]
-      const walls = wallsFromUsage({ codex: slots }, [], clock)
+      const walls = wallsFromUsage({ codex: slots }, [], clock, warningWindow)
       expect(walls).toHaveLength(1)
       expect(walls[0]?.said).toContain('95% of this window used')
     })
@@ -588,13 +589,13 @@ describe('§2–§4 · on a host', () => {
       const slot: ProviderUsageReading[] = [
         { window: 'its primary window', usedPercent: 92, resetsAt: clock + WEEK, at: clock },
       ]
-      const [ours] = wallsFromUsage({ codex: slot }, [], clock)
+      const [ours] = wallsFromUsage({ codex: slot }, [], clock, warningWindow)
       expect(ours?.window).toBe('this window')
       const theirs = readProviderLimit(
         `codex is approaching its rate limit — 95% of this window used; resets ${new Date(clock + WEEK).toISOString()}`,
         clock,
       )!
-      expect(wallsFromUsage({ codex: slot }, [theirs], clock)).toEqual([])
+      expect(wallsFromUsage({ codex: slot }, [theirs], clock, warningWindow)).toEqual([])
     })
 
     it('⛔ the card says a reading whose window has reset since in the past', () => {

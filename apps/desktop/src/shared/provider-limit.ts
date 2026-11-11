@@ -450,6 +450,7 @@ export const USAGE_NEARS_ITS_LIMIT_AT = 80
 /** One usage reading, as {@link wallsFromUsage} reads it — the shape the host keeps. */
 export interface UsageNearItsLimit {
   readonly window: string
+  readonly warningWindow?: string
   readonly usedPercent: number | null
   readonly period?: { readonly word: string | null }
   readonly resetsAt: number | null
@@ -477,8 +478,9 @@ export function wallsFromUsage(
   usage: Readonly<Partial<Record<Provider, readonly UsageNearItsLimit[]>>>,
   walls: readonly ProviderLimitSeen[],
   now: number,
+  windowForWarning?: (provider: Provider, window: string) => string,
 ): readonly ProviderLimitSeen[] {
-  return usageWarnings(usage, walls, now).map((one) => one.wall)
+  return usageWarnings(usage, walls, now, windowForWarning).map((one) => one.wall)
 }
 
 /** Keep each selected warning with the reading that supplied it. */
@@ -486,13 +488,13 @@ export function usageWarnings<Reading extends UsageNearItsLimit>(
   usage: Readonly<Partial<Record<Provider, readonly Reading[]>>>,
   walls: readonly ProviderLimitSeen[],
   now: number,
+  windowForWarning?: (provider: Provider, window: string) => string,
 ): readonly { readonly reading: Reading; readonly wall: ProviderLimitSeen }[] {
   const stopped = new Set(
     walls.filter((one) => one.standing === 'stopped').map((one) => one.provider),
   )
   const named = new Set(walls.map(providerLimitKey))
-  // ⚑ One wall a key, from the fullest reading: Codex's two slots of a length it did not say are
-  // both *this window*, as its own warning names the fuller of them.
+  // One warning per supplied window identity, from its fullest reading.
   const near = new Map<
     string,
     { readonly reading: Reading; readonly wall: ProviderLimitSeen; readonly used: number }
@@ -512,17 +514,14 @@ export function usageWarnings<Reading extends UsageNearItsLimit>(
       const percent = `${String(Math.round(used))}%`
       const resets =
         reading.resetsAt === null ? '' : `; resets ${new Date(reading.resetsAt).toISOString()}`
-      // ⚑ Claude names a window by a word (`seven_day`), Codex by a duration (`a 7-day window`) —
-      // or, when it did not say the length, by its slot (`its primary window`), which Codex's own
-      // warning calls *this window*: said here as that line says it, so the two share one key.
-      const window = /^its (primary|secondary) window$/.test(reading.window)
-        ? 'this window'
-        : reading.window
+      const identity = reading.warningWindow ?? windowForWarning?.(provider, reading.window)
+      const window = identity ?? reading.window
       const line = /\s/.test(window)
         ? `${provider} is approaching its rate limit — ${percent} of ${window} used, by its latest reading${resets}`
         : `${provider} is approaching its rate limit (${window}) — ${percent} used, by its latest reading${resets}`
-      const wall = readProviderLimit(line, reading.at)
-      if (wall === null) continue
+      const parsed = readProviderLimit(line, reading.at)
+      if (parsed === null) continue
+      const wall = identity === undefined ? parsed : { ...parsed, window: identity }
       const key = providerLimitKey(wall)
       if (named.has(key) || (near.get(key)?.used ?? -1) >= used) continue
       near.set(key, {

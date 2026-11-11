@@ -14,5 +14,8 @@ export function usageWindow(window: string): UsageWindowDetails {
       : hours !== undefined
         ? `${hours}-hour`
         : null
-  return usageWindowDetails(window, word)
+  const details = usageWindowDetails(window, word)
+  return /^its (primary|secondary) window$/.test(window)
+    ? { ...details, warningWindow: 'this window' }
+    : details
 }
