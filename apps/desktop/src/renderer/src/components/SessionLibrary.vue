@@ -331,9 +331,7 @@ const error = ref<string | null>(null)
  * do not. Reported rather than fixed.
  */
 const CHECK_HOMES = 'Check homes'
-
-const sessionsClient = useClientApi().sessions
-const homeScan = useHomeScan(sessionsClient)
+const homeScan = useHomeScan(useClientApi().sessions)
 /**
  * The outcome of the last import, keyed by `entry.id` — which is the PROVIDER's identity and does
  * not change when the conversation becomes one we hold. It used to be our row id, which is null
