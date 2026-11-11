@@ -54,9 +54,7 @@ import type { KeptFile } from '../../../shared/runtime-ipc'
 import type { PathsHere } from '../composables/useMessagePaths'
 
 /**
- * The conversation itself — one component per item kind, dispatched on the discriminant. It holds
- * no state and interprets nothing: the fold from events to items already happened upstream, and
- * `mode` only decides which of those items are shown.
+ * Render folded transcript items by kind, using the workspace's Debug setting for visibility.
  */
 const props = withDefaults(
   defineProps<{
