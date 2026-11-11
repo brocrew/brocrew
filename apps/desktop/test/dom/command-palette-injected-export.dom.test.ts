@@ -89,13 +89,12 @@ it.each(['native', 'bundle'] as const)(
     const pending = new Promise<ExportedSession>((resolve) => {
       finish = resolve
     })
-    let expectedReceiver: unknown
     const read = vi.fn<ClientSessionApi['exportSession']>(function (this: unknown) {
       expect(this).toBe(expectedReceiver)
       return pending
     })
     const out = fixture(read)
-    expectedReceiver = out.transport
+    const expectedReceiver = out.transport
     expect(out.sessions).not.toHaveBeenCalled()
     expect(read).not.toHaveBeenCalled()
     await choose(kind)
