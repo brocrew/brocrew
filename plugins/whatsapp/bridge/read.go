@@ -35,12 +35,13 @@ type contactRow struct {
 }
 
 type listQuery struct {
-	Query  string `json:"query"`
-	Chat   string `json:"chat"`
-	Before int64  `json:"before"`
-	After  int64  `json:"after"`
-	Limit  int    `json:"limit"`
-	Page   int    `json:"page"`
+	Query  string   `json:"query"`
+	Chat   string   `json:"chat"`
+	Chats  []string `json:"chats"`
+	Before int64    `json:"before"`
+	After  int64    `json:"after"`
+	Limit  int      `json:"limit"`
+	Page   int      `json:"page"`
 }
 
 func bounded(limit, fallback, most int) int {
@@ -59,14 +60,35 @@ func like(text string) string {
 	return "%" + text + "%"
 }
 
+func chatScope(column string, chats []string) (string, []any) {
+	if chats == nil {
+		return "", nil
+	}
+	if len(chats) == 0 {
+		return "0", nil
+	}
+	args := make([]any, len(chats))
+	for i, chat := range chats {
+		args[i] = chat
+	}
+	return column + " IN (" + strings.TrimSuffix(strings.Repeat("?,", len(chats)), ",") + ")", args
+}
+
 func (store *MessageStore) listChats(q listQuery) ([]chatRow, error) {
 	limit := bounded(q.Limit, 20, 100)
 	page := max(q.Page, 0)
-	args := []any{}
-	where := ""
+	clauses := []string{}
+	scope, args := chatScope("chats.jid", q.Chats)
+	if scope != "" {
+		clauses = append(clauses, scope)
+	}
 	if q.Query != "" {
-		where = `WHERE (LOWER(chats.name) LIKE LOWER(?) ESCAPE '\' OR chats.jid LIKE ? ESCAPE '\')`
+		clauses = append(clauses, `(LOWER(chats.name) LIKE LOWER(?) ESCAPE '\' OR chats.jid LIKE ? ESCAPE '\')`)
 		args = append(args, like(q.Query), like(q.Query))
+	}
+	where := ""
+	if len(clauses) > 0 {
+		where = "WHERE " + strings.Join(clauses, " AND ")
 	}
 	args = append(args, limit, page*limit)
 	rows, err := store.db.Query(`
@@ -116,7 +138,10 @@ func (store *MessageStore) listMessages(q listQuery) ([]messageRow, error) {
 	limit := bounded(q.Limit, 20, 100)
 	page := max(q.Page, 0)
 	clauses := []string{}
-	args := []any{}
+	scope, args := chatScope("messages.chat_jid", q.Chats)
+	if scope != "" {
+		clauses = append(clauses, scope)
+	}
 	if q.Chat != "" {
 		clauses = append(clauses, "messages.chat_jid = ?")
 		args = append(args, q.Chat)

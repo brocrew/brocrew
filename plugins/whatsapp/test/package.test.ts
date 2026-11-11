@@ -222,9 +222,10 @@ describe('WhatsApp package', () => {
       enabled: true,
     })
     expect(enabled.status).toBe(200)
-    expect(
-      enabled.body.groups.find((group: { jid: string }) => group.jid === ROWING.jid),
-    ).toEqual({ ...ROWING, canWrite: true })
+    expect(enabled.body.groups.find((group: { jid: string }) => group.jid === ROWING.jid)).toEqual({
+      ...ROWING,
+      canWrite: true,
+    })
     expect(createSettingsStore(config.home).get().writable).toEqual([ROWING.jid])
     expect(JSON.parse(await text('list_groups'))).toEqual({
       groups: [{ id: ROWING.jid, name: ROWING.name }],
@@ -245,6 +246,7 @@ describe('WhatsApp package', () => {
     await request('/v1/group-write', adminToken, { group: ROWING.jid, enabled: false })
     expect(createSettingsStore(config.home).get().writable).toEqual([])
     expect(JSON.parse(await text('list_groups')).groups).toEqual([])
+    expect(await text('read_messages', { chat: ROWING.jid })).toBe(refused(REFUSALS['read-off']))
     expect(await text('send_to_group', { group: ROWING.jid, text: 'See you there' })).toBe(
       refused(REFUSALS['cannot-write']),
     )
@@ -349,6 +351,71 @@ describe('reading', () => {
     )
     expect(JSON.parse(await text('search_contacts', { query: 'e' })).contacts).toHaveLength(2)
   })
+
+  it.each([
+    { read: false, selected: false },
+    { read: false, selected: true },
+    { read: true, selected: false },
+    { read: true, selected: true },
+  ])(
+    'applies the persisted access rule with read=$read and selected=$selected',
+    async ({ read, selected }) => {
+      const { text, request, config, bridge } = await boot()
+      bridge.messages[2].text = 'Boats for a private trip'
+      await request('/v1/read', adminToken, { enabled: read })
+      await request('/v1/group-write', adminToken, { group: ROWING.jid, enabled: selected })
+      expect(createSettingsStore(config.home).get()).toEqual({
+        read,
+        prefix: true,
+        writable: selected ? [ROWING.jid] : [],
+      })
+      expect(JSON.parse(await text('list_groups')).groups).toEqual(
+        selected ? [{ id: ROWING.jid, name: ROWING.name }] : [],
+      )
+      for (const chat of [ROWING.jid, ALLOTMENT.jid, INES]) {
+        const readable = read || (selected && chat === ROWING.jid)
+        for (const [tool, args] of [
+          ['read_messages', { chat }],
+          ['search_messages', { chat, query: 'boats' }],
+          ['get_media', { chat, message: 'MSG00003' }],
+        ] as const) {
+          const reply = await text(tool, args)
+          if (readable) expect(reply).not.toContain('Error:')
+          else expect(reply).toBe(refused(REFUSALS['read-off']))
+        }
+        const sent = await text('send_to_group', { group: chat, text: 'Training is at seven' })
+        if (selected && chat === ROWING.jid) expect(JSON.parse(sent).sent).toBe(true)
+        else expect(sent).toBe(refused(REFUSALS['cannot-write']))
+      }
+      if (read || selected) {
+        const listed = JSON.parse(await text('list_chats')).chats
+        expect(listed.map((one: { id: string }) => one.id)).toEqual(
+          read ? [ROWING.jid, INES] : [ROWING.jid],
+        )
+        const found = JSON.parse(await text('search_messages', { query: 'boats' })).messages
+        expect(found.map((one: { chat: string }) => one.chat)).toEqual(
+          read ? [INES, ROWING.jid] : [ROWING.jid],
+        )
+        const scope = read ? undefined : [ROWING.jid]
+        expect(bridge.requests.find((one) => one.route === '/chats')?.body).toEqual({
+          chats: scope,
+        })
+        expect(
+          bridge.requests.find(
+            (one) => one.route === '/messages' && !(one.body as { chat?: string }).chat,
+          )?.body,
+        ).toEqual({ query: 'boats', chats: scope })
+      } else {
+        expect(await text('list_chats')).toBe(refused(REFUSALS['read-off']))
+        expect(await text('search_messages', { query: 'boats' })).toBe(
+          refused(REFUSALS['read-off']),
+        )
+      }
+      const contacts = await text('search_contacts', { query: 'Ines' })
+      if (read) expect(JSON.parse(contacts).contacts).toHaveLength(2)
+      else expect(contacts).toBe(refused(REFUSALS['read-off']))
+    },
+  )
 
   it('refuses reading while no phone is linked', async () => {
     const { call, bridge } = await boot({ read: true })
