@@ -10,7 +10,7 @@ import type {
 import type { UpdateSettings } from './update-settings'
 
 /** One file a release names in its update file. */
-export interface ReleaseFile {
+interface ReleaseFile {
   readonly url: string
   readonly sha512: string
   readonly size?: number
