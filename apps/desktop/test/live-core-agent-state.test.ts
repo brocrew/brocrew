@@ -507,6 +507,12 @@ it('rejects older publications and old runs after the reconnect handshake', asyn
     receive({ ...row, agentState: { is: 'active' }, published: { epoch, seq: 5 } })
     const record = client.get('fern')!
     expect(record.agentState).toEqual({ is: 'active' })
+    const legacy = vi.fn((): AgentState => ({ is: 'needs-you' }))
+    receive({ ...row, ordinal: 1 })
+    expect(stateForRecord(record, legacy)).toEqual({ is: 'active' })
+    expect(record.agentStatePublication).toEqual({ epoch, seq: 5 })
+    expect(legacy).not.toHaveBeenCalled()
+    expect(record.earlyEvents.some((message) => message.ordinal === 1)).toBe(true)
     receive({ ...row, ordinal: 1, agentState: { is: 'idle' }, published: { epoch, seq: 4 } })
     expect(record.agentState).toEqual({ is: 'active' })
     const old = epoch
@@ -529,6 +535,13 @@ it('rejects older publications and old runs after the reconnect handshake', asyn
     })
     expect(reconnected.agentState).toEqual({ is: 'scheduled', dueAt: null })
     expect(reconnected.earlyEvents.some((message) => message.ordinal === 3)).toBe(true)
+    receive({ ...row, ordinal: 5, agentState: null, published: { epoch, seq: 2 } })
+    receive({ ...row, ordinal: 6 })
+    expect(stateForRecord(reconnected, legacy)).toBeUndefined()
+    expect(reconnected.agentState).toBeNull()
+    expect(reconnected.agentStatePublication).toEqual({ epoch, seq: 2 })
+    expect(legacy).not.toHaveBeenCalled()
+    expect(reconnected.earlyEvents.some((message) => message.ordinal === 6)).toBe(true)
   } finally {
     client.dispose()
     await world.dispose()
