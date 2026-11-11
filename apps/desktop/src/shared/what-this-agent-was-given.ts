@@ -279,6 +279,10 @@ export interface GivenTool {
 /** BroBot's agent tools. */
 export interface GivenTools {
   readonly server: string
+  /** Current declarations, supplied by their provider rather than reconstructed by a reader. */
+  readonly declarationNames?: readonly string[]
+  /** Snapshot declarations omitted by the launch's recorded tool selection. */
+  readonly notSentDeclarations?: readonly string[]
   /** BroBot's paragraph on its tools, and where it rides. */
   readonly instructions: {
     readonly text: string

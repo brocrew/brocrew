@@ -5,6 +5,32 @@ import {
   type PartSize,
 } from '../../../shared/what-this-agent-was-given'
 import type { GivenPolicy } from '../given-policy'
+import { CLAUDE_TOOL_NAMING } from '@brobot2/runtime/claude'
+import { qualifyWith } from '@brobot2/runtime'
+
+function toolNames(
+  server: string,
+  names: readonly string[],
+  published: readonly string[] | null,
+  externalServers: readonly string[],
+): ReturnType<GivenPolicy['toolNames']> {
+  const declarations = names.map((name) => qualifyWith(CLAUDE_TOOL_NAMING, server, name))
+  return {
+    declarations,
+    namesOnlyText: declarations.join('\n'),
+    published: published?.filter((name) => name.startsWith(`mcp__${server}__`)) ?? null,
+    external: externalServers.map((name) => {
+      const prefix = `mcp__${name}__`
+      return {
+        name,
+        tools:
+          published
+            ?.filter((tool) => tool.startsWith(prefix))
+            .map((tool) => tool.slice(prefix.length)) ?? null,
+      }
+    }),
+  }
+}
 
 function deferral(published: readonly string[] | null): GivenDeferral {
   if (published === null) {
@@ -51,6 +77,9 @@ function otherServers(
 
 export const given: GivenPolicy = {
   nativeFiles: () => [],
+  toolNames,
+  toolWasSent: (name, disabled) =>
+    !disabled.some((one) => one === name || name === `functions.${one}`),
   repositoryOrigin:
     'This folder’s own file, written by whoever works in it — a person or an agent; this app can’t tell which. BroCrew reads it and sends it as it is.',
   deferral,

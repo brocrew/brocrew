@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { CODEX_TOOLS_DESCRIPTION } from '@brobot2/runtime/codex'
+import { CODEX_TOOLS_DESCRIPTION, CODEX_TOOL_NAMING } from '@brobot2/runtime/codex'
+import { qualifyWith } from '@brobot2/runtime'
 import { sizesAdded } from '../../../shared/what-this-agent-was-given'
 import { repositoryConventionChain } from '../repository-instructions'
 import type { GivenPolicy } from '../given-policy'
@@ -23,6 +24,30 @@ const PAST_CODEX_BUDGET =
 
 export const given: GivenPolicy = {
   nativeFiles: filesCodexWouldRead,
+  toolNames: (server, names, published, externalServers) => {
+    const declarations = names.map((name) => qualifyWith(CODEX_TOOL_NAMING, server, name))
+    return {
+      declarations,
+      namesOnlyText: declarations.join('\n'),
+      // Older inventories used MCP names; preserve those recorded words beside dynamic declarations.
+      published:
+        published?.filter(
+          (name) => name.startsWith(`${server}__`) || name.startsWith(`mcp__${server}__`),
+        ) ?? null,
+      external: externalServers.map((server) => ({
+        name: server,
+        tools:
+          published === null
+            ? null
+            : published.flatMap((name) => {
+                const prefix = `mcp__${server}__`
+                return name.startsWith(prefix) ? [name.slice(prefix.length)] : []
+              }),
+      })),
+    }
+  },
+  toolWasSent: (name, disabled) =>
+    !disabled.some((one) => one === name || name === `functions.${one}`),
   repositoryOrigin:
     'This folder’s own file, written by whoever works in it — a person or an agent; this app can’t tell which. Codex reads it itself.',
   deferral: () => ({

@@ -127,8 +127,22 @@ export interface ListedSkills {
   readonly at: number
   readonly dropped: number
 }
+export interface GivenToolNames {
+  readonly declarations: readonly string[]
+  readonly namesOnlyText: string
+  readonly published: readonly string[] | null
+  readonly external: readonly { readonly name: string; readonly tools: readonly string[] | null }[]
+}
+
 export interface GivenPolicy<H extends ProviderHostValues> {
   nativeFiles(cwd: string): string[]
+  toolNames(
+    server: string,
+    names: readonly string[],
+    published: readonly string[] | null,
+    externalServers: readonly string[],
+  ): GivenToolNames
+  toolWasSent(declaration: string, disabled: readonly string[]): boolean
   readonly repositoryOrigin: string
   deferral(published: readonly string[] | null): H['deferral']
   externalDeferral(published: readonly string[] | null): H['deferral']

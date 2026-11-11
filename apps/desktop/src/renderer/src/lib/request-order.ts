@@ -13,6 +13,7 @@ import { savedMethodsUseSaid } from '../../../shared/saved-methods'
 import { textPackRefusedSaid, textPackSourceSaid } from '../../../shared/text-pack'
 import { AUTHOR, MADE_WORDS, type InputMessage } from './agent-inputs'
 import { refusalWords } from './refusal-words'
+import { toolDeclarationWords, toolWasSent } from './given-tool-declarations'
 
 /**
  * "What this agent receives" in request order: one tab per position in the request, and in each
@@ -435,15 +436,6 @@ function partsAt(ctx: Context, ...where: SnapshotPart['where'][]): SnapshotPart[
   return (ctx.snapshot?.parts ?? []).filter((one) => where.includes(one.where))
 }
 
-function toolWasSent(ctx: Context, name: string): boolean {
-  const settings = ctx.given.launchSettings
-  if (settings?.recorded !== true) return true
-  const off = settings.settings.find((one) => one.key === 'tools-off')?.atLaunch
-  if (!Array.isArray(off)) return true
-  // A declaration may name its tool `functions.<name>` where the launch recorded the bare name.
-  return !off.some((one) => one === name || name === `functions.${one}`)
-}
-
 /** Where the tools paragraph came from: the launch's own, or this build's in its place. */
 function paragraphTrust(ctx: Context): string {
   const textIs = ctx.given.tools.instructions.textIs
@@ -461,18 +453,12 @@ function toolsParagraph(ctx: Context): Piece[] {
 
 /** BroBot's tool names as the provider last listed them, or this build's where it has not. */
 function toolNames(ctx: Context): Piece[] {
-  const { server, list, listedByTheProvider: listed } = ctx.given.tools
+  const names = toolDeclarationWords(ctx.given)
   return [
     { kind: 'join', text: SELF_WORDS.toolNames },
-    listed
-      ? { kind: 'label', author: AUTHOR.brobot, trust: TRUST.withMessage }
-      : { kind: 'label', author: AUTHOR.brobot, trust: TRUST.thisBuild },
-    {
-      kind: 'text',
-      text: listed
-        ? listed.names.join('\n')
-        : list.map((one) => `mcp__${server}__${one.name}`).join('\n'),
-    },
+    { kind: 'label', author: AUTHOR.brobot, trust: TRUST[names.origin] },
+    ...(names.missing === null ? [] : [{ kind: 'join' as const, text: names.missing }]),
+    { kind: 'text', text: names.text },
   ]
 }
 
@@ -484,7 +470,7 @@ function providerRow(
   open = false,
   extra: readonly Piece[] = [],
 ): void {
-  const sentTools = part.tools?.filter((tool) => toolWasSent(ctx, tool.name))
+  const sentTools = part.tools?.filter((tool) => toolWasSent(ctx.given, tool.name))
   const sentText =
     sentTools !== undefined && sentTools.length !== part.tools?.length
       ? sentTools.map((tool) => tool.text).join('\n')
@@ -915,7 +901,7 @@ function instructionsTabs(ctx: Context, messages: readonly InputMessage[]): Read
   for (const part of partsAt(ctx, 'tools')) {
     if (part.tools?.length) {
       for (const tool of part.tools)
-        if (toolWasSent(ctx, tool.name)) inside = toolRow(tools, ctx, tool) || inside
+        if (toolWasSent(ctx.given, tool.name)) inside = toolRow(tools, ctx, tool) || inside
     } else providerRow(tools, ctx, part)
   }
   if (!inside) brobotToolsRow(tools, ctx)

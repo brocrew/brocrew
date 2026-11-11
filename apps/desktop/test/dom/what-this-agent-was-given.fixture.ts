@@ -185,6 +185,7 @@ export function givenAnswer(over: Partial<WhatThisAgentWasGiven> = {}): WhatThis
     },
     tools: {
       server: 'brobot',
+      declarationNames: ['mcp__brobot__give_work'],
       instructions: {
         text: 'Use these tools to reach the app you run inside.',
         ridesIn: 'in-the-first-message',

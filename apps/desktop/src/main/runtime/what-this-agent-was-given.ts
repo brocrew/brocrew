@@ -36,7 +36,6 @@ import {
   sizeOf,
   sizesAdded,
   type GivenBuiltInSkills,
-  type GivenDeferral,
   type GivenExternalServer,
   type GivenFile,
   type GivenFileKind,
@@ -680,29 +679,6 @@ function sectionsOf(
   })
 }
 
-/** How a provider hands a set of server tools to its model. */
-function deferralOf(provider: Provider, published: readonly string[] | null): GivenDeferral {
-  return providerKnowledge[provider].instructions.given.deferral(published)
-}
-function externalDeferralOf(
-  provider: Provider,
-  published: readonly string[] | null,
-): GivenDeferral {
-  return providerKnowledge[provider].instructions.given.externalDeferral(published)
-}
-function otherServersToolsOf(
-  provider: Provider,
-  published: readonly string[] | null,
-  brobotsServer: string,
-  granted: readonly string[],
-) {
-  return providerKnowledge[provider].instructions.given.otherServers(
-    published,
-    brobotsServer,
-    granted,
-  )
-}
-
 /** What {@link whatItWasGiven} is handed. */
 export interface WhatTheReadIsHanded {
   readonly sessionId: string
@@ -914,6 +890,7 @@ function providerPartsOf(
  */
 export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiven {
   const { record, provider } = handed
+  const givenPolicy = providerKnowledge[provider].instructions.given
   const recorded = handed.launch.recorded
   const textIs: 'as-launched' | 'composed-now' = recorded ? 'as-launched' : 'composed-now'
   const versions = handed.own?.versions ?? []
@@ -1004,17 +981,21 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
       size: sizeOf(JSON.stringify({ name: tool.name, description: tool.description, parameters })),
     }
   })
-  const deferral = deferralOf(provider, handed.published)
+  const nativeToolNames = givenPolicy.toolNames(
+    handed.toolset.server,
+    list.map((tool) => tool.name),
+    handed.published,
+    handed.externalServers,
+  )
+  const deferral = givenPolicy.deferral(handed.published)
   // The paragraph its launch kept, else this build's.
   const instructionsKept = recorded ? record.tools.instructions : undefined
   const instructionsText = instructionsKept ?? handed.toolset.instructions ?? ''
   // Codex declares the tools under a namespace with a sentence of its own; Claude has none.
-  const namespaceText = providerKnowledge[provider].instructions.given.namespaceText(
-    handed.declaredWith,
-    list.length,
-  )
+  const namespaceText = givenPolicy.namespaceText(handed.declaredWith, list.length)
   const tools = {
     server: handed.toolset.server,
+    declarationNames: nativeToolNames.declarations,
     instructions: {
       text: instructionsText,
       ridesIn: 'in-the-first-message' as const,
@@ -1033,12 +1014,10 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
         }),
     deferral,
     listedByTheProvider:
-      handed.published === null || handed.publishedAt === null
+      nativeToolNames.published === null || handed.publishedAt === null
         ? null
         : {
-            names: handed.published.filter((one) =>
-              one.startsWith(`mcp__${handed.toolset.server}__`),
-            ),
+            names: nativeToolNames.published,
             at: handed.publishedAt,
           },
     changedSinceLaunch: recorded
@@ -1049,19 +1028,10 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
   }
 
   // ── external servers: names only ──
-  const externalServers: GivenExternalServer[] = handed.externalServers.map((name) => {
-    const prefix = `mcp__${name}__`
-    return {
-      name,
-      tools:
-        handed.published === null
-          ? null
-          : handed.published
-              .filter((one) => one.startsWith(prefix))
-              .map((one) => one.slice(prefix.length)),
-      deferral: externalDeferralOf(provider, handed.published),
-    }
-  })
+  const externalServers: GivenExternalServer[] = nativeToolNames.external.map((server) => ({
+    ...server,
+    deferral: givenPolicy.externalDeferral(handed.published),
+  }))
 
   // ── memory, read now ──
   const stores: GivenMemoryStore[] = handed.memory.stores.map((store) => ({
@@ -1083,6 +1053,16 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
     handed.launch,
   )
 
+  const disabled = recorded
+    ? record.settings?.find((one) => one.key === 'tools-off')?.value
+    : undefined
+  const notSentDeclarations = Array.isArray(disabled)
+    ? (providerParts.snapshot?.parts ?? [])
+        .flatMap((part) => part.tools ?? [])
+        .filter((tool) => !givenPolicy.toolWasSent(tool.name, disabled))
+        .map((tool) => tool.name)
+    : undefined
+
   // ── sizes: what reaches the model ──
   const reaching = files.filter((one) => one.refused === null)
   const brobot = sizesAdded([
@@ -1103,11 +1083,8 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
     ...(tools.namespace === undefined ? [] : [tools.namespace.size]),
   ])
   const toolsInEveryRequest =
-    deferral.kind === 'names-until-loaded'
-      ? sizeOf(list.map((one) => `mcp__${tools.server}__${one.name}`).join('\n'))
-      : toolsInFull
-  const otherServers = otherServersToolsOf(
-    provider,
+    deferral.kind === 'names-until-loaded' ? sizeOf(nativeToolNames.namesOnlyText) : toolsInFull
+  const otherServers = givenPolicy.otherServers(
     handed.published,
     tools.server,
     handed.externalServers,
@@ -1186,7 +1163,7 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
     ...(typeof record.ownNotesVersion === 'number'
       ? { ownNotesVersion: record.ownNotesVersion }
       : {}),
-    tools,
+    tools: { ...tools, ...(notSentDeclarations === undefined ? {} : { notSentDeclarations }) },
     externalServers,
     memory: { readAt: handed.memory.readAt, stores, atLaunch: recorded ? record.memory : [] },
     providerParts:

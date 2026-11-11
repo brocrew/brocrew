@@ -107,6 +107,16 @@ function fernModule(): ProviderModule<FernValues> {
       read: ({ cwd }) => ({ text: cwd }),
       given: {
         nativeFiles: () => [],
+        toolNames: (_server, names) => {
+          const declarations = names.map((name) => `fern: ${name} 🪴`)
+          return {
+            declarations,
+            namesOnlyText: declarations.join('\n'),
+            published: null,
+            external: [],
+          }
+        },
+        toolWasSent: (name, disabled) => !disabled.includes(name),
         repositoryOrigin: 'fern',
         deferral: () => ({ deferred: false }),
         externalDeferral: () => ({ deferred: false }),
@@ -147,6 +157,19 @@ function fernModule(): ProviderModule<FernValues> {
 }
 
 describe('the portable module consumer', () => {
+  it('uses a fictional producer’s declaration words and exact disabled-name matching', () => {
+    const policy = fernModule().instructions.given
+    expect(policy.toolNames('unused', ['grow', 'prune'], null, []).declarations).toEqual([
+      'fern: grow 🪴',
+      'fern: prune 🪴',
+    ])
+    expect(policy.toolNames('unused', ['grow', 'prune'], null, []).namesOnlyText).toBe(
+      'fern: grow 🪴\nfern: prune 🪴',
+    )
+    expect(policy.toolWasSent('fern: grow 🪴', ['grow'])).toBe(true)
+    expect(policy.toolWasSent('fern: grow 🪴', ['fern: grow 🪴'])).toBe(false)
+  })
+
   it('binds connection operations with an external handle without interpreting its native protocol', async () => {
     interface FernConnection {
       readonly id: string
