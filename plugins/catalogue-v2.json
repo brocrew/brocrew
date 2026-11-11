@@ -5,30 +5,30 @@
       "id": "chrome",
       "name": "Chrome",
       "description": "Lets agents use Google Chrome with its own separate profiles: read pages, use sites and save downloads.",
-      "version": "0.1.12",
+      "version": "0.1.13",
       "authors": [
         "brocrew"
       ],
-      "minAppVersion": "0.1.35",
-      "sourceCommit": "1e8de5be8a310b286d51e2b9d67de78682044887",
+      "minAppVersion": "0.2.20",
+      "sourceCommit": "e58c6b7d5af1c04c9a4c12db075379bd3905a13a",
       "targets": [
         {
           "os": "darwin",
           "cpu": "arm64",
-          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.12/chrome-darwin-arm64.tar.gz",
-          "sha256": "2ceae64e6726b17a77cc8f1426eaf2d6f1fc1801d1f6c0e3b4c209896c175dfd",
-          "bytes": 3606944,
+          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.13/chrome-darwin-arm64.tar.gz",
+          "sha256": "a165296eb1dfe2ca7a5c30fd444fadf74651cdfc20a70ab4afd49efecee4c048",
+          "bytes": 3607469,
           "compression": "tar.gz",
-          "manifestSha256": "a724f43b568d0c98aa2e18cdf3fb1108ca1e3412d54a06f56da4b8ee710d5d53"
+          "manifestSha256": "2eac1ced854f1602bde12b71848f2ad7de3caa65f261f224d9d5fd2e7fac8316"
         },
         {
           "os": "win32",
           "cpu": "x64",
-          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.12/chrome-win32-x64.tar.gz",
-          "sha256": "ab5ab216ec6d4c9e00709e95d6b2b72c87866f95a5bf374a8a4803032ecc2cb8",
-          "bytes": 4370926,
+          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.13/chrome-win32-x64.tar.gz",
+          "sha256": "dc19205792078ac0c56fee8000a3c4633634c4268dbfd681b9bf4149ef5628c6",
+          "bytes": 3607471,
           "compression": "tar.gz",
-          "manifestSha256": "844e392ad3766329838b2b69b3af257a0f62239c2c478e96c5c62347b706878b"
+          "manifestSha256": "121d996d632b2c91087be5e1dca6f512c94fd1d7ada9fec9bc435733ba3656fb"
         }
       ]
     },
@@ -36,30 +36,30 @@
       "id": "whatsapp",
       "name": "WhatsApp",
       "description": "Lets agents read your WhatsApp chats when you allow it, and send to the groups you choose.",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "authors": [
         "brocrew"
       ],
-      "minAppVersion": "0.1.7",
-      "sourceCommit": "1e8de5be8a310b286d51e2b9d67de78682044887",
+      "minAppVersion": "0.2.20",
+      "sourceCommit": "fd13882c460c32c247d39877ab7a67437d939ddd",
       "targets": [
         {
           "os": "darwin",
           "cpu": "arm64",
-          "url": "https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.6/whatsapp-darwin-arm64.tar.gz",
-          "sha256": "4785064c6b8d502591ac81db7bd6e11b71bee86de678497ede519c1cf9dbc328",
-          "bytes": 7806720,
+          "url": "https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.7/whatsapp-darwin-arm64.tar.gz",
+          "sha256": "70b899abb2949a5fac46e24f54c6311db972b0b1bcb3c15f383307a4f60a7059",
+          "bytes": 7805126,
           "compression": "tar.gz",
-          "manifestSha256": "2c0a01c9d6347d843f1e3186d47c38c7a87ba870bf3ba302cc4a742bb312f45d"
+          "manifestSha256": "65acde784bd23d8c1591bc86c5c0d20d8eb023085c52bec70ad688f7eb4bea88"
         },
         {
           "os": "win32",
           "cpu": "x64",
-          "url": "https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.6/whatsapp-win32-x64.tar.gz",
-          "sha256": "beaf87838f2caf5e22502f44870232bb97b4fea86916a7ff33035d882af5728b",
-          "bytes": 8203323,
+          "url": "https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.7/whatsapp-win32-x64.tar.gz",
+          "sha256": "52e0c48cec297b8c990e96cabafd3a7371ff91e33ea211240b60f8dae955bf47",
+          "bytes": 8204268,
           "compression": "tar.gz",
-          "manifestSha256": "1f64f0fb8121d2038a208c8f6159defb52fb6f4d1e6e728f605ae5faa4a9e88a"
+          "manifestSha256": "c0ded866fa9f6d6ca216e533ad90f3478cced2df9a728e490d6a0125996dcb96"
         }
       ]
     }
