@@ -9,6 +9,7 @@ import { StreamableHTTPClientTransport } from '../../apps/desktop/node_modules/@
 import { createRepoAwarePluginVerifier } from '../../apps/desktop/src/main/plugins/package-verifier.ts'
 import { preparePluginNodeRuntime } from '../../apps/desktop/src/main/plugins/node-runtime.ts'
 import { createPluginNodeHost } from '../../apps/desktop/src/main/plugins/node-host.ts'
+import { ownedPluginNodeProcess } from '../../apps/desktop/src/main/plugins/supervisor/node-host.ts'
 import { listFor } from '../gates/plugin-packaged/release.mjs'
 import { pluginBrokerBinding } from '../../apps/desktop/src/main/plugins/lifecycle/broker-binding.ts'
 import { createLifecycleAgentBridge } from '../../apps/desktop/src/main/plugins/lifecycle/agent-bridge.ts'
@@ -362,6 +363,9 @@ describe.skipIf(process.platform === 'win32')(
             configRevision: 1,
           },
           package: verified,
+          workspaceId: 'fern-workspace',
+          runId: running.runId,
+          exited: ownedPluginNodeProcess(running).exited,
           current: () => true,
           connection: Promise.resolve(connection),
         }
@@ -383,6 +387,8 @@ describe.skipIf(process.platform === 'win32')(
             detach: async () => {},
             agentAttachments: () => [view],
             onHostChanged: () => () => {},
+            withAgentScope: (_workspace, decide) =>
+              decide({ entries: [{ pluginId: release.id, is: 'admitted', view }] }, () => true),
           },
           binding: pluginBrokerBinding,
         })
@@ -392,14 +398,17 @@ describe.skipIf(process.platform === 'win32')(
           {
             agentRoutes: async (request) => {
               attachmentReads++
-              return bridge.routes(lease, {
-                ...request,
-                kind: 'agent-routes',
-                workspace: lease.workspace,
-                generation: lease.generation,
-                lease: 'b'.repeat(64),
-                release: request.release === true,
-              })
+              return {
+                format: 1,
+                value: await bridge.routes(lease, {
+                  ...request,
+                  kind: 'agent-routes',
+                  workspace: lease.workspace,
+                  generation: lease.generation,
+                  lease: 'b'.repeat(64),
+                  release: request.release === true,
+                }),
+              }
             },
           },
           'fern-workspace',
