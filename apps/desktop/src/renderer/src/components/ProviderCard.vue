@@ -356,10 +356,7 @@ const plan = computed(() => {
 
 const dayFormat = localFormat({ day: 'numeric', month: 'long', year: 'numeric' })
 
-/**
- * What a usable login runs on, with an expiry only where the provider gives one. BroBot runs on the
- * person's own login and keeps none of its own, so the line never says BroBot signed anyone in.
- */
+/** Names the person's usable login, with expiry only when supplied by the provider. */
 const loginSays = computed<string | null>(() => {
   const state = auth.value
   if (state?.state !== 'usable') return null
@@ -609,10 +606,7 @@ const startsOn = computed(() => {
   const model = inTheListsSpelling(list.value, pair.model)
   return pair.effort === null ? model : `${model} · ${pair.effort}`
 })
-/**
- * ⚑ Why it is that pair, and how to change it. ⛔ Read-only by design: a new conversation starts on
- * the last pair a person picked, and there is no app-wide default to set here.
- */
+/** Read-only: change the last-picked pair on the new-conversation form, not app-wide. */
 const startsOnWhy = computed(() =>
   list.value?.lastPicked != null
     ? 'the last one you picked. Pick another on the new-conversation form to change it.'
@@ -925,21 +919,9 @@ watch(programMissing, (missing) => {
 /* ------------------------------------------------------------------ folding */
 
 /**
- * What each part has to say that a person must not miss, or `null`. A part whose words change to
- * something new opens itself, though it was folded: a refusal that answers an operation after its
- * part was folded, a warning that arrives while it is folded, or one already there when the screen
- * is shown. Words a person has already seen stay folded if they fold the part again.
- *
- * - Login: a login that is not usable, and a sign-in, copy or cancel that failed or changed nothing.
- *   A notice that says how a gesture is going, or that it landed, opens nothing.
- * - API key: a refused save, a warning a key operation answers with, and a saved key not in use.
- * - Version: a program standing that warns, or one that could not be read.
- * - Usage: a usage warning (a provider at or near its limit, or warnings that could not be read).
- *   A window whose usage runs ahead of its time is a steady pace note and opens nothing.
- * - Running now: a sample that could not be measured.
- * - Models: a refused add or removal, a model already in the list, and a list that warns.
- *
- * Outside the parts, the card's top always shows: the at-limit line and the limits reading.
+ * New warnings or refusals reveal folded parts; folding seen words again keeps them folded.
+ * Progress, successful gestures and steady usage pace do not reveal a part.
+ * The card's top always shows the at-limit line and limits reading.
  */
 const whatEachPartSays = computed<Record<ProviderPart, string | null>>(() => {
   const loginSays = [

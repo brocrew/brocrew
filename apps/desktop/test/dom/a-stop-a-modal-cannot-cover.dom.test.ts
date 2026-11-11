@@ -328,9 +328,7 @@ const PATHS = [
         now: NOW,
       }),
   },
-  // ⚑ **D-016** — the screen's host lost six branches with the seed and the projects: the document
-  // drawer, the dispatch gate, the recruit and all-documents sheets, the project sheet and the
-  // new-project form. §3 reads the branch count from the source, so it moved with them.
+  // The screen's host branch count is read from its source in §3.
   // 423 · a branch of the screen's one host. ⚑ It takes no props: the overlay member carries
   // nothing, because there is no identity to name until this sheet makes one.
   { host: 'RuntimeScreen', panel: 'NewAgent', cy: 'new-agent', open: () => h(NewAgent) },
