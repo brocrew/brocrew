@@ -4,7 +4,7 @@ import type { Worker } from 'node:worker_threads'
 /** What the check of a copy found. */
 export type CopyCheck =
   /** The copy is one file and SQLite found nothing wrong. */
-  | { readonly kind: 'ok' }
+  | { readonly kind: 'ok'; readonly sha256?: string }
   /** SQLite's check found damage, or failed on it: the data is damaged. Not retried. */
   | { readonly kind: 'damaged'; readonly check: string }
   /** The copy could not be opened or made one file, or its check could not run. Retried. */
@@ -16,6 +16,7 @@ export type VerifyCopy = (copy: string) => Promise<CopyCheck>
 /** What a check worker is handed. */
 export interface CopyCheckRequest {
   readonly copy: string
+  readonly hashOnly?: boolean
   /** A test's hold: the check's thread is kept this long before it starts. */
   readonly holdMs?: number
 }

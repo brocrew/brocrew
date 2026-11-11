@@ -11,7 +11,7 @@ import {
 describe('the lines a start prints', () => {
   it('keep the exact text a watching process matches', () => {
     expect(READY_LINE).toBe('BroCrew is ready: its data is open and checked.')
-    expect(CHECKPOINT_LINE).toBe('BroCrew made a checked recovery copy before changing its data.')
+    expect(CHECKPOINT_LINE).toBe('BroCrew completed its recovery copy.')
     expect(FAIL_LINE).toBe('BroCrew did not start.')
     expect(CLOSED_WHILE_CHECKING).toBe('BroCrew was closed while it was checking its data.')
   })

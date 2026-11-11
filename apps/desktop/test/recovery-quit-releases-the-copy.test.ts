@@ -108,13 +108,14 @@ for (const route of [
       })
       return worker
     }, 10_000)
-    // The same guard also runs on the original function-only verifier at the reviewed base.
     const verify: VerifyCopy = typeof verifier === 'function' ? verifier : verifier.verify
     let checking: Promise<unknown> | undefined
     const listeners = new Map<string, ((event: { preventDefault(): void }) => void)[]>()
     let closeWindow!: () => void
     const context: Record<string, unknown> = {
       recoveryCopyVerifier: verifier,
+      recoveryCopyHasher: { stop: async () => undefined },
+      recoveryCaptureAbort: new AbortController(),
       recoveryWork: new Set(),
       stoppingRecoveryWork: null,
       createAppLifetime,
@@ -256,7 +257,6 @@ for (const route of [
       await checking
       await inspecting
       await (context.shutdown as () => Promise<void> | null)()
-      // stop is present on the correction, absent on the original reviewed base.
       await (verifier as CopyVerifier).stop?.()
     }
   })

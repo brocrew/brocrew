@@ -39,6 +39,26 @@ import { nodeFs, type RecoveryFs } from '../../src/main/recovery/files'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const POSIX = process.platform !== 'win32'
 
+it('reads committed WAL migrations without scratch copying at the exclusive startup boundary', async () => {
+  const { folder, userData } = aFolder()
+  const file = join(folder, 'closed.sqlite')
+  crashedInto(folder, file)
+  let copies = 0
+  const fs: RecoveryFs = {
+    ...nodeFs,
+    copyFile: async () => {
+      copies++
+      throw new Error('exclusive startup must use SQLite recovery')
+    },
+  }
+  expect(await migrationsOf(file, { fs, userData, exclusiveStartup: true })).toEqual({
+    kind: 'recorded',
+    migrations: LINEAGE.map(({ createdAt, hash }) => ({ createdAt, hash })),
+  })
+  expect(copies).toBe(0)
+  expect(existsSync(join(userData, 'recovery', 'scratch'))).toBe(false)
+})
+
 let LINEAGE: readonly BuildMigration[]
 beforeAll(async () => {
   LINEAGE = await buildLineage(MIGRATIONS)

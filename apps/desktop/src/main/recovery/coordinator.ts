@@ -13,9 +13,11 @@ import {
   listCheckpoints,
   listOfferable,
   makeCheckpoint,
+  captureCheckpoint,
+  resumeCapturedCheckpoints,
+  type CapturedCheckpoint,
   offeredFrom,
   prune,
-  theNewestIntact,
   type Checkpoint,
   type CheckpointStep,
 } from './checkpoint'
@@ -100,6 +102,9 @@ export interface CoordinatorDeps {
   readonly progress?: ProgressListener
   /** Checks a recovery copy before it is kept: in the app, in a worker. */
   readonly verifyCopy: VerifyCopy
+  readonly hashCopy?: VerifyCopy
+  readonly signal?: AbortSignal
+  readonly deferCheckpoint?: (captured: CapturedCheckpoint) => void
 }
 
 /** What this start may do with the workspace's data. Never throws. */
@@ -323,8 +328,6 @@ export async function pruneTheCopies(
   return prune(userData, lineage, options)
 }
 
-// ---------------------------------------------------------------------------------------------
-
 const OPEN_NOT_NEEDED: StartupVerdict = { kind: 'open', checkpoint: 'not-needed' }
 
 function failed(reason: StartFailure, canRetry: boolean, detail?: string): StartupVerdict {
@@ -403,6 +406,7 @@ async function decide(
   const database = await migrationsOf(databaseFile(userData), {
     fs,
     userData,
+    exclusiveStartup: owner === 'sole',
     ...(deps.freeBytes === undefined ? {} : { freeBytes: deps.freeBytes }),
   })
   if (database.kind === 'absent') {
@@ -456,33 +460,80 @@ async function decide(
   }
 
   const pending = hasPendingMigrations(applied, lineage)
-  const reason = await checkpointNeeded({
+  // 0.2.19 ships through 0029_open_provider_ids; newer migrations cannot be opened by it.
+  const rollbackLineage = lineage.filter(({ createdAt }) => createdAt <= 1794254514029)
+  const needsCompletedFallback =
+    pending && (await listOfferable(userData, rollbackLineage, fs)).length === 0
+  const options = {
     userData,
-    database,
-    lineage,
-    release: deps.packaged ? deps.appVersion : null,
+    ownership: owner,
+    appVersion: deps.appVersion,
     build: deps.build,
+    reason: 'first-start-of-release' as const,
     fs,
-  })
+    verifyCopy: deps.verifyCopy,
+    hashCopy: deps.hashCopy,
+    signal: deps.signal,
+    expectedMigrations: applied,
+    progress: deps.progress === undefined ? undefined : quietly(deps.progress),
+    now: deps.now,
+    freeBytes: deps.freeBytes,
+    log: deps.log,
+    beforeStep: deps.beforeCheckpointStep,
+  }
+  const retained = await resumeCapturedCheckpoints(options)
+  let completedFallback = !needsCompletedFallback
+  for (const captured of retained) {
+    if (
+      !completedFallback &&
+      isLineagePrefix(captured.manifest.database.migrations, rollbackLineage)
+    ) {
+      await captured.finish()
+      completedFallback = true
+    } else if (deps.deferCheckpoint) deps.deferCheckpoint(captured)
+    else await captured.finish()
+  }
+  const alreadyCaptured = retained.some(
+    ({ manifest }) =>
+      manifest.madeBy.appVersion === deps.appVersion && manifest.madeBy.build === deps.build,
+  )
+  const reason = alreadyCaptured
+    ? null
+    : await checkpointNeeded({
+        userData,
+        database,
+        lineage,
+        release: deps.packaged ? deps.appVersion : null,
+        build: deps.build,
+        fs,
+      })
   if (reason === null && !pending) return OPEN_NOT_NEEDED
   if (owner !== 'sole') return notTheOnlyApp(owner)
+  if (reason === null && !completedFallback) {
+    return failed(
+      'checkpoint-failed',
+      false,
+      'No completed recovery copy can be opened by BroCrew 0.2.19.',
+    )
+  }
   if (reason === null) return OPEN_NOT_NEEDED
   working('checkpoint')
-  const make = (): Promise<Checkpoint> =>
-    makeCheckpoint({
-      userData,
-      ownership: owner,
-      appVersion: deps.appVersion,
-      build: deps.build,
-      reason,
-      fs,
-      verifyCopy: deps.verifyCopy,
-      ...(deps.progress === undefined ? {} : { progress: quietly(deps.progress) }),
-      ...(deps.now === undefined ? {} : { now: deps.now }),
-      ...(deps.freeBytes === undefined ? {} : { freeBytes: deps.freeBytes }),
-      ...(deps.log === undefined ? {} : { log: deps.log }),
-      ...(deps.beforeCheckpointStep === undefined ? {} : { beforeStep: deps.beforeCheckpointStep }),
-    })
+  const make = async (): Promise<void> => {
+    if (!deps.deferCheckpoint) {
+      await makeCheckpoint({ ...options, reason })
+      return
+    }
+    const captured = await captureCheckpoint({ ...options, reason })
+    if (!completedFallback) {
+      if (!isLineagePrefix(captured.manifest.database.migrations, rollbackLineage)) {
+        throw new CheckpointFailed(
+          'No completed recovery copy can be opened by BroCrew 0.2.19.',
+          false,
+        )
+      }
+      await captured.finish()
+    } else deps.deferCheckpoint(captured)
+  }
   try {
     await make()
   } catch (error) {
@@ -600,7 +651,7 @@ async function newer(
   lineage: readonly BuildMigration[],
   fs: RecoveryFs,
 ): Promise<StartupVerdict> {
-  const offered = await theNewestIntact(await listOfferable(deps.userData, lineage, fs), fs)
+  const offered = (await listOfferable(deps.userData, lineage, fs))[0] ?? null
   const checkpoints = await listCheckpoints(deps.userData, fs)
   return {
     kind: 'newer',

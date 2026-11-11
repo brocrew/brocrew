@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import type { VerifyCopy } from './copy-check'
 import { randomUUID } from 'node:crypto'
+import { constants } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import type { OfferedCheckpoint, ProgressListener } from '../../shared/recovery'
 import type { RetainedRecoveryCopy } from '../../shared/recovery-retention'
@@ -20,6 +21,7 @@ import {
   hasPendingMigrations,
   isLineagePrefix,
   migrationsOf,
+  migrationsRecordedIn,
   type BuildMigration,
   type MigrationsRead,
 } from './database-facts'
@@ -184,15 +186,7 @@ export async function checkpointNeeded(
     offerable: await listOfferable(userData, lineage, fs),
     databaseChangedAt: await whenTheDatabaseLastChanged(userData, fs),
   }
-  const intact = new Set<string>()
-  const reusable = hasPendingMigrations(database.migrations, lineage) ? reusableCopies(facts) : []
-  for (const candidate of reusable) {
-    if (await isIntact(candidate, fs)) {
-      intact.add(candidate.manifest.id)
-      break
-    }
-  }
-  const needed = needsACheckpoint({ ...facts, intact })
+  const needed = needsACheckpoint(facts)
   if (needed === 'first-start-of-release') {
     try {
       const receipt = await readRetentionReceipt(userData, fs)
@@ -271,122 +265,289 @@ export interface MakeCheckpointOptions {
   readonly beforeStep?: (step: CheckpointStep) => void
   /** Checks the copy before it is kept: in the app, in a worker. */
   readonly verifyCopy: VerifyCopy
+  readonly hashCopy?: VerifyCopy
+  readonly signal?: AbortSignal
+  readonly expectedMigrations?: readonly Migration[]
+}
+
+type CapturedManifest = Omit<CheckpointManifest, 'database'> & {
+  readonly database: Omit<CheckpointManifest['database'], 'sha256'>
+}
+
+export interface CapturedCheckpoint {
+  readonly manifest: CapturedManifest
+  finish(): Promise<Checkpoint>
+}
+
+function checkCancellation(signal?: AbortSignal): void {
+  signal?.throwIfAborted()
+}
+
+function completion(
+  options: MakeCheckpointOptions,
+  folder: string,
+  captured: CapturedManifest,
+): CapturedCheckpoint {
+  const fs = options.fs ?? nodeFs
+  return {
+    manifest: captured,
+    async finish() {
+      checkCancellation(options.signal)
+      const copy = join(folder, COPY_FILE)
+      const checked = options.hashCopy ? await options.hashCopy(copy) : null
+      const sha256 =
+        checked === null
+          ? await sha256Of(copy, fs)
+          : checked.kind === 'ok'
+            ? checked.sha256
+            : undefined
+      if (typeof sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(sha256)) {
+        throw new Error(
+          checked?.kind === 'failed' ? checked.message : 'The recovery copy hash did not finish.',
+        )
+      }
+      checkCancellation(options.signal)
+      options.beforeStep?.('manifest')
+      const manifest: CheckpointManifest = {
+        ...captured,
+        database: { ...captured.database, sha256 },
+      }
+      await writeAtomically(
+        manifestFile(options.userData, manifest.id),
+        serializeManifest(manifest),
+        fs,
+      )
+      await removeCheckpointEntry(options.userData, folder, UNFINISHED_FILE, fs)
+      options.progress?.(3, 3)
+      ;(options.log ?? console.log)(CHECKPOINT_LINE)
+      return { folder, manifest }
+    },
+  }
 }
 
 export async function makeCheckpoint(options: MakeCheckpointOptions): Promise<Checkpoint> {
+  const captured = await captureCheckpoint(options)
+  const folder = checkpointDir(options.userData, captured.manifest.id)
+  try {
+    const checked = await options.verifyCopy(join(folder, COPY_FILE))
+    if (checked.kind === 'damaged') {
+      throw new CheckpointFailed(
+        `BroCrew's copy did not pass SQLite's own check (${checked.check}).`,
+        false,
+      )
+    }
+    if (checked.kind === 'failed') throw new Error(checked.message)
+    return await captured.finish()
+  } catch (error) {
+    const fs = options.fs ?? nodeFs
+    if (!(await pathExists(join(folder, MANIFEST_FILE), fs))) {
+      await removeUnfinished(options.userData, folder, fs)
+    }
+    throw failureFrom(error)
+  }
+}
+
+function snapshotFacts(userData: string): {
+  pages: number
+  pageSize: number
+  checkpointed: boolean
+} {
+  const source = new Database(databaseFile(userData), { fileMustExist: true })
+  let pages: number
+  let pageSize: number
+  let checkpointed: boolean
+  try {
+    pages = Number(source.pragma('page_count', { simple: true }))
+    pageSize = Number(source.pragma('page_size', { simple: true }))
+    const mode = String(source.pragma('journal_mode', { simple: true }))
+    const result =
+      mode === 'wal' ? (source.pragma('wal_checkpoint(TRUNCATE)') as { busy: number }[]) : []
+    checkpointed = mode !== 'wal' || result[0]?.busy === 0
+  } finally {
+    source.close()
+  }
+  return { pages, pageSize, checkpointed }
+}
+
+async function copySnapshotDatabase(
+  options: MakeCheckpointOptions,
+  copy: string,
+  facts: ReturnType<typeof snapshotFacts>,
+): Promise<void> {
   const { userData } = options
   const fs = options.fs ?? nodeFs
-  const now = options.now ?? Date.now
-  const log = options.log ?? ((line: string) => console.log(line))
-  const beforeStep = options.beforeStep ?? (() => undefined)
-  if (options.ownership !== 'sole') {
-    throw new CheckpointFailed(
-      'BroCrew did not make a recovery copy, because it could not be sure that no other copy of BroCrew ' +
-        'has this workspace open.',
-      false,
-    )
-  }
-
-  const id = randomUUID()
-  const backups = backupsDir(userData)
-  const folder = checkpointDir(userData, id)
-  const copy = checkpointDatabase(userData, id)
-  const marker = join(folder, UNFINISHED_FILE)
-  let made = false
-  let total = 0
-  const report = (done: number): void => options.progress?.(done, total)
-  let manifest: CheckpointManifest
-  try {
-    let pages = 0
-    let workspaceId: string
-    const source = new Database(databaseFile(userData), { fileMustExist: true })
+  const { pages, pageSize, checkpointed } = facts
+  let cloned = false
+  if (checkpointed) {
     try {
-      pages = Math.max(1, Number(source.pragma('page_count', { simple: true })))
-      const pageSize = Number(source.pragma('page_size', { simple: true }))
-      total = 3 * pages
-      checkFreeSpace(userData, pages * pageSize, options.freeBytes ?? freeBytesOn)
-      await assertOwnedPathsAreReal(userData, [folder, workspaceIdFile(userData)], fs)
-      await privateDir(backups, fs)
-
-      await syncFolder(userData, fs)
-      workspaceId = await workspaceIdFor(userData, fs)
-      await fs.mkdir(folder, { mode: 0o700 })
-      made = true
-      await assertOwnedPathsAreReal(userData, [folder, marker], fs)
-
-      await syncFolder(backups, fs)
-      await fs.writeFile(marker, '', { mode: 0o600, flag: 'wx' })
-      await syncFolder(folder, fs)
-
-      beforeStep('copy')
-      const pagesPerStep = Math.max(1, Math.round(COPY_STEP_BYTES / pageSize))
-      await source.backup(copy, {
+      await fs.copyFile(
+        databaseFile(userData),
+        copy,
+        constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE_FORCE,
+      )
+      cloned = true
+    } catch (error) {
+      if (!['ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV', 'EINVAL'].includes(errorCode(error) ?? ''))
+        throw error
+      await fs.rm(copy, { force: true })
+    }
+  }
+  if (!cloned) {
+    checkFreeSpace(userData, pages * pageSize, options.freeBytes ?? freeBytesOn)
+    const live = new Database(databaseFile(userData), { fileMustExist: true })
+    try {
+      await live.backup(copy, {
         progress: ({ totalPages, remainingPages }) => {
-          report(Math.min(pages, totalPages - remainingPages))
-          return pagesPerStep
+          checkCancellation(options.signal)
+          options.progress?.((totalPages - remainingPages) / totalPages, 3)
+          return Math.max(1, Math.round(COPY_STEP_BYTES / pageSize))
         },
       })
     } finally {
-      source.close()
+      live.close()
     }
-    const createdAt = new Date(now()).toISOString()
-    report(pages)
+  }
+}
 
+async function snapshotMigrations(
+  options: MakeCheckpointOptions,
+  copy: string,
+): Promise<readonly Migration[]> {
+  const { userData } = options
+  const fs = options.fs ?? nodeFs
+  const destination = new Database(copy, { fileMustExist: true })
+  let recorded: MigrationsRead
+  try {
+    if (String(destination.pragma('journal_mode = DELETE', { simple: true })) !== 'delete') {
+      throw new Error('The recovery copy could not become a single SQLite file.')
+    }
+    recorded = migrationsRecordedIn(destination)
+  } finally {
+    destination.close()
+  }
+  if (recorded.kind !== 'recorded')
+    throw new Error('The recovery copy has no readable migration record.')
+  if (
+    options.expectedMigrations &&
+    !sameMigrations(recorded.migrations, options.expectedMigrations)
+  ) {
+    throw new Error('The recovery copy does not record the migrations admitted at startup.')
+  }
+  await leaveOneFile(userData, copy, fs)
+  await putOnDisk(copy, fs)
+  return recorded.migrations
+}
+
+export async function captureCheckpoint(
+  options: MakeCheckpointOptions,
+): Promise<CapturedCheckpoint> {
+  const { userData } = options
+  const fs = options.fs ?? nodeFs
+  const beforeStep = options.beforeStep ?? (() => undefined)
+  if (options.ownership !== 'sole')
+    throw new CheckpointFailed('Another copy may have this workspace open.', false)
+  checkCancellation(options.signal)
+  const id = randomUUID()
+  const folder = checkpointDir(userData, id)
+  const copy = checkpointDatabase(userData, id)
+  let captured = false
+  let made = false
+  try {
+    const { pages, pageSize, checkpointed } = snapshotFacts(userData)
+    await privateDir(backupsDir(userData), fs)
+    const workspaceId = await workspaceIdFor(userData, fs)
+    await assertOwnedPathsAreReal(userData, [folder], fs)
+    await fs.mkdir(folder, { mode: 0o700 })
+    made = true
+    await fs.writeFile(join(folder, UNFINISHED_FILE), '', { mode: 0o600, flag: 'wx' })
+    await syncFolder(backupsDir(userData), fs)
+    beforeStep('copy')
+    options.progress?.(0, 3)
+    await copySnapshotDatabase(options, copy, { pages, pageSize, checkpointed })
+    checkCancellation(options.signal)
+    options.progress?.(1, 3)
     beforeStep('verify')
-    // Checked off the main thread; the copy is released before the answer comes.
-    const checked = await options.verifyCopy(copy)
-    if (checked.kind === 'damaged')
-      throw new CheckpointFailed(
-        `BroCrew's copy of this workspace's data did not pass SQLite's own check (${checked.check}), so ` +
-          'BroCrew changed nothing in the data.',
-        false,
-      )
-    if (checked.kind === 'failed') throw new Error(checked.message)
-    await leaveOneFile(userData, copy, fs)
-    const recorded = await migrationsOf(copy, { fs })
-    if (recorded.kind !== 'recorded') {
-      throw new CheckpointFailed(
-        recorded.kind === 'unreadable'
-          ? `BroCrew could not read the migration record in its copy of this workspace's data: ${recorded.detail}`
-          : "BroCrew's copy of this workspace's data records no migrations, so it is not a workspace's data.",
-        false,
-      )
-    }
-    report(2 * pages)
-    await assertOwnedPathsAreReal(userData, [copy], fs)
-
-    await putOnDisk(copy, fs)
-    const bytes = (await fs.lstat(copy)).size
-    const sha256 = await sha256Of(copy, fs)
-
+    const migrations = await snapshotMigrations(options, copy)
     beforeStep('files')
     const files = await copyStateFiles(userData, folder, fs)
-    await syncFolder(folder, fs)
-
-    beforeStep('manifest')
-    manifest = {
+    options.progress?.(2, 3)
+    const manifest: CapturedManifest = {
       format: MANIFEST_FORMAT,
       version: 1,
       id,
-      createdAt,
+      createdAt: new Date((options.now ?? Date.now)()).toISOString(),
       workspaceId,
       reason: options.reason,
       madeBy: { appVersion: options.appVersion, build: options.build },
-      database: { file: COPY_FILE, bytes, sha256, migrations: recorded.migrations },
+      database: {
+        file: COPY_FILE,
+        bytes: (await fs.lstat(copy)).size,
+        migrations,
+      },
       files,
     }
-    await assertOwnedPathsAreReal(userData, [manifestFile(userData, id)], fs)
-    await writeAtomically(manifestFile(userData, id), serializeManifest(manifest), fs)
-    report(total)
+    checkCancellation(options.signal)
+    // Keep the pre-migration snapshot through quit; only the final manifest makes it offerable.
+    await writeAtomically(join(folder, UNFINISHED_FILE), JSON.stringify(manifest), fs)
+    await syncFolder(folder, fs)
+    captured = true
+    return completion(options, folder, manifest)
   } catch (error) {
-    if (made) await removeUnfinished(userData, folder, fs)
+    if (made && !captured) await removeUnfinished(userData, folder, fs)
     throw failureFrom(error)
   }
-  await assertOwnedPathsAreReal(userData, [marker], fs)
-    .then(() => removeCheckpointEntry(userData, folder, UNFINISHED_FILE, fs))
-    .catch(() => undefined)
-  log(CHECKPOINT_LINE)
-  return { folder, manifest }
+}
+
+export async function resumeCapturedCheckpoints(
+  options: MakeCheckpointOptions,
+): Promise<CapturedCheckpoint[]> {
+  if (options.ownership !== 'sole') return []
+  const fs = options.fs ?? nodeFs
+  const workspace = await readWorkspaceId(options.userData, fs)
+  if (workspace.kind !== 'id') return []
+  const result: CapturedCheckpoint[] = []
+  for (const { name, found } of await foldersInBackups(options.userData, fs)) {
+    if (found.kind !== 'unfinished' || !found.marked) continue
+    const folder = checkpointDir(options.userData, name)
+    const text = await readTextOrNull(join(folder, UNFINISHED_FILE), fs)
+    if (!text) continue
+    let manifest: CapturedManifest
+    try {
+      manifest = JSON.parse(text) as CapturedManifest
+    } catch {
+      continue
+    }
+    if (
+      manifest.format !== MANIFEST_FORMAT ||
+      manifest.version !== 1 ||
+      manifest.id !== name ||
+      manifest.workspaceId !== workspace.id ||
+      manifest.database?.file !== COPY_FILE ||
+      !Array.isArray(manifest.database.migrations) ||
+      !Array.isArray(manifest.files) ||
+      typeof manifest.madeBy?.appVersion !== 'string'
+    ) {
+      throw new Error(`The unfinished recovery copy ${name} has unreadable capture metadata.`)
+    }
+    if ((await fs.lstat(join(folder, COPY_FILE))).size !== manifest.database.bytes) {
+      throw new Error(`The unfinished recovery copy ${name} is incomplete.`)
+    }
+    result.push(completion(options, folder, manifest))
+  }
+  return result
+}
+
+async function hasPendingCapture(
+  userData: string,
+  folders: readonly InBackups[],
+  fs: RecoveryFs,
+): Promise<boolean> {
+  for (const { name, found } of folders) {
+    if (found.kind !== 'unfinished' || !found.marked) continue
+    const marker = await readTextOrNull(join(checkpointDir(userData, name), UNFINISHED_FILE), fs)
+    if (marker?.trim()) return true
+  }
+  return false
 }
 
 export async function listCheckpoints(
@@ -458,6 +619,7 @@ export async function prune(
   } catch (error) {
     return notThisTime(messageOf(error))
   }
+  if (await hasPendingCapture(userData, folders, fs)) return []
   const unread = folders.find(({ found }) => found.kind === 'unknown')
   if (unread !== undefined) {
     return notThisTime(`${checkpointDir(userData, unread.name)} could not be read.`)
@@ -491,24 +653,13 @@ export async function prune(
     if (found === 'unknown') return notThisTime(`${checkpoint.folder} could not be read.`)
     if (found === 'whole') whole.push(checkpoint)
   }
-  let candidates = whole
+  const candidates = whole
   const keepingOf = (copies: readonly Checkpoint[]): Set<string> =>
     new Set(copies.slice(0, KEEP_NEWEST).map(({ manifest }) => manifest.id))
-  const intact = new Set<string>()
-  for (;;) {
-    const keeping = keepingOf(candidates)
-    if (candidates.every(({ manifest }) => keeping.has(manifest.id))) break
-    const unchecked = candidates.find(
-      ({ manifest }) => keeping.has(manifest.id) && !intact.has(manifest.id),
-    )
-    if (unchecked === undefined) break
-    if (await isIntact(unchecked, fs)) intact.add(unchecked.manifest.id)
-    else candidates = candidates.filter((checkpoint) => checkpoint !== unchecked)
-  }
   const kept = keepingOf(candidates)
   const goes: string[] = []
   for (const checkpoint of candidates) {
-    if (!kept.has(checkpoint.manifest.id) && (await isIntact(checkpoint, fs))) {
+    if (!kept.has(checkpoint.manifest.id)) {
       try {
         if (await onlyCheckpointFiles(checkpoint, fs)) goes.push(checkpoint.manifest.id)
       } catch (error) {
@@ -1067,6 +1218,7 @@ export async function deleteRetainedCopy(
     if ((await pathExists(gateFile(userData), fs)) || (await pathExists(journalFile(userData), fs)))
       return false
     const folders = await foldersInBackups(userData, fs)
+    if (await hasPendingCapture(userData, folders, fs)) return false
     if (folders.some(({ found }) => found.kind === 'unknown')) return false
     const receipt = await readRetentionReceipt(userData, fs)
     const workspace = await readWorkspaceId(userData, fs)

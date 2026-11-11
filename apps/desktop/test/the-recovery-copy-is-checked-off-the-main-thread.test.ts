@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Worker } from 'node:worker_threads'
@@ -123,6 +124,27 @@ describe('the recovery copy is checked off the main thread', () => {
         checkTheCopy(copy, 400)
       })
       expect(here).toBeGreaterThanOrEqual(350)
+    } finally {
+      await verifier.stop()
+    }
+  })
+
+  it('hashes the private copy in the existing worker and reports failure without a digest', async () => {
+    const verifier = verifyInAWorker(
+      (request) =>
+        new Worker(bundle, {
+          workerData: { ...request, hashOnly: true },
+        }),
+    )
+    try {
+      const copy = aCopy()
+      expect(await verifier.verify(copy)).toEqual({
+        kind: 'ok',
+        sha256: createHash('sha256').update(readFileSync(copy)).digest('hex'),
+      })
+      const missing = await verifier.verify(join(aRoot(), 'missing.sqlite'))
+      expect(missing.kind).toBe('failed')
+      expect('sha256' in missing).toBe(false)
     } finally {
       await verifier.stop()
     }

@@ -36,6 +36,7 @@ import {
   recordSuccessfulStart,
   retainedCopyInfo,
   deleteRetainedCopy,
+  type CapturedCheckpoint,
 } from './recovery/checkpoint'
 import { TranscriptRetentionHost, transcriptStartupWasInterrupted } from './transcript-retention'
 import {
@@ -417,6 +418,25 @@ const recoveryCopyVerifier = verifyInAWorker((request) =>
 )
 /** Recovery operations admitted before quit, including their unfinished-copy cleanup. */
 const recoveryWork = new Set<Promise<unknown>>()
+const recoveryCaptureAbort = new AbortController()
+const capturedRecoveryCopies: CapturedCheckpoint[] = []
+const recoveryCopyHasher = verifyInAWorker((request) =>
+  startRecoveryVerifier({
+    workerData: { ...request, hashOnly: true },
+    resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
+  }),
+)
+
+function finishCapturedRecoveryCopies(): void {
+  const copies = capturedRecoveryCopies.splice(0)
+  if (copies.length === 0) return
+  void withRecoveryWork(async () => {
+    for (const copy of copies) await copy.finish()
+    await letGoOfOldCopies()
+  }).catch((error: unknown) => {
+    console.warn('BroCrew kept an unfinished recovery copy for the next start:', error)
+  })
+}
 let stoppingRecoveryWork: Promise<void> | null = null
 
 /** Admit recovery work only while this process still accepts it. */
@@ -436,6 +456,8 @@ function withRecoveryWork<T>(work: () => Promise<T>): Promise<T> {
 /** Stop checks first, then join the operations that release their unfinished folders. */
 function stopRecoveryWork(): Promise<void> {
   stoppingRecoveryWork ??= (async () => {
+    recoveryCaptureAbort.abort()
+    await recoveryCopyHasher.stop()
     await recoveryCopyVerifier.stop()
     await Promise.allSettled([...recoveryWork])
   })()
@@ -770,7 +792,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     setTimeout(readTheWallsAhead, whole ? 5_000 : 0).unref()
   }
   setTimeout(readTheWallsAhead, 0).unref()
-  // ⚑ Where each Claude folder's local settings are kept: found off the main thread, since finding
+  // Where each Claude folder's local settings are kept: found off the main thread, since finding
   // one runs git, and kept between reads (`settings-locations.ts`).
   const ruleFolders = (): string[] => {
     const records = store.recorded()
@@ -1741,6 +1763,7 @@ function createWindow(): void {
   window.webContents.once('did-finish-load', () => signalFirstWindowLoad())
   window.on('ready-to-show', () => {
     if (!presentation.hidden) window.show()
+    finishCapturedRecoveryCopies()
   })
   // Whether the window can be seen, for the stall watch: a timer late while it cannot was paused by
   // the system, and nobody saw a wheel.
@@ -1864,6 +1887,9 @@ function theRecoveryService(launchOwnership: HostGateVerdict): RecoveryService {
     working: (what) => sayWorkingIfItTakesLong(what),
     progress: (done, total) => recoveryCalls?.progress(done, total),
     verifyCopy: recoveryCopyVerifier.verify,
+    hashCopy: recoveryCopyHasher.verify,
+    signal: recoveryCaptureAbort.signal,
+    deferCheckpoint: (captured) => capturedRecoveryCopies.push(captured),
   }
   const asked = app.commandLine.getSwitchValue(RECOVERY_FAULT_SWITCH)
   if (asked === '') return createRecoveryService(deps)
@@ -2652,9 +2678,7 @@ const lifetime = createAppLifetime({
   // Save windows' final drafts after conversations close, as a separately timed shutdown step.
   // See {@link theLastDraftSaves}.
   keepUnsentDrafts: () => theLastDraftSaves(),
-  // An import or rebuild is catch-up work, not something to hold a quit open for — but it must STOP
-  // (046 review, P2): a pass still running when the connection closes would throw against it. It
-  // ends at the next boundary.
+  // Stop catch-up work before its database connection closes.
   stopArchiveWork: () => {
     void stopRecoveryWork()
     void stopProviderSetup?.()
@@ -2670,7 +2694,7 @@ const lifetime = createAppLifetime({
     void dockLabel?.then((label) => label.stop())
     void themes?.close().catch(() => undefined)
   },
-  // …and then WAIT for the work already admitted, so the database closes under nobody (062).
+  // Join admitted work before closing the database.
   drainArchiveWork: async () => {
     await stopRecoveryWork()
     await stopProviderSetup?.()

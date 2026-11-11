@@ -39,6 +39,7 @@ export type LineageFit =
 export interface MigrationsOfOptions {
   readonly fs?: RecoveryFs
   readonly userData?: string
+  readonly exclusiveStartup?: boolean
   /** Bytes free on the disk holding a path, or null when that cannot be told. */
   readonly freeBytes?: (path: string) => number | null
 }
@@ -152,6 +153,8 @@ export async function migrationsOf(
         ? EMPTY
         : unreadable(`it is empty, and the ${holding.suffix} beside it holds data`)
     }
+    // Before runtime writers start, SQLite can recover its own WAL without a scratch copy.
+    if (options.exclusiveStartup) return readMigrations(file, false)
     const header = await headerOf(file, fs)
     if (header === null) return unreadable('it is too short to be a database')
     if (Buffer.from(header.subarray(0, 16)).toString('latin1') !== SQLITE_MAGIC) {

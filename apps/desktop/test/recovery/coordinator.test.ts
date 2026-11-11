@@ -18,7 +18,12 @@ import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ProgressListener, StartupVerdict } from '../../src/shared/recovery'
-import { inWords, isIntact, listCheckpoints } from '../../src/main/recovery/checkpoint'
+import {
+  inWords,
+  isIntact,
+  listCheckpoints,
+  type CapturedCheckpoint,
+} from '../../src/main/recovery/checkpoint'
 import {
   createRecoveryService,
   createRecoveryServiceForTests,
@@ -167,7 +172,7 @@ async function sha256Of(path: string): Promise<string> {
 describe('the three lines a start prints', () => {
   it('are these exact sentences, which something watching the start matches', () => {
     expect(READY_LINE).toBe('BroCrew is ready: its data is open and checked.')
-    expect(CHECKPOINT_LINE).toBe('BroCrew made a checked recovery copy before changing its data.')
+    expect(CHECKPOINT_LINE).toBe('BroCrew completed its recovery copy.')
     expect(FAIL_LINE).toBe('BroCrew did not start.')
   })
 })
@@ -1294,3 +1299,61 @@ describe('a test keeping the recovery window on a hidden launch', () => {
     expect(said).toEqual([])
   })
 })
+
+it('admits writers only after private capture, without waiting for the v1 digest', async () => {
+  const userData = await aWorkspace({ migrations: THIS_BUILD, checkpoints: [] })
+  const captured: CapturedCheckpoint[] = []
+  let hashes = 0
+  const { deps } = checkOf(userData, {
+    packaged: true,
+    deferCheckpoint: (copy) => captured.push(copy),
+    verifyCopy: async () => {
+      throw new Error('no startup full integrity check')
+    },
+    hashCopy: async (file) => {
+      hashes++
+      return { kind: 'ok', sha256: await sha256Of(file) }
+    },
+  })
+  expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'made' })
+  expect(captured).toHaveLength(1)
+  expect(hashes).toBe(0)
+  expect(await listCheckpoints(userData)).toEqual([])
+  const folder = join(backupsDir(userData), captured[0]!.manifest.id)
+  expect(existsSync(join(folder, 'unfinished'))).toBe(true)
+  expect(existsSync(join(folder, 'database.sqlite'))).toBe(true)
+  await captured[0]!.finish()
+  expect(hashes).toBe(1)
+  expect(await listCheckpoints(userData)).toHaveLength(1)
+})
+
+it.each([false, true])(
+  'pending migration waits for v1 only without a completed compatible fallback: %s',
+  async (hasFallback) => {
+    const userData = await aWorkspace({
+      migrations: THIS_BUILD,
+      checkpoints: hasFallback
+        ? [{ migrations: THIS_BUILD, createdAt: new Date(0).toISOString() }]
+        : [],
+    })
+    let hashes = 0
+    const deferred: CapturedCheckpoint[] = []
+    const { deps } = checkOf(userData, {
+      buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      packaged: true,
+      deferCheckpoint: (copy) => deferred.push(copy),
+      verifyCopy: async () => {
+        throw new Error('no additional startup integrity sweep')
+      },
+      hashCopy: async (file) => {
+        hashes++
+        return { kind: 'ok', sha256: await sha256Of(file) }
+      },
+    })
+    expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'made' })
+    expect(hashes).toBe(hasFallback ? 0 : 1)
+    expect(deferred).toHaveLength(hasFallback ? 1 : 0)
+    expect(await listCheckpoints(userData)).toHaveLength(1)
+    if (hasFallback) await deferred[0]!.finish()
+  },
+)

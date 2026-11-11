@@ -33,6 +33,8 @@ import {
   listCheckpoints,
   listOfferable,
   makeCheckpoint,
+  captureCheckpoint,
+  resumeCapturedCheckpoints,
   needsACheckpoint,
   offeredFrom,
   prune,
@@ -2189,4 +2191,97 @@ describe('a deletion intent never grants ownership of personal files', () => {
       expect(await isIntact(copy)).toBe(true)
     },
   )
+})
+
+describe('private capture before background v1 completion', () => {
+  const optionsFor = (userData: string): MakeCheckpointOptions => ({
+    userData,
+    ownership: 'sole',
+    appVersion: '0.2.20',
+    build: 'fictional-build',
+    reason: 'before-migration',
+    verifyCopy: async () => {
+      throw new Error('no startup integrity sweep')
+    },
+    log: () => undefined,
+  })
+
+  it('captures coupled state before writers, stays unofferable, then publishes the actual v1 hash', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    writeFileSync(join(userData, 'drafts.json'), '{"draft":"before"}')
+    let hashes = 0
+    const options = {
+      ...optionsFor(userData),
+      hashCopy: async (copy: string) => {
+        hashes++
+        return { kind: 'ok' as const, sha256: sha256(readFileSync(copy)) }
+      },
+    }
+    const captured = await captureCheckpoint(options)
+    const folder = join(userData, 'backups', captured.manifest.id)
+    expect(hashes).toBe(0)
+    expect(existsSync(join(folder, 'manifest.json'))).toBe(false)
+    expect(await listOfferable(userData, LINEAGE)).toEqual([])
+    writeFileSync(join(userData, 'drafts.json'), '{"draft":"after"}')
+    const live = new Database(liveFile(userData))
+    live.exec('CREATE TABLE only_after_capture(x)')
+    live.close()
+    const made = await captured.finish()
+    expect(hashes).toBe(1)
+    expect(made.manifest.version).toBe(1)
+    expect(made.manifest.database.sha256).toBe(
+      sha256(readFileSync(join(folder, 'database.sqlite'))),
+    )
+    expect(readFileSync(join(folder, 'drafts.json'), 'utf8')).toBe('{"draft":"before"}')
+    const copy = new Database(join(folder, 'database.sqlite'), { readonly: true })
+    try {
+      expect(
+        copy.prepare("SELECT name FROM sqlite_master WHERE name='only_after_capture'").get(),
+      ).toBeUndefined()
+    } finally {
+      copy.close()
+    }
+    expect((await listOfferable(userData, LINEAGE)).map(({ manifest }) => manifest.id)).toEqual([
+      made.manifest.id,
+    ])
+  })
+
+  it('keeps private capture and previous backups on hash failure, then resumes without recapturing live state', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const previous = await make(userData)
+    const options = optionsFor(userData)
+    const captured = await captureCheckpoint({
+      ...options,
+      hashCopy: async () => ({ kind: 'failed', message: 'fictional hash EIO' }),
+    })
+    await expect(captured.finish()).rejects.toThrow('fictional hash EIO')
+    expect(await prune(userData, LINEAGE, SOLE)).toEqual([])
+    expect(existsSync(previous.folder)).toBe(true)
+    const resumed = await resumeCapturedCheckpoints(options)
+    expect(resumed.map(({ manifest }) => manifest.id)).toEqual([captured.manifest.id])
+    const made = await resumed[0]!.finish()
+    expect(parseManifest(readFileSync(join(made.folder, 'manifest.json'), 'utf8'))).toEqual({
+      ok: true,
+      value: made.manifest,
+    })
+    expect(existsSync(join(made.folder, 'unfinished'))).toBe(false)
+    expect(existsSync(previous.folder)).toBe(true)
+  })
+
+  it('cancels completion without deleting the durable capture or publishing a partial manifest', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const abort = new AbortController()
+    const options = optionsFor(userData)
+    const captured = await captureCheckpoint({ ...options, signal: abort.signal })
+    abort.abort()
+    await expect(captured.finish()).rejects.toThrow()
+    const folder = join(userData, 'backups', captured.manifest.id)
+    expect(existsSync(join(folder, 'database.sqlite'))).toBe(true)
+    expect(existsSync(join(folder, 'manifest.json'))).toBe(false)
+    expect(await listOfferable(userData, LINEAGE)).toEqual([])
+    expect(await resumeCapturedCheckpoints(options)).toHaveLength(1)
+  })
 })

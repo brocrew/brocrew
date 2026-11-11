@@ -2,7 +2,7 @@
 export const READY_LINE = 'BroCrew is ready: its data is open and checked.'
 
 /** Once, when a recovery copy is verified and its manifest written, before any migration. */
-export const CHECKPOINT_LINE = 'BroCrew made a checked recovery copy before changing its data.'
+export const CHECKPOINT_LINE = 'BroCrew completed its recovery copy.'
 
 /** Whenever a start stops. The reason follows on the next line, and the process exits non-zero. */
 export const FAIL_LINE = 'BroCrew did not start.'
