@@ -29,7 +29,8 @@ async function read(): Promise<void> {
   try {
     const sessions = client.sessions
     const readRules = sessions?.keptRules
-    if (readRules === undefined) throw new Error('Session API is unavailable')
+    if (readRules === undefined)
+      throw new Error('The client does not provide session reads and intents')
     kept.value = await readRules.call(sessions)
     unread.value = null
   } catch (error) {
@@ -44,7 +45,8 @@ async function remove(provider: Provider, file: string, rule: string): Promise<v
   try {
     const sessions = client.sessions
     const removeRule = sessions?.removeKeptRule
-    if (removeRule === undefined) throw new Error('Session API is unavailable')
+    if (removeRule === undefined)
+      throw new Error('The client does not provide session reads and intents')
     const done = await removeRule.call(sessions, { provider, file, kept: rule })
     if (!done.removed) {
       refused.value = done.why

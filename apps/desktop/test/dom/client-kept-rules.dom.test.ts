@@ -101,7 +101,9 @@ it.each([undefined, {}])(
     localStorage.setItem('brobot2.providers.open.kept-rules', 'false')
     const { view } = screen(() => sessions)
     await vi.waitFor(() => expect(view.all('kept-rules-unread')).toHaveLength(1))
-    expect(view.q('kept-rules-unread').textContent).toContain('Session API is unavailable')
+    expect(view.q('kept-rules-unread').textContent).toContain(
+      'The client does not provide session reads and intents',
+    )
     expect(view.all('kept-rules-none')).toHaveLength(0)
     expect(view.q('kept-rules-fold').getAttribute('aria-expanded')).toBe('true')
   },
@@ -126,7 +128,9 @@ it.each(['capability getter', 'operation getter', 'throw', 'reject'] as const)(
     })
     await vi.waitFor(() => expect(view.all('kept-rules-unread')).toHaveLength(1))
     expect(view.q('kept-rules-unread').textContent).toContain(failure.message)
-    expect(view.q('kept-rules-unread').textContent).not.toContain('Session API is unavailable')
+    expect(view.q('kept-rules-unread').textContent).not.toContain(
+      'The client does not provide session reads and intents',
+    )
   },
 )
 
@@ -173,7 +177,9 @@ it.each([
     await vi.waitFor(() => expect(view.all('kept-rules-refused')).toHaveLength(1))
     await vi.waitFor(() => expect(reads).toBe(2))
     expect(view.q('kept-rules-refused').textContent).toContain(
-      kind === 'missing' ? 'Session API is unavailable' : failure.message,
+      kind === 'missing'
+        ? 'The client does not provide session reads and intents'
+        : failure.message,
     )
     expect(view.q('kept-rule-remove').hasAttribute('disabled')).toBe(false)
     expect(view.all('kept-rule')).toHaveLength(1)
