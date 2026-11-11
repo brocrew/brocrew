@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, shallowRef, useId, watch } from 'vue'
+import { useClientApi } from '../client-provider/injection'
 import type { KeptRules, Provider } from '../../../shared/runtime-ipc'
 import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import { grantRulesSaid } from '../lib/permission-offer'
@@ -16,6 +17,7 @@ const props = defineProps<{
   names?: Readonly<Partial<Record<Provider, string>>>
 }>()
 
+const client = useClientApi()
 const kept = shallowRef<KeptRules | null>(null)
 const unread = ref<string | null>(null)
 const refused = ref<string | null>(null)
@@ -25,7 +27,10 @@ const failures = ref(0)
 
 async function read(): Promise<void> {
   try {
-    kept.value = await window.api.runtime.keptRules()
+    const sessions = client.sessions
+    const readRules = sessions?.keptRules
+    if (readRules === undefined) throw new Error('Session API is unavailable')
+    kept.value = await readRules.call(sessions)
     unread.value = null
   } catch (error) {
     unread.value = readableError(error)
@@ -37,7 +42,10 @@ async function remove(provider: Provider, file: string, rule: string): Promise<v
   removing.value = true
   refused.value = null
   try {
-    const done = await window.api.runtime.removeKeptRule({ provider, file, kept: rule })
+    const sessions = client.sessions
+    const removeRule = sessions?.removeKeptRule
+    if (removeRule === undefined) throw new Error('Session API is unavailable')
+    const done = await removeRule.call(sessions, { provider, file, kept: rule })
     if (!done.removed) {
       refused.value = done.why
       failures.value += 1
