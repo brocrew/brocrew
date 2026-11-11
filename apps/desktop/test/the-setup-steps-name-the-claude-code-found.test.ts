@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   AuthUnavailableError,
   FakeProviderSessions,
@@ -15,6 +15,8 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { createProviderModules, providerProgramPathsFromModules } from '../src/main/providers'
+import type { ProviderModule } from '../src/main/providers/module'
 import { prepareOnTheLogin } from '../src/main/providers/claude/index'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
@@ -98,10 +100,64 @@ describe('the setup steps name the Claude Code BroBot found', () => {
     })
   }
 
+  function programPaths(program?: ProviderModule['program']) {
+    const unread = vi.fn((): never => {
+      throw new Error('No fictional provider launch, home or credential work during setup')
+    })
+    const modules = createProviderModules(
+      () => ({
+        managedRoot: '/fictional/homes',
+        defaultProfile: 'fern',
+        homeOf: unread,
+        profiles: unread,
+        assertMayOpen: unread,
+      }),
+      {
+        claude: { runtime: { program: unread }, home: {}, auth: {}, program },
+        codex: { runtime: { command: unread }, home: {}, auth: { command: unread } },
+      },
+    )
+    return { paths: providerProgramPathsFromModules(modules), unread }
+  }
+
   afterEach(async () => {
     await host.closeAll()
     db.close()
     rmSync(userData, { recursive: true, force: true })
+  })
+
+  it('keeps a fictional program receiver and reads its current path only when setup asks', () => {
+    const failure = new Error('Fictional program lookup failed')
+    const program = {
+      path: null as string | null,
+      failed: false,
+      installedPath: vi.fn(function (this: { path: string | null; failed: boolean }) {
+        if (this.failed) throw failure
+        return this.path
+      }),
+    }
+    const f = programPaths(program)
+    host = hostWith(f.paths.claude)
+    expect(program.installedPath).not.toHaveBeenCalled()
+    expect(host.providerSetup().claude?.signInCommand).toBe('claude')
+    program.path = '/fictional/tools/fern'
+    expect(host.providerSetup().claude?.signInCommand).toBe(
+      claudeCommandIn(program.path, process.platform),
+    )
+    program.failed = true
+    expect(() => host.providerSetup()).toThrow(failure)
+    expect(program.installedPath).toHaveBeenCalledTimes(3)
+    expect(f.unread).not.toHaveBeenCalled()
+  })
+
+  it.each([undefined, {}])('keeps an absent installed-path service optional (%j)', (program) => {
+    const f = programPaths(program)
+    expect(f.paths.claude).toBeUndefined()
+    expect(f.paths.codex).toBeUndefined()
+    host = hostWith(f.paths.claude)
+    expect(host.providerSetup().claude?.signInCommand).toBe('claude')
+    expect(host.providerSetup().codex).toBeNull()
+    expect(f.unread).not.toHaveBeenCalled()
   })
 
   it('🔴 the program found, by its full path, as this computer’s shell runs it', () => {

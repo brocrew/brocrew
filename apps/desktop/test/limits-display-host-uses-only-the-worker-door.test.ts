@@ -6,6 +6,8 @@ import { LimitsReaderLifetime, type LimitsReader } from '../src/main/db/limits-r
 import type { LimitsReadInput, LimitsReadResult } from '../src/main/db/limits-read-protocol'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
+import { providerConditions } from '../src/shared/provider-limit'
+import { usageSays } from '../src/renderer/src/lib/usage-limit'
 
 class Reader implements LimitsReader {
   readonly calls: LimitsReadInput[] = []
@@ -23,11 +25,11 @@ class Reader implements LimitsReader {
       this.resolve = resolve
     })
   }
-  finish() {
+  finish(rows: LimitsReadResult['display']['rows'] = []) {
     const input = this.calls.at(-1)!
     const walk = {
       walk: 'every-provider-wall-recently-recorded' as const,
-      rows: [],
+      rows,
       ledgers: 1,
       rowsUnread: 0,
     }
@@ -117,6 +119,39 @@ describe('the window display door is independent of current and admission facts'
     })
     reader.finish()
     expect(await answer).toMatchObject({ is: 'read' })
+    expect(canonical).not.toHaveBeenCalled()
+  })
+
+  it('projects worker display diagnostics after validation without changing canonical rows', async () => {
+    const { host, reader, canonical, sink } = fixture()
+    const wall = {
+      provider: 'claude' as const,
+      window: 'seven_day',
+      standing: 'about-to-stop' as const,
+      resetsAt: 60_000,
+      said: 'claude is approaching its rate limit (seven_day) — 93% used; resets 1970-01-01T00:01:00.000Z',
+      at: 10,
+    }
+    const pending = host.readLimitsDisplay()
+    await drain()
+    reader.finish([wall])
+    const answer = await pending
+    expect(answer.is).toBe('read')
+    if (answer.is !== 'read') throw new Error('Expected the supplied worker display')
+    expect(answer.reading.walked.rows).toEqual([
+      { ...wall, meaning: { word: 'weekly', used: 93, untimed: false } },
+    ])
+    const [condition] = providerConditions(answer.reading.walked.rows, answer.reading.evaluatedAt)
+    expect(usageSays(condition!, answer.reading.evaluatedAt)).toContain('weekly limit (93% used)')
+    expect(condition?.said).toEqual([wall.said])
+    expect(wall).not.toHaveProperty('meaning')
+    expect(canonical).not.toHaveBeenCalled()
+    const legacy = executeRuntimeCommand(host, sink, { kind: 'limitsForAPerson' })
+    await drain()
+    reader.finish([wall])
+    expect(await legacy).toMatchObject({
+      rows: [{ ...wall, meaning: { word: 'weekly', used: 93, untimed: false } }],
+    })
     expect(canonical).not.toHaveBeenCalled()
   })
 

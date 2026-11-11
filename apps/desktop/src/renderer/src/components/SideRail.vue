@@ -29,6 +29,7 @@ import {
   standingOf,
   standingWord,
   stateHere,
+  stateForRecord,
   type AgentFacets,
   type Standing,
 } from '../lib/agent-state'
@@ -634,13 +635,15 @@ const rows = computed<RailRow[]>(() => {
     )
     const limit = providerLimitDisplay(
       providerBlocks.value.get(record.sessionId) ?? record.meta,
-      stateHere(
-        record,
-        facets,
-        whoseAnswerIn(props.waiting, record.sessionId),
-        whoseWorkIn(props.waiting, record.sessionId),
-        {},
-        stoppedWorkIn(props.waiting, record.sessionId),
+      stateForRecord(record, () =>
+        stateHere(
+          record,
+          facets,
+          whoseAnswerIn(props.waiting, record.sessionId),
+          whoseWorkIn(props.waiting, record.sessionId),
+          {},
+          stoppedWorkIn(props.waiting, record.sessionId),
+        ),
       ),
       railMinute.value,
     )
@@ -664,13 +667,15 @@ const rows = computed<RailRow[]>(() => {
           purpose?.word ??
           standingWord(
             facets,
-            stateHere(
-              record,
-              facets,
-              whoseAnswerIn(props.waiting, record.sessionId),
-              whoseWorkIn(props.waiting, record.sessionId),
-              {},
-              stoppedWorkIn(props.waiting, record.sessionId),
+            stateForRecord(record, () =>
+              stateHere(
+                record,
+                facets,
+                whoseAnswerIn(props.waiting, record.sessionId),
+                whoseWorkIn(props.waiting, record.sessionId),
+                {},
+                stoppedWorkIn(props.waiting, record.sessionId),
+              ),
             ),
           ),
         label: workerLabel(who(record), worker, host?.named),

@@ -10,7 +10,7 @@ import {
   markReopened,
   markUserInputAnswered,
   type TranscriptState,
-} from '../src/renderer/src/lib/transcript'
+} from './lib/core-transcript'
 
 /**
  * The session panel (037) — what still needs you, beside the conversation instead of scrolled away

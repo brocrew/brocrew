@@ -1,7 +1,8 @@
 import { vi } from 'vitest'
 import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+import { createModelLists } from '../lib/provider-launch-fixture'
+import type { ModelLists } from '../../src/renderer/src/lib/model-lists'
 import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import { useAttentionSignals } from '../../src/renderer/src/composables/useAttentionSignals'
@@ -27,6 +28,7 @@ vi.mock('../../src/renderer/src/components/ProviderSetupAtLaunch.vue', () => ({
   default: { render: () => null },
 }))
 
+let suppliedLists: ModelLists | null = null
 export let sessions: SessionStore
 export let agentStore: ReturnType<typeof createAgentStore>
 const changeListeners = new Set<Parameters<RuntimeBridge['onChanged']>[0]>()
@@ -40,7 +42,7 @@ vi.mock('../../src/renderer/src/composables/useAgentStore', () => ({
   useAgentStore: () => agentStore,
 }))
 vi.mock('../../src/renderer/src/composables/useModelLists', () => ({
-  useModelLists: () => createModelLists(() => window.api.runtime),
+  useModelLists: () => suppliedLists ?? createModelLists(() => window.api.runtime),
 }))
 
 const agents: AgentIdentities = {
@@ -164,6 +166,7 @@ export const runtime = {
 }
 
 export function installRuntimeScreenFixture(): void {
+  suppliedLists = null
   forgetProfileSignIns()
   for (const provider of ['claude', 'codex'] as const)
     useProfileSignIn(provider, DEFAULT_PROFILE_ID).auth = {
@@ -257,4 +260,12 @@ export function agentBookAnswers() {
     }),
   }
   return { skills, book }
+}
+
+export function replaceFixtureModelLists(lists: ModelLists | null): void {
+  suppliedLists = lists
+}
+
+export function replaceFixtureSessionStore(store: SessionStore): void {
+  sessions = store
 }

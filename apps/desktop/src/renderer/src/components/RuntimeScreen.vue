@@ -144,7 +144,6 @@ import {
   watch,
   watchEffect,
 } from 'vue'
-import { DEFAULT_CONVERSATION_PROVIDER } from '@brobot2/shared/providers'
 import type { AppInfo } from '@brobot2/shared'
 import type {
   ChildWorkInput,
@@ -176,12 +175,12 @@ import {
   PROVIDER_NAME,
 } from '../../../shared/runtime-ipc'
 import { useAgentStore } from '../composables/useAgentStore'
-import { providerForALaunch, providersNotChosenIn } from '../lib/agent-store'
+import { providersNotChosenIn } from '../lib/agent-store'
 import { NO_LAUNCH_CHOICES, type LaunchChoices } from '../lib/launch-choices'
 import { pickInAConversation, type PickedModel } from '../lib/model-lists'
 import { useModelLists } from '../composables/useModelLists'
 import { useProfileSignIn } from '../composables/useProfileSignIn'
-import { providerReady, readyProvider } from '../lib/provider-models'
+import { useClientProviders } from '../client-provider/injection'
 import { oneReadAtATime } from '../lib/one-read-at-a-time'
 import { handedBackSays } from '../lib/handing-it-back'
 import {
@@ -200,7 +199,7 @@ import {
   usePersistentChoice,
   usePersistentToggle,
 } from '../composables/usePersistentToggle'
-import { recordFacets, standingWord, stateHere } from '../lib/agent-state'
+import { recordFacets, standingWord, stateHere, stateForRecord } from '../lib/agent-state'
 import {
   answeredFromHere,
   answerFor,
@@ -1148,28 +1147,6 @@ async function olderLinkedHistory(): Promise<void> {
 }
 
 /**
- * 🔴 **The FALLBACK for an identity that has not said** (423, HO-023 §3) — no longer the answer.
- *
- * ⚠️ **Its own first sentence was false for two dispatches and is corrected here.** It read *"what
- * a new conversation starts on unless its settings say otherwise (005)"*, and `417 §3` measured
- * that there are no settings that say otherwise: nothing in this app can move a session's provider
- * once it is open. Codex is still the value, and still because that is the quota dogfooding can
- * spend; the header shows what any given conversation is actually running, and a reopened one keeps
- * whatever it was recorded with.
- *
- * ⛔ **What changed is its RANK, and `419` F3 wrote the line:** *"the dispatch that lands the roster
- * surface makes `DEFAULT_PROVIDER` the fallback for an identity that has not said."* The spawn door
- * has resolved `asked.provider ?? providerOf(profileId) ?? parent.provider` since `419` (and since
- * `682` a person's model choice in force before all three, on the spawn side only); a launch has no
- * parent, so the third term here is this constant. {@link frontDoorProvider} is that
- * resolution and it is the only reader of this name.
- *
- * The default comes from the shared provider registry. Live instruments derive the same
- * value from that declaration.
- */
-const DEFAULT_PROVIDER: Provider = DEFAULT_CONVERSATION_PROVIDER
-
-/**
  * 🔴 **What a new conversation will run on — resolved, not assumed** (423, HO-023 §3).
  *
  * ⛔ **`what the person asked for ?? BroBot's identity ?? the app frame's constant`** — which is
@@ -1253,23 +1230,15 @@ const frontDoorApproval = computed<'ask' | 'auto' | null>(
   () => agentStore.identities.value?.defaultApprovalMode ?? null,
 )
 
-const frontDoorProvider = computed<Provider>(() =>
-  readyProvider(
-    // 🔴 **The asked term is FIRST, and it is the whole of `435`'s change here** (HO-025 §4). The
-    // front door offers a provider again, and *which provider will this conversation start on* still
-    // has exactly one derivation — this one. ⛔ The control does not preview the answer; it moves the
-    // first term and reads the result back, so the sentence, the select and the payload cannot come
-    // apart. See `providerForALaunch`'s own docblock for why the term is a parameter rather than a
-    // `??` at this call site.
-    providerForALaunch(
-      agentStore.identities.value,
-      DEFAULT_PROFILE_ID,
-      DEFAULT_PROVIDER,
-      launchChoices.value.provider,
-    ),
-    launchReadiness.value,
-  ),
-)
+const frontDoorProvider = ref<Provider | null>(null)
+const frontDoorResolving = ref(true)
+const frontDoorChoiceError = ref<string | null>(null)
+let frontDoorChoiceRead = 0
+let frontDoorChoicesAlive = true
+onBeforeUnmount(() => {
+  frontDoorChoicesAlive = false
+  frontDoorChoiceRead++
+})
 
 /** Live roster names for the screen's attention and queue readers. */
 function agentHeadingFor(profileSlug: string): string {
@@ -1345,25 +1314,23 @@ watch(place, () => void readPrograms())
  * here and in the host — and ⛔ a credential gesture disowns a read still out for the old account
  * (293 §5, {@link authChangedFor}).
  */
-const modelLists = useModelLists()
-const launchSignIns = Object.fromEntries(
-  (Object.keys(PROVIDER_NAME) as Provider[]).map((provider) => [
-    provider,
-    useProfileSignIn(provider, DEFAULT_PROFILE_ID),
-  ]),
-) as Record<Provider, ReturnType<typeof useProfileSignIn>>
-const launchReadiness = computed(
+const providerClient = useClientProviders()
+const modelLists = useModelLists(providerClient)
+
+const heldLaunchReadiness = computed(
   () =>
     Object.fromEntries(
       (Object.keys(PROVIDER_NAME) as Provider[]).map((provider) => [
         provider,
-        providerReady(
-          modelLists.held(provider),
-          launchSignIns[provider].auth,
-          programs.value?.[provider],
-        ),
+        modelLists.choices(provider)?.ready ?? null,
       ]),
     ) as Record<Provider, boolean | null>,
+)
+
+const launchReadiness = ref<Record<Provider, boolean | null>>(
+  Object.fromEntries(
+    (Object.keys(PROVIDER_NAME) as Provider[]).map((provider) => [provider, null]),
+  ) as Record<Provider, boolean | null>,
 )
 
 /**
@@ -1546,10 +1513,46 @@ const draftKeyForActive = computed(() => draftSlot(activeId.value))
  * never be two of it.
  */
 const launchChoices = ref<LaunchChoices>({ ...NO_LAUNCH_CHOICES })
-watch(frontDoorProvider, (provider, before) => {
-  if (provider !== before && launchChoices.value.provider !== provider)
-    launchChoices.value = { ...launchChoices.value, provider, model: '', reasoningEffort: '' }
-})
+async function resolveFrontDoor(): Promise<void> {
+  const ours = ++frontDoorChoiceRead
+  frontDoorResolving.value = true
+  frontDoorChoiceError.value = null
+  try {
+    const answer = await modelLists.resolve({
+      profileId: DEFAULT_PROFILE_ID,
+      askedProvider: launchChoices.value.provider,
+      providers: Object.entries(heldLaunchReadiness.value).map(([provider, ready]) => {
+        const program = programs.value?.[provider as Provider]
+        return {
+          provider: provider as Provider,
+          ready,
+          program: program === undefined ? null : { standing: program.standing },
+        }
+      }),
+    })
+    if (frontDoorChoicesAlive && ours === frontDoorChoiceRead) {
+      launchReadiness.value = Object.fromEntries(
+        answer.readiness.map(({ provider, ready }) => [provider, ready]),
+      ) as Record<Provider, boolean | null>
+      frontDoorProvider.value = answer.provider
+    }
+  } catch (error) {
+    if (frontDoorChoicesAlive && ours === frontDoorChoiceRead)
+      frontDoorChoiceError.value = readableError(error)
+  } finally {
+    if (frontDoorChoicesAlive && ours === frontDoorChoiceRead) frontDoorResolving.value = false
+  }
+}
+watch(
+  [
+    () => launchChoices.value.provider,
+    heldLaunchReadiness,
+    programs,
+    () => agentStore.identities.value,
+  ],
+  () => void resolveFrontDoor(),
+  { immediate: true, flush: 'sync' },
+)
 
 /**
  * A draft belongs to a conversation for as long as that conversation is open — OR for as long as
@@ -2128,13 +2131,15 @@ const needsYou = computed<AttentionRequest[]>(() =>
       )
       return standingWord(
         facets,
-        stateHere(
-          record,
-          facets,
-          whoseAnswerIn(conversationWaits.value, record.sessionId),
-          whoseWorkIn(conversationWaits.value, record.sessionId),
-          {},
-          stoppedWorkIn(conversationWaits.value, record.sessionId),
+        stateForRecord(record, () =>
+          stateHere(
+            record,
+            facets,
+            whoseAnswerIn(conversationWaits.value, record.sessionId),
+            whoseWorkIn(conversationWaits.value, record.sessionId),
+            {},
+            stoppedWorkIn(conversationWaits.value, record.sessionId),
+          ),
         ),
       )
     },
@@ -4127,30 +4132,48 @@ onUnmounted(() => {
                {@link listsShown} has read them on mount, so the front door's picker costs no new
                provider child. ⛔ **`choices` is held HERE and not in the component**: see
                {@link launchChoices}, and `210` for the defect that makes it a rule. -->
-          <NewConversation
-            v-else
-            :recent="rail?.theOneList ?? null"
-            @open="select"
-            :busy="frontDoorLaunch.busy.value || store.isLaunching()"
-            :error="store.launchError.value"
-            :refused-as="store.launchRefusal.value"
-            :draft="drafts.read(draftSlot(null))"
-            :handing="drafts.paths.handing(draftSlot(null))"
-            :default-provider="frontDoorProvider"
-            :provider-readiness="launchReadiness"
-            :default-approval-mode="frontDoorApproval"
-            :approval-default-chosen="agentStore.identities.value?.defaultApprovalModeChosen"
-            :capabilities="capabilities"
-            :programs="programs"
-            :choices="launchChoices"
-            @update:choices="(next) => (launchChoices = next)"
-            @set-approval-default="(mode) => void setApprovalDefault(mode)"
-            @auth-changed="authChangedFor"
-            @open-providers="openProviderSettings"
-            @start="startFromFrontDoor"
-            @cancel="store.cancelLaunch()"
-            @update:draft="(text) => drafts.write(draftSlot(null), text)"
-          />
+          <template v-else>
+            <p v-if="frontDoorChoiceError" role="status" data-cy="launch-choices-unread">
+              Could not read launch choices. {{ frontDoorChoiceError }}
+              <button type="button" @click="resolveFrontDoor">Try again</button>
+            </p>
+            <p
+              v-else-if="frontDoorProvider === null"
+              role="status"
+              data-cy="launch-choices-loading"
+            >
+              Reading launch choices…
+            </p>
+            <NewConversation
+              v-if="frontDoorProvider !== null"
+              :recent="rail?.theOneList ?? null"
+              @open="select"
+              :busy="
+                frontDoorResolving ||
+                frontDoorChoiceError !== null ||
+                frontDoorLaunch.busy.value ||
+                store.isLaunching()
+              "
+              :error="store.launchError.value"
+              :refused-as="store.launchRefusal.value"
+              :draft="drafts.read(draftSlot(null))"
+              :handing="drafts.paths.handing(draftSlot(null))"
+              :default-provider="frontDoorProvider"
+              :provider-readiness="launchReadiness"
+              :default-approval-mode="frontDoorApproval"
+              :approval-default-chosen="agentStore.identities.value?.defaultApprovalModeChosen"
+              :capabilities="capabilities"
+              :programs="programs"
+              :choices="launchChoices"
+              @update:choices="(next) => (launchChoices = next)"
+              @set-approval-default="(mode) => void setApprovalDefault(mode)"
+              @auth-changed="authChangedFor"
+              @open-providers="openProviderSettings"
+              @start="startFromFrontDoor"
+              @cancel="store.cancelLaunch()"
+              @update:draft="(text) => drafts.write(draftSlot(null), text)"
+            />
+          </template>
         </main>
       </div>
 

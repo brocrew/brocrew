@@ -3,7 +3,7 @@ import { page, userEvent } from 'vitest/browser'
 import { panelEvents, SESSION } from '../../look/fixtures/right-panel'
 import { settle, windowStage } from '../../look/fixtures/window'
 import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
-import { applyEvent } from '../../src/renderer/src/lib/transcript'
+import { applyEvent } from '../lib/core-transcript'
 import { META, mount, type Mounted } from './harness'
 
 /**

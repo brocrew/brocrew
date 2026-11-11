@@ -461,6 +461,67 @@ describe('claude lifecycle helpers', () => {
       claudeResultOutcome(sdk({ type: 'assistant', message: { role: 'assistant', content: [] } })),
     ).toBeNull()
   })
+
+  it('keeps native result errors in order and falls back only when no diagnostic was supplied', () => {
+    expect(
+      claudeResultOutcome(
+        sdk({
+          type: 'result',
+          subtype: 'error_during_execution',
+          is_error: true,
+          errors: ['first failure', '  second failure\nwith details  '],
+        }),
+      ),
+    ).toEqual({
+      outcome: 'failed',
+      message: 'turn failed: first failure\n  second failure\nwith details  ',
+    })
+    expect(
+      claudeResultOutcome(
+        sdk({
+          type: 'result',
+          subtype: 'error_during_execution',
+          is_error: true,
+          result: 'legacy detail',
+          errors: ['native detail', null, 4, '', '  '],
+        }),
+      ),
+    ).toEqual({ outcome: 'failed', message: 'turn failed: legacy detail\nnative detail' })
+    expect(
+      claudeResultOutcome(
+        sdk({
+          type: 'result',
+          subtype: 'error_during_execution',
+          is_error: true,
+          errors: [null, ''],
+        }),
+      ),
+    ).toEqual({ outcome: 'failed', message: 'turn failed: error_during_execution' })
+  })
+
+  it('native diagnostics do not reclassify a successful or provider-stopped result', () => {
+    expect(
+      claudeResultOutcome(
+        sdk({
+          type: 'result',
+          subtype: 'success',
+          is_error: false,
+          errors: ['incidental detail'],
+        }),
+      ),
+    ).toEqual({ outcome: 'completed' })
+    expect(
+      claudeResultOutcome(
+        sdk({
+          type: 'result',
+          subtype: 'error_during_execution',
+          is_error: true,
+          terminal_reason: 'aborted_tools',
+          errors: ['stop diagnostic'],
+        }),
+      ),
+    ).toEqual({ outcome: 'interrupted' })
+  })
 })
 
 describe('normalizeMessage — mixed content blocks keep SOURCE order (044 P3)', () => {

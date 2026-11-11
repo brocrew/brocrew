@@ -1,6 +1,7 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { eventForDisplay } from '../src/main/providers/claude/transcripts'
+import { errorForDisplay } from '../src/main/providers/error-presentation'
 
 import {
   TURN_FAILED,
@@ -35,7 +36,7 @@ function notices(state: TranscriptState): string[] {
 }
 
 function feed(state: TranscriptState, ...events: TranscriptEvent[]): TranscriptState {
-  for (const event of events) applyEvent(state, event)
+  for (const event of events) applyEvent(state, errorForDisplay(event))
   return state
 }
 
@@ -256,6 +257,42 @@ describe('what a person reads when a turn fails', () => {
 })
 
 describe('supplied error presentation', () => {
+  it('uses supplied billing display semantics and remembers the latest raw diagnostic', () => {
+    const presentation = {
+      message: 'Fable needs account credit. Open its billing page.',
+      level: 'error' as const,
+      terminal: false,
+      repeat: 'same-message-once' as const,
+    }
+    const state = feed(
+      createTranscript(),
+      { type: 'error', message: 'first billing diagnostic', fatal: true, presentation },
+      { type: 'error', message: 'second billing diagnostic', fatal: true, presentation },
+      { type: 'error', message: 'turn failed: second billing diagnostic', fatal: false },
+    )
+    expect(notices(state)).toEqual([presentation.message])
+    expect(state.lastError?.raw).toBe('second billing diagnostic')
+    expect(state.ended).toBe(false)
+    expect(state.items.find((item) => item.kind === 'notice')).toMatchObject({ level: 'error' })
+  })
+
+  it('keeps supplied sign-in words ahead of ordinary error presentation', () => {
+    const state = feed(createTranscript(), {
+      type: 'error',
+      message: 'fictional retry diagnostic',
+      fatal: false,
+      signIn: { state: 'retrying', message: 'Fable is reconnecting.' },
+      presentation: {
+        message: 'Ordinary error words.',
+        level: 'error',
+        terminal: true,
+        repeat: 'each',
+      },
+    })
+    expect(notices(state)).toEqual(['Fable is reconnecting.'])
+    expect(state.ended).toBe(false)
+  })
+
   it('renders fictional remedy words unchanged and keeps the raw diagnostic for repeats', () => {
     const state = feed(
       createTranscript(),

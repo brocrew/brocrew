@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { providerDescriptor } from '@brobot2/shared'
 import { parseRuntimeEvent, type RuntimeEvent } from '@brobot2/runtime'
+import { errorForDisplay } from '../src/main/providers/error-presentation'
 import { eventForDisplay, transcripts } from '../src/main/providers/claude/transcripts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 
@@ -40,7 +41,15 @@ describe('provider-owned presentation for the window', () => {
       const saved = JSON.stringify(event)
       const live = eventForDisplay(event)
       const replay = transcripts.eventForDisplay!(JSON.parse(saved) as TranscriptEvent)
-      expect(live).toEqual({ ...event, presentation: { message: shown } })
+      expect(live).toEqual({
+        ...event,
+        presentation: {
+          message: shown,
+          level: fatal ? 'error' : 'warn',
+          terminal: fatal,
+          repeat: 'each',
+        },
+      })
       expect(replay).toEqual(live)
       expect(JSON.stringify(event)).toBe(saved)
       expect(live).toMatchObject({ message: event.message, fatal, refusal })
@@ -88,4 +97,54 @@ describe('provider-owned presentation for the window', () => {
     }
     expect(parseRuntimeEvent(event)).toEqual({ ok: true, event })
   })
+})
+
+it('preserves supplied fictional retry endings through the existing runtime schema and display projection', () => {
+  const captions = {
+    stopped: 'Fern paused its retry.',
+    ended: 'Fern retry finished.',
+    recovered: 'Fern is connected.',
+  }
+  const event: RuntimeEvent = {
+    type: 'error',
+    message: 'fictional raw detail',
+    fatal: false,
+    signIn: { state: 'retrying', message: 'Fern is reconnecting.', captions },
+  }
+  expect(parseRuntimeEvent(event)).toEqual({ ok: true, event })
+  expect(errorForDisplay(event, 'Another display name')).toBe(event)
+  expect(errorForDisplay(event)).toBe(event)
+  expect(event.message).toBe('fictional raw detail')
+})
+
+it('fills retry endings for old message-only observations without replacing supplied words or error presentation', () => {
+  const event: RuntimeEvent = {
+    type: 'error',
+    message: 'fictional raw detail',
+    fatal: false,
+    presentation: {
+      message: 'Existing rich presentation',
+      level: 'warn',
+      terminal: false,
+      repeat: 'each',
+    },
+    signIn: { state: 'retrying', message: 'An existing opaque retry line.' },
+  }
+  const saved = JSON.stringify(event)
+  const displayed = errorForDisplay(event, 'Fern')
+  expect(displayed).toMatchObject({
+    ...event,
+    signIn: {
+      ...event.signIn,
+      captions: {
+        stopped: 'Fern sign-in retry stopped.',
+        ended: 'Fern sign-in retry ended.',
+        recovered: 'Fern sign-in recovered.',
+      },
+    },
+  })
+  expect(JSON.stringify(event)).toBe(saved)
+  expect(errorForDisplay(displayed, 'Fern')).toBe(displayed)
+  const key: RuntimeEvent = { ...event, onAKey: true }
+  expect(errorForDisplay(key, 'Fern')).toMatchObject({ signIn: event.signIn })
 })

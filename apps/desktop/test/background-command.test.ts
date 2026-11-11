@@ -8,11 +8,7 @@ import { messageWithHandedPaths } from '../src/main/runtime/handed-path'
 // ⚑ D-017 · R11 — what a row runs is `shared/agent-state.ts`'s, so `main` names it as the row does.
 import { BACKGROUND_COMMAND_CHARS, backgroundWhat } from '../src/shared/agent-state'
 import { cutNote } from '../src/renderer/src/lib/background-work'
-import {
-  applyEvent,
-  createTranscript,
-  type TranscriptState,
-} from '../src/renderer/src/lib/transcript'
+import { applyEvent, createTranscript, type TranscriptState } from './lib/core-transcript'
 
 /**
  * # 🔴 251 · What is actually running

@@ -1,3 +1,4 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
 import { afterEach, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import WorkSearchDialog from '../../src/renderer/src/components/WorkSearchDialog.vue'
@@ -7,7 +8,7 @@ import type { WorkSearchHit, WorkSearchPage } from '../../src/shared/work-search
 import { drawerProps, mount, unmountAll } from './harness'
 import { assertDrawn, drawnReady } from './drawn'
 import { providersBridge } from '../../look/fixtures/providers'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+
 import { NO_LAUNCH_CHOICES } from '../../src/renderer/src/lib/launch-choices'
 import { createAttachmentBook, NEW_CONVERSATION } from '../../src/renderer/src/lib/drafts'
 

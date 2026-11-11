@@ -136,7 +136,13 @@ export class ClaudeSetupService {
   state(): ProviderSetupState {
     if (!this.active && !this.closed)
       this.current = { ...this.current, available: this.detected() !== null }
-    return { ...this.current, supported: { ...this.current.supported } }
+    return {
+      ...this.current,
+      supported: { ...this.current.supported },
+      ...(this.current.phase === 'signed-in'
+        ? { completedSignInMessage: 'Signed in with Claude Code.' }
+        : {}),
+    }
   }
   onState(listener: (state: ProviderSetupState) => void): () => void {
     this.listeners.add(listener)

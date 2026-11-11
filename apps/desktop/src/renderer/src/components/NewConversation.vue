@@ -48,7 +48,6 @@ export function blockingGroupShows(input: {
 
 <script setup lang="ts">
 import type { HandedPath } from '../../../shared/attachment-contracts'
-import { defaultModel } from '../lib/provider-models'
 import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
 import type {
   CapabilityStatus,
@@ -625,14 +624,6 @@ function choose(patch: Partial<LaunchChoices>): void {
 const lists = computed(() => props.lists ?? useModelLists())
 
 /**
- * ⚑ **BroBot's list on the provider this conversation will start on**, once it has answered.
- */
-const heldList = computed(() => {
-  const held = lists.value.held(props.defaultProvider)
-  return held?.state === 'answered' ? held.list : null
-})
-
-/**
  * 🔴 **UI-012 · R-1 — what the picker's face shows: the person's pick, else the last pick** (`09`
  * §8: *"last one picked"*), else what the host would start BroBot on — shown by name, like any
  * choice. ⚑ `null` while nothing names one; the face then says why in {@link shownEmpty}.
@@ -650,7 +641,7 @@ const shownPick = computed<PickedModel | null>(() => {
       effort: props.choices.reasoningEffort === '' ? null : props.choices.reasoningEffort,
     }
   }
-  const starts = defaultModel(heldList.value)
+  const starts = lists.value.choices(props.defaultProvider)?.defaultModel ?? null
   return starts === null ? null : { provider: props.defaultProvider, ...starts }
 })
 
@@ -735,8 +726,8 @@ onMounted(() => {
  */
 const sends = computed(() =>
   modelMatchesProvider.value
-    ? theFormSends(props.choices, heldList.value)
-    : defaultModel(heldList.value),
+    ? theFormSends(props.choices, lists.value.choices(props.defaultProvider))
+    : (lists.value.choices(props.defaultProvider)?.defaultModel ?? null),
 )
 
 const firstApproval = ref<'ask' | 'auto' | null>(null)
@@ -947,6 +938,7 @@ watch(
                   <ModelPicker
                     :providers="providers"
                     :readiness="props.providerReadiness"
+                    :programs="props.programs"
                     :set-up="(provider) => emit('open-providers', provider)"
                     :shown="shownPick"
                     :empty="shownEmpty"

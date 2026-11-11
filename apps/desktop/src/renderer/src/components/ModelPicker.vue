@@ -10,11 +10,15 @@ let made = 0
 <script setup lang="ts">
 import type { ModelList, ReportedModel } from '../../../shared/model-choice-contracts'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import type { CapabilityStatus, Provider, ProviderCapabilityMap } from '../../../shared/runtime-ipc'
+import type {
+  CapabilityStatus,
+  Provider,
+  ProviderCapabilityMap,
+  ProviderProgram,
+} from '../../../shared/runtime-ipc'
 import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import { MODEL_CHOICE_SAID, sameModel, theListedRow } from '../../../shared/model-choice'
 import { modelField } from '../lib/model-field'
-import { defaultModel, providerReady } from '../lib/provider-models'
 import {
   inTheListsSpelling,
   isNoLongerListed,
@@ -60,6 +64,7 @@ const props = withDefaults(
     /** Whose models it lists — a conversation's one provider, the sheet's, or both on the form. */
     providers: readonly Provider[]
     readiness?: Readonly<Partial<Record<Provider, boolean | null>>> | null
+    programs?: Readonly<Partial<Record<Provider, ProviderProgram>>> | null
     setUp?: (provider: Provider) => void
     /** Whose list to read — absent is BroBot's, the door's own default. */
     profileId?: string
@@ -94,6 +99,7 @@ const props = withDefaults(
   {
     profileId: undefined,
     readiness: null,
+    programs: null,
     setUp: undefined,
     empty: 'Nothing chosen',
     reported: null,
@@ -174,15 +180,27 @@ const faceWords = computed(() => {
 
 /* ------------------------------------------------------------------ the panel */
 
+let selectionRead = 0
+let selectionPublished = 0
+let draftEdit = 0
+let opening = 0
+let focusWhileWaiting: Element | null | undefined
+const resolvedReadiness = ref<Readonly<Partial<Record<Provider, boolean | null>>> | null>(null)
+function suppliedReady(provider: Provider): boolean | null {
+  return props.readiness !== null && provider in props.readiness
+    ? (props.readiness[provider] ?? null)
+    : (store.value.choices(provider, props.profileId)?.ready ?? null)
+}
+
 const sections = computed(() =>
   props.providers.map((provider) => {
     const held = store.value.held(provider, props.profileId)
     const list = held?.state === 'answered' ? held.list : null
     const name = PROVIDER_NAME[provider]
     const ready =
-      props.readiness !== null && provider in props.readiness
-        ? props.readiness[provider]
-        : providerReady(held)
+      resolvedReadiness.value !== null && provider in resolvedReadiness.value
+        ? (resolvedReadiness.value[provider] ?? null)
+        : suppliedReady(provider)
     const field =
       held?.state === 'unread'
         ? {
@@ -231,12 +249,15 @@ const visibleSections = computed(() =>
     : sections.value,
 )
 
-function selectProvider(provider: Provider): void {
+function selectProvider(provider: Provider, edited = true): void {
   if (sections.value.find((section) => section.provider === provider)?.ready !== true) return
+  if (edited) draftEdit++
   selectedProvider.value = provider
   adding.value = null
   const starts =
-    startsOn.value?.provider === provider ? startsOn.value : defaultModel(listOf(provider))
+    startsOn.value?.provider === provider
+      ? startsOn.value
+      : (store.value.choices(provider, props.profileId)?.defaultModel ?? null)
   draft.value = starts == null ? null : { provider, model: starts.model }
   chosenEffort.value = starts?.effort ?? null
   refusal.value = null
@@ -339,7 +360,7 @@ watch(
   () => props.providers.join('\u0000'),
   () => {
     if (!isOpen.value) return
-    seed()
+    void seed()
     for (const provider of props.providers) void store.value.read(provider, props.profileId)
   },
 )
@@ -359,15 +380,9 @@ watch(
 )
 
 watch(
-  () => sections.value.map((section) => `${section.provider}:${section.ready}`).join(','),
+  () => props.providers.map((provider) => `${provider}:${suppliedReady(provider)}`).join(','),
   () => {
-    if (
-      isOpen.value &&
-      (selectedProvider.value === null ||
-        sections.value.find((section) => section.provider === selectedProvider.value)?.ready !==
-          true)
-    )
-      seed()
+    if (isOpen.value) void seed(true)
   },
 )
 
@@ -381,33 +396,62 @@ watch(
       list !== null &&
       selectedProvider.value !== null
     )
-      selectProvider(selectedProvider.value)
+      selectProvider(selectedProvider.value, false)
+  },
+)
+
+watch(
+  () => props.programs,
+  () => {
+    if (isOpen.value) void seed(true)
   },
 )
 
 /** ⚑ The draft starts on what the face shows. */
-function seed(): void {
-  const preferred = startsOn.value?.provider
-  const available = sections.value.filter((section) => section.ready === true)
-  const provider =
-    available.find((section) => section.provider === preferred)?.provider ??
-    available[0]?.provider ??
-    null
-  selectedProvider.value = provider
-  const starts =
-    props.providers.length === 1 || provider === preferred
-      ? startsOn.value
-      : provider === null
-        ? null
-        : defaultModel(listOf(provider))
-  draft.value =
-    starts === null || provider === null
-      ? null
-      : {
+async function seed(keepDraft = false): Promise<void> {
+  const ours = ++selectionRead
+  const edit = draftEdit
+  const preferred = (keepDraft ? selectedProvider.value : null) ?? startsOn.value?.provider ?? null
+  try {
+    const answer = await store.value.resolve({
+      profileId: props.profileId,
+      askedProvider: preferred,
+      providers: props.providers.map((provider) => {
+        const program = props.programs?.[provider]
+        return {
           provider,
-          model: inTheListsSpelling(listOf(provider), starts.model),
+          ready: suppliedReady(provider),
+          program: program === undefined ? null : { standing: program.standing },
         }
-  chosenEffort.value = starts?.effort ?? null
+      }),
+    })
+    if (!isOpen.value || ours !== selectionRead) return
+    selectionPublished = ours
+    resolvedReadiness.value = Object.fromEntries(
+      answer.readiness.map(({ provider, ready }) => [provider, ready]),
+    )
+    const provider = answer.pickerProvider
+    if (
+      edit === draftEdit &&
+      !(keepDraft && provider === selectedProvider.value && draft.value !== null)
+    ) {
+      selectedProvider.value = provider
+      const starts =
+        props.providers.length === 1 || provider === preferred
+          ? startsOn.value
+          : provider === null
+            ? null
+            : (store.value.choices(provider, props.profileId)?.defaultModel ?? null)
+      draft.value =
+        starts === null || provider === null
+          ? null
+          : { provider, model: inTheListsSpelling(listOf(provider), starts.model) }
+      chosenEffort.value = starts?.effort ?? null
+    }
+    await focusArrived(ours)
+  } catch (error) {
+    if (isOpen.value && ours === selectionRead) refusal.value = readableError(error)
+  }
 }
 
 function onBeforeToggle(event: Event): void {
@@ -418,34 +462,62 @@ function onToggle(event: Event): void {
   if ((event as ToggleEvent).newState === 'closed') close()
 }
 
+function rowToFocus(): HTMLElement | null {
+  const row =
+    panel.value?.querySelector<HTMLElement>('[data-cy="model-picker-row"] input:checked') ??
+    panel.value?.querySelector<HTMLElement>('[data-cy="model-picker-row"] input') ??
+    panel.value?.querySelector<HTMLElement>('[data-cy="model-picker-add-open"]') ??
+    null
+  return openAt === 'effort' ? (anEffort() ?? row) : row
+}
+
+async function focusArrived(read = selectionRead): Promise<void> {
+  await nextTick()
+  if (
+    !isOpen.value ||
+    read !== selectionRead ||
+    selectionPublished !== read ||
+    focusWhileWaiting === undefined
+  )
+    return
+  if (document.activeElement !== focusWhileWaiting) {
+    focusWhileWaiting = undefined
+    return
+  }
+  const arrived = rowToFocus()
+  if (arrived !== null) {
+    focusWhileWaiting = undefined
+    arrived.focus()
+  }
+}
+
 /** ⚑ The one moment the picker asks for its lists — a person's press. */
 async function open(): Promise<void> {
+  const ours = ++opening
+  focusWhileWaiting = undefined
   isOpen.value = true
+  resolvedReadiness.value = null
   refusal.value = null
   listSaid.value = {}
   adding.value = null
   addName.value = ''
-  seed()
+  void seed()
   const reads = props.providers.map((provider) => store.value.read(provider, props.profileId))
   await nextTick()
-  const within = panel.value
-  const aRow = () =>
-    within?.querySelector<HTMLElement>('[data-cy="model-picker-row"] input:checked') ??
-    within?.querySelector<HTMLElement>('[data-cy="model-picker-row"] input') ??
-    within?.querySelector<HTMLElement>('[data-cy="model-picker-add-open"]')
-  const first = openAt === 'effort' ? (anEffort() ?? aRow()) : aRow()
+  if (!isOpen.value || ours !== opening) return
+  const first = rowToFocus()
   first?.focus()
   if (first != null && (openAt !== 'effort' || anEffort() !== null)) return
-  const focusWhileWaiting = document.activeElement
+  focusWhileWaiting = document.activeElement
   await Promise.allSettled(reads)
-  await nextTick()
-  const arrived = openAt === 'effort' ? (anEffort() ?? aRow()) : aRow()
-  if (isOpen.value && arrived != null && document.activeElement === focusWhileWaiting)
-    arrived.focus()
+  if (ours === opening) await focusArrived()
 }
 
 /** ⚑ Closed by any means: the draft and a half-typed name go with it. */
 function close(): void {
+  selectionRead++
+  opening++
+  focusWhileWaiting = undefined
   isOpen.value = false
   openAt = 'model'
   draft.value = null
@@ -479,6 +551,9 @@ watch(isOpen, (now) => {
   else window.removeEventListener('keydown', onEscape, { capture: true })
 })
 onBeforeUnmount(() => {
+  selectionRead++
+  opening++
+  focusWhileWaiting = undefined
   window.removeEventListener('keydown', onEscape, { capture: true })
   opener?.style.removeProperty('anchor-name')
 })
@@ -487,11 +562,13 @@ defineExpose({ panelId, isOpen, openedFrom })
 
 function draftModel(provider: Provider, model: string): void {
   if (sections.value.find((section) => section.provider === provider)?.ready !== true) return
+  draftEdit++
   draft.value = { provider, model }
   refusal.value = null
 }
 
 function draftAnEffort(effort: string): void {
+  draftEdit++
   chosenEffort.value = effort
   refusal.value = null
 }

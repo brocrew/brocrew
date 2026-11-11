@@ -402,12 +402,27 @@ describe('the credential commands, at the boundary that validates them (098)', (
 
     expect(await pending).toEqual({
       success: true,
+      presentation: { message: 'Signed in to Codex.' },
       // ⚠️ The credential AFTER the attempt, re-asked. A flow can report itself complete and leave
       // nothing usable behind, and the surface has to show what is true, not what was attempted.
       state: { state: 'usable', account: 'me@example.invalid', login: 'account', expiresAt: null },
     })
     expect(opened).toEqual(['https://auth.openai.com/oauth/authorize?probe'])
     // ⚠️ Whatever happened, the app-server holding the loopback redirect port was torn down.
+    expect(auth.cancels).toBe(1)
+  })
+
+  it('supplies completion words without turning a completed flow into usable auth', async () => {
+    const started = auth.started()
+    const pending = run({ kind: 'signInProvider', provider: 'codex' })
+    await started
+    const state: AuthState = { state: 'absent', reason: 'fictional login was not retained' }
+    auth.settleSignIn({ success: true, state })
+    expect(await pending).toEqual({
+      success: true,
+      state,
+      presentation: { message: 'Signed in to Codex.' },
+    })
     expect(auth.cancels).toBe(1)
   })
 

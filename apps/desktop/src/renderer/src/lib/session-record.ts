@@ -1,4 +1,6 @@
 import type { PersistedEventInfo } from '../../../shared/conversation-events'
+import type { AgentState } from '../../../shared/agent-state-contracts'
+import type { RuntimeStatesMessage } from '../../../shared/runtime-ipc'
 import type {
   CreatedSession,
   HistoryWindow,
@@ -14,7 +16,12 @@ import {
 } from './provider-limit-status'
 import { openingLine } from './opening-line'
 import { basenameOf } from './paths'
-import { applyEvent, createTranscript, type TranscriptState } from './transcript'
+import {
+  applyEvent,
+  acceptWorkAncestry,
+  createTranscript,
+  type TranscriptState,
+} from './transcript'
 import { copyHumanAnswers } from './human-answers'
 import {
   WINDOW_MAX_EVENTS,
@@ -141,6 +148,9 @@ export interface SessionRecord {
   readonly sessionId: string
   /** What the host said this session is; null until it says. */
   meta: CreatedSession | null
+  /** Undefined is an older envelope; null means core has not yet published a current state. */
+  agentState?: AgentState | null
+  agentStatePublication?: NonNullable<RuntimeStatesMessage['published']>
   earlyProviderBlock?: ProviderBlockFacts
   /**
    * The fold the READER is looking at — the movable window (054).
@@ -797,7 +807,15 @@ export function acceptEvent(record: SessionRecord, message: RuntimeEventMessage)
     // running session after a busy turn overflowed the window.
     record.transcript = refold(record, record.window.entries, record.transcript)
   } else {
-    applyEvent(record.transcript, message.event, message.at, message.ordinal, message.humanFinal)
+    applyEvent(
+      record.transcript,
+      message.event,
+      message.at,
+      message.ordinal,
+      message.humanFinal,
+      message.workAncestry,
+      message.ancestryContext,
+    )
   }
   // Still the same object — the window kept the tail, so there is one projection here, and the
   // re-fold above replaced it. Assigned rather than left alone because `refold` returns a NEW state.
@@ -829,7 +847,16 @@ function foldIntoTail(record: SessionRecord, message: RuntimeEventMessage): void
   // truth this session has while the reader is away. 068's *"an open permission/user-input card can
   // leave effective state"* is this line without the carry (068 finding 4).
   if (released > 0) record.control = refold(record, record.tail.entries, record.control)
-  else applyEvent(record.control, message.event, message.at, message.ordinal, message.humanFinal)
+  else
+    applyEvent(
+      record.control,
+      message.event,
+      message.at,
+      message.ordinal,
+      message.humanFinal,
+      message.workAncestry,
+      message.ancestryContext,
+    )
 }
 
 /**
@@ -857,6 +884,7 @@ export function openWindow(record: SessionRecord, page: HistoryWindow): void {
   // life settled.
   record.window.entries = []
   const transcript = createTranscript()
+  if (page.workAncestry !== undefined) acceptWorkAncestry(transcript, page.workAncestry)
   // 🔴 **D-035 · …and the tools this conversation had where the page begins go in first.** Its gives,
   // replies, questions and requests taken on are drawn as cards only for the tool names it was
   // handed, read as each call is folded, and a provider states those once per start — so a page
@@ -965,7 +993,12 @@ export function reopenAtLatest(record: SessionRecord, page: HistoryWindow): void
   const carry = record.control
   openAt(record.window, page, record.sessionId)
   // ⚑ **D-035** — the window now begins where this page does, so its tools there go in first.
-  record.transcript = refold(record, record.window.entries, carry, page.toolsInForce ?? null)
+  record.transcript = foldWindow(
+    record.window.entries,
+    record.liveFrom,
+    carryForward(carry, record.window.entries, true),
+    page.toolsInForce ?? null,
+  )
   if (page.humanAnswers !== undefined)
     record.transcript.humanAnswers = copyHumanAnswers(page.humanAnswers)
   // Back on the tail, so the two projections are ONE object again and the separate tail goes.

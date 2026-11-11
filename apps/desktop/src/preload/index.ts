@@ -1,4 +1,5 @@
 import { loggingClient } from '../shared/logging'
+import type { ResolveProviderLaunchInput } from '../shared/provider-launch'
 import type { DecideMoveRequestInput, MoveRequestAck } from '../shared/move-contracts'
 import type { LedgerWalk, PersonsDecision, PersonsQuestion } from '../shared/question-contracts'
 import type { WhatEachConversationIsWaitingOn, WorkGivenOut } from '../shared/task-contracts'
@@ -213,6 +214,10 @@ function command<K extends RuntimeCommandKind>(
 }
 
 const runtime: RuntimeBridge = Object.freeze({
+  providerLaunchChoices: (input: ProviderProfileInput) =>
+    command({ kind: 'providerLaunchChoices', ...input }),
+  resolveProviderLaunch: (input: ResolveProviderLaunchInput) =>
+    command({ kind: 'resolveProviderLaunch', ...input }),
   skills: (request: SkillsRequest): Promise<SkillsReply> => command({ kind: 'skills', request }),
   // 🔴 **716 · one verb, two answers** — an input that asks for its refusal ANSWERED
   // (`answerARefusal`, `710` F-7) is handed over whole, and the bridge's signature types what comes
@@ -521,6 +526,7 @@ const runtime: RuntimeBridge = Object.freeze({
   latestHistory: (input: SessionInput): Promise<HistoryWindow> =>
     command({ kind: 'latestHistory', ...input }),
   capabilities: (): Promise<ProviderCapabilityMap> => command({ kind: 'capabilities' }),
+  providerCatalogue: () => command({ kind: 'providerCatalogue' }),
   providerConnections: (): Promise<readonly ProviderConnection[]> =>
     command({ kind: 'providerConnections' }),
   // Which profiles exist (167) — the launcher's menu. Re-asked after a launch, because starting a

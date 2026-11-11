@@ -1,8 +1,10 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
+import { providerDescriptor } from '@brobot2/shared'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, reactive } from 'vue'
 import KeptRules from '../../src/renderer/src/components/KeptRules.vue'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+
 import { PROVIDER_PARTS, type ProviderPart } from '../../src/renderer/src/lib/provider-parts'
 import { providersBridge } from '../../look/fixtures/providers'
 import { CAPABILITY_FIXTURE } from '../provider-capability-fixture'
@@ -75,6 +77,7 @@ async function card(over: Record<string, unknown> = {}) {
     setup: () => () =>
       h(ProviderCard as never, {
         provider: 'claude',
+        descriptor: providerDescriptor('claude'),
         capabilities: CAPABILITY_FIXTURE,
         limit: null,
         clock: NOW,

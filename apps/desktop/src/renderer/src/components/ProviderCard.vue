@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
-import { PROVIDER_DESCRIPTORS, type ProviderDescriptor } from '@brobot2/shared'
+import type { ProviderDescriptor } from '@brobot2/shared'
+import { useClientProviders } from '../client-provider/injection'
+import { providerCatalogue } from '../client-provider/catalogue'
 import { PROVIDER_PARTS, type ProviderPart } from '../lib/provider-parts'
 import type {
   CapabilityStatus,
@@ -15,13 +17,8 @@ import {
   A_STANDING_IN_A_WORD,
   A_STANDING_WARNS,
   DEFAULT_PROFILE_ID,
-  PROVIDER_NAME,
 } from '../../../shared/runtime-ipc'
-import {
-  providerConditions,
-  wallsFromUsage,
-  type ProviderCondition,
-} from '../../../shared/provider-limit'
+import { providerConditions, type ProviderCondition } from '../../../shared/provider-limit'
 import {
   limitsDisplayLabel,
   limitsDisplayWords,
@@ -69,7 +66,7 @@ import ProviderConnections from './ProviderConnections.vue'
  * 🔒 **The key field**: the key is in the field until it is sent, and the field is cleared as it is
  * sent. Nothing answers with the key, and nothing here logs it.
  *
- * ⛔ **No provider is named here**: every name is `PROVIDER_NAME`'s (`provider-neutrality.test.ts`).
+ * Display names and sign-in words come from supplied provider facts.
  */
 const props = withDefaults(
   defineProps<{
@@ -118,7 +115,13 @@ const props = withDefaults(
   { lists: undefined, setup: undefined, readVersions: undefined, open: undefined },
 )
 
-const markKind = computed(() => props.capabilities?.[props.provider]?.mark?.kind ?? null)
+const client = useClientProviders()
+const catalogue = providerCatalogue(client)
+const catalogueState = catalogue.held
+const markKind = computed(() => {
+  if (props.capabilities === null) return descriptor.value?.capabilities.mark.kind ?? null
+  return props.capabilities[props.provider]?.mark?.kind ?? null
+})
 
 const emit = defineEmits<{
   /** A person pressed a part's heading: fold it, or open it. */
@@ -140,7 +143,7 @@ const nativeSetup = useProviderSetup(
     if (!cardOpen) return
     await aPersonChecksAgain(false)
     if (operation === 'signIn' && auth.value?.state === 'usable')
-      noticeSays(`Signed in with ${props.setup?.tool ?? name.value}.`, false)
+      noticeSays(nativeSetup.state.value?.completedSignInMessage ?? 'Signed in.', false)
   },
 )
 const programMissing = computed(() => props.version?.program?.standing === 'missing')
@@ -148,11 +151,11 @@ const nativeSignIn = computed(
   () => nativeSetup.state.value?.available === true && nativeSetup.state.value.supported.signIn,
 )
 
-const name = computed(() => props.displayName ?? PROVIDER_NAME[props.provider])
+const name = computed(() => props.displayName ?? descriptor.value?.displayName ?? 'Provider')
 
 const partIds = useId()
 const isOpen = (part: ProviderPart): boolean => props.open?.[part] ?? true
-const lists = computed(() => props.lists ?? useModelLists())
+const lists = computed(() => props.lists ?? useModelLists(client))
 
 const PENDING: CapabilityStatus = {
   state: 'absent',
@@ -189,7 +192,7 @@ const access =
   createProviderAccess(
     () => props.provider,
     () => emit('authChanged', DEFAULT_PROFILE_ID),
-    () => window.api.runtime,
+    () => client,
   )
 const { auth, authBusy, asked, withGesture, check } = access
 const authNotice = ref<string | null>(null)
@@ -250,12 +253,12 @@ async function signInHere(): Promise<void> {
   await withGesture('signing-in', async () => {
     noticeSays('Finish signing in in your browser, then come back.', false)
     try {
-      const result = await window.api.runtime.signInProvider(asked())
+      const result = await client.signInProvider(asked())
       auth.value = result.state
       connected = result.success && auth.value?.state === 'usable'
       noticeSays(
         result.success
-          ? `Signed in to ${PROVIDER_NAME[props.provider]}.`
+          ? (result.presentation?.message ?? 'Signed in.')
           : (result.detail ?? 'The sign-in did not complete.'),
         !result.success,
       )
@@ -273,7 +276,7 @@ async function cancelSignIn(): Promise<void> {
   }
   noticeSays(null, false)
   try {
-    await window.api.runtime.cancelProviderSignIn(asked())
+    await client.cancelProviderSignIn(asked())
   } catch (error) {
     noticeSays(readableError(error), true)
   }
@@ -284,7 +287,11 @@ const copiedHomes = ref<ProviderHomesReprovision | null>(null)
 const copyHomesError = ref<string | null>(null)
 let copyHomesTimer: ReturnType<typeof setTimeout> | undefined
 const descriptor = computed(
-  () => props.descriptor ?? PROVIDER_DESCRIPTORS.find((item) => item.id === props.provider),
+  () =>
+    props.descriptor ??
+    (catalogueState.value.state === 'answered'
+      ? catalogueState.value.providers.find((item) => item.id === props.provider)
+      : undefined),
 )
 const keepsProfileSignIns = computed(() => descriptor.value?.credential === 'profile-or-key')
 async function readHomeCopies(statusOnly = false): Promise<void> {
@@ -596,7 +603,7 @@ const listSays = computed(() => {
 })
 
 const startsOn = computed(() => {
-  const pair = theFormStartsOn(list.value)
+  const pair = theFormStartsOn(lists.value.choices(props.provider))
   if (pair === null) return `${name.value}’s own default`
   const model = inTheListsSpelling(list.value, pair.model)
   return pair.effort === null ? model : `${model} · ${pair.effort}`
@@ -661,11 +668,17 @@ const usage = computed<{ text: string; title: string | null; tone: 'note' | 'war
     // A retained warning can outlive its usage reading or account. The card's current
     // readings supply near-limit figures; reported stops retain their separate evidence.
     if (props.limit?.standing === 'about-to-stop') {
-      const near = wallsFromUsage(
-        { [props.provider]: (props.readings ?? []).filter((one) => one.unconfirmed !== true) },
-        [],
-        props.clock,
-      ).flatMap((wall) => providerConditions([wall], props.clock))
+      const near = (props.readings ?? []).flatMap((one) => {
+        const warning = one.warning
+        if (
+          one.unconfirmed === true ||
+          warning == null ||
+          (warning.resetsAt !== null && warning.resetsAt <= props.clock)
+        ) {
+          return []
+        }
+        return providerConditions([warning], props.clock)
+      })
       return {
         text:
           near.length === 0
@@ -906,6 +919,7 @@ watch(
 )
 
 onMounted(() => {
+  if (props.descriptor === undefined) void catalogue.read()
   if (props.access === undefined) {
     void check()
     void readKey()
@@ -982,6 +996,7 @@ defineExpose({ beginSetup })
 
 <template>
   <article
+    v-if="descriptor"
     ref="cardRoot"
     class="card"
     :class="{ frameless: props.frameless }"
@@ -1843,6 +1858,18 @@ defineExpose({ beginSetup })
       </div>
     </section>
   </article>
+  <p v-else data-cy="provider-catalogue-status" role="status">
+    {{
+      catalogueState.state === 'loading'
+        ? 'Reading provider information…'
+        : catalogueState.state === 'unread'
+          ? `Could not read provider information. ${catalogueState.why}`
+          : 'This provider is not available.'
+    }}
+    <button v-if="catalogueState.state === 'unread'" type="button" @click="catalogue.read()">
+      Try again
+    </button>
+  </p>
 </template>
 
 <style scoped>

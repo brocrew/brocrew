@@ -9,11 +9,11 @@ import {
 import {
   applyEvent,
   createTranscript,
-  everyCard,
   isAwaitingAnswer,
   markReopened,
   MAX_CARRIED_CHANGE_REPORTS,
   opensTurn,
+  restoreSubAgent,
   type ChangeLog,
   type SubAgentCard,
   type TranscriptState,
@@ -208,6 +208,8 @@ export function tailWindow(entries: RuntimeEventMessage[]): WindowState {
  * not.
  */
 export interface FoldCarry {
+  workAncestry?: TranscriptState['workAncestry']
+  quietSubAgents?: readonly SubAgentCard[]
   humanAnswers: TranscriptState['humanAnswers']
   status: SessionStatus
   ref: SessionRef | null
@@ -436,7 +438,7 @@ function subAgentCarry(
     (card.running ||
       agents.has(card.agentId) ||
       (card.parentToolCallId !== undefined && calls.has(card.parentToolCallId)))
-  return everyCard(state).filter(wanted).map(asSubAgentEvent)
+  return [...state.subAgentCards.values()].filter(wanted).map(asSubAgentEvent)
 }
 
 /**
@@ -480,6 +482,36 @@ function asSubAgentEvent(card: SubAgentCard): TranscriptEvent {
   }
 }
 
+function quietSubAgents(
+  state: TranscriptState,
+  entries: readonly RuntimeEventMessage[],
+): SubAgentCard[] {
+  const touched = new Set<string>()
+  for (const { event, ancestryContext, workAncestry } of entries) {
+    for (const row of [{ event }, ...(ancestryContext ?? []), ...(workAncestry?.baseline ?? [])]) {
+      const event = row.event
+      if (event.type === 'conversation_reset') return []
+      if (event.type === 'sub_agent') touched.add(event.agentId)
+      if ('parentToolCallId' in event && event.parentToolCallId !== undefined) {
+        for (const id of state.workAncestry.dispatches.get(event.parentToolCallId)?.agentIds ?? [])
+          touched.add(id)
+      }
+      if (event.type === 'tool_call' || event.type === 'tool_result') {
+        const owner = state.workAncestry.tools.get(event.id)?.agentId
+        if (owner !== undefined) touched.add(owner)
+      }
+    }
+    if (workAncestry?.after !== undefined && workAncestry.after !== state.workAncestry.after)
+      return []
+  }
+  // A page changing a descendant also changes its containing card body.
+  for (const id of touched) {
+    const parent = state.workAncestry.agents.get(id)?.parentAgentId
+    if (parent !== undefined) touched.add(parent)
+  }
+  return [...state.subAgentCards.values()].filter((card) => !touched.has(card.agentId))
+}
+
 /**
  * Take from `state` the facts the events in `retained` can no longer say (068 finding 4).
  *
@@ -492,6 +524,7 @@ function asSubAgentEvent(card: SubAgentCard): TranscriptEvent {
 export function carryForward(
   state: TranscriptState,
   retained: readonly RuntimeEventMessage[],
+  preserveQuietCards = false,
 ): FoldCarry {
   const restated = new Set<string>()
   for (const { event } of retained) {
@@ -524,6 +557,7 @@ export function carryForward(
     })
   }
   return {
+    workAncestry: state.workAncestry,
     humanAnswers: copyHumanAnswers(state.humanAnswers),
     status: state.status,
     ref: state.ref,
@@ -604,6 +638,7 @@ export function carryForward(
     requests,
     changes: carryChanges(state.changes, retained),
     subAgents: subAgentCarry(state, retained),
+    ...(preserveQuietCards ? { quietSubAgents: quietSubAgents(state, retained) } : {}),
     stopUnanswered: state.stopUnanswered,
     heldPastTheirTurn: [...state.heldPastTheirTurn],
   }
@@ -705,6 +740,7 @@ export function foldWindow(
   // side of it — and `null` from the start is a session that was never reopened.
   let epoch = liveFrom
   if (carry !== null) {
+    if (carry.workAncestry !== undefined) state.workAncestry = carry.workAncestry
     state.humanAnswers = copyHumanAnswers(carry.humanAnswers)
     state.status = carry.status
     state.ref = carry.ref
@@ -759,7 +795,13 @@ export function foldWindow(
     // The cards FIRST, so a retained event that names one finds it — which is the whole point of
     // carrying them. They land at top level, because the row that dispatched them was released with
     // everything else; `rehome` and `adoptOrphans` put them back the moment the suffix supplies it.
-    for (const card of carry.subAgents) applyEvent(state, card)
+    const quiet = new Map(carry.quietSubAgents?.map((card) => [card.agentId, card]))
+    for (const event of carry.subAgents) {
+      const card = quiet.get(event.type === 'sub_agent' ? event.agentId : '')
+      if (card === undefined) applyEvent(state, event)
+      else restoreSubAgent(state, card)
+    }
+    for (const card of quiet.values()) restoreSubAgent(state, card)
     for (const request of carry.requests) {
       applyEvent(state, request.event, request.at)
       if (request.routed !== undefined) applyEvent(state, request.routed, request.at)
@@ -777,7 +819,15 @@ export function foldWindow(
     }
     // ⚑ **The ordinal goes in** (299 §2) — this is the one loop that has it, and everything that
     // has to survive a re-fold is stamped from here. See `transcript.ts`'s `Placed`.
-    applyEvent(state, message.event, message.at, message.ordinal, message.humanFinal)
+    applyEvent(
+      state,
+      message.event,
+      message.at,
+      message.ordinal,
+      message.humanFinal,
+      message.workAncestry,
+      message.ancestryContext,
+    )
   }
   if (epoch !== null) {
     markReopened(state)
@@ -798,6 +848,8 @@ export function openAt(window: WindowState, page: HistoryWindow, sessionId: stri
     ordinal: entry.ordinal,
     at: entry.at,
     event: entry.event,
+    ...(entry.workAncestry === undefined ? {} : { workAncestry: entry.workAncestry }),
+    ...(entry.ancestryContext === undefined ? {} : { ancestryContext: entry.ancestryContext }),
     ...(entry.humanFinal === undefined ? {} : { humanFinal: entry.humanFinal }),
   }))
   window.from = page.from
@@ -831,6 +883,8 @@ export function prependPage(
     ordinal: entry.ordinal,
     at: entry.at,
     event: entry.event,
+    ...(entry.workAncestry === undefined ? {} : { workAncestry: entry.workAncestry }),
+    ...(entry.ancestryContext === undefined ? {} : { ancestryContext: entry.ancestryContext }),
     ...(entry.humanFinal === undefined ? {} : { humanFinal: entry.humanFinal }),
   }))
   window.entries = [...older, ...window.entries]

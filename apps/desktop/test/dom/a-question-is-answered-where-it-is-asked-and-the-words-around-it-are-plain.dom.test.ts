@@ -37,7 +37,7 @@ import {
 import { foldWindow } from '../../src/renderer/src/lib/transcript-window'
 import { usageSays } from '../../src/renderer/src/lib/usage-limit'
 
-import type { ProviderCondition } from '../../src/shared/provider-limit'
+import type { ProviderCondition, ProviderLimitMeaning } from '../../src/shared/provider-limit'
 import {
   NOTHING_NAMED_THE_WORK,
   aPersonsSince,
@@ -1205,27 +1205,37 @@ describe('what the asker’s ledger says settles the card', () => {
 /** A day a person reads — local-time constructors, so a same-day arm is timezone-proof. */
 const at = (day: number, hour: number): number => new Date(2026, 9, day, hour, 0).getTime()
 
-const CLAUDE_WEEK =
-  'claude is approaching its rate limit (seven_day); resets 2026-10-07T11:00:00.000Z'
-const CLAUDE_FIVE_HOURS = 'claude is rate-limited (five_hour); resets 2026-10-01T14:00:00.000Z'
-const CLAUDE_OPUS =
-  'claude is approaching its rate limit (seven_day_opus); resets 2026-10-07T11:00:00.000Z'
+const CLAUDE_WEEK = {
+  said: 'claude is approaching its rate limit (seven_day); resets 2026-10-07T11:00:00.000Z',
+  meaning: { word: 'weekly', used: null, untimed: false },
+}
+const CLAUDE_FIVE_HOURS = {
+  said: 'claude is rate-limited (five_hour); resets 2026-10-01T14:00:00.000Z',
+  meaning: { word: '5-hour', used: null, untimed: false },
+}
+const CLAUDE_OPUS = {
+  said: 'claude is approaching its rate limit (seven_day_opus); resets 2026-10-07T11:00:00.000Z',
+  meaning: { word: 'weekly Opus', used: null, untimed: false },
+}
 
 const limit = (
-  said: string[],
+  rows: readonly { said: string; meaning: ProviderLimitMeaning }[],
   over: Partial<Pick<ProviderCondition, 'provider' | 'standing' | 'resetsAt'>> = {},
 ): ProviderCondition => ({
   key: over.provider ?? 'claude',
   provider: 'claude',
   standing: 'about-to-stop',
   says: '',
-  said,
+  said: rows.map((one) => one.said),
+  meaning: rows.map((one) => one.meaning),
   resetsAt: at(7, 11),
   ...over,
 })
 
-const codex = (window: string): string =>
-  `codex is approaching its rate limit — 99% of ${window} used; resets 2026-10-07T11:00:00.000Z`
+const codex = (window: string, word: string) => ({
+  said: `codex is approaching its rate limit — 99% of ${window} used; resets 2026-10-07T11:00:00.000Z`,
+  meaning: { word, used: 99, untimed: false },
+})
 
 describe('a usage limit is said in a person’s words', () => {
   const NOW_AT = at(1, 9)
@@ -1257,24 +1267,26 @@ describe('a usage limit is said in a person’s words', () => {
 
     // Codex says a duration, and the window is put in a person's words — with how much of it is
     // used, which its line says (F096).
-    const named = (window: string): string =>
-      usageSays(limit([codex(window)], { provider: 'codex' }), NOW_AT)
-    expect(named('a 7-day window')).toBe(
+    const named = (window: string, word: string): string =>
+      usageSays(limit([codex(window, word)], { provider: 'codex' }), NOW_AT)
+    expect(named('a 7-day window', 'weekly')).toBe(
       `Codex is near its weekly limit (99% used); it resets in ${reset}.`,
     )
-    expect(named('a 1-day window')).toBe(
+    expect(named('a 1-day window', 'daily')).toBe(
       `Codex is near its daily limit (99% used); it resets in ${reset}.`,
     )
-    expect(named('a 3-day window')).toBe(
+    expect(named('a 3-day window', '3-day')).toBe(
       `Codex is near its 3-day limit (99% used); it resets in ${reset}.`,
     )
-    expect(named('a 5-hour window')).toBe(
+    expect(named('a 5-hour window', '5-hour')).toBe(
       `Codex is near its 5-hour limit (99% used); it resets in ${reset}.`,
     )
 
     // How much is used (F096): the most any line says of a limit, beside that limit only.
-    const claudeWeekAt = (used: number): string =>
-      `claude is approaching its rate limit (seven_day) — ${String(used)}% used; resets 2026-10-07T11:00:00.000Z`
+    const claudeWeekAt = (used: number) => ({
+      said: `claude is approaching its rate limit (seven_day) — ${String(used)}% used; resets 2026-10-07T11:00:00.000Z`,
+      meaning: { word: 'weekly', used, untimed: false },
+    })
     expect(usageSays(limit([claudeWeekAt(92), claudeWeekAt(96)]), NOW_AT)).toBe(
       `Claude is near its weekly limit (96% used); it resets in ${reset}.`,
     )
@@ -1283,9 +1295,17 @@ describe('a usage limit is said in a person’s words', () => {
     )
 
     // A line that names no window names no limit.
-    expect(usageSays(limit(['claude is approaching its rate limit']), NOW_AT)).toBe(
-      `Claude is near a usage limit; it resets in ${reset}.`,
-    )
+    expect(
+      usageSays(
+        limit([
+          {
+            said: 'claude is approaching its rate limit',
+            meaning: { word: null, used: null, untimed: true },
+          },
+        ]),
+        NOW_AT,
+      ),
+    ).toBe(`Claude is near a usage limit; it resets in ${reset}.`)
 
     // When it resets: a provider that did not say…
     expect(usageSays(limit([CLAUDE_WEEK], { resetsAt: null }), NOW_AT)).toBe(

@@ -1,10 +1,10 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, type Component } from 'vue'
 import SettingsScreen, {
   type SettingsTab,
 } from '../../src/renderer/src/components/SettingsScreen.vue'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import { readingSays } from '../../src/renderer/src/lib/usage-limit'
 import type {
   ApiKeyStatus,
@@ -114,6 +114,7 @@ const VERSIONS: Readonly<Record<Provider, ProviderVersion>> = {
 }
 const FIVE_HOURS: ProviderUsageReading = {
   window: 'five_hour',
+  period: { word: '5-hour', durationMs: 5 * 3_600_000, bucket: false, bucketName: null },
   usedPercent: 12,
   resetsAt: NOW + 2 * 60 * 60 * 1000,
   at: NOW,

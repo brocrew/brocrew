@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import type { RetainedRecoveryCopy } from '../../../shared/recovery-retention'
+import { useClientApi } from '../client-provider/injection'
 
-const bridge = window.api?.recoveryRetention
+const bridge = useClientApi().recoveryCopies
 const copy = ref<RetainedRecoveryCopy | null>(null)
 const loaded = ref(false)
 const busy = ref(false)

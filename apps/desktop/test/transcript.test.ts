@@ -24,7 +24,7 @@ import {
   type ToolItem,
   type TranscriptState,
   type UserInputItem,
-} from '../src/renderer/src/lib/transcript'
+} from './lib/core-transcript'
 
 /**
  * The fold from events to what the screen shows. It is the only interpretation

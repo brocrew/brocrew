@@ -1,3 +1,4 @@
+import type { WorkAncestry } from './work-ancestry'
 import type { AgentRulesReceipt } from './agent-rules'
 import type { AppNotice } from './app-notice'
 import type { HandedPath } from './attachment-contracts'
@@ -1363,6 +1364,8 @@ export type TranscriptEvent =
 
 /** One recorded entry with the ordinal it was published under — the transcript, replayable. */
 export interface PersistedEventInfo {
+  workAncestry?: WorkAncestry
+  ancestryContext?: readonly PersistedEventInfo[]
   /** Canonical human-final association for this history row; null means it is not selected. */
   humanFinal?: import('./human-answer-contracts').HumanFinalContext | null
   ordinal: number

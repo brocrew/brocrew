@@ -1,3 +1,5 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
+import { providerDescriptor } from '@brobot2/shared'
 import { memoryStorage } from './memory-storage'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
@@ -6,7 +8,7 @@ import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
 import ProviderSetupAtLaunch from '../../src/renderer/src/components/ProviderSetupAtLaunch.vue'
 import { useKeyAsked } from '../../src/renderer/src/composables/useKeyAsked'
 import { forgetProfileSignIns } from '../../src/renderer/src/composables/useProfileSignIn'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import type { ProviderSetupSays } from '../../src/renderer/src/lib/provider-setup'
 import type {
@@ -230,6 +232,7 @@ describe('§8 · the Providers card’s Set up opens it', () => {
       ProviderCard as Component,
       {
         provider: 'claude',
+        descriptor: providerDescriptor('claude'),
         capabilities: options.capabilities === undefined ? CAPS : options.capabilities,
         limit: null,
         limitsRead: true,

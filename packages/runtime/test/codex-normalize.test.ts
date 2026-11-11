@@ -2453,6 +2453,26 @@ describe('Codex 0.160.0 · what the bump added to the classifier', () => {
     ).toEqual({ outcome: 'failed', message: 'turn failed: boom' })
   })
 
+  it('the error notification and terminal read the same native explanation', () => {
+    const error = {
+      message: 'blocked',
+      misalignment: { detailedExplanation: 'the request asked for X' },
+    }
+    expect(normalizeNotification('error', { error })).toEqual([
+      { type: 'error', message: 'blocked — the request asked for X', fatal: false },
+    ])
+    expect(codexTurnOutcome({ turn: { status: 'failed', error } })).toEqual({
+      outcome: 'failed',
+      message: 'turn failed: blocked — the request asked for X',
+    })
+    expect(normalizeNotification('error', { message: 'legacy detail' })).toEqual([
+      { type: 'error', message: 'legacy detail', fatal: false },
+    ])
+    expect(normalizeNotification('error', {})).toEqual([
+      { type: 'error', message: 'codex error', fatal: false },
+    ])
+  })
+
   it('the new notifications are classified, never `unrecognized`', () => {
     const quiet = {
       'thread/reverted': 'lifecycle',

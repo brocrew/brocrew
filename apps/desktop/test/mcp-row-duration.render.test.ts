@@ -8,7 +8,7 @@ import {
   createTranscript,
   type ToolItem,
   type TranscriptState,
-} from '../src/renderer/src/lib/transcript'
+} from './lib/core-transcript'
 
 /**
  * # ⚑ One duration on the row, and it is the provider's when the provider sent one (327 §2.1)

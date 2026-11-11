@@ -1,9 +1,11 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
+import { providerDescriptor } from '@brobot2/shared'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { providerConditions, type ProviderLimitSeen } from '../../src/shared/provider-limit'
 import type { ProviderUsageReading, ProvidersChangedMessage } from '../../src/shared/runtime-ipc'
@@ -126,6 +128,7 @@ async function provider(now: number, usage: Usage, confirmed = false): Promise<M
     ProviderCard,
     {
       provider: 'claude',
+      descriptor: providerDescriptor('claude'),
       capabilities: null,
       limit: providerConditions(walls(now, confirmed), now)[0] ?? null,
       limitsRead: true,

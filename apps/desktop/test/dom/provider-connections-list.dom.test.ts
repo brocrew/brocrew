@@ -1,8 +1,10 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
+import { providerDescriptor } from '@brobot2/shared'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, reactive, type Component } from 'vue'
 import type { Provider, ProviderConnection } from '@brobot2/shared'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+
 import { providersBridge } from '../../look/fixtures/providers'
 import { mount, unmountAll } from './harness'
 
@@ -42,6 +44,7 @@ function card(read: () => Promise<readonly ProviderConnection[]>) {
   Reflect.set(window.api.runtime, 'providerConnections', read)
   const props = reactive({
     provider: 'claude' as Provider,
+    descriptor: providerDescriptor('claude'),
     capabilities: null,
     limit: null,
     limitsRead: true,

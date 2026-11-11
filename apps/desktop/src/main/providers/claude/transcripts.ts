@@ -1,3 +1,4 @@
+import { STALE_KEY_NOTICE } from './error-words'
 import { splitQualified } from '@brobot2/runtime'
 import { CLAUDE_TOOL_NAMING, refusalForDisplay } from '@brobot2/runtime/claude'
 import { scanRetention } from './retention'
@@ -16,7 +17,32 @@ export function eventForDisplay(event: TranscriptEvent): TranscriptEvent {
   const observed = signInObservation(event)
   if (observed.type !== 'error') return observed
   const message = refusalForDisplay(observed.refusal)
-  return message === null ? observed : { ...observed, presentation: { message } }
+  if (message !== null)
+    return {
+      ...observed,
+      presentation: {
+        message,
+        level: observed.fatal ? 'error' : 'warn',
+        terminal: observed.fatal,
+        repeat: 'each',
+      },
+    }
+  if (
+    observed.presentation === undefined &&
+    observed.billingRefused !== true &&
+    observed.cause === 'auth_stale' &&
+    observed.onAKey === true
+  )
+    return {
+      ...observed,
+      presentation: {
+        message: STALE_KEY_NOTICE,
+        level: 'error',
+        terminal: observed.fatal,
+        repeat: 'each',
+      },
+    }
+  return observed
 }
 export const CLAUDE_JSONL = 'claude-jsonl'
 export const transcripts: TranscriptPolicy = {

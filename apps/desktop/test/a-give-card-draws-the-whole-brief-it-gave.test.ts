@@ -6,7 +6,7 @@ import {
   createTranscript,
   type ToolItem,
   type TranscriptState,
-} from '../src/renderer/src/lib/transcript'
+} from './lib/core-transcript'
 import {
   outgoingCard,
   readItWholeIn,

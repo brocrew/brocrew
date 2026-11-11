@@ -1,3 +1,4 @@
+import { createModelLists } from './lib/provider-launch-fixture'
 import type { ModelList } from '../src/shared/model-choice-contracts'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -35,7 +36,7 @@ import {
   theStandInNamed,
   whatTheProviderPressCleared,
 } from '../src/renderer/src/lib/agent-model-choice'
-import { createModelLists, type ModelLists } from '../src/renderer/src/lib/model-lists'
+import { type ModelLists } from '../src/renderer/src/lib/model-lists'
 import { providerTakesEffectNextTime } from '../src/renderer/src/lib/front-door-words'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { everythingOverTheWire } from './lib/the-wire'

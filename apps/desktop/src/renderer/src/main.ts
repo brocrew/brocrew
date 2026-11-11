@@ -1,6 +1,8 @@
 import './lib/logging'
 import { createApp } from 'vue'
 import App from './App.vue'
+import { CLIENT_PROVIDERS } from './client-provider/injection'
+import { desktopProviderApi } from './client-provider/desktop'
 import './assets/base.css'
 import { draftHandoffBeforeDrawing, SAVED_DRAFTS } from './lib/kept-drafts'
 import { keepTheMacZone } from './lib/local-zone'
@@ -27,7 +29,10 @@ import.meta.hot?.dispose(() => windowTheme.stop())
 
 void Promise.all([keepTheMacZone(window.api), themeBeforeDrawing(windowTheme)]).then(() =>
   draftHandoffBeforeDrawing(window.api?.savedDrafts).then((handoff) => {
-    createApp(App).provide(SAVED_DRAFTS, handoff).mount('#app')
+    createApp(App)
+      .provide(SAVED_DRAFTS, handoff)
+      .provide(CLIENT_PROVIDERS, desktopProviderApi)
+      .mount('#app')
     pageWatch?.mounted()
   }),
 )

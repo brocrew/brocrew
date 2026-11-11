@@ -211,6 +211,7 @@ import {
   desktopProviderInputs,
   providerAuthFromModules,
   providerVersionsFromModules,
+  providerProgramPathsFromModules,
 } from './providers'
 import { readSavedMethods, savedMethodsUseOf } from './saved-methods'
 import { createSavedMethodService } from './saved-method-service'
@@ -984,7 +985,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     providerAuth,
     apiKeys,
     loginRenewal: providerAuth.loginRenewal,
-    programFound: providerRecord((provider) => providerModules[provider].program?.installedPath),
+    programFound: providerProgramPathsFromModules(providerModules),
     // 🔒 A key check asks the provider itself — only when a person presses it.
     askTheProvider: (provider, key) => askTheProvider(provider, key),
     // What the Providers screen reads: each program's version (Codex's once per run, Claude Code's

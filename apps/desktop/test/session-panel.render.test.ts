@@ -6,11 +6,7 @@ import { renderToString } from 'vue/server-renderer'
 import SessionPanel from '../src/renderer/src/components/SessionPanel.vue'
 import { sessionPanel } from '../src/renderer/src/lib/session-panel'
 import { formatTokens, groupTokens } from '../src/renderer/src/lib/context-meter'
-import {
-  applyEvent,
-  createTranscript,
-  type TranscriptState,
-} from '../src/renderer/src/lib/transcript'
+import { applyEvent, createTranscript, type TranscriptState } from './lib/core-transcript'
 
 /**
  * The session panel, rendered (037).

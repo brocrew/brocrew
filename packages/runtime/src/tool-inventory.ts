@@ -1,4 +1,8 @@
 import { z, type ZodRawShape } from 'zod'
+import type { ToolNaming } from '@brobot2/shared/tool-naming'
+
+export { qualify as qualifyWith, splitQualified } from '@brobot2/shared/tool-naming'
+export type { ToolNaming } from '@brobot2/shared/tool-naming'
 
 /**
  * **The tools one conversation has** (358) — the provider-neutral vocabulary for them.
@@ -207,56 +211,6 @@ export const MAX_TOOL_TEXT = 500
  * bound that rejected it would turn the whole frame into `unknown` and lose the inventory with it.
  */
 export const MAX_STATUS_WORD = 60
-
-/**
- * 🔴 **How this provider spells a server's tool, stated as DATA rather than branched on.**
- *
- * ⛔ **The two spellings are the provider's, not a preference** (327 §2.4, measured by
- * `probe:tool-inventory` on Claude and by `353` on Codex): `mcp__<server>__<tool>` on Claude,
- * `<server>__<tool>` on Codex. ⚠️ **A join that compared BARE names would match nothing on Claude
- * and would look exactly like a conversation whose tools did not arrive** — the failure this event
- * exists to make visible, produced by the instrument meant to detect it.
- *
- * ⚑ **It rides the event because 039 forbids the alternative, and the census enforced it.** The
- * first draft of the renderer's join wrote `provider === 'claude' ? …` twice, and
- * `provider-neutrality.test.ts` refused it by name: *"ask the backend what the session SUPPORTS…
- * rather than widening this list."* This is `provider_commands.prefix`'s idiom applied to a second
- * fact — one statement about the provider, made once by the adapter that knows it, so no surface
- * downstream has to recognise a provider to read a name.
- */
-export interface ToolNaming {
-  /** What comes before the server name — `mcp__` on Claude, empty on Codex. */
-  readonly prefix: string
-  /** What separates the server from the tool — `__` on both, measured. */
-  readonly separator: string
-}
-
-/** How the model must spell one of `server`'s tools, given the provider's own convention. */
-export function qualifyWith(naming: ToolNaming, server: string, tool: string): string {
-  return `${naming.prefix}${server}${naming.separator}${tool}`
-}
-
-/**
- * Split a model-visible name back into its server and its tool, or `null` for a built-in.
- *
- * ⚠️ **The server is everything up to the FIRST separator and the tool is the rest**, rather than a
- * split into exactly two: a tool name may contain `__` and a server name in practice does not, so
- * rejoining the tail is the reading that cannot lose half a name. A server that really did contain
- * one would be read as a shorter server with a longer tool — which mis-groups a row and never drops
- * it.
- */
-export function splitQualified(
-  naming: ToolNaming,
-  name: string,
-): { server: string; tool: string } | null {
-  if (!name.startsWith(naming.prefix)) return null
-  const body = name.slice(naming.prefix.length)
-  const at = body.indexOf(naming.separator)
-  if (at <= 0) return null
-  const tool = body.slice(at + naming.separator.length)
-  if (tool === '') return null
-  return { server: body.slice(0, at), tool }
-}
 
 /**
  * ⛔ **The bounded payload, in the shape the event carries it** (358).

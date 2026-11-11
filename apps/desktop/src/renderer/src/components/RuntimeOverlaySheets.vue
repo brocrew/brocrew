@@ -12,13 +12,14 @@ export type SheetStart = (
 </script>
 
 <script setup lang="ts">
-import { computed, shallowRef } from 'vue'
-import { DEFAULT_CONVERSATION_PROVIDER } from '@brobot2/shared/providers'
+import { computed, shallowRef, ref, watch, onBeforeUnmount, nextTick } from 'vue'
 import { agentName, type Provider, type ProviderCapabilityMap } from '../../../shared/runtime-ipc'
 import type { SettingsTab } from './SettingsScreen.vue'
 import { useAgentStore } from '../composables/useAgentStore'
 import { useSessionStore } from '../composables/useSessionStore'
-import { providerForALaunch } from '../lib/agent-store'
+import { useModelLists } from '../composables/useModelLists'
+import { useClientProviders } from '../client-provider/injection'
+import { readableError } from '../lib/session-record'
 import { afterAPlacedLaunch } from '../lib/placed-launch'
 import { conversationsToReopen, type AConversationToReopen } from '../lib/reopening'
 import { useOverlays, type Overlay } from '../lib/overlay-store'
@@ -47,12 +48,67 @@ const emit = defineEmits<{
 const overlays = useOverlays()
 const agentStore = useAgentStore()
 const store = useSessionStore()
-const DEFAULT_PROVIDER: Provider = DEFAULT_CONVERSATION_PROVIDER
+const modelLists = useModelLists(useClientProviders())
 
-/** Resolve the sheet's provider from the live roster, using the same rule as the front door. */
-function providerForAgent(profileSlug: string): Provider {
-  return providerForALaunch(agentStore.identities.value, profileSlug, DEFAULT_PROVIDER)
+// A provider answer belongs to the exact overlay request, including a same-profile reopening.
+const overlayProvider = ref<Provider | null>(null)
+const overlayProviderLoading = ref(false)
+const overlayProviderError = ref<string | null>(null)
+const overlayProviderStatus = ref<HTMLElement | null>(null)
+const overlayProviderBody = ref<HTMLElement | null>(null)
+let providerOverlay: Overlay | null = null
+let overlayProviderRead = 0
+let overlayProviderAlive = true
+async function resolveOverlayProvider(): Promise<void> {
+  const overlay = overlays.overlay.value
+  const ours = ++overlayProviderRead
+  if (overlay !== providerOverlay) overlayProvider.value = null
+  providerOverlay = overlay
+  overlayProviderError.value = null
+  if (overlay?.kind !== 'agentCapabilities' && overlay?.kind !== 'startAsAgent') {
+    overlayProviderLoading.value = false
+    return
+  }
+  const focused = document.activeElement as HTMLElement | null
+  const wasInside = focused !== null && overlayProviderBody.value?.contains(focused)
+  let focusArrivedSheet = false
+  let answered = false
+  overlayProviderLoading.value = true
+  const ownsAnswer = () =>
+    overlayProviderAlive && ours === overlayProviderRead && overlays.overlay.value === overlay
+  try {
+    const answer = await modelLists.resolve({
+      profileId: overlay.profileSlug,
+      askedProvider: null,
+      providers: [],
+    })
+    if (ownsAnswer()) {
+      focusArrivedSheet = overlayProviderStatus.value?.contains(document.activeElement) === true
+      overlayProvider.value = answer.provider
+      answered = true
+    }
+  } catch (error) {
+    if (ownsAnswer()) overlayProviderError.value = readableError(error)
+  } finally {
+    if (ownsAnswer()) overlayProviderLoading.value = false
+  }
+  if (!answered) return
+  await nextTick()
+  if (!ownsAnswer()) return
+  if (focusArrivedSheet)
+    overlayProviderBody.value?.querySelector<HTMLElement>('[data-cy="close-overlay"]')?.focus()
+  else if (wasInside && focused?.isConnected && document.activeElement === document.body)
+    focused.focus()
 }
+watch(
+  [() => overlays.overlay.value, () => agentStore.identities.value],
+  () => void resolveOverlayProvider(),
+  { immediate: true, flush: 'sync' },
+)
+onBeforeUnmount(() => {
+  overlayProviderAlive = false
+  overlayProviderRead++
+})
 
 /** The Team card's name, read live rather than snapshotted onto the overlay. */
 function agentHeadingFor(profileSlug: string): string {
@@ -156,28 +212,61 @@ const openAsForSheet = computed<readonly AConversationToReopen[]>(() => {
         }
       "
     />
-    <CapabilitiesSheet
-      v-else-if="overlays.overlay.value.kind === 'agentCapabilities'"
-      :profile-slug="overlays.overlay.value.profileSlug"
-      :runs-on="providerForAgent(overlays.overlay.value.profileSlug)"
-      :capabilities="props.capabilities"
-      :open-as="openAsForSheet"
-      @close="overlays.close()"
-      @start-conversation="(slug) => overlays.open({ kind: 'startAsAgent', profileSlug: slug })"
-      @reopen="(sessionId) => emit('reopen', sessionId)"
-    />
-    <StartAsAgent
-      v-else-if="overlays.overlay.value.kind === 'startAsAgent'"
-      :profile-slug="overlays.overlay.value.profileSlug"
-      :provider="providerForAgent(overlays.overlay.value.profileSlug)"
-      :default-approval-mode="props.defaultApprovalMode"
-      :capabilities="props.capabilities"
-      :busy="placedHere && store.isPlacing()"
-      :error="placedHere ? store.placedError.value : null"
-      @start="startPlaced"
-      @cancel="void store.cancelPlaced()"
-      @close="closeOverlay()"
-    />
+    <div
+      v-else-if="
+        overlays.overlay.value.kind === 'agentCapabilities' ||
+        overlays.overlay.value.kind === 'startAsAgent'
+      "
+      style="display: flex; flex-direction: column; align-items: center"
+    >
+      <div
+        v-if="overlayProviderLoading || overlayProviderError"
+        ref="overlayProviderStatus"
+        role="status"
+        data-cy="overlay-provider-status"
+      >
+        <p v-if="overlayProviderLoading">Reading launch choices…</p>
+        <template v-else>
+          <p>{{ overlayProviderError }}</p>
+          <button type="button" data-cy="overlay-provider-retry" @click="resolveOverlayProvider">
+            Try again
+          </button>
+        </template>
+        <button type="button" data-cy="overlay-provider-close" @click="closeOverlay()">
+          Close
+        </button>
+      </div>
+      <div
+        v-if="overlayProvider !== null"
+        ref="overlayProviderBody"
+        :key="overlays.overlay.value.profileSlug"
+        :inert="overlayProviderLoading || overlayProviderError !== null"
+        style="display: contents"
+      >
+        <CapabilitiesSheet
+          v-if="overlays.overlay.value.kind === 'agentCapabilities'"
+          :profile-slug="overlays.overlay.value.profileSlug"
+          :runs-on="overlayProvider"
+          :capabilities="props.capabilities"
+          :open-as="openAsForSheet"
+          @close="overlays.close()"
+          @start-conversation="(slug) => overlays.open({ kind: 'startAsAgent', profileSlug: slug })"
+          @reopen="(sessionId) => emit('reopen', sessionId)"
+        />
+        <StartAsAgent
+          v-else
+          :profile-slug="overlays.overlay.value.profileSlug"
+          :provider="overlayProvider"
+          :default-approval-mode="props.defaultApprovalMode"
+          :capabilities="props.capabilities"
+          :busy="placedHere && store.isPlacing()"
+          :error="placedHere ? store.placedError.value : null"
+          @start="startPlaced"
+          @cancel="void store.cancelPlaced()"
+          @close="closeOverlay()"
+        />
+      </div>
+    </div>
     <!-- The confirmation before a delete: it reads what would go, and a person ticks each part. -->
     <DeleteConversation
       v-else-if="overlays.overlay.value.kind === 'deleteConversation'"

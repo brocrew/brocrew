@@ -1,6 +1,5 @@
 import type { ModelCatalogue } from '../../../shared/model-choice-contracts'
 import type { CapabilityStatus, ModelChoice } from '../../../shared/runtime-ipc'
-import { needsProviderSetup } from './provider-models'
 
 /**
  * 🔴 **What the model field may say, decided ONCE** (310).
@@ -226,7 +225,7 @@ export function modelField(world: ModelFieldWorld): ModelField {
   // an empty string here, so this is a shape the type allows and the producer does not — and a
   // sentence ending in *"what it can run: "* is worse than the same sentence without a clause.
   const said = held.detail.trim()
-  const notSetUp = world.ready === false || needsProviderSetup(said)
+  const notSetUp = world.ready === false || held.setupRequired === true
   return {
     state: 'refused',
     choices: null,

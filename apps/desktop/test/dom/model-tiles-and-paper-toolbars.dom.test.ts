@@ -1,3 +1,5 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
+import { providerDescriptor } from '@brobot2/shared'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
@@ -7,7 +9,7 @@ import DocumentBody from '../../src/renderer/src/components/DocumentBody.vue'
 import DiffBody from '../../src/renderer/src/components/DiffBody.vue'
 import { providersBridge } from '../../look/fixtures/providers'
 import { wearTheme } from '../../look/fixtures/themes'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { resolveTheme, type Theme } from '../../src/shared/themes/theme'
 import { contrastRatio, over, type Rgba } from '../../src/shared/themes/colour'
@@ -119,6 +121,7 @@ async function card(theme: Look, provider: Provider) {
       h('section', { 'data-chat-theme': 'light' }, [
         h(ProviderCard, {
           provider,
+          descriptor: providerDescriptor(provider),
           capabilities: null,
           limit: null,
           limitsRead: true,

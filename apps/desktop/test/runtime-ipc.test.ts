@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { IpcMainInvokeEvent, WebContents } from 'electron'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import { allProviderCapabilities, FakeRuntime, SUPPORTED_PROVIDERS } from '@brobot2/runtime'
 import {
   executeRuntimeCommand,
@@ -497,6 +498,7 @@ describe('runtime IPC boundary', () => {
       hasOlder: false,
       turnAligned: true,
       humanAnswers: { latest: null, active: null },
+      workAncestry: { agents: [], tools: [], dispatches: [], missing: [], truncated: false },
     })
     expect(host.sessionIds).toEqual([])
   })
@@ -524,6 +526,38 @@ describe('runtime IPC boundary', () => {
       runtimeCommandSchema.parse({ kind: 'capabilities', provider: 'claude' }),
       'the unknown key is STRIPPED, so nothing downstream can read a provider off it',
     ).toEqual({ kind: 'capabilities' })
+  })
+
+  it('supplies the declared provider catalogue without runtime, auth, model or version reads', async () => {
+    const unread = vi.fn((): never => {
+      throw new Error('A catalogue read cannot probe')
+    })
+    const catalogueHost = new RuntimeHost({
+      ...deps,
+      createRuntime: unread,
+      prepareProviderHome: unread,
+      providerHomePath: unread,
+    })
+    vi.spyOn(catalogueHost, 'checkProviderAuth').mockImplementation(unread)
+    vi.spyOn(catalogueHost, 'providerVersions').mockImplementation(unread)
+    vi.spyOn(catalogueHost, 'modelList').mockImplementation(unread)
+    try {
+      const catalogue = await executeRuntimeCommand(catalogueHost, sink, {
+        kind: 'providerCatalogue',
+      })
+      expect(catalogue).toEqual(PROVIDER_DESCRIPTORS)
+      expect(catalogue).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'claude', displayName: 'Claude' }),
+          expect.objectContaining({ id: 'codex', displayName: 'Codex' }),
+        ]),
+      )
+      expect(unread).not.toHaveBeenCalled()
+      expect(catalogueHost.sessionIds).toEqual([])
+      expect(startOptions).toEqual([])
+    } finally {
+      await catalogueHost.closeAll()
+    }
   })
 
   it('answers which profiles exist, and opens nothing to do it (167)', async () => {
