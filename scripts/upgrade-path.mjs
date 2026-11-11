@@ -1,6 +1,6 @@
 // 695-visible: this checks person-like starts on a GitHub-hosted runner: a release installed as a person
 import { spawn, spawnSync } from 'node:child_process'
-import { readStateEntry, SKILL_TREE_NAMES } from './lib/skill-tree-state.mjs'
+import { readStateEntry } from './lib/skill-tree-state.mjs'
 import {
   aCrashAfterTheSavedKey,
   keepPluginDrainEvidence,
@@ -865,6 +865,7 @@ async function noteTheRecoveryWindow(page) {
       sleep(3_000).then(() => null),
     ])
   } catch {
+    // A closing recovery window may no longer answer the heading request.
   } finally {
     peek?.close()
   }
