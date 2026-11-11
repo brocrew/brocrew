@@ -81,6 +81,7 @@ import {
   sha256,
   startOrder,
   makeEarlierMigrationFixture,
+  recoveryProofSequence,
   stateFileNames,
   stateKept,
   theCandidateInstaller,
@@ -1903,10 +1904,11 @@ function theStartAndTheKey(conversation, called, atFirstOpen) {
   }
 }
 
-async function startHiddenProgram(program, workspace, stage, port, budget = 180_000) {
+async function startHiddenProgram(program, workspace, stage, port, options = {}) {
+  const { budget = 180_000, launchProgram = launch } = options
   installedExe = program.exe
   installedProgram = program.program
-  await launch(stage, port, { workspace, hidden: true })
+  await launchProgram(stage, port, { workspace, hidden: true })
   await bridge(stage, budget)
   await onScreen(stage, true)
   return running
@@ -1922,8 +1924,15 @@ async function recoveryProofCases({
   betaAnswers,
   besideBefore,
 }) {
+  const proof = recoveryProofSequence({
+    launch,
+    currentPid: () => running?.pid,
+    alive,
+    phase,
+    check,
+  })
   async function proofOrdinary(program, folder, stage, port) {
-    await startHiddenProgram(program, folder, stage, port)
+    await startHiddenProgram(program, folder, stage, port, { launchProgram: proof.launch })
     const info = await running.cdp.evaluate('return await window.api.getAppInfo()')
     const responsive = performance.now()
     const manifestAbsent = !(await proofManifests(folder)).some((one) => !ids.has(one.manifest.id))
@@ -1956,183 +1965,189 @@ async function recoveryProofCases({
   const ids = new Set((await proofManifests(data)).map((one) => one.manifest.id))
   try {
     const state = readState()
-    await phase('proof compatible candidate', async () => {
-      const observed = await proofOrdinary(candidate, data, 'proof-candidate', 9350)
-      const copy = await completedProofCopy(data, ids)
-      observed.completed = performance.now()
-      await until(() => readFileSync(running.log, 'utf8').includes(CHECKPOINT_LINE), 10_000, 100)
-      result.compatible.observed = observed
-      result.compatible.copy = await checkedProofCopy(
-        copy,
-        {
-          reason: 'first-start-of-release',
-          version: args['candidate-version'],
-          build: args['source-sha'],
-          lineage: before.lineage,
-        },
-        state,
-        stateFiles,
-        must,
-      )
-      result.compatible.order = startOrder(readFileSync(running.log, 'utf8'), {
-        checkpoint: true,
-        completion: 'background',
-        observation: observed,
-      })
-      await quit('proof candidate completed')
-    })
-    must(result.compatible.order, 'Window-before-completion was not observed.')
-    await phase('proof actual019 compatible', async () => {
-      await proofOrdinary(old, data, 'proof-019-compatible', 9351)
-      await quit('proof019 compatible')
-      await proofOrdinary(candidate, data, 'proof-candidate-again', 9352)
-      await quit('proof candidate again')
-      result.compatible.actual019ThenCandidate = true
-    })
-    must(result.compatible.actual019ThenCandidate, 'Compatible binary reads failed.')
-    await phase('proof synthetic future actual019 Restore Return', async () => {
-      const { runnerImport } = await import(
-        pathToFileURL(join(REPO, 'apps/desktop/node_modules/vite/dist/node/index.js')).href
-      )
-      const { module } = await runnerImport(
-        join(REPO, 'apps/desktop/test/recovery/lib/recovery-fixture.ts'),
-        { configFile: false, root: join(REPO, 'apps/desktop'), logLevel: 'error' },
-      )
-      const db = new DatabaseSync(join(data, 'brobot2.sqlite'))
-      try {
-        db.prepare('INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)').run(
-          module.NEWER_MIGRATION.hash,
-          module.NEWER_MIGRATION.createdAt,
-        )
-      } finally {
-        db.close()
-      }
-      result.syntheticFuture.label =
-        'Existing synthetic NEWER_MIGRATION; not a shipping candidate migration.'
-      result.syntheticFuture.migration = module.NEWER_MIGRATION
-      const newer = await digest(join(data, 'brobot2.sqlite'))
-      const newerState = readState()
-      installedExe = old.exe
-      installedProgram = old.program
-      await launch('proof-019-recovery', 9353, { workspace: data, hidden: true, recovery: true })
-      const verdict = await until(
-        async () => {
-          const verdict = await running.cdp.evaluate('return window.recovery?.verdict()')
-          return verdict?.kind === 'working' ? null : verdict
-        },
-        600_000,
-        100,
-      )
-      must(
-        verdict?.kind === 'newer' && verdict.offers?.id === result.compatible.copy.id,
-        'Actual019 offers the candidate-created v1 snapshot.',
-        verdict,
-      )
-      await running.cdp.evaluate(
-        'document.querySelector("[data-cy=recovery-restore]").click(); return true',
-      )
-      must(
-        await until(
-          async () =>
-            (await running.cdp.evaluate('return window.recovery.verdict()')).kind ===
-            'history-only',
-          600_000,
-          100,
-        ),
-        'Actual019 entered restored history.',
-      )
-      for (const id of conversations) {
-        const read = await running.cdp.evaluate(
-          `return JSON.stringify(await window.recovery.history.transcript(${JSON.stringify(id)}))`,
-        )
-        must(
-          read.includes(answerText(betaAnswers[id])),
-          'Actual019 reads the restored transcript.',
+    const cases = {
+      compatible: async () => {
+        const observed = await proofOrdinary(candidate, data, 'proof-candidate', 9350)
+        const copy = await completedProofCopy(data, ids)
+        observed.completed = performance.now()
+        await until(() => readFileSync(running.log, 'utf8').includes(CHECKPOINT_LINE), 10_000, 100)
+        result.compatible.observed = observed
+        result.compatible.copy = await checkedProofCopy(
+          copy,
           {
-            id,
+            reason: 'first-start-of-release',
+            version: args['candidate-version'],
+            build: args['source-sha'],
+            lineage: before.lineage,
           },
+          state,
+          stateFiles,
+          must,
         )
-      }
-      await running.cdp.evaluate(
-        'document.querySelector("[data-cy=recovery-return]").click(); return true',
-      )
-      must(
-        await until(
-          async () =>
-            (await running.cdp.evaluate('return window.recovery.verdict()')).kind === 'newer',
+        result.compatible.order = startOrder(readFileSync(running.log, 'utf8'), {
+          checkpoint: true,
+          completion: 'background',
+          observation: observed,
+        })
+        await quit('proof candidate completed')
+      },
+      compatible019: async () => {
+        await proofOrdinary(old, data, 'proof-019-compatible', 9351)
+        await quit('proof019 compatible')
+        await proofOrdinary(candidate, data, 'proof-candidate-again', 9352)
+        await quit('proof candidate again')
+        result.compatible.actual019ThenCandidate = true
+      },
+      syntheticFuture: async () => {
+        const { runnerImport } = await import(
+          pathToFileURL(join(REPO, 'apps/desktop/node_modules/vite/dist/node/index.js')).href
+        )
+        const { module } = await runnerImport(
+          join(REPO, 'apps/desktop/test/recovery/lib/recovery-fixture.ts'),
+          { configFile: false, root: join(REPO, 'apps/desktop'), logLevel: 'error' },
+        )
+        const db = new DatabaseSync(join(data, 'brobot2.sqlite'))
+        try {
+          db.prepare('INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)').run(
+            module.NEWER_MIGRATION.hash,
+            module.NEWER_MIGRATION.createdAt,
+          )
+        } finally {
+          db.close()
+        }
+        result.syntheticFuture.label =
+          'Existing synthetic NEWER_MIGRATION; not a shipping candidate migration.'
+        result.syntheticFuture.migration = module.NEWER_MIGRATION
+        const newer = await digest(join(data, 'brobot2.sqlite'))
+        const newerState = readState()
+        installedExe = old.exe
+        installedProgram = old.program
+        await proof.launch('proof-019-recovery', 9353, {
+          workspace: data,
+          hidden: true,
+          recovery: true,
+        })
+        const verdict = await until(
+          async () => {
+            const verdict = await running.cdp.evaluate('return window.recovery?.verdict()')
+            return verdict?.kind === 'working' ? null : verdict
+          },
           600_000,
           100,
-        ),
-        'Actual019 returned to the newer state.',
-      )
-      await quit('proof019 Return')
-      must(
-        (await digest(join(data, 'brobot2.sqlite'))) === newer,
-        'Return preserved the synthetic newer database exactly.',
-      )
-      must(
-        stateKept(newerState, readState(), stateFiles).lost.length === 0,
-        'Return preserved coupled state.',
-      )
-      besideKept('proof019 Return kept current', besideBefore)
-      result.syntheticFuture.actual019RestoreReturn = true
-    })
-    must(result.syntheticFuture.actual019RestoreReturn, 'Actual019 Restore/Return failed.')
-    await phase('proof synchronous real earlier prefix', async () => {
-      const root = mkdtempSync(join(tmpdir(), 'upgrade-prefix-'))
-      result.synchronous.workspace = root
-      const journal = JSON.parse(readFileSync(join(migrations, 'meta/_journal.json'), 'utf8'))
-      const prefix = new DatabaseSync(join(root, 'brobot2.sqlite'))
-      let lineage
-      try {
-        lineage = makeEarlierMigrationFixture(prefix, journal, (tag) =>
-          readFileSync(join(migrations, `${tag}.sql`), 'utf8'),
         )
-      } finally {
-        prefix.close()
-      }
-      const state = readState(root)
-      must(
-        (await proofManifests(root)).length === 0,
-        'The earlier prefix has no completed fallback.',
-      )
-      installedExe = candidate.exe
-      installedProgram = candidate.program
-      await launch('proof-synchronous', 9354, { workspace: root, hidden: true })
-      await bridge('proof synchronous')
-      await onScreen('proof synchronous', true)
-      const copy = await completedProofCopy(root, new Set())
-      result.synchronous.copy = await checkedProofCopy(
-        copy,
-        {
-          reason: 'before-migration',
-          version: args['candidate-version'],
-          build: args['source-sha'],
-          lineage,
-        },
-        state,
-        stateFiles,
-        must,
-      )
-      result.synchronous.order = startOrder(readFileSync(running.log, 'utf8'), { checkpoint: true })
-      await quit('proof synchronous')
-      const db = new DatabaseSync(join(root, 'brobot2.sqlite'), { readOnly: true })
-      try {
         must(
-          db.prepare('SELECT count(*) AS n FROM __drizzle_migrations').get().n ===
-            candidateLineage.length,
-          'The real remaining migration applied after the completed snapshot.',
+          verdict?.kind === 'newer' && verdict.offers?.id === result.compatible.copy.id,
+          'Actual019 offers the candidate-created v1 snapshot.',
+          verdict,
         )
-      } finally {
-        db.close()
-      }
-    })
+        await running.cdp.evaluate(
+          'document.querySelector("[data-cy=recovery-restore]").click(); return true',
+        )
+        must(
+          await until(
+            async () =>
+              (await running.cdp.evaluate('return window.recovery.verdict()')).kind ===
+              'history-only',
+            600_000,
+            100,
+          ),
+          'Actual019 entered restored history.',
+        )
+        for (const id of conversations) {
+          const read = await running.cdp.evaluate(
+            `return JSON.stringify(await window.recovery.history.transcript(${JSON.stringify(id)}))`,
+          )
+          must(
+            read.includes(answerText(betaAnswers[id])),
+            'Actual019 reads the restored transcript.',
+            {
+              id,
+            },
+          )
+        }
+        await running.cdp.evaluate(
+          'document.querySelector("[data-cy=recovery-return]").click(); return true',
+        )
+        must(
+          await until(
+            async () =>
+              (await running.cdp.evaluate('return window.recovery.verdict()')).kind === 'newer',
+            600_000,
+            100,
+          ),
+          'Actual019 returned to the newer state.',
+        )
+        await quit('proof019 Return')
+        must(
+          (await digest(join(data, 'brobot2.sqlite'))) === newer,
+          'Return preserved the synthetic newer database exactly.',
+        )
+        must(
+          stateKept(newerState, readState(), stateFiles).lost.length === 0,
+          'Return preserved coupled state.',
+        )
+        besideKept('proof019 Return kept current', besideBefore)
+        result.syntheticFuture.actual019RestoreReturn = true
+      },
+      synchronous: async () => {
+        const root = mkdtempSync(join(tmpdir(), 'upgrade-prefix-'))
+        result.synchronous.workspace = root
+        const journal = JSON.parse(readFileSync(join(migrations, 'meta/_journal.json'), 'utf8'))
+        const prefix = new DatabaseSync(join(root, 'brobot2.sqlite'))
+        let lineage
+        try {
+          lineage = makeEarlierMigrationFixture(prefix, journal, (tag) =>
+            readFileSync(join(migrations, `${tag}.sql`), 'utf8'),
+          )
+        } finally {
+          prefix.close()
+        }
+        const state = readState(root)
+        must(
+          (await proofManifests(root)).length === 0,
+          'The earlier prefix has no completed fallback.',
+        )
+        installedExe = candidate.exe
+        installedProgram = candidate.program
+        await proof.launch('proof-synchronous', 9354, { workspace: root, hidden: true })
+        await bridge('proof synchronous')
+        await onScreen('proof synchronous', true)
+        const copy = await completedProofCopy(root, new Set())
+        result.synchronous.copy = await checkedProofCopy(
+          copy,
+          {
+            reason: 'before-migration',
+            version: args['candidate-version'],
+            build: args['source-sha'],
+            lineage,
+          },
+          state,
+          stateFiles,
+          must,
+        )
+        result.synchronous.order = startOrder(readFileSync(running.log, 'utf8'), {
+          checkpoint: true,
+        })
+        await quit('proof synchronous')
+        const db = new DatabaseSync(join(root, 'brobot2.sqlite'), { readOnly: true })
+        try {
+          must(
+            db.prepare('SELECT count(*) AS n FROM __drizzle_migrations').get().n ===
+              candidateLineage.length,
+            'The real remaining migration applied after the completed snapshot.',
+          )
+        } finally {
+          db.close()
+        }
+      },
+    }
+    await proof.collect(result, cases, { state, readState, stateFiles })
   } finally {
     keep('recovery-proof.json', result)
     await stop()
-    if (result.synchronous.workspace)
+    if (proof.closed() && result.synchronous.workspace)
       rmSync(result.synchronous.workspace, { recursive: true, force: true })
-    rmSync(old.root, { recursive: true, force: true })
+    if (proof.closed()) rmSync(old.root, { recursive: true, force: true })
   }
 }
 
@@ -2205,7 +2220,7 @@ async function runUpgradePath() {
       },
       app: {
         start: (program, workspace, stage, port) =>
-          startHiddenProgram(program, workspace, stage, port, 900_000),
+          startHiddenProgram(program, workspace, stage, port, { budget: 900_000 }),
         quit,
         stop,
       },

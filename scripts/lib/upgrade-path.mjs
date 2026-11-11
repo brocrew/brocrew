@@ -1119,3 +1119,72 @@ export function pluginOwnerQuiescence(value) {
     ? 'stopped'
     : 'not-stopped'
 }
+
+async function collectRecoveryProofCases({ result, cases, phase, closed, check, state }) {
+  const steps = [
+    ['compatible', 'proof compatible candidate', () => true],
+    ['compatible019', 'proof actual019 compatible', () => Boolean(result.compatible.copy)],
+    [
+      'syntheticFuture',
+      'proof synthetic future actual019 Restore Return',
+      () => result.compatible.actual019ThenCandidate === true,
+    ],
+    ['synchronous', 'proof synchronous real earlier prefix', () => true],
+  ]
+  result.cases = []
+  for (const [name, stage, ready] of steps) {
+    let skip = null
+    try {
+      if (!closed()) skip = 'An owned proof process has not been verified stopped.'
+      else if (!ready())
+        skip = 'The preceding compatible data/copy prerequisites were not verified.'
+      else if (
+        ['compatible019', 'syntheticFuture'].includes(name) &&
+        stateKept(state.state, state.readState(), state.stateFiles).lost.length
+      )
+        skip = 'Coupled state no longer satisfies the compatible fixture prerequisites.'
+    } catch (error) {
+      skip = `Prerequisites could not be verified: ${error.message}`
+    }
+    const outcome = { name }
+    result.cases.push(outcome)
+    if (skip) {
+      outcome.skipped = skip
+      check(false, `${stage}: skipped`, { reason: skip })
+      continue
+    }
+    await phase(stage, async () => {
+      await cases[name]()
+      outcome.completed = true
+    })
+    if (name === 'compatible')
+      check(Boolean(result.compatible.order), 'Window-before-completion was not observed.')
+    outcome.closed = closed()
+    check(outcome.closed, `${stage}: owned proof processes are stopped`)
+  }
+}
+
+export function recoveryProofSequence({ launch, currentPid, alive, phase, check }) {
+  const pids = new Set()
+  const closed = () => [...pids].every((pid) => !alive(pid))
+  return {
+    closed,
+    launch: async (...args) => {
+      requireEvidence(closed(), 'A preceding owned proof process is still running.')
+      try {
+        return await launch(...args)
+      } finally {
+        if (currentPid()) pids.add(currentPid())
+      }
+    },
+    collect: (result, cases, state) =>
+      collectRecoveryProofCases({
+        result,
+        cases,
+        phase,
+        check,
+        closed,
+        state,
+      }),
+  }
+}
