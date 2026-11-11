@@ -67,15 +67,11 @@ import type { CheckpointDeletion } from '../../src/main/recovery/checkpoint-dele
 import { checkTheCopyHere } from '../helpers/check-the-copy-here'
 
 const LATEST = THE_BUILDS[THE_BUILDS.length - 1] ?? 0
-/** A migration later than any this build carries. */
 const A_LATER_ONE = LATEST + 86_400_000
 const LATER_HASH = 'f'.repeat(64)
-/** That migration, as a build that carries it lists it. */
 const LATER: BuildMigration = { createdAt: A_LATER_ONE, hash: LATER_HASH, recordedAs: [LATER_HASH] }
 
-/** This build's migrations, read as the coordinator reads them. */
 let LINEAGE: readonly BuildMigration[]
-/** The same, as a database that applied them records them. */
 let OWN: readonly Migration[]
 beforeAll(async () => {
   LINEAGE = await buildLineage(MIGRATIONS)
@@ -110,14 +106,12 @@ function liveFile(userData: string): string {
 
 const FILLER_ROWS = 300
 
-/** Rows enough to span many pages, in a table of the test's own. */
 function fill(db: Database.Database): void {
   db.exec('CREATE TABLE IF NOT EXISTS filler (n INTEGER, body BLOB)')
   const insert = db.prepare('INSERT INTO filler VALUES (?, ?)')
   for (let n = 0; n < FILLER_ROWS; n += 1) insert.run(n, Buffer.alloc(1000, n % 251))
 }
 
-/** The live database, migrated as the app migrates its own, holding some rows, and closed. */
 function aLiveDatabase(userData: string, migrations = MIGRATIONS): void {
   const db = openDatabase(liveFile(userData))
   applyMigrations(db, migrations)
@@ -125,7 +119,17 @@ function aLiveDatabase(userData: string, migrations = MIGRATIONS): void {
   db.close()
 }
 
-/** A migrations folder holding this build's first `count` migrations. */
+function aLiveWorkspace(): string {
+  const userData = aDataFolder()
+  aLiveDatabase(userData)
+  return userData
+}
+
+async function aCopiedWorkspace(options: Partial<MakeCheckpointOptions> = {}) {
+  const userData = aLiveWorkspace()
+  return { userData, copy: await make(userData, options) }
+}
+
 function theFirstMigrations(count: number): string {
   const folder = join(aRoot(), 'migrations')
   cpSync(MIGRATIONS, folder, { recursive: true })
@@ -136,7 +140,6 @@ function theFirstMigrations(count: number): string {
   return folder
 }
 
-/** This build's migrations plus a later one that fails. */
 function migrationsWithOneThatFails(): string {
   const folder = join(aRoot(), 'migrations')
   cpSync(MIGRATIONS, folder, { recursive: true })
@@ -200,12 +203,10 @@ function manifestPath(userData: string, id: string): string {
   return join(userData, 'backups', id, 'manifest.json')
 }
 
-/** Rewrites a checkpoint's manifest as given, valid or not. */
 function rewrite(userData: string, id: string, value: unknown): void {
   writeFileSync(manifestPath(userData, id), `${JSON.stringify(value, null, 2)}\n`)
 }
 
-/** A copy of a checkpoint's folder under a new id, its manifest changed as given. */
 function copyOf(
   userData: string,
   from: Checkpoint,
@@ -217,7 +218,6 @@ function copyOf(
   return id
 }
 
-/** The manifest of a copy made by a build with one migration more than this one. */
 function oneMigrationLater(manifest: CheckpointManifest, createdAt: number): object {
   const { migrations } = manifest.database
   return {
@@ -236,8 +236,7 @@ const ids = (checkpoints: readonly Checkpoint[]): string[] =>
 
 describe('makeCheckpoint', () => {
   it('makes a copy SQLite checks, with the state files beside it and a manifest this build reads', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const planted: Record<string, string> = {
       'drafts.json': '{"version":1,"drafts":{"one":"an unsent line"}}\n',
       'sign-in-changes.json': '{"version":1,"changed":{}}\n',
@@ -304,8 +303,7 @@ describe('makeCheckpoint', () => {
   })
 
   it('leaves the copy as one readable rollback-mode file with no sidecars', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     writeFileSync(join(userData, 'drafts.json'), '{}\n', { mode: 0o644 })
     const { folder } = await make(userData)
     const copy = join(folder, 'database.sqlite')
@@ -314,7 +312,6 @@ describe('makeCheckpoint', () => {
     const header = readFileSync(copy).subarray(0, 100)
     expect([header[18], header[19]], 'the header says rollback journal, not WAL').toEqual([1, 1])
 
-    // A read-only reader opens it in place and leaves nothing beside it.
     expect(rows(copy)).toBe(FILLER_ROWS)
     expect(readdirSync(folder).sort()).toEqual(['database.sqlite', 'drafts.json', 'manifest.json'])
 
@@ -322,8 +319,7 @@ describe('makeCheckpoint', () => {
   })
 
   it('leaves the live database and its folder as they were', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const before = fingerprint(liveFile(userData))
     const names = readdirSync(userData).sort()
 
@@ -340,7 +336,6 @@ describe('makeCheckpoint', () => {
     db.pragma('wal_autocheckpoint = 0')
     applyMigrations(db, MIGRATIONS)
     fill(db)
-    // What a crash leaves: the main file and a -wal holding the work, with no -shm.
     copyFileSync(elsewhere, liveFile(userData))
     copyFileSync(`${elsewhere}-wal`, `${liveFile(userData)}-wal`)
     db.close()
@@ -354,8 +349,7 @@ describe('makeCheckpoint', () => {
   })
 
   it('marks its folder unfinished from its first file until the manifest is written', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     writeFileSync(join(userData, 'drafts.json'), '{}\n')
     const seen: [CheckpointStep, string[]][] = []
     let folder = ''
@@ -382,9 +376,7 @@ describe('makeCheckpoint', () => {
   })
 
   it('keeps one workspace id for every copy, and gives each copy a folder of its own', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
-    const first = await make(userData)
+    const { userData, copy: first } = await aCopiedWorkspace()
     const idFile = join(userData, 'backups', 'workspace-id')
     const written = readFileSync(idFile, 'utf8')
     const second = await make(userData)
@@ -400,8 +392,7 @@ describe('makeCheckpoint', () => {
   it.each(['unknown', 'taken'] as const)(
     'makes nothing when the one-app check says %s',
     async (ownership) => {
-      const userData = aDataFolder()
-      aLiveDatabase(userData)
+      const userData = aLiveWorkspace()
       const failure = await make(userData, { ownership }).catch((error: unknown) => error)
       expect(failure).toBeInstanceOf(CheckpointFailed)
       expect((failure as CheckpointFailed).canRetry).toBe(false)
@@ -410,8 +401,7 @@ describe('makeCheckpoint', () => {
   )
 
   it('says how much space it needs, and makes nothing, when the disk is too full', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const failure = await make(userData, { freeBytes: () => 1_000_000 }).catch(
       (error: unknown) => error,
     )
@@ -424,8 +414,7 @@ describe('makeCheckpoint', () => {
   })
 
   it('never replaces a workspace id it cannot read', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     mkdirSync(join(userData, 'backups'))
     const idFile = join(userData, 'backups', 'workspace-id')
     writeFileSync(idFile, 'not / an id\n')
@@ -439,8 +428,7 @@ describe('makeCheckpoint', () => {
   })
 
   it('refuses a copy of damaged data, keeps nothing, and leaves the data as it was', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const file = liveFile(userData)
     const db = new Database(file)
     db.exec('CREATE TABLE damaged (x TEXT); CREATE INDEX damaged_x ON damaged (x)')
@@ -451,8 +439,6 @@ describe('makeCheckpoint', () => {
       .get() as { rootpage: number }
     const pageSize = Number(db.pragma('page_size', { simple: true }))
     db.close()
-    // One row's value changed in the table but not in its index: SQLite's check sees the two
-    // disagree, though every page still reads.
     const bytes = readFileSync(file)
     const page = bytes.subarray((rootpage - 1) * pageSize, rootpage * pageSize)
     const at = page.indexOf('needle-007')
@@ -518,8 +504,7 @@ describe('makeCheckpoint', () => {
   it.each(stops)(
     'leaves nothing to offer, and the data as it was, after %s',
     async (_what, options) => {
-      const userData = aDataFolder()
-      aLiveDatabase(userData)
+      const userData = aLiveWorkspace()
       writeFileSync(join(userData, 'drafts.json'), '{}\n')
       const before = fingerprint(liveFile(userData))
       const lines: string[] = []
@@ -544,8 +529,7 @@ describe('makeCheckpoint', () => {
 
 describe('makeCheckpoint, on disk', () => {
   it('puts the copy, each state file and their folder on disk before the manifest names them', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     writeFileSync(join(userData, 'drafts.json'), '{"version":1}\n')
     const events: string[] = []
     const recording: RecoveryFs = {
@@ -579,8 +563,6 @@ describe('makeCheckpoint, on disk', () => {
     expect(copy).toBeLessThan(drafts)
     expect(drafts).toBeLessThan(manifest)
     if (process.platform === 'win32') {
-      // Windows flushes no folder: the manifest is flushed again under its own name, which puts
-      // that name, and every one made before it, on disk.
       expect(events.filter((event) => event.startsWith('sync r '))).toEqual([])
       expect(at(`sync r+ ${join(folder, 'manifest.json')}`)).toBeGreaterThan(manifest)
       return
@@ -593,9 +575,7 @@ describe('makeCheckpoint, on disk', () => {
   })
 
   it('offers a retry when the workspace id could not be read this time, and keeps it', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
-    const first = await make(userData)
+    const { userData, copy: first } = await aCopiedWorkspace()
     const idFile = join(userData, 'backups', 'workspace-id')
     const written = readFileSync(idFile, 'utf8')
     const held: RecoveryFs = {
@@ -612,8 +592,7 @@ describe('makeCheckpoint, on disk', () => {
   })
 
   it.runIf(POSIX)('makes nothing through a backups folder that is a link', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const elsewhere = join(aRoot(), 'elsewhere')
     mkdirSync(elsewhere)
     symlinkSync(elsewhere, join(userData, 'backups'))
@@ -628,7 +607,6 @@ describe('makeCheckpoint, on disk', () => {
   })
 })
 
-/** A checkpoint as {@link listOfferable} would return it, for the decisions alone. */
 function aCheckpoint(made: {
   appVersion: string
   migrations: readonly Migration[]
@@ -812,8 +790,7 @@ describe('needsACheckpoint', () => {
 
 describe('checkpointNeeded', () => {
   it('lets a retry after a failed migration reuse the copy made before it, until the data changes', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const live = liveFile(userData)
     const failing = migrationsWithOneThatFails()
     const lineage = await buildLineage(failing)
@@ -853,8 +830,7 @@ describe('checkpointNeeded', () => {
   })
 
   it('lets a build that is not packaged reuse the copy its own commit made before a failed migration', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const live = liveFile(userData)
     const lineage = await buildLineage(migrationsWithOneThatFails())
     const asked = async (build: string | null): Promise<string | null> =>
@@ -875,8 +851,7 @@ describe('checkpointNeeded', () => {
   })
 
   it('hashes a copy to reuse only when migrations are left to apply, the one time it is reused', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     await make(userData, { appVersion: '0.2.0', reason: 'before-migration' })
     const read: string[] = []
     const fs: RecoveryFs = {
@@ -909,8 +884,7 @@ describe('checkpointNeeded', () => {
   })
 
   it('makes a new copy when the one a retry would reuse was damaged since it was made', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const live = liveFile(userData)
     const failing = migrationsWithOneThatFails()
     const lineage = await buildLineage(failing)
@@ -954,8 +928,7 @@ describe('whenTheDatabaseLastChanged', () => {
   })
 
   it('says so, rather than nothing, when a time cannot be read', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const denied: RecoveryFs = {
       ...nodeFs,
       stat: (path) => (path.endsWith('-wal') ? Promise.reject(coded('EACCES')) : nodeFs.stat(path)),
@@ -964,7 +937,6 @@ describe('whenTheDatabaseLastChanged', () => {
   })
 })
 
-/** Changes a file's last byte and keeps its size and modification time. */
 function flipLastByte(file: string): void {
   const stats = statSync(file)
   const bytes = readFileSync(file)
@@ -975,8 +947,7 @@ function flipLastByte(file: string): void {
 
 describe('theNewestIntact', () => {
   it('offers the newest copy whose files a restore installs still hash as made, trying each in turn', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     writeFileSync(join(userData, 'drafts.json'), '{"version":1}\n')
     writeFileSync(join(userData, 'provider-usage.json'), '{}\n')
     const oldest = await make(userData, { now: () => minute(1) })
@@ -985,7 +956,6 @@ describe('theNewestIntact', () => {
     const copyDamaged = await make(userData, { now: () => minute(4) })
     flipLastByte(join(copyDamaged.folder, 'database.sqlite'))
     flipLastByte(join(draftsDamaged.folder, 'drafts.json'))
-    // A state file a restore leaves as it is does not stop the copy being offered.
     flipLastByte(join(usageChanged.folder, 'provider-usage.json'))
 
     const offerable = await listOfferable(userData, LINEAGE)
@@ -1000,9 +970,7 @@ describe('theNewestIntact', () => {
   })
 
   it.runIf(POSIX)('does not take a link to the right bytes for the copy itself', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
-    const made = await make(userData)
+    const { userData, copy: made } = await aCopiedWorkspace()
     const copy = join(made.folder, 'database.sqlite')
     const elsewhere = join(aRoot(), 'database.sqlite')
     renameSync(copy, elsewhere)
@@ -1015,9 +983,7 @@ describe('theNewestIntact', () => {
 
 describe('listOfferable', () => {
   it('offers this workspace’s whole copies newest first, as the window is told them', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
-    const middle = await make(userData, { now: () => minute(2) })
+    const { userData, copy: middle } = await aCopiedWorkspace({ now: () => minute(2) })
     const oldest = await make(userData, { now: () => minute(1) })
     const newest = await make(userData, { now: () => minute(3) })
 
@@ -1033,9 +999,7 @@ describe('listOfferable', () => {
   })
 
   it('offers nothing from another workspace', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
-    const kept = await make(userData)
+    const { userData, copy: kept } = await aCopiedWorkspace()
     const moved = await make(userData)
     rewrite(userData, moved.manifest.id, { ...moved.manifest, workspaceId: randomUUID() })
     expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([kept]))
@@ -1047,8 +1011,7 @@ describe('listOfferable', () => {
   })
 
   it('offers no copy whose files are not the size its manifest records', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     writeFileSync(join(userData, 'drafts.json'), '{}\n')
     writeFileSync(join(userData, 'provider-usage.json'), '{}\n')
     const [grown, gone, draftsChanged, usageChanged] = [
@@ -1060,7 +1023,6 @@ describe('listOfferable', () => {
     appendFileSync(join(grown.folder, 'database.sqlite'), 'x')
     rmSync(join(gone.folder, 'database.sqlite'))
     appendFileSync(join(draftsChanged.folder, 'drafts.json'), 'x')
-    // A state file a restore leaves as it is does not stop the copy being offered.
     appendFileSync(join(usageChanged.folder, 'provider-usage.json'), 'x')
 
     expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([usageChanged]))
@@ -1068,9 +1030,7 @@ describe('listOfferable', () => {
   })
 
   it('offers no copy whose migrations this build cannot open, by time or by hash', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
-    const ours = await make(userData, { now: () => minute(1) })
+    const { userData, copy: ours } = await aCopiedWorkspace({ now: () => minute(1) })
     const newer = copyOf(userData, ours, (manifest) => oneMigrationLater(manifest, minute(2)))
     const otherLine = copyOf(userData, ours, (manifest) => ({
       ...manifest,
@@ -1106,9 +1066,7 @@ describe('listOfferable', () => {
   })
 
   it('offers no copy whose manifest lists a state file this build does not know', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
-    const ours = await make(userData, { now: () => minute(1) })
+    const { userData, copy: ours } = await aCopiedWorkspace({ now: () => minute(1) })
     copyOf(userData, ours, (manifest) => ({
       ...manifest,
       createdAt: new Date(minute(2)).toISOString(),
@@ -1118,9 +1076,7 @@ describe('listOfferable', () => {
   })
 
   it('offers no folder without a manifest, with one this build does not read, or named for another', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
-    const ours = await make(userData)
+    const { userData, copy: ours } = await aCopiedWorkspace()
     const unfinished = copyOf(userData, ours)
     rmSync(manifestPath(userData, unfinished))
     const later = copyOf(userData, ours)
@@ -1140,13 +1096,11 @@ describe('listOfferable', () => {
   })
 })
 
-/** A whole copy's folder as a copy stopped before its manifest leaves it: marked unfinished. */
 function leftUnfinished(userData: string, id: string): void {
   rmSync(manifestPath(userData, id))
   writeFileSync(join(userData, 'backups', id, 'unfinished'), '')
 }
 
-/** Dates every entry of a folder in `backups/`, and the folder, more than an hour ago. */
 function anHourAndMoreAgo(userData: string, name: string, now = Date.now()): void {
   const then = (now - 61 * 60_000) / 1000
   const folder = join(userData, 'backups', name)
@@ -1156,8 +1110,7 @@ function anHourAndMoreAgo(userData: string, name: string, now = Date.now()): voi
 
 describe('prune', () => {
   it('keeps the newest two update copies regardless of age or successful-start receipts', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const copies = []
     for (let n = 0; n < 4; n++) {
       const copy = await make(userData, { appVersion: '0.1.19', now: () => minute(n) })
@@ -1175,8 +1128,7 @@ describe('prune', () => {
   })
 
   it('leaves unfinished update copies alone while rotating completed copies', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const copies = []
     for (let n = 0; n < 4; n++) copies.push(await make(userData, { now: () => minute(n) }))
     const unfinished = copyOf(userData, copies[3]!)
@@ -1233,8 +1185,7 @@ describe('prune', () => {
   })
 
   it('keeps the newest two of three recent copies with the same migration count', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const now = minute(12)
     const oldest = await make(userData, { now: () => now - 3 * 60_000 })
     const middle = await make(userData, { now: () => now - 2 * 60_000 })
@@ -1273,8 +1224,7 @@ describe('prune', () => {
   })
 
   it('keeps the last copy regardless of age', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const now = START + 40 * DAY_MS
     const only = await make(userData, { now: () => now - 30 * DAY_MS })
 
@@ -1292,8 +1242,7 @@ describe('prune', () => {
   it.each(['taken', 'unknown'] as const)(
     'removes nothing when the one-app check says %s',
     async (ownership) => {
-      const userData = aDataFolder()
-      aLiveDatabase(userData)
+      const userData = aLiveWorkspace()
       const now = Date.now()
       for (let n = 1; n <= 5; n += 1) await make(userData, { now: () => now - (6 - n) * 60_000 })
       const stale = copyOf(userData, (await listCheckpoints(userData))[0] as Checkpoint)
@@ -1308,8 +1257,7 @@ describe('prune', () => {
   )
 
   it('never removes unknown, foreign or unfinished copies regardless of age', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const made: Checkpoint[] = []
     for (let n = 1; n <= 6; n += 1) made.push(await make(userData, { now: () => minute(n) }))
     const [c1, c2, c3, c4, c5, c6] = made as [
@@ -1344,8 +1292,7 @@ describe('prune', () => {
   })
 
   it('leaves unfinished copies alone, including marked folders holding only writer files', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const backups = join(userData, 'backups')
     const unfinished = (name: string, files: Record<string, string>): string => {
       mkdirSync(join(backups, name), { recursive: true })
@@ -1373,7 +1320,6 @@ describe('prune', () => {
     const theirs = unfinished('before-upgrade', { ...marked, 'database.sqlite': 'their own copy' })
     const anId = randomUUID().toUpperCase()
     unfinished(anId, { ...marked, 'database.sqlite': 'not an id this app writes' })
-    // What a restore sets aside, moved here by a person: the writer's names, but no mark.
     const setAside = unfinished(randomUUID(), {
       'database.sqlite': 'the newer data',
       'database.sqlite-wal': 'its last changes',
@@ -1398,8 +1344,7 @@ describe('prune', () => {
   })
 
   it('removes nothing this time when a copy’s files cannot be looked at', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const made: Checkpoint[] = []
     for (let n = 1; n <= 5; n += 1) made.push(await make(userData, { now: () => minute(n) }))
     const held = join(made[0]?.folder ?? '', 'database.sqlite')
@@ -1418,8 +1363,7 @@ describe('prune', () => {
   })
 
   it('removes nothing this time when a manifest cannot be read', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const made: Checkpoint[] = []
     for (let n = 1; n <= 5; n += 1) made.push(await make(userData, { now: () => minute(n) }))
     const held = manifestPath(userData, made[4]?.manifest.id ?? '')
@@ -1435,8 +1379,7 @@ describe('prune', () => {
   })
 
   it.runIf(POSIX)('removes nothing through a backups folder that is a link', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     for (let n = 1; n <= 5; n += 1) await make(userData, { now: () => minute(n) })
     const elsewhere = join(aRoot(), 'backups-elsewhere')
     renameSync(join(userData, 'backups'), elsewhere)
@@ -1452,8 +1395,7 @@ describe('prune', () => {
   })
 
   it.runIf(POSIX)('never follows a link named like a copy', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     await make(userData)
     const elsewhere = join(aRoot(), 'elsewhere')
     mkdirSync(elsewhere)
@@ -1468,8 +1410,7 @@ describe('prune', () => {
   })
 
   it('removes nothing, and says why, when a folder cannot be removed', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const made: Checkpoint[] = []
     for (let n = 1; n <= 4; n += 1) made.push(await make(userData, { now: () => minute(n) }))
     const held: RecoveryFs = { ...nodeFs, unlink: () => Promise.reject(coded('ENOTEMPTY')) }
@@ -1530,8 +1471,7 @@ describe('recovery copies from a previous release', () => {
   )
 
   it('keeps two copies of the current release', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const old = await make(userData, { appVersion: '0.1.19', now: () => START })
     const current = await make(userData, { appVersion: '0.1.19', now: () => minute(1) })
     expect(
@@ -1546,8 +1486,7 @@ describe('recovery copies from a previous release', () => {
   })
 
   it('keeps the previous release copy regardless of age', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const old = await make(userData, { appVersion: '0.1.17', now: () => START - 4 * DAY_MS })
     const current = await make(userData, { appVersion: '0.1.19', now: () => START })
     expect(
@@ -1562,8 +1501,7 @@ describe('recovery copies from a previous release', () => {
   })
 
   it('rotates older previous-release copies independently of their age', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const old = await make(userData, { appVersion: '0.1.17', now: () => START })
     const second = await make(userData, { appVersion: '0.1.17', now: () => minute(1) })
     const current = await make(userData, { appVersion: '0.1.19', now: () => minute(2) })
@@ -1581,8 +1519,7 @@ describe('recovery copies from a previous release', () => {
   it.each([false, true])(
     'never counts current release starts against the previous copy with a new copy=%s',
     async (makeCurrent) => {
-      const userData = aDataFolder()
-      aLiveDatabase(userData)
+      const userData = aLiveWorkspace()
       const old = await make(userData, { appVersion: '0.1.17', now: () => START })
       await recordSuccessfulStart(userData, LINEAGE, { ...SOLE, currentAppVersion: '0.1.17' })
       const current = makeCurrent
@@ -1599,8 +1536,7 @@ describe('recovery copies from a previous release', () => {
   )
 
   it.each([2, 3])('keeps previous copies after %i starts of their version', async (starts) => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const old = await make(userData, { appVersion: '0.1.17', now: () => START })
     for (let n = 0; n < starts; n++) {
       await recordSuccessfulStart(userData, LINEAGE, { ...SOLE, currentAppVersion: '0.1.17' })
@@ -1618,8 +1554,7 @@ describe('recovery copies from a previous release', () => {
   })
 
   it('does not apply an expired receipt to another copy of the same previous version', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const old = await make(userData, { appVersion: '0.1.17', now: () => START })
     for (let n = 0; n < 3; n++) {
       await recordSuccessfulStart(userData, LINEAGE, { ...SOLE, currentAppVersion: '0.1.17' })
@@ -1638,8 +1573,7 @@ describe('recovery copies from a previous release', () => {
   })
 
   it('keeps two previous copies regardless of their old start receipt', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const old = await make(userData, { appVersion: '0.1.17', now: () => START })
     const newest = await make(userData, { appVersion: '0.1.17', now: () => minute(1) })
     expect(
@@ -1654,8 +1588,7 @@ describe('recovery copies from a previous release', () => {
   })
 
   it('keeps two copies when the current version is omitted', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const old = await make(userData, { appVersion: '0.1.17', now: () => START })
     const current = await make(userData, { appVersion: '0.1.19', now: () => minute(1) })
     expect(await prune(userData, LINEAGE, { ...SOLE, now: () => minute(2) })).toEqual([])
@@ -1666,8 +1599,7 @@ describe('recovery copies from a previous release', () => {
 
 describe('recovery copy retention and Settings', () => {
   it('lets Settings delete each of two retained versions after this version starts successfully', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const older = await make(userData, { appVersion: '0.1.18', now: () => START })
     const newer = await make(userData, { appVersion: '0.1.19', now: () => minute(1) })
     const options = { ...SOLE, currentAppVersion: '0.1.19' }
@@ -1687,9 +1619,7 @@ describe('recovery copy retention and Settings', () => {
   })
 
   it('keeps the last copy across the former expiry boundary', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
-    const copy = await make(userData, { now: () => START })
+    const { userData, copy } = await aCopiedWorkspace({ now: () => START })
     expect(await prune(userData, LINEAGE, { ...SOLE, now: () => START + 3 * DAY_MS - 1 })).toEqual(
       [],
     )
@@ -1698,9 +1628,7 @@ describe('recovery copy retention and Settings', () => {
   })
 
   it('keeps its copy after three successful starts and does not recreate it on the fourth', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
-    const copy = await make(userData)
+    const { userData, copy } = await aCopiedWorkspace()
     const version = copy.manifest.madeBy.appVersion
     const options = { ...SOLE, currentAppVersion: version }
     for (let starts = 1; starts <= 3; starts++) {
@@ -1727,8 +1655,7 @@ describe('recovery copy retention and Settings', () => {
   })
 
   it('shows total copied bytes; Delete now removes the selected copy', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     writeFileSync(join(userData, 'drafts.json'), '{"draft":"fictional"}')
     const copy = await make(userData)
     const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
@@ -1753,9 +1680,7 @@ describe('recovery copy retention and Settings', () => {
   it.each(['taken', 'unknown'] as const)(
     'Settings delete refuses %s ownership',
     async (ownership) => {
-      const userData = aDataFolder()
-      aLiveDatabase(userData)
-      const copy = await make(userData)
+      const { userData, copy } = await aCopiedWorkspace()
       expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, { ownership })).toBe(
         false,
       )
@@ -1764,9 +1689,7 @@ describe('recovery copy retention and Settings', () => {
   )
 
   it('Settings delete refuses stale ids, damage, extra personal files and unreadable manifests', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
-    const copy = await make(userData)
+    const { userData, copy } = await aCopiedWorkspace()
     const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
     await recordSuccessfulStart(userData, LINEAGE, options)
     expect(await deleteRetainedCopy(userData, LINEAGE, randomUUID(), options)).toBe(false)
@@ -1788,8 +1711,7 @@ describe('recovery copy retention and Settings', () => {
   })
 
   it('leaves manual timestamp-named sqlite copies untouched, regardless of age', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const personal = join(userData, 'backups', '20260101-020202')
     mkdirSync(personal, { recursive: true, mode: 0o755 })
     writeFileSync(join(personal, 'brobot2.sqlite'), 'a fictional manual operations copy')
@@ -1805,17 +1727,13 @@ describe('recovery copy retention and Settings', () => {
 
 describe('retention safety boundaries', () => {
   it('protects the newest copy even after thirty days', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
-    const copy = await make(userData, { now: () => START })
+    const { userData, copy } = await aCopiedWorkspace({ now: () => START })
     expect(await prune(userData, LINEAGE, { ...SOLE, now: () => START + 30 * DAY_MS })).toEqual([])
     expect(await isIntact(copy)).toBe(true)
   })
 
   it('does not count checks, failed opens, other versions, or earlier copies toward a new copy', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
-    const copy = await make(userData)
+    const { userData, copy } = await aCopiedWorkspace()
     const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
     expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({
       id: copy.manifest.id,
@@ -1838,9 +1756,7 @@ describe('retention safety boundaries', () => {
   })
 
   it('refuses all cleanup if its start receipt is unreadable or malformed', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
-    const copy = await make(userData, { now: () => START })
+    const { userData, copy } = await aCopiedWorkspace({ now: () => START })
     const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
     await recordSuccessfulStart(userData, LINEAGE, options)
     writeFileSync(join(userData, 'backups', 'retention.json'), '{broken')
@@ -1851,9 +1767,7 @@ describe('retention safety boundaries', () => {
   it.each(['history-only.json', 'restore-journal.json'])(
     'never counts or deletes during %s',
     async (name) => {
-      const userData = aDataFolder()
-      aLiveDatabase(userData)
-      const copy = await make(userData, { now: () => START })
+      const { userData, copy } = await aCopiedWorkspace({ now: () => START })
       const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
       mkdirSync(join(userData, 'recovery'))
       writeFileSync(join(userData, 'recovery', name), 'restore in progress')
@@ -1867,8 +1781,7 @@ describe('retention safety boundaries', () => {
 
 describe('resuming an authorized recovery copy deletion', () => {
   async function interrupted(file = 'drafts.json', withTree = false) {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     writeFileSync(join(userData, 'drafts.json'), '{"draft":"fictional only"}')
     if (withTree) {
       mkdirSync(join(userData, 'skills', 'fictional'), { recursive: true })
@@ -2034,9 +1947,7 @@ describe('resuming an authorized recovery copy deletion', () => {
   })
 
   it('does not begin removal if the durable deletion record cannot be written', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
-    const copy = await make(userData)
+    const { userData, copy } = await aCopiedWorkspace()
     const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
     await recordSuccessfulStart(userData, LINEAGE, options)
     const fs: RecoveryFs = {
@@ -2051,9 +1962,7 @@ describe('resuming an authorized recovery copy deletion', () => {
   })
 
   it('resumes after the move succeeds but its acknowledgement is lost', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
-    const copy = await make(userData)
+    const { userData, copy } = await aCopiedWorkspace()
     const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
     await recordSuccessfulStart(userData, LINEAGE, options)
     let moved = ''
@@ -2120,9 +2029,7 @@ describe('resuming an authorized recovery copy deletion', () => {
   })
 
   it('never replaces a personal folder at the proposed deletion destination', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
-    const copy = await make(userData)
+    const { userData, copy } = await aCopiedWorkspace()
     const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
     await recordSuccessfulStart(userData, LINEAGE, options)
     const personal = join(userData, 'backups', `deleting-${copy.manifest.id}`)
@@ -2148,9 +2055,7 @@ describe('a deletion intent never grants ownership of personal files', () => {
   it.each(['retry', 'prune'])(
     'refuses a forged intent over a personal UUID folder through %s',
     async (operation) => {
-      const userData = aDataFolder()
-      aLiveDatabase(userData)
-      const copy = await make(userData)
+      const { userData, copy } = await aCopiedWorkspace()
       const options = {
         ...SOLE,
         currentAppVersion: copy.manifest.madeBy.appVersion,
@@ -2207,8 +2112,7 @@ describe('private capture before background v1 completion', () => {
   })
 
   it('captures coupled state before writers, stays unofferable, then publishes the actual v1 hash', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     writeFileSync(join(userData, 'drafts.json'), '{"draft":"before"}')
     let hashes = 0
     const options = {
@@ -2248,9 +2152,7 @@ describe('private capture before background v1 completion', () => {
   })
 
   it('keeps private capture and previous backups on hash failure, then resumes without recapturing live state', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
-    const previous = await make(userData)
+    const { userData, copy: previous } = await aCopiedWorkspace()
     const options = optionsFor(userData)
     const captured = await captureCheckpoint({
       ...options,
@@ -2271,8 +2173,7 @@ describe('private capture before background v1 completion', () => {
   })
 
   it('cancels completion without deleting the durable capture or publishing a partial manifest', async () => {
-    const userData = aDataFolder()
-    aLiveDatabase(userData)
+    const userData = aLiveWorkspace()
     const abort = new AbortController()
     const options = optionsFor(userData)
     const captured = await captureCheckpoint({ ...options, signal: abort.signal })

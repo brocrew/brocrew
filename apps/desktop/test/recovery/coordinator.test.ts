@@ -60,12 +60,6 @@ import {
 } from './lib/recovery-fixture'
 import { checkTheCopyHere } from '../helpers/check-the-copy-here'
 
-/**
- * The start-up check, on real data folders: databases built by the app's own migrations, copies
- * made as the checkpoint writer makes them, and restores laid down after any step. Each refusal is
- * checked to leave every file in the folder as it was.
- */
-
 const roots: string[] = []
 afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
@@ -81,6 +75,14 @@ async function aWorkspace(options: RecoveryFixtureOptions): Promise<string> {
   const userData = join(await aRoot(), 'data')
   await makeRecoveryFixture(userData, options)
   return userData
+}
+
+async function aNewerWorkspace(options: Partial<RecoveryFixtureOptions> = {}): Promise<string> {
+  return aWorkspace({
+    migrations: ONE_NEWER,
+    checkpoints: [THIS_BUILD, ONE_NEWER],
+    ...options,
+  })
 }
 
 interface Seen {
@@ -116,7 +118,6 @@ const owned = (ownership: Ownership): Pick<CoordinatorDeps, 'ownership'> => ({
   ownership: () => Promise.resolve(ownership),
 })
 
-/** The service with `faults`, through the factory a test outside this file uses. */
 function withFaults(deps: CoordinatorDeps, faults: RecoveryFaults) {
   const { buildMigrationsFolder, ownership, ...rest } = deps
   return createRecoveryServiceForTests({
@@ -127,7 +128,6 @@ function withFaults(deps: CoordinatorDeps, faults: RecoveryFaults) {
   })
 }
 
-/** The refusal of a start whose one-app check did not say `sole`. */
 const notTheOnlyApp = (ownership: Exclude<Ownership, 'sole'>): StartupVerdict => ({
   kind: 'failed',
   reason: 'not-the-only-app-on-this-folder',
@@ -137,7 +137,6 @@ const notTheOnlyApp = (ownership: Exclude<Ownership, 'sole'>): StartupVerdict =>
 
 const quiet: ProgressListener = () => undefined
 
-/** Every file and folder under `dir`, with each file's size, modification time and sha256. */
 async function treeOf(dir: string): Promise<Record<string, string>> {
   const tree: Record<string, string> = {}
   const walk = async (relative: string): Promise<void> => {
@@ -160,7 +159,6 @@ async function treeOf(dir: string): Promise<Record<string, string>> {
   return tree
 }
 
-/** A migrations folder holding this build's migrations and one more after them. */
 const aBuildWithOneMoreMigration = () => buildWithOneMoreMigration({ root: aRoot })
 
 async function sha256Of(path: string): Promise<string> {
@@ -184,8 +182,6 @@ describe('a start that opens its data', () => {
     const { deps, seen } = checkOf(userData)
     expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'not-needed' })
     expect(await treeOf(userData)).toEqual(before)
-    // Said before the database is read, in case reading it takes a while; a window that would say
-    // so waits about two seconds first. No copy is made, so none is said.
     expect(seen).toEqual({ lines: [], working: ['check'], progress: [] })
   })
 
@@ -440,7 +436,6 @@ describe('a copy before a migration', () => {
     })
     expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'made' })
     expect(seen.lines).toEqual([CHECKPOINT_LINE])
-    // Checking first; making a copy only once it has decided to.
     expect(seen.working).toEqual(['check', 'checkpoint'])
     const last = seen.progress.at(-1)
     expect(last?.[0]).toBe(last?.[1])
@@ -711,10 +706,7 @@ describe('a start that cannot read what it needs fails closed', () => {
   })
 
   it('refuses a restore record it cannot read, whatever the one-app check said, and touches nothing', async () => {
-    const userData = await aWorkspace({
-      migrations: ONE_NEWER,
-      checkpoints: [THIS_BUILD, ONE_NEWER],
-    })
+    const userData = await aNewerWorkspace()
     await mkdir(recoveryDir(userData))
     await writeFile(journalFile(userData), '{ "format": "brobot-restore", "version": 1')
     const before = await treeOf(userData)
@@ -731,11 +723,7 @@ describe('a start that cannot read what it needs fails closed', () => {
   })
 
   it('offers a retry when a record could not be read, which may pass; never when it does not parse', async () => {
-    const userData = await aWorkspace({
-      migrations: ONE_NEWER,
-      checkpoints: [THIS_BUILD, ONE_NEWER],
-      gate: true,
-    })
+    const userData = await aNewerWorkspace({ gate: true })
     const failing = (path: string): RecoveryFs => ({
       ...nodeFs,
       readFile: (file) =>
@@ -761,11 +749,7 @@ describe('a start that cannot read what it needs fails closed', () => {
   })
 
   it('refuses a history-only record it cannot read, or of a later version, and touches nothing', async () => {
-    const userData = await aWorkspace({
-      migrations: ONE_NEWER,
-      checkpoints: [THIS_BUILD, ONE_NEWER],
-      gate: true,
-    })
+    const userData = await aNewerWorkspace({ gate: true })
     const gate = JSON.parse(await readFile(gateFile(userData), 'utf8')) as Record<string, unknown>
     for (const text of ['not json', JSON.stringify({ ...gate, version: 2 })]) {
       await writeFile(gateFile(userData), text)
@@ -821,11 +805,7 @@ describe('a restored copy behind the history-only gate', () => {
   })
 
   it('is replaced-outside when a sidecar sits beside the copy, which is one file', async () => {
-    const userData = await aWorkspace({
-      migrations: ONE_NEWER,
-      checkpoints: [THIS_BUILD, ONE_NEWER],
-      gate: true,
-    })
+    const userData = await aNewerWorkspace({ gate: true })
     await writeFile(`${databaseFile(userData)}-wal`, Buffer.alloc(32, 1))
     const before = await treeOf(userData)
     expect(await inspect(checkOf(userData).deps)).toMatchObject({
@@ -865,7 +845,6 @@ describe('only the sole app on the folder changes its data', () => {
       })
       expect(await inspect(deps)).toEqual(notTheOnlyApp(ownership))
       expect(await treeOf(userData)).toEqual(before)
-      // The sole app reuses the copy and migrates.
       expect(await inspect(made.deps)).toEqual({ kind: 'open', checkpoint: 'not-needed' })
     })
 
@@ -882,10 +861,7 @@ describe('only the sole app on the folder changes its data', () => {
     })
 
     it(`refuses a restore, and settling an unfinished one, when it said ${ownership}`, async () => {
-      const newer = await aWorkspace({
-        migrations: ONE_NEWER,
-        checkpoints: [THIS_BUILD, ONE_NEWER],
-      })
+      const newer = await aNewerWorkspace()
       const service = createRecoveryService(checkOf(newer, owned(ownership)).deps)
       const verdict = await service.inspect()
       if (verdict.kind !== 'newer' || verdict.offers === null) throw new Error('nothing offered')
@@ -893,11 +869,7 @@ describe('only the sole app on the folder changes its data', () => {
       expect(await service.restore(verdict.offers.id, quiet)).toEqual(notTheOnlyApp(ownership))
       expect(await treeOf(newer)).toEqual(before)
 
-      const unfinished = await aWorkspace({
-        migrations: ONE_NEWER,
-        checkpoints: [THIS_BUILD, ONE_NEWER],
-        journalAt: 'moving',
-      })
+      const unfinished = await aNewerWorkspace({ journalAt: 'moving' })
       const left = await treeOf(unfinished)
       expect(await inspect(checkOf(unfinished, owned(ownership)).deps)).toMatchObject({
         kind: 'failed',
@@ -935,11 +907,7 @@ describe('a start the one-app check could not decide', () => {
 
 describe('the recovery window’s service', () => {
   it('restores the offered copy into a history-only start, and returns to the newer data', async () => {
-    const userData = await aWorkspace({
-      migrations: ONE_NEWER,
-      checkpoints: [THIS_BUILD, ONE_NEWER],
-      drafts: true,
-    })
+    const userData = await aNewerWorkspace({ drafts: true })
     const newerDatabase = await sha256Of(databaseFile(userData))
     const service = createRecoveryService(checkOf(userData).deps)
     const first = await service.inspect()
@@ -960,10 +928,7 @@ describe('the recovery window’s service', () => {
   })
 
   it('settles a restore a fault stopped part way, at once: one past its journal is finished', async () => {
-    const userData = await aWorkspace({
-      migrations: ONE_NEWER,
-      checkpoints: [THIS_BUILD, ONE_NEWER],
-    })
+    const userData = await aNewerWorkspace()
     const service = withFaults(checkOf(userData).deps, { at: 'installed', error: 'EBUSY' })
     const first = await service.inspect()
     if (first.kind !== 'newer' || first.offers === null) throw new Error('nothing offered')
@@ -971,10 +936,7 @@ describe('the recovery window’s service', () => {
   })
 
   it('says a restore that stopped before its journal changed nothing, and may be tried again', async () => {
-    const userData = await aWorkspace({
-      migrations: ONE_NEWER,
-      checkpoints: [THIS_BUILD, ONE_NEWER],
-    })
+    const userData = await aNewerWorkspace()
     const service = withFaults(checkOf(userData).deps, { at: 'staged', error: 'ENOSPC' })
     const first = await service.inspect()
     if (first.kind !== 'newer' || first.offers === null) throw new Error('nothing offered')
@@ -1003,15 +965,11 @@ describe('the recovery window’s service', () => {
 
   it('stops a restore after a step’s work, before its journal names it, and settles it at once', async () => {
     for (const at of ['staged', 'gate-installed', 'moving', 'installed', 'done'] as const) {
-      const userData = await aWorkspace({
-        migrations: ONE_NEWER,
-        checkpoints: [THIS_BUILD, ONE_NEWER],
-      })
+      const userData = await aNewerWorkspace()
       const service = withFaults(checkOf(userData).deps, { at, after: true, error: 'EACCES' })
       const first = await service.inspect()
       if (first.kind !== 'newer' || first.offers === null) throw new Error('nothing offered')
       const settled = await service.restore(first.offers.id, quiet)
-      // Settled one way or the other, never left half way.
       expect(['history-only', 'failed']).toContain(settled.kind)
       if (settled.kind === 'failed') expect(settled).toMatchObject({ reason: 'restore-failed' })
       await expect(stat(journalFile(userData))).rejects.toMatchObject({ code: 'ENOENT' })
@@ -1019,11 +977,7 @@ describe('the recovery window’s service', () => {
   })
 
   it('stops a restore just after one file’s rename, and settles it at once', async () => {
-    const userData = await aWorkspace({
-      migrations: ONE_NEWER,
-      checkpoints: [THIS_BUILD, ONE_NEWER],
-      drafts: true,
-    })
+    const userData = await aNewerWorkspace({ drafts: true })
     const newerDatabase = await sha256Of(databaseFile(userData))
     for (const at of [
       { move: 'brobot2.sqlite', to: 'aside' },
@@ -1060,11 +1014,7 @@ describe('the recovery window’s service', () => {
   })
 
   it('refuses a return whose set-aside data changed outside BroBot, as changed outside, and touches nothing', async () => {
-    const userData = await aWorkspace({
-      migrations: ONE_NEWER,
-      checkpoints: [THIS_BUILD, ONE_NEWER],
-      crashed: true,
-    })
+    const userData = await aNewerWorkspace({ crashed: true })
     const service = createRecoveryService(checkOf(userData).deps)
     const first = await service.inspect()
     if (first.kind !== 'newer' || first.offers === null) throw new Error('nothing offered')
@@ -1090,10 +1040,7 @@ describe('the recovery window’s service', () => {
   })
 
   it('says once why a restore it could not undo stopped, and leaves the rest to the next start', async () => {
-    const userData = await aWorkspace({
-      migrations: ONE_NEWER,
-      checkpoints: [THIS_BUILD, ONE_NEWER],
-    })
+    const userData = await aNewerWorkspace()
     let intoPlace = 0
     const stuck: RecoveryFs = {
       ...nodeFs,
@@ -1129,10 +1076,7 @@ describe('the recovery window’s service', () => {
   })
 
   it('refuses to restore a copy it does not keep, and changes nothing', async () => {
-    const userData = await aWorkspace({
-      migrations: ONE_NEWER,
-      checkpoints: [THIS_BUILD, ONE_NEWER],
-    })
+    const userData = await aNewerWorkspace()
     const service = createRecoveryService(checkOf(userData).deps)
     const before = await treeOf(userData)
     expect(await service.restore('not-a-copy', quiet)).toMatchObject({
@@ -1211,11 +1155,7 @@ describe('a database this build fits, with a recovery record beside it', () => {
 
 describe('an unfinished restore found at start', () => {
   it('is finished when its copy still passes its check, and the start is history-only', async () => {
-    const userData = await aWorkspace({
-      migrations: ONE_NEWER,
-      checkpoints: [THIS_BUILD, ONE_NEWER],
-      journalAt: 'moving',
-    })
+    const userData = await aNewerWorkspace({ journalAt: 'moving' })
     const { deps, seen } = checkOf(userData)
     expect(await inspect(deps)).toMatchObject({ kind: 'history-only' })
     expect(seen.working).toEqual(['restore'])
@@ -1276,17 +1216,9 @@ describe('a test keeping the recovery window on a hidden launch', () => {
     expect(KEEP_RECOVERY_WINDOW_SWITCH).toBe('brobot-test-keep-recovery-window')
   })
 
-  it('is kept by a build that is not packaged, and said', () => {
+  it.each([false, true])('keeps the requested hidden recovery window, packaged=%s', (packaged) => {
     const said: string[] = []
-    expect(keepsTheRecoveryWindow(true, false, (line) => said.push(line))).toBe(true)
-    expect(said).toEqual([
-      'BroCrew keeps its recovery window on a hidden launch: --brobot-test-keep-recovery-window',
-    ])
-  })
-
-  it('is kept by a packaged build for its hidden recovery check, and said', () => {
-    const said: string[] = []
-    expect(keepsTheRecoveryWindow(true, true, (line) => said.push(line))).toBe(true)
+    expect(keepsTheRecoveryWindow(true, packaged, (line) => said.push(line))).toBe(true)
     expect(said).toEqual([
       'BroCrew keeps its recovery window on a hidden launch: --brobot-test-keep-recovery-window',
     ])
@@ -1300,50 +1232,28 @@ describe('a test keeping the recovery window on a hidden launch', () => {
   })
 })
 
-it('admits writers only after private capture, without waiting for the v1 digest', async () => {
-  const userData = await aWorkspace({ migrations: THIS_BUILD, checkpoints: [] })
-  const captured: CapturedCheckpoint[] = []
-  let hashes = 0
-  const { deps } = checkOf(userData, {
-    packaged: true,
-    deferCheckpoint: (copy) => captured.push(copy),
-    verifyCopy: async () => {
-      throw new Error('no startup full integrity check')
-    },
-    hashCopy: async (file) => {
-      hashes++
-      return { kind: 'ok', sha256: await sha256Of(file) }
-    },
-  })
-  expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'made' })
-  expect(captured).toHaveLength(1)
-  expect(hashes).toBe(0)
-  expect(await listCheckpoints(userData)).toEqual([])
-  const folder = join(backupsDir(userData), captured[0]!.manifest.id)
-  expect(existsSync(join(folder, 'unfinished'))).toBe(true)
-  expect(existsSync(join(folder, 'database.sqlite'))).toBe(true)
-  await captured[0]!.finish()
-  expect(hashes).toBe(1)
-  expect(await listCheckpoints(userData)).toHaveLength(1)
-})
-
-it.each([false, true])(
-  'pending migration waits for v1 only without a completed compatible fallback: %s',
-  async (hasFallback) => {
+it.each([
+  { pending: false, hasFallback: false },
+  { pending: true, hasFallback: false },
+  { pending: true, hasFallback: true },
+])(
+  'captures before writers; pending=$pending compatible fallback=$hasFallback',
+  async ({ pending, hasFallback }) => {
     const userData = await aWorkspace({
       migrations: THIS_BUILD,
       checkpoints: hasFallback
         ? [{ migrations: THIS_BUILD, createdAt: new Date(0).toISOString() }]
         : [],
     })
+    const captured: CapturedCheckpoint[] = []
     let hashes = 0
-    const deferred: CapturedCheckpoint[] = []
+    const background = !pending || hasFallback
     const { deps } = checkOf(userData, {
-      buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      buildMigrationsFolder: pending ? await aBuildWithOneMoreMigration() : MIGRATIONS_FOLDER,
       packaged: true,
-      deferCheckpoint: (copy) => deferred.push(copy),
+      deferCheckpoint: (copy) => captured.push(copy),
       verifyCopy: async () => {
-        throw new Error('no additional startup integrity sweep')
+        throw new Error('no startup full integrity check')
       },
       hashCopy: async (file) => {
         hashes++
@@ -1351,9 +1261,16 @@ it.each([false, true])(
       },
     })
     expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'made' })
-    expect(hashes).toBe(hasFallback ? 0 : 1)
-    expect(deferred).toHaveLength(hasFallback ? 1 : 0)
-    expect(await listCheckpoints(userData)).toHaveLength(1)
-    if (hasFallback) await deferred[0]!.finish()
+    expect(captured).toHaveLength(background ? 1 : 0)
+    expect(hashes).toBe(background ? 0 : 1)
+    expect(await listCheckpoints(userData)).toHaveLength(pending ? 1 : 0)
+    if (background) {
+      const folder = join(backupsDir(userData), captured[0]!.manifest.id)
+      expect(existsSync(join(folder, 'unfinished'))).toBe(true)
+      expect(existsSync(join(folder, 'database.sqlite'))).toBe(true)
+      await captured[0]!.finish()
+      expect(hashes).toBe(1)
+      expect(await listCheckpoints(userData)).toHaveLength(hasFallback ? 2 : 1)
+    }
   },
 )

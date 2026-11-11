@@ -357,3 +357,97 @@ function readMigrations(path: string, readonly: boolean): MigrationsOnDisk {
     db.close()
   }
 }
+
+function snapshotFacts(file: string): {
+  pages: number
+  pageSize: number
+  checkpointed: boolean
+} {
+  const source = new Database(file, { fileMustExist: true })
+  let pages: number
+  let pageSize: number
+  let checkpointed: boolean
+  try {
+    pages = Number(source.pragma('page_count', { simple: true }))
+    pageSize = Number(source.pragma('page_size', { simple: true }))
+    const mode = String(source.pragma('journal_mode', { simple: true }))
+    const result =
+      mode === 'wal' ? (source.pragma('wal_checkpoint(TRUNCATE)') as { busy: number }[]) : []
+    checkpointed = mode !== 'wal' || result[0]?.busy === 0
+  } finally {
+    source.close()
+  }
+  return { pages, pageSize, checkpointed }
+}
+
+export function prepareDatabaseSnapshot(
+  file: string,
+  options: {
+    readonly fs?: RecoveryFs
+    readonly signal?: AbortSignal
+    readonly progress?: (done: number, total: number) => void
+    readonly beforeFallback: (bytes: number) => void
+  },
+): (copy: string) => Promise<void> {
+  const fs = options.fs ?? nodeFs
+  const { pages, pageSize, checkpointed } = snapshotFacts(file)
+  return async (copy) => {
+    let cloned = false
+    if (checkpointed) {
+      try {
+        await fs.copyFile(file, copy, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE_FORCE)
+        cloned = true
+      } catch (error) {
+        if (
+          !['ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV', 'EINVAL'].includes(errorCode(error) ?? '')
+        )
+          throw error
+        await fs.rm(copy, { force: true })
+      }
+    }
+    if (!cloned) {
+      options.beforeFallback(pages * pageSize)
+      const live = new Database(file, { fileMustExist: true })
+      try {
+        await live.backup(copy, {
+          progress: ({ totalPages, remainingPages }) => {
+            options.signal?.throwIfAborted()
+            options.progress?.((totalPages - remainingPages) / totalPages, 3)
+            return Math.max(1, Math.round((4 * 1024 * 1024) / pageSize))
+          },
+        })
+      } finally {
+        live.close()
+      }
+    }
+  }
+}
+
+export function prepareSnapshotDatabase(
+  copy: string,
+  expectedMigrations?: readonly Migration[],
+): readonly Migration[] {
+  const destination = new Database(copy, { fileMustExist: true })
+  let recorded: MigrationsRead
+  try {
+    if (String(destination.pragma('journal_mode = DELETE', { simple: true })) !== 'delete') {
+      throw new Error('The recovery copy could not become a single SQLite file.')
+    }
+    recorded = migrationsRecordedIn(destination)
+  } finally {
+    destination.close()
+  }
+  if (recorded.kind !== 'recorded')
+    throw new Error('The recovery copy has no readable migration record.')
+  if (expectedMigrations && !sameMigrations(recorded.migrations, expectedMigrations)) {
+    throw new Error('The recovery copy does not record the migrations admitted at startup.')
+  }
+  return recorded.migrations
+}
+
+export function sameMigrations(a: readonly Migration[], b: readonly Migration[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((one, index) => one.createdAt === b[index]?.createdAt && one.hash === b[index]?.hash)
+  )
+}

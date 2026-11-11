@@ -1,7 +1,5 @@
-import Database from 'better-sqlite3'
 import type { VerifyCopy } from './copy-check'
 import { randomUUID } from 'node:crypto'
-import { constants } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import type { OfferedCheckpoint, ProgressListener } from '../../shared/recovery'
 import type { RetainedRecoveryCopy } from '../../shared/recovery-retention'
@@ -20,8 +18,9 @@ import {
 import {
   hasPendingMigrations,
   isLineagePrefix,
-  migrationsOf,
-  migrationsRecordedIn,
+  prepareSnapshotDatabase,
+  sameMigrations,
+  prepareDatabaseSnapshot,
   type BuildMigration,
   type MigrationsRead,
 } from './database-facts'
@@ -69,14 +68,11 @@ import { APP_STATE_FILES } from './state-files'
 import { copySkillTree, stateContentAt as contentAt } from './trees'
 import { SKILL_TREES, SKILLS_CONVERSION_FILE } from '../skills/shared-paths'
 
-/** The steps of making a copy, in order. */
 export type CheckpointStep = 'copy' | 'verify' | 'files' | 'manifest'
 
-/** A copy that was not made. The message is a sentence a person can read. */
 export class CheckpointFailed extends Error {
   constructor(
     message: string,
-    /** Whether trying again could succeed. */
     readonly canRetry: boolean,
     options?: ErrorOptions,
   ) {
@@ -85,7 +81,6 @@ export class CheckpointFailed extends Error {
   }
 }
 
-/** The preflight found too little room before any checkpoint folder was made. */
 export class CheckpointNoRoom extends CheckpointFailed {
   constructor(
     readonly needed: number,
@@ -100,14 +95,11 @@ export class CheckpointNoRoom extends CheckpointFailed {
   }
 }
 
-/** A checkpoint of this workspace whose manifest this build reads. */
 export interface Checkpoint {
-  /** `backups/<id>`. */
   readonly folder: string
   readonly manifest: CheckpointManifest
 }
 
-/** What the recovery window is told about a checkpoint. */
 export function offeredFrom(checkpoint: Checkpoint): OfferedCheckpoint {
   const { id, createdAt, database } = checkpoint.manifest
   return { id, createdAt, bytes: database.bytes }
@@ -115,31 +107,20 @@ export function offeredFrom(checkpoint: Checkpoint): OfferedCheckpoint {
 
 const REGISTRY: ReadonlySet<string> = new Set(APP_STATE_FILES.map((file) => file.name))
 
-/** The state files a restore installs with the database, by name. */
 const RESTORED_WITH_THE_DATABASE: ReadonlySet<string> = new Set(
   APP_STATE_FILES.filter((file) => file.restore === 'with-the-database').map((file) => file.name),
 )
 
-/** The newest verified update copies retained for recovery. */
 const KEEP_NEWEST = 2
-/** The room a copy needs beyond the database's own size, for the copy's journal and the rest. */
 const HEADROOM_SHARE = 1.1
 const HEADROOM_BYTES = 64 * 1024 * 1024
-/** About how much one backup step copies before the event loop turns again. */
-const COPY_STEP_BYTES = 4 * 1024 * 1024
 
 export interface CheckpointFacts {
-  /** What the live database records. */
   readonly database: MigrationsRead
-  /** This build's migrations, oldest first. */
   readonly lineage: readonly BuildMigration[]
-  /** This build's release version on a packaged build; null on any other. */
   readonly release: string | null
-  /** The commit this build was made from, as its manifests record it; null when unknown. */
   readonly build?: string | null
-  /** {@link listOfferable}'s answer. */
   readonly offerable: readonly Checkpoint[]
-  /** {@link whenTheDatabaseLastChanged}'s answer. */
   readonly databaseChangedAt: number | null
   readonly intact?: ReadonlySet<string>
 }
@@ -161,13 +142,9 @@ export function needsACheckpoint(facts: CheckpointFacts): CheckpointReason | nul
 
 export interface CheckpointQuestion {
   readonly userData: string
-  /** What the live database records. */
   readonly database: MigrationsRead
-  /** This build's migrations, oldest first. */
   readonly lineage: readonly BuildMigration[]
-  /** This build's release version on a packaged build; null on any other. */
   readonly release: string | null
-  /** The commit this build was made from; null when unknown. */
   readonly build?: string | null
   readonly fs?: RecoveryFs
 }
@@ -247,23 +224,16 @@ export async function theNewestIntact(
 
 export interface MakeCheckpointOptions {
   readonly userData: string
-  /** The one-app check's answer. A copy is made only on 'sole'. */
   readonly ownership: HostGateVerdict
   readonly appVersion: string
   readonly build: string | null
   readonly reason: CheckpointReason
-  /** Work done of the whole; a listener that throws stops the copy. */
   readonly progress?: ProgressListener
   readonly fs?: RecoveryFs
-  /** Epoch ms. */
   readonly now?: () => number
-  /** Bytes free on the disk holding a path, or null when that cannot be told. */
   readonly freeBytes?: (path: string) => number | null
-  /** Where {@link CHECKPOINT_LINE} goes. */
   readonly log?: (line: string) => void
-  /** Called before each step; a test throws from it to stop the copy there. */
   readonly beforeStep?: (step: CheckpointStep) => void
-  /** Checks the copy before it is kept: in the app, in a worker. */
   readonly verifyCopy: VerifyCopy
   readonly hashCopy?: VerifyCopy
   readonly signal?: AbortSignal
@@ -279,10 +249,6 @@ export interface CapturedCheckpoint {
   finish(): Promise<Checkpoint>
 }
 
-function checkCancellation(signal?: AbortSignal): void {
-  signal?.throwIfAborted()
-}
-
 function completion(
   options: MakeCheckpointOptions,
   folder: string,
@@ -292,7 +258,7 @@ function completion(
   return {
     manifest: captured,
     async finish() {
-      checkCancellation(options.signal)
+      options.signal?.throwIfAborted()
       const copy = join(folder, COPY_FILE)
       const checked = options.hashCopy ? await options.hashCopy(copy) : null
       const sha256 =
@@ -306,7 +272,7 @@ function completion(
           checked?.kind === 'failed' ? checked.message : 'The recovery copy hash did not finish.',
         )
       }
-      checkCancellation(options.signal)
+      options.signal?.throwIfAborted()
       options.beforeStep?.('manifest')
       const manifest: CheckpointManifest = {
         ...captured,
@@ -347,97 +313,6 @@ export async function makeCheckpoint(options: MakeCheckpointOptions): Promise<Ch
   }
 }
 
-function snapshotFacts(userData: string): {
-  pages: number
-  pageSize: number
-  checkpointed: boolean
-} {
-  const source = new Database(databaseFile(userData), { fileMustExist: true })
-  let pages: number
-  let pageSize: number
-  let checkpointed: boolean
-  try {
-    pages = Number(source.pragma('page_count', { simple: true }))
-    pageSize = Number(source.pragma('page_size', { simple: true }))
-    const mode = String(source.pragma('journal_mode', { simple: true }))
-    const result =
-      mode === 'wal' ? (source.pragma('wal_checkpoint(TRUNCATE)') as { busy: number }[]) : []
-    checkpointed = mode !== 'wal' || result[0]?.busy === 0
-  } finally {
-    source.close()
-  }
-  return { pages, pageSize, checkpointed }
-}
-
-async function copySnapshotDatabase(
-  options: MakeCheckpointOptions,
-  copy: string,
-  facts: ReturnType<typeof snapshotFacts>,
-): Promise<void> {
-  const { userData } = options
-  const fs = options.fs ?? nodeFs
-  const { pages, pageSize, checkpointed } = facts
-  let cloned = false
-  if (checkpointed) {
-    try {
-      await fs.copyFile(
-        databaseFile(userData),
-        copy,
-        constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE_FORCE,
-      )
-      cloned = true
-    } catch (error) {
-      if (!['ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV', 'EINVAL'].includes(errorCode(error) ?? ''))
-        throw error
-      await fs.rm(copy, { force: true })
-    }
-  }
-  if (!cloned) {
-    checkFreeSpace(userData, pages * pageSize, options.freeBytes ?? freeBytesOn)
-    const live = new Database(databaseFile(userData), { fileMustExist: true })
-    try {
-      await live.backup(copy, {
-        progress: ({ totalPages, remainingPages }) => {
-          checkCancellation(options.signal)
-          options.progress?.((totalPages - remainingPages) / totalPages, 3)
-          return Math.max(1, Math.round(COPY_STEP_BYTES / pageSize))
-        },
-      })
-    } finally {
-      live.close()
-    }
-  }
-}
-
-async function snapshotMigrations(
-  options: MakeCheckpointOptions,
-  copy: string,
-): Promise<readonly Migration[]> {
-  const { userData } = options
-  const fs = options.fs ?? nodeFs
-  const destination = new Database(copy, { fileMustExist: true })
-  let recorded: MigrationsRead
-  try {
-    if (String(destination.pragma('journal_mode = DELETE', { simple: true })) !== 'delete') {
-      throw new Error('The recovery copy could not become a single SQLite file.')
-    }
-    recorded = migrationsRecordedIn(destination)
-  } finally {
-    destination.close()
-  }
-  if (recorded.kind !== 'recorded')
-    throw new Error('The recovery copy has no readable migration record.')
-  if (
-    options.expectedMigrations &&
-    !sameMigrations(recorded.migrations, options.expectedMigrations)
-  ) {
-    throw new Error('The recovery copy does not record the migrations admitted at startup.')
-  }
-  await leaveOneFile(userData, copy, fs)
-  await putOnDisk(copy, fs)
-  return recorded.migrations
-}
-
 export async function captureCheckpoint(
   options: MakeCheckpointOptions,
 ): Promise<CapturedCheckpoint> {
@@ -446,14 +321,19 @@ export async function captureCheckpoint(
   const beforeStep = options.beforeStep ?? (() => undefined)
   if (options.ownership !== 'sole')
     throw new CheckpointFailed('Another copy may have this workspace open.', false)
-  checkCancellation(options.signal)
+  options.signal?.throwIfAborted()
   const id = randomUUID()
   const folder = checkpointDir(userData, id)
   const copy = checkpointDatabase(userData, id)
   let captured = false
   let made = false
   try {
-    const { pages, pageSize, checkpointed } = snapshotFacts(userData)
+    const copyDatabase = prepareDatabaseSnapshot(databaseFile(userData), {
+      fs,
+      signal: options.signal,
+      progress: options.progress,
+      beforeFallback: (bytes) => checkFreeSpace(userData, bytes, options.freeBytes ?? freeBytesOn),
+    })
     await privateDir(backupsDir(userData), fs)
     const workspaceId = await workspaceIdFor(userData, fs)
     await assertOwnedPathsAreReal(userData, [folder], fs)
@@ -463,11 +343,13 @@ export async function captureCheckpoint(
     await syncFolder(backupsDir(userData), fs)
     beforeStep('copy')
     options.progress?.(0, 3)
-    await copySnapshotDatabase(options, copy, { pages, pageSize, checkpointed })
-    checkCancellation(options.signal)
+    await copyDatabase(copy)
+    options.signal?.throwIfAborted()
     options.progress?.(1, 3)
     beforeStep('verify')
-    const migrations = await snapshotMigrations(options, copy)
+    const migrations = prepareSnapshotDatabase(copy, options.expectedMigrations)
+    await leaveOneFile(userData, copy, fs)
+    await putOnDisk(copy, fs)
     beforeStep('files')
     const files = await copyStateFiles(userData, folder, fs)
     options.progress?.(2, 3)
@@ -486,8 +368,7 @@ export async function captureCheckpoint(
       },
       files,
     }
-    checkCancellation(options.signal)
-    // Keep the pre-migration snapshot through quit; only the final manifest makes it offerable.
+    options.signal?.throwIfAborted()
     await writeAtomically(join(folder, UNFINISHED_FILE), JSON.stringify(manifest), fs)
     await syncFolder(folder, fs)
     captured = true
@@ -585,13 +466,10 @@ export async function listOfferable(
 }
 
 export interface PruneOptions {
-  /** The one-app check's answer. Nothing is removed unless it is 'sole'. */
   readonly ownership: HostGateVerdict
   readonly fs?: RecoveryFs
-  /** Epoch ms. */
   readonly now?: () => number
   readonly warn?: (line: string) => void
-  /** Protect copies from a later app version. */
   readonly currentAppVersion?: string
 }
 
@@ -698,14 +576,12 @@ export async function prune(
       removed.push(name)
     } catch (error) {
       warn(`BroCrew could not remove the old recovery copy in ${folder}: ${messageOf(error)}`)
-      // Keep the one in-progress marker until this fragment is finished; never overwrite it.
       return removed
     }
   }
   return removed
 }
 
-/** Unknown version forms are kept because their order cannot be proved. */
 function newerAppVersion(candidate: string, current: string): boolean {
   const parse = (version: string): RegExpMatchArray | null =>
     version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/)
@@ -737,13 +613,6 @@ function newerAppVersion(candidate: string, current: string): boolean {
   return false
 }
 
-function sameMigrations(a: readonly Migration[], b: readonly Migration[]): boolean {
-  return (
-    a.length === b.length &&
-    a.every((one, index) => one.createdAt === b[index]?.createdAt && one.hash === b[index]?.hash)
-  )
-}
-
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -757,7 +626,6 @@ function failureFrom(error: unknown): CheckpointFailed {
   )
 }
 
-/** Only an absent file is null; any other failure to read it is thrown. */
 async function statOrNull(path: string, fs: RecoveryFs): Promise<RecoveryStats | null> {
   try {
     return await fs.stat(path)
@@ -767,7 +635,6 @@ async function statOrNull(path: string, fs: RecoveryFs): Promise<RecoveryStats |
   }
 }
 
-/** A size as a person reads it: `3.2 GB`, or `45 MB` and never less than `1 MB`. */
 export function inWords(bytes: number): string {
   return bytes >= 1e9
     ? `${(bytes / 1e9).toFixed(1)} GB`
@@ -780,7 +647,6 @@ function checkFreeSpace(
   freeBytes: (path: string) => number | null,
 ): void {
   const needed = Math.ceil(databaseBytes * HEADROOM_SHARE) + HEADROOM_BYTES
-  // A disk that cannot be asked is not refused: the copy itself fails if the space runs out.
   const free = freeBytes(userData)
   if (free !== null && free < needed) {
     throw new CheckpointNoRoom(needed, free)
@@ -790,7 +656,6 @@ function checkFreeSpace(
 type WorkspaceIdOnDisk =
   | { readonly kind: 'none' }
   | { readonly kind: 'id'; readonly id: string }
-  /** `canRetry` when the file could not be read, rather than read and found not to be an id. */
   | { readonly kind: 'unreadable'; readonly canRetry: boolean }
 
 async function readWorkspaceId(userData: string, fs: RecoveryFs): Promise<WorkspaceIdOnDisk> {
@@ -830,7 +695,6 @@ async function leaveOneFile(userData: string, copy: string, fs: RecoveryFs): Pro
   }
 }
 
-/** Puts a file's bytes on disk through a handle that may write, the only kind Windows flushes. */
 async function putOnDisk(path: string, fs: RecoveryFs): Promise<void> {
   const handle = await fs.open(path, 'r+')
   try {
@@ -877,7 +741,6 @@ async function copyStateFilesOnce(
     try {
       await assertOwnedPathsAreReal(userData, [copy], fs)
       tree = await retrying(async () => {
-        // A try a briefly held file stopped may have left part of a copy.
         await removeCheckpointEntry(userData, folder, file.name, fs)
         if (file.kind === 'tree') return copySkillTree(source, copy, fs)
         await copyDurably(source, copy, fs)
@@ -898,7 +761,6 @@ async function copyStateFilesOnce(
   return files
 }
 
-/** Best effort: what is left has no manifest, and a later prune removes it. */
 async function removeUnfinished(userData: string, folder: string, fs: RecoveryFs): Promise<void> {
   try {
     await removeCheckpointCopy(userData, folder, fs)
@@ -909,18 +771,13 @@ async function removeUnfinished(userData: string, folder: string, fs: RecoveryFs
 
 type FoundInBackups =
   | { readonly kind: 'checkpoint'; readonly checkpoint: Checkpoint }
-  /** A folder with no manifest: when it or anything in it last changed, and what it holds. */
   | {
       readonly kind: 'unfinished'
       readonly changedAt: number
-      /** Whether it holds the writer's `unfinished` file, as a plain file. */
       readonly marked: boolean
-      /** Whether it holds only files with names the writer gives the files it makes. */
       readonly onlyTheWritersFiles: boolean
     }
-  /** Not a folder, a link, or a manifest this build does not read. */
   | { readonly kind: 'other' }
-  /** Something in it could not be read. */
   | { readonly kind: 'unknown' }
 
 interface InBackups {
@@ -931,7 +788,6 @@ interface InBackups {
 const OTHER: FoundInBackups = { kind: 'other' }
 const UNKNOWN: FoundInBackups = { kind: 'unknown' }
 
-/** Every folder in `backups/` named by an id this app makes. Throws when `backups/` is unreadable. */
 async function foldersInBackups(userData: string, fs: RecoveryFs): Promise<InBackups[]> {
   let names: string[]
   try {
@@ -947,7 +803,6 @@ async function foldersInBackups(userData: string, fs: RecoveryFs): Promise<InBac
   return folders
 }
 
-/** The checkpoints among `folders` that name the workspace `workspaceId`, newest first. */
 function ofThisWorkspace(workspaceId: string, folders: readonly InBackups[]): Checkpoint[] {
   return folders
     .flatMap(({ found }) =>
@@ -958,7 +813,6 @@ function ofThisWorkspace(workspaceId: string, folders: readonly InBackups[]): Ch
     .sort(newestFirst)
 }
 
-/** Whether a checkpoint is one this build could offer, before its files are looked at. */
 function couldBeOffered(checkpoint: Checkpoint, lineage: readonly BuildMigration[]): boolean {
   const { manifest } = checkpoint
   return (
@@ -967,7 +821,6 @@ function couldBeOffered(checkpoint: Checkpoint, lineage: readonly BuildMigration
   )
 }
 
-/** An entry is looked at as it is: a link is never followed. */
 async function lstatOrNull(path: string, fs: RecoveryFs): Promise<RecoveryStats | null> {
   try {
     return await retrying(() => fs.lstat(path))
@@ -996,7 +849,6 @@ async function readFolder(userData: string, name: string, fs: RecoveryFs): Promi
   }
 }
 
-/** The temporary name `writeAtomically` gives the manifest while writing it. */
 const MANIFEST_BEING_WRITTEN = new RegExp(
   `^${MANIFEST_FILE.replace(/\./g, '\\.')}\\.[0-9a-f]{12}\\.tmp$`,
 )
@@ -1037,7 +889,6 @@ async function unfinished(
   return { kind: 'unfinished', changedAt, marked, onlyTheWritersFiles }
 }
 
-/** The files a restore of a checkpoint installs, as its manifest records them. */
 function installedByARestore(
   manifest: CheckpointManifest,
 ): { readonly name: string; readonly bytes: number; readonly sha256: string }[] {
@@ -1114,7 +965,6 @@ async function readRetentionReceipt(
   return value as RetentionReceipt
 }
 
-/** Called once per process only after the database opened and migrations completed. */
 export async function recordSuccessfulStart(
   userData: string,
   lineage: readonly BuildMigration[],
@@ -1123,7 +973,6 @@ export async function recordSuccessfulStart(
   if (options.ownership !== 'sole' || options.currentAppVersion === undefined) return
   const fs = options.fs ?? nodeFs
   await assertOwnedPathsAreReal(userData, [], fs)
-  // A history-only restore must keep its copy and must never count as a successful new start.
   if ((await pathExists(gateFile(userData), fs)) || (await pathExists(journalFile(userData), fs)))
     return
   const workspace = await readWorkspaceId(userData, fs)
@@ -1146,7 +995,6 @@ export async function recordSuccessfulStart(
   await writeAtomically(path, JSON.stringify(receipt) + '\n', fs)
 }
 
-/** Refuse extra files, links and unexpected directories before removing an entire folder. */
 async function onlyCheckpointFiles(checkpoint: Checkpoint, fs: RecoveryFs): Promise<boolean> {
   const allowed = new Set([
     MANIFEST_FILE,
@@ -1181,7 +1029,6 @@ export async function retainedCopyInfo(
     fs,
   )
   const remnant = deletion ? await deletionRemnant(userData, deletion, fs) : null
-  // A confirmed deletion is no longer a restore offer, but its remaining bytes stay visible.
   if (deletion && remnant) {
     return {
       id: deletion.manifest.id,
@@ -1204,7 +1051,6 @@ export async function retainedCopyInfo(
   }
 }
 
-/** Delete only the still-current selected copy, under the same safety checks as pruning. */
 export async function deleteRetainedCopy(
   userData: string,
   lineage: readonly BuildMigration[],
@@ -1242,7 +1088,6 @@ export async function deleteRetainedCopy(
       if (remnant) return false
     }
     const candidates = ofThisWorkspace(workspace.id, folders)
-    // If a newer or unreadable copy is present, a stale Settings view must not delete around it.
     const copy = candidates[0]
     if (
       !copy ||
