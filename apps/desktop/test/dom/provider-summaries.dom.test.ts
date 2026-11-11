@@ -41,7 +41,7 @@ it('shows one quiet common line per summary in normal mode while unknowns remain
   await vi.waitFor(() => expect(getLogging).toHaveBeenCalledOnce())
   expect(view.all('command-summary')).toHaveLength(1)
   expect(view.all('turn-summary')).toHaveLength(2)
-  expect(view.get('command-summary').textContent).toBe('Checking a fictional change')
+  expect(view.all('command-summary')[0]!.textContent?.trim()).toBe('Checking a fictional change')
   expect(view.all('turn-summary')[0]!.textContent).toContain('completed')
   expect(view.all('turn-summary')[0]!.textContent).toContain('The fictional change is checked')
   expect(view.all('turn-summary')[0]!.textContent).toContain('Needs action')
