@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, provide, reactive, type Component } from 'vue'
+import { renderToString } from 'vue/server-renderer'
 import { PROVIDER_DESCRIPTORS, providerDescriptor } from '@brobot2/shared'
 import { allProviderCapabilities } from '../../../../packages/runtime/src/capabilities'
 import type { AuthState, Provider } from '../../src/shared/runtime-ipc'
@@ -11,6 +12,7 @@ import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
 import NewConversation from '../../src/renderer/src/components/NewConversation.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import SignInPanel from '../../src/renderer/src/components/SignInPanel.vue'
+import { useProviderNames } from '../../src/renderer/src/composables/useProviderNames'
 import {
   forgetProfileSignIns,
   signInFact,
@@ -284,4 +286,22 @@ it('updates a real card heading when the live provider key changes', async () =>
   await settle()
   expect(m.q('sign-in-heading').textContent).toBe('Sign in to use Birch with this agent')
   expect(m.q('sign-in-reason').textContent).toBe(absent.reason)
+})
+
+it('does not read names for an unmounted SSR setup, then reads once on mount', async () => {
+  const out = selected()
+  const Probe = defineComponent({
+    setup() {
+      const name = useProviderNames(out.api)
+      return () => h('p', { 'data-cy': 'selected-name' }, name('claude') ?? 'this provider')
+    },
+  })
+  expect(await renderToString(h(Probe))).toContain('this provider')
+  expect(out.transport.providerCatalogue).not.toHaveBeenCalled()
+  expect(out.raw).not.toHaveBeenCalled()
+  const m = mount(Probe, {})
+  await settle()
+  expect(m.q('selected-name').textContent).toBe('Fern')
+  expect(out.transport.providerCatalogue).toHaveBeenCalledTimes(1)
+  expect(out.raw).not.toHaveBeenCalled()
 })
