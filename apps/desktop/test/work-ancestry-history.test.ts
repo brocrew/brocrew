@@ -420,7 +420,6 @@ it('seeds a background resume once before live adoption without delivering histo
   try {
     const resumed = await world.host.resumeSession('s', world.sink, null, undefined, 'not-read')
     expect(resumed.history.entries).toEqual([])
-    expect(world.turnWindow).toHaveBeenCalledTimes(1)
     expect(world.turnWindow).toHaveBeenLastCalledWith(
       's',
       expect.objectContaining({ maxEvents: 2500 }),

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { performance } from 'node:perf_hooks'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -48,8 +48,8 @@ class Window implements RuntimeEventSink {
 
 /**
  * One agent wakes ten stopped agents with long ledgers within a second. Each comes back running, and
- * none reads a page of history, which no window would be handed; a window's own reopen still reads
- * one. What the store did for the ten is logged per wake.
+ * each reads only a bounded startup ancestry seed. A window's own reopen still receives a page.
+ * What the store did for the ten is logged per wake.
  */
 describe('ten stopped agents woken at once', () => {
   let userData: string
@@ -57,6 +57,7 @@ describe('ten stopped agents woken at once', () => {
   let store: SessionStore
   let host: RuntimeHost
   let work: MainThreadWork
+  let turnWindow: ReturnType<typeof vi.fn<SessionStore['turnWindow']>>
   let announced: string[]
   let counter = 0
   let clock = 8_000_000
@@ -67,7 +68,9 @@ describe('ten stopped agents woken at once', () => {
     applyMigrations(db, migrationsFolder)
     const tick = (): number => clock++
     work = new MainThreadWork()
-    store = timedMethods(createSessionStore(db, tick), 'store', work)
+    const stored = createSessionStore(db, tick)
+    turnWindow = vi.fn(stored.turnWindow)
+    store = timedMethods({ ...stored, turnWindow }, 'store', work)
     announced = []
     const issued = new FakeProviderSessions()
     host = new RuntimeHost({
@@ -102,7 +105,7 @@ describe('ten stopped agents woken at once', () => {
     return (await tool.call(args)).structured as Record<string, unknown>
   }
 
-  it('⚑ each comes back running, and ⛔ none reads a history page nobody is shown', async () => {
+  it('each comes back running with a bounded ancestry seed and no whole-ledger read', async () => {
     const window = new Window('webContents:1')
     const helpers: string[] = []
     for (let n = 0; n < HELPERS; n++) {
@@ -162,6 +165,7 @@ describe('ten stopped agents woken at once', () => {
     )
 
     work.clear()
+    turnWindow.mockClear()
     announced = []
     const lines: string[] = []
     const watch = startStallWatch({
@@ -185,7 +189,14 @@ describe('ten stopped agents woken at once', () => {
     const counts = watch.takeCounts()
     watch.stop()
     const taken = work.take()
-    expect(taken.find((one) => one.what === 'store.turnWindow')).toBeUndefined()
+    expect(taken.find((one) => one.what === 'store.turnWindow')?.count).toBe(HELPERS)
+    expect(taken.find((one) => one.what === 'store.events')).toBeUndefined()
+    expect(turnWindow.mock.calls.map(([id]) => id).sort()).toEqual([...helpers].sort())
+    for (const [, options] of turnWindow.mock.calls) expect(options.maxEvents).toBe(2500)
+    for (const result of turnWindow.mock.results) {
+      expect(result.type).toBe('return')
+      if (result.type === 'return') expect(result.value.entries.length).toBeLessThanOrEqual(2500)
+    }
     const storeMs = taken.reduce((sum, one) => sum + one.ms, 0)
     // The control: a window's own reopen is handed a page, so it reads one.
     const first = helpers[0] as string
