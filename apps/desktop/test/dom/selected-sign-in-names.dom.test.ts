@@ -247,7 +247,7 @@ it.each([
     busy: 'idle',
     notice: null,
   })
-  const m = mount(SignInPanel, props)
+  const m = mount(defineComponent({ setup: () => () => h(SignInPanel, props) }), {})
   await settle()
   expect(m.q('sign-in-heading').textContent).toBe(heading)
   expect(m.q('sign-in-reason').textContent).toBe('Exact selected reason.')

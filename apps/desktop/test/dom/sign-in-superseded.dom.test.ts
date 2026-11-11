@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { providersBridge } from '../../look/fixtures/providers'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { isAwaitingAnswer } from '../../src/renderer/src/lib/transcript'
 import { META, mount, paneProps, record, permission, unmountAll, visible } from './harness'
@@ -24,7 +25,12 @@ import { META, mount, paneProps, record, permission, unmountAll, visible } from 
  * here is lost” would be false.
  */
 
-afterEach(unmountAll)
+let restoreApi: (() => void) | undefined
+afterEach(() => {
+  unmountAll()
+  restoreApi?.()
+  restoreApi = undefined
+})
 
 /** A session record whose liveness says the sign-in has been replaced (or has not). */
 const withSignIn = (superseded: boolean, events = [permission('req_1')]) => {
@@ -62,8 +68,19 @@ describe('the bar that says the sign-in moved', () => {
     expect(m.all('sign-in-superseded')).toHaveLength(0)
   })
 
-  it('says what happened, what it costs, and what to do — in that order, in one bar', () => {
+  it('says what happened, what it costs, and what to do — in that order, in one bar', async () => {
+    const before = Object.getOwnPropertyDescriptor(window, 'api')
+    providersBridge()
+    restoreApi = () => {
+      if (before) Object.defineProperty(window, 'api', before)
+      else Reflect.deleteProperty(window, 'api')
+    }
     const { m } = pane({ record: quiet() })
+    await vi.waitFor(() =>
+      expect(m.q('sign-in-superseded').textContent).toContain(
+        'holding the Claude sign-in it started with',
+      ),
+    )
     const bar = m.q('sign-in-superseded')
     expect(visible(bar)).toBe(true)
     const said = bar.textContent ?? ''

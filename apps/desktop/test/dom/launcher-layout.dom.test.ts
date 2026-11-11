@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { providersBridge } from '../../look/fixtures/providers'
 import { nextTick } from 'vue'
 /**
  * ⚠️ **The module, not the package index** — `@brobot2/runtime`'s barrel re-exports a file that
@@ -56,7 +57,12 @@ import { NO_LAUNCH_CHOICES } from '../../src/renderer/src/lib/launch-choices'
  * fire; what it no longer reaches is a string longer than the ones the fixture hands it.
  */
 
-afterEach(unmountAll)
+let restoreApi: (() => void) | undefined
+afterEach(() => {
+  unmountAll()
+  restoreApi?.()
+  restoreApi = undefined
+})
 
 /**
  * A sentence long enough to have decided a width, used ONLY by the planted hazard below.
@@ -483,7 +489,14 @@ describe('the notes are one grammar in two registers (101 §7)', () => {
 
 describe('the launcher header says “not started” nowhere — it was once, not three times (101 §9)', () => {
   it('⚑ D-017b · the plate says only that nothing is known, and the chip and the pill say nothing of it', async () => {
+    const before = Object.getOwnPropertyDescriptor(window, 'api')
+    providersBridge()
+    restoreApi = () => {
+      if (before) Object.defineProperty(window, 'api', before)
+      else Reflect.deleteProperty(window, 'api')
+    }
     const m = await open(1200)
+    await vi.waitFor(() => expect(m.q('provider-chip').textContent).toContain('Codex'))
 
     // The chip names the provider it WOULD start on, and nothing else.
     expect(m.q('provider-chip').textContent?.trim()).toBe('Codex')

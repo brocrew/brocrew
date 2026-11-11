@@ -113,6 +113,7 @@ it.each(['claude', 'codex'] as const)('names %s in each sign-in state', async (p
       SignInPanel,
       {
         provider,
+        displayName: service,
         state: { state, reason: 'Try signing in.' },
         signIn: { state: 'available' },
         reprovision: { state: 'available' },

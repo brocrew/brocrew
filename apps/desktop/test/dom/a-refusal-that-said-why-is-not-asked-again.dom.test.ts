@@ -1,5 +1,6 @@
 // The approved service-specific headings replace the former profile words; refusal behavior stays.
 import { afterEach, describe, expect, it } from 'vitest'
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 // ⚠️ The MODULE, not the barrel — `@brobot2/runtime`'s index reaches `node:fs` and fails to import
 // in this project (`the-bridge-that-clones-nothing.dom.test.ts`' note, for the same import).
@@ -115,6 +116,7 @@ function theLauncher(answers: readonly (AuthAnswer | null)[]) {
   const waiting: ((answer: AuthAnswer) => void)[] = []
   ;(window as unknown as { api: unknown }).api = {
     runtime: {
+      providerCatalogue: async () => PROVIDER_DESCRIPTORS,
       checkProviderAuth: (asked: unknown) => {
         const answer = answers[Math.min(checks.length, answers.length - 1)] ?? null
         checks.push(asked)
