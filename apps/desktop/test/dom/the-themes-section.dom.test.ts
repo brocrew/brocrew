@@ -161,25 +161,56 @@ describe('the Themes section', () => {
   })
 })
 
-
 function injectedThemes(initial?: ThemesBridge, explicit?: ThemesBridge) {
   let current = initial
   const prop = shallowRef(explicit)
-  const raw = vi.fn((): never => { throw new Error('Raw theme bridge must stay unused') })
-  Reflect.set(window, 'api', { themes: { list: raw, read: raw, set: raw, duplicate: raw,
-    delete: raw, openFolder: raw, onChanged: raw } })
+  const raw = vi.fn((): never => {
+    throw new Error('Raw theme bridge must stay unused')
+  })
+  Reflect.set(window, 'api', {
+    themes: {
+      list: raw,
+      read: raw,
+      set: raw,
+      duplicate: raw,
+      delete: raw,
+      openFolder: raw,
+      onChanged: raw,
+    },
+  })
   const supplier = vi.fn(() => current)
   const client = createDesktopProviderApi(
-    raw, () => undefined, undefined, undefined, undefined, undefined, undefined,
-    undefined, undefined, undefined, undefined, undefined, supplier,
+    raw,
+    () => undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    supplier,
   )
   expect(supplier).not.toHaveBeenCalled()
-  const owner = defineComponent({ setup() {
-    provide(CLIENT_PROVIDERS, client)
-    return () => h(ThemesSection, { themes: prop.value })
-  } })
+  const owner = defineComponent({
+    setup() {
+      provide(CLIENT_PROVIDERS, client)
+      return () => h(ThemesSection, { themes: prop.value })
+    },
+  })
   const m = mount(owner, {}, { width: 900 })
-  return { m, prop, raw, supplier, replace: (next?: ThemesBridge) => { current = next } }
+  return {
+    m,
+    prop,
+    raw,
+    supplier,
+    replace: (next?: ThemesBridge) => {
+      current = next
+    },
+  }
 }
 
 describe('injected Themes capability', () => {
@@ -189,7 +220,8 @@ describe('injected Themes capability', () => {
     await settle()
     expect(vi.mocked(themes.list).mock.contexts[0]).toBe(themes)
     expect(themes.read).toHaveBeenCalledWith('zen', { refresh: false })
-    const button = (cy: string) => m.host.querySelector<HTMLElement>(`[data-theme-id="mine"] [data-cy="${cy}"]`)!
+    const button = (cy: string) =>
+      m.host.querySelector<HTMLElement>(`[data-theme-id="mine"] [data-cy="${cy}"]`)!
     button('theme-use').click()
     await settle()
     button('theme-duplicate').click()
@@ -263,7 +295,12 @@ describe('injected Themes capability', () => {
   it('lets a late injected list go without rebuilding styles or starting previews', async () => {
     const themes = fakeBridge()
     let finish!: (snapshot: ThemeSnapshot) => void
-    vi.mocked(themes.list).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    vi.mocked(themes.list).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
     const { m, raw } = injectedThemes(themes)
     m.unmount()
     finish({ active: 'classic', requested: 'classic', themes: [] })

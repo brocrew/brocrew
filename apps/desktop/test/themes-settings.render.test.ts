@@ -12,11 +12,24 @@ it('renders theme loading without a browser window or native calls', async () =>
 })
 
 it('keeps theme construction and server setup lazy', async () => {
-  const unused = (): never => { throw new Error('No native calls during rendering') }
+  const unused = (): never => {
+    throw new Error('No native calls during rendering')
+  }
   const themes = vi.fn(() => undefined)
   const client = createDesktopProviderApi(
-    unused, unused, unused, unused, unused, unused, unused, unused, unused,
-    unused, unused, unused, themes,
+    unused,
+    unused,
+    unused,
+    unused,
+    unused,
+    unused,
+    unused,
+    unused,
+    unused,
+    unused,
+    unused,
+    unused,
+    themes,
   )
   expect(themes).not.toHaveBeenCalled()
   await renderToString(createSSRApp(ThemesSection).provide(CLIENT_PROVIDERS, client))
