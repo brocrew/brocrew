@@ -16,11 +16,7 @@ export type ClaudeLaunchSettingKey =
 
 /** @deprecated Closed legacy compatibility alias; portable records use LaunchSetting<string>. */
 export type CodexLaunchSettingKey =
-  | 'memory'
-  | 'thread-overrides'
-  | 'plan-tool'
-  | 'approval-sandbox'
-  | 'collaboration-mode'
+  'memory' | 'thread-overrides' | 'plan-tool' | 'approval-sandbox' | 'collaboration-mode'
 
 /**
  * One of either provider's keys; the approval mode this app runs the conversation in; `tools-off`,
