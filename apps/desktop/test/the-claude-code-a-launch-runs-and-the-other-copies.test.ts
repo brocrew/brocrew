@@ -246,6 +246,15 @@ describe('what the Providers page says about it', () => {
     )
   })
 
+  it('supplies installer words even when the native version is unreadable, without labelling other installs', () => {
+    expect(claudeAnswer(one, null, [], TESTED).program?.installerLabel).toBe(
+      'Anthropic’s installer',
+    )
+    expect(
+      claudeAnswer({ ...one, from: 'homebrew' }, '2.1.287', [], TESTED).program?.installerLabel,
+    ).toBeUndefined()
+  })
+
   it('a version older than tested is a warning, and says updating is the fix', () => {
     const { program } = claudeAnswer(one, '2.1.200', [], TESTED)
     expect(program?.standing).toBe('older-than-tested')

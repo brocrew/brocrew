@@ -25,6 +25,7 @@ function card() {
   }
   const empty: ApiKeyStatus = { provider: 'claude', set: false, setAt: null, inUse: false }
   const saved = { ...empty, set: true, inUse: true }
+  let stored = empty
   const list = {
     provider: 'claude' as const,
     models: [],
@@ -49,7 +50,7 @@ function card() {
     addHandAddedModel: async () => [],
     deleteHandAddedModel: async () => [],
     checkProviderAuth: async () => ({ state: 'usable', login: 'account', expiresAt: null }),
-    apiKeyStatus: async () => empty,
+    apiKeyStatus: async () => stored,
     setApiKey: vi.fn<ClientProviderApi['setApiKey']>(async () => saved),
     removeApiKey: vi.fn<ClientProviderApi['removeApiKey']>(async () => empty),
     checkApiKey: vi.fn<ClientProviderApi['checkApiKey']>(async () => ({
@@ -127,7 +128,16 @@ function card() {
     {},
     { width: 760, height: 1400 },
   )
-  return { api, props, m, forbidden, saved }
+  return {
+    api,
+    props,
+    m,
+    forbidden,
+    saved,
+    store: (value: ApiKeyStatus) => {
+      stored = value
+    },
+  }
 }
 it('uses injected key operations, clears the draft before completion and keeps supplied refusal words', async () => {
   const out = card()
@@ -151,6 +161,7 @@ it('uses injected key operations, clears the draft before completion and keeps s
     provider: 'claude',
     key: 'fictional-key',
   })
+  out.store(out.saved)
   finish(out.saved)
   await settle()
   out.m.q('provider-key-check').click()
