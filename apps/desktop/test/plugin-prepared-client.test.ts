@@ -362,7 +362,10 @@ it.each(['digest', 'shape'] as const)(
     closers.push(() => peer.close())
     peer.setFeatures(['contributions-v1'])
     const c = await client(f, peer, f.pkg),
-      source = kind === 'digest' ? preparedPackageFixture(f.pkg.manifest) : catalogueBytes({ format: 2, entries: [{}] })
+      source =
+        kind === 'digest'
+          ? preparedPackageFixture(f.pkg.manifest)
+          : catalogueBytes({ format: 2, entries: [{}] })
     const digest = kind === 'digest' ? '0'.repeat(64) : pluginSha256(source.bytes)
     await expect(c.refreshCatalogue(digest, { bytes: source.bytes })).rejects.toThrow()
     await expect(mutate(c, 'install')).rejects.toThrow()
