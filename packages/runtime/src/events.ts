@@ -1994,7 +1994,7 @@ const memoryRecallSchema = z.object({
 
 const turnSummarySchema = z.object({
   type: z.literal('turn_summary'),
-  status: z.string(),
+  status: z.string().optional(),
   detail: z.string(),
   needsAction: z.string(),
 })
