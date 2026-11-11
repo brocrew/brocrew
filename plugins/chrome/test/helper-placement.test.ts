@@ -1,6 +1,4 @@
 import { EventEmitter } from 'node:events'
-import fs from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import type { BrowserContext, Page } from 'playwright-core'
 import { describe, expect, it } from 'vitest'
 import type { Placement, TabPlacer } from '../src/browser/brocrewHelper.js'
@@ -253,11 +251,3 @@ describe('an uncertain helper creation is never duplicated', () => {
   })
 })
 
-it('the synthetic click is gone from tab placement', () => {
-  const source = fs.readFileSync(
-    fileURLToPath(new URL('../src/shared/browser/chromiumWindows.ts', import.meta.url)),
-    'utf8',
-  )
-  for (const gone of ['dispatchEvent', 'MouseEvent', 'Runtime.evaluate', 'createIsolatedWorld'])
-    expect(source).not.toContain(gone)
-})

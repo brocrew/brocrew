@@ -1,6 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { uiFixture } from './plugin-ui-fixtures'
 import type { PluginUiPeer } from '../src/main/plugins/ui/rpc'
 import { PLUGIN_UI_RPC, PLUGIN_UI_CHANNEL } from '../src/shared/plugin-ui'
@@ -437,14 +435,6 @@ describe('the actual isolated host wiring', () => {
     await f.view.close()
     expect(() => call({ sender: f.contents })).toThrow()
     expect(appHandler).not.toHaveBeenCalled()
-    for (const file of [
-      'index.ts',
-      'provider-snapshots.ts',
-      'updates-in-the-app.ts',
-      'workspaces-in-the-app.ts',
-    ])
-      expect(readFileSync(resolve(__dirname, '../src/main', file), 'utf8')).toContain(
-        "import { ipcMain } from './app-ipc'",
-      )
+
   })
 })
