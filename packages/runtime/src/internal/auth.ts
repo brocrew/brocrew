@@ -1,8 +1,10 @@
+import type { Provider } from '@brobot2/shared'
+
 /** A managed provider credential is missing/unhealthy — the caller must surface it, not fall back. */
 export class AuthUnavailableError extends Error {
-  readonly provider: 'claude' | 'codex'
+  readonly provider: Provider
 
-  constructor(provider: 'claude' | 'codex', message: string) {
+  constructor(provider: Provider, message: string) {
     super(message)
     this.name = 'AuthUnavailableError'
     this.provider = provider

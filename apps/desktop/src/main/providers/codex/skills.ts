@@ -27,6 +27,11 @@ export const skills: SkillPolicy = {
 
   discoveryRoot: 'codex/skills',
   initialFiles: () => new Map<string, string>(),
+  sharedFiles: () => new Map(),
+  installedEntry(relative) {
+    if (/^codex(?:\/skills(?:\/[a-z][a-z0-9-]{0,63})?)?$/.test(relative)) return 'directory'
+    return /^codex\/skills\/[a-z][a-z0-9-]{0,63}\/SKILL\.md$/.test(relative) ? 'file' : null
+  },
   fileFor: (name) => `codex/skills/${name}/SKILL.md`,
   launchedEntry: (root, skill) => ({
     name: skill.name,

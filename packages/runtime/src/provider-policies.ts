@@ -168,6 +168,10 @@ export interface SkillPolicy<H extends ProviderHostValues> {
   readonly builtInScope: string | null
   readonly discoveryRoot: string
   initialFiles(): Map<string, string>
+  /** Native metadata placed beside the shared skill folders, when this provider needs it. */
+  sharedFiles?(): ReadonlyMap<string, string>
+  /** Recognize entries produced by this adapter's current and persisted skill-view format. */
+  installedEntry?(relative: string): 'directory' | 'file' | null
   fileFor(name: string): string
   launchedEntry(
     root: string,

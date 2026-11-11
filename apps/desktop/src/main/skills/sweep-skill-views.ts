@@ -1,3 +1,5 @@
+import { providerKnowledge } from '../providers'
+import { SUPPORTED_PROVIDERS } from '@brobot2/shared'
 import {
   closeSync,
   constants,
@@ -87,10 +89,11 @@ function stillUsed(root: string, stat: Stats): boolean {
 
 // Only trees the installer can create are eligible. Unknown additions, links, mounts and other
 // objects keep the whole copy. Even a matching basename never authorizes an arbitrary tree walk.
-const DIRECTORY =
-  /^(?:claude-plugin(?:\/(?:\.claude-plugin|skills(?:\/[a-z][a-z0-9-]{0,63})?))?|codex(?:\/skills(?:\/[a-z][a-z0-9-]{0,63})?)?)$/
-const FILE =
-  /^(?:\.brobot-skills-owner\.json|claude-plugin\/\.claude-plugin\/plugin\.json|(?:claude-plugin|codex)\/skills\/[a-z][a-z0-9-]{0,63}\/SKILL\.md)$/
+const installedEntry = (path: string, kind: 'directory' | 'file'): boolean =>
+  (kind === 'file' && path === OWNER) ||
+  SUPPORTED_PROVIDERS.some(
+    (provider) => providerKnowledge[provider].skills.installedEntry?.(path) === kind,
+  )
 
 interface Entry {
   path: string
@@ -119,8 +122,8 @@ function* removeView(managedRoot: string, root: string, rootStat: Stats): Genera
           const child = join(path, entry.name)
           const local = relative ? `${relative}/${entry.name}` : entry.name
           const stat = lstatSync(child)
-          if (stat.isDirectory() && DIRECTORY.test(local)) yield* collect(child, local)
-          else if (stat.isFile() && stat.nlink === 1 && FILE.test(local)) {
+          if (stat.isDirectory() && installedEntry(local, 'directory')) yield* collect(child, local)
+          else if (stat.isFile() && stat.nlink === 1 && installedEntry(local, 'file')) {
             entries.push({ path: child, stat })
             yield
           } else throw new Error('Unexpected object in old skill view.')

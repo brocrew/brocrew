@@ -1,3 +1,5 @@
+import { providerKnowledge } from '../providers'
+import { SUPPORTED_PROVIDERS } from '@brobot2/shared'
 import { assertSkillPathsAreReal } from './skill-paths'
 import { watch, type FSWatcher } from 'node:fs'
 import { stat, mkdir, open, readdir } from 'node:fs/promises'
@@ -93,17 +95,24 @@ export class SharedSkillDiscovery {
       throw new Error(`${this.library.active}: shared skill discovery is closed or unavailable`)
     const root = this.library.active
     if (!this.manifestReady) {
+      const files = new Map<string, string>()
+      for (const provider of SUPPORTED_PROVIDERS) {
+        const policy = providerKnowledge[provider].skills
+        for (const [path, text] of policy.sharedFiles?.() ?? []) files.set(path, text)
+      }
+      const directories = new Set<string>()
+      for (const path of files.keys()) {
+        const parts = path.split('/')
+        for (let end = 1; end < parts.length; end++) directories.add(parts.slice(0, end).join('/'))
+      }
       await assertSkillPathsAreReal(
         this.userData,
-        [root, join(root, '.claude-plugin'), join(root, '.claude-plugin/plugin.json')],
+        [root, ...[...directories, ...files.keys()].map((path) => join(root, path))],
         nodeFs,
       )
-      await mkdir(join(root, '.claude-plugin'), { recursive: true, mode: 0o700 })
-      await writeAtomically(
-        join(root, '.claude-plugin/plugin.json'),
-        JSON.stringify({ name: 'shared-skills', version: '1.0.0', skills: ['./'] }) + '\n',
-        nodeFs,
-      )
+      for (const path of directories)
+        await mkdir(join(root, path), { recursive: true, mode: 0o700 })
+      for (const [path, text] of files) await writeAtomically(join(root, path), text, nodeFs)
       this.manifestReady = true
     }
     if (this.closed)
