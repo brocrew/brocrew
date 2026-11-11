@@ -1,3 +1,5 @@
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
+import { launchFacts, resolveProviderLaunch } from './lib/provider-launch-fixture'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it, vi } from 'vitest'
 import { computed, nextTick, reactive } from 'vue'
@@ -207,6 +209,9 @@ function fakeBridge() {
   }
 
   const impl: RuntimeBridge = {
+    providerCatalogue: async () => PROVIDER_DESCRIPTORS,
+    providerLaunchChoices: async (input) => launchFacts(await impl.modelList(input)),
+    resolveProviderLaunch: async (input) => resolveProviderLaunch(input, null),
     skills: async () => ({ operation: 'refused', reason: 'source-unavailable' }),
     createSession: async (input) => {
       calls.push(`create:${input.provider}`)

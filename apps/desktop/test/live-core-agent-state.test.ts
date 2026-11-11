@@ -10,10 +10,10 @@ import {
 import { createSessionRecord } from '../src/renderer/src/lib/session-record'
 import type { AgentState } from '../src/shared/agent-state-contracts'
 import type {
-  RuntimeBridge,
   RuntimeEventMessage,
   RuntimeStatesMessage,
 } from '../src/shared/runtime-ipc'
+import type { ClientSessionApi } from '../src/shared/client-session-api'
 import type { PublicationEpoch } from '../src/shared/data-version'
 
 it('carries the actual host state through the live store, including an equal-state flush', async () => {
@@ -37,7 +37,7 @@ it('carries the actual host state through the live store, including an equal-sta
     },
     sendLiveness() {},
   }
-  const bridge = {
+  const bridge: Partial<ClientSessionApi> = {
     currentEpoch: async () => host.currentEpoch(),
     listConversations: () => host.listConversations(),
     attachOpen: async () => [],
@@ -49,8 +49,8 @@ it('carries the actual host state through the live store, including an equal-sta
       }
     },
     onLiveness: () => () => {},
-  } satisfies Partial<RuntimeBridge>
-  const client = createSessionStore(bridge as RuntimeBridge)
+  }
+  const client = createSessionStore(bridge as ClientSessionApi)
   try {
     const id = await client.create({ provider: 'claude', cwd: world.project, approvalMode: 'auto' })
     expect(id).not.toBeNull()
@@ -104,7 +104,7 @@ it('carries the actual host state through the live store, including an equal-sta
     handle.simulateConversationReset()
     await waitFor(() => states.length > beforeReset, 'state after native reset')
     expect(record.agentState?.is).toBe('idle')
-    expect(messages.findLast((row) => row.event.type === 'conversation_reset')).toHaveProperty(
+    expect([...messages].reverse().find((row) => row.event.type === 'conversation_reset')).toHaveProperty(
       'workAncestry',
     )
   } finally {
@@ -195,7 +195,7 @@ function liveStateWorld() {
   }
   const epoch = vi.fn(async () => host.currentEpoch())
   const listing = vi.fn(() => host.listConversations())
-  const bridge = {
+  const bridge: Partial<ClientSessionApi> = {
     currentEpoch: epoch,
     listConversations: listing,
     attachOpen: async () => [],
@@ -209,7 +209,7 @@ function liveStateWorld() {
       }
     },
     onLiveness: () => () => {},
-  } satisfies Partial<RuntimeBridge>
+  }
   return {
     world,
     host,
@@ -218,7 +218,7 @@ function liveStateWorld() {
     epoch,
     listing,
     connect() {
-      client = createSessionStore(bridge as RuntimeBridge)
+      client = createSessionStore(bridge as ClientSessionApi)
       return client
     },
     refusePush(value: boolean) {
@@ -296,7 +296,7 @@ it.each(['epoch', 'listing'] as const)(
   'recovers an initial failed %s read on a later host publication and retains transcript delivery',
   async (failure) => {
     const fixture = liveStateWorld()
-    const id = await fixture.host.createSession(
+    const { sessionId: id } = await fixture.host.createSession(
       { provider: 'claude', cwd: fixture.world.project, approvalMode: 'auto' },
       fixture.sink,
     )
@@ -403,7 +403,7 @@ it('disposes a publication-triggered retry without reading a listing or reviving
     await waitFor(() => warn.mock.calls.length > 0, 'failed initial handshake')
     const retry = deferred<PublicationEpoch>()
     fixture.epoch.mockImplementationOnce(() => retry.promise)
-    const id = await fixture.host.createSession(
+    const { sessionId: id } = await fixture.host.createSession(
       { provider: 'claude', cwd: fixture.world.project, approvalMode: 'auto' },
       fixture.sink,
     )
@@ -437,7 +437,7 @@ it('keeps content while the epoch is unconfirmed, and disposes a delayed handsha
       covers: { population: 'listing' as const, complete: true as const },
     },
   }))
-  const bridge = {
+  const bridge: Partial<ClientSessionApi> = {
     currentEpoch: () => epoch.promise,
     listConversations: list,
     attachOpen: async () => [],
@@ -446,8 +446,8 @@ it('keeps content while the epoch is unconfirmed, and disposes a delayed handsha
       return () => {}
     },
     onLiveness: () => () => {},
-  } satisfies Partial<RuntimeBridge>
-  const client = createSessionStore(bridge as RuntimeBridge)
+  }
+  const client = createSessionStore(bridge as ClientSessionApi)
   const event: RuntimeEventMessage = {
     sessionId: 'fern',
     ordinal: 0,
@@ -477,7 +477,7 @@ it('rejects older publications and old runs after the reconnect handshake', asyn
     statesMoved: (message) => client?.hearProviderStates(message),
   })
   let epoch = host.currentEpoch()
-  const bridge = {
+  const bridge: Partial<ClientSessionApi> = {
     currentEpoch: async () => epoch,
     listConversations: async () => ({
       resumable: [],
@@ -497,8 +497,8 @@ it('rejects older publications and old runs after the reconnect handshake', asyn
     resume: async () => {
       throw new Error('Fictional reconnect has no session')
     },
-  } satisfies Partial<RuntimeBridge>
-  const client = createSessionStore(bridge as RuntimeBridge)
+  }
+  const client = createSessionStore(bridge as ClientSessionApi)
   try {
     await Promise.resolve()
     const row = {

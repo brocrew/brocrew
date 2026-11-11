@@ -133,6 +133,7 @@ it('keeps supplied opaque retry rows without inventing provider endings', () => 
   const saved = JSON.stringify(event)
   const displayed = errorForDisplay(event, 'Fern')
   expect(displayed).toBe(event)
+  if (displayed.type !== 'error') throw new Error('Expected an error')
   expect(displayed.signIn).toBe(event.signIn)
   expect(displayed.signIn?.captions).toBeUndefined()
   expect(JSON.stringify(event)).toBe(saved)
