@@ -97,7 +97,12 @@ afterEach(() => {
 })
 
 /** One life of an arm, replayed after the adapter sends `words`; the events it emitted. */
-async function replay(arm: string, life: number, words: string): Promise<RuntimeEvent[]> {
+async function replay(
+  arm: string,
+  life: number,
+  words: string,
+  trailing: readonly SDKMessage[] = [],
+): Promise<RuntimeEvent[]> {
   const frames = FIXTURE.arms[arm]?.lives[life]?.frames
   if (frames === undefined) throw new Error(`no frames for ${arm} life ${String(life)}`)
   const root = mkdtempSync(join(tmpdir(), 'f080-replay-'))
@@ -125,7 +130,7 @@ async function replay(arm: string, life: number, words: string): Promise<Runtime
   // passed names nothing (`ClaudeLimitWatch`).
   const ahead = Math.floor(Date.now() / 1000) + 3_600
   for (const frame of JSON.parse(
-    JSON.stringify(frames)
+    JSON.stringify([...frames, ...trailing])
       .replaceAll('<sent>', sent!)
       .replace(/"resetsAt":\d+/g, `"resetsAt":${String(ahead)}`),
   ) as SDKMessage[]) {
@@ -145,6 +150,28 @@ const turnsOf = (events: readonly RuntimeEvent[]) =>
   events.flatMap((one, at) => (one.type === 'turn' ? [{ at, turn: one }] : []))
 
 describe('F080 · a turn ends on its own result, and a burst the provider starts is a turn', () => {
+  it('a save-loss warning after the result preserves the completed turn', async () => {
+    const events = await replay('F-person', 0, 'a person says ok', [
+      {
+        type: 'system',
+        subtype: 'session_writes_lost',
+        uuid: '00000000-0000-4000-8000-000000000001',
+        session_id: '<uuid>',
+        lost: ['transcript'],
+        transcript_session_ids: ['<uuid>'],
+        error_code: 'ENOSPC',
+      },
+    ])
+    expect(turnsOf(events).map(({ turn }) => turn.state)).toEqual(['completed'])
+    const completed = events.findIndex((event) => event.type === 'turn')
+    const warned = events.findIndex(
+      (event) => event.type === 'error' && event.message.includes("couldn't save"),
+    )
+    expect(warned).toBeGreaterThan(completed)
+    expect(events[warned]).toMatchObject({ type: 'error', fatal: false })
+    expect(events.some((event) => event.type === 'provider_turn')).toBe(false)
+  })
+
   it('premise: the fixture is the CLI the app ships', () => {
     // ⚑ An SDK bump turns this red until `probe:claude-provider-burst` re-measures the new CLI.
     expect(SHIPPED_CLI).not.toBeNull()
