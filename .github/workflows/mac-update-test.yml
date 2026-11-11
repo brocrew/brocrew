@@ -3,6 +3,17 @@ name: Mac automatic update rehearsal
 on:
   workflow_dispatch:
   workflow_call:
+    secrets:
+      MAC_CERT_P12_BASE64:
+        required: true
+      MAC_CERT_P12_PASSWORD:
+        required: true
+      APPLE_API_KEY_P8:
+        required: true
+      APPLE_API_KEY_ID:
+        required: true
+      APPLE_API_ISSUER:
+        required: true
 
 permissions:
   contents: read
@@ -21,6 +32,7 @@ jobs:
     name: Package signed A and B and rehearse the Mac automatic update
     if: github.repository == 'brocrew/brocrew'
     runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
+    environment: mac-signing
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
@@ -35,32 +47,36 @@ jobs:
       - uses: ./.github/actions/setup-desktop
       - name: Check the pure rehearsal helpers
         run: pnpm exec vitest run --project scripts scripts/test/mac-update-test.test.mjs
-      - name: Build once and package signed A and B with distinct markers
+      - name: Package signed A
+        uses: ./.github/actions/signed-mac
+        with:
+          version: 0.0.98
+          owner: brocrew
+          repo: brocrew
+          feed_url: http://127.0.0.1:47123/
+          marker: mac-a-${{ github.sha }}
+          output: dist-mac-update/a
         env:
-          CSC_LINK: ${{ secrets.MAC_CERT_P12_BASE64 }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
+          MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          MAC_CERT_P12_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          signing_key="$RUNNER_TEMP/mac-update-notary.p8"
-          trap 'rm -f "$signing_key"' EXIT
-          printf '%s' "$APPLE_API_KEY_P8" > "$signing_key"
-          export APPLE_API_KEY="$signing_key"
-          pnpm --filter @brobot2/desktop run build
-          for one in a:0.0.98 b:0.0.99; do
-            pnpm --filter @brobot2/desktop exec electron-builder --mac dmg zip --arm64 --config electron-builder.yml \
-              -c.forceCodeSigning=true -c.mac.hardenedRuntime=true \
-              -c.mac.timestamp=http://timestamp.apple.com/ts01 -c.mac.notarize=true -c.dmg.sign=true \
-              -c.artifactBuildCompleted=./build/notarize-dmg.mjs \
-              -c.extraMetadata.version="${one#*:}" \
-              -c.extraMetadata.rehearsalMarker="mac-${one%%:*}-$GITHUB_SHA" \
-              -c.publish.provider=generic -c.publish.url=http://127.0.0.1:47123/ \
-              -c.directories.output="dist-mac-update/${one%%:*}" --publish never
-          done
+      - name: Package signed B
+        uses: ./.github/actions/signed-mac
+        with:
+          version: 0.0.99
+          owner: brocrew
+          repo: brocrew
+          feed_url: http://127.0.0.1:47123/
+          marker: mac-b-${{ github.sha }}
+          output: dist-mac-update/b
+        env:
+          MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          MAC_CERT_P12_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       - name: Rehearse ZIP download and Squirrel restart on fictional data
         shell: bash
         run: |

@@ -11,8 +11,20 @@ inputs:
     required: true
     description: Update repository name
   artifact_name:
-    required: true
-    description: Artifact name
+    default: ''
+    description: Artifact name; empty leaves uploads to the caller
+  feed_url:
+    default: ''
+    description: Generic update feed URL; empty uses the GitHub repository
+  feed_private:
+    default: 'false'
+    description: Whether the GitHub update feed is private
+  marker:
+    default: ''
+    description: Optional rehearsal marker in the packaged app
+  output:
+    default: dist
+    description: Package output folder relative to apps/desktop
   released:
     default: '0'
     description: Whether this distribution is built by the release workflow
@@ -51,15 +63,30 @@ runs:
         BROCREW_RELEASE_BUILD: ${{ inputs.released }}
         CSC_LINK: ${{ env.MAC_CERT_P12_BASE64 }}
         CSC_KEY_PASSWORD: ${{ env.MAC_CERT_P12_PASSWORD }}
+        FEED_URL: ${{ inputs.feed_url }}
+        FEED_PRIVATE: ${{ inputs.feed_private }}
+        MARKER: ${{ inputs.marker }}
+        OUTPUT: ${{ inputs.output }}
+        OWNER: ${{ inputs.owner }}
+        REPO: ${{ inputs.repo }}
+        VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
+        feed=(-c.publish.provider=github "-c.publish.owner=$OWNER" "-c.publish.repo=$REPO")
+        if [ -n "$FEED_URL" ]; then
+          feed=(-c.publish.provider=generic "-c.publish.url=$FEED_URL")
+        elif [ "$FEED_PRIVATE" = true ]; then
+          feed+=(-c.publish.private=true)
+        fi
+        extra=()
+        if [ -n "$MARKER" ]; then extra+=("-c.extraMetadata.rehearsalMarker=$MARKER"); fi
+        if [ "$OUTPUT" != dist ]; then extra+=("-c.directories.output=$OUTPUT"); fi
         pnpm --filter @brobot2/desktop run build
         pnpm --filter @brobot2/desktop exec electron-builder --mac dmg zip dir --arm64 --config electron-builder.yml \
           -c.forceCodeSigning=true -c.mac.hardenedRuntime=true \
           -c.mac.timestamp=http://timestamp.apple.com/ts01 -c.mac.notarize=true -c.dmg.sign=true \
           -c.artifactBuildCompleted=./build/notarize-dmg.mjs \
-          -c.extraMetadata.version=${{ inputs.version }} \
-          -c.publish.provider=github -c.publish.owner=${{ inputs.owner }} -c.publish.repo=${{ inputs.repo }} \
+          "-c.extraMetadata.version=$VERSION" "${feed[@]}" ${extra[@]+"${extra[@]}"} \
           --publish never
     - name: Install Claude Code (the newest tested version) outside the app
       id: claude
@@ -70,17 +97,43 @@ runs:
       env:
         BROBOT_CHECK_CLAUDE: ${{ steps.claude.outputs.program }}
       shell: bash
-      run: node scripts/macos-packaged-check.mjs apps/desktop/dist/mac-arm64/BroCrew.app apps/desktop/dist/BroCrew-${{ inputs.version }}-arm64.dmg --developer-id apps/desktop/dist/BroCrew-${{ inputs.version }}-arm64-mac.zip
+      run: node scripts/macos-packaged-check.mjs apps/desktop/${{ inputs.output }}/mac-arm64/BroCrew.app apps/desktop/${{ inputs.output }}/BroCrew-${{ inputs.version }}-arm64.dmg --developer-id apps/desktop/${{ inputs.output }}/BroCrew-${{ inputs.version }}-arm64-mac.zip
     - name: Check the update files (version, sizes, sha512, where the app looks)
       shell: bash
-      run: node scripts/release-check.mjs apps/desktop/dist ${{ inputs.version }} ${{ inputs.owner }}/${{ inputs.repo }} apps/desktop/dist/mac-arm64/BroCrew.app/Contents/Resources/app-update.yml
+      if: inputs.feed_url == '' && inputs.feed_private != 'true'
+      run: node scripts/release-check.mjs apps/desktop/${{ inputs.output }} ${{ inputs.version }} ${{ inputs.owner }}/${{ inputs.repo }} apps/desktop/${{ inputs.output }}/mac-arm64/BroCrew.app/Contents/Resources/app-update.yml
+    - name: Check the rehearsal update files and feed
+      if: inputs.feed_url != '' || inputs.feed_private == 'true'
+      shell: bash
+      env:
+        FEED_URL: ${{ inputs.feed_url }}
+        FEED_PRIVATE: ${{ inputs.feed_private }}
+        UPDATE_REPO: ${{ inputs.owner }}/${{ inputs.repo }}
+        VERSION: ${{ inputs.version }}
+        DIST: apps/desktop/${{ inputs.output }}
+      run: |
+        node --input-type=module <<'NODE'
+        import { readFileSync } from 'node:fs'
+        import { problemsWith } from './scripts/release-check.mjs'
+        import { appUpdateProblems } from './scripts/lib/update-rehearsal.mjs'
+        const { FEED_URL, FEED_PRIVATE, UPDATE_REPO, VERSION, DIST } = process.env
+        const config = `${DIST}/mac-arm64/BroCrew.app/Contents/Resources/app-update.yml`
+        const feed = FEED_URL ? { kind: 'generic', url: FEED_URL } :
+          { kind: 'github', repo: UPDATE_REPO, private: FEED_PRIVATE === 'true' }
+        const problems = [
+          ...appUpdateProblems(readFileSync(config, 'utf8'), feed),
+          ...problemsWith(DIST, VERSION, UPDATE_REPO, config)
+            .filter(one => !one.startsWith("the app's app-update.yml")),
+        ]
+        if (problems.length) throw new Error(problems.join('\n'))
+        NODE
     - name: Recovery real-entry check
       shell: bash
       env:
         BROBOT_RECOVERY_EVIDENCE: ${{ runner.temp }}/recovery-evidence
-      run: node scripts/recovery-real-entry-check.mjs --packaged apps/desktop/dist/mac-arm64/BroCrew.app/Contents/MacOS/BroCrew
+      run: node scripts/recovery-real-entry-check.mjs --packaged apps/desktop/${{ inputs.output }}/mac-arm64/BroCrew.app/Contents/MacOS/BroCrew
     - name: Keep what the recovery check saw
-      if: always()
+      if: always() && inputs.artifact_name != ''
       continue-on-error: true
       uses: actions/upload-artifact@v4
       with:
@@ -96,14 +149,15 @@ runs:
         signing_dir="$RUNNER_TEMP/mac-signing-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
         rm -rf "$signing_dir"
     - id: assets
+      if: inputs.artifact_name != ''
       uses: actions/upload-artifact@v4
       with:
         name: ${{ inputs.artifact_name }}
         path: |
-          apps/desktop/dist/BroCrew-${{ inputs.version }}-arm64.dmg
-          apps/desktop/dist/BroCrew-${{ inputs.version }}-arm64.dmg.blockmap
-          apps/desktop/dist/BroCrew-${{ inputs.version }}-arm64-mac.zip
-          apps/desktop/dist/BroCrew-${{ inputs.version }}-arm64-mac.zip.blockmap
-          apps/desktop/dist/latest-mac.yml
+          apps/desktop/${{ inputs.output }}/BroCrew-${{ inputs.version }}-arm64.dmg
+          apps/desktop/${{ inputs.output }}/BroCrew-${{ inputs.version }}-arm64.dmg.blockmap
+          apps/desktop/${{ inputs.output }}/BroCrew-${{ inputs.version }}-arm64-mac.zip
+          apps/desktop/${{ inputs.output }}/BroCrew-${{ inputs.version }}-arm64-mac.zip.blockmap
+          apps/desktop/${{ inputs.output }}/latest-mac.yml
         if-no-files-found: error
         retention-days: 30

@@ -17,6 +17,7 @@ import { startUpdates } from '../src/main/updates-in-the-app'
 const fake = vi.hoisted(() => ({
   hostPlatform: process.platform,
   updater: null as unknown,
+  native: null as unknown,
   opened: vi.fn(async () => ''),
   fetch: vi.fn<typeof fetch>(),
 }))
@@ -43,6 +44,9 @@ vi.mock('electron-updater', () => ({
   },
 }))
 vi.mock('electron', () => ({
+  get autoUpdater() {
+    return fake.native
+  },
   ipcMain: { handle: () => {} },
   BrowserWindow: { getAllWindows: () => [] },
   net: { fetch: (...args: Parameters<typeof fetch>) => fake.fetch(...args) },
@@ -133,14 +137,25 @@ async function start(
   const electronModule =
     on === 'darwin' ? dependency.cache[dependency.resolve('electron')] : undefined
   const electronExports = electronModule?.exports
-  if (electronModule)
-    electronModule.exports = {
-      autoUpdater: Object.assign(new EventEmitter(), {
-        setFeedURL: vi.fn(),
-        checkForUpdates: vi.fn(),
-        quitAndInstall: vi.fn(),
+  if (electronModule) {
+    let feed: { url: string; headers?: Record<string, string> }
+    const native = Object.assign(new EventEmitter(), {
+      setFeedURL: vi.fn((value: typeof feed) => {
+        feed = value
       }),
-    }
+      checkForUpdates: vi.fn(() => {
+        void (async () => {
+          const response = await fetch(feed.url, { headers: feed.headers })
+          const update = (await response.json()) as { url: string }
+          await (await fetch(update.url)).arrayBuffer()
+          native.emit('update-downloaded')
+        })().catch((error) => native.emit('error', error))
+      }),
+      quitAndInstall: vi.fn(),
+    })
+    fake.native = native
+    electronModule.exports = { autoUpdater: native }
+  }
   try {
     updater = new RealUpdater(undefined, {
       version: installed,
