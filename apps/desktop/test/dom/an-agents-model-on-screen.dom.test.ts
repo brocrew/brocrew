@@ -741,26 +741,30 @@ describe('685 §6 · re-read when the roster is — `runtime:changed agents` rea
   })
 })
 
+async function mountedAgentSheet(): Promise<Mounted> {
+  const { store, lists } = storeOver()
+  await store.load()
+  const m = mount(
+    defineComponent({
+      setup() {
+        provide(CLIENT_PROVIDERS, catalogueClient)
+        return () => h(CapabilitiesSheet, { profileSlug: 'worker', runsOn: 'codex', store, lists })
+      },
+    }),
+    {},
+    { width: 680, height: 880 },
+  )
+  await settle()
+  return m
+}
+
 describe('685 §7 · where it is — beside the provider choice on the agent’s sheet', () => {
   it('⚑ the sheet hands the control the agent’s OWN provider — so a choice for another says so', async () => {
     reset()
     world.itsProvider = 'codex'
     world.held = { provider: 'claude', model: 'opus', effort: 'high' }
     await page.viewport(700, 900)
-    const { store, lists } = storeOver()
-    await store.load()
-    const m = mount(
-      defineComponent({
-        setup() {
-          provide(CLIENT_PROVIDERS, catalogueClient)
-          return () =>
-            h(CapabilitiesSheet, { profileSlug: 'worker', runsOn: 'codex', store, lists })
-        },
-      }),
-      {},
-      { width: 680, height: 880 },
-    )
-    await settle()
+    const m = await mountedAgentSheet()
     expect(words(m.q('agent-model-other-provider'))).toBe(
       'It is for Claude, and this agent runs on Codex, so no launch reads it: another agent that starts this one, or whose message starts it, does so as though nobody had chosen. Its picker picks a Codex model in its place, and Clear takes it away.',
     )
@@ -786,20 +790,7 @@ describe('685 §7 · where it is — beside the provider choice on the agent’s
         ],
       },
     }
-    const { store, lists } = storeOver()
-    await store.load()
-    const m = mount(
-      defineComponent({
-        setup() {
-          provide(CLIENT_PROVIDERS, catalogueClient)
-          return () =>
-            h(CapabilitiesSheet, { profileSlug: 'worker', runsOn: 'codex', store, lists })
-        },
-      }),
-      {},
-      { width: 680, height: 880 },
-    )
-    await settle()
+    const m = await mountedAgentSheet()
     const provider = m.q('capabilities-provider')
     const model = m.q('agent-model')
     const own = m.q('own-instructions')
