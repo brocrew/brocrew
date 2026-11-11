@@ -196,7 +196,8 @@ async function startup(
     createRuntimeHost: () => ({}),
   }
   const prefixBegin = index.indexOf('try {\n  pinTheDataFolder(app)')
-  const prefixEnd = index.indexOf('// Give Windows the app id', prefixBegin)
+  const prefixEnd = index.indexOf('\nnameTheAppToWindows(app)', prefixBegin)
+  expect(prefixEnd).toBeGreaterThan(prefixBegin)
   Object.assign(context.app, { exit: (code: number) => exits.push(code) })
   runInNewContext(
     ts.transpileModule(index.slice(prefixBegin, prefixEnd), {

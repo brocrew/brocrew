@@ -502,9 +502,12 @@ describe('makeCheckpoint', () => {
   ]
 
   it.each(stops)(
-    'leaves nothing to offer, and the data as it was, after %s',
+    'leaves nothing to offer, and existing workspace state unchanged, after %s',
     async (_what, options) => {
       const userData = aLiveWorkspace()
+      const workspaceId = `${randomUUID()}\n`
+      mkdirSync(join(userData, 'backups'))
+      writeFileSync(join(userData, 'backups', 'workspace-id'), workspaceId)
       writeFileSync(join(userData, 'drafts.json'), '{}\n')
       const before = fingerprint(liveFile(userData))
       const lines: string[] = []
@@ -519,6 +522,7 @@ describe('makeCheckpoint', () => {
       expect(readdirSync(join(userData, 'backups')), 'the unfinished folder is gone').toEqual([
         'workspace-id',
       ])
+      expect(readFileSync(join(userData, 'backups', 'workspace-id'), 'utf8')).toBe(workspaceId)
       expect(await listOfferable(userData, LINEAGE)).toEqual([])
       expect(await listCheckpoints(userData)).toEqual([])
       expect(lines).toEqual([])
