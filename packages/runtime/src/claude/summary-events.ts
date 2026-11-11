@@ -7,10 +7,22 @@ export function summaryEvents(message: { readonly subtype: string }): RuntimeEve
     const status = fields['status_category']
     const detail = fields['status_detail']
     const needsAction = fields['needs_action']
-    if (typeof status !== 'string' || status.trim() === '' ||
-      typeof detail !== 'string' || detail.trim() === '' || typeof needsAction !== 'string') return null
-    return [{ type: 'turn_summary', detail, needsAction,
-      ...(['completed', 'review_ready', 'blocked'].includes(status) ? { status } : {}) }]
+    if (
+      typeof status !== 'string' ||
+      status.trim() === '' ||
+      typeof detail !== 'string' ||
+      detail.trim() === '' ||
+      typeof needsAction !== 'string'
+    )
+      return null
+    return [
+      {
+        type: 'turn_summary',
+        detail,
+        needsAction,
+        ...(['completed', 'review_ready', 'blocked'].includes(status) ? { status } : {}),
+      },
+    ]
   }
   if (message.subtype === 'task_summary') {
     const description = fields['detail']

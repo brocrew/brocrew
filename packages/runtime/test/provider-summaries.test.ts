@@ -13,7 +13,13 @@ const turn = {
   session_id: 'fictional-session',
   summarizes_uuid: 'fictional-turn',
 }
-const command = { type: 'system', subtype: 'task_summary', detail: 'Checking the fictional change', uuid: 'fictional-command', session_id: 'fictional-session' }
+const command = {
+  type: 'system',
+  subtype: 'task_summary',
+  detail: 'Checking the fictional change',
+  uuid: 'fictional-command',
+  session_id: 'fictional-session',
+}
 const normalize = (value: unknown) => normalizeMessage(value as SDKMessage)
 
 describe('provider-neutral summaries', () => {
@@ -39,11 +45,19 @@ describe('provider-neutral summaries', () => {
   )
 
   it.each(['completed', 'review_ready', 'blocked'])('maps observed native status %s', (status) => {
-    expect(normalize({ ...turn, status_category: status })).toEqual([{ type: 'turn_summary', status, detail: turn.status_detail, needsAction: '' }])
+    expect(normalize({ ...turn, status_category: status })).toEqual([
+      { type: 'turn_summary', status, detail: turn.status_detail, needsAction: '' },
+    ])
   })
 
   it('retains only an unknown status detail for display without inventing a status', () => {
-    expect(normalize({ ...turn, status_category: 'fictional_future_status', needs_action: 'Review this' })).toEqual([{ type: 'turn_summary', detail: turn.status_detail, needsAction: 'Review this' }])
+    expect(
+      normalize({
+        ...turn,
+        status_category: 'fictional_future_status',
+        needs_action: 'Review this',
+      }),
+    ).toEqual([{ type: 'turn_summary', detail: turn.status_detail, needsAction: 'Review this' }])
   })
 
   it('maps the reported command description without provider fields', () => {
@@ -57,7 +71,9 @@ describe('provider-neutral summaries', () => {
     try {
       expect(normalize({ ...command, detail: null })).toEqual([])
       expect(warning).not.toHaveBeenCalled()
-    } finally { warning.mockRestore() }
+    } finally {
+      warning.mockRestore()
+    }
   })
 
   it.each([
@@ -77,9 +93,13 @@ describe('provider-neutral summaries', () => {
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
       const events = normalize(raw)
-      expect(events).toEqual([{ type: 'unknown', provider: 'claude', category: 'unrecognized', label: raw.subtype, raw }])
+      expect(events).toEqual([
+        { type: 'unknown', provider: 'claude', category: 'unrecognized', label: raw.subtype, raw },
+      ])
       expect(warning).toHaveBeenCalledExactlyOnceWith('Unmodeled provider event', events[0])
-    } finally { warning.mockRestore() }
+    } finally {
+      warning.mockRestore()
+    }
   })
 
   it('keeps a future unknown system event available to the existing Debug-only path', () => {
