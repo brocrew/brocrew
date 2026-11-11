@@ -79,11 +79,12 @@ const told = computed(() => toldClause(props.item.told, props.item.toldInPart ==
 <template>
   <div
     class="notice-entry"
-    :class="item.level"
+    :class="[item.level, { 'line-lane': item.level === 'warn', 'line-card': item.level === 'warn' }]"
     :data-cy="`notice-${item.level}`"
     :aria-live="item.signIn ? 'polite' : undefined"
   >
-    <span class="dot"></span>
+    <svg v-if="item.level === 'warn'" class="line-icon" aria-hidden="true"><use href="#i-clock" /></svg>
+    <span v-else class="dot"></span>
     <!-- ⚠️ **Not `notice-…`**: `[data-cy^="notice-"]` is how every test counts NOTICES, and a child
          hook under that prefix counted each one twice. -->
     <!-- 🔴 **672 · a notice a person has to act on is drawn WHOLE, and every notice can be read
@@ -94,7 +95,7 @@ const told = computed(() => toldClause(props.item.told, props.item.toldInPart ==
          sentence on the title. -->
     <span
       class="what"
-      :class="{ 'providers-words': item.providersWords === true }"
+      :class="{ 'providers-words': item.providersWords === true, 'line-words': item.level === 'warn' }"
       data-cy="what-the-notice-says"
       :title="said"
       >{{ said }}<span v-if="told" class="told" data-cy="refusal-told">{{ told }}</span></span
@@ -116,25 +117,28 @@ const told = computed(() => toldClause(props.item.told, props.item.toldInPart ==
         <p v-for="(detail, index) in item.signIn.details" :key="index">{{ detail }}</p>
       </div>
     </details>
-    <span class="time" :title="fullTime(item.at)">{{ clockTime(item.at) }}</span>
+    <span class="time" :class="{ 'line-time': item.level === 'warn' }" :title="fullTime(item.at)">{{ clockTime(item.at) }}</span>
   </div>
 </template>
 
+<style scoped src="./summary-notice-presentation.css"></style>
 <style scoped>
-/* A hairline across the thread: present, readable, and never mistaken for something said. */
 .notice-entry {
   display: flex;
-  max-width: var(--measure-message);
   align-items: center;
-  justify-content: center;
-  margin: var(--space-1) auto var(--space-6);
-  color: var(--faint);
   font-size: var(--type-caption);
   gap: var(--space-4);
 }
 
-.notice-entry::before,
-.notice-entry::after {
+.notice-entry:not(.warn) {
+  max-width: var(--measure-message);
+  justify-content: center;
+  margin: var(--space-1) auto var(--space-6);
+  color: var(--faint);
+}
+
+.notice-entry:not(.warn)::before,
+.notice-entry:not(.warn)::after {
   flex: 1;
   height: var(--border-width);
   background: linear-gradient(90deg, transparent, var(--line), transparent);
@@ -157,11 +161,10 @@ const told = computed(() => toldClause(props.item.told, props.item.toldInPart ==
 }
 
 .notice-entry.warn {
-  color: var(--waiting);
-}
-
-.notice-entry.warn .dot {
-  background: var(--waiting);
+  --line-card-border: var(--waiting-card-border);
+  --line-card-background: var(--waiting-bg);
+  --line-card-text: var(--waiting);
+  --line-card-icon: var(--waiting);
 }
 
 .notice-entry.error {
@@ -190,7 +193,7 @@ const told = computed(() => toldClause(props.item.told, props.item.toldInPart ==
   overflow: hidden;
 }
 
-.time {
+.notice-entry:not(.warn) .time {
   flex: 0 0 auto;
   font-family: var(--font-mono);
   opacity: 0.7;

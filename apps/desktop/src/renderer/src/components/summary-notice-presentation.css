@@ -1,0 +1,40 @@
+.line-lane {
+  max-width: var(--measure-message);
+  margin: 0 auto var(--space-10);
+}
+
+.line-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  box-sizing: border-box;
+  padding: var(--space-5) var(--space-6);
+  border: var(--border-width) solid var(--line-card-border, var(--line));
+  border-radius: var(--radius-md);
+  background: var(--line-card-background, var(--wash-1));
+  color: var(--line-card-text, var(--text-soft));
+  font-size: var(--type-caption);
+  line-height: var(--leading-normal);
+}
+
+.line-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--line-card-icon, var(--muted));
+}
+
+.line-words {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.line-time {
+  flex: none;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-caption);
+}

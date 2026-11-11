@@ -1,23 +1,31 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { clockTime } from '../../../shared/clock'
+import { fullTime } from '../lib/clock'
 import type { TranscriptItem } from '../lib/transcript-message-contracts'
 import { turnSummaryLine } from '../lib/summary-line'
 
-defineProps<{ item: Extract<TranscriptItem, { kind: 'turnSummary' | 'commandSummary' }> }>()
+const props = defineProps<{ item: Extract<TranscriptItem, { kind: 'turnSummary' | 'commandSummary' }> }>()
+const text = computed(() =>
+  props.item.kind === 'turnSummary' ? turnSummaryLine(props.item) : props.item.description,
+)
 </script>
 
 <template>
-  <p class="summary" :data-cy="item.kind === 'turnSummary' ? 'turn-summary' : 'command-summary'">
-    {{ item.kind === 'turnSummary' ? turnSummaryLine(item) : item.description }}
-  </p>
+  <div class="line-lane">
+    <p class="summary line-card" :data-cy="item.kind === 'turnSummary' ? 'turn-summary' : 'command-summary'">
+      <svg class="line-icon" aria-hidden="true">
+        <use :href="item.kind === 'turnSummary' ? '#i-check' : '#i-terminal'" />
+      </svg>
+      <span class="line-words" data-cy="summary-words" :title="text">{{ text }}</span>
+      <span v-if="item.at !== undefined" class="line-time" data-cy="summary-time" :title="fullTime(item.at)">{{ clockTime(item.at) }}</span>
+    </p>
+  </div>
 </template>
 
+<style scoped src="./summary-notice-presentation.css"></style>
 <style scoped>
 .summary {
-  max-width: var(--measure-message);
-  margin: var(--space-4) 0;
-  color: var(--text-soft);
-  font-size: var(--type-small);
-  line-height: var(--leading-normal);
-  overflow-wrap: anywhere;
+  margin: 0;
 }
 </style>
