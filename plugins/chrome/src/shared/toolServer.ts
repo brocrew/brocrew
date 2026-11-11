@@ -59,9 +59,9 @@ export function createToolServer(options: ToolServerOptions): Server {
     const { name: toolName, arguments: args } = request.params
     let active = true
     let progress = 0
-    try {
-      return await dispatchTool(tools, toolName, args, (tool, parsed) =>
-        tool.execute(parsed, {
+    return dispatchTool(tools, toolName, args, async (tool, parsed) => {
+      try {
+        return await tool.execute(parsed, {
           ...context,
           signal: extra.signal,
           activity(stage) {
@@ -74,11 +74,11 @@ export function createToolServer(options: ToolServerOptions): Server {
                 })
                 .catch(() => undefined)
           },
-        }),
-      )
-    } finally {
-      active = false
-    }
+        })
+      } finally {
+        active = false
+      }
+    })
   })
   if (resources.length > 0) {
     server.setRequestHandler(ListResourcesRequestSchema, async () => ({
