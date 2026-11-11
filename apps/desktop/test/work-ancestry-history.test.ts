@@ -9,7 +9,6 @@ import {
   FakeProviderSessions,
   type FakeSessionHandle,
   type StartOptions,
-  type SessionRef,
   type RuntimeEvent,
 } from '@brobot2/runtime'
 import { AsyncQueue } from '../../../packages/runtime/src/internal/async-queue'
