@@ -2396,15 +2396,8 @@ function toolStatusOutcome(status: ToolStatus): ToolOutcome {
 }
 
 /**
- * `webSearch` is the one tool kind whose generated shape declares **no status field at all**, so
- * its completion carries no success/failure channel to fail closed on — reporting it as failed
- * would be as untrue as the old blanket success. Its `item/completed` is therefore an affirmative
- * completion by protocol definition.
- *
- * This constant is the compile-time guard on that reasoning: if a future protocol bump gives
- * `WebSearchItem` a `status`, the type resolves to `never` and this assignment is a **compile
- * error**, forcing the kind into the exhaustive status mapping instead of silently keeping a
- * hard-coded success.
+ * Web search has no status field, so item/completed is its affirmative completion.
+ * If the protocol adds a status, this assignment fails compilation and requires status mapping.
  */
 const WEB_SEARCH_HAS_NO_STATUS: 'status' extends keyof WebSearchItem ? never : true = true
 

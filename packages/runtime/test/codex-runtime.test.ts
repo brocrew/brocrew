@@ -5213,29 +5213,10 @@ describe('CodexRuntime — approval scope disclosure (007 P1-7)', () => {
   })
 
   /**
-   * 🔴 **487 · every offer this adapter publishes, and the floor is IN each one** (`483`'s repair
-   * 1, closing what `482` could only pin).
-   *
-   * ## ⛔ What this used to be, and why the shape had to change
-   *
-   * ⚠️ **`482` asked the PRODUCERS the question the GATE had already answered** — a `cancel` on a
-   * request that never offered one is honoured, and no producer knew it — and recorded the answer
-   * as a table of gaps: `ALWAYS_HONOURED.filter((outcome) => !offered.has(outcome))` per input,
-   * two rows short and two controls satisfied. ⛔ **That filter cannot survive its own repair.**
-   * With every row expecting `[]`, narrowing `ALWAYS_HONOURED` to one member narrows the filter's
-   * own basis and every row still returns `[]` — the census would go green on the mutation it
-   * exists to catch (`a-comparison-tested-where-both-sides-agree`, and `482 M13`'s killer).
-   *
-   * ## ⚑ So it asserts the published offer ITSELF, as literals
-   *
-   * 🔴 **Four shapes that fell short and two that never did, all six now exact.** A narrowed floor
-   * fails every row; a producer that stops applying {@link publishedOffer} fails its own row; a
-   * NEW shape that forgets it fails the exhaustiveness check below. ⛔ Closing a row is still a
-   * deliberate edit rather than a silence.
-   *
-   * ⚠️ **The two controls still differ from the subject, and now they differ in the right place:**
-   * an absent list and a file approval carry POSITIVES, and the four repaired shapes do not. That
-   * is the distinction the old `missing` column measured and the new one keeps.
+   * Assert each published offer as literals. Deriving expectations from ALWAYS_HONOURED would
+   * let a narrowed floor change both subject and oracle without failing. Six exact rows catch
+   * a narrowed floor or a producer that omits publishedOffer; exhaustiveness catches new shapes.
+   * The absent-list and file-approval controls still carry positive choices, unlike the other four.
    */
   it('🔴 every published offer keeps both refusals, and only four of six can be allowed (487)', async () => {
     const { transport, handle, events, consumer } = await startCodexInTurn()
@@ -9825,31 +9806,9 @@ describe('CodexSessionHandle — thread scope, by what the frame carries (200)',
 })
 
 /**
- * ⛔ **What a Codex child actually reports about itself, and what this session was throwing away**
- * (226, from 225 finding 1).
- *
- * The explorer asked Codex for two children named `alpha` and `beta`; both drew as `nested agent`,
- * with no name, no parent, no usage and no outcome. ⚠️ **`226` measured the wire before touching a
- * line** (`pnpm run probe:two-children`, pinned 0.146.0, a control turn that spawns nothing) and the
- * capture refutes three sentences this repo had hardened:
- *
- *  - a depth-2 birth is *"announced on a connection this app does not hold"* (135) — it arrives
- *    here, stamped with the depth-1 CHILD's `threadId`, carrying `agentPath: /root/coordinator/gamma`
- *    and the call that dispatched it;
- *  - *"there is no usage… an ending carries NO outcome"* (033) — each child sends its own
- *    `thread/tokenUsage/updated` and a `turn/completed` whose `turn.status` is the generated
- *    `TurnStatus` union, with `durationMs`;
- *  - *"a Codex child reports no usage"* (111) — measured on five children in one session.
- *
- * ⚑ **Each was true of the instrument that measured it.** Every one of those frames names the
- * child's thread, and 200's gate refuses a frame naming another thread before anything reads it —
- * so the captures those claims were written from could not have contained the evidence against
- * them. The frames are still refused as CONTENT; they are now also read as reports.
- *
- * ⚠️ **Driven through a real handle, never through the tracker.** `codex-sub-agents.test.ts` feeds
- * `CodexSubAgents` directly, and a tracker that answers correctly behind a gate that never calls it
- * is exactly the shape 200's own comment warns about — the app would be unchanged and the suite
- * green.
+ * Child-thread frames report names, ancestry, token usage, outcomes and durations, including
+ * depth-two agents. They remain excluded from parent content but must reach the report tracker.
+ * Exercise the real handle: testing CodexSubAgents alone cannot detect a gate that drops reports.
  */
 describe('CodexSessionHandle — a child reports on itself (226)', () => {
   /** This session's own thread, as `startCodex` binds it. */

@@ -11,12 +11,7 @@ import {
 } from './fixtures/codex-protocol'
 
 /**
- * ⛔ **182 M5 · the provider ships a boolean called `showBufferingUi`, and BroBot was hiding it.**
- *
- * `ModelSafetyBufferingUpdatedNotification` is `{ threadId, turnId, model, useCases, reasons,
- * showBufferingUi, fasterModel }` — every field of it landed in the chatter list, so a turn could
- * pause mid-stream with nothing on screen. 177 left it there because no payload had been captured;
- * ⚑ **an absent capture is not an absent field**, and the generated type is a measurement of its own.
+ * The provider's showBufferingUi flag makes a pause visible; other buffering updates stay quiet.
  */
 describe('safety buffering is a state, not housekeeping (188 §2, from 182 M5)', () => {
   const buffering = (params: Record<string, unknown>): RuntimeEvent | undefined =>

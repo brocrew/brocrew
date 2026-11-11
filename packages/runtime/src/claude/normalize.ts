@@ -386,32 +386,9 @@ export function normalizeMessage(
           wrapUnknown('claude', message, 'lifecycle', message.subtype),
         ]
       }
-      // ⛔ **A refusal the user can SEE** (199, from 192 H6). Before this, a Claude refusal was
-      // invisible on BOTH channels the SDK offers: the structured one lands here and was classified
-      // `activity` — chatter, filtered out of the reading view — and the other one does not exist,
-      // because `stop_reason` is never read as data in this app and `SDKAssistantMessageError` has
-      // no `'refusal'` member (`sdk.d.ts:3543` at 0.3.281, still). What the reader got was an empty turn and no
-      // explanation for it.
-      //
-      // Same shape as `api_retry` above and `rate_limit_event` below, and for the same reason: a
-      // system message the user is FEELING becomes a visible non-fatal error. Non-fatal because the
-      // session is fine — it is this turn that produced nothing.
-      //
-      // ⚠️ **The provider's own words are used here, and that is not a contradiction of 098/110.**
-      // Those refuse to hand a reader the provider's sentence about a REJECTED CREDENTIAL, because
-      // that sentence is written for whoever wrote the CLI and the thing the user needs to know
-      // (sign in again) is not in it. A refusal is the opposite case: there is no remedy to state,
-      // and `stop_details.explanation` is the only account of why anywhere. Bounded by
-      // {@link truncate} so one line stays one line — 031's rule.
-      //
-      // ⛔ **`model_refusal_fallback` is deliberately NOT surfaced here.** It is the leg where the
-      // turn was RETRIED on a fallback model and the refused partial was retracted — and neither
-      // half is reachable or expressible in this app. `fallbackModel` is set nowhere in
-      // `packages/` or `apps/` (measured) and `settingSources: []` blocks it being inherited from a
-      // settings file, so the CLI takes the no-fallback leg; and `retracted_message_uuids` names
-      // wire uuids that `RuntimeEvent` has no field to carry — there is no message identity in this
-      // vocabulary at all. Surfacing that leg would announce a retraction the transcript then fails
-      // to perform, which is worse than the silence. See 199's response for what closing it costs.
+      // A refusal explains an empty reply, so show the provider's explanation as a nonfatal error.
+      // Do not surface `model_refusal_fallback`: this adapter sets no fallback model and ignores
+      // inherited settings, and RuntimeEvent cannot express its partial-message retraction.
       if (message.subtype === 'model_refusal_no_fallback') {
         return [{ type: 'error', message: refusalNotice(message), fatal: false }]
       }
