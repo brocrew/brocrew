@@ -1,5 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { defineComponent, h, nextTick, ref, type Ref } from 'vue'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, h, nextTick, provide, ref, type Ref } from 'vue'
+import { SUPPORTED_PROVIDERS, providerDescriptor } from '@brobot2/shared'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { desktopProviderApi } from '../../src/renderer/src/client-provider/window'
 import { allProviderCapabilities } from '../../../../packages/runtime/src/capabilities'
 import NewConversation from '../../src/renderer/src/components/NewConversation.vue'
 import { createAttachmentBook, NEW_CONVERSATION } from '../../src/renderer/src/lib/drafts'
@@ -630,14 +633,20 @@ describe('§6 · a conversation started as an identity a person created', () => 
 
   const placed = (): { m: Mounted; started: unknown[] } => {
     const started: unknown[] = []
+    const catalogueClient = Object.create(desktopProviderApi, {
+      providerCatalogue: { value: async () => SUPPORTED_PROVIDERS.map(providerDescriptor) },
+    })
     const m = mount(
       defineComponent({
-        setup: () => () =>
-          h(StartAsAgent as never, {
-            profileSlug: 'archivist',
-            provider: 'claude',
-            onStart: (input: unknown, words: string) => started.push([input, words]),
-          }),
+        setup() {
+          provide(CLIENT_PROVIDERS, catalogueClient)
+          return () =>
+            h(StartAsAgent as never, {
+              profileSlug: 'archivist',
+              provider: 'claude',
+              onStart: (input: unknown, words: string) => started.push([input, words]),
+            })
+        },
       }),
       {},
       { width: 700, height: 700 },
@@ -686,6 +695,7 @@ describe('§6 · a conversation started as an identity a person created', () => 
   it('⚑ it names the provider in the same words it will start on', async () => {
     const f = placed()
     await settled()
+    await vi.waitFor(() => expect(f.m.q('start-as-agent').textContent).toContain('Claude'))
     // 151's rule: a provider in running prose is spelled the way a person reads it, and the value
     // the launch sends is the same prop — so the sentence cannot name one and start the other.
     expect(f.m.q('start-as-agent-title').textContent).toContain('archivist')

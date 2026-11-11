@@ -1,5 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { defineComponent, h, nextTick, ref } from 'vue'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, h, nextTick, provide, ref } from 'vue'
+import { SUPPORTED_PROVIDERS, providerDescriptor } from '@brobot2/shared'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { desktopProviderApi } from '../../src/renderer/src/client-provider/window'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
@@ -167,41 +170,52 @@ async function screens() {
   const rail = ref<Rail | null>(null)
   cleanups.push(listenProviderStates(bridge, store, (message) => rail.value?.hearStates(message)))
   const handing = createAttachmentBook().handing(draftKey(record.sessionId))
-  const shell = defineComponent(
-    () => () =>
-      h('div', [
-        h(SideRail, {
-          ref: rail,
-          open: store.live.value,
-          onScreen: record,
-          providerBlocks: store.providerBlocks,
-          activeId: record.sessionId,
-          place: null,
-        }),
-        h(ConversationPane, {
-          record,
+  const catalogueClient = Object.create(desktopProviderApi, {
+    providerCatalogue: { value: async () => SUPPORTED_PROVIDERS.map(providerDescriptor) },
+  })
+  const shell = defineComponent({
+    setup() {
+      provide(CLIENT_PROVIDERS, catalogueClient)
+      return () =>
+        h('div', [
+          h(SideRail, {
+            ref: rail,
+            open: store.live.value,
+            onScreen: record,
+            providerBlocks: store.providerBlocks,
+            activeId: record.sessionId,
+            place: null,
+          }),
+          h(ConversationPane, {
+            record,
 
-          drawerOpen: true,
-          drawerTab: 'open',
-          cwd: '/made-up/bakery',
-          capabilities: null,
-          draft: '',
-          handing,
-          listedState: rail.value?.theOneList?.find((one) => one.sessionId === record.sessionId)
-            ?.state,
-          providerBlock: store.providerBlocks.get(record.sessionId),
-        }),
-        h(TeamWorkspace, {
-          agents,
-          store: { renameTo: forbidden, remove: forbidden } as unknown as AgentStore,
-          conversations: rail.value?.theOneList ?? null,
-          held: [record.sessionId],
-        }),
-      ]),
-  )
+            drawerOpen: true,
+            drawerTab: 'open',
+            cwd: '/made-up/bakery',
+            capabilities: null,
+            draft: '',
+            handing,
+            listedState: rail.value?.theOneList?.find((one) => one.sessionId === record.sessionId)
+              ?.state,
+            providerBlock: store.providerBlocks.get(record.sessionId),
+          }),
+          h(TeamWorkspace, {
+            agents,
+            store: { renameTo: forbidden, remove: forbidden } as unknown as AgentStore,
+            conversations: rail.value?.theOneList ?? null,
+            held: [record.sessionId],
+          }),
+        ])
+    },
+  })
   const m = mount(shell, {}, { width: 1700, height: 1100 })
   await settle()
   ;(m.q(`team-conversations-${slug}`).parentElement as HTMLDetailsElement).open = true
+  await vi.waitFor(() =>
+    expect(
+      m.q(`team-conversation-${record.sessionId}`).querySelector('.team-now')?.textContent?.trim(),
+    ).toBe('Claude limit'),
+  )
   function check(word: 'stop' | 'clear' | 'unavailable') {
     const header = m.q('session-status').textContent!.trim()
     const railLine = m.host.querySelector<HTMLElement>(`#rail-state-${record.sessionId}`)!
