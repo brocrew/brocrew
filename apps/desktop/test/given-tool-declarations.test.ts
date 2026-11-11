@@ -154,7 +154,8 @@ describe('provider declarations through the read model and request order', () =>
 
   it('renders stored names with explicit absence when an old payload has no declaration facts', () => {
     const given = whatItWasGiven(read('claude', null))
-    const { declarationNames: _names, ...oldTools } = given.tools
+    const oldTools = { ...given.tools }
+    delete oldTools.declarationNames
     const row = namesRow({ ...given, tools: oldTools })
     expect(row.pieces).toContainEqual({ kind: 'text', text: 'knead\nbake__bread' })
     expect(row.pieces).toContainEqual({
