@@ -579,10 +579,7 @@ export function normalizeMessage(
       // purpose — and what was missing was never a reclassification but a first-class fact beside
       // it. Both are emitted: the registry gets a typed event, and the raw stream still shows the
       // frame it came from, which is where you check what the provider really said.
-      return [
-        ...background_,
-        wrapUnknown('claude', message, category, message.subtype),
-      ]
+      return [...background_, wrapUnknown('claude', message, category, message.subtype)]
     }
 
     case 'result':
