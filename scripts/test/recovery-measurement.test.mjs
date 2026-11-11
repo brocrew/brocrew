@@ -1,5 +1,6 @@
 import { readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { EventEmitter } from 'node:events'
+import { spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
@@ -37,29 +38,37 @@ describe('populated recovery measurement', () => {
       const child = new EventEmitter(),
         parent = new EventEmitter()
       child.pid = 1234
-      child.kill = vi.fn(() => true)
+      let alive = true
+      const groupKill = vi.fn(() => {
+        if (!alive) throw Object.assign(new Error('group gone'), { code: 'ESRCH' })
+      })
       let settled = false
       try {
         const pending = packagedCopyComparisons(
           { root, next: { program: '/fictional/packaged-electron' } },
-          { launch: () => child, parent, deadlineMs: 100, graceMs: 50 },
+          { launch: () => child, parent, groupKill, deadlineMs: 100, graceMs: 50 },
         ).then((result) => {
           settled = true
           return result
         })
         if (reason === 'deadline') await vi.advanceTimersByTimeAsync(100)
         else parent.emit(reason)
-        expect(child.kill.mock.calls).toEqual([['SIGTERM']])
+        expect(groupKill.mock.calls.filter(([, signal]) => signal)).toEqual([[1234, 'SIGTERM']])
         expect(settled).toBe(false)
         await vi.advanceTimersByTimeAsync(50)
-        expect(child.kill.mock.calls).toEqual([['SIGTERM'], ['SIGKILL']])
+        expect(groupKill.mock.calls.filter(([, signal]) => signal)).toEqual([
+          [1234, 'SIGTERM'],
+          [1234, 'SIGKILL'],
+        ])
         expect(settled).toBe(false)
         writeFileSync(join(root, 'adapter-comparison.json'), JSON.stringify({ success: true }))
+        alive = false
         child.emit('close', 0, null)
         const result = await pending
         expect(result.success).toBe(false)
         expect(result.child).toMatchObject({
           closed: true,
+          groupStopped: true,
           code: 0,
           timedOut: reason === 'deadline',
           cancelled: reason === 'deadline' ? null : reason,
@@ -79,17 +88,19 @@ describe('populated recovery measurement', () => {
     const child = new EventEmitter(),
       parent = new EventEmitter()
     child.pid = 1234
-    child.kill = vi.fn()
+    const groupKill = vi.fn(() => {
+      throw Object.assign(new Error('group gone'), { code: 'ESRCH' })
+    })
     try {
       const pending = packagedCopyComparisons(
         { root, next: { program: '/fictional/packaged-electron' } },
-        { launch: () => child, parent, deadlineMs: 100, graceMs: 50 },
+        { launch: () => child, parent, groupKill, deadlineMs: 100, graceMs: 50 },
       )
       writeFileSync(join(root, 'adapter-comparison.json'), JSON.stringify({ success: true }))
       child.emit('close', 0, null)
       expect(await pending).toMatchObject({ success: true, child: { closed: true, code: 0 } })
       await vi.advanceTimersByTimeAsync(200)
-      expect(child.kill).not.toHaveBeenCalled()
+      expect(groupKill.mock.calls.filter(([, signal]) => signal)).toEqual([])
       expect(vi.getTimerCount()).toBe(0)
       expect(parent.listenerCount('SIGTERM') + parent.listenerCount('SIGINT')).toBe(0)
     } finally {
@@ -97,6 +108,47 @@ describe('populated recovery measurement', () => {
       rmSync(root, { recursive: true, force: true })
     }
   })
+
+  it.runIf(process.platform === 'darwin')(
+    'stops a real copy-shaped descendant that outlives its group leader and ignores TERM',
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), 'measurement-descendant-test-'))
+      let stopped = false
+      const worker =
+        "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000); process.send('ready')"
+      const leader = `
+        const { spawn } = require('node:child_process');
+        const copy = spawn(process.execPath, ['-e', ${JSON.stringify(worker)}], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
+        copy.once('message', () => process.stdout.write(String(copy.pid), () => process.exit(0)));
+      `
+      try {
+        const result = await packagedCopyComparisons(
+          { root, next: { program: process.execPath } },
+          {
+            launch: (_program, _args, options) => spawn(process.execPath, ['-e', leader], options),
+            deadlineMs: 5000,
+            graceMs: 1000,
+          },
+        )
+        stopped = result.child.groupStopped
+        expect(result.success).toBe(false)
+        expect(result.child).toMatchObject({
+          closed: true,
+          groupStopped: true,
+          code: 0,
+          cancelled: 'descendants-after-close',
+        })
+        expect(result.child.stops.map((one) => one.signal)).toEqual(['SIGTERM', 'SIGKILL'])
+        const descendant = Number(result.child.output.trim())
+        expect(descendant).toBeGreaterThan(0)
+        expect(() => process.kill(descendant, 0)).toThrow(
+          expect.objectContaining({ code: 'ESRCH' }),
+        )
+      } finally {
+        if (stopped) rmSync(root, { recursive: true, force: true })
+      }
+    },
+  )
 
   it.runIf(process.platform === 'darwin')(
     'keeps a committed needle in WAL only and can reset that same owned fixture',

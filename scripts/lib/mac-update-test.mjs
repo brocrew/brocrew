@@ -26,20 +26,48 @@ export { CHECKPOINT_LINE, FAIL_LINE, READY_LINE }
 
 export async function joinMeasurementChild(
   child,
-  { deadlineMs = 900_000, graceMs = 5000, parent = process } = {},
+  {
+    deadlineMs = 900_000,
+    graceMs = 5000,
+    parent = process,
+    groupKill = (pid, signal) => process.kill(-pid, signal),
+  } = {},
 ) {
-  const facts = { closed: false, timedOut: false, cancelled: null, stops: [], errors: [] }
+  const facts = {
+    pgid: child.pid ?? null,
+    closed: false,
+    groupStopped: false,
+    timedOut: false,
+    cancelled: null,
+    stops: [],
+    errors: [],
+  }
   let escalation
-  const kill = (signal) => {
-    if (facts.closed || !child.pid) return
+  const groupAlive = () => {
+    if (facts.groupStopped || !child.pid) return false
     try {
-      facts.stops.push({ signal, sent: child.kill(signal) })
+      groupKill(child.pid, 0)
+      return true
+    } catch (error) {
+      if (error.code === 'ESRCH') {
+        facts.groupStopped = true
+        return false
+      }
+      facts.groupError = { code: error.code, message: error.message }
+      return null
+    }
+  }
+  const kill = (signal) => {
+    if (groupAlive() === false) return
+    try {
+      groupKill(child.pid, signal)
+      facts.stops.push({ signal, sent: true })
     } catch (error) {
       facts.errors.push({ signal, code: error.code, message: error.message })
     }
   }
   const stop = (reason) => {
-    if (facts.closed || facts.timedOut || facts.cancelled) return
+    if (facts.timedOut || facts.cancelled) return
     if (reason === 'deadline') facts.timedOut = true
     else facts.cancelled = reason
     kill('SIGTERM')
@@ -57,7 +85,13 @@ export async function joinMeasurementChild(
   parent.on('SIGTERM', terminate)
   parent.on('SIGINT', interrupt)
   try {
-    return await closed
+    await closed
+    if (groupAlive() !== false) {
+      stop('descendants-after-close')
+      await until(() => groupAlive() === false, graceMs * 2, 25)
+    }
+    facts.groupStopped = groupAlive() === false
+    return facts
   } finally {
     clearTimeout(deadline)
     clearTimeout(escalation)

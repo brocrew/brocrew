@@ -454,6 +454,7 @@ export async function packagedCopyComparisons(input, { launch = spawn, ...lifeti
     [fileURLToPath(import.meta.url), '--embedded-copy-comparison', JSON.stringify(input)],
     {
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   )
@@ -473,7 +474,8 @@ export async function packagedCopyComparisons(input, { launch = spawn, ...lifeti
   Object.assign(result, {
     child: { pid: child.pid, ...ended, launchError, output },
   })
-  if (ended.timedOut || ended.cancelled || ended.code !== 0 || launchError) result.success = false
+  if (!ended.groupStopped || ended.timedOut || ended.cancelled || ended.code !== 0 || launchError)
+    result.success = false
   writeFileSync(input.output, `${JSON.stringify(result, null, 2)}\n`)
   return result
 }
