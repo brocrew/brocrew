@@ -87,6 +87,12 @@ describe('what counts as the provider working (123)', () => {
     expect(isProviderWork(asEvent('assistant_message'))).toBe(true)
   })
 
+  it('summary facts do not open or prolong a model turn', () => {
+    expect(isProviderWork(asEvent('turn_summary'))).toBe(false)
+    expect(isProviderWork(asEvent('command_summary'))).toBe(false)
+    expect(isProviderWork(asEvent('assistant_message'))).toBe(true)
+  })
+
   it("⛔ a sub-agent's output is not the main agent working (D-040)", () => {
     const parented = { parentToolCallId: 'toolu_agent' }
     for (const type of ['tool_call', 'tool_result', 'assistant_message']) {
@@ -110,6 +116,6 @@ describe('what counts as the provider working (123)', () => {
       types.length,
       'a runtime event type was added or removed — classify it in `provider-work.ts` and update ' +
         'this count, rather than letting it default to "not the provider working"',
-    ).toBe(30)
+    ).toBe(32)
   })
 })

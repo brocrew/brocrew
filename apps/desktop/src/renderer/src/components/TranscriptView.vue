@@ -46,6 +46,7 @@ import ToolEntry from './ToolEntry.vue'
 import OutgoingEntry from './OutgoingEntry.vue'
 import ToolRun from './ToolRun.vue'
 import UnknownEntry from './UnknownEntry.vue'
+import SummaryEntry from './SummaryEntry.vue'
 import UserInputCard from './UserInputCard.vue'
 import UserMessage from './UserMessage.vue'
 import QueuedMessage from './QueuedMessage.vue'
@@ -53,9 +54,7 @@ import { filesOnScreen } from '../lib/files-kept'
 import type { KeptFile } from '../../../shared/runtime-ipc'
 import type { PathsHere } from '../composables/useMessagePaths'
 
-/**
- * Render folded transcript items by kind, using the workspace's Debug setting for visibility.
- */
+/** Render folded items using the workspace's Debug setting for visibility. */
 const props = withDefaults(
   defineProps<{
     queuedDisclosures?:
@@ -1032,11 +1031,7 @@ defineExpose({ focusItem })
           :can-open-store="props.canOpenStore"
           @open-instructions="$emit('openInstructions')"
         />
-        <!-- ⛔ **What the agent said it READ** (319 §1) — the other half of the row above, and the one
-           friction log F5 actually asked for. Both modes, for its neighbour's reason: a row only a
-           debug toggle reveals is a row the person who filed F5 would still not see. ⚠️ No
-           `can-open-store` and no events: nothing in this row is clickable, because every path in it
-           was written by the model and this app does not resolve one. -->
+        <!-- Keep recalled-memory facts visible without making model-supplied paths clickable. -->
         <MemoryRecallEntry v-else-if="row.item.kind === 'memoryRecall'" :item="row.item" />
         <!-- ⛔ **How the conversation OPENED** (332) — the third memory row, and the only one that is
            about a moment before the first turn. Both modes, for its two neighbours' reason. ⚠️ It
@@ -1047,6 +1042,10 @@ defineExpose({ focusItem })
           :item="row.item"
           :can-open-store="props.canOpenStore"
           @open-instructions="$emit('openInstructions')"
+        />
+        <SummaryEntry
+          v-else-if="row.item.kind === 'turnSummary' || row.item.kind === 'commandSummary'"
+          :item="row.item"
         />
         <UnknownEntry v-else :item="row.item" />
       </div>

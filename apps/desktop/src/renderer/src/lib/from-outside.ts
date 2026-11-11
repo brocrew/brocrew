@@ -61,6 +61,8 @@ export const WHOSE_WORDS = {
   permission: 'this-conversation',
   userInput: 'this-conversation',
   memoryRecall: 'this-conversation',
+  turnSummary: 'this-conversation',
+  commandSummary: 'this-conversation',
   continuation: 'the-app',
   appNotice: 'the-app',
   notice: 'the-app',

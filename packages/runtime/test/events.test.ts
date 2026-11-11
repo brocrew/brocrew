@@ -23,6 +23,13 @@ const validEvents: Record<RuntimeEvent['type'], RuntimeEvent> = {
     source: 'conversation_reset',
   },
   turn: { type: 'turn', state: 'completed', turnId: 't1' },
+  turn_summary: {
+    type: 'turn_summary',
+    status: 'completed',
+    detail: 'Checked the change',
+    needsAction: '',
+  },
+  command_summary: { type: 'command_summary', description: 'Checking the change' },
   provider_turn: { type: 'provider_turn' },
   provider_usage: {
     type: 'provider_usage',
@@ -296,7 +303,7 @@ describe('runtimeEventSchema', () => {
     expect(new Set(Object.keys(validEvents))).toEqual(new Set(RUNTIME_EVENT_TYPES))
     // ⚑ 28 → 29: `provider_usage`, a reading the host keeps for the Providers screen and never records.
     // 30 since F080 added `provider_turn`: a turn the provider started by itself.
-    expect(RUNTIME_EVENT_TYPES).toHaveLength(30)
+    expect(RUNTIME_EVENT_TYPES).toHaveLength(32)
   })
 
   it('the 027 additions are ADDITIVE — every pre-027 event still parses unchanged', () => {

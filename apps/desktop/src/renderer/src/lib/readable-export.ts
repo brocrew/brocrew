@@ -13,6 +13,7 @@ import type { HistoryWindow } from '../../../shared/runtime-ipc'
 import { toldClause, type TranscriptItem } from './transcript'
 // ⚑ **The ONE public fold** — see `readWholeConversation`. ⛔ Not a second reader of the ledger.
 import { foldWindow } from './transcript-window'
+import { turnSummaryLine } from './summary-line'
 
 /**
  * Compose a readable conversation export from the UI's own fold.
@@ -438,6 +439,10 @@ function readableItem(item: TranscriptItem, options: ReadableOptions): string | 
     // ⛔ **An UNRECOGNISED payload stays loud and a recognised one does not** — which is
     // `transcript-mode.ts`' own split, and `a surprise swallowed is the whole point of that
     // variant`. ⚠️ The raw payload rides the tool option, because that is what it is for.
+    case 'turnSummary':
+      return block('Turn summary', item.at, turnSummaryLine(item))
+    case 'commandSummary':
+      return block('Command summary', item.at, item.description)
     case 'unknown':
       return item.category !== 'unrecognized' && !options.toolActivity
         ? null

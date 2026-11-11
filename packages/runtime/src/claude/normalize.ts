@@ -23,6 +23,7 @@ import { backgroundOutcome, MAX_BACKGROUND_WORK } from '../background-work'
 import { boundCommands, type ProviderCommand } from '../provider-commands'
 import { CLAUDE_COMMAND_PREFIX } from './command-prefix'
 import { FileEdits } from './file-edits'
+import { summaryEvents } from './summary-events'
 import { ClaudeMemoryStore } from './memory-store'
 import { SubAgentTasks } from './sub-agent-tasks'
 import { ToolAnswers } from '../tool-answer'
@@ -332,6 +333,8 @@ export function normalizeMessage(
     // Session start (`system/init`) and turn end (`result`) are lifecycle — the
     // handle handles them via the helpers below, not as content here.
     case 'system': {
+      const summary = summaryEvents(message)
+      if (summary !== null) return summary
       if (message.subtype === 'init') {
         // ⛔ **The level is per-process and nothing is emitted at startup** (247), so an `init` is
         // the SDK's own reset condition: *"consumers must reset to the empty set whenever the

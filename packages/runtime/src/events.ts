@@ -2002,11 +2002,24 @@ const memoryRecallSchema = z.object({
   source: z.string().max(120),
 })
 
+const turnSummarySchema = z.object({
+  type: z.literal('turn_summary'),
+  status: z.string().optional(),
+  detail: z.string(),
+  needsAction: z.string(),
+})
+const commandSummarySchema = z.object({
+  type: z.literal('command_summary'),
+  description: z.string(),
+})
+
 /** The full discriminated union of runtime events. */
 export const runtimeEventSchema = z.discriminatedUnion('type', [
   sessionEventSchema,
   conversationResetEventSchema,
   turnEventSchema,
+  turnSummarySchema,
+  commandSummarySchema,
   providerTurnSchema,
   assistantDeltaSchema,
   assistantMessageSchema,
@@ -2074,6 +2087,8 @@ export const RUNTIME_EVENT_TYPES = [
   'session',
   'conversation_reset',
   'turn',
+  'turn_summary',
+  'command_summary',
   'provider_turn',
   'assistant_delta',
   'assistant_message',
