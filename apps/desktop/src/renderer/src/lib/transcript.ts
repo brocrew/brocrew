@@ -2522,20 +2522,13 @@ function reclaimChildRows(state: TranscriptState, card: SubAgentCard): void {
     delete state.toolItems[item.callId]
     // It stops being a row and becomes a dispatch point (035): same id, different kind of home.
     state.cardTools[item.callId] = card.agentId
-    // ⛔ **Everything the row had, not only what it was born with** (248, found reviewing this diff).
-    //
-    // This literal REBUILDS the row rather than moving it, so any field the row acquired after its
-    // `tool_call` is dropped on the floor — silently, in the one path that exists BECAUSE the card
-    // arrived late, which is exactly when a row has had time to acquire something.
-    //
-    // ⚠️ **`unfinished` was already being lost, since 074**, and nothing noticed: a child's call
-    // swept by a session boundary and then reclaimed came back reading *"running…"* about a dead
-    // process. `background` would have joined it — the detachment fact, gone from the one row a
-    // reader would go looking for it on.
+    // A late card reclaims the complete row, including facts acquired after tool_call.
+    // In particular, losing unfinished/background would make a stopped child call look live.
     card.body.unshift({
       kind: 'tool',
       callId: item.callId,
       name: item.name,
+      ...(item.displayName === undefined ? {} : { displayName: item.displayName }),
       summary: item.summary,
       ...(item.result ? { result: { summary: item.result.summary, ok: item.result.ok } } : {}),
       ...(item.unfinished === true ? { unfinished: true } : {}),
@@ -3244,6 +3237,7 @@ function foldEvent(
           kind: 'tool',
           callId: event.id,
           name: event.name,
+          ...(event.displayName === undefined ? {} : { displayName: event.displayName }),
           summary: event.summary,
         })
         owner.lastTool = event.name
@@ -3257,8 +3251,7 @@ function foldEvent(
         return
       }
       closeStreaming(state)
-      // A running tool IS the activity — derived from the neutral event both providers already
-      // produce, rather than each adapter emitting a duplicate `activity` beside every call.
+      // Derive activity from the call instead of emitting a duplicate event per adapter.
       state.activity = { phase: 'tool', detail: event.name }
       const id = nextId(state, 'tool')
       state.items.push({
@@ -3266,6 +3259,7 @@ function foldEvent(
         id,
         callId: event.id,
         name: event.name,
+        ...(event.displayName === undefined ? {} : { displayName: event.displayName }),
         summary: event.summary,
         result: null,
         // ⚑ **The one thing that makes a memory write legible as one** (330). Spread rather than

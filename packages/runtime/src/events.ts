@@ -321,17 +321,11 @@ const toolCallSchema = z.object({
   /** Claude tool_use id / Codex itemId — correlates to `tool_result`. */
   id: z.string(),
   name: z.string(),
+  /** Presentation only; absent on older calls, whose recorded name remains the label. */
+  displayName: z.string().optional(),
   summary: z.string(),
-  /**
-   * The DISPATCH tool-use id of the sub-agent that made this call, when it was not the main agent
-   * (029). Claude's SDK forwards a sub-agent's `tool_use`/`tool_result` blocks into the parent
-   * stream **by default** — `forwardSubagentText` only adds its prose on top — with
-   * `parent_tool_use_id` naming the dispatch. Nothing read that field before 029, so a sub-agent's
-   * `Bash` rendered in the parent conversation as if the parent had run it: not a missing feature
-   * but a misattribution, and one the user had no way to notice.
-   *
-   * Absent means the main agent did it, which is the overwhelmingly common case.
-   */
+  /** The sub-agent's dispatch tool-use id; absent for the main agent. Forwarded child calls
+   * must stay on their own card instead of appearing as the parent's work. */
   parentToolCallId: z.string().optional(),
   /**
    * The id this provider accepts to list or stop the work this call started (247) — Codex states a

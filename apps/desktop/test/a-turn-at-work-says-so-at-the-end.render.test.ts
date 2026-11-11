@@ -1,13 +1,19 @@
+import { normalizeNotification } from '../../../packages/runtime/src/codex/normalize'
+import { normalizeMessage } from '../../../packages/runtime/src/claude/normalize'
+import { runtimeEventSchema } from '../../../packages/runtime/src/events'
+import { CODEX_TOOL_NAMING } from '../../../packages/runtime/src/codex/tool-naming'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
+import TranscriptView from '../src/renderer/src/components/TranscriptView.vue'
+import { carryForward, foldWindow } from '../src/renderer/src/lib/transcript-window'
 import ConversationPane from '../src/renderer/src/components/ConversationPane.vue'
 import { createSessionRecord, type SessionRecord } from '../src/renderer/src/lib/session-record'
 import { applyEvent } from '../src/renderer/src/lib/transcript'
 import { createAttachmentBook, draftKey } from '../src/renderer/src/lib/drafts'
-import { plainToolName, workingLine } from '../src/renderer/src/lib/working-line'
-import type { CreatedSession } from '../src/shared/runtime-ipc'
+import { workingLine } from '../src/renderer/src/lib/working-line'
+import type { CreatedSession, RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * While a turn runs, whatever started it, the end of the conversation says so: a quiet "working…",
@@ -105,8 +111,22 @@ const aNote = {
   relayedFromProfile: 'brobot',
 } as TranscriptEvent
 const aPersonsWords = { type: 'user_turn', text: 'the button is disabled' } as TranscriptEvent
-const call = (id: string, name: string): TranscriptEvent =>
-  ({ type: 'tool_call', id, name, summary: '{}' }) as TranscriptEvent
+const inventory = (prefix: string, separator: string): TranscriptEvent =>
+  ({
+    type: 'tool_inventory',
+    naming: { prefix, separator },
+    declared: null,
+    published: null,
+    source: 'init',
+  }) as TranscriptEvent
+const call = (id: string, name: string, displayName?: string): TranscriptEvent =>
+  runtimeEventSchema.parse({
+    type: 'tool_call',
+    id,
+    name,
+    summary: '{}',
+    ...(displayName === undefined ? {} : { displayName }),
+  })
 const result = (id: string): TranscriptEvent =>
   ({ type: 'tool_result', id, summary: 'done', ok: true }) as TranscriptEvent
 
@@ -126,8 +146,88 @@ describe('a turn at work says so at the end of the conversation', () => {
   })
 
   it('⚑ a turn a person’s words started, running a server’s tool: by its own name', async () => {
-    expect(line(await pane([aPersonsWords, WORKING, call('c1', 'mcp__brobot__give_work')]))).toBe(
-      'working… running give_work',
+    const events = [
+      inventory('mcp__', '__'),
+      aPersonsWords,
+      WORKING,
+      call('c1', 'mcp__brobot__give_work', 'give_work'),
+    ]
+    expect(line(await pane(events))).toBe('working… running give_work')
+  })
+
+  it.each([
+    ['wire:fictional/star/map', 'star/map'],
+    ['wire:unknown/not_declared', 'not_declared'],
+    ['mcp__old__tool', undefined],
+    ['wire:/tool', undefined],
+    ['wire:fictional/', undefined],
+    ['Bash', undefined],
+  ])('uses only the supplied display fact for %s', async (name, displayName) => {
+    expect(line(await pane([WORKING, call('c1', name, displayName)]))).toBe(
+      `working… running ${displayName ?? name}`,
+    )
+  })
+
+  it.each([
+    [{ type: 'mcpToolCall', server: 'other', tool: 'echo' }, 'echo'],
+    [{ type: 'dynamicToolCall', namespace: 'other', tool: 'echo' }, 'echo'],
+    [{ type: 'dynamicToolCall', namespace: 'mcp', tool: 'other__echo' }, 'other__echo'],
+    [{ type: 'mcpToolCall', server: 'unknown', tool: 'fictional__tail' }, 'fictional__tail'],
+    [{ type: 'dynamicToolCall', tool: 'fictional/tail' }, 'fictional/tail'],
+    [{ type: 'mcpToolCall', tool: 'echo' }, 'mcp'],
+    [{ type: 'mcpToolCall', server: 'other' }, 'mcp'],
+    [{ type: 'dynamicToolCall', namespace: 'other' }, 'tool'],
+  ])('labels the actual normalized Codex %j as %s', async (item, expected) => {
+    const calls = normalizeNotification('item/started', { item: { id: 'c1', ...item } }).map(
+      (event) => runtimeEventSchema.parse(event),
+    )
+    const nativeName = calls.find((event) => event.type === 'tool_call')?.name
+    const events = [
+      inventory(CODEX_TOOL_NAMING.prefix, CODEX_TOOL_NAMING.separator),
+      WORKING,
+      ...calls,
+    ]
+    expect(line(await pane(events))).toBe(`working… running ${expected}`)
+    expect(record(calls).transcript.items.find((entry) => entry.kind === 'tool')?.name).toBe(
+      nativeName,
+    )
+    const retained: RuntimeEventMessage[] = events.map((event, ordinal) => ({
+      sessionId: 'sess_1',
+      ordinal: ordinal + 900,
+      at: AT + ordinal,
+      event,
+    }))
+    const rebuilt = foldWindow(retained, null, carryForward(record(events).transcript, retained))
+    expect(workingLine(true, rebuilt.items)).toEqual({ tool: expected })
+    const markup = await renderToString(
+      createSSRApp({
+        render: () => h(TranscriptView as never, { items: rebuilt.items, turnRunning: true }),
+      }),
+    )
+    expect(line(markup)).toBe(`working… running ${expected}`)
+  })
+
+  it.each([
+    ['mcp__unknown__fictional__tail', 'fictional__tail'],
+    ['mcp__', 'mcp__'],
+    ['mcp____tool', 'mcp____tool'],
+    ['mcp__server__', 'mcp__server__'],
+    ['Bash', 'Bash'],
+  ])('labels the actual normalized Claude call %s as %s', async (name, expected) => {
+    const message = {
+      type: 'assistant',
+      message: { role: 'assistant', content: [{ type: 'tool_use', id: 'c1', name, input: {} }] },
+    }
+    const calls = normalizeMessage(message as Parameters<typeof normalizeMessage>[0]).map((event) =>
+      runtimeEventSchema.parse(event),
+    )
+    expect(line(await pane([WORKING, ...calls]))).toBe(`working… running ${expected}`)
+    expect(record(calls).transcript.items.find((entry) => entry.kind === 'tool')?.name).toBe(name)
+  })
+
+  it('keeps a historical name without a per-call fact even when inventory is present', async () => {
+    expect(line(await pane([inventory('', '__'), WORKING, call('c1', 'mcp__old__tool')]))).toBe(
+      'working… running mcp__old__tool',
     )
   })
 
@@ -173,8 +273,9 @@ describe('the rule, alone', () => {
   it('⚑ a tool its turn left unfinished is not running', () => {
     expect(workingLine(true, [])).toEqual({ tool: null })
     expect(workingLine(false, [])).toBeNull()
-    expect(plainToolName('Bash')).toBe('Bash')
-    expect(plainToolName('mcp__a_server__a_tool')).toBe('a_tool')
-    expect(plainToolName('mcp__')).toBe('mcp__')
+    const state = record([WORKING, call('c1', 'Bash')]).transcript
+    const tool = state.items.find((item) => item.kind === 'tool')!
+    tool.unfinished = true
+    expect(workingLine(true, state.items)).toEqual({ tool: null })
   })
 })

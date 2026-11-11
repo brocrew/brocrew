@@ -8,7 +8,7 @@ export interface WorkingLine {
 /**
  * The line at the end of a conversation for as long as a turn runs, whatever started it — or `null`
  * when the end already shows the turn at work: the model's thinking or its reply, still arriving.
- * It names the tool the turn is waiting on, if any, by the name its row shows.
+ * Uses the adapter's display name when supplied, otherwise the recorded name.
  */
 export function workingLine(
   turnRunning: boolean,
@@ -20,15 +20,10 @@ export function workingLine(
   for (let at = shown.length - 1; at >= 0; at--) {
     const item = shown[at]
     if (item?.kind !== 'tool') continue
-    if (item.result === null && item.unfinished !== true) return { tool: plainToolName(item.name) }
+    if (item.result === null && item.unfinished !== true) {
+      return { tool: item.displayName ?? item.name }
+    }
     break
   }
   return { tool: null }
-}
-
-/** A server's tool (`mcp__server__tool`) by its own name; any other tool as it is called. */
-export function plainToolName(name: string): string {
-  if (!name.startsWith('mcp__')) return name
-  const at = name.lastIndexOf('__')
-  return at > 'mcp_'.length ? name.slice(at + 2) : name
 }

@@ -1,3 +1,5 @@
+import { splitQualified } from '@brobot2/shared/tool-naming'
+import { CLAUDE_TOOL_NAMING } from './tool-naming'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import type {
   SystemSubtype,
@@ -130,21 +132,19 @@ export function normalizeMessage(
             flushText() // the text that PRECEDED this tool lands before it
             const name = typeof block['name'] === 'string' ? block['name'] : 'tool'
             receipts?.called(block['id'], name, message.parent_tool_use_id)
-            // ⚑ **What this call reaches inside the profile's own memory store** (330) — the
-            // answer to *"codex shows the memory reads and writes to the conversation. claude
-            // doesn't."* ⛔ It is derived from a DECLARED path field and from the directory the
-            // provider itself named, never from a command string; see {@link ClaudeMemoryStore}.
+            // A declared path and provider-named directory identify memory writes (ClaudeMemoryStore).
             const memoryPath = memory.target(block['input'])
+            const displayName = splitQualified(CLAUDE_TOOL_NAMING, name)?.tool
             events.push({
               type: 'tool_call',
               id: block['id'],
               name,
+              ...(displayName === undefined ? {} : { displayName }),
               summary: summarizeToolInput(name, block['input']),
               ...(memoryPath === null ? {} : { memoryPath }),
               ...(parent ? { parentToolCallId: parent } : {}),
             })
-            // 096: remember a file edit's path. Nothing is emitted here — a call is a request, and
-            // the change is only claimed when its result comes back ok. See {@link FileEdits}.
+            // FileEdits claims a change only after its result succeeds, not at the request.
             edits.called(block['id'], name, block['input'])
           }
         }

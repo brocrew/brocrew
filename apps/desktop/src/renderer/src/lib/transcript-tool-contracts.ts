@@ -31,6 +31,7 @@ export interface ToolItem {
   /** The provider's tool-use id — the correlation between a call and its result. */
   callId: string
   name: string
+  displayName?: string
   summary: string
   /**
    * `at` on the result is when the RESULT landed, and the only reason it is kept: how long a tool
@@ -561,6 +562,7 @@ export interface SubAgentToolRow {
   kind: 'tool'
   callId: string
   name: string
+  displayName?: string
   summary: string
   result?: { summary: string; ok: boolean }
   /** As {@link ToolItem.unfinished}, for the child's own rows. */

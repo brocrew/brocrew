@@ -1947,9 +1947,8 @@ onUnmounted(() => {
              as the composable's reason to exist.
              ⚑ **`SessionDrawer` keys `EventStream` for exactly this** (292 §4, from 288 M2) and the
              composer below is keyed for the IME version of the same class. `stuck` is a closure
-             local with one writer and no setter, so a rebuild is the only reset there is — and
-             "what has to be forgotten" is the offset AND the follow, which is the list `SessionDrawer`
-             says grows one short if you write it out. -->
+             local with one writer and no setter, so a rebuild is the only reset. The offset AND
+             the follow must be forgotten; `SessionDrawer` says why listing just one falls short. -->
         <TranscriptView
           :key="props.record.sessionId"
           ref="view"

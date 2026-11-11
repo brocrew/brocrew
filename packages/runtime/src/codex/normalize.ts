@@ -1281,44 +1281,15 @@ const TOOL_ITEM_NAMES = new Map<string, string>([
 ])
 
 /**
- * 🔴 **The name of the tool that was actually called** (327) — `mcp__<server>__<tool>`, not `mcp`.
- *
- * ⛔ **This is the PROVIDER's own qualified name, not a shape borrowed from Claude.** Read out of a
- * real 0.146.0 child's first Responses request, the app-server declares the fixture's tool as
- *
- * ```json
- * "mcp__brobot_316_wire__echo_probe": { "name": "echo_probe", "namespace": "mcp__brobot_316_wire" }
- * ```
- *
- * and its own `exec` instructions tell the model *"Tool names are exposed as normalized JavaScript
- * identifiers, for example `await tools.mcp__ologs__get_profile(...)`"*. So the double-underscore
- * form is what Codex calls this tool when it talks to the model. ⚑ **That it is byte-identical in
- * shape to the name Claude puts on the same gesture is the point of `327` §2.4** — one vocabulary
- * for one thing, arrived at by measuring both providers rather than by picking a favourite.
- *
- * ⚠️ **Both halves, or neither.** `server` and `tool` are non-null in the generated `ThreadItem`, so
- * a missing one is a malformed item; `mcp__<tool>` would read as a server called `<tool>`, which is
- * a claim about where the call went rather than a gap in one. A malformed item keeps exactly the
- * `mcp` it had before this dispatch, and its arguments still ride on the summary.
+ * The provider's qualified name: MCP uses `mcp__server__tool`, dynamic calls `namespace__tool`.
+ * A real 0.146.0 Responses request declared
+ * `mcp__brobot_316_wire__echo_probe: {name: "echo_probe", namespace: "mcp__brobot_316_wire"}`;
+ * its exec instructions use the same spelling. Keep both server and tool, or the old `mcp`
+ * label for a malformed item: a missing half must not become a claim about another server.
  */
 function toolItemName(type: string, item: Record<string, unknown>): string {
-  // 🔴 **`327`'s defect, on the item type `348` introduced** (348). A `dynamicToolCall` used to take
-  // the constant `'tool'` from the Map below, so all five of this app's own tools — spawn, message,
-  // end, list, status — would have appeared in a Codex transcript as five rows saying `tool`.
-  //
-  // ⛔ **This is Codex's OWN spelling, read off the wire, exactly as the `mcp__` branch below is.**
-  // A namespaced dynamic tool is declared to the model as `<namespace>__<tool>` under a `## brobot`
-  // heading — `probe:codex-dynamic-tools`, arm A, from the child's own `exec` instructions:
-  //
-  // ```ts
-  // declare const tools: { brobot__spawn_agent(args: { … }): Promise<unknown>; };
-  // ```
-  //
-  // ⚠️ **It is deliberately NOT `mcp__brobot__spawn_agent`, which is what Claude calls the same
-  // gesture.** `327` §2.4's rule is one vocabulary for one thing, arrived at *by measuring both
-  // providers rather than by picking a favourite* — and the thing measured there was each
-  // provider's own qualified name. Codex does not call this MCP, and prefixing it as though it did
-  // would be a claim about where the call went.
+  // Dynamic tools use their declared namespace, without the MCP prefix. The captured
+  // probe:codex-dynamic-tools arm A declared `brobot__spawn_agent` under `## brobot`.
   if (type === 'dynamicToolCall') {
     const tool = readString(item, 'tool')
     if (tool) {
@@ -1685,8 +1656,23 @@ function itemToEvents(item: unknown, phase: 'started' | 'completed'): RuntimeEve
   const name = toolItemName(type, item)
   const summary = itemSummary(type, item)
   const backgroundId = commandProcessId(type, item)
-  if (phase === 'started')
-    return [{ type: 'tool_call', id, name, summary, ...(backgroundId ? { backgroundId } : {}) }]
+  if (phase === 'started') {
+    const tool = readString(item, 'tool')
+    const displayName =
+      type === 'dynamicToolCall' || (type === 'mcpToolCall' && readString(item, 'server'))
+        ? truncate(tool)
+        : ''
+    return [
+      {
+        type: 'tool_call',
+        id,
+        name,
+        summary,
+        ...(displayName ? { displayName } : {}),
+        ...(backgroundId ? { backgroundId } : {}),
+      },
+    ]
+  }
   // Affirmative-only (062): the reason travels with the result so a fail-closed card explains
   // itself instead of just looking failed.
   const outcome = toolOutcome(type, item)
