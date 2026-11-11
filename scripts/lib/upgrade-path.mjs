@@ -195,7 +195,7 @@ export function startOrder(
     `Exactly one READY line is required; found ${String(ready.length)}.`,
   )
   requireEvidence(
-    completion === 'before-ready' || completion === 'background',
+    ['before-ready', 'background', 'functional-background'].includes(completion),
     'The completion branch must be explicit.',
   )
   requireEvidence(
@@ -206,21 +206,30 @@ export function startOrder(
   )
   if (checkpoint && completion === 'before-ready')
     requireEvidence(copies[0] < ready[0], 'The checked-copy line must come before READY.')
-  if (checkpoint && completion === 'background') requireResponsiveBeforeCompletion(observation)
+  const backgroundObservation =
+    checkpoint && completion !== 'before-ready'
+      ? requireResponsiveBeforeCompletion(observation, completion === 'functional-background')
+      : null
 
-  return { ready: ready[0], checkedCopy: copies[0] ?? null }
+  return {
+    ready: ready[0],
+    checkedCopy: copies[0] ?? null,
+    ...(backgroundObservation ? { backgroundObservation } : {}),
+  }
 }
 
-function requireResponsiveBeforeCompletion(observed) {
+function requireResponsiveBeforeCompletion(observed, allowComplete = false) {
   const { launched, responsive, absent, completed, manifestAbsent } = observed ?? {}
   requireEvidence(
     [launched, responsive, absent, completed].every(Number.isFinite) &&
       launched <= responsive &&
       responsive <= absent &&
-      absent < completed &&
-      manifestAbsent === true,
-    'Responsive ordinary DOM must precede observed manifest absence and actual completion.',
+      absent <= completed &&
+      ((manifestAbsent === true && absent < completed) ||
+        (allowComplete && manifestAbsent === false)),
+    'Responsive ordinary DOM needs ordered copy observations; overlap requires absence before completion.',
   )
+  return manifestAbsent ? 'witnessed-overlap' : 'already-complete-no-overlap-credit'
 }
 
 export function makeEarlierMigrationFixture(db, journal, sqlOf) {
@@ -1158,7 +1167,10 @@ async function collectRecoveryProofCases({ result, cases, phase, closed, check, 
       outcome.completed = true
     })
     if (name === 'compatible')
-      check(Boolean(result.compatible.order), 'Window-before-completion was not observed.')
+      check(
+        Boolean(result.compatible.order),
+        'Ordinary DOM and valid copy completion were not verified.',
+      )
     if (name === 'compatible019')
       check(result.compatible.actual019ThenCandidate === true, 'Compatible binary reads failed.')
     if (name === 'syntheticFuture')

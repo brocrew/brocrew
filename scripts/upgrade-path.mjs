@@ -1986,7 +1986,7 @@ async function recoveryProofCases({
         )
         result.compatible.order = startOrder(readFileSync(running.log, 'utf8'), {
           checkpoint: true,
-          completion: 'background',
+          completion: 'functional-background',
           observation: observed,
         })
         await quit('proof candidate completed')

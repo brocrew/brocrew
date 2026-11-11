@@ -9,6 +9,8 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { runInNewContext } from 'node:vm'
+import { transformWithEsbuild } from 'vite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import * as launchModule from '../src/main/launch-presentation'
 import {
@@ -100,6 +102,61 @@ describe('695 §1 · main/index.ts — every door a hidden launch could show its
     )
     expect(create).toMatch(/(^|\s)show:\s*false/)
     expect(create).toMatch(/(^|\s)title:\s*'BroCrew'/)
+  })
+
+  it('shows the ordinary window and returns from ready while captured-copy hashing is still pending', async () => {
+    let release!: () => void
+    const pendingHash = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let hashing = false,
+      published = false,
+      pruned = false,
+      shown = false
+    const recoveryWork = new Set<Promise<unknown>>()
+    const source = `function withRecoveryWork(work) {${bodyAfter('function withRecoveryWork<T>')}}
+      function finishCapturedRecoveryCopies() {${bodyAfter('function finishCapturedRecoveryCopies(): void')}}
+      function ready() {${bodyAfter("window.on('ready-to-show', () =>")}}
+      ready()`
+    const { code } = await transformWithEsbuild(source, 'window-copy-order.ts', { loader: 'ts' })
+    const returned = runInNewContext(code, {
+      presentation: { hidden: false },
+      window: {
+        show: () => {
+          shown = true
+        },
+      },
+      recoveryWork,
+      stoppingRecoveryWork: null,
+      console,
+      capturedRecoveryCopies: [
+        {
+          finish: async () => {
+            hashing = true
+            await pendingHash
+            published = true
+          },
+        },
+      ],
+      letGoOfOldCopies: async () => {
+        pruned = true
+      },
+    })
+    try {
+      expect(shown).toBe(true)
+      expect(returned).toBeUndefined()
+      await Promise.resolve()
+      expect(hashing).toBe(true)
+      expect(published).toBe(false)
+      expect(pruned).toBe(false)
+      expect(recoveryWork.size).toBe(1)
+    } finally {
+      release()
+      await Promise.all([...recoveryWork])
+    }
+    expect(published).toBe(true)
+    expect(pruned).toBe(true)
+    expect(recoveryWork.size).toBe(0)
   })
 
   it('a second launch neither raises a hidden app nor puts a dialog on screen', () => {

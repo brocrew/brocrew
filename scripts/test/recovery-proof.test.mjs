@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { recoveryProofSequence } from '../lib/upgrade-path.mjs'
+import {
+  CHECKPOINT_LINE,
+  READY_LINE,
+  recoveryProofSequence,
+  startOrder,
+} from '../lib/upgrade-path.mjs'
 
 async function collect({
   validCopy = true,
@@ -86,7 +91,7 @@ describe('independent packaged recovery proof cases', () => {
   it('retains a failed ordering result while collecting verified dependent and independent cases', async () => {
     const seen = await collect()
     expect(seen.visited).toEqual(['candidate', '019-data', '019-Restore-Return', 'prefix'])
-    expect(seen.failures).toContain('Window-before-completion was not observed.')
+    expect(seen.failures).toContain('Ordinary DOM and valid copy completion were not verified.')
     expect(seen.exit).toBe(1)
   })
   it('skips dependent cases on invalid copy prerequisites but still attempts the separate prefix', async () => {
@@ -119,5 +124,36 @@ describe('independent packaged recovery proof cases', () => {
   })
   it('allows success only when all original case assertions and shutdown checks passed', async () => {
     expect((await collect({ order: true })).exit).toBe(0)
+  })
+})
+
+describe('small functional copy completion observations', () => {
+  const log = `${READY_LINE}\n${CHECKPOINT_LINE}`
+  const observed = {
+    launched: 10,
+    responsive: 20,
+    absent: 21,
+    completed: 30,
+    manifestAbsent: false,
+  }
+  const functional = (observation) =>
+    startOrder(log, { checkpoint: true, completion: 'functional-background', observation })
+  it('accepts an already completed copy without claiming overlap or changing the strict oracle', () => {
+    expect(functional(observed).backgroundObservation).toBe('already-complete-no-overlap-credit')
+    expect(() =>
+      startOrder(log, { checkpoint: true, completion: 'background', observation: observed }),
+    ).toThrow('Responsive ordinary DOM')
+  })
+  it('credits overlap only with responsive DOM, actual absence and later publication', () => {
+    expect(functional({ ...observed, manifestAbsent: true }).backgroundObservation).toBe(
+      'witnessed-overlap',
+    )
+    for (const change of [
+      { responsive: 31 },
+      { completed: NaN },
+      { manifestAbsent: null },
+      { manifestAbsent: true, completed: 21 },
+    ])
+      expect(() => functional({ ...observed, ...change })).toThrow('Responsive ordinary DOM')
   })
 })
