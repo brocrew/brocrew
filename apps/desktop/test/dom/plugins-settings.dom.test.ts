@@ -33,9 +33,10 @@ it('shows installed and available versions from fictional plugin cards', async (
       installedVersion: '2.4.1',
     },
     { id: 'fictional-moss', name: 'Fictional Moss', installed: false, state: 'Available' },
+    { id: 'fictional-lichen', name: 'Fictional Lichen', installed: true, state: 'Unavailable' },
   ])
   const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1100, height: 720 })
-  await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(3))
+  await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(4))
   expect(m.all('plugin-version').map((line) => line.textContent?.trim())).toEqual([
     'Version 1.2.0 · Update available: 1.3.0',
     'Version 2.4.1',
