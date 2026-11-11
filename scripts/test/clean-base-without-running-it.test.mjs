@@ -36,7 +36,6 @@ import {
   removeFixtures,
 } from './fixtures/a-planted-user-data.mjs'
 
-
 const SCRIPTS = dirname(dirname(fileURLToPath(import.meta.url)))
 const REPO = dirname(SCRIPTS)
 const CLI_SOURCE = readFileSync(join(SCRIPTS, 'clean-base.mjs'), 'utf8')

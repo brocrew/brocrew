@@ -4,7 +4,6 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { identityOf, isAncestor, mayRemove, removeChecked, whereItStands } from './safe-remove.mjs'
 import { defaultUserData } from './user-data.mjs'
 
-
 /** What an entry is for, in the report. */
 export const LEDGER = 'ledger'
 export const WORKSPACE = 'workspace'
