@@ -14,7 +14,7 @@ import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesShe
 import NewAgent from '../../src/renderer/src/components/NewAgent.vue'
 import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
-import { mount, unmountAll } from './harness'
+import { mount, unmountAll, type Mounted } from './harness'
 
 afterEach(() => {
   unmountAll()
@@ -107,6 +107,21 @@ function ancestor(client: ClientApi, component: Component, props: () => Record<s
       return () => h(component, props())
     },
   })
+}
+
+async function mountedCapabilitiesSheet(f: ReturnType<typeof fixture>): Promise<Mounted> {
+  const store = agentStoreForClient(f.client)
+  await store.load()
+  const view = mount(
+    ancestor(f.client, CapabilitiesSheet, () => ({
+      profileSlug: 'worker',
+      runsOn: 'claude',
+      fields: [],
+      store,
+    })),
+    {},
+  )
+  return view
 }
 
 async function change(element: HTMLElement, value: string, event = 'change') {
@@ -206,17 +221,7 @@ it('names the StartAsAgent current/default provider and follows the live default
 it('names the held/default choice and the before/after clear without changing the provider intent', async () => {
   const held: Choice = { provider: 'claude', model: 'held-model', effort: 'high' }
   const f = fixture(undefined, held)
-  const store = agentStoreForClient(f.client)
-  await store.load()
-  const view = mount(
-    ancestor(f.client, CapabilitiesSheet, () => ({
-      profileSlug: 'worker',
-      runsOn: 'claude',
-      fields: [],
-      store,
-    })),
-    {},
-  )
+  const view = await mountedCapabilitiesSheet(f)
   await vi.waitFor(() =>
     expect(view.q('capabilities-provider-will-clear').textContent).toContain('other than Fern'),
   )
@@ -282,17 +287,7 @@ it('refreshes an already cleared choice notice when the selected catalogue answe
         answer = resolve
       }),
   )
-  const store = agentStoreForClient(f.client)
-  await store.load()
-  const view = mount(
-    ancestor(f.client, CapabilitiesSheet, () => ({
-      profileSlug: 'worker',
-      runsOn: 'claude',
-      fields: [],
-      store,
-    })),
-    {},
-  )
+  const view = await mountedCapabilitiesSheet(f)
   await vi.waitFor(() =>
     expect(view.q('capabilities-provider-will-clear').textContent).toContain('the provider'),
   )
