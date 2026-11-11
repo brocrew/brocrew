@@ -10,7 +10,11 @@ import { cleanupLifecycleFixtures, fixture } from './plugin-lifecycle-fixtures'
 import { manifestFor, packageFixture } from './plugin-package-fixtures'
 import { thirdPartyMcpSource } from './fixtures/third-party-mcp-source'
 
-afterEach(cleanupLifecycleFixtures)
+const teardowns: (() => Promise<void>)[] = []
+afterEach(async () => {
+  for (const close of teardowns.splice(0).reverse()) await close()
+  await cleanupLifecycleFixtures()
+})
 
 async function runtimeAt(root: string) {
   const resources = join(root, 'resources')
@@ -69,11 +73,15 @@ it.each([1, 2] as const)(
     )
     let broker: ReturnType<typeof createPluginToolBroker> | undefined
     const children: PluginNodeProcess[] = []
+    teardowns.push(() => f.controller.drain())
     try {
       const host = createPluginNodeHost({
         root: join(f.root, 'node-host'),
         runtime: await runtimeAt(f.parent),
         readyMs: 5000,
+      })
+      teardowns.push(async () => {
+        expect(await host.stop()).toEqual({ exited: true })
       })
       f.opts.runtime.start = async (spec) => {
         const child = await host.start(spec)
