@@ -1,6 +1,6 @@
 import type { TranscriptEvent } from '../../../shared/conversation-events'
 import { splitQualified } from '@brobot2/runtime'
-import { CODEX_TOOL_NAMING, codexToolGrant } from '@brobot2/runtime/codex'
+import { CODEX_TOOL_NAMING } from '@brobot2/runtime/codex'
 import { imageResolver } from './images'
 import { scanRetention } from './retention'
 import { filesOf, memoryNotesOf } from './conversation-files'
@@ -13,25 +13,6 @@ import { nativePath, ownsRecord } from './native-record'
 
 import type { TranscriptPolicy } from '../transcript-policy'
 function eventForDisplay(event: TranscriptEvent): TranscriptEvent {
-  if (event.type === 'permission_request' && event.scope.grants !== undefined) {
-    const grants = { ...event.scope.grants }
-    for (const outcome of ['allow_for_session', 'allow_all_for_session', 'allow_always'] as const) {
-      const rules = grants[outcome]
-      if (rules === undefined) continue
-      grants[outcome] = rules.map((rule) =>
-        rule.kind === 'tool' &&
-        rule.content === undefined &&
-        rule.listedAs === undefined &&
-        typeof rule.server === 'string' &&
-        rule.server !== '' &&
-        typeof rule.tool === 'string' &&
-        rule.tool !== ''
-          ? { ...rule, listedAs: codexToolGrant(rule.server, rule.tool).listedAs }
-          : rule,
-      )
-    }
-    return { ...event, scope: { ...event.scope, grants } }
-  }
   if (
     event.type !== 'unknown' ||
     event.provider !== 'codex' ||

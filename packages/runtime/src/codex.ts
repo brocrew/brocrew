@@ -1,5 +1,3 @@
-export { codexToolGrant } from './codex/external-mcp'
-
 export { GENERATED_IMAGES_DIRNAME } from './codex/generated-image'
 
 export { CODEX_CAPABILITIES } from './codex/capabilities'
