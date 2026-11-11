@@ -102,39 +102,68 @@ describe('provider-owned inventory connection facts', () => {
   })
 })
 
-
 it.each([
   ['claude', 'connected', undefined, 'connected', 'ok', true],
   ['claude', 'needs-auth', undefined, 'needs sign-in', 'bad', false],
   ['claude', 'future-word', undefined, 'future-word', 'unknown', false],
   ['claude', 'connected', 'disabled', 'disabled', 'off', false],
   ['codex', 'connected', undefined, 'connected', 'unknown', false],
-] as const)('projects the real %s prior-page seed (%s/%s) before folding', async (provider, status, connectionKind, label, tone, connected) => {
-  await withHistoryPage(provider, { ...inventory(), published: { tools: [], servers: [
-    { name: 'crew', status, ...(connectionKind === undefined ? {} : { connectionKind }) },
-  ] } }, (page) => {
-    expect(page.from).toBe(2)
-    expect(page.entries.map((row) => row.ordinal)).toEqual([2, 3])
-    expect(page.entries.every(({event}) => event.type !== 'tool_inventory')).toBe(true)
-    expect(page.toolsInForce).toMatchObject({ ordinal: 0, at: 1000 })
-    const state = foldWindow(page.entries.map((row) => ({ ...row, sessionId: 's' })), null, null, page.toolsInForce)
-    expect(state.tools.at).toBe(1000)
-    const own = readInventory(state.tools).own!
-    expect(statusWord(own.status ?? '', own.connectionKind)).toEqual({ label, tone, connected })
-  })
-})
+] as const)(
+  'projects the real %s prior-page seed (%s/%s) before folding',
+  async (provider, status, connectionKind, label, tone, connected) => {
+    await withHistoryPage(
+      provider,
+      {
+        ...inventory(),
+        published: {
+          tools: [],
+          servers: [
+            { name: 'crew', status, ...(connectionKind === undefined ? {} : { connectionKind }) },
+          ],
+        },
+      },
+      (page) => {
+        expect(page.from).toBe(2)
+        expect(page.entries.map((row) => row.ordinal)).toEqual([2, 3])
+        expect(page.entries.every(({ event }) => event.type !== 'tool_inventory')).toBe(true)
+        expect(page.toolsInForce).toMatchObject({ ordinal: 0, at: 1000 })
+        const state = foldWindow(
+          page.entries.map((row) => ({ ...row, sessionId: 's' })),
+          null,
+          null,
+          page.toolsInForce,
+        )
+        expect(state.tools.at).toBe(1000)
+        const own = readInventory(state.tools).own!
+        expect(statusWord(own.status ?? '', own.connectionKind)).toEqual({ label, tone, connected })
+      },
+    )
+  },
+)
 
-it.each([undefined, null, { tools: [], servers: [] }])('preserves absent/null/empty prior-page inventories: %j', async (published) => {
-  const event = published === undefined ? undefined : { ...inventory(), published }
-  await withHistoryPage('claude', event, (page) => {
-    if (event === undefined) expect(page).not.toHaveProperty('toolsInForce')
-    else expect(page.toolsInForce?.event).toEqual(event)
-    const state = foldWindow(page.entries.map((row) => ({ ...row, sessionId: 's' })), null, null, page.toolsInForce)
-    expect(state.tools.set?.published).toEqual(published)
-  })
-})
+it.each([undefined, null, { tools: [], servers: [] }])(
+  'preserves absent/null/empty prior-page inventories: %j',
+  async (published) => {
+    const event = published === undefined ? undefined : { ...inventory(), published }
+    await withHistoryPage('claude', event, (page) => {
+      if (event === undefined) expect(page).not.toHaveProperty('toolsInForce')
+      else expect(page.toolsInForce?.event).toEqual(event)
+      const state = foldWindow(
+        page.entries.map((row) => ({ ...row, sessionId: 's' })),
+        null,
+        null,
+        page.toolsInForce,
+      )
+      expect(state.tools.set?.published).toEqual(published)
+    })
+  },
+)
 
-async function withHistoryPage(provider: Provider, event: ToolInventoryEvent | undefined, check: (page: ReturnType<RuntimeHost['earlierHistory']>) => void): Promise<void> {
+async function withHistoryPage(
+  provider: Provider,
+  event: ToolInventoryEvent | undefined,
+  check: (page: ReturnType<RuntimeHost['earlierHistory']>) => void,
+): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), 'fictional-inventory-page-'))
   const db = openDatabase(join(directory, 'fictional.sqlite'))
   let host: RuntimeHost | undefined
@@ -147,13 +176,24 @@ async function withHistoryPage(provider: Provider, event: ToolInventoryEvent | u
     store.append('s', 2, { type: 'user_turn', text: 'This page' }, 1002)
     store.append('s', 3, { type: 'assistant_message', text: 'Answer' }, 1003)
     host = new RuntimeHost({
-      store, ...neutralHostDeps(() => directory), createRuntime: () => new FakeRuntime(provider),
-      resolveCwd: () => directory, prepareProviderHome: () => directory, providerHomePath: () => directory,
-      newSessionId: () => 'fictional-new', readProviderConfig: fixtureProviderConfig,
+      store,
+      ...neutralHostDeps(() => directory),
+      createRuntime: () => new FakeRuntime(provider),
+      resolveCwd: () => directory,
+      prepareProviderHome: () => directory,
+      providerHomePath: () => directory,
+      newSessionId: () => 'fictional-new',
+      readProviderConfig: fixtureProviderConfig,
     })
-    const before = db.prepare('SELECT ordinal, payload FROM events WHERE session_id = ? ORDER BY ordinal').all('s')
+    const before = db
+      .prepare('SELECT ordinal, payload FROM events WHERE session_id = ? ORDER BY ordinal')
+      .all('s')
     check(host.earlierHistory('s', 4, 1))
-    expect(db.prepare('SELECT ordinal, payload FROM events WHERE session_id = ? ORDER BY ordinal').all('s')).toEqual(before)
+    expect(
+      db
+        .prepare('SELECT ordinal, payload FROM events WHERE session_id = ? ORDER BY ordinal')
+        .all('s'),
+    ).toEqual(before)
   } finally {
     await host?.closeAll()
     db.close()
