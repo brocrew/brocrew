@@ -176,6 +176,11 @@ it('renders supplied installer words and preserves an older observation without 
 it('copies all profiles through the injected operation and retains its result', async () => {
   const { m, api, forbidden } = card()
   await settle()
+  expect(api.reprovisionProviderHomes).toHaveBeenCalledExactlyOnceWith({
+    provider: 'claude',
+    statusOnly: true,
+  })
+  vi.mocked(api.reprovisionProviderHomes).mockClear()
   m.q('copy-all-sign-ins').querySelector('button')!.click()
   await settle()
   expect(api.reprovisionProviderHomes).toHaveBeenCalledExactlyOnceWith({ provider: 'claude' })
