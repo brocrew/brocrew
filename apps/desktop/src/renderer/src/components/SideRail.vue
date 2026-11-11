@@ -633,18 +633,19 @@ const rows = computed<RailRow[]>(() => {
       // ⚑ **F036 · who waits on its answer** — the host's own state of it, pushed to its listed row.
       whoItOwesIn(host?.state),
     )
+    const currentState = stateForRecord(record, () =>
+      stateHere(
+        record,
+        facets,
+        whoseAnswerIn(props.waiting, record.sessionId),
+        whoseWorkIn(props.waiting, record.sessionId),
+        {},
+        stoppedWorkIn(props.waiting, record.sessionId),
+      ),
+    )
     const limit = providerLimitDisplay(
       providerBlocks.value.get(record.sessionId) ?? record.meta,
-      stateForRecord(record, () =>
-        stateHere(
-          record,
-          facets,
-          whoseAnswerIn(props.waiting, record.sessionId),
-          whoseWorkIn(props.waiting, record.sessionId),
-          {},
-          stoppedWorkIn(props.waiting, record.sessionId),
-        ),
-      ),
+      currentState,
       railMinute.value,
     )
     const standing = standingOf(facets)
@@ -665,19 +666,7 @@ const rows = computed<RailRow[]>(() => {
         word:
           limit?.short ??
           purpose?.word ??
-          standingWord(
-            facets,
-            stateForRecord(record, () =>
-              stateHere(
-                record,
-                facets,
-                whoseAnswerIn(props.waiting, record.sessionId),
-                whoseWorkIn(props.waiting, record.sessionId),
-                {},
-                stoppedWorkIn(props.waiting, record.sessionId),
-              ),
-            ),
-          ),
+          standingWord(facets, currentState),
         label: workerLabel(who(record), worker, host?.named),
         // 🔴 **D-016 · commit 7 · R2 — the work that names it is the host's**, off the row already
         // looked up for its order: a record this window is fed holds no tree.

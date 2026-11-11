@@ -1,8 +1,8 @@
+import { scheduleHere } from './record-state'
 import type { ConversationWait, HeldWork } from '../../../shared/task-contracts'
 import type {
   AgentState,
   AgentStateArmFacts,
-  ScheduleLevel,
   StoppedPiece,
 } from '../../../shared/agent-state-contracts'
 import {
@@ -33,6 +33,8 @@ import { BACKGROUND_WORD } from './background-work'
 import { WORK_STATE_WORD } from './work-report'
 import type { SessionPhase, SessionRecord } from './session-record'
 import type { RoutedAway, SubAgentCard, TranscriptState, WorkflowRunCard } from './transcript'
+
+export { stateForRecord } from './record-state'
 
 /**
  * How a LIVE AGENT is drawn, as rules rather than as markup (081/082).
@@ -1034,14 +1036,6 @@ export function stateHere(
   )
 }
 
-/** Older envelopes keep their existing projection; current envelopes use only core's state. */
-export function stateForRecord(
-  record: Pick<SessionRecord, 'agentState'>,
-  legacy: () => AgentState,
-): AgentState | undefined {
-  return record.agentState === undefined ? legacy() : (record.agentState ?? undefined)
-}
-
 /** Activity artwork may refine an active state, but cannot choose a different state family. */
 export function facetsForRecord(
   record: Pick<SessionRecord, 'agentState'>,
@@ -1064,25 +1058,6 @@ export function facetsForRecord(
       : {}),
     ...(local.needing === 'plan' ? { needing: local.needing } : {}),
   }
-}
-
-/**
- * ⚑ **D-017 · R11 — the schedule this window can stand behind.**
- *
- * ⛔ **A one-shot's time only where this fold holds the conversation from its first event.** A
- * one-shot fires at the first match after it was FIRST listed (`nextWake`), and the fold knows that
- * moment only when it saw the ledger from the start — `!record.window.hasOlder` on the one fold,
- * {@link SessionRecord.opening}'s own rule. ⚠️ A conversation reopened part-way through its history
- * first sees a job at a later restatement, and would promise a passed one-shot's time a year on;
- * there the job keeps no first listing and its word is plain *scheduled* — saying less, where
- * `main` reads the first listing off the whole ledger.
- */
-function scheduleHere(
-  record: Pick<SessionRecord, 'control' | 'transcript' | 'window'>,
-): ScheduleLevel {
-  const schedule = record.control.schedule
-  if (record.control === record.transcript && !record.window.hasOlder) return schedule
-  return { ...schedule, jobs: schedule.jobs.map((job) => ({ ...job, listedSince: undefined })) }
 }
 
 /**

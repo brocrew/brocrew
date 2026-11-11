@@ -1,7 +1,6 @@
+import { createLiveSessionRecords } from './live-session-records'
 import type { ClientSessionApi } from '../../../shared/client-session-api'
 import type { MoveRequestAck } from '../../../shared/move-contracts'
-import type { AgentState } from '../../../shared/agent-state-contracts'
-import { epochDecision, type PublicationEpoch } from '../../../shared/data-version'
 import type {
   LedgerWalk,
   PersonsDecision,
@@ -61,10 +60,8 @@ import { markAnswerRefused, markReopened, markRequestFailed } from './transcript
 import { createProviderBlockStore, type ProviderBlockStore } from './provider-limit-facts'
 import {
   acceptEvent,
-  acceptProviderBlock,
   acceptLiveness,
   adoptSession,
-  createSessionRecord,
   foldHeldEvents,
   openWindow,
   prependOlder,
@@ -847,88 +844,8 @@ export const A_COMMAND_HAS_NOT_ANSWERED =
   'seconds. An answer may still come — this line goes once every answer has.'
 
 export function createSessionStore(bridge: ClientSessionApi): SessionStore {
-  /**
-   * `reactive` proxies a Map's own methods, so `set`/`delete` are tracked and the open list
-   * recomputes. Insertion order is the Map's, which is the order sessions were started in.
-   */
-  const sessions = reactive(new Map<string, SessionRecord>())
-  let stateEpoch: PublicationEpoch | null = null
-  let stateRead = 0
-  let stateReading = false
-  let statesDisposed = false
-
-  function hearAgentState(
-    record: SessionRecord,
-    value: AgentState | null,
-    published: RuntimeStatesMessage['published'],
-  ): void {
-    if (statesDisposed) return
-    if (published === undefined) {
-      record.agentState = null
-      return
-    }
-    const decision = epochDecision(stateEpoch, published.epoch)
-    if (decision === 'drop') return
-    if (decision === 'hold') {
-      record.agentState = null
-      return
-    }
-    if (decision === 'advance') {
-      void readAgentStates()
-      return
-    }
-    const before = record.agentStatePublication
-    if (before !== undefined && published.seq <= before.seq) return
-    record.agentState = value
-    record.agentStatePublication = published
-  }
-
-  async function readAgentStates(): Promise<void> {
-    if (typeof bridge.currentEpoch !== 'function' || typeof bridge.listConversations !== 'function')
-      return
-    const mine = ++stateRead
-    stateReading = true
-    stateEpoch = null
-    for (const record of sessions.values()) {
-      if (record.agentState !== undefined) record.agentState = null
-      delete record.agentStatePublication
-    }
-    try {
-      const epoch = await bridge.currentEpoch()
-      if (statesDisposed || mine !== stateRead) return
-      stateEpoch = epoch
-      await readAgentListing(mine)
-    } catch (error) {
-      if (!statesDisposed && mine === stateRead)
-        console.warn('Current agent states could not be read:', error)
-    } finally {
-      if (mine === stateRead) stateReading = false
-    }
-  }
-
-  async function readAgentListing(mine = stateRead): Promise<void> {
-    if (stateEpoch === null || statesDisposed) return
-    try {
-      const answer = await bridge.listConversations()
-      if (statesDisposed || mine !== stateRead || 'refused' in answer) return
-      for (const row of [...answer.resumable, ...answer.unresumable]) {
-        const record = sessions.get(row.sessionId)
-        if (record) hearAgentState(record, row.state, answer.published)
-      }
-    } catch (error) {
-      if (!statesDisposed && mine === stateRead)
-        console.warn('Current agent states could not be read:', error)
-    }
-  }
-
-  function seedAgentState(record: SessionRecord): void {
-    if (typeof bridge.currentEpoch !== 'function' || typeof bridge.listConversations !== 'function')
-      return
-    if (record.agentState === undefined) record.agentState = null
-    if (stateEpoch === null) {
-      if (!stateReading) void readAgentStates()
-    } else void readAgentListing()
-  }
+  const records = createLiveSessionRecords(bridge)
+  const { sessions, slot } = records
   const providerBlocks = createProviderBlockStore()
   const approvalChoices = new Map<
     string,
@@ -964,18 +881,6 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
    * and a counter is the same value in a test as in the app.
    */
   const nextLaunchKey = (): string => `launch-${++launchCounter}`
-
-  /**
-   * A slot for a session, created on first sight — which may be an event that arrives before
-   * the host has finished telling us what the session is.
-   */
-  function slot(sessionId: string): SessionRecord {
-    const existing = sessions.get(sessionId)
-    if (existing) return existing
-    const record = reactive(createSessionRecord(sessionId)) as SessionRecord
-    sessions.set(sessionId, record)
-    return record
-  }
 
   /**
    * Fold a handed-over conversation's past into the record its live events will land in.
@@ -1138,7 +1043,7 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
     }
     record.phase = 'open'
     adoptSession(record, handed)
-    seedAgentState(record)
+    records.seed(record)
     // ⚑ The life it took ended in what was held for it while the hand-over was on its way — a
     // reopen on the current sign-in, say: the life that runs now is asked for.
     if (phaseOf(record) === 'recorded') void store.look(record.sessionId, 'again')
@@ -1255,12 +1160,7 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
 
   const unsubscribeEvents = bridge.onEvent((message) => {
     const record = sessions.get(message.sessionId)
-    if (message.agentState !== undefined)
-      hearAgentState(record ?? slot(message.sessionId), message.agentState, message.published)
-    else if (record && message.ordinal >= record.nextOrdinal) {
-      delete record.agentState
-      delete record.agentStatePublication
-    }
+    records.hearEvent(message)
     // A session we have never heard of is still recorded rather than dropped: it is ours the
     // moment the host answers, and the events before that answer are part of the conversation.
     //
@@ -1627,21 +1527,7 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
     providerBlocks,
     hearProviderStates(message) {
       providerBlocks.acceptMany(message.moved)
-      if (
-        !statesDisposed &&
-        message.published !== undefined &&
-        stateEpoch === null &&
-        !stateReading
-      )
-        void readAgentStates()
-      for (const moved of message.moved) {
-        const record = sessions.get(moved.conversation)
-        if (record) {
-          acceptProviderBlock(record, moved)
-          if (message.published !== undefined)
-            hearAgentState(record, moved.state, message.published)
-        }
-      }
+      records.hearMoved(message)
     },
     live: computed(() =>
       [...sessions.values()].filter(
@@ -1693,7 +1579,7 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
       providerBlocks.acceptSession(created, providerReadAt)
       const record = slot(created.sessionId)
       adoptSession(record, created)
-      seedAgentState(record)
+      records.seed(record)
       return created.sessionId
     },
 
@@ -1713,7 +1599,7 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
       }
       const record = slot(sessionId)
       const providerReadAt = providerBlocks.beginRead()
-      void readAgentStates()
+      void records.read()
       // ⛔ **Hold this session's live events until the page they belong AFTER has been replayed**
       // (242 §3). See {@link SessionRecord.handover}: the host's pump starts at `register`, which is
       // before this round trip returns, so the new life's first events are already on the wire.
@@ -2630,9 +2516,7 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
     },
 
     dispose() {
-      statesDisposed = true
-      stateRead++
-      stateEpoch = null
+      records.dispose()
       approvalChoices.clear()
       providerBlocks.dispose()
       unsubscribeEvents()
@@ -2642,6 +2526,6 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
       sessions.clear()
     },
   }
-  void readAgentStates()
+  void records.read()
   return store
 }
