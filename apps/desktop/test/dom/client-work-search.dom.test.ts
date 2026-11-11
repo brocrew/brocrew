@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { defineComponent, h, nextTick, provide, ref } from 'vue'
+import { h, nextTick, ref } from 'vue'
 import type { ClientSessionApi } from '../../src/shared/client-session-api'
 import type { WorkSearchResult } from '../../src/shared/work-search'
-import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
-import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
+import { sessionClientView } from '../lib/session-client-view'
 import SessionWork from '../../src/renderer/src/components/SessionWork.vue'
 import { mount, unmountAll } from './harness'
 
@@ -36,22 +35,10 @@ function screen(initial?: Partial<ClientSessionApi>) {
   let selected = initial
   const capability = vi.fn(() => selected as ClientSessionApi | undefined)
   const conversation = ref('fern-one')
-  const api = createDesktopProviderApi(
-    (): never => {
-      throw new Error('No provider read expected')
-    },
-    () => undefined,
-    () => undefined,
-    capability,
-  )
   const view = mount(
-    defineComponent({
-      setup() {
-        provide(CLIENT_PROVIDERS, api)
-        return () =>
-          h(SessionWork, { conversation: conversation.value, reading: null, identities: null })
-      },
-    }),
+    sessionClientView(capability, () =>
+      h(SessionWork, { conversation: conversation.value, reading: null, identities: null }),
+    ),
     {},
     { width: 700, height: 700 },
   )

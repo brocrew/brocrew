@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { defineComponent, h, nextTick, provide } from 'vue'
+import { h, nextTick } from 'vue'
 import type { ClientSessionApi } from '../../src/shared/client-session-api'
 import type { KeptRules as Kept } from '../../src/shared/runtime-ipc'
-import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
-import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
+import { sessionClientView } from '../lib/session-client-view'
 import KeptRules from '../../src/renderer/src/components/KeptRules.vue'
 import { mount, unmountAll } from './harness'
 
@@ -34,21 +33,8 @@ const rules: Kept = {
 
 function screen(sessions: () => Partial<ClientSessionApi> | undefined) {
   const capability = vi.fn(() => sessions() as ClientSessionApi | undefined)
-  const api = createDesktopProviderApi(
-    (): never => {
-      throw new Error('No provider read expected')
-    },
-    () => undefined,
-    () => undefined,
-    capability,
-  )
   const view = mount(
-    defineComponent({
-      setup() {
-        provide(CLIENT_PROVIDERS, api)
-        return () => h(KeptRules, { providers: ['claude', 'codex'] })
-      },
-    }),
+    sessionClientView(capability, () => h(KeptRules, { providers: ['claude', 'codex'] })),
     {},
     { width: 900, height: 700 },
   )

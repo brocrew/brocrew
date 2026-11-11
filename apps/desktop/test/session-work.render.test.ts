@@ -1,9 +1,8 @@
 import { expect, it, vi } from 'vitest'
-import { createSSRApp, defineComponent, h, provide } from 'vue'
+import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import type { ClientSessionApi } from '../src/shared/client-session-api'
-import { CLIENT_PROVIDERS } from '../src/renderer/src/client-provider/injection'
-import { createDesktopProviderApi } from '../src/renderer/src/client-provider/desktop'
+import { sessionClientView } from './lib/session-client-view'
 import SessionWork from '../src/renderer/src/components/SessionWork.vue'
 
 it.each([false, true])(
@@ -13,21 +12,10 @@ it.each([false, true])(
     const searchWork = vi.fn<ClientSessionApi['searchWork']>()
     const transport: Partial<ClientSessionApi> = { searchWork }
     const sessions = vi.fn(() => (present ? (transport as ClientSessionApi) : undefined))
-    const api = createDesktopProviderApi(
-      (): never => {
-        throw new Error('No provider read expected')
-      },
-      () => undefined,
-      () => undefined,
-      sessions,
-    )
     const app = createSSRApp(
-      defineComponent({
-        setup() {
-          provide(CLIENT_PROVIDERS, api)
-          return () => h(SessionWork, { conversation: 'fern', reading: null, identities: null })
-        },
-      }),
+      sessionClientView(sessions, () =>
+        h(SessionWork, { conversation: 'fern', reading: null, identities: null }),
+      ),
     )
     expect(await renderToString(app)).toContain('Search work')
     expect(sessions).toHaveBeenCalledTimes(1)
