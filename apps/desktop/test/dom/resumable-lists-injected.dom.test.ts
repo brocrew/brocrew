@@ -1,3 +1,5 @@
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
+import { providersBridge } from '../../look/fixtures/providers'
 import { afterEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, provide } from 'vue'
 import type { ResumableSessionInfo, UnresumableSessionInfo } from '../../src/shared/runtime-ipc'
@@ -62,6 +64,7 @@ function deferred<T>() {
 }
 afterEach(() => {
   unmountAll()
+  vi.restoreAllMocks()
   closing.value = false
   Reflect.deleteProperty(window, 'api')
 })
@@ -222,3 +225,92 @@ it.each(surfaces)(
     expect(out.raw.listUnresumable).not.toHaveBeenCalled()
   },
 )
+
+async function namedPage(name = 'Birch', late = false) {
+  providersBridge()
+  const raw = vi.spyOn(window.api.runtime, 'providerCatalogue')
+  const names = PROVIDER_DESCRIPTORS.map((entry) => ({
+    ...entry,
+    displayName: entry.id === 'codex' ? name : 'Fern',
+  }))
+  const answer = deferred<typeof names>()
+  const entries = [
+    { ...closedRow('home'), foundInUserHome: true },
+    { ...closedRow('bundle'), foundInUserHome: true, restoredFromBundle: true },
+    closedRow('profile'),
+  ]
+  const selected = {
+    ...window.api.runtime,
+    providerCatalogue: vi.fn(async function (this: object) {
+      expect(this).toBe(selected)
+      return late ? answer.promise : names
+    }),
+    listResumable: vi.fn(async function (this: object) {
+      expect(this).toBe(selected)
+      return []
+    }),
+    listUnresumable: vi.fn(async function (this: object) {
+      expect(this).toBe(selected)
+      return entries
+    }),
+  }
+  const client = createDesktopProviderApi(
+    () => selected,
+    () => undefined,
+    () => undefined,
+    () => selected,
+  )
+  const opened = vi.fn()
+  const m = mount(
+    defineComponent({
+      setup() {
+        provide(CLIENT_PROVIDERS, client)
+        return () => h(ResumableSessions, { onOpen: opened })
+      },
+    }),
+    {},
+  )
+  await vi.waitFor(() => expect(m.all('unresumable-profile')).toHaveLength(3))
+  return { m, raw, selected, opened, answer: () => answer.resolve(names) }
+}
+
+it('names the selected provider folder while bundle and agent identity take their original precedence', async () => {
+  const out = await namedPage()
+  expect(out.m.all('unresumable-profile')[0]?.textContent?.trim()).toBe("from Birch's own folder")
+  expect(out.m.all('unresumable-profile')[1]?.textContent?.trim()).toBe('from a bundle')
+  expect(out.m.all('unresumable-profile')[2]?.textContent?.trim()).toBe('agent: fern')
+  out.m.q('sessions-open-home').click()
+  expect(out.opened).toHaveBeenCalledExactlyOnceWith('home')
+  expect(out.selected.listResumable).toHaveBeenCalledTimes(1)
+  expect(out.selected.listUnresumable).toHaveBeenCalledTimes(1)
+  expect(out.raw).not.toHaveBeenCalled()
+})
+
+it('keeps Open available with a generic folder label until the selected catalogue answers', async () => {
+  const out = await namedPage('Birch', true)
+  expect(out.m.all('unresumable-profile')[0]?.textContent?.trim()).toBe(
+    "from the provider's own folder",
+  )
+  expect((out.m.q('sessions-open-home') as HTMLButtonElement).disabled).toBe(false)
+  out.m.q('sessions-open-home').click()
+  expect(out.opened).toHaveBeenCalledExactlyOnceWith('home')
+  out.answer()
+  await vi.waitFor(() =>
+    expect(out.m.all('unresumable-profile')[0]?.textContent?.trim()).toBe(
+      "from Birch's own folder",
+    ),
+  )
+  expect(out.selected.providerCatalogue).toHaveBeenCalledTimes(1)
+  expect(out.raw).not.toHaveBeenCalled()
+})
+
+it('does not let the first selected catalogue capture another list with the same provider key', async () => {
+  const one = await namedPage('Birch')
+  const two = await namedPage('Willow')
+  expect(one.m.all('unresumable-profile')[0]?.textContent?.trim()).toBe("from Birch's own folder")
+  expect(two.m.all('unresumable-profile')[0]?.textContent?.trim()).toBe("from Willow's own folder")
+  expect(one.selected.providerCatalogue).toHaveBeenCalledTimes(1)
+  expect(two.selected.providerCatalogue).toHaveBeenCalledTimes(1)
+  expect(one.raw).not.toHaveBeenCalled()
+  expect(two.raw).not.toHaveBeenCalled()
+})
