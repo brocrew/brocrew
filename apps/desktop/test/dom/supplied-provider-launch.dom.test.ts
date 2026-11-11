@@ -1,6 +1,10 @@
 import { expect, it, vi } from 'vitest'
 import { defineComponent, h, provide, ref, unref, type MaybeRef } from 'vue'
-import type { Provider, ProviderProgram } from '../../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  type Provider,
+  type ProviderProgram,
+} from '../../src/shared/runtime-ipc'
 import type {
   ProviderLaunchChoices,
   ResolvedProviderLaunch,
@@ -9,7 +13,10 @@ import type { ClientProviderApi } from '../../src/shared/client-provider-api'
 import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
 import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
-import { NO_LAUNCH_CHOICES } from '../../src/renderer/src/lib/launch-choices'
+import {
+  NO_LAUNCH_CHOICES,
+  type LaunchChoices,
+} from '../../src/renderer/src/lib/launch-choices'
 import ModelPicker from '../../src/renderer/src/components/ModelPicker.vue'
 import NewConversation from '../../src/renderer/src/components/NewConversation.vue'
 import { mount, unmountAll } from './harness'
@@ -139,9 +146,10 @@ it('keeps a newer manual provider choice ahead of an older selection answer', as
   expect(m.q('model-picker-provider').getAttribute('data-provider')).toBe(FERN)
 })
 
-it('sends the supplied fictional launch pair instead of inferring a row default', async () => {
-  const out = fixture()
-  await out.lists.read(FABLE)
+function frontDoor(
+  out: ReturnType<typeof fixture>,
+  choices: LaunchChoices = { ...NO_LAUNCH_CHOICES },
+) {
   const start = vi.fn()
   const handing = createAttachmentBook().handing(draftKey('fictional-new-conversation'))
   const host = defineComponent({
@@ -158,13 +166,20 @@ it('sends the supplied fictional launch pair instead of inferring a row default'
           defaultApprovalMode: 'ask',
           approvalDefaultChosen: true,
           capabilities: null,
-          choices: { ...NO_LAUNCH_CHOICES },
+          choices,
           lists: out.lists,
           onStart: start,
         })
     },
   })
   const m = mount(host, {}, { width: 1000, height: 900 })
+  return { m, start }
+}
+
+it('sends the supplied fictional launch pair instead of inferring a row default', async () => {
+  const out = fixture()
+  await out.lists.read(FABLE)
+  const { m, start } = frontDoor(out)
   await settle()
   expect(m.q('model-picker-face').textContent).toContain('supplied')
   m.q('send-prompt').click()
@@ -172,6 +187,35 @@ it('sends the supplied fictional launch pair instead of inferring a row default'
   expect(start.mock.calls[0]?.[0]).toMatchObject({ provider: FABLE, model: 'supplied' })
   expect(start.mock.calls[0]?.[1]).toBe('Keep these typed words')
 })
+
+it.each([null, { model: 'core-send', effort: 'high' }])(
+  'keeps the core payload decision %j when its provider differs from the retained draft',
+  async (defaultModelToSend) => {
+    const out = fixture()
+    out.read.mockResolvedValue({ ...answer(FABLE), defaultModelToSend })
+    await out.lists.read(FABLE)
+    const { m, start } = frontDoor(out, {
+      provider: FERN,
+      model: 'previous-provider-model',
+      reasoningEffort: 'previous-effort',
+    })
+    await settle()
+    expect(m.q('model-picker-face').textContent).toContain('supplied')
+    m.q('send-prompt').click()
+    await settle()
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(start.mock.calls[0]?.[0]).toEqual({
+      provider: FABLE,
+      profileId: DEFAULT_PROFILE_ID,
+      approvalMode: 'ask',
+      ...(defaultModelToSend === null
+        ? {}
+        : { model: defaultModelToSend.model, reasoningEffort: defaultModelToSend.effort }),
+    })
+    expect(start.mock.calls[0]?.[1]).toBe('Keep these typed words')
+    expect(out.read).toHaveBeenCalledExactlyOnceWith({ provider: FABLE })
+  },
+)
 
 it('forwards an existing programme observation and uses core-returned readiness for controls', async () => {
   const out = fixture()
