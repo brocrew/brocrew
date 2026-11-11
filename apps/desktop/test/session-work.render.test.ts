@@ -11,7 +11,8 @@ it.each([false, true])(
   async (present) => {
     expect(typeof window).toBe('undefined')
     const searchWork = vi.fn<ClientSessionApi['searchWork']>()
-    const sessions = vi.fn(() => (present ? ({ searchWork } as ClientSessionApi) : undefined))
+    const transport: Partial<ClientSessionApi> = { searchWork }
+    const sessions = vi.fn(() => (present ? (transport as ClientSessionApi) : undefined))
     const api = createDesktopProviderApi(
       (): never => {
         throw new Error('No provider read expected')
