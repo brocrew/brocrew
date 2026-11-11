@@ -14,6 +14,7 @@ import type { Provider, ProviderCapabilityMap, ProviderProgram } from '../../../
 import { sameModel, theListedRow } from '../../../shared/model-choice'
 import { modelPickerSection, modelPickerWords } from '../lib/model-picker-section'
 import {
+  inTheListsSpelling,
   theDraftEffort,
   theEffortsOffered,
   type ModelLists,
