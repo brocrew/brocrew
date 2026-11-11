@@ -106,7 +106,7 @@ import {
 // sentences and two readers over them, and imports NOTHING. See `refusals.ts` below for what makes
 // a shared import expensive.
 
-import { providerErrorSentence, turnFailureDetail } from './provider-error'
+import type { ErrorFacts } from '../../../shared/error-facts'
 import type { ActedBy } from '../../../shared/who-did-it'
 // ⚑ **405 · a value import, and a cheap one.** `shared/refusals.ts` holds three strings and one
 // `includes` — see `a-value-import-from-shared-costs-the-renderer-135kb`'s lesson for what makes a
@@ -1780,6 +1780,7 @@ export function applyEvent(
   humanFinal?: HumanFinalContext | null,
   workAncestry?: WorkAncestry,
   ancestryContext?: readonly import('../../../shared/conversation-events').PersistedEventInfo[],
+  errorFacts?: ErrorFacts,
 ): void {
   if (workAncestry !== undefined) acceptWorkAncestry(state, workAncestry)
   for (const row of workAncestry?.baseline ?? []) {
@@ -1789,7 +1790,7 @@ export function applyEvent(
       (state.toolItems[row.event.id] !== undefined || state.cardTools[row.event.id] !== undefined)
     )
       continue
-    applyEvent(state, row.event, row.at, row.ordinal)
+    applyEvent(state, row.event, row.at, row.ordinal, undefined, undefined, undefined, row.errorFacts)
   }
   for (const row of ancestryContext ?? []) {
     if (
@@ -1803,12 +1804,12 @@ export function applyEvent(
       findCard(state, row.event.agentId) !== undefined
     )
       continue
-    applyEvent(state, row.event, row.at, row.ordinal)
+    applyEvent(state, row.event, row.at, row.ordinal, undefined, undefined, undefined, row.errorFacts)
   }
   const before = state.seq
   const from = state.items.length
   startHumanAnswer(state.humanAnswers, event, ordinal ?? state.seq)
-  foldEvent(state, event, at, ordinal, humanFinal)
+  foldEvent(state, event, at, ordinal, humanFinal, errorFacts)
   followTheTurnsErrors(state, event, from)
   if ((at === undefined && ordinal === undefined) || state.seq === before) return
   // Walk back from the end while the items are ones this fold created. Counting by LENGTH would
@@ -2725,6 +2726,7 @@ function foldEvent(
   at?: number,
   ordinal?: number,
   humanFinal?: HumanFinalContext | null,
+  errorFacts?: ErrorFacts,
 ): void {
   switch (event.type) {
     case 'user_turn': {
@@ -3725,6 +3727,7 @@ function foldEvent(
     }
 
     case 'error': {
+      const sentence = errorFacts?.sentence ?? event.message
       // The runtime's notice that the model is still thinking is drawn as one live line at the
       // end, from the conversation's liveness, so it leaves no row behind once thinking ends.
       if (event.stall === true && event.thinking === true) return
@@ -3733,22 +3736,23 @@ function foldEvent(
         const retrying = event.signIn?.state === 'retrying'
         signInNotice(
           state,
-          event.signIn?.message ?? providerErrorSentence(event.message),
+          event.signIn?.message ?? sentence,
           event.message,
           retrying,
           needsSignIn,
           event.signIn?.captions,
         )
+        if (state.lastError !== null) state.lastError.diagnostic = sentence
         if (event.fatal) markTerminal(state, NOTHING_WAITS_FOR_THIS_ANSWER)
         return
       }
       const authNotice = currentSignInNotice(state)
-      const endingDetail = turnFailureDetail(event.message)
+      const ending = errorFacts?.ending
       const repeatsAuth =
-        endingDetail !== null &&
+        ending !== undefined &&
         state.lastError !== null &&
-        (endingDetail === state.lastError.raw ||
-          providerErrorSentence(endingDetail) === providerErrorSentence(state.lastError.raw))
+        (ending.raw === state.lastError.raw ||
+          ending.sentence === (state.lastError.diagnostic ?? state.lastError.raw))
       if (!repeatsAuth) endSignInRetry(state)
       const presentation = event.presentation?.message
       if (typeof presentation === 'string' && presentation !== '') {
@@ -3756,50 +3760,31 @@ function foldEvent(
         const shown = presentation
         if (event.presentation?.repeat !== 'same-message-once' || state.lastError?.shown !== shown)
           notice(state, event.presentation?.level ?? (event.fatal ? 'error' : 'warn'), shown)
-        state.lastError = { raw: event.message, shown }
+        state.lastError = { raw: event.message, shown, diagnostic: sentence }
         if (event.presentation?.terminal ?? event.fatal)
           markTerminal(state, NOTHING_WAITS_FOR_THIS_ANSWER)
         return
       }
       {
-        // ⛔ **The turn's OWN ending, which the `turn` event above states in a word** (246 §1, from
-        // 244's only finding). `completeTurn` re-says the provider's terminal reason as
-        // `turn failed: <reason>` — so 244's conversation read the same 177-char HTTP envelope
-        // twice and then read `turn failed`, four accounts of one failure.
-        //
-        // ⚑ **The prefix is dropped rather than the line**, because the reason is not always said
-        // anywhere else: Claude's `result` carries only a subtype (`turn failed:
-        // error_during_execution`) and there is no separate error notification behind it. So the
-        // cause stands as its own line and the receipt states the ending — which is exactly what
-        // 246 §1 ruled: *"one plain-language cause, then one durable `failed` receipt."*
-        //
-        // ⚠️ **And it is dropped ENTIRELY when the turn has already said it**, which is the case
-        // 244 read. Nothing is lost: the event is in the ledger verbatim and the Events tab prints
-        // it (`describe-event.ts`), 085's split.
-        const ending = turnFailureDetail(event.message)
-        if (ending !== null) {
+        // Core identifies the turn's receipt; its distinct reason remains visible.
+        if (ending !== undefined) {
           if (authNotice?.signIn && repeatsAuth) {
             authNotice.signIn.details.push(event.message)
             if (event.fatal) markTerminal(state, NOTHING_WAITS_FOR_THIS_ANSWER)
             return
           }
-          const reason = providerErrorSentence(ending)
+          const reason = ending.sentence
           const said = state.lastError
-          const repeat = said !== null && (ending === said.raw || reason === said.shown)
+          const repeat = said !== null && (ending.raw === said.raw || reason === said.shown)
           if (reason !== '' && !repeat) notice(state, event.fatal ? 'error' : 'warn', reason, true)
           // Not remembered as `lastError`: this IS the ending, and nothing after it in this turn can
           // be a restatement of it.
           if (event.fatal) markTerminal(state, NOTHING_WAITS_FOR_THIS_ANSWER)
           return
         }
-        // ⛔ **The sentence inside the envelope** (246 §1). A 400's `message` is a real sentence;
-        // `{"type":"error","status":400,…}` around it is not, and the notice row draws a few lines
-        // of it at most (the provider's words are clamped since `672`; the whole is on the title).
-        // `status` and `type` stay in the ledger and the Events tab, which is where a diagnostic
-        // belongs (085).
-        const shown = providerErrorSentence(event.message)
+        const shown = sentence
         notice(state, event.fatal ? 'error' : 'warn', shown, true)
-        state.lastError = { raw: event.message, shown }
+        state.lastError = { raw: event.message, shown, diagnostic: sentence }
       }
       if (event.fatal) markTerminal(state, NOTHING_WAITS_FOR_THIS_ANSWER)
       return

@@ -18,7 +18,7 @@ import { AsyncQueue } from '../../../packages/runtime/src/internal/async-queue'
 import { providerDescriptor, type Provider } from '@brobot2/shared'
 import {
   billingNotice as suppliedBillingNotice,
-  transcriptEventForDisplay,
+  transcriptMessageForDisplay,
 } from '../src/main/providers/error-presentation'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -70,8 +70,10 @@ const started = (provider: Provider): RuntimeEvent => ({
 
 const noticesFor = (...events: RuntimeEvent[]): NoticeItem[] => {
   const state = createTranscript()
-  for (const event of events)
-    applyEvent(state, transcriptEventForDisplay(event, state.ref?.provider))
+  for (const event of events) {
+    const row = transcriptMessageForDisplay({ event }, state.ref?.provider)
+    applyEvent(state, row.event, undefined, undefined, undefined, undefined, undefined, row.errorFacts)
+  }
   return state.items.filter((item): item is NoticeItem => item.kind === 'notice')
 }
 

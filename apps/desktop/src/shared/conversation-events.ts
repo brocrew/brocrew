@@ -1397,6 +1397,8 @@ export type WorkAncestry =
 
 /** One recorded entry with the ordinal it was published under — the transcript, replayable. */
 export interface PersistedEventInfo {
+  /** Display projection only; the ledger keeps the event's original diagnostic. */
+  errorFacts?: import('./error-facts').ErrorFacts
   workAncestry?: WorkAncestry
   ancestryContext?: readonly PersistedEventInfo[]
   /** Canonical human-final association for this history row; null means it is not selected. */

@@ -556,13 +556,7 @@ export interface NoticeItem {
   instructionAsked?: InstructionAsked
   /** The MCP server request this line is about, so its ending can rewrite it. */
   mcpServerRequest?: { readonly requestId: string; readonly name: string; readonly url: string }
-  /**
-   * 🔴 **672 · the PROVIDER's own words, not a sentence this app wrote** — a turn's failure detail
-   * or an error's message after {@link providerErrorSentence}. ⛔ Nothing bounds it on the way in
-   * (`provider-error.ts`: *"a provider could hand the fold a megabyte"*), so where an app sentence
-   * wraps whole, this one is clamped to a few lines with the whole of it on the title — `672`'s
-   * review measured a 25,889-character warning drawn 2,118 px tall once warnings wrapped.
-   */
+  /** Provider words are clamped to a few lines, with the complete diagnostic on the title. */
   providersWords?: true
   /**
    * 🔴 **685 · what the refused call was TOLD, off its own receipt** (`675` F-d) — the row's

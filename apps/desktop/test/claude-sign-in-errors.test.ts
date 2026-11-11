@@ -14,7 +14,7 @@ import {
   acceptEvent,
 } from '../src/renderer/src/lib/session-record'
 import { legacyConversation } from './fixtures/legacy-migration-data'
-import { transcriptEventForDisplay } from '../src/main/providers/error-presentation'
+import { transcriptMessageForDisplay } from '../src/main/providers/error-presentation'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 
@@ -30,7 +30,8 @@ function applyEvent(
   state: Parameters<typeof applyDisplayedEvent>[0],
   event: TranscriptEvent,
 ): void {
-  applyDisplayedEvent(state, transcriptEventForDisplay(event, state.ref?.provider))
+  const row = transcriptMessageForDisplay({ event }, state.ref?.provider)
+  applyDisplayedEvent(state, row.event, undefined, undefined, undefined, undefined, undefined, row.errorFacts)
 }
 
 const retry = (attempt: number): Extract<TranscriptEvent, { type: 'error' }> => ({

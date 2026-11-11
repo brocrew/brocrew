@@ -1,13 +1,13 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { eventForDisplay } from '../src/main/providers/claude/transcripts'
-import { errorForDisplay } from '../src/main/providers/error-presentation'
+import { transcriptMessageForDisplay } from '../src/main/providers/error-presentation'
 
 import {
   TURN_FAILED,
   providerErrorSentence,
   turnFailureDetail,
-} from '../src/renderer/src/lib/provider-error'
+} from '../src/main/providers/error-diagnostic'
 import {
   applyEvent,
   createTranscript,
@@ -36,7 +36,10 @@ function notices(state: TranscriptState): string[] {
 }
 
 function feed(state: TranscriptState, ...events: TranscriptEvent[]): TranscriptState {
-  for (const event of events) applyEvent(state, errorForDisplay(event))
+  for (const event of events) {
+    const row = transcriptMessageForDisplay({ event })
+    applyEvent(state, row.event, undefined, undefined, undefined, undefined, undefined, row.errorFacts)
+  }
   return state
 }
 

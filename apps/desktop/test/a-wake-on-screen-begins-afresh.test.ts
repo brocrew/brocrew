@@ -1,3 +1,4 @@
+import { transcriptMessageForDisplay } from '../src/main/providers/error-presentation'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import type { SessionRef } from '@brobot2/runtime'
@@ -25,7 +26,10 @@ const ref = (provider: 'claude' | 'codex'): SessionRef => ({
 })
 
 function feed(state: TranscriptState, ...events: TranscriptEvent[]): TranscriptState {
-  for (const event of events) applyEvent(state, event)
+  for (const event of events) {
+    const row = transcriptMessageForDisplay({ event }, state.ref?.provider)
+    applyEvent(state, row.event, undefined, undefined, undefined, undefined, undefined, row.errorFacts)
+  }
   return state
 }
 

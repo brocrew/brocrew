@@ -406,6 +406,7 @@ export function acceptEvent(record: SessionRecord, message: RuntimeEventMessage)
       message.humanFinal,
       message.workAncestry,
       message.ancestryContext,
+      message.errorFacts,
     )
   }
   // Still the same object — the window kept the tail, so there is one projection here, and the
@@ -441,6 +442,7 @@ function foldIntoTail(record: SessionRecord, message: RuntimeEventMessage): void
       message.humanFinal,
       message.workAncestry,
       message.ancestryContext,
+      message.errorFacts,
     )
 }
 

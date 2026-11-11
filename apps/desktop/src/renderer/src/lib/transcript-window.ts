@@ -403,6 +403,7 @@ export function foldWindow(
       message.humanFinal,
       message.workAncestry,
       message.ancestryContext,
+      message.errorFacts,
     )
   }
   if (epoch !== null) {
@@ -421,6 +422,7 @@ export function openAt(window: WindowState, page: HistoryWindow, sessionId: stri
     ...(entry.workAncestry === undefined ? {} : { workAncestry: entry.workAncestry }),
     ...(entry.ancestryContext === undefined ? {} : { ancestryContext: entry.ancestryContext }),
     ...(entry.humanFinal === undefined ? {} : { humanFinal: entry.humanFinal }),
+    ...(entry.errorFacts === undefined ? {} : { errorFacts: entry.errorFacts }),
   }))
   window.from = page.from
   window.hasOlder = page.hasOlder
@@ -442,6 +444,7 @@ export function prependPage(
     ...(entry.workAncestry === undefined ? {} : { workAncestry: entry.workAncestry }),
     ...(entry.ancestryContext === undefined ? {} : { ancestryContext: entry.ancestryContext }),
     ...(entry.humanFinal === undefined ? {} : { humanFinal: entry.humanFinal }),
+    ...(entry.errorFacts === undefined ? {} : { errorFacts: entry.errorFacts }),
   }))
   window.entries = [...older, ...window.entries]
   window.from = page.from

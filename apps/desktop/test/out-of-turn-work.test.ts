@@ -185,7 +185,7 @@ async function waitFor(predicate: () => boolean, what: string, timeoutMs = 3_000
  */
 function surfaceInput(sink: RecordingSink, liveness: SessionLiveness['state'] = 'live') {
   const state = createTranscript()
-  for (const message of sink.messages) applyEvent(state, message.event, message.at)
+  for (const message of sink.messages) applyEvent(state, message.event, message.at, message.ordinal, undefined, undefined, undefined, message.errorFacts)
   const needing = needingFor({ ...state.pending, planNeedsGoAhead: false })
   return {
     phase: 'open' as const,

@@ -179,7 +179,7 @@ import {
   providerDefinitions,
   providerCatalogue as registeredProviderCatalogue,
 } from '../providers/index'
-import { transcriptEventForDisplay as projectTranscriptEvent } from '../providers/error-presentation'
+import { transcriptMessageForDisplay } from '../providers/error-presentation'
 import {
   RejectedSessionLaunch,
   StoppedBeforeSend,
@@ -2998,20 +2998,6 @@ const WHAT_A_REOPEN_ADDS: ReadonlySet<TranscriptEvent['type']> = new Set([
   'launched',
   'work_recovery',
 ])
-
-/** Older provider events receive display metadata without changing their stored form. */
-function transcriptEventForDisplay(event: TranscriptEvent, owner?: Provider): TranscriptEvent {
-  return projectTranscriptEvent(event, owner)
-}
-
-/** Display metadata travels with a row without changing its saved form or ordinal. */
-function transcriptMessageForDisplay(
-  message: RuntimeEventMessage,
-  provider?: Provider,
-): RuntimeEventMessage {
-  const event = transcriptEventForDisplay(message.event, provider)
-  return event === message.event ? message : { ...message, event }
-}
 
 /** Unrecognized protocol origins never supply housekeeping evidence. */
 function authPolicyForNotice(event: TranscriptEvent): ProviderAuthPolicy | undefined {
@@ -35950,15 +35936,13 @@ export class RuntimeHost implements LiveHost {
     return {
       workAncestry,
       entries: window.entries.map((entry) => ({
+        ...transcriptMessageForDisplay(entry, provider),
         ...(firstReadings.has(entry.ordinal)
           ? {
               workAncestry: firstReadings.get(entry.ordinal)!.reading,
               ancestryContext: firstReadings.get(entry.ordinal)!.contextRows,
             }
           : {}),
-        ordinal: entry.ordinal,
-        at: entry.at,
-        event: transcriptEventForDisplay(entry.event, provider),
         ...(entry.event.type === 'assistant_message'
           ? { humanFinal: humanFinals.get(entry.ordinal) ?? null }
           : {}),

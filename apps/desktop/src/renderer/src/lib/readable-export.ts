@@ -203,6 +203,7 @@ export async function readWholeConversation(input: {
       ordinal: entry.ordinal,
       at: entry.at,
       event: entry.event,
+      errorFacts: entry.errorFacts,
     })),
     input.liveFrom,
   )

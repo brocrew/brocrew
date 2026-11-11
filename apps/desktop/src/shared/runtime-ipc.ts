@@ -3037,6 +3037,7 @@ export interface ReleasedSession {
  * key without inventing one.
  */
 export interface RuntimeEventMessage {
+  errorFacts?: import('./error-facts').ErrorFacts
   /** Current core state, or explicitly pending until the existing state flush. Absent on history. */
   agentState?: AgentState | null
   published?: RuntimeStatesMessage['published']
