@@ -8,6 +8,7 @@ import { ownedPluginNodeProcess } from '../src/main/plugins/supervisor/node-host
 import { createPluginToolBroker } from '../src/main/plugins/tool-broker'
 import { cleanupLifecycleFixtures, fixture } from './plugin-lifecycle-fixtures'
 import { manifestFor, packageFixture } from './plugin-package-fixtures'
+import { thirdPartyMcpSource } from './fixtures/third-party-mcp-source'
 
 afterEach(cleanupLifecycleFixtures)
 
@@ -40,7 +41,7 @@ async function runtimeAt(root: string) {
 it.each([1, 2] as const)(
   'installs, starts, discovers and calls a format %s third-party Node MCP package',
   async (format) => {
-    const source = await readFile(resolve(__dirname, 'fixtures/third-party-mcp.mjs'))
+    const source = Buffer.from(thirdPartyMcpSource)
     const files = new Map([['server.mjs', source]])
     const manifest = manifestFor(files)
     Object.assign(manifest, {

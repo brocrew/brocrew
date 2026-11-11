@@ -1,3 +1,4 @@
+export const thirdPartyMcpSource = String.raw`
 import { createServer } from 'node:http'
 import { readFileSync } from 'node:fs'
 
@@ -18,13 +19,13 @@ const replies = {
   }),
   'tools/list': () => ({ tools: [tool] }),
   'tools/call': (params) => ({
-    content: [{ type: 'text', text: `Fictional plugin result: ${params.arguments.profile}` }],
+    content: [{ type: 'text', text: 'Fictional plugin result: ' + params.arguments.profile }],
     _meta: { home, pid: process.pid, packageOwned: 'orchid' },
   }),
 }
 const server = createServer((req, res) => {
   const token = req.url === '/mcp' ? auth.mcpToken : auth.adminToken
-  if (req.headers.authorization !== `Bearer ${token}`) return res.writeHead(401).end()
+  if (req.headers.authorization !== 'Bearer ' + token) return res.writeHead(401).end()
   res.setHeader('content-type', 'application/json')
   if (req.url === '/healthz') return res.end(JSON.stringify({ ok: true, version: '1.0.0' }))
   if (req.url !== '/mcp') return res.writeHead(404).end()
@@ -53,3 +54,4 @@ server.listen(0, '127.0.0.1', () => {
     port: server.address().port,
   })
 })
+`
