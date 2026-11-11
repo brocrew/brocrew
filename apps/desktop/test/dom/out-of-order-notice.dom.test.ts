@@ -91,9 +91,10 @@ describe('320 · the two notices, drawn', () => {
 
     // ⚠️ **Measured off the painted element, not off the token file.** `--waiting` is `#f2b865`;
     // reading it out of `tokens.css` would only prove the file says what I read.
-    const dot = view.host.querySelector<HTMLElement>('[data-cy="notice-warn"] .dot')
-    expect(dot, 'the notice has no dot').not.toBeNull()
-    const painted = getComputedStyle(dot!).backgroundColor
+    const clock = view.host.querySelector<SVGElement>('[data-cy="notice-warn"] .icon')
+    expect(clock, 'the notice has no clock').not.toBeNull()
+    expect(clock!.querySelector('use')?.getAttribute('href')).toBe('#i-clock')
+    const painted = getComputedStyle(clock!).stroke
     expect(painted).not.toBe('')
     const [red, green] = (painted.match(/\d+/g) ?? []).map(Number)
     // Amber, not red: a real green channel. `--danger` (#ff7f8d) has green 127 against red 255;
