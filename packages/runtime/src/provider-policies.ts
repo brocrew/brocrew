@@ -127,7 +127,7 @@ export interface ListedSkills {
   readonly at: number
   readonly dropped: number
 }
-export interface GivenToolNames {
+interface GivenToolNames {
   readonly declarations: readonly string[]
   readonly namesOnlyText: string
   readonly published: readonly string[] | null
