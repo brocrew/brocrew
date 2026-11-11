@@ -14,10 +14,7 @@ vi.mock('../resources/plugin-host/windows-job.mjs', async (original) => ({
 }))
 
 const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
-let root: string,
-  run: string,
-  processRecord: Record<string, unknown>,
-  job: Record<string, unknown>
+let root: string, run: string, processRecord: Record<string, unknown>, job: Record<string, unknown>
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'fictional-windows-recovery-'))
   const runId = randomUUID(),
