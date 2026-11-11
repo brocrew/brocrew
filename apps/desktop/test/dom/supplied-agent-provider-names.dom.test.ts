@@ -23,41 +23,79 @@ afterEach(() => {
 
 function identity(provider: Provider | null): AgentIdentity {
   return {
-    id: 'aid:worker', slug: 'worker', displayName: 'Worker', createdAt: 1700000000000,
-    createdBy: null, provider, externalMcpServerIds: [], capabilities: DEFAULT_CAPABILITIES,
-    chosen: { maxDepth: 'default', canMessage: 'default', canAssignWork: 'default', canCreateAgents: 'default', canWriteRules: 'default' },
+    id: 'aid:worker',
+    slug: 'worker',
+    displayName: 'Worker',
+    createdAt: 1700000000000,
+    createdBy: null,
+    provider,
+    externalMcpServerIds: [],
+    capabilities: DEFAULT_CAPABILITIES,
+    chosen: {
+      maxDepth: 'default',
+      canMessage: 'default',
+      canAssignWork: 'default',
+      canCreateAgents: 'default',
+      canWriteRules: 'default',
+    },
   }
 }
 
 function fixture(names = ['Fern', 'Birch'], held: Choice | null = null) {
   let row = identity('claude')
   const catalogue = ['claude', 'codex'].map((id, index) => ({
-    ...providerDescriptor(id), displayName: names[index]!,
+    ...providerDescriptor(id),
+    displayName: names[index]!,
   }))
   const reading = (): AgentIdentities => ({
-    identities: [row], foldersWithoutARow: [], use: [], spawningEnabled: true,
-    defaultApprovalMode: 'ask', externalMcpServers: [],
+    identities: [row],
+    foldersWithoutARow: [],
+    use: [],
+    spawningEnabled: true,
+    defaultApprovalMode: 'ask',
+    externalMcpServers: [],
   })
   const createAgent = vi.fn(async () => row)
-  const setAgentProvider = vi.fn(async (input: { profileId: string; provider: Provider | null }) => {
-    const cleared = held && input.provider !== null && held.provider !== input.provider ? held : null
-    row = { ...row, provider: input.provider }
-    if (cleared) held = null
-    return { ...row, modelChoiceCleared: cleared }
-  })
+  const setAgentProvider = vi.fn(
+    async (input: { profileId: string; provider: Provider | null }) => {
+      const cleared =
+        held && input.provider !== null && held.provider !== input.provider ? held : null
+      row = { ...row, provider: input.provider }
+      if (cleared) held = null
+      return { ...row, modelChoiceCleared: cleared }
+    },
+  )
   const agents = {
-    agentIdentities: async () => reading(), createAgent, setAgentProvider,
+    agentIdentities: async () => reading(),
+    createAgent,
+    setAgentProvider,
     agentModelAndEffort: async () => held,
-    agentInstructions: async () => { throw new Error('No instruction reading in this fixture') },
+    agentInstructions: async () => {
+      throw new Error('No instruction reading in this fixture')
+    },
   } as unknown as ClientAgentApi
   const providerCatalogue = vi.fn(async () => catalogue)
   const client: ClientApi = {
-    ...createDesktopProviderApi((): never => { throw new Error('Unexpected provider operation') }, () => undefined),
-    agents, providerCatalogue,
+    ...createDesktopProviderApi(
+      (): never => {
+        throw new Error('Unexpected provider operation')
+      },
+      () => undefined,
+    ),
+    agents,
+    providerCatalogue,
   }
   const rawCatalogue = vi.fn(async () => ['claude', 'codex'].map((id) => providerDescriptor(id)))
   vi.stubGlobal('api', { runtime: { providerCatalogue: rawCatalogue } })
-  return { client, providerCatalogue, rawCatalogue, catalogue, createAgent, setAgentProvider, reading }
+  return {
+    client,
+    providerCatalogue,
+    rawCatalogue,
+    catalogue,
+    createAgent,
+    setAgentProvider,
+    reading,
+  }
 }
 
 function ancestor(client: ClientApi, component: Component, props: () => Record<string, unknown>) {
@@ -78,14 +116,27 @@ async function change(element: HTMLElement, value: string, event = 'change') {
 it('names both NewAgent options from its selected client while retaining the create provider ID', async () => {
   const f = fixture()
   await agentStoreForClient(f.client).load()
-  const view = mount(ancestor(f.client, NewAgent, () => ({})), {})
+  const view = mount(
+    ancestor(f.client, NewAgent, () => ({})),
+    {},
+  )
   const select = view.q('new-agent-provider') as HTMLSelectElement
-  await vi.waitFor(() => expect([...select.options].map((option) => option.textContent?.trim())).toEqual(['Not chosen yet', 'Fern', 'Birch']))
+  await vi.waitFor(() =>
+    expect([...select.options].map((option) => option.textContent?.trim())).toEqual([
+      'Not chosen yet',
+      'Fern',
+      'Birch',
+    ]),
+  )
   expect([...select.options].map((option) => option.value)).toEqual(['', 'claude', 'codex'])
   await change(view.q('new-agent-slug'), 'another-worker', 'input')
   await change(select, 'codex')
   view.q('new-agent-create').click()
-  await vi.waitFor(() => expect(f.createAgent).toHaveBeenCalledWith(expect.objectContaining({ slug: 'another-worker', provider: 'codex' })))
+  await vi.waitFor(() =>
+    expect(f.createAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ slug: 'another-worker', provider: 'codex' }),
+    ),
+  )
   expect(f.rawCatalogue).not.toHaveBeenCalled()
 })
 
@@ -93,12 +144,23 @@ it('keeps two selected clients separate and fills late names without restoring c
   const first = fixture()
   const second = fixture(['Willow', 'Elm'])
   let answer!: (rows: typeof first.catalogue) => void
-  first.providerCatalogue.mockImplementationOnce(() => new Promise((resolve) => { answer = resolve }))
+  first.providerCatalogue.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        answer = resolve
+      }),
+  )
   await agentStoreForClient(first.client).load()
   await agentStoreForClient(second.client).load()
   expect(first.providerCatalogue).not.toHaveBeenCalled()
-  const a = mount(ancestor(first.client, NewAgent, () => ({})), {})
-  const b = mount(ancestor(second.client, NewAgent, () => ({})), {})
+  const a = mount(
+    ancestor(first.client, NewAgent, () => ({})),
+    {},
+  )
+  const b = mount(
+    ancestor(second.client, NewAgent, () => ({})),
+    {},
+  )
   expect(a.q('new-agent-provider').textContent).not.toMatch(/Claude|Codex/)
   await vi.waitFor(() => expect(b.q('new-agent-provider').textContent).toContain('Willow'))
   await vi.waitFor(() => expect(answer).toBeTypeOf('function'))
@@ -114,13 +176,23 @@ it('names the StartAsAgent current/default provider and follows the live default
   const store = agentStoreForClient(f.client)
   await store.load()
   const provider = ref<Provider>('claude')
-  const view = mount(ancestor(f.client, StartAsAgent, () => ({
-    profileSlug: 'worker', agents: store, provider: provider.value, defaultApprovalMode: 'ask',
-  })), {})
-  await vi.waitFor(() => expect(view.q('start-as-agent').textContent).toContain('It will run on Fern'))
+  const view = mount(
+    ancestor(f.client, StartAsAgent, () => ({
+      profileSlug: 'worker',
+      agents: store,
+      provider: provider.value,
+      defaultApprovalMode: 'ask',
+    })),
+    {},
+  )
+  await vi.waitFor(() =>
+    expect(view.q('start-as-agent').textContent).toContain('It will run on Fern'),
+  )
   expect(view.q('start-as-agent').textContent).toContain('Default: Fern')
   provider.value = 'codex'
-  await vi.waitFor(() => expect(view.q('start-as-agent').textContent).toContain('It will run on Birch'))
+  await vi.waitFor(() =>
+    expect(view.q('start-as-agent').textContent).toContain('It will run on Birch'),
+  )
   expect(view.q('start-as-agent').textContent).toContain('Default: Birch')
   expect(f.setAgentProvider).not.toHaveBeenCalled()
   expect(f.rawCatalogue).not.toHaveBeenCalled()
@@ -131,14 +203,31 @@ it('names the held/default choice and the before/after clear without changing th
   const f = fixture(undefined, held)
   const store = agentStoreForClient(f.client)
   await store.load()
-  const view = mount(ancestor(f.client, CapabilitiesSheet, () => ({ profileSlug: 'worker', runsOn: 'claude', fields: [], store })), {})
-  await vi.waitFor(() => expect(view.q('capabilities-provider-will-clear').textContent).toContain('other than Fern'))
+  const view = mount(
+    ancestor(f.client, CapabilitiesSheet, () => ({
+      profileSlug: 'worker',
+      runsOn: 'claude',
+      fields: [],
+      store,
+    })),
+    {},
+  )
+  await vi.waitFor(() =>
+    expect(view.q('capabilities-provider-will-clear').textContent).toContain('other than Fern'),
+  )
   expect(view.q('capabilities-provider-select').textContent).toContain('Birch')
   expect(view.q('capabilities-provider-note').textContent).toContain('is Fern')
   expect(view.q('agent-model-reaches').textContent).toContain('on Fern')
   await change(view.q('capabilities-provider-select'), 'codex')
-  await vi.waitFor(() => expect(f.setAgentProvider).toHaveBeenCalledExactlyOnceWith({ profileId: 'worker', provider: 'codex' }))
-  await vi.waitFor(() => expect(view.q('capabilities-provider-cleared').textContent).toContain('on Fern'))
+  await vi.waitFor(() =>
+    expect(f.setAgentProvider).toHaveBeenCalledExactlyOnceWith({
+      profileId: 'worker',
+      provider: 'codex',
+    }),
+  )
+  await vi.waitFor(() =>
+    expect(view.q('capabilities-provider-cleared').textContent).toContain('on Fern'),
+  )
   expect(view.q('capabilities-provider-cleared').textContent).toContain('now Birch')
   expect(view.host.querySelector('[data-cy="capabilities-provider-will-clear"]')).toBeNull()
   expect(f.rawCatalogue).not.toHaveBeenCalled()
@@ -148,8 +237,18 @@ it('uses both supplied names for a held choice that is not in force', async () =
   const f = fixture(undefined, { provider: 'claude', model: 'held-model', effort: 'high' })
   const store = agentStoreForClient(f.client)
   await store.load()
-  const view = mount(ancestor(f.client, AgentModelChoice, () => ({ profileSlug: 'worker', runsOn: 'codex', itsProvider: 'codex', store })), {})
-  await vi.waitFor(() => expect(view.q('agent-model-other-provider').textContent).toContain('It is for Fern'))
+  const view = mount(
+    ancestor(f.client, AgentModelChoice, () => ({
+      profileSlug: 'worker',
+      runsOn: 'codex',
+      itsProvider: 'codex',
+      store,
+    })),
+    {},
+  )
+  await vi.waitFor(() =>
+    expect(view.q('agent-model-other-provider').textContent).toContain('It is for Fern'),
+  )
   expect(view.q('agent-model-other-provider').textContent).toContain('runs on Birch')
   expect(view.q('agent-model-held').textContent).toContain('on Fern')
   expect(view.q('agent-model-not-in-force').textContent).toContain('not in force')
@@ -160,7 +259,10 @@ it('uses supplied names on the TeamWorkspace engine fact without changing the pr
   const f = fixture()
   const store = agentStoreForClient(f.client)
   await store.load()
-  const view = mount(ancestor(f.client, TeamWorkspace, () => ({ agents: f.reading(), store })), {})
+  const view = mount(
+    ancestor(f.client, TeamWorkspace, () => ({ agents: f.reading(), store })),
+    {},
+  )
   await vi.waitFor(() => expect(view.q('team-provider-worker').textContent).toBe('Fern'))
   expect(f.reading().identities[0]?.provider).toBe('claude')
   expect(f.setAgentProvider).not.toHaveBeenCalled()
