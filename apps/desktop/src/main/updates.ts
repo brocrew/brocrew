@@ -149,6 +149,7 @@ export interface Updates {
   download(): Promise<UpdatesSnapshot>
   restartWhenQuiet(): UpdatesSnapshot
   cancelRestart(): UpdatesSnapshot
+  restartFailed(error: unknown): void
   set(change: UpdatesSettingsChange): UpdatesSnapshot
 }
 
@@ -367,6 +368,11 @@ export function createUpdates(deps: UpdatesDeps): Updates {
     download,
     restartWhenQuiet,
     cancelRestart,
+    restartFailed: (error) => {
+      if (stopped || (state.kind !== 'ready' && state.kind !== 'waiting-to-restart')) return
+      cancelRestart()
+      failed('restart to update', firstLineOf(error))
+    },
     set,
   }
 }

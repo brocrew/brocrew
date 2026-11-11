@@ -363,7 +363,7 @@ it('shows a native preparation error after ZIP download and never offers Restart
   })
   expect(fake.sent.some((one) => one.state.kind === 'ready')).toBe(false)
   expect(fake.native.listenerCount('update-downloaded')).toBe(0)
-  expect(fake.updaterEvents.listenerCount('error')).toBe(1)
+  expect(fake.updaterEvents.listenerCount('error')).toBe(2)
   await ask(UPDATES_CHANNELS.restartWhenQuiet)
   expect(fake.nativeInstalls).toBe(0)
 })
@@ -379,3 +379,36 @@ it('detaches pending native preparation when the app stops', async () => {
   expect(fake.sent.length).toBe(sent)
   expect(fake.nativeInstalls).toBe(0)
 })
+
+for (const waiting of [false, true]) {
+  it(`shows a native error after ready${waiting ? ' and cancels a waiting restart' : ''}, then permits recovery`, async () => {
+    const [downloading] = await beginMacPreparation()
+    fake.native.emit('update-downloaded')
+    expect((await downloading).state.kind).toBe('ready')
+    if (waiting) {
+      vi.useFakeTimers()
+      fake.stops = [{ conversationId: 'busy', agentName: 'Fictional' }]
+      await ask(UPDATES_CHANNELS.restartWhenQuiet)
+      expect((await ask<UpdatesSnapshot>(UPDATES_CHANNELS.read)).state.kind).toBe(
+        'waiting-to-restart',
+      )
+    } else {
+      await ask(UPDATES_CHANNELS.restartWhenQuiet)
+      await vi.waitFor(() => expect(fake.nativeInstalls).toBe(1))
+      vi.useFakeTimers()
+    }
+    const installs = fake.nativeInstalls
+    fake.native.emit('error', new Error('fictional ShipIt relaunch failure'))
+    expect((await ask<UpdatesSnapshot>(UPDATES_CHANNELS.read)).state).toMatchObject({
+      kind: 'error',
+      message: expect.stringContaining('fictional ShipIt relaunch failure'),
+    })
+    expect(fake.sent.at(-1)?.state.kind).toBe('error')
+    fake.stops = []
+    await vi.advanceTimersByTimeAsync(QUIET_LOOK_EVERY_MS * 2)
+    expect(fake.nativeInstalls).toBe(installs)
+    expect((await ask<UpdatesSnapshot>(UPDATES_CHANNELS.checkNow)).state.kind).toBe('available')
+    updates!.stop()
+    expect(fake.updaterEvents.listenerCount('error')).toBe(1)
+  })
+}
