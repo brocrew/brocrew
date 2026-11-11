@@ -27,7 +27,7 @@ const validEvents: Record<RuntimeEvent['type'], RuntimeEvent> = {
     type: 'turn_summary',
     status: 'completed',
     detail: 'Checked the change',
-    needsAction: false,
+    needsAction: '',
   },
   command_summary: { type: 'command_summary', description: 'Checking the change' },
   provider_turn: { type: 'provider_turn' },
