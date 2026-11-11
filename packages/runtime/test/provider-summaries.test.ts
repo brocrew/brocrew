@@ -15,6 +15,12 @@ const command = { type: 'system', subtype: 'task_summary', detail: 'Checking the
 const normalize = (value: unknown) => normalizeMessage(value as SDKMessage)
 
 describe('provider-neutral summaries', () => {
+  it.each([
+    { type: 'turn_summary', status: 'completed', detail: 'Checked the change', needsAction: false },
+    { type: 'command_summary', description: 'Checking the change' },
+  ])('admits portable summary facts without naming a provider: %j', (event) => {
+    expect(parseRuntimeEvent(event)).toEqual({ ok: true, event })
+  })
   it.each([false, true])('maps a reported turn summary, retaining needs-action %s', (needsAction) => {
     const event = {
       type: 'turn_summary',

@@ -8,6 +8,7 @@ import { HOW_ITS_PIECE_ENDED } from '../../../shared/questions'
 import { pathTail } from '../../../shared/path-tail'
 import { A_PERSON_MUST_ACT } from '../../../shared/tasks'
 import { didIt } from '../../../shared/who-did-it'
+import { turnSummaryLine } from './summary-line'
 
 /**
  * ⛔ **What a LEVEL says when it carried rows this event does not** (263 §1, from `259` lens A).
@@ -591,6 +592,10 @@ export function describeEvent(event: TranscriptEvent): string {
       return 'Work wait step recorded'
     case 'work_recovery':
       return 'Work recovery recorded'
+    case 'turn_summary':
+      return turnSummaryLine(event)
+    case 'command_summary':
+      return event.description
     case 'unknown':
       // `provider · label` (072) — the label is the adapter's neutral kind string, shown as-is.
       return event.label ? `${event.provider} · ${event.label}` : event.provider

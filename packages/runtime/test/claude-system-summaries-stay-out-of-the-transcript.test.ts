@@ -10,11 +10,21 @@ const lines = [
 ]
 
 describe('Claude system summaries', () => {
-  it.each(lines)('keeps a system event available for Debug mode and in the log: %s', (line) => {
+  it.each(lines)('maps reported summaries and retains unknown system diagnostics: %s', (line) => {
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
       const message = JSON.parse(line) as SDKMessage
       const events = normalizeMessage(message)
+      if (line === lines[0]) {
+        expect(events).toEqual([{ type: 'turn_summary', status: 'completed', detail: 'Finished the reply', needsAction: false }])
+        expect(warning).not.toHaveBeenCalled()
+        return
+      }
+      if (line === lines[1]) {
+        expect(events).toEqual([{ type: 'command_summary', description: 'Finished the tool call' }])
+        expect(warning).not.toHaveBeenCalled()
+        return
+      }
       expect(events).toEqual([
         {
           type: 'unknown',

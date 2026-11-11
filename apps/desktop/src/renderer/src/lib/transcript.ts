@@ -1917,12 +1917,8 @@ export function cardHomes(state: TranscriptState): { card: SubAgentCard; itemId:
 }
 
 /**
- * Fold one event into the transcript, and stamp whatever it added with when it happened.
- *
- * The stamping is done HERE, around the fold, rather than inside each of its dozen branches:
- * every branch would have had to remember, and the one that forgot would be invisible. Items the
- * event MUTATES rather than adds — an assistant block taking another delta, a tool call receiving
- * its result — keep the time they were created with, which is when that message began.
+ * Fold one event and stamp added rows with its ledger time and ordinal.
+ * Mutated rows keep the time they were created with.
  */
 export function applyEvent(
   state: TranscriptState,
@@ -1937,16 +1933,12 @@ export function applyEvent(
   foldEvent(state, event, at, ordinal, humanFinal)
   followTheTurnsErrors(state, event, from)
   if ((at === undefined && ordinal === undefined) || state.seq === before) return
-  // Walk back from the end while the items are ones this fold created. Counting by LENGTH would
-  // have missed the commonest turn there is: text, a tool call, then more text — the authoritative
-  // message drops the unconfirmed streamed block and pushes its own, so one item goes and one
-  // arrives and the length never moves. New items are always appended, so this finds exactly them.
+  // Sequence identifies new rows even when a confirmed message replaced a streamed row.
   for (let index = state.items.length - 1; index >= 0; index--) {
     const item = state.items[index]
     if (!item || itemSeq(item.id) <= before) break
     if (at !== undefined) item.at = at
-    // ⚑ Stamped in the SAME walk, for the same reason: a dozen branches each remembering is a
-    // dozen chances for one to forget, and the one that forgot would be invisible. See {@link Placed}.
+    // Stamp each new row's ledger position in the same walk. See {@link Placed}.
     if (ordinal !== undefined) item.ordinal = ordinal
   }
 }
@@ -5205,6 +5197,17 @@ function foldEvent(
     case 'provider_usage':
       return
 
+    case 'turn_summary':
+      state.items.push({
+        kind: 'turnSummary', id: nextId(state, 'turnSummary'),
+        status: event.status, detail: event.detail, needsAction: event.needsAction,
+      })
+      return
+    case 'command_summary':
+      state.items.push({
+        kind: 'commandSummary', id: nextId(state, 'commandSummary'), description: event.description,
+      })
+      return
     case 'unknown': {
       state.items.push({
         kind: 'unknown',

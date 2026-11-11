@@ -2,7 +2,7 @@ import type { HandedPath } from '../../../shared/attachment-contracts'
 import type { MemoryNoteSeen } from '../../../shared/conversation-events'
 import type { AnsweredQuestion } from '../../../shared/human-answer-contracts'
 import type { MoveOrigin } from '../../../shared/move-contracts'
-import type { MemoryRecallEntry, UnknownCategory } from '../../../shared/runtime-ipc'
+import type { MemoryRecallEntry, RuntimeEvent, UnknownCategory } from '../../../shared/runtime-ipc'
 import type { AgentMessageKind, WorkReport } from '../../../shared/task-contracts'
 import type { InstructionAsked } from './instruction-asked'
 import type { AskedToStop, StopUnanswered } from './stop-unanswered'
@@ -814,6 +814,13 @@ export interface MemoryLoadedItem {
   beside: number
 }
 
+export type TurnSummaryItem = { kind: 'turnSummary'; id: string } & Omit<
+  Extract<RuntimeEvent, { type: 'turn_summary' }>, 'type'
+>
+export type CommandSummaryItem = { kind: 'commandSummary'; id: string } & Omit<
+  Extract<RuntimeEvent, { type: 'command_summary' }>, 'type'
+>
+
 export type TranscriptItem = (
   | UserItem
   | ContinuationItem
@@ -835,6 +842,8 @@ export type TranscriptItem = (
   | MemoryNoteItem
   | MemoryRecallItem
   | MemoryLoadedItem
+  | TurnSummaryItem
+  | CommandSummaryItem
   | UnknownItem
 ) &
   Timed &

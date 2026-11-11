@@ -23,6 +23,8 @@ const validEvents: Record<RuntimeEvent['type'], RuntimeEvent> = {
     source: 'conversation_reset',
   },
   turn: { type: 'turn', state: 'completed', turnId: 't1' },
+  turn_summary: { type: 'turn_summary', status: 'completed', detail: 'Checked the change', needsAction: false },
+  command_summary: { type: 'command_summary', description: 'Checking the change' },
   provider_turn: { type: 'provider_turn' },
   provider_usage: {
     type: 'provider_usage',

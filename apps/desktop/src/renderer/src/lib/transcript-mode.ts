@@ -24,6 +24,8 @@ export function isVisibleIn(item: TranscriptItem, debug = false): boolean {
     case 'memoryRecall':
       return true
     case 'memoryLoaded':
+    case 'turnSummary':
+    case 'commandSummary':
       return true
     case 'reset':
     case 'user':
