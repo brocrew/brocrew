@@ -5,7 +5,9 @@ import {
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
-export class PublicToolError extends Error {}
+import { dispatchTool, type ToolDefinition } from '../../../shared/tool-dispatch.js'
+export { PublicToolError } from '../../../shared/tool-dispatch.js'
+export type { ToolDefinition } from '../../../shared/tool-dispatch.js'
 export type ToolActivity =
   | 'browser-ready'
   | 'page-ready'
@@ -17,16 +19,6 @@ export type ToolActivity =
 interface ToolContext extends Record<string, unknown> {
   signal?: AbortSignal
   activity?: (stage: ToolActivity) => void
-}
-export interface ToolDefinition {
-  name: string
-  description: string
-  inputSchema: {
-    type: 'object'
-    properties: Record<string, unknown>
-    required?: string[]
-    additionalProperties?: boolean
-  }
 }
 export type ToolResult = {
   content: Array<{
@@ -65,37 +57,28 @@ export function createToolServer(options: ToolServerOptions): Server {
   }))
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const { name: toolName, arguments: args } = request.params
-    const tool = tools.find((t) => t.definition.name === toolName)
-    if (!tool) {
-      return { content: [{ type: 'text', text: `Unknown tool: ${toolName}` }] }
-    }
     let active = true
     let progress = 0
-    try {
-      return await tool.execute((args as Record<string, unknown>) ?? {}, {
-        ...context,
-        signal: extra.signal,
-        activity(stage) {
-          const progressToken = request.params._meta?.progressToken
-          if (active && !extra.signal.aborted && progressToken !== undefined)
-            void extra
-              .sendNotification({
-                method: 'notifications/progress',
-                params: { progressToken, progress: ++progress, message: stage },
-              })
-              .catch(() => undefined)
-        },
-      })
-    } catch (err: unknown) {
-      return {
-        content: [
-          { type: 'text', text: `Error: ${err instanceof Error ? err.message : String(err)}` },
-        ],
-        ...(err instanceof PublicToolError ? {} : { isError: true }),
+    return dispatchTool(tools, toolName, args, async (tool, parsed) => {
+      try {
+        return await tool.execute(parsed, {
+          ...context,
+          signal: extra.signal,
+          activity(stage) {
+            const progressToken = request.params._meta?.progressToken
+            if (active && !extra.signal.aborted && progressToken !== undefined)
+              void extra
+                .sendNotification({
+                  method: 'notifications/progress',
+                  params: { progressToken, progress: ++progress, message: stage },
+                })
+                .catch(() => undefined)
+          },
+        })
+      } finally {
+        active = false
       }
-    } finally {
-      active = false
-    }
+    })
   })
   if (resources.length > 0) {
     server.setRequestHandler(ListResourcesRequestSchema, async () => ({

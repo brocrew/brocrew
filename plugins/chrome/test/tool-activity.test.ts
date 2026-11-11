@@ -95,6 +95,7 @@ it('uses the original progress token and emits no activity after the tool has se
         execute(_args, context) {
           context.activity?.('page-loaded')
           late = () => context.activity?.('screenshot-captured')
+          queueMicrotask(() => queueMicrotask(() => late?.()))
           return { content: [{ type: 'text', text: 'done' }] }
         },
       },
