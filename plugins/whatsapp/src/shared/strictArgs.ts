@@ -1,3 +1,4 @@
+import { argsValidator, type ArgsSchema } from '../../../shared/argument-validation.js'
 export type PropSchema =
   | {
       type: 'string'
@@ -11,31 +12,8 @@ export type PropSchema =
       minimum?: number
       maximum?: number
     }
-export interface FlatSchema {
-  type: 'object'
-  properties: Readonly<Record<string, PropSchema>>
-  required?: readonly string[]
-  additionalProperties?: boolean
-}
-export function validateArgs(schema: FlatSchema, args: unknown): string[] {
-  if (args === undefined || args === null) args = {}
-  if (typeof args !== 'object' || Array.isArray(args)) return ['arguments must be a JSON object']
-  const given = args as Record<string, unknown>
-  const declared = (k: string) => Object.hasOwn(schema.properties, k)
-  const errors: string[] = []
-  if (schema.additionalProperties === false && Object.keys(given).some((k) => !declared(k))) {
-    errors.push(`unknown argument; allowed: ${Object.keys(schema.properties).join(', ') || 'none'}`)
-  }
-  for (const key of schema.required ?? []) {
-    if (!Object.hasOwn(given, key) || given[key] === undefined) errors.push(`"${key}" is required`)
-  }
-  for (const [key, prop] of Object.entries(schema.properties)) {
-    if (!Object.hasOwn(given, key) || given[key] === undefined) continue
-    const error = propError(key, prop, given[key])
-    if (error !== null) errors.push(error)
-  }
-  return errors
-}
+export type FlatSchema = ArgsSchema<PropSchema>
+export const validateArgs = argsValidator<PropSchema>(propError)
 function propError(key: string, p: PropSchema, v: unknown): string | null {
   if (p.type === 'string') {
     if (typeof v !== 'string') return `"${key}" must be a string`
