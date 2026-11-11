@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
@@ -8,8 +7,6 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
-import { createServer, type Server } from 'node:http'
-import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -18,14 +15,7 @@ import type {
   WhatARestartWouldStop,
   WhatARestartWouldStopIn,
 } from '../src/shared/updates'
-import {
-  diskImageOf,
-  downloadChecked,
-  downloadUrlOf,
-  privateDownloadUrlOf,
-  privateFeedToken,
-  readFeed,
-} from '../src/main/guided-update'
+import { downloadUrlOf, readFeed } from '../src/main/release-feed'
 import { listingCommand, otherBroBotsIn } from '../src/main/other-brobots'
 import {
   HIDDEN_UPDATE_DEFAULTS,
@@ -49,26 +39,8 @@ import {
 import { installerArgsFor, REOPEN_SWITCH, theWayBack } from '../src/main/reopen-after-update'
 import { builtEnvironment } from '../src/main/built-launch'
 
-/**
- * 🔴 **W4.109 · B1 — when BroBot looks for a newer version, and what it does with one.**
- *
- *  - §1 · the rules (`updates.ts`), with every outside thing faked: the off switch requests nothing,
- *    nothing downloads unasked, a restart waits until it would stop nothing, and the Mac never
- *    installs itself.
- *  - §2 · the settings file: per computer, a hidden launch's its own, and a broken one is the
- *    defaults.
- *  - §3 · other workspaces, from the process table.
- *  - §4 · the Mac's guided download, against a throwaway local server: the sha512 is checked.
- *  - §5 · the wiring.
- */
-
 const roots: string[] = []
-const servers: Server[] = []
 afterEach(async () => {
-  for (const server of servers.splice(0)) {
-    server.closeAllConnections()
-    await new Promise((done) => server.close(done))
-  }
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 const aFolder = (): string => {
@@ -102,19 +74,17 @@ function anUpdater(
     checks: 0,
     downloads: 0,
     installs: 0,
-    guides: 0,
     processLists: 0,
     written: [] as UpdateSettings[],
     published: [] as UpdatesSnapshot[],
   }
   let timers: { run: () => void; ms: number; cancelled: boolean }[] = []
   let stops: WhatARestartWouldStop = QUIET
-  // ⚑ The settings file, as one per computer: what was written is what is read next.
+  // The settings file, as one per computer: what was written is what is read next.
   let file: UpdateSettings = overrides.start ?? UPDATE_DEFAULTS
   const deps: UpdatesDeps = {
     version: '0.1.0',
     notHere: null,
-    installs: 'on-restart',
     settings: {
       read: () => file,
       write: (s) => {
@@ -132,10 +102,6 @@ function anUpdater(
     },
     install: () => {
       asked.installs += 1
-    },
-    guide: async () => {
-      asked.guides += 1
-      return '/Users/x/Downloads/BroBot-0.2.0-arm64.dmg'
     },
     conversationsARestartWouldStop: () => stops.conversations,
     otherWorkspacesRunning: async () => {
@@ -179,106 +145,98 @@ function anUpdater(
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
 
 describe('§1 · the rules', () => {
-  for (const installs of ['on-restart', 'guided'] as const) {
-    it(`${installs}: Download refreshes an old offer and fetches the newest release`, async () => {
-      const old = { ...NEWER, version: '0.1.22' }
-      const newest = {
-        version: '0.1.25',
-        files: [{ url: 'BroCrew-0.1.25-arm64.dmg', sha512: 'new-digest' }],
-      }
-      let offered = old
-      const fetched: FoundUpdate[] = []
-      const channels: string[] = []
-      const take = async (release: FoundUpdate) => {
-        fetched.push(release)
-      }
-      const app = anUpdater({
-        installs,
-        start: { checkAutomatically: false, channel: 'beta' },
-        check: async (channel) => {
-          channels.push(channel)
-          return offered
-        },
-        download: take,
-        guide: async (release) => {
-          await take(release)
-          return '/fictional/newest.dmg'
-        },
-      })
-      await app.updates.checkNow()
-      expect(app.updates.snapshot().state).toEqual({ kind: 'available', version: '0.1.22' })
-      expect(fetched).toEqual([])
-      offered = newest
-      await app.updates.download()
-      expect(fetched).toEqual([newest])
-      expect(channels).toEqual(['beta', 'beta'])
-      expect(
-        app.asked.published.some(
-          ({ state }) => state.kind === 'downloading' && state.version === '0.1.25',
-        ),
-      ).toBe(true)
-      expect(app.updates.snapshot().state).toMatchObject({
-        kind: 'ready',
-        version: '0.1.25',
-        how: installs === 'guided' ? 'opened' : 'restart',
-      })
-      expect(app.asked.installs).toBe(0)
+  it(`Download refreshes an old offer and fetches the newest release`, async () => {
+    const old = { ...NEWER, version: '0.1.22' }
+    const newest = {
+      version: '0.1.25',
+      files: [{ url: 'BroCrew-0.1.25-arm64.dmg', sha512: 'new-digest' }],
+    }
+    let offered = old
+    const fetched: FoundUpdate[] = []
+    const channels: string[] = []
+    const take = async (release: FoundUpdate) => {
+      fetched.push(release)
+    }
+    const app = anUpdater({
+      start: { checkAutomatically: false, channel: 'beta' },
+      check: async (channel) => {
+        channels.push(channel)
+        return offered
+      },
+      download: take,
     })
-
-    it(`${installs}: a refresh with no update downloads nothing`, async () => {
-      let offered: FoundUpdate | null = NEWER
-      const app = anUpdater({ installs, check: async () => offered })
-      await app.updates.checkNow()
-      offered = null
-      await app.updates.download()
-      expect(app.asked.downloads + app.asked.guides).toBe(0)
-      expect(app.updates.snapshot().state).toEqual({
-        kind: 'idle',
-        checkedAt: 1_000,
-        upToDate: true,
-      })
+    await app.updates.checkNow()
+    expect(app.updates.snapshot().state).toEqual({ kind: 'available', version: '0.1.22' })
+    expect(fetched).toEqual([])
+    offered = newest
+    await app.updates.download()
+    expect(fetched).toEqual([newest])
+    expect(channels).toEqual(['beta', 'beta'])
+    expect(
+      app.asked.published.some(
+        ({ state }) => state.kind === 'downloading' && state.version === '0.1.25',
+      ),
+    ).toBe(true)
+    expect(app.updates.snapshot().state).toMatchObject({
+      kind: 'ready',
+      version: '0.1.25',
+      how: 'restart',
     })
+    expect(app.asked.installs).toBe(0)
+  })
 
-    for (const outcome of ['resolve', 'reject'] as const) {
-      for (const change of ['channel', 'stop'] as const) {
-        it(`${installs}: ${change} during refresh prevents download when it ${outcome}s`, async () => {
-          let finish!: () => void
-          let checks = 0
-          const app = anUpdater({
-            installs,
-            start: { checkAutomatically: false, channel: 'beta' },
-            check: async () => {
-              if (++checks === 1) return NEWER
-              return new Promise<FoundUpdate>((resolve, reject) => {
-                finish = () =>
-                  outcome === 'resolve'
-                    ? resolve({ ...NEWER, version: '0.3.0-beta.1' })
-                    : reject(new Error('feed unavailable'))
-              })
-            },
-          })
-          await app.updates.checkNow()
-          const pending = app.updates.download()
-          expect(checks).toBe(2)
-          if (change === 'channel') app.updates.set({ channel: 'stable' })
-          else app.updates.stop()
-          const published = app.asked.published.length
-          finish()
-          await pending
-          expect(app.asked.downloads + app.asked.guides).toBe(0)
-          expect(app.asked.installs).toBe(0)
-          if (change === 'channel') {
-            expect(app.updates.snapshot()).toMatchObject({
-              channel: 'stable',
-              state: { kind: 'idle', checkedAt: null, upToDate: false },
+  it(`a refresh with no update downloads nothing`, async () => {
+    let offered: FoundUpdate | null = NEWER
+    const app = anUpdater({ check: async () => offered })
+    await app.updates.checkNow()
+    offered = null
+    await app.updates.download()
+    expect(app.asked.downloads).toBe(0)
+    expect(app.updates.snapshot().state).toEqual({
+      kind: 'idle',
+      checkedAt: 1_000,
+      upToDate: true,
+    })
+  })
+
+  for (const outcome of ['resolve', 'reject'] as const) {
+    for (const change of ['channel', 'stop'] as const) {
+      it(`${change} during refresh prevents download when it ${outcome}s`, async () => {
+        let finish!: () => void
+        let checks = 0
+        const app = anUpdater({
+          start: { checkAutomatically: false, channel: 'beta' },
+          check: async () => {
+            if (++checks === 1) return NEWER
+            return new Promise<FoundUpdate>((resolve, reject) => {
+              finish = () =>
+                outcome === 'resolve'
+                  ? resolve({ ...NEWER, version: '0.3.0-beta.1' })
+                  : reject(new Error('feed unavailable'))
             })
-            await app.updates.download()
-            expect(app.asked.downloads + app.asked.guides).toBe(0)
-          } else {
-            expect(app.asked.published).toHaveLength(published)
-          }
+          },
         })
-      }
+        await app.updates.checkNow()
+        const pending = app.updates.download()
+        expect(checks).toBe(2)
+        if (change === 'channel') app.updates.set({ channel: 'stable' })
+        else app.updates.stop()
+        const published = app.asked.published.length
+        finish()
+        await pending
+        expect(app.asked.downloads).toBe(0)
+        expect(app.asked.installs).toBe(0)
+        if (change === 'channel') {
+          expect(app.updates.snapshot()).toMatchObject({
+            channel: 'stable',
+            state: { kind: 'idle', checkedAt: null, upToDate: false },
+          })
+          await app.updates.download()
+          expect(app.asked.downloads).toBe(0)
+        } else {
+          expect(app.asked.published).toHaveLength(published)
+        }
+      })
     }
   }
 
@@ -304,7 +262,7 @@ describe('§1 · the rules', () => {
     expect(app.asked.downloads).toBe(1)
   })
 
-  it('🔴 one switch per computer: turned off in another workspace, this one stops checking too', async () => {
+  it('one switch per computer: turned off in another workspace, this one stops checking too', async () => {
     const on = anUpdater({ offered: null })
     on.updates.start()
     await on.pass()
@@ -313,12 +271,12 @@ describe('§1 · the rules', () => {
     for (let day = 0; day < 3; day += 1) await on.pass()
     expect(on.asked.checks).toBe(1)
     expect(on.updates.snapshot().checkAutomatically).toBe(false)
-    // ⚑ …and a change here keeps what the other workspace chose.
+    // …and a change here keeps what the other workspace chose.
     on.updates.set({ channel: 'beta' })
     expect(on.asked.written.at(-1)).toEqual({ checkAutomatically: false, channel: 'beta' })
   })
 
-  it('🔴 on: once soon after launch, then once a day — and never a download it was not asked for', async () => {
+  it('on: once soon after launch, then once a day — and never a download it was not asked for', async () => {
     const on = anUpdater()
     on.updates.start()
     expect(on.armed().map((timer) => timer.ms)).toEqual([FIRST_CHECK_AFTER_MS])
@@ -327,12 +285,12 @@ describe('§1 · the rules', () => {
     expect(on.updates.snapshot().state).toEqual({ kind: 'available', version: '0.2.0' })
     expect(on.armed().map((timer) => timer.ms)).toEqual([CHECK_EVERY_MS])
     await on.pass()
-    // ⚑ An offer already standing is not asked again by itself, and nothing was downloaded.
+    // An offer already standing is not asked again by itself, and nothing was downloaded.
     expect(on.asked.checks).toBe(1)
-    expect(on.asked.downloads + on.asked.guides).toBe(0)
+    expect(on.asked.downloads).toBe(0)
   })
 
-  it('⚑ a person who asks is answered, the switch off or not — and one check at a time', async () => {
+  it('a person who asks is answered, the switch off or not — and one check at a time', async () => {
     const off = anUpdater({ start: { checkAutomatically: false, channel: 'beta' }, offered: null })
     const [first, second] = await Promise.all([off.updates.checkNow(), off.updates.checkNow()])
     expect(off.asked.checks).toBe(1)
@@ -340,7 +298,7 @@ describe('§1 · the rules', () => {
     expect(first?.state).toEqual({ kind: 'idle', checkedAt: 1_000, upToDate: true })
   })
 
-  it('🔴 the mid-turn refusal: a restart waits while a turn runs, and installs once nothing would stop', async () => {
+  it('the mid-turn refusal: a restart waits while a turn runs, and installs once nothing would stop', async () => {
     const win = anUpdater()
     await win.updates.checkNow()
     await win.updates.download()
@@ -349,7 +307,7 @@ describe('§1 · the rules', () => {
     win.updates.restartWhenQuiet()
     await settle()
     expect(win.asked.installs).toBe(0)
-    // ⚑ Other workspaces are not looked for while a conversation here is busy: not known yet.
+    // Other workspaces are not looked for while a conversation here is busy: not known yet.
     expect(win.updates.snapshot().state).toEqual({
       kind: 'waiting-to-restart',
       version: '0.2.0',
@@ -361,11 +319,11 @@ describe('§1 · the rules', () => {
     await win.pass()
     expect(win.asked.processLists).toBe(1)
     expect(win.asked.installs).toBe(1)
-    // ⚑ Once: nothing looks again after it.
+    // Once: nothing looks again after it.
     expect(win.armed()).toEqual([])
   })
 
-  it('🔴 a turn that starts while the process list is read is seen, and nothing installs', async () => {
+  it('a turn that starts while the process list is read is seen, and nothing installs', async () => {
     let answer: (count: number | null) => void = () => {}
     let busy: readonly WhatARestartWouldStopIn[] = []
     const win = anUpdater({
@@ -386,7 +344,7 @@ describe('§1 · the rules', () => {
     })
   })
 
-  it('⛔ another workspace running keeps it waiting — it never stops one', async () => {
+  it('another workspace running keeps it waiting — it never stops one', async () => {
     const win = anUpdater()
     await win.updates.checkNow()
     await win.updates.download()
@@ -398,7 +356,7 @@ describe('§1 · the rules', () => {
     expect(win.updates.snapshot().state.kind).toBe('waiting-to-restart')
   })
 
-  it('🔴 a process list it cannot read never holds the update: it installs, saying so', async () => {
+  it('a process list it cannot read never holds the update: it installs, saying so', async () => {
     const said: string[] = []
     const win = anUpdater({ log: (line) => said.push(line) })
     await win.updates.checkNow()
@@ -410,7 +368,7 @@ describe('§1 · the rules', () => {
     expect(said).toContain('updates: other BroCrew windows could not be counted; restarting anyway')
   })
 
-  it('⚑ a restart cancelled while it waits does not install, even from a look already under way', async () => {
+  it('a restart cancelled while it waits does not install, even from a look already under way', async () => {
     let answer: (count: number | null) => void = () => {}
     const win = anUpdater({
       otherWorkspacesRunning: () => new Promise((resolve) => (answer = resolve)),
@@ -424,7 +382,7 @@ describe('§1 · the rules', () => {
     expect(win.asked.installs).toBe(0)
   })
 
-  it('⛔ quitting while a restart waits never installs, even from a look already under way', async () => {
+  it('quitting while a restart waits never installs, even from a look already under way', async () => {
     let answer: (count: number | null) => void = () => {}
     const win = anUpdater({
       otherWorkspacesRunning: () => new Promise((resolve) => (answer = resolve)),
@@ -437,14 +395,14 @@ describe('§1 · the rules', () => {
     await settle()
     expect(win.asked.installs).toBe(0)
     expect(win.armed()).toEqual([])
-    // ⚑ …and none is chosen again on the way out.
+    // …and none is chosen again on the way out.
     win.updates.restartWhenQuiet()
     await settle()
     expect(win.asked.installs).toBe(0)
     expect(win.armed()).toEqual([])
   })
 
-  it('⚑ a look that throws says so, and stops waiting', async () => {
+  it('a look that throws says so, and stops waiting', async () => {
     const win = anUpdater({
       conversationsARestartWouldStop: () => {
         throw new Error('The database connection is not open')
@@ -463,29 +421,7 @@ describe('§1 · the rules', () => {
     })
   })
 
-  it('🔴 the Mac is guided: its download is the checked disk image, opened — and it never installs', async () => {
-    const mac = anUpdater({ installs: 'guided' })
-    await mac.updates.checkNow()
-    await mac.updates.download()
-    expect(mac.asked.guides).toBe(1)
-    expect(mac.asked.downloads).toBe(0)
-    expect(mac.updates.snapshot().state).toEqual({
-      kind: 'ready',
-      version: '0.2.0',
-      how: 'opened',
-      path: '/Users/x/Downloads/BroBot-0.2.0-arm64.dmg',
-    })
-    mac.updates.restartWhenQuiet()
-    await settle()
-    await mac.pass()
-    expect(mac.asked.installs).toBe(0)
-    // ⚑ A disk image closed by mistake is opened again when asked.
-    await mac.updates.download()
-    expect(mac.asked.guides).toBe(2)
-    expect(mac.updates.snapshot().state).toMatchObject({ kind: 'ready', how: 'opened' })
-  })
-
-  it('⚑ a failure is said in plain words, its first line only — and a channel with no release yet is up to date', async () => {
+  it('a failure is said in plain words, its first line only — and a channel with no release yet is up to date', async () => {
     const broken = anUpdater({
       check: async () => {
         throw new Error('the feed answered 404\nHeaders: {"server": "x"}')
@@ -513,7 +449,7 @@ describe('§1 · the rules', () => {
     })
   })
 
-  it('⚑ what a failed check says', () => {
+  it('what a failed check says', () => {
     const coded = (message: string, code: string): Error =>
       Object.assign(new Error(message), { code })
     expect(
@@ -540,7 +476,7 @@ describe('§1 · the rules', () => {
     expect(whyACheckFailed(new Error('x'.repeat(500)))).toHaveLength(200)
   })
 
-  it('⚑ a download is told once per whole percent, not once per chunk', async () => {
+  it('a download is told once per whole percent, not once per chunk', async () => {
     const win = anUpdater({
       download: async (_found, onPercent) => {
         for (let chunk = 0; chunk <= 10_000; chunk += 1) onPercent(chunk / 100)
@@ -555,7 +491,7 @@ describe('§1 · the rules', () => {
     expect(told).toHaveLength(101)
   })
 
-  it('⚑ an offer from the other channel is dropped when the channel changes', async () => {
+  it('an offer from the other channel is dropped when the channel changes', async () => {
     const beta = anUpdater({ start: { checkAutomatically: true, channel: 'beta' } })
     await beta.updates.checkNow()
     expect(beta.updates.snapshot().state.kind).toBe('available')
@@ -569,7 +505,7 @@ describe('§1 · the rules', () => {
     expect(beta.asked.downloads).toBe(0)
   })
 
-  it('⚑ the switches are kept, and with checks turned off nothing is asked', async () => {
+  it('the switches are kept, and with checks turned off nothing is asked', async () => {
     const on = anUpdater()
     on.updates.start()
     const after = on.updates.set({ checkAutomatically: false, channel: 'beta' })
@@ -579,7 +515,7 @@ describe('§1 · the rules', () => {
     expect(on.asked.checks).toBe(0)
   })
 
-  it('🔴 electron-updater’s autoUpdater is found where import() puts it: on `default`', () => {
+  it('electron-updater’s autoUpdater is found where import() puts it: on `default`', () => {
     const updater = { autoDownload: true }
     const asImportGivesIt = {
       autoUpdater: undefined,
@@ -590,7 +526,7 @@ describe('§1 · the rules', () => {
     expect(() => theAutoUpdaterOf({ default: {} })).toThrow('electron-updater has no autoUpdater')
   })
 
-  it('⛔ the wire takes the two switches and nothing else', () => {
+  it('the wire takes the two switches and nothing else', () => {
     expect(parseSettingsChange({ checkAutomatically: false })).toEqual({
       checkAutomatically: false,
     })
@@ -609,7 +545,7 @@ describe('§1 · the rules', () => {
 })
 
 describe('§2 · the settings file', () => {
-  it('🔴 one per computer beside the default folder, checks on; a hidden launch keeps its own, checks off', () => {
+  it('one per computer beside the default folder, checks on; a hidden launch keeps its own, checks off', () => {
     const where = { appData: '/A', userData: '/A/@brobot2/desktop' }
     expect(updateSettingsOf({ ...where, hidden: false })).toEqual({
       file: join('/A', '@brobot2', 'settings.json'),
@@ -621,7 +557,7 @@ describe('§2 · the settings file', () => {
     })
   })
 
-  it('⚑ no file, a broken one, or values it cannot read: the defaults', () => {
+  it('no file, a broken one, or values it cannot read: the defaults', () => {
     const folder = aFolder()
     const file = join(folder, 'settings.json')
     expect(readUpdateSettings(file, UPDATE_DEFAULTS)).toEqual(UPDATE_DEFAULTS)
@@ -636,7 +572,7 @@ describe('§2 · the settings file', () => {
     }
   })
 
-  it('⚑ written whole, keeping anything else the file holds', () => {
+  it('written whole, keeping anything else the file holds', () => {
     const file = join(aFolder(), 'nested', 'settings.json')
     writeUpdateSettings(file, { checkAutomatically: false, channel: 'beta' })
     expect(readUpdateSettings(file, UPDATE_DEFAULTS)).toEqual({
@@ -649,13 +585,13 @@ describe('§2 · the settings file', () => {
       somethingElse: 1,
       updates: { checkAutomatically: true, channel: 'stable' },
     })
-    // ⚑ Renamed over the file: nothing is left beside it.
+    // Renamed over the file: nothing is left beside it.
     expect(readdirSync(dirname(file))).toEqual(['settings.json'])
   })
 
-  it('⚑ a write that fails says so and takes its temporary file with it', () => {
+  it('a write that fails says so and takes its temporary file with it', () => {
     const folder = aFolder()
-    // ⚑ A folder where the file should be: the rename over it fails.
+    // A folder where the file should be: the rename over it fails.
     const file = join(folder, 'settings.json')
     mkdirSync(join(file, 'in-the-way'), { recursive: true })
     expect(() =>
@@ -667,14 +603,14 @@ describe('§2 · the settings file', () => {
 })
 
 describe('§3 · other workspaces, from the process table', () => {
-  it('🔴 every main process of BroBot.exe but this app’s own; its helpers carry --type=', () => {
+  it('every main process of BroBot.exe but this app’s own; its helpers carry --type=', () => {
     const exe = 'C:\\Users\\x\\AppData\\Local\\Programs\\BroBot\\BroBot.exe'
     const listing = [
       `100 "${exe}"`,
       `101 "${exe}" --type=renderer --user-data-dir=C:\\x`,
-      // ⚑ A path PowerShell wrote in another code page is still a workspace…
+      // A path PowerShell wrote in another code page is still a workspace…
       `200 "C:\\Users\\S?ren\\AppData\\Local\\Programs\\BroBot\\BroBot.exe" --user-data-dir=C:\\y`,
-      // ⚑ …and so is one whose command line it may not read.
+      // …and so is one whose command line it may not read.
       '300 ',
       `301 "${exe}" --type=gpu-process`,
       '',
@@ -682,239 +618,45 @@ describe('§3 · other workspaces, from the process table', () => {
     expect(otherBroBotsIn(listing, new Set([100, 101]))).toBe(2)
   })
 
-  it('⚑ how Windows is asked: the processes of this executable’s name', () => {
+  it('how Windows is asked: the processes of this executable’s name', () => {
     const win = listingCommand('C:\\P\\BroBot.exe')
     expect(win.file).toBe('powershell.exe')
     expect(win.args.at(-1)).toContain(`Win32_Process -Filter "Name='BroBot.exe'"`)
   })
 })
 
-describe('§4 · the Mac’s guided download, against a local server', () => {
-  /** A throwaway server: `/files/<name>` serves what `serve` holds. */
-  async function aFeed(serve: Record<string, Buffer>) {
-    const server = createServer((request, response) => {
-      const name = decodeURIComponent((request.url ?? '').replace(/^\/files\//, ''))
-      const body = serve[name]
-      if (body === undefined) {
-        response.writeHead(404).end()
-        return
-      }
-      response.writeHead(200, { 'content-length': String(body.length) }).end(body)
-    })
-    servers.push(server)
-    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done))
-    const { port } = server.address() as AddressInfo
-    return { url: `http://127.0.0.1:${String(port)}/files/` }
-  }
-  const image = Buffer.alloc(256 * 1024, 7)
-  const sum = createHash('sha512').update(image).digest('base64')
-
-  it('⛔ one that stops arriving, or never answers, ends and says so — leaving nothing', async () => {
-    const server = createServer((request, response) => {
-      // ⚑ `/stops`: ten bytes of a thousand, then nothing. Anything else: no answer at all.
-      if (request.url === '/stops') {
-        response.writeHead(200, { 'content-length': '1000' })
-        response.write(Buffer.alloc(10))
-      }
-    })
-    servers.push(server)
-    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done))
-    const { port } = server.address() as AddressInfo
-    for (const path of ['/stops', '/never']) {
-      const to = join(aFolder(), 'BroBot-0.2.0-arm64.dmg')
-      await expect(
-        downloadChecked({
-          stagingFolder: aFolder(),
-          url: `http://127.0.0.1:${String(port)}${path}`,
-          sha512: sum,
-          to,
-          onPercent: () => {},
-          stallsAfterMs: 1_000,
-        }),
-        path,
-      ).rejects.toThrow('the download stalled: no progress for 1 s')
-      expect(readdirSync(dirname(to)), path).toEqual([])
-    }
-  })
-
-  it('⚑ a missing one is said with its status', async () => {
-    const feed = await aFeed({})
-    await expect(
-      downloadChecked({
-        stagingFolder: aFolder(),
-        url: `${feed.url}gone.dmg`,
-        sha512: sum,
-        to: join(aFolder(), 'gone.dmg'),
-        onPercent: () => {},
-      }),
-    ).rejects.toThrow('the download answered 404')
-  })
-
-  it('⚑ the feed an app carries, and where a release’s file is', () => {
-    expect(
-      readFeed("owner: brocrew\nrepo: brocrew\nprovider: github\nupdaterCacheDirName: 'x'\n"),
-    ).toEqual({
+describe('the release feed', () => {
+  it('reads GitHub and generic feeds and keeps release URLs unchanged', () => {
+    expect(readFeed('provider: github\nowner: brocrew\nrepo: brocrew\n')).toEqual({
       provider: 'github',
       owner: 'brocrew',
       repo: 'brocrew',
     })
-    expect(readFeed('provider: generic\nurl: http://127.0.0.1:9/f\n')).toEqual({
+    expect(readFeed('provider: generic\nurl: https://fictional.invalid/releases\n')).toEqual({
       provider: 'generic',
-      url: 'http://127.0.0.1:9/f',
+      url: 'https://fictional.invalid/releases',
     })
-    expect(readFeed('provider: s3\n')).toBeNull()
-    expect(
-      readFeed("provider: github\nowner: 'brocrew'\nrepo: \"feed\"\nprivate: 'true'\n"),
-    ).toEqual({
+    expect(readFeed('provider: github\nowner: brocrew\nrepo: feed\nprivate: true\n')).toEqual({
       provider: 'github',
       owner: 'brocrew',
       repo: 'feed',
+      private: true,
     })
+    expect(readFeed('provider: s3\n')).toBeNull()
     expect(
       downloadUrlOf(
         { provider: 'github', owner: 'brocrew', repo: 'brocrew' },
         '0.2.0-beta.1',
-        'BroBot-0.2.0-beta.1-arm64.dmg',
+        'BroCrew.zip',
       ),
-    ).toBe(
-      'https://github.com/brocrew/brocrew/releases/download/v0.2.0-beta.1/BroBot-0.2.0-beta.1-arm64.dmg',
-    )
+    ).toBe('https://github.com/brocrew/brocrew/releases/download/v0.2.0-beta.1/BroCrew.zip')
     expect(
-      diskImageOf({
-        version: '0.2.0',
-        files: [
-          { url: 'a.zip', sha512: 'z' },
-          { url: 'a.dmg', sha512: 'd' },
-        ],
-      }),
-    ).toEqual({
-      url: 'a.dmg',
-      sha512: 'd',
-    })
-  })
-})
-
-describe('§4b · a private GitHub feed, read as electron-updater reads one', () => {
-  const TOKEN = 'ghs_private-feed-token-for-a-test'
-  const feed = { provider: 'github', owner: 'brocrew', repo: 'feed', private: true } as const
-
-  it('⚑ the build says the feed is private; the environment alone never makes it so', () => {
-    expect(readFeed('owner: brocrew\nrepo: feed\nprovider: github\nprivate: true\n')).toEqual(feed)
-    const env = { GH_TOKEN: TOKEN }
-    expect(privateFeedToken(feed, env)).toBe(TOKEN)
-    expect(privateFeedToken(feed, { GITHUB_TOKEN: TOKEN })).toBe(TOKEN)
-    expect(privateFeedToken({ provider: 'github', owner: 'brocrew', repo: 'feed' }, env)).toBeNull()
-    expect(privateFeedToken({ provider: 'generic', url: 'http://127.0.0.1:9/' }, env)).toBeNull()
-    expect(privateFeedToken(feed, { GH_TOKEN: '' })).toBeNull()
-  })
-
-  /** GitHub's API as a fake `fetch`: one release, one file, handed out at a short-lived address. */
-  function anApi(answers: { release?: number; handed?: number } = {}) {
-    const asked: { url: string; init: RequestInit | undefined }[] = []
-    const fetch = (async (url: string, init?: RequestInit) => {
-      asked.push({ url, init })
-      if (url.endsWith('/releases/tags/v0.2.0')) {
-        return new Response(
-          JSON.stringify({
-            assets: [{ name: 'BroBot-0.2.0-arm64.dmg', url: 'https://api.github.com/assets/7' }],
-          }),
-          { status: answers.release ?? 200 },
-        )
-      }
-      if (url === 'https://api.github.com/assets/7') {
-        return new Response(null, {
-          status: answers.handed ?? 302,
-          headers: { location: 'https://objects.example/signed/7' },
-        })
-      }
-      return new Response(null, { status: 404 })
-    }) as typeof globalThis.fetch
-    return { asked, fetch }
-  }
-
-  it('🔴 the API names the file and hands out its address; the token goes to the API only', async () => {
-    const api = anApi()
-    const url = await privateDownloadUrlOf({
-      feed,
-      version: '0.2.0',
-      file: 'BroBot-0.2.0-arm64.dmg',
-      token: TOKEN,
-      fetch: api.fetch,
-    })
-    expect(url).toBe('https://objects.example/signed/7')
-    expect(api.asked.map((one) => one.url)).toEqual([
-      'https://api.github.com/repos/brocrew/feed/releases/tags/v0.2.0',
-      'https://api.github.com/assets/7',
-    ])
-    for (const one of api.asked) {
-      expect(new URL(one.url).host).toBe('api.github.com')
-      expect((one.init?.headers as Record<string, string>).authorization).toBe(`token ${TOKEN}`)
-    }
-    expect(api.asked[1]?.init?.redirect).toBe('manual')
-  })
-
-  it('⛔ a release, a file or an address it cannot have is said, and the token is never in the words', async () => {
-    for (const [answers, file, said] of [
-      [
-        { release: 404 },
-        'BroBot-0.2.0-arm64.dmg',
-        'the private feed answered 404 for release 0.2.0',
-      ],
-      [{}, 'gone.dmg', 'release 0.2.0 on the private feed has no gone.dmg'],
-      [
-        { handed: 200 },
-        'BroBot-0.2.0-arm64.dmg',
-        'the private feed did not hand out BroBot-0.2.0-arm64.dmg: it answered 200',
-      ],
-    ] as const) {
-      const error = await privateDownloadUrlOf({
-        feed,
-        version: '0.2.0',
-        file,
-        token: TOKEN,
-        fetch: anApi(answers).fetch,
-      }).catch((caught: unknown) => caught as Error)
-      expect(error).toBeInstanceOf(Error)
-      expect((error as Error).message).toBe(said)
-      expect((error as Error).message).not.toContain(TOKEN)
-    }
-  })
-
-  it('⛔ the token goes to GitHub’s API only: a file the API names elsewhere is refused, unasked', async () => {
-    const asked: string[] = []
-    const fetch = (async (url: string) => {
-      asked.push(url)
-      return new Response(
-        JSON.stringify({
-          assets: [{ name: 'BroBot-0.2.0-arm64.dmg', url: 'https://example.org/assets/7' }],
-        }),
-      )
-    }) as typeof globalThis.fetch
-    await expect(
-      privateDownloadUrlOf({
-        feed,
-        version: '0.2.0',
-        file: 'BroBot-0.2.0-arm64.dmg',
-        token: TOKEN,
-        fetch,
-      }),
-    ).rejects.toThrow('the private feed named an address that is not GitHub’s API')
-    expect(asked).toEqual(['https://api.github.com/repos/brocrew/feed/releases/tags/v0.2.0'])
-  })
-
-  it('⛔ a request that throws is said in fixed words, whatever the thrown words carried', async () => {
-    const fetch = (async () => {
-      throw new TypeError(`Headers.append: "token ${TOKEN}" is an invalid header value.`)
-    }) as typeof globalThis.fetch
-    const error = await privateDownloadUrlOf({
-      feed,
-      version: '0.2.0',
-      file: 'BroBot-0.2.0-arm64.dmg',
-      token: TOKEN,
-      fetch,
-    }).catch((caught: unknown) => caught as Error)
-    expect((error as Error).message).toBe('the private feed could not be reached')
-    expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain(TOKEN)
+      downloadUrlOf(
+        { provider: 'generic', url: 'https://fictional.invalid/releases' },
+        '0.2.0',
+        'BroCrew.zip',
+      ),
+    ).toBe('https://fictional.invalid/releases/BroCrew.zip')
   })
 })
 

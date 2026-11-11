@@ -5,21 +5,6 @@ import { clockTime } from '../../../shared/clock'
 import { useUpdates } from '../composables/useUpdates'
 import { readableError } from '../lib/session-record'
 
-/**
- * 🔴 **B2 · the menu the rail's footer opens: this BroBot's version, and its updates.**
- *
- * ⚑ What `main/updates.ts` says, in plain words (`shared/updates.ts`):
- *  - **the version** — *BroBot 0.1.0*;
- *  - **where an update stands** — up to date, checking, one offered and its Download, its progress,
- *    then on Windows *Restart to update* (it waits until nothing is running, and lists what still
- *    is, with Cancel), and on the Mac the opened image with what to do next;
- *  - **two switches** — check automatically, and get beta updates.
- *
- * ⛔ **A build that never checks says so in one line and offers nothing**: a development build or
- * one with no release to read (`not-here`).
- *
- * ⚑ Esc closes it; focus goes back to the footer, which is `SideRail`'s to hold.
- */
 const props = defineProps<{
   /** This BroBot's version where the app said it before the updates answer — `AppInfo.version`. */
   version?: string | null
@@ -30,7 +15,7 @@ const emit = defineEmits<{ close: [] }>()
 const updates = useUpdates()
 const snapshot = updates.snapshot
 const panel = ref<HTMLElement | null>(null)
-/** ⚑ What the last press could not do, said once — the answer's own words. */
+/** What the last press could not do, said once — the answer's own words. */
 const refused = ref<string | null>(null)
 const busy = ref(false)
 
@@ -41,7 +26,7 @@ const notesVersion = computed(() => {
   return current && 'version' in current ? current.version : null
 })
 
-// ⚑ A press is answered when its work is done — a whole download — but the app tells every move on
+// A press is answered when its work is done — a whole download — but the app tells every move on
 // the way: a new state frees the menu at once, so the next step's button is not held back.
 watch(
   () => state.value?.kind,
@@ -63,7 +48,7 @@ async function press(act: () => Promise<void>): Promise<void> {
   }
 }
 
-/** ⚑ One conversation a restart waits on, in words: *Ada: a turn is running, 2 held messages*. */
+/** One conversation a restart waits on, in words: *Ada: a turn is running, 2 held messages*. */
 function stopsSays(one: WhatARestartWouldStopIn): string {
   const parts = [
     ...(one.turnRunning ? ['a turn is running'] : []),
@@ -98,7 +83,7 @@ function onKey(event: KeyboardEvent): void {
   emit('close')
 }
 
-/** ⚑ A switch the app refused goes back to what the snapshot says: nothing else would move it. */
+/** A switch the app refused goes back to what the snapshot says: nothing else would move it. */
 async function flip(event: Event, change: Parameters<typeof updates.set>[0]): Promise<void> {
   const box = event.target as HTMLInputElement
   await press(() => updates.set(change))
@@ -108,7 +93,7 @@ async function flip(event: Event, change: Parameters<typeof updates.set>[0]): Pr
       : snapshot.value?.channel === 'beta'
 }
 
-// ⚑ Focus moves in as it opens — to its first control, or to the menu itself where it has none (a
+// Focus moves in as it opens — to its first control, or to the menu itself where it has none (a
 // development build), so Esc and the keys reach it either way. A read that never answered is asked
 // again.
 onMounted(async () => {
@@ -211,21 +196,6 @@ onMounted(async () => {
             Restart to update
           </button>
           <p class="aside">It restarts once nothing is running.</p>
-        </template>
-
-        <template v-else-if="state.kind === 'ready'">
-          <p class="said" data-cy="updates-said">
-            BroCrew {{ state.version }} is downloaded and opened. Quit every open copy of BroCrew,
-            then drag the new one into Applications.
-          </p>
-          <button
-            type="button"
-            :disabled="busy"
-            data-cy="updates-open-again"
-            @click="press(updates.download)"
-          >
-            Download again
-          </button>
         </template>
 
         <template v-else-if="state.kind === 'waiting-to-restart'">

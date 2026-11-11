@@ -9,26 +9,6 @@ import type {
 } from '../shared/updates'
 import type { UpdateSettings } from './update-settings'
 
-/**
- * 🔴 **W4.109 · B1 — when BroBot looks for a newer version, and what it does with one.**
- *
- * ⚑ The rules, all here and none in the window:
- *  - **It checks by itself only when the person lets it** (`checkAutomatically`, on by default):
- *    once soon after launch, then once a day. ⛔ With it off, nothing is ever requested on its own;
- *    a person who presses *Check for updates* has asked, and is answered. ⚑ The switch is one per
- *    computer, so it is read from its file each time, never kept: a workspace that turned it off
- *    turns it off for every workspace running.
- *  - **Nothing is downloaded without the person's choice**, and one thing happens at a time.
- *  - **Windows installs on a restart the person chooses**, and only when a restart would stop
- *    nothing: no turn running, no message held, no question open, nothing in the background, and
- *    no other BroBot workspace running. ⛔ Until then it waits; it never stops another workspace.
- *  - ⛔ **The Mac never installs itself**: an app signed ad hoc cannot replace itself. The disk image
- *    is downloaded, checked against its published sha512, and opened for the person to drag.
- *
- * ⚑ Electron, electron-updater and the network are all passed in ({@link UpdatesDeps}), so these
- * rules are measured without any of them.
- */
-
 /** One file a release names in its update file. */
 export interface ReleaseFile {
   readonly url: string
@@ -47,17 +27,13 @@ export interface UpdatesDeps {
   readonly version: string
   /** Why this build never checks, or null when it does. */
   readonly notHere: 'a-development-build' | 'no-release-feed' | null
-  /** Windows installs on a restart; the Mac is guided. */
-  readonly installs: 'on-restart' | 'guided'
   readonly settings: { read(): UpdateSettings; write(settings: UpdateSettings): void }
   /** Ask the release feed: the newer release on this channel, or null when this is the newest. */
   check(channel: UpdateChannel): Promise<FoundUpdate | null>
-  /** Windows: download the installer the feed offered. */
+  /** Download the update the feed offered. */
   download(found: FoundUpdate, onPercent: (percent: number) => void): Promise<void>
-  /** Windows: quit, and install once this app has shut down; BroBot starts again after. */
+  /** Quit and install the update, then start BroCrew again. */
   install(): void
-  /** The Mac: download the disk image, check its sha512, open it. Answers where it is. */
-  guide(found: FoundUpdate, onPercent: (percent: number) => void): Promise<string>
   /** The conversations of this app a restart would stop now — read with no `await`. */
   conversationsARestartWouldStop(): readonly WhatARestartWouldStopIn[]
   /** How many other BroBot workspaces run on this computer, or null when that cannot be read. */
@@ -78,7 +54,7 @@ export const QUIET_LOOK_EVERY_MS = 10_000
 /** The longest reason a failure gives, so a server's whole answer never lands in the window. */
 const LONGEST_REASON = 200
 
-/** ⚑ What the window may ask to change, read at the wire: anything else is refused. */
+/** What the window may ask to change, read at the wire: anything else is refused. */
 export function parseSettingsChange(said: unknown): UpdatesSettingsChange {
   if (typeof said !== 'object' || said === null || Array.isArray(said)) {
     throw new Error('an update setting is an object')
@@ -98,11 +74,7 @@ export function parseSettingsChange(said: unknown): UpdatesSettingsChange {
   }
 }
 
-/**
- * ⚠️ **electron-updater's module, as `import()` gives it**: a CommonJS module whose `autoUpdater`
- * is a getter, which `import()` does not surface as a named export — it is on `default` (measured
- * in a packaged build, where the named one was `undefined`).
- */
+/** Read electron-updater's singleton from its CommonJS or named export. */
 export function theAutoUpdaterOf(exported: unknown): AppUpdater {
   const named = exported as { autoUpdater?: AppUpdater; default?: { autoUpdater?: AppUpdater } }
   const autoUpdater = named.default?.autoUpdater ?? named.autoUpdater
@@ -159,9 +131,7 @@ function said(state: UpdateState): string {
     case 'downloading':
       return `downloading ${state.version} (${String(state.percent)}%)`
     case 'ready':
-      return state.how === 'restart'
-        ? `${state.version} is ready: restart to update`
-        : `${state.version} is downloaded, checked and opened: ${String(state.path)}`
+      return `${state.version} is ready: restart to update`
     case 'waiting-to-restart':
       return `${state.version} waits to restart until ${String(state.stops.conversations.length)} conversation(s) and ${state.stops.otherWorkspaces === null ? 'any' : String(state.stops.otherWorkspaces)} other workspace(s) are done`
     case 'error':
@@ -190,7 +160,7 @@ export function createUpdates(deps: UpdatesDeps): Updates {
   let found: FoundUpdate | null = null
   let cancelCheck: (() => void) | null = null
   let cancelLook: (() => void) | null = null
-  /** ⚑ Each choice to restart, and each cancel, starts a new one: a look from an older one stops. */
+  /** Each choice to restart, and each cancel, starts a new one: a look from an older one stops. */
   let restartChoice = 0
   /** A choice to restart stands — from the click, before its first look has answered. */
   let restartChosen = false
@@ -214,13 +184,10 @@ export function createUpdates(deps: UpdatesDeps): Updates {
   const failed = (doing: string, why: string): void => {
     become({ kind: 'error', message: `BroCrew could not ${doing}: ${why}`, at: deps.now() })
   }
-  /** ⚑ The Mac's disk image is opened, not installed: nothing waits on it, so it may be asked again. */
-  const opened = (): boolean => state.kind === 'ready' && state.how === 'opened'
-
   /** The automatic check: only when the switch is on now, only from rest, and never a download. */
   const automatically = (): void => {
     cancelCheck = null
-    const atRest = state.kind === 'idle' || state.kind === 'error' || opened()
+    const atRest = state.kind === 'idle' || state.kind === 'error'
     if (atRest && deps.settings.read().checkAutomatically) void checkNow()
     arm(CHECK_EVERY_MS)
   }
@@ -232,12 +199,7 @@ export function createUpdates(deps: UpdatesDeps): Updates {
   }
 
   async function checkNow(): Promise<UpdatesSnapshot> {
-    if (
-      state.kind !== 'idle' &&
-      state.kind !== 'error' &&
-      state.kind !== 'available' &&
-      !opened()
-    ) {
+    if (state.kind !== 'idle' && state.kind !== 'error' && state.kind !== 'available') {
       return snapshot()
     }
     const channel = deps.settings.read().channel
@@ -259,7 +221,7 @@ export function createUpdates(deps: UpdatesDeps): Updates {
   }
 
   async function download(): Promise<UpdatesSnapshot> {
-    if (stopped || (state.kind !== 'available' && !opened()) || found === null) return snapshot()
+    if (stopped || state.kind !== 'available' || found === null) return snapshot()
     let refreshed: FoundUpdate | null = found
     const channel = deps.settings.read().channel
     become({ kind: 'checking' })
@@ -290,13 +252,8 @@ export function createUpdates(deps: UpdatesDeps): Updates {
     }
     progress(0)
     try {
-      if (deps.installs === 'guided') {
-        const path = await deps.guide(offered, progress)
-        become({ kind: 'ready', version: offered.version, how: 'opened', path })
-      } else {
-        await deps.download(offered, progress)
-        become({ kind: 'ready', version: offered.version, how: 'restart', path: null })
-      }
+      await deps.download(offered, progress)
+      become({ kind: 'ready', version: offered.version, how: 'restart', path: null })
     } catch (error) {
       failed(`download ${offered.version}`, firstLineOf(error))
     }
@@ -307,7 +264,6 @@ export function createUpdates(deps: UpdatesDeps): Updates {
     const ready = state
     if (
       stopped ||
-      deps.installs !== 'on-restart' ||
       !((ready.kind === 'ready' && ready.how === 'restart') || ready.kind === 'waiting-to-restart')
     ) {
       return snapshot()
@@ -329,7 +285,7 @@ export function createUpdates(deps: UpdatesDeps): Updates {
       cancelLook = null
       if (choice !== restartChoice) return
       try {
-        // ⚑ This app's conversations first: while one is busy the computer's process list is not
+        // This app's conversations first: while one is busy the computer's process list is not
         // read at all (on Windows that is a PowerShell, every look).
         const busy = deps.conversationsARestartWouldStop()
         if (busy.length > 0) {
@@ -337,14 +293,14 @@ export function createUpdates(deps: UpdatesDeps): Updates {
           return
         }
         otherWorkspaces = await deps.otherWorkspacesRunning()
-        // ⚑ Cancelled, chosen again, or quitting, while it looked: the latest word stands.
+        // Cancelled, chosen again, or quitting, while it looked: the latest word stands.
         if (choice !== restartChoice) return
         // A process list that could not be read is no reason to wait forever: it counts as none.
         if (otherWorkspaces === null) {
           deps.log('updates: other BroCrew windows could not be counted; restarting anyway')
           otherWorkspaces = 0
         }
-        // ⛔ **Read again after that wait, and installed in the same turn**: a turn that started
+        // Read again after that wait, and install in the same turn: a turn that started
         // while the process list was read is seen here, and none can start after this read.
         const stops = { conversations: deps.conversationsARestartWouldStop(), otherWorkspaces }
         if (!nothingWouldStop(stops)) {
@@ -385,7 +341,7 @@ export function createUpdates(deps: UpdatesDeps): Updates {
       channel: change.channel ?? was.channel,
     }
     deps.settings.write(settings)
-    // ⚑ An offer from the other channel is not this one's: it is asked again.
+    // An offer from the other channel is not this one's: it is asked again.
     if (settings.channel !== was.channel && state.kind === 'available') {
       found = null
       state = { kind: 'idle', checkedAt: null, upToDate: false }

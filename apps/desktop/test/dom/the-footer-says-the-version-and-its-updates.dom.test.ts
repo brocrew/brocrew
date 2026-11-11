@@ -6,14 +6,6 @@ import { forgetUpdates } from '../../src/renderer/src/composables/useUpdates'
 import type { UpdateState, UpdatesSnapshot } from '../../src/shared/updates'
 import { mount, unmountAll } from './harness'
 
-/**
- * # 🔴 B2 · the footer's menu: this BroBot's version, and its updates
- *
- * A press on the rail's footer opens the version, where an update stands and what to do about it,
- * and two switches. ⚑ Each state is driven through a fake `window.api.updates`, the bridge B1 gave
- * the window, and every press is checked to reach it.
- */
-
 const snapshotOf = (state: UpdateState, over: Partial<UpdatesSnapshot> = {}): UpdatesSnapshot => ({
   version: '0.1.0',
   checkAutomatically: true,
@@ -150,23 +142,6 @@ describe('B2 · the menu, state by state', () => {
     ;(m.q('updates-restart') as HTMLButtonElement).click()
     await settle()
     expect(fake.restartWhenQuiet).toHaveBeenCalledTimes(1)
-  })
-
-  it('🔴 ready on the Mac · what to do next, and Open it again downloads again', async () => {
-    const { m, fake } = await menuIn({
-      kind: 'ready',
-      version: '0.2.0',
-      how: 'opened',
-      path: '/x.dmg',
-    })
-    expect(text(m.q('updates-said'))).toBe(
-      'BroCrew 0.2.0 is downloaded and opened. Quit every open copy of BroCrew, then drag the new one into Applications.',
-    )
-    expect(m.all('updates-restart')).toHaveLength(0)
-    expect(text(m.q('updates-open-again'))).toBe('Download again')
-    ;(m.q('updates-open-again') as HTMLButtonElement).click()
-    await settle()
-    expect(fake.download).toHaveBeenCalledTimes(1)
   })
 
   it('🔴 waiting to restart · what still runs, in words, other BroBots, and Cancel', async () => {

@@ -69,6 +69,7 @@ let resources: PropertyDescriptor | undefined
 let platform: PropertyDescriptor | undefined
 let updater: NsisUpdater
 let updates: ReturnType<typeof startUpdates> | undefined
+let closeMacServer: (() => void) | undefined
 let asked: Asked[]
 let primaryError: Error | null
 let primaryManifest: string
@@ -112,8 +113,9 @@ async function start(
 ): Promise<void> {
   Object.defineProperty(process, 'platform', { value: on, configurable: true })
   primaryManifest = manifest(on)
-  const { NsisUpdater: RealUpdater } =
+  const { NsisUpdater, MacUpdater } =
     await vi.importActual<typeof import('electron-updater')>('electron-updater')
+  const RealUpdater = on === 'darwin' ? MacUpdater : NsisUpdater
   const data = join(root, 'data')
   mkdirSync(data)
   const appUpdate = join(root, 'app-update.yml')
@@ -126,18 +128,39 @@ async function start(
     JSON.stringify({ updates: { checkAutomatically: enabled, channel: 'stable' } }),
   )
   quit = vi.fn<() => void>()
-  updater = new RealUpdater(undefined, {
-    version: installed,
-    name: 'Fictional',
-    isPackaged: true,
-    appUpdateConfigPath: appUpdate,
-    userDataPath: data,
-    baseCachePath: join(root, 'cache'),
-    whenReady: async () => {},
-    relaunch: () => {},
-    quit,
-    onQuit: () => {},
-  })
+  // MacUpdater loads Electron through CommonJS, outside Vitest's import mocks.
+  if (on === 'darwin') dependency('electron')
+  const electronModule =
+    on === 'darwin' ? dependency.cache[dependency.resolve('electron')] : undefined
+  const electronExports = electronModule?.exports
+  if (electronModule)
+    electronModule.exports = {
+      autoUpdater: Object.assign(new EventEmitter(), {
+        setFeedURL: vi.fn(),
+        checkForUpdates: vi.fn(),
+        quitAndInstall: vi.fn(),
+      }),
+    }
+  try {
+    updater = new RealUpdater(undefined, {
+      version: installed,
+      name: 'Fictional',
+      isPackaged: true,
+      appUpdateConfigPath: appUpdate,
+      userDataPath: data,
+      baseCachePath: join(root, 'cache'),
+      whenReady: async () => {},
+      relaunch: () => {},
+      quit,
+      onQuit: () => {},
+    }) as NsisUpdater
+  } finally {
+    if (electronModule) electronModule.exports = electronExports
+  }
+  if (on === 'darwin')
+    closeMacServer = () =>
+      (updater as unknown as { closeServerIfExists(): void }).closeServerIfExists()
+  if (on === 'darwin') Object.assign(updater, { install: vi.fn() })
   Object.assign(updater, {
     _testOnlyOptions: { platform: on },
     httpExecutor: Object.assign(Object.create(HttpExecutor.prototype) as object, {
@@ -260,6 +283,8 @@ beforeEach(() => {
 })
 afterEach(async () => {
   await updates?.drain()
+  closeMacServer?.()
+  closeMacServer = undefined
   updates = undefined
   vi.useRealTimers()
   vi.restoreAllMocks()
@@ -528,7 +553,7 @@ describe('the public update feed', () => {
       const downloads = asked.filter((row) => row.download)
       expect(downloads).toHaveLength(1)
       const file =
-        on === 'darwin' ? `BroCrew-${VERSION}-arm64.dmg` : `BroCrew-Setup-${VERSION}-x64.exe`
+        on === 'darwin' ? `BroCrew-${VERSION}-arm64-mac.zip` : `BroCrew-Setup-${VERSION}-x64.exe`
       expect(downloads[0]!.url.href).toBe(`https://brocrew.app/update/${file}?v=${INSTALLED}`)
       expect(updater.install).not.toHaveBeenCalled()
     },
@@ -590,7 +615,7 @@ describe('the public update feed', () => {
       const downloads = asked.filter((row) => row.download)
       expect(downloads).toHaveLength(1)
       const file =
-        on === 'darwin' ? `BroCrew-${VERSION}-arm64.dmg` : `BroCrew-Setup-${VERSION}-x64.exe`
+        on === 'darwin' ? `BroCrew-${VERSION}-arm64-mac.zip` : `BroCrew-Setup-${VERSION}-x64.exe`
       expect(downloads[0]!.url.href).toBe(
         `https://github.com/brocrew/brocrew/releases/download/v${VERSION}/${file}`,
       )
@@ -699,16 +724,16 @@ describe('the public update feed', () => {
     expect(quit).not.toHaveBeenCalled()
   })
 
-  it('keeps the Mac checked download and never opens bytes with a wrong hash', async () => {
+  it('keeps the Mac ZIP checksum check and refuses damaged bytes', async () => {
     await start('darwin')
-    bytes = Buffer.from('Wrong fictional disk image bytes')
+    bytes = Buffer.from('Wrong fictional ZIP bytes')
     await updates!.checkNow()
     expect((await updates!.download()).state).toMatchObject({
       kind: 'error',
-      message: expect.stringContaining('sha512'),
+      message: expect.stringMatching(/checksum|sha512/i),
     })
     const sent = asked.find((row) => row.download)!
-    expect(sent.url.pathname).toBe(`/update/BroCrew-${VERSION}-arm64.dmg`)
+    expect(sent.url.pathname).toBe(`/update/BroCrew-${VERSION}-arm64-mac.zip`)
     expect([...sent.url.searchParams]).toEqual([['v', INSTALLED]])
     expect(fake.opened).not.toHaveBeenCalled()
   })

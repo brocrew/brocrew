@@ -1,4 +1,4 @@
-name: Mac guided update rehearsal
+name: Mac automatic update rehearsal
 
 on:
   workflow_dispatch:
@@ -18,15 +18,15 @@ env:
 
 jobs:
   rehearse:
-    name: Package A and B and rehearse the guided Mac update
-    if: github.repository == 'brocrew/brocrew' && github.event.repository.private == true
+    name: Package signed A and B and rehearse the Mac automatic update
+    if: github.repository == 'brocrew/brocrew'
     runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Require a private hosted Apple silicon runner
+      - name: Require a hosted Apple silicon runner
         run: |
           set -euo pipefail
           test "$RUNNER_ENVIRONMENT" = github-hosted
@@ -35,20 +35,33 @@ jobs:
       - uses: ./.github/actions/setup-desktop
       - name: Check the pure rehearsal helpers
         run: pnpm exec vitest run --project scripts scripts/test/mac-update-test.test.mjs
-      - name: Build once and package A and B with distinct markers
+      - name: Build once and package signed A and B with distinct markers
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         shell: bash
         run: |
           set -euo pipefail
+          umask 077
+          signing_key="$RUNNER_TEMP/mac-update-notary.p8"
+          trap 'rm -f "$signing_key"' EXIT
+          printf '%s' "$APPLE_API_KEY_P8" > "$signing_key"
+          export APPLE_API_KEY="$signing_key"
           pnpm --filter @brobot2/desktop run build
           for one in a:0.0.98 b:0.0.99; do
             pnpm --filter @brobot2/desktop exec electron-builder --mac dmg zip --arm64 --config electron-builder.yml \
-              -c.mac.identity=- \
+              -c.forceCodeSigning=true -c.mac.hardenedRuntime=true \
+              -c.mac.timestamp=http://timestamp.apple.com/ts01 -c.mac.notarize=true -c.dmg.sign=true \
+              -c.artifactBuildCompleted=./build/notarize-dmg.mjs \
               -c.extraMetadata.version="${one#*:}" \
               -c.extraMetadata.rehearsalMarker="mac-${one%%:*}-$GITHUB_SHA" \
               -c.publish.provider=generic -c.publish.url=http://127.0.0.1:47123/ \
               -c.directories.output="dist-mac-update/${one%%:*}" --publish never
           done
-      - name: Rehearse the normal guided update on fictional data
+      - name: Rehearse ZIP download and Squirrel restart on fictional data
         shell: bash
         run: |
           set -euo pipefail
@@ -58,11 +71,11 @@ jobs:
             --feed-url http://127.0.0.1:47123/ --serve-local \
             --marker-a "mac-a-$GITHUB_SHA" --marker-b "mac-b-$GITHUB_SHA" \
             --source-sha "$GITHUB_SHA" --evidence mac-update-results
-      - name: Keep success or failure evidence privately
+      - name: Keep success or failure evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mac-guided-update-evidence
+          name: mac-automatic-update-evidence
           path: mac-update-results
           if-no-files-found: error
           retention-days: 14
