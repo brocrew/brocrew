@@ -1,7 +1,11 @@
 {
   "$schema": "https://unpkg.com/knip@6.44.1/schema.json",
   "includeEntryExports": true,
-  "ignore": ["scripts/code-health/depcruise.cjs", "scripts/code-health/depcruise-plugin.mjs", "packages/runtime/src/codex/protocol/**"],
+  "ignore": [
+    "scripts/code-health/depcruise.cjs",
+    "scripts/code-health/depcruise-plugin.mjs",
+    "packages/runtime/src/codex/protocol/**"
+  ],
   "workspaces": {
     ".": {
       "vitest": {
