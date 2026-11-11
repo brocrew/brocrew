@@ -20,7 +20,7 @@ const replies = {
   'tools/list': () => ({ tools: [tool] }),
   'tools/call': (params) => ({
     content: [{ type: 'text', text: 'Fictional plugin result: ' + params.arguments.profile }],
-    _meta: { home, pid: process.pid, packageOwned: 'orchid' },
+    _meta: { home, pid: process.pid, packageOwned: 'orchid', inheritedParent: process.env.FICTIONAL_PLUGIN_PARENT },
   }),
 }
 const server = createServer((req, res) => {

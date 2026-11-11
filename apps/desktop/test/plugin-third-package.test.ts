@@ -1,6 +1,6 @@
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 import { createPluginNodeHost, type PluginNodeProcess } from '../src/main/plugins/node-host'
 import { PLUGIN_HOST_SCRIPTS, preparePluginNodeRuntime } from '../src/main/plugins/node-runtime'
@@ -12,8 +12,12 @@ import { thirdPartyMcpSource } from './fixtures/third-party-mcp-source'
 
 const teardowns: (() => Promise<void>)[] = []
 afterEach(async () => {
-  for (const close of teardowns.splice(0).reverse()) await close()
-  await cleanupLifecycleFixtures()
+  try {
+    for (const close of teardowns.splice(0).reverse()) await close()
+    await cleanupLifecycleFixtures()
+  } finally {
+    vi.unstubAllEnvs()
+  }
 })
 
 async function runtimeAt(root: string) {
@@ -73,6 +77,7 @@ it.each([1, 2] as const)(
     )
     let broker: ReturnType<typeof createPluginToolBroker> | undefined
     const children: PluginNodeProcess[] = []
+    vi.stubEnv('FICTIONAL_PLUGIN_PARENT', 'fictional-inherited-parent')
     teardowns.push(() => f.controller.drain())
     try {
       const host = createPluginNodeHost({
@@ -144,6 +149,7 @@ it.each([1, 2] as const)(
           pid: ready.serverPid,
           home: join(f.root, 'node-host/data/fictional-orchid'),
           packageOwned: 'orchid',
+          inheritedParent: 'fictional-inherited-parent',
         },
       })
     } finally {

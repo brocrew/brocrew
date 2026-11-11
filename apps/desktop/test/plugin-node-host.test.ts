@@ -132,7 +132,7 @@ const server = http.createServer((req, res) => {
   res.end(JSON.stringify({pid:child.pid})); return;
  }
  if (req.url === '/v1/owner') return res.end(JSON.stringify({pid:process.ppid}));
- if (req.url === '/v1/env') return res.end(JSON.stringify({home, exec:process.execPath, pid:process.pid, inherited:!!process.env.FICTIONAL_HOST_SECRET}));
+ if (req.url === '/v1/env') return res.end(JSON.stringify({home, exec:process.execPath, pid:process.pid, inherited:process.env.FICTIONAL_HOST_MARKER}));
  if (req.url === '/v1/shared') return res.end(JSON.stringify(Object.fromEntries(['BROCREW_CHROME_SHARED','BROCREW_PLUGIN_OWNER_ID','BROCREW_PLUGIN_OWNER_LABEL','BROCREW_CHROME_MIGRATION_QUALIFICATION'].filter(key=>process.env[key]!==undefined).map(key=>[key,process.env[key]]))));
  res.writeHead(404).end();
 });
@@ -359,14 +359,14 @@ const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));`,
     expect(await readdir(resolve(handle.receiptPath, '..'))).not.toContain('auth.json')
     expect(await handle.stop()).toEqual({ exited: true })
   })
-  it('uses the durable app copy, private data/download roots and authenticated readiness without inheriting host secrets', async () => {
+  it('inherits the parent environment while using the durable app copy and private roots', async () => {
     const { host, home } = await context()
-    process.env.FICTIONAL_HOST_SECRET = 'fictional-only'
+    process.env.FICTIONAL_HOST_MARKER = 'fictional-only'
     let handle
     try {
       handle = await host.start(fixture())
     } finally {
-      delete process.env.FICTIONAL_HOST_SECRET
+      delete process.env.FICTIONAL_HOST_MARKER
     }
     const ready = await handle.ready()
     expect([true, false, null]).toContain(ready.priorityClamped)
@@ -381,7 +381,7 @@ const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));`,
       home: join(home, 'data/chrome'),
       exec: node,
       pid: ready.serverPid,
-      inherited: false,
+      inherited: 'fictional-only',
     })
     expect(
       await (await fetch(ready.origin + '/v1/shared', { headers: ready.admin().headers })).json(),
