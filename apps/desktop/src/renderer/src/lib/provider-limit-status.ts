@@ -4,10 +4,9 @@ import type {
   LastKnownProviderBlock,
   QueuedMessageDisclosure,
 } from '../../../shared/runtime-ipc'
-import { providerName } from '../../../shared/runtime-ipc'
 
 import { fullTime } from './clock'
-import { resetWords } from './usage-limit'
+import { resetWords, usageProviderName, type UsageProviderNames } from './usage-limit'
 import { limitsDisplayWords } from './limits-display'
 
 export interface ProviderBlockFacts {
@@ -46,14 +45,18 @@ export function mergeProviderBlock(
   }
 }
 
-function historicalStop(facts: ProviderBlockFacts, now: number): string | null {
+function historicalStop(
+  facts: ProviderBlockFacts,
+  now: number,
+  names?: UsageProviderNames,
+): string | null {
   const block = facts.providerBlockLastKnown
   if (block == null || !Number.isFinite(now) || !Number.isFinite(block.asOf) || now < block.asOf)
     return null
   // Older facts can time history only when the provider supplied an explicit reset.
   const until = block.displayUntil ?? block.resetsAt
   if (until == null || !Number.isFinite(until) || now >= until) return null
-  return limitsDisplayWords.lastKnown(block)
+  return limitsDisplayWords.lastKnown(block, names)
 }
 
 function resetDetail(block: ConversationProviderBlock, now: number): string | null {
@@ -72,10 +75,11 @@ export function providerLimitDisplay(
   facts: ProviderBlockFacts | null | undefined,
   state: AgentState | undefined,
   now: number,
+  names?: UsageProviderNames,
 ): ProviderLimitDisplay | null {
   if (state === undefined || (state.is !== 'idle' && state.is !== 'scheduled')) return null
   if (facts?.providerBlockStatus === 'unavailable') {
-    const history = historicalStop(facts, now)
+    const history = historicalStop(facts, now, names)
     return {
       word: 'Current limit status unavailable',
       short: 'Limit unavailable',
@@ -85,11 +89,11 @@ export function providerLimitDisplay(
   }
   const block = facts?.providerBlock
   if (facts?.providerBlockStatus !== 'current' || block == null) return null
-  const stopped = `Stopped: ${providerName(block.provider)}’s limit`
+  const stopped = `Stopped: ${usageProviderName(block.provider, names, 'the provider')}’s limit`
   const reset = countdown(block, now)
   return {
     word: reset === null ? stopped : `${stopped} · ${reset}`,
-    short: `${providerName(block.provider)} limit`,
+    short: `${usageProviderName(block.provider, names, 'Provider')} limit`,
     detail: [stopped, resetDetail(block, now)].filter(Boolean).join(' · '),
   }
 }
@@ -137,6 +141,7 @@ export function mergeHeldMessages(
 export function messageLimitDisplay(
   disclosure: QueuedMessageDisclosure | null | undefined,
   now: number,
+  names?: UsageProviderNames,
 ): MessageLimitDisplay | null {
   if (disclosure?.holdReasonStatus === 'unavailable') {
     return {
@@ -149,13 +154,13 @@ export function messageLimitDisplay(
   }
   const reason = disclosure?.holdReason
   if (disclosure?.holdReasonStatus !== 'current' || reason == null) return null
-  const wait = `not sent · waiting for ${providerName(reason.provider)}’s limit to reset`
+  const wait = `not sent · waiting for ${usageProviderName(reason.provider, names, 'the provider')}’s limit to reset`
   const reset = countdown(reason, now)
   return {
     word: reset === null ? wait : `${wait} · ${reset}`,
-    short: `not sent · ${providerName(reason.provider)} limit`,
-    heldWord: `waiting for ${providerName(reason.provider)}’s limit to reset${reset === null ? '' : ` · ${reset}`}`,
-    heldShort: `${providerName(reason.provider)} limit`,
+    short: `not sent · ${usageProviderName(reason.provider, names, 'Provider')} limit`,
+    heldWord: `waiting for ${usageProviderName(reason.provider, names, 'the provider')}’s limit to reset${reset === null ? '' : ` · ${reset}`}`,
+    heldShort: `${usageProviderName(reason.provider, names, 'Provider')} limit`,
     detail: [wait, resetDetail(reason, now)].filter(Boolean).join(' · '),
   }
 }

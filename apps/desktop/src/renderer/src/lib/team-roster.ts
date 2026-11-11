@@ -17,6 +17,7 @@ import {
   type WhatIsBeingDone,
 } from '../../../shared/what-is-being-done'
 import { providerLimitDisplay } from './provider-limit-status'
+import type { UsageProviderNames } from './usage-limit'
 import { agentStateWords } from '../../../shared/agent-state'
 import { theWorkThatNamesItSaid } from '../../../shared/piece-called'
 import {
@@ -499,12 +500,13 @@ export function theirConversations(
   listed: readonly ListedConversation[] | null,
   identity: string,
   held: ReadonlySet<string>,
+  names?: UsageProviderNames,
 ): readonly TheirConversation[] | null {
   if (listed === null) return null
   return listed
     .filter((row) => row.identity === identity)
     .map((row) => {
-      const limit = providerLimitDisplay(row, row.state, Date.now())
+      const limit = providerLimitDisplay(row, row.state, Date.now(), names)
       const purpose = onPurposeSaid(row.state.is === 'idle', row.waitingOnPurpose)
       const elsewhere = row.inAnotherWindow && !held.has(row.sessionId)
       return {

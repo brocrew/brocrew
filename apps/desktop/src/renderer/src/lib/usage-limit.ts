@@ -4,6 +4,16 @@ import { PROVIDER_NAME, type ProviderUsageReading } from '../../../shared/runtim
 import type { LimitStanding, ProviderCondition } from '../../../shared/provider-limit'
 import { agoWords, fullTime } from './clock'
 
+export type UsageProviderNames = Readonly<Partial<Record<Provider, string>>>
+
+export function usageProviderName(
+  provider: Provider,
+  names: UsageProviderNames | undefined,
+  generic: string,
+): string {
+  return names === undefined ? PROVIDER_NAME[provider] : (names[provider] ?? generic)
+}
+
 export const UNCONFIRMED_USAGE = 'Not yet confirmed'
 
 export function readingStatus(reading: ProviderUsageReading, now: number): string | null {
@@ -130,7 +140,11 @@ function whenItResets(resetsAt: number | null, now: number): string {
  * A sentence from supplied limit facts, with the reset relative to the display clock.
  * Windows and percentages come from the core reading; repeated window words share their fullest figure.
  */
-export function usageSays(condition: ProviderCondition, now: number): string {
+export function usageSays(
+  condition: ProviderCondition,
+  now: number,
+  names?: UsageProviderNames,
+): string {
   if (condition.meaning === undefined) return condition.says
   const limits: LimitSaid[] = []
   let unnamedUsed: number | null = null
@@ -143,7 +157,7 @@ export function usageSays(condition: ProviderCondition, now: number): string {
     if (at === -1) limits.push({ word, used })
     else limits[at] = { word, used: fuller(limits[at]!.used, used) }
   }
-  return `${PROVIDER_NAME[condition.provider]} ${HOW_NEAR[condition.standing]} ${whichLimit(limits, unnamedUsed)}; ${whenItResets(condition.resetsAt, now)}.`
+  return `${usageProviderName(condition.provider, names, 'This provider')} ${HOW_NEAR[condition.standing]} ${whichLimit(limits, unnamedUsed)}; ${whenItResets(condition.resetsAt, now)}.`
 }
 
 /** ⚑ **What the sentence's title carries** — the provider's own lines, and the exact reset. */

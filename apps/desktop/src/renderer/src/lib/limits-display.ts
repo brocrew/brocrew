@@ -4,11 +4,11 @@ import type {
   LimitsDisplayReading,
   LimitsDisplayScope,
 } from '../../../shared/limits-display'
-import { providerName } from '../../../shared/runtime-ipc'
 import type { LastKnownProviderBlock } from '../../../shared/runtime-ipc'
 import type { Provider } from '@brobot2/shared'
 import { readPublicationLane } from './read-publication-lane'
 import { fullTime } from './clock'
+import { usageProviderName, type UsageProviderNames } from './usage-limit'
 
 export interface LimitsDisplayState {
   readonly status: 'updating' | 'ready' | 'unavailable'
@@ -27,10 +27,12 @@ export const limitsDisplayWords = {
   lastReading: (at: number): string => `Last reading: ${dateTime(at)}`,
   reported: (at: number): string => `Limit reported as of ${dateTime(at)}`,
   condition: (words: string, at: number): string => `As of ${dateTime(at)}: ${words}`,
-  rail: (providers: readonly Provider[]): string =>
-    providers.map((provider) => `${providerName(provider)} limit`).join(' · '),
-  lastKnown: (block: LastKnownProviderBlock): string =>
-    `Last known: stopped at ${providerName(block.provider)}’s limit · as of ${dateTime(block.asOf)}`,
+  rail: (providers: readonly Provider[], names?: UsageProviderNames): string =>
+    providers
+      .map((provider) => `${usageProviderName(provider, names, 'Provider')} limit`)
+      .join(' · '),
+  lastKnown: (block: LastKnownProviderBlock, names?: UsageProviderNames): string =>
+    `Last known: stopped at ${usageProviderName(block.provider, names, 'the provider')}’s limit · as of ${dateTime(block.asOf)}`,
 }
 
 export function limitsDisplayLabel(

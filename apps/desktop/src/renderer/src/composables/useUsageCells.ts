@@ -1,15 +1,16 @@
 import { computed, type ComputedRef } from 'vue'
-import { providerDescriptor, providerRecord } from '@brobot2/shared/providers'
-import {
-  PROVIDER_NAME,
-  type Provider,
-  type ProviderUsageReading,
-} from '../../../shared/runtime-ipc'
+import { providerDescriptor, providerRecord, SUPPORTED_PROVIDERS } from '@brobot2/shared/providers'
+import type { Provider, ProviderUsageReading } from '../../../shared/runtime-ipc'
 import type { ForestConversation } from '../../../shared/the-whole-forest'
 import { agoWords, fullTime } from '../lib/clock'
 import { NOT_MEASURED } from '../lib/agent-panel'
 import { processMemoryWords } from '../lib/process-memory'
-import { resetWords, UNCONFIRMED_USAGE } from '../lib/usage-limit'
+import {
+  resetWords,
+  UNCONFIRMED_USAGE,
+  usageProviderName,
+  type UsageProviderNames,
+} from '../lib/usage-limit'
 import { useMinuteClock } from './useMinuteClock'
 import { useProviderUsage } from './useProviderUsage'
 import { useWhoCalledWhom, type RunningConversation } from './useWhoCalledWhom'
@@ -30,7 +31,7 @@ const WINDOWS = [
   { word: 'weekly', short: 'week' },
 ] as const
 
-const PROVIDERS = Object.keys(PROVIDER_NAME) as Provider[]
+const PROVIDERS = SUPPORTED_PROVIDERS
 
 /**
  * The windows each provider's cells wait for before any reading has arrived. A window left out is
@@ -102,7 +103,9 @@ export interface UsageCells {
 
 export function useUsageCells(
   readiness: () => Readonly<Partial<Record<Provider, boolean | null>>> | null = () => null,
+  names?: () => UsageProviderNames,
 ): UsageCells {
+  const nameOf = (provider: Provider): string => usageProviderName(provider, names?.(), 'Provider')
   const usage = useProviderUsage()
   const cast = useWhoCalledWhom()
   const minute = useMinuteClock()
@@ -130,7 +133,7 @@ export function useUsageCells(
     const now = Math.max(minute.value, Date.now())
     return windows.value.flatMap(({ provider, windows: theirs }) =>
       theirs.map(({ word, short, reading }): UsageCell => {
-        const label = `${PROVIDER_NAME[provider]} · ${short}`
+        const label = `${nameOf(provider)} · ${short}`
         if (reading === null) {
           return {
             key: `${provider}-${short}`,
@@ -138,7 +141,7 @@ export function useUsageCells(
             age: null,
             value: null,
             title: null,
-            name: `${PROVIDER_NAME[provider]} ${word} limit: not read yet`,
+            name: `${nameOf(provider)} ${word} limit: not read yet`,
           }
         }
         const value = valueWords(reading, now)
@@ -149,7 +152,7 @@ export function useUsageCells(
           age: `read ${agoWords(reading.at, now)}`,
           value,
           title,
-          name: `${PROVIDER_NAME[provider]} ${word} limit: ${value}. ${title.replace(`\n${UNCONFIRMED_USAGE}`, '').replace('\n', '. ')}.`,
+          name: `${nameOf(provider)} ${word} limit: ${value}. ${title.replace(`\n${UNCONFIRMED_USAGE}`, '').replace('\n', '. ')}.`,
         }
       }),
     )
@@ -212,7 +215,7 @@ export function useUsageCells(
               ...population.providers.flatMap(({ provider, count, working }) => {
                 return count === 0
                   ? []
-                  : [`${PROVIDER_NAME[provider]} ${count} (${workingWords(working)})`]
+                  : [`${nameOf(provider)} ${count} (${workingWords(working)})`]
               }),
             ].join('\n')
     return [
@@ -243,15 +246,15 @@ export function useUsageCells(
         : `${population.count} agents${population.count === 0 ? '' : ` · ${population.working} working`}`
     const providers = windows.value.flatMap(({ provider, windows: theirs }) => {
       const ready = readiness()?.[provider]
-      if (ready === false) return [`${PROVIDER_NAME[provider]} · Needs setup`]
+      if (ready === false) return [`${nameOf(provider)} · Needs setup`]
       if (ready === true && theirs.every(({ reading }) => reading === null))
-        return [`${PROVIDER_NAME[provider]} · Ready · usage not read yet`]
+        return [`${nameOf(provider)} · Ready · usage not read yet`]
       return theirs.map(({ short, reading }, index) => {
         const used =
           reading?.usedPercent == null
             ? NOT_READ_MARK
             : `${String(Math.round(reading.usedPercent))}%`
-        return `${index === 0 ? `${PROVIDER_NAME[provider]}${ready === true ? ' · Ready' : ''} ` : ''}${short} ${used}`
+        return `${index === 0 ? `${nameOf(provider)}${ready === true ? ' · Ready' : ''} ` : ''}${short} ${used}`
       })
     })
     const now = running.value
@@ -263,15 +266,15 @@ export function useUsageCells(
       ...PROVIDERS.flatMap((provider) => {
         const ready = readiness()?.[provider]
         return ready === true
-          ? [`${PROVIDER_NAME[provider]} is ready`]
+          ? [`${nameOf(provider)} is ready`]
           : ready === false
-            ? [`${PROVIDER_NAME[provider]} needs setup`]
+            ? [`${nameOf(provider)} needs setup`]
             : []
       }),
       ...windows.value.flatMap(({ provider, windows: theirs }) =>
         theirs.map(
           ({ word, reading }) =>
-            `${PROVIDER_NAME[provider]} ${word} usage: ${
+            `${nameOf(provider)} ${word} usage: ${
               reading?.usedPercent == null ? 'unknown' : `${Math.round(reading.usedPercent)}% used`
             }${reading?.unconfirmed === true ? ` (${UNCONFIRMED_USAGE})` : ''}`,
         ),
