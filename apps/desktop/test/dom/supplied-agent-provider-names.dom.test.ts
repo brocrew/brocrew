@@ -43,7 +43,7 @@ function identity(provider: Provider | null): AgentIdentity {
 
 function fixture(names = ['Fern', 'Birch'], held: Choice | null = null) {
   let row = identity('claude')
-  const catalogue = ['claude', 'codex'].map((id, index) => ({
+  const catalogue = (['claude', 'codex'] as const).map((id, index) => ({
     ...providerDescriptor(id),
     displayName: names[index]!,
   }))
@@ -85,7 +85,9 @@ function fixture(names = ['Fern', 'Birch'], held: Choice | null = null) {
     agents,
     providerCatalogue,
   }
-  const rawCatalogue = vi.fn(async () => ['claude', 'codex'].map((id) => providerDescriptor(id)))
+  const rawCatalogue = vi.fn(async () =>
+    (['claude', 'codex'] as const).map((id) => providerDescriptor(id)),
+  )
   vi.stubGlobal('api', { runtime: { providerCatalogue: rawCatalogue } })
   return {
     client,
@@ -182,6 +184,7 @@ it('names the StartAsAgent current/default provider and follows the live default
       agents: store,
       provider: provider.value,
       defaultApprovalMode: 'ask',
+      capabilities: null,
     })),
     {},
   )
