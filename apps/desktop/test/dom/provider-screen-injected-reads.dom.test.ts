@@ -1,15 +1,15 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { defineComponent, h, nextTick, provide, reactive, type Component } from 'vue'
+import { nextTick, reactive } from 'vue'
 import { providerDescriptor, type ProviderConnection } from '@brobot2/shared'
 import type { ClientApi } from '../../src/shared/client-api'
 import type { ApiKeyStatus, Provider, ProviderVersion } from '../../src/shared/runtime-ipc'
 import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
-import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
 import { forgetProfileSignIns } from '../../src/renderer/src/composables/useProfileSignIn'
 import ProvidersScreen from '../../src/renderer/src/components/ProvidersScreen.vue'
 import ProviderConnections from '../../src/renderer/src/components/ProviderConnections.vue'
 import ProviderSetupAtLaunch from '../../src/renderer/src/components/ProviderSetupAtLaunch.vue'
-import { mount, unmountAll } from './harness'
+import { unmountAll } from './harness'
+import { mountProviderReadSurface as surface } from './provider-read-surface'
 
 const settle = async () => {
   for (let i = 0; i < 6; i++) {
@@ -118,18 +118,7 @@ function fixture() {
   } satisfies ClientApi
   return { api, forbidden, off, usageOff, descriptor }
 }
-function surface(component: Component, api: ClientApi, props: Record<string, unknown>) {
-  return mount(
-    defineComponent({
-      setup() {
-        provide(CLIENT_PROVIDERS, api)
-        return () => h(component, props)
-      },
-    }),
-    {},
-    { width: 1100, height: 900 },
-  )
-}
+
 afterEach(() => {
   unmountAll()
   forgetProfileSignIns()

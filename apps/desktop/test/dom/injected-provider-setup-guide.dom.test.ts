@@ -1,15 +1,14 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { defineComponent, h, nextTick, provide, type Component } from 'vue'
+import { nextTick } from 'vue'
 import { providerDescriptor } from '@brobot2/shared'
-import type { ClientApi } from '../../src/shared/client-api'
 import type { ProviderSetup, RuntimeBridge } from '../../src/shared/runtime-ipc'
-import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
 import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
 import { forgetProfileSignIns } from '../../src/renderer/src/composables/useProfileSignIn'
 import ProvidersScreen from '../../src/renderer/src/components/ProvidersScreen.vue'
 import ProviderSetupAtLaunch from '../../src/renderer/src/components/ProviderSetupAtLaunch.vue'
 import { providersBridge } from '../../look/fixtures/providers'
-import { mount, unmountAll } from './harness'
+import { unmountAll } from './harness'
+import { mountProviderReadSurface as surface } from './provider-read-surface'
 
 const observed = vi.hoisted(() => ({ facts: vi.fn() }))
 vi.mock('../../src/renderer/src/lib/provider-setup-steps', async (original) => {
@@ -74,18 +73,7 @@ function fixture() {
   }
   return { api, ambient }
 }
-function surface(component: Component, api: ClientApi, props: Record<string, unknown>) {
-  return mount(
-    defineComponent({
-      setup() {
-        provide(CLIENT_PROVIDERS, api)
-        return () => h(component, props)
-      },
-    }),
-    {},
-    { width: 1100, height: 900 },
-  )
-}
+
 const screenProps = () => ({
   descriptors: [{ ...providerDescriptor('claude'), displayName: 'Fern' }],
   capabilities: caps,
