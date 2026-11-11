@@ -72,7 +72,10 @@ describe('historical provider stops carry no current or admission authority', ()
     facts.invalidate()
     const original = { provider: 'claude', resetsAt: RESET, asOf: AT + 1, displayUntil: RESET }
     expect(history()).toEqual(original)
-    const disclosure = { providerBlockStatus: 'unavailable', providerBlockLastKnown: history() } as const
+    const disclosure = {
+      providerBlockStatus: 'unavailable',
+      providerBlockLastKnown: history(),
+    } as const
     expect(providerLimitDisplay(disclosure, { is: 'idle' }, RESET - 1)?.history).toBeDefined()
     expect(providerLimitDisplay(disclosure, { is: 'idle' }, RESET)?.history).toBeUndefined()
     for (const now of [NaN, AT])
@@ -94,7 +97,10 @@ describe('historical provider stops carry no current or admission authority', ()
       resetsAt: null,
       displayUntil: end,
     })
-    const disclosure = { providerBlockStatus: 'unavailable', providerBlockLastKnown: before } as const
+    const disclosure = {
+      providerBlockStatus: 'unavailable',
+      providerBlockLastKnown: before,
+    } as const
     expect(providerLimitDisplay(disclosure, { is: 'idle' }, end - 1)?.history).toBeDefined()
     const expired = providerLimitDisplay(disclosure, { is: 'idle' }, end)
     expect(expired?.word).toBe('Current limit status unavailable')

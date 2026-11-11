@@ -72,7 +72,10 @@ describe('dated conversation history stays separate from current facts', () => {
   })
 
   it('uses the supplied cutoff without deriving a duration from the reset or confirmation', () => {
-    const supplied = { ...unavailable, providerBlockLastKnown: { ...history, displayUntil: AT + 7 } }
+    const supplied = {
+      ...unavailable,
+      providerBlockLastKnown: { ...history, displayUntil: AT + 7 },
+    }
     expect(providerLimitDisplay(supplied, { is: 'idle' }, AT + 6)?.history).toBeDefined()
     expect(providerLimitDisplay(supplied, { is: 'idle' }, AT + 7)?.history).toBeUndefined()
   })
@@ -88,10 +91,13 @@ describe('dated conversation history stays separate from current facts', () => {
     expect(shown).not.toHaveProperty('history')
   })
 
-  it.each([NaN, Infinity])('an invalid supplied deadline shows no historical stop (%s)', (displayUntil) => {
-    const invalid = { ...unavailable, providerBlockLastKnown: { ...history, displayUntil } }
-    expect(providerLimitDisplay(invalid, { is: 'idle' }, AT + 1)?.history).toBeUndefined()
-  })
+  it.each([NaN, Infinity])(
+    'an invalid supplied deadline shows no historical stop (%s)',
+    (displayUntil) => {
+      const invalid = { ...unavailable, providerBlockLastKnown: { ...history, displayUntil } }
+      expect(providerLimitDisplay(invalid, { is: 'idle' }, AT + 1)?.history).toBeUndefined()
+    },
+  )
 
   it.each([NaN, AT - 1])('an unverifiable history clock shows no stop (%s)', (now) => {
     expect(providerLimitDisplay(unavailable, { is: 'idle' }, now)).not.toHaveProperty('history')
