@@ -2,10 +2,7 @@ import type { HandedPath } from '../../src/shared/attachment-contracts'
 import { afterEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick } from 'vue'
 import UserMessage from '../../src/renderer/src/components/UserMessage.vue'
-import {
-  runtimePathCalls,
-  useMessagePaths,
-} from '../../src/renderer/src/composables/useMessagePaths'
+import { useClientMessagePaths } from '../../src/renderer/src/composables/useMessagePaths'
 import { assetUrl } from '../../src/shared/asset-url'
 import type { MessagePathTarget } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll } from './harness'
@@ -39,7 +36,7 @@ function bubble(attachments = files, failed = false, width = 800) {
   }
   const Host = defineComponent({
     setup() {
-      const paths = useMessagePaths(() => 'conversation-one', runtimePathCalls)
+      const paths = useClientMessagePaths(() => 'conversation-one')
       return () =>
         h(UserMessage, {
           paths: paths.value,

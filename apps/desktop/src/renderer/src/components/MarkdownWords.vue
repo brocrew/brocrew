@@ -2,12 +2,7 @@
 import { computed } from 'vue'
 import { renderChatMarkdown } from '../lib/markdown'
 import { documentClicked, documentsNamedIn } from '../lib/the-documents-a-reply-names'
-import {
-  runtimePathCalls,
-  useMessagePaths,
-  usePathsIn,
-  type PathsHere,
-} from '../composables/useMessagePaths'
+import { useClientMessagePaths, usePathsIn, type PathsHere } from '../composables/useMessagePaths'
 
 const props = defineProps<{
   text: string
@@ -17,9 +12,9 @@ const props = defineProps<{
   documents?: readonly string[]
 }>()
 const emit = defineEmits<{ openDocument: [resourceId: string] }>()
-const here = useMessagePaths(
+const here = useClientMessagePaths(
   () => props.sessionId ?? null,
-  () => (!props.paths && props.sessionId ? runtimePathCalls() : null),
+  () => !props.paths && !!props.sessionId,
 )
 const html = computed(() => renderChatMarkdown(props.text, props.lead).trimEnd())
 const paths = usePathsIn(

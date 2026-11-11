@@ -118,7 +118,7 @@ import { useStillThinking } from '../lib/still-thinking'
 import SessionHeader from './SessionHeader.vue'
 import SessionShelf from './SessionShelf.vue'
 import TranscriptView from './TranscriptView.vue'
-import { runtimePathCalls, useMessagePaths } from '../composables/useMessagePaths'
+import { useClientMessagePaths } from '../composables/useMessagePaths'
 
 /**
  * Render the supplied conversation record; the parent owns which record is selected.
@@ -1725,7 +1725,7 @@ const documentOverlay = ref<InstanceType<typeof CanonicalDocumentOverlay> | null
 const mayOpenADocument = computed(() => aSurfaceMayOpenADocument(props.onReadResource))
 
 /** The paths this conversation's messages name, as main answers for them. */
-const messagePaths = useMessagePaths(() => props.record.sessionId, runtimePathCalls)
+const messagePaths = useClientMessagePaths(() => props.record.sessionId)
 
 watch(
   () => props.record.sessionId,

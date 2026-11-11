@@ -5,10 +5,7 @@ import { defineComponent, h, nextTick, ref, shallowRef } from 'vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import RecoveryApp from '../../src/renderer/src/components/RecoveryApp.vue'
-import {
-  runtimePathCalls,
-  useMessagePaths,
-} from '../../src/renderer/src/composables/useMessagePaths'
+import { useClientMessagePaths } from '../../src/renderer/src/composables/useMessagePaths'
 import { fileManagerWord } from '../../src/renderer/src/lib/message-paths'
 import type {
   MessagePath,
@@ -123,7 +120,7 @@ async function transcript(events: TranscriptEvent[]): Promise<{
   const items = shallowRef(record(seen).transcript.items)
   const Holder = defineComponent({
     setup() {
-      const paths = useMessagePaths(() => 'sess_1', runtimePathCalls)
+      const paths = useClientMessagePaths(() => 'sess_1')
       return () =>
         h('div', { style: 'display: grid; width: 100%' }, [
           h('button', { type: 'button', 'data-cy': 'before' }, 'before'),

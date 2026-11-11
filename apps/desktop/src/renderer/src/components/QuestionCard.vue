@@ -41,7 +41,7 @@ import {
   type QuestionPart,
   type QuestionState,
 } from '../lib/question-card'
-import { runtimePathCalls, useMessagePaths, type PathsHere } from '../composables/useMessagePaths'
+import { useClientMessagePaths, type PathsHere } from '../composables/useMessagePaths'
 import MarkdownWords from './MarkdownWords.vue'
 
 const props = defineProps<{
@@ -61,9 +61,9 @@ const props = defineProps<{
   pathSessionId?: string
 }>()
 
-const queuePaths = useMessagePaths(
+const queuePaths = useClientMessagePaths(
   () => props.pathSessionId ?? null,
-  () => (!props.paths && props.pathSessionId ? runtimePathCalls() : null),
+  () => !props.paths && !!props.pathSessionId,
 )
 
 const emit = defineEmits<{

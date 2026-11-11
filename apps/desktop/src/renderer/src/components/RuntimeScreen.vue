@@ -137,7 +137,7 @@ import { NO_LAUNCH_CHOICES, type LaunchChoices } from '../lib/launch-choices'
 import { pickInAConversation, type PickedModel } from '../lib/model-lists'
 import { useModelLists } from '../composables/useModelLists'
 import { useProfileSignIn } from '../composables/useProfileSignIn'
-import { useClientProviders } from '../client-provider/injection'
+import { useClientApi, useClientProviders } from '../client-provider/injection'
 import { oneReadAtATime } from '../lib/one-read-at-a-time'
 import { handedBackSays } from '../lib/handing-it-back'
 import {
@@ -244,7 +244,7 @@ import ConversationPane from './ConversationPane.vue'
 import MessageLinks from './MessageLinks.vue'
 import LinkedHistory from './LinkedHistory.vue'
 import type { ResolvedMessageLink } from '../lib/message-links'
-import { resolveMessageLink } from '../lib/runtime-message-links'
+import { createMessageLinkResolver } from '../lib/runtime-message-links'
 import IconSprite from './IconSprite.vue'
 import NewConversation from './NewConversation.vue'
 import { createLaunchGuard, saveFirstApproval } from '../lib/first-approval'
@@ -278,6 +278,7 @@ import ProviderSetupAtLaunch from './ProviderSetupAtLaunch.vue'
  * dashboard — a fake surface inside a real app is worse than an empty one, because everything
  * around it is true.
  */
+const resolveMessageLink = createMessageLinkResolver(useClientApi().sessions)
 const store = useSessionStore()
 /**
  * The overlay layer. It sits ON TOP of whatever surface is showing rather than being another value
@@ -880,9 +881,9 @@ async function readyToShow(entry: HistoryEntry): Promise<Readiness> {
   if (!archived && store.get(id) !== null) return { kind: 'ready', archive: null }
   // The host is asked first, every time: deleted since, it is gone past; archived since, from here
   // or elsewhere, it comes back as its read-only history.
-  const now = await window.api.runtime
-    .resolveLink(`brocrew://conversation/${encodeURIComponent(id)}`)
-    .catch(() => null)
+  const now = await resolveMessageLink(`brocrew://conversation/${encodeURIComponent(id)}`).catch(
+    () => null,
+  )
   if (now?.state === 'deleted') return { kind: 'gone' }
   if (!archived && now?.state === 'archived') {
     places.markArchived([id], archiveKey)

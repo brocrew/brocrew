@@ -64,4 +64,10 @@ export type ClientSessionApi = Pick<
   | 'whoCalledWhom'
   | 'workGivenBy'
   | 'workIncidentsForAPerson'
->
+> &
+  Partial<
+    Pick<
+      RuntimeBridge,
+      'resolveMessagePaths' | 'revealMessagePath' | 'openMessagePath' | 'resolveLink'
+    >
+  >

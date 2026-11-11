@@ -1,3 +1,5 @@
+import { useClientApi } from '../client-provider/injection'
+import type { ClientSessionApi } from '../../../shared/client-session-api'
 import { computed, ref, shallowReactive, watch, type ComputedRef, type Ref } from 'vue'
 import {
   MAX_MESSAGE_PATH_LENGTH,
@@ -32,18 +34,32 @@ export interface PathsHere {
   press(text: string, kindHint?: 'file' | 'folder'): Promise<string | null>
 }
 
-/**
- * The main window's calls. Null where the bridge does not carry them, which only a test's stand-in
- * bridge does; every path then stays plain text.
- */
-export function runtimePathCalls(): PathCalls | null {
-  const runtime = typeof window === 'undefined' ? undefined : window.api?.runtime
-  if (typeof runtime?.resolveMessagePaths !== 'function') return null
+/** Bind the captured client's calls; an absent capability leaves paths plain. */
+export function runtimePathCalls(
+  runtime:
+    | Pick<ClientSessionApi, 'resolveMessagePaths' | 'revealMessagePath' | 'openMessagePath'>
+    | undefined,
+): PathCalls | null {
+  if (
+    typeof runtime?.resolveMessagePaths !== 'function' ||
+    typeof runtime.revealMessagePath !== 'function'
+  )
+    return null
   return {
-    resolve: (ask) => runtime.resolveMessagePaths(ask),
-    reveal: (target) => runtime.revealMessagePath(target),
-    open: (target) => runtime.openMessagePath(target),
+    resolve: runtime.resolveMessagePaths.bind(runtime),
+    reveal: runtime.revealMessagePath.bind(runtime),
+    open:
+      typeof runtime.openMessagePath === 'function' ? runtime.openMessagePath.bind(runtime) : null,
   }
+}
+
+/** Capture once during setup; later asks keep this client's operations. */
+export function useClientMessagePaths(
+  sessionId: () => string | null,
+  enabled: () => boolean = () => true,
+): ComputedRef<PathsHere | null> {
+  const calls = runtimePathCalls(useClientApi().sessions)
+  return useMessagePaths(sessionId, () => (enabled() ? calls : null))
 }
 
 function fileManagerHere(): string {

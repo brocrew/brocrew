@@ -1,8 +1,13 @@
-import type { ResolvedMessageLink } from './message-links'
+import type { ClientSessionApi } from '../../../shared/client-session-api'
+import type { ResolveMessageLink } from './message-links'
 
-/** An absent bridge during an upgrade leaves the link readable and inert. */
-export async function resolveMessageLink(target: string): Promise<ResolvedMessageLink> {
-  const bridge = window.api.runtime
-  if (!bridge.resolveLink) throw new Error('Link resolver unavailable')
-  return bridge.resolveLink(target)
+/** An absent capability leaves the link readable and inert. */
+export function createMessageLinkResolver(
+  sessions: Pick<ClientSessionApi, 'resolveLink'> | undefined,
+): ResolveMessageLink {
+  const resolve = sessions?.resolveLink?.bind(sessions)
+  return async (target) => {
+    if (!resolve) throw new Error('Link resolver unavailable')
+    return resolve(target)
+  }
 }

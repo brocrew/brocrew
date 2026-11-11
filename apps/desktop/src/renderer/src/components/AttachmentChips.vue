@@ -4,10 +4,10 @@ import type { HandedPath } from '../../../shared/attachment-contracts'
 import { computed, onUnmounted, reactive, ref } from 'vue'
 
 import { assetUrl } from '../../../shared/asset-url'
-import { runtimePathCalls, useMessagePaths, type PathsHere } from '../composables/useMessagePaths'
+import { useClientMessagePaths, type PathsHere } from '../composables/useMessagePaths'
 
 const props = defineProps<{ attachments: readonly HandedPath[]; paths?: PathsHere | null }>()
-const fallback = useMessagePaths(() => props.paths?.sessionId ?? null, runtimePathCalls)
+const fallback = useClientMessagePaths(() => props.paths?.sessionId ?? null)
 const opener = computed(() => props.paths ?? fallback.value)
 const failedImages = reactive(new Set<string>())
 const failure = ref<string | null>(null)
