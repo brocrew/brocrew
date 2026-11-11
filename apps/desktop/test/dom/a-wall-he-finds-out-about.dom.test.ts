@@ -52,11 +52,16 @@ function walked<Row>(rows: readonly Row[], walk: LedgerWalk<Row>['walk']): Ledge
   return { rows, walk, ledgers: Math.max(rows.length, 1), rowsUnread: 0 }
 }
 
-/** The known weekly fixtures carry the meaning supplied by the core reading. */
-const wall = (said: string, used: number | null, at = NOW - 60_000): ProviderLimitSeen => {
+/** Known fixture readings carry the meaning supplied by the core. */
+const wall = (
+  said: string,
+  used: number | null,
+  at = NOW - 60_000,
+  word: string | null = 'weekly',
+): ProviderLimitSeen => {
   const read = readProviderLimit(said, at)
   expect(read, `not recognised: ${said}`).not.toBeNull()
-  return { ...read!, meaning: { word: 'weekly', used, untimed: false } }
+  return { ...read!, meaning: { word, used, untimed: false } }
 }
 
 /** One thing a person really does owe, so §3 can measure the band BESIDE a row. */
@@ -255,7 +260,7 @@ describe('§3 · the provider’s own line is bounded, and the sentence is whole
     // ⛔ **The sentence a person acts on is short by construction** — see `usageSays`, which carries
     // no bucket name and no timestamp, and (F096) at most a short figure beside each limit. ⚑ If it ever grew one, this is where the
     // growth would be invisible: clipped text reads identically to text that fits.
-    supply([wall(LONG_SAID, null)])
+    supply([wall(LONG_SAID, null, NOW - 60_000, null)])
     const m = await draw()
     const says = m.q('persons-queue-wall-says-codex')
     expect(says.scrollHeight).toBeLessThanOrEqual(says.clientHeight)
