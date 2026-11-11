@@ -121,7 +121,7 @@ describe('the window’s ask: by provider and model', () => {
     if (!functions.found || !exec.found) throw new Error('not captured')
     expect(functions.snapshot.parts.map((part) => part.id)).toContain('codex.prompt')
     expect(functions.snapshot.parts.find((part) => part.id === 'codex.prompt')?.where).toBe(
-      'instructions',
+      'developer-message',
     )
     expect(exec.snapshot.parts.find((part) => part.id === 'codex.prompt')?.where).toBe(
       'developer-message',
@@ -181,11 +181,10 @@ describe('the window’s ask: by provider and model', () => {
       const tools = parts.find((part) => part.id === 'claude.tools')?.tools ?? []
       expect(tools.map((tool) => tool.name)).not.toContain('DeferredToolPlaceholder')
       expect(tools.every((tool) => !tool.text.includes('"defer_loading":true'))).toBe(true)
-      // The skills list and the sub-agent types — in the context message, or (Haiku) reminders.
+      // The current CLI puts skills and sub-agent types in the context message for every model.
       const ids = parts.map((part) => part.id)
-      const where = ids.includes('claude.context.skills') ? 'context' : 'reminder'
-      expect(ids, model).toContain(`claude.${where}.skills`)
-      expect(ids, model).toContain(`claude.${where}.agent-types`)
+      expect(ids, model).toContain('claude.context.skills')
+      expect(ids, model).toContain('claude.context.agent-types')
       expect(kept.parts.every((part) => part.id !== 'claude.context')).toBe(true)
     }
     // What differs by profile or account is said on the part, and the notes name the rest.
@@ -197,10 +196,10 @@ describe('the window’s ask: by provider and model', () => {
     expect(SNAPSHOT_FILES.claude.notes.join(' ')).toMatch(
       /Monitor, PushNotification and DesignSync/,
     )
-    // A section reads alike in the context message and, on Haiku, among the reminders.
+    // Haiku carries the same profile-dependent skills disclosure in its context message.
     const haiku = snapshotFor('claude', 'haiku')
     if (!haiku.found) throw new Error('haiku not captured')
-    const twin = haiku.snapshot.parts.find((part) => part.id === 'claude.reminder.skills')
+    const twin = haiku.snapshot.parts.find((part) => part.id === 'claude.context.skills')
     expect(twin?.varies).toBe(skills?.varies)
   })
 
