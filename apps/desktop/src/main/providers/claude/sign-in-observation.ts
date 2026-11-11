@@ -6,6 +6,12 @@ const REFUSED_NOTICE =
   'Its transcript is kept. It carries on without its “Allow for this conversation” approvals ' +
   'or anything that was running in the background.'
 
+const RETRY_CAPTIONS = {
+  stopped: 'Claude sign-in retry stopped.',
+  ended: 'Claude sign-in retry ended.',
+  recovered: 'Claude sign-in recovered.',
+}
+
 /** Classify live errors and historical retry rows without changing their stored diagnostics. */
 export function signInObservation(event: TranscriptEvent): TranscriptEvent {
   if (event.type !== 'error' || event.onAKey === true) return event
@@ -19,7 +25,17 @@ export function signInObservation(event: TranscriptEvent): TranscriptEvent {
           : event.signIn.state === 'retrying'
             ? retryMessage(event.message)
             : undefined
-    return message === undefined ? event : { ...event, signIn: { ...event.signIn, message } }
+    if (message === undefined) return event
+    return {
+      ...event,
+      signIn: {
+        ...event.signIn,
+        message,
+        ...(event.signIn.state === 'retrying'
+          ? { captions: event.signIn.captions ?? RETRY_CAPTIONS }
+          : {}),
+      },
+    }
   }
   if (event.cause === 'auth') {
     return { ...event, signIn: { state: 'refused', message: REFUSED_NOTICE } }
@@ -34,6 +50,7 @@ export function signInObservation(event: TranscriptEvent): TranscriptEvent {
     signIn: {
       state: 'retrying',
       message: retryMessage(event.message),
+      captions: RETRY_CAPTIONS,
     },
   }
 }

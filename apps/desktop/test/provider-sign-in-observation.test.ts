@@ -11,7 +11,15 @@ it('classifies old retry diagnostics while preserving their raw words and flags'
   }
   expect(signInObservation(event)).toEqual({
     ...event,
-    signIn: { state: 'retrying', message: 'Claude is retrying sign-in (attempt 2/3).' },
+    signIn: {
+      state: 'retrying',
+      message: 'Claude is retrying sign-in (attempt 2/3).',
+      captions: {
+        stopped: 'Claude sign-in retry stopped.',
+        ended: 'Claude sign-in retry ended.',
+        recovered: 'Claude sign-in recovered.',
+      },
+    },
   })
   expect(event).not.toHaveProperty('signIn')
 })
@@ -75,4 +83,29 @@ it('does not replace an explicitly supplied empty sign-in message', () => {
     signIn: { state: 'retrying', message: '' },
   }
   expect(signInObservation(event)).toBe(event)
+})
+
+it('supplies retry endings only when classifying an unfinished native observation', () => {
+  const event: TranscriptEvent = {
+    type: 'error',
+    message: 'claude could not authenticate; retrying (attempt 1/3, HTTP 401)',
+    fatal: false,
+    signIn: { state: 'retrying' },
+  }
+  const projected = signInObservation(event)
+  if (projected.type !== 'error') throw new Error('Expected an error')
+  expect(projected.signIn).toEqual({
+    state: 'retrying',
+    message: 'Claude is retrying sign-in (attempt 1/3).',
+    captions: {
+      stopped: 'Claude sign-in retry stopped.',
+      ended: 'Claude sign-in retry ended.',
+      recovered: 'Claude sign-in recovered.',
+    },
+  })
+  const captions = { stopped: 'Fern stopped.', ended: 'Fern ended.', recovered: 'Fern returned.' }
+  const supplied = signInObservation({ ...event, signIn: { state: 'retrying', captions } })
+  if (supplied.type !== 'error') throw new Error('Expected an error')
+  expect(supplied.signIn?.captions).toBe(captions)
+  expect(event.signIn).toEqual({ state: 'retrying' })
 })
