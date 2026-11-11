@@ -6,10 +6,12 @@ import {
   type OwnNotesVersion,
 } from '../../../shared/own-notes'
 import type { RuntimeBridge } from '../../../shared/runtime-ipc'
+import { useClientApi } from '../client-provider/injection'
 import { fullTime } from '../lib/clock'
 
 const props = defineProps<{ profileSlug: string; active: boolean; bridge?: RuntimeBridge }>()
-const api = computed(() => props.bridge ?? window.api?.runtime)
+const client = useClientApi()
+const api = computed(() => props.bridge ?? client.sessions)
 const reading = ref<OwnNotesReading | null>(null)
 const incoming = ref<OwnNotesReading | null>(null)
 const loading = ref(false)
