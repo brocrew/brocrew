@@ -40,7 +40,7 @@ export const entry = (over: Partial<LibraryEntry> = {}): LibraryEntry => ({
  * 2026-07-20, and the provider writes the field explicitly null now. 808 of 827 are nicknamed. A
  * fixture teaching the `(role)` shape would be teaching a shape nothing new will ever take.
  */
-const ROWS: LibraryEntry[] = [
+export const ROWS: LibraryEntry[] = [
   // ⚠️ **An `ours` row as `recordedEntry` actually builds one** (review): no home offered it, so
   // there is no title, no preview, no size and no file on disk. The first version inherited all
   // four from the default and was a shape main-side cannot produce — inert here, but a fixture
@@ -114,11 +114,11 @@ type LibraryApi = {
 export const stubbed = (): { api?: LibraryApi } => window as unknown as { api?: LibraryApi }
 
 /** Every read the surface made, in order — how a test sees that a click reached the main process. */
-let reads: LibraryQuery[] = []
+export let reads: LibraryQuery[] = []
 /** How many times the shared scan was actually run. */
 export let scans = 0
 
-const REPORT: AdoptionReport = {
+export const REPORT: AdoptionReport = {
   found: 9,
   adopted: 1,
   alreadyKnown: 8,
