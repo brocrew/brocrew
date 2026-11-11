@@ -539,7 +539,7 @@ function chipWord(card: CastCard): string | undefined {
 
 .quiet {
   margin: 0;
-  color: var(--faint);
+  color: var(--text-soft);
   font-size: var(--type-caption);
   line-height: 1.5;
 }
