@@ -9069,15 +9069,9 @@ describe('240 §3 · the CLI’s stderr is back in the sentence a person reads',
 /**
  * 🔴 **358 · what tools this conversation has, published off the child's own opening frame.**
  *
- * ⛔ **Both halves, and they are not the same kind of thing.** `declared` is the toolset this
- * session was constructed with — an OFFER. `published` is `system/init.tools` and `.mcp_servers` —
- * what the child says it can see. `353` had to run a whole investigation to establish that the
- * first really does become the second on the ordinary path, which is exactly why a surface may not
- * assume it.
- *
- * ⚑ **The fixture is a real reading cut down.** `probe:tool-inventory` measured, twice, an ordinary
- * launch publishing 37 names including all five `mcp__brobot__*`, with `brobot[connected]` in
- * `mcp_servers` — against a control with the toolset detached that published 32 and no server.
+ * The declared toolset is an offer; system/init tools and mcp_servers state what the child sees.
+ * The paired probe measured 37 tools, including five BroCrew tools and brobot[connected], against
+ * 32 tools and no server with the toolset detached. The tests must establish that join.
  */
 describe('the tools a conversation has (358)', () => {
   /** The declaration, in the shape `agentToolsFor` produces. TWO of the five: enough to join on. */

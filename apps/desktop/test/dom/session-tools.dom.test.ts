@@ -218,12 +218,8 @@ const PUBLISHED_37 = [
 ]
 
 /**
- * ⚑ **When these inventories were stated** (444 relay 1) — a fixed instant rather than
- * `Date.now()`, so the as-of line is a value this file states and not one it races.
- *
- * ⛔ **A year that is NOT the current one, on purpose.** The first draft used 2026, and the branch
- * was written in 2026 — so a surface rendering `Date.now()` instead of the row's moment satisfied
- * every `toContain(year)` assertion in this file. `a-positive-assertion-must-differ-from-the-default`.
+ * A fixed 2023 statement instant makes the as-of assertion distinguish recorded time from now.
+ * The earlier 2026 fixture accidentally let Date.now() satisfy its year assertion in 2026.
  */
 const STATED_AT = Date.UTC(2023, 4, 17, 9, 41, 7)
 
