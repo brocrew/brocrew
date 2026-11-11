@@ -349,7 +349,10 @@ async function selectedMemory(name = 'Fern', late = false) {
       return late ? pending : descriptors
     }),
   }
-  const api = createDesktopProviderApi(() => transport, () => undefined)
+  const api = createDesktopProviderApi(
+    () => transport,
+    () => undefined,
+  )
   const view = mount(
     defineComponent({
       setup() {
