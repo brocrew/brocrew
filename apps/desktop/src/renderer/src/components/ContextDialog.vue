@@ -4,9 +4,6 @@ import type { CompactionFacts } from '../lib/compaction-offer'
 import type { TranscriptState } from '../lib/transcript'
 import SessionContext from './SessionContext.vue'
 
-/**
- * Open Context from the card's context figure in the same popup shell as All tasks. Show the complete meter: gauge, reading, source, compaction history and Compact now.
- */
 const props = defineProps<{
   state: TranscriptState
   shown?: TranscriptState
@@ -51,35 +48,9 @@ const emit = defineEmits<{
   </section>
 </template>
 
+<style scoped src="./dialog-presentation.css"></style>
+
 <style scoped>
-.list-dialog {
-  display: flex;
-  width: min(560px, calc(100% - 2 * var(--lane-clear)));
-  max-height: min(var(--dialog-max-h), calc(100dvh - var(--dialog-gutter) * 2));
-  flex-direction: column;
-  overflow: hidden;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-  box-shadow: var(--shadow);
-  color: var(--text);
-}
-
-.list-head {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--dialog-padding);
-  border-bottom: var(--border-width) solid var(--line);
-  gap: var(--control-gap);
-}
-
-.list-head h2 {
-  margin: 0;
-}
-
-/* ⚑ The meter's sections carry their own padding and rules, so the body adds none: it scrolls. */
 .list-body {
   min-height: 0;
   overflow: auto;

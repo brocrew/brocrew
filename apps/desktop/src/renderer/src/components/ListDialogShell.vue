@@ -28,34 +28,9 @@ defineEmits<{ close: [] }>()
   </section>
 </template>
 
+<style scoped src="./dialog-presentation.css"></style>
+
 <style scoped>
-.list-dialog {
-  display: flex;
-  width: min(560px, calc(100% - 2 * var(--lane-clear)));
-  max-height: min(var(--dialog-max-h), calc(100dvh - var(--dialog-gutter) * 2));
-  flex-direction: column;
-  overflow: hidden;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-  box-shadow: var(--shadow);
-  color: var(--text);
-}
-
-.list-head {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--dialog-padding);
-  border-bottom: var(--border-width) solid var(--line);
-  gap: var(--control-gap);
-}
-
-.list-head h2 {
-  margin: 0;
-}
-
 .list-body {
   display: grid;
   min-height: 0;
@@ -63,7 +38,6 @@ defineEmits<{ close: [] }>()
   overflow: auto;
   align-content: start;
   gap: var(--space-4);
-  /* Rows keep their content height while the body scrolls. */
   grid-auto-rows: max-content;
 }
 
