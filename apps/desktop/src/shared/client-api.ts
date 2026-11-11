@@ -8,6 +8,7 @@ import type { DockLabelClient } from './dock-label'
 import type { ClientAgentApi } from './client-agent-api'
 import type { TranscriptRetentionClient } from './transcript-retention'
 import type { StorageBridge } from './storage'
+import type { WorkspacesClient } from './workspaces'
 
 /** Client reads and intents composed at the existing injected application boundary. */
 export interface ClientApi extends ClientProviderApi {
@@ -20,4 +21,5 @@ export interface ClientApi extends ClientProviderApi {
   readonly agents?: ClientAgentApi
   readonly transcriptRetention?: TranscriptRetentionClient
   readonly storage?: StorageBridge
+  readonly workspaces?: WorkspacesClient
 }

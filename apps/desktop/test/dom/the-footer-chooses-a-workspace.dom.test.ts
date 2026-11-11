@@ -1,4 +1,8 @@
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick, provide } from 'vue'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
+import type { WorkspacesClient } from '../../src/shared/workspaces'
+import type { StorageBridge } from '../../src/shared/storage'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import WorkspacesSection from '../../src/renderer/src/components/WorkspacesSection.vue'
@@ -12,7 +16,7 @@ import { mount, unmountAll } from './harness'
  *
  * The list (this one, open, closed, not found), opening one, a missing one taken off the list,
  * Open workspace…, New workspace… with its folder checked before anything is made, and Rename this
- * workspace. ⚑ Driven through a fake `window.api.workspaces`, the bridge A2 gave the window; every
+ * workspace. ⚑ Driven through an ancestor's workspace capability; every
  * act is checked to reach it, and every refusal or warning is shown as main wrote it.
  */
 
@@ -97,8 +101,12 @@ function fakeWorkspaces(rows: WorkspaceRow[] = [HERE, RESEARCH, GONE]) {
 /** Where a deleted folder goes, on the computer the tests run on. */
 const BIN = binWord(navigator.platform)
 
+const rawCall = vi.fn()
+
 afterEach(() => {
   unmountAll()
+  expect(rawCall).not.toHaveBeenCalled()
+  rawCall.mockClear()
   vi.restoreAllMocks()
   forgetUpdates()
   delete api().api
@@ -114,11 +122,64 @@ const settle = async () => {
 const text = (element: Element | null): string =>
   element?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
 
-async function section(rows?: WorkspaceRow[]) {
+async function section(rows?: WorkspaceRow[], available = true) {
   const fake = fakeWorkspaces(rows)
-  const m = mount(WorkspacesSection, {}, { width: 300, height: 500 })
+  let current: WorkspacesClient | undefined = available ? fake : undefined
+  const reveal = vi.fn<StorageBridge['reveal']>(async function (this: StorageBridge) {
+    expect(this).toBe(storage)
+    return { ok: true }
+  })
+  const unusedStorage = (): never => {
+    throw new Error('Only workspace reveal is used')
+  }
+  let storage: StorageBridge | undefined = {
+    reveal,
+    measure: unusedStorage,
+    children: unusedStorage,
+    clearCache: unusedStorage,
+    watchCacheClear: unusedStorage,
+    pruneBackups: unusedStorage,
+  }
+  const wrong = (): never => {
+    rawCall()
+    throw new Error('The injected workspace client must win')
+  }
+  api().api!.workspaces = Object.fromEntries(Object.keys(fake).map((key) => [key, wrong]))
+  api().api!.storage = { reveal: wrong }
+  const client = createDesktopProviderApi(
+    wrong,
+    () => undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    () => storage,
+    () => current,
+  )
+  const owner = defineComponent({
+    setup() {
+      provide(CLIENT_PROVIDERS, client)
+      return () => h(WorkspacesSection)
+    },
+  })
+  const m = mount(owner, {}, { width: 300, height: 500 })
   await settle()
-  return { m, fake }
+  if (available) expect(fake.list.mock.contexts[0]).toBe(fake)
+  return {
+    m,
+    fake,
+    reveal,
+    replace: (next?: WorkspacesClient) => {
+      current = next
+    },
+    removeStorage: () => {
+      storage = undefined
+    },
+  }
 }
 
 const type = async (input: Element, value: string) => {
@@ -539,5 +600,77 @@ describe('A3 · only from the footer', () => {
     await settle()
     expect(fake.list).toHaveBeenCalledTimes(1)
     expect(rail.all('workspace-row')).toHaveLength(3)
+  })
+})
+
+describe('injected workspace capabilities', () => {
+  it('hides the section when the ancestor has no workspace capability', async () => {
+    const { m, fake } = await section(undefined, false)
+    expect(m.all('workspaces')).toHaveLength(0)
+    expect(fake.list).not.toHaveBeenCalled()
+  })
+
+  it('looks up the current capability for actions and the following refresh', async () => {
+    const { m, fake, replace } = await section()
+    const next = {
+      ...fake,
+      list: vi.fn(async () => [HERE]),
+      open: vi.fn(async () => ({ opened: false as const, refusal: 'Changed client' })),
+    }
+    replace(next)
+    await selectActions(m, 'other')
+    m.q('workspace-open-selected').click()
+    await settle()
+    expect(next.open).toHaveBeenCalledWith(RESEARCH.path)
+    expect(next.open.mock.contexts[0]).toBe(next)
+    expect(fake.open).not.toHaveBeenCalled()
+    expect(next.list).toHaveBeenCalledTimes(1)
+    expect(text(m.q('workspaces-said'))).toBe('Changed client')
+  })
+
+  it('keeps an absent current bridge absent while retaining the setup visibility snapshot', async () => {
+    const { m, fake, replace } = await section()
+    replace()
+    await selectActions(m, 'other')
+    m.q('workspace-open-selected').click()
+    await settle()
+    expect(fake.open).not.toHaveBeenCalled()
+    expect(m.all('workspaces')).toHaveLength(1)
+    expect(fake.list).toHaveBeenCalledTimes(1)
+  })
+
+  it('reveals through injected storage and keeps its result words', async () => {
+    const { m, reveal, removeStorage } = await section()
+    await selectActions(m, 'current')
+    reveal.mockResolvedValueOnce({ ok: false, error: 'busy' })
+    m.q('workspace-reveal').click()
+    await settle()
+    expect(reveal).toHaveBeenCalledWith()
+    expect(text(m.q('workspaces-said'))).toBe('Storage is busy. Try again in a moment.')
+    removeStorage()
+    m.q('workspace-reveal').click()
+    await settle()
+    expect(reveal).toHaveBeenCalledTimes(1)
+    expect(text(m.q('workspaces-said'))).toBe('Storage could not be read. Try again.')
+  })
+
+  it('settles a delayed open after unmount using the selected client only', async () => {
+    const { m, fake } = await section()
+    let finish!: (value: Awaited<ReturnType<typeof fake.open>>) => void
+    fake.open.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    await selectActions(m, 'other')
+    m.q('workspace-open-selected').click()
+    await settle()
+    expect((m.q('workspace-open-selected') as HTMLButtonElement).disabled).toBe(true)
+    m.unmount()
+    finish({ opened: true, path: RESEARCH.path, warning: null })
+    await settle()
+    expect(fake.list).toHaveBeenCalledTimes(2)
+    expect(m.host.isConnected).toBe(false)
   })
 })

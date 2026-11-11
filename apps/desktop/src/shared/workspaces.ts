@@ -111,3 +111,17 @@ export const WORKSPACES_CHANNELS = {
   checkDelete: 'workspaces:check-delete',
   delete: 'workspaces:delete',
 } as const
+
+/** The existing workspace reads and intents exposed to the window. */
+export interface WorkspacesClient {
+  list(): Promise<WorkspaceRow[]>
+  open(path: string): Promise<WorkspaceOpened>
+  create(input: NewWorkspace): Promise<WorkspaceOpened>
+  rename(input: WorkspaceRename): Promise<WorkspaceChanged>
+  remove(path: string): Promise<WorkspaceChanged>
+  checkFolder(path: string, toMake?: boolean): Promise<WorkspaceFolderVerdict | null>
+  folderFor(name: string): Promise<string>
+  chooseFolder(): Promise<string | null>
+  checkDelete(path: string): Promise<WorkspaceDeleteVerdict>
+  delete(path: string): Promise<WorkspaceDeleted>
+}

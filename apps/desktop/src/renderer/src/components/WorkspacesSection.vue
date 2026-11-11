@@ -10,6 +10,8 @@ import type {
 import { sizeWords } from '../lib/files-kept'
 import { readableError } from '../lib/session-record'
 import { storageError } from '../lib/storage-words'
+import { useClientApi } from '../client-provider/injection'
+import type { WorkspacesClient } from '../../../shared/workspaces'
 
 /** The chooser loads on opening; selecting a row exposes its workspace actions. */
 const emit = defineEmits<{
@@ -17,8 +19,9 @@ const emit = defineEmits<{
   renamed: [name: string]
 }>()
 
-type Bridge = Window['api']['workspaces']
-const bridge = (): Bridge | null => (window as Partial<Window>).api?.workspaces ?? null
+type Bridge = WorkspacesClient
+const client = useClientApi()
+const bridge = (): Bridge | null => client.workspaces ?? null
 
 /** ⚑ No bridge carries workspaces (a test, a window built before A2): the section is not drawn. */
 const hasBridge = bridge() !== null
@@ -59,7 +62,12 @@ function closeActions(): void {
 }
 async function revealWorkspace(): Promise<void> {
   try {
-    const result = await window.api.storage.reveal()
+    const storage = client.storage
+    if (storage === undefined) {
+      said.value = { text: storageError('unavailable'), warn: true }
+      return
+    }
+    const result = await storage.reveal()
     if (!result.ok) said.value = { text: storageError(result.error), warn: true }
   } catch (error) {
     said.value = { text: readableError(error), warn: true }
