@@ -21,9 +21,6 @@ export function releaseBundler(exported) {
   // esbuild belongs to the Chrome package's locked install, not the desktop app.
   return createRequire(path.join(exported, 'plugins/chrome/package.json'))('esbuild')
 }
-export function projectChromeFixture(source, browser) {
-  return `process.env.BROCREW_CHROME_EXECUTABLE = ${JSON.stringify(browser)};\n${source}`
-}
 export async function buildFixtureRelease(root, node22) {
   const commit = (await command('/usr/bin/git', ['rev-parse', 'HEAD'], root)).trim()
   if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error('Invalid reviewed commit')
@@ -74,11 +71,6 @@ export async function buildFixtureRelease(root, node22) {
   // Verify the unmodified export first; only the separate scratch release uses the v1 fixture.
   for (const fixture of [false, true]) {
     if (fixture) {
-      const server = path.join(exported, 'plugins/chrome/src/index.ts')
-      fs.writeFileSync(
-        server,
-        projectChromeFixture(fs.readFileSync(server, 'utf8'), path.join(root, 'fake-browser')),
-      )
       const manifest = path.join(exported, 'plugins/chrome/manifest-template.json')
       fs.writeFileSync(manifest, projectFixtureManifest(fs.readFileSync(manifest, 'utf8')))
     }

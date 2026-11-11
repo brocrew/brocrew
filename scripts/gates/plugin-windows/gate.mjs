@@ -15,11 +15,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 import { HIDDEN_LAUNCH_ARG } from '../../lib/hidden-launch.mjs'
 import { attach, press } from '../../lib/update-rehearsal-app.mjs'
 import { projectBuild } from '../plugin-packaged/contract.mjs'
-import {
-  listFor,
-  projectChromeFixture,
-  projectFixtureManifest,
-} from '../plugin-packaged/release.mjs'
+import { listFor, projectFixtureManifest } from '../plugin-packaged/release.mjs'
 import { GATE_REPOSITORIES } from '../plugin-packaged/fixture-guards.mjs'
 import {
   openPlugins,
@@ -911,10 +907,8 @@ export async function gate(node22) {
       return built
     })
     const browser = await step('fake-browser', () => buildFakeBrowser(root))
-    // The original archives above retain their release proof; only this scratch package is inert.
+    // The original archives above retain their release proof; only the scratch manifest uses the v1 fixture route.
     const release = await step('archive', async () => {
-      const entry = path.join(built.exported, 'plugins/chrome/src/index.ts')
-      fs.writeFileSync(entry, projectChromeFixture(fs.readFileSync(entry, 'utf8'), browser))
       const manifest = path.join(built.exported, 'plugins/chrome/manifest-template.json')
       fs.writeFileSync(manifest, projectFixtureManifest(fs.readFileSync(manifest, 'utf8')))
       const release = path.join(root, 'release-fixture')

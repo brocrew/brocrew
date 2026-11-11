@@ -6,11 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { failureFor, printFailure, safeFailure } from '../gates/plugin-packaged/diagnostics.mjs'
 import { stageProtocolDependencies } from '../gates/plugin-packaged/prepare.mjs'
-import {
-  listFor,
-  projectChromeFixture,
-  projectFixtureManifest,
-} from '../gates/plugin-packaged/release.mjs'
+import { listFor, projectFixtureManifest } from '../gates/plugin-packaged/release.mjs'
 import { exportChromePlugin } from '../export-chrome-plugin.mjs'
 import { createRepoAwarePluginVerifier } from '../../apps/desktop/src/main/plugins/package-verifier.ts'
 import {
@@ -74,11 +70,6 @@ describe.skipIf(process.platform === 'win32')('release verifier module admission
         .verifyCatalogue(parsed.bytes)
         .verifyPackage(release.id, release.version, originalBytes)
       expect(checked.manifest.format).toBe(format)
-      const entry = path.join(plugin, 'src/index.ts')
-      fs.writeFileSync(
-        entry,
-        projectChromeFixture(fs.readFileSync(entry, 'utf8'), path.join(root, 'inert-browser')),
-      )
       fs.writeFileSync(template, projectFixtureManifest(fs.readFileSync(template, 'utf8')))
       const projected = await build(fixture)
       fs.writeFileSync(path.join(fixture, 'catalogue.json'), JSON.stringify(listFor(projected)))
@@ -123,25 +114,6 @@ describe.skipIf(process.platform === 'win32')('release verifier module admission
     },
   )
 
-  it('makes the scratch package select its inert browser before running the original entry', () => {
-    const root = scratch(),
-      browser = path.join(root, 'inert browser'),
-      entry = path.join(root, 'server.mjs')
-    fs.writeFileSync(
-      entry,
-      projectChromeFixture(
-        'console.log(JSON.stringify({browser:process.env.BROCREW_CHROME_EXECUTABLE,entry:process.argv[1]}))',
-        browser,
-      ),
-    )
-    const result = JSON.parse(
-      execFileSync(process.execPath, [entry], {
-        env: { HOME: root, PATH: '/usr/bin:/bin' },
-        encoding: 'utf8',
-      }),
-    )
-    expect(result).toEqual({ browser, entry })
-  })
   it('reuses the exact release dependency files for protocol controls and refuses stale or linked destinations', () => {
     const root = scratch()
     fs.writeFileSync(path.join(root, 'fixture-owned'), 'packaged-plugin-gate\n')
