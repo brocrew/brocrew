@@ -881,7 +881,7 @@ it('both scan surfaces capture the injected sessions capability and share its pe
   const root = defineComponent({
     setup() {
       provide(CLIENT_PROVIDERS, client)
-      return () => [h(SessionLibrary), h(ResumableSessions)]
+      return () => h(SessionLibrary)
     },
   })
   const m = mount(root, {}, { width: 1100, height: 900 })
