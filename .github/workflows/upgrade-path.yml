@@ -1,36 +1,3 @@
-# The testers' upgrade path, on GitHub's runners: the published old build is downloaded
-# and installed, it makes fictional data through its own window, and the candidate built from this
-# run's commit is installed over it by hand: its Windows installer over the old one, and on the Mac
-# the app replaced in Applications. The candidate's first and second starts are then checked
-# against what the beta left: a checked recovery copy before READY, every row and raw byte kept, the
-# schema moved to the candidate's, no recovery window and no dialog of the app's own but its setup
-# for a provider that is not ready on the runner, and both conversations carried on with the key the
-# beta saved. Claude Code is installed at the version whose scheduling was measured, with managed
-# settings that send it to a second local scripted model: the beta's Claude conversations schedule
-# jobs through Claude Code's own tool, and the candidate carries one on. A beta with the scheduling
-# switch stamps each job's receipt with its calendar, so the candidate keeps the jobs' times and
-# owes nothing at its first open; an earlier beta's jobs have no time the candidate can know, and
-# it starts their conversation once to say so. The check reads which kind of beta it upgrades from
-# the receipts, and expects each. On the Mac, macOS itself asks a person
-# before it hands that key to the new program: with nobody to answer on a runner, the job passes
-# with that limit said in its result when the app refuses plainly and keeps answering. After those
-# checks, the Mac forgets the beta's sealing entry, as a Mac that never ran the beta would, and the
-# candidate saves the key itself and starts one new Claude conversation, answered by the scripted
-# model: the beta's own Claude conversation is not carried on there. Each step
-# is described in `scripts/upgrade-path.mjs`; its evidence is kept with the run for a week, and a
-# missing piece of evidence fails it.
-#
-# Run it on a commit that carries the app's whole window (main, or a branch cut from it): the
-# check expects that setup at launch, and a commit without the window's half of the app fails it.
-#
-# The release calls the Windows job with its own signed installer as the candidate.
-#
-# Opt-in, so it spends no runner minutes on ordinary pushes: by hand (Actions → Upgrade path → Run
-# workflow), or a pushed tag `upgrade-path-*`. It starts from v0.1.6; by hand any published
-# release or prerelease can be named, and a tag whose name holds `-before-the-switch-` starts from
-# the last betas
-# without the scheduling switch (windows-beta-14, mac-beta-3). It publishes nothing: the run's
-# token only reads the releases, and the model is a local scripted one.
 name: Upgrade path
 
 on:
@@ -38,6 +5,10 @@ on:
     tags: ['upgrade-path-*']
   workflow_dispatch:
     inputs:
+      recovery_proof:
+        description: Run the three recovery cases with published 0.2.19
+        type: boolean
+        default: false
       windows_beta:
         description: The published Windows release or prerelease to upgrade from
         default: v0.1.6
@@ -52,6 +23,10 @@ on:
         type: string
   workflow_call:
     inputs:
+      recovery_proof:
+        description: Run the three recovery cases with published 0.2.19
+        type: boolean
+        default: false
       windows_beta:
         type: string
         required: true
@@ -73,7 +48,6 @@ env:
   WINDOWS_BETA: ${{ inputs.windows_beta || (contains(github.ref_name, '-before-the-switch-') && 'windows-beta-14' || 'v0.1.6') }}
   MAC_BETA: ${{ inputs.mac_beta || (contains(github.ref_name, '-before-the-switch-') && 'mac-beta-3' || 'v0.1.6') }}
   CANDIDATE_VERSION: ${{ inputs.candidate_version || '0.1.7' }}
-  # Where the lane's scripted Claude model listens, named to Claude Code in its managed settings.
   UPGRADE_PATH_CLAUDE_PORT: '9360'
 
 concurrency:
@@ -103,7 +77,6 @@ jobs:
           restore-keys: ${{ runner.os }}-electron-
       - run: pnpm install --frozen-lockfile
 
-      # The check's own rules, on planted losses: a rule that could not fail proves nothing below.
       - name: The check's own rules fail what they should
         run: pnpm exec vitest run --project scripts scripts/test/upgrade-path.test.mjs
 
@@ -137,8 +110,6 @@ jobs:
             -c.extraMetadata.version="$CANDIDATE_VERSION" --publish never
           ls -la apps/desktop/dist
 
-      # Anthropic's own installer, at the measured version; Claude Code's machine-wide managed
-      # settings, which it reads whatever settings files the app lets it load, name the lane's model.
       - name: Install Claude Code, sent to the lane's scripted model
         shell: pwsh
         run: |
@@ -151,10 +122,6 @@ jobs:
           Get-Content 'C:\Program Files\ClaudeCode\managed-settings.json'
           & "$env:USERPROFILE\.local\bin\claude.exe" --version
 
-      # On Windows BroBot hands a saved key to Claude Code as the host managing its provider, and
-      # Claude Code then ignores the endpoint settings name; it still takes a proxy and an extra
-      # certificate authority from its environment. This run's own authority, never kept, signs
-      # the certificate the lane's stand-in for Anthropic's API answers with behind its proxy.
       - name: A certificate authority of this run's own, for the lane's stand-in API
         shell: bash
         env:
@@ -185,6 +152,7 @@ jobs:
           --candidate-dir apps/desktop/dist
           --candidate-version "$CANDIDATE_VERSION" --source-sha "$GITHUB_SHA"
           --evidence upgrade-path-evidence
+          ${{ inputs.recovery_proof && '--recovery-proof' || '' }}
 
       - name: Keep the evidence, whatever happened
         if: always()
@@ -240,8 +208,6 @@ jobs:
             -c.mac.identity=- -c.extraMetadata.version="$CANDIDATE_VERSION" --publish never
           ls -la apps/desktop/dist
 
-      # Anthropic's own installer, at the measured version; Claude Code's machine-wide managed
-      # settings, which it reads whatever settings files the app lets it load, name the lane's model.
       - name: Install Claude Code, sent to the lane's scripted model
         run: |
           set -euo pipefail
@@ -262,6 +228,7 @@ jobs:
           --candidate-dir apps/desktop/dist
           --candidate-version "$CANDIDATE_VERSION" --source-sha "$GITHUB_SHA"
           --evidence upgrade-path-evidence
+          ${{ inputs.recovery_proof && '--recovery-proof' || '' }}
 
       - name: Keep the evidence, whatever happened
         if: always()
