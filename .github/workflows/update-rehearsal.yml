@@ -80,68 +80,18 @@ jobs:
   macos:
     name: Build signed A and B for the Mac (dmg and zip, Apple silicon)
     needs: plan
-    runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
-    environment: mac-signing
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-desktop
-      - name: Require Apple silicon
-        run: test "$(uname -m)" = arm64
-      - id: feed
-        env:
-          MODE: ${{ needs.plan.outputs.mode }}
-          REPO: ${{ needs.plan.outputs.repo || github.repository }}
-        run: |
-          echo "owner=${REPO%/*}" >> "$GITHUB_OUTPUT"
-          echo "repo=${REPO#*/}" >> "$GITHUB_OUTPUT"
-          if [ "$MODE" = local ]; then echo 'url=http://127.0.0.1:47122/' >> "$GITHUB_OUTPUT"; fi
-      - name: Package signed A
-        uses: ./.github/actions/signed-mac
-        with:
-          version: 0.0.98
-          owner: ${{ steps.feed.outputs.owner }}
-          repo: ${{ steps.feed.outputs.repo }}
-          feed_url: ${{ steps.feed.outputs.url }}
-          feed_private: ${{ needs.plan.outputs.mode == 'private' && 'true' || 'false' }}
-          marker: a-${{ github.sha }}
-          output: dist-rehearsal/a
-        env:
-          MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
-          MAC_CERT_P12_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
-          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-      - name: Package signed B
-        uses: ./.github/actions/signed-mac
-        with:
-          version: 0.0.99
-          owner: ${{ steps.feed.outputs.owner }}
-          repo: ${{ steps.feed.outputs.repo }}
-          feed_url: ${{ steps.feed.outputs.url }}
-          feed_private: ${{ needs.plan.outputs.mode == 'private' && 'true' || 'false' }}
-          marker: b-${{ github.sha }}
-          output: dist-rehearsal/b
-        env:
-          MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
-          MAC_CERT_P12_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
-          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: rehearsal-macos
-          path: |
-            apps/desktop/dist-rehearsal/*/BroCrew-*-arm64.dmg
-            apps/desktop/dist-rehearsal/*/BroCrew-*-arm64.dmg.blockmap
-            apps/desktop/dist-rehearsal/*/BroCrew-*-arm64-mac.zip
-            apps/desktop/dist-rehearsal/*/BroCrew-*-arm64-mac.zip.blockmap
-            apps/desktop/dist-rehearsal/*/latest-mac.yml
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 7
+    uses: ./.github/workflows/mac-update-test.yml
+    with:
+      build_only: true
+      feed_url: ${{ needs.plan.outputs.mode == 'local' && 'http://127.0.0.1:47122/' || '' }}
+      feed_repo: ${{ needs.plan.outputs.repo || github.repository }}
+      feed_private: ${{ needs.plan.outputs.mode == 'private' }}
+    secrets:
+      MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
+      MAC_CERT_P12_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
+      APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
   # The private rehearsal while this repository holds no token for the sandbox: what to run next.
   sandbox:
