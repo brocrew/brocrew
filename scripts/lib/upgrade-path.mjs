@@ -181,12 +181,15 @@ export function stateFileNames(source) {
   return names
 }
 
-export function startOrder(log, { checkpoint, completion = 'before-ready', observation = null }) {
+export function startOrder(
+  log,
+  { checkpoint, completion = 'before-ready', observation = null, checkpointLine = CHECKPOINT_LINE },
+) {
   const lines = log.split(/\r?\n/).map((line) => line.trimEnd())
   requireEvidence(!lines.includes(FAIL_LINE), `The start failed: ${failureOf(lines)}`)
   requireEvidence(!lines.includes(RECOVERY_ONLY_LINE), 'The start opened only its recovery window.')
   const ready = lines.flatMap((line, index) => (line === READY_LINE ? [index] : []))
-  const copies = lines.flatMap((line, index) => (line === CHECKPOINT_LINE ? [index] : []))
+  const copies = lines.flatMap((line, index) => (line === checkpointLine ? [index] : []))
   requireEvidence(
     ready.length === 1,
     `Exactly one READY line is required; found ${String(ready.length)}.`,
@@ -223,12 +226,16 @@ function requireResponsiveBeforeCompletion(observed) {
 export function makeEarlierMigrationFixture(db, journal, sqlOf) {
   const prefix = journal.entries.slice(0, -1)
   requireEvidence(prefix.length > 0, 'The synchronous exception needs a real earlier prefix.')
+  return makeMigrationFixture(db, prefix, sqlOf)
+}
+
+export function makeMigrationFixture(db, entries, sqlOf) {
   db.exec('PRAGMA foreign_keys = OFF')
   db.exec(
     'CREATE TABLE __drizzle_migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT NOT NULL, created_at NUMERIC)',
   )
   db.exec('BEGIN')
-  for (const entry of prefix) {
+  for (const entry of entries) {
     const sql = sqlOf(entry.tag)
     db.exec(sql)
     db.prepare('INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)').run(

@@ -8,12 +8,19 @@ import {
   until,
 } from './lib/update-rehearsal-app.mjs'
 import { digest } from './lib/mac-update-test.mjs'
+import {
+  runRecoveryMeasurement,
+  measurementSize,
+  retainRecoveryProgram,
+  proofManifests,
+  completedProofCopy,
+  checkedProofCopy,
+} from './lib/recovery-measurement.mjs'
 import { withMovedFiles } from './lib/moved-state-files.mjs'
 import {
   appendFileSync,
   closeSync,
   copyFileSync,
-  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -79,7 +86,6 @@ import {
   theCandidateInstaller,
   transcriptsOf,
   turnOutcome,
-  verifyCheckpoint,
   verifyCandidateSkills,
   whatRunsIsSaid,
 } from './lib/upgrade-path.mjs'
@@ -110,6 +116,7 @@ const { values: args } = parseArgs({
   options: {
     os: { type: 'string' },
     'recovery-proof': { type: 'boolean', default: false },
+    'recovery-measurement-bytes': { type: 'string', default: '0' },
     'beta-tag': { type: 'string' },
     'beta-registry': { type: 'string', default: 'packaged' },
     'beta-release': { type: 'string' },
@@ -140,6 +147,7 @@ if (!['packaged', 'legacy'].includes(args['beta-registry'])) {
   process.exit(2)
 }
 const os = args.os
+const measurementBytes = measurementSize(args['recovery-measurement-bytes'])
 const evidence = resolve(args.evidence)
 mkdirSync(evidence, { recursive: true })
 
@@ -876,7 +884,7 @@ const pagesNow = async () =>
     .filter((one) => one.type === 'page')
     .map((one) => one.url)
 
-async function bridge(stage) {
+async function bridge(stage, budget = 180_000) {
   const bridged = await until(async () => {
     if (!theAppsOwn(running.page)) {
       const pages = await pagesOf(running.root).catch(() => [])
@@ -891,7 +899,7 @@ async function bridge(stage) {
     } catch {
       return false
     }
-  }, 180_000)
+  }, budget)
   must(bridged, `${stage}: the window offers its bridge`, { url: running.page.url })
 }
 
@@ -1217,6 +1225,7 @@ async function quit(stage) {
     keepPluginDrainEvidence(join(appRoot, 'plugins'), running.stage, { evidence, keep, say })
   }
   await stop()
+  return Boolean(ended) && plugins !== 'not-stopped'
 }
 
 async function stop() {
@@ -1893,58 +1902,13 @@ function theStartAndTheKey(conversation, called, atFirstOpen) {
   }
 }
 
-function retainProofProgram(installed) {
-  const root = mkdtempSync(join(tmpdir(), 'upgrade-old-'))
-  if (os === 'mac') {
-    const exe = join(root, basename(installed.exe))
-    run('/usr/bin/ditto', ['--rsrc', '--extattr', installed.exe, exe])
-    return {
-      ...installed,
-      exe,
-      program: join(exe, relative(installed.exe, installed.program)),
-      root,
-    }
-  }
-  cpSync(dirname(installed.program), root, { recursive: true })
-  const program = join(root, basename(installed.program))
-  return { ...installed, exe: program, program, root }
-}
-
-async function proofManifests(folder) {
-  return (await recoveryCopies(folder, { digestFiles: false }))
-    .filter((one) => one.manifest)
-    .map((one) => ({
-      folder: join(folder, 'backups', one.folder),
-      manifest: one.manifest,
-    }))
-}
-
-async function completedProofCopy(folder, ids) {
-  return until(
-    async () => (await proofManifests(folder)).find((one) => !ids.has(one.manifest.id)) ?? null,
-    600_000,
-    100,
-  )
-}
-
-async function checkedProofCopy(copy, expected, state) {
-  must(copy !== null, 'A real completed v1 manifest was published.')
-  const files = Object.fromEntries(
-    stateFiles
-      .filter((name) => existsSync(join(copy.folder, name)))
-      .map((name) => [name, readStateEntry(join(copy.folder, name))]),
-  )
-  const file = join(copy.folder, 'database.sqlite')
-  const databaseDigest = { bytes: lstatSync(file).size, sha256: await digest(file) }
-  const checked = verifyCheckpoint(copy.manifest, files, {
-    ...expected,
-    folder: basename(copy.folder),
-    stateFiles,
-    state,
-    workspaceId: readFileSync(join(dirname(copy.folder), 'workspace-id'), 'utf8').trim(),
-    databaseDigest,
-  })
-  return { ...checked, manifest: copy.manifest, observedDatabase: databaseDigest }
+async function startHiddenProgram(program, workspace, stage, port, budget = 180_000) {
+  installedExe = program.exe
+  installedProgram = program.program
+  await launch(stage, port, { workspace, hidden: true })
+  await bridge(stage, budget)
+  await onScreen(stage, true)
+  return running
 }
 
 async function recoveryProofCases({
@@ -1958,11 +1922,7 @@ async function recoveryProofCases({
   besideBefore,
 }) {
   async function proofOrdinary(program, folder, stage, port) {
-    installedExe = program.exe
-    installedProgram = program.program
-    await launch(stage, port, { workspace: folder, hidden: true })
-    await bridge(stage)
-    await onScreen(stage, true)
+    await startHiddenProgram(program, folder, stage, port)
     const info = await running.cdp.evaluate('return await window.api.getAppInfo()')
     const responsive = performance.now()
     const manifestAbsent = !(await proofManifests(folder)).some((one) => !ids.has(one.manifest.id))
@@ -2010,6 +1970,8 @@ async function recoveryProofCases({
           lineage: before.lineage,
         },
         state,
+        stateFiles,
+        must,
       )
       result.compatible.order = startOrder(readFileSync(running.log, 'utf8'), {
         checkpoint: true,
@@ -2148,6 +2110,8 @@ async function recoveryProofCases({
           lineage,
         },
         state,
+        stateFiles,
+        must,
       )
       result.synchronous.order = startOrder(readFileSync(running.log, 'utf8'), { checkpoint: true })
       await quit('proof synchronous')
@@ -2207,7 +2171,7 @@ async function runUpgradePath() {
   installedProgram = beta.program
   summary.names.beta = beta.productName
   summary.betaInstall = beta.facts
-  const proofOld = args['recovery-proof'] ? retainProofProgram(beta) : null
+  const proofOld = args['recovery-proof'] ? retainRecoveryProgram(beta, { os, run }) : null
   const betaVersion = os === 'windows' ? beta.facts.entries[0].DisplayVersion : beta.facts.version
   must(
     typeof betaVersion === 'string' &&
@@ -2216,6 +2180,40 @@ async function runUpgradePath() {
     `the beta is at another version than the candidate (${args['candidate-version']})`,
     { beta: betaVersion ?? null },
   )
+
+  if (measurementBytes > 0) {
+    must(
+      os === 'mac' &&
+        args['recovery-proof'] &&
+        args['beta-tag'] === 'v0.2.19' &&
+        betaVersion === '0.2.19',
+      'Representative measurement requires Mac recovery proof with actual0.2.19.',
+    )
+    await runRecoveryMeasurement({
+      bytes: measurementBytes,
+      old: proofOld,
+      source: args['source-sha'],
+      version: args['candidate-version'],
+      migrations,
+      candidate: () => {
+        const folder = resolve(args['candidate-dir'])
+        return install(
+          join(folder, theCandidateInstaller(readdirSync(folder), os, args['candidate-version'])),
+          'the measured candidate',
+        )
+      },
+      app: {
+        start: (program, workspace, stage, port) =>
+          startHiddenProgram(program, workspace, stage, port, 900_000),
+        quit,
+        stop,
+      },
+      keep,
+      run,
+    })
+    exitCode = summary.failures.length === 0 ? 0 : 1
+    return
+  }
 
   const codexHome = join(data, 'provider-homes', 'default', 'brobot', 'codex')
   mkdirSync(codexHome, { recursive: true })

@@ -9,6 +9,10 @@ on:
         description: Run the three recovery cases with published 0.2.19
         type: boolean
         default: false
+      recovery_measurement_bytes:
+        description: Populated Mac measurement bytes, zero disables measurement
+        type: string
+        default: '0'
       windows_beta:
         description: The published Windows release or prerelease to upgrade from
         default: v0.1.6
@@ -57,7 +61,7 @@ concurrency:
 jobs:
   windows:
     name: Windows, from the tester's beta to the candidate
-    if: github.repository == 'brocrew/brocrew'
+    if: github.repository == 'brocrew/brocrew' && (inputs.recovery_measurement_bytes || '0') == '0'
     # `windows-2022`, as `windows.yml`: pnpm's node-gyp does not know the 2025 image's Visual Studio.
     runs-on: windows-2022
     timeout-minutes: 75
@@ -221,8 +225,10 @@ jobs:
       - name: Install the beta, make data with it, replace it with the candidate, and check
         env:
           BROCREW_SKIP_UPDATE_CHECK: '1'
+          RECOVERY_MEASUREMENT_BYTES: ${{ inputs.recovery_measurement_bytes || '0' }}
         run: >-
           node scripts/upgrade-path.mjs --os mac
+          --recovery-measurement-bytes "$RECOVERY_MEASUREMENT_BYTES"
           --beta-tag "$MAC_BETA" --beta-release upgrade-path-evidence/beta-release.json
           --beta-dir upgrade-path-beta
           --candidate-dir apps/desktop/dist
