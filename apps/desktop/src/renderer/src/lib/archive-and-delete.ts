@@ -24,7 +24,7 @@ export type ArchiveBridge = Pick<
 
 /** Archive one conversation and the helpers below it. A call that threw reads as a refusal. */
 export async function archiveConversation(
-  bridge: ArchiveBridge,
+  bridge: Pick<ArchiveBridge, 'archiveConversation'>,
   sessionId: string,
 ): Promise<ArchiveOutcome> {
   try {
@@ -36,7 +36,7 @@ export async function archiveConversation(
 
 /** Bring an archived conversation and its archived tree back. */
 export async function restoreConversation(
-  bridge: ArchiveBridge,
+  bridge: Pick<ArchiveBridge, 'restoreConversation'>,
   sessionId: string,
 ): Promise<ArchiveOutcome> {
   try {

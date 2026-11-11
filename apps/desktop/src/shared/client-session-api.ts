@@ -5,6 +5,7 @@ export type ClientSessionApi = Pick<
   RuntimeBridge,
   | 'adoptSessions'
   | 'answerAction'
+  | 'archiveConversation'
   | 'attachOpen'
   | 'cancelLaunch'
   | 'cancelQueuedMessage'
@@ -53,6 +54,7 @@ export type ClientSessionApi = Pick<
   | 'removeKeptRule'
   | 'respondPermission'
   | 'respondUserInput'
+  | 'restoreConversation'
   | 'resume'
   | 'revealPath'
   | 'revealResource'

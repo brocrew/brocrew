@@ -212,45 +212,16 @@ import { readableError } from '../lib/session-record'
 import FacetBar from './FacetBar.vue'
 import ResumableSessions from './ResumableSessions.vue'
 /**
- * The session library (047, rebuilt to 104's design): every conversation this app knows about, from
- * all three sources, in one searchable index.
+ * All known conversations in one search-first index, merging our records and provider homes.
+ * Browse is a bounded recent window; search re-reads main-side to reach the whole library.
+ * Rows are keyed by provider identity, so an imported conversation remains one row.
  *
- * ## It is a search-first index, not a rendered list (104)
+ * Import, Read and Rebuild are offered by row-kind: Import brings bytes here; Read opens a
+ * readable record; Rebuild re-reads an incomplete archive. Completeness and outcomes are states,
+ * not extra actions. The row itself is the read target; Rebuild sits beside its explanation.
  *
- * Two jobs, and they are reconciled rather than merged. **Browse** is the most recent *window* —
- * bounded, and labelled as bounded the moment the bound bites. **Find** is search, which re-reads
- * main-side per keystroke and therefore reaches PAST the window into the whole library. The promise
- * a person can lean on is *find anything by searching; browse the recent window*, and neither half
- * pretends two thousand rows are on screen.
- *
- * ## What the rows actually are
- *
- * Three sources are merged main-side into one list — our own database, and the user's two provider
- * homes — keyed on the provider's own id, so a conversation we have already archived is ONE row
- * that knows both facts. That merge is not this component's business; what is, is that the row
- * never hides which of them it is, because the available action differs:
- *
- * | row | action |
- * |---|---|
- * | in a provider home, not archived here | **Import** — the one accent CTA, since nothing is readable yet |
- * | archived here, or ours | **the row itself is the target** — read is safe and read-only |
- * | behind its archive, or a rebuild that failed | **Rebuild**, docked to the line that explains why |
- *
- * ⚠️ **Five actions were never five.** Read, Import and Rebuild are mutually exclusive by row-kind
- * already; `behind` and `outcome` are STATES, not actions. So the persistent right-hand button
- * column was drawing three buttons' worth of furniture for at most one, on every row.
- *
- * ## Nothing here is invented
- *
- * A row shows the title the provider itself keeps and the first message it recorded. Where a
- * provider has neither the row falls back to the working directory, which is a fact, and never to a
- * composed summary. An entry with nothing to say says nothing — which is also why a row whose
- * transcript is complete renders no completeness line at all.
- *
- * ## No provider literals
- *
- * The provider is rendered as the value on the entry and used as an opaque discriminant. Nothing
- * here compares it against a name, so adding a third provider changes nothing in this file (AC5).
+ * Titles and previews come from the provider; a missing title falls back to the working directory.
+ * Complete transcripts need no completeness line. Providers are opaque row discriminants here.
  */
 const props = withDefaults(
   defineProps<{
@@ -611,7 +582,16 @@ async function archiveEntry(entry: LibraryEntry): Promise<void> {
     Object.entries(archiveRefused.value).filter(([id]) => id !== entry.id),
   )
   try {
-    const outcome = await archiveConversation(window.api.runtime, entry.recordId)
+    const outcome = await archiveConversation(
+      {
+        archiveConversation: (input) => {
+          const sessions = selectedClientApi.sessions
+          if (!sessions) throw new Error('Session library is unavailable')
+          return sessions.archiveConversation(input)
+        },
+      },
+      entry.recordId,
+    )
     if (!outcome.done) {
       archiveRefused.value = { ...archiveRefused.value, [entry.id]: outcome.refusal }
       return
@@ -631,7 +611,16 @@ async function restoreEntry(entry: LibraryEntry): Promise<void> {
     Object.entries(restoreRefused.value).filter(([id]) => id !== entry.id),
   )
   try {
-    const outcome = await restoreConversation(window.api.runtime, entry.recordId)
+    const outcome = await restoreConversation(
+      {
+        restoreConversation: (input) => {
+          const sessions = selectedClientApi.sessions
+          if (!sessions) throw new Error('Session library is unavailable')
+          return sessions.restoreConversation(input)
+        },
+      },
+      entry.recordId,
+    )
     if (!outcome.done) {
       restoreRefused.value = { ...restoreRefused.value, [entry.id]: outcome.refusal }
       return
