@@ -1,7 +1,5 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import {
-  constants,
-  copyFileSync,
   cpSync,
   existsSync,
   lstatSync,
@@ -66,6 +64,43 @@ export async function completedProofCopy(folder, ids) {
     600_000,
     100,
   )
+}
+
+export function cloneMeasurementFile(from, to) {
+  requireEvidence(process.platform === 'darwin', 'Native measurement cloning requires Darwin.')
+  // Node's forced FICLONE is unavailable here; call clonefile without a copy fallback.
+  const result = spawnSync(
+    '/usr/bin/python3',
+    [
+      '-c',
+      `
+import ctypes, errno, json, os, sys
+try:
+    clone = ctypes.CDLL('/usr/lib/libSystem.B.dylib', use_errno=True).clonefile
+    clone.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint32]
+    clone.restype = ctypes.c_int
+    if clone(os.fsencode(sys.argv[1]), os.fsencode(sys.argv[2]), 0) != 0:
+        number = ctypes.get_errno()
+        raise OSError(number, os.strerror(number))
+    print(json.dumps({'cloned': True}))
+except (OSError, AttributeError) as error:
+    number = getattr(error, 'errno', None) or errno.ENOSYS
+    print(json.dumps({'errno': number, 'code': errno.errorcode.get(number), 'message': str(error)}))
+    sys.exit(1)
+`,
+      from,
+      to,
+    ],
+    { encoding: 'utf8', timeout: 30_000 },
+  )
+  if (result.error) throw result.error
+  if (!result.stdout.trim()) throw new Error(`clonefile process failed: ${result.stderr.trim()}`)
+  const facts = JSON.parse(result.stdout)
+  if (result.status !== 0 || facts.cloned !== true)
+    throw Object.assign(
+      new Error(`clonefile failed: ${facts.message ?? result.stderr.trim()}`),
+      facts,
+    )
 }
 
 export function measurementSize(value) {
@@ -263,7 +298,7 @@ export async function leaveMeasurementWal(file) {
     'The WAL fixture exceeded its64MiB budget.',
   )
   const probe = `${file}.main-only`
-  copyFileSync(file, probe, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE_FORCE)
+  cloneMeasurementFile(file, probe)
   const main = new DatabaseSync(probe, { readOnly: true })
   try {
     requireEvidence(
@@ -396,11 +431,7 @@ export async function runRecoveryMeasurement({
     )
     const probe = join(root, 'clone-probe')
     writeFileSync(probe, 'Fictional clone probe.')
-    copyFileSync(
-      probe,
-      `${probe}.clone`,
-      constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE_FORCE,
-    )
+    cloneMeasurementFile(probe, `${probe}.clone`)
     requireMeasurementCapacity({
       bytes,
       free: freeAt(root),
@@ -599,18 +630,17 @@ export async function runRecoveryMeasurement({
           0,
         )
         await app.stop()
-        if (sampleError) throw sampleError
       }
+      if (sampleError) throw sampleError
       return record
     }
 
     const baseline = await trial(old, 'baseline-019', baselineSeed.lineage, false, baselineWal)
     for (const suffix of ['', '-wal', '-shm', '-journal'])
       rmSync(join(workspace, `brobot2.sqlite${suffix}`), { force: true })
-    copyFileSync(
+    cloneMeasurementFile(
       join(baseline.copy.folder, 'database.sqlite'),
       join(workspace, 'brobot2.sqlite'),
-      constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE_FORCE,
     )
     for (const name of names) {
       rmSync(join(workspace, name), { recursive: true, force: true })

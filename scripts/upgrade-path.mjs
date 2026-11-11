@@ -87,6 +87,7 @@ import {
   transcriptsOf,
   turnOutcome,
   verifyCandidateSkills,
+  verifyCheckpoint,
   whatRunsIsSaid,
 } from './lib/upgrade-path.mjs'
 import {

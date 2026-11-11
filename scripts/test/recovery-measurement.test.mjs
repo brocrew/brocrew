@@ -10,6 +10,7 @@ import {
   measurementFacts,
   requireMeasurementCapacity,
   leaveMeasurementWal,
+  cloneMeasurementFile,
 } from '../lib/recovery-measurement.mjs'
 import { startOrder, READY_LINE } from '../lib/upgrade-path.mjs'
 
@@ -34,6 +35,14 @@ describe('populated recovery measurement', () => {
       }
       try {
         const first = await leaveMeasurementWal(file)
+        const clone = join(root, 'native-clone.sqlite')
+        cloneMeasurementFile(file, clone)
+        expect(() => cloneMeasurementFile(file, clone)).toThrowError(
+          expect.objectContaining({ code: 'EEXIST' }),
+        )
+        expect(() =>
+          cloneMeasurementFile(join(root, 'absent'), join(root, 'missing-copy')),
+        ).toThrowError(expect.objectContaining({ code: 'ENOENT' }))
         const second = await leaveMeasurementWal(file)
         expect(second.rows).toBe(first.rows)
         expect(first.needles.map((one) => one.id)).toEqual(['measurement-first', 'measurement-wal'])
