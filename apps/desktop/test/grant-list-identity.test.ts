@@ -134,7 +134,12 @@ it('preserves supplied identities, scoped rules and ordering through live and hi
     { kind: 'tool', server: 'maps', tool: 'locate', listedAs: 'fictional/list-key' },
     { kind: 'tool', server: 'maps', tool: 'locate', content: 'restricted' },
     { kind: 'command-prefix', prefix: ['echo', 'hello'] },
-    { kind: 'tool', server: 'weather', tool: 'locate__tail', listedAs: 'fern:weather/locate__tail' },
+    {
+      kind: 'tool',
+      server: 'weather',
+      tool: 'locate__tail',
+      listedAs: 'fern:weather/locate__tail',
+    },
   ]
   const old = card({ allow_always: rules })
   const projected = transcriptEventForDisplay(old, 'codex') as Card
