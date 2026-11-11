@@ -533,11 +533,7 @@ function codexTextTitle(text: string): { id: string; title: string } {
     [/^(?:<multi_agent_role>|You are `\/root`)/, 'codex.multi-agent-role', 'Its multi-agent role'],
     [/^<multi_agent_mode>/, 'codex.multi-agent-mode', 'Its multi-agent mode'],
     [/^<environment_context>/, 'codex.environment', 'Its environment context'],
-    [
-      /^# AGENTS\.md instructions\n/,
-      'codex.agents-wrapper',
-      'Its wrapper around the AGENTS files',
-    ],
+    [/^# AGENTS\.md instructions\n/, 'codex.agents-wrapper', 'Its wrapper around the AGENTS files'],
   ]
   for (const [pattern, id, title] of opens) if (pattern.test(text)) return { id, title }
   return { id: 'codex.other', title: 'Another of its own messages' }

@@ -396,8 +396,7 @@ describe('how a request is cut', () => {
   })
 
   it('Codex, both shapes: BroBot’s tools, AGENTS files and message out', () => {
-    const agents =
-      '# AGENTS.md instructions\n\n<INSTRUCTIONS>\nBroBot’s rules\n</INSTRUCTIONS>'
+    const agents = '# AGENTS.md instructions\n\n<INSTRUCTIONS>\nBroBot’s rules\n</INSTRUCTIONS>'
     const functions = codexParts(
       {
         instructions: 'You are Codex.',

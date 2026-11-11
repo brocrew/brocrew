@@ -106,22 +106,11 @@
             "list-agents",
             "team-onboarding"
           ],
-          "terminal_slash_commands": [
-            "doctor",
-            "color",
-            "focus",
-            "reload-plugins"
-          ],
+          "terminal_slash_commands": ["doctor", "color", "focus", "reload-plugins"],
           "apiKeySource": "none",
           "claude_code_version": "2.1.322",
           "output_style": "default",
-          "agents": [
-            "claude",
-            "Explore",
-            "general-purpose",
-            "Plan",
-            "statusline-setup"
-          ],
+          "agents": ["claude", "Explore", "general-purpose", "Plan", "statusline-setup"],
           "skills": [
             "deep-research",
             "dataviz",
@@ -190,9 +179,7 @@
           "ultrathink_available": false,
           "ultrathink_typed_raises": false,
           "view_mode": "default",
-          "user_message_uuids": [
-            "<uuid>"
-          ]
+          "user_message_uuids": ["<uuid>"]
         },
         {
           "type": "system",
@@ -200,9 +187,7 @@
           "status": "requesting",
           "session_id": "<uuid>",
           "uuid": "<uuid>",
-          "user_message_uuids": [
-            "<uuid>"
-          ]
+          "user_message_uuids": ["<uuid>"]
         },
         {
           "type": "rate_limit_event",
@@ -279,9 +264,7 @@
             }
           },
           "user_message_uuid": "<uuid>",
-          "user_message_uuids": [
-            "<uuid>"
-          ]
+          "user_message_uuids": ["<uuid>"]
         },
         {
           "duration_api_ms": 0,
@@ -350,9 +333,7 @@
           "duration_ms": 60,
           "uuid": "<uuid>",
           "user_message_uuid": "<uuid>",
-          "user_message_uuids": [
-            "<uuid>"
-          ],
+          "user_message_uuids": ["<uuid>"],
           "queued_turn_count": 0,
           "result_index": 0,
           "model_usage_since_last_result": {}
@@ -470,22 +451,11 @@
             "list-agents",
             "team-onboarding"
           ],
-          "terminal_slash_commands": [
-            "doctor",
-            "color",
-            "focus",
-            "reload-plugins"
-          ],
+          "terminal_slash_commands": ["doctor", "color", "focus", "reload-plugins"],
           "apiKeySource": "none",
           "claude_code_version": "2.1.322",
           "output_style": "default",
-          "agents": [
-            "claude",
-            "Explore",
-            "general-purpose",
-            "Plan",
-            "statusline-setup"
-          ],
+          "agents": ["claude", "Explore", "general-purpose", "Plan", "statusline-setup"],
           "skills": [
             "deep-research",
             "dataviz",
@@ -554,9 +524,7 @@
           "ultrathink_available": false,
           "ultrathink_typed_raises": false,
           "view_mode": "default",
-          "user_message_uuids": [
-            "<uuid>"
-          ]
+          "user_message_uuids": ["<uuid>"]
         },
         {
           "type": "system",
@@ -564,9 +532,7 @@
           "status": "requesting",
           "session_id": "<uuid>",
           "uuid": "<uuid>",
-          "user_message_uuids": [
-            "<uuid>"
-          ]
+          "user_message_uuids": ["<uuid>"]
         },
         {
           "type": "rate_limit_event",
@@ -625,9 +591,7 @@
           "is_api_error_message": true,
           "api_error_status": 429,
           "user_message_uuid": "<uuid>",
-          "user_message_uuids": [
-            "<uuid>"
-          ]
+          "user_message_uuids": ["<uuid>"]
         },
         {
           "duration_api_ms": 0,
@@ -695,9 +659,7 @@
           "duration_ms": 39,
           "uuid": "<uuid>",
           "user_message_uuid": "<uuid>",
-          "user_message_uuids": [
-            "<uuid>"
-          ],
+          "user_message_uuids": ["<uuid>"],
           "queued_turn_count": 0,
           "result_index": 0,
           "model_usage_since_last_result": {}
@@ -815,22 +777,11 @@
             "list-agents",
             "team-onboarding"
           ],
-          "terminal_slash_commands": [
-            "doctor",
-            "color",
-            "focus",
-            "reload-plugins"
-          ],
+          "terminal_slash_commands": ["doctor", "color", "focus", "reload-plugins"],
           "apiKeySource": "none",
           "claude_code_version": "2.1.322",
           "output_style": "default",
-          "agents": [
-            "claude",
-            "Explore",
-            "general-purpose",
-            "Plan",
-            "statusline-setup"
-          ],
+          "agents": ["claude", "Explore", "general-purpose", "Plan", "statusline-setup"],
           "skills": [
             "deep-research",
             "dataviz",
@@ -899,9 +850,7 @@
           "ultrathink_available": false,
           "ultrathink_typed_raises": false,
           "view_mode": "default",
-          "user_message_uuids": [
-            "<uuid>"
-          ]
+          "user_message_uuids": ["<uuid>"]
         },
         {
           "type": "system",
@@ -909,9 +858,7 @@
           "status": "requesting",
           "session_id": "<uuid>",
           "uuid": "<uuid>",
-          "user_message_uuids": [
-            "<uuid>"
-          ]
+          "user_message_uuids": ["<uuid>"]
         },
         {
           "type": "stream_event",
@@ -940,9 +887,7 @@
           "thinking_display": "updates",
           "api_message_id": "msg_695",
           "user_message_uuid": "<uuid>",
-          "user_message_uuids": [
-            "<uuid>"
-          ]
+          "user_message_uuids": ["<uuid>"]
         },
         {
           "type": "stream_event",
@@ -1002,9 +947,7 @@
           "uuid": "<uuid>",
           "timestamp": "2026-11-11T02:12:08.650Z",
           "user_message_uuid": "<uuid>",
-          "user_message_uuids": [
-            "<uuid>"
-          ]
+          "user_message_uuids": ["<uuid>"]
         },
         {
           "type": "stream_event",
@@ -1152,9 +1095,7 @@
           "time_to_request_ms": 30,
           "first_content_frame_ms": 35,
           "user_message_uuid": "<uuid>",
-          "user_message_uuids": [
-            "<uuid>"
-          ],
+          "user_message_uuids": ["<uuid>"],
           "request_sent_wall_ms": 1794363128645,
           "first_request_input_tokens": 11,
           "first_request_cache_read_input_tokens": 0,
