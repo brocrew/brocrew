@@ -1,10 +1,12 @@
 import type { AppDatabase } from './connection'
-import type { PersistedEvent } from './session-store'
-import type { TranscriptEvent } from '../../shared/conversation-events'
+import type { PersistedEventInfo, TranscriptEvent } from '../../shared/conversation-events'
+
 import { ANCESTRY_ACCESS, ANCESTRY_HAS_DISPATCH } from './work-ancestry-index'
 
+type PersistedEvent = Pick<PersistedEventInfo, 'ordinal' | 'at' | 'event'>
+
 export type AncestryKey = { readonly kind: keyof typeof ANCESTRY_ACCESS; readonly id: string }
-export interface AncestryEpoch {
+interface AncestryEpoch {
   readonly after: number
   readonly through: number
   readonly entries: readonly PersistedEvent[]

@@ -24,7 +24,7 @@ import {
 } from '../src/main/db/work-ancestry-reader'
 import { ANCESTRY_ACCESS } from '../src/main/db/work-ancestry-index'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
+import { ancestryBranch, ancestryHostDeps, publishAncestryEvent } from './lib/work-ancestry-fixture'
 import {
   acceptEvent,
   createSessionRecord,
@@ -65,28 +65,7 @@ it('adds identity seeks to an existing ledger, restores out-of-page ancestry, an
     })
     const events: TranscriptEvent[] = [
       { type: 'user_turn', text: 'Earlier work' },
-      { type: 'tool_call', id: 'outer', name: 'Agent', summary: 'child dispatch' },
-      {
-        type: 'sub_agent',
-        agentId: 'child',
-        phase: 'started',
-        parentToolCallId: 'outer',
-        title: 'Child',
-      },
-      {
-        type: 'tool_call',
-        id: 'inner',
-        parentToolCallId: 'outer',
-        name: 'Agent',
-        summary: 'grandchild dispatch',
-      },
-      {
-        type: 'sub_agent',
-        agentId: 'grandchild',
-        phase: 'started',
-        parentToolCallId: 'inner',
-        title: 'Grandchild',
-      },
+      ...ancestryBranch(),
       { type: 'sub_agent', agentId: 'grandchild', phase: 'ended', outcome: 'completed' },
       { type: 'user_turn', text: 'The visible page' },
       { type: 'tool_call', id: 'read', parentToolCallId: 'inner', name: 'Read', summary: 'notes' },
@@ -174,20 +153,8 @@ it('adds identity seeks to an existing ledger, restores out-of-page ancestry, an
     host = new RuntimeHost({
       store,
       createRuntime: () => new FakeRuntime('codex'),
-      discoverSessions: NO_DISCOVERY,
-      resolveCwd: () => directory,
-      prepareProviderHome: () => directory,
-      providerHomePath: () => directory,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => directory,
+      ...ancestryHostDeps(directory),
       newSessionId: () => 'new-fictional',
-      readProviderConfig: () => ({
-        home: directory,
-        homeEnv: 'CODEX_HOME',
-        model: 'fictional',
-        authNote: null,
-        files: [],
-      }),
     })
     const page = host.earlierHistory('s', 9, 1)
     expect(page.from).toBe(6)
@@ -242,28 +209,7 @@ it('restores the off-page call when a bounded history page starts with a grandch
     })
     const store = createSessionStore(db)
     const events: TranscriptEvent[] = [
-      { type: 'tool_call', id: 'outer', name: 'Agent', summary: 'child dispatch' },
-      {
-        type: 'sub_agent',
-        agentId: 'child',
-        phase: 'started',
-        parentToolCallId: 'outer',
-        title: 'Child',
-      },
-      {
-        type: 'tool_call',
-        id: 'inner',
-        parentToolCallId: 'outer',
-        name: 'Agent',
-        summary: 'grandchild dispatch',
-      },
-      {
-        type: 'sub_agent',
-        agentId: 'grandchild',
-        phase: 'started',
-        parentToolCallId: 'inner',
-        title: 'Grandchild',
-      },
+      ...ancestryBranch(),
       {
         type: 'tool_call',
         id: 'read',
@@ -287,20 +233,8 @@ it('restores the off-page call when a bounded history page starts with a grandch
         turnWindow: (id, options) => store.turnWindow(id, { ...options, maxEvents: 1 }),
       },
       createRuntime: () => new FakeRuntime('codex'),
-      discoverSessions: NO_DISCOVERY,
-      resolveCwd: () => directory,
-      prepareProviderHome: () => directory,
-      providerHomePath: () => directory,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => directory,
+      ...ancestryHostDeps(directory),
       newSessionId: () => 'new-fictional',
-      readProviderConfig: () => ({
-        home: directory,
-        homeEnv: 'CODEX_HOME',
-        model: 'fictional',
-        authNote: null,
-        files: [],
-      }),
     })
     const page = host.latestHistory('s')
     expect(page.entries.map((row) => row.event)).toEqual([events[5]])
@@ -348,20 +282,8 @@ it('publishes the updated core relationship before delivery without a live conte
   const host = new RuntimeHost({
     store: { ...NULL_SESSION_STORE, ancestryContext },
     createRuntime: () => runtime,
-    discoverSessions: NO_DISCOVERY,
-    resolveCwd: () => directory,
-    prepareProviderHome: () => directory,
-    providerHomePath: () => directory,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => directory,
+    ...ancestryHostDeps(directory),
     newSessionId: () => 'live-fictional',
-    readProviderConfig: () => ({
-      home: directory,
-      homeEnv: 'CODEX_HOME',
-      model: 'fictional',
-      authNote: null,
-      files: [],
-    }),
   })
   const messages: RuntimeEventMessage[] = []
   let delivered!: () => void
@@ -459,20 +381,8 @@ async function resumeFixture(gate?: FakeLaunchGate) {
   const host = new RuntimeHost({
     store: { ...real, turnWindow, ancestryContext },
     createRuntime: () => runtime,
-    discoverSessions: NO_DISCOVERY,
-    resolveCwd: () => directory,
-    prepareProviderHome: () => directory,
-    providerHomePath: () => directory,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => directory,
+    ...ancestryHostDeps(directory),
     newSessionId: () => 'unused',
-    readProviderConfig: () => ({
-      home: directory,
-      homeEnv: 'CODEX_HOME',
-      model: 'fictional',
-      authNote: null,
-      files: [],
-    }),
   })
   const messages: RuntimeEventMessage[] = []
   let delivered!: () => void
@@ -670,36 +580,11 @@ it('delivers affected live facts through the host while preserving the adopted g
   const host = new RuntimeHost({
     store: NULL_SESSION_STORE,
     createRuntime: () => new StreamingRuntime(queue),
-    discoverSessions: NO_DISCOVERY,
-    resolveCwd: () => directory,
-    prepareProviderHome: () => directory,
-    providerHomePath: () => directory,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => directory,
+    ...ancestryHostDeps(directory),
     newSessionId: () => 'live-fictional',
-    readProviderConfig: () => ({
-      home: directory,
-      homeEnv: 'CODEX_HOME',
-      model: 'fictional',
-      authNote: null,
-      files: [],
-    }),
   })
   const publish = (event: RuntimeEvent): Promise<void> =>
-    new Promise((resolve) => {
-      received = (message) => {
-        if (message.event.type !== event.type) return
-        if ('id' in event && (!('id' in message.event) || message.event.id !== event.id)) return
-        if (
-          'agentId' in event &&
-          (!('agentId' in message.event) || message.event.agentId !== event.agentId)
-        )
-          return
-        received = undefined
-        resolve()
-      }
-      queue.push(event)
-    })
+    publishAncestryEvent(queue, (listener) => (received = listener), event)
   try {
     await host.createSession(
       { provider: 'codex' },
@@ -799,39 +684,14 @@ it('keeps reused provider IDs in their reset epoch for off-page and spanning his
         store.turnWindow(sessionId, { ...options, maxEvents: cap }),
     },
     createRuntime: () => new StreamingRuntime(queue),
-    discoverSessions: NO_DISCOVERY,
-    resolveCwd: () => directory,
-    prepareProviderHome: () => directory,
-    providerHomePath: () => directory,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => directory,
+    ...ancestryHostDeps(directory),
     newSessionId: () => 'live-fictional',
-    readProviderConfig: () => ({
-      home: directory,
-      homeEnv: 'CODEX_HOME',
-      model: 'fictional',
-      authNote: null,
-      files: [],
-    }),
   })
   const live = createSessionRecord('live-fictional')
   const messages: RuntimeEventMessage[] = []
   let received: ((message: RuntimeEventMessage) => void) | undefined
   const publish = (event: RuntimeEvent): Promise<void> =>
-    new Promise((resolve) => {
-      received = (message) => {
-        if (message.event.type !== event.type) return
-        if ('id' in event && (!('id' in message.event) || message.event.id !== event.id)) return
-        if (
-          'agentId' in event &&
-          (!('agentId' in message.event) || message.event.agentId !== event.agentId)
-        )
-          return
-        received = undefined
-        resolve()
-      }
-      queue.push(event)
-    })
+    publishAncestryEvent(queue, (listener) => (received = listener), event)
   try {
     const opened = await host.createSession(
       { provider: 'codex' },
@@ -973,20 +833,8 @@ it('restores a quiet off-page child for a fresh attach and keeps its original ob
       turnWindow: (id, options) => store.turnWindow(id, { ...options, maxEvents: 3 }),
     },
     createRuntime: () => new StreamingRuntime(queue),
-    discoverSessions: NO_DISCOVERY,
-    resolveCwd: () => directory,
-    prepareProviderHome: () => directory,
-    providerHomePath: () => directory,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => directory,
+    ...ancestryHostDeps(directory),
     newSessionId: () => 'quiet-fictional',
-    readProviderConfig: () => ({
-      home: directory,
-      homeEnv: 'CODEX_HOME',
-      model: 'fictional',
-      authNote: null,
-      files: [],
-    }),
   })
   const original = createSessionRecord('quiet-fictional')
   let fresh: ReturnType<typeof createSessionRecord> | undefined
@@ -1005,20 +853,7 @@ it('restores a quiet off-page child for a fresh attach and keeps its original ob
     },
   }
   const publish = (event: RuntimeEvent): Promise<void> =>
-    new Promise((resolve) => {
-      received = (message) => {
-        if (message.event.type !== event.type) return
-        if ('id' in event && (!('id' in message.event) || message.event.id !== event.id)) return
-        if (
-          'agentId' in event &&
-          (!('agentId' in message.event) || message.event.agentId !== event.agentId)
-        )
-          return
-        received = undefined
-        resolve()
-      }
-      queue.push(event)
-    })
+    publishAncestryEvent(queue, (listener) => (received = listener), event)
   try {
     await host.createSession({ provider: 'codex' }, sink)
     await publish({ type: 'tool_call', id: 'd', name: 'Agent', summary: 'quiet dispatch' })

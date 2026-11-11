@@ -1,4 +1,3 @@
-import type { WorkAncestry } from './work-ancestry'
 import type { AgentRulesReceipt } from './agent-rules'
 import type { AppNotice } from './app-notice'
 import type { HandedPath } from './attachment-contracts'
@@ -1362,6 +1361,40 @@ export type TranscriptEvent =
   | RequestEscalatedEvent
   | ToolRefusedEvent
 
+/** Recorded provider work relationships, in first-observed order. */
+export interface WorkAncestryFacts {
+  /** Native ordinal of the reset beginning this provider life; -1 precedes its first life. */
+  readonly after?: number
+  /** Recorded display facts needed by this receiver before the referenced work arrives. */
+  readonly baseline?: readonly PersistedEventInfo[]
+  readonly agents: readonly {
+    readonly agentId: string
+    readonly dispatch?: string
+    /** Immediate parent supplied by core; the complete chain consists of these canonical links. */
+    readonly parentAgentId?: string
+    readonly complete: boolean
+  }[]
+  readonly tools: readonly {
+    readonly callId: string
+    /** Absent until a recorded dispatch identifies the agent that made this call. */
+    readonly agentId?: string
+  }[]
+  readonly dispatches: readonly {
+    readonly callId: string
+    readonly agentIds: readonly string[]
+  }[]
+}
+
+export interface WorkAncestryContext {
+  readonly missing: readonly { readonly kind: 'agent' | 'tool' | 'dispatch'; readonly id: string }[]
+  readonly truncated: boolean
+}
+
+export type WorkAncestry =
+  | (WorkAncestryFacts & WorkAncestryContext & { readonly update?: false; readonly reset?: true })
+  | (WorkAncestryFacts &
+      Partial<WorkAncestryContext> & { readonly update: true; readonly reset?: true })
+
 /** One recorded entry with the ordinal it was published under — the transcript, replayable. */
 export interface PersistedEventInfo {
   workAncestry?: WorkAncestry
@@ -1374,77 +1407,7 @@ export interface PersistedEventInfo {
   event: TranscriptEvent
 }
 
-/**
- * 🔴 **What a mailbox slot is holding, as a closed vocabulary** (394, HO-007 S4).
- *
- * ## ⛔ Two kinds because one of them may be refused and the other may never be
- *
- * ⚠️ **`354`'s singleton is right for WORK and wrong for a QUESTION, and both halves are rulings.**
- * Criterion 13 is *"a second queued work message to a busy child is refused, naming the held one"*,
- * and `354` gave the reason: a second would replace words somebody meant to send. ⛔ A question
- * cannot be dropped on the floor, so it is held beside the work rather than instead of it.
- *
- * ⚑ **608 · the reason is now different for each of the two origins, and it survives for both**
- * (HO-084 §4). ⛔ **A PROVIDER-raised question still blocks**: the adapter sits on the request and
- * the conversation that raised it cannot go on until somebody answers. ⚠️ **An `ask_question`
- * question no longer blocks anybody** — the verb returns as soon as the rows are written — but a
- * refused delivery would mean the routed question never reached the parent's transcript at all,
- * and the worker would be waiting on an answer nobody was ever shown a reason to give. 🔴 **One
- * exemption, two reasons, and neither is *the asker is blocked* alone any more.**
- *
- * ⚑ **The widening is opt-in at the call site.** `RuntimeHost.queueMessage` takes `'work'` by
- * default and every existing caller keeps the singleton it had; only the routing chokepoint asks
- * for `'question'`. ⛔ **A shared gate loosened for one caller is loosened for all of them**, which
- * is `a-narrowing-is-opt-in-at-the-call-site-too` pointed the other way.
- *
- * ⚠️ **Order is a FACT and not an implementation detail**: the mailbox is a queue, deliveries are in
- * arrival order, and `mailboxOf` derives that order from the ledger so it can be read rather than
- * assumed. A question that arrives while an earlier one is unanswered does not wait for it — it
- * takes the next slot, and the two are answered BY ID in whatever order the parent chooses.
- *
- * ## 🔴 A third kind, because a NOTICE is neither of the first two (400, criterion 4)
- *
- * ⛔ **`notice` is the app telling a CONVERSATION something it observed.** ⚠️ It is not `work`:
- * nobody owes a reply, no task is minted, and criterion 13's *"a second queued work message is
- * refused, naming the held one"* must go on being exactly as true as it was, which it is — the
- * refusal reads `kind === 'work'` and this is not that. ⛔ **And it is not `question`**: nothing is
- * blocked on the receiver and there is no request id to answer. ⚑ Calling it either would put a
- * word in the ledger that says something nobody said, which is `395`'s ruling one vocabulary over.
- *
- * 🔴 **TWO producers, and the sentence above said *a parent* and *today* about one of them.**
- *
- *  - ⚑ **`400`** — work a parent gave out has stopped being driven.
- *  - ⚑ **`591`** — a question a WORKER asked has been answered (`RuntimeHost.deliverAnswer`,
- *    HO-082 §2). ⛔ It travels DOWN the edge the first one travels up, which is why the word is now
- *    *a conversation*: a notice is not a thing only parents get. ⚠️ **608 · it used to say *after
- *    its turn moved on*, which was the late case** — since the hold came off (`HO-084` §4) it is
- *    the ONLY case, and this producer carries every answer to every `ask_question` question.
- *
- * ⚠️ **It shares `question`'s exemption from the singleton and needs it for a different reason.** A
- * question that is refused never reaches the one conversation that can answer it; a notice that is
- * refused leaves the receiver never told, which is the whole of criterion 4 — *nobody waits forever
- * in silence* — failing silently, and failing exactly when the receiver is busy. 🔴 **`591`'s
- * producer needs the same exemption for the sharper version of that**: a worker that asked a
- * question and carried on working is busy BECAUSE it did not wait, so `work` would drop the answer
- * in precisely the case the answer exists for. ⛔ **608 made that the ordinary case rather than the
- * late one**, so this exemption is now load-bearing on every ask rather than on the slow ones.
- *
- * ## 🔴 624 · the word now decides a second thing
- *
- * ⚠️ Every producer has one shape: **every `notice` this app writes is the app reporting something
- * it observed, and none of them is anybody's words being carried.**
- *
- * 🔴 **That is why `RuntimeHost.cancelQueuedMessage` now READS this word** (`HO-095` §6.2: *a
- * person may not cancel the app's delivery of a fact*). ⛔ **`QueuedMessage.kind`'s *"and nothing
- * else"* was true until this dispatch and is not any more** — corrected where it is written
- * rather than left for the next reader who trusts it.
- *
- * ⚠️ **What it still does not decide is DELIVERY.** How a held message is carried and flushed is
- * identical for all three; what the word gates is whether a person may take it back out again,
- * and — since `690` — whether this app may: only a `'notice'` is ever ended `retracted` (R32).
- * ⛔ **It gated admission too until D-010**, which let a conversation hold any number of messages:
- * a `question` or `notice` no longer needs a slot beside the work, because every kind has one.
- */
+/** Work, questions and app notices share the same delivery queue. */
 export const MAILBOX_KINDS = ['work', 'question', 'notice'] as const
 
 /** One of {@link MAILBOX_KINDS}. */
