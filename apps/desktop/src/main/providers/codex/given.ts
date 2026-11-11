@@ -1,3 +1,4 @@
+import { CODEX_LAUNCH_SETTING_KEYS } from '@brobot2/runtime/codex'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { CODEX_TOOLS_DESCRIPTION, CODEX_TOOL_NAMING } from '@brobot2/runtime/codex'
@@ -24,6 +25,7 @@ const PAST_CODEX_BUDGET =
   'Codex reads at most 32 KiB of a folder’s AGENTS files in all, so the model may have got only part of this one, or none of it. The agent’s popup shows the file as its launch read it.'
 
 export const given: GivenPolicy = {
+  launchSettingKeys: () => CODEX_LAUNCH_SETTING_KEYS,
   nativeFiles: filesCodexWouldRead,
   toolNames: (server, names, published, externalServers) => {
     const declarations = names.map((name) => qualifyWith(CODEX_TOOL_NAMING, server, name))

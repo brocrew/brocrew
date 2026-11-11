@@ -1,6 +1,6 @@
 import type { GivenPolicy as PortablePolicy } from '@brobot2/runtime/provider-module'
 import type { DesktopProviderValues } from './desktop-values'
-import type { LaunchSetting, LaunchSettingKey, LaunchSettingValue } from '@brobot2/runtime'
+import type { LaunchSetting, LaunchSettingValue } from '@brobot2/runtime'
 import type {
   GivenLaunchSettings,
   GivenLaunchSettingDisplay,
@@ -21,7 +21,7 @@ export function joinedSettingNames(names: readonly string[]): string {
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
-function appSetting(key: LaunchSettingKey, value: LaunchSettingValue): SettingWords | undefined {
+function appSetting(key: string, value: LaunchSettingValue): SettingWords | undefined {
   if (key === 'approval')
     return settingWords(
       'Approval',
@@ -45,7 +45,7 @@ export function launchSettingDisplay(
   policy: Partial<Pick<GivenPolicy, 'launchSetting' | 'planningKey'>>,
   captured: { readonly approval: string; readonly planning: boolean } | undefined,
 ): GivenLaunchSettingDisplay {
-  const at = (key: LaunchSettingKey | undefined) =>
+  const at = (key: string | undefined) =>
     settings.settings.find((one) => one.key === key)?.atLaunch ?? null
   const approval = at('approval')
   const plan = at(policy.planningKey)
@@ -62,12 +62,12 @@ export function launchSettingDisplay(
 }
 
 export function launchSettingsAtRead(
-  kept: readonly LaunchSetting[] | undefined,
+  kept: readonly LaunchSetting<string>[] | undefined,
   policy: Pick<GivenPolicy, 'planningKey' | 'launchSetting'>,
   standsNow: { readonly approval: string | null; readonly planning: boolean | null },
   captured: { readonly approval: string; readonly planning: boolean } | undefined,
 ): { launchSettings: GivenLaunchSettings; launchSettingDisplay: GivenLaunchSettingDisplay } {
-  const nowOf = (key: LaunchSettingKey): { now: LaunchSettingValue } | object =>
+  const nowOf = (key: string): { now: LaunchSettingValue } | object =>
     key === 'approval'
       ? { now: standsNow.approval }
       : key === policy.planningKey

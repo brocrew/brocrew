@@ -1,5 +1,8 @@
 /// <reference types="electron-vite/node" />
 
+import { CLAUDE_LAUNCH_SETTING_KEYS } from '@brobot2/runtime/claude'
+import { CODEX_LAUNCH_SETTING_KEYS } from '@brobot2/runtime/codex'
+
 import {
   providerRecord,
   providerValue,
@@ -172,6 +175,9 @@ export const providerKnowledge: Readonly<Record<Provider, ProviderKnowledge>> = 
     keptRules: codexKeptRules,
   },
 }
+/** Legacy recorded keys stay readable independently of the selected provider. */
+export const legacyLaunchSettingKeys = [...CLAUDE_LAUNCH_SETTING_KEYS, ...CODEX_LAUNCH_SETTING_KEYS]
+
 /** The two reminder fields and their order belong to the fixed legacy catalogue format. */
 export const legacySkillReminderFormats = [
   codexSkills.legacyReminder,

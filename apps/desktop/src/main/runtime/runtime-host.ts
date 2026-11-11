@@ -38052,7 +38052,7 @@ export class RuntimeHost implements LiveHost {
     read: ReturnType<NonNullable<RuntimeHostDeps['readInstructions']>> | undefined,
     contextIfUnsaid: () => InstructionContext,
     /** The settings the adapter says it launched with; none for a composition made for a read. */
-    launchSettings?: readonly LaunchSetting[],
+    launchSettings?: readonly LaunchSetting<string>[],
     builtInSkills?: PreparedBuiltInSkills,
   ): WhatALaunchGave | null {
     if (read === undefined) return null
@@ -38195,7 +38195,7 @@ export class RuntimeHost implements LiveHost {
     const stored = launchedRow?.event.type === 'launched' ? launchedRow.event.given : undefined
     const kept = imported
       ? null
-      : (live?.launchGave ?? (stored === undefined ? null : aLaunchRecordIn(stored)))
+      : (live?.launchGave ?? (stored === undefined ? null : aLaunchRecordIn(stored, provider)))
     const running = live !== null
     const build = this.theBuildRunning()
     let record = kept
@@ -38387,7 +38387,7 @@ export class RuntimeHost implements LiveHost {
     const record =
       row.restoredFromBundle || row.foundInUserHome || stored === undefined
         ? null
-        : aLaunchRecordIn(stored)
+        : aLaunchRecordIn(stored, row.provider)
     const kept =
       row.restoredFromBundle || row.foundInUserHome
         ? 'imported'

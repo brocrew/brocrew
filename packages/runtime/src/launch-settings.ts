@@ -4,41 +4,11 @@
  * Provider-owned display facts are projected separately when the launch record is read.
  */
 
-/** Claude Code's settings that change what it sends its model. */
-export type ClaudeLaunchSettingKey =
-  /** Which settings files it reads: `[]`, none. */
-  | 'settings-sources'
-  /** The folder its memory is kept in. */
-  | 'memory-folder'
-  /** The built-in tools it is given beyond its own default set. */
-  | 'built-in-tools'
-  /** The tool names it is told it may not use. */
-  | 'denied-tools'
-  /** Its permission mode: `default`, or `plan`. */
-  | 'mode'
-  /** Whether the account's claude.ai connectors are on. */
-  | 'connectors'
-  /** Who decides the commit attribution it adds: `provider-default`, its own. */
-  | 'attribution'
+import type { ClaudeLaunchSettingKey } from './claude/launch-setting-keys'
+import type { CodexLaunchSettingKey } from './codex/launch-setting-keys'
 
-/** Codex's settings that change what it sends its model. */
-export type CodexLaunchSettingKey =
-  /**
-   * The memory settings in its home's `config.toml`, each `table.key=value`; `null` where this app
-   * could not confirm it wrote them, since writing them never stops a launch.
-   */
-  | 'memory'
-  /** The overrides the thread is opened with, each `key=value`. */
-  | 'thread-overrides'
-  /** Whether its planning tool is on. */
-  | 'plan-tool'
-  /** Its approval policy, approvals reviewer and sandbox, each `name=value`. */
-  | 'approval-sandbox'
-  /**
-   * Its collaboration mode as the adapter chose it at this launch: `plan`, or `default`, which also
-   * covers a launch that sends no mode at all. ⚠️ Not proof of the mode a resumed thread is in.
-   */
-  | 'collaboration-mode'
+/** @deprecated Native compatibility aliases; portable records use LaunchSetting<string>. */
+export type { ClaudeLaunchSettingKey, CodexLaunchSettingKey }
 
 /**
  * One of either provider's keys; the approval mode this app runs the conversation in; `tools-off`,
@@ -51,7 +21,7 @@ export type LaunchSettingKey =
 export type LaunchSettingValue = string | boolean | readonly string[] | null
 
 /** One setting, as launched. */
-export interface LaunchSetting {
-  readonly key: LaunchSettingKey
+export interface LaunchSetting<Key extends string = LaunchSettingKey> {
+  readonly key: Key
   readonly value: LaunchSettingValue
 }

@@ -67,3 +67,8 @@ export {
 export { refusalForDisplay } from './claude/refusal-presentation'
 
 export { toolInventoryForDisplay } from './claude/inventory-display'
+
+export {
+  CLAUDE_LAUNCH_SETTING_KEYS,
+  type ClaudeLaunchSettingKey,
+} from './claude/launch-setting-keys'

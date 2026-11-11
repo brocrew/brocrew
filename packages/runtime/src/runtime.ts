@@ -252,7 +252,7 @@ export interface SessionHandle {
   readonly instructionSources?: readonly string[]
 
   /** Launch settings are the adapter request; absence means the adapter did not report them. */
-  readonly launchSettings?: readonly LaunchSetting[]
+  readonly launchSettings?: readonly LaunchSetting<string>[]
 
   /** A latched launch-login change; Claude includes renewal, while Codex distinguishes account changes. */
   readonly signInSuperseded?: boolean

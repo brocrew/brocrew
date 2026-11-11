@@ -1,8 +1,8 @@
-import type { LaunchSettingKey, LaunchSettingValue } from '@brobot2/runtime'
+import type { LaunchSettingValue } from '@brobot2/runtime'
 import { joinedSettingNames, settingWords } from '../given-policy'
 
 /** Display the values this adapter records, including older kept launch values. */
-export function launchSetting(key: LaunchSettingKey, value: LaunchSettingValue) {
+export function launchSetting(key: string, value: LaunchSettingValue) {
   switch (key) {
     case 'mode':
       return settingWords(

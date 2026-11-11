@@ -1,7 +1,7 @@
 import type { RefusedInstruction } from './instruction-contracts'
 import type { InjectedInstructionKind } from './injected-instruction-kind'
 import type { InstalledSkillVersion } from './skills-installation'
-import type { LaunchSetting, LaunchSettingKey, LaunchSettingValue } from '@brobot2/runtime'
+import type { LaunchSetting, LaunchSettingValue } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import type { MemoryStoreState } from './agent-memory'
 import type { WhoWroteIt } from './own-instructions'
@@ -141,7 +141,7 @@ export interface WhatALaunchGave {
    * The settings the launch gave the provider that change what it sends its model, as its adapter
    * launched with them ({@link LaunchSetting}); absent where the adapter said none.
    */
-  readonly settings?: readonly LaunchSetting[]
+  readonly settings?: readonly LaunchSetting<string>[]
 }
 
 // ── what the window reads ─────────────────────────────────────────────────────────────────────────
@@ -444,7 +444,7 @@ export interface GivenBuiltInSkills {
 
 /** One launch setting: as the launch gave it, and as it stands now where it can change after. */
 export interface GivenLaunchSetting {
-  readonly key: LaunchSettingKey
+  readonly key: string
   /** As launched; `null` where the launch kept no settings. */
   readonly atLaunch: LaunchSettingValue | null
   /**
@@ -464,7 +464,7 @@ export interface GivenLaunchSettings {
 
 /** Opaque display facts projected from the launch's kept settings at the read. */
 export interface GivenLaunchSettingRow {
-  readonly key: LaunchSettingKey
+  readonly key: string
   readonly label: string
   readonly words: string
   readonly lines: readonly string[]

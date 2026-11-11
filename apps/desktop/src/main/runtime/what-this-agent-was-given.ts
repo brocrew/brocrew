@@ -6,6 +6,7 @@ import type {
 import type { UserTurnEvent } from '../../shared/human-answer-contracts'
 import {
   providerKnowledge,
+  legacyLaunchSettingKeys,
   historicalInstructionReads,
   historicalProfileMemory,
 } from '../providers/index'
@@ -18,7 +19,6 @@ import {
   type AgentToolset,
   type ContextReading,
   type LaunchSetting,
-  type LaunchSettingKey,
   type LaunchSettingValue,
   type ProviderCommand,
 } from '@brobot2/runtime'
@@ -159,7 +159,7 @@ export interface WhatALaunchWasHanded {
   readonly reportedByTheProvider: readonly string[]
   readonly toolset: AgentToolset
   /** The settings the adapter says it launched with, or `undefined` where it says none. */
-  readonly launchSettings?: readonly LaunchSetting[]
+  readonly launchSettings?: readonly LaunchSetting<string>[]
 }
 
 /** The record one launch keeps ({@link WhatALaunchGave}): every text it gave, in full. */
@@ -423,19 +423,8 @@ const MOST_TEXT_KEPT = 1024 * 1024
 const MOST_SETTINGS_KEPT = 40
 const MOST_SETTING_ITEMS_KEPT = 200
 
-const LAUNCH_SETTING_KEYS: ReadonlySet<string> = new Set<LaunchSettingKey>([
-  'settings-sources',
-  'memory-folder',
-  'built-in-tools',
-  'denied-tools',
-  'mode',
-  'connectors',
-  'attribution',
-  'memory',
-  'thread-overrides',
-  'plan-tool',
-  'approval-sandbox',
-  'collaboration-mode',
+const LAUNCH_SETTING_KEYS: ReadonlySet<string> = new Set([
+  ...legacyLaunchSettingKeys,
   'approval',
   'tools-off',
   'tools-left-on',
@@ -458,12 +447,19 @@ function aSettingValue(value: unknown): LaunchSettingValue | undefined {
 }
 
 /** Stored settings, each kept only when it is one. */
-function settingsIn(value: unknown): LaunchSetting[] {
+function settingsIn(value: unknown, provider?: Provider): LaunchSetting<string>[] {
+  const given = provider === undefined ? undefined : providerKnowledge[provider].instructions.given
+  const declared = given?.launchSettingKeys?.() ?? []
   if (!Array.isArray(value)) return []
-  return value.slice(0, MOST_SETTINGS_KEPT).flatMap((one: unknown): LaunchSetting[] => {
-    if (!isRecord(one) || !isString(one['key']) || !LAUNCH_SETTING_KEYS.has(one['key'])) return []
+  return value.slice(0, MOST_SETTINGS_KEPT).flatMap((one: unknown): LaunchSetting<string>[] => {
+    if (
+      !isRecord(one) ||
+      !isString(one['key']) ||
+      (!LAUNCH_SETTING_KEYS.has(one['key']) && !declared.includes(one['key']))
+    )
+      return []
     const kept = aSettingValue(one['value'])
-    return kept === undefined ? [] : [{ key: one['key'] as LaunchSettingKey, value: kept }]
+    return kept === undefined ? [] : [{ key: one['key'], value: kept }]
   })
 }
 
@@ -485,7 +481,7 @@ function spansIn(value: unknown): InstructionSpan[] {
  * newer build, so a field that is not what this module writes is dropped rather than trusted, and
  * every list and text is bounded. `null` when the record is not one.
  */
-export function aLaunchRecordIn(stored: unknown): WhatALaunchGave | null {
+export function aLaunchRecordIn(stored: unknown, provider?: Provider): WhatALaunchGave | null {
   if (!isRecord(stored)) return null
   const placement = stored['placement']
   if (placement !== 'system-prompt' && placement !== 'first-message') return null
@@ -576,7 +572,9 @@ export function aLaunchRecordIn(stored: unknown): WhatALaunchGave | null {
             ...(isText(tools['instructions']) ? { instructions: tools['instructions'] } : {}),
           }
         : { server: '', count: 0, sha256: '' },
-    ...(Array.isArray(stored['settings']) ? { settings: settingsIn(stored['settings']) } : {}),
+    ...(Array.isArray(stored['settings'])
+      ? { settings: settingsIn(stored['settings'], provider) }
+      : {}),
   }
 }
 

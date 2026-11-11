@@ -150,7 +150,7 @@ export class FakeSessionHandle implements SessionHandle {
   readonly systemHint: string | undefined
 
   /** The settings this launch gave the provider ({@link SessionHandle.launchSettings}). */
-  launchSettings: readonly LaunchSetting[] | undefined
+  launchSettings: readonly LaunchSetting<string>[] | undefined
   /**
    * ⚑ **662 · the `origin` of every turn this double accepted, in order** — what crossed the seam.
    *

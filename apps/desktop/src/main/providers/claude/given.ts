@@ -1,3 +1,4 @@
+import { CLAUDE_LAUNCH_SETTING_KEYS } from '@brobot2/runtime/claude'
 import {
   sizesAdded,
   sizeOf,
@@ -77,6 +78,7 @@ function otherServers(
 }
 
 export const given: GivenPolicy = {
+  launchSettingKeys: () => CLAUDE_LAUNCH_SETTING_KEYS,
   nativeFiles: () => [],
   toolNames,
   toolWasSent: (name, disabled) =>

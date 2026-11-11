@@ -1,4 +1,4 @@
-import type { LaunchSettingKey, LaunchSettingValue } from '@brobot2/runtime'
+import type { LaunchSettingValue } from '@brobot2/runtime'
 import type {
   GivenLaunchSetting,
   GivenLaunchSettings,
@@ -19,9 +19,9 @@ function asSent(value: LaunchSettingValue): string {
 /** Join opaque supplied words, keeping raw values visible when a reader has no display facts. */
 export function launchSettingRows(
   settings: GivenLaunchSettings | undefined,
-  describe?: (key: LaunchSettingKey, value: LaunchSettingValue) => SettingWords | undefined,
+  describe?: (key: string, value: LaunchSettingValue) => SettingWords | undefined,
 ): readonly GivenLaunchSettingRow[] {
-  const wordsFor = (key: LaunchSettingKey, value: LaunchSettingValue): SettingWords => {
+  const wordsFor = (key: string, value: LaunchSettingValue): SettingWords => {
     const one = describe?.(key, value) ?? { label: key, words: null, lines: [] }
     return one.words === null && one.lines.length === 0
       ? { ...one, words: `${asSent(value)}.` }
