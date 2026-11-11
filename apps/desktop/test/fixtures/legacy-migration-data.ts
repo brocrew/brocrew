@@ -1,5 +1,6 @@
 import type { Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../../src/main/db/connection'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { agentIdentityRowId } from '../../src/main/db/identity'
 
 /** Historical fixture rows use only columns shipped before connection defaults existed. */
@@ -33,4 +34,25 @@ export function legacyConversation(
     input.profileId,
     agentIdentityRowId(input.profileId),
   )
+}
+
+/** Write historical payloads directly, without letting the current store normalize their bytes. */
+export function legacyEvents(
+  db: AppDatabase,
+  sessionId: string,
+  events: readonly TranscriptEvent[],
+  firstAt: number,
+): void {
+  const insert = db.prepare(
+    'INSERT INTO events (id,session_id,generation,ordinal,type,payload,created_at) VALUES (?, ?, 0, ?, ?, ?, ?)',
+  )
+  for (const [ordinal, event] of events.entries())
+    insert.run(
+      `${sessionId}-${ordinal}`,
+      sessionId,
+      ordinal,
+      event.type,
+      JSON.stringify(event),
+      firstAt + ordinal,
+    )
 }

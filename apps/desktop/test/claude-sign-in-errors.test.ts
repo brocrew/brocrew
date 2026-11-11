@@ -13,7 +13,7 @@ import {
   openWindow,
   acceptEvent,
 } from '../src/renderer/src/lib/session-record'
-import { legacyConversation } from './fixtures/legacy-migration-data'
+import { legacyConversation, legacyEvents } from './fixtures/legacy-migration-data'
 import { transcriptMessageForDisplay } from '../src/main/providers/error-presentation'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
@@ -251,18 +251,7 @@ describe('core-supplied retry endings across old and current recordings', () => 
           const end: TranscriptEvent = { type: 'turn', state: ending }
           const events = [error, end]
           const saved = JSON.stringify(events)
-          const insert = db.prepare(
-            'INSERT INTO events (id,session_id,generation,ordinal,type,payload,created_at) VALUES (?, ?, 0, ?, ?, ?, ?)',
-          )
-          for (const [ordinal, event] of events.entries())
-            insert.run(
-              `${id}-${ordinal}`,
-              id,
-              ordinal,
-              event.type,
-              JSON.stringify(event),
-              1000 + ordinal,
-            )
+          legacyEvents(db, id, events, 1000)
           const rawRows = db
             .prepare('SELECT ordinal,payload FROM events WHERE session_id = ? ORDER BY ordinal')
             .all(id)

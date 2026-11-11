@@ -413,8 +413,8 @@ export function foldWindow(
   return state
 }
 
-export function openAt(window: WindowState, page: HistoryWindow, sessionId: string): void {
-  window.entries = page.entries.map((entry) => ({
+function historyMessage(entry: PersistedEventInfo, sessionId: string): RuntimeEventMessage {
+  return {
     sessionId,
     ordinal: entry.ordinal,
     at: entry.at,
@@ -423,7 +423,11 @@ export function openAt(window: WindowState, page: HistoryWindow, sessionId: stri
     ...(entry.ancestryContext === undefined ? {} : { ancestryContext: entry.ancestryContext }),
     ...(entry.humanFinal === undefined ? {} : { humanFinal: entry.humanFinal }),
     ...(entry.errorFacts === undefined ? {} : { errorFacts: entry.errorFacts }),
-  }))
+  }
+}
+
+export function openAt(window: WindowState, page: HistoryWindow, sessionId: string): void {
+  window.entries = page.entries.map((entry) => historyMessage(entry, sessionId))
   window.from = page.from
   window.hasOlder = page.hasOlder
   window.turnAligned = page.turnAligned
@@ -436,16 +440,7 @@ export function prependPage(
   page: HistoryWindow,
   sessionId: string,
 ): { released: number; tail: RuntimeEventMessage[] } {
-  const older = page.entries.map((entry) => ({
-    sessionId,
-    ordinal: entry.ordinal,
-    at: entry.at,
-    event: entry.event,
-    ...(entry.workAncestry === undefined ? {} : { workAncestry: entry.workAncestry }),
-    ...(entry.ancestryContext === undefined ? {} : { ancestryContext: entry.ancestryContext }),
-    ...(entry.humanFinal === undefined ? {} : { humanFinal: entry.humanFinal }),
-    ...(entry.errorFacts === undefined ? {} : { errorFacts: entry.errorFacts }),
-  }))
+  const older = page.entries.map((entry) => historyMessage(entry, sessionId))
   window.entries = [...older, ...window.entries]
   window.from = page.from
   window.hasOlder = page.hasOlder

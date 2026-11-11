@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { F093World, waitFor } from './lib/f093-host'
-import { legacyConversation } from './fixtures/legacy-migration-data'
+import { legacyConversation, legacyEvents } from './fixtures/legacy-migration-data'
 import { transcriptMessageForDisplay } from '../src/main/providers/error-presentation'
 import {
   createSessionRecord,
@@ -89,11 +89,7 @@ it('projects actual host live errors and old SQLite history through windows, ref
       { type: 'error', message: 'turn failed', fatal: false },
       { type: 'turn', state: 'failed' },
     ]
-    const insert = world.db.prepare(
-      'INSERT INTO events (id,session_id,generation,ordinal,type,payload,created_at) VALUES (?, ?, 0, ?, ?, ?, ?)',
-    )
-    for (const [ordinal, event] of events.entries())
-      insert.run(`${id}-${ordinal}`, id, ordinal, event.type, JSON.stringify(event), 1000 + ordinal)
+    legacyEvents(world.db, id, events, 1000)
     const saved = () =>
       world.db
         .prepare('SELECT ordinal,payload FROM events WHERE session_id = ? ORDER BY ordinal')
