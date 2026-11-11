@@ -30,7 +30,7 @@ function scratch() {
 
 describe.skipIf(process.platform === 'win32')('release verifier module admission', () => {
   it.each([1, 2])(
-    'verifies the format %s export before rebuilding a distinct v1 fixture',
+    'verifies the format %s export before rebuilding through the v1 fixture route',
     async (format) => {
       const root = scratch(),
         exported = path.join(root, 'exported')
@@ -100,13 +100,15 @@ describe.skipIf(process.platform === 'win32')('release verifier module admission
       expect(accepted.manifest.ui).toEqual(checked.manifest.ui)
       expect(accepted.filePaths).toEqual(checked.filePaths)
       for (const name of checked.filePaths) {
-        if (name === 'plugin.json' || name === checked.manifest.server.entry) continue
+        if (name === 'plugin.json') continue
         expect(
           Buffer.from(accepted.readFile(name)).equals(Buffer.from(checked.readFile(name))),
         ).toBe(true)
       }
-      expect(projected.targets[0].sha256).not.toBe(release.targets[0].sha256)
-      expect(projected.targets[0].manifestSha256).not.toBe(release.targets[0].manifestSha256)
+      expect(projected.targets[0].sha256 === release.targets[0].sha256).toBe(format === 1)
+      expect(projected.targets[0].manifestSha256 === release.targets[0].manifestSha256).toBe(
+        format === 1,
+      )
       expect(fs.readFileSync(originalArchive).equals(originalBytes)).toBe(true)
       expect(
         fs.readFileSync(path.join(repository, 'plugins/chrome/manifest-template.json'), 'utf8'),
