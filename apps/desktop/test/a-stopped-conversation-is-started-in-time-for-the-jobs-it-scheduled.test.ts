@@ -38,33 +38,15 @@ import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
- * # D-029 · a stopped conversation is started in time for the jobs it scheduled
- *
- * The app starts a stopped conversation for its scheduled jobs. At launch, for each conversation
- * whose newest level in the ledger holds a job, and at every stop, it plans from the conversation's
- * own evidence — the receipts of its scheduling calls and the levels its provider stated — and arms
- * ONE wake-up: the level the plan lists, the moment to start, and one timer. A job made with a
- * receipt has a known minute, and its conversation is started half a minute before it; a job known
- * only from a level has none, and costs one start, once. What passed or went while the conversation
- * was stopped is told to it instead, once.
- *
- * ## Three setups in one file
- *
- *  - **The words are PURE** — `scheduleNoticesText`, every moment built by `local(...)` so no test
- *    names a zone.
- *  - **The ledger read is the REAL STORE** (real SQLite, the migrations): the newest level of each
- *    conversation.
- *  - **The rest runs the REAL HOST** over that store with a provider double. A first life really
- *    schedules its jobs — the double reports the call as the provider's tool hooks do, then the
- *    level — and quits; a "restart" is `closeAll()`, then a new host over the same database and the
- *    same file of attempts. A quit arms nothing, so a wake-up in the second life is the LAUNCH's own.
- *
- * ## How no test waits for a minute
- *
- * A wake-up's timer is a `setTimeout` the host armed; the file reads each one through a call-through
- * spy (the timer it got back, the delay and the callback) and runs it BY HAND where the test is
- * about when it fires. The host's clock is `tick`, a counter the test sets, so "now" is exactly the
- * moment the test names and moves one millisecond per read.
+ * Scheduled conversations use one wake-up per newest ledger level at launch and stop.
+ * A receipt gives a known minute and a thirty-second lead. A level without that
+ * evidence costs one start, once; passed or removed jobs are reported once instead.
+ * Pure wording cases use local wall-clock dates. Store cases use real SQLite and
+ * migrations; host cases use a provider double that reports actual tool calls and levels.
+ * Restart closes the first host and opens another over the same database and attempt
+ * file. Quit arms nothing, so timers in the second life belong to launch planning.
+ * Call-through spies retain each real timer, delay and callback; tests invoke those
+ * callbacks directly. The controlled clock advances one millisecond per read.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))

@@ -30,13 +30,8 @@ import type {
 } from '../src/shared/runtime-ipc'
 
 /**
- * Many conversations at once (090).
- *
- * The host has been multi-session since 046 while the renderer held exactly one, and every
- * symptom — "session is already open", a session running behind a switched-away view, a second
- * chat that could not be started — came from that one mismatch. These drive the store directly:
- * no component, no DOM, no provider, because the routing and the ordinal continuity are the part
- * that has to be right and none of it is about pixels.
+ * Drive multiple sessions through the store without components, a DOM or a provider.
+ * These cases exercise routing, buffering and ordinal continuity independently of rendering.
  */
 
 /**

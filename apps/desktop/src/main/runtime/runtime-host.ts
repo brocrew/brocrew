@@ -8128,13 +8128,9 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * 🔴 **D-019 · D-026 · what moved, said to every window in one message** — the marked
-   * conversations whose state moved ({@link statesThatMoved}) and the files kept since
-   * ({@link whatWasKept}); nothing when neither moved.
-   *
-   * ⛔ **It never throws**: it runs from `setImmediate`, where an escape would take main down. ⚑ The
-   * two halves are read apart: a state that cannot be read never costs the files, nor a file that
-   * cannot be read the states. ⛔ **A quit asks nothing** — the database is on its way to closing.
+   * Publish marked states and newly kept files together, only when there is something to say.
+   * Read each half independently: a failure must not discard the other. This immediate
+   * callback must not escape with an exception, and quit must not read a closing database.
    */
   private sayWhatMoved(): void {
     // Another connection's commit is heard before what moved is said.
@@ -8162,23 +8158,13 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * 🔴 **D-019 · what the marked conversations are doing now, when it moved.**
-   *
-   * ⚑ **The one derivation, asked again** ({@link stateOf}) — only for the conversations whose
-   * inputs moved, and compared with what the windows were last told ({@link stateSaid}), so only a
-   * real change is said. ⚑ **A running conversation is derived from the wait reads it was last
-   * derived from** ({@link waitAsLastRead}), so a status, a level, a start or a delivery reads no
-   * ledger; one with no slot is read afresh. ⚑ D-036 · and from the work it gave out as last read
-   * ({@link workOutAsLastRead}), each half re-read only once a row forgot it.
-   *
-   * ⛔ **It never throws** ({@link sayWhatMoved}'s rule). A conversation that cannot be read costs its
-   * own word and no other's; the reads every card shares ({@link cardReads}), when they cannot be
-   * read, cost this flush's states. ⚑ None asked, nothing read.
-   *
-   * 🔴 **D-018 · and each conversation it finds idle enough to stop starts counting**
-   * ({@link idleEnoughToStop}, {@link countTheIdleMinutes}) — whether or not its word moved. ⚑ A
-   * flush that could not read, or a conversation it could not derive, arms nothing: its process is
-   * kept until the next fact.
+   * Recompute marked conversations through stateOf, reusing the running slots' wait
+   * and work caches until their inputs are invalidated; stopped conversations read afresh.
+   * Invalidation must republish even an equal state to clear the windows' pending UNKNOWN.
+   * Unmarked stream frames cause no state read. A failed shared read keeps the marks;
+   * a failed conversation read costs only its own state, and retries on a later trigger.
+   * Each successful idle-enough reading arms its countdown regardless of publication;
+   * an unreadable conversation is kept running until another fact arrives.
    */
   private statesThatMoved(asked: readonly string[]): readonly AgentStateMoved[] {
     if (asked.length === 0) return []
@@ -11167,118 +11153,49 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * **Stop a launch the user is tired of waiting for** (102), and answer whether there was one.
-   *
-   * ⚠️ **It adds no teardown of its own, and that is the point.** `close()` on a starting slot has
-   * been the whole of this since 062 and 070 — mark the slot, abort the launch so a partially built
-   * provider is torn down where it is, then wait for the arrival that hands it back. What was
-   * missing was never the mechanism; it was **a name the renderer could call it by**, because a
-   * create has no session id until the promise a Cancel is for has resolved. So the window names
-   * its own gesture and this looks the slot up by that name AND its owner — one window may not
-   * cancel another's launch, for the same reason 062 will not let it join another's session.
-   *
-   * Live sessions are deliberately not reachable from here: stopping one of those is `close`, it
-   * has a button of its own, and a Cancel that quietly ended a conversation that had already
-   * started would be a far worse surprise than one that arrives too late to do anything.
+   * Cancel only the pending launch named by this gesture and its window owner.
+   * Use the existing close path to abort and await arrival; live sessions have their
+   * own close action and must not be ended by a late launch cancellation.
    */
   async cancelLaunch(launchKey: string, ownerId: string): Promise<boolean> {
     const slot = [...this.slots.values()].find(
       (candidate) =>
         candidate.launchKey === launchKey &&
-        // ⚠️ **A surfaceless launch is not cancellable from here, and the `===` already says so**
-        // (336): `null === '<some webContents>'` is false for every window. That is the answer this
-        // path should give — a launch nobody asked for is not a launch anybody can take back — and
-        // it is stated here because the line reads like it only compares two strings.
+        // A surfaceless launch has no window owner to match.
         candidate.ownerId === ownerId &&
         candidate.session === null &&
         !onItsWayOut(candidate),
     )
     if (slot === undefined) return false
-    // Awaited, so the answer means the provider is confirmed down rather than merely asked to stop
-    // — bounded inside `awaitArrival`, and past that bound the slot stays marked and the launch
-    // stays owned, so the id keeps being refused. Acceptance 4's second half is that path.
-    //
-    // ⚠️ **{@link THE_APP_ITSELF}, and the owner check three lines up is why** (203): the slot was
-    // found BY `ownerId`, so re-asking would be the same question twice, and passing the caller
-    // through would make a cancel that matched fail on a slot it had already matched.
+    // Await confirmed termination; beyond the wait bound the slot and launch stay owned.
+    // The owner was already matched above, so close uses the app's caller identity.
     await this.close(slot.id, THE_APP_ITSELF)
     return true
   }
 
   /**
-   * Start a provider session and begin forwarding its events to `sink`.
-   *
-   * Order matters: the cwd is resolved and the home is provisioned (and its auth
-   * checked) BEFORE the provider is launched, so a bad cwd or an unavailable login
-   * surfaces as a plain rejected command with nothing half-started.
-   *
-   * ⛔ **"Nothing half-started" was true of the PROVIDER and false of the DISK, and 203 fixed the
-   * order rather than the sentence** (195 H4). `prepareProviderHome` ran first: it makes
-   * `<userData>/provider-homes/default/<profile>/<provider>` at `0700` and, for Codex, copies the
-   * personal `~/.codex/auth.json` into it — and then `resolveCwd` threw for a folder that does not
-   * exist. Nothing rolls that back (`provider-homes.ts`: *"a gesture that FAILS still poisons the
-   * set"*), so one typo in the folder box left a credential-bearing home on disk, a new profile
-   * permanently in the launcher's menu, and no conversation. The launcher's own promise —
-   * *"It is created when the conversation starts, not now."* — was false for exactly the case a
-   * person is most likely to hit.
-   *
-   * The id is RESERVED before any of that (062). Nothing is registered until `start()` resolves —
-   * that has not changed — but the host now owns the interval, so a quit or a window going away
-   * during the spawn takes the provider with it instead of missing it.
+   * Start a session and forward its events to the supplied sink.
+   * Resolve cwd before provisioning the home and checking auth, so a rejected path
+   * cannot leave a new home or profile behind. Reserve the id before starting work
+   * so quit and window closure own the pending launch; register only after start resolves.
    */
   async createSession(
     input: CreateSessionInput,
     /**
-     * 🔴 **`null` is a session nobody asked for** (336 §2.1) — the door this dispatch exists to
-     * build, and the whole of it is this parameter and the two lines below.
-     *
-     * ⛔ **Before this, a session created by anything but a renderer could not exist**, which is
-     * `182` H5: the slot is reserved under `sink.ownerId`, so a caller with no sink could only
-     * fabricate one — and then no window would ever receive an event, because the fabricated id is
-     * the one `mayControl` demands and no real surface has it. `303` measured that shape end to end
-     * on a real Claude session: `attachOpenSessions` answered `[]`, resume refused with *"already
-     * open in another window"*, and the renderer got **0 of the first turn's 33 events**.
-     *
-     * ⚑ **What `null` buys is not a new lifecycle.** The launch below is byte-for-byte the one a
-     * window gets; only two things differ, and both are consequences rather than branches — the slot
-     * is reserved under no owner, and the events go to {@link NO_SURFACE}, whose sends are discards
-     * and whose `alive: false` puts this session on the branch one whose window has closed already
-     * takes. Everything is recorded. See {@link claimSession} for how a surface picks it up.
+     * A null sink reserves no window owner and sends through NO_SURFACE. Events still
+     * reach the ledger, and claimSession can attach a window later.
      */
     sink: RuntimeEventSink | null,
     /**
-     * 🔴 **Who may drive this session without watching it** (340) — the other half of the door 336
-     * opened, and the answer to *"a session can exist with no renderer, so what gives it work?"*.
-     *
-     * ⛔ **A {@link CallerIdentity} rather than a {@link Caller}**, so {@link THE_APP_ITSELF} cannot
-     * be stored. Its own docblock is the argument: the symbol answers *"who is asking"* for the
-     * length of one gesture and is a superuser, while this is an identity a SLOT holds for as long
-     * as the session runs. A slot commanded by the app itself would be commandable by everything,
-     * since {@link mayCommand}'s first clause is unconditional.
-     *
-     * ⚠️ **`null` by default, and the default is the strict one on purpose.** A caller that has not
-     * thought about this gets a session no agent may drive — which is what every caller in the app
-     * wants today, `ipc.ts` included: a window that creates a session already owns it, and naming it
-     * here as well would spell one fact twice.
-     *
-     * ⛔ **There is no wire door onto this parameter and 340 deliberately did not build one.** The
-     * five tools, their rails and the MCP surface belong to the tools dispatch, together, so a rail
-     * is never optional once.
+     * Persist a caller identity, never the per-command THE_APP_ITSELF authority.
+     * Null gives no agent command authority; a window already owns its session.
+     * This parameter has no wire door.
      */
     commandedBy: CallerIdentity | null = null,
     /**
-     * 🔴 **A conversation another conversation asked for** (341) — and the token is what proves the
-     * rails ran: a give's ({@link admitGive}), or a replacement's (`admitAReplacement`).
-     *
-     * ⛔ **This parameter is the whole of *"a tool cannot arrive into an ungated chokepoint"*.** An
-     * {@link AdmittedSpawn} is branded with a `unique symbol` `spawn-rails.ts` never exports as a
-     * value, so no other module can spell the key and no object literal elsewhere satisfies the
-     * type — **passing a parent here is a compile error unless `spawn-rails.ts` produced the
-     * argument.** ⚑ And a type is not a gate, so the token is checked at runtime too: every one this
-     * process mints is remembered, and a cast forged past the compiler is refused below.
-     *
-     * ⚠️ **`commandedBy` must then be null**, because the token already carries who may drive the
-     * child and two answers to one question is the defect 340 split `ownerId` to avoid.
+     * A spawn carries the token minted by the admission rails. Its brand is private,
+     * and the token is also checked at runtime. It already names the commanding caller,
+     * so commandedBy must be null when a spawn is supplied.
      */
     spawn: AdmittedSpawn | null = null,
   ): Promise<CreatedSession> {

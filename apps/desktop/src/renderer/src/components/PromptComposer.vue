@@ -23,21 +23,10 @@ export type ComposerState =
   /** Ready. Enter breaks the line; the button or ⌘/Ctrl-Enter sends. */
   | 'idle'
   /**
-   * The provider is running: the input is its, and the button asks it to stop — or, while an ask
-   * it has not answered stands, joins that ask (`730`, R83; see `stopUnanswered`).
-   *
-   * ⚠️ **"The provider is running" is deliberately wider than "a turn is running" as of 123**, and
-   * this state needed no change to absorb the difference. A burst the provider started by itself —
-   * a background run finishing and waking the agent, measured 18 times in the live corpus — reaches
-   * `busy` through the same `status: working`, and every branch below still means what it says:
-   * queueing waits for the provider to finish, ⇧⌘↵ asks it to stop and sends once it has ended —
-   * or gives the words back if it has not within the host's bounded wait (`739`: it said *takes it
-   * back* — see `A_STOP_THEN_THIS_IS_SENT`), and the stop button asks it to
-   * stop (`737`: it said *stops it*, which R43 made false — see `A_STOP_ASKS_THE_TURN`).
-   * ⛔ The placeholder is `${who} is working — type to queue a message…` — because it says what
-   * typing here will DO; ⚑ since D-010 whatever already waits, since several may. Naming who
-   * started the work would be a fact about the transcript above, where the missing `user_turn`
-   * already says it.
+   * The provider is running, including provider-initiated background turns.
+   * Typing queues behind it; interrupt-and-send waits for it to stop or returns the words
+   * at the host bound. The stop button also joins an unanswered stop request.
+   * The placeholder describes queueing, regardless of who started the turn.
    */
   | 'busy'
   /**
