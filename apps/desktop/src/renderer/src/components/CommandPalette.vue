@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useClientApi } from '../client-provider/injection'
 import { chordSaid, platformHere } from '../lib/this-computer'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
@@ -117,6 +118,7 @@ const props = defineProps<{
  */
 const emit = defineEmits<{ navigate: [action: PaletteNavigation] }>()
 
+const client = useClientApi()
 const overlays = useOverlays()
 /**
  * ⛔ **Whether a modal dialog is up — counted by `OverlayHost` itself** (249, from this dispatch's
@@ -353,7 +355,10 @@ function run(command: PaletteCommand): void {
  */
 async function runExport(sessionId: string, exportKind: 'native' | 'bundle'): Promise<void> {
   try {
-    const written = await window.api.runtime.exportSession({ sessionId, exportKind })
+    const sessions = client.sessions
+    if (typeof sessions?.exportSession !== 'function')
+      throw new Error('Session export is not available in this window.')
+    const written = await sessions.exportSession({ sessionId, exportKind })
     overlays.notify(`${written.path} — ${written.note}`)
   } catch (cause) {
     overlays.notify(`Nothing was exported: ${readableError(cause)}`)

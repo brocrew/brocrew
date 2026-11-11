@@ -17,6 +17,7 @@ export type ClientSessionApi = Pick<
   | 'drawResource'
   | 'earlierHistory'
   | 'endPlanMode'
+  | 'exportSession'
   | 'instructionAsksForAPerson'
   | 'interrupt'
   | 'latestHistory'
