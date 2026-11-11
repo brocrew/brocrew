@@ -56,7 +56,8 @@ it.each(['recorded', 'attach', 'resume-attached', 'resume-stopped'] as const)(
       else if (mode === 'attach') expect(await client.attachOpen()).toEqual([id])
       else expect(await client.resume(id)).toBe(id)
       const record = client.get(id)!
-      expect(record.meta?.handover).toBe(
+      expect(record.meta).toHaveProperty(
+        'handover',
         mode === 'recorded' ? 'recorded' : mode === 'resume-stopped' ? 'resumed' : 'attached',
       )
       expect(
