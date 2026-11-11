@@ -1,5 +1,6 @@
 import { registerRootProviderCases } from './runtime-screen-provider-cases'
 import { registerRootAttentionCases } from './runtime-screen-attention-cases'
+import { launchFacts } from '../lib/provider-launch-fixture'
 import {
   sessions,
   agentStore,
@@ -597,9 +598,15 @@ it.each(['launch', 'sign-in'] as const)(
       startsOn: { model: 'fictional-model', effort: null, from: 'the-providers-default' },
     }))
     const previousCatalogue = Object.getOwnPropertyDescriptor(runtime, 'modelList')
+    const previousChoices = Object.getOwnPropertyDescriptor(runtime, 'providerLaunchChoices')
     const previous = Object.getOwnPropertyDescriptor(runtime, 'checkProviderAuth')
     const previousApi = window.api
-    Object.assign(runtime, { checkProviderAuth: check, modelList: catalogue })
+    Object.assign(runtime, {
+      checkProviderAuth: check,
+      modelList: catalogue,
+      providerLaunchChoices: async (input: Parameters<RuntimeBridge['providerLaunchChoices']>[0]) =>
+        launchFacts(await catalogue(input)),
+    })
     window.api = { ...previousApi, runtime: runtime as unknown as RuntimeBridge }
     runtime.createSession.mockReturnValueOnce(answer.promise)
     runtime.profiles.mockResolvedValueOnce([DEFAULT_PROFILE_ID])
@@ -645,6 +652,8 @@ it.each(['launch', 'sign-in'] as const)(
       else Reflect.deleteProperty(runtime, 'checkProviderAuth')
       if (previousCatalogue) Object.defineProperty(runtime, 'modelList', previousCatalogue)
       else Reflect.deleteProperty(runtime, 'modelList')
+      if (previousChoices) Object.defineProperty(runtime, 'providerLaunchChoices', previousChoices)
+      else Reflect.deleteProperty(runtime, 'providerLaunchChoices')
       window.api = previousApi
     }
   },
