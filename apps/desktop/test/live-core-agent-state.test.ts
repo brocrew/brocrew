@@ -508,9 +508,11 @@ it('rejects older publications and old runs after the reconnect handshake', asyn
     const record = client.get('fern')!
     expect(record.agentState).toEqual({ is: 'active' })
     const legacy = vi.fn((): AgentState => ({ is: 'needs-you' }))
+    const acceptedState = record.agentState
+    const acceptedPublication = record.agentStatePublication
     receive({ ...row, ordinal: 1 })
-    expect(stateForRecord(record, legacy)).toEqual({ is: 'active' })
-    expect(record.agentStatePublication).toEqual({ epoch, seq: 5 })
+    expect(stateForRecord(record, legacy)).toBe(acceptedState)
+    expect(record.agentStatePublication).toBe(acceptedPublication)
     expect(legacy).not.toHaveBeenCalled()
     expect(record.earlyEvents.some((message) => message.ordinal === 1)).toBe(true)
     receive({ ...row, ordinal: 1, agentState: { is: 'idle' }, published: { epoch, seq: 4 } })
@@ -536,10 +538,11 @@ it('rejects older publications and old runs after the reconnect handshake', asyn
     expect(reconnected.agentState).toEqual({ is: 'scheduled', dueAt: null })
     expect(reconnected.earlyEvents.some((message) => message.ordinal === 3)).toBe(true)
     receive({ ...row, ordinal: 5, agentState: null, published: { epoch, seq: 2 } })
+    const pendingPublication = reconnected.agentStatePublication
     receive({ ...row, ordinal: 6 })
     expect(stateForRecord(reconnected, legacy)).toBeUndefined()
     expect(reconnected.agentState).toBeNull()
-    expect(reconnected.agentStatePublication).toEqual({ epoch, seq: 2 })
+    expect(reconnected.agentStatePublication).toBe(pendingPublication)
     expect(legacy).not.toHaveBeenCalled()
     expect(reconnected.earlyEvents.some((message) => message.ordinal === 6)).toBe(true)
   } finally {
