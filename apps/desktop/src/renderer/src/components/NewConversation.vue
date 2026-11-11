@@ -1173,17 +1173,6 @@ h2 {
   color: var(--waiting);
 }
 
-.chev {
-  width: 9px;
-  height: 9px;
-  flex: none;
-  transition: transform var(--dur-fast) var(--ease-out);
-}
-
-.chev.down {
-  transform: rotate(90deg);
-}
-
 .why + .note {
   margin-top: var(--space-3);
 }

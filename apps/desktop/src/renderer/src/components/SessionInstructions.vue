@@ -1108,18 +1108,6 @@ const fileManager = fileManagerHere()
   color: var(--text);
 }
 
-.chev {
-  width: 9px;
-  height: 9px;
-  flex: none;
-  transition: transform var(--dur-fast) var(--ease-out);
-}
-
-/* `#i-chevron` points RIGHT at rest, which is closed; open turns it down. */
-.chev.down {
-  transform: rotate(90deg);
-}
-
 /* Click-select the whole path — these exist to be pasted into a terminal, like every other path
    on this surface.
 
@@ -1472,3 +1460,5 @@ const fileManager = fileManagerHere()
   text-underline-offset: 2px;
 }
 </style>
+
+<style scoped src="../styles/disclosure-chevron.css"></style>

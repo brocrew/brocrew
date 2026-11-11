@@ -237,15 +237,6 @@ const heading = computed(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.chev {
-  width: 9px;
-  height: 9px;
-  flex: none;
-  transition: transform var(--dur-fast) var(--ease-out);
-}
-.chev.down {
-  transform: rotate(90deg);
-}
 .exchange-state {
   overflow: hidden;
   max-width: 25%;
@@ -285,3 +276,5 @@ const heading = computed(() => {
   padding-top: var(--space-4);
 }
 </style>
+
+<style scoped src="../styles/disclosure-chevron.css"></style>

@@ -831,18 +831,6 @@ dd {
   color: var(--text-soft);
 }
 
-.chev {
-  width: 9px;
-  height: 9px;
-  flex: none;
-  transition: transform var(--dur-fast) var(--ease-out);
-}
-
-/* `#i-chevron` points RIGHT at rest, which is closed; open turns it down. */
-.chev.down {
-  transform: rotate(90deg);
-}
-
 .act,
 .refresh {
   display: inline-flex;
@@ -926,3 +914,5 @@ dd {
   color: var(--muted);
 }
 </style>
+
+<style scoped src="../styles/disclosure-chevron.css"></style>
