@@ -1,23 +1,7 @@
 import type { AsSentPart, WhatTheRecordLeavesOut } from '../../shared/turn-as-sent'
 
-export interface TurnAsked {
-  /**
-   * Which text: the text BroBot handed over for the turn, exactly (`user_turn.sent`), or — for a
-   * turn read from this record (`its-own-record`) — the text its importer took from it.
-   */
-  readonly by: 'handed-over' | 'its-own-record'
-  readonly text: string
-  /**
-   * 🔴 **W4.204 · the earlier messages of this conversation with the same text, in order, each by
-   * how it is found** — each takes the first record ITS rule finds, before this turn's is looked for.
-   * ⛔ A count of one kind only was wrong: a record read from the provider's own file and one this
-   * app handed over can carry the same text, and the file cannot say which is which — so a message
-   * handed over after a read one was answered with the read one's record.
-   */
-  readonly before: readonly TurnAsked['by'][]
-  /** The provider's id for the conversation the turn was in; `null` when the ledger names none. */
-  readonly life: string | null
-}
+export type { TurnAsked } from '../../shared/turn-as-sent'
+import type { TurnAsked } from '../../shared/turn-as-sent'
 
 /**
  * ⚑ **What a reading may ask of this build**: whether a Claude model, as a turn's answer names it,

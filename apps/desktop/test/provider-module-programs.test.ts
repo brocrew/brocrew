@@ -6,7 +6,9 @@ import {
   type ProviderDescriptor,
   type Provider,
 } from '@brobot2/shared'
-import { createProviderModules, providerVersionsFromModules } from '../src/main/providers'
+import { providerVersionsFromModules } from '../src/main/providers'
+import type { ProviderProgramOperations } from '@brobot2/runtime/provider-module'
+import { unstartedProviderModules } from './helpers/unstarted-provider-modules'
 import type { ProviderModule, ProviderModules } from '../src/main/providers/module'
 import { orderedProgramVersions } from '../src/main/providers/program-policy'
 
@@ -26,23 +28,11 @@ afterAll(() => {
   ids.splice(idCount)
 })
 
-function fixture(program?: ProviderModule['program']) {
+function fixture(program?: ProviderProgramOperations) {
   const unread = vi.fn((): never => {
     throw new Error('No executable or credential lookup')
   })
-  const modules = createProviderModules(
-    () => ({
-      managedRoot: '/fictional',
-      defaultProfile: 'fern',
-      homeOf: unread,
-      profiles: unread,
-      assertMayOpen: unread,
-    }),
-    {
-      claude: { runtime: { program: unread }, home: {}, auth: {} },
-      codex: { runtime: { command: unread }, home: {}, auth: { command: unread } },
-    },
-  )
+  const modules = unstartedProviderModules(unread, '/fictional')
   const module: ProviderModule = {
     ...modules.claude,
     ...(program === undefined ? {} : { program }),

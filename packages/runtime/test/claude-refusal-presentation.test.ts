@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { ProviderRefusal } from '@brobot2/runtime'
 import { refusalForDisplay } from '../src/claude/refusal-presentation'
 
 describe('Claude supplies its refusal advice', () => {
@@ -17,7 +18,8 @@ describe('Claude supplies its refusal advice', () => {
   })
 
   it('states the reported output limit without repeating native environment advice', () => {
-    expect(refusalForDisplay({ is: 'reply-cut-at-its-output-limit', limit: '1234' })).toBe(
+    const refusal: ProviderRefusal = { is: 'reply-cut-at-its-output-limit', limit: '1234' }
+    expect(refusalForDisplay(refusal)).toBe(
       'The reply was cut off at its output limit of 1234 tokens.',
     )
   })

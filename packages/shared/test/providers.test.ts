@@ -6,11 +6,16 @@ import {
   providerDescriptor,
   providerRecord,
 } from '../src/providers'
+import type { ProviderConnectionCapabilities } from '../src/provider-connections'
 import { providerSchema } from '../src/provider-schema'
 
 describe('the declared providers', () => {
   it('preserves the current provider facts and capabilities', () => {
     expect(PROVIDER_DESCRIPTORS).toEqual(snapshot)
+    for (const descriptor of PROVIDER_DESCRIPTORS) {
+      const connections: ProviderConnectionCapabilities = descriptor.connections
+      expect(connections).toEqual(snapshot.find((row) => row.id === descriptor.id)?.connections)
+    }
   })
 
   it('derives ids and boundary validation in declaration order', () => {

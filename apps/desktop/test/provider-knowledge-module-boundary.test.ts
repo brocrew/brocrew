@@ -1,25 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
 import * as registry from '../src/main/providers'
+import { unstartedProviderModules } from './helpers/unstarted-provider-modules'
 
 describe('stateless provider policies have one owner', () => {
   it('bound modules share the exact knowledge, transcript and discovery policies without doing launch work', () => {
     const unread = vi.fn((): never => {
       throw new Error('No launch work during binding')
     })
-    const modules = registry.createProviderModules(
-      () => ({
-        managedRoot: '/fictional/homes',
-        defaultProfile: 'fern',
-        homeOf: unread,
-        profiles: unread,
-        assertMayOpen: unread,
-      }),
-      {
-        claude: { runtime: { program: unread }, home: {}, auth: {} },
-        codex: { runtime: { command: unread }, home: {}, auth: { command: unread } },
-      },
-    )
+    const modules = unstartedProviderModules(unread, '/fictional/homes')
     const knowledge = Reflect.get(registry, 'providerKnowledge') as
       Record<Provider, object> | undefined
     const definitions = Reflect.get(registry, 'providerDefinitions') as

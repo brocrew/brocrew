@@ -8,7 +8,7 @@ import type {
 import type { DesktopProviderValues } from './desktop-values'
 
 export type TranscriptPolicy = PortableTranscript<DesktopProviderValues>
-export type DiscoveryPolicy = PortableDiscovery<DesktopProviderValues>
+type DiscoveryPolicy = PortableDiscovery<DesktopProviderValues>
 export type ProviderChildWorkRequest = PortableChildRequest<DesktopProviderValues>
 export type RetentionScan = PortableRetention<DesktopProviderValues>
 

@@ -1,5 +1,24 @@
 import type { Provider } from '@brobot2/shared'
 
+export interface TurnAsked {
+  /**
+   * Which text: the text BroBot handed over for the turn, exactly (`user_turn.sent`), or — for a
+   * turn read from this record (`its-own-record`) — the text its importer took from it.
+   */
+  readonly by: 'handed-over' | 'its-own-record'
+  readonly text: string
+  /**
+   * 🔴 **W4.204 · the earlier messages of this conversation with the same text, in order, each by
+   * how it is found** — each takes the first record ITS rule finds, before this turn's is looked for.
+   * ⛔ A count of one kind only was wrong: a record read from the provider's own file and one this
+   * app handed over can carry the same text, and the file cannot say which is which — so a message
+   * handed over after a read one was answered with the read one's record.
+   */
+  readonly before: readonly TurnAsked['by'][]
+  /** The provider's id for the conversation the turn was in; `null` when the ledger names none. */
+  readonly life: string | null
+}
+
 /**
  * 🔴 **W4.164 · F093 R1 — one turn as the model got it, read from the provider's own file**: Claude
  * Code's transcript (`<home>/projects/<folder>/<session>.jsonl`) or Codex's rollout

@@ -6,6 +6,8 @@ import type {
   ProviderConnectionOperations,
   ProviderHostValues,
   ProviderDisplayEvent,
+  ListedSkills,
+  ResolveImageClaim,
 } from '@brobot2/runtime/provider-module'
 import type { RuntimeEvent } from '../src/events'
 
@@ -81,6 +83,8 @@ function fernModule(): ProviderModule<FernValues> {
       memoryNotesOf: () => [],
       readChild: (request) => ({ text: request.part }),
       readTurn: (asked) => ({ line: () => 'done', answer: () => ({ sent: asked.prompt }) }),
+      imageResolver: (thread, home, resolveAsset) => (claim: ResolveImageClaim) =>
+        resolveAsset(claim.savedPath ?? `${home()}/${thread}/${claim.imageId}`),
       parse: (frames, at) => ({
         entries: frames.map((text) => ({ at, event: { type: 'fern-note', text } })),
         unreadable: 0,
@@ -126,7 +130,9 @@ function fernModule(): ProviderModule<FernValues> {
       noteDirectory: () => null,
     },
     skills: {
-      asGiven: (listed) => ({ commands: listed?.commands.map((command) => command.name) ?? [] }),
+      asGiven: (listed: ListedSkills | null) => ({
+        commands: listed?.commands.map((command) => command.name) ?? [],
+      }),
       needsReminders: () => false,
       builtInScope: null,
       discoveryRoot: 'fern',
@@ -201,6 +207,18 @@ describe('the portable module consumer', () => {
     expect(module.transcripts.readTurn({ prompt: 'Fern task' }, {}).answer()).toEqual({
       sent: 'Fern task',
     })
+    const resolveImage = module.transcripts.imageResolver?.(
+      'fern-thread',
+      () => '/fictional',
+      (path) => path,
+    )
+    expect(resolveImage?.({ imageId: 'fern-image', savedPath: '/fictional/image' })).toBe(
+      '/fictional/image',
+    )
+    expect(resolveImage?.({ imageId: 'fern-image' })).toBe('/fictional/fern-thread/fern-image')
+    expect(
+      module.skills.asGiven({ commands: [{ name: 'fern-skill' }], at: 12, dropped: 0 }, false),
+    ).toEqual({ commands: ['fern-skill'] })
     expect(module.transcripts.parse(['Fern record'], 12).entries).toEqual([
       { at: 12, event: { type: 'fern-note', text: 'Fern record' } },
     ])
