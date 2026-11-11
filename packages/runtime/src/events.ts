@@ -42,14 +42,10 @@ import {
 } from './permission'
 import { sessionRefSchema } from './session-ref'
 import { providerRefusalSchema } from './provider-refusal'
+import { turnSummarySchema, commandSummarySchema } from './summary-event-schemas'
 export type { ProviderRefusal } from './provider-refusal'
 
-/**
- * Provider-neutral `RuntimeEvent`s are structured adapter facts for UI/orchestration,
- * never state scraped from terminal text.
- *
- * Each variant's zod schema documents how each provider's own events map onto it.
- */
+// Provider-neutral UI/orchestration facts, never terminal scraping; schemas document native mappings.
 
 /**
  * Provider-session lifecycle. `ended` is RESERVED for the provider session
@@ -2000,17 +1996,6 @@ const memoryRecallSchema = z.object({
   /** Ids past the cap. Absent or 0 normally — the same no-silent-cap rule as `dropped`. */
   threadsDropped: z.number().int().nonnegative().optional(),
   source: z.string().max(120),
-})
-
-const turnSummarySchema = z.object({
-  type: z.literal('turn_summary'),
-  status: z.string().optional(),
-  detail: z.string(),
-  needsAction: z.string(),
-})
-const commandSummarySchema = z.object({
-  type: z.literal('command_summary'),
-  description: z.string(),
 })
 
 /** The full discriminated union of runtime events. */
