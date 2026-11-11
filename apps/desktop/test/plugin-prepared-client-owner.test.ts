@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { afterEach, expect, it, vi } from 'vitest'
 import { fixture, projection, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
-import { packageFixture, catalogueBytes } from './plugin-package-fixtures'
+import { preparedPackageFixture } from './plugin-package-fixtures'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
@@ -18,22 +18,8 @@ afterEach(async () => {
 
 async function setup(installed: boolean) {
   const f = await fixture()
-  function modern(version: string) {
-    const pkg = packageFixture({
-      manifest: {
-        ...f.pkg.manifest,
-        format: 2,
-        authors: ['fern-makers'],
-        version,
-        executor: { kind: 'node', entry: f.pkg.manifest.server!.entry },
-        hooks: [],
-      },
-    })
-    const release = { ...pkg.release, authors: ['fern-makers'] }
-    return { ...pkg, release, ...catalogueBytes({ format: 2, entries: [release] }) }
-  }
-  const first = modern('1.0.1'),
-    next = modern('1.0.2')
+  const first = preparedPackageFixture(f.pkg.manifest, '1.0.1'),
+    next = preparedPackageFixture(f.pkg.manifest, '1.0.2')
   let offer = first
   const options = {
     ...f.opts,

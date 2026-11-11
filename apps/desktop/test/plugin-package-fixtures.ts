@@ -160,3 +160,18 @@ export function verified(fixture = packageFixture()) {
     .verifyCatalogue(fixture.bytes)
     .verifyPackage(fixture.release.id, fixture.release.version, fixture.archive)
 }
+
+export function preparedPackageFixture(manifest: PluginManifest, version = '1.0.2') {
+  const pkg = packageFixture({
+    manifest: {
+      ...manifest,
+      format: 2,
+      authors: ['fern-makers'],
+      version,
+      executor: { kind: 'node', entry: manifest.server!.entry },
+      hooks: [],
+    },
+  })
+  const release = { ...pkg.release, authors: ['fern-makers'] }
+  return { ...pkg, release, ...catalogueBytes({ format: 2, entries: [release] }) }
+}

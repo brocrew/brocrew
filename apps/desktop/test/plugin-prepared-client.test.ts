@@ -6,7 +6,7 @@ import { PluginLifecycleController as AuthorsController } from './fixtures/plugi
 import { servePersonPluginControl as authorsServer } from './fixtures/plugin-disclosure-mixed/authors-person-control'
 import { GlobalPluginState as OlderState } from './fixtures/plugin-delete-parent/store'
 import { fixture, projection, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
-import { packageFixture, catalogueBytes } from './plugin-package-fixtures'
+import { preparedPackageFixture, catalogueBytes } from './plugin-package-fixtures'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { PersonChannel } from '../src/main/plugins/lifecycle/transport'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
@@ -19,20 +19,6 @@ afterEach(async () => {
   vi.restoreAllMocks()
   await cleanupLifecycleFixtures()
 })
-function modern(f: Awaited<ReturnType<typeof fixture>>, version = '1.0.2') {
-  const pkg = packageFixture({
-    manifest: {
-      ...f.pkg.manifest,
-      format: 2,
-      authors: ['fern-makers'],
-      version,
-      executor: { kind: 'node', entry: f.pkg.manifest.server!.entry },
-      hooks: [],
-    },
-  })
-  const release = { ...pkg.release, authors: ['fern-makers'] }
-  return { ...pkg, release, ...catalogueBytes({ format: 2, entries: [release] }) }
-}
 type Client = Awaited<ReturnType<typeof connectPluginSettings>> & {
   refreshCatalogue(digest: string, source?: { bytes: Uint8Array }): Promise<void>
   mutationStatus(): 'source-mismatch' | 'owner-incompatible' | null
@@ -44,7 +30,7 @@ type Client = Awaited<ReturnType<typeof connectPluginSettings>> & {
 async function client(
   f: Awaited<ReturnType<typeof fixture>>,
   peer: { path: string; key: string },
-  pkg: ReturnType<typeof modern> | typeof f.pkg,
+  pkg: ReturnType<typeof preparedPackageFixture> | typeof f.pkg,
 ) {
   const c = (await connectPluginSettings({
     path: peer.path,
@@ -60,8 +46,8 @@ async function client(
 }
 async function oldOwner(installed: boolean, localVersion = 2) {
   const f = await fixture(),
-    first = modern(f, '1.0.1'),
-    next = modern(f)
+    first = preparedPackageFixture(f.pkg.manifest, '1.0.1'),
+    next = preparedPackageFixture(f.pkg.manifest)
   let offered = first
   const options = {
     ...f.opts,
@@ -109,7 +95,7 @@ async function oldOwner(installed: boolean, localVersion = 2) {
 }
 async function future(installed = false, localVersion = 2, digest?: string) {
   const f = await fixture(),
-    pkg = modern(f),
+    pkg = preparedPackageFixture(f.pkg.manifest),
     proof = localVersion === 2 ? pkg : f.pkg
   const peer = await preparedPeer(f.root, digest ?? pluginSha256(pkg.bytes), installed)
   closers.push(() => peer.close())
@@ -313,7 +299,7 @@ it('refuses a queued refresh when the client closes before it begins', async () 
 })
 it('drops a waiting legacy command during v2 admission and never resends it as prepared', async () => {
   const f = await fixture(),
-    pkg = modern(f),
+    pkg = preparedPackageFixture(f.pkg.manifest),
     peer = await preparedPeer(f.root, pluginSha256(f.pkg.bytes))
   closers.push(() => peer.close())
   peer.setFeatures(['contributions-v1'])
@@ -376,7 +362,7 @@ it.each(['digest', 'shape'] as const)(
     closers.push(() => peer.close())
     peer.setFeatures(['contributions-v1'])
     const c = await client(f, peer, f.pkg),
-      source = kind === 'digest' ? modern(f) : catalogueBytes({ format: 2, entries: [{}] })
+      source = kind === 'digest' ? preparedPackageFixture(f.pkg.manifest) : catalogueBytes({ format: 2, entries: [{}] })
     const digest = kind === 'digest' ? '0'.repeat(64) : pluginSha256(source.bytes)
     await expect(c.refreshCatalogue(digest, { bytes: source.bytes })).rejects.toThrow()
     await expect(mutate(c, 'install')).rejects.toThrow()
