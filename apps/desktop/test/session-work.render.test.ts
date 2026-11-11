@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import type { ClientSessionApi } from '../src/shared/client-session-api'
+import { CLIENT_PROVIDERS } from '../src/renderer/src/client-provider/injection'
 import { sessionClientView } from './lib/session-client-view'
 import SessionWork from '../src/renderer/src/components/SessionWork.vue'
 

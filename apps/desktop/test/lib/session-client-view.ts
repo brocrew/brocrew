@@ -1,9 +1,10 @@
-import { defineComponent, provide, type VNode } from 'vue'
+import { defineComponent, provide, type InjectionKey, type VNode } from 'vue'
 import type { ClientSessionApi } from '../../src/shared/client-session-api'
-import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import type { ClientApi } from '../../src/shared/client-api'
 import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
 
 export function sessionClientView(
+  key: InjectionKey<ClientApi>,
   sessions: () => ClientSessionApi | undefined,
   renderInSetup: () => () => VNode,
 ) {
@@ -17,7 +18,7 @@ export function sessionClientView(
   )
   return defineComponent({
     setup() {
-      provide(CLIENT_PROVIDERS, api)
+      provide(key, api)
       return renderInSetup()
     },
   })
