@@ -230,9 +230,7 @@ func newAPI(cfg config, s *session, unlinked func()) http.Handler {
 			writeCode(w, "not_connected")
 			return
 		}
-		lookup, cancelLookup := context.WithTimeout(r.Context(), 15*time.Second)
-		jid, ok := s.groupFor(lookup, request.Group)
-		cancelLookup()
+		jid, ok := groupJID(request.Group)
 		if !ok {
 			writeCode(w, "unknown_group")
 			return

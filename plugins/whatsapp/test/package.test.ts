@@ -42,7 +42,6 @@ async function boot(options: { read?: boolean; writable?: string[]; prefix?: boo
   let clock = 1_800_000_000_000
   const server = await startWhatsApp(config, {
     bridge,
-    settings,
     logger: silentLogger,
     now: () => clock,
   })
@@ -87,7 +86,7 @@ async function boot(options: { read?: boolean; writable?: string[]; prefix?: boo
       : []
   return {
     config,
-    settings,
+    settings: server.settings,
     bridge,
     client,
     request,
@@ -213,6 +212,43 @@ describe('WhatsApp package', () => {
     expect(linking.status).toBe(200)
     expect(linking.body.state).toBe('pairing')
     expect(linking.body.qr.size).toBe(21)
+  })
+
+  it('sends to the group enabled through Settings using the persisted settings store', async () => {
+    const { request, config, bridge, text } = await boot()
+    expect(JSON.parse(await text('list_groups')).groups).toEqual([])
+    const enabled = await request('/v1/group-write', adminToken, {
+      group: ROWING.jid,
+      enabled: true,
+    })
+    expect(enabled.status).toBe(200)
+    expect(
+      enabled.body.groups.find((group: { jid: string }) => group.jid === ROWING.jid),
+    ).toEqual({ ...ROWING, canWrite: true })
+    expect(createSettingsStore(config.home).get().writable).toEqual([ROWING.jid])
+    expect(JSON.parse(await text('list_groups'))).toEqual({
+      groups: [{ id: ROWING.jid, name: ROWING.name }],
+    })
+    for (const [group, message] of [
+      [ROWING.jid, 'Boats at seven'],
+      [ROWING.name, 'Bring the oars'],
+    ]) {
+      expect(JSON.parse(await text('send_to_group', { group, text: message }))).toEqual({
+        sent: true,
+        group: ROWING.name,
+      })
+    }
+    expect(bridge.requests).toEqual([
+      { route: '/send', body: { group: ROWING.jid, text: '🤖 Boats at seven' } },
+      { route: '/send', body: { group: ROWING.jid, text: '🤖 Bring the oars' } },
+    ])
+    await request('/v1/group-write', adminToken, { group: ROWING.jid, enabled: false })
+    expect(createSettingsStore(config.home).get().writable).toEqual([])
+    expect(JSON.parse(await text('list_groups')).groups).toEqual([])
+    expect(await text('send_to_group', { group: ROWING.jid, text: 'See you there' })).toBe(
+      refused(REFUSALS['cannot-write']),
+    )
+    expect(bridge.requests).toHaveLength(2)
   })
 
   it('logs out and waits for the wipe before the app uninstalls it; only the person can ask', async () => {

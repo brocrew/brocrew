@@ -182,24 +182,17 @@ func TestAnOwnSendIsRecordedAsSentByAnAgent(t *testing.T) {
 }
 
 func TestAChosenGroupDoesNotNeedAnotherLookup(t *testing.T) {
-	const group = "120363000000000001@g.us"
-	for _, age := range []time.Duration{0, time.Minute} {
-		s := &session{
-			state: stateLinked,
-			groups: []groupView{{JID: group, Name: "Harbour Rowing Club"}},
-			groupAt: time.Now().Add(-age),
-		}
-		jid, ok := s.groupFor(context.Background(), group)
+	for _, group := range []string{"120363000000000001@g.us", "15550000001-1234567890@g.us"} {
+		jid, ok := groupJID(group)
 		if !ok || jid.String() != group {
-			t.Fatalf("the group chosen by Node was refused with a %s old cache", age)
+			t.Fatalf("the group chosen by Node was refused: %s", group)
 		}
 	}
 }
 
 func TestAPersonIsNeverAGroup(t *testing.T) {
-	s := &session{state: stateLinked}
 	for _, jid := range []string{"15550000001@s.whatsapp.net", "15550000001@lid", "status@broadcast", "not a jid", "120363000000000001:2@g.us"} {
-		if _, ok := s.groupFor(context.Background(), jid); ok {
+		if _, ok := groupJID(jid); ok {
 			t.Fatalf("%s was taken for a group", jid)
 		}
 	}

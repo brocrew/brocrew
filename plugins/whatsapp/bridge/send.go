@@ -91,22 +91,13 @@ type attachment struct {
 	Ext  string
 }
 
-// groupFor resolves a JID the Node server named to one of the account's own groups. A person is never a group.
-func (s *session) groupFor(ctx context.Context, raw string) (types.JID, bool) {
+// Node selects a writable group before calling /send; sending needs no second group-list request.
+func groupJID(raw string) (types.JID, bool) {
 	jid, err := types.ParseJID(raw)
 	if err != nil || jid.Server != types.GroupServer || jid.User == "" || jid.Device != 0 {
 		return types.EmptyJID, false
 	}
-	groups, err := s.groupsFor(ctx, false)
-	if err != nil {
-		return types.EmptyJID, false
-	}
-	for _, group := range groups {
-		if group.JID == jid.String() {
-			return jid, true
-		}
-	}
-	return types.EmptyJID, false
+	return jid, true
 }
 
 func validText(text string, limit int, needed bool) bool {
