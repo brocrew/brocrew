@@ -86,7 +86,7 @@ const told = computed(() => toldClause(props.item.told, props.item.toldInPart ==
     :data-cy="`notice-${item.level}`"
     :aria-live="item.signIn ? 'polite' : undefined"
   >
-    <svg v-if="item.level === 'warn'" class="line-icon" aria-hidden="true">
+    <svg v-if="item.level === 'warn'" class="icon line-icon" aria-hidden="true">
       <use href="#i-clock" />
     </svg>
     <span v-else class="dot"></span>

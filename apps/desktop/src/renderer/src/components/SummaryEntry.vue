@@ -19,7 +19,7 @@ const text = computed(() =>
       class="summary line-card"
       :data-cy="item.kind === 'turnSummary' ? 'turn-summary' : 'command-summary'"
     >
-      <svg class="line-icon" aria-hidden="true">
+      <svg class="icon line-icon" aria-hidden="true">
         <use :href="item.kind === 'turnSummary' ? '#i-check' : '#i-terminal'" />
       </svg>
       <span class="line-words" data-cy="summary-words" :title="text">{{ text }}</span>
