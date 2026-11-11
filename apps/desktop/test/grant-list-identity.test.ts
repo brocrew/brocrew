@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { expect, it } from 'vitest'
 import { codexToolGrant } from '../../../packages/runtime/src/codex/external-mcp'
 import { McpCallsInFlight } from '../../../packages/runtime/src/codex/external-mcp'
 import type { PermissionGrants } from '../../../packages/runtime/src/permission'
