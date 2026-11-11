@@ -2704,13 +2704,8 @@ describe('CodexRuntime — approvals', () => {
     return { transport, handle, events, consumer }
   }
 
-  /**
-   * 🔴 **736 · R95 — Codex's own MCP approval offers *Always allow* where Codex offers `always`**, and
-   * the press is the terminal's: `persist: 'always'`. ⚑ R95 withdraws R80's *"never always"*. ⚠️ On
-   * this path Codex keeps nothing itself (measured, `kept-tool-approvals.ts`), so this app KEEPS it
-   * in the provider home BEFORE the answer goes, and declares it with the server at the next launch.
-   * ⛔ On `main`: no `allow_always` on the card, and the outcome did not exist.
-   */
+  /** Codex offers Always allow through persist: always. This app keeps the rule in the home
+   * before answering, then declares it with that server on the next launch. */
   it('🔴 736 · R95 — Codex’s MCP approval offering `always` has Always allow: `persist: always`, kept in the home first', async () => {
     const home = aHome()
     const file = join(home, KEPT)
@@ -2727,8 +2722,12 @@ describe('CodexRuntime — approvals', () => {
       'cancel',
     ])
     expect(card.scope.persistence).toBe('always')
-    // ⚑ What each standing button installs, keyed as Codex keys it, and where the always one is kept.
-    const rule = { kind: 'tool', tool: 'note_it', server: 'brobot723' }
+    const rule = {
+      kind: 'tool',
+      tool: 'note_it',
+      server: 'brobot723',
+      listedAs: 'mcp__brobot723__note_it',
+    }
     expect(card.scope.grants).toEqual({
       allow_all_for_session: [rule],
       allow_always: [rule],

@@ -109,7 +109,7 @@ type PermissionRequest = Extract<RuntimeEvent, { type: 'permission_request' }>
 type Grants = NonNullable<PermissionRequest['scope']['grants']>
 
 function mcpCard(id: string, tool: string): TranscriptEvent {
-  const rule = { kind: 'tool' as const, tool, server: SERVER }
+  const rule = { kind: 'tool' as const, tool, server: SERVER, listedAs: `mcp__${SERVER}__${tool}` }
   const grants: Grants = {
     allow_all_for_session: [rule],
     allow_always: [rule],

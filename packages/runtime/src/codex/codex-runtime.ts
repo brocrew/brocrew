@@ -15,6 +15,7 @@ import {
   codexExternalMcpConfig,
   codexToolApproval,
   codexToolApprovalDetail,
+  codexToolGrant,
   elicitationContent,
   elicitationQuestions,
   externalMcpElicitationPrompt,
@@ -828,8 +829,7 @@ function aToolApprovalCard(
   providerHome?: string,
 ): Extract<RuntimeEvent, { type: 'permission_request' }> {
   const summary = wordsForACard(approval.question)
-  // ⚑ **The offer, built where it is published** — and by the one derivation the handler arms the
-  // gate with ({@link aToolApprovalsPositives}), so the two cannot come to differ.
+  // Publish the same offer the response handler uses (aToolApprovalsPositives).
   const offer = publishedOffer(aToolApprovalsPositives(approval))
   // ⚑ **Cleaned where it is drawn** — a name the server chose, as every provider string a card shows.
   const tool = wordsForACard(approval.tool) ?? ''
@@ -861,14 +861,14 @@ function aToolApprovalCard(
   }
 }
 
-/** 🔴 736 · R94 — the rule each standing button on Codex's tool approval installs, and where. */
+/** The standing rule and file offered on Codex’s tool approval. */
 function aToolApprovalsGrants(
   approval: ClaimedToolApproval,
   tool: string,
   offer: readonly PermissionOutcome[],
   providerHome: string | undefined,
 ): PermissionGrants | undefined {
-  const rule: GrantRule = { kind: 'tool', tool, server: approval.serverName }
+  const rule: GrantRule = { ...codexToolGrant(approval.serverName, approval.tool), tool }
   const grants: PermissionGrants = {
     ...(offer.includes(A_TOOLS_SESSION_GRANT) ? { [A_TOOLS_SESSION_GRANT]: [rule] } : {}),
     ...(offer.includes('allow_always')

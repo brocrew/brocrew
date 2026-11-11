@@ -174,11 +174,11 @@ export function keptInThisConversation(items: readonly TranscriptItem[]): KeptHe
         : grantRulesSaid(rules, item.request.scope.cwd)
     const file = grants?.alwaysFile ?? null
     if (kept.some((one) => one.said === said && one.file === file)) continue
-    const listedAs = rules.flatMap((rule) =>
-      rule.kind === 'tool' && rule.content === undefined
-        ? [rule.server === undefined ? rule.tool : `mcp__${rule.server}__${rule.tool}`]
-        : [],
-    )
+    const listedAs = rules.flatMap((rule) => {
+      if (rule.kind !== 'tool' || rule.content !== undefined) return []
+      const identity = rule.listedAs ?? (rule.server === undefined ? rule.tool : undefined)
+      return identity === undefined ? [] : [identity]
+    })
     kept.push({ said, file, listedAs })
   }
   return kept

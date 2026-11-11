@@ -117,7 +117,7 @@ const CODEX_META: CreatedSession = {
  * conversation's home — the shape `when-codex-asks-to-run-an-mcp-tool` pins to main's host.
  */
 function mcpCard(id: string, tool: string): TranscriptEvent {
-  const rule = { kind: 'tool' as const, tool, server: SERVER }
+  const rule = { kind: 'tool' as const, tool, server: SERVER, listedAs: `mcp__${SERVER}__${tool}` }
   return {
     type: 'permission_request',
     id,

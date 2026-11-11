@@ -17,6 +17,7 @@ export {
   type McpElicitation as CodexElicitation,
 } from '../mcp-elicitation'
 import { MAX_PERMISSION_DETAIL_CHARS } from '../events'
+import type { GrantRule } from '../permission'
 import type { ExternalMcpReach } from '../external-mcp'
 import { wordsForACard } from '../words-on-a-card'
 import type { KeptToolApproval } from './kept-tool-approvals'
@@ -131,6 +132,16 @@ export function codexToolApprovalDetail(approval: ClaimedToolApproval): string {
   return `${approval.tool} ${parameters}`
 }
 
+/** A whole-tool rule and its identity in this adapter's blanket-grant list. */
+export function codexToolGrant(server: string, tool: string) {
+  return {
+    kind: 'tool' as const,
+    server,
+    tool,
+    listedAs: `mcp__${server}__${tool}`,
+  } satisfies GrantRule
+}
+
 export class McpCallsInFlight {
   private readonly running = new Map<string, { server: string; tool: string; asked: boolean }>()
 
@@ -175,7 +186,7 @@ export class McpCallsInFlight {
   }
 
   get grants(): readonly string[] {
-    return this.granted.map((one) => `mcp__${one.server}__${one.tool}`)
+    return this.granted.map((one) => codexToolGrant(one.server, one.tool).listedAs)
   }
 
   private isGranted(server: string, tool: string): boolean {

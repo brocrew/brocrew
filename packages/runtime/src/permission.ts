@@ -232,9 +232,7 @@ export const permissionAmendmentSchema = z.object({
 export type PermissionAmendment = z.infer<typeof permissionAmendmentSchema>
 
 /**
- * 🔴 **736 · R94 — one rule a grant installs, in the provider's own terms.** ⚑ R94: *"The card's words
- * say what the rule covers"* — so the card carries the RULE, and the surface carries the sentence
- * (`persons-queue.ts`'s rule: the row carries the word).
+ * A grant’s provider-native rule: the card carries the rule; its surface says what it covers.
  *
  *  - `tool` — a provider permission rule: the tool it covers as the provider names it, and its
  *    content as the provider spells it (`//Users/x/dir/**`, `rm -f x.txt`, `domain:example.com`);
@@ -252,6 +250,8 @@ const grantRuleSchema = z.discriminatedUnion('kind', [
     tool: z.string(),
     content: z.string().optional(),
     server: z.string().optional(),
+    /** Exact identity used by the provider’s blanket-grant list, when known. */
+    listedAs: z.string().optional(),
   }),
   z.object({ kind: z.literal('mode'), mode: z.string() }),
   z.object({ kind: z.literal('directory'), path: z.string() }),
