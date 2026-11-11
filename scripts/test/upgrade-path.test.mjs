@@ -1760,11 +1760,11 @@ describe('the Keychain entry a Mac seals saved keys with', () => {
   })
 
   it('is asked of `security` with no password: the check never passes -w or -g', () => {
-    const runner = readFileSync(join(ROOT, 'scripts/upgrade-path.mjs'), 'utf8')
-    const asked = [...runner.matchAll(/spawnSync\('\/usr\/bin\/security', \[([^\]]*)\]/g)].map(
-      ([, argv]) => argv,
-    )
-    expect(asked).toEqual(["'find-generic-password', '-s', service"])
+    const asked = ['upgrade-path.mjs', 'lib/mac-update-test.mjs'].flatMap((path) => {
+      const source = readFileSync(join(ROOT, 'scripts', path), 'utf8')
+      return [...source.matchAll(/(?:spawnSync|run)\('\/usr\/bin\/security', \[([^\]]*)\]/g)]
+    })
+    expect(asked.map(([, argv]) => argv)).toEqual(["'find-generic-password', '-s', service"])
   })
 })
 
