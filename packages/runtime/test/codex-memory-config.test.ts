@@ -78,6 +78,7 @@ describe('the two gates, merged in place (314 §1)', () => {
       const parsed = parseToml(merge.text) as Record<string, Record<string, unknown>>
       expect(parsed['features']).toEqual({ memories: true })
       expect(parsed['memories']).toEqual({
+        version: 'v1',
         dedicated_tools: true,
         use_memories: true,
         generate_memories: true,
@@ -124,9 +125,9 @@ describe('the two gates, merged in place (314 §1)', () => {
       expect(parsed['memories']!['use_memories']).toBe(true)
     })
 
-    it('⚑ a config that already says all four is UNCHANGED — nothing is opened for writing', () => {
+    it('a config that already declares the memory settings is UNCHANGED — nothing is opened for writing', () => {
       const settled =
-        '[features]\nmemories = true\n\n[memories]\ndedicated_tools = true\nuse_memories = true\ngenerate_memories = true\n'
+        '[features]\nmemories = true\n\n[memories]\nversion = \"v1\"\ndedicated_tools = true\nuse_memories = true\ngenerate_memories = true\n'
       expect(mergeCodexMemoryConfig(settled)).toEqual({ kind: 'unchanged' })
     })
 

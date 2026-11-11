@@ -3,8 +3,8 @@ export interface CodexMemorySetting {
   readonly table: string
   /** The key inside it. */
   readonly key: string
-  /** What we write. All four are `true`; the type keeps that visible rather than implied. */
-  readonly value: boolean
+  /** What the provider home's config declares. */
+  readonly value: boolean | 'v1'
   /** One line, for the person who opens this file by hand. */
   readonly why: string
 }
@@ -15,6 +15,12 @@ export const CODEX_MEMORY_SETTINGS: readonly CodexMemorySetting[] = [
     key: 'memories',
     value: true,
     why: 'the feature gate; without it this profile has no memory at all',
+  },
+  {
+    table: 'memories',
+    key: 'version',
+    value: 'v1',
+    why: 'keep the memories/ layout this adapter reads; fresh Codex profiles otherwise select v2',
   },
   {
     table: 'memories',

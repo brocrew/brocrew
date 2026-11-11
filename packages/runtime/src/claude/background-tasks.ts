@@ -213,9 +213,8 @@ export class BackgroundTasks {
   /**
    * Did this task EVER run in the background — the question an ending needs answered.
    *
-   * ⚠️ Never `has`. An ending arrives after the level payload that removed the task, so asking the
-   * live set would report `false` on every real completion — which is the one moment a card most
-   * needs to change.
+   * Use the history, because completion and live-set updates can arrive in either order.
+   * SDK 0.3.322 removes a finished task after its ending, unlike the earlier ordering.
    */
   wasBackground(taskId: string): boolean {
     return this.everBackground.has(taskId)

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
@@ -82,6 +82,8 @@ function providerStanza(port: number): string {
 
 interface Captured {
   readonly config: string
+  readonly configuredVersion: unknown
+  readonly freshMemoryRoot: boolean
   readonly body: unknown
   readonly execDescription: string
   /** Whatever the transport said when a request failed — it carries the child's stderr tail. */
@@ -150,6 +152,7 @@ async function captureInventory(label: string, write: (home: string) => void): P
   const port = await listen(server)
   writeFileSync(join(home, 'config.toml'), providerStanza(port))
   write(home)
+  const freshMemoryRoot = !existsSync(join(home, 'memories'))
 
   // ⛔ **The class, not the factory, and deliberately spelled out here** — the factory sanitizes the
   // child env, and this probe needs one variable in it: the loopback provider's `env_key`. The
@@ -184,12 +187,17 @@ async function captureInventory(label: string, write: (home: string) => void): P
   })()
 
   let failure: string | null = null
+  let configuredVersion: unknown
   try {
     await transport.request('initialize', {
       clientInfo: { name: 'brobot-314-probe', title: 'BroBot 314 memory probe', version: '0.0.0' },
       capabilities: { experimentalApi: true, requestAttestation: false },
     })
     transport.notify('initialized', {})
+    const effective = (await transport.request('config/read', { includeLayers: false })) as {
+      config: { memories?: { version?: unknown } }
+    }
+    configuredVersion = effective.config.memories?.version
     const started = (await transport.request('thread/start', {
       model: 'gpt-5.6-luna',
       modelProvider: 'capture',
@@ -224,6 +232,8 @@ async function captureInventory(label: string, write: (home: string) => void): P
   }
 
   const captured: Captured = {
+    configuredVersion,
+    freshMemoryRoot,
     config: readFileSync(join(home, 'config.toml'), 'utf8'),
     body: bodies[0],
     execDescription: execDescriptionOf(bodies[0]),
@@ -245,6 +255,8 @@ it('314 · the shipped writer puts the four memory tools in a real child’s inv
 
   const report = {
     production: {
+      configuredVersion: production.configuredVersion,
+      freshMemoryRoot: production.freshMemoryRoot,
       names: TOOL_NAMES.filter((name) => production.execDescription.includes(name)),
       execDescriptionBytes: production.execDescription.length,
       reachedTheEndpoint: production.body !== undefined,
@@ -273,6 +285,8 @@ it('314 · the shipped writer puts the four memory tools in a real child’s inv
   // …and the merge did not eat the provider stanza it was merged into.
   expect(production.config).toContain('base_url = "http://127.0.0.1:')
   expect(production.config).toContain('dedicated_tools = true')
+  expect(production.freshMemoryRoot).toBe(true)
+  expect(production.configuredVersion).toBe('v1')
 
   for (const name of TOOL_NAMES) {
     expect(production.execDescription, `${name} is missing from the child's inventory`).toContain(

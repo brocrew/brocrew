@@ -110,7 +110,9 @@ export function codexToolApproval(params: unknown): CodexToolApproval | null {
   const question = readString(params, 'message')
   const asked = CODEX_TOOL_QUESTION.exec(question)
 
-  const tool = asked !== null && asked[1] === serverName ? (asked[2] ?? null) : null
+  const tool =
+    readString(meta, 'tool_name') ||
+    (asked !== null && asked[1] === serverName ? (asked[2] ?? null) : null)
   const { kept, omitted } = displayedParameters(meta['tool_params_display'])
   const persist = meta['persist']
   return {

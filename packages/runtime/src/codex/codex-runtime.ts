@@ -1751,24 +1751,24 @@ export const CODEX_PLAN_TOOL_CONFIG = { 'tools.update_plan.enabled': true } as c
  * ⚑ **Codex's own question tool, turned off for every agent this app runs.** An agent asks through
  * `ask_question`, which this app tracks and routes; a `request_user_input` card is neither.
  *
- * ⚑ The key is Codex's own: its tool plan registers `request_user_input` only where
- * `tools.experimental_request_user_input.enabled` is not `false` (0.160.0's `spec_plan.rs` and
- * `config.schema.json`). ⚠️ `request_user_input_async` has no such key there: Codex offers it by
- * the model's own catalogue, so it stays. ⛔ An overlay on the thread, as
- * {@link CODEX_PLAN_TOOL_CONFIG} is, and for its reasons.
+ * Codex 0.167.1 gates both synchronous and asynchronous question tools on
+ * `tools.experimental_request_user_input.enabled`. The overlay belongs to the thread,
+ * alongside {@link CODEX_PLAN_TOOL_CONFIG}.
  */
 export const CODEX_QUESTION_TOOL_CONFIG = {
   'tools.experimental_request_user_input.enabled': false,
 } as const
 
 /** Codex's own tools {@link CODEX_QUESTION_TOOL_CONFIG} turns off, by Codex's names. */
-export const CODEX_TOOLS_TURNED_OFF: readonly string[] = ['request_user_input']
+export const CODEX_TOOLS_TURNED_OFF: readonly string[] = [
+  'request_user_input',
+  'request_user_input_async',
+]
 
 /**
- * Codex's own question tool this app has no switch for, and leaves on: offered where the model's
- * own catalogue lists it. It posts its questions in a message of the agent's.
+ * No question tool remains enabled by this overlay.
  */
-export const CODEX_TOOLS_LEFT_ON: readonly string[] = ['request_user_input_async']
+export const CODEX_TOOLS_LEFT_ON: readonly string[] = []
 
 /**
  * The overlay a thread is opened with: the planning tool on and Codex's own question tool off,

@@ -2117,6 +2117,26 @@ describe('CodexRuntime — approvals', () => {
         e.type === 'permission_request',
     )
 
+  it('uses the provider tool name when an approval question uses a template', async () => {
+    const { transport, handle, events, consumer } = await startCodexInTurn()
+    aCallStarts(transport, 'call_1')
+    aCallStarts(transport, 'call_2', 'note_that')
+    transport.serverRequest(70, 'mcpServer/elicitation/request', {
+      ...CODEX_ASKS,
+      message: 'Allow this action?',
+      _meta: { ...CODEX_ASKS._meta, tool_name: 'note_that' },
+    })
+    await vi.waitFor(has(events, (event) => event.type === 'permission_request'))
+    expect(theServersCard(events, 70)).toBe(false)
+    await handle.respondPermission('number:70', { outcome: 'allow' })
+    expect(transport.responses[0]).toMatchObject({
+      id: 70,
+      result: { action: 'accept' },
+    })
+    await handle.close()
+    await consumer
+  })
+
   it('🔴 728 review · a server’s form NOBODY answered is told `cancel` — a Stop is not a person’s no; Codex’s own approval keeps `decline`', async () => {
     // ⛔ MCP's `decline` is *"the user explicitly declined"*. Until the review a Stop sent it for a
     // server's form nobody had answered; Claude's forms already sent `cancel`.
@@ -12545,6 +12565,7 @@ describe('Codex launch settings stay with the launch', () => {
 
   const memory = [
     'features.memories=true',
+    'memories.version=v1',
     'memories.dedicated_tools=true',
     'memories.use_memories=true',
     'memories.generate_memories=true',
@@ -12626,10 +12647,8 @@ describe('Codex launch settings stay with the launch', () => {
             },
             { key: 'collaboration-mode', value: 'default' },
             { key: 'approval', value: approval },
-            // ⚑ What that key turns off, by Codex's own name for it…
-            { key: 'tools-off', value: ['request_user_input'] },
-            // ⚑ …and the one it has no switch for, said as left on.
-            { key: 'tools-left-on', value: ['request_user_input_async'] },
+            { key: 'tools-off', value: ['request_user_input', 'request_user_input_async'] },
+            { key: 'tools-left-on', value: [] },
           ])
           const config = readFileSync(join(home, 'config.toml'), 'utf8')
           expect(config).toContain('memories = true')

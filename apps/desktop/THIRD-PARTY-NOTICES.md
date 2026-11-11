@@ -45,7 +45,7 @@ date). The rest is written by hand, from each component's own files.
   versions".
 - **Copyright** 2025 OpenAI. Source: <https://github.com/openai/codex>
 - **License:** Apache License 2.0 — the text is under "License texts".
-- **Its NOTICE file**, from the Codex repository at the tag of that version (`rust-v0.160.0`); the
+- **Its NOTICE file**, from the Codex repository at the tag of that version (`rust-v0.167.1`); the
   npm package does not carry it:
 
 ```text

@@ -639,7 +639,7 @@ it('which of our options turns plan into default — bisect', async () => {
 }, 600_000)
 
 /**
- * ⛔ **The hole, named and cornered.** `ps` proves `--permission-mode plan` reaches the CLI, and the
+ * `ps` proves `--permission-mode=plan` reaches the CLI, and the
  * CLI does refuse `Write` under it. So the leak is not the flag. What the runs above kept showing is
  * that a run leaked exactly when the model reached for **Bash** instead — and Bash is the tool this
  * app hands a permission prompt for.
