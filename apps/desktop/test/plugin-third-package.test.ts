@@ -83,7 +83,9 @@ it.each([1, 2] as const)(
           runId: child.runId,
           ready: () => child.ready(),
           exited: owned.exited,
-          stop: owned.stop,
+          async stop() {
+            await owned.stop()
+          },
         }
       }
       if (format === 2) {
