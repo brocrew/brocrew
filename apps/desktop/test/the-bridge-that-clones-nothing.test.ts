@@ -12,25 +12,6 @@ import type { AgentIdentities, RuntimeBridge, RuntimeCommandKind } from '../src/
 import { storageBridge } from '../src/preload/storage'
 import { STORAGE_CHANNELS, type CacheClearState } from '../src/shared/storage'
 
-/**
- * # 🔴 The bridge that clones nothing (361)
- *
- * Reactive payloads crossed the bridge in library filters, attachments, capability grants
- * and provider sign-in cancellation. Every renderer-to-main verb is checked below.
- *
- * ## ⚑ What is asserted here, and what is asserted where it can be
- *
- *  - **§1** the walk can fail, and it fails where it says it does — the plant-and-find half.
- *  - **§2** every renderer→main verb, enumerated BY THE COMPILER, with how its payload is built.
- *  - **§3** the exempt roster is derived from the preload's own source, not written down.
- *  - **§4** the DOM project really runs the wire — a guard nothing registers is dark.
- *  - **§5** the node-side double refuses a payload the wire refuses, and still carries a listener.
- *
- * ⚠️ **The gesture itself is in `test/dom/the-bridge-that-clones-nothing.dom.test.ts`**, because
- * pressing Cancel on a running sign-in needs a component, a click and a real reactive `ref` — none
- * of which this project has.
- */
-
 const HERE = dirname(fileURLToPath(import.meta.url))
 const source = (relative: string): string => readFileSync(join(HERE, '..', relative), 'utf8')
 
@@ -870,13 +851,9 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
     expect(seen).toHaveLength(5)
   })
 
-  it('keeps cache callbacks local while the real factory clones only numeric subscription IDs', async () => {
+  function cacheBridge(readSnapshot: (id: unknown) => Promise<CacheClearState | null>) {
     const events = new EventEmitter()
     const seen: { channel: string; arguments: unknown[] }[] = []
-    let finish!: (state: CacheClearState | null) => void
-    const snapshot = new Promise<CacheClearState | null>((resolve) => {
-      finish = resolve
-    })
     const on = vi.fn()
     on.mockImplementation((channel: string, listener: (...args: unknown[]) => void) => {
       events.on(channel, listener)
@@ -889,10 +866,19 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
       seen.push({ channel, arguments: asTheWireWouldCarry(channel, args) })
       if (channel === STORAGE_CHANNELS.watchCacheClear) {
         expect(events.listenerCount(STORAGE_CHANNELS.cacheClearChanged)).toBe(1)
-        return snapshot
+        return readSnapshot(args[0])
       }
     })
     const real = storageBridge({ on, removeListener, invoke })
+    return { events, seen, invoke, real }
+  }
+
+  it('keeps cache callbacks local while the real factory clones only numeric subscription IDs', async () => {
+    let finish!: (state: CacheClearState | null) => void
+    const snapshot = new Promise<CacheClearState | null>((resolve) => {
+      finish = resolve
+    })
+    const { events, seen, invoke, real } = cacheBridge(() => snapshot)
     const watch = vi.fn(real.watchCacheClear)
     const wired = everythingOverTheWire({ storage: { ...real, watchCacheClear: watch } })
     const onState = vi.fn()
@@ -929,30 +915,15 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
   })
 
   it('delivers cache snapshot errors locally and suppresses a snapshot after unsubscribe', async () => {
-    const events = new EventEmitter()
     const failure = new Error('Snapshot could not be read')
     let finish!: (state: CacheClearState | null) => void
     const snapshot = new Promise<CacheClearState | null>((resolve) => {
       finish = resolve
     })
-    const seen: { channel: string; arguments: unknown[] }[] = []
-    const on = vi.fn()
-    on.mockImplementation((channel: string, listener: (...args: unknown[]) => void) => {
-      events.on(channel, listener)
+    const { events, seen, invoke, real } = cacheBridge(async (id) => {
+      if (id === 1) throw failure
+      return snapshot
     })
-    const removeListener = vi.fn()
-    removeListener.mockImplementation((channel: string, listener: (...args: unknown[]) => void) => {
-      events.removeListener(channel, listener)
-    })
-    const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
-      seen.push({ channel, arguments: asTheWireWouldCarry(channel, args) })
-      if (channel === STORAGE_CHANNELS.watchCacheClear) {
-        expect(events.listenerCount(STORAGE_CHANNELS.cacheClearChanged)).toBe(1)
-        if (args[0] === 1) throw failure
-        return snapshot
-      }
-    })
-    const real = storageBridge({ on, removeListener, invoke })
     const wired = everythingOverTheWire({ storage: real })
     const onState = vi.fn()
     const onError = vi.fn()

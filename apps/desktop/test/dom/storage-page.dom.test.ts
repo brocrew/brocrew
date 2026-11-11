@@ -49,6 +49,32 @@ function setup(over: Partial<StorageBridge> = {}) {
   const m = mount(StorageSection, {}, { width: 1100, height: 1000 })
   return { m, bridge }
 }
+function setupCache(over: Partial<StorageBridge> = {}) {
+  let update!: (state: CacheClearState | null) => void
+  const view = setup({
+    ...over,
+    watchCacheClear: (listener) => {
+      update = listener
+      return () => {}
+    },
+  })
+  return { ...view, update: (state: CacheClearState | null) => update(state) }
+}
+function setupCacheRefresh(children: StorageBridge['children']) {
+  let finishRefresh!: (value: StorageOverview) => void
+  const refresh = new Promise<StorageOverview>((resolve) => {
+    finishRefresh = resolve
+  })
+  const measure = vi
+    .fn<StorageBridge['measure']>()
+    .mockResolvedValueOnce(overview)
+    .mockReturnValueOnce(refresh)
+  return {
+    ...setupCache({ measure, children }),
+    measure,
+    finishRefresh: (value: StorageOverview) => finishRefresh(value),
+  }
+}
 afterEach(() => {
   unmountAll()
   vi.restoreAllMocks()
@@ -256,13 +282,7 @@ it('shows retained pending and late failure on reopening without applying events
 })
 
 it('does not let a delayed old cache snapshot or unmounted completion overwrite a newer operation', async () => {
-  let update!: (state: CacheClearState | null) => void
-  const { m, bridge } = setup({
-    watchCacheClear: (listener) => {
-      update = listener
-      return () => {}
-    },
-  })
+  const { m, bridge, update } = setupCache()
   await settle()
   update({ id: 2, status: 'pending' })
   update({ id: 1, status: 'failed', error: 'unavailable' })
@@ -276,12 +296,7 @@ it('does not let a delayed old cache snapshot or unmounted completion overwrite 
 })
 
 it('reports a real rejection after the pending invoke has returned without measuring or leaving buttons busy', async () => {
-  let update!: (state: CacheClearState | null) => void
-  const { m, bridge } = setup({
-    watchCacheClear: (listener) => {
-      update = listener
-      return () => {}
-    },
+  const { m, bridge, update } = setupCache({
     clearCache: vi.fn<StorageBridge['clearCache']>(async () => ({
       ok: true,
       operation: { id: 1, status: 'pending' },
@@ -302,7 +317,6 @@ it('reports a real rejection after the pending invoke has returned without measu
 it.each(['missing', 'complete'] as const)(
   'keeps a rejected cache remeasurement visible when the earlier overview is %s',
   async (earlier) => {
-    let update!: (state: CacheClearState | null) => void
     let finishInitial!: (value: StorageOverview) => void
     let rejectRefresh!: (error: Error) => void
     const initial = new Promise<StorageOverview>((resolve) => {
@@ -316,12 +330,8 @@ it.each(['missing', 'complete'] as const)(
       .fn<StorageBridge['measure']>()
       .mockReturnValueOnce(initial)
       .mockReturnValueOnce(refresh)
-    const { m } = setup({
+    const { m, update } = setupCache({
       measure,
-      watchCacheClear: (listener) => {
-        update = listener
-        return () => {}
-      },
     })
     await settle()
     update({ id: 1, status: 'complete' })
@@ -338,27 +348,9 @@ it.each(['missing', 'complete'] as const)(
 )
 
 it('does not announce cache success after a newer directory request supersedes its refresh', async () => {
-  let update!: (state: CacheClearState | null) => void
-  let finishRefresh!: (value: StorageOverview) => void
-  const refresh = new Promise<StorageOverview>((resolve) => {
-    finishRefresh = resolve
-  })
-  const measure = vi
-    .fn<StorageBridge['measure']>()
-    .mockResolvedValueOnce(overview)
-    .mockReturnValueOnce(refresh)
-  const { m, bridge } = setup({
-    measure,
-    children: vi.fn(async () => ({
-      ...directory,
-      partial: true,
-      error: 'invalid-location' as const,
-    })),
-    watchCacheClear: (listener) => {
-      update = listener
-      return () => {}
-    },
-  })
+  const { m, bridge, update, measure, finishRefresh } = setupCacheRefresh(
+    vi.fn(async () => ({ ...directory, partial: true, error: 'invalid-location' as const })),
+  )
   await settle()
   update({ id: 1, status: 'pending' })
   await nextTick()
@@ -402,23 +394,9 @@ it.each(['partial', 'rejection'] as const)(
 )
 
 it('does not overwrite a folder error that arrives while the accepted cache refresh is still pending', async () => {
-  let update!: (state: CacheClearState | null) => void
-  let finishRefresh!: (value: StorageOverview) => void
-  const refresh = new Promise<StorageOverview>((resolve) => {
-    finishRefresh = resolve
-  })
-  const measure = vi
-    .fn<StorageBridge['measure']>()
-    .mockResolvedValueOnce(overview)
-    .mockReturnValueOnce(refresh)
-  const { m, bridge } = setup({
-    measure,
-    children: vi.fn(async () => ({ ...directory, partial: true })),
-    watchCacheClear: (listener) => {
-      update = listener
-      return () => {}
-    },
-  })
+  const { m, bridge, update, measure, finishRefresh } = setupCacheRefresh(
+    vi.fn(async () => ({ ...directory, partial: true })),
+  )
   await settle()
   update({ id: 1, status: 'complete' })
   await nextTick()

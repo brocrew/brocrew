@@ -24,6 +24,24 @@ export function dropPending(tab: TabState, download: Download): void {
 }
 class DownloadTooLarge extends Error {}
 const MAX_REDIRECTS = 10
+function downloadCounter(deps: ToolDeps) {
+  let bytes = 0
+  const cap = new Transform({
+    transform(chunk: Buffer, _enc, cb) {
+      try {
+        checkToolAuthorization(deps)
+      } catch (error) {
+        cb(error as Error)
+        return
+      }
+      bytes += chunk.length
+      if (chunk.length > 0) deps.activity?.('download-received')
+      if (bytes > MAX_DOWNLOAD_BYTES) cb(new DownloadTooLarge())
+      else cb(null, chunk)
+    },
+  })
+  return { cap, bytes: () => bytes }
+}
 export async function fetchToDisk(
   deps: ToolDeps,
   ctx: BrowserContext,
@@ -75,25 +93,11 @@ export async function fetchToDisk(
         dir,
         sanitizeDownloadName(disposition ? safeDecode(disposition) : urlName),
       )
-      let bytes = 0
-      const cap = new Transform({
-        transform(chunk: Buffer, _enc, cb) {
-          try {
-            checkToolAuthorization(deps)
-          } catch (error) {
-            cb(error as Error)
-            return
-          }
-          bytes += chunk.length
-          if (chunk.length > 0) deps.activity?.('download-received')
-          if (bytes > MAX_DOWNLOAD_BYTES) cb(new DownloadTooLarge())
-          else cb(null, chunk)
-        },
-      })
+      const received = downloadCounter(deps)
       try {
         await pipeline(
           Readable.fromWeb(res.body as never),
-          cap,
+          received.cap,
           fs.createWriteStream(target, { fd }),
         )
         checkToolAuthorization(deps)
@@ -106,7 +110,7 @@ export async function fetchToDisk(
       }
       return {
         path: target,
-        bytes,
+        bytes: received.bytes(),
         status: res.status,
         contentType: res.headers.get('content-type'),
       }
@@ -197,23 +201,9 @@ export async function saveDownload(
     privateFolder(deps.downloadsRoot, dir, true)
     const privateFiles = new PrivateDownloadFiles(deps.downloadsRoot)
     const { fd, target } = reserveFile(dir, sanitizeDownloadName(download.suggestedFilename()))
-    let bytes = 0
-    const cap = new Transform({
-      transform(chunk: Buffer, _enc, cb) {
-        try {
-          checkToolAuthorization(deps)
-        } catch (error) {
-          cb(error as Error)
-          return
-        }
-        bytes += chunk.length
-        if (chunk.length > 0) deps.activity?.('download-received')
-        if (bytes > MAX_DOWNLOAD_BYTES) cb(new DownloadTooLarge())
-        else cb(null, chunk)
-      },
-    })
+    const received = downloadCounter(deps)
     try {
-      await pipeline(source, cap, fs.createWriteStream(target, { fd }))
+      await pipeline(source, received.cap, fs.createWriteStream(target, { fd }))
       checkToolAuthorization(deps)
       deps.activity?.('download-saved')
     } catch (e) {
@@ -222,7 +212,7 @@ export async function saveDownload(
     }
     savedFile?.(tmp)
     copied = true
-    return { path: target, bytes }
+    return { path: target, bytes: received.bytes() }
   } finally {
     if (copied) await deps.browser.deletePrivateDownload?.(profile, download).catch(() => undefined)
   }

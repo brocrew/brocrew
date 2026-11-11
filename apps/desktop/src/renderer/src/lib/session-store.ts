@@ -90,16 +90,6 @@ import {
  */
 const NEW_LAUNCH = 'new-conversation'
 
-/**
- * 🔴 **718 · `710` F-9 — the SECOND door's launch, keyed apart from the first.**
- *
- * ⛔ **It shared {@link NEW_LAUNCH} and the launcher's error ref**, so a start from the
- * StartAsAgent sheet put the LAUNCHER into `starting` (its Cancel then stopped the sheet's launch),
- * and a refusal was drawn only by the launcher — on a surface the person was not on, about a press
- * they had not made there, while the sheet they pressed in had already closed. ⚑ {@link
- * SessionStore.isLaunching}'s own rule — *per gesture, not shared* — applied to the one gesture it
- * was not yet applied to.
- */
 const PLACED_LAUNCH = 'placed-conversation'
 
 /**

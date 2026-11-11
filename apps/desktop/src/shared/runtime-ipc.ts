@@ -4,7 +4,6 @@ export {
   foldProfileName,
   isPathSegment,
   PATH_SEGMENT_MAX_LENGTH,
-  PATH_SEGMENT_PATTERN,
   PATH_SEGMENT_RULE,
 } from './profile-name'
 import { PROVIDER_NAME } from './provider-names'

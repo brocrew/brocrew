@@ -159,7 +159,6 @@ const os = args.os
 const evidence = resolve(args.evidence)
 mkdirSync(evidence, { recursive: true })
 
-// ── where this may run ────────────────────────────────────────────────────────────────────────
 const hosted =
   process.env.GITHUB_ACTIONS === 'true' &&
   process.env.RUNNER_ENVIRONMENT === 'github-hosted' &&
@@ -270,7 +269,6 @@ function run(program, argv, options = {}) {
   return done.stdout ?? ''
 }
 
-// ── the machine: Windows' Apps entries and processes, the Mac's bundle ─────────────────────────
 function powershell(script) {
   return run(
     'powershell.exe',
