@@ -15,7 +15,7 @@ import { providersBridge } from '../../look/fixtures/providers'
 import { mount, unmountAll } from './harness'
 
 const pair = { provider: 'codex' as const, profileId: 'fern-worker' }
-const usable: AuthState = { state: 'usable', login: 'Fictional Fern', expiresAt: null }
+const usable: AuthState = { state: 'usable', login: 'account', expiresAt: null }
 const absent: AuthState = { state: 'absent', reason: 'Fictional raw transport.' }
 
 function client() {
