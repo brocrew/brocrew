@@ -19,6 +19,8 @@ import type {
 import { DEFAULT_PROFILE_ID } from '../../../shared/runtime-ipc'
 import type { ProviderDescriptor } from '@brobot2/shared'
 import { useVisibleProviders } from '../composables/useVisibleProviders'
+import { useClientProviders } from '../client-provider/injection'
+import { providerCatalogue } from '../client-provider/catalogue'
 import { useKeyAsked } from '../composables/useKeyAsked'
 import { useProviderUsage } from '../composables/useProviderUsage'
 import { aDialogIsOpen } from '../lib/a-dialog-is-open'
@@ -82,17 +84,24 @@ const emit = defineEmits<{
   startConversation: []
 }>()
 
-const descriptors = useVisibleProviders(() => props.descriptors)
+const client = useClientProviders()
+const catalogue = providerCatalogue(client)
+const catalogueState = catalogue.held
+const descriptors = useVisibleProviders(
+  () =>
+    props.descriptors ??
+    (catalogueState.value.state === 'answered' ? catalogueState.value.providers : []),
+)
 const providers = computed(() => descriptors.value.map((descriptor) => descriptor.id as Provider))
 const accesses = new Map<Provider, ReturnType<typeof createProviderAccess>>()
-const modelLists = computed(() => props.lists ?? useModelLists())
+const modelLists = computed(() => props.lists ?? useModelLists(client))
 function accessFor(provider: Provider) {
   let access = accesses.get(provider)
   if (!access) {
     access = createProviderAccess(
       () => provider,
       () => emit('authChanged', DEFAULT_PROFILE_ID),
-      () => window.api.runtime,
+      () => client,
     )
     accesses.set(provider, access)
   }
@@ -144,13 +153,22 @@ const selectedDescriptor = computed(
   () => descriptors.value.find((item) => item.id === selected.value) ?? null,
 )
 const providerCard = ref<InstanceType<typeof ProviderCard> | null>(null)
+let pendingEntry: { provider: Provider; setup: boolean } | null = null
+function fulfillPendingEntry(): void {
+  if (pendingEntry === null || !providers.value.includes(pendingEntry.provider)) return
+  setupOnEntry.value = pendingEntry.setup
+  selected.value = pendingEntry.provider
+  pendingEntry = null
+}
 function openProvider(provider: Provider, event?: MouseEvent): void {
+  pendingEntry = null
   if (event?.currentTarget instanceof HTMLElement) event.currentTarget.focus()
   measureDrawer()
   setupOnEntry.value = standingOf(provider)?.tone === 'not-ready'
   selected.value = provider
 }
 function closeProvider(): void {
+  pendingEntry = null
   const provider = selected.value
   selected.value = null
   void nextTick(() => {
@@ -164,14 +182,14 @@ function closeProvider(): void {
 watch(providers, () => {
   if (selected.value !== null && !providers.value.includes(selected.value)) selected.value = null
   if (mounted) readVisibleAccess()
+  fulfillPendingEntry()
 })
 watch(
   () => props.setupProvider,
   (provider) => {
-    if (provider && providers.value.includes(provider)) {
-      setupOnEntry.value = true
-      selected.value = provider
-    }
+    if (!provider) return
+    pendingEntry = { provider, setup: true }
+    fulfillPendingEntry()
   },
   { immediate: true },
 )
@@ -179,10 +197,9 @@ const keyAsked = useKeyAsked()
 watch(
   keyAsked,
   (provider) => {
-    if (provider && providers.value.includes(provider)) {
-      setupOnEntry.value = false
-      selected.value = provider
-    }
+    if (!provider) return
+    pendingEntry = { provider, setup: false }
+    fulfillPendingEntry()
   },
   { immediate: true },
 )
@@ -292,6 +309,7 @@ let stopListening: (() => void) | null = null
 
 onMounted(() => {
   mounted = true
+  if (props.descriptors === undefined) void catalogue.read()
   measureDrawer()
   if (surface.value) {
     frameObserver = new ResizeObserver(measureDrawer)
@@ -300,7 +318,7 @@ onMounted(() => {
   window.addEventListener('resize', measureDrawer)
   void readVersions()
   readVisibleAccess()
-  stopListening = window.api.runtime.onProvidersChanged((message) => {
+  stopListening = client.onProvidersChanged((message) => {
     if (message.what === 'usage') {
       emit('usageMoved')
     } else {
@@ -318,6 +336,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  pendingEntry = null
   mounted = false
   frameObserver?.disconnect()
   window.removeEventListener('resize', measureDrawer)
@@ -395,6 +414,23 @@ const runningOf = (provider: Provider) => {
         </p>
       </header>
 
+      <p
+        v-if="props.descriptors === undefined && catalogueState.state !== 'answered'"
+        data-cy="provider-catalogue-status"
+        role="status"
+      >
+        {{
+          catalogueState.state === 'loading'
+            ? 'Reading provider information…'
+            : `Could not read provider information. ${catalogueState.why}`
+        }}
+        <button v-if="catalogueState.state === 'unread'" type="button" @click="catalogue.read()">
+          Try again
+        </button>
+      </p>
+      <p v-else-if="descriptors.length === 0" data-cy="provider-catalogue-empty" role="status">
+        No providers are available.
+      </p>
       <div class="provider-list">
         <button
           v-for="descriptor in descriptors"

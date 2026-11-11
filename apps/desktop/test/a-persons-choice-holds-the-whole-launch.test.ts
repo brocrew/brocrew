@@ -1078,7 +1078,6 @@ describe('682 · a person’s choice holds the whole launch', () => {
   })
 
   /* ──────────────────────────────────────────── §5 · inbox 9 — the probe's real reason ── */
-
   describe('§5 · inbox 9 — a sign-in failure is `refused`, in its own words', () => {
     it('🔴 a Claude machine login that is unavailable is NOT `closing` — the reason is the provider’s', async () => {
       failSignIn = true
@@ -1087,6 +1086,7 @@ describe('682 · a person’s choice holds the whole launch', () => {
         ok: false,
         reason: 'refused',
         detail: 'Claude machine login unavailable: not signed in',
+        setupRequired: true,
       })
       // ⚑ …and the provider that could answer still did.
       expect(menu.codex.ok).toBe(true)

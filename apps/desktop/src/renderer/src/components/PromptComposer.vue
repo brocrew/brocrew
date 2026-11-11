@@ -163,6 +163,7 @@ import { A_STOP_ASKS_THE_TURN } from '../lib/stop-unanswered'
 import { A_STOP_THEN_THIS_IS_SENT } from '../lib/stop-unanswered'
 import { isOnlyAStopWord } from '../lib/a-stop-word'
 import { useVoiceInput } from '../lib/voice-input'
+import { useClientApi } from '../client-provider/injection'
 import type { SendBlock } from '../lib/composer-notice'
 
 /** The one place a conversation is spoken to — and the place that says why you cannot speak. */
@@ -330,7 +331,8 @@ const text = computed({
  * not a second message.
  */
 const canType = computed(() => props.state === 'idle' || props.state === 'busy')
-const voiceBridge = typeof window === 'undefined' ? undefined : window.api?.voice
+const composer = useClientApi().composer
+const voiceBridge = composer?.voice
 const voice = useVoiceInput({
   bridge: voiceBridge,
   draft: text,
@@ -784,17 +786,17 @@ const shownNotices = computed(() => (noticesOpen.value ? notices.value : notices
  * nothing to attach TO), and the ceiling is the ceiling.
  */
 const canStage = computed(
-  () => props.canAttach && canType.value && staged.value.length < MAX_HANDED_PATHS,
+  () => !!composer && props.canAttach && canType.value && staged.value.length < MAX_HANDED_PATHS,
 )
 
 async function attach(): Promise<void> {
-  if (!canStage.value) return
+  if (!composer || !canStage.value) return
   // ⛔ **Through {@link acquire}, like every other gesture that asks main something** (262 §1). A
   // picker is the SLOWEST of the three — it is a person deciding, in a modal that can stand open
   // for a minute — so a send in the middle of it is the likeliest instance of the defect, not the
   // rarest.
   await acquire(async () => {
-    const chosen = await window.api.chooseAttachment({ cwd: props.cwd })
+    const chosen = await composer.chooseAttachment({ cwd: props.cwd })
     // ⚠️ `null` is CANCELLED and changes nothing — including the refusal already on screen. Kept
     // out of `stage` rather than handed to it, because a drop has no cancel: by the time main sees
     // the paths the person has already let go. ⚑ {@link acquire} passes it straight through.
@@ -938,7 +940,7 @@ function pathsIn(files: readonly File[]): { paths: string[]; pathless: number } 
   const paths: string[] = []
   let pathless = 0
   for (const file of files) {
-    const path = window.api.pathForDroppedFile(file)
+    const path = composer ? composer.pathForDroppedFile(file) : ''
     if (path === '') {
       pathless += 1
       continue
@@ -950,9 +952,9 @@ function pathsIn(files: readonly File[]): { paths: string[]; pathless: number } 
 
 /** ⛔ What main says these paths are — the one door, for every gesture that has one to ask about. */
 async function classify(paths: readonly string[]): Promise<DroppedPathVerdict[]> {
-  return paths.length === 0
+  return !composer || paths.length === 0
     ? []
-    : await window.api.handDroppedPaths({ paths: [...paths], cwd: props.cwd })
+    : await composer.handDroppedPaths({ paths: [...paths], cwd: props.cwd })
 }
 
 /**
@@ -997,7 +999,7 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
   // has an affordance, and at the ceiling that affordance is withheld — `dropping` is false, so the
   // composer never says *"Drop to attach"* over a drop it would refuse. A paste has nothing to
   // withhold, which is exactly why silence reads as breakage.
-  if (!props.canAttach || !canType.value) return
+  if (!composer || !props.canAttach || !canType.value) return
   // ⚠️ **Read SYNCHRONOUSLY, before any `await`** — `clipboardData` is only valid while the event is
   // being dispatched, for the same reason `dataTransfer.files` is in {@link onDrop}.
   const pasted = Array.from(event.clipboardData?.files ?? [])
@@ -1033,7 +1035,7 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
       pathless === 0 || carriesText
         ? []
         : room > 0
-          ? [await window.api.pasteImage({ cwd: props.cwd })]
+          ? [await composer.pasteImage({ cwd: props.cwd })]
           : [{ refusal: noRoomForPastedImage() }]
     const verdicts = await classify(paths)
     // ⛔ **One picture, because `clipboard.readImage()` is one answer** — and the rest are SAID
@@ -1389,21 +1391,23 @@ defineExpose({
           class="attach-button"
           :disabled="!canStage"
           :title="
-            staged.length >= MAX_HANDED_PATHS
-              ? `One message can carry ${MAX_HANDED_PATHS} attachments`
-              : !canType
-                ? // ⛔ Found in 216's review: this control has TWO disabled causes and the tooltip
-                  // described only the ceiling, so a greyed paperclip explained what it would do
-                  // if it worked (106, 118). ⚠️ Worded for BOTH mounts since 217 — the launcher
-                  // greys it while a launch is in flight, and there is no conversation there to
-                  // talk about.
-                  'Not right now — this is busy'
-                : // ⚑ **The paste has no control of its own, so the one control there IS names it**
-                  // (254 §2). A gesture nothing on screen mentions is a gesture only the person who
-                  // built it knows about — `213` is the dispatch about exactly that, from the other
-                  // end. ⚠️ The two existing assertions match on the prefix, deliberately left
-                  // intact so this reads as an addition rather than a replacement.
-                  'Attach a file or folder for the agent to read — or paste a picture'
+            !composer
+              ? 'Attachments are unavailable in this view'
+              : staged.length >= MAX_HANDED_PATHS
+                ? `One message can carry ${MAX_HANDED_PATHS} attachments`
+                : !canType
+                  ? // ⛔ Found in 216's review: this control has TWO disabled causes and the tooltip
+                    // described only the ceiling, so a greyed paperclip explained what it would do
+                    // if it worked (106, 118). ⚠️ Worded for BOTH mounts since 217 — the launcher
+                    // greys it while a launch is in flight, and there is no conversation there to
+                    // talk about.
+                    'Not right now — this is busy'
+                  : // ⚑ **The paste has no control of its own, so the one control there IS names it**
+                    // (254 §2). A gesture nothing on screen mentions is a gesture only the person who
+                    // built it knows about — `213` is the dispatch about exactly that, from the other
+                    // end. ⚠️ The two existing assertions match on the prefix, deliberately left
+                    // intact so this reads as an addition rather than a replacement.
+                    'Attach a file or folder for the agent to read — or paste a picture'
           "
           data-cy="attach-path"
           @click="attach"

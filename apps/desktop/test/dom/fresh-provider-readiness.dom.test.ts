@@ -1,10 +1,15 @@
+import {
+  createModelLists,
+  launchFacts,
+  resolveProviderLaunch,
+} from '../lib/provider-launch-fixture'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import RuntimeScreen from '../../src/renderer/src/components/RuntimeScreen.vue'
 import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+
 import { forgetProfileSignIns } from '../../src/renderer/src/composables/useProfileSignIn'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import { providersBridge } from '../../look/fixtures/providers'
@@ -139,7 +144,20 @@ function fixture(claudeReady = false, holdFirstUsage = false) {
       })
     return {
       claude: authenticated
-        ? [{ window: 'five_hour', usedPercent: 28, resetsAt: null, at: Date.now() }]
+        ? [
+            {
+              window: 'five_hour',
+              period: {
+                word: '5-hour',
+                durationMs: 5 * 3_600_000,
+                bucket: false,
+                bucketName: null,
+              },
+              usedPercent: 28,
+              resetsAt: null,
+              at: Date.now(),
+            },
+          ]
         : [],
       codex: [],
     }
@@ -179,6 +197,9 @@ function fixture(claudeReady = false, holdFirstUsage = false) {
       capabilities: async () => CAPABILITY_FIXTURE,
       providerVersions: versions,
       modelList: async ({ provider }) => catalogue(provider, provider === 'claude' && signedIn),
+      providerLaunchChoices: async (input) =>
+        launchFacts(await window.api.runtime.modelList(input), await checkAuth(input)),
+      resolveProviderLaunch: async (input) => resolveProviderLaunch(input, null),
       providerUsage: usage,
       questionsForAPerson: async () => walk(),
       decisionsForAPerson: async () => walk(),

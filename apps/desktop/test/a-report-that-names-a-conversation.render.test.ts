@@ -5,7 +5,7 @@ import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import SessionPanel from '../src/renderer/src/components/SessionPanel.vue'
 import WorkReportEntry from '../src/renderer/src/components/WorkReportEntry.vue'
-import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
+import { applyEvent, createTranscript } from './lib/core-transcript'
 
 /**
  * 🔴 **The work report's row, rendered — the press and its two absences** (506).

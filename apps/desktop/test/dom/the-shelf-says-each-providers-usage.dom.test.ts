@@ -84,14 +84,55 @@ function both(now: number): Usage {
   const at = now - 4 * MIN - 10_000
   return {
     claude: [
-      { window: 'five_hour', usedPercent: 28, resetsAt: now + 3 * HOUR + 12 * MIN + 20_000, at },
-      { window: 'seven_day', usedPercent: 61, resetsAt: now + 2 * DAY + HOUR, at },
-      { window: 'seven_day_opus', usedPercent: 3, resetsAt: now + 2 * DAY, at },
+      {
+        window: 'five_hour',
+        period: { word: '5-hour', durationMs: 5 * HOUR, bucket: false, bucketName: null },
+        usedPercent: 28,
+        resetsAt: now + 3 * HOUR + 12 * MIN + 20_000,
+        at,
+      },
+      {
+        window: 'seven_day',
+        period: { word: 'weekly', durationMs: 7 * 24 * HOUR, bucket: false, bucketName: null },
+        usedPercent: 61,
+        resetsAt: now + 2 * DAY + HOUR,
+        at,
+      },
+      {
+        window: 'seven_day_opus',
+        period: { word: 'weekly Opus', durationMs: 7 * DAY, bucket: false, bucketName: null },
+        usedPercent: 3,
+        resetsAt: now + 2 * DAY,
+        at,
+      },
     ],
     codex: [
-      { window: 'a 5-hour window', usedPercent: 12, resetsAt: now + HOUR + 14 * MIN + 20_000, at },
-      { window: 'a 7-day window', usedPercent: 35, resetsAt: now + 4 * DAY, at },
-      { window: 'a 7-day window (GPT-5.3-Codex-Spark)', usedPercent: 90, resetsAt: now + DAY, at },
+      {
+        window: 'a 5-hour window',
+        period: { word: '5-hour', durationMs: 5 * HOUR, bucket: false, bucketName: null },
+        usedPercent: 12,
+        resetsAt: now + HOUR + 14 * MIN + 20_000,
+        at,
+      },
+      {
+        window: 'a 7-day window',
+        period: { word: 'weekly', durationMs: 7 * 24 * HOUR, bucket: false, bucketName: null },
+        usedPercent: 35,
+        resetsAt: now + 4 * DAY,
+        at,
+      },
+      {
+        window: 'a 7-day window (GPT-5.3-Codex-Spark)',
+        period: {
+          word: 'weekly',
+          durationMs: 7 * DAY,
+          bucket: true,
+          bucketName: 'GPT-5.3-Codex-Spark',
+        },
+        usedPercent: 90,
+        resetsAt: now + DAY,
+        at,
+      },
     ],
   }
 }
@@ -230,8 +271,20 @@ describe('the shelf says each provider’s usage', () => {
     const now = Date.now()
     const m = await shelf({
       claude: [
-        { window: 'five_hour', usedPercent: null, resetsAt: now + 2 * HOUR + 20_000, at: now },
-        { window: 'seven_day', usedPercent: 40, resetsAt: null, at: now },
+        {
+          window: 'five_hour',
+          period: { word: '5-hour', durationMs: 5 * HOUR, bucket: false, bucketName: null },
+          usedPercent: null,
+          resetsAt: now + 2 * HOUR + 20_000,
+          at: now,
+        },
+        {
+          window: 'seven_day',
+          period: { word: 'weekly', durationMs: 7 * 24 * HOUR, bucket: false, bucketName: null },
+          usedPercent: 40,
+          resetsAt: null,
+          at: now,
+        },
       ],
       codex: [],
     })
@@ -247,7 +300,13 @@ describe('the shelf says each provider’s usage', () => {
     const now = Date.now()
     const m = await shelf({
       claude: [
-        { window: 'five_hour', usedPercent: 95, resetsAt: now - 2 * HOUR, at: now - 3 * HOUR },
+        {
+          window: 'five_hour',
+          period: { word: '5-hour', durationMs: 5 * HOUR, bucket: false, bucketName: null },
+          usedPercent: 95,
+          resetsAt: now - 2 * HOUR,
+          at: now - 3 * HOUR,
+        },
       ],
       codex: [],
     })

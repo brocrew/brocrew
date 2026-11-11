@@ -27,6 +27,8 @@ export interface ProviderSetupState {
   readonly provider: Provider
   readonly supported: { readonly install: boolean; readonly signIn: boolean }
   readonly phase: ProviderSetupPhase
+  /** Supplied after native sign-in completion; the window still rechecks actual auth. */
+  readonly completedSignInMessage?: string
   readonly available: boolean
   /** Fixed progress text, never raw sign-in output. */
   readonly progress: string

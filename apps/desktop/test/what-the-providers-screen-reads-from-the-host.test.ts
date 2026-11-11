@@ -103,7 +103,14 @@ describe('what the Providers screen reads from the host', () => {
       const rows = window.messages.length
       await reading(handle, [{ window: 'five_hour', usedPercent: 40, resetsAt: 5_000 }])
       expect(host.providerUsage().claude).toEqual([
-        { window: 'five_hour', usedPercent: 40, resetsAt: 5_000, at: clock },
+        {
+          window: 'five_hour',
+          period: { word: '5-hour', durationMs: 5 * 3_600_000, bucket: false, bucketName: null },
+          warning: null,
+          usedPercent: 40,
+          resetsAt: 5_000,
+          at: clock,
+        },
       ])
       expect(host.providerUsage().codex).toEqual([])
       expect(moved).toEqual([{ what: 'usage', provider: 'claude' }])
@@ -123,6 +130,23 @@ describe('what the Providers screen reads from the host', () => {
       expect(moved).toHaveLength(2)
       // `at` follows the newest arrival even when it was no news.
       expect(host.providerUsage().claude[0]).toMatchObject({ usedPercent: 41, at: clock })
+    })
+
+    it('supplies the current warning decision at the threshold and retires it at reset', async () => {
+      const handle = await open()
+      const reset = clock + 3_600_000
+      await reading(handle, [{ window: 'seven_day', usedPercent: 79, resetsAt: reset }])
+      expect(host.providerUsage().claude[0]?.warning).toBeNull()
+      await reading(handle, [{ window: 'seven_day', usedPercent: 80, resetsAt: reset }])
+      expect(host.providerUsage().claude[0]?.warning).toMatchObject({
+        provider: 'claude',
+        standing: 'about-to-stop',
+        at: clock,
+        resetsAt: reset,
+        meaning: { word: 'weekly', used: 80, untimed: false },
+      })
+      clock = reset
+      expect(host.providerUsage().claude[0]).toMatchObject({ usedPercent: 80, warning: null })
     })
 
     it('⛔ a sparse reading is not a reset: a field the provider left out keeps what it last said', async () => {

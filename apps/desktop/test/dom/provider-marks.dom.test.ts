@@ -1,3 +1,4 @@
+import { providerDescriptor, type ProviderDescriptor } from '@brobot2/shared'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
@@ -41,6 +42,9 @@ function synthwave(): Theme {
 
 const lists: ModelLists = {
   held: () => null,
+  choices: () => null,
+  readiness: () => ({ state: 'pending' }),
+  resolve: async () => ({ provider: 'codex', pickerProvider: 'codex', readiness: [] }),
   read: async () => undefined,
   reread: async () => undefined,
   forget: () => undefined,
@@ -49,8 +53,9 @@ const lists: ModelLists = {
 }
 
 function realMarks(
-  capabilities: ProviderCapabilityMap = allProviderCapabilities(),
+  capabilities: ProviderCapabilityMap | null = allProviderCapabilities(),
   displayName?: string,
+  descriptor: ProviderDescriptor = providerDescriptor('codex'),
 ) {
   ;(window as unknown as { api: unknown }).api = {
     runtime: {
@@ -62,6 +67,7 @@ function realMarks(
     ProviderCard,
     {
       provider: 'codex',
+      descriptor,
       displayName,
       capabilities,
       limit: null,
@@ -96,6 +102,43 @@ function visibleBlossom(host: HTMLElement, variant: 'black' | 'white', size: num
 }
 
 describe('provider marks beside the provider name', () => {
+  const native = providerDescriptor('codex')
+  const descriptor: ProviderDescriptor = {
+    ...native,
+    displayName: 'Fable',
+    capabilities: {
+      ...native.capabilities,
+      mark: { state: 'available', kind: 'letter' },
+    },
+  }
+
+  it('draws the supplied descriptor mark while capabilities are pending', async () => {
+    const card = realMarks(null, undefined, descriptor)
+    await nextTick()
+
+    expect(card.querySelector('h2')?.textContent).toBe('Fable')
+    const mark = card.querySelector('[data-provider-mark="codex"]')!
+    expect(mark?.textContent).toBe('F')
+    expect(mark.querySelectorAll('img')).toHaveLength(0)
+  })
+
+  it('keeps an answered capability mark ahead of the supplied descriptor', async () => {
+    const card = realMarks(allProviderCapabilities(), undefined, descriptor)
+    await nextTick()
+
+    expect(card.querySelector('h2')?.textContent).toBe('Fable')
+    expect(
+      card.querySelector('[data-provider-mark="codex"]')?.querySelectorAll('img'),
+    ).toHaveLength(2)
+  })
+
+  it('does not infer artwork from an unknown provider id without supplied visual facts', () => {
+    const view = mount(ProviderMark, { provider: 'fictional-native-id', name: 'Fable' })
+    const mark = view.host.querySelector('[data-provider-mark="fictional-native-id"]')!
+    expect(mark.textContent?.trim()).toBe('')
+    expect(mark.querySelectorAll('img')).toHaveLength(0)
+  })
+
   it('keeps the provider name readable when an older capability map has no mark', async () => {
     const complete = allProviderCapabilities()
     const withoutMark = {

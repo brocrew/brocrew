@@ -1,4 +1,6 @@
 import { signInObservation } from '../src/main/providers/claude/sign-in-observation'
+import { providerDescriptor } from '@brobot2/shared'
+import { errorForDisplay, replacedSignInNotice } from '../src/main/providers/error-presentation'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import type { PieceRow } from '../src/shared/task-contracts'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -11,12 +13,7 @@ import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { theStallAndItsAsk } from '../src/main/runtime/reply-rails'
-import {
-  applyEvent,
-  createTranscript,
-  replacedSignInNotice,
-  type NoticeItem,
-} from '../src/renderer/src/lib/transcript'
+import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 
 import { UNDRIVEN_SENTENCES, derivePieces } from '../src/shared/tasks'
 
@@ -41,9 +38,23 @@ import { UNDRIVEN_SENTENCES, derivePieces } from '../src/shared/tasks'
 
 const noticesFor = (...events: RuntimeEvent[]): NoticeItem[] => {
   const state = createTranscript()
-  for (const event of events) applyEvent(state, event)
+  for (const event of events)
+    applyEvent(
+      state,
+      errorForDisplay(
+        event,
+        state.ref === null ? undefined : providerDescriptor(state.ref.provider).displayName,
+      ),
+    )
   return state.items.filter((item): item is NoticeItem => item.kind === 'notice')
 }
+
+const started = (provider: 'claude' | 'codex'): RuntimeEvent =>
+  ({
+    type: 'session',
+    state: 'started',
+    ref: { provider, sessionId: `sess_${provider}` },
+  }) as unknown as RuntimeEvent
 
 const REFUSED = (onAKey: boolean): Extract<RuntimeEvent, { type: 'error' }> => ({
   type: 'error',
@@ -57,7 +68,9 @@ const REFUSED = (onAKey: boolean): Extract<RuntimeEvent, { type: 'error' }> => (
 
 describe('§1 · the conversation’s notice names the credential Codex refused', () => {
   it('🔴 on a key: the key, the button that checks it, and what a new conversation runs on', () => {
-    const [notice] = noticesFor(REFUSED(true))
+    const notice = noticesFor(started('codex'), REFUSED(true)).find(
+      (item) => item.level === 'error',
+    )
     expect(notice?.level).toBe('error')
     expect(notice?.text).toBe(
       'The API key this conversation was started with was refused, so this conversation cannot run on it. Check or replace the key under “API key” on the Codex card in Providers — “Check it works” there asks whether a saved key still works — then start a new conversation, which runs on the key saved then.',
@@ -78,12 +91,6 @@ describe('§1 · the conversation’s notice names the credential Codex refused'
 describe('§1b · a refused sign-in this app replaces by itself says so', () => {
   const TODAY =
     'This profile’s sign-in was rejected, so this conversation cannot continue. Start a new conversation to sign in again — the launcher will offer it.'
-  const started = (provider: 'claude' | 'codex'): RuntimeEvent =>
-    ({
-      type: 'session',
-      state: 'started',
-      ref: { provider, sessionId: `sess_${provider}` },
-    }) as unknown as RuntimeEvent
   /** The refused turn's row, with the host's fact that the app replaces a refused copy. */
   const replaced = (onAKey = false): RuntimeEvent => ({
     ...REFUSED(onAKey),

@@ -1,7 +1,13 @@
 import { vi } from 'vitest'
 import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+import {
+  createModelLists,
+  launchFacts,
+  resolveProviderLaunch,
+} from '../lib/provider-launch-fixture'
+import { providersBridge } from '../../look/fixtures/providers'
+import type { ModelLists } from '../../src/renderer/src/lib/model-lists'
 import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import { useAttentionSignals } from '../../src/renderer/src/composables/useAttentionSignals'
@@ -27,6 +33,8 @@ vi.mock('../../src/renderer/src/components/ProviderSetupAtLaunch.vue', () => ({
   default: { render: () => null },
 }))
 
+let suppliedLists: ModelLists | null = null
+let fixtureLists: ModelLists
 export let sessions: SessionStore
 export let agentStore: ReturnType<typeof createAgentStore>
 const changeListeners = new Set<Parameters<RuntimeBridge['onChanged']>[0]>()
@@ -40,7 +48,7 @@ vi.mock('../../src/renderer/src/composables/useAgentStore', () => ({
   useAgentStore: () => agentStore,
 }))
 vi.mock('../../src/renderer/src/composables/useModelLists', () => ({
-  useModelLists: () => createModelLists(() => window.api.runtime),
+  useModelLists: () => suppliedLists ?? fixtureLists,
 }))
 
 const agents: AgentIdentities = {
@@ -136,6 +144,13 @@ export const runtime = {
   agentIdentities: vi.fn(async () => agents),
   profiles: vi.fn<RuntimeBridge['profiles']>(async () => []),
   capabilities: vi.fn(async () => ({})),
+  providerLaunchChoices: async (input: Parameters<RuntimeBridge['providerLaunchChoices']>[0]) =>
+    launchFacts(
+      await window.api.runtime.modelList(input),
+      await window.api.runtime.checkProviderAuth(input),
+    ),
+  resolveProviderLaunch: async (input: Parameters<RuntimeBridge['resolveProviderLaunch']>[0]) =>
+    resolveProviderLaunch(input, null),
   providerVersions: vi.fn(async () => []),
   questionsForAPerson: vi.fn<RuntimeBridge['questionsForAPerson']>(async () => walk()),
   decisionsForAPerson: vi.fn(async () => walk()),
@@ -164,6 +179,7 @@ export const runtime = {
 }
 
 export function installRuntimeScreenFixture(): void {
+  suppliedLists = null
   forgetProfileSignIns()
   for (const provider of ['claude', 'codex'] as const)
     useProfileSignIn(provider, DEFAULT_PROFILE_ID).auth = {
@@ -185,8 +201,11 @@ export function installRuntimeScreenFixture(): void {
   usePersonsQueue().forget()
   runtime.questionsForAPerson.mockReset().mockResolvedValue(walk())
   runtime.workIncidentsForAPerson.mockReset().mockResolvedValue(walk())
+  providersBridge()
+  const providerFacts = window.api.runtime
   window.api = {
-    runtime,
+    ...window.api,
+    runtime: { ...providerFacts, ...runtime },
     getAppInfo: async () => ({
       name: 'Fictional BroBot',
       windowTitle: 'Fictional BroBot',
@@ -197,6 +216,7 @@ export function installRuntimeScreenFixture(): void {
       db: { migrationsApplied: 0, providerSessionCount: 0 },
     }),
   } as unknown as Window['api']
+  fixtureLists = createModelLists(() => window.api.runtime)
   sessions = createSessionStore(window.api.runtime as RuntimeBridge)
   agentStore = createAgentStore(window.api.runtime)
 }
@@ -257,4 +277,12 @@ export function agentBookAnswers() {
     }),
   }
   return { skills, book }
+}
+
+export function replaceFixtureModelLists(lists: ModelLists | null): void {
+  suppliedLists = lists
+}
+
+export function replaceFixtureSessionStore(store: SessionStore): void {
+  sessions = store
 }

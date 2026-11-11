@@ -1,5 +1,6 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
+import { transcriptEventForDisplay } from '../src/main/providers/error-presentation'
 import { A_RENEWED_SIGN_IN_SAYS } from '../src/shared/a-renewed-sign-in'
 import {
   applyEvent,
@@ -50,7 +51,8 @@ const CARRIES_ON = ev({ type: 'user_turn', text: '', attribution: 'app_authored'
 
 const folded = (...events: TranscriptEvent[]): TranscriptState => {
   const state = createTranscript()
-  for (const event of events) applyEvent(state, event)
+  for (const event of events)
+    applyEvent(state, transcriptEventForDisplay(event, state.ref?.provider))
   return state
 }
 const rowsSaid = (state: TranscriptState): string[] =>

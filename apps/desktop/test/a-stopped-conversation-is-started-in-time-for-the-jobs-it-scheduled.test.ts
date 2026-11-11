@@ -1338,7 +1338,12 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     // ⚑ The row as its ledger holds it: the same ordinal, moment and row, so a window that reads
     // the ledger again draws it once.
     const stored = store.events(f).find((one) => one.ordinal === level?.ordinal)
-    expect(level).toEqual({ sessionId: f, ...stored })
+    expect(level).toEqual({
+      sessionId: f,
+      ...stored,
+      agentState: null,
+      published: { epoch: host.currentEpoch(), seq: expect.any(Number) },
+    })
     // ⚑ …and the word held for its next start, which that window draws as a reopen would.
     expect(
       shown.some(
@@ -1386,7 +1391,12 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     expect(written).toHaveLength(2)
     // ⚑ The window still on it is shown each, exactly as stored.
     for (const row of written) {
-      expect(stays.messages).toContainEqual({ sessionId: f, ...row })
+      expect(stays.messages).toContainEqual({
+        sessionId: f,
+        ...row,
+        agentState: null,
+        published: { epoch: host.currentEpoch(), seq: expect.any(Number) },
+      })
     }
     // ⛔ The one that moved is shown nothing of F.
     expect(moved.messages.filter((one) => one.sessionId === f)).toEqual([])

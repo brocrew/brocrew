@@ -14,7 +14,7 @@ import {
   markReopened,
   type TranscriptState,
   type UserInputItem,
-} from '../src/renderer/src/lib/transcript'
+} from './lib/core-transcript'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { renderChatMarkdown, renderMarkdown } from '../src/renderer/src/lib/markdown'
 import type { RuntimeEvent } from '../src/shared/runtime-ipc'

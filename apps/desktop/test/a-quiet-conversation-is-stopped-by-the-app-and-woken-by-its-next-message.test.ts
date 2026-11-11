@@ -520,8 +520,9 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
     expect(cleared().has(first.timer)).toBe(true)
     const fresh = theOneLive()
     expect(fresh.timer).not.toBe(first.timer)
-    // The fresh count was armed by a flush that derived an equal word: nothing was pushed.
-    expect(saidOf(a).length).toBe(before)
+    // The equal state is republished to clear the pending reading; the timer is still renewed.
+    expect(saidOf(a).length).toBe(before + 1)
+    expect(lastSaid(a)?.is).toBe('idle')
 
     // The stale callback, by hand: it is no longer this conversation's, and says nothing.
     await fire(first)
@@ -975,13 +976,13 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
     asksDouble.simulateBackgroundWork({ running: [] })
     await settle()
 
-    // The word stays "waiting on an answer", because waiting outranks the level: nothing is pushed
-    // for it, and only the level itself can hold the stop back.
+    // Waiting still outranks the level; its canonical state is republished after invalidation.
+    // Only the level itself can hold the stop back.
     const saidBefore = saidOf(asks).length
     expect(saidBefore).toBeGreaterThan(0)
     asksDouble.simulateBackgroundWork()
     await settle()
-    expect(saidOf(asks)).toHaveLength(saidBefore)
+    expect(saidOf(asks)).toHaveLength(saidBefore + 1)
     expect(lastSaid(asks)?.is).toBe('waiting-on-an-answer')
 
     // The quiet worker is stopped, so the run-out reached the others; the asker, which holds a

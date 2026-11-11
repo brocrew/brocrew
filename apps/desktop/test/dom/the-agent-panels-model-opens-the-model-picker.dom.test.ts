@@ -1,3 +1,5 @@
+import { launchFacts, resolveProviderLaunch } from '../lib/provider-launch-fixture'
+import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
 import type { ModelList, WhatAPickBecame } from '../../src/shared/model-choice-contracts'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -47,7 +49,13 @@ const listOf = (provider: Provider): ModelList => ({
 
 function installBridge(): void {
   ;(window as unknown as { api: unknown }).api = {
-    runtime: { modelList: async ({ provider }: { provider: Provider }) => listOf(provider) },
+    runtime: {
+      modelList: async ({ provider }: { provider: Provider }) => listOf(provider),
+      providerLaunchChoices: async ({ provider }: { provider: Provider }) =>
+        launchFacts(listOf(provider)),
+      resolveProviderLaunch: async (input: Parameters<RuntimeBridge['resolveProviderLaunch']>[0]) =>
+        resolveProviderLaunch(input, null),
+    },
   }
 }
 

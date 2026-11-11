@@ -1,3 +1,4 @@
+import { resolveProviderLaunchSchema } from './provider-launch-schema'
 import { SkillsRequest } from '../../shared/skills-window'
 import { LINK_TARGET_LIMIT } from '../../shared/link-resolution'
 import { MOVE_WORDS } from '../../shared/move-request'
@@ -959,6 +960,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
    * looks up whichever provider is selected.
    */
   z.object({ kind: z.literal('capabilities') }),
+  z.object({ kind: z.literal('providerCatalogue') }),
   z.object({ kind: z.literal('providerConnections') }),
   /**
    * Which profiles exist (167). Parameterless for the same reason again, and one more: the renderer
@@ -1190,6 +1192,8 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
    * `isPathSegment`-checked profile, absent meaning BroBot's own — the credential gestures' shape.
    */
   z.object({ kind: z.literal('modelList'), provider: providerSchema, profileId }),
+  z.object({ kind: z.literal('providerLaunchChoices'), provider: providerSchema, profileId }),
+  resolveProviderLaunchSchema(profileId),
   /**
    * ⚑ **D-042 · R3 — a model a person adds to, or takes off, a provider's list** — bounded as
    * `createSession`'s `model` is, with no control characters: it is shown in a list and sent as is.
@@ -1558,6 +1562,7 @@ type QuitRuling = 'refused' | 'answered'
 const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // ── Touches no database ────────────────────────────────────────────────────────────────────────
   capabilities: 'answered',
+  providerCatalogue: 'answered',
   profiles: 'answered',
   checkCwd: 'answered',
   // ⚑ Forgets which window looks at a conversation, held in memory only.
@@ -1635,6 +1640,8 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // ⚑ **D-042 · the model list's three doors — refused, `agentModelAndEffort`'s reason**: each reads
   // or writes the database a quit closes, and the list read may ask a provider, which is a launch.
   modelList: 'refused',
+  providerLaunchChoices: 'refused',
+  resolveProviderLaunch: 'refused',
   addHandAddedModel: 'refused',
   deleteHandAddedModel: 'refused',
   // 🔒 **The API-key doors — refused, `modelList`'s reason**: each reads or writes the database a
@@ -1980,6 +1987,8 @@ const WHAT_A_PERSONS_VERB_DOES: Partial<Record<RuntimeCommandKind, string>> = {
   agentMemory: 'reads an agent’s own memory',
   agentModelAndEffort: 'reads the model an agent starts on',
   modelList: 'reads the models a provider offers',
+  providerLaunchChoices: 'reads a provider’s readiness and launch choices',
+  resolveProviderLaunch: 'reads the provider a launch resolves to',
   whatThisAgentWasGiven:
     'reads everything an agent was given: its instructions, its tools and its memory',
   whatTheModelGot: 'reads a message as the model got it, with the agent’s own instructions',
@@ -2691,6 +2700,8 @@ export async function executeRuntimeCommand(
       return host.latestHistory(command.sessionId) satisfies Answer<'latestHistory'>
     case 'capabilities':
       return host.capabilities() satisfies Answer<'capabilities'>
+    case 'providerCatalogue':
+      return host.providerCatalogue() satisfies Answer<'providerCatalogue'>
     case 'providerConnections':
       return host.providerConnections() satisfies Answer<'providerConnections'>
     case 'profiles':
@@ -2828,6 +2839,15 @@ export async function executeRuntimeCommand(
       // ⚑ **Gated like `agentIdentities`, the roster it sits beside** (677): the sheet is a person's.
       requireAPerson(sink, command.kind)
       return host.agentModelAndEffort(command.profileId) satisfies Answer<'agentModelAndEffort'>
+    case 'providerLaunchChoices':
+      requireAPerson(sink, command.kind)
+      return host.providerLaunchChoices(
+        command.provider,
+        command.profileId ?? DEFAULT_PROFILE_ID,
+      ) satisfies Answer<'providerLaunchChoices'>
+    case 'resolveProviderLaunch':
+      requireAPerson(sink, command.kind)
+      return host.resolveProviderLaunch(command) satisfies Answer<'resolveProviderLaunch'>
     case 'modelList':
       // ⚑ **D-042 · gated like `agentModelAndEffort`**: the list carries a person's own models and
       // last pick. ⚑ The profile defaults HERE, the credential gestures' rule: every path that

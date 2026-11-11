@@ -3,6 +3,12 @@
  * current versions; or one signed out and the other running on a saved key. Fake data only: no
  * account, plan or figure here is anybody's.
  */
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
+import {
+  providerLaunchChoices,
+  resolveProviderLaunch,
+} from '../../src/main/runtime/provider-launch'
+
 const NOW = Date.now()
 const HOUR = 3_600_000
 
@@ -15,12 +21,30 @@ const MODELS: Record<Provider, string[]> = {
 
 const USAGE = {
   claude: [
-    { window: 'five_hour', usedPercent: 42, resetsAt: NOW + 2.5 * HOUR, at: NOW - 60_000 },
-    { window: 'seven_day', usedPercent: 67, resetsAt: NOW + 3 * 24 * HOUR, at: NOW - 60_000 },
+    {
+      window: 'five_hour',
+      period: { word: '5-hour', durationMs: 5 * HOUR, bucket: false, bucketName: null },
+      usedPercent: 42,
+      resetsAt: NOW + 2.5 * HOUR,
+      at: NOW - 60_000,
+    },
+    {
+      window: 'seven_day',
+      period: { word: 'weekly', durationMs: 7 * 24 * HOUR, bucket: false, bucketName: null },
+      usedPercent: 67,
+      resetsAt: NOW + 3 * 24 * HOUR,
+      at: NOW - 60_000,
+    },
   ],
   // Codex reports its weekly window only.
   codex: [
-    { window: 'a 7-day window', usedPercent: 31, resetsAt: NOW + 5 * 24 * HOUR, at: NOW - 300_000 },
+    {
+      window: 'a 7-day window',
+      period: { word: 'weekly', durationMs: 7 * 24 * HOUR, bucket: false, bucketName: null },
+      usedPercent: 31,
+      resetsAt: NOW + 5 * 24 * HOUR,
+      at: NOW - 300_000,
+    },
   ],
 }
 
@@ -102,6 +126,7 @@ export function providersBridge(signedOut = false): void {
   const keySet = (provider: Provider) => signedOut && provider === 'codex'
   window.api = {
     runtime: {
+      providerCatalogue: async () => PROVIDER_DESCRIPTORS,
       providerConnections: async () =>
         (['claude', 'codex'] as const).flatMap((provider) => [
           {
@@ -206,4 +231,8 @@ export function providersBridge(signedOut = false): void {
       listUnresumable: async () => [],
     },
   } as never
+  const runtime = window.api.runtime
+  runtime.providerLaunchChoices = async (input) =>
+    providerLaunchChoices(await runtime.modelList(input), await runtime.checkProviderAuth(input))
+  runtime.resolveProviderLaunch = async (input) => resolveProviderLaunch(input, null)
 }

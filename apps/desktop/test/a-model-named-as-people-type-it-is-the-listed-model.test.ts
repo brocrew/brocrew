@@ -1,9 +1,11 @@
 import type { ModelList } from '../src/shared/model-choice-contracts'
 import { describe, expect, it } from 'vitest'
+import { launchFacts } from './lib/provider-launch-fixture'
+import type { LaunchChoices } from '../src/renderer/src/lib/launch-choices'
 import { NO_LAUNCH_CHOICES } from '../src/renderer/src/lib/launch-choices'
 import {
   inTheListsSpelling,
-  theFormSends,
+  theFormSends as sendFromFacts,
   thePickerRows,
 } from '../src/renderer/src/lib/model-lists'
 
@@ -28,6 +30,9 @@ const row = (id: string, extra: object = {}) => ({
   addedBy: 'the-provider' as const,
   ...extra,
 })
+
+const theFormSends = (choices: LaunchChoices, list: ModelList) =>
+  sendFromFacts(choices, launchFacts(list))
 
 const OPUS_1M = 'claude-opus-5-5[1m]'
 

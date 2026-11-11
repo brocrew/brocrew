@@ -104,6 +104,7 @@ describe('310 §2 · the model field says WHICH silence it is in', () => {
           ok: false,
           reason: 'refused',
           detail: 'not logged in at /fictional/auth.json',
+          setupRequired: true,
         },
       }),
     )
@@ -196,4 +197,16 @@ describe('310 §2 · the model field says WHICH silence it is in', () => {
     // The paired positive: the id it WAS handed does come through, in the states that name one.
     expect(modelField(world({ catalogue: null, provider: 'zzz' })).message).toContain('zzz')
   })
+})
+
+it('does not infer setup from native-looking diagnostic words without a supplied setup fact', () => {
+  const field = modelField(
+    world({
+      catalogue: { ok: false, reason: 'refused', detail: 'auth.json not found; not logged in' },
+    }),
+  )
+  expect(field.notSetUp).toBe(false)
+  expect(field.retry).toBe(true)
+  expect(field.message).toBe("codex didn't answer. Try again.")
+  expect(field.detail).toBe('auth.json not found; not logged in')
 })

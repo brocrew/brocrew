@@ -28,6 +28,12 @@ export type {
   ResumableSessionInfo,
   UnresumableSessionInfo,
 } from './conversation-listing-contracts'
+import type { WorkAncestry } from './work-ancestry'
+import type {
+  ProviderLaunchChoices,
+  ResolveProviderLaunchInput,
+  ResolvedProviderLaunch,
+} from './provider-launch'
 import type { DecideMoveRequestInput, MoveRequestAck } from './move-contracts'
 import type {
   LedgerWalk,
@@ -150,7 +156,13 @@ import type {
   WorkflowPhase,
 } from '@brobot2/runtime'
 import { DEFAULT_IDENTITY_PROVIDER } from '@brobot2/shared/providers'
-import type { Provider, ProviderConnection, SessionStatus, TurnEnding } from '@brobot2/shared'
+import type {
+  Provider,
+  ProviderConnection,
+  ProviderDescriptor,
+  SessionStatus,
+  TurnEnding,
+} from '@brobot2/shared'
 
 // ⚑ **The capability schema, which is a `src/shared` module and holds no zod** (355) — the same
 // rule this file is written under, so the renderer may name a capability without paying for a
@@ -856,6 +868,15 @@ export const A_STANDING_IN_A_WORD: Readonly<Record<ProviderProgramStanding, stri
  */
 export interface ProviderUsageReading {
   readonly window: string
+  /** Core warning for this current reading; absent on older serialized readings. */
+  readonly warning?: ProviderLimitSeen | null
+  /** Core interpretation of the raw window; absent on older serialized readings. */
+  readonly period?: {
+    readonly word: string | null
+    readonly durationMs: number | null
+    readonly bucket: boolean
+    readonly bucketName: string | null
+  }
   readonly usedPercent: number | null
   readonly resetsAt: number | null
   /** When this app received it. */
@@ -2847,6 +2868,8 @@ export const HISTORY_WINDOW_MAX_EVENTS = 2_500
  * row while the app runs; a migration that removes rows may renumber them before any window opens.
  */
 export interface HistoryWindow {
+  /** Core-owned relationships and the indexed ancestor rows needed outside this page. */
+  workAncestry?: WorkAncestry
   /** Latest observed human turn, even when it precedes this bounded page. */
   humanAnswers?: import('./human-answer-contracts').HumanAnswers
   /** The ledger slice, in order. Empty is a state the UI renders, not an error. */
@@ -3014,6 +3037,12 @@ export interface ReleasedSession {
  * key without inventing one.
  */
 export interface RuntimeEventMessage {
+  /** Current core state, or explicitly pending until the existing state flush. Absent on history. */
+  agentState?: AgentState | null
+  published?: RuntimeStatesMessage['published']
+  ancestryContext?: readonly PersistedEventInfo[]
+  /** Updated by core when a provider work relationship changes. */
+  workAncestry?: WorkAncestry
   /** History reads supply canonical per-turn context, including for pages cut mid-turn. */
   humanFinal?: import('./human-answer-contracts').HumanFinalContext | null
   sessionId: string
@@ -4284,12 +4313,15 @@ export type RuntimeCommand =
   | ({ kind: 'earlierHistory' } & EarlierHistoryInput)
   | ({ kind: 'latestHistory' } & SessionInput)
   | { kind: 'capabilities' }
+  | { kind: 'providerCatalogue' }
   | { kind: 'providerConnections' }
   /**
    * 🔴 **D-042 · R3 — the one list a person picks from**, for one provider and one agent
    * ({@link ModelList}). ⚑ `profileId` absent is BroBot's own.
    */
   | ({ kind: 'modelList' } & ProviderProfileInput)
+  | ({ kind: 'providerLaunchChoices' } & ProviderProfileInput)
+  | ({ kind: 'resolveProviderLaunch' } & ResolveProviderLaunchInput)
   /**
    * ⚑ **D-042 · R3 — a person adds a model to a provider's list by hand.** ⛔ Never checked when added:
    * no test call, nothing spent. A provider that refuses it says so at the call that names it.
@@ -5022,6 +5054,7 @@ export interface RuntimeCommandResults {
   latestHistory: HistoryWindow
   /** What each provider can do, as the adapters declare it (039). */
   capabilities: ProviderCapabilityMap
+  providerCatalogue: readonly ProviderDescriptor[]
   providerConnections: readonly ProviderConnection[]
   /**
    * Every profile that exists, {@link DEFAULT_PROFILE_ID} first (167).
@@ -5113,6 +5146,8 @@ export interface RuntimeCommandResults {
   agentModelAndEffort: AgentModelChoice | null
   /** ⚑ **D-042 · R3** — {@link ModelList}. */
   modelList: ModelList
+  providerLaunchChoices: ProviderLaunchChoices
+  resolveProviderLaunch: ResolvedProviderLaunch
   /** ⚑ **D-042 · R3** — the provider's hand-added models after the add. */
   addHandAddedModel: readonly string[]
   /** ⚑ **D-042 · R3** — the provider's hand-added models after the delete. */
@@ -5278,6 +5313,8 @@ export interface ProviderProfileInput {
  * every producer of it is a sentence about the flow, not about the token.
  */
 export interface ProviderSignInResult {
+  /** Opaque completion words; success and state remain the actual sign-in result. */
+  presentation?: { readonly message: string }
   success: boolean
   detail?: string
   state: AuthState
@@ -5291,6 +5328,8 @@ export type RuntimeCommandResult<K extends RuntimeCommandKind> = RuntimeCommandR
  * gone; `onEvent` returns its own unsubscribe.
  */
 export interface RuntimeBridge {
+  providerLaunchChoices(input: ProviderProfileInput): Promise<ProviderLaunchChoices>
+  resolveProviderLaunch(input: ResolveProviderLaunchInput): Promise<ResolvedProviderLaunch>
   skills(request: SkillsRequest): Promise<SkillsReply>
   /**
    * 🔴 **716 · `710` F-7 — a refusal ANSWERED, with its word, when the input asks**
@@ -5746,6 +5785,8 @@ export interface RuntimeBridge {
    * this map indexed by its provider. Never branch on the provider instead of asking.
    */
   capabilities(): Promise<ProviderCapabilityMap>
+  /** Registered descriptor facts in declaration order, without probing a provider. */
+  providerCatalogue(): Promise<readonly ProviderDescriptor[]>
   /** Existing connection metadata only; no credential, home preparation or provider probe. */
   providerConnections(): Promise<readonly ProviderConnection[]>
   /**

@@ -121,6 +121,7 @@ describe('a provider that was only too slow is asked again', () => {
         ok: false,
         reason: 'refused',
         detail: 'no sign-in here',
+        setupRequired: true,
       })
     })
 

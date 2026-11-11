@@ -17,6 +17,7 @@ import {
   type ToolStanding,
 } from '../src/renderer/src/lib/tool-inventory'
 import {
+  boundInventory,
   qualifyWith as runtimeQualifyWith,
   splitQualified as runtimeSplitQualified,
 } from '../../../packages/runtime/src/tool-inventory'
@@ -55,6 +56,62 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 const CLAUDE_NAMING = { prefix: 'mcp__', separator: '__' }
 const CODEX_NAMING = { prefix: '', separator: '__' }
+
+it('reads fictional naming from the runtime payload without merging colliding or malformed names', () => {
+  const payload = boundInventory({
+    naming: { prefix: 'wire:', separator: '/' },
+    declared: {
+      server: 'crew',
+      tools: ['message_agent', 'a/b', 'missing'].map((name) => ({
+        name,
+        description: name,
+        parameters: [],
+      })),
+    },
+    published: {
+      tools: [
+        'wire:other/message_agent',
+        'wire:crew/a/b',
+        'wire:crew/message_agent',
+        'wire:crew/unknown',
+        'message_agent',
+        'mcp__crew__message_agent',
+        'wire:/message_agent',
+        'wire:crew/',
+      ],
+      servers: [{ name: 'other', status: 'new-status' }],
+    },
+  })
+  const state = createTranscript()
+  applyEvent(state, { type: 'tool_inventory', ...payload, source: 'init' } as TranscriptEvent)
+  const reading = readInventory(state.tools)
+  expect(reading.own?.tools.map((tool) => [tool.name, tool.standing])).toEqual([
+    ['message_agent', 'confirmed'],
+    ['a/b', 'confirmed'],
+    ['missing', 'offered'],
+  ])
+  expect(reading.unclaimed).toEqual(['wire:crew/unknown'])
+  expect(reading.foreign).toEqual([
+    { name: 'other', status: 'new-status', tools: ['wire:other/message_agent'] },
+  ])
+  expect(reading.builtins).toEqual([
+    'message_agent',
+    'mcp__crew__message_agent',
+    'wire:/message_agent',
+    'wire:crew/',
+  ])
+  expect(catalogue(reading).map((entry) => entry.name)).toEqual([
+    'wire:crew/message_agent',
+    'wire:crew/a/b',
+    'wire:crew/missing',
+    'wire:crew/unknown',
+    'wire:other/message_agent',
+    'message_agent',
+    'mcp__crew__message_agent',
+    'wire:/message_agent',
+    'wire:crew/',
+  ])
+})
 
 /** The five, as `agentToolsFor` declares them — names and shapes verbatim, prose cut down. */
 const DECLARED = {
@@ -384,21 +441,9 @@ describe('what tools this conversation has (358)', () => {
     expect(clean.tools.dropped).toBe(0)
   })
 
-  /**
-   * 🔴 **Two byte-identical copies of one rule, and this is what keeps them honest.**
-   *
-   * ⛔ **The renderer cannot import the runtime's copy.** A value import from `@brobot2/runtime`
-   * (or `@brobot2/shared`) costs the renderer bundle six figures of bytes and the vite config
-   * cannot resolve it at all — `import type` only. So `splitQualified`/`qualify` exist twice on
-   * purpose, which is exactly the `169` §1 hazard ("one rule spelled in N places drifts") that the
-   * codebase otherwise forbids.
-   *
-   * ⚑ **This test is the exception's price.** It is in the `desktop` project, which is node, so it
-   * can import BOTH and drive them through the same table. Fix one and not the other and this goes
-   * red — which is the only thing standing between the two copies and a silent disagreement about
-   * what a tool is called.
-   */
-  it('⛔ the renderer’s copy of the naming rule agrees with the runtime’s, input for input', () => {
+  it('runtime and renderer expose the same portable naming functions', () => {
+    expect(splitQualified).toBe(runtimeSplitQualified)
+    expect(qualify).toBe(runtimeQualifyWith)
     const CASES = [
       { naming: CLAUDE_NAMING, name: 'mcp__brobot__spawn_agent' },
       { naming: CLAUDE_NAMING, name: 'Bash' },

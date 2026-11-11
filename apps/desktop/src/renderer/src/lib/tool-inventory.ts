@@ -1,6 +1,9 @@
-import type { DeclaredTool, ToolNaming, ToolParameter } from '../../../shared/runtime-ipc'
+import type { DeclaredTool, ToolParameter } from '../../../shared/runtime-ipc'
+import { qualify, splitQualified } from '@brobot2/shared/tool-naming'
 import { fullTime } from './clock'
 import type { ToolRegistry } from './transcript-state-contracts'
+
+export { qualify, splitQualified } from '@brobot2/shared/tool-naming'
 
 /**
  * **What tools this conversation has, as one reading** (358) — the renderer half.
@@ -238,37 +241,6 @@ export function inventoryAsOf(reading: InventoryReading): string | null {
   if (reading.at === null) return null
   const when = fullTime(reading.at)
   return when === '' ? null : `Stated ${when}`
-}
-
-/**
- * Split a model-visible name into the server that qualifies it and the tool under it, or `null`
- * for one the provider owns itself.
- *
- * ⛔ **It takes the CONVENTION and never a provider** (039). The first draft of this function read
- * `provider === 'claude' ? …` and `provider-neutrality.test.ts` refused it by name: *"ask the
- * backend what the session SUPPORTS… rather than widening this list."* The two spellings ride the
- * event as {@link ToolNaming}, stated once by the adapter that knows them.
- *
- * ⚠️ **The server is everything up to the FIRST separator and the tool is the rest**, rather than a
- * split into exactly two: a tool name may contain `__` and a server name in practice does not, so
- * rejoining the tail is the reading that cannot lose half a name.
- */
-export function splitQualified(
-  naming: ToolNaming,
-  name: string,
-): { server: string; tool: string } | null {
-  if (!name.startsWith(naming.prefix)) return null
-  const body = name.slice(naming.prefix.length)
-  const at = body.indexOf(naming.separator)
-  if (at <= 0) return null
-  const tool = body.slice(at + naming.separator.length)
-  if (tool === '') return null
-  return { server: body.slice(0, at), tool }
-}
-
-/** How the model must spell one of `server`'s tools, given the provider's own convention. */
-export function qualify(naming: ToolNaming, server: string, tool: string): string {
-  return `${naming.prefix}${server}${naming.separator}${tool}`
 }
 
 /**

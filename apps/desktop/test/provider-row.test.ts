@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { usagePeriod } from '../src/main/providers/usage-period'
 import type { AuthState, ProviderProgramStanding, ProviderVersion } from '../src/shared/runtime-ipc'
 import { isReady } from '../src/renderer/src/lib/provider-setup-steps'
 import {
@@ -112,8 +113,20 @@ describe('one status vocabulary and one tightest limit line', () => {
   })
   it('uses the highest percentage without mutating the windows', () => {
     const readings = [
-      { window: 'five_hour', usedPercent: 42, resetsAt: NOW + 3600000, at: NOW },
-      { window: 'seven_day', usedPercent: 67, resetsAt: NOW + 86400000, at: NOW },
+      {
+        window: 'five_hour',
+        period: usagePeriod('five_hour'),
+        usedPercent: 42,
+        resetsAt: NOW + 3600000,
+        at: NOW,
+      },
+      {
+        window: 'seven_day',
+        period: usagePeriod('seven_day'),
+        usedPercent: 67,
+        resetsAt: NOW + 86400000,
+        at: NOW,
+      },
     ]
     expect(providerRowDetail(facts, readings, NOW)).toContain('Weekly limit: 67% used')
     expect(readings.map((reading) => reading.usedPercent)).toEqual([42, 67])
@@ -125,6 +138,7 @@ describe('one status vocabulary and one tightest limit line', () => {
         [
           {
             window: 'seven_day',
+            period: usagePeriod('seven_day'),
             usedPercent: 95,
             resetsAt: NOW - 3600000,
             at: NOW - 86400000,

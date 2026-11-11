@@ -1,5 +1,6 @@
 import type { WorkLedgerRead, WorkRow } from './work-ledger-read'
 export type { WorkRow } from './work-ledger-read'
+import { readAncestryContext, type AncestryContext } from './work-ancestry-reader'
 import { rowsUnreadOnce, THE_WHOLE_LEDGER, type RowsUnread, type SkipNote } from './rows-unread'
 import type {
   ReconciliationReceipt,
@@ -1049,6 +1050,12 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead {
     /** Inclusive ordinal floor for pages; omitted: the whole history before the upper bound. */
     fromOrdinal?: number,
   ): readonly ThreadLeadRow[]
+  ancestryContext(
+    sessionId: string,
+    page: readonly PersistedEvent[],
+    through: number,
+    budget: number,
+  ): AncestryContext
   turnWindow(sessionId: string, options: LedgerWindowQuery): LedgerWindow
   /** Bounded indexed context, independent of how many app turns follow the human turn. */
   latestHumanAnswers(sessionId: string): HumanAnswers
@@ -1572,6 +1579,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   findLive: () => null,
   events: () => [],
   eventsFrom: () => [],
+  ancestryContext: () => ({ epochs: [], entries: [], missing: [], truncated: false }),
   turnWindow: () => ({ entries: [], from: 0, hasOlder: false, turnAligned: true }),
   latestHumanAnswers: () => ({ latest: null, active: null }),
   humanFinalsInWindow: (): ReadonlyMap<number, HumanFinalContext> => new Map(),
@@ -7525,6 +7533,18 @@ export function createSessionStore(
         if (entries.length > 0) return entries
         from = last.ordinal + 1
       }
+    },
+
+    ancestryContext(sessionId, page, through, budget) {
+      return readAncestryContext(
+        db,
+        sessionId,
+        activeGeneration(sessionId),
+        page,
+        through,
+        budget,
+        (row) => toPersistedEvents([row])[0],
+      )
     },
 
     turnWindow(sessionId, options) {

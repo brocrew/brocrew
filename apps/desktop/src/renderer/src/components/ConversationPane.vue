@@ -48,6 +48,8 @@ import {
   parkedOnAnotherAnswer,
   sessionFacets,
   stateHere,
+  stateForRecord,
+  facetsForRecord,
   type SessionFacetInput,
 } from '../lib/agent-state'
 
@@ -1375,12 +1377,14 @@ const facetInput = computed<SessionFacetInput>(() => ({
  * over a row saying *active* was one screen saying two things.
  */
 const hostSays = computed((): AgentState | null =>
-  props.record.phase === 'recorded' ? (props.listedState ?? null) : null,
+  props.record.phase === 'recorded' && props.record.agentState === undefined
+    ? (props.listedState ?? null)
+    : null,
 )
 
 const agentFacets = computed(() => ({
   ...(hostSays.value === null
-    ? sessionFacets(facetInput.value)
+    ? facetsForRecord(props.record, sessionFacets(facetInput.value))
     : // What it needs a person for is this view's own to say: the cards it holds open.
       facetsOfState(hostSays.value, sessionFacets(facetInput.value).needing)),
   // A pending launch is current even while the transcript still shows the previous turn.
@@ -1414,13 +1418,15 @@ const settingsFixed = computed(
 const agentState = computed(
   () =>
     hostSays.value ??
-    stateHere(
-      props.record,
-      agentFacets.value,
-      props.answerFrom ?? null,
-      props.workWith ?? [],
-      props.waitsBegan,
-      props.stoppedWork ?? [],
+    stateForRecord(props.record, () =>
+      stateHere(
+        props.record,
+        agentFacets.value,
+        props.answerFrom ?? null,
+        props.workWith ?? [],
+        props.waitsBegan,
+        props.stoppedWork ?? [],
+      ),
     ),
 )
 

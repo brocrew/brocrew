@@ -1,7 +1,29 @@
+import {
+  earliest,
+  GRANTS_MAY_MOVE,
+  howItsWorkIsDrawn,
+  MOVES_A_LIVE_FACT,
+  MOVES_A_PIECE_THAT_WAITS_ON_WHO_WROTE,
+  MOVES_ITS_GIVERS_WAIT,
+  MOVES_ITS_NAME,
+  MOVES_WHAT_A_PERSON_IS_ASKED,
+  NAMES_WHAT_A_PERSON_IS_ASKED,
+  theSameLevel,
+} from './state-publication-inputs'
+import { WorkAncestryRead } from './work-ancestry'
 import type { RuntimeHostDeps } from './host-dependencies'
 export type { RuntimeHostDeps } from './host-dependencies'
 import { ConversationIdle } from './conversation-idle'
 import { ModelCatalogues } from './model-catalogues'
+import {
+  providerLaunchChoices as launchChoicesFor,
+  resolveProviderLaunch as resolveLaunch,
+} from './provider-launch'
+import type {
+  ProviderLaunchChoices,
+  ResolveProviderLaunchInput,
+  ResolvedProviderLaunch,
+} from '../../shared/provider-launch'
 import { filesLibraryForWindow, teamProfileGraphForWindow } from './window-reads'
 import type {
   FactsAQueueCarries,
@@ -153,7 +175,11 @@ import type { ProviderHomesReprovision } from '../../shared/runtime-ipc'
 import { providerKnowledge } from '../providers/index'
 import { legacyAccountRecordFormat, providerAuthPolicies } from '../providers/index'
 import type { IdentityFact, ProviderAuthPolicy } from '../providers/auth-policy'
-import { providerDefinitions } from '../providers/index'
+import {
+  providerDefinitions,
+  providerCatalogue as registeredProviderCatalogue,
+} from '../providers/index'
+import { transcriptEventForDisplay as projectTranscriptEvent } from '../providers/error-presentation'
 import {
   RejectedSessionLaunch,
   StoppedBeforeSend,
@@ -330,7 +356,7 @@ import { userProviderHomePath } from '../adopt/user-homes'
 
 import { readBundleFile } from '../archive/read-bundle'
 import { messageWithHandedPaths, recheckHandedPaths } from './handed-path'
-import { whyALaunchWasRefused } from './launch-refusal'
+import { modelSetupRequired, whyALaunchWasRefused } from './launch-refusal'
 import { ReopenQueue } from './reopen-queue'
 import {
   OTHER_CONVERSATIONS_SHOWN,
@@ -800,7 +826,6 @@ import type {
 // ⚑ **F097** — whose words a turn's messages are, read the same way by the fold.
 import { aPersonsOwnWords } from '../../shared/a-persons-own-words'
 import {
-  ROUTED_REQUEST_EVENT_TYPES,
   aRowADeliveryCanStart,
   ledgersSkippedOf,
   readOrSkip,
@@ -948,8 +973,6 @@ import {
   // `HostedSession.itsTurnDrives`; ⚑ D-027: of a turn that delivered several, the one they share.
   theDriveOfTheTurn,
   thePiecesTheTurnNames,
-  // ⚑ **D-019 · the rows that move a piece**, and so the name a question's asker waits on.
-  PIECE_EVENT_TYPES,
 } from '../../shared/tasks'
 import type { AgentMessageKind, WaitOn } from '../../shared/task-contracts'
 import type {
@@ -1125,6 +1148,8 @@ import {
   type PersonsQueueRefused,
 } from '../../shared/persons-published'
 import type { KeptReading, KeptUsage } from '../provider-usage-file'
+import { usageForDisplay } from '../providers/usage-display'
+import { limitsForDisplay } from '../providers/limit-meaning'
 import type { KnownAccount } from '../provider-accounts-file'
 import {
   whatChangedBlock,
@@ -1986,6 +2011,13 @@ interface WhoseTurnItIs {
 }
 
 interface HostedSession {
+  readonly workAncestry: WorkAncestryRead
+  workAncestryAfter: number
+  ancestrySeed?: {
+    from: number
+    through: number
+    context: ReturnType<SessionStore['ancestryContext']>
+  }
   readonly currentProviderLimits: () => ProviderLimitDisclosure
   readonly id: string
   readonly provider: Provider
@@ -2969,11 +3001,7 @@ const WHAT_A_REOPEN_ADDS: ReadonlySet<TranscriptEvent['type']> = new Set([
 
 /** Older provider events receive display metadata without changing their stored form. */
 function transcriptEventForDisplay(event: TranscriptEvent, owner?: Provider): TranscriptEvent {
-  const provider =
-    event.type === 'unknown' ? SUPPORTED_PROVIDERS.find((one) => one === event.provider) : owner
-  return provider === undefined
-    ? event
-    : (providerDefinitions[provider].transcripts.eventForDisplay?.(event) ?? event)
+  return projectTranscriptEvent(event, owner)
 }
 
 /** Display metadata travels with a row without changing its saved form or ordinal. */
@@ -3126,152 +3154,6 @@ interface WhoOwesIt {
   readonly owesAnAnswerTo: readonly string[]
   /** When the oldest question it owes an answer to was put to it, epoch ms, or `null`. */
   readonly owesAnAnswerSince: number | null
-}
-
-/** The earliest of some moments, or `null` when there are none. */
-function earliest(moments: readonly number[]): number | null {
-  return moments.length === 0 ? null : Math.min(...moments)
-}
-
-/**
- * ⚑ **D-019 · the rows of a conversation's own that move a live fact its one state reads**
- * (`RuntimeHost.stateOf`), besides the wait rows (`aWaitIsReadFrom`):
- *  - `status` — its provider's `handle.status()`, which only a status moves;
- *  - `background_work` and `scheduled_work` — the two levels (`takeTheLevels`);
- *  - `instruction_proposed` and `instruction_settled` — an ask against its rules
- *    (`cardReads().askingForRules`, read afresh at every flush).
- *
- * ⛔ **Every other row the provider streams — text, tool calls, tokens — moves nothing it reads**,
- * which is why a stream costs the push nothing.
- */
-/**
- * ⚑ **W4.189 · the rows that give a conversation a piece or end one** — so the grants its window is
- * shown are read again ({@link HostedSession.grants}).
- */
-const GRANTS_MAY_MOVE: ReadonlySet<TranscriptEvent['type']> = new Set<TranscriptEvent['type']>([
-  'work_given',
-  'work_replied',
-  'work_taken_back',
-  'work_closed',
-  'message_unqueued',
-])
-
-const MOVES_A_LIVE_FACT: ReadonlySet<TranscriptEvent['type']> = new Set<TranscriptEvent['type']>([
-  'status',
-  'background_work',
-  'scheduled_work',
-  'instruction_proposed',
-  'instruction_settled',
-])
-
-/**
- * ⚑ **F097 · the rows of a conversation's own that can move whether a piece it holds waits on the
- * person who wrote to it**, besides those that already mark it ({@link MOVES_A_LIVE_FACT}: the
- * status and the levels; `aWaitIsReadFrom`: a take-back, a close) — a turn opening or ending, a
- * message held (a person's reply) or leaving, a reply, its own status line on a piece, a
- * replacement. ⚑ Its one state reads that off its pieces' fold at each ask
- * (`RuntimeHost.aPieceItHoldsWaitsOnWhoWrote`), so these only mark it: nothing kept is forgotten.
- */
-const MOVES_A_PIECE_THAT_WAITS_ON_WHO_WROTE: ReadonlySet<TranscriptEvent['type']> = new Set<
-  TranscriptEvent['type']
->([
-  'user_turn',
-  'turn',
-  'message_queued',
-  'message_unqueued',
-  'work_replied',
-  'work_status_set',
-  'replaced_by',
-])
-
-/**
- * Two levels list the same jobs, in any order, each with the same known minute and the same word
- * on whether it is started for, and the same count.
- */
-const theSameLevel = (one: ScheduleLevel, other: ScheduleLevel): boolean =>
-  one.dropped === other.dropped &&
-  one.jobs.length === other.jobs.length &&
-  one.jobs.every((job) => {
-    const beside = other.jobs.find((held) => held.id === job.id)
-    return (
-      beside !== undefined &&
-      beside.schedule === job.schedule &&
-      beside.recurring === job.recurring &&
-      beside.prompt === job.prompt &&
-      beside.nominalAt === job.nominalAt &&
-      beside.notStarted === job.notStarted
-    )
-  })
-
-/**
- * ⚑ **D-019 · the rows that move what ANOTHER conversation's state calls this one** — *waiting on
- * an answer from <name>*, named by the piece it owns ({@link PIECE_EVENT_TYPES}, `workThatNames`) and
- * standing in the place of the one it replaced (`replaced_by`, `theOneInItsPlace`). ⚑ D-036 · and
- * *waiting on <name>*, named the same way.
- */
-const MOVES_ITS_NAME: ReadonlySet<TranscriptEvent['type']> = new Set<TranscriptEvent['type']>([
-  ...PIECE_EVENT_TYPES,
-  'replaced_by',
-])
-
-/**
- * ⚑ **D-036 · a piece's rows that move what its GIVER waits on** — in the owner's ledger: a give
- * opens it, a reply, a take-back or a close ends it ({@link TASK_IS_OPEN}). ⛔ A retitle, a status
- * line or a new brief moves none of that — what they can move is the name the giver's state calls
- * the owner by, which {@link MOVES_ITS_NAME} carries — and nor does a stall: a stalled piece is
- * still open.
- */
-/**
- * The rows the reads of a person's queue select — their questions and cards, asks against rules,
- * MCP server requests, and the pieces, stalls and held messages its work reads fold — so a commit
- * holding one tells every window `persons`. ⚑ A `status` counts only when it ends the provider,
- * as {@link aWaitReads} counts it; text, tool calls and tokens move nothing a person is asked.
- */
-const MOVES_WHAT_A_PERSON_IS_ASKED: ReadonlySet<TranscriptEvent['type']> = new Set<
-  TranscriptEvent['type']
->([
-  ...ROUTED_REQUEST_EVENT_TYPES,
-  ...PIECE_EVENT_TYPES,
-  ...MOVES_A_PIECE_THAT_WAITS_ON_WHO_WROTE,
-  'permission_request',
-  'user_input_request',
-  'instruction_proposed',
-  'instruction_settled',
-  'mcp_server_requested',
-  'mcp_server_request_settled',
-  'work_stall_told',
-  'work_interrupted',
-  'work_restarted',
-  'status',
-  // A level's end can leave a person's own turn's piece waiting on them.
-  'background_work',
-  'scheduled_work',
-])
-
-/** The tables whose rows name who asks and who is asked, so a write to one moves the queue. */
-const NAMES_WHAT_A_PERSON_IS_ASKED: ReadonlySet<string> = new Set(['agent_identity'])
-
-const MOVES_ITS_GIVERS_WAIT: ReadonlySet<TranscriptEvent['type']> = new Set<
-  TranscriptEvent['type']
->(['work_given', 'work_replied', 'work_taken_back', 'work_closed'])
-
-/**
- * ⚑ **D-033 · each OPEN piece a conversation holds, as a window draws it** — its composed state, and
- * a stall's cause beside it (the Work tab says why a piece stopped) — so
- * `RuntimeHost.sayWhenItsWorkMoved` compares what a window would draw differently, and nothing else.
- * ⛔ A piece that ended is left out: the verb that ended it said so.
- */
-function howItsWorkIsDrawn(composed: readonly PieceRow[]): ReadonlyMap<string, string> {
-  return new Map(
-    composed
-      .filter((piece) => TASK_IS_OPEN[piece.state])
-      .map((piece) => [piece.piece, asItIsDrawn(piece)] as const),
-  )
-}
-
-/** ⚑ **D-033 · one open piece, as a window draws it** — see {@link howItsWorkIsDrawn}. */
-function asItIsDrawn(piece: PieceRow): string {
-  return piece.stalledBecause === null ? piece.state : `${piece.state} · ${piece.stalledBecause}`
 }
 
 /** ⚑ **F009 · the most of an agent's conversations its record lists**, newest activity first. */
@@ -5015,7 +4897,10 @@ export class RuntimeHost implements LiveHost {
    * window drawing the passing one. ⚑ So the first word derived after a read, or after a launch, is
    * always pushed; a window that already holds it draws it again.
    */
-  private readonly stateSaid = new Map<string, string>()
+  private readonly stateSaid = new Map<
+    string,
+    { readonly key?: string; readonly state: AgentState | null }
+  >()
 
   /**
    * ⚑ **D-019 · the two wait reads a RUNNING conversation's state was last derived from** — its
@@ -8268,6 +8153,10 @@ export class RuntimeHost implements LiveHost {
     try {
       say({ moved, kept, published })
     } catch (error) {
+      for (const { conversation } of moved) {
+        this.stateSaid.delete(conversation)
+        this.statesToAsk.add(conversation)
+      }
       console.warn(`runtime host could not tell the windows what moved: ${errorMessage(error)}`)
     }
   }
@@ -8298,6 +8187,7 @@ export class RuntimeHost implements LiveHost {
       reads = this.cardReads()
     } catch (error) {
       console.warn(`runtime host could not say what its agents are doing: ${errorMessage(error)}`)
+      for (const conversation of asked) this.statesToAsk.add(conversation)
       return []
     }
     const unread = rowsUnreadOnce()
@@ -8318,11 +8208,12 @@ export class RuntimeHost implements LiveHost {
           this.conversationIdle.countTheIdleMinutes(conversation)
         const limits = this.providerBlockDisclosure(conversation)
         const said = JSON.stringify({ state, ...limits })
-        if (this.stateSaid.get(conversation) === said) continue
-        this.stateSaid.set(conversation, said)
+        if (this.stateSaid.get(conversation)?.key === said) continue
+        this.stateSaid.set(conversation, { key: said, state })
         this.providerBlockSaid.set(conversation, JSON.stringify(limits))
         moved.push({ conversation, state, ...limits })
       } catch (error) {
+        this.statesToAsk.add(conversation)
         console.warn(
           `runtime host could not say what ${conversation} is doing: ${errorMessage(error)}`,
         )
@@ -14321,7 +14212,7 @@ export class RuntimeHost implements LiveHost {
         continue
       }
       try {
-        sink.send(transcriptMessageForDisplay(message, provider))
+        sink.send(transcriptMessageForDisplay(this.withCurrentAgentState(message), provider))
       } catch (error) {
         console.warn(
           `runtime host could not show ${sessionId}'s new row to a window: ${errorMessage(error)}`,
@@ -17104,9 +16995,11 @@ export class RuntimeHost implements LiveHost {
     // 🔴 **F096 — and a window the provider's own figure puts near its limit** (80%), folded in
     // beside the walls it reported, so the band and the Providers card say it ({@link wallsFromUsage}).
     const near = wallsFromUsage(this.usageThatCounts(), walk.rows, now)
-    return near.length === 0
-      ? walk
-      : { ...walk, rows: foldProviderLimits([...walk.rows, ...near], [], now) }
+    return limitsForDisplay(
+      near.length === 0
+        ? walk
+        : { ...walk, rows: foldProviderLimits([...walk.rows, ...near], [], now) },
+    )
   }
 
   /** The legacy window contract also reads through the canonical limits worker. */
@@ -17114,7 +17007,7 @@ export class RuntimeHost implements LiveHost {
     if (this.deps.limitsReader === undefined) return this.limitsForAPerson()
     const result = await this.readWorkerLimits()
     if (this.launches.closed) throw new WindowReadUnavailable()
-    return result.display
+    return limitsForDisplay(result.display)
   }
 
   private async readWorkerLimits(): Promise<LimitsReadResult> {
@@ -17158,7 +17051,7 @@ export class RuntimeHost implements LiveHost {
           evaluatedAt: result.evaluatedAt,
           usageAt: result.inputCapturedAt,
           finishedAt: result.readFinishedAt,
-          walked: result.display,
+          walked: limitsForDisplay(result.display),
         },
       }
     } catch {
@@ -18089,6 +17982,9 @@ export class RuntimeHost implements LiveHost {
     try {
       return await this.readForWindow((): PublishedListing => {
         const { resumable, unresumable, complete } = this.theListing()
+        // A successful listing resumes pending state delivery, including when the listing was cached.
+        if ([...resumable, ...unresumable].some((row) => this.statesToAsk.has(row.sessionId)))
+          this.askTheFlush()
         const seq = this.publicationSeq
         return {
           resumable,
@@ -24228,6 +24124,25 @@ export class RuntimeHost implements LiveHost {
     this.reportRecordingFailure(session)
   }
 
+  /** Carry the current projection without querying a ledger on streaming frames. */
+  private withCurrentAgentState(message: RuntimeEventMessage): RuntimeEventMessage {
+    if (this.deps.statesMoved === undefined || this.launches.closed) return message
+    let known = this.stateSaid.get(message.sessionId)
+    if (known === undefined || this.statesToAsk.has(message.sessionId)) {
+      if (known?.state !== null) {
+        known = { state: null }
+        this.stateSaid.set(message.sessionId, known)
+        this.publicationSeq++
+      }
+      if (!this.statesToAsk.has(message.sessionId)) this.stateMayHaveMoved(message.sessionId)
+    }
+    return {
+      ...message,
+      agentState: known?.state ?? null,
+      published: { epoch: this.publicationEpoch, seq: this.publicationSeq },
+    }
+  }
+
   /**
    * 🔴 **The one door every ordinal-bearing message leaves by — and the place that notices when one
    * leaves out of turn** (320 §4.1).
@@ -24268,7 +24183,23 @@ export class RuntimeHost implements LiveHost {
       )
     }
     session.sentOrdinal = Math.max(session.sentOrdinal ?? message.ordinal, message.ordinal)
-    session.sink.send(transcriptMessageForDisplay(message, session.provider))
+    const outgoing =
+      message.event.type === 'reopened'
+        ? {
+            ...message,
+            workAncestry: {
+              update: true as const,
+              agents: [],
+              tools: [],
+              dispatches: [],
+              after: session.workAncestryAfter,
+              ...session.workAncestry.context(),
+            },
+          }
+        : message
+    session.sink.send(
+      transcriptMessageForDisplay(this.withCurrentAgentState(outgoing), session.provider),
+    )
   }
 
   /**
@@ -31953,15 +31884,10 @@ export class RuntimeHost implements LiveHost {
    */
   providerUsage(): Readonly<Record<Provider, readonly ProviderUsageReading[]>> {
     const held = this.usageAsHeld()
+    const now = this.now()
     // ⛔ Without the account a reading was read on: it is told to no window and no agent.
     const shown = (provider: Provider): readonly ProviderUsageReading[] =>
-      held[provider].map(({ window, usedPercent, resetsAt, at }) => ({
-        window,
-        usedPercent,
-        resetsAt,
-        at,
-        ...(this.usageUnconfirmed.has(provider) ? { unconfirmed: true as const } : {}),
-      }))
+      usageForDisplay(provider, held[provider], this.usageUnconfirmed.has(provider), now)
     return providerRecord(shown)
   }
 
@@ -33112,6 +33038,13 @@ export class RuntimeHost implements LiveHost {
         success: outcome.success,
         ...(outcome.error ? { detail: outcome.error } : {}),
         state: outcome.state,
+        ...(outcome.success
+          ? {
+              presentation: {
+                message: `Signed in to ${providerDescriptor(provider).displayName}.`,
+              },
+            }
+          : {}),
       }
     } finally {
       this.signIns.delete(key)
@@ -36035,12 +35968,77 @@ export class RuntimeHost implements LiveHost {
     })
     const first = window.entries[0]
     const last = window.entries.at(-1)
+    const live = options.before === undefined ? this.slots.get(sessionId)?.session : undefined
+    const cached = live?.ancestrySeed
+    const ancestryContext =
+      cached?.from === window.from && cached.through === (last?.ordinal ?? -1)
+        ? cached.context
+        : this.deps.store.ancestryContext(
+            sessionId,
+            window.entries,
+            last?.ordinal ?? -1,
+            HISTORY_WINDOW_MAX_EVENTS,
+          )
+    const pageOrdinals = new Set(window.entries.map((row) => row.ordinal))
+    let ancestryPosition = 0
+    const projected = ancestryContext.epochs.map((epoch, index) => {
+      const rows: (typeof window.entries)[number][] = []
+      while (
+        ancestryPosition < window.entries.length &&
+        window.entries[ancestryPosition]!.ordinal <= epoch.through
+      ) {
+        rows.push(window.entries[ancestryPosition++]!)
+      }
+      const contextRows = epoch.entries.filter((row) => !pageOrdinals.has(row.ordinal))
+      const ancestryRows = [
+        ...new Map([...epoch.entries, ...rows].map((row) => [row.ordinal, row])).values(),
+      ].sort((a, b) => a.ordinal - b.ordinal)
+      const ancestry = new WorkAncestryRead()
+      ancestry.seed(
+        ancestryRows.map((row) => row.event),
+        epoch,
+      )
+      return {
+        first: rows[0]?.ordinal,
+        reading: {
+          ...ancestry.read(),
+          after: epoch.after,
+          ...(index > 0 || rows[0]?.event.type === 'conversation_reset'
+            ? { reset: true as const }
+            : {}),
+        },
+        contextRows,
+        ancestryRows,
+        epoch,
+      }
+    })
+    const final = projected.at(-1)
+    if (live !== null && live !== undefined && final !== undefined) {
+      if (live.workAncestryAfter !== final.epoch.after) live.workAncestry.clear()
+      live.workAncestry.seedRows(final.ancestryRows, final.epoch)
+      live.workAncestry.beginDelivery()
+      live.workAncestryAfter = final.epoch.after
+      live.ancestrySeed = {
+        from: window.from,
+        through: last?.ordinal ?? -1,
+        context: ancestryContext,
+      }
+    }
+    const firstReadings = new Map(projected.map((one) => [one.first, one]))
+    const workAncestry = projected[0]?.reading ?? new WorkAncestryRead().read()
     const humanFinals =
       first === undefined || last === undefined
         ? new Map()
         : this.deps.store.humanFinalsInWindow(sessionId, first.ordinal, last.ordinal)
     return {
+      workAncestry,
       entries: window.entries.map((entry) => ({
+        ...(firstReadings.has(entry.ordinal)
+          ? {
+              workAncestry: firstReadings.get(entry.ordinal)!.reading,
+              ancestryContext: firstReadings.get(entry.ordinal)!.contextRows,
+            }
+          : {}),
         ordinal: entry.ordinal,
         at: entry.at,
         event: transcriptEventForDisplay(entry.event, provider),
@@ -36077,6 +36075,11 @@ export class RuntimeHost implements LiveHost {
    */
   capabilities(): ProviderCapabilityMap {
     return allProviderCapabilities()
+  }
+
+  /** Static registration facts; this read starts no provider operation. */
+  providerCatalogue(): ReturnType<typeof registeredProviderCatalogue> {
+    return registeredProviderCatalogue()
   }
 
   /** Return declared metadata only, without invoking any provider or credential operation. */
@@ -37915,6 +37918,20 @@ export class RuntimeHost implements LiveHost {
     return this.modelCatalogues.modelList(provider, profileId)
   }
 
+  async providerLaunchChoices(
+    provider: Provider,
+    profileId: string = DEFAULT_PROFILE_ID,
+  ): Promise<ProviderLaunchChoices> {
+    const list = await this.modelList(provider, profileId)
+    const auth = await this.checkProviderAuth(provider, profileId)
+    return launchChoicesFor(list, auth)
+  }
+
+  resolveProviderLaunch(input: ResolveProviderLaunchInput): ResolvedProviderLaunch {
+    const identity = this.modelCatalogues.itsProvider(input.profileId ?? DEFAULT_PROFILE_ID)
+    return resolveLaunch(input, identity.provider)
+  }
+
   addHandAddedModel(provider: Provider, model: string): readonly string[] {
     return this.modelCatalogues.addHandAddedModel(provider, model)
   }
@@ -39084,7 +39101,12 @@ export class RuntimeHost implements LiveHost {
       if (this.launches.closed) return { ok: false, reason: 'closing' }
       if (didNotAnswerInTime(error)) return this.aListReadTooSlowly(provider, error)
       console.warn(`model list for ${provider} unavailable: ${errorMessage(error)}`)
-      return { ok: false, reason: 'refused', detail: this.howAFailureReads(error) }
+      return {
+        ok: false,
+        reason: 'refused',
+        detail: this.howAFailureReads(error),
+        ...modelSetupRequired(error),
+      }
     }
     let launch: Launch | null = null
     try {
@@ -39151,7 +39173,12 @@ export class RuntimeHost implements LiveHost {
       }
       if (launch.signal.aborted) return { ok: false, reason: 'closing' }
       // 🔴 **710 · review** — a probe the machine ran short for says so, never its errno.
-      return { ok: false, reason: 'refused', detail: this.howAFailureReads(error) }
+      return {
+        ok: false,
+        reason: 'refused',
+        detail: this.howAFailureReads(error),
+        ...modelSetupRequired(error),
+      }
     }
   }
 
@@ -40150,9 +40177,24 @@ export class RuntimeHost implements LiveHost {
     //
     // Read AFTER `closeOpenTurn` and BEFORE the pump, exactly as the whole read was: the page has to
     // include the turn that was just closed, and nothing that arrives live afterwards.
-    // A start this app makes for itself — a message or an answer waking an agent, a renewed sign-in —
-    // hands no page on, so it reads none: a window that takes the conversation later reads its own.
+    // A background resume seeds only core work relationships; its history is not delivered.
     const startingOrdinal = this.deps.store.nextOrdinal(sessionId)
+    const ancestryWindow =
+      page === 'not-read'
+        ? this.deps.store.turnWindow(sessionId, {
+            turns: HISTORY_WINDOW_TURNS,
+            maxEvents: HISTORY_WINDOW_MAX_EVENTS,
+          })
+        : undefined
+    const ancestryContext =
+      ancestryWindow === undefined
+        ? undefined
+        : this.deps.store.ancestryContext(
+            sessionId,
+            ancestryWindow.entries,
+            ancestryWindow.entries.at(-1)?.ordinal ?? -1,
+            HISTORY_WINDOW_MAX_EVENTS,
+          )
     const history =
       page === 'not-read' ? noPageBefore(startingOrdinal) : this.historyWindow(sessionId, {})
 
@@ -40354,6 +40396,32 @@ export class RuntimeHost implements LiveHost {
       // ⚑ **A reopen, so everything before `startingOrdinal` is a previous life** (653) — and this
       // is the only moment the host knows where the seam is.
       continuesARecording: true,
+      onRegistered: (registered) => {
+        registered.workAncestryAfter =
+          ancestryContext?.epochs.at(-1)?.after ??
+          [...history.entries].reverse().find((row) => row.workAncestry !== undefined)?.workAncestry
+            ?.after ??
+          -1
+        const rows =
+          ancestryWindow === undefined
+            ? [...history.entries.flatMap((entry) => [...(entry.ancestryContext ?? []), entry])]
+            : [...(ancestryContext?.entries ?? []), ...ancestryWindow.entries]
+        registered.workAncestry.seedRows(
+          [...new Map(rows.map((row) => [row.ordinal, row])).values()].sort(
+            (a, b) => a.ordinal - b.ordinal,
+          ),
+          ancestryContext?.epochs.at(-1) ??
+            [...history.entries].reverse().find((row) => row.workAncestry !== undefined)
+              ?.workAncestry ??
+            history.workAncestry ?? { missing: [], truncated: false },
+        )
+        if (ancestryWindow !== undefined && ancestryContext !== undefined)
+          registered.ancestrySeed = {
+            from: ancestryWindow.from,
+            through: ancestryWindow.entries.at(-1)?.ordinal ?? -1,
+            context: ancestryContext,
+          }
+      },
       instructions: instructions?.instructions,
       ...(builtInSkills ? { builtInSkills } : {}),
       // ⚑ **D-024 · R1 — every life owes its own**, as it stood at this launch — ⚑ **W4.179** and on
@@ -41495,6 +41563,8 @@ export class RuntimeHost implements LiveHost {
       itsWorkWasReadBeforeItsWords: false,
       // Nothing has been sent, which is not the same as "ordinal 0 has been sent" — a resumed
       // session starts its counter part-way through a ledger it has published none of (320).
+      workAncestry: new WorkAncestryRead(),
+      workAncestryAfter: -1,
       sentOrdinal: null,
       // A session opens with nothing waiting: queueing needs a running turn and a user, and a
       // freshly registered session has had neither (077).
@@ -43850,6 +43920,8 @@ export class RuntimeHost implements LiveHost {
     // each agent doing* — every agent-spawned child is one — so a fold that only happened while a
     // window was open would be missing from exactly the conversations this read exists for.
     session.beingDone.observe(event, at)
+    const workAncestry = session.workAncestry.observe(wire)
+    if (wire.type === 'conversation_reset') session.ancestrySeed = undefined
     // The ordinal is taken and the row written whether or not anyone is listening.
     // Recording is what makes the session survive the process; if it only happened
     // while a window was open, closing one would punch holes in the ledger and the
@@ -43860,6 +43932,8 @@ export class RuntimeHost implements LiveHost {
         ? this.theOpenTurnOf(session)
         : null
     const ordinal = this.takeLedgerOrdinal(session)
+    session.workAncestry.remember({ event: wire, ordinal, at })
+    if (wire.type === 'conversation_reset') session.workAncestryAfter = ordinal
     this.record(session, () => this.deps.store.append(session.id, ordinal, wire, at))
     this.markWhatWasNotRecorded(session, ordinal, wire)
     this.rememberLedgerOrdinal(session, ordinal)
@@ -43984,7 +44058,16 @@ export class RuntimeHost implements LiveHost {
     // window that has gone"*, which is true of every line that DELIVERS TO A SURFACE and was never
     // true of that one.
     if (session.sink.alive) {
-      this.emit(session, { sessionId: session.id, ordinal, at, event: wire })
+      const ancestry = session.workAncestry.delivery(wire, workAncestry)
+      this.emit(session, {
+        sessionId: session.id,
+        ordinal,
+        at,
+        event: wire,
+        ...(ancestry === undefined
+          ? {}
+          : { workAncestry: { ...ancestry, after: session.workAncestryAfter } }),
+      })
       // 🔴 **Before `reportRecordingFailure`, not after, and this is the SECOND disorder — the one
       // no screenshot showed** (320 §4.1, found by the enumeration the dispatch asked for). That
       // notice takes its ordinal at SEND time, and on a turn-ending status where the database has

@@ -4,7 +4,7 @@ import { defineComponent, h, nextTick, reactive, ref } from 'vue'
 import type { CreatedSession } from '../../src/shared/runtime-ipc'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { createSessionRecord, type SessionRecord } from '../../src/renderer/src/lib/session-record'
-import { applyEvent } from '../../src/renderer/src/lib/transcript'
+import { applyEvent } from '../lib/core-transcript'
 import { META, mount, paneProps, permission, record, unmountAll } from './harness'
 
 /**

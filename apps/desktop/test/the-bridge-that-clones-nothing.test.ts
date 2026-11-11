@@ -493,6 +493,7 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   latestHistory: { how: 'plain-by-construction' },
   // ── what the app can run, and where ──────────────────────────────────────────────────────────
   capabilities: { how: 'nothing' },
+  providerCatalogue: { how: 'nothing' },
   providerConnections: { how: 'nothing' },
   profiles: { how: 'nothing' },
   checkProviderAuth: { how: 'plain-by-construction' },
@@ -573,6 +574,8 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   // every field it did not build — `provider`, `profileId`, `model` — is a string. ⚠️ No window
   // calls any of them yet: UI-012 draws the picker.
   modelList: { how: 'plain-by-construction' },
+  providerLaunchChoices: { how: 'plain-by-construction' },
+  resolveProviderLaunch: { how: 'plain-by-construction' },
   addHandAddedModel: { how: 'plain-by-construction' },
   deleteHandAddedModel: { how: 'plain-by-construction' },
   // 🔒 The API-key doors: each is built by the preload from `{ kind, ...input }`, every field a

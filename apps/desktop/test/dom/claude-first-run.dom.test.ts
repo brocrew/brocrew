@@ -1,3 +1,5 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
+import { providerDescriptor } from '@brobot2/shared'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, reactive } from 'vue'
@@ -5,7 +7,7 @@ import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
 import { providersBridge } from '../../look/fixtures/providers'
 import { wearTheme } from '../../look/fixtures/themes'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+
 import type { ProviderVersion } from '../../src/shared/runtime-ipc'
 import type { AuthState } from '../../src/shared/runtime-ipc'
 import type { ProviderSetupBridge, ProviderSetupState } from '../../src/shared/provider-setup'
@@ -128,6 +130,7 @@ function fixture(
   })
   const props = reactive({
     provider: 'claude' as const,
+    descriptor: providerDescriptor('claude'),
     capabilities: null,
     limit: null,
     limitsRead: true,
@@ -207,6 +210,7 @@ it.each(['classic', 'defined', 'crew-night'] as const)(
         h('section', { 'data-on-white': '', style: 'background:var(--panel)' }, [
           h(ProviderCard, {
             provider: 'claude',
+            descriptor: providerDescriptor('claude'),
             capabilities: null,
             limit: null,
             limitsRead: true,
@@ -347,12 +351,21 @@ it('uses CLI-owned browser sign-in and automatically retries a warming model cat
     'https://claude.ai/oauth/authorize?state=fictional-harbor',
   )
   signedIn()
-  publish({ phase: 'signed-in', progress: 'Signed in.', authUrl: null, exitCode: 0 })
+  publish({
+    phase: 'signed-in',
+    progress: 'Signed in.',
+    authUrl: null,
+    exitCode: 0,
+    completedSignInMessage: 'The supplied native sign-in completed.',
+  })
   await settle()
   expect(m.q('provider-models-said').textContent).toContain('Reading')
   expect(m.q('provider-models-said').textContent).not.toContain('Try again')
   await vi.waitFor(() => expect(m.all('provider-model-row')).toHaveLength(1))
   expect(modelList).toHaveBeenCalledTimes(3)
+  await vi.waitFor(() =>
+    expect(m.q('provider-auth-notice').textContent).toBe('The supplied native sign-in completed.'),
+  )
 })
 
 it('shows a persistent catalogue failure only after the bounded post-Check retries', async () => {

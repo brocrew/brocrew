@@ -372,7 +372,15 @@ describe('the Providers list opens the existing controls in one drawer', () => {
         : original(asked)
     const m = screen({
       warnings: {
-        walls: [{ provider: 'claude', standing: 'stopped', resetsAt: NOW + 3600000, said: [] }],
+        walls: [
+          {
+            provider: 'claude',
+            standing: 'stopped',
+            resetsAt: NOW + 3600000,
+            said: [],
+            meaning: [{ word: null, used: null, untimed: false }],
+          },
+        ],
         unread: false,
       },
     })

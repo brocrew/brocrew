@@ -46,10 +46,30 @@ const READ: Usage = (() => {
   const now = Date.now()
   return {
     claude: [
-      { window: 'five_hour', usedPercent: 28, resetsAt: now + 3 * HOUR, at: now - 60_000 },
-      { window: 'seven_day', usedPercent: 61.4, resetsAt: now + 48 * HOUR, at: now - 60_000 },
+      {
+        window: 'five_hour',
+        usedPercent: 28,
+        resetsAt: now + 3 * HOUR,
+        at: now - 60_000,
+        period: { word: '5-hour', durationMs: 5 * HOUR, bucket: false, bucketName: null },
+      },
+      {
+        window: 'seven_day',
+        usedPercent: 61.4,
+        resetsAt: now + 48 * HOUR,
+        at: now - 60_000,
+        period: { word: 'weekly', durationMs: 7 * 24 * HOUR, bucket: false, bucketName: null },
+      },
     ],
-    codex: [{ window: 'a 7-day window', usedPercent: 35, resetsAt: now + 96 * HOUR, at: now }],
+    codex: [
+      {
+        window: 'a 7-day window',
+        usedPercent: 35,
+        resetsAt: now + 96 * HOUR,
+        at: now,
+        period: { word: 'weekly', durationMs: 7 * 24 * HOUR, bucket: false, bucketName: null },
+      },
+    ],
   }
 })()
 
@@ -171,4 +191,29 @@ describe('a long window title leaves both clusters their own room', () => {
       expect(word.getBoundingClientRect().height).toBeLessThan(24)
     },
   )
+})
+
+it('places fictional raw windows by supplied period facts and excludes supplied bucket readings', async () => {
+  const now = Date.now()
+  const reading: ProviderUsageReading = {
+    window: 'fern native history without a duration',
+    usedPercent: 23,
+    resetsAt: now + HOUR,
+    at: now,
+    period: { word: 'weekly', durationMs: 9 * HOUR, bucket: false, bucketName: null },
+  }
+  const mounted = await bar({
+    claude: [
+      reading,
+      {
+        ...reading,
+        usedPercent: 99,
+        period: { word: '5-hour', durationMs: 9 * HOUR, bucket: true, bucketName: 'Fern branch' },
+      },
+    ],
+    codex: [],
+  })
+  const line = mounted.q('app-usage')
+  expect(line.textContent).toContain('week 23%')
+  expect(line.textContent).not.toContain('99%')
 })

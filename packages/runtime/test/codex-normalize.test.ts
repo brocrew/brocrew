@@ -2453,6 +2453,26 @@ describe('Codex 0.160.0 · what the bump added to the classifier', () => {
     ).toEqual({ outcome: 'failed', message: 'turn failed: boom' })
   })
 
+  it('the error notification and terminal read the same native explanation', () => {
+    const error = {
+      message: 'blocked',
+      misalignment: { detailedExplanation: 'the request asked for X' },
+    }
+    expect(normalizeNotification('error', { error })).toEqual([
+      { type: 'error', message: 'blocked — the request asked for X', fatal: false },
+    ])
+    expect(codexTurnOutcome({ turn: { status: 'failed', error } })).toEqual({
+      outcome: 'failed',
+      message: 'turn failed: blocked — the request asked for X',
+    })
+    expect(normalizeNotification('error', { message: 'legacy detail' })).toEqual([
+      { type: 'error', message: 'legacy detail', fatal: false },
+    ])
+    expect(normalizeNotification('error', {})).toEqual([
+      { type: 'error', message: 'codex error', fatal: false },
+    ])
+  })
+
   it('the new notifications are classified, never `unrecognized`', () => {
     const quiet = {
       'thread/reverted': 'lifecycle',
@@ -2473,64 +2493,5 @@ describe('Codex 0.160.0 · what the bump added to the classifier', () => {
       const [event] = normalizeNotification(method, { threadId: 't' })
       expect(event, method).toMatchObject({ type: 'unknown', category })
     }
-  })
-})
-
-describe('Codex 0.160.0 · a message that asks without waiting (request_user_input_async)', () => {
-  const ASYNC = {
-    type: 'agentMessage',
-    id: 'call_async',
-    text: 'Which database?\n- Postgres\n- SQLite',
-    phase: 'final_answer',
-    memoryCitation: null,
-    delivery: 'async',
-    questions: [{ title: 'Which database?', options: ['Postgres', 'SQLite'] }],
-  }
-
-  it('carries its questions on the message, and nothing waits on them', () => {
-    expect(normalizeNotification('item/completed', { item: ASYNC })).toEqual([
-      {
-        type: 'assistant_message',
-        text: 'Which database?\n- Postgres\n- SQLite',
-        phase: 'final',
-        questions: [{ title: 'Which database?', options: ['Postgres', 'SQLite'] }],
-      },
-    ])
-  })
-
-  it('only an ASYNC message carries them, and a malformed entry is dropped, never invented', () => {
-    expect(normalizeNotification('item/completed', { item: { ...ASYNC, delivery: null } })).toEqual(
-      [{ type: 'assistant_message', text: ASYNC.text, phase: 'final' }],
-    )
-    const [event] = normalizeNotification('item/completed', {
-      item: {
-        ...ASYNC,
-        questions: [
-          { title: '  ' },
-          { title: 'Free text?' },
-          { title: 'Pick', options: ['', 7, 'A'] },
-          'x',
-        ],
-      },
-    })
-    expect(event).toEqual({
-      type: 'assistant_message',
-      text: ASYNC.text,
-      phase: 'final',
-      questions: [{ title: 'Free text?' }, { title: 'Pick', options: ['A'] }],
-    })
-  })
-
-  it('is bounded: ten questions, ten options, and a long title cut with an ellipsis', () => {
-    const many = Array.from({ length: 12 }, (_, at) => ({
-      title: at === 0 ? 'x'.repeat(2500) : `q${at}`,
-      options: Array.from({ length: 12 }, (_, n) => `o${n}`),
-    }))
-    const [event] = normalizeNotification('item/completed', { item: { ...ASYNC, questions: many } })
-    const asked = event?.type === 'assistant_message' ? (event.questions ?? []) : []
-    expect(asked).toHaveLength(10)
-    expect(asked[0]?.title).toHaveLength(2000)
-    expect(asked[0]?.title.endsWith('…')).toBe(true)
-    expect(asked[1]?.options).toHaveLength(10)
   })
 })

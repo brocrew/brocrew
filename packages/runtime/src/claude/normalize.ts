@@ -1942,7 +1942,14 @@ export function claudeResultOutcome(
     const said = readString(message, 'result')
     return said ? { outcome: 'failed', message: `turn failed: ${said}` } : { outcome: 'failed' }
   }
-  const detail = readString(message, 'result') || message.subtype
+  const errors = readField(message, 'errors')
+  const details = [
+    readString(message, 'result'),
+    ...(Array.isArray(errors)
+      ? errors.filter((error): error is string => typeof error === 'string')
+      : []),
+  ].filter((detail) => detail.trim() !== '')
+  const detail = details.join('\n') || message.subtype
   return { outcome: 'failed', message: `turn failed: ${detail}` }
 }
 

@@ -1,10 +1,12 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
+import { providerDescriptor } from '@brobot2/shared'
 import { settleDom as settled } from './settle-dom'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
 // The approved plain words replace the former labels; the state and gesture checks remain.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+
 import { clockTimeFrom } from '../../src/shared/clock'
 import type { ProviderCondition } from '../../src/shared/provider-limit'
 import {
@@ -190,6 +192,7 @@ function theCard(
       return () =>
         h(ProviderCard as Component, {
           provider: over.provider ?? 'claude',
+          descriptor: providerDescriptor(over.provider ?? 'claude'),
           capabilities: over.capabilities ?? CAPS,
           limit: limit.value,
           limitsRead: true,
@@ -465,6 +468,7 @@ const stopped = (
   standing,
   says: '',
   said: ['claude is rate-limited (five_hour); resets 2026-10-03T15:50:00.000Z'],
+  meaning: [{ word: '5-hour', used: null, untimed: false }],
   resetsAt,
 })
 
@@ -764,7 +768,8 @@ describe('§6 · each usage box shows how much of its window has gone, and says 
     window: string,
     usedPercent: number | null,
     resetsAt: number | null,
-  ): ProviderUsageReading => ({ window, usedPercent, resetsAt, at: NOW })
+    period?: ProviderUsageReading['period'],
+  ): ProviderUsageReading => ({ window, usedPercent, resetsAt, at: NOW, period })
   const boxes = (m: Mounted): HTMLElement[] => [
     ...m.host.querySelectorAll<HTMLElement>('.usage-window'),
   ]
@@ -772,7 +777,19 @@ describe('§6 · each usage box shows how much of its window has gone, and says 
     box.querySelector<HTMLElement>(`[data-cy="${cy}"]`)
 
   it('🔴 a known window with a reset ahead gets a grey time bar and its words', async () => {
-    const { m } = theCard({}, { readings: [reading('five_hour', 42, NOW + 2.5 * HOUR)] })
+    const { m } = theCard(
+      {},
+      {
+        readings: [
+          reading('five_hour', 42, NOW + 2.5 * HOUR, {
+            word: '5-hour',
+            durationMs: 5 * HOUR,
+            bucket: false,
+            bucketName: null,
+          }),
+        ],
+      },
+    )
     await settled()
     const [box] = boxes(m)
     const bar = inBox(box!, 'provider-usage-time') as HTMLMeterElement
@@ -788,7 +805,19 @@ describe('§6 · each usage box shows how much of its window has gone, and says 
   })
 
   it('🔴 usage ahead of time turns the usage bar amber and says so in words', async () => {
-    const { m } = theCard({}, { readings: [reading('seven_day', 67, NOW + 3 * DAY)] })
+    const { m } = theCard(
+      {},
+      {
+        readings: [
+          reading('seven_day', 67, NOW + 3 * DAY, {
+            word: 'weekly',
+            durationMs: 7 * DAY,
+            bucket: false,
+            bucketName: null,
+          }),
+        ],
+      },
+    )
     await settled()
     const [box] = boxes(m)
     expect(text(inBox(box!, 'provider-usage-time-words')!)).toBe('4 of 7 days gone')
@@ -806,9 +835,24 @@ describe('§6 · each usage box shows how much of its window has gone, and says 
       {
         readings: [
           reading('overage', 10, NOW + HOUR),
-          reading('five_hour', 10, null),
-          reading('seven_day', 95, NOW - DAY),
-          reading('seven_day_opus', 3, NOW + DAY),
+          reading('five_hour', 10, null, {
+            word: '5-hour',
+            durationMs: 5 * HOUR,
+            bucket: false,
+            bucketName: null,
+          }),
+          reading('seven_day', 95, NOW - DAY, {
+            word: 'weekly',
+            durationMs: 7 * DAY,
+            bucket: false,
+            bucketName: null,
+          }),
+          reading('seven_day_opus', 3, NOW + DAY, {
+            word: 'weekly Opus',
+            durationMs: 7 * DAY,
+            bucket: false,
+            bucketName: null,
+          }),
         ],
       },
     )

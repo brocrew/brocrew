@@ -5,7 +5,6 @@ import {
   type Provider,
   type ProviderUsageReading,
 } from '../../../shared/runtime-ipc'
-import { usageWindowDetails, type UsageWindowDetails } from '../../../shared/usage-window'
 import type { ForestConversation } from '../../../shared/the-whole-forest'
 import { agoWords, fullTime } from '../lib/clock'
 import { NOT_MEASURED } from '../lib/agent-panel'
@@ -25,7 +24,7 @@ import { useWhoCalledWhom, type RunningConversation } from './useWhoCalledWhom'
  * process memory keeps the conversation page's existing reading.
  */
 
-/** The two windows the cells show, by `usageWindowWord`'s word, with the short name a cell uses. */
+/** The two windows the cells show, by their core-supplied period word, with the short name a cell uses. */
 const WINDOWS = [
   { word: '5-hour', short: '5h' },
   { word: 'weekly', short: 'week' },
@@ -65,11 +64,14 @@ const NOT_READ_MARK = '?'
 function readingIn(
   readings: readonly {
     readonly reading: ProviderUsageReading
-    readonly window: UsageWindowDetails
+    readonly window: ProviderUsageReading['period']
   }[],
   word: string,
 ): ProviderUsageReading | null {
-  return readings.find((one) => one.window.word === word && !one.window.hasBucket)?.reading ?? null
+  return (
+    readings.find((one) => one.window?.word === word && one.window?.bucket === false)?.reading ??
+    null
+  )
 }
 
 /** "28% · resets in 3 h 12 min"; "was 95% · reset 2 days ago" once the window has reset. */
@@ -110,7 +112,7 @@ export function useUsageCells(
     PROVIDERS.map((provider) => {
       const readings = (usage.value?.[provider] ?? []).map((reading) => ({
         reading,
-        window: usageWindowDetails(reading.window),
+        window: reading.period,
       }))
       return {
         provider,

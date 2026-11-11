@@ -197,6 +197,13 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   earlierHistory: { kind: 'earlierHistory', sessionId: SESSION, before: 3 },
   latestHistory: { kind: 'latestHistory', sessionId: SESSION },
   capabilities: { kind: 'capabilities' },
+  providerCatalogue: { kind: 'providerCatalogue' },
+  providerLaunchChoices: { kind: 'providerLaunchChoices', provider: 'claude' },
+  resolveProviderLaunch: {
+    kind: 'resolveProviderLaunch',
+    askedProvider: 'claude',
+    providers: [{ provider: 'claude', ready: true }],
+  },
   providerConnections: { kind: 'providerConnections' },
   profiles: { kind: 'profiles' },
   checkProviderAuth: { kind: 'checkProviderAuth', provider: 'claude' },
@@ -391,6 +398,7 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
  */
 const ANSWERED_DURING_A_QUIT: ReadonlySet<RuntimeCommandKind> = new Set([
   'capabilities',
+  'providerCatalogue',
   // What this run is called: nothing is read.
   'currentEpoch',
   'profiles',
@@ -532,6 +540,8 @@ const NEEDS_A_PERSON = new Set<RuntimeCommandKind>([
   // 🔴 **D-042 · R3 — the model list's three doors, gated with the two above** (`ipc.ts`'
   // `requireAPerson`). ⚠️ The list read is gated too: it carries the person's own models and last
   // pick, and only the person adds or deletes a model by hand.
+  'providerLaunchChoices',
+  'resolveProviderLaunch',
   'modelList',
   'addHandAddedModel',
   'deleteHandAddedModel',

@@ -42,3 +42,8 @@ export function whyALaunchWasRefused(error: unknown): LaunchRefusal | null {
   if (folderAPersonMustFixOf(error) !== null) return 'folder'
   return null
 }
+
+export function modelSetupRequired(error: unknown): { readonly setupRequired?: true } {
+  const reason = whyALaunchWasRefused(error)
+  return reason === 'sign-in' || reason === 'program' ? { setupRequired: true } : {}
+}

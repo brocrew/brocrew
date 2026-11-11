@@ -19,6 +19,7 @@ import {
 import { RESOURCE_ROLES } from '../../shared/documents'
 import { FOLD_TYPE_LIST } from './fold-index'
 import { HUMAN_CONTEXT_TERM, HUMAN_FINAL_TERM } from './human-answer-index'
+import { ANCESTRY_ACCESS, ANCESTRY_HAS_DISPATCH } from './work-ancestry-index'
 
 /** A SQL list of string literals, e.g. `'none', 'any'` — for a CHECK over a closed vocabulary. */
 function oneOf(words: readonly string[]): SQL {
@@ -290,6 +291,17 @@ export const events = sqliteTable(
     index('events_fold_idx')
       .on(t.sessionId, t.generation, t.ordinal)
       .where(sql`${t.type} IN (${sql.raw(FOLD_TYPE_LIST)})`),
+    ...Object.values(ANCESTRY_ACCESS).map((access) =>
+      index(access.index)
+        .on(
+          t.sessionId,
+          t.generation,
+          sql.raw(access.expression),
+          ...(access.index === 'events_ancestry_agent_idx' ? [sql.raw(ANCESTRY_HAS_DISPATCH)] : []),
+          t.ordinal,
+        )
+        .where(sql.raw(access.term)),
+    ),
     index('events_inventory_idx')
       .on(t.sessionId, t.generation, t.ordinal)
       .where(sql`${t.type} = 'tool_inventory'`),

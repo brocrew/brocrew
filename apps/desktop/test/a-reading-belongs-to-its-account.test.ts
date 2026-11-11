@@ -200,7 +200,14 @@ describe('a usage reading belongs to the account it was read on', () => {
         { window: 'a 7-day window', usedPercent: 3, resetsAt: null },
       ])
       expect(host.providerUsage().codex).toEqual([
-        { window: 'a 7-day window', usedPercent: 3, resetsAt: null, at: clock },
+        {
+          window: 'a 7-day window',
+          period: { word: 'weekly', durationMs: WEEK, bucket: false, bucketName: null },
+          warning: null,
+          usedPercent: 3,
+          resetsAt: null,
+          at: clock,
+        },
       ])
       expect(keptReadings('codex')).toEqual([
         { window: 'a 7-day window', usedPercent: 3, resetsAt: null, at: clock, account: OTHER },

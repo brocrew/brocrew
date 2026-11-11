@@ -21,7 +21,7 @@ import {
   toldClause,
   type NoticeItem,
   type TranscriptState,
-} from '../src/renderer/src/lib/transcript'
+} from './lib/core-transcript'
 import { composeReadable } from '../src/renderer/src/lib/readable-export'
 import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 

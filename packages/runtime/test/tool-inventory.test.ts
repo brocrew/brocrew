@@ -275,6 +275,37 @@ describe('flattening a tool’s arguments (358)', () => {
  * provider, so the two conventions are constants the adapters state rather than a branch.
  */
 describe('how a provider spells a server’s tool (358)', () => {
+  it('preserves fictional naming data and qualified identity through the inventory boundary', () => {
+    const naming = { prefix: 'wire:', separator: '/' }
+    const names = [
+      'wire:crew/message_agent',
+      'wire:crew/a/b',
+      'wire:other/message_agent',
+      'message_agent',
+      'mcp__crew__message_agent',
+      'wire:/message_agent',
+      'wire:crew/',
+    ]
+    const payload = boundInventory({
+      naming,
+      declared: null,
+      published: { tools: names, servers: [] },
+    })
+    expect(payload.naming).toEqual(naming)
+    expect(payload.published?.tools).toEqual(names)
+    expect(payload.dropped).toBe(0)
+    expect(names.map((name) => splitQualified(payload.naming, name))).toEqual([
+      { server: 'crew', tool: 'message_agent' },
+      { server: 'crew', tool: 'a/b' },
+      { server: 'other', tool: 'message_agent' },
+      null,
+      null,
+      null,
+      null,
+    ])
+    expect(qualifyWith(naming, 'crew', 'a/b')).toBe('wire:crew/a/b')
+  })
+
   it('the two conventions are what was measured, and they differ', () => {
     // Claude: `probe:tool-inventory` read `mcp__brobot__spawn_agent` out of `system/init.tools`.
     expect(qualifyWith(CLAUDE_TOOL_NAMING, 'brobot', 'spawn_agent')).toBe(

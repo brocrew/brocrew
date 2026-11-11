@@ -1,11 +1,18 @@
 import type {
+  ProviderLaunchChoices,
+  ProviderReadiness,
+  ResolveProviderLaunchInput,
+  ResolvedProviderLaunch,
+} from '../../../shared/provider-launch'
+import type {
   ListedModel,
   ModelAndEffort,
   ModelList,
   WhatAPickBecame,
 } from '../../../shared/model-choice-contracts'
 import { shallowRef } from 'vue'
-import type { EffortChoice, Provider, RuntimeBridge } from '../../../shared/runtime-ipc'
+import type { EffortChoice, Provider } from '../../../shared/runtime-ipc'
+import type { ClientProviderApi } from '../../../shared/client-provider-api'
 import { DEFAULT_PROFILE_ID, PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import {
   sameModel,
@@ -53,7 +60,7 @@ export interface PickedModel {
  * threw (a quit's refusal, a missing person). ⚠️ An ANSWER may still say why the provider's own rows
  * are missing (`ModelList.notAsked`): that is the host's fact, and this is the window's.
  */
-export type HeldList =
+type HeldList =
   | { readonly state: 'asking' }
   | { readonly state: 'answered'; readonly list: ModelList }
   | { readonly state: 'unread'; readonly why: string }
@@ -61,6 +68,9 @@ export type HeldList =
 export interface ModelLists {
   /** What is held for one provider's list in one profile — `null`: nobody asked yet. */
   held(provider: Provider, profileId?: string): HeldList | null
+  choices(provider: Provider, profileId?: string): ProviderLaunchChoices | null
+  readiness(provider: Provider, profileId?: string): ProviderReadiness
+  resolve(input: ResolveProviderLaunchInput): Promise<ResolvedProviderLaunch>
   /**
    * Read one list. ⚑ Joins a read already out, and never re-asks a list the provider answered.
    * `once` (a screen warming up) re-asks nothing already held; without it (a person opening the
@@ -84,8 +94,11 @@ export interface ModelLists {
   remove(provider: Provider, model: string): Promise<string | null>
 }
 
-/** The three doors the holder reaches. */
-type ListDoors = Pick<RuntimeBridge, 'modelList' | 'addHandAddedModel' | 'deleteHandAddedModel'>
+/** The supplied read, selection and model-edit operations the holder reaches. */
+type ListDoors = Pick<
+  ClientProviderApi,
+  'providerLaunchChoices' | 'resolveProviderLaunch' | 'addHandAddedModel' | 'deleteHandAddedModel'
+>
 
 /**
  * ⚑ **The holder, over a bridge it asks for only when it reads** — a thunk, so a server render that
@@ -93,6 +106,7 @@ type ListDoors = Pick<RuntimeBridge, 'modelList' | 'addHandAddedModel' | 'delete
  */
 export function createModelLists(bridge: () => ListDoors): ModelLists {
   const lists = shallowRef<Readonly<Record<string, HeldList>>>({})
+  const choices = new Map<string, ProviderLaunchChoices>()
   const asked = new Map<string, { readonly provider: Provider; readonly profileId?: string }>()
   const inFlight = new Map<string, Promise<void>>()
   /** ⛔ 293 §5 — the ticket a profile's reads are answered under; {@link ModelLists.forget} moves it. */
@@ -118,11 +132,14 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
     if (lists.value[key]?.state !== 'answered') put(key, { state: 'asking' })
     const read = async (): Promise<void> => {
       try {
-        const list = await bridge().modelList({
+        const resolved = await bridge().providerLaunchChoices({
           provider,
           ...(profileId === undefined ? {} : { profileId }),
         })
-        if (ours()) put(key, { state: 'answered', list })
+        if (ours()) {
+          choices.set(key, resolved)
+          put(key, { state: 'answered', list: resolved.list })
+        }
       } catch (error) {
         // ⛔ A failed re-read keeps the answer it had (`refreshProfiles`' rule).
         if (ours() && lists.value[key]?.state !== 'answered') {
@@ -156,6 +173,21 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
     held(provider, profileId) {
       return lists.value[keyOf(provider, profileId)] ?? null
     },
+    readiness(provider, profileId) {
+      const key = keyOf(provider, profileId)
+      const held = lists.value[key]
+      if (held === undefined || held.state === 'asking') return { state: 'pending' }
+      if (held.state === 'unread') return { state: 'settled', ready: null, reason: held.why }
+      const supplied = choices.get(key)!
+      return { state: 'settled', ready: supplied.ready, reason: supplied.reason ?? null }
+    },
+    resolve(input) {
+      return bridge().resolveProviderLaunch(input)
+    },
+    choices(provider, profileId) {
+      const key = keyOf(provider, profileId)
+      return lists.value[key]?.state === 'answered' ? (choices.get(key) ?? null) : null
+    },
     read(provider, profileId, options) {
       const key = keyOf(provider, profileId)
       const running = inFlight.get(key)
@@ -181,6 +213,7 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
       for (const [key, parts] of asked) {
         if (profileOf(parts.profileId) !== profileId) continue
         delete next[key]
+        choices.delete(key)
         inFlight.delete(key)
         asked.delete(key)
       }
@@ -297,9 +330,8 @@ export function theDraftEffort(
  * 🔴 **R-1 · what the new-conversation form starts on — the last pick** (`09` §8: *"last one
  * picked"*), else what the host would start BroBot on. ⚑ Shown by name, like any choice.
  */
-export function theFormStartsOn(list: ModelList | null): ModelAndEffort | null {
-  const pair = list?.lastPicked ?? list?.startsOn ?? null
-  return pair === null ? null : { model: pair.model, effort: pair.effort }
+export function theFormStartsOn(choices: ProviderLaunchChoices | null): ModelAndEffort | null {
+  return choices?.defaultModel ?? null
 }
 
 /**
@@ -309,18 +341,13 @@ export function theFormStartsOn(list: ModelList | null): ModelAndEffort | null {
  */
 export function theFormSends(
   choices: LaunchChoices,
-  list: ModelList | null,
+  supplied: ProviderLaunchChoices | null,
 ): ModelAndEffort | null {
   const model = choices.model.trim()
   if (model !== '') {
     return { model, effort: choices.reasoningEffort === '' ? null : choices.reasoningEffort }
   }
-  const last = list?.lastPicked ?? null
-  const starts = list?.startsOn ?? null
-  if (last === null) return null
-  return starts !== null && sameModel(starts.model, last.model) && starts.effort === last.effort
-    ? null
-    : last
+  return supplied?.defaultModelToSend ?? null
 }
 
 /**
