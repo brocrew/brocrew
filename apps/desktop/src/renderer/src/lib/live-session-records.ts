@@ -104,10 +104,6 @@ export function createLiveSessionRecords(bridge: ClientSessionApi) {
     const record = sessions.get(message.sessionId)
     if (message.agentState !== undefined)
       hearAgentState(record ?? slot(message.sessionId), message.agentState, message.published)
-    else if (record && message.ordinal >= record.nextOrdinal) {
-      delete record.agentState
-      delete record.agentStatePublication
-    }
   }
 
   function hearMoved(message: RuntimeStatesMessage): void {
