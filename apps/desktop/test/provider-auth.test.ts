@@ -22,12 +22,8 @@ import type { ProviderAuthOps } from '../src/main/runtime/provider-homes'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 
 /**
- * The credential commands across the IPC boundary (098) — driven through
- * {@link executeRuntimeCommand}, which is the layer that validates the renderer's input and decides
- * which profile a question is about. Testing the host methods directly would skip both.
- *
- * ⚠️ **Nothing here touches a real `~/.codex` or spawns a provider.** {@link ProviderAuthOps} is the
- * seam, and it is injected — the same rule `pnpm run ci` has followed since 022.
+ * Drive credential commands through {@link executeRuntimeCommand} to cover input validation and
+ * profile selection. Injected {@link ProviderAuthOps} never reads real homes or spawns providers.
  */
 
 const SINK: RuntimeEventSink = {
@@ -56,14 +52,8 @@ class FakeAuthOps implements ProviderAuthOps {
   outcome: ReprovisionOutcome = 'replaced'
   cancels = 0
   /**
-   * The flows that have started and not settled, oldest first.
-   *
-   * ⚠️ **A LIST since 257, and one slot before that.** The host now admits two sign-ins at once when
-   * they are for different providers — Claude's reservation stayed per profile — so a double holding
-   * one resolver settled the newest and stranded the other, which reads as a hang rather than as the
-   * missing double it is. FIFO, and {@link CodexSignIn.cancel} settles ITS OWN rather than whichever
-   * is at the head: a cancel that closed somebody else's flow would be the very confusion `257` §1 is
-   * about, modelled by the instrument.
+   * Pending flows settle FIFO; {@link CodexSignIn.cancel} settles only its own flow. Distinct
+   * providers can sign in concurrently, so one resolver would strand or cancel the wrong flow.
    */
   private readonly pending: ((value: CodexLoginOutcome) => void)[] = []
   private announceStart: (() => void) | null = null
@@ -86,15 +76,8 @@ class FakeAuthOps implements ProviderAuthOps {
   }
 
   /**
-   * When set, `check` never settles **while nobody has aborted it** — so the host's deadline is what
-   * has to end the WAIT.
-   *
-   * ⛔ **It settles on abort, and 202 is why that clause had to be added.** The double used to hang
-   * forever regardless of the signal, which is not what it stands in for: `probeCodexAuthInHome`
-   * closes its transport in a `finally` and its docblock pins the contract — *"a cancelled check
-   * answers `unknown`; it does not throw"*. That difference was invisible while nothing waited on
-   * the work; once a quit started waiting for the CHILD rather than for its own patience (191 H2),
-   * a double that never lets go models a provider this app does not have.
+   * Hold until abort so the host's deadline ends the wait. Abort answers `unknown`, as the real
+   * probe does, and lets quit wait for credential work to finish instead of stranding a double.
    */
   hangCheck = false
   /** When set, `check` fails with it: the question could not be asked at all. */
