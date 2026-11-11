@@ -21,8 +21,9 @@ Lines have a timestamp, level, part of the app, message and any named facts, for
 [2026-11-09 20:00:00.000] [error] (ipc) app:save { call: 7, ms: 12, error: 'Disk full' }
 ```
 
-Debug mode is saved for each workspace. It controls file detail; the former Events tab and
-in-app debug views have been removed.
+Debug mode is saved for each workspace. It controls file detail and shows Unmodeled event cards
+with expandable raw JSON in conversations. With Debug mode off, those cards are hidden. Unrecognized
+provider events are logged either way. The former Events tab has been removed.
 
 The hidden main/renderer probe is `node scripts/renderer-logging-probe.mjs`. Its build and
 Electron dependencies belong to the desktop package; the runner declares the same esbuild version already pinned under Vite.

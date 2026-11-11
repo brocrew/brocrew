@@ -13,6 +13,7 @@ import type {
 } from '../../../shared/runtime-ipc'
 import type { WorkEdge } from '../../../shared/who-called-whom'
 import { useOlderHistory } from '../composables/useOlderHistory'
+import { useLogging } from '../composables/useLogging'
 import { useStickToBottom } from '../composables/useStickToBottom'
 import type { RequestDraft, TakenWithoutThisWindow } from '../lib/session-record'
 import { repliedAfter } from '../lib/asked-without-waiting'
@@ -348,7 +349,8 @@ const props = withDefaults(
   },
 )
 
-const shown = computed(() => visibleItems(props.items))
+const logging = useLogging()
+const shown = computed(() => visibleItems(props.items, logging.state.value?.debug ?? false))
 
 /** The quiet line at the end while a turn runs ({@link workingLine}). */
 const working = computed(() => workingLine(props.turnRunning, shown.value))

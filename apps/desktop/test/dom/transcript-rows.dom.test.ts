@@ -219,10 +219,10 @@ describe('what a .entry[data-item] is (114)', () => {
 
   it('keeps the conversation without lifecycle rows', async () => {
     const rows = draw(feed(ledger(12)))
-    expect(rows.wrappers).toHaveLength(6)
+    expect(rows.wrappers).toHaveLength(5)
     expect(rows.chatter).toBe(0)
     expect(rows.infoNotices).toBe(0)
-    expect(rows.unrecognized).toBe(1)
+    expect(rows.unrecognized).toBe(0)
   })
 
   it('⚑ 078’s rule, measured where it lives: TWICE the frames, and not one extra row', async () => {

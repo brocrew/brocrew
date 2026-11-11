@@ -1,7 +1,7 @@
 import { onMounted, ref } from 'vue'
 import type { LoggingState } from '../../../shared/logging'
 
-export function useLogging(bridge = window.api?.logging) {
+export function useLogging(bridge = globalThis.window?.api?.logging) {
   const state = ref<LoggingState | null>(null)
   const saving = ref(false)
   const error = ref('')
