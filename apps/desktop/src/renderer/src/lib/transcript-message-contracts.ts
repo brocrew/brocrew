@@ -814,11 +814,11 @@ export interface MemoryLoadedItem {
   beside: number
 }
 
-export type TurnSummaryItem = { kind: 'turnSummary'; id: string } & Omit<
+type TurnSummaryItem = { kind: 'turnSummary'; id: string } & Omit<
   Extract<RuntimeEvent, { type: 'turn_summary' }>,
   'type'
 >
-export type CommandSummaryItem = { kind: 'commandSummary'; id: string } & Omit<
+type CommandSummaryItem = { kind: 'commandSummary'; id: string } & Omit<
   Extract<RuntimeEvent, { type: 'command_summary' }>,
   'type'
 >

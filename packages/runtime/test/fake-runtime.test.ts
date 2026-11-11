@@ -355,7 +355,12 @@ describe('FakeRuntime — exercises every RuntimeEvent variant', () => {
     handle.simulateMemoryRecall()
     handle.simulateProviderLimitClear()
     handle.simulateProviderUsage()
-    handle.simulateSummary({ type: 'turn_summary', status: 'completed', detail: 'Checked the change', needsAction: false })
+    handle.simulateSummary({
+      type: 'turn_summary',
+      status: 'completed',
+      detail: 'Checked the change',
+      needsAction: false,
+    })
     handle.simulateSummary({ type: 'command_summary', description: 'Checking the change' })
     handle.simulateUnknown({ provider_specific: 'blob' })
     await handle.close()

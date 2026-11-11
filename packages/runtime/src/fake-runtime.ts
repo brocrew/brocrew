@@ -1260,7 +1260,9 @@ export class FakeSessionHandle implements SessionHandle {
     this.push({ type: 'provider_usage', readings })
   }
 
-  simulateSummary(summary: Extract<RuntimeEvent, { type: 'turn_summary' | 'command_summary' }>): void {
+  simulateSummary(
+    summary: Extract<RuntimeEvent, { type: 'turn_summary' | 'command_summary' }>,
+  ): void {
     this.push(summary)
   }
 
