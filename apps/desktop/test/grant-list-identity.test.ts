@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest'
 import { codexToolGrant } from '../../../packages/runtime/src/codex/external-mcp'
 import { McpCallsInFlight } from '../../../packages/runtime/src/codex/external-mcp'
+import { wordsForACard } from '../../../packages/runtime/src/words-on-a-card'
 import type { PermissionGrants } from '../../../packages/runtime/src/permission'
 import type { RuntimeEvent } from '@brobot2/runtime'
 import { transcriptEventForDisplay } from '../src/main/providers/error-presentation'
@@ -51,6 +52,30 @@ it('matches the actual Codex grant producer and blanket list for maps + locate',
   expect(reading[0]?.listedAs).toEqual(['mcp__maps__locate'])
   expect(notKeptHere(calls.grants, reading)).toEqual(['mcp__weather__locate'])
   expect(notKeptHere(['maps__locate'], reading)).toEqual(['maps__locate'])
+})
+
+it('retains distinct native identities when approval labels clean to the same displayed rule', () => {
+  const state = createTranscript()
+  const calls = new McpCallsInFlight()
+  for (const [index, rawTool] of ['locate  x', 'locate x', 'locate  x'].entries()) {
+    calls.grant('maps', rawTool)
+    const rule = { ...codexToolGrant('maps', rawTool), tool: wordsForACard(rawTool)! }
+    const request = toWireEvent('codex', {
+      ...card({ allow_always: [rule] }),
+      id: `request-${index}`,
+    }) as Card
+    applyEvent(state, request)
+    applyEvent(state, {
+      type: 'user_decision',
+      requestId: request.id,
+      outcome: 'allow_always',
+      by: { who: 'a-person' },
+    })
+  }
+  const reading = keptInThisConversation(state.items)
+  expect(reading).toHaveLength(1)
+  expect(reading[0]?.listedAs).toEqual(['mcp__maps__locate  x', 'mcp__maps__locate x'])
+  expect(notKeptHere(calls.grants, reading)).toEqual([])
 })
 
 it('reads a fictional supplied identity without deriving it from the rule or inventory', () => {
