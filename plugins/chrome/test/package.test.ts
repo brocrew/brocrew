@@ -1,7 +1,7 @@
+import { packageTestHelpers } from '../../shared/test/package-helpers.mjs'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import os from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -23,15 +23,10 @@ vi.mock('playwright-core', () => ({
     },
   },
 }))
-const cleanup: Array<() => void | Promise<void>> = []
+const { cleanup, temporary, requestFor, connectClient } = packageTestHelpers('fictional-chrome-')
 afterEach(async () => {
   for (const fn of cleanup.splice(0).reverse()) await fn()
 })
-const temporary = () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fictional-chrome-'))
-  cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }))
-  return root
-}
 const mcpToken = 'fictional-mcp-'.repeat(8)
 const adminToken = 'fictional-person-'.repeat(8)
 function configured() {
@@ -48,18 +43,7 @@ async function boot(start = startAgentChrome) {
   cleanup.push(() => server.close())
   const port = (server.httpServer.address() as { port: number }).port
   const url = `http://127.0.0.1:${port}`
-  async function request(endpoint: string, token?: string, body?: unknown, origin?: string) {
-    const response = await fetch(url + endpoint, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: {
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-        ...(origin ? { origin } : {}),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    })
-    return { status: response.status, body: await response.json() }
-  }
+  const request = requestFor(url)
   return { config, store, browser, server, url, request }
 }
 describe('private Chrome package', () => {
@@ -166,8 +150,7 @@ describe('private Chrome package', () => {
     const transport = new StreamableHTTPClientTransport(new URL(url + '/mcp'), {
       requestInit: { headers: { authorization: `Bearer ${mcpToken}` } },
     })
-    await client.connect(transport)
-    cleanup.push(() => client.close())
+    await connectClient(client, transport)
     const tools = await client.listTools()
     expect(tools.tools.some((tool) => tool.name === 'open_tab')).toBe(true)
     const refused = await client.callTool({

@@ -1,6 +1,6 @@
+import { packageTestHelpers } from '../../shared/test/package-helpers.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
-import os from 'node:os'
 import { createHash } from 'node:crypto'
 import { Readable } from 'node:stream'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -14,16 +14,11 @@ import { createSettingsStore } from '../src/settings.js'
 import * as localFileGuard from '../src/localFileGuard.js'
 import { ALLOTMENT, ALTOS, FakeBridge, INES, ROWING } from './fakes.js'
 
-const cleanup: Array<() => void | Promise<void>> = []
+const { cleanup, temporary, requestFor, connectClient } = packageTestHelpers('fictional-whatsapp-')
 afterEach(async () => {
   vi.restoreAllMocks()
   for (const fn of cleanup.splice(0).reverse()) await fn()
 })
-const temporary = () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fictional-whatsapp-'))
-  cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }))
-  return root
-}
 const mcpToken = 'fictional-mcp-'.repeat(8)
 const adminToken = 'fictional-person-'.repeat(8)
 function configured() {
@@ -47,25 +42,14 @@ async function boot(options: { read?: boolean; writable?: string[]; prefix?: boo
   })
   cleanup.push(() => server.close())
   const url = `http://127.0.0.1:${(server.httpServer.address() as { port: number }).port}`
-  async function request(endpoint: string, token?: string, body?: unknown, origin?: string) {
-    const response = await fetch(url + endpoint, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: {
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-        ...(origin ? { origin } : {}),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    })
-    return { status: response.status, body: await response.json() }
-  }
+  const request = requestFor(url)
   const client = new Client({ name: 'fictional-agent', version: '1.0.0' })
-  await client.connect(
+  await connectClient(
+    client,
     new StreamableHTTPClientTransport(new URL(url + '/mcp'), {
       requestInit: { headers: { authorization: `Bearer ${mcpToken}` } },
     }),
   )
-  cleanup.push(() => client.close())
   async function call(name: string, args: Record<string, unknown> = {}) {
     const result = (await client.callTool({ name, arguments: args })) as {
       content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>
