@@ -168,10 +168,6 @@ export const NOT_STATE: readonly NotState[] = [
     name: 'logs',
     why: "The app's log file and its one older copy: about the runs that wrote them, not the data.",
   },
-  {
-    name: 'start-attempts*.jsonl',
-    why: 'Launch timing an older version wrote here: not the data, never copied or restored.',
-  },
   { name: 'updates', why: 'Downloaded updates and their private staging files, not state.' },
   { name: 'one-host.sock', why: 'The live socket that reports whether this workspace is open.' },
   { name: BACKUPS_DIRNAME, why: "The workspace's own recovery copies." },
