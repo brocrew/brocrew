@@ -170,7 +170,13 @@ async function withHistoryPage(
   try {
     applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations'))
     const store = createSessionStore(db)
-    store.create({ id: 's', provider, cwd: directory, approvalMode: 'ask', profileId: 'fictional' })
+    store.create({
+      id: 's',
+      provider,
+      cwd: directory,
+      approvalMode: 'ask',
+      profileId: 'fictional',
+    })
     if (event !== undefined) store.append('s', 0, event, 1000)
     store.append('s', 1, { type: 'user_turn', text: 'Earlier' }, 1001)
     store.append('s', 2, { type: 'user_turn', text: 'This page' }, 1002)
