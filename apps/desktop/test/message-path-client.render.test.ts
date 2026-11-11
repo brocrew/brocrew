@@ -216,29 +216,34 @@ describe('captured message path and link calls', () => {
   })
 
   it('keeps open and reveal rejection words at the existing press seam', async () => {
-    const failure = new Error('Fictional path failure')
-    const revealOnly: Operations = {
-      resolveMessagePaths: async () => [],
-      revealMessagePath: () => Promise.reject(failure),
+    vi.stubGlobal('navigator', { platform: 'FictionalOS' })
+    try {
+      const failure = new Error('Fictional path failure')
+      const revealOnly: Operations = {
+        resolveMessagePaths: async () => [],
+        revealMessagePath: () => Promise.reject(failure),
+      }
+      const shown = useMessagePaths(
+        () => 'same',
+        () => runtimePathCalls(revealOnly),
+      ).value!
+      expect(await shown.press('a.md')).toBe("Your file manager didn't show that file. Try again.")
+      const opening = useMessagePaths(
+        () => 'same',
+        () =>
+          runtimePathCalls({
+            ...revealOnly,
+            openMessagePath: () => {
+              throw failure
+            },
+          }),
+      ).value!
+      expect(await opening.press('a.md')).toBe(
+        "That file didn't open. Copy its path and open it from your file manager.",
+      )
+    } finally {
+      vi.unstubAllGlobals()
     }
-    const shown = useMessagePaths(
-      () => 'same',
-      () => runtimePathCalls(revealOnly),
-    ).value!
-    expect(await shown.press('a.md')).toBe("Your file manager didn't show that file. Try again.")
-    const opening = useMessagePaths(
-      () => 'same',
-      () =>
-        runtimePathCalls({
-          ...revealOnly,
-          openMessagePath: () => {
-            throw failure
-          },
-        }),
-    ).value!
-    expect(await opening.press('a.md')).toBe(
-      "That file didn't open. Copy its path and open it from your file manager.",
-    )
   })
 
   it('sets up actual message and attachment components with the injected client and no window', async () => {
