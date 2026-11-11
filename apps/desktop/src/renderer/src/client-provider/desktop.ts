@@ -13,6 +13,7 @@ import type { RuntimeBridge } from '../../../shared/runtime-ipc'
 type ProviderTransport = Pick<
   RuntimeBridge,
   | 'providerCatalogue'
+  | 'providerUsage'
   | 'providerLaunchChoices'
   | 'resolveProviderLaunch'
   | 'addHandAddedModel'
@@ -44,6 +45,7 @@ export function createDesktopProviderApi(
 ): ClientApi {
   return Object.freeze({
     providerCatalogue: () => runtime().providerCatalogue(),
+    providerUsage: () => runtime().providerUsage(),
     providerLaunchChoices: (input) => runtime().providerLaunchChoices(input),
     resolveProviderLaunch: (input) => runtime().resolveProviderLaunch(input),
     addHandAddedModel: (input) => runtime().addHandAddedModel(input),

@@ -11,6 +11,7 @@ import type {
   ApiKeyCheck,
   ReprovisionOutcome,
   ProviderHomesReprovision,
+  ProviderUsageReading,
   AuthState,
   CheckProviderAuthInput,
   Provider,
@@ -22,6 +23,7 @@ import type {
 /** Provider facts and person intents, independent of the desktop transport. */
 export interface ClientProviderApi {
   providerCatalogue(): Promise<readonly ProviderDescriptor[]>
+  providerUsage(): Promise<Readonly<Record<Provider, readonly ProviderUsageReading[]>>>
   providerLaunchChoices(input: ProviderProfileInput): Promise<ProviderLaunchChoices>
   resolveProviderLaunch(input: ResolveProviderLaunchInput): Promise<ResolvedProviderLaunch>
   addHandAddedModel(input: { provider: Provider; model: string }): Promise<readonly string[]>

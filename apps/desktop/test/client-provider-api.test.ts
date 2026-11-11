@@ -20,6 +20,7 @@ function fixture() {
     lastPicked: null,
   }
   const transport = {
+    providerUsage: vi.fn<ClientProviderApi['providerUsage']>(),
     providerCatalogue: vi.fn(async () => [{ ...PROVIDER_DESCRIPTORS[0], displayName: 'Fable' }]),
     modelList: vi.fn(async () => list),
     providerLaunchChoices: vi.fn<ClientProviderApi['providerLaunchChoices']>(async () => ({
@@ -241,3 +242,32 @@ for (const row of operationCases) {
     expect(forwarded).toHaveBeenCalledExactlyOnceWith(row.input)
   })
 }
+
+it('forwards the original usage promise and supplied facts without changing the receiver', async () => {
+  const { api, runtime, transport } = fixture()
+  const snapshot = {
+    claude: [
+      {
+        window: 'seven_day',
+        period: { word: 'Fern interval', durationMs: 1234, bucket: false, bucketName: null },
+        usedPercent: 23,
+        resetsAt: null,
+        at: 7,
+      },
+    ],
+    codex: [],
+  }
+  const pending = Promise.resolve(snapshot)
+  transport.providerUsage.mockImplementation(function (this: typeof transport) {
+    expect(this).toBe(transport)
+    return pending
+  })
+  expect(runtime).not.toHaveBeenCalled()
+  expect(api.providerUsage()).toBe(pending)
+  await expect(pending).resolves.toBe(snapshot)
+  const failure = new Error('Fictional usage read failed')
+  const rejected = Promise.reject<never>(failure)
+  transport.providerUsage.mockReturnValueOnce(rejected)
+  expect(api.providerUsage()).toBe(rejected)
+  await expect(rejected).rejects.toBe(failure)
+})
