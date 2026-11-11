@@ -86,10 +86,10 @@ function ancestor(component: Component, props: Record<string, unknown>, api: Cli
   }), {})
 }
 
-function caller(
+async function caller(
   kind: 'card' | 'launcher' | 'pane',
   out: ReturnType<typeof selected>,
-): { m: Mounted; props: Record<string, unknown> } {
+): Promise<{ m: Mounted; props: Record<string, unknown> }> {
   if (kind === 'card') {
     const props = reactive({
       provider: 'claude' as Provider,
@@ -109,15 +109,27 @@ function caller(
   if (kind === 'launcher') {
     const props = reactive({
       busy: false,
-      error: null,
+      error: null as string | null,
+      defaultApprovalMode: 'ask' as const,
+      approvalDefaultChosen: true,
+      providerReadiness: { claude: true, codex: true },
       draft: 'Keep the draft.',
       handing: createAttachmentBook().handing(NEW_CONVERSATION),
       defaultProvider: 'claude' as Provider,
       choices: NO_LAUNCH_CHOICES,
       capabilities: selectedCapabilities,
       models: null,
+      onStart: (): void => { props.busy = true },
     })
-    return { m: ancestor(NewConversation, props, out.api), props }
+    const m = ancestor(NewConversation, props, out.api)
+    await settle()
+    m.q('send-prompt').click()
+    await nextTick()
+    expect(props.busy).toBe(true)
+    props.busy = false
+    props.error = 'The selected launch did not start.'
+    await settle()
+    return { m, props }
   }
   const r = record([])
   r.meta = { ...META, provider: 'claude', profileId: DEFAULT_PROFILE_ID }
@@ -128,7 +140,7 @@ function caller(
 it.each(['card', 'launcher', 'pane'] as const)(
   '%s uses the selected ancestor name, supplied reason and original check gesture', async (kind) => {
     const out = selected()
-    const { m } = caller(kind, out)
+    const { m } = await caller(kind, out)
     await settle()
     expect(m.q('sign-in-heading').textContent).toBe('Sign in to use Fern with this agent')
     expect(m.q('sign-in-reason').textContent).toBe(absent.reason)
@@ -150,7 +162,7 @@ it.each(['launcher', 'pane'] as const)(
     const out = selected()
     let answer!: (value: typeof out.descriptors) => void
     out.transport.providerCatalogue.mockReturnValueOnce(new Promise((resolve) => { answer = resolve }))
-    const { m } = caller(kind, out)
+    const { m } = await caller(kind, out)
     await settle()
     expect(m.q('sign-in-heading').textContent).toBe('Sign in to use this provider with this agent')
     expect((m.q('sign-in-check') as HTMLButtonElement).disabled).toBe(false)
@@ -166,8 +178,8 @@ it.each(['launcher', 'pane'] as const)(
 it('keeps two real launcher clients distinct instead of letting the first name capture the second', async () => {
   const one = selected('Fern')
   const two = selected('Willow')
-  const first = caller('launcher', one)
-  const second = caller('launcher', two)
+  const first = await caller('launcher', one)
+  const second = await caller('launcher', two)
   await settle()
   expect(first.m.q('sign-in-heading').textContent).toContain('Fern')
   expect(second.m.q('sign-in-heading').textContent).toContain('Willow')
@@ -228,7 +240,7 @@ it('the card passes its explicitly supplied descriptor name to its nested panel'
 it('updates a real card heading when the live provider key changes', async () => {
   const out = selected()
   signInFact({ provider: 'codex', profileId: DEFAULT_PROFILE_ID }, out.api).auth = absent
-  const { m, props } = caller('card', out)
+  const { m, props } = await caller('card', out)
   await settle()
   expect(m.q('sign-in-heading').textContent).toBe('Sign in to use Fern with this agent')
   props.provider = 'codex'
