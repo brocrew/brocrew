@@ -94,24 +94,29 @@ it('reads a fictional supplied identity without deriving it from the rule or inv
   ])
 })
 
-it('projects old known-Codex rules on read without rewriting stored rules or policy', () => {
+it('keeps lossy old server identities unknown through known-provider live and history reads', () => {
+  const rawTool = 'locate  x'
+  const savedTool = wordsForACard(rawTool)!
+  expect(savedTool).toBe('locate x')
   const old = card({
-    allow_all_for_session: [{ kind: 'tool', server: 'maps', tool: 'locate' }],
-    allow_always: [{ kind: 'tool', server: 'maps', tool: 'locate' }],
+    allow_all_for_session: [{ kind: 'tool', server: 'maps', tool: savedTool }],
+    allow_always: [{ kind: 'tool', server: 'maps', tool: savedTool }],
     alwaysFile: '/fictional/provider/kept-rules.json',
   })
   const saved = JSON.stringify(old)
   const live = transcriptEventForDisplay(old, 'codex') as Card
   const replay = transcriptEventForDisplay(JSON.parse(saved) as Card, 'codex') as Card
-  expect(replay).toEqual(live)
-  expect(replay.scope.grants?.allow_always).toEqual([
-    { kind: 'tool', server: 'maps', tool: 'locate', listedAs: 'mcp__maps__locate' },
-  ])
-  expect(replay.scope.availableDecisions).toEqual(old.scope.availableDecisions)
-  expect(replay.scope.grants?.alwaysFile).toBe(old.scope.grants?.alwaysFile)
-  expect(replay.id).toBe(old.id)
+  expect(live).toEqual(old)
+  expect(replay).toEqual(old)
   expect(JSON.stringify(old)).toBe(saved)
-  expect(notKeptHere(['mcp__maps__locate'], kept(replay))).toEqual([])
+  const calls = new McpCallsInFlight()
+  calls.grant('maps', rawTool)
+  calls.grant('maps', savedTool)
+  for (const request of [live, replay]) {
+    const reading = kept(request)
+    expect(reading[0]?.listedAs).toEqual([])
+    expect(notKeptHere(calls.grants, reading)).toEqual(calls.grants)
+  }
 })
 
 it('leaves genuinely unknown owner data unknown and retains a literal whole-tool identity', () => {
@@ -124,17 +129,18 @@ it('leaves genuinely unknown owner data unknown and retains a literal whole-tool
   expect(notKeptHere(['old:literal/name'], kept(bare))).toEqual([])
 })
 
-it('preserves supplied identities, scoped rules and ordering during native history projection', () => {
+it('preserves supplied identities, scoped rules and ordering through live and history reads', () => {
   const rules: NonNullable<PermissionGrants['allow_always']> = [
     { kind: 'tool', server: 'maps', tool: 'locate', listedAs: 'fictional/list-key' },
     { kind: 'tool', server: 'maps', tool: 'locate', content: 'restricted' },
     { kind: 'command-prefix', prefix: ['echo', 'hello'] },
-    { kind: 'tool', server: 'weather', tool: 'locate__tail' },
+    { kind: 'tool', server: 'weather', tool: 'locate__tail', listedAs: 'fern:weather/locate__tail' },
   ]
   const old = card({ allow_always: rules })
   const projected = transcriptEventForDisplay(old, 'codex') as Card
-  expect(projected.scope.grants?.allow_always?.slice(0, 3)).toEqual(rules.slice(0, 3))
-  expect(kept(projected)[0]?.listedAs).toEqual(['fictional/list-key', 'mcp__weather__locate__tail'])
+  expect(projected.scope.grants?.allow_always).toEqual(rules)
+  expect(transcriptEventForDisplay(JSON.parse(JSON.stringify(old)) as Card, 'codex')).toEqual(old)
+  expect(kept(projected)[0]?.listedAs).toEqual(['fictional/list-key', 'fern:weather/locate__tail'])
   expect(old.scope.grants?.allow_always).toEqual(rules)
 })
 
