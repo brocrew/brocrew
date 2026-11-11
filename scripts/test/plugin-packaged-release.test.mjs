@@ -36,9 +36,10 @@ describe.skipIf(process.platform === 'win32')('release verifier module admission
         exported = path.join(root, 'exported')
       exportChromePlugin(exported)
       const plugin = path.join(exported, 'plugins/chrome')
-      fs.symlinkSync(
-        path.join(repository, 'plugins/chrome/node_modules'),
-        path.join(plugin, 'node_modules'),
+      execFileSync(
+        'npm',
+        ['ci', '--prefix', plugin, '--include=dev', '--ignore-scripts', '--no-audit', '--no-fund'],
+        { timeout: 60000 },
       )
       const template = path.join(plugin, 'manifest-template.json')
       const originalTemplate = fs.readFileSync(template, 'utf8')
@@ -117,6 +118,7 @@ describe.skipIf(process.platform === 'win32')('release verifier module admission
         fs.readFileSync(path.join(repository, 'plugins/chrome/manifest-template.json'), 'utf8'),
       ).toBe(originalTemplate)
     },
+    90000,
   )
 
   it('reuses the exact release dependency files for protocol controls and refuses stale or linked destinations', () => {
