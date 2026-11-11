@@ -633,6 +633,7 @@ describe('§6 · a conversation started as an identity a person created', () => 
 
   const placed = (): { m: Mounted; started: unknown[] } => {
     const started: unknown[] = []
+    const agents = useAgentStore()
     const catalogueClient = Object.create(desktopProviderApi, {
       providerCatalogue: { value: async () => SUPPORTED_PROVIDERS.map(providerDescriptor) },
     })
@@ -644,6 +645,7 @@ describe('§6 · a conversation started as an identity a person created', () => 
             h(StartAsAgent as never, {
               profileSlug: 'archivist',
               provider: 'claude',
+              agents,
               onStart: (input: unknown, words: string) => started.push([input, words]),
             })
         },
