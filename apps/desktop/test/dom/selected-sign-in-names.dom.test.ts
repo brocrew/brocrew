@@ -111,24 +111,28 @@ function ancestor(component: Component, props: Record<string, unknown>, api: Cli
   )
 }
 
+function cardProps(provider: Provider = 'claude') {
+  return {
+    provider,
+    capabilities: selectedCapabilities,
+    limit: null,
+    limitsRead: true,
+    clock: Date.now(),
+    version: { version: null, reason: 'Selected program observation.' },
+    readings: [],
+    resources: null,
+    resourcesPaused: false,
+    resourcesError: null,
+    loginMoved: 0,
+  }
+}
+
 async function caller(
   kind: 'card' | 'launcher' | 'pane',
   out: ReturnType<typeof selected>,
 ): Promise<{ m: Mounted; props: Record<string, unknown> }> {
   if (kind === 'card') {
-    const props = reactive({
-      provider: 'claude' as Provider,
-      capabilities: selectedCapabilities,
-      limit: null,
-      limitsRead: true,
-      clock: Date.now(),
-      version: { version: null, reason: 'Selected program observation.' },
-      readings: [],
-      resources: null,
-      resourcesPaused: false,
-      resourcesError: null,
-      loginMoved: 0,
-    })
+    const props = reactive(cardProps())
     return { m: ancestor(ProviderCard, props, out.api), props }
   }
   if (kind === 'launcher') {
@@ -255,18 +259,8 @@ it.each([
 it('the card passes its explicitly supplied descriptor name to its nested panel', async () => {
   const out = selected('Catalogue Fern')
   const props = reactive({
-    provider: 'claude',
+    ...cardProps(),
     descriptor: { ...providerDescriptor('claude'), displayName: 'Explicit Willow' },
-    capabilities: selectedCapabilities,
-    limit: null,
-    limitsRead: true,
-    clock: Date.now(),
-    version: { version: null, reason: 'Selected program observation.' },
-    readings: [],
-    resources: null,
-    resourcesPaused: false,
-    resourcesError: null,
-    loginMoved: 0,
   })
   const m = ancestor(ProviderCard, props, out.api)
   await settle()
