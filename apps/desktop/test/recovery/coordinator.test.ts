@@ -531,9 +531,9 @@ SELECT * FROM no_such_migration_table;`,
         events.push(`copy ${to}`)
         return nodeFs.copyFile(from, to, mode)
       },
-      cloneFile: (from, to, signal) => {
+      cloneFile: (from, to, signal, beforeFullCopy) => {
         events.push(`copy ${to}`)
-        return nodeFs.cloneFile(from, to, signal)
+        return nodeFs.cloneFile(from, to, signal, beforeFullCopy)
       },
       open: (path, flags, mode) => {
         if (path.includes(`${sep}backups${sep}`) && path.endsWith('database.sqlite')) {

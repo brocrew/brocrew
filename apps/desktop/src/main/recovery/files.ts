@@ -76,7 +76,12 @@ export interface RecoveryFs {
   /** `mode` is `fs.constants.COPYFILE_*`. */
   copyFile(from: string, to: string, mode?: number): Promise<void>
   /** Exclusive copy-on-write attempt; Darwin checks space for its possible full-copy fallback. */
-  cloneFile(from: string, to: string, signal?: AbortSignal): Promise<void>
+  cloneFile(
+    from: string,
+    to: string,
+    signal?: AbortSignal,
+    beforeFullCopy?: () => void,
+  ): Promise<void>
   link(existing: string, name: string): Promise<void>
   unlink(path: string): Promise<void>
   rm(
@@ -157,7 +162,12 @@ export const nodeFs: RecoveryFs = {
   readdir: (path) => nodeFsPromises.readdir(path),
 }
 
-async function cloneRecoveryFile(from: string, to: string, signal?: AbortSignal): Promise<void> {
+async function cloneRecoveryFile(
+  from: string,
+  to: string,
+  signal?: AbortSignal,
+  beforeFullCopy?: () => void,
+): Promise<void> {
   signal?.throwIfAborted()
   if (process.platform !== 'darwin') {
     await nodeFsPromises.copyFile(
@@ -169,6 +179,7 @@ async function cloneRecoveryFile(from: string, to: string, signal?: AbortSignal)
   }
   if (await pathExists(to))
     throw Object.assign(new Error(`${to} already exists`), { code: 'EEXIST' })
+  beforeFullCopy?.()
   const [source, space] = await Promise.all([
     nodeFsPromises.stat(from),
     nodeFsPromises.statfs(dirname(to), { bigint: true }),
@@ -198,7 +209,9 @@ async function cloneRecoveryFile(from: string, to: string, signal?: AbortSignal)
     await nodeFsPromises.rm(staging, { recursive: true, force: true })
   } catch (error) {
     if (failure !== undefined)
-      throw new AggregateError([failure, error], 'Recovery copy and cleanup failed.')
+      throw new AggregateError([failure, error], 'Recovery copy and cleanup failed.', {
+        cause: error,
+      })
     throw error
   }
   if (failure !== undefined) throw failure

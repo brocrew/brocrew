@@ -484,6 +484,18 @@ describe.runIf(process.platform === 'darwin')('Darwin recovery copy', () => {
     })
     expect(readdirSync(folder)).toEqual(['source'])
   })
+  it('applies the caller full-copy admission before creating staging or running the command', async () => {
+    const folder = aFolder(),
+      source = join(folder, 'source')
+    writeFileSync(source, 'Fictional data.')
+    const refusal = new Error('The existing recovery copy needs its headroom.')
+    await expect(
+      nodeFs.cloneFile(source, join(folder, 'copy'), undefined, () => {
+        throw refusal
+      }),
+    ).rejects.toBe(refusal)
+    expect(readdirSync(folder)).toEqual(['source'])
+  })
   it('propagates command failure after child exit and removes only its partial staging', async () => {
     const folder = aFolder(),
       source = join(folder, 'source-directory')

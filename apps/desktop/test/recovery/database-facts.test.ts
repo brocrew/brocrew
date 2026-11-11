@@ -50,9 +50,9 @@ it('reads committed WAL migrations through a private copy without changing the l
       copies++
       return nodeFs.copyFile(from, to, mode)
     },
-    cloneFile: async (from, to, signal) => {
+    cloneFile: async (from, to, signal, beforeFullCopy) => {
       copies++
-      return nodeFs.cloneFile(from, to, signal)
+      return nodeFs.cloneFile(from, to, signal, beforeFullCopy)
     },
   }
   expect(await migrationsOf(file, { fs, userData })).toEqual({
@@ -165,7 +165,10 @@ function watched(): { fs: RecoveryFs; calls: string[] } {
     mkdir: (path, options) => (calls.push(`mkdir ${path}`), nodeFs.mkdir(path, options)),
     link: (existing, name) => (calls.push(`link ${name}`), nodeFs.link(existing, name)),
     copyFile: (from, to, mode) => (calls.push(`copy ${to}`), nodeFs.copyFile(from, to, mode)),
-    cloneFile: (from, to, signal) => (calls.push(`copy ${to}`), nodeFs.cloneFile(from, to, signal)),
+    cloneFile: (from, to, signal, beforeFullCopy) => (
+      calls.push(`copy ${to}`),
+      nodeFs.cloneFile(from, to, signal, beforeFullCopy)
+    ),
     mkdtemp: (prefix) => (calls.push(`mkdtemp ${prefix}`), nodeFs.mkdtemp(prefix)),
   }
   return { fs, calls }

@@ -298,8 +298,17 @@ async function throughScratch(
       ...holding.map(({ suffix }) => [`${file}${suffix}`, `${copy}${suffix}`] as const),
     ]
     let copied: boolean
+    let fullCopyAdmitted = false
     try {
-      copied = await copyWithCloneAdapter(pairs, fs)
+      copied = await copyWithCloneAdapter(pairs, fs, () => {
+        if (fullCopyAdmitted) return
+        const free = freeBytes(folder)
+        if (free !== null && free < spaceToReadThroughACopy(toRead))
+          throw Object.assign(new Error('Not enough room for a full scratch copy.'), {
+            code: 'ENOSPC',
+          })
+        fullCopyAdmitted = true
+      })
     } catch (error) {
       if (errorCode(error) !== 'ENOSPC') throw error
       return {
@@ -334,10 +343,11 @@ function spaceToReadThroughACopy({ bytes, holding }: ToRead): number {
 async function copyWithCloneAdapter(
   pairs: readonly (readonly [string, string])[],
   fs: RecoveryFs,
+  beforeFullCopy: () => void,
 ): Promise<boolean> {
   for (const [from, to] of pairs) {
     try {
-      await fs.cloneFile(from, to)
+      await fs.cloneFile(from, to, undefined, beforeFullCopy)
     } catch (error) {
       if (!['ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV', 'EINVAL'].includes(errorCode(error) ?? ''))
         throw error
@@ -406,7 +416,9 @@ export function prepareDatabaseSnapshot(
     let copied = false
     if (checkpointed) {
       try {
-        await fs.cloneFile(file, copy, options.signal)
+        await fs.cloneFile(file, copy, options.signal, () =>
+          options.beforeFallback(pages * pageSize),
+        )
         copied = true
       } catch (error) {
         if (

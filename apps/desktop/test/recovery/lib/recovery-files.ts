@@ -16,7 +16,8 @@ export function withFileChanges(
   return {
     ...real,
     copyFile: (from, to, mode) => change(() => real.copyFile(from, to, mode)),
-    cloneFile: (from, to, signal) => change(() => real.cloneFile(from, to, signal)),
+    cloneFile: (from, to, signal, beforeFullCopy) =>
+      change(() => real.cloneFile(from, to, signal, beforeFullCopy)),
     link: (existing, name) => change(() => real.link(existing, name)),
     unlink: (path) => change(() => real.unlink(path)),
     rm: (path, options) => change(() => real.rm(path, options)),
