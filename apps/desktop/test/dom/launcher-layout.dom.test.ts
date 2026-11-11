@@ -490,6 +490,7 @@ describe('the notes are one grammar in two registers (101 §7)', () => {
 describe('the launcher header says “not started” nowhere — it was once, not three times (101 §9)', () => {
   it('⚑ D-017b · the plate says only that nothing is known, and the chip and the pill say nothing of it', async () => {
     const before = Object.getOwnPropertyDescriptor(window, 'api')
+    Reflect.deleteProperty(window, 'api')
     providersBridge()
     restoreApi = () => {
       if (before) Object.defineProperty(window, 'api', before)

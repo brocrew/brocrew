@@ -70,6 +70,7 @@ describe('the bar that says the sign-in moved', () => {
 
   it('says what happened, what it costs, and what to do — in that order, in one bar', async () => {
     const before = Object.getOwnPropertyDescriptor(window, 'api')
+    Reflect.deleteProperty(window, 'api')
     providersBridge()
     restoreApi = () => {
       if (before) Object.defineProperty(window, 'api', before)
