@@ -16,7 +16,7 @@ it.each(['recorded', 'attach', 'resume-attached', 'resume-stopped'] as const)(
       currentEpoch: async () => host.currentEpoch(),
       listConversations: () => host.listConversations(),
       attachOpen: async () => host.attachOpenSessions(world.window),
-      look: ({ sessionId, claim }) => host.look(sessionId, world.window, claim),
+      look: ({ sessionId, claim }) => host.look(sessionId, world.window, claim === true),
       resume: ({ sessionId, launchKey }) => host.resumeSession(sessionId, world.window, launchKey),
       onEvent: () => () => {},
       onLiveness: () => () => {},
