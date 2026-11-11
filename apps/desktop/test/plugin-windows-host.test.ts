@@ -19,7 +19,6 @@ import { createHash } from 'node:crypto'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { immutableMode, isLocalDrivePath, isWithinOrSame } from '../src/main/plugins/private-files'
 import { localEndpoint } from '../src/main/plugins/local-endpoint'
-import { windowsSystemEnvironment } from '../src/main/plugins/system-environment'
 import { installedChromeOnWindows } from '../src/main/plugins/windows-chrome'
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
@@ -82,18 +81,6 @@ describe('the plugin host on Windows, by its platform seams', () => {
     expect(localEndpoint('/fictional/owner.sock', 'owner', key, 'darwin')).toBe(
       '/fictional/owner.sock',
     )
-  })
-  it("starts a plugin process with the system folder and the system's own PATH alone", () => {
-    expect(
-      windowsSystemEnvironment({ SystemRoot: 'C:\\Windows', Path: 'C:\\Fictional\\bin' }),
-    ).toEqual({
-      SystemRoot: 'C:\\Windows',
-      windir: 'C:\\Windows',
-      SystemDrive: 'C:',
-      PATH: 'C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\WindowsPowerShell\\v1.0',
-    })
-    for (const root of [undefined, 'Windows', '\\\\server\\Windows', 'C:\\Windows;C:\\Fictional'])
-      expect(() => windowsSystemEnvironment({ SystemRoot: root })).toThrow('unsupported')
   })
   it('finds Chrome only where its installers put it, as a plain file at its own long path', () => {
     const files = new Map<string, { link?: boolean; real?: string }>()
@@ -310,7 +297,7 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
     roots.push(home)
     const cache = join(home, 'keeper')
     mkdirSync(cache)
-    const env = { ...windowsSystemEnvironment(), USERPROFILE: home, TEMP: home, TMP: home }
+    const env = { ...process.env, USERPROFILE: home, TEMP: home, TMP: home }
     const first = startJobKeeper({ openMs: 120_000, env, cache })
     try {
       const compiled = await first.opened

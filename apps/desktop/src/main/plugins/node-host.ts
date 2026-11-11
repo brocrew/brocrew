@@ -29,7 +29,6 @@ import {
   removePrivateCode,
 } from './node-host-files'
 import { runtimeFiles, type PluginNodeRuntime } from './node-runtime'
-import { windowsSystemEnvironment } from './system-environment'
 import { sharedDataEnvironment, type SharedDataOwner } from './shared-data'
 import { createFileNotThroughALink } from './private-files'
 import {
@@ -337,14 +336,14 @@ export function createPluginNodeHost(options: {
       // Guardian errors stay separate from the plugin server's diagnostic.
       stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
       env: {
+        ...process.env,
         ...(windows
           ? {
-              ...windowsSystemEnvironment(),
               USERPROFILE: home,
               APPDATA: join(home, 'AppData', 'Roaming'),
               LOCALAPPDATA: join(home, 'AppData', 'Local'),
             }
-          : { PATH: '/usr/bin:/bin', XDG_CONFIG_HOME: home, LC_ALL: 'C' }),
+          : { XDG_CONFIG_HOME: home }),
         HOME: home,
         TMPDIR: join(home, 'tmp'),
         TMP: join(home, 'tmp'),

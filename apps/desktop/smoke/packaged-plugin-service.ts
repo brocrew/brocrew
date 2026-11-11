@@ -19,7 +19,6 @@ import {
   privateRoot,
   sourceBytes,
 } from '../src/main/plugins/node-host-files'
-import { windowsSystemEnvironment } from '../src/main/plugins/system-environment'
 import {
   observePluginSupervisorLaunch,
   recordPluginStartupFailure,
@@ -56,10 +55,12 @@ export async function smoke(resources: string, scratch: string, packages?: strin
     cwd: root,
     stdio: ['ignore', 'ignore', 'pipe'],
     windowsHide: true,
-    env:
-      process.platform === 'win32'
-        ? { ...windowsSystemEnvironment(), USERPROFILE: root, TEMP: scratch, TMP: scratch }
-        : { HOME: root, PATH: '/usr/bin:/bin', LC_ALL: 'C' },
+    env: {
+      ...process.env,
+      ...(process.platform === 'win32'
+        ? { USERPROFILE: root, TEMP: scratch, TMP: scratch }
+        : { HOME: root }),
+    },
   })
   const diagnostic = observePluginSupervisorLaunch(child)
   let spawnError: Error | undefined

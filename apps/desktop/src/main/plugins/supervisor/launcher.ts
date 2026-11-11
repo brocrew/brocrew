@@ -17,7 +17,6 @@ import {
   digest,
 } from '../node-host-files'
 import { SupervisorStorage } from './storage'
-import { windowsSystemEnvironment } from '../system-environment'
 import { OWNER_LAUNCH_MS, PluginSupervisorError } from './protocol'
 import { stopLegacySupervisor } from './legacy-owner'
 import { LaunchConfig, type PluginLifecyclePlan } from './launch-format'
@@ -101,9 +100,12 @@ export function createPluginSupervisorLauncher(options: {
         stdio: ['ignore', 'ignore', 'pipe'],
         windowsHide: true,
         cwd: root,
-        env: temporary
-          ? { ...windowsSystemEnvironment(), USERPROFILE: root, TEMP: temporary, TMP: temporary }
-          : { HOME: root, PATH: '/usr/bin:/bin', LC_ALL: 'C' },
+        env: {
+          ...process.env,
+          ...(temporary
+            ? { USERPROFILE: root, TEMP: temporary, TMP: temporary }
+            : { HOME: root }),
+        },
       })
       diagnostic = observePluginSupervisorLaunch(child)
       let failed = false
