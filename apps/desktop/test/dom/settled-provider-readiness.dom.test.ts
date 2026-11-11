@@ -41,17 +41,24 @@ afterEach(() => {
 it.each(['unknown auth', 'refused catalogue', 'rejected read', 'omitted reason'] as const)(
   'ends checking on settled %s, preserves supplied facts, and updates after recovery',
   async (failure) => {
-    const gates = new Map<Provider, {
-      resolve: (value: ProviderLaunchChoices) => void
-      reject: (error: Error) => void
-    }>()
-    const read = vi.fn(({ provider }: { provider: Provider }) =>
-      new Promise<ProviderLaunchChoices>((resolve, reject) => {
-        gates.set(provider, { resolve, reject })
-      }),
+    const gates = new Map<
+      Provider,
+      {
+        resolve: (value: ProviderLaunchChoices) => void
+        reject: (error: Error) => void
+      }
+    >()
+    const read = vi.fn(
+      ({ provider }: { provider: Provider }) =>
+        new Promise<ProviderLaunchChoices>((resolve, reject) => {
+          gates.set(provider, { resolve, reject })
+        }),
     )
     const api = {
-      ...createDesktopProviderApi(() => window.api.runtime, () => undefined),
+      ...createDesktopProviderApi(
+        () => window.api.runtime,
+        () => undefined,
+      ),
       providerLaunchChoices: read,
     }
     const lists = createModelLists(() => api)
@@ -60,22 +67,23 @@ it.each(['unknown auth', 'refused catalogue', 'rejected read', 'omitted reason']
     const host = defineComponent({
       setup() {
         provide(CLIENT_PROVIDERS, api)
-        return () => h(NewConversation, {
-          busy: false,
-          error: null,
-          draft: 'Keep my draft.',
-          handing,
-          defaultProvider: 'codex',
-          providerReadiness: Object.fromEntries(
-            providers.map((provider) => [provider, lists.choices(provider)?.ready ?? null]),
-          ),
-          defaultApprovalMode: 'ask',
-          approvalDefaultChosen: true,
-          capabilities: null,
-          choices: { ...NO_LAUNCH_CHOICES },
-          lists,
-          onStart: start,
-        })
+        return () =>
+          h(NewConversation, {
+            busy: false,
+            error: null,
+            draft: 'Keep my draft.',
+            handing,
+            defaultProvider: 'codex',
+            providerReadiness: Object.fromEntries(
+              providers.map((provider) => [provider, lists.choices(provider)?.ready ?? null]),
+            ),
+            defaultApprovalMode: 'ask',
+            approvalDefaultChosen: true,
+            capabilities: null,
+            choices: { ...NO_LAUNCH_CHOICES },
+            lists,
+            onStart: start,
+          })
       },
     })
     const view = mount(host, {}, { width: 1000, height: 900 })
@@ -85,26 +93,34 @@ it.each(['unknown auth', 'refused catalogue', 'rejected read', 'omitted reason']
     expect(view.all('provider-readiness-failure')).toHaveLength(0)
     for (const provider of providers) expect(lists.readiness(provider).state).toBe('pending')
 
-    const reason = failure === 'unknown auth'
-      ? unknown.reason
-      : failure === 'refused catalogue'
-        ? 'Fictional catalogue denied this read.'
-        : 'Fictional IPC read rejected.'
+    const reason =
+      failure === 'unknown auth'
+        ? unknown.reason
+        : failure === 'refused catalogue'
+          ? 'Fictional catalogue denied this read.'
+          : 'Fictional IPC read rejected.'
     for (const provider of providers) {
       const gate = gates.get(provider)!
-      if (failure === 'omitted reason') gate.resolve({
-        list: list(provider, { ok: false, reason: 'no-profile' }),
-        ready: null,
-        defaultModel: null,
-        defaultModelToSend: null,
-      })
+      if (failure === 'omitted reason')
+        gate.resolve({
+          list: list(provider, { ok: false, reason: 'no-profile' }),
+          ready: null,
+          defaultModel: null,
+          defaultModelToSend: null,
+        })
       else if (failure === 'rejected read') gate.reject(new Error(reason))
-      else gate.resolve(providerLaunchChoices(
-        list(provider, failure === 'refused catalogue'
-          ? { ok: false, reason: 'refused', detail: reason }
-          : { ok: false, reason: 'no-profile' }),
-        unknown,
-      ))
+      else
+        gate.resolve(
+          providerLaunchChoices(
+            list(
+              provider,
+              failure === 'refused catalogue'
+                ? { ok: false, reason: 'refused', detail: reason }
+                : { ok: false, reason: 'no-profile' },
+            ),
+            unknown,
+          ),
+        )
     }
     await Promise.all(reads)
     await settle()
@@ -114,13 +130,20 @@ it.each(['unknown auth', 'refused catalogue', 'rejected read', 'omitted reason']
     expect(view.all('provider-readiness-failure')).toHaveLength(
       expectedReason === null ? 0 : providers.length,
     )
-    for (const row of view.all('provider-readiness-failure')) expect(row.textContent).toContain(reason)
+    for (const row of view.all('provider-readiness-failure'))
+      expect(row.textContent).toContain(reason)
     for (const provider of providers)
-      expect(lists.readiness(provider)).toEqual({ state: 'settled', ready: null, reason: expectedReason })
+      expect(lists.readiness(provider)).toEqual({
+        state: 'settled',
+        ready: null,
+        reason: expectedReason,
+      })
     for (const provider of providers) expect(lists.choices(provider)?.ready ?? null).toBeNull()
     expect(start).not.toHaveBeenCalled()
 
-    read.mockImplementation(async ({ provider }) => providerLaunchChoices(list(provider, null), usable))
+    read.mockImplementation(async ({ provider }) =>
+      providerLaunchChoices(list(provider, null), usable),
+    )
     lists.forget(DEFAULT_PROFILE_ID)
     await Promise.all(providers.map((provider) => lists.read(provider)))
     await settle()

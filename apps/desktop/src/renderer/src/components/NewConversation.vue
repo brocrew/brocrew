@@ -706,16 +706,15 @@ const providerChecks = computed(() =>
 )
 const providerProblems = computed(() =>
   providerChecks.value.flatMap(({ provider, check }) =>
-    check.state === 'settled' && check.reason !== null
-      ? [{ provider, reason: check.reason }]
-      : [],
+    check.state === 'settled' && check.reason !== null ? [{ provider, reason: check.reason }] : [],
   ),
 )
 const checkingProviders = computed(
   () =>
     props.providerReadiness !== null &&
     providerChecks.value.some(
-      ({ provider, check }) => props.providerReadiness?.[provider] == null && check.state === 'pending',
+      ({ provider, check }) =>
+        props.providerReadiness?.[provider] == null && check.state === 'pending',
     ),
 )
 const providerFailure = computed(() => {
@@ -731,15 +730,16 @@ const headerProvider = computed(() =>
       ? `${PROVIDER_NAME[props.defaultProvider]} · Ready`
       : undefined,
 )
-const approvalBlocked = computed(() =>
-  providerFailure.value ??
-  (props.providerReadiness?.[props.defaultProvider] === false
-    ? `${PROVIDER_NAME[props.defaultProvider]} isn't set up. Set it up in Settings → Providers.`
-    : props.providerReadiness !== null && props.providerReadiness[props.defaultProvider] !== true
-      ? `${PROVIDER_NAME[props.defaultProvider]} · Checking…`
-      : props.defaultApprovalMode === null || launchMode.value === null
-        ? 'Choose Ask or Auto before sending.'
-        : null),
+const approvalBlocked = computed(
+  () =>
+    providerFailure.value ??
+    (props.providerReadiness?.[props.defaultProvider] === false
+      ? `${PROVIDER_NAME[props.defaultProvider]} isn't set up. Set it up in Settings → Providers.`
+      : props.providerReadiness !== null && props.providerReadiness[props.defaultProvider] !== true
+        ? `${PROVIDER_NAME[props.defaultProvider]} · Checking…`
+        : props.defaultApprovalMode === null || launchMode.value === null
+          ? 'Choose Ask or Auto before sending.'
+          : null),
 )
 const launchBlocked = computed<SendBlock[]>(() =>
   approvalBlocked.value === null ? [] : [{ words: approvalBlocked.value }],

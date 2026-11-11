@@ -9,10 +9,7 @@ import {
 } from '../src/renderer/src/lib/agent-state'
 import { createSessionRecord } from '../src/renderer/src/lib/session-record'
 import type { AgentState } from '../src/shared/agent-state-contracts'
-import type {
-  RuntimeEventMessage,
-  RuntimeStatesMessage,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 import type { ClientSessionApi } from '../src/shared/client-session-api'
 import type { PublicationEpoch } from '../src/shared/data-version'
 
@@ -104,9 +101,9 @@ it('carries the actual host state through the live store, including an equal-sta
     handle.simulateConversationReset()
     await waitFor(() => states.length > beforeReset, 'state after native reset')
     expect(record.agentState?.is).toBe('idle')
-    expect([...messages].reverse().find((row) => row.event.type === 'conversation_reset')).toHaveProperty(
-      'workAncestry',
-    )
+    expect(
+      [...messages].reverse().find((row) => row.event.type === 'conversation_reset'),
+    ).toHaveProperty('workAncestry')
   } finally {
     client.dispose()
     await world.dispose()
