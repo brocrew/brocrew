@@ -4,6 +4,8 @@ import type { RuntimeBridge } from './runtime-ipc'
 export type ClientSessionApi = Pick<
   RuntimeBridge,
   | 'adoptSessions'
+  | 'agentOwnNotesUnread'
+  | 'agentRulesUnread'
   | 'answerAction'
   | 'archiveConversation'
   | 'attachOpen'
@@ -32,6 +34,7 @@ export type ClientSessionApi = Pick<
   | 'listUnresumable'
   | 'look'
   | 'mcpServerRequestsForAPerson'
+  | 'onChanged'
   | 'onEvent'
   | 'onLiveness'
   | 'processMemory'

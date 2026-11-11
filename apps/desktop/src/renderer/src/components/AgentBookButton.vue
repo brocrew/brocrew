@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useClientApi } from '../client-provider/injection'
 import type { RuntimeBridge } from '../../../shared/runtime-ipc'
 type BookBridge = Pick<RuntimeBridge, 'agentRulesUnread'> &
   Partial<Pick<RuntimeBridge, 'onChanged' | 'agentOwnNotesUnread'>>
 const props = defineProps<{ profileSlug: string; bridge?: BookBridge; compact?: boolean }>()
 const emit = defineEmits<{ open: [profileSlug: string] }>()
-const bridge = computed(() => props.bridge ?? window.api?.runtime)
+const client = useClientApi()
+const bridge = computed(() => props.bridge ?? client.sessions)
 const unread = ref<boolean | null>(null)
 let sequence = 0
 let stopped = false
