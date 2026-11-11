@@ -2459,6 +2459,12 @@ try {
     betaUpdates,
   })
   summary.betaUpdates = betaUpdates
+  const composer = await until(
+    () =>
+      running.cdp.evaluate('return document.querySelector("[data-cy=prompt-input]") !== null'),
+    60_000,
+  )
+  must(Boolean(composer), 'the beta, started again: the composer is ready')
   await running.cdp.evaluate(
     `const field = document.querySelector('[data-cy=prompt-input]'); if (!field) throw new Error('no composer'); field.focus(); field.value = ${JSON.stringify(DRAFT)}; field.dispatchEvent(new Event('input', { bubbles: true }))`,
   )
@@ -2479,17 +2485,13 @@ try {
       { closedAt: new Date().toISOString(), dueAt: claudeDueAt.toISOString() },
     )
   }
-  // Read once the beta has run for the last time: on a Mac, the Keychain entry it sealed its key
-  // with, by its attributes.
+  // File-backed betas need no Keychain entry. Keep attributes of any entry an older beta left.
   summary.keychain = { candidateAppName, afterTheBeta: keychainEntries() }
   const betaEntry = summary.keychain.afterTheBeta[0] ?? null
   if (os === 'mac') {
     check(
-      summary.keychain.afterTheBeta.length === 1 &&
-        betaEntry.service === keychainEntryFor(betaEntry.appName).service &&
-        betaEntry.account === keychainEntryFor(betaEntry.appName).account,
-      'the beta keeps its sealing key in one Keychain entry, under a name this check knows',
-      summary.keychain.afterTheBeta,
+      existsSync(join(data, 'api-keys.json')),
+      'the beta saved its API keys in api-keys.json',
     )
   }
 
