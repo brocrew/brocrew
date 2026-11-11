@@ -1,21 +1,13 @@
+import {
+  stringProperty,
+  numberProperty,
+  type StringProperty,
+  type NumberProperty,
+} from '../../../shared/schema-property.js'
 import { validateArgs } from '../shared/strictArgs.js'
 import type { FlatSchema, PropSchema } from '../shared/strictArgs.js'
 import { PublicToolError } from '../shared/toolServer.js'
-export type PropSpec =
-  | {
-      type: 'string'
-      description: string
-      minLength?: number
-      maxLength?: number
-      pattern?: RegExp
-    }
-  | {
-      type: 'number'
-      description: string
-      min?: number
-      max?: number
-      integer?: boolean
-    }
+export type PropSpec = StringProperty | NumberProperty
 export interface ToolSpec {
   name: string
   description: string
@@ -30,22 +22,8 @@ export function jsonSchemaOf(spec: ToolSpec): {
 } {
   const properties: Record<string, unknown> = {}
   for (const [key, p] of Object.entries(spec.props)) {
-    if (p.type === 'string') {
-      properties[key] = {
-        type: 'string',
-        description: p.description,
-        ...(p.minLength !== undefined ? { minLength: p.minLength } : {}),
-        ...(p.maxLength !== undefined ? { maxLength: p.maxLength } : {}),
-        ...(p.pattern ? { pattern: p.pattern.source } : {}),
-      }
-    } else {
-      properties[key] = {
-        type: p.integer ? 'integer' : 'number',
-        description: p.description,
-        ...(p.min !== undefined ? { minimum: p.min } : {}),
-        ...(p.max !== undefined ? { maximum: p.max } : {}),
-      }
-    }
+    if (p.type === 'string') properties[key] = stringProperty(p, false)
+    else properties[key] = numberProperty(p)
   }
   return {
     type: 'object',

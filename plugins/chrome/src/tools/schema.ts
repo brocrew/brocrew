@@ -1,23 +1,16 @@
+import {
+  stringProperty,
+  numberProperty,
+  type StringProperty,
+  type NumberProperty,
+} from '../../../shared/schema-property.js'
 import { validateArgs } from '../shared/strictArgs.js'
 import type { FlatSchema, PropSchema } from '../shared/strictArgs.js'
 import { ToolError } from '../toolError.js'
 export { ToolError }
 export type PropSpec =
-  | {
-      type: 'string'
-      description: string
-      minLength?: number
-      maxLength?: number
-      pattern?: RegExp
-      enum?: readonly string[]
-    }
-  | {
-      type: 'number'
-      description: string
-      min?: number
-      max?: number
-      integer?: boolean
-    }
+  | (StringProperty & { enum?: readonly string[] })
+  | NumberProperty
   | {
       type: 'boolean'
       description: string
@@ -49,21 +42,9 @@ export function jsonSchemaOf(spec: ToolSpec): {
   const properties: Record<string, unknown> = {}
   for (const [key, p] of Object.entries(spec.props)) {
     if (p.type === 'string') {
-      properties[key] = {
-        type: 'string',
-        description: p.description,
-        ...(p.enum ? { enum: [...p.enum] } : {}),
-        ...(p.minLength !== undefined ? { minLength: p.minLength } : {}),
-        ...(p.maxLength !== undefined ? { maxLength: p.maxLength } : {}),
-        ...(p.pattern ? { pattern: p.pattern.source } : {}),
-      }
+      properties[key] = stringProperty(p, true)
     } else if (p.type === 'number') {
-      properties[key] = {
-        type: p.integer ? 'integer' : 'number',
-        description: p.description,
-        ...(p.min !== undefined ? { minimum: p.min } : {}),
-        ...(p.max !== undefined ? { maximum: p.max } : {}),
-      }
+      properties[key] = numberProperty(p)
     } else if (p.type === 'boolean') {
       properties[key] = { type: 'boolean', description: p.description }
     } else if (p.type === 'scalar') {
