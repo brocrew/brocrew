@@ -121,8 +121,26 @@ async function open(value = initial()) {
   await page.viewport(1000, 1100)
   const parts = fixture(value)
   const profile = ref('quill')
+  const transport = (() => {
+    const previous = Object.getOwnPropertyDescriptor(window, 'api')
+    Reflect.deleteProperty(window, 'api')
+    try {
+      providersBridge()
+      return window.api.runtime
+    } finally {
+      Reflect.deleteProperty(window, 'api')
+      if (previous) Object.defineProperty(window, 'api', previous)
+    }
+  })()
+  const client = createDesktopProviderApi(
+    () => transport,
+    () => undefined,
+  )
   const wrapper = defineComponent({
-    setup: () => () => h(MemoryBook, { profileSlug: profile.value, bridge: parts.bridge }),
+    setup() {
+      provide(CLIENT_PROVIDERS, client)
+      return () => h(MemoryBook, { profileSlug: profile.value, bridge: parts.bridge })
+    },
   })
   const view = mount(wrapper, {}, { width: 780, height: 1000 })
   await vi.waitFor(() => expect(view.host.querySelector('[data-cy="memory-text"]')).not.toBeNull())

@@ -2,7 +2,9 @@
 import { readableError } from '../lib/session-record'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { Provider } from '@brobot2/shared'
-import { providerName, type RuntimeBridge } from '../../../shared/runtime-ipc'
+import type { RuntimeBridge } from '../../../shared/runtime-ipc'
+import { useClientProviders } from '../client-provider/injection'
+import { useProviderNames } from '../composables/useProviderNames'
 import {
   AMENDMENT_MEANS,
   MEMORY_STORE_IS,
@@ -21,6 +23,8 @@ type MemoryBridge = Pick<
   'agentMemory' | 'amendAgentMemory' | 'undoAgentMemory' | 'checkInterruptedMemory'
 >
 const props = defineProps<{ profileSlug: string; bridge?: MemoryBridge }>()
+const providerClient = useClientProviders()
+const providerName = useProviderNames(providerClient)
 const api = computed(() => props.bridge ?? window.api?.runtime)
 const reading = ref<AgentMemoryReading | null>(null)
 const loading = ref(false)
@@ -247,7 +251,7 @@ function outcome(one: MemoryAmendment) {
         :data-cy="`memory-store-${store.provider}`"
         class="store"
       >
-        <h4>{{ providerName(store.provider) }}</h4>
+        <h4>{{ providerName(store.provider) ?? 'Provider' }}</h4>
         <p class="note">
           {{
             MEMORY_STORE_IS[store.state].charAt(0).toUpperCase() +
