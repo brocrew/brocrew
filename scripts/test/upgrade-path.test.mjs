@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
+import { runInNewContext } from 'node:vm'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -2457,6 +2458,118 @@ describe('plugin owner quiescence across a packaged upgrade quit', () => {
     'fails closed on malformed owner evidence %j',
     (record) => {
       expect(upgradeRules.pluginOwnerQuiescence(record)).toBe('not-stopped')
+    },
+  )
+})
+
+describe('hidden startup window allowance', () => {
+  const source = readFileSync(join(ROOT, 'scripts/upgrade-path.mjs'), 'utf8')
+  const launch = source.slice(
+    source.indexOf('async function launch('),
+    source.indexOf('\nconst pagesOf'),
+  )
+  const hidden = source.slice(
+    source.indexOf('async function startHiddenProgram('),
+    source.indexOf('\nasync function recoveryProofCases('),
+  )
+  const measurement = source.slice(
+    source.indexOf('start: (program, workspace, stage, port) =>') + 'start: '.length,
+    source.indexOf(
+      ',\n        quit,',
+      source.indexOf('start: (program, workspace, stage, port) =>'),
+    ),
+  )
+
+  it.each([
+    { mode: 'default', readyAfter: 100_000, wait: 120_000, passes: true },
+    { mode: 'measurement', readyAfter: 150_000, wait: 900_000, passes: true },
+    { mode: 'default', readyAfter: 150_000, wait: 120_000, passes: false },
+    { mode: 'measurement', readyAfter: 900_001, wait: 900_000, passes: false },
+  ])(
+    '$mode page discovery waits $wait ms and preserves timeout failure at $readyAfter',
+    async ({ mode, readyAfter, wait, passes }) => {
+      const waits = [],
+        checks = [],
+        later = [],
+        launches = []
+      let activeWait,
+        opened = false
+      const page = { type: 'page', webSocketDebuggerUrl: 'ws://127.0.0.1/fixture' }
+      const context = {
+        join,
+        evidence: '/owned/evidence',
+        os: 'mac',
+        installedExe: null,
+        installedProgram: null,
+        running: null,
+        performance: { now: () => 1 },
+        Date,
+        AbortSignal,
+        process: { env: {} },
+        openSync: () => 7,
+        closeSync: () => {},
+        claudeRouteEnv: () => ({}),
+        spawn: (program, argv) => {
+          launches.push({ program, argv })
+          return { pid: 42 }
+        },
+        fetch: async () => ({
+          ok: true,
+          json: async () => ({ webSocketDebuggerUrl: 'ws://127.0.0.1/fixture' }),
+        }),
+        connect: async () => ({
+          call: async () => ({ processInfo: [{ type: 'browser', id: 42 }] }),
+        }),
+        until: async (read, budget) => {
+          waits.push(budget)
+          activeWait = budget
+          return await read()
+        },
+        pagesOf: async () => {
+          opened ||= activeWait >= readyAfter
+          return opened ? [page] : []
+        },
+        must: (ok, message) => {
+          checks.push({ ok, message })
+          if (!ok) throw new Error(message)
+        },
+        noteTheRecoveryWindow: async () => {},
+        theAppsOwn: () => true,
+        attachTo: async () => later.push('attach'),
+        bridge: async (_stage, budget) => later.push(budget),
+        onScreen: async () => later.push('rail'),
+      }
+      const functions = runInNewContext(
+        launch +
+          '\n' +
+          hidden +
+          '\n({startHiddenProgram, measurementStart: (' +
+          measurement +
+          ')})',
+        context,
+      )
+      const start =
+        mode === 'measurement' ? functions.measurementStart : functions.startHiddenProgram
+      const pending = start(
+        { exe: '/owned/app', program: '/owned/app/exe' },
+        '/owned/workspace',
+        'test',
+        9999,
+      )
+      if (passes) {
+        await expect(pending).resolves.toMatchObject({ pid: 42 })
+        expect(later).toEqual(['attach', mode === 'measurement' ? 900_000 : 180_000, 'rail'])
+        expect(checks.every((one) => one.ok)).toBe(true)
+        expect(waits).toEqual([180_000, wait, 30_000])
+      } else {
+        await expect(pending).rejects.toThrow('a window opened')
+        expect(later).toEqual([])
+        expect(waits).toEqual([180_000, wait])
+      }
+      expect(launches).toHaveLength(1)
+      expect(launches[0].program).toBe('/owned/app/exe')
+      expect(launches[0].argv).toContain('--user-data-dir=/owned/workspace')
+      expect(launches[0].argv).toContain('--brobot-hidden')
     },
   )
 })

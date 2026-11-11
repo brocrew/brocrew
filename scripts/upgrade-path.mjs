@@ -766,7 +766,8 @@ const claudeRouteEnv = () =>
 
 let installedExe = null
 let installedProgram = null
-async function launch(stage, port, { workspace, hidden = false, recovery = false } = {}) {
+async function launch(stage, port, options = {}) {
+  const { workspace, hidden = false, recovery = false, windowWithin = 120_000 } = options
   const log = join(evidence, `${stage}.log`)
   const debugging = [
     '--remote-debugging-address=127.0.0.1',
@@ -831,7 +832,7 @@ async function launch(stage, port, { workspace, hidden = false, recovery = false
     started: running.pid,
     answering: pid,
   })
-  const opened = await until(async () => (await pagesOf(root)).length > 0 || null, 120_000)
+  const opened = await until(async () => (await pagesOf(root)).length > 0 || null, windowWithin)
   must(opened === true, `${stage}: a window opened`)
   const own = recovery
     ? null
@@ -1901,10 +1902,10 @@ function theStartAndTheKey(conversation, called, atFirstOpen) {
 }
 
 async function startHiddenProgram(program, workspace, stage, port, options = {}) {
-  const { budget = 180_000, launchProgram = launch } = options
+  const { budget = 180_000, launchProgram = launch, windowWithin } = options
   installedExe = program.exe
   installedProgram = program.program
-  await launchProgram(stage, port, { workspace, hidden: true })
+  await launchProgram(stage, port, { workspace, hidden: true, windowWithin })
   await bridge(stage, budget)
   await onScreen(stage, true)
   return running
@@ -2216,7 +2217,10 @@ async function runUpgradePath() {
       },
       app: {
         start: (program, workspace, stage, port) =>
-          startHiddenProgram(program, workspace, stage, port, { budget: 900_000 }),
+          startHiddenProgram(program, workspace, stage, port, {
+            budget: 900_000,
+            windowWithin: 900_000,
+          }),
         quit,
         stop,
       },
