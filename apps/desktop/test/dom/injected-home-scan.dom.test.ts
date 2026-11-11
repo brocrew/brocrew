@@ -56,11 +56,11 @@ it('both scan surfaces capture the injected sessions capability and share its pe
         return pending
       }
     },
-    listResumable() {
+    listResumable(): ReturnType<ClientSessionApi['listResumable']> {
       expect(this).toBe(sessions)
       return list('open')
     },
-    listUnresumable() {
+    listUnresumable(): ReturnType<ClientSessionApi['listUnresumable']> {
       expect(this).toBe(sessions)
       return list('closed')
     },
