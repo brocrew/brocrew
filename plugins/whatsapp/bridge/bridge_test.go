@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -161,6 +162,14 @@ func TestScopedReadsFilterBeforePagination(t *testing.T) {
 	store := fictionalStore(t)
 	token := strings.Repeat("t", 40)
 	api := newAPI(config{Token: token}, &session{store: store}, func() {})
+	selected := []string{"120363000000000001@g.us"}
+	for i := 1; i < 1024; i++ {
+		selected = append(selected, fmt.Sprintf("120363%012d@g.us", i+10))
+	}
+	manyGroups, err := json.Marshal(listQuery{Chats: selected, Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, test := range []struct {
 		route, body string
 		want        int
@@ -170,6 +179,7 @@ func TestScopedReadsFilterBeforePagination(t *testing.T) {
 		{"/chats", `{"chats":["120363000000000001@g.us"],"limit":1}`, 1, "120363000000000001@g.us"},
 		{"/chats", `{"chats":["120363000000000001@g.us"],"limit":1,"page":1}`, 0, ""},
 		{"/chats", `{"chats":[]}`, 0, ""},
+		{"/chats", string(manyGroups), 1, "120363000000000001@g.us"},
 		{"/chats", `{"chats":["120363000000000001@g.us"],"query":"Ines"}`, 0, ""},
 		{"/messages", `{"limit":1}`, 1, "15550000001@s.whatsapp.net"},
 		{"/messages", `{"chats":["120363000000000001@g.us"],"limit":1}`, 1, "120363000000000001@g.us"},
