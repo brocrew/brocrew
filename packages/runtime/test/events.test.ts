@@ -303,7 +303,7 @@ describe('runtimeEventSchema', () => {
     expect(new Set(Object.keys(validEvents))).toEqual(new Set(RUNTIME_EVENT_TYPES))
     // ⚑ 28 → 29: `provider_usage`, a reading the host keeps for the Providers screen and never records.
     // 30 since F080 added `provider_turn`: a turn the provider started by itself.
-    expect(RUNTIME_EVENT_TYPES).toHaveLength(30)
+    expect(RUNTIME_EVENT_TYPES).toHaveLength(32)
   })
 
   it('the 027 additions are ADDITIVE — every pre-027 event still parses unchanged', () => {

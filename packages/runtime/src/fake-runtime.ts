@@ -1219,21 +1219,7 @@ export class FakeSessionHandle implements SessionHandle {
     })
   }
 
-  /**
-   * Emit a memory-recall frame (319) — what the agent said it read out of its memory.
-   *
-   * ⚑ **The default is the shape 318 captured from a real 0.146.0 child**, entry for entry, so a
-   * test that does not care about the payload still exercises one the wire produced.
-   *
-   * ⚠️ **`entries: []` is NOT the interesting call here, unlike its two neighbours above** — it is
-   * the one shape the adapter refuses to emit at all, because a citation naming no file is the bare
-   * *"the agent used memory"* row 319 §1.1 rules out. A test that means *"no memory was consulted"*
-   * simply does not call this: the provider's own `null` and its absent field both reach the app as
-   * no event, which is the collapse `events.ts` argues for.
-   *
-   * ⛔ The Fake reports and never recalls. There is no `SessionHandle` member behind this on any
-   * adapter — the citation is published on a message item and there is nothing to ask a session for.
-   */
+  /** Emit reported recall facts, defaulting to the captured shape. Omit the call for no recall. */
   simulateMemoryRecall(
     rest: Partial<Omit<Extract<RuntimeEvent, { type: 'memory_recall' }>, 'type' | 'source'>> = {},
     source = 'fake/memoryCitation',
@@ -1272,6 +1258,10 @@ export class FakeSessionHandle implements SessionHandle {
     ],
   ): void {
     this.push({ type: 'provider_usage', readings })
+  }
+
+  simulateSummary(summary: Extract<RuntimeEvent, { type: 'turn_summary' | 'command_summary' }>): void {
+    this.push(summary)
   }
 
   /** Drive a turn that fails: `error → turn:'failed' → status:'idle'` via the machine. */

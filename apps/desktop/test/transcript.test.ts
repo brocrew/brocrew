@@ -445,6 +445,8 @@ describe('transcript fold', () => {
         source: 'rate_limit_event',
       },
       turn: { type: 'turn', state: 'completed' },
+      turn_summary: { type: 'turn_summary', status: 'completed', detail: 'Checked the change', needsAction: false },
+      command_summary: { type: 'command_summary', description: 'Checking the change' },
       provider_turn: { type: 'provider_turn' },
       assistant_delta: { type: 'assistant_delta', text: 'x' },
       assistant_message: { type: 'assistant_message', text: 'x' },
@@ -556,6 +558,8 @@ describe('transcript fold', () => {
         'compaction',
         'reset',
         'memoryRecall',
+        'turnSummary',
+        'commandSummary',
         'unknown',
       ]),
     )
