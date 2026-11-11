@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { defineComponent, h, ref } from 'vue'
+import { defineComponent, h, nextTick, provide, ref } from 'vue'
 import { page } from 'vitest/browser'
 import MemoryBook from '../../src/renderer/src/components/MemoryBook.vue'
 import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
 import type { AgentMemoryReading, MemoryAmendment } from '../../src/shared/agent-memory'
 import { mount, unmountAll } from './harness'
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
+import { providersBridge } from '../../look/fixtures/providers'
 
 const entry = {
   kind: 'profile-memory' as const,
@@ -325,4 +329,88 @@ describe('memory in the agent book', () => {
     expect(view.host.querySelector('[data-cy="memory-correct"]')).toBeNull()
     await page.screenshot({ element: view.host, path: '__screenshots__/memory-book-preview.png' })
   })
+})
+
+async function selectedMemory(name = 'Fern', late = false) {
+  const parts = fixture()
+  const descriptors = PROVIDER_DESCRIPTORS.map((item) => ({
+    ...item,
+    displayName: item.id === 'claude' ? name : 'Birch',
+  }))
+  let release!: (value: typeof descriptors) => void
+  const pending = new Promise<typeof descriptors>((done) => {
+    release = done
+  })
+  const raw = vi.spyOn(window.api.runtime, 'providerCatalogue')
+  const transport = {
+    ...window.api.runtime,
+    providerCatalogue: vi.fn(async function (this: object) {
+      expect(this).toBe(transport)
+      return late ? pending : descriptors
+    }),
+  }
+  const api = createDesktopProviderApi(() => transport, () => undefined)
+  const view = mount(
+    defineComponent({
+      setup() {
+        provide(CLIENT_PROVIDERS, api)
+        return () => h(MemoryBook, { profileSlug: 'quill', bridge: parts.bridge })
+      },
+    }),
+    {},
+  )
+  await vi.waitFor(() => expect(view.host.querySelector('[data-cy="memory-text"]')).not.toBeNull())
+  await nextTick()
+  return { ...parts, view, raw, transport, answer: () => release(descriptors) }
+}
+
+it('names memory stores from the selected ancestor while preserving their content and exact change input', async () => {
+  providersBridge()
+  const out = await selectedMemory()
+  expect(out.view.q('memory-store-claude').querySelector('h4')?.textContent).toBe('Fern')
+  expect(out.view.q('memory-store-codex').querySelector('h4')?.textContent).toBe('Birch')
+  expect(out.view.q('memory-store-claude').textContent).toContain('Original note')
+  expect(out.view.q('memory-store-claude').textContent).toContain('/managed/quill')
+  expect(out.reads[0]).toEqual({ profileId: 'quill', offset: 0, limit: 20 })
+  out.view.q('memory-remove').click()
+  await vi.waitFor(() =>
+    expect(out.view.q('memory-confirm-before').textContent).toBe('Original note'),
+  )
+  out.view.q('memory-confirm').click()
+  await vi.waitFor(() => expect(out.edits).toHaveLength(1))
+  expect(out.edits[0]).toEqual({
+    profileId: 'quill',
+    provider: 'claude',
+    entry: entry.path,
+    act: 'removed',
+    text: '',
+    confirmed: true,
+  })
+  expect(out.transport.providerCatalogue).toHaveBeenCalledTimes(1)
+  expect(out.raw).not.toHaveBeenCalled()
+})
+
+it('keeps memory content and actions available while selected names are late, then shows their answer', async () => {
+  providersBridge()
+  const out = await selectedMemory('Fern', true)
+  expect(out.view.q('memory-store-claude').querySelector('h4')?.textContent).toBe('Provider')
+  expect(out.view.q('memory-store-claude').textContent).toContain('Original note')
+  expect((out.view.q('memory-remove') as HTMLButtonElement).disabled).toBe(false)
+  out.answer()
+  await vi.waitFor(() =>
+    expect(out.view.q('memory-store-claude').querySelector('h4')?.textContent).toBe('Fern'),
+  )
+  expect(out.transport.providerCatalogue).toHaveBeenCalledTimes(1)
+  expect(out.raw).not.toHaveBeenCalled()
+})
+
+it('keeps two injected memory-book catalogues distinct for the same provider keys', async () => {
+  providersBridge()
+  const one = await selectedMemory('Fern')
+  const two = await selectedMemory('Willow')
+  expect(one.view.q('memory-store-claude').querySelector('h4')?.textContent).toBe('Fern')
+  expect(two.view.q('memory-store-claude').querySelector('h4')?.textContent).toBe('Willow')
+  expect(one.transport.providerCatalogue).toHaveBeenCalledTimes(1)
+  expect(two.transport.providerCatalogue).toHaveBeenCalledTimes(1)
+  expect(one.raw).not.toHaveBeenCalled()
 })
