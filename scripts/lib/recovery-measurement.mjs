@@ -1,4 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
   cpSync,
   existsSync,
@@ -10,13 +12,15 @@ import {
   rmSync,
   statfsSync,
   writeFileSync,
+  constants,
+  realpathSync,
 } from 'node:fs'
 import { basename, dirname, join, relative } from 'node:path'
 import { tmpdir } from 'node:os'
 import { performance } from 'node:perf_hooks'
 import { DatabaseSync } from 'node:sqlite'
 import { once } from 'node:events'
-import { digest } from './mac-update-test.mjs'
+import { digest, measurementFilesystem } from './mac-update-test.mjs'
 import { until } from './update-rehearsal-app.mjs'
 import { readStateEntry } from './skill-tree-state.mjs'
 import {
@@ -106,8 +110,8 @@ except (OSError, AttributeError) as error:
 export function measurementSize(value) {
   const bytes = Number(value)
   requireEvidence(
-    /^\d+$/.test(String(value)) && Number.isSafeInteger(bytes) && bytes <= 18_000_000_000,
-    'Measurement bytes must be a decimal integer from zero through18000000000.',
+    /^\d+$/.test(String(value)) && Number.isSafeInteger(bytes),
+    'Measurement ceiling must be a nonnegative safe decimal integer.',
   )
   return bytes
 }
@@ -196,8 +200,15 @@ export function measurementFacts(db) {
   }
 }
 
-const HEADROOM = 4_000_000_000
+const HEADROOM = 10_000_000_000
 const OVERSHOOT = 32 * 1024 * 1024
+const STATE_AND_WAL = 64 * 1024 * 1024
+const measurementError = (error) => ({
+  code: error.code ?? null,
+  errno: error.errno ?? null,
+  signal: error.signal ?? null,
+  message: error.message,
+})
 const freeAt = (root) => {
   const { bavail, bsize } = statfsSync(root)
   return bavail * bsize
@@ -209,9 +220,37 @@ export function requireMeasurementCapacity({ bytes, free, filesystem, cloned }) 
     'Measurement needs APFS and a successful FORCE clone.',
   )
   requireEvidence(
-    free >= 2 * (bytes + OVERSHOOT) + HEADROOM,
-    'Post-build space is below the two-database measurement budget.',
+    free >= 3 * (bytes + OVERSHOOT) + HEADROOM + STATE_AND_WAL,
+    'Post-build space is below the live/copy/migration-rebuild measurement budget.',
   )
+}
+
+export function measurementSizes(ceiling, free) {
+  const maximum = Math.min(
+    ceiling,
+    Math.floor((free - HEADROOM - 2 * STATE_AND_WAL) / 3) - OVERSHOOT,
+  )
+  requireEvidence(maximum >= 8 * 1024 * 1024, 'No populated fixture fits above the10GB free floor.')
+  return [...new Set([Math.max(8 * 1024 * 1024, Math.floor(maximum / 4)), maximum])]
+}
+
+export function measurementOrder(log, record, { background, checkpointLine, confirmed }) {
+  return startOrder(log, {
+    checkpoint: true,
+    checkpointLine,
+    completion: background
+      ? record.manifestAbsent
+        ? 'background'
+        : 'functional-background'
+      : 'before-ready',
+    observation: {
+      launched: record.launched,
+      responsive: record.responsive,
+      absent: record.absent,
+      completed: record.manifestAbsent ? record.completed.at : confirmed,
+      manifestAbsent: record.manifestAbsent,
+    },
+  })
 }
 
 function allocation(root) {
@@ -230,6 +269,213 @@ function allocation(root) {
   }
   walk(root)
   return { free: freeAt(root), logical, fileBlocks, at: performance.now() }
+}
+
+export async function compareMeasurementCopies({ file, fs, root, signal, comparisons = [] }) {
+  const original = await digest(file),
+    size = lstatSync(file).size
+  for (const path of ['production-adapter', 'portable-copy']) {
+    requireEvidence(
+      freeAt(root) >= HEADROOM + STATE_AND_WAL,
+      'No comparison fits above the10GB floor.',
+    )
+    const owned = mkdtempSync(join(root, `comparison-${path}-`)),
+      destination = join(owned, 'database.sqlite')
+    const record = { path, bytes: size, before: allocation(root), callerAdmission: false }
+    let cleanupFailure = null
+    comparisons.push(record)
+    const admit = () => {
+      requireEvidence(
+        freeAt(root) >= size + HEADROOM + STATE_AND_WAL,
+        'The copy lacks space above the10GB floor.',
+      )
+      record.callerAdmission = true
+    }
+    try {
+      admit()
+      signal?.throwIfAborted()
+      record.started = performance.now()
+      if (path === 'production-adapter')
+        await fs.cloneFile(file, destination, signal, () => {
+          record.adapterAdmission = true
+          admit()
+        })
+      else await fs.copyFile(file, destination, constants.COPYFILE_EXCL)
+      record.finished = performance.now()
+      record.elapsedMs = record.finished - record.started
+      record.afterCopy = allocation(root)
+      requireEvidence(record.afterCopy.free >= HEADROOM, 'The copy crossed the10GB free floor.')
+      signal?.throwIfAborted()
+      const handle = await fs.open(destination, 'r+')
+      try {
+        await handle.sync()
+      } finally {
+        await handle.close()
+      }
+      record.fsynced = performance.now()
+      record.validationStarted = performance.now()
+      requireEvidence(
+        (await digest(destination)) === original,
+        'The comparison copy differs from the populated source.',
+      )
+      const copy = new DatabaseSync(destination)
+      try {
+        copy.exec('CREATE TABLE measurement_copy_independence (fictional INTEGER)')
+      } finally {
+        copy.close()
+      }
+      requireEvidence(
+        (await digest(file)) === original,
+        'Mutating the comparison changed its source.',
+      )
+      record.validationFinished = performance.now()
+      record.correct = true
+    } catch (error) {
+      record.error = measurementError(error)
+      throw error
+    } finally {
+      try {
+        await fs.rm(owned, { recursive: true, force: true })
+      } catch (error) {
+        record.cleanupError = measurementError(error)
+        cleanupFailure = error
+      }
+      record.cleanupVerified = !existsSync(owned)
+    }
+    if (cleanupFailure) throw cleanupFailure
+  }
+  return comparisons
+}
+
+async function embeddedCopyComparisons(input) {
+  const result = {
+    source: input.source,
+    kind: input.file ? 'copy-comparison' : 'runtime-prerequisite-only',
+    success: false,
+    clock: 'Embedded process monotonic clock; application trials use the parent clock.',
+    runtime: {
+      executable: process.execPath,
+      electron: process.versions.electron,
+      node: process.versions.node,
+      uv: process.versions.uv,
+      arch: process.arch,
+      platform: process.platform,
+    },
+    filesystemCommands: [],
+  }
+  const abort = new AbortController(),
+    stop = () => abort.abort()
+  process.once('SIGTERM', stop)
+  const timer = setTimeout(stop, 900_000)
+  try {
+    requireEvidence(
+      process.platform === 'darwin' &&
+        process.versions.electron &&
+        realpathSync(process.execPath) === realpathSync(input.program),
+      'Actual packaged Darwin Electron is required.',
+    )
+    const gitOptions = { encoding: 'utf8', env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }
+    const head = spawnSync('git', ['-C', input.repo, 'rev-parse', 'HEAD'], gitOptions)
+    requireEvidence(
+      head.status === 0 && head.stdout.trim() === input.source,
+      'Comparison checkout source differs.',
+    )
+    const clean = spawnSync(
+      'git',
+      [
+        '-C',
+        input.repo,
+        'diff',
+        '--quiet',
+        'HEAD',
+        '--',
+        'apps/desktop/src/main/recovery',
+        'packages/runtime/src',
+      ],
+      gitOptions,
+    )
+    requireEvidence(clean.status === 0, 'Comparison recovery source is not the committed source.')
+    const app = join(dirname(dirname(process.execPath)), 'Resources/app.asar')
+    const main = readFileSync(join(app, 'out/main/index.js'))
+    result.build = {
+      version: JSON.parse(readFileSync(join(app, 'package.json'), 'utf8')).version,
+      mainSha256: createHash('sha256').update(main).digest('hex'),
+    }
+    requireEvidence(
+      result.build.version === input.version && main.includes(Buffer.from(input.source)),
+      'Comparison packaged build/source differs.',
+    )
+    result.filesystem = measurementFilesystem(input.root, result.filesystemCommands)
+    requireEvidence(
+      (result.filesystem.FilesystemType ?? result.filesystem.TypeBundle) === 'apfs',
+      'Comparison needs actual APFS.',
+    )
+    const desktop = join(input.repo, 'apps/desktop')
+    const vite = await import(
+      pathToFileURL(join(desktop, 'node_modules/vite/dist/node/index.js')).href
+    )
+    const adapter = join(desktop, 'src/main/recovery/files.ts')
+    const { module } = await vite.runnerImport(adapter, {
+      configFile: false,
+      root: desktop,
+      logLevel: 'error',
+    })
+    result.adapterSha256 = await digest(adapter)
+    result.binding =
+      'Matching committed source RecoveryFs under packaged Electron; not private bundled exports. cp success is not physical clone proof.'
+    result.comparisons = []
+    if (input.file)
+      await compareMeasurementCopies({
+        ...input,
+        fs: module.nodeFs,
+        signal: abort.signal,
+        comparisons: result.comparisons,
+      })
+    result.success = true
+  } catch (error) {
+    result.failure = measurementError(error)
+    process.exitCode = 1
+  } finally {
+    clearTimeout(timer)
+    process.removeListener('SIGTERM', stop)
+    writeFileSync(input.output, `${JSON.stringify(result, null, 2)}\n`)
+  }
+}
+
+async function packagedCopyComparisons(input) {
+  input = {
+    ...input,
+    next: undefined,
+    repo: dirname(dirname(dirname(fileURLToPath(import.meta.url)))),
+    program: input.next.program,
+    output: join(input.root, 'adapter-comparison.json'),
+  }
+  const child = spawn(
+    input.program,
+    [fileURLToPath(import.meta.url), '--embedded-copy-comparison', JSON.stringify(input)],
+    {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  )
+  let launchError = null,
+    output = ''
+  child.on('error', (error) => {
+    launchError = measurementError(error)
+  })
+  child.stdout?.on('data', (part) => {
+    output = (output + part.toString()).slice(-8000)
+  })
+  child.stderr?.on('data', (part) => {
+    output = (output + part.toString()).slice(-8000)
+  })
+  const code = await new Promise((resolve) => child.once('close', resolve))
+  const result = existsSync(input.output) ? JSON.parse(readFileSync(input.output, 'utf8')) : {}
+  Object.assign(result, {
+    child: { pid: child.pid, code, signal: child.signalCode, closed: true, launchError, output },
+  })
+  writeFileSync(input.output, `${JSON.stringify(result, null, 2)}\n`)
+  return result
 }
 
 const WAL_WRITER = `
@@ -391,17 +637,7 @@ async function validateCopy(copy, expected, state, names) {
   return { ...checked, folder: copy.folder, facts }
 }
 
-export async function runRecoveryMeasurement({
-  bytes,
-  old,
-  candidate,
-  source,
-  version,
-  migrations,
-  app,
-  keep,
-  run,
-}) {
+async function runMeasurementSize({ bytes, old, next, source, version, migrations, app, keep }) {
   requireEvidence(bytes > 0, 'Measurement needs a positive populated size.')
   const root = mkdtempSync(join(tmpdir(), 'card214-measure-'))
   const result = {
@@ -415,6 +651,9 @@ export async function runRecoveryMeasurement({
       'fileBlocks sums per-file allocation and may count shared extents repeatedly; free space is observed separately.',
     baseline: { root: old.root, program: old.program, facts: old.facts },
     samplingMs: 100,
+    fixtureClone:
+      'Darwin clonefile via Python; fixture/probe/reset only, not production cp evidence.',
+    filesystemCommands: [],
   }
   const names = stateFileNames(
     readFileSync(join(migrations, '../../recovery/state-files.ts'), 'utf8'),
@@ -424,11 +663,7 @@ export async function runRecoveryMeasurement({
   const workspace = join(root, 'case')
   let success = false
   try {
-    const next = await candidate()
-    const info = run('/usr/sbin/diskutil', ['info', '-plist', root])
-    const fs = JSON.parse(
-      run('/usr/bin/plutil', ['-convert', 'json', '-o', '-', '-'], { input: info }),
-    )
+    const fs = measurementFilesystem(root, result.filesystemCommands)
     const probe = join(root, 'clone-probe')
     writeFileSync(probe, 'Fictional clone probe.')
     cloneMeasurementFile(probe, `${probe}.clone`)
@@ -441,6 +676,11 @@ export async function runRecoveryMeasurement({
     rmSync(probe)
     rmSync(`${probe}.clone`)
     result.admission = { filesystem: fs, ...allocation(root) }
+    result.runtimePreflight = await packagedCopyComparisons({ next, source, version, root })
+    requireEvidence(
+      result.runtimePreflight.success && result.runtimePreflight.child.code === 0,
+      'Packaged runtime/Vite/source prerequisite failed before populated seeding.',
+    )
     mkdirSync(workspace)
     const seed = (earlier) => {
       const db = new DatabaseSync(join(workspace, 'brobot2.sqlite'))
@@ -452,7 +692,7 @@ export async function runRecoveryMeasurement({
           earlier,
           beforeBatch: () =>
             requireEvidence(
-              freeAt(root) >= bytes + HEADROOM,
+              freeAt(root) >= bytes + HEADROOM + STATE_AND_WAL,
               'Seeding would consume the next required database budget.',
             ),
         })
@@ -462,6 +702,17 @@ export async function runRecoveryMeasurement({
     }
     const baselineSeed = seed(false)
     seedState(workspace)
+    result.copyComparisons = await packagedCopyComparisons({
+      next,
+      source,
+      version,
+      root,
+      file: join(workspace, 'brobot2.sqlite'),
+    })
+    requireEvidence(
+      result.copyComparisons.success && result.copyComparisons.child.code === 0,
+      'The packaged adapter comparison failed; retained JSON has its actual prerequisite/error.',
+    )
     const baselineWal = await leaveMeasurementWal(join(workspace, 'brobot2.sqlite'))
     requireEvidence(
       baselineWal.needles.some((row) => row.id === 'measurement-wal'),
@@ -469,7 +720,7 @@ export async function runRecoveryMeasurement({
     )
     result.seed = { ...baselineSeed, facts: baselineWal, allocation: allocation(root) }
     requireEvidence(
-      freeAt(root) >= baselineSeed.bytes + HEADROOM,
+      freeAt(root) >= baselineSeed.bytes + HEADROOM + STATE_AND_WAL,
       'There is no measured space for the baseline copy.',
     )
 
@@ -480,7 +731,25 @@ export async function runRecoveryMeasurement({
           : CHECKPOINT_LINE
       const ids = new Set((await proofManifests(workspace)).map((one) => one.manifest.id))
       const state = stateAt(workspace, names)
-      const record = { label, before: allocation(root), observed: [], completed: null }
+      requireEvidence(
+        freeAt(root) >=
+          expectedFacts.pages *
+            expectedFacts.pageSize *
+            (label === 'candidate-synchronous' ? 2 : 1) +
+            HEADROOM +
+            STATE_AND_WAL,
+        'The next application phase lacks a full-copy budget above10GB.',
+      )
+      const record = {
+        label,
+        path:
+          program === old
+            ? 'actual019 recovery flow'
+            : 'actual candidate recovery flow; cp-c may full-copy',
+        before: allocation(root),
+        observed: [],
+        completed: null,
+      }
       result.trials.push(record)
       let sampleError = null
       let rejectStorage
@@ -496,7 +765,7 @@ export async function runRecoveryMeasurement({
           const at = performance.now()
           const free = freeAt(root)
           requireEvidence(
-            free >= HEADROOM / 2,
+            free >= HEADROOM + OVERSHOOT,
             'Unbudgeted allocation reached the measurement stop margin.',
           )
           const copies = await proofManifests(workspace)
@@ -530,7 +799,10 @@ export async function runRecoveryMeasurement({
       sample()
       let running
       try {
-        running = await Promise.race([app.start(program, workspace, label, 9364), storageFailed])
+        running = await Promise.race([
+          app.start(program, workspace, `${bytes}-${label}`, 9364),
+          storageFailed,
+        ])
         const info = await running.cdp.evaluate('return await window.api.getAppInfo()')
         record.launched = running.launchedMono
         record.responsive = performance.now()
@@ -553,22 +825,19 @@ export async function runRecoveryMeasurement({
           100,
         )
         requireEvidence(completed, 'No completed v1 was observed within the measurement budget.')
+        record.confirmedCompletionAt = performance.now()
         await until(() => readFileSync(running.log, 'utf8').includes(checkpointLine), 10_000, 100)
-        record.order = startOrder(readFileSync(running.log, 'utf8'), {
-          checkpoint: true,
+        record.order = measurementOrder(readFileSync(running.log, 'utf8'), record, {
           checkpointLine,
-          completion: background ? 'background' : 'before-ready',
-          observation: {
-            launched: record.launched,
-            responsive: record.responsive,
-            absent: record.absent,
-            completed: completed.at,
-            manifestAbsent: record.manifestAbsent,
-          },
+          background,
+          confirmed: record.confirmedCompletionAt,
         })
         record.windowMs = record.responsive - record.launched
         record.publicationObservedMs = completed.at - record.launched
-        record.remainingAfterWindowMs = completed.at - record.responsive
+        record.remainingAfterWindowMs = record.manifestAbsent
+          ? completed.at - record.responsive
+          : null
+        record.publicationMinusWindowObservedMs = completed.at - record.responsive
         record.captureObserved = record.observed.find((one) => one.captured)?.at ?? null
         clearInterval(timer)
         await pending
@@ -666,10 +935,48 @@ export async function runRecoveryMeasurement({
     await app.stop()
     result.success = success
     result.finalAllocation = allocation(root)
-    keep('recovery-measurement.json', result)
     if (success) {
       rmSync(root, { recursive: true })
-      rmSync(old.root, { recursive: true })
+      result.cleanupVerified = !existsSync(root)
     }
+    keep('recovery-measurement.json', result)
   }
 }
+
+export async function runRecoveryMeasurement(options) {
+  const next = await options.candidate()
+  const free = freeAt(tmpdir()),
+    sizes = measurementSizes(options.bytes, free),
+    results = []
+  const result = {
+    source: options.source,
+    requestedCeiling: options.bytes,
+    postBuildFree: free,
+    floor: HEADROOM,
+    routeSetupReserve: STATE_AND_WAL,
+    success: false,
+    sizes,
+    results,
+  }
+  try {
+    requireEvidence(sizes.length === 2, 'Two distinct populated sizes are required for scaling.')
+    for (const bytes of sizes) {
+      results.push(
+        await runMeasurementSize({
+          ...options,
+          next,
+          bytes,
+          keep: (name, facts) => options.keep(`size-${bytes}-${name}`, facts),
+        }),
+      )
+    }
+    result.success = true
+    return result
+  } finally {
+    if (result.success) rmSync(options.old.root, { recursive: true })
+    options.keep('recovery-measurement.json', result)
+  }
+}
+
+if (process.argv[2] === '--embedded-copy-comparison')
+  await embeddedCopyComparisons(JSON.parse(process.argv[3]))

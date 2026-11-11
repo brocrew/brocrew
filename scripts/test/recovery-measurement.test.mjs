@@ -11,8 +11,13 @@ import {
   requireMeasurementCapacity,
   leaveMeasurementWal,
   cloneMeasurementFile,
+  measurementSizes,
+  compareMeasurementCopies,
+  measurementOrder,
 } from '../lib/recovery-measurement.mjs'
 import { startOrder, READY_LINE } from '../lib/upgrade-path.mjs'
+import { nodeFs } from '../../apps/desktop/src/main/recovery/files.ts'
+import { measurementFilesystem } from '../lib/mac-update-test.mjs'
 
 const migrations = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -55,19 +60,158 @@ describe('populated recovery measurement', () => {
   it('takes decimal byte inputs and refuses ambiguous or out-of-budget requests', () => {
     expect(measurementSize('0')).toBe(0)
     expect(measurementSize('18000000000')).toBe(18_000_000_000)
-    for (const value of ['-1', '1e9', '1.5', '18000000001', '', 'NaN'])
+    expect(measurementSize('18000000001')).toBe(18_000_000_001)
+    for (const value of ['-1', '1e9', '1.5', '9007199254740992', '', 'NaN'])
       expect(() => measurementSize(value)).toThrow('decimal integer')
   })
 
-  it('requires actual APFS clone evidence and two database copies of post-build room before seeding', () => {
-    const facts = { bytes: 18_000_000_000, free: 41_000_000_000, filesystem: 'apfs', cloned: true }
+  it('budgets live data, recovery copy and migration rebuild above10GB before seeding', () => {
+    const facts = { bytes: 18_000_000_000, free: 65_000_000_000, filesystem: 'apfs', cloned: true }
     expect(() => requireMeasurementCapacity(facts)).not.toThrow()
     expect(() => requireMeasurementCapacity({ ...facts, free: 35_000_000_000 })).toThrow(
-      'two-database',
+      'migration-rebuild',
     )
     expect(() => requireMeasurementCapacity({ ...facts, filesystem: 'hfs' })).toThrow('APFS')
     expect(() => requireMeasurementCapacity({ ...facts, cloned: false })).toThrow('FORCE clone')
   })
+
+  it('chooses serial populated sizes only from current space above the10GB floor and actual-copy budget', () => {
+    const sizes = measurementSizes(18_000_000_000, 45_000_000_000)
+    expect(sizes).toHaveLength(2)
+    expect(sizes[0]).toBeLessThan(sizes[1])
+    for (const bytes of sizes) {
+      expect(bytes).toBeLessThanOrEqual(18_000_000_000)
+      expect(() =>
+        requireMeasurementCapacity({
+          bytes,
+          free: 45_000_000_000,
+          filesystem: 'apfs',
+          cloned: true,
+        }),
+      ).not.toThrow()
+    }
+    expect(() => measurementSizes(18_000_000_000, 10_000_000_000)).toThrow('10GB')
+    expect(measurementSizes(8 * 1024 * 1024, 45_000_000_000)).toEqual([8 * 1024 * 1024])
+  })
+
+  it('resolves actual metadata from the observed device and retains unsuccessful command facts', () => {
+    const commands = []
+    const invoke = (program, args) => {
+      if (program === '/bin/df')
+        return {
+          status: 0,
+          stdout:
+            'Filesystem Blocks Used Available Capacity Mounted on\n/dev/disk7s3 10 2 8 20% /owned',
+        }
+      if (program === '/usr/sbin/diskutil') {
+        expect(args).toEqual(['info', '-plist', '/dev/disk7s3'])
+        return { status: 0, stdout: 'Fictional plist' }
+      }
+      return { status: 0, stdout: '{"FilesystemType":"apfs"}' }
+    }
+    expect(measurementFilesystem('/owned', commands, invoke).FilesystemType).toBe('apfs')
+    expect(commands).toHaveLength(3)
+    const failed = []
+    expect(() =>
+      measurementFilesystem('/owned', failed, () => ({
+        status: null,
+        signal: 'SIGTERM',
+        error: { code: 'ETIMEDOUT', errno: -60, message: 'Fictional metadata timeout' },
+      })),
+    ).toThrow('Filesystem command failed')
+    expect(failed[0]).toMatchObject({
+      status: null,
+      signal: 'SIGTERM',
+      error: { code: 'ETIMEDOUT', errno: -60 },
+    })
+  })
+
+  it('keeps an early publication sample without awarding overlap when the ordinary window is observed later', () => {
+    const record = {
+      launched: 10,
+      responsive: 20,
+      absent: 21,
+      completed: { at: 15 },
+      manifestAbsent: false,
+    }
+    const options = { background: true, checkpointLine: 'completed', confirmed: 22 }
+    expect(
+      measurementOrder(`completed\n${READY_LINE}`, record, options).backgroundObservation,
+    ).toBe('already-complete-no-overlap-credit')
+    expect(record.completed.at).toBe(15)
+    expect(() =>
+      measurementOrder(`${READY_LINE}\ncompleted`, { ...record, manifestAbsent: true }, options),
+    ).toThrow('Responsive ordinary DOM')
+  })
+
+  it.runIf(process.platform === 'darwin')(
+    'compares the real adapter and portable copy serially with correct bytes and owned cleanup',
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), 'measurement-adapter-test-')),
+        file = join(root, 'fixture.sqlite')
+      const db = new DatabaseSync(file)
+      try {
+        seedMeasurementDatabase(db, { journal, sqlOf, bytes: 1024 * 1024 })
+      } finally {
+        db.close()
+      }
+      const original = readFileSync(file)
+      try {
+        const seen = await compareMeasurementCopies({ root, file, fs: nodeFs })
+        expect(seen.map(({ path }) => path)).toEqual(['production-adapter', 'portable-copy'])
+        expect(seen[0].adapterAdmission).toBe(true)
+        for (const one of seen) {
+          expect(one.correct).toBe(true)
+          expect(one.cleanupVerified).toBe(true)
+          expect(one.finished).toBeLessThanOrEqual(one.validationStarted)
+          expect(one.afterCopy.free).toBeGreaterThanOrEqual(10_000_000_000)
+        }
+        const failed = [],
+          error = Object.assign(new Error('Fictional copy EIO'), { code: 'EIO' })
+        await expect(
+          compareMeasurementCopies({
+            root,
+            file,
+            comparisons: failed,
+            fs: {
+              ...nodeFs,
+              cloneFile: async () => {
+                throw error
+              },
+            },
+          }),
+        ).rejects.toBe(error)
+        expect(failed).toHaveLength(1)
+        expect(failed[0]).toMatchObject({ error: { code: 'EIO' }, cleanupVerified: true })
+        const notCleaned = [],
+          cleanup = Object.assign(new Error('Fictional cleanup EACCES'), { code: 'EACCES' })
+        await expect(
+          compareMeasurementCopies({
+            root,
+            file,
+            comparisons: notCleaned,
+            fs: {
+              ...nodeFs,
+              cloneFile: async () => {
+                throw error
+              },
+              rm: async () => {
+                throw cleanup
+              },
+            },
+          }),
+        ).rejects.toBe(error)
+        expect(notCleaned[0]).toMatchObject({
+          error: { code: 'EIO' },
+          cleanupError: { code: 'EACCES' },
+          cleanupVerified: false,
+        })
+        expect(readFileSync(file)).toEqual(original)
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
+    },
+  )
 
   it.each([false, true])(
     'populates real rows and indexes in bounded transactions (earlier prefix %s)',

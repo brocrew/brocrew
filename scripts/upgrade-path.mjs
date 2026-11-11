@@ -7,7 +7,7 @@ import {
   sleep,
   until,
 } from './lib/update-rehearsal-app.mjs'
-import { digest } from './lib/mac-update-test.mjs'
+import { digest, observeKeychainEntries } from './lib/mac-update-test.mjs'
 import {
   runRecoveryMeasurement,
   measurementSize,
@@ -1438,19 +1438,15 @@ function besideKept(stage, before) {
   check(registry.length === 0, `${stage}: the list of workspaces still holds the beta's`, registry)
 }
 
-function keychainEntries() {
+function keychainEntries(stage) {
   if (os !== 'mac') return []
-  return [...new Set([candidateAppName, ...APP_NAMES_BEFORE])].flatMap((appName) => {
-    const { service } = keychainEntryFor(appName)
-    const found = spawnSync('/usr/bin/security', ['find-generic-password', '-s', service], {
-      encoding: 'utf8',
-      timeout: 30_000,
-    })
-    if (found.status !== 0) return []
-    const printed = `${found.stdout ?? ''}\n${found.stderr ?? ''}`
-    const read = keychainAttributes(printed)
-    return [read === null ? { appName, unread: printed.slice(0, 2000) } : { appName, ...read }]
+  const observed = observeKeychainEntries([candidateAppName, ...APP_NAMES_BEFORE], {
+    entryFor: keychainEntryFor,
+    attributes: keychainAttributes,
   })
+  summary.keychainAttempts ??= []
+  summary.keychainAttempts.push({ stage, attempts: observed.attempts })
+  return observed.entries
 }
 
 async function answersWhile(pending) {
@@ -2487,7 +2483,7 @@ async function runUpgradePath() {
     )
   }
   // File-backed betas need no Keychain entry. Keep attributes of any entry an older beta left.
-  summary.keychain = { candidateAppName, afterTheBeta: keychainEntries() }
+  summary.keychain = { candidateAppName, afterTheBeta: keychainEntries('after-beta') }
   const betaEntry = summary.keychain.afterTheBeta[0] ?? null
   if (os === 'mac') {
     check(existsSync(join(data, 'api-keys.json')), 'the beta saved its API keys in api-keys.json')
@@ -2974,7 +2970,7 @@ async function runUpgradePath() {
       )
     }
     if (os === 'mac' && betaEntry !== null && betaEntry.appName === candidateAppName) {
-      const entries = keychainEntries()
+      const entries = keychainEntries('after-candidate')
       summary.keychain.afterTheCandidateAskedForTheKey = entries
       check(
         entries.length === 1 &&

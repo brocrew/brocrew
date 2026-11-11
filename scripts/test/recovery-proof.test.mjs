@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { observeKeychainEntries } from '../lib/mac-update-test.mjs'
 import {
   CHECKPOINT_LINE,
   READY_LINE,
   recoveryProofSequence,
   startOrder,
+  keychainAttributes,
+  keychainEntryFor,
 } from '../lib/upgrade-path.mjs'
 
 async function collect({
@@ -124,6 +127,50 @@ describe('independent packaged recovery proof cases', () => {
   })
   it('allows success only when all original case assertions and shutdown checks passed', async () => {
     expect((await collect({ order: true })).exit).toBe(0)
+  })
+})
+
+describe('status-only existing Keychain observations', () => {
+  it('preserves distinct exit/timeout/parse facts without raw command output or invented absence', () => {
+    const results = [
+      { status: 44, stderr: 'Fictional private output.' },
+      { status: null, signal: 'SIGTERM', error: { code: 'ETIMEDOUT' } },
+      { status: 0, stdout: 'Fictional unparsed attributes.' },
+      { status: 0, stdout: '    "svce"<blob>="app Safe Storage"\n    "acct"<blob>="app Key"' },
+    ]
+    const seen = observeKeychainEntries(['missing', 'timeout', 'unparsed', 'app', 'app'], {
+      entryFor: keychainEntryFor,
+      attributes: keychainAttributes,
+      run: (program, args) => {
+        expect(program).toBe('/usr/bin/security')
+        expect(args.slice(0, 2)).toEqual(['find-generic-password', '-s'])
+        return results.shift()
+      },
+    })
+    expect(
+      seen.attempts.map(({ status, signal, errorCode, parseSucceeded }) => ({
+        status,
+        signal,
+        errorCode,
+        parseSucceeded,
+      })),
+    ).toEqual([
+      { status: 44, signal: null, errorCode: null, parseSucceeded: false },
+      { status: null, signal: 'SIGTERM', errorCode: 'ETIMEDOUT', parseSucceeded: false },
+      { status: 0, signal: null, errorCode: null, parseSucceeded: false },
+      { status: 0, signal: null, errorCode: null, parseSucceeded: true },
+    ])
+    expect(seen.entries).toEqual([
+      {
+        appName: 'app',
+        service: 'app Safe Storage',
+        account: 'app Key',
+        created: null,
+        modified: null,
+      },
+    ])
+    expect(JSON.stringify(seen)).not.toMatch(/Fictional|stdout|stderr|unread/)
+    expect(results).toEqual([])
   })
 })
 

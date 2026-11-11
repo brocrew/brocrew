@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { spawn, execFile } from 'node:child_process'
+import { spawn, spawnSync, execFile } from 'node:child_process'
 import { createReadStream } from 'node:fs'
 import { access, readdir, lstat, readFile } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
@@ -23,6 +23,62 @@ import { MOVED_STATE_TABLES, withMovedFiles } from './moved-state-files.mjs'
 export const FEED_URL = 'http://127.0.0.1:47123/'
 export { STATE_FILES, VERSION_A, VERSION_B }
 export { CHECKPOINT_LINE, FAIL_LINE, READY_LINE }
+
+export function observeKeychainEntries(appNames, { entryFor, attributes, run = spawnSync }) {
+  const entries = [],
+    attempts = []
+  for (const appName of new Set(appNames)) {
+    const { service } = entryFor(appName)
+    const found = run('/usr/bin/security', ['find-generic-password', '-s', service], {
+      encoding: 'utf8',
+      timeout: 30_000,
+    })
+    const read =
+      found.status === 0 ? attributes(`${found.stdout ?? ''}\n${found.stderr ?? ''}`) : null
+    attempts.push({
+      appName,
+      service,
+      status: found.status ?? null,
+      signal: found.signal ?? null,
+      errorCode: found.error?.code ?? null,
+      parseSucceeded: read !== null,
+    })
+    if (read !== null) entries.push({ appName, ...read })
+  }
+  return { entries, attempts }
+}
+
+export function measurementFilesystem(root, commands, invoke = spawnSync) {
+  const run = (program, args, input) => {
+    const value = invoke(program, args, { encoding: 'utf8', timeout: 30_000, input })
+    commands.push({
+      program,
+      args,
+      status: value.status,
+      signal: value.signal,
+      error: value.error
+        ? { code: value.error.code, errno: value.error.errno, message: value.error.message }
+        : null,
+      stdout: value.stdout ?? '',
+      stderr: value.stderr ?? '',
+    })
+    requireEvidence(value.status === 0 && !value.error, `Filesystem command failed: ${program}`)
+    return value.stdout
+  }
+  const df = run('/bin/df', ['-P', root]).trim().split(/\r?\n/)
+  const device = df.at(-1)?.trim().split(/\s+/)[0]
+  requireEvidence(
+    df.length >= 2 && device?.startsWith('/dev/'),
+    'No actual filesystem device was observed.',
+  )
+  return JSON.parse(
+    run(
+      '/usr/bin/plutil',
+      ['-convert', 'json', '-o', '-', '-'],
+      run('/usr/sbin/diskutil', ['info', '-plist', device]),
+    ),
+  )
+}
 
 const USAGE_TABLES = [
   'provider_usage_reading',
