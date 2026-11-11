@@ -21,16 +21,19 @@ describe('provider-neutral summaries', () => {
   ])('admits portable summary facts without naming a provider: %j', (event) => {
     expect(parseRuntimeEvent(event)).toEqual({ ok: true, event })
   })
-  it.each([false, true])('maps a reported turn summary, retaining needs-action %s', (needsAction) => {
-    const event = {
-      type: 'turn_summary',
-      status: turn.status_category,
-      detail: turn.status_detail,
-      needsAction,
-    }
-    expect(normalize({ ...turn, needs_action: needsAction })).toEqual([event])
-    expect(parseRuntimeEvent(event)).toEqual({ ok: true, event })
-  })
+  it.each([false, true])(
+    'maps a reported turn summary, retaining needs-action %s',
+    (needsAction) => {
+      const event = {
+        type: 'turn_summary',
+        status: turn.status_category,
+        detail: turn.status_detail,
+        needsAction,
+      }
+      expect(normalize({ ...turn, needs_action: needsAction })).toEqual([event])
+      expect(parseRuntimeEvent(event)).toEqual({ ok: true, event })
+    },
+  )
 
   it('maps the reported command description without provider fields', () => {
     const event = { type: 'command_summary', description: command.detail }

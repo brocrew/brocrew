@@ -16,7 +16,14 @@ describe('Claude system summaries', () => {
       const message = JSON.parse(line) as SDKMessage
       const events = normalizeMessage(message)
       if (line === lines[0]) {
-        expect(events).toEqual([{ type: 'turn_summary', status: 'completed', detail: 'Finished the reply', needsAction: false }])
+        expect(events).toEqual([
+          {
+            type: 'turn_summary',
+            status: 'completed',
+            detail: 'Finished the reply',
+            needsAction: false,
+          },
+        ])
         expect(warning).not.toHaveBeenCalled()
         return
       }

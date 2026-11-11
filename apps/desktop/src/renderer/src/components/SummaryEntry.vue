@@ -20,5 +20,4 @@ defineProps<{ item: Extract<TranscriptItem, { kind: 'turnSummary' | 'commandSumm
   line-height: var(--leading-normal);
   overflow-wrap: anywhere;
 }
-
 </style>

@@ -23,8 +23,20 @@ describe('common summary transcript facts', () => {
     applyEvent(state, command, 100, 1)
     applyEvent(state, turn, 200, 2)
     expect(state.items).toEqual([
-      expect.objectContaining({ kind: 'commandSummary', description: 'Checking the fictional change', at: 100, ordinal: 1 }),
-      expect.objectContaining({ kind: 'turnSummary', status: 'completed', detail: 'Checked the fictional change', needsAction: true, at: 200, ordinal: 2 }),
+      expect.objectContaining({
+        kind: 'commandSummary',
+        description: 'Checking the fictional change',
+        at: 100,
+        ordinal: 1,
+      }),
+      expect.objectContaining({
+        kind: 'turnSummary',
+        status: 'completed',
+        detail: 'Checked the fictional change',
+        needsAction: true,
+        at: 200,
+        ordinal: 2,
+      }),
     ])
     expect(visibleItems(state.items)).toEqual(state.items)
     expect(visibleItems(state.items, true)).toEqual(state.items)

@@ -13,10 +13,27 @@ it('shows one quiet common line per summary in normal mode while unknowns remain
   const state = createTranscript()
   for (const event of [
     { type: 'command_summary', description: 'Checking a fictional change' },
-    { type: 'turn_summary', status: 'completed', detail: 'The fictional change is checked', needsAction: true },
-    { type: 'turn_summary', status: 'continuing', detail: 'No decision is needed', needsAction: false },
-  ]) applyEvent(state, event as TranscriptEvent)
-  applyEvent(state, { type: 'unknown', provider: 'fictional-provider', category: 'unrecognized', label: 'new_event', raw: { detail: 'Fictional raw payload' } })
+    {
+      type: 'turn_summary',
+      status: 'completed',
+      detail: 'The fictional change is checked',
+      needsAction: true,
+    },
+    {
+      type: 'turn_summary',
+      status: 'continuing',
+      detail: 'No decision is needed',
+      needsAction: false,
+    },
+  ])
+    applyEvent(state, event as TranscriptEvent)
+  applyEvent(state, {
+    type: 'unknown',
+    provider: 'fictional-provider',
+    category: 'unrecognized',
+    label: 'new_event',
+    raw: { detail: 'Fictional raw payload' },
+  })
   let debug = false
   const getLogging = vi.fn(async () => ({ debug, path: '/fictional/log', servicePath: null }))
   vi.stubGlobal('api', { ...window.api, logging: { getLogging } })

@@ -5199,13 +5199,18 @@ function foldEvent(
 
     case 'turn_summary':
       state.items.push({
-        kind: 'turnSummary', id: nextId(state, 'turnSummary'),
-        status: event.status, detail: event.detail, needsAction: event.needsAction,
+        kind: 'turnSummary',
+        id: nextId(state, 'turnSummary'),
+        status: event.status,
+        detail: event.detail,
+        needsAction: event.needsAction,
       })
       return
     case 'command_summary':
       state.items.push({
-        kind: 'commandSummary', id: nextId(state, 'commandSummary'), description: event.description,
+        kind: 'commandSummary',
+        id: nextId(state, 'commandSummary'),
+        description: event.description,
       })
       return
     case 'unknown': {

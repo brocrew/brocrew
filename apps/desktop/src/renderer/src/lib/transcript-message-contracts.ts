@@ -815,10 +815,12 @@ export interface MemoryLoadedItem {
 }
 
 export type TurnSummaryItem = { kind: 'turnSummary'; id: string } & Omit<
-  Extract<RuntimeEvent, { type: 'turn_summary' }>, 'type'
+  Extract<RuntimeEvent, { type: 'turn_summary' }>,
+  'type'
 >
 export type CommandSummaryItem = { kind: 'commandSummary'; id: string } & Omit<
-  Extract<RuntimeEvent, { type: 'command_summary' }>, 'type'
+  Extract<RuntimeEvent, { type: 'command_summary' }>,
+  'type'
 >
 
 export type TranscriptItem = (
