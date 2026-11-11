@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { defineComponent, h, nextTick, provide, ref, unref, type MaybeRef } from 'vue'
+import { expect, it, vi } from 'vitest'
+import { defineComponent, h, provide, ref, unref, type MaybeRef } from 'vue'
 import type { Provider, ProviderProgram } from '../../src/shared/runtime-ipc'
 import type {
   ProviderLaunchChoices,
@@ -12,23 +12,13 @@ import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import { NO_LAUNCH_CHOICES } from '../../src/renderer/src/lib/launch-choices'
 import ModelPicker from '../../src/renderer/src/components/ModelPicker.vue'
 import NewConversation from '../../src/renderer/src/components/NewConversation.vue'
-import { providersBridge } from '../../look/fixtures/providers'
 import { mount, unmountAll } from './harness'
+import { providerLaunchFixture, settleProviderLaunch as settle } from './provider-launch.fixture'
 import { createAttachmentBook, draftKey } from '../../src/renderer/src/lib/drafts'
 
 const FABLE = 'fable' as Provider
 const FERN = 'fern' as Provider
-const settle = async () => {
-  for (let i = 0; i < 5; i++) {
-    await nextTick()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-  }
-}
-beforeEach(() => providersBridge())
-afterEach(() => {
-  unmountAll()
-  Reflect.deleteProperty(window, 'api')
-})
+providerLaunchFixture()
 
 function answer(provider: Provider, ready: boolean | null = true): ProviderLaunchChoices {
   return {

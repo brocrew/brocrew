@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { defineComponent, h, nextTick, provide } from 'vue'
+import { expect, it, vi } from 'vitest'
+import { defineComponent, h, provide } from 'vue'
 import type { AuthState } from '@brobot2/runtime'
 import type { Provider } from '../../src/shared/runtime-ipc'
 import { DEFAULT_PROFILE_ID, PROVIDER_NAME } from '../../src/shared/runtime-ipc'
@@ -12,8 +12,8 @@ import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injecti
 import { NO_LAUNCH_CHOICES } from '../../src/renderer/src/lib/launch-choices'
 import { createAttachmentBook, NEW_CONVERSATION } from '../../src/renderer/src/lib/drafts'
 import NewConversation from '../../src/renderer/src/components/NewConversation.vue'
-import { providersBridge } from '../../look/fixtures/providers'
-import { mount, unmountAll } from './harness'
+import { mount } from './harness'
+import { providerLaunchFixture, settleProviderLaunch as settle } from './provider-launch.fixture'
 
 const providers = Object.keys(PROVIDER_NAME) as Provider[]
 const unknown: AuthState = { state: 'unknown', reason: 'Fictional auth check could not be read.' }
@@ -26,17 +26,7 @@ const list = (provider: Provider, notAsked: ModelList['notAsked']): ModelList =>
   startsOn: null,
   models: [{ id: 'manual', label: 'Manual choice', addedBy: 'a-person' }],
 })
-const settle = async () => {
-  for (let i = 0; i < 5; i++) {
-    await nextTick()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-  }
-}
-beforeEach(() => providersBridge())
-afterEach(() => {
-  unmountAll()
-  Reflect.deleteProperty(window, 'api')
-})
+providerLaunchFixture()
 
 it.each(['unknown auth', 'refused catalogue', 'rejected read', 'omitted reason'] as const)(
   'ends checking on settled %s, preserves supplied facts, and updates after recovery',
