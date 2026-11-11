@@ -8,6 +8,7 @@ export {
   type RetryOptions,
 } from '@brobot2/runtime/atomic-write'
 import { createHash } from 'node:crypto'
+import { execFile } from 'node:child_process'
 import { constants, type BigIntStats } from 'node:fs'
 import * as nodeFsPromises from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, sep } from 'node:path'
@@ -74,6 +75,8 @@ export interface RecoveryFs {
   rename(from: string, to: string): Promise<void>
   /** `mode` is `fs.constants.COPYFILE_*`. */
   copyFile(from: string, to: string, mode?: number): Promise<void>
+  /** Exclusive copy-on-write attempt; Darwin checks space for its possible full-copy fallback. */
+  cloneFile(from: string, to: string, signal?: AbortSignal): Promise<void>
   link(existing: string, name: string): Promise<void>
   unlink(path: string): Promise<void>
   rm(
@@ -124,6 +127,7 @@ export const nodeFs: RecoveryFs = {
   realpath: (path) => nodeFsPromises.realpath(path),
   rename: (from, to) => nodeFsPromises.rename(from, to),
   copyFile: (from, to, mode) => nodeFsPromises.copyFile(from, to, mode),
+  cloneFile: cloneRecoveryFile,
   link: (existing, name) => nodeFsPromises.link(existing, name),
   unlink: (path) => nodeFsPromises.unlink(path),
   rm: (path, options) => nodeFsPromises.rm(path, options),
@@ -151,6 +155,53 @@ export const nodeFs: RecoveryFs = {
   readFile: (path) => nodeFsPromises.readFile(path, 'utf8'),
   writeFile: (path, data, options) => nodeFsPromises.writeFile(path, data, options),
   readdir: (path) => nodeFsPromises.readdir(path),
+}
+
+async function cloneRecoveryFile(from: string, to: string, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted()
+  if (process.platform !== 'darwin') {
+    await nodeFsPromises.copyFile(
+      from,
+      to,
+      constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE_FORCE,
+    )
+    return
+  }
+  if (await pathExists(to))
+    throw Object.assign(new Error(`${to} already exists`), { code: 'EEXIST' })
+  const [source, space] = await Promise.all([
+    nodeFsPromises.stat(from),
+    nodeFsPromises.statfs(dirname(to), { bigint: true }),
+  ])
+  if (space.bavail * space.bsize < BigInt(source.size))
+    throw Object.assign(new Error('Not enough room for a full recovery copy.'), { code: 'ENOSPC' })
+  const staging = await nodeFsPromises.mkdtemp(join(dirname(to), '.copy-'))
+  const copy = join(staging, 'copy')
+  let failure: unknown
+  try {
+    await new Promise<void>((resolve, reject) => {
+      let problem: Error | null = null
+      const child = execFile('/bin/cp', ['-c', from, copy], { signal }, (error) => {
+        if (error) problem = error
+      })
+      child.on('error', (error) => {
+        problem = error
+      })
+      child.once('close', () => (problem ? reject(problem) : resolve()))
+    })
+    signal?.throwIfAborted()
+    await nodeFsPromises.link(copy, to)
+  } catch (error) {
+    failure = error
+  }
+  try {
+    await nodeFsPromises.rm(staging, { recursive: true, force: true })
+  } catch (error) {
+    if (failure !== undefined)
+      throw new AggregateError([failure, error], 'Recovery copy and cleanup failed.')
+    throw error
+  }
+  if (failure !== undefined) throw failure
 }
 
 /** A Node error's `code` (`ENOENT`, `EBUSY`…), or undefined for anything else. */

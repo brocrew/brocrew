@@ -13,7 +13,8 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { statfs } from 'node:fs/promises'
 import {
   assertOwnedPathsAreReal,
   contentAt,
@@ -31,6 +32,11 @@ import {
   writeJsonAtomically,
   type RecoveryFs,
 } from '../../src/main/recovery/files'
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...fs, statfs: vi.fn(fs.statfs) }
+})
 
 const roots: string[] = []
 afterEach(() => {
@@ -444,4 +450,54 @@ describe('assertOwnedPathsAreReal and privateDir', () => {
       expect(existsSync(join(root, 'backups'))).toBe(true)
     },
   )
+})
+
+describe.runIf(process.platform === 'darwin')('Darwin recovery copy', () => {
+  it('copies correct bytes independently, publishes exclusively and leaves no staging files', async () => {
+    const folder = aFolder(),
+      source = join(folder, 'source'),
+      destination = join(folder, 'copy')
+    writeFileSync(source, 'Fictional closed database bytes.')
+    await nodeFs.cloneFile(source, destination)
+    expect(readFileSync(destination, 'utf8')).toBe('Fictional closed database bytes.')
+    writeFileSync(destination, 'Fictional changed copy.')
+    expect(readFileSync(source, 'utf8')).toBe('Fictional closed database bytes.')
+    await expect(nodeFs.cloneFile(source, destination)).rejects.toMatchObject({ code: 'EEXIST' })
+    expect(readFileSync(destination, 'utf8')).toBe('Fictional changed copy.')
+    expect(readdirSync(folder).sort()).toEqual(['copy', 'source'])
+  })
+  it('requires room for the full copy before starting the fallback-capable command', async () => {
+    const folder = aFolder(),
+      source = join(folder, 'source')
+    writeFileSync(source, 'Fictional nonempty bytes.')
+    vi.mocked(statfs).mockResolvedValueOnce({
+      type: 0n,
+      bsize: 4096n,
+      blocks: 0n,
+      bfree: 0n,
+      bavail: 0n,
+      files: 0n,
+      ffree: 0n,
+    })
+    await expect(nodeFs.cloneFile(source, join(folder, 'copy'))).rejects.toMatchObject({
+      code: 'ENOSPC',
+    })
+    expect(readdirSync(folder)).toEqual(['source'])
+  })
+  it('propagates command failure after child exit and removes only its partial staging', async () => {
+    const folder = aFolder(),
+      source = join(folder, 'source-directory')
+    mkdirSync(source)
+    await expect(nodeFs.cloneFile(source, join(folder, 'copy'))).rejects.toMatchObject({ code: 1 })
+    expect(readdirSync(folder)).toEqual(['source-directory'])
+  })
+  it('does not start a copy for an already cancelled capture', async () => {
+    const folder = aFolder(),
+      source = join(folder, 'source')
+    writeFileSync(source, 'Fictional data.')
+    await expect(
+      nodeFs.cloneFile(source, join(folder, 'copy'), AbortSignal.abort()),
+    ).rejects.toMatchObject({ name: 'AbortError' })
+    expect(readdirSync(folder)).toEqual(['source'])
+  })
 })

@@ -6,7 +6,6 @@ import {
 import Database from 'better-sqlite3'
 import { createHash } from 'node:crypto'
 import {
-  constants,
   copyFileSync,
   cpSync,
   existsSync,
@@ -50,6 +49,10 @@ it('reads committed WAL migrations through a private copy without changing the l
     copyFile: async (from, to, mode) => {
       copies++
       return nodeFs.copyFile(from, to, mode)
+    },
+    cloneFile: async (from, to, signal) => {
+      copies++
+      return nodeFs.cloneFile(from, to, signal)
     },
   }
   expect(await migrationsOf(file, { fs, userData })).toEqual({
@@ -162,6 +165,7 @@ function watched(): { fs: RecoveryFs; calls: string[] } {
     mkdir: (path, options) => (calls.push(`mkdir ${path}`), nodeFs.mkdir(path, options)),
     link: (existing, name) => (calls.push(`link ${name}`), nodeFs.link(existing, name)),
     copyFile: (from, to, mode) => (calls.push(`copy ${to}`), nodeFs.copyFile(from, to, mode)),
+    cloneFile: (from, to, signal) => (calls.push(`copy ${to}`), nodeFs.cloneFile(from, to, signal)),
     mkdtemp: (prefix) => (calls.push(`mkdtemp ${prefix}`), nodeFs.mkdtemp(prefix)),
   }
   return { fs, calls }
@@ -405,21 +409,24 @@ describe('migrationsOf', () => {
     ])
   })
 
-  it('clones first, which takes no room, so a full disk refuses no clone', async () => {
+  it('uses a successful clone adapter before portable full-copy admission', async () => {
     const { folder, userData } = aFolder()
     const left = join(userData, 'brobot2.sqlite')
     crashedInto(folder, left)
-    const modes: number[] = []
+    const copies: string[] = []
     const cloning: RecoveryFs = {
       ...nodeFs,
       // A clone as a disk that clones makes it, made here as a plain copy.
-      copyFile: (from, to, mode) => (modes.push(mode ?? 0), nodeFs.copyFile(from, to)),
+      cloneFile: (from, to) => (copies.push(to), nodeFs.copyFile(from, to)),
     }
 
     expect(await migrationsOf(left, { fs: cloning, freeBytes: () => 0 })).toMatchObject({
       kind: 'recorded',
     })
-    expect(modes).toEqual([constants.COPYFILE_FICLONE_FORCE, constants.COPYFILE_FICLONE_FORCE])
+    expect(copies.map((file) => file.split(sep).at(-1))).toEqual([
+      'database.sqlite',
+      'database.sqlite-wal',
+    ])
   })
 
   it('makes a full copy only when the disk has room for it, and says so rather than unreadable', async () => {
@@ -431,10 +438,9 @@ describe('migrationsOf', () => {
     const copies: string[] = []
     const noClones: RecoveryFs = {
       ...nodeFs,
+      cloneFile: () =>
+        Promise.reject(Object.assign(new Error('ENOTSUP: no clones'), { code: 'ENOTSUP' })),
       copyFile: (from, to, mode) => {
-        if (((mode ?? 0) & constants.COPYFILE_FICLONE_FORCE) !== 0) {
-          return Promise.reject(Object.assign(new Error('ENOTSUP: no clones'), { code: 'ENOTSUP' }))
-        }
         copies.push(to)
         return nodeFs.copyFile(from, to, mode)
       },
@@ -463,12 +469,33 @@ describe('migrationsOf', () => {
     expect(readdirSync(userData).sort()).toEqual(['brobot2.sqlite', 'brobot2.sqlite-wal'])
   })
 
+  it('reports clone-adapter full-copy admission failure as no room without touching source bytes', async () => {
+    const { folder, userData } = aFolder()
+    const file = join(userData, 'brobot2.sqlite')
+    crashedInto(folder, file)
+    const before = [fingerprint(file), fingerprint(`${file}-wal`)]
+    const full: RecoveryFs = {
+      ...nodeFs,
+      cloneFile: () => Promise.reject(Object.assign(new Error('ENOSPC: full'), { code: 'ENOSPC' })),
+      copyFile: () => {
+        throw new Error('No copy may start after space admission failed.')
+      },
+    }
+    expect(await migrationsOf(file, { fs: full, freeBytes: () => 0 })).toMatchObject({
+      kind: 'no-room',
+      free: 0,
+    })
+    expect([fingerprint(file), fingerprint(`${file}-wal`)]).toEqual(before)
+  })
+
   it('takes a disk that fills during the copy as no room, not as data it cannot read', async () => {
     const { folder, userData } = aFolder()
     const left = join(userData, 'brobot2.sqlite')
     crashedInto(folder, left)
     const full: RecoveryFs = {
       ...nodeFs,
+      cloneFile: () =>
+        Promise.reject(Object.assign(new Error('ENOTSUP: no clones'), { code: 'ENOTSUP' })),
       copyFile: () => Promise.reject(Object.assign(new Error('ENOSPC: full'), { code: 'ENOSPC' })),
     }
 

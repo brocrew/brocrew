@@ -1,7 +1,6 @@
 import { removeCheckpointEntry } from './checkpoint-deletion'
 import Database from 'better-sqlite3'
 import { createHash, randomUUID } from 'node:crypto'
-import { constants } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { freeBytesOn } from '../archive/native-file'
 import type { Migration } from './contract'
@@ -298,7 +297,18 @@ async function throughScratch(
       [file, copy],
       ...holding.map(({ suffix }) => [`${file}${suffix}`, `${copy}${suffix}`] as const),
     ]
-    if (!(await clonedAll(pairs, fs))) {
+    let copied: boolean
+    try {
+      copied = await copyWithCloneAdapter(pairs, fs)
+    } catch (error) {
+      if (errorCode(error) !== 'ENOSPC') throw error
+      return {
+        kind: 'no-room',
+        needed: spaceToReadThroughACopy(toRead),
+        free: freeBytes(folder) ?? 0,
+      }
+    }
+    if (!copied) {
       const needed = spaceToReadThroughACopy(toRead)
       const free = freeBytes(folder)
       // A disk that cannot be asked is not refused: the copy itself says when the space runs out.
@@ -321,16 +331,18 @@ function spaceToReadThroughACopy({ bytes, holding }: ToRead): number {
   return bytes + 2 * sidecars + SCRATCH_HEADROOM_BYTES
 }
 
-async function clonedAll(
+async function copyWithCloneAdapter(
   pairs: readonly (readonly [string, string])[],
   fs: RecoveryFs,
 ): Promise<boolean> {
   for (const [from, to] of pairs) {
-    const cloned = await fs.copyFile(from, to, constants.COPYFILE_FICLONE_FORCE).then(
-      () => true,
-      () => false,
-    )
-    if (!cloned) return false
+    try {
+      await fs.cloneFile(from, to)
+    } catch (error) {
+      if (!['ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV', 'EINVAL'].includes(errorCode(error) ?? ''))
+        throw error
+      return false
+    }
   }
   return true
 }
@@ -391,11 +403,11 @@ export function prepareDatabaseSnapshot(
   const fs = options.fs ?? nodeFs
   const { pages, pageSize, checkpointed } = snapshotFacts(file)
   return async (copy) => {
-    let cloned = false
+    let copied = false
     if (checkpointed) {
       try {
-        await fs.copyFile(file, copy, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE_FORCE)
-        cloned = true
+        await fs.cloneFile(file, copy, options.signal)
+        copied = true
       } catch (error) {
         if (
           !['ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV', 'EINVAL'].includes(errorCode(error) ?? '')
@@ -404,7 +416,7 @@ export function prepareDatabaseSnapshot(
         await fs.rm(copy, { force: true })
       }
     }
-    if (!cloned) {
+    if (!copied) {
       options.beforeFallback(pages * pageSize)
       const live = new Database(file, { fileMustExist: true })
       try {

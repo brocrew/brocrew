@@ -13,7 +13,7 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises'
-import { constants, existsSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -531,6 +531,10 @@ SELECT * FROM no_such_migration_table;`,
         events.push(`copy ${to}`)
         return nodeFs.copyFile(from, to, mode)
       },
+      cloneFile: (from, to, signal) => {
+        events.push(`copy ${to}`)
+        return nodeFs.cloneFile(from, to, signal)
+      },
       open: (path, flags, mode) => {
         if (path.includes(`${sep}backups${sep}`) && path.endsWith('database.sqlite')) {
           events.push(`read ${path}`)
@@ -567,10 +571,8 @@ SELECT * FROM no_such_migration_table;`,
     const before = await treeOf(userData)
     const noClones: RecoveryFs = {
       ...nodeFs,
-      copyFile: (from, to, mode) =>
-        ((mode ?? 0) & constants.COPYFILE_FICLONE_FORCE) !== 0
-          ? Promise.reject(Object.assign(new Error('ENOTSUP: no clones'), { code: 'ENOTSUP' }))
-          : nodeFs.copyFile(from, to, mode),
+      cloneFile: () =>
+        Promise.reject(Object.assign(new Error('ENOTSUP: no clones'), { code: 'ENOTSUP' })),
     }
     const verdict = await inspect(checkOf(userData, { fs: noClones, freeBytes: () => 0 }).deps)
     expect(verdict).toMatchObject({ kind: 'failed', reason: 'checkpoint-failed', canRetry: true })
