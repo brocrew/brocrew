@@ -72,6 +72,9 @@ for (const theme of ['classic', 'crew-night'] as const) {
           expect(row.getBoundingClientRect().left).toBeCloseTo(noteBox.left, 1)
           expect(row.getBoundingClientRect().width).toBeCloseTo(noteBox.width, 1)
           expect(row.querySelector('use')?.getAttribute('href')).toBe(icon)
+          const glyph = getComputedStyle(row.querySelector('svg')!)
+          expect(glyph.fill).toBe('none')
+          expect(glyph.stroke).toBe(glyph.color)
           const words = row.querySelector<HTMLElement>('[data-cy="summary-words"]')
           expect(words).not.toBeNull()
           expect(words!.textContent?.trim()).toBe(text!.trim())
@@ -105,6 +108,9 @@ for (const theme of ['classic', 'crew-night'] as const) {
           expect(style.borderTopStyle).toBe('solid')
           expect(row.getBoundingClientRect().left).toBeCloseTo(note.getBoundingClientRect().left, 1)
           expect(row.querySelector('use')?.getAttribute('href')).toBe('#i-clock')
+          const glyph = getComputedStyle(row.querySelector('svg')!)
+          expect(glyph.fill).toBe('none')
+          expect(glyph.stroke).toBe(glyph.color)
           expect(row.querySelector('[data-cy="what-the-notice-says"]')?.textContent).toBe(
             WARNINGS[index],
           )
