@@ -69,16 +69,9 @@ import { sinkOwnerId } from './window-caller'
 import { isAPageReport, type PageReceipt } from './page-performance'
 
 /**
- * The renderer→main half of the boundary. One `invoke` channel carries every
- * command as a discriminated union, so there is exactly one place where renderer
- * input is validated — and the decision/response payloads are validated with the
- * runtime's own schemas rather than a re-typed copy, so the bridge cannot drift
- * from the contract it forwards to. The one other shape the channel carries is the
- * page's own freeze report, checked by its own schema (`page-performance.ts`) and
- * never handed to the host.
- *
- * Electron is imported for types only: this module must stay loadable in a plain
- * Node test process.
+ * One renderer→main `invoke` channel validates the command union with the runtime's own schemas.
+ * Page freeze reports use `page-performance.ts` instead and never reach the host.
+ * Electron imports stay type-only so plain Node tests can load this module.
  */
 
 /**
@@ -88,23 +81,10 @@ import { isAPageReport, type PageReceipt } from './page-performance'
  * process do work on the renderer's behalf.
  */
 /**
- * 🔴 **One capability's value on the wire, DERIVED from the schema rather than typed out** (355 §2).
- *
- * ⛔ **HO-008 §3 made the enumeration the requirement, not a suggestion**: *"Build it to enumerate
- * the capability schema rather than hardcode a field list."* A hand-written zod member per field
- * would be one more hardcoded list, and the one furthest from anybody's eye when a capability
- * lands or leaves.
- *
- * ⚑ **Keyed on the EDITOR kind, so a fifth capability of an existing kind validates for free** — and
- * a kind nobody has taught this function about is a compile error rather than a field that quietly
- * accepts anything. ⚠️ `choice` reads the field's own vocabulary, which is why this takes the whole
- * field and not just its kind.
- *
- * ⚠️ **Declared ABOVE `const sessionId` on purpose.** `wire-bounds.test.ts` pins the ordered list of
- * every `z.string()` declared between that line and the union's `satisfies`, and
- * `send-refusals.test.ts` counts every `.min`/`.max`/`.refine`/`z.enum`/`z.boolean` in three slices
- * below it. Both of those censuses are about the SEND commands; a capability grant is not one, and
- * putting it inside their regions would have made it look like one.
+ * Derive capability values from each field's editor and vocabulary, never a separate field list.
+ * An unknown editor must be handled explicitly; choices use the whole field's vocabulary.
+ * Keep this above `const sessionId`: wire-bounds.test.ts and send-refusals.test.ts census the
+ * SEND schemas below it, and capability grants do not belong in those slices.
  */
 function capabilityValueSchema(field: AnyCapabilityField): z.ZodType {
   const count = z.number().int().min(0).max(MAX_CAPABILITY_COUNT)

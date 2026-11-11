@@ -9,56 +9,13 @@ export type FirstMessageHome =
   | 'nowhere'
 
 /**
- * # ⛔ Both endings of one launch, decided in ONE place (221 §2)
- *
- * `start` composes two operations — open a conversation, then say the first thing in it — and until
- * now each ending was decided by its own `if` at its own point in the function, one of them behind
- * a second exported predicate (`shouldReturnFirstMessage`, retired into this). This is both, so
- * they cannot answer differently about the same words.
- *
- * ## `launcher` — 102, found by review
- *
- * The other half of `NewConversation`'s `shouldRestoreDraft`, and it exists because that one cannot
- * see this: it fires on `busy` falling with an ERROR up, which was the only way to tell "the launch
- * ended without opening anything" from "it opened" — until `102` added a second ending with no
- * error on it. A cancelled launch therefore ate the message. Typed, sent, composer cleared on send,
- * `lastTried` wiped by the same watcher that declined to hand it back: nothing left holding it. The
- * sentence the host gives back is *"Start it again whenever you are ready"*, which is only true if
- * the message is still there to start it with.
- *
- * ⚑ **Exported and pure for the reason `shouldRestoreDraft` states out loud** — *"a watcher is not
- * reachable from a node/SSR test, so the decision lives here where it can be pinned"* — and this one
- * lives in an `async` continuation, which is worse.
- *
- * ## §2's question: the row a failed first send leaves behind
- *
- * `220` pressed an attachment-only Send on the launcher, got raw zod, and was left — in its own
- * words — holding *"an empty rail row"*. The dispatch asks whether a launch whose opening message
- * never reached the provider should leave one, and the instinct is to take it away.
- *
- * ⛔ **It should not, and the reason is that closing cannot take it away.** The rail row is created
- * by the LAUNCH, not by the send: `store.create` writes the `provider_session` row before a first
- * message exists. A close does not un-create it — `close()` moves the record to `ended` and it
- * STAYS, deliberately, for the reopen list. So the trade on offer is a live empty conversation you
- * can act on for a **dead** one you cannot, which the session library then keeps for good. That is
- * `151`'s subject arriving as a fix for itself.
- *
- * ⚑ **And the row is not inert.** By the time the send is attempted, `showConversation` has already
- * put the person inside that conversation; the pane renders the host's own reason
- * (`data-cy="session-error"`); and this function sends the words AND the staged paths back to its
- * composer, where one press sends them. A conversation you are standing in, holding what you typed,
- * is not a ghost.
- *
- * ⚠️ **What actually fixes §2 is §1 and §3, upstream of it.** The gesture that produced this state
- * for an ordinary person is gone — the wire accepts an attachment-only send — and what is left
- * refuses in a sentence rather than in schema language. The state remains reachable (a file that
- * moved between the paperclip and the press; a Claude sign-in superseded on the first press; a
- * provider that died on launch, `180`), and in each of those the conversation is exactly where the
- * next attempt belongs.
- *
- * ⛔ **Written here rather than only in a response doc**, on `219` §2's rule: three times in this
- * project a defect has lived inside a gap a doc had already named. `composer.render.test.ts` pins
- * every branch.
+ * Decide where an unsent first message returns after opening and sending settle.
+ * A cancelled launch without an error returns to the launcher; NewConversation.shouldRestoreDraft
+ * handles failures with an error, so this function must not restore those words a second time.
+ * Once a conversation opens, a refused first send returns its words and staged paths to that
+ * conversation's composer. Keep the row live: closing it only leaves an ended row in the library.
+ * The pane displays the refusal and lets the person send again, including attachment-only drafts.
+ * This pure exported decision is covered by composer.render.test.ts outside Vue's async lifecycle.
  */
 export function firstMessageBelongsTo(input: {
   /** The session that opened, or null for a launch that ended without one. */

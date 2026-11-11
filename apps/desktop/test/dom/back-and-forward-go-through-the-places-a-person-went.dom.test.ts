@@ -346,7 +346,6 @@ it('walks screens and a conversation back and forward, naming where each goes', 
   expect(back().disabled).toBe(true)
   await press('nav-forward')
   expect(on('waiting-on-you')).toBe(true)
-  // A new place clears what Forward would return to.
   await press('rail-settings')
   expect(forward().disabled).toBe(true)
   expect(runtime.send).not.toHaveBeenCalled()
@@ -361,7 +360,6 @@ it('a conversation’s tab is part of its place: kept, and never a step of its o
   await press('rail-team')
   await press('nav-back')
   expect(m.q('main-tab-files').getAttribute('aria-selected')).toBe('true')
-  // The two tab presses recorded nothing: the conversation is still the first place.
   expect(back().disabled).toBe(true)
 })
 

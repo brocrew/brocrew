@@ -30,12 +30,6 @@ import { ROLE_PROPERTIES } from '../lib/text-roles'
 import { useModelLists } from '../composables/useModelLists'
 
 /**
- * The shared model picker.
- *
- * > *"we need a new component, contains the available models list, those auto loaded from
- * > codex/claude, and also those added manually. the component shows as a popover when we want to
- * > change the model."*
- *
  * ⚑ **One component, mounted wherever a model is chosen** — the new-conversation form, a
  * conversation's settings and an agent's sheet. A **face** shows the pair; pressing it opens a
  * **panel**: each provider's list (the provider's own rows, then the person's, with *+ Add* and ✕
