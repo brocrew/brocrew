@@ -692,7 +692,7 @@ onMounted(() => {
 const sends = computed(() =>
   modelMatchesProvider.value
     ? theFormSends(props.choices, lists.value.choices(props.defaultProvider))
-    : (lists.value.choices(props.defaultProvider)?.defaultModel ?? null),
+    : (lists.value.choices(props.defaultProvider)?.defaultModelToSend ?? null),
 )
 
 const firstApproval = ref<'ask' | 'auto' | null>(null)
