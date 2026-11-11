@@ -915,6 +915,7 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
         ...(past.workAncestry === undefined ? {} : { workAncestry: past.workAncestry }),
         ...(past.ancestryContext === undefined ? {} : { ancestryContext: past.ancestryContext }),
         ...(past.humanFinal === undefined ? {} : { humanFinal: past.humanFinal }),
+        ...(past.errorFacts === undefined ? {} : { errorFacts: past.errorFacts }),
       })
     }
     // ⚑ A page that stops short of the epoch is all previous life, so it is crossed at the end —
