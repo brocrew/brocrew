@@ -138,6 +138,7 @@ const CODEX_ASKS: Record<string, unknown> = {
   mode: 'form',
   _meta: {
     codex_approval_kind: 'mcp_tool_call',
+    tool_name: CODEX_TOOL,
     persist: ['session', 'always'],
     tool_description: 'Create a new issue in a GitHub repository',
     tool_params: CODEX_PARAMS,

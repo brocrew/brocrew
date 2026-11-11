@@ -41,6 +41,7 @@ const CODEX_ASKS = {
   mode: 'form',
   _meta: {
     codex_approval_kind: 'mcp_tool_call',
+    tool_name: 'note_it',
     persist: ['session', 'always'],
     tool_params: { note: 'one' },
     tool_params_display: [{ name: 'note', value: 'one', display_name: 'note' }],

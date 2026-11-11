@@ -154,6 +154,7 @@ const codexAsks = (
   mode: 'form',
   _meta: {
     codex_approval_kind: 'mcp_tool_call',
+    tool_name: TOOL,
     persist,
     tool_description: 'Create a new issue in a GitHub repository',
     tool_params: params,
