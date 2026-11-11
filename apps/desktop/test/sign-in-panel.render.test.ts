@@ -28,6 +28,7 @@ const CLAUDE_COPY: CapabilityStatus = capabilitiesFor('claude').reprovisionAuth
 
 const base = {
   provider: 'codex',
+  displayName: 'Codex',
   signIn: CODEX_SIGN_IN,
   reprovision: CODEX_COPY,
   busy: 'idle',
@@ -107,6 +108,7 @@ describe('SignInPanel — the two ways out, and the difference between them (098
       ...base,
       state: ABSENT,
       provider: 'claude',
+      displayName: 'Claude',
       signIn: CLAUDE_SIGN_IN,
       reprovision: CLAUDE_COPY,
     })
@@ -123,6 +125,7 @@ describe('SignInPanel — the two ways out, and the difference between them (098
       ...base,
       state: ABSENT,
       provider: 'claude',
+      displayName: 'Claude',
       signIn: CLAUDE_SIGN_IN,
       reprovision: CLAUDE_COPY,
     })
@@ -176,5 +179,21 @@ describe('SignInPanel — the two ways out, and the difference between them (098
     expect(told).toContain('identical to the one already here')
 
     expect(await render({ ...base, state: STALE, notice: null })).not.toContain('sign-in-notice')
+  })
+})
+
+describe('SignInPanel — a name that has not answered', () => {
+  it('keeps grammatical generic headings and available actions for every unread-name state', async () => {
+    for (const [state, heading] of [
+      [ABSENT, 'Sign in to use this provider with this agent'],
+      [STALE, 'Sign in again to use this provider with this agent'],
+      [UNKNOWN, 'Couldn&#39;t check this agent&#39;s sign-in with this provider'],
+    ] as const) {
+      const html = await render({ ...base, displayName: undefined, state })
+      expect(html).toContain(heading)
+      expect(html).toContain('data-cy="sign-in-check"')
+      expect(html).toContain('data-cy="sign-in-start"')
+      expect(html).not.toContain('disabled')
+    }
   })
 })
