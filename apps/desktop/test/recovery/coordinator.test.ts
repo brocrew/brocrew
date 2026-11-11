@@ -1234,18 +1234,19 @@ describe('a test keeping the recovery window on a hidden launch', () => {
   })
 })
 
+const LEGACY_BUILD = BUILD_LINEAGE.filter((createdAt) => createdAt <= 1794254514029).length
 it.each([
-  { pending: false, hasFallback: false },
-  { pending: true, hasFallback: false },
-  { pending: true, hasFallback: true },
+  { migrations: THIS_BUILD, pending: false, hasFallback: false },
+  { migrations: THIS_BUILD, pending: true, hasFallback: false },
+  { migrations: THIS_BUILD, pending: true, hasFallback: true },
+  { migrations: LEGACY_BUILD, pending: true, hasFallback: false },
+  { migrations: LEGACY_BUILD, pending: true, hasFallback: true },
 ])(
-  'captures before writers; pending=$pending compatible fallback=$hasFallback',
-  async ({ pending, hasFallback }) => {
+  'captures $migrations migrations before writers; pending=$pending compatible fallback=$hasFallback',
+  async ({ migrations, pending, hasFallback }) => {
     const userData = await aWorkspace({
-      migrations: THIS_BUILD,
-      checkpoints: hasFallback
-        ? [{ migrations: THIS_BUILD, createdAt: new Date(0).toISOString() }]
-        : [],
+      migrations,
+      checkpoints: hasFallback ? [{ migrations, createdAt: new Date(0).toISOString() }] : [],
     })
     const captured: CapturedCheckpoint[] = []
     let hashes = 0

@@ -461,7 +461,10 @@ async function decide(
 
   const pending = hasPendingMigrations(applied, lineage)
   // 0.2.19 ships through 0029_open_provider_ids; newer migrations cannot be opened by it.
-  const rollbackLineage = lineage.filter(({ createdAt }) => createdAt <= 1794254514029)
+  const legacyLineage = lineage.filter(({ createdAt }) => createdAt <= 1794254514029)
+  const rollbackLineage = isLineagePrefix(applied, legacyLineage)
+    ? legacyLineage
+    : lineage.slice(0, applied.length)
   const needsCompletedFallback =
     pending && (await listOfferable(userData, rollbackLineage, fs)).length === 0
   const options = {
@@ -513,7 +516,7 @@ async function decide(
     return failed(
       'checkpoint-failed',
       false,
-      'No completed recovery copy can be opened by BroCrew 0.2.19.',
+      'No completed recovery copy is compatible with this workspace before its next migration.',
     )
   }
   if (reason === null) return OPEN_NOT_NEEDED
@@ -527,7 +530,7 @@ async function decide(
     if (!completedFallback) {
       if (!isLineagePrefix(captured.manifest.database.migrations, rollbackLineage)) {
         throw new CheckpointFailed(
-          'No completed recovery copy can be opened by BroCrew 0.2.19.',
+          'No completed recovery copy is compatible with this workspace before its next migration.',
           false,
         )
       }
