@@ -7,6 +7,10 @@ import {
   whatAModelChoiceReaches,
 } from '../../../shared/model-choice'
 
+type ProviderNames = Readonly<Partial<Record<Provider, string>>>
+const nameOf = (provider: Provider, names: ProviderNames | undefined): string =>
+  names === undefined ? PROVIDER_NAME[provider] : (names[provider] ?? 'the provider')
+
 /**
  * # 🔴 685 · the control `677` built the doors for — a person chooses each agent's model and effort
  *
@@ -54,14 +58,15 @@ import {
 export function aChoiceForAnotherProviderSays(
   choice: AgentModelChoice,
   itsProvider: Provider | null,
+  names?: ProviderNames,
 ): string | null {
   // ⚠️ `aChoiceIsInForce` already answers yes for `null`; the first test is here to narrow the type.
   if (itsProvider === null || aChoiceIsInForce(choice, itsProvider)) return null
   return (
-    `It is for ${PROVIDER_NAME[choice.provider]}, and this agent runs on ` +
-    `${PROVIDER_NAME[itsProvider]}, so no launch reads it: another agent that starts this one, or ` +
+    `It is for ${nameOf(choice.provider, names)}, and this agent runs on ` +
+    `${nameOf(itsProvider, names)}, so no launch reads it: another agent that starts this one, or ` +
     'whose message starts it, does so as though nobody had chosen. Its picker picks a ' +
-    `${PROVIDER_NAME[itsProvider]} model in its place, and Clear takes it away.`
+    `${names !== undefined && names[itsProvider] === undefined ? 'provider' : nameOf(itsProvider, names)} model in its place, and Clear takes it away.`
   )
 }
 
@@ -118,10 +123,14 @@ export function theStandInNamed<C extends { readonly standIn: string | null }>(
  * *"it now runs on X"* (review): a conversation already running keeps its provider, and a spawner
  * may still name another once no choice holds it.
  */
-export function whatTheProviderPressCleared(cleared: AgentModelChoice, nowOn: Provider): string {
+export function whatTheProviderPressCleared(
+  cleared: AgentModelChoice,
+  nowOn: Provider,
+  names?: ProviderNames,
+): string {
   return (
-    `The model and effort chosen for it — ${aChoiceInWords(cleared)} — were cleared: a choice ` +
-    `is always for its own provider, and its provider is now ${PROVIDER_NAME[nowOn]}.`
+    `The model and effort chosen for it — ${aChoiceInWords(cleared, names)} — were cleared: a choice ` +
+    `is always for its own provider, and its provider is now ${nameOf(nowOn, names)}.`
   )
 }
 
@@ -140,11 +149,14 @@ export function whatTheProviderPressCleared(cleared: AgentModelChoice, nowOn: Pr
  * nothing it would have to predict. ⚠️ **A prediction about a write, and said as one**: another
  * window may move the choice between this read and the press; the after-press line is the record.
  */
-export function whatAProviderPressWouldClear(held: AgentModelChoice | null): string | null {
+export function whatAProviderPressWouldClear(
+  held: AgentModelChoice | null,
+  names?: ProviderNames,
+): string | null {
   if (held === null) return null
   return (
-    `Moving it to a provider other than ${PROVIDER_NAME[held.provider]} clears the model and ` +
-    `effort chosen for it — ${aChoiceInWords(held)}: a choice is always for its own provider. ` +
+    `Moving it to a provider other than ${nameOf(held.provider, names)} clears the model and ` +
+    `effort chosen for it — ${aChoiceInWords(held, names)}: a choice is always for its own provider. ` +
     'Leaving no provider saved keeps it.'
   )
 }
@@ -162,6 +174,7 @@ export function whatAProviderPressWouldClear(held: AgentModelChoice | null): str
 export function heldReachesSays(
   held: AgentModelChoice,
   itsProvider: Provider | null,
+  names?: ProviderNames,
 ): string | null {
-  return aChoiceIsInForce(held, itsProvider) ? whatAModelChoiceReaches(held) : null
+  return aChoiceIsInForce(held, itsProvider) ? whatAModelChoiceReaches(held, names) : null
 }

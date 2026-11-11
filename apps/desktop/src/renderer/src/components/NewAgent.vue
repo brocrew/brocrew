@@ -9,12 +9,13 @@ import {
   foldProfileName,
   isPathSegment,
   profileLabel,
-  providerName,
   type Provider,
 } from '../../../shared/runtime-ipc'
 import { identityIn } from '../lib/agent-store'
-import { noProviderSavedSays } from '../lib/front-door-words'
+import { noProviderSavedSays, providerNamesIn } from '../lib/front-door-words'
 import { useAgentStore } from '../composables/useAgentStore'
+import { useClientProviders } from '../client-provider/injection'
+import { useProviderNames } from '../composables/useProviderNames'
 
 /**
  * 🔴 **A person brings an agent into existence** (423, HO-023 §3) — the gesture `417` removed and
@@ -56,6 +57,8 @@ import { useAgentStore } from '../composables/useAgentStore'
 const emit = defineEmits<{ close: [] }>()
 
 const store = useAgentStore()
+const nameOf = useProviderNames(useClientProviders())
+const names = computed(() => providerNamesIn(nameOf))
 
 const slug = ref('')
 const name = ref('')
@@ -271,9 +274,9 @@ const providers = computed<Provider[]>(() => Object.keys(PROVIDER_NAME) as Provi
       <label class="field">
         <span class="lbl">Provider</span>
         <select v-model="provider" data-cy="new-agent-provider" @change="touched">
-          <option value="">{{ noProviderSavedSays(null) }}</option>
-          <option v-for="each in providers" :key="each" :value="each">
-            {{ providerName(each) }}
+          <option value="">{{ noProviderSavedSays(null, names) }}</option>
+          <option v-for="(each, index) in providers" :key="each" :value="each">
+            {{ nameOf(each) ?? `Provider ${index + 1} (name not read)` }}
           </option>
         </select>
         <!-- ⚑ An agent keeps its provider: a give never changes it (`theProviderAStartRunsOn`). One

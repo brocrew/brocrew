@@ -18,6 +18,9 @@ import {
 import type { ModelLists, PickedModel } from '../lib/model-lists'
 import { useAgentStore } from '../composables/useAgentStore'
 import { useModelLists } from '../composables/useModelLists'
+import { useClientProviders } from '../client-provider/injection'
+import { useProviderNames } from '../composables/useProviderNames'
+import { providerNamesIn } from '../lib/front-door-words'
 import ModelPicker from './ModelPicker.vue'
 
 /**
@@ -67,6 +70,7 @@ const props = withDefaults(
     store?: AgentStore
     /** Injectable for tests; the window's one holder of the model lists otherwise. */
     lists?: ModelLists
+    names?: Readonly<Partial<Record<Provider, string>>>
   }>(),
   { store: undefined, itsProvider: null, capabilities: null, lists: undefined },
 )
@@ -83,6 +87,8 @@ const emit = defineEmits<{
 
 const store = computed(() => props.store ?? useAgentStore())
 const modelLists = computed(() => props.lists ?? useModelLists())
+const suppliedName = useProviderNames(useClientProviders())
+const names = computed(() => props.names ?? providerNamesIn(suppliedName))
 
 /** ⛔ Whether an answer has arrived at all (086) — `held: null` is *nobody chose*, and ordinary. */
 const asked = ref(false)
@@ -153,7 +159,9 @@ const shown = computed<PickedModel | null>(() =>
 )
 
 const otherProvider = computed(() =>
-  held.value === null ? null : aChoiceForAnotherProviderSays(held.value, props.itsProvider),
+  held.value === null
+    ? null
+    : aChoiceForAnotherProviderSays(held.value, props.itsProvider, names.value),
 )
 /**
  * 🔴 **`696` · the row says a choice is NOT IN FORCE** (`R31b`; `688` §1b) — beside the values, not
@@ -165,12 +173,12 @@ const notInForce = computed(
 )
 /** ⛔ **`691` · only for a choice IN FORCE** — see `heldReachesSays` for why. */
 const heldReaches = computed(() =>
-  held.value === null ? null : heldReachesSays(held.value, props.itsProvider),
+  held.value === null ? null : heldReachesSays(held.value, props.itsProvider, names.value),
 )
 
 /** 🔴 **What a Save would reach, rendered from the pick** (standing rule 8.2). */
 function aPickReaches(pick: PickedModel): string {
-  return whatAModelChoiceReaches(pick)
+  return whatAModelChoiceReaches(pick, names.value)
 }
 
 /**
@@ -229,7 +237,7 @@ async function clear(): Promise<void> {
           <!-- 🔴 **`696` · a choice for ANOTHER provider, and where it stands** (`688` §1b) — not
                in force (`R31b`): nothing reads it. -->
           <span v-if="notInForce && held" class="agent-model-held" data-cy="agent-model-held">
-            <strong>{{ aChoiceInWords(held) }}</strong>
+            <strong>{{ aChoiceInWords(held, names) }}</strong>
             <em class="agent-model-off" data-cy="agent-model-not-in-force">not in force</em>
           </span>
         </template>

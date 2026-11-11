@@ -5,7 +5,6 @@ import type { HandedPath } from '../../../shared/attachment-contracts'
 import { computed, ref, watch } from 'vue'
 import {
   agentName,
-  providerName,
   PROVIDER_NAME,
   type CreateSessionInput,
   type Provider,
@@ -18,6 +17,8 @@ import { joiningTheBox, shouldRestoreDraft } from '../lib/drafts'
 import PromptComposer from './PromptComposer.vue'
 import ModelPicker from './ModelPicker.vue'
 import type { ModelLists, PickedModel } from '../lib/model-lists'
+import { useClientProviders } from '../client-provider/injection'
+import { useProviderNames } from '../composables/useProviderNames'
 
 /**
  * 🔴 **The other door HO-023 §2 promised existed** (423 relay 1) — *"a new conversation is with
@@ -158,6 +159,7 @@ const emit = defineEmits<{
  * initial is the whole shape this dispatch is closing.
  */
 const agents = props.agents ?? useAgentStore()
+const nameOf = useProviderNames(useClientProviders())
 const who = computed(() =>
   agentName(props.profileSlug, agents.identities.value?.identities ?? null),
 )
@@ -284,7 +286,7 @@ function startWith(text: string, _intent?: unknown, attachments: HandedPath[] = 
   >
     <template #header>
       <strong data-cy="start-as-agent-title">New conversation as {{ who }}</strong>
-      <small>It will run on {{ providerName(provider) }}, in the folder below.</small>
+      <small>It will run on {{ nameOf(provider) ?? 'the provider' }}, in the folder below.</small>
     </template>
 
     <template #body>
@@ -294,7 +296,7 @@ function startWith(text: string, _intent?: unknown, attachments: HandedPath[] = 
           :providers="providers"
           :profile-id="props.profileSlug"
           :shown="picked"
-          :empty="`Default: ${providerName(provider)}`"
+          :empty="`Default: ${nameOf(provider) ?? 'the provider'}`"
           :fixed="props.busy ?? false"
           take-words="Start on this"
           :take="startOn"

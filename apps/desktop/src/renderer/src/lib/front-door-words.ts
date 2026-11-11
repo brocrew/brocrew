@@ -1,6 +1,20 @@
-import { providerName, type Provider } from '../../../shared/runtime-ipc'
+import { PROVIDER_NAME, providerName, type Provider } from '../../../shared/runtime-ipc'
 import type { ItsProvider, StartedOn } from '../../../shared/agent-roster'
 import { DRAWER_TABS, TAB_OF_THE_SETTINGS } from './drawer'
+
+type ProviderNames = Readonly<Partial<Record<Provider, string>>>
+
+export function providerNamesIn(lookup: (provider: Provider) => string | undefined): ProviderNames {
+  return Object.fromEntries(
+    (Object.keys(PROVIDER_NAME) as Provider[]).flatMap((provider) => {
+      const name = lookup(provider)
+      return name === undefined ? [] : [[provider, name]]
+    }),
+  )
+}
+
+const nameOf = (provider: Provider, names: ProviderNames | undefined): string =>
+  names === undefined ? providerName(provider) : (names[provider] ?? 'the provider')
 
 /**
  * # ⛔ The one decision the front door still makes for you (417 §3, HO-022 §2)
@@ -72,9 +86,9 @@ export const CHANGEABLE_LIVE_IN = SETTINGS_TAB ? `the ${SETTINGS_TAB.label} tab`
  * under it is behind a press now, and so is {@link LAUNCH_APPROVAL_BOUND} —
  * see {@link FOLDED_ON_THE_FRONT_DOOR} for which prose folded and which had to stay.
  */
-export function providerIsFixed(provider: Provider): string {
+export function providerIsFixed(provider: Provider, names?: ProviderNames): string {
   return (
-    `This conversation will run on ${providerName(provider)}. Its model and approvals you can ` +
+    `This conversation will run on ${nameOf(provider, names)}. Its model and approvals you can ` +
     `change later, in ${CHANGEABLE_LIVE_IN} — the provider you cannot: it is fixed when the ` +
     `conversation starts.`
   )
@@ -118,6 +132,7 @@ export function providerTakesEffectNextTime(
   provider: Provider,
   aDoorAsks = false,
   isService = false,
+  names?: ProviderNames,
 ): string {
   if (isService) {
     return (
@@ -127,7 +142,7 @@ export function providerTakesEffectNextTime(
     )
   }
   return (
-    `The default for a new conversation you start as this identity is ${providerName(provider)}` +
+    `The default for a new conversation you start as this identity is ${nameOf(provider, names)}` +
     (aDoorAsks ? ', unless you choose another provider where you start it. ' : '. ') +
     `Changing this starts nothing and moves nothing: a conversation keeps the provider it began ` +
     `on. Once you choose a default here, new gives without a provider or model use that provider’s conversation, starting one if needed. ` +
@@ -328,20 +343,26 @@ export function launchApprovalView(mode: LaunchApproval | null): LaunchApprovalV
  * What the provider control's empty choice means for one agent: nothing saved for it, and what its
  * conversations say instead ({@link ItsProvider}).
  */
-export function noProviderSavedSays(runsOn: ItsProvider | null): string {
+export function noProviderSavedSays(runsOn: ItsProvider | null, names?: ProviderNames): string {
   if (runsOn?.from === 'its-conversations') {
-    return `Not saved: its conversations ran on ${providerName(runsOn.provider)}`
+    return `Not saved: its conversations ran on ${nameOf(runsOn.provider, names)}`
   }
   if (runsOn?.from === 'its-conversations-differ')
     return 'Not chosen: its conversations ran on both'
   return 'Not chosen yet'
 }
 
+export function agentProviderSays(runsOn: ItsProvider, names: ProviderNames): string {
+  return runsOn.provider === null
+    ? noProviderSavedSays(runsOn, names)
+    : nameOf(runsOn.provider, names)
+}
+
 /** How many of an agent's conversations started on each provider: "Claude (2) and Codex (1)". */
-function startedOnSaid(startedOn: StartedOn): string {
+function startedOnSaid(startedOn: StartedOn, names?: ProviderNames): string {
   return (Object.keys(startedOn) as Provider[])
     .filter((provider) => startedOn[provider] > 0)
-    .map((provider) => `${providerName(provider)} (${String(startedOn[provider])})`)
+    .map((provider) => `${nameOf(provider, names)} (${String(startedOn[provider])})`)
     .join(' and ')
 }
 
@@ -350,10 +371,14 @@ function startedOnSaid(startedOn: StartedOn): string {
  * conversation with it until a person chooses, and this is where a person reads that. `name` is
  * the agent's, or null where the sentence stands on its own sheet.
  */
-export function aProviderNotChosenSays(name: string | null, startedOn: StartedOn): string {
+export function aProviderNotChosenSays(
+  name: string | null,
+  startedOn: StartedOn,
+  names?: ProviderNames,
+): string {
   const who = name ?? 'this agent'
   return (
-    `Choose a provider for ${who}: its conversations ran on ${startedOnSaid(startedOn)}, so no ` +
+    `Choose a provider for ${who}: its conversations ran on ${startedOnSaid(startedOn, names)}, so no ` +
     `agent can start a new conversation with it until a person chooses one on its sheet.`
   )
 }

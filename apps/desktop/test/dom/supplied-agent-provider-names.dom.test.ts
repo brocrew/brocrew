@@ -164,6 +164,8 @@ it('keeps two selected clients separate and fills late names without restoring c
     {},
   )
   expect(a.q('new-agent-provider').textContent).not.toMatch(/Claude|Codex/)
+  expect(a.q('new-agent-provider').textContent).toContain('Provider 1 (name not read)')
+  expect(a.q('new-agent-provider').textContent).toContain('Provider 2 (name not read)')
   await vi.waitFor(() => expect(b.q('new-agent-provider').textContent).toContain('Willow'))
   await vi.waitFor(() => expect(answer).toBeTypeOf('function'))
   answer(first.catalogue)
@@ -269,4 +271,62 @@ it('uses supplied names on the TeamWorkspace engine fact without changing the pr
   await vi.waitFor(() => expect(view.q('team-provider-worker').textContent).toBe('Fern'))
   expect(f.reading().identities[0]?.provider).toBe('claude')
   expect(f.setAgentProvider).not.toHaveBeenCalled()
+})
+
+it('refreshes an already cleared choice notice when the selected catalogue answers late', async () => {
+  const f = fixture(undefined, { provider: 'claude', model: 'held-model', effort: 'high' })
+  let answer!: (rows: typeof f.catalogue) => void
+  f.providerCatalogue.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        answer = resolve
+      }),
+  )
+  const store = agentStoreForClient(f.client)
+  await store.load()
+  const view = mount(
+    ancestor(f.client, CapabilitiesSheet, () => ({
+      profileSlug: 'worker',
+      runsOn: 'claude',
+      fields: [],
+      store,
+    })),
+    {},
+  )
+  await vi.waitFor(() =>
+    expect(view.q('capabilities-provider-will-clear').textContent).toContain('the provider'),
+  )
+  expect(view.q('capabilities-provider-select').textContent).toContain('Provider 2 (name not read)')
+  await change(view.q('capabilities-provider-select'), 'codex')
+  await vi.waitFor(() =>
+    expect(view.q('capabilities-provider-cleared').textContent).toContain('now the provider'),
+  )
+  expect(f.setAgentProvider).toHaveBeenCalledExactlyOnceWith({
+    profileId: 'worker',
+    provider: 'codex',
+  })
+  answer(f.catalogue)
+  await vi.waitFor(() =>
+    expect(view.q('capabilities-provider-cleared').textContent).toContain('now Birch'),
+  )
+  expect(view.q('capabilities-provider-cleared').textContent).toContain('on Fern')
+  expect(f.setAgentProvider).toHaveBeenCalledTimes(1)
+  expect(view.host.querySelector('[data-cy="capabilities-provider-will-clear"]')).toBeNull()
+})
+
+it('keeps an answered empty catalogue generic without disabling or changing provider options', async () => {
+  const f = fixture()
+  f.providerCatalogue.mockResolvedValue([])
+  await agentStoreForClient(f.client).load()
+  const view = mount(
+    ancestor(f.client, NewAgent, () => ({})),
+    {},
+  )
+  await vi.waitFor(() => expect(f.providerCatalogue).toHaveBeenCalledTimes(1))
+  const select = view.q('new-agent-provider') as HTMLSelectElement
+  expect([...select.options].map((option) => option.value)).toEqual(['', 'claude', 'codex'])
+  expect(select.textContent).toContain('Provider 1 (name not read)')
+  expect(select.textContent).toContain('Provider 2 (name not read)')
+  expect(select.textContent).not.toMatch(/Claude|Codex|Fern|Birch/)
+  expect(select.disabled).toBe(false)
 })

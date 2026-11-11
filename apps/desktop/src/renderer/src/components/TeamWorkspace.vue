@@ -32,7 +32,9 @@ import TeamForest from './TeamForest.vue'
 import TeamProfileGraph from './TeamProfileGraph.vue'
 import type { ForestRow, ForestView } from '../lib/the-forest'
 import { NEW_AGENT } from '../lib/where-agents-are-created'
-import { noProviderSavedSays } from '../lib/front-door-words'
+import { agentProviderSays, providerNamesIn } from '../lib/front-door-words'
+import { useClientProviders } from '../client-provider/injection'
+import { useProviderNames } from '../composables/useProviderNames'
 
 /**
  * 🔴 **593 · the card says what each agent is DOING, and the plate is how it says it.**
@@ -51,6 +53,8 @@ import { noProviderSavedSays } from '../lib/front-door-words'
  * ([[a-number-can-survive-the-death-of-its-derivation]]).
  */
 const cast = useWhoCalledWhom()
+const nameOf = useProviderNames(useClientProviders())
+const names = computed(() => providerNamesIn(nameOf))
 const workByHolder = computed(() => {
   const holders = new Map<string, WorkEdge[]>()
   for (const node of cast.forest.value?.nodes.rows ?? []) {
@@ -80,15 +84,8 @@ const props = withDefaults(
      * yet*, and a shelf says so rather than drawing *none*.
      */
     conversations?: readonly ListedConversation[] | null
-    /**
-     * The folded forest for the Graph tab.
-     *
-     * ⛔ **Handed down already folded, like every other reading on this page.** ⚠️ This component
-     * reads no store of its own (its `store` default is the one exception and it is a default, not
-     * a read).
-     *
-     * ⚑ **`null` is *this window has not asked yet*** and the tab says so — never an empty tree.
-     */
+    /** Folded Graph facts; null is not asked yet, never an empty tree.
+     * Provider names are read separately through the selected catalogue. */
     forest?: ForestView | null
   }>(),
   {
@@ -218,7 +215,7 @@ async function switchServices(event: Event): Promise<void> {
  */
 const held = computed(() => new Set(props.held))
 function shelfOf(slug: string): ReturnType<typeof theirConversations> {
-  return theirConversations(props.conversations, slug, held.value)
+  return theirConversations(props.conversations, slug, held.value, names.value)
 }
 
 function workersOf(slug: string) {
@@ -605,7 +602,7 @@ function pressForest(row: ForestRow): void {
                 <p class="more-fact">
                   <span class="more-key">Engine</span>
                   <span :data-cy="`team-provider-${member.identity.slug}`">{{
-                    member.provider ?? noProviderSavedSays(member.use.runsOn)
+                    agentProviderSays(member.use.runsOn, names)
                   }}</span>
                 </p>
                 <p class="more-fact">

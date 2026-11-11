@@ -23,7 +23,7 @@ import type {
   Provider,
   ProviderCapabilityMap,
 } from '../../../shared/runtime-ipc'
-import { PROVIDER_NAME, agentName, providerName } from '../../../shared/runtime-ipc'
+import { PROVIDER_NAME, agentName } from '../../../shared/runtime-ipc'
 import { identityIn, runsOnIn, type AgentStore } from '../lib/agent-store'
 import { calendarDay } from '../lib/clock'
 import {
@@ -36,7 +36,10 @@ import {
   aProviderNotChosenSays,
   noProviderSavedSays,
   providerTakesEffectNextTime,
+  providerNamesIn,
 } from '../lib/front-door-words'
+import { useClientProviders } from '../client-provider/injection'
+import { useProviderNames } from '../composables/useProviderNames'
 import { reopeningSays, type AConversationToReopen } from '../lib/reopening'
 import { WHERE_AGENTS_ARE_CREATED } from '../lib/where-agents-are-created'
 import { spawnSafetyView } from '../lib/spawn-safety'
@@ -571,27 +574,18 @@ async function save(): Promise<void> {
 
 /* ------------------------------------------------------- what it runs on, which is not a rail */
 
-/**
- * ⛔ **Both providers, from the TABLE rather than typed** — `NewAgent`'s idiom, and
- * `provider-neutrality.test.ts` allows a provider literal in the renderer in exactly two places, of
- * which this is not one.
- */
+/** Provider values stay in their existing order; names come from the selected catalogue. */
 const providers = computed<Provider[]>(() => Object.keys(PROVIDER_NAME) as Provider[])
+const nameOf = useProviderNames(useClientProviders())
+const names = computed(() => providerNamesIn(nameOf))
 
 /** In flight, so a second change cannot race the first — {@link saving}'s shape, one gesture over. */
 const choosingProvider = ref(false)
 
 /** The refusal the last provider change came back with, or null. */
 const providerRefusal = ref<string | null>(null)
-/**
- * 🔴 **`696` · what the last provider change CLEARED, in words — or null** (`682`'s `R31b`).
- *
- * ⚑ **The door's answer, rendered after it wrote** ({@link whatTheProviderPressCleared}): moving an
- * identity to another provider clears the model choice for the old one in the same transaction, and
- * until `696` the press said nothing — the choice below simply went to *Nobody has chosen*. ⛔ A
- * choice is a person's, and taking it away without a word is the app deciding on their behalf.
- */
-const providerCleared = ref<string | null>(null)
+/** Keep the door's cleared choice so its notice follows the current supplied names. */
+const providerCleared = ref<{ choice: HeldModelChoice; nowOn: Provider } | null>(null)
 
 /**
  * 🔴 **712 · R56 — the model choice the control below HOLDS, as it last said** (`AgentModelChoice`'s
@@ -609,7 +603,9 @@ watch(
 )
 /** ⚑ **712 · R56 — what a press would clear, said before it** — see {@link whatAProviderPressWouldClear}. */
 const providerWillClear = computed(() =>
-  heldChoice.value === undefined ? null : whatAProviderPressWouldClear(heldChoice.value),
+  heldChoice.value === undefined
+    ? null
+    : whatAProviderPressWouldClear(heldChoice.value, names.value),
 )
 
 /**
@@ -639,7 +635,7 @@ async function onProviderChange(event: Event): Promise<void> {
   // ⚑ **`696` · only a provider can clear a choice** — the door keeps it on a move to *nobody has
   // said* — so `chosen` is a provider whenever `cleared` is set; the guard narrows the type.
   if (answer.ok && answer.cleared !== null && chosen !== null) {
-    providerCleared.value = whatTheProviderPressCleared(answer.cleared, chosen)
+    providerCleared.value = { choice: answer.cleared, nowOn: chosen }
     // ⚑ **712 · the door's answer says nothing is held now** — so the warning goes with the choice
     // at once, rather than one read later beside the line saying it was cleared.
     heldChoice.value = null
@@ -789,9 +785,9 @@ function onKey(event: KeyboardEvent): void {
           >
             <!-- ⚑ **`NewAgent`'s own words for the same empty state**, so the door that creates an
                  identity and the door that changes one do not name one fact two ways. -->
-            <option value="">{{ noProviderSavedSays(runsOnNow) }}</option>
-            <option v-for="each in providers" :key="each" :value="each">
-              {{ providerName(each) }}
+            <option value="">{{ noProviderSavedSays(runsOnNow, names) }}</option>
+            <option v-for="(each, index) in providers" :key="each" :value="each">
+              {{ nameOf(each) ?? `Provider ${index + 1} (name not read)` }}
             </option>
           </select>
         </label>
@@ -807,10 +803,10 @@ function onKey(event: KeyboardEvent): void {
           data-cy="capabilities-provider-not-chosen"
           role="status"
         >
-          {{ aProviderNotChosenSays(null, runsOnNow.startedOn) }}
+          {{ aProviderNotChosenSays(null, runsOnNow.startedOn, names) }}
         </p>
         <p v-else class="identity-note" data-cy="capabilities-provider-note">
-          {{ providerTakesEffectNextTime(props.runsOn, true, isService) }}
+          {{ providerTakesEffectNextTime(props.runsOn, true, isService, names) }}
         </p>
         <!-- 🔴 **712 · R56 — what the press WOULD take, before it** — see `providerWillClear`.
              ⚑ Beside the select it is about, and gone while a press is in flight. -->
@@ -828,7 +824,7 @@ function onKey(event: KeyboardEvent): void {
           data-cy="capabilities-provider-cleared"
           role="status"
         >
-          {{ providerCleared }}
+          {{ whatTheProviderPressCleared(providerCleared.choice, providerCleared.nowOn, names) }}
         </p>
         <p
           v-if="providerRefusal"
@@ -854,6 +850,7 @@ function onKey(event: KeyboardEvent): void {
         :capabilities="props.capabilities"
         :store="props.store"
         :lists="props.lists"
+        :names="names"
         @held="(choice) => (heldChoice = choice)"
       />
 
