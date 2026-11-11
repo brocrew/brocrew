@@ -102,9 +102,7 @@ export function createPluginSupervisorLauncher(options: {
         cwd: root,
         env: {
           ...process.env,
-          ...(temporary
-            ? { USERPROFILE: root, TEMP: temporary, TMP: temporary }
-            : { HOME: root }),
+          ...(temporary ? { USERPROFILE: root, TEMP: temporary, TMP: temporary } : { HOME: root }),
         },
       })
       diagnostic = observePluginSupervisorLaunch(child)
