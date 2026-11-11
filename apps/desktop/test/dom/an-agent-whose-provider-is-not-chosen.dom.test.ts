@@ -85,6 +85,7 @@ describe('the sheet says it first', () => {
           return () => h(CapabilitiesSheet, { profileSlug: 'ana', runsOn: 'codex', store })
         },
       }),
+      {},
     )
     await nextTick()
 
@@ -114,6 +115,7 @@ describe('the sheet says it first', () => {
           return () => h(CapabilitiesSheet, { profileSlug: 'ana', runsOn: 'claude', store })
         },
       }),
+      {},
     )
     await nextTick()
 
@@ -141,6 +143,7 @@ describe('the Team card names it', () => {
           return () => h(TeamWorkspace, { agents: list, store })
         },
       }),
+      {},
     )
     await vi.waitFor(() => expect(m.q('team-provider-ida').textContent?.trim()).toBe('Codex'))
     expect(list.use.find((row) => row.slug === 'ida')?.runsOn.provider).toBe('codex')
