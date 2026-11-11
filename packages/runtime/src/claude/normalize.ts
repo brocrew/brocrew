@@ -36,33 +36,17 @@ import {
 } from '../workflow-run'
 
 /**
- * Normalize one Claude Agent SDK message into **content** `RuntimeEvent`s only:
- * assistant deltas/messages, tool calls/results, and informational (non-fatal)
- * errors (001 Claude→RuntimeEvent table).
- *
- * Session/turn LIFECYCLE (`session`, `turn`, lifecycle `status`) is NOT emitted
- * here — the handle drives the shared `SessionMachine` from {@link claudeSessionRef}
- * (`system/init`) and {@link claudeResultOutcome} (`result`), so ordering is
- * enforced in one place (008). Unmapped system messages go to the diagnostic log;
+ * Normalize Claude SDK content: assistant text, tool calls/results and non-fatal errors.
+ * The handle drives session/turn lifecycle through `claudeSessionRef`, `claudeResultOutcome`
+ * and `SessionMachine`, keeping ordering in one place. Unmapped system messages are logged;
  * other unmapped messages become `unknown{raw}`.
  *
- * Apart from logging unmapped system messages, state is held in `tasks` (035), the session's memory
- * of which tracked tasks are actually
- * sub-agents. It has to be carried across messages because two of Claude's four `task_*` subtypes —
- * including one of the two endings — carry nothing to identify themselves with; see
- * {@link SubAgentTasks}. Omitting it is safe, not lax: a fresh registry admits only messages that
- * name themselves, so a lone `task_updated` is chatter rather than a fabricated sub-agent. The
- * adapter passes the session's own, so real agents keep their endings.
- *
- * `runs` (108) is the same arrangement for dynamic workflows, and it exists for a sharper version of
- * the same reason: `task_updated` carries neither a `task_type` nor a `tool_use_id`, so it can say
- * neither what it is nor where it belongs. See {@link WorkflowTasks}.
- *
- * `background` (247) is the third, and it is the one that must FORGET rather than remember: it holds
- * the level set `background_tasks_changed` replaces wholesale, so that a `tool_result` can say
- * whether it is a detachment receipt rather than a completion. Omitting it is safe in the same way —
- * a fresh registry calls nothing backgrounded — but a session that omits it renders `245`'s
- * false-settled card, which is the defect this argument exists to end. See {@link BackgroundTasks}.
+ * Carry the session's registries across messages: some `task_*` updates/endings lack identity.
+ * `SubAgentTasks` remembers declared sub-agents; a fresh registry admits only named agents.
+ * `WorkflowTasks` associates updates lacking both `task_type` and `tool_use_id` with their run.
+ * `BackgroundTasks` replaces its level set on `background_tasks_changed`, so a tool result
+ * can distinguish a detachment receipt from completion. A fresh registry marks nothing as
+ * backgrounded; omitting the session's registry can therefore falsely settle a detached task.
  */
 export function normalizeMessage(
   message: SDKMessage,

@@ -67,42 +67,23 @@ const sessionEventSchema = z.object({
 })
 
 /**
- * **The provider started a NEW conversation underneath this session** (199, from 192 H5).
+ * The provider moved to a new conversation; resume must reopen {@link ref}, and the transcript
+ * shows this seam where it happened, like compaction, rather than hiding it as lifecycle chatter.
  *
- * Claude emits `conversation_reset` on `/clear`, on plan-mode exit and on its fresh-session flows,
- * and the pinned SDK says in its own words what a surface owes it: *"The surface should mount a
- * fresh transcript under new_conversation_id"* (`sdk.d.ts:4922-4930`). That is two obligations, and
- * they are separate:
+ * Claude reports resets on `/clear`, plan-mode exit and fresh-session flows. Although the SDK
+ * names `new_conversation_id`, the resume probe (`probe:claude-resume-after-cd`) found no transcript
+ * there: the following `system/init` names the resumable conversation and raises this event.
  *
- *  - **Identity.** {@link ref} is the conversation the provider moved TO, and it is what a resume
- *    must reopen. Until 199 `new_conversation_id` was read by nothing at all, so a reopened session
- *    came back on the PRE-reset conversation and every turn typed after the reset was silently
- *    gone. It is the one finding in 192 that loses work permanently.
- *    🔴 **`721` · R75 — and on Claude that conversation is NOT `new_conversation_id`.** Measured
- *    (`probe:claude-resume-after-cd`): that id has no transcript and no resume opens it; the
- *    `system/init` the CLI sends next names the one that does, and the Claude adapter raises this
- *    event off that init. The SDK's sentence above is the SDK's, not the disk's.
- *  - **Visibility.** It is a seam in the conversation, drawn where it happened, exactly as a
- *    {@link compactionEventSchema} is — and filing it as lifecycle chatter is precisely what hid
- *    it. `transcript-mode.ts` already argues that a compaction must not be hideable chrome; a reset
- *    is strictly more destructive than a compaction.
- *
- * ⚠️ **This is NOT the session starting again, and that is why it is its own event rather than a
- * fourth `state` on {@link sessionEventSchema}.** Every reader of a non-`ended` `session` event
- * treats it as the session ANNOUNCING ITSELF OPEN — the transcript clears the previous life's
- * terminal latch on it, the adapters take it as the handshake landing. A reset announces nothing of
- * the kind: the app's conversation carries on in the same row, with the same ledger and the same
- * ordinals, and only the provider conversation those turns are appended to has changed. Given a new
- * `state` instead, every one of those readers would have silently agreed to the wrong sentence.
- *
- * ⛔ **Claude-only at this pin, and honestly so.** Codex has no equivalent signal. The vocabulary is
- * provider-neutral because the FACT is provider-neutral, not because both providers report it.
+ * This does not reopen the app's session: its row, ledger and ordinals continue unchanged.
+ * A non-ended `session` event would incorrectly clear the transcript's terminal latch and satisfy
+ * the adapter handshake. Only the provider conversation receiving subsequent turns changes.
+ * Codex currently reports no equivalent signal; the contract describes the shared fact.
  */
 const conversationResetEventSchema = z.object({
   type: z.literal('conversation_reset'),
-  /** The conversation the provider moved to — what a resume must reopen (a transcript on disk: 721). */
+  /** The resumable provider conversation, backed by its transcript on disk. */
   ref: sessionRefSchema,
-  /** The provider's own signal names — Claude's `conversation_reset + system/init` (721). Cited by the row, never asserted. */
+  /** Provider signal names, such as Claude's `conversation_reset + system/init`, cited by the row. */
   source: z.string().max(120),
 })
 
