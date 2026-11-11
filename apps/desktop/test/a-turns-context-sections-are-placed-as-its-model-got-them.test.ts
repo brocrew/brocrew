@@ -15,7 +15,7 @@ import type { AsSentPart, TurnAsSent } from '../src/shared/turn-as-sent'
  * Claude Code's transcript keeps each section it renders in the system's role (the environment, the
  * skills, the sub-agent types, the date…) wrapped as a reminder, whichever way it went. On a model that
  * takes a context message they went in it, after the message, without their reminder lines; on one
- * that takes none (Haiku), as reminders at the head of the message. ⚑ The reader asks this build's
+ * that takes none, as reminders at the head of the message. ⚑ The reader asks this build's
  * snapshot of the model the turn's answer names, with the rule the host asks it with
  * (`takesAContextMessage`), and says so; with no snapshot of that model, or no answer yet, it shows
  * the record as it is and says either way is possible.
@@ -77,14 +77,18 @@ describe('a turn’s context sections, as its model got them', () => {
   it('the snapshots say which of this build’s models take a context message', () => {
     expect(takesAContextMessage(snapshotFor('claude', 'claude-opus-5-5'))).toBe(true)
     expect(takesAContextMessage(snapshotFor('claude', 'claude-sonnet-5-5'))).toBe(true)
-    expect(takesAContextMessage(snapshotFor('claude', 'claude-haiku-4-5-20251001'))).toBe(false)
+    expect(takesAContextMessage(snapshotFor('claude', 'claude-haiku-5-5'))).toBe(true)
+    expect(takesAContextMessage(snapshotFor('claude', 'claude-fable-5-2'))).toBe(true)
+    expect(takesAContextMessage(snapshotFor('claude', 'claude-haiku-4-5-20251001'))).toBeNull()
     expect(takesAContextMessage(snapshotFor('claude', 'claude-mystery-9'))).toBeNull()
     expect(takesAContextMessage(undefined)).toBeNull()
   })
 
-  it('🔴 a model that takes a context message: after the message, without their reminder lines', () => {
-    const turn = found(readTheFirst(claude, asTheHostAsks))
-    expect(turn.contextSections).toMatchObject({ as: 'context-message', model: 'claude-opus-5-5' })
+  it.each(['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-2'])(
+    '%s takes a context message: after the message, without their reminder lines',
+    (model) => {
+    const turn = found(readTheFirst(answeredBy(model), asTheHostAsks))
+    expect(turn.contextSections).toMatchObject({ as: 'context-message', model })
     const message = at(turn.parts, 'the-message')
     const theSections = sections(turn.parts)
     expect(theSections.length).toBeGreaterThan(5)
@@ -101,13 +105,14 @@ describe('a turn’s context sections, as its model got them', () => {
     )
     expect(reminders.length).toBeGreaterThan(0)
     for (const reminder of reminders) expect(reminder.text).toMatch(/^<system-reminder>\n/)
-  })
+    },
+  )
 
-  it('🔴 a model that takes none (Haiku): at the head of the message, as reminders', () => {
-    const turn = found(readTheFirst(answeredBy('claude-haiku-4-5-20251001'), asTheHostAsks))
+  it('a model known to take no context message: at the head of the message, as reminders', () => {
+    const turn = found(readTheFirst(answeredBy('without-context'), { hasAContextMessage: () => false }))
     expect(turn.contextSections).toMatchObject({
       as: 'reminders',
-      model: 'claude-haiku-4-5-20251001',
+      model: 'without-context',
     })
     const message = at(turn.parts, 'the-message')
     for (const section of sections(turn.parts)) {
