@@ -1141,6 +1141,9 @@ function generatedNotificationCategory(method: ChatterMethod): UnknownCategory {
     case 'thread/queue/changed':
     case 'project/changed':
     case 'thread/project/updated':
+    case 'thread/readState/changed':
+    case 'thread/section/changed':
+    case 'thread/prediction/updated':
       return 'lifecycle'
     default:
       return assertNotificationExhaustive(method)

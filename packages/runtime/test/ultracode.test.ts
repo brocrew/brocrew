@@ -414,6 +414,17 @@ describe('the guard for the axis that moved — Settings keys (106)', () => {
     .trim()
     .split(/\s+/)
 
+  // New settings in 0.3.322: attribution, managed policy, Desktop SSH, idle compaction
+  // and auto-mode customization. None adds a BroCrew control; provider events still
+  // report compaction and the adapter continues to pass its explicit permission mode.
+  const REVIEWED_AT_0_3_322 = `
+    attributionProject attributionProjectPolicy autoMode disableReplyCheck
+    disableWindowsBashCommandSplit idleCompaction skipAutoPermissionPrompt
+    sshHostCommands useAutoModeDuringPlan
+  `
+    .trim()
+    .split(/\s+/)
+
   it('the ledger names every setting the pinned SDK declares, and no more', () => {
     const declared = declaredSettingsKeys(readFileSync(SDK_TYPES, 'utf8'))
 
@@ -425,7 +436,12 @@ describe('the guard for the axis that moved — Settings keys (106)', () => {
       expect(declared, `the scan found ${anchor}`).toContain(anchor)
     }
 
-    const reviewed = [...REVIEWED_SETTINGS, ...REVIEWED_AT_0_3_281, ...REVIEWED_AT_0_3_287]
+    const reviewed = [
+      ...REVIEWED_SETTINGS,
+      ...REVIEWED_AT_0_3_281,
+      ...REVIEWED_AT_0_3_287,
+      ...REVIEWED_AT_0_3_322,
+    ]
     expect(new Set(reviewed).size, 'a key reviewed twice').toBe(reviewed.length)
     const added = declared.filter((key) => !reviewed.includes(key))
     const gone = reviewed.filter((key) => !declared.includes(key))

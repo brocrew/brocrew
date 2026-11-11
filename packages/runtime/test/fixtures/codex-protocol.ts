@@ -28,6 +28,7 @@ import type { TurnStartedNotification } from '../../src/codex/protocol/v2/TurnSt
 export function turn(id: string, overrides: Partial<Turn> = {}): Turn {
   return {
     id,
+    rootTurnId: null,
     items: [],
     itemsView: 'full',
     status: 'inProgress',
