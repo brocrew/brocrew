@@ -59,6 +59,8 @@ export interface ProviderProgram {
   readonly standing: ProviderProgramStanding
   /** `null` while `missing`. */
   readonly from: ProviderProgramFrom | null
+  /** The provider's installer name; absent in older program observations. */
+  readonly installerLabel?: string
   /** The path every launch passes, `null` while `missing`. */
   readonly path: string | null
   /** What it printed for `--version`, `null` while `missing` or `unreadable`. */

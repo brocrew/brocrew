@@ -7,6 +7,10 @@ import type { ProviderDescriptor } from '@brobot2/shared'
 import type { ProviderSetupBridge } from './provider-setup'
 import type {
   ApiKeyStatus,
+  ApiKeyChanged,
+  ApiKeyCheck,
+  ReprovisionOutcome,
+  ProviderHomesReprovision,
   AuthState,
   CheckProviderAuthInput,
   Provider,
@@ -24,6 +28,14 @@ export interface ClientProviderApi {
   deleteHandAddedModel(input: { provider: Provider; model: string }): Promise<readonly string[]>
   checkProviderAuth(input: CheckProviderAuthInput): Promise<AuthState>
   apiKeyStatus(input: { provider: Provider }): Promise<ApiKeyStatus>
+  setApiKey(input: { provider: Provider; key: string }): Promise<ApiKeyChanged>
+  removeApiKey(input: { provider: Provider }): Promise<ApiKeyChanged>
+  checkApiKey(input: { provider: Provider }): Promise<ApiKeyCheck>
+  reprovisionProviderAuth(input: ProviderProfileInput): Promise<ReprovisionOutcome>
+  reprovisionProviderHomes(input: {
+    provider: Provider
+    statusOnly?: boolean
+  }): Promise<ProviderHomesReprovision>
   signInProvider(input: ProviderProfileInput): Promise<ProviderSignInResult>
   cancelProviderSignIn(input: ProviderProfileInput): Promise<void>
   onProvidersChanged(listener: (message: ProvidersChangedMessage) => void): () => void

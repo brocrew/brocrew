@@ -256,6 +256,7 @@ describe('what the Providers page says about it', () => {
   it('a tested version says only which copy runs', () => {
     const { program } = claudeAnswer(one, '2.1.287', [], TESTED)
     expect(program?.standing).toBe('tested')
+    expect(program?.installerLabel).toBe('Anthropic’s installer')
     expect(program?.said).toBe(
       'Claude Code 2.1.287, installed with Anthropic’s installer, at /Users/someone/.local/bin/claude.',
     )

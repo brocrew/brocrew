@@ -57,8 +57,6 @@ import ProviderSetupProgress from './ProviderSetupProgress.vue'
 import ProviderConnections from './ProviderConnections.vue'
 
 /**
- * # W4.10 · one provider on the Providers screen
- *
  * ⚑ One provider, for BroBot's own profile — the one a new conversation runs on: whether it is
  * ready and on which login, its API key, its program's version, its usage, what its agents use right
  * now, and its models. ⚑ W4.26 · the screen reads the provider-wide facts (version, usage, what is
@@ -231,7 +229,7 @@ async function copyMachineSignIn(): Promise<void> {
   await withGesture('copying', async () => {
     noticeSays(null, false)
     try {
-      const outcome = await window.api.runtime.reprovisionProviderAuth(asked())
+      const outcome = await client.reprovisionProviderAuth(asked())
       noticeSays(
         outcome === 'replaced'
           ? 'Copied your machine sign-in into this profile.'
@@ -296,7 +294,7 @@ const descriptor = computed(
 )
 const keepsProfileSignIns = computed(() => descriptor.value?.credential === 'profile-or-key')
 async function readHomeCopies(statusOnly = false): Promise<void> {
-  const result = await window.api.runtime.reprovisionProviderHomes({
+  const result = await client.reprovisionProviderHomes({
     provider: props.provider,
     ...(statusOnly ? { statusOnly: true } : {}),
   })
@@ -416,7 +414,7 @@ async function saveKey(): Promise<void> {
   keyBusy.value = true
   keySaid.value = null
   try {
-    const changed = await window.api.runtime.setApiKey({ provider: props.provider, key })
+    const changed = await client.setApiKey({ provider: props.provider, key })
     keyStatus.value = changed
     if (changed.refused !== undefined) {
       keySaid.value = { text: `The key wasn’t saved. ${changed.refused}`, tone: 'warn' }
@@ -439,7 +437,7 @@ async function removeKey(): Promise<void> {
   keyBusy.value = true
   keySaid.value = null
   try {
-    const changed = await window.api.runtime.removeApiKey({ provider: props.provider })
+    const changed = await client.removeApiKey({ provider: props.provider })
     keyStatus.value = changed
     keySaid.value = {
       text:
@@ -504,7 +502,7 @@ async function checkKey(): Promise<void> {
   keyChecking.value = true
   keySaid.value = null
   try {
-    const said = await window.api.runtime.checkApiKey({ provider: props.provider })
+    const said = await client.checkApiKey({ provider: props.provider })
     keySaid.value = said.ok
       ? {
           text:
@@ -1518,7 +1516,8 @@ defineExpose({ beginSetup })
                   {
                     given: 'Given to this launch',
                     'development-checkout': 'Development checkout',
-                    'native-installer': 'Anthropic’s installer',
+                    'native-installer':
+                      props.version.program.installerLabel ?? props.version.program.from,
                     homebrew: 'Homebrew',
                     winget: 'WinGet',
                     npm: 'npm',

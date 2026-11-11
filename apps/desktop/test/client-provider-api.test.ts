@@ -36,6 +36,11 @@ function fixture() {
     addHandAddedModel: vi.fn(async () => [] as readonly string[]),
     deleteHandAddedModel: vi.fn(async () => [] as readonly string[]),
     ...connectedProviderReads(),
+    setApiKey: vi.fn<ClientProviderApi['setApiKey']>(),
+    removeApiKey: vi.fn<ClientProviderApi['removeApiKey']>(),
+    checkApiKey: vi.fn<ClientProviderApi['checkApiKey']>(),
+    reprovisionProviderAuth: vi.fn<ClientProviderApi['reprovisionProviderAuth']>(),
+    reprovisionProviderHomes: vi.fn<ClientProviderApi['reprovisionProviderHomes']>(),
     signInProvider: vi.fn<ClientProviderApi['signInProvider']>(async () => ({
       success: true,
       state: { state: 'usable', login: 'account', expiresAt: null },
@@ -189,3 +194,50 @@ it('forwards the original no-probe selection promise and the supplied snapshot u
   expect(transport.providerLaunchChoices).not.toHaveBeenCalled()
   expect(transport.checkProviderAuth).not.toHaveBeenCalled()
 })
+
+function operationCase<Input>(
+  method: string,
+  input: Input,
+  call: (api: ClientProviderApi, input: Input) => Promise<unknown>,
+) {
+  return { method, input, call: (api: ClientProviderApi) => call(api, input) }
+}
+const operationCases = [
+  operationCase('setApiKey', { provider: 'claude' as const, key: 'fictional-key' }, (api, input) =>
+    api.setApiKey(input),
+  ),
+  operationCase('removeApiKey', { provider: 'claude' as const }, (api, input) =>
+    api.removeApiKey(input),
+  ),
+  operationCase('checkApiKey', { provider: 'claude' as const }, (api, input) =>
+    api.checkApiKey(input),
+  ),
+  operationCase(
+    'reprovisionProviderAuth',
+    { provider: 'claude' as const, profileId: 'fictional-profile' },
+    (api, input) => api.reprovisionProviderAuth(input),
+  ),
+  operationCase(
+    'reprovisionProviderHomes',
+    { provider: 'claude' as const, statusOnly: true },
+    (api, input) => api.reprovisionProviderHomes(input),
+  ),
+]
+for (const row of operationCases) {
+  it(`forwards ${row.method} lazily with its receiver, original input and rejection`, async () => {
+    const { api, runtime, transport } = fixture()
+    const failure = new Error('Fictional operation refused')
+    const pending = Promise.reject<never>(failure)
+    const forwarded = vi.fn(function (this: typeof transport, value: unknown) {
+      expect(this).toBe(transport)
+      expect(value).toBe(row.input)
+      return pending
+    })
+    Object.assign(transport, { [row.method]: forwarded })
+    expect(runtime).not.toHaveBeenCalled()
+    const result = row.call(api)
+    expect(result).toBe(pending)
+    await expect(result).rejects.toBe(failure)
+    expect(forwarded).toHaveBeenCalledExactlyOnceWith(row.input)
+  })
+}

@@ -239,6 +239,7 @@ export function claudeAnswer(
       program: {
         standing: 'unreadable',
         from: program.from,
+        installerLabel: program.from === 'native-installer' ? 'Anthropic’s installer' : undefined,
         path: program.path,
         version: null,
         tested,
@@ -264,6 +265,7 @@ export function claudeAnswer(
     program: {
       standing,
       from: program.from,
+      installerLabel: program.from === 'native-installer' ? 'Anthropic’s installer' : undefined,
       path: program.path,
       version,
       tested,

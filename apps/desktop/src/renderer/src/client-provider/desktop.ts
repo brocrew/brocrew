@@ -15,6 +15,11 @@ type ProviderTransport = Pick<
   | 'deleteHandAddedModel'
   | 'checkProviderAuth'
   | 'apiKeyStatus'
+  | 'setApiKey'
+  | 'removeApiKey'
+  | 'checkApiKey'
+  | 'reprovisionProviderAuth'
+  | 'reprovisionProviderHomes'
   | 'signInProvider'
   | 'cancelProviderSignIn'
   | 'onProvidersChanged'
@@ -37,6 +42,11 @@ export function createDesktopProviderApi(
     deleteHandAddedModel: (input) => runtime().deleteHandAddedModel(input),
     checkProviderAuth: (input) => runtime().checkProviderAuth(input),
     apiKeyStatus: (input) => runtime().apiKeyStatus(input),
+    setApiKey: (input) => runtime().setApiKey(input),
+    removeApiKey: (input) => runtime().removeApiKey(input),
+    checkApiKey: (input) => runtime().checkApiKey(input),
+    reprovisionProviderAuth: (input) => runtime().reprovisionProviderAuth(input),
+    reprovisionProviderHomes: (input) => runtime().reprovisionProviderHomes(input),
     signInProvider: (input) => runtime().signInProvider(input),
     cancelProviderSignIn: (input) => runtime().cancelProviderSignIn(input),
     onProvidersChanged: (listener) => runtime().onProvidersChanged(listener),
