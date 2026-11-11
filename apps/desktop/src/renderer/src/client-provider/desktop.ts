@@ -14,6 +14,9 @@ type ProviderTransport = Pick<
   RuntimeBridge,
   | 'providerCatalogue'
   | 'providerUsage'
+  | 'providerVersions'
+  | 'providerResources'
+  | 'providerConnections'
   | 'providerLaunchChoices'
   | 'resolveProviderLaunch'
   | 'addHandAddedModel'
@@ -46,6 +49,9 @@ export function createDesktopProviderApi(
   return Object.freeze({
     providerCatalogue: () => runtime().providerCatalogue(),
     providerUsage: () => runtime().providerUsage(),
+    providerVersions: () => runtime().providerVersions(),
+    providerResources: () => runtime().providerResources(),
+    providerConnections: () => runtime().providerConnections(),
     providerLaunchChoices: (input) => runtime().providerLaunchChoices(input),
     resolveProviderLaunch: (input) => runtime().resolveProviderLaunch(input),
     addHandAddedModel: (input) => runtime().addHandAddedModel(input),

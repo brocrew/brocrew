@@ -37,6 +37,9 @@ function fixture() {
     addHandAddedModel: vi.fn(async () => [] as readonly string[]),
     deleteHandAddedModel: vi.fn(async () => [] as readonly string[]),
     ...connectedProviderReads(),
+    providerVersions: vi.fn<ClientProviderApi['providerVersions']>(),
+    providerResources: vi.fn<ClientProviderApi['providerResources']>(),
+    providerConnections: vi.fn<ClientProviderApi['providerConnections']>(),
     setApiKey: vi.fn<ClientProviderApi['setApiKey']>(),
     removeApiKey: vi.fn<ClientProviderApi['removeApiKey']>(),
     checkApiKey: vi.fn<ClientProviderApi['checkApiKey']>(),
@@ -271,3 +274,20 @@ it('forwards the original usage promise and supplied facts without changing the 
   expect(api.providerUsage()).toBe(rejected)
   await expect(rejected).rejects.toBe(failure)
 })
+
+for (const method of ['providerVersions', 'providerResources', 'providerConnections'] as const) {
+  it(`forwards ${method} without a read at construction, preserving receiver, promise and refusal`, async () => {
+    const { api, runtime, transport } = fixture()
+    const failure = new Error('Fictional read refused')
+    const pending = Promise.reject<never>(failure)
+    const read = vi.fn(function (this: typeof transport) {
+      expect(this).toBe(transport)
+      return pending
+    })
+    Object.assign(transport, { [method]: read })
+    expect(runtime).not.toHaveBeenCalled()
+    expect(api[method]()).toBe(pending)
+    await expect(pending).rejects.toBe(failure)
+    expect(read).toHaveBeenCalledExactlyOnceWith()
+  })
+}

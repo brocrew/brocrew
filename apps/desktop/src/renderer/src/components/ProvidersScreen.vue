@@ -244,7 +244,7 @@ async function readVersions(): Promise<void> {
   })
   let read: Readonly<Record<Provider, ProviderVersion>>
   try {
-    read = await window.api.runtime.providerVersions()
+    read = await client.providerVersions()
   } catch (error) {
     const reason = readableError(error)
     read = Object.fromEntries(
@@ -273,7 +273,7 @@ async function sample(): Promise<void> {
   if (sampling) return
   sampling = true
   try {
-    resources.value = await window.api.runtime.providerResources()
+    resources.value = await client.providerResources()
     resourcesError.value = null
   } catch (error) {
     resourcesError.value = readableError(error)

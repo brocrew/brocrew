@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useClientProviders } from '../client-provider/injection'
 import { computed, onBeforeUnmount, shallowRef, useId, watch } from 'vue'
 import type { Provider, ProviderConnection } from '@brobot2/shared'
 import type { ApiKeyStatus, AuthState } from '../../../shared/runtime-ipc'
@@ -11,6 +12,7 @@ const props = defineProps<{
   loginMoved: number
   modelsKnown: boolean
 }>()
+const client = useClientProviders()
 const heading = useId()
 const reading = shallowRef<readonly ProviderConnection[] | null>(null)
 const failed = shallowRef(false)
@@ -22,7 +24,7 @@ async function read(): Promise<void> {
   reading.value = null
   failed.value = false
   try {
-    const rows = await window.api.runtime.providerConnections()
+    const rows = await client.providerConnections()
     if (open && mine === ticket)
       reading.value = rows.filter((row) => row.provider === props.provider)
   } catch {

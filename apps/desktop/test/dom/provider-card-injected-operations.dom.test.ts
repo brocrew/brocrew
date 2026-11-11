@@ -37,6 +37,13 @@ function card() {
   const api: ClientProviderApi = {
     providerCatalogue: async () => [descriptor],
     providerUsage: async () => ({ claude: [], codex: [] }),
+    providerConnections: async () => [],
+    providerVersions: async () => {
+      throw new Error('No version read expected by this card')
+    },
+    providerResources: async () => {
+      throw new Error('No resource read expected by this card')
+    },
     providerLaunchChoices: async () => ({
       list,
       ready: true,

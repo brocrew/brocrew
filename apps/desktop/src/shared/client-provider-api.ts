@@ -3,7 +3,7 @@ import type {
   ResolveProviderLaunchInput,
   ResolvedProviderLaunch,
 } from './provider-launch'
-import type { ProviderDescriptor } from '@brobot2/shared'
+import type { ProviderConnection, ProviderDescriptor } from '@brobot2/shared'
 import type { ProviderSetupBridge } from './provider-setup'
 import type {
   ApiKeyStatus,
@@ -17,6 +17,8 @@ import type {
   Provider,
   ProviderProfileInput,
   ProviderSignInResult,
+  ProviderVersion,
+  ProviderResources,
   ProvidersChangedMessage,
 } from './runtime-ipc'
 
@@ -24,6 +26,9 @@ import type {
 export interface ClientProviderApi {
   providerCatalogue(): Promise<readonly ProviderDescriptor[]>
   providerUsage(): Promise<Readonly<Record<Provider, readonly ProviderUsageReading[]>>>
+  providerVersions(): Promise<Readonly<Record<Provider, ProviderVersion>>>
+  providerResources(): Promise<Readonly<Record<Provider, ProviderResources>>>
+  providerConnections(): Promise<readonly ProviderConnection[]>
   providerLaunchChoices(input: ProviderProfileInput): Promise<ProviderLaunchChoices>
   resolveProviderLaunch(input: ResolveProviderLaunchInput): Promise<ResolvedProviderLaunch>
   addHandAddedModel(input: { provider: Provider; model: string }): Promise<readonly string[]>

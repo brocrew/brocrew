@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useClientProviders } from '../client-provider/injection'
 import { onMounted, ref, shallowRef, watchEffect } from 'vue'
 import type {
   ApiKeyStatus,
@@ -20,6 +21,7 @@ const emit = defineEmits<{
   startConversation: []
 }>()
 
+const client = useClientProviders()
 const providers = Object.keys(PROVIDER_NAME) as Provider[]
 
 const versions = shallowRef<Readonly<Record<Provider, ProviderVersion>> | null>(null)
@@ -35,7 +37,7 @@ let decided = false
 
 async function readVersions(): Promise<void> {
   try {
-    versions.value = await window.api.runtime.providerVersions()
+    versions.value = await client.providerVersions()
   } catch (error) {
     const reason = readableError(error)
     versions.value = Object.fromEntries(
@@ -49,7 +51,7 @@ async function readKeys(): Promise<void> {
   await Promise.all(
     providers.map(async (provider) => {
       try {
-        read[provider] = await window.api.runtime.apiKeyStatus({ provider })
+        read[provider] = await client.apiKeyStatus({ provider })
       } catch {
         // No key fact: nothing is said about a key.
       }
