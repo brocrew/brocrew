@@ -20,6 +20,7 @@ import { newEventId, newWorkId } from '../../src/main/db/ids'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { createSessionStore } from '../../src/main/db/session-store'
 import { nodeFs, type RecoveryFs } from '../../src/main/recovery/files'
+import { errorFactsForEvent } from '../../src/main/providers/error-diagnostic'
 import { createHistoryReader } from '../../src/main/recovery/history-reader'
 import { theWorkThatNamesItSaid } from '../../src/shared/piece-called'
 import type { HistoryConversation, HistoryEvent } from '../../src/shared/recovery'
@@ -425,6 +426,51 @@ describe('the history reader', () => {
       reader.close()
     }
   })
+
+  it.each(['claude', 'codex', 'future-provider', null])(
+    'projects only inventory facts for stored owner %s without changing the copy',
+    async (provider) => {
+      const { copy } = await aRestoredCopy()
+      const inventory: TranscriptEvent = {
+        type: 'tool_inventory', source: 'init', naming: { prefix: 'mcp__', separator: '__' },
+        declared: null, published: { tools: [], servers: [
+          { name: 'known', status: 'connected' },
+          { name: 'unknown', status: 'future-word' },
+          { name: 'supplied', status: 'connected', connectionKind: 'disabled' },
+        ] },
+      }
+      const error: TranscriptEvent = { type: 'error', message: 'raw error', fatal: false }
+      const db = new Database(copy)
+      try {
+        // A later build's owner, or an orphaned ledger, must not borrow Claude's vocabulary.
+        if (provider === null) {
+          db.pragma('foreign_keys = OFF')
+          db.prepare('DELETE FROM provider_session WHERE id = ?').run('sess_idle')
+        } else {
+          db.pragma('ignore_check_constraints = ON')
+          db.prepare('UPDATE provider_session SET provider = ? WHERE id = ?').run(provider, 'sess_idle')
+        }
+        const insert = db.prepare('INSERT INTO events (id,session_id,generation,ordinal,type,payload,created_at) VALUES (?, ?, 0, ?, ?, ?, ?)')
+        for (const [ordinal, event] of [inventory, error].entries())
+          insert.run(newEventId(), 'sess_idle', ordinal, event.type, JSON.stringify(event), T0 + ordinal)
+      } finally { db.close() }
+      const bytes = readFileSync(copy)
+      const reader = createHistoryReader(copy)
+      try {
+        const rows = await reader.transcript('sess_idle')
+        expect(rows[0]?.event).toEqual(provider === 'claude'
+          ? { ...inventory, published: { ...inventory.published, servers: [
+            { name: 'known', status: 'connected', connectionKind: 'ready' },
+            { name: 'unknown', status: 'future-word' },
+            { name: 'supplied', status: 'connected', connectionKind: 'disabled' },
+          ] } }
+          : inventory)
+        expect(rows[1]?.event).toEqual(error)
+        expect(rows[1]?.errorFacts).toEqual(errorFactsForEvent(error))
+      } finally { reader.close() }
+      expect(readFileSync(copy)).toEqual(bytes)
+    },
+  )
 
   it('changes nothing: the copy keeps its bytes and its time, and nothing appears beside it', async () => {
     const { copy, folder, expected } = await aRestoredCopy()

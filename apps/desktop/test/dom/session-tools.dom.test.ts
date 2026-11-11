@@ -1,3 +1,4 @@
+import { publishedServerForDisplay } from '../../../../packages/runtime/src/claude/inventory-display'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
@@ -230,7 +231,7 @@ const CLAUDE: ToolRegistry = {
   set: {
     naming: CLAUDE_NAMING,
     declared: DECLARED,
-    published: { tools: PUBLISHED_37, servers: [{ name: 'brobot', status: 'connected' }] },
+    published: { tools: PUBLISHED_37, servers: [publishedServerForDisplay({ name: 'brobot', status: 'connected' })] },
   },
   dropped: 0,
   at: STATED_AT,
@@ -260,8 +261,8 @@ const WITH_FOREIGN: ToolRegistry = {
     published: {
       tools: ['Bash', 'mcp__brobot__spawn_agent', 'mcp__github__create_issue'],
       servers: [
-        { name: 'brobot', status: 'connected' },
-        { name: 'github', status: 'needs-auth' },
+        publishedServerForDisplay({ name: 'brobot', status: 'connected' }),
+        publishedServerForDisplay({ name: 'github', status: 'needs-auth' }),
       ],
     },
   },
@@ -281,8 +282,8 @@ const SILENT_SERVER: ToolRegistry = {
     published: {
       tools: ['Bash', 'mcp__brobot__spawn_agent'],
       servers: [
-        { name: 'brobot', status: 'connected' },
-        { name: 'github', status: 'needs-auth' },
+        publishedServerForDisplay({ name: 'brobot', status: 'connected' }),
+        publishedServerForDisplay({ name: 'github', status: 'needs-auth' }),
       ],
     },
   },
@@ -608,7 +609,7 @@ describe('§3 · search and the standing filter', () => {
         declared: null,
         published: {
           tools: ['Bash', 'mcp__github__create_issue'],
-          servers: [{ name: 'github', status: 'connected' }],
+          servers: [publishedServerForDisplay({ name: 'github', status: 'connected' })],
         },
       },
       dropped: 0,
@@ -935,7 +936,7 @@ describe('§5 · what the workbench SAYS when there is little or nothing to say'
         declared: DECLARED,
         published: {
           tools: ['Bash', 'mcp__brobot__list_agents'],
-          servers: [{ name: 'brobot', status: 'connected' }],
+          servers: [publishedServerForDisplay({ name: 'brobot', status: 'connected' })],
         },
       },
       dropped: 0,

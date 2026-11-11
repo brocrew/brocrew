@@ -34,13 +34,8 @@ import type { ToolRegistry } from '../lib/transcript'
  * product already computes the needed reading and standing model."* ⛔ The detail pane describes
  * the selected tool and never runs it.
  *
- * 🔴 **The word on an `unconfirmable` chip was `offered`, which is the formal name of a DIFFERENT
- * standing.** `358` chose plain words for all three — `confirmed` / `not listed` / `offered` — and
- * the third one collided with the vocabulary: a Codex conversation's rows carried the exact word
- * that formally means *"BroBot declared it and the child did not list it"*, which is the Claude
- * failure state. `388` §2.3 asked for the fix by name. ⚑ **The chips now read `confirmed` /
- * `not listed` / `unconfirmable`, and the vocabulary key prints the FORMAL word beside each one**,
- * so both vocabularies are visible and neither is derived from the other.
+ * Chips distinguish `confirmed`, `not listed` and `unconfirmable`; the vocabulary key also shows
+ * each formal standing. An unpublished inventory must never look like a missing declared tool.
  *
  * ## ⛔ Four things this surface must not do (392 §3)
  *
@@ -250,6 +245,7 @@ interface Group {
    * drew that sentence over thirty-two built-in tools.
    */
   readonly status: string | null | 'none'
+  readonly connectionKind?: string
   readonly entries: readonly CatalogEntry[]
 }
 
@@ -277,6 +273,7 @@ const groups = computed<readonly Group[]>(() => {
         label: own.name,
         note: 'Declared by BroCrew for this conversation.',
         status: own.status === '' ? null : own.status,
+        connectionKind: own.connectionKind,
         entries: rows,
       })
     // 🔴 **Its own group, under the same server, and review is why** — filed with the declared
@@ -289,6 +286,7 @@ const groups = computed<readonly Group[]>(() => {
         label: `${own.name} · not in BroCrew’s declaration`,
         note: 'The agent named these under BroCrew’s own server. BroCrew’s declaration does not carry them, so there is nothing of ours to confirm them against.',
         status: own.status === '' ? null : own.status,
+        connectionKind: own.connectionKind,
         entries: strangers,
       })
   }
@@ -314,6 +312,7 @@ const groups = computed<readonly Group[]>(() => {
           ? 'The agent named this server and listed no tool under it.'
           : 'An MCP server this conversation connected to, beside BroCrew’s own. Names only.',
         status: server.status === '' ? null : server.status,
+        connectionKind: server.connectionKind,
         entries: rows,
       })
   }
@@ -545,10 +544,10 @@ const emptiness = computed<string | null>(() => {
                   <span
                     v-else
                     class="chip"
-                    :class="statusWord(group.status).tone"
-                    :data-tone="statusWord(group.status).tone"
+                    :class="statusWord(group.status, group.connectionKind).tone"
+                    :data-tone="statusWord(group.status, group.connectionKind).tone"
                     :data-cy="`tools-status-${group.key}`"
-                    >{{ statusWord(group.status).label }}</span
+                    >{{ statusWord(group.status, group.connectionKind).label }}</span
                   >
                   <span class="tally">{{ group.entries.length }}</span>
                 </div>
@@ -669,7 +668,7 @@ const emptiness = computed<string | null>(() => {
                       ? 'It belongs to no server.'
                       : selected.serverStatus === null
                         ? 'Not reported by the agent.'
-                        : statusWord(selected.serverStatus).label
+                        : statusWord(selected.serverStatus, selected.connectionKind).label
                   }}
                 </dd>
               </div>

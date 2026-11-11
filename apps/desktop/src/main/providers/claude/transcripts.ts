@@ -1,6 +1,6 @@
 import { STALE_KEY_NOTICE } from './error-words'
 import { splitQualified } from '@brobot2/runtime'
-import { CLAUDE_TOOL_NAMING, refusalForDisplay } from '@brobot2/runtime/claude'
+import { CLAUDE_TOOL_NAMING, refusalForDisplay, toolInventoryForDisplay } from '@brobot2/runtime/claude'
 import { scanRetention } from './retention'
 import { signInObservation } from './sign-in-observation'
 import { filesOf, memoryNotesOf } from './conversation-files'
@@ -14,6 +14,7 @@ import type { TranscriptEvent } from '../../../shared/conversation-events'
 
 /** Supply the same presentation for live events and older stored rows. */
 export function eventForDisplay(event: TranscriptEvent): TranscriptEvent {
+  if (event.type === 'tool_inventory') return toolInventoryForDisplay(event)
   const observed = signInObservation(event)
   if (observed.type !== 'error') return observed
   const message = refusalForDisplay(observed.refusal)

@@ -134,6 +134,7 @@ export interface DeclaredToolset {
 export interface PublishedServer {
   readonly name: string
   readonly status: string
+  readonly connectionKind?: string
 }
 
 /** What the child published about itself, on the one frame that carries it. */
@@ -236,7 +237,7 @@ export interface ToolInventoryPayload {
       parameters: { name: string; type: string; required: boolean; description?: string }[]
     }[]
   } | null
-  published: { tools: string[]; servers: { name: string; status: string }[] } | null
+  published: { tools: string[]; servers: { name: string; status: string; connectionKind?: string }[] } | null
   /** Rows either half named that the payload does not carry — see the field on the event. */
   dropped: number
 }
@@ -297,7 +298,13 @@ export function boundInventory(sent: {
     const servers = sent.published.servers
       .filter((server) => usableName(server.name))
       .slice(0, MAX_PUBLISHED_SERVERS)
-      .map((server) => ({ name: server.name, status: clip(server.status, MAX_STATUS_WORD) }))
+      .map((server) => ({
+        name: server.name,
+        status: clip(server.status, MAX_STATUS_WORD),
+        ...(server.connectionKind === undefined
+          ? {}
+          : { connectionKind: clip(server.connectionKind, MAX_STATUS_WORD) }),
+      }))
     dropped += sent.published.tools.length - tools.length
     dropped += sent.published.servers.length - servers.length
     published = { tools, servers }

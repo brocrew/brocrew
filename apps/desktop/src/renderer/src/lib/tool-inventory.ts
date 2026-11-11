@@ -34,33 +34,31 @@ export { qualify, splitQualified } from '@brobot2/shared/tool-naming'
 /** How a row's colour reads. Never a colour alone — every tone here has a word beside it. */
 export type Tone = 'ok' | 'bad' | 'wait' | 'off' | 'unknown'
 
-/**
- * ⛔ **Every connection word this app knows, and what each one MEANS**, written out one by one so
- * a new status cannot inherit a plausible word or be silently counted as connected.
- *
- * ⚠️ **The five keys are the pinned SDK's own union** (`McpServerStatus.status`). A sixth word must
- * arrive as itself — see {@link statusWord} — because the vocabulary that carries it is deliberately
- * not narrowed: a provider that ships a new state would otherwise fail the schema and take the whole
- * inventory with it.
- */
-const STATUS_WORDS: Readonly<Record<string, { label: string; tone: Tone; connected: boolean }>> = {
-  connected: { label: 'connected', tone: 'ok', connected: true },
+/** Portable connection facts choose wording; raw or unknown facts never imply connection. */
+const CONNECTION_WORDS: Readonly<Record<string, { label: string; tone: Tone; connected: boolean }>> = {
+  ready: { label: 'connected', tone: 'ok', connected: true },
   failed: { label: 'failed', tone: 'bad', connected: false },
-  'needs-auth': { label: 'needs sign-in', tone: 'bad', connected: false },
-  pending: { label: 'connecting', tone: 'wait', connected: false },
+  'sign-in': { label: 'needs sign-in', tone: 'bad', connected: false },
+  connecting: { label: 'connecting', tone: 'wait', connected: false },
   disabled: { label: 'disabled', tone: 'off', connected: false },
 }
 
 /**
- * What one connection word means.
+ * Render the supplied connection fact, retaining the provider's raw word when none is understood.
  *
  * ⛔ **An unrecognised word is shown VERBATIM and counted as not connected.** Both halves matter:
  * translating it would be inventing the provider's meaning, and defaulting `connected` to `true`
  * would let a state nobody has enumerated pass as working — which is
  * `an-unenumerated-state-counts-as-success` exactly.
  */
-export function statusWord(status: string): { label: string; tone: Tone; connected: boolean } {
-  return STATUS_WORDS[status] ?? { label: status, tone: 'unknown', connected: false }
+export function statusWord(
+  status: string,
+  connectionKind?: string,
+): { label: string; tone: Tone; connected: boolean } {
+  return (connectionKind === undefined || !Object.hasOwn(CONNECTION_WORDS, connectionKind)
+      ? undefined
+      : CONNECTION_WORDS[connectionKind]) ??
+    { label: status, tone: 'unknown', connected: false }
 }
 
 /**
@@ -90,6 +88,7 @@ export interface ToolRow {
 export interface ForeignServer {
   readonly name: string
   readonly status: string
+  readonly connectionKind?: string
   /** Its tools, by qualified name only — nothing publishes a description for them. */
   readonly tools: readonly string[]
 }
@@ -105,6 +104,7 @@ interface OwnServer {
    * had to run an investigation to rule out.
    */
   readonly status: string | null
+  readonly connectionKind?: string
   readonly instructions?: string
   readonly tools: readonly ToolRow[]
 }
@@ -298,16 +298,16 @@ export function readInventory(registry: ToolRegistry): InventoryReading {
   )
   const unclaimed = [...listedUnderOurs].filter((name) => !declaredQualified.has(name))
 
+  const ownPublished = published?.servers.find((server) => server.name === declared?.server)
   const own: OwnServer | null =
     declared === null
       ? null
       : {
           name: declared.server,
-          status:
-            published === null
-              ? null
-              : (published.servers.find((server) => server.name === declared.server)?.status ??
-                null),
+          ...(ownPublished?.connectionKind === undefined
+            ? {}
+            : { connectionKind: ownPublished.connectionKind }),
+          status: ownPublished?.status ?? null,
           ...(declared.instructions === undefined ? {} : { instructions: declared.instructions }),
           tools: declared.tools.map((tool: DeclaredTool) => {
             const qualified = qualify(set.naming, declared.server, tool.name)
@@ -334,11 +334,15 @@ export function readInventory(registry: ToolRegistry): InventoryReading {
   for (const server of grouped.keys()) foreignNames.add(server)
   if (declared !== null) foreignNames.delete(declared.server)
 
-  const foreign: ForeignServer[] = [...foreignNames].sort().map((name) => ({
-    name,
-    status: published?.servers.find((server) => server.name === name)?.status ?? '',
-    tools: grouped.get(name) ?? [],
-  }))
+  const foreign: ForeignServer[] = [...foreignNames].sort().map((name) => {
+    const server = published?.servers.find((server) => server.name === name)
+    return {
+      name,
+      status: server?.status ?? '',
+      ...(server?.connectionKind === undefined ? {} : { connectionKind: server.connectionKind }),
+      tools: grouped.get(name) ?? [],
+    }
+  })
 
   return {
     kind: published === null ? 'unpublished' : 'published',
@@ -471,6 +475,7 @@ export interface CatalogEntry {
    * is a server the child did not describe.
    */
   readonly serverStatus: string | null
+  readonly connectionKind?: string
   /** BroBot's own sentence, or `null` when nobody publishes one. */
   readonly description: string | null
   /** The flattened schema, or `null` when no argument list exists for this row at all. */
@@ -514,6 +519,7 @@ export function catalogue(reading: InventoryReading): readonly CatalogEntry[] {
         source: 'brobot',
         server: own.name,
         serverStatus: ownStatus,
+        ...(own.connectionKind === undefined ? {} : { connectionKind: own.connectionKind }),
         description: tool.description,
         parameters: tool.parameters,
         standing: tool.standing,
@@ -529,6 +535,7 @@ export function catalogue(reading: InventoryReading): readonly CatalogEntry[] {
         source: 'unclaimed',
         server: own.name,
         serverStatus: ownStatus,
+        ...(own.connectionKind === undefined ? {} : { connectionKind: own.connectionKind }),
         description: null,
         parameters: null,
         standing: null,
@@ -546,6 +553,7 @@ export function catalogue(reading: InventoryReading): readonly CatalogEntry[] {
         // ⚠️ `''` is `readInventory`'s "the child named no status for this server"; it becomes the
         // same `null` every other row uses, rather than an empty string a template would print.
         serverStatus: server.status === '' ? null : server.status,
+        ...(server.connectionKind === undefined ? {} : { connectionKind: server.connectionKind }),
         description: null,
         parameters: null,
         standing: null,

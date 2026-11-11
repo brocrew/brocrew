@@ -1904,6 +1904,7 @@ const toolInventorySchema = z.object({
             name: z.string().max(MAX_TOOL_NAME),
             /** ⛔ The provider's own word, NOT narrowed — see `PublishedServer.status`. */
             status: z.string().max(MAX_STATUS_WORD),
+            connectionKind: z.string().max(MAX_STATUS_WORD).optional(),
           }),
         )
         .max(MAX_PUBLISHED_SERVERS),

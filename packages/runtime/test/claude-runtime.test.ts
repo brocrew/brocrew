@@ -9145,7 +9145,7 @@ describe('the tools a conversation has (358)', () => {
       'mcp__brobot__list_agents',
       'mcp__brobot__spawn_agent',
     ])
-    expect(event.published?.servers).toEqual([{ name: 'brobot', status: 'connected' }])
+    expect(event.published?.servers).toEqual([{ name: 'brobot', status: 'connected', connectionKind: 'ready' }])
     expect(event.source).toBe('init')
 
     await handle.close()
@@ -9203,7 +9203,7 @@ describe('the tools a conversation has (358)', () => {
     await vi.waitFor(has(events, (e) => e.type === 'tool_inventory'))
     const event = firstOfType(events, 'tool_inventory')
     expect(event.published?.tools, 'the usable names survive').toEqual(['Bash', 'Read'])
-    expect(event.published?.servers).toEqual([{ name: 'brobot', status: 'connected' }])
+    expect(event.published?.servers).toEqual([{ name: 'brobot', status: 'connected', connectionKind: 'ready' }])
     expect(event.dropped, 'one nameless tool and one server with no status').toBe(2)
     await handle.close()
     fq.end()
@@ -9250,7 +9250,7 @@ describe('the tools a conversation has (358)', () => {
     )
     const published = events.filter((e) => e.type === 'tool_inventory')
     expect(published, 'two rows: the first statement and the change').toHaveLength(2)
-    expect(published[0]?.published?.servers).toEqual([{ name: 'brobot', status: 'connected' }])
+    expect(published[0]?.published?.servers).toEqual([{ name: 'brobot', status: 'connected', connectionKind: 'ready' }])
     expect(published[1]?.published?.servers).toEqual([])
     await handle.close()
     fq.end()

@@ -65,3 +65,5 @@ export {
 } from './claude/login-renewal'
 
 export { refusalForDisplay } from './claude/refusal-presentation'
+
+export { toolInventoryForDisplay, publishedServerForDisplay } from './claude/inventory-display'

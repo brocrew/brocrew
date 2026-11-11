@@ -8,6 +8,7 @@ import { PIECE_EVENT_TYPES } from '../../shared/tasks'
 import { toPersistedEvents, type EventRow } from '../db/session-store'
 import { recordedWorkAncestry } from '../runtime/work-ancestry'
 import { errorFactsForEvent } from '../providers/error-diagnostic'
+import { transcriptMessageForDisplay } from '../providers/error-presentation'
 import { errorCode, nodeFs, pathExists, type RecoveryFs } from './files'
 import { SIDECARS } from './layout'
 
@@ -55,6 +56,7 @@ interface Connection {
   readonly db: Database.Database
   readonly conversations: Database.Statement
   readonly generation: Database.Statement
+  readonly provider: Database.Statement
   readonly cwd: Database.Statement
   readonly events: Database.Statement
   readonly root: Database.Statement
@@ -112,16 +114,20 @@ export function createHistoryReader(
         }),
       ),
     transcript: (id) =>
-      read((c) =>
-        recordedWorkAncestry(
+      read((c) => {
+        const row = c.provider.get(id) as { provider: unknown } | undefined
+        const provider = providerSchema.safeParse(row?.provider).data
+        return recordedWorkAncestry(
           toPersistedEvents(c.events.all(id, activeGeneration(c, id)) as EventRow[]).map(
             ({ event, at }): HistoryEvent => {
+              if (event.type === 'tool_inventory')
+                return transcriptMessageForDisplay({ event, at }, provider)
               const errorFacts = errorFactsForEvent(event)
               return { event, at, ...(errorFacts === undefined ? {} : { errorFacts }) }
             },
           ),
-        ),
-      ),
+        )
+      }),
     workingFolder: (id) =>
       read((c) => {
         const row = c.cwd.get(id) as { cwd: unknown } | undefined
@@ -188,6 +194,7 @@ function connect(file: string): Connection {
           ORDER BY s.updated_at DESC, s.id DESC`,
       ),
       generation: db.prepare('SELECT active FROM derived_generation WHERE session_id = ?'),
+      provider: db.prepare('SELECT provider FROM provider_session WHERE id = ?'),
       cwd: db.prepare('SELECT cwd FROM provider_session WHERE id = ?'),
       events: db.prepare(
         `SELECT ordinal, payload, created_at FROM events

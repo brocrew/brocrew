@@ -22,6 +22,7 @@ import {
   splitQualified as runtimeSplitQualified,
 } from '../../../packages/runtime/src/tool-inventory'
 import { CLAUDE_TOOL_NAMING } from '../../../packages/runtime/src/claude/tool-naming'
+import { publishedServerForDisplay } from '../../../packages/runtime/src/claude/inventory-display'
 import { CODEX_TOOL_NAMING } from '../../../packages/runtime/src/codex/tool-naming'
 import { applyEvent, createTranscript, type ToolRegistry } from '../src/renderer/src/lib/transcript'
 import { carryForward, foldWindow } from '../src/renderer/src/lib/transcript-window'
@@ -297,12 +298,13 @@ describe('what tools this conversation has (358)', () => {
   })
 
   describe('the connection word', () => {
+    const claudeStatus = (status: string) => statusWord(status, publishedServerForDisplay({ name: 'crew', status }).connectionKind)
     it('translates every word the pinned SDK declares', () => {
-      expect(statusWord('connected')).toEqual({ label: 'connected', tone: 'ok', connected: true })
-      expect(statusWord('failed').tone).toBe('bad')
-      expect(statusWord('needs-auth').label).toBe('needs sign-in')
-      expect(statusWord('pending').tone).toBe('wait')
-      expect(statusWord('disabled').tone).toBe('off')
+      expect(claudeStatus('connected')).toEqual({ label: 'connected', tone: 'ok', connected: true })
+      expect(claudeStatus('failed').tone).toBe('bad')
+      expect(claudeStatus('needs-auth').label).toBe('needs sign-in')
+      expect(claudeStatus('pending').tone).toBe('wait')
+      expect(claudeStatus('disabled').tone).toBe('off')
     })
 
     it('⛔ a word nobody enumerated is shown VERBATIM and is never counted as connected', () => {
@@ -314,7 +316,7 @@ describe('what tools this conversation has (358)', () => {
       })
       // ⚑ The pair: the function really does say `true` for something, so `false` above is a
       // ruling rather than a function that never says otherwise.
-      expect(statusWord('connected').connected).toBe(true)
+      expect(claudeStatus('connected').connected).toBe(true)
     })
   })
 

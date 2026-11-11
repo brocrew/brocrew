@@ -12,6 +12,7 @@ import { claudeMcpServersFor, forbiddenExternalSpellings } from './agent-tools'
 import type { ExternalMcpReach } from '../external-mcp'
 import { boundInventory, parametersOf, qualifyWith, type DeclaredToolset } from '../tool-inventory'
 import { CLAUDE_TOOL_NAMING } from './tool-naming'
+import { publishedServerForDisplay } from './inventory-display'
 import { beyondItsRailsOf, type AgentToolset } from '../agent-tools'
 import type {
   AccountInfo,
@@ -1005,10 +1006,7 @@ export class ClaudeSessionHandle implements SessionHandle {
   private publishToolInventory(
     message: Extract<SDKMessage, { type: 'system'; subtype: 'init' }>,
   ): void {
-    const frame = message as unknown as Record<string, unknown>
-    const tools = frame['tools']
-
-    const servers = frame['mcp_servers']
+    const { tools, mcp_servers: servers } = message as unknown as Record<string, unknown>
     const namedTools = Array.isArray(tools)
       ? tools.filter((one): one is string => typeof one === 'string')
       : []
@@ -1020,7 +1018,7 @@ export class ClaudeSessionHandle implements SessionHandle {
         const row = one as Record<string, unknown>
         return typeof row['name'] === 'string' && typeof row['status'] === 'string'
       })
-      .map((server) => ({ name: server.name, status: server.status }))
+      .map((server) => publishedServerForDisplay({ name: server.name, status: server.status }))
 
     const managedNames = new Set([
       ...this.managedPluginMcp.map(({ name }) => name),
