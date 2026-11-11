@@ -265,15 +265,21 @@ it('keeps a newer manual choice and close ahead of the earlier catalogue continu
 it('disposes selection ownership before an unmounted screen catalogue answers', async () => {
   const catalogue = deferredCatalogue()
   const off = vi.fn()
+  const usageOff = vi.fn()
+  const onProvidersChanged = vi
+    .fn(() => vi.fn())
+    .mockReturnValueOnce(usageOff)
+    .mockReturnValueOnce(off)
   const api: ClientProviderApi = {
     ...client(),
     providerCatalogue: catalogue.read,
-    onProvidersChanged: () => off,
+    onProvidersChanged,
   }
   const m = screen(api, { setupProvider: 'claude' })
   await settle()
   m.unmount()
   expect(off).toHaveBeenCalledTimes(1)
+  expect(usageOff).toHaveBeenCalledTimes(1)
   catalogue.answer(suppliedProviders)
   await settle()
   expect(document.querySelector('[data-cy="provider-drawer"]')).toBeNull()
