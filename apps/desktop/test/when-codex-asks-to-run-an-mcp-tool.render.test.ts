@@ -315,11 +315,9 @@ beforeAll(async () => {
 /* ------------------------------------------------------------------ the composers (the DOM suite's double) */
 
 /**
- * ⚑ **The R80 card from the adapter's exported composers** — `aToolApprovalCard`'s own assembly,
- * which is private. ⚠️ The DOM suite cannot run a host in a browser, so it builds its card this way;
- * §0 pins this assembly to the card the host really sent, so the double cannot drift unnoticed.
- * ⚑ **736** — R95's *Always allow* where Codex offers `always`, the rule each standing button
- * installs (`scope.grants`, kept in `home`), and R97's marker, which every elicitation card carries.
+ * The private aToolApprovalCard assembly, built here because a browser cannot run the host.
+ * §0 compares it with the actual host card: R95's Always allow, each standing rule/file in
+ * scope.grants, the exact listedAs fact, and R97's cancel marker must agree.
  */
 function composedToolCard(
   frame: Record<string, unknown>,
@@ -336,7 +334,8 @@ function composedToolCard(
   ])
   const summary = wordsForACard(approval.question)
   const tool = wordsForACard(claimed.tool) ?? ''
-  const rule = { kind: 'tool' as const, tool, server: approval.serverName }
+  const listedAs = `mcp__${approval.serverName}__${approval.tool}`
+  const rule = { kind: 'tool' as const, tool, server: approval.serverName, listedAs }
   const grants = {
     ...(approval.offersSession ? { allow_all_for_session: [rule] } : {}),
     ...(approval.offersAlways
@@ -548,9 +547,10 @@ describe('§0 · what main’s host sends — the premise every section below st
     // ⛔ On `main`: the R80 card carried no marker (its Cancel also sent `turn/interrupt`, R74).
     expect(sent.cancelStopsNothing).toBe(true)
     // ⚑ 736 · R94 — what each standing button installs, and the file an *Always allow* is kept in.
+    const listedAs = `mcp__${SERVER}__${TOOL}`
     expect(sent.scope.grants).toEqual({
-      allow_all_for_session: [{ kind: 'tool', tool: TOOL, server: SERVER }],
-      allow_always: [{ kind: 'tool', tool: TOOL, server: SERVER }],
+      allow_all_for_session: [{ kind: 'tool', tool: TOOL, server: SERVER, listedAs }],
+      allow_always: [{ kind: 'tool', tool: TOOL, server: SERVER, listedAs }],
       alwaysFile: join(captured.asks.home, 'brobot-kept-tool-approvals.json'),
     })
     expect(sent).toEqual(composedToolCard(codexAsks(), sent.id, captured.asks.home))

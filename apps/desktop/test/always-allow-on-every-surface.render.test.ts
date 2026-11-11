@@ -521,10 +521,7 @@ const RM_ELSEWHERE_GRANTS: Grants = {
     rule.kind === 'directory' ? { kind: 'directory', path: '/tmp/y' } : rule,
   ),
 }
-/**
- * ⚑ `740`'s host sentence for a failed keep — on `main` since 5f406f2f (`runtime-host.ts`'
- * `not-kept` arm; §0 reads it off the host). ⚑ Typed out here: data the renderer draws verbatim.
- */
+/** The host's failed-keep sentence (740, not-kept arm); §0 verifies this verbatim renderer input. */
 const NOT_KEPT_740 =
   '“always” could not be kept, so nothing was sent — this request is still waiting'
 
@@ -547,7 +544,10 @@ describe('§0 · what main’s host sends — the premise every section below st
       'cancel',
     ])
     expect(sent.scope.persistence).toBe('always')
-    expect(sent.scope.grants?.allow_always).toEqual([{ kind: 'tool', tool: TOOL, server: SERVER }])
+    const listedAs = `mcp__${SERVER}__${TOOL}`
+    expect(sent.scope.grants?.allow_always).toEqual([
+      { kind: 'tool', tool: TOOL, server: SERVER, listedAs },
+    ])
     expect(sent.scope.grants?.alwaysFile).toBe(join(home, 'brobot-kept-tool-approvals.json'))
     // ⚑ One fact over: Codex offered no `always`, and the card carries neither the answer nor its rule.
     const none = captured.asksNoAlways.card

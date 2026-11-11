@@ -340,9 +340,10 @@ describe('723 · a press that stops nothing says so, and R80’s card reaches th
     ])
     // ⚑ …and what each standing button installs crosses the wire with it (R94): the schema declares
     // `scope.grants`, so `toWireEvent` kept it — the kept file is in this conversation's home.
+    const listedAs = 'mcp__brobot723__note_it'
     expect(card?.scope.grants).toEqual({
-      allow_all_for_session: [{ kind: 'tool', tool: 'note_it', server: 'brobot723' }],
-      allow_always: [{ kind: 'tool', tool: 'note_it', server: 'brobot723' }],
+      allow_all_for_session: [{ kind: 'tool', tool: 'note_it', server: 'brobot723', listedAs }],
+      allow_always: [{ kind: 'tool', tool: 'note_it', server: 'brobot723', listedAs }],
       alwaysFile: join(server.home, 'brobot-kept-tool-approvals.json'),
     })
     await host.respondPermission(id, 'number:60', { outcome: 'allow_all_for_session' }, window)
