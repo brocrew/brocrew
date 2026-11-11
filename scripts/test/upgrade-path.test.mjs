@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { DatabaseSync } from 'node:sqlite'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -40,6 +41,7 @@ import {
   sessionsKept,
   sha256,
   startOrder,
+  makeEarlierMigrationFixture,
   stateFileNames,
   stateKept,
   theCandidateInstaller,
@@ -76,11 +78,6 @@ import {
   toolResultsIn,
   userTextsIn,
 } from '../lib/scripted-claude.mjs'
-
-/**
- * The upgrade-path check's own rules, on planted inputs: each comparison passes what the beta left
- * unchanged and fails each kind of loss, so a run that reports nothing lost has measured something.
- */
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const copy = (value) => structuredClone(value)
@@ -190,7 +187,6 @@ describe('the names each build goes by', () => {
   })
 
   it('finds a Windows install by the key electron-builder makes from the app id, whatever its name', () => {
-    // The key a recorded run of the Windows update test shows for this app id.
     expect(installerGuid('com.brobot2.desktop')).toBe('19c3cbeb-8425-54f9-a9f1-9d170d16fc83')
     expect(installerGuid('com.example.other')).not.toBe('19c3cbeb-8425-54f9-a9f1-9d170d16fc83')
   })
@@ -208,7 +204,6 @@ describe('the names each build goes by', () => {
     expect(theCandidateInstaller(dist, 'windows', '0.1.0')).toBe('BroCrew-Setup-0.1.0-x64.exe')
     expect(theCandidateInstaller(dist, 'mac', '0.1.0')).toBe('BroCrew-0.1.0-arm64.dmg')
     expect(() => theCandidateInstaller(dist, 'windows', '0.1.1')).toThrow('holds 0')
-    // The version's dots are dots, not any character.
     expect(() =>
       theCandidateInstaller(['BroCrew-Setup-0x1y0-x64.exe'], 'windows', '0.1.0'),
     ).toThrow('holds 0')
@@ -250,7 +245,10 @@ describe('the migrations a build carries', () => {
       { idx: 1, when: 20, tag: 'b' },
     ],
   }
-  const sql = { a: 'CREATE TABLE a (\n  id text\n);\n', b: 'CREATE INDEX b ON a (id);' }
+  const sql = {
+    a: "CREATE TABLE a (\n  id text\n); INSERT INTO a VALUES ('fictional');\n",
+    b: 'CREATE INDEX b ON a (id);',
+  }
   const built = buildLineage(journal, (tag) => sql[tag])
   const crlf = (text) => sha256(text.replace(/\n/g, '\r\n'))
 
@@ -262,7 +260,6 @@ describe('the migrations a build carries', () => {
     expect(() => buildLineage({ entries: [{ idx: 1, when: 1, tag: 'a' }] }, () => '')).toThrow(
       'out of order',
     )
-    // A checkout that holds the files with CRLF carries the same two hashes for each.
     const fromCrlf = buildLineage(journal, (tag) => sql[tag].replace(/\n/g, '\r\n'))
     expect(fromCrlf.map(({ lf, crlf: other }) => [lf, other])).toEqual(
       built.map(({ lf, crlf: other }) => [lf, other]),
@@ -309,6 +306,19 @@ describe('the migrations a build carries', () => {
     expect(recorded).toEqual(lineage.map(({ createdAt, hash }) => ({ createdAt, hash })))
     expect(lineageFits(recorded, lineage)).toBe(true)
   })
+  it('constructs the real earlier SQL prefix, preserving its rows when the next migration runs', () => {
+    const db = new DatabaseSync(':memory:')
+    try {
+      expect(makeEarlierMigrationFixture(db, journal, (tag) => sql[tag])).toEqual([
+        { hash: sha256(sql.a), createdAt: 10 },
+      ])
+      expect(db.prepare("SELECT name FROM sqlite_master WHERE name='b'").get()).toBeUndefined()
+      db.exec(sql.b)
+      expect(db.prepare('SELECT id FROM a').get().id).toBe('fictional')
+    } finally {
+      db.close()
+    }
+  })
 })
 
 describe('the state files a build copies', () => {
@@ -321,38 +331,51 @@ describe('the state files a build copies', () => {
   })
 })
 
+const firstStart = (log, extra = {}) => startOrder(log, { checkpoint: true, ...extra })
+const backgroundStart = (log, observation) =>
+  firstStart(log, { completion: 'background', observation })
+
 describe('a start’s whole log', () => {
   const first = ['booting', CHECKPOINT_LINE, 'migrations', READY_LINE].join('\n')
 
-  it('says one checked copy, then READY, on a first start, and READY alone on a second', () => {
-    expect(startOrder(first, { checkpoint: true })).toEqual({ ready: 3, checkedCopy: 1 })
+  it('keeps synchronous/repeated-start controls and requires real DOM evidence for background completion', () => {
+    expect(firstStart(first)).toEqual({ ready: 3, checkedCopy: 1 })
     expect(startOrder(`x\r\n${READY_LINE}\r\n`, { checkpoint: false }).checkedCopy).toBeNull()
+    const observation = {
+      launched: 10,
+      responsive: 20,
+      absent: 21,
+      completed: 50,
+      manifestAbsent: true,
+    }
+    const log = `${READY_LINE}\n${CHECKPOINT_LINE}`
+    expect(() => backgroundStart(log, observation)).not.toThrow()
+    for (const changed of [
+      null,
+      { ...observation, manifestAbsent: false },
+      { ...observation, responsive: 51 },
+      { ...observation, completed: 20 },
+      { ...observation, completed: NaN },
+    ]) {
+      expect(() => backgroundStart(log, changed)).toThrow('Responsive ordinary DOM')
+    }
+    expect(() => backgroundStart(`${log}\n${CHECKPOINT_LINE}`, observation)).toThrow('found 2')
   })
 
   it('fails a failed start, a recovery-only start, two READYs, and a copy in the wrong place', () => {
-    expect(() => startOrder(`${FAIL_LINE}\nThe data is newer.`, { checkpoint: true })).toThrow(
-      'The data is newer.',
-    )
+    expect(() => firstStart(`${FAIL_LINE}\nThe data is newer.`)).toThrow('The data is newer.')
     expect(() => startOrder(`${RECOVERY_ONLY_LINE}\n${READY_LINE}`, { checkpoint: false })).toThrow(
       'recovery window',
     )
-    expect(() => startOrder(`${READY_LINE}\n${CHECKPOINT_LINE}`, { checkpoint: true })).toThrow(
-      'before READY',
-    )
+    expect(() => firstStart(`${READY_LINE}\n${CHECKPOINT_LINE}`)).toThrow('before READY')
     expect(() => startOrder(first, { checkpoint: false })).toThrow('another recovery copy')
-    expect(() => startOrder('nothing', { checkpoint: true })).toThrow('found 0')
+    expect(() => firstStart('nothing')).toThrow('found 0')
   })
 
   it('fails what is said after READY: a second READY, a late copy, a late failure', () => {
-    expect(() => startOrder(`${first}\nlater\n${READY_LINE}`, { checkpoint: true })).toThrow(
-      'found 2',
-    )
-    expect(() => startOrder(`${first}\n${CHECKPOINT_LINE}`, { checkpoint: true })).toThrow(
-      'found 2',
-    )
-    expect(() => startOrder(`${first}\n${FAIL_LINE}\nIt stopped.`, { checkpoint: true })).toThrow(
-      'It stopped.',
-    )
+    expect(() => firstStart(`${first}\nlater\n${READY_LINE}`)).toThrow('found 2')
+    expect(() => firstStart(`${first}\n${CHECKPOINT_LINE}`)).toThrow('found 2')
+    expect(() => firstStart(`${first}\n${FAIL_LINE}\nIt stopped.`)).toThrow('It stopped.')
   })
 })
 
@@ -410,7 +433,6 @@ describe('the rows the beta left', () => {
     delete gone.raw_frame
     expect(Object.keys(keptTables(before))).toEqual(['provider_session', 'events'])
     expect(rowsPreserved(keptTables(before), gone).lost).toEqual([])
-    // ⚑ The control: a table that is not retired is still held, gone or not.
     delete gone.events
     expect(rowsPreserved(keptTables(before), gone).lost).toEqual([
       { table: 'events', gone: 'the table' },
@@ -746,7 +768,6 @@ describe('the history the beta made', () => {
       'sessions/2026/10/07/rollout-2026-10-07T10-02-00-someone-else.jsonl',
     ]
     expect(transcriptsOf(history, files)).toEqual({ a: files[0], b: files[1] })
-    // An unrelated file cannot stand in for the second conversation's, and two cannot be one.
     expect(() => transcriptsOf(history, [files[0], files[2]])).toThrow(
       'Conversation b has 0 Codex transcripts',
     )
@@ -797,7 +818,6 @@ describe('the drafts the beta left, as the app reads them', () => {
       'it holds two drafts for new, and the app reads only the first',
       'the draft for new changed',
     ])
-    // Even with the right one first, a second draft for one slot is not what the beta left.
     expect(draftsKept(was, { version: 1, drafts: [draft, { ...draft, text: 'wrong' }] })).toEqual([
       'it holds two drafts for new, and the app reads only the first',
     ])
@@ -1298,14 +1318,10 @@ describe('a turn on the saved key after the upgrade', () => {
   it('fails that refusal whenever one part of it is missing', () => {
     const not = (turn, status = unreadable) =>
       expect(turnOutcome(turn, status)).toEqual({ outcome: 'refused', ok: false })
-    // The message was refused, not the start.
     not({ ...cantBeRead, refusedAt: 'send' })
-    // Too slow to be a refusal at once.
     not({ ...cantBeRead, refusedAfterMs: 61_000 })
-    // Other words, even ones that mention an API key.
     not({ ...cantBeRead, refused: 'Invalid API key' })
     not({ ...cantBeRead, refused: 'unknown session' })
-    // The app's own status does not say the key is unreadable.
     not(cantBeRead, inUse)
     not(cantBeRead, { set: true, inUse: false, readState: 'not-checked' })
     not(cantBeRead, null)
@@ -1345,7 +1361,6 @@ describe('a run’s result', () => {
     expect(resultLine({ ...summary, knownLimits: [NOTHING_RAN_LIMIT] })).toBe(
       `passed with a known limit: ${NOTHING_RAN_LIMIT}`,
     )
-    // A failure outranks a limit: a run that failed did not pass with anything.
     expect(resultLine({ failures: ['x', 'y'], knownLimits: [NOTHING_RAN_LIMIT] })).toBe(
       'failed: 2 check(s) did not hold',
     )
@@ -1457,7 +1472,6 @@ describe('the app’s setup at launch, as the check expects it', () => {
     expect(providerReady(claude())).toBe(true)
     expect(providerReady(claude({ version: installed('newer-than-tested') }))).toBe(true)
     expect(providerReady(codex())).toBe(true)
-    // A program the app carries, or nothing to set up outside the app, has no install to pass.
     expect(providerReady(codex({ setup: undefined }))).toBe(true)
     expect(providerReady(claude({ setup: null, version: installed('missing') }))).toBe(true)
   })
@@ -1484,9 +1498,7 @@ describe('the app’s setup at launch, as the check expects it', () => {
       expect(providerReady(codex({ auth })), JSON.stringify(auth)).toBe(false)
     }
     expect(providerReady(codex({ keyRefused: true }))).toBe(false)
-    // A refused key matters only to a sign-in that is the key.
     expect(providerReady(claude({ keyRefused: true }))).toBe(true)
-    // A saved key that can't be read outranks any sign-in behind it.
     expect(providerReady(codex({ keyUnreadable: true }))).toBe(false)
     expect(providerReady(claude({ keyUnreadable: true }))).toBe(false)
   })
@@ -1514,7 +1526,6 @@ describe('the app’s setup at launch, as the check expects it', () => {
       launchSetupExpected([claude({ keyUnreadable: true }), codex({ keyUnreadable: true })])
         .opensProviders,
     ).toBe(true)
-    // The app decides nothing while a sign-in is unknown, or until every fact is read.
     expect(
       launchSetupExpected([
         missing,
@@ -1633,7 +1644,6 @@ describe('the recovery copies, told apart by the version that made each', () => 
       made: ['c1'],
       same: false,
     })
-    // Listed in any order: a folder is found by its name, not its place.
     expect(copiesSince([beta], [candidate, beta], '0.1.0').made).toEqual(['c1'])
   })
 
@@ -1697,7 +1707,6 @@ describe('the recovery copies, told apart by the version that made each', () => 
       ...none,
       same: true,
     })
-    // A copy that could not be read before and still cannot is not the same: nothing says it is.
     const unreadable = [{ ...beta, digest: null }]
     expect(copiesSince(unreadable, unreadable, '0.1.0').same).toBe(false)
   })
@@ -1705,7 +1714,6 @@ describe('the recovery copies, told apart by the version that made each', () => 
 
 describe('the Keychain entry a Mac seals saved keys with', () => {
   const pkg = JSON.parse(readFileSync(join(ROOT, 'apps/desktop/package.json'), 'utf8'))
-  // What `security find-generic-password -s <service>` prints when asked for no password.
   const printed = (service, account) =>
     [
       'keychain: "/Users/runner/Library/Keychains/login.keychain-db"',
@@ -1726,7 +1734,6 @@ describe('the Keychain entry a Mac seals saved keys with', () => {
     const runner = readFileSync(join(ROOT, 'scripts/upgrade-path.mjs'), 'utf8')
     expect(runner).toContain("join(REPO, 'apps', 'desktop', 'package.json')")
     expect(pkg.productName).toBeUndefined()
-    // The name every build so far has had, as a runner's Keychain listed the entry a beta made.
     expect(APP_NAMES_BEFORE).toEqual([pkg.name])
     expect(keychainEntryFor(APP_NAMES_BEFORE[0])).toEqual({
       service: '@brobot2/desktop Safe Storage',
@@ -1743,7 +1750,6 @@ describe('the Keychain entry a Mac seals saved keys with', () => {
       created: '20261008012345Z',
       modified: '20261008012346Z',
     })
-    // Nothing found, or something that is no entry: no description, never a guess.
     expect(
       keychainAttributes(
         'security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain.',
@@ -1758,7 +1764,6 @@ describe('the Keychain entry a Mac seals saved keys with', () => {
     const asked = [...runner.matchAll(/spawnSync\('\/usr\/bin\/security', \[([^\]]*)\]/g)].map(
       ([, argv]) => argv,
     )
-    // It reads the entry's attributes only, and leaves the beta's entry as it was.
     expect(asked).toEqual(["'find-generic-password', '-s', service"])
   })
 })
@@ -1779,7 +1784,6 @@ describe('the scripted Claude model the runner’s Claude Code is sent to', () =
     expect(MANAGED_SETTINGS_PATH.windows).toBe(
       'C:\\Program Files\\ClaudeCode\\managed-settings.json',
     )
-    // The workflow installs the version the scheduling shapes were measured on.
     const workflow = readFileSync(join(ROOT, '.github/workflows/upgrade-path.yml'), 'utf8')
     expect(workflow).toContain('node scripts/lib/scripted-claude.mjs version')
     expect(CLAUDE_CODE_VERSION).toMatch(/^\d+\.\d+\.\d+$/)
@@ -1918,7 +1922,6 @@ describe('the jobs a conversation made, as the beta recorded their scheduling ca
         input: { id: '3c5840ec' },
         result: { id: '3c5840ec' },
       }),
-      // A call the provider refused leaves no result: what it was asked is still read.
       receipt(3, { toolUseId: 'toolu_c', tool: 'CronDelete', input: { id: 'feedf00d' } }),
       { session_id: 'sess_c', ordinal: 4, type: 'scheduled_work', payload: '{"jobs":[]}' },
       receipt(
@@ -1994,7 +1997,6 @@ describe('a beta that stamps the receipts of the jobs it makes, and one that doe
     const one = (tool, stamped) => ({ toolUseId: 't', tool, job: 'j', asked: null, stamped })
     expect(stampingOf([one('CronCreate', true), one('CronCreate', true)])).toBe('stamped')
     expect(stampingOf([one('CronCreate', false), one('CronDelete', false)])).toBe('unstamped')
-    // A cancellation's receipt is not one of the jobs made.
     expect(stampingOf([one('CronCreate', true), one('CronDelete', false)])).toBe('stamped')
     expect(stampingOf([one('CronCreate', true), one('CronCreate', false)])).toBe('mixed')
     expect(stampingOf([])).toBe('none')
@@ -2094,7 +2096,6 @@ describe('each start the candidate owes, told apart from the others', () => {
       firstJobs,
     )
     expect(refused).toMatchObject({ outcome: 'refused', started: 1, refused: true, retried: [] })
-    // The next start owed waits for the key without being started.
     const next = evidence([], waits('sess_due'), 'sess_due', 'due', dueJobs)
     expect(next).toMatchObject({ outcome: 'refused', started: 0, refused: true, retried: [] })
     const again = evidence(
@@ -2106,7 +2107,6 @@ describe('each start the candidate owes, told apart from the others', () => {
     )
     expect(again.outcome).toBe('refused')
     expect(again.retried).toHaveLength(1)
-    // Another conversation's lines are not its own.
     expect(evidence([], waits('sess_due'), 'sess_first', 'claude', firstJobs).outcome).toBe(
       'pending',
     )

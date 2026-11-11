@@ -1,16 +1,10 @@
-// The pure half of the upgrade-path check (`scripts/upgrade-path.mjs`): the lines a start prints,
-// which release asset is a beta's installer, the names each build goes by, the migrations and
-// state files a build carries, and the comparisons of a data folder before and after the candidate
-// opens it. A registry reader is supplied by the caller, so every rule can be tried on planted
-// inputs without a real data folder or process.
 import { createHash } from 'node:crypto'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { SKILL_CATALOGUE_TABLES } from '../../apps/desktop/src/main/db/skill-catalogue-tables.ts'
-import { SKILL_TREE_NAMES, skillTreeStateDigest } from './skill-tree-state.mjs'
+import { SKILL_TREE_NAMES, skillTreeStateDigest, readStateEntry } from './skill-tree-state.mjs'
 
-// The lines a start prints, as the candidate's own source spells them: the lane reads them only in
-// the candidate's logs, and runs from the candidate's commit.
 import {
   CHECKPOINT_LINE,
   FAIL_LINE,
@@ -20,30 +14,19 @@ import {
 
 export { CHECKPOINT_LINE, FAIL_LINE, READY_LINE, RECOVERY_ONLY_LINE }
 
-/**
- * The columns a start may move on a conversation it finds closed: the app's own bookkeeping of
- * its state, never its history.
- */
 export const MAY_MOVE_AT_A_START = {
   provider_session: ['status', 'updated_at', 'closed_by_the_quit_at'],
-  // Built-in text updates move only these pointers; skillsKept checks their targets and preserves personal/plugin heads.
   skill_current: ['current_version'],
   skill_catalogue_state: ['revision'],
 }
 
-/** Only post-migration comparisons add these defaults; recovery copies keep their old schema. */
 export const CONNECTION_UPGRADE_DEFAULTS = Object.freeze({
   agent_identity: Object.freeze({ connection_id: null }),
   provider_session: Object.freeze({ connection_id: null }),
 })
 
-/**
- * Tables a later migration drops on purpose: the beta's rows in them are not kept, and the
- * candidate must have no such table at all. `raw_frame` was a copy of each provider's own file.
- */
 export const RETIRED_TABLES = ['raw_frame']
 
-/** The beta's tables a candidate is held to: every one but those a migration retires. */
 export function keptTables(tables) {
   return Object.fromEntries(
     Object.entries(tables).filter(([table]) => !RETIRED_TABLES.includes(table)),
@@ -60,18 +43,11 @@ export function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex')
 }
 
-/** Whether the old build is the requested published release. */
 export function isPublishedRelease(release, tag) {
   return release.tag_name === tag && release.draft === false
 }
 
-/**
- * The one asset of a release that is its installer for `os`, as the beta workflows name them, with
- * the SHA-256 the release itself publishes for it. An asset with no published digest is refused:
- * its size alone would not tell a substituted file from the released one.
- */
 export function betaAsset(assets, os) {
-  // Under whatever name the beta was built: its installer is the one of that shape.
   const shape =
     os === 'windows'
       ? /^[^/\\]+-Setup-[^/\\]*-x64[^/\\]*\.exe$/
@@ -91,13 +67,8 @@ export function betaAsset(assets, os) {
   return { name: asset.name, size: asset.size, sha256: digest }
 }
 
-/** A product name the lane can put in a path, a PowerShell string and a pattern as it is. */
 const A_PRODUCT_NAME = /^[A-Za-z0-9][A-Za-z0-9 ._+-]*$/
 
-/**
- * The app id and the product name a build is packaged under, from its `electron-builder.yml`:
- * the id finds its install, and the name is what its program and bundle are called.
- */
 export function packagingNames(yaml) {
   const field = (key) => new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, 'm').exec(yaml ?? '')?.[1]
   const appId = field('appId')
@@ -113,11 +84,6 @@ export function packagingNames(yaml) {
   return { appId, productName }
 }
 
-/**
- * The key a Windows install of `appId` is kept under in the registry, as electron-builder makes it:
- * a version-5 UUID of the app id in electron-builder's own namespace. The product name plays no
- * part, so a build under a new name finds and replaces one under the old.
- */
 export function installerGuid(appId) {
   const namespace = Buffer.from('50e065bc313411e69bab38c9862bdaf3', 'hex')
   const hash = createHash('sha1').update(namespace).update(appId, 'utf8').digest()
@@ -127,10 +93,6 @@ export function installerGuid(appId) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
-/**
- * The installer a candidate build made for `version`, among the files of its output folder, under
- * whatever name it was built: exactly one, or the build is not what the lane expects.
- */
 export function theCandidateInstaller(files, os, version) {
   const v = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const shape =
@@ -143,10 +105,6 @@ export function theCandidateInstaller(files, os, version) {
   return matches[0]
 }
 
-/**
- * The app's own program in a Windows install folder, by the files at its top: the one `.exe` that
- * is not the uninstaller. Its name is the product name the build was made under.
- */
 export function appExeIn(files) {
   const programs = (files ?? []).filter(
     (name) => /\.exe$/i.test(name) && !/^Uninstall /i.test(name),
@@ -160,7 +118,6 @@ export function appExeIn(files) {
   return { exe: programs[0], productName }
 }
 
-/** The app in a Mac disk image, by what its window holds: the one `.app`. */
 export function bundleIn(entries) {
   const bundles = (entries ?? []).filter((name) => /\.app$/.test(name))
   requireEvidence(
@@ -172,11 +129,6 @@ export function bundleIn(entries) {
   return { bundle: bundles[0], productName }
 }
 
-/**
- * The migrations a build carries, as a database records them once applied: when each was written
- * (its journal's `when`) and the SHA-256 of its whole SQL text. A build made from a checkout with
- * the other line endings recorded the hash of that text, so each entry carries both.
- */
 export function buildLineage(journal, sqlOf) {
   const entries = journal?.entries
   requireEvidence(Array.isArray(entries) && entries.length > 0, 'The migration journal is empty.')
@@ -196,10 +148,6 @@ export function buildLineage(journal, sqlOf) {
   })
 }
 
-/**
- * Whether the migrations a database records are a build's first ones, by the rule the app's own
- * start uses: the same time, and the hash of the build's file with either line ending.
- */
 export function lineageFits(recorded, built) {
   return (
     recorded.length <= built.length &&
@@ -211,7 +159,6 @@ export function lineageFits(recorded, built) {
   )
 }
 
-/** With which line endings each recorded migration's file was hashed, for a reader of the run. */
 export function recordedWith(recorded, built) {
   return recorded.map((one, index) => {
     const file = built[index]
@@ -221,12 +168,10 @@ export function recordedWith(recorded, built) {
   })
 }
 
-/** A database's own record of its migrations, in the same shape. */
 export function recordedLineage(rows) {
   return rows.map((row) => ({ createdAt: Number(row.created_at), hash: row.hash }))
 }
 
-/** The state files a build's recovery copies carry, read from its `recovery/state-files.ts`. */
 export function stateFileNames(source) {
   const from = source.indexOf('export const APP_STATE_FILES')
   const to = source.indexOf('export const NOT_STATE', from)
@@ -236,11 +181,7 @@ export function stateFileNames(source) {
   return names
 }
 
-/**
- * What a start's whole log says, in order: exactly one READY, no failure, no recovery-only start,
- * and a checked copy before READY when one is expected and none otherwise.
- */
-export function startOrder(log, { checkpoint }) {
+export function startOrder(log, { checkpoint, completion = 'before-ready', observation = null }) {
   const lines = log.split(/\r?\n/).map((line) => line.trimEnd())
   requireEvidence(!lines.includes(FAIL_LINE), `The start failed: ${failureOf(lines)}`)
   requireEvidence(!lines.includes(RECOVERY_ONLY_LINE), 'The start opened only its recovery window.')
@@ -251,12 +192,54 @@ export function startOrder(log, { checkpoint }) {
     `Exactly one READY line is required; found ${String(ready.length)}.`,
   )
   requireEvidence(
-    checkpoint ? copies.length === 1 && copies[0] < ready[0] : copies.length === 0,
+    completion === 'before-ready' || completion === 'background',
+    'The completion branch must be explicit.',
+  )
+  requireEvidence(
+    checkpoint ? copies.length === 1 : copies.length === 0,
     checkpoint
-      ? `Exactly one checked-copy line must come before READY; found ${String(copies.length)}.`
+      ? `Exactly one completed-copy line is required; found ${String(copies.length)}.`
       : 'A start of the same version made another recovery copy.',
   )
+  if (checkpoint && completion === 'before-ready')
+    requireEvidence(copies[0] < ready[0], 'The checked-copy line must come before READY.')
+  if (checkpoint && completion === 'background') requireResponsiveBeforeCompletion(observation)
+
   return { ready: ready[0], checkedCopy: copies[0] ?? null }
+}
+
+function requireResponsiveBeforeCompletion(observed) {
+  const { launched, responsive, absent, completed, manifestAbsent } = observed ?? {}
+  requireEvidence(
+    [launched, responsive, absent, completed].every(Number.isFinite) &&
+      launched <= responsive &&
+      responsive <= absent &&
+      absent < completed &&
+      manifestAbsent === true,
+    'Responsive ordinary DOM must precede observed manifest absence and actual completion.',
+  )
+}
+
+export function makeEarlierMigrationFixture(db, journal, sqlOf) {
+  const prefix = journal.entries.slice(0, -1)
+  requireEvidence(prefix.length > 0, 'The synchronous exception needs a real earlier prefix.')
+  db.exec('PRAGMA foreign_keys = OFF')
+  db.exec(
+    'CREATE TABLE __drizzle_migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT NOT NULL, created_at NUMERIC)',
+  )
+  db.exec('BEGIN')
+  for (const entry of prefix) {
+    const sql = sqlOf(entry.tag)
+    db.exec(sql)
+    db.prepare('INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)').run(
+      sha256(sql),
+      entry.when,
+    )
+  }
+  db.exec('COMMIT')
+  return recordedLineage(
+    db.prepare('SELECT hash, created_at FROM __drizzle_migrations ORDER BY created_at').all(),
+  )
 }
 
 function failureOf(lines) {
@@ -264,14 +247,12 @@ function failureOf(lines) {
   return lines[at + 1] ?? 'no reason followed'
 }
 
-/** One value as it compares: a BLOB by its bytes, a number however SQLite handed it. */
 function comparable(value) {
   if (value instanceof Uint8Array) return { blob: Buffer.from(value).toString('base64') }
   if (typeof value === 'bigint') return { integer: value.toString() }
   return value
 }
 
-/** A row as it compares, without the columns `ignored` names. */
 export function canonicalRow(row, ignored = []) {
   return JSON.stringify(
     Object.keys(row)
@@ -281,7 +262,6 @@ export function canonicalRow(row, ignored = []) {
   )
 }
 
-// Only a verified installed bundle can authorize an availability change.
 const verifiedSkillMembership = new WeakMap()
 
 function hasExactKeys(value, keys) {
@@ -316,7 +296,6 @@ function validSkillReminder(item, format) {
   )
 }
 
-/** Verify the candidate's manifest and body bytes before using its shipped membership. */
 export function verifyCandidateSkills(manifest, bodies) {
   requireEvidence(
     hasExactKeys(manifest, ['formatVersion', 'version', 'skills']) &&
@@ -328,7 +307,6 @@ export function verifyCandidateSkills(manifest, bodies) {
       bodies.size === manifest.skills.length,
     'The candidate skill manifest is invalid.',
   )
-  // Names and count come from the candidate, while each entry keeps the app's strict format.
   const names = new Set()
   for (const item of manifest.skills) {
     requireEvidence(
@@ -386,7 +364,6 @@ function skillAvailabilityMatches(old, now, before, after, candidateSkills) {
     return false
   const name = old.id?.startsWith('built-in/') ? old.id.slice('built-in/'.length) : undefined
   if (!name || old.alias !== name || now.active !== Number(names.has(name))) return false
-  // A built-in-looking id alone is not evidence of a built-in origin.
   return [before, after].every((tables) => {
     const version = tables.skill_version?.find((row) => row.id === old.current_version)
     try {
@@ -398,14 +375,6 @@ function skillAvailabilityMatches(old, now, before, after, candidateSkills) {
   })
 }
 
-/**
- * Whether every row the beta left is still in the candidate's database, whole: each table's rows
- * as a multiset, every column but the few a start may move. Rows the candidate added are counted,
- * not refused: they are evidence for a reader. A table that went is a loss. Each lost row says
- * whether its key is gone or which of its columns changed, where `keys` names the table's key.
- * Explicit post-upgrade additions require their exact defaults on legacy rows; an already
- * recorded value stays exact. Recovery-copy callers supply no additions.
- */
 export function rowsPreserved(
   before,
   after,
@@ -428,7 +397,6 @@ export function rowsPreserved(
     const left = new Map()
     for (const row of now) {
       const key = canonicalRow(row, ignored)
-      // An absent/undefined new value must not compare as SQL NULL through JSON serialization.
       const complete = requiredColumns.every(
         (column) => Object.hasOwn(row, column) && row[column] !== undefined,
       )
@@ -452,7 +420,6 @@ export function rowsPreserved(
         Object.hasOwn(requiredDefaults, column) || now.some((one) => Object.hasOwn(one, column)),
     )
     for (const original of rows) {
-      // Only missing legacy fields gain this migration's defaults; recorded values stay exact.
       const row = { ...original }
       for (const [column, value] of addedColumns)
         if (!Object.hasOwn(original, column)) row[column] = value
@@ -500,11 +467,6 @@ export function rowsPreserved(
   return { lost, added }
 }
 
-/**
- * The fictional history the beta must have made for the check to mean anything: each conversation
- * it created has its row and its own events, and names the Codex session its transcript is kept
- * under.
- */
 export function historyOf(tables, conversations) {
   const rows = (table) => (Array.isArray(tables[table]) ? tables[table] : [])
   requireEvidence(conversations.length >= 2, 'The beta made fewer than two conversations.')
@@ -527,10 +489,6 @@ export function historyOf(tables, conversations) {
   })
 }
 
-/**
- * Each conversation's own Codex transcript among `files` (paths under the Codex home's sessions
- * folder): exactly one per Codex session, by the id its name ends with. Any other file is ignored.
- */
 export function transcriptsOf(history, files) {
   return Object.fromEntries(
     history.map(({ conversation, codexSession }) => {
@@ -544,11 +502,6 @@ export function transcriptsOf(history, files) {
   )
 }
 
-/**
- * Whether `after` holds everything `before` said: every key of an object with a value that holds
- * the old one, and every item of a list held by an item of the new list, in the same order and as
- * many times. A build may add to what an older one wrote; it may not drop, change or reorder it.
- */
 export function contains(after, before) {
   if (Array.isArray(before)) {
     if (!Array.isArray(after)) return false
@@ -569,11 +522,6 @@ export function contains(after, before) {
   return Object.is(after, before)
 }
 
-/**
- * What is wrong with a drafts file against the one the beta left, as the app reads it: the first
- * draft of each slot is the one it restores. So each slot is there once, and each slot the beta
- * left still holds its words and its attached paths. A draft for a new slot is not a loss.
- */
 export function draftsKept(before, after) {
   const listOf = (book) => (Array.isArray(book?.drafts) ? book.drafts : null)
   const was = listOf(before)
@@ -601,7 +549,6 @@ export function draftsKept(before, after) {
   return problems
 }
 
-/** Keep the person's choice while allowing valid cleanup progress and bounded recent history. */
 function transcriptRetentionKept(before, after, bytes) {
   const periods = [30, 90, 365, 'forever']
   const problems = []
@@ -636,17 +583,11 @@ function transcriptRetentionKept(before, after, bytes) {
   return problems
 }
 
-/** The files compared by their own contract rather than by what they still contain. */
 export const STATE_RULES = {
   'drafts.json': draftsKept,
   'transcript-retention.json': transcriptRetentionKept,
 }
 
-/**
- * What became of the state files the beta left. One that went, or that no longer says what the beta
- * wrote, is lost. One the candidate wrote again, still saying all of it, is listed as rewritten;
- * one that is new is listed as appeared. Neither of those is a loss.
- */
 export function stateKept(before, after, names, rules = STATE_RULES) {
   const lost = []
   const rewritten = []
@@ -679,11 +620,6 @@ export function stateKept(before, after, names, rules = STATE_RULES) {
   return { lost, rewritten, appeared }
 }
 
-/**
- * Whether each conversation's row still names the Codex session the beta recorded for it: the
- * reference its next start resumes by. Its transcript being there is not enough if the row points
- * elsewhere.
- */
 export function sessionsKept(history, tables) {
   const rows = Array.isArray(tables.provider_session) ? tables.provider_session : []
   return history.flatMap(({ conversation, codexSession }) => {
@@ -701,7 +637,6 @@ export function sessionsKept(history, tables) {
   })
 }
 
-/** Read the declared registry only, keeping its selected path even when it cannot be read. */
 export function workspaceRegistrySnapshot(root, contract, read) {
   requireEvidence(
     contract === 'packaged' || contract === 'legacy',
@@ -718,7 +653,6 @@ export function workspaceRegistrySnapshot(root, contract, read) {
   return { contract, basename, path, value }
 }
 
-/** A preserved list must start with real rows, including the workspace this run opened. */
 export function workspaceRegistryBaseline(snapshot, workspace) {
   const book = snapshot?.value
   if (book === null || typeof book !== 'object' || book?.unreadable) {
@@ -746,10 +680,6 @@ export function workspaceRegistryBaseline(snapshot, workspace) {
   return registryKept(book, book)
 }
 
-/**
- * Whether the computer's list of workspaces still holds every workspace the beta listed, each as
- * it was. Opening one moves its `lastOpenedAt` forward, and only that.
- */
 export function registryKept(before, after) {
   const rowsOf = (book) => (Array.isArray(book?.workspaces) ? book.workspaces : null)
   const was = rowsOf(before)
@@ -777,24 +707,12 @@ export function registryKept(before, after) {
   return lost
 }
 
-/** The names the app has had before the one it has now: each named the Keychain entry of its day. */
 export const APP_NAMES_BEFORE = ['@brobot2/desktop']
 
-/**
- * The macOS Keychain entry Electron seals saved keys with, for an app of that name: its service,
- * and its account, which is the name with " Key" after it. Electron hands Chromium the bare name,
- * and its own patch to Chromium's Keychain code adds " Key" (" App Store Key" in a Mac App Store
- * build) when it looks the entry up or makes it.
- */
 export function keychainEntryFor(appName) {
   return { service: `${appName} Safe Storage`, account: `${appName} Key` }
 }
 
-/**
- * One Keychain entry's attributes, from what `security find-generic-password -s <service>` prints
- * when it is asked for no password: its service, its account, and when it was made and last
- * changed. null when what it printed is not one entry's attributes.
- */
 export function keychainAttributes(printed) {
   const blob = (name) =>
     new RegExp(`^\\s*"${name}"<blob>="(.*)"\\s*$`, 'm').exec(printed)?.[1] ?? null
@@ -806,20 +724,8 @@ export function keychainAttributes(printed) {
   return { service, account, created: date('cdat'), modified: date('mdat') }
 }
 
-/** The app's refusal of a provider whose saved key it can't read (`SAVED_KEY_UNREADABLE`). */
 const SAVED_KEY_UNREADABLE = 'Saved key can’t be read, save it again in Settings.'
 
-/**
- * What became of a turn on the saved key after the upgrade, and whether that passes.
- *
- * Answered by the model, every request on the fixture key, passes. A request that reached the
- * model with another key, or none, fails whatever else happened.
- *
- * The candidate never opens a key an earlier version sealed, so one more outcome passes: the START
- * was refused (not the message), the model was never asked, the words are the app's own for a
- * saved key it can't read, said within a minute, and the app's status of the key (`keyStatus`) is
- * saved, not in use and unreadable. A wrong key, a failed send or a provider's error is none of that.
- */
 export function turnOutcome(turn, keyStatus) {
   const posts = turn.requests.filter((one) => one.method === 'POST')
   if (posts.some((one) => one.auth !== 'expected')) {
@@ -844,16 +750,6 @@ export function turnOutcome(turn, keyStatus) {
     : { outcome: 'refused', ok: false }
 }
 
-/**
- * What the candidate says of the agent processes it runs, as its window reads it, and whether that
- * passes. `read` is the two answers of its bridge at one moment: `resources` (`providerResources`,
- * what Providers draws under "Running now") and `memory` (`processMemory`, what the agents' cards
- * draw).
- *
- * With no agent of `provider` running there is nothing to measure, which is said and passes. A
- * running one has a figure in both answers, on either system: both list their processes. No figure
- * fails, whatever reason is given for it.
- */
 export function whatRunsIsSaid(read, provider = 'codex') {
   const said = read?.resources?.[provider] ?? null
   if (said === null || !Number.isInteger(said.running)) return { outcome: 'not-read', ok: false }
@@ -869,16 +765,11 @@ export function whatRunsIsSaid(read, provider = 'codex') {
   return { outcome: drawn ? 'measured' : 'measured-on-one-and-not-the-other', ok: drawn }
 }
 
-/**
- * The providers the app's setup at launch asks about, in the order it opens for them, each with the
- * name its window says. The app's own list is `PROVIDER_NAME` (`shared/runtime-ipc.ts`).
- */
 export const LAUNCH_SETUP_PROVIDERS = [
   { provider: 'claude', name: 'Claude' },
   { provider: 'codex', name: 'Codex' },
 ]
 
-/** The standings of a provider's program that stop its setup: the app's `A_STANDING_WARNS`. */
 export const A_STANDING_STOPS_SETUP = {
   tested: false,
   'newer-than-tested': false,
@@ -887,15 +778,6 @@ export const A_STANDING_STOPS_SETUP = {
   unreadable: true,
 }
 
-/**
- * Whether a provider is ready, by the app's own rule for its setup (`isReady`,
- * `renderer/src/lib/provider-setup-steps.ts`), from what the window reads: the program's version
- * and standing, what there is to install, the sign-in, and whether a saved key was refused or can't
- * be read. `null` while a fact the rule needs has not been read.
- *
- * A program the app carries, or a provider with nothing to set up outside the app (`setup` null),
- * has no install to pass: only its sign-in counts.
- */
 export function providerReady({ version, setup, auth, keyRefused, keyUnreadable }) {
   const program = version?.program
   if (setup !== null && program?.from !== 'carried') {
@@ -909,11 +791,6 @@ export function providerReady({ version, setup, auth, keyRefused, keyUnreadable 
   return !(auth.login === 'api-key' && keyRefused === true)
 }
 
-/**
- * Whether the app goes to Settings → Providers by itself at a start (`ProviderSetupAtLaunch.vue`):
- * only when no provider is ready. It opens no dialog. `undecided` while a fact is missing; while a
- * sign-in says `unknown` the app decides nothing, so nothing is due.
- */
 export function launchSetupExpected(facts) {
   const ready = facts.map((one) => ({ provider: one.provider, ready: providerReady(one) }))
   if (facts.some((one) => one.auth?.state === 'unknown')) {
@@ -925,23 +802,14 @@ export function launchSetupExpected(facts) {
   return { opensProviders: ready.every((one) => one.ready === false), ready, undecided: false }
 }
 
-/**
- * How long after it asked Electron to exit the app stopped the process itself, from its own log;
- * null when the process left by itself. Its data is closed before it asks.
- */
 export function lastResortStop(log) {
   const said = /asked Electron to exit (\d+)ms ago and is still running/.exec(log)
   return said === null ? null : Number(said[1])
 }
 
-/**
- * The limit a run passes with when no agent's process was alive at the moment its window was asked
- * what runs (`whatRunsIsSaid`): nothing was measured, and a green run does not say otherwise.
- */
 export const NOTHING_RAN_LIMIT =
   'no agent’s process was running when the window was asked what runs, so this run does not show what the app says of a running agent’s memory'
 
-/** A run's result in one line: failed, passed, or passed with each limit it passed with. */
 export function resultLine({ failures, knownLimits }) {
   if (failures.length > 0) return `failed: ${String(failures.length)} check(s) did not hold`
   return knownLimits.length === 0
@@ -949,12 +817,10 @@ export function resultLine({ failures, knownLimits }) {
     : `passed with a known limit: ${knownLimits.join('; ')}`
 }
 
-/** What was due of the app's setup at one start, in a few words. */
 function launchSetupSaid({ opensProviders }) {
   return opensProviders ? 'Settings → Providers, as no provider is ready' : 'nothing opened'
 }
 
-/** A run as its job's summary shows it: the result first, then what it stands on. */
 export function jobSummary(summary) {
   const held = summary.checks.filter((one) => one.ok).length
   const lines = [
@@ -996,23 +862,55 @@ export function jobSummary(summary) {
   return `${lines.join('\n')}\n`
 }
 
-/** Whether a request to the model carried the fixture's key: `expected`, `missing` or `other`. */
 export function credentialSeen(header, key) {
   if (typeof header !== 'string' || header.trim() === '') return 'missing'
   return header === `Bearer ${key}` ? 'expected' : 'other'
 }
 
-/**
- * What changed among the recovery copies between two readings of `backups/`. A copy is told from
- * another by the version its manifest says made it: a beta that makes recovery copies leaves its
- * own. Each reading lists every folder there: its name, its manifest (null when it has none to
- * read) and a digest of its files (null when they could not all be read).
- *
- * Of the folders new since `before`: `made` are the ones `version` made, `others` the ones another
- * version made, `unread` the ones that name no version. Of the folders that were there: `gone` are
- * no longer there, and `changed` no longer hold the same bytes or can no longer be read. `same`
- * says none of the five has anything in it.
- */
+export async function recoveryCopies(workspace, { digestFiles = true, digestFile } = {}) {
+  const backups = join(workspace, 'backups')
+  if (!existsSync(backups)) return []
+  const records = []
+  const folders = readdirSync(backups, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort()
+  for (const folder of folders) {
+    const inside = join(backups, folder)
+    let manifest = null
+    try {
+      manifest = JSON.parse(readFileSync(join(inside, 'manifest.json'), 'utf8'))
+    } catch {
+      /* An unfinished copy has no readable manifest. */
+    }
+    let digest = null
+    if (digestFiles) {
+      try {
+        const hashes = []
+        const names = readdirSync(inside, { withFileTypes: true })
+          .filter(
+            (entry) =>
+              entry.isFile() || (entry.isDirectory() && SKILL_TREE_NAMES.includes(entry.name)),
+          )
+          .map((entry) => entry.name)
+          .sort()
+        for (const name of names) {
+          const path = join(inside, name)
+          const hash = SKILL_TREE_NAMES.includes(name)
+            ? sha256(readStateEntry(path))
+            : await digestFile(path)
+          hashes.push(`${name} ${hash}`)
+        }
+        digest = sha256(hashes.join('\n'))
+      } catch {
+        /* An unreadable copy remains changed in the comparison. */
+      }
+    }
+    records.push({ folder, manifest, digest })
+  }
+  return records
+}
+
 export function copiesSince(before, after, version) {
   const versionOn = ({ manifest }) => {
     const version = manifest?.madeBy?.appVersion
@@ -1040,12 +938,6 @@ export function copiesSince(before, after, version) {
   return { ...since, same: Object.values(since).every((folders) => folders.length === 0) }
 }
 
-/**
- * The candidate's first recovery copy, checked against what the beta left: published in the
- * folder its manifest names, for this workspace, made by the candidate for the reason this start
- * has, with the beta's own migration lineage, and holding exactly the beta's database and state
- * files.
- */
 export function verifyCheckpoint(manifest, files, expected) {
   requireEvidence(
     manifest?.format === 'brobot-checkpoint' && manifest.version === 1 && UUID.test(manifest.id),
@@ -1084,7 +976,14 @@ export function verifyCheckpoint(manifest, files, expected) {
       `The copy's ${name} is not the one its manifest describes.`,
     )
   }
-  bytesMatch('database.sqlite', manifest.database)
+  if (expected.databaseDigest) {
+    requireEvidence(
+      /^[0-9a-f]{64}$/.test(expected.databaseDigest.sha256) &&
+        expected.databaseDigest.bytes === manifest.database.bytes &&
+        expected.databaseDigest.sha256 === manifest.database.sha256,
+      'The streamed database identity does not match the completed manifest.',
+    )
+  } else bytesMatch('database.sqlite', manifest.database)
   requireEvidence(
     isDeepStrictEqual(manifest.database.migrations, expected.lineage),
     "The copy's migration lineage is not the beta's.",
@@ -1118,7 +1017,6 @@ export function verifyCheckpoint(manifest, files, expected) {
   }
 }
 
-/** Skill versions and choices survive an upgrade; only verified built-in pointers may advance. */
 export function skillsKept(before, after, candidateSkills) {
   const failures = []
   for (const table of SKILL_CATALOGUE_TABLES)
@@ -1205,7 +1103,6 @@ export function skillsKept(before, after, candidateSkills) {
   return failures
 }
 
-/** A main app exit is not proof that its separate plugin service stopped. No owner is explicit non-coverage. */
 export function pluginOwnerQuiescence(value) {
   if (value === null) return 'not-exercised'
   return value?.version === 1 &&

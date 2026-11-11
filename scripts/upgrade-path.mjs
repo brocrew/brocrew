@@ -1,25 +1,4 @@
 // 695-visible: this checks person-like starts on a GitHub-hosted runner: a release installed as a person
-// installs it, fictional data made by that beta through its own window, the candidate installed
-// over it by hand, and the candidate's first and second starts checked against what the beta left.
-// Run by `.github/workflows/upgrade-path.yml`:
-//
-//   node scripts/upgrade-path.mjs --os windows|mac --beta-tag <tag> --beta-release <release.json>
-//     --beta-dir <folder it was downloaded to> --candidate <installer> --candidate-version <version>
-//     --source-sha <sha> --evidence <dir> [--beta-registry packaged|legacy]
-// Public builds use the packaged registry. An older build with the legacy contract must name it.
-//
-// It installs software and stops the BroBot processes it started, so it refuses to run anywhere but
-// a GitHub-hosted runner of brocrew/brocrew with no BroBot installed and no BroBot data. Nothing
-// reaches a provider: the Codex key is fictional and the model is a local scripted server, which
-// answers only a request that carries that key. Exit 0 only when every check held and every piece
-// of evidence was kept.
-//
-// The candidate must carry the app's whole window: at a start with no provider ready it goes to
-// Settings → Providers, and opens no dialog of its own.
-//
-// What it does not show is listed in its summary (`outsideThisCheck`): the prompt a Mac shows for
-// a file a browser downloaded, the in-app update buttons, and anything only a tester's own machine
-// can answer.
 import { spawn, spawnSync } from 'node:child_process'
 import { readStateEntry, SKILL_TREE_NAMES } from './lib/skill-tree-state.mjs'
 import {
@@ -28,11 +7,13 @@ import {
   sleep,
   until,
 } from './lib/update-rehearsal-app.mjs'
+import { digest } from './lib/mac-update-test.mjs'
 import { withMovedFiles } from './lib/moved-state-files.mjs'
 import {
   appendFileSync,
   closeSync,
   copyFileSync,
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -48,7 +29,7 @@ import { createServer as createHttpsServer } from 'node:https'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import {
   appExeIn,
@@ -59,6 +40,7 @@ import {
   CHECKPOINT_LINE,
   contains,
   copiesSince,
+  recoveryCopies,
   credentialSeen,
   FAIL_LINE,
   historyOf,
@@ -91,6 +73,7 @@ import {
   sessionsKept,
   sha256,
   startOrder,
+  makeEarlierMigrationFixture,
   stateFileNames,
   stateKept,
   theCandidateInstaller,
@@ -126,6 +109,7 @@ const REPO = join(dirname(fileURLToPath(import.meta.url)), '..')
 const { values: args } = parseArgs({
   options: {
     os: { type: 'string' },
+    'recovery-proof': { type: 'boolean', default: false },
     'beta-tag': { type: 'string' },
     'beta-registry': { type: 'string', default: 'packaged' },
     'beta-release': { type: 'string' },
@@ -173,7 +157,6 @@ if (!hosted || !rightOs) {
   process.exit(2)
 }
 
-/** The fictional key the beta saves. The scripted model answers only a request that carries it. */
 const FIXTURE_KEY = 'sk-upgrade-path-fictional-not-a-real-key'
 const WORKSPACE_NAME = 'Fictional café lab'
 const DRAFT = 'Unsent fictional draft: café ☕ — 日本語'
@@ -184,21 +167,11 @@ const appRoot =
     : join(homedir(), 'Library', 'Application Support', '@brobot2')
 const data = join(appRoot, 'desktop')
 const codexSessions = join(data, 'provider-homes', 'default', 'brobot', 'codex', 'sessions')
-/**
- * The candidate's app id and product name, from its own packaging: the lane runs from the
- * candidate's commit. The beta's product name is read from the beta itself, once installed.
- */
 const candidateNames = packagingNames(
   readFileSync(join(REPO, 'apps', 'desktop', 'electron-builder.yml'), 'utf8'),
 )
-/** Where Windows keeps the app's install, whatever it is called: made from the app id. */
 const installKey = installerGuid(candidateNames.appId)
-/** The product names of the builds this run installed, so their processes can be found. */
 const productNames = new Set()
-/**
- * The name Electron knows the candidate by: the package's own, since the app sets none and the
- * package has no product name. On a Mac it names the Keychain entry saved keys are sealed with.
- */
 const candidateAppName = JSON.parse(
   readFileSync(join(REPO, 'apps', 'desktop', 'package.json'), 'utf8'),
 ).name
@@ -223,7 +196,6 @@ const summary = {
     'an install folder a tester chose, or another Windows user',
     'what macOS itself asks: its windows are outside the app’s (a picture of the whole screen is kept)',
   ],
-  // What a passing run passed with, said beside its result: a green run is never the whole story.
   knownLimits: [],
   checks: [],
   failures: [],
@@ -237,11 +209,9 @@ const check = (ok, name, facts = null) => {
   }
   return Boolean(ok)
 }
-/** A check the rest of its phase stands on. */
 const must = (ok, name, facts = null) => {
   if (!check(ok, name, facts)) throw new Error(`nothing after this can be measured: ${name}`)
 }
-/** A check whose rule throws when it does not hold; answers what the rule found, or null. */
 const holds = (name, rule) => {
   try {
     const found = rule()
@@ -299,7 +269,6 @@ function appsEntries() {
     ),
   )
 }
-/** The app's processes, by the program names of the builds this run installed. */
 const windowsProcesses = () => {
   if (productNames.size === 0) return []
   const programs = [...productNames].map((name) => `'${name}.exe'`).join(',')
@@ -311,7 +280,6 @@ const windowsProcesses = () => {
 }
 const macPlistValue = (bundle, key) =>
   run('/usr/bin/plutil', ['-extract', key, 'raw', join(bundle, 'Contents', 'Info.plist')]).trim()
-/** The bundles in Applications that are this app, by its app id, whatever each is called. */
 function bundlesOfTheApp() {
   return readdirSync('/Applications')
     .filter((name) => name.endsWith('.app'))
@@ -330,7 +298,6 @@ function bundlesOfTheApp() {
     })
     .sort()
 }
-/** Whether two paths name one place: Windows compares them without case. */
 const samePath = (a, b) =>
   typeof a === 'string' &&
   typeof b === 'string' &&
@@ -346,7 +313,6 @@ const alive = (pid) => {
   }
 }
 
-/** Read only the installed candidate's bundled manifest and the bodies it names. */
 function installedCandidateSkills(candidate) {
   const folder =
     os === 'windows'
@@ -390,11 +356,6 @@ function installedCandidateSkills(candidate) {
   return verifyCandidateSkills(manifest, bodies)
 }
 
-/**
- * Installs `installer` as a person would. Answers what the app is now started from (`exe`: the
- * program on Windows, the bundle on a Mac), the program its process runs (`program`), and the
- * product name the build was made under, read from what it installed.
- */
 function install(installer, label) {
   const bytes = readFileSync(installer)
   const facts = { installer: basename(installer), bytes: bytes.length, sha256: sha256(bytes) }
@@ -414,7 +375,6 @@ function install(installer, label) {
     productNames.add(productName)
     const exe = join(folder, program)
     must(existsSync(exe), `${label}: installed in ${folder}, as ${program}`, facts)
-    // A person's own install starts nothing: the app this run starts must be the only one.
     const startedByItself = windowsProcesses()
     if (
       !check(startedByItself.length === 0, `${label}: its installer started nothing`, {
@@ -441,8 +401,6 @@ function install(installer, label) {
   let productName
   try {
     ;({ bundle, productName } = bundleIn(readdirSync(mount)))
-    // A person drags the app into Applications: it replaces one of the same name, and sits beside
-    // one of another.
     const into = join('/Applications', bundle)
     if (existsSync(into)) rmSync(into, { recursive: true, force: true })
     run('/usr/bin/ditto', ['--rsrc', '--extattr', join(mount, bundle), into])
@@ -462,7 +420,6 @@ function install(installer, label) {
   return { exe: app, program, productName, facts }
 }
 
-// ── the scripted model: a Codex Responses stream, for a request that carries the fixture key ───
 let running = null
 const modelSeen = []
 const model = createServer((request, response) => {
@@ -529,29 +486,15 @@ const model = createServer((request, response) => {
 })
 await new Promise((done) => model.listen(0, '127.0.0.1', done))
 const modelPort = model.address().port
-/**
- * The words the model opens its answer to a request with, as a history and a transcript hold
- * them: its number, with nothing a Markdown reader would restyle.
- */
 function answerText(id) {
   return `Fictional answer ${id.replace(/^resp_upgrade_path_/, '')} of the upgrade path:`
 }
 
-// ── the scripted Claude model, where the runner's managed settings send Claude Code ────────────
-/**
- * The port the workflow named to Claude Code in its managed settings, or `null` when it installed
- * no Claude Code: then no Claude conversation is made.
- */
 const claudePort = /^\d+$/.test(process.env.UPGRADE_PATH_CLAUDE_PORT ?? '')
   ? Number(process.env.UPGRADE_PATH_CLAUDE_PORT)
   : null
-/**
- * What the Claude conversation is first asked: to schedule a repeating job and a one-shot, both
- * hours ahead, and a third job it then cancels.
- */
 const CLAUDE_FIRST_TEXT = 'Fictional Claude conversation: schedule three jobs and cancel one'
 const CLAUDE_SEARCH_ID = 'toolu_upgrade_path_search'
-/** The three jobs the model schedules, each by the tool call that makes it, and the cancel. */
 const CLAUDE_JOBS = {
   repeating: {
     call: 'toolu_upgrade_path_repeating',
@@ -564,21 +507,11 @@ const CLAUDE_JOBS = {
   },
 }
 const CLAUDE_CANCEL_ID = 'toolu_upgrade_path_cancel'
-/**
- * The minutes the jobs name: hours ahead, so neither the beta, which starts a stopped
- * conversation 30 seconds before a job's minute, nor anything else in the run reaches them.
- */
 const claudeOneShotAt = new Date(Date.now() + 3 * 60 * 60 * 1000)
 const claudeRepeatsAt = new Date(Date.now() + 4 * 60 * 60 * 1000)
 const claudeCancelledAt = new Date(Date.now() + 5 * 60 * 60 * 1000)
 const claudeSeen = []
 
-/**
- * What the model answers one request: a request that offers no tools (a title, say) gets a word.
- * The conversation's first turn loads the scheduling tools if it has to, makes the three jobs,
- * then cancels the third by the id its making answered; anything after that gets an answer the
- * transcript can be searched for.
- */
 function claudeReply(body, id) {
   if ((body?.tools ?? []).length === 0) return { kind: 'text', text: 'Fictional.' }
   const answered = toolResultsIn(body)
@@ -670,66 +603,45 @@ function claudeReply(body, id) {
   return { kind: 'text', text: claudeAnswerText(id) }
 }
 
-/**
- * The conversation the crash stage makes in the candidate: a one-shot a minute or two ahead, which
- * comes due while the app is closed, so the next launch starts it at once to say so.
- */
-/**
- * The beta's second Claude conversation: a one-shot a few minutes ahead, which comes due while
- * the app is closed between the beta's last run and the candidate's first, so the candidate owes
- * it one start at its first open, whichever kind of beta made it.
- */
 const DUE_FIRST_TEXT = 'Fictional Claude conversation: schedule a job for a few minutes from now'
 const DUE_JOB_PROMPT = 'A fictional job that comes due while the app is closed'
 const DUE_JOB_CALL = 'toolu_upgrade_path_due_job'
-/** The minute of that one-shot, once the beta's second conversation has chosen it. */
 let claudeDueAt = null
 
 const CRASH_FIRST_TEXT =
   'Fictional Claude conversation: schedule a job that comes due while it is stopped'
 const CRASH_JOB_PROMPT = 'A fictional job that comes due while its conversation is stopped'
 const CRASH_JOB_CALL = 'toolu_upgrade_path_crash_job'
-/** The words the app says to a conversation of a one-shot that passed while it was stopped. */
 const DUE_WHILE_STOPPED = 'was due while this conversation was stopped'
-/** The minute of the crash stage's one-shot, once the stage has chosen it. */
 let crashJobAt = null
-/** The stages whose start for the crash job the model holds unanswered, so the app dies mid-turn. */
 const holdTheCrashJobIn = new Set()
-/** The answers held, ended when the run ends. */
 const heldClaudeAnswers = []
-/** Whether a request carries the words about the crash stage's job. */
 const tellsOfTheCrashJob = (body) =>
   userTextsIn(body).some((one) => one.includes(CRASH_JOB_PROMPT) && one.includes(DUE_WHILE_STOPPED))
 
-/** What the candidate says of a job whose time it cannot know. */
 const TIME_NOT_KNOWN_WORDS = 'runs at a time this app cannot tell'
 
-/** The first words each of the lane's Claude conversations was asked, which tell its requests apart. */
 const CLAUDE_FIRSTS = {
   claude: CLAUDE_FIRST_TEXT,
   due: DUE_FIRST_TEXT,
   crash: CRASH_FIRST_TEXT,
 }
 
-/** The prompts of every job the lane's Claude conversations make. */
 const JOB_PROMPTS = [
   ...Object.values(CLAUDE_JOBS).map((job) => job.prompt),
   DUE_JOB_PROMPT,
   CRASH_JOB_PROMPT,
 ]
 
-/** How each system's Claude Code is sent to the scripted model, said in the checks. */
 const CLAUDE_ROUTE =
   os === 'windows'
     ? 'through the run’s own proxy, under a certificate authority the run made'
     : 'sent there by the runner’s managed settings'
 
-/** The words the Claude model opens an answer with, as a transcript holds them. */
 function claudeAnswerText(id) {
   return `Fictional Claude answer ${id.replace(/^msg_upgrade_path_/, '')} of the upgrade path.`
 }
 
-/** The scripted Claude model's answer to one request, on loopback or behind the run's proxy. */
 function answerClaude(request, response) {
   const chunks = []
   request.on('data', (chunk) => chunks.push(chunk))
@@ -763,8 +675,6 @@ function answerClaude(request, response) {
       of: conversationOf(texts, CLAUDE_FIRSTS),
       tools: (body?.tools ?? []).map((tool) => tool?.name).filter(Boolean),
       answered: [...toolResultsIn(body)],
-      // The app's words about a job a request carries, wherever Claude Code put them: it merges a
-      // start's notice and the next words sent into one message.
       notices: texts
         .filter((one) => JOB_PROMPTS.some((prompt) => namesTheJob(one, prompt)))
         .map((one) => one.slice(0, 2000)),
@@ -772,7 +682,6 @@ function answerClaude(request, response) {
       crashJob: tellsOfTheCrashJob(body),
     })
     if (reply !== null && holdTheCrashJobIn.has(running?.stage) && tellsOfTheCrashJob(body)) {
-      // Held, never answered: the app is ended while this turn waits.
       heldClaudeAnswers.push(response)
       return
     }
@@ -800,12 +709,6 @@ if (claudePort !== null) {
   })
 }
 
-/**
- * On Windows the app is started with a proxy of this run's own that opens a tunnel to
- * `api.anthropic.com` only, ends it in a certificate signed by the run's own authority, made by
- * the workflow, and answers with the same scripted model. Every other host is refused, and each
- * tunnel asked for is kept as evidence.
- */
 const tlsFolder =
   (process.env.UPGRADE_PATH_TLS_DIR ?? '') === '' ? null : resolve(process.env.UPGRADE_PATH_TLS_DIR)
 const tunnels = []
@@ -842,7 +745,6 @@ if (claudePort !== null && tlsFolder !== null) {
   claudeProxyPort = proxy.address().port
 }
 
-/** What the app's environment adds on Windows for Claude Code: the run's proxy and authority. */
 const claudeRouteEnv = () =>
   claudeProxyPort === null
     ? {}
@@ -852,25 +754,27 @@ const claudeRouteEnv = () =>
         NODE_EXTRA_CA_CERTS: join(tlsFolder, 'ca.pem'),
       }
 
-// ── the app, started as a person starts it, with DevTools on loopback ──────────────────────────
 let installedExe = null
-/** The program the installed app's process runs, as the system lists it. */
 let installedProgram = null
-async function launch(stage, port) {
+async function launch(stage, port, { workspace, hidden = false, recovery = false } = {}) {
   const log = join(evidence, `${stage}.log`)
   const debugging = [
     '--remote-debugging-address=127.0.0.1',
     `--remote-debugging-port=${String(port)}`,
+    ...(workspace ? [`--user-data-dir=${workspace}`] : []),
+    ...(hidden ? ['--brobot-hidden'] : []),
+    ...(recovery ? ['--brobot-test-keep-recovery-window'] : []),
   ]
   const at = Date.now()
-  if (os === 'windows') {
+  const launchedMono = performance.now()
+  if (os === 'windows' || hidden) {
     const fd = openSync(log, 'a')
-    const child = spawn(installedExe, debugging, {
+    const child = spawn(installedProgram, debugging, {
       stdio: ['ignore', fd, fd],
       env: { ...process.env, ...claudeRouteEnv() },
     })
     closeSync(fd)
-    running = { stage, pid: child.pid, port, log, launchedAt: at }
+    running = { stage, pid: child.pid, port, log, launchedAt: at, launchedMono }
   } else {
     run('/usr/bin/open', [
       '-n',
@@ -885,7 +789,7 @@ async function launch(stage, port) {
       '--args',
       ...debugging,
     ])
-    running = { stage, pid: null, port, log, launchedAt: at }
+    running = { stage, pid: null, port, log, launchedAt: at, launchedMono }
   }
   const root = `http://127.0.0.1:${String(port)}`
   running.root = root
@@ -919,27 +823,24 @@ async function launch(stage, port) {
   })
   const opened = await until(async () => (await pagesOf(root)).length > 0 || null, 120_000)
   must(opened === true, `${stage}: a window opened`)
-  // A start whose check runs long shows the recovery window first, to say it is working, and
-  // hands over to the app's own window once its data opens: that one is the window checked here.
-  const own = await until(async () => {
-    const pages = await pagesOf(root)
-    for (const one of pages) await noteTheRecoveryWindow(one)
-    return pages.find(theAppsOwn) ?? null
-  }, 30_000)
+  const own = recovery
+    ? null
+    : await until(async () => {
+        const pages = await pagesOf(root)
+        for (const one of pages) await noteTheRecoveryWindow(one)
+        return pages.find(theAppsOwn) ?? null
+      }, 30_000)
   await attachTo(own ?? (await pagesOf(root))[0])
   return running
 }
 
-/** The windows of the app on `root`'s DevTools, each with what DevTools says of it. */
 const pagesOf = async (root) =>
   (await (await fetch(`${root}/json/list`)).json()).filter(
     (one) => one.type === 'page' && one.webSocketDebuggerUrl,
   )
 
-/** Whether a window is the app's own, not its recovery window. */
 const theAppsOwn = (page) => page.url.endsWith('/index.html')
 
-/** The window this run reads from now on. */
 async function attachTo(page) {
   running.cdp?.close()
   running.page = page
@@ -947,10 +848,6 @@ async function attachTo(page) {
   await running.cdp.call('Page.enable')
 }
 
-/**
- * Each recovery window seen at a start, in place of the app's own or beside it: when, and what
- * its heading said. Kept as evidence: a start whose check runs long shows it for a while.
- */
 const recoveryWindowsSeen = []
 summary.recoveryWindowsSeen = recoveryWindowsSeen
 async function noteTheRecoveryWindow(page) {
@@ -968,7 +865,6 @@ async function noteTheRecoveryWindow(page) {
       sleep(3_000).then(() => null),
     ])
   } catch {
-    // A window closing as it was looked at says nothing more.
   } finally {
     peek?.close()
   }
@@ -979,10 +875,8 @@ const pagesNow = async () =>
     .filter((one) => one.type === 'page')
     .map((one) => one.url)
 
-/** Waits for the window's bridge, which only an ordinary start offers. */
 async function bridge(stage) {
   const bridged = await until(async () => {
-    // The window read is the app's own once it is open, even when another was read before it.
     if (!theAppsOwn(running.page)) {
       const pages = await pagesOf(running.root).catch(() => [])
       for (const one of pages) await noteTheRecoveryWindow(one)
@@ -1000,25 +894,22 @@ async function bridge(stage) {
   must(bridged, `${stage}: the window offers its bridge`, { url: running.page.url })
 }
 
-/** Waits for the ordinary window to be on screen with its rail drawn, as a person sees it. */
-async function onScreen(stage) {
+async function onScreen(stage, hidden = false) {
   const shown = await until(
     () =>
       running.cdp
         .evaluate(
-          'return document.visibilityState === "visible" && document.querySelector("[data-cy=rail-workspace]") !== null',
+          `return (${hidden} || document.visibilityState === "visible") && (document.querySelector("[data-cy=rail-workspace]")?.getClientRects().length ?? 0) > 0`,
         )
         .catch(() => false),
     120_000,
   )
-  must(Boolean(shown), `${stage}: the ordinary window is on screen, with its rail drawn`)
+  must(
+    Boolean(shown),
+    `${stage}: the ordinary window has its rail drawn${hidden ? ' while hidden' : ' on screen'}`,
+  )
 }
 
-/**
- * The app's own dialogs in its window now, each with its name, the provider whose setup it holds
- * (when it is one) and what it says. What macOS itself shows, such as its question about the saved
- * key, is not in the window and is not seen here; the whole-screen picture is what shows that.
- */
 const dialogsNow = () =>
   running.cdp.evaluate(
     `return [...document.querySelectorAll('dialog[open], [role=dialog], [role=alertdialog], [aria-modal=true]')]
@@ -1036,7 +927,6 @@ const dialogsNow = () =>
        })`,
   )
 
-/** Presses the open setup's own Close, as a person does; whether there was one to press. */
 const closeTheSetup = () =>
   running.cdp.evaluate(
     `const close = document.querySelector('[role=dialog] button[aria-label="Close setup"]')
@@ -1045,11 +935,6 @@ const closeTheSetup = () =>
      return true`,
   )
 
-/**
- * What the app's setup at launch reads, asked of the app the way its window asks: whether a person
- * closed that setup before, each provider's program, what there is to install, its saved key and
- * its sign-in. The sign-in read can take seconds, and on a Mac as long as macOS keeps the saved key.
- */
 async function launchSetupFacts() {
   const read = await running.cdp.evaluate(
     `const said = (work) => work.then((answer) => ({ answer }), (error) => ({ error: String(error) }))
@@ -1072,9 +957,6 @@ async function launchSetupFacts() {
   const key = (provider) => read.keys[provider]?.answer
   return {
     read,
-    // As the window puts them together: no answer about what to install is "main does not say",
-    // a key counts as refused only when it is saved and a request on it was refused, and as
-    // unreadable when it is saved and not in use.
     facts: LAUNCH_SETUP_PROVIDERS.map(({ provider }) => ({
       provider,
       version: read.versions.answer?.[provider] ?? null,
@@ -1086,11 +968,6 @@ async function launchSetupFacts() {
   }
 }
 
-/**
- * The window at a start: one ordinary window, no recovery window, and no dialog of the app's own.
- * When no provider is ready the app goes to Settings → Providers by itself, so the facts that rule
- * reads are read first, and the window is given the time that read takes.
- */
 async function dialogsAtAStart(stage, into) {
   const { read, facts } = await launchSetupFacts()
   const due = launchSetupExpected(facts)
@@ -1124,12 +1001,6 @@ async function dialogsAtAStart(stage, into) {
   )
 }
 
-/**
- * What the app says of the agent processes it runs, read through its window at one moment: the
- * answer Providers draws under "Running now", and the one the agents' cards draw: a figure in both
- * (`whatRunsIsSaid`). Asked while the conversations that carried on
- * still hold their processes; with none alive, nothing is measured, and the run says so.
- */
 async function whatRunsIsRead(stage) {
   const read = await running.cdp.evaluate(
     `const said = (work) => work.then((answer) => answer, () => null)
@@ -1154,11 +1025,6 @@ async function whatRunsIsRead(stage) {
   return { ...judged, ...read }
 }
 
-/**
- * What the app's setup says for each provider that is not ready, read from its own window: opened
- * from Settings → Providers as a person opens it, read, and closed. Kept as evidence, and no
- * check: a build whose Providers tab has no setup to open says so here.
- */
 async function whatEachSetupSays(stage, into) {
   const notReady = (into.launchSetup?.ready ?? []).filter((one) => one.ready === false)
   into.setups = []
@@ -1205,7 +1071,6 @@ async function whatEachSetupSays(stage, into) {
   say(`${stage}: what each setup says: ${JSON.stringify(into.setups).slice(0, 1500)}`)
 }
 
-/** Whether the rail lists each conversation, opening any folded section first. */
 async function railLists(stage, conversations, said = 'the beta’s conversations') {
   const listed = await until(
     () =>
@@ -1280,10 +1145,6 @@ async function screenshot(name) {
   }
 }
 
-/**
- * The Mac's whole screen, as a person at it would see it: what macOS itself is showing, such as
- * its question about the saved key, is not in the app's window. Kept when it can be taken.
- */
 function wholeScreen(name) {
   if (os !== 'mac') return
   const shot = spawnSync('/usr/sbin/screencapture', ['-x', join(evidence, name)], {
@@ -1293,7 +1154,6 @@ function wholeScreen(name) {
   if (shot.status !== 0) say(`(no picture of the screen ${name}: ${(shot.stderr ?? '').trim()})`)
 }
 
-/** Waits for the start's own verdict in its log: READY, or the line that says it did not start. */
 async function verdict(stage) {
   const said = await until(() => {
     const log = existsSync(running.log) ? readFileSync(running.log, 'utf8') : ''
@@ -1306,7 +1166,6 @@ async function verdict(stage) {
   return Date.now() - running.launchedAt
 }
 
-/** The whole of a finished start's log, read once the app has gone: its order must still hold. */
 function wholeLog(stage, { checkpoint }) {
   const log = readFileSync(join(evidence, `${stage}.log`), 'utf8')
   const order = holds(
@@ -1326,7 +1185,6 @@ function wholeLog(stage, { checkpoint }) {
   return order
 }
 
-/** Closes the app as a person closes it, and waits for every process of it to end. */
 async function quit(stage) {
   const { pid } = running
   if (os === 'windows') spawnSync('taskkill', ['/PID', String(pid)], { windowsHide: true })
@@ -1336,8 +1194,6 @@ async function quit(stage) {
     90_000,
   )
   check(Boolean(ended), `${stage}: the app closed when asked`, { pid })
-  // A detached supervisor is not included in the app-PID check above. Never stop it by name.
-  // This fixture has not installed plugins: record that gap rather than claiming a drain run.
   const pluginOwner = join(appRoot, 'plugins', 'supervisor', 'owner.json')
   const pluginState = () => {
     try {
@@ -1362,7 +1218,6 @@ async function quit(stage) {
   await stop()
 }
 
-/** Ends whatever this run started and still runs, keeping where it stood when it would not go. */
 async function stop() {
   if (running === null) return
   const { pid, stage } = running
@@ -1395,10 +1250,6 @@ async function stop() {
   running = null
 }
 
-/**
- * One start of the candidate. A step that cannot be made ends the phase and fails the run, and the
- * checks that need no running app still follow.
- */
 async function phase(stage, body) {
   try {
     await body()
@@ -1411,7 +1262,6 @@ async function phase(stage, body) {
   }
 }
 
-// ── what a data folder holds: its database (read from a copy), its state files, its transcripts ─
 function readDatabase(folder, file = 'brobot2.sqlite') {
   const copy = mkdtempSync(join(tmpdir(), 'upgrade-path-db-'))
   try {
@@ -1459,7 +1309,6 @@ function readDatabase(folder, file = 'brobot2.sqlite') {
   }
 }
 const whole = (read) => read.integrity.length === 1 && read.integrity[0] === 'ok'
-/** A database as evidence: each table's row count and a hash of its rows, never the rows. */
 const describeDatabase = (read) => ({
   integrity: read.integrity,
   schema: read.lineage.length,
@@ -1489,7 +1338,6 @@ function readState(folder = data, tables = {}) {
   }
   return withMovedFiles(found, tables)
 }
-/** Every Codex transcript under the agent's Codex sessions folder. A link there is refused. */
 function codexTranscripts() {
   const found = []
   const walk = (folder) => {
@@ -1511,7 +1359,6 @@ const fileFacts = (path) => {
   const bytes = readFileSync(path)
   return { bytes: bytes.length, sha256: sha256(bytes) }
 }
-/** Each conversation's transcript against its baseline: `exact`, or only its first bytes kept. */
 function transcriptsKept(baseline, { exact }) {
   return Object.entries(baseline).flatMap(([conversation, was]) => {
     const path = join(data, was.path)
@@ -1529,10 +1376,6 @@ function transcriptsKept(baseline, { exact }) {
       : [`${conversation}: the first ${String(was.bytes)} bytes of ${was.path} changed`]
   })
 }
-/**
- * Whether each conversation still names its Codex session and still has that session's one
- * transcript where the beta left it, among the transcripts as they are now.
- */
 function ownTranscriptsKept(stage, history, baseline, tables) {
   const references = sessionsKept(history, tables)
   check(
@@ -1550,45 +1393,8 @@ function ownTranscriptsKept(stage, history, baseline, tables) {
     }
   })
 }
-/**
- * Every folder in `backups/`, by name: its manifest when it has one to read, and a digest of the
- * files in it, null when one of them could not be read.
- */
-const copies = () => {
-  const backups = join(data, 'backups')
-  if (!existsSync(backups)) return []
-  return readdirSync(backups, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort()
-    .map((folder) => {
-      const inside = join(backups, folder)
-      let manifest = null
-      try {
-        manifest = JSON.parse(readFileSync(join(inside, 'manifest.json'), 'utf8'))
-      } catch {
-        // No manifest to read: the copy names no version.
-      }
-      let digest = null
-      try {
-        digest = sha256(
-          readdirSync(inside, { withFileTypes: true })
-            .filter(
-              (entry) =>
-                entry.isFile() || (entry.isDirectory() && SKILL_TREE_NAMES.includes(entry.name)),
-            )
-            .map((entry) => entry.name)
-            .sort()
-            .map((name) => `${name} ${sha256(readStateEntry(join(inside, name)))}`)
-            .join('\n'),
-        )
-      } catch {
-        // Read as changed by whoever compares it.
-      }
-      return { folder, manifest, digest }
-    })
-}
-/** A recovery copy as a reader of the evidence needs it: where it is, and what it says made it. */
+const copies = () => recoveryCopies(data, { digestFile: digest })
+
 const copySaid = ({ folder, manifest }) => ({
   folder,
   reason: manifest?.reason ?? null,
@@ -1603,12 +1409,10 @@ const readBeside = (path) => {
     return { unreadable: true }
   }
 }
-/** The computer-wide settings and the registry selected by this build's launch contract. */
 const besideTheFolder = (contract) => ({
   'settings.json': readBeside(join(appRoot, 'settings.json')),
   registry: workspaceRegistrySnapshot(appRoot, contract, readBeside),
 })
-/** Whether the computer's settings and list of workspaces still say what the beta left. */
 function besideKept(stage, before) {
   const now = besideTheFolder('packaged')
   ;(summary.registryReadings ??= []).push({ stage, ...now.registry })
@@ -1622,11 +1426,6 @@ function besideKept(stage, before) {
   check(registry.length === 0, `${stage}: the list of workspaces still holds the beta's`, registry)
 }
 
-/**
- * The Keychain entries the app has made on this Mac, by each name it has had. Attributes only:
- * `security` is asked for no password (neither `-w` nor `-g`), so nothing secret is read or kept
- * and macOS asks nobody. An entry it cannot describe is kept as it was printed.
- */
 function keychainEntries() {
   if (os !== 'mac') return []
   return [...new Set([candidateAppName, ...APP_NAMES_BEFORE])].flatMap((appName) => {
@@ -1642,7 +1441,6 @@ function keychainEntries() {
   })
 }
 
-/** Round trips through the app's main process, which a wait on the Keychain would hold up. */
 async function answersWhile(pending) {
   const probes = []
   let settled = false
@@ -1665,11 +1463,6 @@ async function answersWhile(pending) {
 }
 const kept = (probes) => probes.every((one) => one.answered && one.ms < 5_000)
 
-/**
- * What the app says of the saved key, how long it takes to say it, and whether it keeps answering
- * meanwhile. The status opens no key: only a conversation starting on it does. So what it says is
- * recorded and answered, and what it must say after conversations have started is the caller's.
- */
 async function observeTheSavedKey(stage) {
   const asked = Date.now()
   const status = running.cdp
@@ -1707,12 +1500,6 @@ async function observeTheSavedKey(stage) {
   return seen.status
 }
 
-/**
- * One turn in a conversation, answered by the model on the fixture key; resumed first if asked,
- * which is when the app opens the saved key. A start or a message the app refuses is answered as
- * `refused`, with its words, which of the two it was, and when the app said so; never thrown.
- * The Codex model answers unless the Claude one's requests and words are given.
- */
 async function turn(sessionId, text, { resume, seenBy = modelSeen, answerOf = answerText }) {
   const asked = seenBy.length
   const began = Date.now()
@@ -1736,7 +1523,6 @@ async function turn(sessionId, text, { resume, seenBy = modelSeen, answerOf = an
       return { refused: error.message, refusedAt: step, refusedAfterMs: Date.now() - began }
     }
   })()
-  // Sampled every half second: a stall shorter than that between two samples is not seen.
   const probes = resume ? await answersWhile(sent) : null
   const outcome = await sent
   const answer =
@@ -1759,17 +1545,14 @@ async function turn(sessionId, text, { resume, seenBy = modelSeen, answerOf = an
   return { answer, ...outcome, requests: seenBy.slice(asked), probes }
 }
 
-/** Saves a fictional key through the window, as a person does on the provider's card. */
 const saveTheKey = (provider, key) =>
   running.cdp.evaluate(
     `return await window.api.runtime.setApiKey({ provider: ${JSON.stringify(provider)}, key: ${JSON.stringify(key)} }).then((one) => ({ set: one?.set, inUse: one?.inUse, refused: one?.refused ?? null })).catch((e) => ({ threw: String(e) }))`,
     240_000,
   )
-/** Whether a key save was accepted: saved, not refused, nothing thrown. */
 const savedCleanly = (saved) =>
   saved?.set === true && saved.refused === null && saved.threw === undefined
 
-/** What the app recorded of scheduling attempts for one conversation, or why it is unread. */
 function scheduleAttemptsOf(conversation) {
   try {
     const state = readState(data, readDatabase(data).tables)
@@ -1781,7 +1564,6 @@ function scheduleAttemptsOf(conversation) {
   }
 }
 
-/** What the app recorded of a conversation, kept as evidence when a turn was not answered. */
 const historyTail = (sessionId) =>
   running.cdp
     .evaluate(
@@ -1789,20 +1571,14 @@ const historyTail = (sessionId) =>
     )
     .catch((error) => `not read: ${String(error)}`)
 
-/** A turn in the Claude conversation, answered by the scripted Claude model. */
 const claudeTurn = (sessionId, text, { resume }) =>
   turn(sessionId, text, { resume, seenBy: claudeSeen, answerOf: claudeAnswerText })
 
-/**
- * Whether the installed Claude Code ran each scheduling call the model made during a turn: the
- * model was later sent each call's result, which Claude Code sends only once it ran the call.
- */
 const claudeRanEveryCall = (requests) =>
   [...Object.values(CLAUDE_JOBS).map((job) => job.call), CLAUDE_CANCEL_ID].every((call) =>
     requests.some((one) => one.answered.includes(call)),
   )
 
-/** Ends the running app at once, its whole tree, as a crash would: no close, no teardown. */
 async function crash(stage) {
   const { pid } = running
   if (os === 'windows') {
@@ -1820,7 +1596,6 @@ async function crash(stage) {
   await stop()
 }
 
-/** Every line a start logged, both streams. */
 const loggedBy = (stage) =>
   [`${stage}.log`, `${stage}.stdout.log`]
     .map((name) => join(evidence, name))
@@ -1832,10 +1607,6 @@ const linesOf = (stage, words) =>
     .split('\n')
     .filter((line) => line.includes(words))
 
-/**
- * One conversation's rows of the app's words about its jobs, read from a copy of the database. A
- * copy taken while the app writes may not open: that is said, not thrown.
- */
 function jobWordsIn(sessionId) {
   let tables
   try {
@@ -1856,12 +1627,6 @@ function jobWordsIn(sessionId) {
   }
 }
 
-/**
- * Windows, once the key is saved again: the candidate's own conversation makes a one-shot a minute
- * or two ahead and the app is closed. Once its minute has passed, a launch starts the conversation
- * at once to say so; the model holds that start's request, and the app is ended while the turn
- * waits. The launch after it must make no second start, and the words must have been said once.
- */
 async function aCrashMidStart(into) {
   await launch('candidate-crash-made', 9343)
   await bridge('the crash, the job made')
@@ -1878,7 +1643,6 @@ async function aCrashMidStart(into) {
   )
   const sessionId = created.sessionId
   into.sessionId = sessionId
-  // A minute at least ninety seconds ahead: the app is closed well before its lead begins.
   crashJobAt = new Date(Math.ceil((Date.now() + 90_000) / 60_000) * 60_000)
   into.jobAt = crashJobAt.toISOString()
   const made = await claudeTurn(sessionId, CRASH_FIRST_TEXT, { resume: false })
@@ -1892,7 +1656,6 @@ async function aCrashMidStart(into) {
   )
   await quit('the crash: the job made, the app closed')
 
-  // Its minute passes with the app closed.
   await until(() => (Date.now() > crashJobAt.getTime() + 70_000 ? true : null), 300_000, 5_000)
   holdTheCrashJobIn.add('candidate-crash-told')
   await launch('candidate-crash-told', 9344)
@@ -1911,7 +1674,6 @@ async function aCrashMidStart(into) {
 
   await launch('candidate-after-the-mid-start-crash', 9348)
   await bridge('after the crash')
-  // A start of the app's own is made at once at a launch, five seconds apart at most for a few.
   await sleep(45_000)
   const again = claudeSeen.filter(
     (one) => one.stage === 'candidate-after-the-mid-start-crash' && one.crashJob,
@@ -1943,18 +1705,10 @@ async function aCrashMidStart(into) {
   )
 }
 
-/** The first words of the Claude conversation the candidate starts on a key saved again. */
 const NEW_KEY_TEXT = 'A fictional Claude conversation, started after a key was saved again'
 
-/** The words each conversation of the beta's is sent once its key is saved again. */
 const AFTER_THE_KEY_TEXT = 'A fictional turn after the key was saved again'
 
-/**
- * The keys saved again, as a person does after the refusal: the candidate saves the fictional
- * Codex and Anthropic keys itself, then each of the beta's conversations carries on and a new
- * Claude conversation starts, every turn answered by the scripted model on the key, with no
- * sign-in.
- */
 async function theKeySavedAgain(into, conversations, claude) {
   const { claudeConversation, claudeDueConversation } = claude
   await launch('candidate-new-key', 9347)
@@ -1983,8 +1737,6 @@ async function theKeySavedAgain(into, conversations, claude) {
       'the key saved again: the candidate saved the fictional Anthropic key, and was not refused',
       into.claudeSaved,
     )
-    // A sealed key's owed start goes now; a readable key's start was already made at first open.
-    // Check its delivery before this run sends anything else.
     const owed =
       claude.stamped && claudeDueConversation !== null ? claudeDueConversation : claudeConversation
     if (owed !== null) await theOwedStartOnTheKey(into, owed, claude)
@@ -1997,7 +1749,6 @@ async function theKeySavedAgain(into, conversations, claude) {
       )
     }
     if (claudeConversation !== null) {
-      // Only a start just released by saving a sealed key has this conversation open.
       const carried = await claudeTurn(claudeConversation, AFTER_THE_KEY_TEXT, {
         resume: !claude.keyWasSealed || owed !== claudeConversation,
       })
@@ -2035,11 +1786,6 @@ async function theKeySavedAgain(into, conversations, claude) {
   await quit('the key saved again')
 }
 
-/**
- * The start owed to `owed` is made at first open on a readable key, or when a sealed key is saved
- * again: its held words are said once, the model is sent them and answers. From a beta that does
- * not stamp its receipts, the words and the app's record also name each job whose time it cannot know.
- */
 async function theOwedStartOnTheKey(into, owed, { stamped, jobIds, keyWasSealed }) {
   const noticesNow = () => {
     try {
@@ -2112,20 +1858,8 @@ async function theOwedStartOnTheKey(into, owed, { stamped, jobIds, keyWasSealed 
   )
 }
 
-/**
- * How long the candidate's first open waits for each start it owes to be made or refused: starts
- * owed at once go one at a time, some twenty seconds apart, each once its provider has started.
- */
 const FIRST_OPEN_STARTS_MS = 180_000
 
-/**
- * How the candidate's start for a conversation went with the saved key, over both of its starts,
- * judged by what that start left at the first open. Made, it read the key, so nothing waits for
- * the key. Refused because the key couldn't be read, it waits for the key to be saved again, and
- * says so. Either way nothing is tried again on a timer, which would read the key again and again,
- * and the system might ask the person each time. A start that left neither can't be judged, and
- * fails.
- */
 function theStartAndTheKey(conversation, called, atFirstOpen) {
   const logs = ['candidate-first', 'candidate-second'].map((stage) => loggedBy(stage)).join('\n')
   const { started, refused, retried } = startEvidence({ log: logs, conversation })
@@ -2158,9 +1892,286 @@ function theStartAndTheKey(conversation, called, atFirstOpen) {
   }
 }
 
+function retainProofProgram(installed) {
+  const root = mkdtempSync(join(tmpdir(), 'upgrade-old-'))
+  if (os === 'mac') {
+    const exe = join(root, basename(installed.exe))
+    run('/usr/bin/ditto', ['--rsrc', '--extattr', installed.exe, exe])
+    return {
+      ...installed,
+      exe,
+      program: join(exe, relative(installed.exe, installed.program)),
+      root,
+    }
+  }
+  cpSync(dirname(installed.program), root, { recursive: true })
+  const program = join(root, basename(installed.program))
+  return { ...installed, exe: program, program, root }
+}
+
+async function proofManifests(folder) {
+  return (await recoveryCopies(folder, { digestFiles: false }))
+    .filter((one) => one.manifest)
+    .map((one) => ({
+      folder: join(folder, 'backups', one.folder),
+      manifest: one.manifest,
+    }))
+}
+
+async function completedProofCopy(folder, ids) {
+  return until(
+    async () => (await proofManifests(folder)).find((one) => !ids.has(one.manifest.id)) ?? null,
+    600_000,
+    100,
+  )
+}
+
+async function checkedProofCopy(copy, expected, state) {
+  must(copy !== null, 'A real completed v1 manifest was published.')
+  const files = Object.fromEntries(
+    stateFiles
+      .filter((name) => existsSync(join(copy.folder, name)))
+      .map((name) => [name, readStateEntry(join(copy.folder, name))]),
+  )
+  const file = join(copy.folder, 'database.sqlite')
+  const databaseDigest = { bytes: lstatSync(file).size, sha256: await digest(file) }
+  const checked = verifyCheckpoint(copy.manifest, files, {
+    ...expected,
+    folder: basename(copy.folder),
+    stateFiles,
+    state,
+    workspaceId: readFileSync(join(dirname(copy.folder), 'workspace-id'), 'utf8').trim(),
+    databaseDigest,
+  })
+  return { ...checked, manifest: copy.manifest, observedDatabase: databaseDigest }
+}
+
+async function recoveryProofCases({
+  old,
+  candidate,
+  before,
+  candidateLineage,
+  migrations,
+  conversations,
+  betaAnswers,
+  besideBefore,
+}) {
+  async function proofOrdinary(program, folder, stage, port) {
+    installedExe = program.exe
+    installedProgram = program.program
+    await launch(stage, port, { workspace: folder, hidden: true })
+    await bridge(stage)
+    await onScreen(stage, true)
+    const info = await running.cdp.evaluate('return await window.api.getAppInfo()')
+    const responsive = performance.now()
+    const manifestAbsent = !(await proofManifests(folder)).some((one) => !ids.has(one.manifest.id))
+    const absent = performance.now()
+    must(
+      info.version === (program === candidate ? args['candidate-version'] : '0.2.19'),
+      `${stage}: actual binary version answered.`,
+      { version: info.version },
+    )
+    if (program === candidate)
+      must(
+        info.build?.commit === args['source-sha'],
+        `${stage}: candidate source identity answered.`,
+        info.build,
+      )
+    for (const id of conversations) {
+      const read = await running.cdp.evaluate(
+        `return JSON.stringify(await window.api.runtime.latestHistory({ sessionId: ${JSON.stringify(id)} }))`,
+      )
+      must(
+        read.includes(answerText(betaAnswers[id])),
+        `${stage}: seeded history survives in the actual binary.`,
+        { id },
+      )
+    }
+    return { launched: running.launchedMono, responsive, absent, manifestAbsent }
+  }
+
+  const result = (summary.recoveryProof = { compatible: {}, syntheticFuture: {}, synchronous: {} })
+  const ids = new Set((await proofManifests(data)).map((one) => one.manifest.id))
+  try {
+    const state = readState()
+    await phase('proof compatible candidate', async () => {
+      const observed = await proofOrdinary(candidate, data, 'proof-candidate', 9350)
+      const copy = await completedProofCopy(data, ids)
+      observed.completed = performance.now()
+      await until(() => readFileSync(running.log, 'utf8').includes(CHECKPOINT_LINE), 10_000, 100)
+      result.compatible.observed = observed
+      result.compatible.copy = await checkedProofCopy(
+        copy,
+        {
+          reason: 'first-start-of-release',
+          version: args['candidate-version'],
+          build: args['source-sha'],
+          lineage: before.lineage,
+        },
+        state,
+      )
+      result.compatible.order = startOrder(readFileSync(running.log, 'utf8'), {
+        checkpoint: true,
+        completion: 'background',
+        observation: observed,
+      })
+      await quit('proof candidate completed')
+    })
+    must(result.compatible.order, 'Window-before-completion was not observed.')
+    await phase('proof actual019 compatible', async () => {
+      await proofOrdinary(old, data, 'proof-019-compatible', 9351)
+      await quit('proof019 compatible')
+      await proofOrdinary(candidate, data, 'proof-candidate-again', 9352)
+      await quit('proof candidate again')
+      result.compatible.actual019ThenCandidate = true
+    })
+    must(result.compatible.actual019ThenCandidate, 'Compatible binary reads failed.')
+    await phase('proof synthetic future actual019 Restore Return', async () => {
+      const { runnerImport } = await import(
+        pathToFileURL(join(REPO, 'apps/desktop/node_modules/vite/dist/node/index.js')).href
+      )
+      const { module } = await runnerImport(
+        join(REPO, 'apps/desktop/test/recovery/lib/recovery-fixture.ts'),
+        { configFile: false, root: join(REPO, 'apps/desktop'), logLevel: 'error' },
+      )
+      const db = new DatabaseSync(join(data, 'brobot2.sqlite'))
+      try {
+        db.prepare('INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)').run(
+          module.NEWER_MIGRATION.hash,
+          module.NEWER_MIGRATION.createdAt,
+        )
+      } finally {
+        db.close()
+      }
+      result.syntheticFuture.label =
+        'Existing synthetic NEWER_MIGRATION; not a shipping candidate migration.'
+      result.syntheticFuture.migration = module.NEWER_MIGRATION
+      const newer = await digest(join(data, 'brobot2.sqlite'))
+      const newerState = readState()
+      installedExe = old.exe
+      installedProgram = old.program
+      await launch('proof-019-recovery', 9353, { workspace: data, hidden: true, recovery: true })
+      const verdict = await until(
+        async () => {
+          const verdict = await running.cdp.evaluate('return window.recovery?.verdict()')
+          return verdict?.kind === 'working' ? null : verdict
+        },
+        600_000,
+        100,
+      )
+      must(
+        verdict?.kind === 'newer' && verdict.offers?.id === result.compatible.copy.id,
+        'Actual019 offers the candidate-created v1 snapshot.',
+        verdict,
+      )
+      await running.cdp.evaluate(
+        'document.querySelector("[data-cy=recovery-restore]").click(); return true',
+      )
+      must(
+        await until(
+          async () =>
+            (await running.cdp.evaluate('return window.recovery.verdict()')).kind ===
+            'history-only',
+          600_000,
+          100,
+        ),
+        'Actual019 entered restored history.',
+      )
+      for (const id of conversations) {
+        const read = await running.cdp.evaluate(
+          `return JSON.stringify(await window.recovery.history.transcript(${JSON.stringify(id)}))`,
+        )
+        must(
+          read.includes(answerText(betaAnswers[id])),
+          'Actual019 reads the restored transcript.',
+          {
+            id,
+          },
+        )
+      }
+      await running.cdp.evaluate(
+        'document.querySelector("[data-cy=recovery-return]").click(); return true',
+      )
+      must(
+        await until(
+          async () =>
+            (await running.cdp.evaluate('return window.recovery.verdict()')).kind === 'newer',
+          600_000,
+          100,
+        ),
+        'Actual019 returned to the newer state.',
+      )
+      await quit('proof019 Return')
+      must(
+        (await digest(join(data, 'brobot2.sqlite'))) === newer,
+        'Return preserved the synthetic newer database exactly.',
+      )
+      must(
+        stateKept(newerState, readState(), stateFiles).lost.length === 0,
+        'Return preserved coupled state.',
+      )
+      besideKept('proof019 Return kept current', besideBefore)
+      result.syntheticFuture.actual019RestoreReturn = true
+    })
+    must(result.syntheticFuture.actual019RestoreReturn, 'Actual019 Restore/Return failed.')
+    await phase('proof synchronous real earlier prefix', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'upgrade-prefix-'))
+      result.synchronous.workspace = root
+      const journal = JSON.parse(readFileSync(join(migrations, 'meta/_journal.json'), 'utf8'))
+      const prefix = new DatabaseSync(join(root, 'brobot2.sqlite'))
+      let lineage
+      try {
+        lineage = makeEarlierMigrationFixture(prefix, journal, (tag) =>
+          readFileSync(join(migrations, `${tag}.sql`), 'utf8'),
+        )
+      } finally {
+        prefix.close()
+      }
+      const state = readState(root)
+      must(
+        (await proofManifests(root)).length === 0,
+        'The earlier prefix has no completed fallback.',
+      )
+      installedExe = candidate.exe
+      installedProgram = candidate.program
+      await launch('proof-synchronous', 9354, { workspace: root, hidden: true })
+      await bridge('proof synchronous')
+      await onScreen('proof synchronous', true)
+      const copy = await completedProofCopy(root, new Set())
+      result.synchronous.copy = await checkedProofCopy(
+        copy,
+        {
+          reason: 'before-migration',
+          version: args['candidate-version'],
+          build: args['source-sha'],
+          lineage,
+        },
+        state,
+      )
+      result.synchronous.order = startOrder(readFileSync(running.log, 'utf8'), { checkpoint: true })
+      await quit('proof synchronous')
+      const db = new DatabaseSync(join(root, 'brobot2.sqlite'), { readOnly: true })
+      try {
+        must(
+          db.prepare('SELECT count(*) AS n FROM __drizzle_migrations').get().n ===
+            candidateLineage.length,
+          'The real remaining migration applied after the completed snapshot.',
+        )
+      } finally {
+        db.close()
+      }
+    })
+  } finally {
+    keep('recovery-proof.json', result)
+    await stop()
+    if (result.synchronous.workspace)
+      rmSync(result.synchronous.workspace, { recursive: true, force: true })
+    rmSync(old.root, { recursive: true, force: true })
+  }
+}
+
 let exitCode = 1
-try {
-  // ── 0 · a runner with no install of the app ─────────────────────────────────────────────────
+async function runUpgradePath() {
   summary.names = { appId: candidateNames.appId, candidate: candidateNames.productName, installKey }
   must(
     !existsSync(appRoot) &&
@@ -2175,7 +2186,6 @@ try {
   )
   summary.candidateSchema = candidateLineage.length
 
-  // ── 1 · the beta, the very file the release offers, installed as a person installs it ────────
   const release = JSON.parse(readFileSync(resolve(args['beta-release']), 'utf8'))
   must(
     isPublishedRelease(release, args['beta-tag']),
@@ -2196,8 +2206,7 @@ try {
   installedProgram = beta.program
   summary.names.beta = beta.productName
   summary.betaInstall = beta.facts
-  // Each recovery copy names the version that made it, and a start counts a copy its own version
-  // made as already made: a candidate at the beta's version would make none.
+  const proofOld = args['recovery-proof'] ? retainProofProgram(beta) : null
   const betaVersion = os === 'windows' ? beta.facts.entries[0].DisplayVersion : beta.facts.version
   must(
     typeof betaVersion === 'string' &&
@@ -2207,7 +2216,6 @@ try {
     { beta: betaVersion ?? null },
   )
 
-  // ── 2 · a Codex home that talks to the scripted model, before the beta's first start ────────
   const codexHome = join(data, 'provider-homes', 'default', 'brobot', 'codex')
   mkdirSync(codexHome, { recursive: true })
   writeFileSync(
@@ -2226,7 +2234,6 @@ try {
     ].join('\n'),
   )
 
-  // ── 3 · the beta makes the data, through its own window ─────────────────────────────────────
   await launch('beta', 9339)
   await bridge('the beta')
   await onScreen('the beta')
@@ -2267,11 +2274,8 @@ try {
   }
   summary.conversations = conversations
   summary.betaAnswers = betaAnswers
-  // With Claude Code installed on the runner, a Claude conversation schedules one job, the way
-  // a tester's agent does: through Claude Code's own CronCreate, which the beta records.
   summary.claude = { port: claudePort, oneShotAt: claudeOneShotAt.toISOString(), keyWait: {} }
   let claudeConversation = null
-  /** The beta's second Claude conversation, whose one-shot comes due while the app is closed. */
   let claudeDueConversation = null
   if (claudePort !== null) {
     const claudeKeyed = await saveTheKey('claude', CLAUDE_FIXTURE_KEY)
@@ -2326,8 +2330,6 @@ try {
       })
     ) {
       claudeDueConversation = due.sessionId
-      // The first whole minute two and a half minutes on at least: the beta is closed well before
-      // its lead, and the candidate's first open comes after it.
       claudeDueAt = new Date(Math.ceil((Date.now() + 150_000) / 60_000) * 60_000)
       summary.claude.dueAt = claudeDueAt.toISOString()
       const made = await claudeTurn(claudeDueConversation, DUE_FIRST_TEXT, { resume: false })
@@ -2342,7 +2344,6 @@ try {
       )
     }
   }
-  /** Every conversation the beta made, by role: its Codex ones, then its Claude ones. */
   const theBetasConversations = () => [
     ...conversations,
     ...[claudeConversation, claudeDueConversation].filter((one) => one !== null),
@@ -2351,12 +2352,6 @@ try {
     const claude = [claudeConversation, claudeDueConversation].filter((one) => one !== null).length
     return `the beta’s ${String(conversations.length)} Codex conversations${claude === 0 ? '' : claude === 1 ? ' and its Claude conversation' : ` and its ${String(claude)} Claude conversations`}`
   }
-  /**
-   * The starts the candidate owes the beta's Claude conversations at its first open, each with
-   * the jobs its words name: the second conversation's one-shot passed while the app was closed,
-   * and the first conversation's jobs have times the candidate cannot know when the beta kept no
-   * calendar stamp on them.
-   */
   const theStartsOwed = () => [
     ...(claudeConversation !== null && !stamped()
       ? [
@@ -2379,7 +2374,6 @@ try {
         ]
       : []),
   ]
-  /** What each start owed has left in the candidate's first open so far. */
   const theFirstOpenStarts = () => {
     const log = loggedBy('candidate-first')
     return theStartsOwed().map((owed) => ({
@@ -2395,12 +2389,6 @@ try {
       }),
     }))
   }
-  /**
-   * At the candidate's first open, each start it owes is waited for on its own: until that
-   * conversation's words reach the model, or the app says its start waits for the saved key.
-   * Starts owed at once go one at a time, some twenty seconds apart, in an order the lane doesn't
-   * choose, so one conversation's words never stand for another's.
-   */
   const theFirstOpenTold = async () => {
     await until(
       () => theFirstOpenStarts().every((one) => one.outcome !== 'pending') || null,
@@ -2432,7 +2420,6 @@ try {
   await screenshot('beta-first.png')
   await quit('the beta')
 
-  // ── 4 · the beta, started again: it reads its own data, and leaves a name, a setting, a draft ─
   await launch('beta-settled', 9338)
   await bridge('the beta, started again')
   await onScreen('the beta, started again')
@@ -2491,17 +2478,13 @@ try {
     check(existsSync(join(data, 'api-keys.json')), 'the beta saved its API keys in api-keys.json')
   }
 
-  // ── 5 · what the beta left, read while nothing runs ─────────────────────────────────────────
   const before = readDatabase(data)
-  // Saving a key in file-backed betas removes its legacy sealed database row.
   const claudeKeyWasSealed = (before.tables.provider_api_key ?? []).some(
     (row) => row.provider === 'claude',
   )
   summary.claude.keyWasSealed = claudeKeyWasSealed
   must(whole(before), "the beta's database is whole", before.integrity)
-  /** The id of each job the beta's Claude conversation made, read from the beta's own receipts. */
   const claudeJobIds = {}
-  /** Whether the beta stamped its receipts: `stamped`, `unstamped`, or neither when it can't say. */
   let betaStamping = 'none'
   const stamped = () => betaStamping === 'stamped'
   if (claudeConversation !== null) {
@@ -2515,8 +2498,6 @@ try {
     const dueReceipts =
       claudeDueConversation === null ? [] : receiptsIn(before.tables.events, claudeDueConversation)
     summary.claude.dueReceipts = dueReceipts
-    // A beta with the scheduling switch stamps each receipt with its calendar, and its jobs keep
-    // their known times; an earlier beta's jobs have no time the candidate can know.
     betaStamping = stampingOf([...receipts, ...dueReceipts])
     summary.claude.betaStamping = betaStamping
     check(
@@ -2580,8 +2561,7 @@ try {
     'the beta left the computer’s settings and its list of workspaces',
     { ...besideBefore, registryProblems },
   )
-  // A beta that makes recovery copies leaves its own, from its second start on.
-  const copiesTheBetaLeft = copies()
+  const copiesTheBetaLeft = await copies()
   const leftByTheBeta = copiesSince([], copiesTheBetaLeft, betaVersion)
   summary.baseline.copies = copiesTheBetaLeft.map(copySaid)
   check(
@@ -2589,8 +2569,6 @@ try {
     `each recovery copy the beta left says the beta (${betaVersion}) made it`,
     summary.baseline.copies,
   )
-  // The beta's build may have hashed its SQL with the other line endings: the app's start accepts
-  // either, and so does this. Which one each was is kept for a reader.
   summary.baseline.migrationsRecordedWith = recordedWith(before.lineage, candidateLineage)
   keep('baseline.json', summary.baseline)
   must(
@@ -2605,7 +2583,6 @@ try {
   const expectedReason =
     candidateLineage.length > before.lineage.length ? 'before-migration' : 'first-start-of-release'
 
-  // ── 6 · the candidate, installed over the beta as a person would ────────────────────────────
   const candidateDir = resolve(args['candidate-dir'])
   const candidateFile = join(
     candidateDir,
@@ -2641,7 +2618,6 @@ try {
       'the app the candidate put in Applications is the candidate',
       candidate.facts,
     )
-    // A person's drag leaves an app of another name where it was: both are this app.
     const expected = [
       ...new Set([`${beta.productName}.app`, `${candidate.productName}.app`]),
     ].sort()
@@ -2665,10 +2641,31 @@ try {
     'installing the candidate changed no transcript and no state file',
   )
 
-  // ── 7 · the candidate's first start ─────────────────────────────────────────────────────────
+  if (args['recovery-proof']) {
+    must(
+      args['beta-tag'] === 'v0.2.19' && betaVersion === '0.2.19',
+      'The recovery proof uses actual published0.2.19.',
+    )
+    must(
+      before.lineage.length === candidateLineage.length,
+      'Compatible proof is distinct from a real newer migration.',
+    )
+    await recoveryProofCases({
+      old: proofOld,
+      candidate,
+      before,
+      candidateLineage,
+      migrations,
+      conversations,
+      betaAnswers,
+      besideBefore,
+    })
+    exitCode = summary.failures.length === 0 ? 0 : 1
+    return
+  }
+
   summary.firstStart = {}
   if (claudeDueAt !== null) {
-    // The second conversation's one-shot comes due with the app closed.
     await until(() => (Date.now() > claudeDueAt.getTime() + 45_000 ? true : null), 300_000, 5_000)
   }
   await phase('first start', async () => {
@@ -2734,8 +2731,7 @@ try {
     ? wholeLog('candidate-first', { checkpoint: true })
     : check(false, 'first start: its log was kept')
 
-  // ── 8 · the recovery copy, and the data, checked against what the beta left ─────────────────
-  const copiesAfterFirst = copies()
+  const copiesAfterFirst = await copies()
   const sinceTheBeta = copiesSince(copiesTheBetaLeft, copiesAfterFirst, args['candidate-version'])
   summary.copiesAfterFirst = { ...sinceTheBeta, copies: copiesAfterFirst.map(copySaid) }
   holds('the first start made one recovery copy, of exactly what the beta left', () => {
@@ -2780,8 +2776,6 @@ try {
     )
   })
 
-  // The candidate counts the beta's copies as another release's and keeps them; a person can still
-  // go back to one only while it is whole and of this workspace.
   check(
     sinceTheBeta.gone.length === 0 && sinceTheBeta.changed.length === 0,
     'the first start left each recovery copy the beta made as it was',
@@ -2807,8 +2801,6 @@ try {
     const notices = jobNoticesIn(afterFirst.tables.events, claudeConversation)
     summary.claude.afterFirst = notices
     if (!stamped()) {
-      // The job is said not to be started for only once its one start was made: while that start
-      // is still owed (refused, and tried again later), the candidate will still start it.
       const startedAtFirstOpen = notices.said.length > 0
       const saysNotStarted = notices.appLevels.some((jobs) => jobs.includes('time-not-known'))
       check(
@@ -2824,8 +2816,6 @@ try {
         notices,
       )
     } else {
-      // A beta that stamps its receipts: the candidate knows both jobs' times, and owes nothing
-      // at the first open.
       const listed = new Map(notices.appJobs.map((job) => [job.id, job]))
       check(
         listed.size === 2 &&
@@ -2921,7 +2911,6 @@ try {
   ownTranscriptsKept('after the first start', history, transcriptsBefore, afterFirst.tables)
   besideKept('after the first start', besideBefore)
 
-  // ── 9 · the second start: clean, no new copy; then both conversations carry on ──────────────
   summary.secondStart = {}
   await phase('second start', async () => {
     await launch('candidate-second', 9341)
@@ -2929,8 +2918,7 @@ try {
     await bridge('second start')
     await onScreen('second start')
     await dialogsAtAStart('second start', summary.secondStart)
-    // A copy of another workspace, or one the app cannot read, would not count: it would make one.
-    const sinceTheFirst = copiesSince(copiesAfterFirst, copies(), args['candidate-version'])
+    const sinceTheFirst = copiesSince(copiesAfterFirst, await copies(), args['candidate-version'])
     check(
       sinceTheFirst.same,
       'the second start made no recovery copy, and left the ones there as they were: the app itself counts the first as this release’s',
@@ -2949,8 +2937,6 @@ try {
       )
     }
     wholeScreen('screen-after-the-turns.png')
-    // The candidate never opens a key the beta sealed: a refusal passes only in the app's own
-    // words for that, with its status of the key saying so too.
     const keyStatus = await observeTheSavedKey('second start, after the turns')
     for (const carried of carriedOn) {
       const judged = turnOutcome(carried, keyStatus)
@@ -2972,8 +2958,6 @@ try {
         keyStatus,
       )
     }
-    // The candidate never opens the key the beta sealed: the beta's Keychain entry is still the
-    // only one, as the beta left it.
     if (os === 'mac' && betaEntry !== null && betaEntry.appName === candidateAppName) {
       const entries = keychainEntries()
       summary.keychain.afterTheCandidateAskedForTheKey = entries
@@ -2993,7 +2977,6 @@ try {
       : allAnswered
         ? 'in use: both conversations carried on with it, and the app answered each time it was asked'
         : `not in use: ${refusedTurn?.refused ?? 'a turn was not answered'} (the ${refusedTurn?.refusedAt ?? 'turn'} was refused ${String(refusedTurn?.refusedAfterMs ?? 'no')} ms after it was asked; the app answered each time it was asked)`
-    // ⚑ Before anything else moves: the conversations that carried on still hold their processes.
     summary.secondStart.whatRuns = await whatRunsIsRead('second start')
     if (claudeConversation !== null) {
       const text = 'A fictional Claude turn after the upgrade'
@@ -3039,8 +3022,6 @@ try {
     summary.secondStart.order = wholeLog('candidate-second', { checkpoint: false })
   } else check(false, 'second start: its log was kept')
 
-  // After its turns a conversation has new events, raw frames and turns, and its own state has
-  // moved. Nothing else of what the beta left may have: the same rule as after the first start.
   const afterSecond = readDatabase(data)
   for (const owed of theStartsOwed()) {
     theStartAndTheKey(owed.conversation, owed.called, summary.claude.firstOpen?.starts?.[owed.of])
@@ -3108,7 +3089,11 @@ try {
     stateKept(stateBefore, readState(data, afterSecond.tables), stateFiles).lost.length === 0,
     'after the second start, every state file the beta left still says what it said',
   )
-  const sinceTheFirstStart = copiesSince(copiesAfterFirst, copies(), args['candidate-version'])
+  const sinceTheFirstStart = copiesSince(
+    copiesAfterFirst,
+    await copies(),
+    args['candidate-version'],
+  )
   check(
     sinceTheFirstStart.same,
     'the recovery copies are still the ones the first start left, each as it was',
@@ -3116,7 +3101,6 @@ try {
   )
   besideKept('after the second start', besideBefore)
 
-  // ── 11 · a crash after delivery on a readable key, or while a sealed key is awaited ────────
   if (claudeConversation !== null) {
     summary.crash = {}
     await phase('the crash', () =>
@@ -3129,7 +3113,6 @@ try {
     )
   }
 
-  // ── 12 · the keys saved again: the beta's conversations carry on, and a new one starts ──────
   summary.keySavedAgain = {}
   await phase('the key saved again', () =>
     theKeySavedAgain(summary.keySavedAgain, conversations, {
@@ -3141,7 +3124,6 @@ try {
     }),
   )
 
-  // ── 13 · on Windows, a crash while the app starts a conversation for its jobs ──────────────
   if (os === 'windows' && claudeConversation !== null) {
     summary.crashMidStart = {}
     await phase('the crash mid-start', () => aCrashMidStart(summary.crashMidStart))
@@ -3160,6 +3142,9 @@ try {
   }
 
   exitCode = summary.failures.length === 0 ? 0 : 1
+}
+try {
+  await runUpgradePath()
 } catch (error) {
   summary.failures.push(`the run stopped: ${error.message}`)
   say(`✗ the run stopped: ${error.stack ?? error.message}`)
