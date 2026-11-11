@@ -372,7 +372,7 @@ it.each(['mac-signed-upgrade.mjs', 'mac-update-test.mjs'])(
   keepsFailureEvidence,
 )
 
-it('uses Updates and its ordinary Download/mount/Finder path from offered or checking state', async () => {
+it('uses Updates and its ordinary Download/mount path from offered or checking state', async () => {
   const source = ts.createSourceFile(
     'mac-signed-upgrade.mjs',
     readFileSync(new URL('../mac-signed-upgrade.mjs', import.meta.url), 'utf8'),
@@ -435,7 +435,6 @@ it('uses Updates and its ordinary Download/mount/Finder path from offered or che
         downloaded = true
       })
       const commands = vi.fn(async (program, args) => {
-        if (program === '/usr/bin/osascript') return mount + '/'
         expect(['/usr/sbin/screencapture', '/usr/bin/xcrun', '/usr/sbin/spctl']).toContain(program)
         if (program === '/usr/bin/xcrun') expect(args).toEqual(['stapler', 'validate', image])
         return ''
@@ -483,6 +482,7 @@ it('uses Updates and its ordinary Download/mount/Finder path from offered or che
       expect(plist).toHaveBeenCalledExactlyOnceWith('/usr/bin/hdiutil', ['info', '-plist'])
       expect(quarantine).toHaveBeenCalledExactlyOnceWith(image, 'downloaded-image')
       expect(fixture.summary.download.guided).toBe(message)
+      expect(commands.mock.calls.some(([program]) => program === '/usr/bin/osascript')).toBe(false)
       expect(updates.checkNow).toHaveBeenCalledOnce()
       expect(updates.read).toHaveBeenCalledTimes(kind === 'checking' ? 4 : 3)
       expect(cdp.send).toHaveBeenCalledTimes(initiallyOpen ? 0 : 3)

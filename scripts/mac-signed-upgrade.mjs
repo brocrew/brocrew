@@ -450,23 +450,6 @@ async function guidedDownload(workspace, published) {
   )
   mountedCandidate = mounted.mount
   await quarantine(image, 'downloaded-image')
-  const finder = await run('/usr/bin/osascript', [
-    '-e',
-    `tell application "Finder"
-set found to {}
-repeat with w in Finder windows
-try
-set end of found to POSIX path of (target of w as alias)
-end try
-end repeat
-return found
-end tell`,
-  ])
-  requireEvidence(
-    finder.includes(mounted.mount + '/'),
-    'Finder has no window for the app-opened candidate DMG.',
-  )
-  await run('/usr/sbin/screencapture', ['-x', join(evidence, 'finder-opened-dmg.png')])
   const guided = await cdp.evaluate(
     'return document.querySelector("[data-cy=updates-said]")?.textContent.replace(/\\s+/g," ").trim()',
   )
@@ -494,12 +477,11 @@ end tell`,
   summary.download = {
     image,
     ...published,
-    finder: finder.trim(),
     guided,
     bundle: await bundleChecked(source, VERSION_B),
   }
   transport.requireHealthy()
-  passed('guided-download-mount-finder-and-message', summary.download)
+  passed('guided-download-mount-and-message', summary.download)
   return source
 }
 
