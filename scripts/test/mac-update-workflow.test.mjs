@@ -122,7 +122,7 @@ it('forwards the five signing secrets explicitly and shares the existing signing
     expect(workflow.on).not.toHaveProperty('pull_request')
     expect(workflow.on).not.toHaveProperty('pull_request_target')
   }
-  const job = mac.jobs.rehearse
+  const job = mac.jobs.build
   expect(job.environment).toBe('mac-signing')
   const builds = job.steps.filter((step) => step.uses === './.github/actions/signed-mac')
   expect(builds.map((step) => step.with.version)).toEqual(['0.0.98', '0.0.99'])
@@ -131,19 +131,18 @@ it('forwards the five signing secrets explicitly and shares the existing signing
   const feed = job.steps.find((step) => step.id === 'feed')
   expect(feed.run).toContain('dist=dist-rehearsal')
   expect(feed.run).toContain('prefix=mac-')
-  expect(job.steps.find((step) => step.name?.startsWith('Rehearse ZIP')).if).toBe(
-    '${{ !inputs.build_only }}',
+  const packages = job.steps.find((step) => step.uses === 'actions/upload-artifact@v4')
+  expect(packages.with.name).toBe(
+    "${{ inputs.build_only && 'rehearsal-macos' || 'mac-update-packages' }}",
   )
-  expect(job.steps.find((step) => step.with?.name === 'rehearsal-macos').if).toBe(
-    'inputs.build_only',
-  )
+  expect(packages.with.path).toContain('${{ steps.feed.outputs.dist }}')
 })
 
 it.each([false, true])('preserves package layout and markers for build-only=%s', (buildOnly) => {
   const temp = mkdtempSync(join(tmpdir(), 'mac-rehearsal-feed-'))
   const output = join(temp, 'outputs')
   try {
-    const step = read('.github/workflows/mac-update-test.yml').jobs.rehearse.steps.find(
+    const step = read('.github/workflows/mac-update-test.yml').jobs.build.steps.find(
       (step) => step.id === 'feed',
     )
     execFileSync('bash', ['-c', step.run], {
@@ -161,4 +160,25 @@ it.each([false, true])('preserves package layout and markers for build-only=%s',
   } finally {
     rmSync(temp, { recursive: true, force: true })
   }
+})
+
+it('runs the native rehearsal after packaging on a separate clean hosted job', () => {
+  const { build, rehearse } = read('.github/workflows/mac-update-test.yml').jobs
+  expect(rehearse.needs).toBe('build')
+  expect(rehearse.if).toBe('${{ !inputs.build_only }}')
+  expect(rehearse['runs-on']).toBe(build['runs-on'])
+  expect(rehearse.environment).toBeUndefined()
+  expect(rehearse.steps.some((step) => step.uses === './.github/actions/signed-mac')).toBe(false)
+  expect(build.steps.some((step) => step.run?.includes('node scripts/mac-update-test.mjs'))).toBe(
+    false,
+  )
+  const downloaded = rehearse.steps.find((step) => step.uses === 'actions/download-artifact@v4')
+  expect(downloaded.with).toEqual({
+    name: 'mac-update-packages',
+    path: 'apps/desktop/dist-mac-update',
+  })
+  const run = rehearse.steps.find((step) => step.name?.startsWith('Rehearse ZIP')).run
+  expect(run).toContain('--dist-a apps/desktop/dist-mac-update/a')
+  expect(run).toContain('--dist-b apps/desktop/dist-mac-update/b')
+  expect(run).toContain('--source-sha "$GITHUB_SHA"')
 })

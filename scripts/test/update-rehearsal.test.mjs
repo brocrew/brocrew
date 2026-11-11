@@ -290,7 +290,7 @@ describe('the workflows', () => {
     const caller = builderTools.loadYaml(workflow).jobs.macos
     expect(caller.uses).toBe('./.github/workflows/mac-update-test.yml')
     expect(caller.with.build_only).toBe(true)
-    const mac = builderTools.loadYaml(read('.github/workflows/mac-update-test.yml')).jobs.rehearse
+    const mac = builderTools.loadYaml(read('.github/workflows/mac-update-test.yml')).jobs.build
     const builds = mac.steps.filter((step) => step.uses === './.github/actions/signed-mac')
     expect(builds.map((step) => step.with.marker)).toEqual([
       '${{ steps.feed.outputs.prefix }}a-${{ github.sha }}',

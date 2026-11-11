@@ -41,8 +41,8 @@ env:
   ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
 
 jobs:
-  rehearse:
-    name: Package signed A and B and rehearse the Mac automatic update
+  build:
+    name: Package signed A and B for the Mac update rehearsal
     if: github.repository == 'brocrew/brocrew'
     runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
     environment: mac-signing
@@ -106,8 +106,36 @@ jobs:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      - name: Keep the rehearsal packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.build_only && 'rehearsal-macos' || 'mac-update-packages' }}
+          path: |
+            apps/desktop/${{ steps.feed.outputs.dist }}/*/BroCrew-*-arm64.dmg
+            apps/desktop/${{ steps.feed.outputs.dist }}/*/BroCrew-*-arm64.dmg.blockmap
+            apps/desktop/${{ steps.feed.outputs.dist }}/*/BroCrew-*-arm64-mac.zip
+            apps/desktop/${{ steps.feed.outputs.dist }}/*/BroCrew-*-arm64-mac.zip.blockmap
+            apps/desktop/${{ steps.feed.outputs.dist }}/*/latest-mac.yml
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  rehearse:
+    name: Rehearse the Mac automatic update on a fresh runner
+    needs: build
+    if: ${{ !inputs.build_only }}
+    runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-desktop
+      - uses: actions/download-artifact@v4
+        with:
+          name: mac-update-packages
+          path: apps/desktop/dist-mac-update
       - name: Rehearse ZIP download and Squirrel restart on fictional data
-        if: ${{ !inputs.build_only }}
         shell: bash
         run: |
           set -euo pipefail
@@ -118,24 +146,10 @@ jobs:
             --marker-a "mac-a-$GITHUB_SHA" --marker-b "mac-b-$GITHUB_SHA" \
             --source-sha "$GITHUB_SHA" --evidence mac-update-results
       - name: Keep success or failure evidence
-        if: ${{ always() && !inputs.build_only }}
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: mac-automatic-update-evidence
           path: mac-update-results
           if-no-files-found: error
           retention-days: 14
-      - name: Keep the tag rehearsal packages
-        if: inputs.build_only
-        uses: actions/upload-artifact@v4
-        with:
-          name: rehearsal-macos
-          path: |
-            apps/desktop/dist-rehearsal/*/BroCrew-*-arm64.dmg
-            apps/desktop/dist-rehearsal/*/BroCrew-*-arm64.dmg.blockmap
-            apps/desktop/dist-rehearsal/*/BroCrew-*-arm64-mac.zip
-            apps/desktop/dist-rehearsal/*/BroCrew-*-arm64-mac.zip.blockmap
-            apps/desktop/dist-rehearsal/*/latest-mac.yml
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 7
