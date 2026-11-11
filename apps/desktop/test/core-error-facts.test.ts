@@ -43,7 +43,7 @@ it('projects actual host live errors and old SQLite history through windows, ref
     await waitFor(() => world.window.messages.filter((row) => row.event.type === 'error').length === 3, 'live error facts')
     const record = createSessionRecord(sessionId)
     for (const row of world.window.messages) acceptEvent(record, row)
-    expect(notices(record.transcript)).toEqual([sentence])
+    expect(notices(record.transcript)).toEqual([`session started · ${handle.ref.sessionId}`, sentence])
     const live = world.window.messages.filter((row) => row.event.type === 'error')
     expect(live.map((row) => row.errorFacts?.ending)).toEqual([
       undefined, { raw: envelope, sentence }, { raw: '', sentence: '' },
