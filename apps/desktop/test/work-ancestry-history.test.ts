@@ -23,7 +23,12 @@ import {
 } from '../src/main/db/work-ancestry-reader'
 import { ANCESTRY_ACCESS } from '../src/main/db/work-ancestry-index'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { ancestryBranch, ancestryHostDeps, publishAncestryEvent } from './lib/work-ancestry-fixture'
+import {
+  ancestryBranch,
+  ancestryHostDeps,
+  publishAncestryEvent,
+  ResumingRuntime,
+} from './lib/work-ancestry-fixture'
 import {
   acceptEvent,
   createSessionRecord,
