@@ -15,7 +15,11 @@ import type {
   StartOptions,
 } from '@brobot2/runtime'
 import { AsyncQueue } from '../../../packages/runtime/src/internal/async-queue'
-import type { Provider } from '@brobot2/shared'
+import { providerDescriptor, type Provider } from '@brobot2/shared'
+import {
+  billingNotice as suppliedBillingNotice,
+  transcriptEventForDisplay,
+} from '../src/main/providers/error-presentation'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -23,12 +27,7 @@ import { ApiKeys, aLoginRunsWithoutAKey } from '../src/main/runtime/api-keys'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { theStallAndItsAsk } from '../src/main/runtime/reply-rails'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  applyEvent,
-  billingNotice,
-  createTranscript,
-  type NoticeItem,
-} from '../src/renderer/src/lib/transcript'
+import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { type ApiKeyCheck, type ProvidersChangedMessage } from '../src/shared/runtime-ipc'
 import { UNDRIVEN_SENTENCES, derivePieces } from '../src/shared/tasks'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
@@ -60,6 +59,8 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 const BILLING = 'Credit balance is too low'
+const billingNotice = (provider: Provider, onAKey: boolean) =>
+  suppliedBillingNotice(providerDescriptor(provider).displayName, onAKey)
 
 const started = (provider: Provider): RuntimeEvent => ({
   type: 'session',
@@ -69,7 +70,8 @@ const started = (provider: Provider): RuntimeEvent => ({
 
 const noticesFor = (...events: RuntimeEvent[]): NoticeItem[] => {
   const state = createTranscript()
-  for (const event of events) applyEvent(state, event)
+  for (const event of events)
+    applyEvent(state, transcriptEventForDisplay(event, state.ref?.provider))
   return state.items.filter((item): item is NoticeItem => item.kind === 'notice')
 }
 

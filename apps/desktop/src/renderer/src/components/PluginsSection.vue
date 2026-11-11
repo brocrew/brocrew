@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import ProgressBar from './ProgressBar.vue'
 import { loadPluginConfiguration } from '../lib/plugin-configuration-load'
+import { useClientApi } from '../client-provider/injection'
 import {
   pluginMutationAllowed,
   pluginUnavailableNotice,
@@ -24,7 +25,7 @@ import type {
   PluginSettingsReply,
 } from '../../../shared/plugin-settings'
 const props = defineProps<{ client?: PluginsClient }>()
-const client = props.client ?? window.api?.plugins
+const client = props.client ?? useClientApi().plugins
 const cards = ref<PluginCard[]>([]),
   query = ref(''),
   error = ref<string | { kind: 'restart'; id: string; name: string }>(''),

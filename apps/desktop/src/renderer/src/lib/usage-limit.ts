@@ -1,12 +1,7 @@
 import { clockTimeFrom } from '../../../shared/clock'
 import type { Provider } from '@brobot2/shared'
 import { PROVIDER_NAME, type ProviderUsageReading } from '../../../shared/runtime-ipc'
-import {
-  readProviderLimit,
-  type LimitStanding,
-  type ProviderCondition,
-} from '../../../shared/provider-limit'
-import { usageWindowDetails, usageWindowWord } from '../../../shared/usage-window'
+import type { LimitStanding, ProviderCondition } from '../../../shared/provider-limit'
 import { agoWords, fullTime } from './clock'
 
 export const UNCONFIRMED_USAGE = 'Not yet confirmed'
@@ -34,9 +29,6 @@ const HOW_NEAR: Readonly<Record<LimitStanding, string>> = {
   stopped: 'has reached',
 }
 
-/** ⚑ The limit a provider named, in a person's words ({@link usageWindowWord}). */
-const limitWord = usageWindowWord
-
 /** One limit's word and, when a line said it, how much of it is used: *weekly (96% used)*. */
 interface LimitSaid {
   readonly word: string
@@ -56,15 +48,6 @@ function whichLimit(limits: readonly LimitSaid[], unnamedUsed: number | null): s
   if (limits.length === 1) return `its ${limits[0]!.word} limit${usedWords(limits[0]!.used)}`
   const each = limits.map((one) => `${one.word}${usedWords(one.used)}`)
   return `its ${each.slice(0, -1).join(', ')} and ${each.at(-1)!} limits`
-}
-
-/**
- * ⚑ **How much of a window a line says is used** — the adapters' *"— 92% used"* and *"95% of a
- * 7-day window used"*, and this app's *"— 82% used, by its latest reading"* — or `null`.
- */
-function usedIn(line: string): number | null {
-  const said = /(\d+(?:\.\d+)?)% (?:of .+? )?used\b/.exec(line)?.[1]
-  return said === undefined ? null : Number(said)
 }
 
 /** The higher of two figures, either of which may be unsaid. */
@@ -101,15 +84,6 @@ export function resetWords(resetsAt: number | null, now: number): string | null 
     : `reset ${spanWords(now - resetsAt)} ago`
 }
 
-/**
- * How long a window lasts, read off the same word the reading is named by ({@link limitWord}):
- * *5-hour*, *weekly…*, *daily*, *N-day*, *N-hour*. `null` for a window with no such word, or one
- * whose word names no length (*extra-usage*).
- */
-export function windowLength(window: string): number | null {
-  return usageWindowDetails(window).lengthMs
-}
-
 /** How much of a reading's window has gone, beside how much of it is used. */
 export interface TimeGone {
   /** 0..1 of the window. */
@@ -126,7 +100,7 @@ export interface TimeGone {
  * start of a new window.
  */
 export function timeGone(reading: ProviderUsageReading, now: number): TimeGone | null {
-  const length = windowLength(reading.window)
+  const length = reading.period?.durationMs ?? null
   if (length === null || reading.resetsAt === null || reading.resetsAt <= now) return null
   const fraction = Math.min(1, Math.max(0, 1 - (reading.resetsAt - now) / length))
   const gone = spanWords(fraction * length)
@@ -153,17 +127,14 @@ function whenItResets(resetsAt: number | null, now: number): string {
 }
 
 /**
- * 🔴 **The sentence** — *"Claude is near its weekly limit (96% used); it resets in 3 days."*
- * ⚑ Each window is read off the provider's own lines (`readProviderLimit`), once each, with the
- * most any of its lines says is used — ⚑ F096: a person sees how much is left where they read it.
+ * A sentence from supplied limit facts, with the reset relative to the display clock.
+ * Windows and percentages come from the core reading; repeated window words share their fullest figure.
  */
 export function usageSays(condition: ProviderCondition, now: number): string {
+  if (condition.meaning === undefined) return condition.says
   const limits: LimitSaid[] = []
   let unnamedUsed: number | null = null
-  for (const line of condition.said) {
-    const window = readProviderLimit(line, 0)?.window
-    const word = window === undefined ? null : limitWord(window)
-    const used = usedIn(line)
+  for (const { word, used } of condition.meaning) {
     if (word === null) {
       unnamedUsed = fuller(unnamedUsed, used)
       continue
@@ -203,7 +174,8 @@ export function readingTitle(reading: ProviderUsageReading, now: number): string
  * in the past (*"Weekly limit: was 95% used; it reset 2 days ago."*), never as the window now.
  */
 export function readingSays(reading: ProviderUsageReading, now: number): string {
-  const { word, bucket } = usageWindowDetails(reading.window)
+  const word = reading.period?.word ?? null
+  const bucket = reading.period?.bucketName ?? null
   const named =
     word === null
       ? reading.window
@@ -257,10 +229,11 @@ export function aTurnsLimitSays(
  */
 export function atItsLimitSays(condition: ProviderCondition, now: number): string | null {
   if (condition.standing !== 'stopped') return null
+  if (condition.meaning === undefined) return condition.says || null
   const at = condition.resetsAt
   if (at === null) return 'At its limit. It hasn’t said when that lifts.'
   if (at <= now) return `At its limit. It was due to lift at ${clockTimeFrom(at, now)}.`
-  // ⚑ Another of its walls named no reset (a bare 429): the time is the least it waits, not a promise.
-  const untimed = condition.said.some((line) => readProviderLimit(line, 0)?.resetsAt === null)
+  // An untimed wall makes this the minimum wait rather than a promised return.
+  const untimed = condition.meaning.some((one) => one.untimed)
   return `At its limit ${untimed ? 'at least ' : ''}until ${clockTimeFrom(at, now)}`
 }

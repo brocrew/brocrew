@@ -1,3 +1,4 @@
+import { resolveProviderLaunchSchema } from './provider-launch-schema'
 import { SkillsRequest } from '../../shared/skills-window'
 import { LINK_TARGET_LIMIT } from '../../shared/link-resolution'
 import { MOVE_WORDS } from '../../shared/move-request'
@@ -68,16 +69,9 @@ import { sinkOwnerId } from './window-caller'
 import { isAPageReport, type PageReceipt } from './page-performance'
 
 /**
- * The renderer→main half of the boundary. One `invoke` channel carries every
- * command as a discriminated union, so there is exactly one place where renderer
- * input is validated — and the decision/response payloads are validated with the
- * runtime's own schemas rather than a re-typed copy, so the bridge cannot drift
- * from the contract it forwards to. The one other shape the channel carries is the
- * page's own freeze report, checked by its own schema (`page-performance.ts`) and
- * never handed to the host.
- *
- * Electron is imported for types only: this module must stay loadable in a plain
- * Node test process.
+ * One renderer→main `invoke` channel validates the command union with the runtime's own schemas.
+ * Page freeze reports use `page-performance.ts` instead and never reach the host.
+ * Electron imports stay type-only so plain Node tests can load this module.
  */
 
 /**
@@ -87,23 +81,10 @@ import { isAPageReport, type PageReceipt } from './page-performance'
  * process do work on the renderer's behalf.
  */
 /**
- * 🔴 **One capability's value on the wire, DERIVED from the schema rather than typed out** (355 §2).
- *
- * ⛔ **HO-008 §3 made the enumeration the requirement, not a suggestion**: *"Build it to enumerate
- * the capability schema rather than hardcode a field list."* A hand-written zod member per field
- * would be one more hardcoded list, and the one furthest from anybody's eye when a capability
- * lands or leaves.
- *
- * ⚑ **Keyed on the EDITOR kind, so a fifth capability of an existing kind validates for free** — and
- * a kind nobody has taught this function about is a compile error rather than a field that quietly
- * accepts anything. ⚠️ `choice` reads the field's own vocabulary, which is why this takes the whole
- * field and not just its kind.
- *
- * ⚠️ **Declared ABOVE `const sessionId` on purpose.** `wire-bounds.test.ts` pins the ordered list of
- * every `z.string()` declared between that line and the union's `satisfies`, and
- * `send-refusals.test.ts` counts every `.min`/`.max`/`.refine`/`z.enum`/`z.boolean` in three slices
- * below it. Both of those censuses are about the SEND commands; a capability grant is not one, and
- * putting it inside their regions would have made it look like one.
+ * Derive capability values from each field's editor and vocabulary, never a separate field list.
+ * An unknown editor must be handled explicitly; choices use the whole field's vocabulary.
+ * Keep this above `const sessionId`: wire-bounds.test.ts and send-refusals.test.ts census the
+ * SEND schemas below it, and capability grants do not belong in those slices.
  */
 function capabilityValueSchema(field: AnyCapabilityField): z.ZodType {
   const count = z.number().int().min(0).max(MAX_CAPABILITY_COUNT)
@@ -959,6 +940,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
    * looks up whichever provider is selected.
    */
   z.object({ kind: z.literal('capabilities') }),
+  z.object({ kind: z.literal('providerCatalogue') }),
   z.object({ kind: z.literal('providerConnections') }),
   /**
    * Which profiles exist (167). Parameterless for the same reason again, and one more: the renderer
@@ -1190,6 +1172,8 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
    * `isPathSegment`-checked profile, absent meaning BroBot's own — the credential gestures' shape.
    */
   z.object({ kind: z.literal('modelList'), provider: providerSchema, profileId }),
+  z.object({ kind: z.literal('providerLaunchChoices'), provider: providerSchema, profileId }),
+  resolveProviderLaunchSchema(profileId),
   /**
    * ⚑ **D-042 · R3 — a model a person adds to, or takes off, a provider's list** — bounded as
    * `createSession`'s `model` is, with no control characters: it is shown in a list and sent as is.
@@ -1558,6 +1542,7 @@ type QuitRuling = 'refused' | 'answered'
 const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // ── Touches no database ────────────────────────────────────────────────────────────────────────
   capabilities: 'answered',
+  providerCatalogue: 'answered',
   profiles: 'answered',
   checkCwd: 'answered',
   // ⚑ Forgets which window looks at a conversation, held in memory only.
@@ -1635,6 +1620,8 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // ⚑ **D-042 · the model list's three doors — refused, `agentModelAndEffort`'s reason**: each reads
   // or writes the database a quit closes, and the list read may ask a provider, which is a launch.
   modelList: 'refused',
+  providerLaunchChoices: 'refused',
+  resolveProviderLaunch: 'refused',
   addHandAddedModel: 'refused',
   deleteHandAddedModel: 'refused',
   // 🔒 **The API-key doors — refused, `modelList`'s reason**: each reads or writes the database a
@@ -1980,6 +1967,8 @@ const WHAT_A_PERSONS_VERB_DOES: Partial<Record<RuntimeCommandKind, string>> = {
   agentMemory: 'reads an agent’s own memory',
   agentModelAndEffort: 'reads the model an agent starts on',
   modelList: 'reads the models a provider offers',
+  providerLaunchChoices: 'reads a provider’s readiness and launch choices',
+  resolveProviderLaunch: 'reads the provider a launch resolves to',
   whatThisAgentWasGiven:
     'reads everything an agent was given: its instructions, its tools and its memory',
   whatTheModelGot: 'reads a message as the model got it, with the agent’s own instructions',
@@ -2691,6 +2680,8 @@ export async function executeRuntimeCommand(
       return host.latestHistory(command.sessionId) satisfies Answer<'latestHistory'>
     case 'capabilities':
       return host.capabilities() satisfies Answer<'capabilities'>
+    case 'providerCatalogue':
+      return host.providerCatalogue() satisfies Answer<'providerCatalogue'>
     case 'providerConnections':
       return host.providerConnections() satisfies Answer<'providerConnections'>
     case 'profiles':
@@ -2828,6 +2819,15 @@ export async function executeRuntimeCommand(
       // ⚑ **Gated like `agentIdentities`, the roster it sits beside** (677): the sheet is a person's.
       requireAPerson(sink, command.kind)
       return host.agentModelAndEffort(command.profileId) satisfies Answer<'agentModelAndEffort'>
+    case 'providerLaunchChoices':
+      requireAPerson(sink, command.kind)
+      return host.providerLaunchChoices(
+        command.provider,
+        command.profileId ?? DEFAULT_PROFILE_ID,
+      ) satisfies Answer<'providerLaunchChoices'>
+    case 'resolveProviderLaunch':
+      requireAPerson(sink, command.kind)
+      return host.resolveProviderLaunch(command) satisfies Answer<'resolveProviderLaunch'>
     case 'modelList':
       // ⚑ **D-042 · gated like `agentModelAndEffort`**: the list carries a person's own models and
       // last pick. ⚑ The profile defaults HERE, the credential gestures' rule: every path that

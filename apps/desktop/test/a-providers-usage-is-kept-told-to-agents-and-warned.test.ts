@@ -31,7 +31,12 @@ import {
   readProviderLimit,
   wallsFromUsage,
 } from '../src/shared/provider-limit'
-import { readingSays, usageSays } from '../src/renderer/src/lib/usage-limit'
+import {
+  atItsLimitSays,
+  readingSays,
+  usageSays,
+  usageTitle,
+} from '../src/renderer/src/lib/usage-limit'
 import type { ProviderUsageReading } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
@@ -265,14 +270,54 @@ describe('§2–§4 · on a host', () => {
           claude: [
             {
               window: 'seven_day',
+              period: { word: 'weekly', durationMs: WEEK, bucket: false, bucketName: null },
               usedPercent: 11,
               resetsAt: clock + WEEK,
               at: clock,
               unconfirmed: true,
+              warning: null,
             },
           ],
           codex: [],
         })
+      } finally {
+        await restarted.closeAll()
+      }
+    })
+
+    it('projects live and kept raw windows without rewriting their stored readings', async () => {
+      await reading(await open(), [
+        { window: 'seven_day', usedPercent: 23, resetsAt: clock + WEEK },
+        { window: 'a 5-hour window (Fern)', usedPercent: 41, resetsAt: null },
+        { window: 'future opaque period', usedPercent: null, resetsAt: null },
+      ])
+      const stored = kept()
+      const periods = [
+        { word: 'weekly', durationMs: WEEK, bucket: false, bucketName: null },
+        { word: '5-hour', durationMs: 5 * 3_600_000, bucket: true, bucketName: 'Fern' },
+        { word: null, durationMs: null, bucket: false, bucketName: null },
+      ]
+      expect(host.providerUsage().claude).toEqual(
+        stored.claude.map((one, i) => ({ ...one, period: periods[i], warning: null })),
+      )
+      expect(stored.claude).toEqual([
+        { window: 'seven_day', usedPercent: 23, resetsAt: clock + WEEK, at: clock },
+        { window: 'a 5-hour window (Fern)', usedPercent: 41, resetsAt: null, at: clock },
+        { window: 'future opaque period', usedPercent: null, resetsAt: null, at: clock },
+      ])
+      expect(kept()).toEqual(stored)
+      await host.closeAll()
+      const restarted = hostOn()
+      try {
+        expect(restarted.providerUsage().claude).toEqual(
+          stored.claude.map((one, i) => ({
+            ...one,
+            period: periods[i],
+            unconfirmed: true,
+            warning: null,
+          })),
+        )
+        expect(kept()).toEqual(stored)
       } finally {
         await restarted.closeAll()
       }
@@ -412,6 +457,41 @@ describe('§2–§4 · on a host', () => {
   describe('§4 · the person is told when a window nears its limit', () => {
     const limits = () => host.limitsForAPerson().rows
 
+    it('enriches old ledger diagnostics and current limits without rewriting history', async () => {
+      const handle = await open()
+      const sessionId = window.messages[0]!.sessionId
+      const timed = `claude is rate-limited (five_hour) — 92% used; resets ${new Date(clock + 3_600_000).toISOString()}`
+      handle.simulateError(timed, false)
+      handle.simulateError('claude is rate-limited', false)
+      await pump()
+      const errors = () => store.events(sessionId).filter((row) => row.event.type === 'error')
+      const raw = errors()
+      const walk = host.limitsForAPerson()
+      const [current] = providerConditions(walk.rows, clock)
+      expect(current?.said).toContain(timed)
+      expect(current?.said).toContain('claude is rate-limited')
+      expect(current?.meaning).toEqual([
+        { word: '5-hour', used: 92, untimed: false },
+        { word: null, used: null, untimed: true },
+      ])
+      expect(usageSays(current!, clock)).toContain('its 5-hour limit (92% used)')
+      expect(atItsLimitSays(current!, clock)).toContain('at least until')
+      expect(usageTitle(current!)).toContain(timed)
+      expect(await host.readLimitsForWindow()).toEqual(walk)
+      expect(errors()).toEqual(raw)
+      await host.closeAll()
+      const restarted = hostOn()
+      try {
+        const [retained] = providerConditions(restarted.limitsForAPerson().rows, clock)
+        expect(retained).toEqual(current)
+        expect(usageSays(retained!, clock)).toBe(usageSays(current!, clock))
+        expect(atItsLimitSays(retained!, clock)).toBe(atItsLimitSays(current!, clock))
+        expect(errors()).toEqual(raw)
+      } finally {
+        await restarted.closeAll()
+      }
+    })
+
     it(`🔴 at ${String(USAGE_NEARS_ITS_LIMIT_AT)}% of Claude’s weekly window: a wall about to stop, said as the band says one`, async () => {
       const handle = await open()
       await reading(handle, [{ window: 'seven_day', usedPercent: 79, resetsAt: clock + WEEK }])
@@ -520,6 +600,7 @@ describe('§2–§4 · on a host', () => {
     it('⛔ the card says a reading whose window has reset since in the past', () => {
       const reading = {
         window: 'seven_day',
+        period: { word: 'weekly', durationMs: WEEK, bucket: false, bucketName: null },
         usedPercent: 95,
         resetsAt: clock - WEEK,
         at: clock - WEEK - 1,
@@ -652,10 +733,12 @@ describe('§2–§4 · on a host', () => {
       expect(host.providerUsage().claude).toEqual([
         {
           window: 'seven_day',
+          period: { word: 'weekly', durationMs: WEEK, bucket: false, bucketName: null },
           usedPercent: 82,
           resetsAt: read + WEEK,
           at: read,
           unconfirmed: true,
+          warning: null,
         },
       ])
       // ⛔ Nobody has said this is still the Mac's sign-in: 82% may be the account before's.
@@ -672,7 +755,14 @@ describe('§2–§4 · on a host', () => {
       // A conversation on another sign-in reports its week, and says nothing of five hours.
       await reading(await openOn(OTHER), weekly(3))
       expect(host.providerUsage().claude).toEqual([
-        { window: 'seven_day', usedPercent: 3, resetsAt: now + WEEK, at: now },
+        {
+          window: 'seven_day',
+          period: { word: 'weekly', durationMs: WEEK, bucket: false, bucketName: null },
+          warning: null,
+          usedPercent: 3,
+          resetsAt: now + WEEK,
+          at: now,
+        },
       ])
       expect(limits()).toEqual([])
       // …and it is that sign-in the file names from now on.
@@ -692,8 +782,27 @@ describe('§2–§4 · on a host', () => {
         { window: 'five_hour', usedPercent: 10, resetsAt: now + 60 * 60_000 },
       ])
       expect(host.providerUsage().claude).toEqual([
-        { window: 'seven_day', usedPercent: 82, resetsAt: read + WEEK, at: read },
-        { window: 'five_hour', usedPercent: 10, resetsAt: now + 60 * 60_000, at: now },
+        {
+          window: 'seven_day',
+          period: { word: 'weekly', durationMs: WEEK, bucket: false, bucketName: null },
+          warning: expect.objectContaining({
+            provider: 'claude',
+            standing: 'about-to-stop',
+            resetsAt: read + WEEK,
+            meaning: { word: 'weekly', used: 82, untimed: false },
+          }),
+          usedPercent: 82,
+          resetsAt: read + WEEK,
+          at: read,
+        },
+        {
+          window: 'five_hour',
+          period: { word: '5-hour', durationMs: 5 * 3_600_000, bucket: false, bucketName: null },
+          warning: null,
+          usedPercent: 10,
+          resetsAt: now + 60 * 60_000,
+          at: now,
+        },
       ])
       expect(limits()).toMatchObject([{ provider: 'claude', window: 'seven_day' }])
     })
@@ -748,7 +857,14 @@ describe('§2–§4 · on a host', () => {
       const now = clock
       await reading(newer, [{ window: 'five_hour', usedPercent: 3, resetsAt: now + HOUR }])
       expect(host.providerUsage().claude).toEqual([
-        { window: 'five_hour', usedPercent: 3, resetsAt: now + HOUR, at: now },
+        {
+          window: 'five_hour',
+          period: { word: '5-hour', durationMs: 5 * 3_600_000, bucket: false, bucketName: null },
+          warning: null,
+          usedPercent: 3,
+          resetsAt: now + HOUR,
+          at: now,
+        },
       ])
       expect(limits()).toEqual([])
       expect(usageKeptIn(db).read().readOn).toEqual({ claude: OTHER })

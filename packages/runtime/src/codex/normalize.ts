@@ -194,8 +194,7 @@ export function normalizeNotification(
       // The current `ErrorNotification` carries `error.message` (a `TurnError`);
       // read it, falling back to a legacy top-level `message` (007 P2-2).
       const turnError = readField(params, 'error')
-      const message =
-        readString(turnError, 'message') || readString(params, 'message') || 'codex error'
+      const message = turnErrorText(turnError, readString(params, 'message') || 'codex error')
       // 098: the typed half. `codexErrorInfo: "unauthorized"` is how a rejected credential arrives —
       // as turn OUTPUT rather than as a refusal, which is why 085's conversion of the throw sites
       // did not already cover it. The sentence is kept verbatim; the cause is what a surface reads.
@@ -1256,7 +1255,10 @@ export function codexTurnOutcome(params: unknown): TurnOutcome {
     case 'interrupted':
       return { outcome: 'interrupted' }
     case 'failed':
-      return { outcome: 'failed', message: `turn failed: ${turnErrorText(turn)}` }
+      return {
+        outcome: 'failed',
+        message: `turn failed: ${turnErrorText(readField(turn, 'error'))}`,
+      }
     case 'inProgress':
       return {
         outcome: 'failed',
@@ -2488,11 +2490,9 @@ function asyncQuestionsOf(item: Record<string, unknown>): { title: string; optio
   return questions
 }
 
-function turnErrorText(turn: unknown): string {
-  const error = readField(turn, 'error')
-  const message = readString(error, 'message') || 'unknown'
-  // ⚑ 0.160.0's `TurnError.misalignment`: a block's own *"substantive localized explanation"*, the
-  // provider's words, carried beside its message rather than dropped.
+function turnErrorText(error: unknown, fallback = 'unknown'): string {
+  const message = readString(error, 'message') || fallback
+  // Keep the provider's explanation beside its message.
   const explanation = readString(readField(error, 'misalignment'), 'detailedExplanation').trim()
   return explanation ? `${message} — ${explanation}` : message
 }

@@ -1,4 +1,4 @@
-import type { TranscriptEvent } from './conversation-events'
+import type { TranscriptEvent, WorkAncestry } from './conversation-events'
 import type { Provider } from '@brobot2/shared'
 import type { LocalZone } from './local-time'
 import type { MessagePath, MessagePathAsk, MessagePathTarget, RevealResult } from './runtime-ipc'
@@ -92,6 +92,7 @@ export interface HistoryConversation {
 
 /** One stored event of a conversation, with when it was recorded (epoch ms). */
 export interface HistoryEvent {
+  readonly workAncestry?: WorkAncestry
   readonly event: TranscriptEvent
   readonly at: number
 }

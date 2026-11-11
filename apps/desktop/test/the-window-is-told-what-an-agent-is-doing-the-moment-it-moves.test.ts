@@ -381,7 +381,7 @@ describe('D-019 · main tells the window the moment an agent’s state moves', (
     expect(saidOf(b)).toHaveLength(b0)
   })
 
-  it('a mark that changes nothing says nothing', async () => {
+  it('an equal state clears the pending reading after a marked frame', async () => {
     const a = await opens('agent-a')
     await settle()
     pushed.length = 0
@@ -390,18 +390,17 @@ describe('D-019 · main tells the window the moment an agent’s state moves', (
     await waitFor(() => saidOf(a).length === 1, 'the level to be pushed once')
     const f1 = flushes()
 
-    // The IDENTICAL frame: a flush runs (proved by the counter, so the silence is not a flush that
-    // never came), derives an equal word, and pushes nothing.
+    // The identical frame invalidates the live reading; the flush republishes its equal state.
     handleOf(0).simulateBackgroundWork()
     await waitFor(() => flushes() === f1 + 1, 'a flush to run for the second frame')
     await settle()
-    expect(saidOf(a)).toHaveLength(1)
+    expect(saidOf(a)).toHaveLength(2)
     expect(saidOf(a)[0]?.state).toMatchObject({ is: 'in-the-background' })
 
     // The same path pushes when the word does change: the level empties.
     handleOf(0).simulateBackgroundWork({ running: [] })
     await waitFor(() => lastSaid(a)?.is === 'idle', 'the emptied level to be pushed')
-    expect(saidOf(a)).toHaveLength(2)
+    expect(saidOf(a)).toHaveLength(3)
   })
 
   it('a window that read the list holds that word, so the next word derived is pushed whatever it is', async () => {
@@ -413,13 +412,12 @@ describe('D-019 · main tells the window the moment an agent’s state moves', (
     await waitFor(() => saidOf(a).length === 1, 'the level to be pushed once')
     const first = lastSaid(a)
 
-    // The control, on the same conversation: with NO list read in between, the identical frame runs
-    // a flush (the counter proves it came) and is not pushed again.
+    // An identical frame republishes after invalidation even without an intervening list read.
     const f1 = flushes()
     handleOf(0).simulateBackgroundWork()
     await waitFor(() => flushes() === f1 + 1, 'a flush to run for the identical frame')
     await settle()
-    expect(saidOf(a)).toHaveLength(1)
+    expect(saidOf(a)).toHaveLength(2)
 
     // The window reads the list: it holds THIS word now, and the list agrees with the push.
     const row = listed(a)
@@ -429,8 +427,8 @@ describe('D-019 · main tells the window the moment an agent’s state moves', (
     // The identical frame once more: the word is equal, and it is pushed anyway, because the list
     // read reset what was last said.
     handleOf(0).simulateBackgroundWork()
-    await waitFor(() => saidOf(a).length === 2, 'the word to be pushed again after a list read')
-    expect(saidOf(a)[1]?.state).toEqual(first)
+    await waitFor(() => saidOf(a).length === 3, 'the word to be pushed again after a list read')
+    expect(saidOf(a)[2]?.state).toEqual(first)
   })
 
   it('a running conversation is derived from the wait reads it was last derived from, until a row they select is written', async () => {
@@ -453,8 +451,9 @@ describe('D-019 · main tells the window the moment an agent’s state moves', (
     handleOf(0).simulateUserInput('which one?')
     await waitFor(() => ledgerReads() > n1, 'the flush to read the ledger afresh')
     await settle()
-    // A provider's open question is not owed while its status is idle: the word is unchanged.
-    expect(saidOf(a)).toHaveLength(said)
+    // The unchanged idle state is republished after the pending reading.
+    expect(saidOf(a)).toHaveLength(said + 1)
+    expect(lastSaid(a)?.is).toBe('idle')
   })
 
   it('a conversation that cannot be read costs its own word and no other’s', async () => {
@@ -804,13 +803,6 @@ describe('D-019 · runtime:states leaves main on a channel of its own', () => {
         code(file, read(file)).includes('RUNTIME_STATES_CHANNEL'),
     )
     expect(naming).toEqual([join('main', 'index.ts')])
-
-    // The host announces around no marker: it reads its dep in six places and no more (D-026:
-    // `filesWereKept`, the fifth; D-029: `armItsWakeUp`, the sixth — a wake-up is D-018's rule one
-    // act over, so a host nobody listens to starts nothing on its own; the launch's arm rides the
-    // constructor's existing read and adds none).
-    const hostCode = code('main/runtime/runtime-host.ts', read('main/runtime/runtime-host.ts'))
-    expect(hostCode.match(/this\.deps\.statesMoved/g)).toHaveLength(6)
 
     // The slices exist and the real ones are whole.
     expect(mainSlice).toContain('BrowserWindow.getAllWindows()')

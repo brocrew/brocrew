@@ -2,6 +2,7 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import type { Provider } from '../../../shared/runtime-ipc'
 import type { ProviderSetupBridge, ProviderSetupState } from '../../../shared/provider-setup'
 import { readableError } from '../lib/session-record'
+import { useClientProviders } from '../client-provider/injection'
 
 type Operation = 'install' | 'signIn'
 
@@ -9,6 +10,7 @@ export function useProviderSetup(
   provider: () => Provider,
   completed: (operation: Operation) => Promise<void>,
 ) {
+  const api = useClientProviders()
   const state = shallowRef<ProviderSetupState | null>(null)
   const failure = ref<string | null>(null)
   const admitting = ref(false)
@@ -96,7 +98,7 @@ export function useProviderSetup(
     void refresh()
   })
   onMounted(() => {
-    bridge = window.api?.providerSetup
+    bridge = api.setup
     unsubscribe = bridge?.onState((next) => accept(next, true))
     void refresh()
   })

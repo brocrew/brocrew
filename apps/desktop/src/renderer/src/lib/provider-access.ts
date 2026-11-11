@@ -1,5 +1,6 @@
 import { ref, shallowRef } from 'vue'
-import type { ApiKeyStatus, AuthState, Provider, RuntimeBridge } from '../../../shared/runtime-ipc'
+import type { ApiKeyStatus, AuthState, Provider } from '../../../shared/runtime-ipc'
+import type { ClientProviderApi } from '../../../shared/client-provider-api'
 import { DEFAULT_PROFILE_ID } from '../../../shared/runtime-ipc'
 import { readableError } from './session-record'
 
@@ -9,7 +10,7 @@ export type AuthPhase = 'idle' | 'checking' | 'copying' | 'signing-in'
 export function createProviderAccess(
   provider: () => Provider,
   changed: () => void,
-  bridge: () => Pick<RuntimeBridge, 'checkProviderAuth' | 'apiKeyStatus'>,
+  bridge: () => Pick<ClientProviderApi, 'checkProviderAuth' | 'apiKeyStatus'>,
 ) {
   const auth = shallowRef<AuthState | null>(null)
   const authBusy = ref<AuthPhase>('idle')

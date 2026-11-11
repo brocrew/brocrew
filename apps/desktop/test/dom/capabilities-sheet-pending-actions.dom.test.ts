@@ -1,9 +1,10 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+
 import { DEFAULT_CAPABILITIES, MAX_CAPABILITY_COUNT } from '../../src/shared/capabilities'
 import type {
   AgentIdentities,

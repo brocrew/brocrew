@@ -1,3 +1,4 @@
+import type { WorkAncestry } from '../../../shared/work-ancestry'
 import type {
   QueuedItem,
   AssistantItem,
@@ -161,7 +162,6 @@ import { startHumanAnswer, finishHumanAnswer } from './human-answers'
  */
 
 /** ⚠️ Not `ErrorEvent` — that is a DOM global, and this file is compiled with `lib.dom`. */
-type RuntimeErrorEvent = Extract<RuntimeEvent, { type: 'error' }>
 type Timed = Pick<TranscriptItem, 'at'>
 
 /**
@@ -193,6 +193,14 @@ export const MAX_HELD_DIFF_REPORTS = 20
 
 export function createTranscript(): TranscriptState {
   return {
+    workAncestry: {
+      after: -1,
+      agents: new Map(),
+      tools: new Map(),
+      dispatches: new Map(),
+      missing: [],
+      truncated: false,
+    },
     humanAnswers: { latest: null, active: null },
     items: [],
     status: 'idle',
@@ -206,6 +214,7 @@ export function createTranscript(): TranscriptState {
     planId: null,
     toolItems: {},
     subAgentHomes: {},
+    subAgentCards: new Map(),
     cardTools: {},
     echoedAnswers: {},
     pending: { permissions: 0, questions: 0 },
@@ -810,126 +819,6 @@ export function briefItemIn(state: TranscriptState, label: string): string | und
   }
   return undefined
 }
-/**
- * What a reader is told when the provider rejected the credential mid-conversation (098).
- *
- * Deliberately says where to fix it. The launcher's panel is the only place that offers the two
- * remedies, and a session that is already open has no such panel — so the sentence has to carry the
- * direction, or it is the same dead end in friendlier words.
- */
-const AUTH_ERROR_NOTICE =
-  'This profile’s sign-in was rejected, so this conversation cannot continue. Start a new conversation to sign in again — the launcher will offer it.'
-
-/**
- * The same rejection, where this app replaces a refused copy of the sign-in by itself: the copy an
- * agent's own home holds, replaced once from a newer sign-in to the same account, and the
- * conversation reopened. The row is written when the refusal arrives, before the app knows whether
- * a newer sign-in exists, so the sentence is true both ways. One template: `name` is the provider's.
- */
-export function replacedSignInNotice(name: string): string {
-  return (
-    `${name} refused this agent’s sign-in, so this turn stopped. This app replaces it by itself ` +
-    'when a newer sign-in to the same account is on this computer, and reopens this conversation. ' +
-    `Signing in to ${name} again on the ${name} card in Providers gives it one.`
-  )
-}
-
-/**
- * ⚑ **The same rejection, when the profile runs on the OpenAI API key a person saved** (`onAKey` on
- * the error, see `events.ts`). ⛔ *"Sign in again"* is no remedy for a key, and the launcher offers no
- * sign-in while one is saved. ⚑ So it names the key, the card's own “Check it works” — named by the
- * word on the button — and what a new conversation runs on. ⚠️ It names no vendor and does not say
- * the key is the saved one: a home copied from a machine whose own Codex runs on a key reads as a
- * key too, and saving one on the card is the remedy there as well. ⚠️ It does not promise this one carries
- * on after a new key: measured in the bundled Codex, a running app-server reloads its credential
- * after a refusal only for a ChatGPT sign-in (*"Skipping auth reload because no account id is
- * available"*).
- */
-const AUTH_KEY_NOTICE =
-  'The API key this conversation was started with was refused, so this conversation cannot run on ' +
-  'it. Check or replace the key under “API key” on the Codex card in Providers — “Check it works” ' +
-  'there asks whether a saved key still works — then start a new conversation, which runs on the ' +
-  'key saved then.'
-
-/**
- * The other rejected credential: the one **this conversation was launched with**, which a fresh
- * launch replaces (110).
- *
- * Distinguish an expired conversation credential snapshot from a broken machine login. A new session may authenticate successfully while the old one cannot, so do not tell the person to abandon work merely to sign in again.
- *
- * The last sentence is here because reopening is honest in **both** branches: if the machine login
- * has expired too, the reopen refuses before it starts anything — `prepareProviderHome` asks
- * `claudeAuthHealth()` and throws, and the rail row shows *"Run `claude` in a terminal once — it
- * refreshes on its own — then try again"*. So this never has to guess which case it is in, and never
- * has to ask.
- *
- * ⚠️ That is a DIFFERENT sentence from {@link AUTH_ERROR_NOTICE} above, and an earlier version of
- * this comment said it was the same one (review). They are two remedies on two paths: that notice
- * handles Codex's `cause: 'auth'`; Claude's rejected current login has its own sign-in notice.
- * Nothing pins the two texts together, so nothing should imply they move
- * together.
- *
- * ⚠️ **It names the control by the word ON the control.** The first draft said "reopen it from the
- * rail" — and nothing in this app is labelled "rail".
- *
- * ## 🔴 672 · what it said for a year, and what was measured instead (`656` F6)
- *
- * ⛔ **It said *"Nothing here is lost — press Resume on it under the closed threads in the
- * sidebar"*.** ⚑ **D-017b · there is no closed list and no press to find**: a message sent from the
- * conversation's own view continues it, so that is what it says.
- *
- * ⛔ ***"Nothing here is lost"* was false on this path** — `reopening.ts` already called the phrase a
- * claim of more than happened. Measured by `672`, replaying the Claude ending on the real host,
- * store and fold: the transcript IS kept; the turn that was running fails and its answer never
- * comes; the reopened child starts with no *"Allow for this conversation"* approvals (a fresh
- * `SessionGrants`) and nothing running in the background (`markTerminal` → `stopDetachedWork`); a
- * queued message is not sent and its row offers the words back; and a draft is kept only while this
- * stays the selected conversation. ⚑ **So it says what is kept, where to press, and the two losses
- * the reopen itself carries** — the turn's failure has its own notice one row down (`turn failed`),
- * and the queued row says *not sent* on its own.
- *
- * ⚑ **The two clauses about the reopen were measured TRUE and stay**: the reopen re-reads the
- * machine login (`prepareProviderHome` → `claudeAuthHealth`), and an expired one refuses with the
- * store's own sentence on the rail row.
- *
- * ⛔ **One arm it cannot help**: a restored `.brobot` bundle replays this notice, where no message
- * continues the conversation — a recording's notices are history, as every other instruction in it is.
- *
- * 🔴 **D-004 · R101 — and it says the one case that needs no press**: when the machine login was
- * renewed elsewhere, the host reopens the conversation by itself ({@link
- * REOPENED_ON_A_RENEWED_SIGN_IN} is the line below it). ⚠️ *"Otherwise"* keeps the press true for
- * the same token, an expired login, and a reopen the host could not make.
- */
-const STALE_AUTH_NOTICE =
-  'The sign-in this conversation was launched with is no longer valid, so it cannot continue on ' +
-  'it. Its transcript is kept. If your machine’s Claude login was renewed elsewhere on this computer, ' +
-  'this app carries it on with the new login by itself, and a line below says so. Otherwise, send ' +
-  'it a message to carry on: that reads your machine login again, and says so if that login has ' +
-  'expired too. It carries on without its “Allow for this conversation” approvals or ' +
-  'anything that was running in the background.'
-
-/**
- * ⚑ **The same refusal, when the credential was the API key a person saved** (`onAKey` on the
- * error, see `events.ts`). ⛔ Every clause of {@link STALE_AUTH_NOTICE} about the Mac's login would be
- * false here: no Claude elsewhere renewed anything, nothing reopens by itself, and a fresh start reads
- * the same key. ⚑ So it names the key and the one place to check or replace it — the card's own
- * “Check it works”, named by the word on the button, asks Anthropic whether it still takes the
- * key — and what a message then does.
- */
-const STALE_KEY_NOTICE =
-  'Anthropic refused the API key this conversation was started with, so it cannot continue on it. ' +
-  'Its transcript is kept. Press “Check it works” under “API key” on the Claude card in Providers, and ' +
-  'replace the key if it is refused; then send this conversation a message to carry on, which ' +
-  'starts it again and reads the key afresh. It carries on without its “Allow for this ' +
-  'conversation” approvals or anything that was running in the background.'
-
-/**
- * 🔴 **D-004 · R101 — what a conversation reopened by itself on a renewed sign-in says**, once, at
- * the seam ({@link ReopenedEvent.because}).
- *
- * ⚑ **The card's words.** ⛔ *"Nothing was re-sent"* is the promise the host keeps: the failed
- * turn's tool steps may already have run, so the person decides whether to ask again.
- */
 export const REOPENED_ON_A_RENEWED_SIGN_IN =
   'Its sign-in changed since it started; reopened on the current one. Nothing was re-sent: send ' +
   'again to carry on.'
@@ -960,73 +849,6 @@ const REPLACED_BY_A_NEW_CONVERSATION =
 const TOOK_THE_PLACE_OF_ONE =
   'This conversation took the place of one of the same agent’s that could not be reopened. It has ' +
   'the agent’s memory, not that conversation’s history.'
-
-/**
- * What a billing refusal is said as: the credential it ran on, and the ways out. Credit for the
- * account carries this conversation on; a replaced key or a new one reaches only conversations
- * started after it, because a running one keeps the credential it started with. Removing the key to
- * run on a login is offered on the provider's card, which knows whether this computer has one.
- */
-export function billingNotice(
-  provider: keyof typeof PROVIDER_NAME | null,
-  onAKey: boolean,
-): string {
-  if (provider === null) {
-    return (
-      'The provider would not run this turn on the account this conversation runs on, because of ' +
-      'that account’s billing. Add credit to it, then send this conversation a message to carry on.'
-    )
-  }
-  const name = PROVIDER_NAME[provider]
-  return onAKey
-    ? `This turn was refused on the API key saved for ${name}, because the account the key ` +
-        'belongs to can’t pay for it. Add credit to that account, then send this conversation a ' +
-        `message to carry on. Or replace the key under “API key” on the ${name} card in ` +
-        'Providers; conversations started after that run on the new key.'
-    : `This turn was refused on the account this conversation’s ${name} login belongs to, ` +
-        'because of that account’s billing. Check its plan and billing, then send this ' +
-        `conversation a message to carry on. Or save an API key under “API key” on the ${name} ` +
-        'card in Providers; conversations started after that run on it.'
-}
-
-/**
- * A cause with no notice of its own is a compile error here (110 review).
- *
- * ⚠️ **It returns a sentence rather than throwing**, because the day this is reached at RUNTIME —
- * a ledger written by a newer build, replayed by an older one — the reader is owed a row, not a
- * crashed fold. The type is `never`, so that day cannot arrive from this build's own code.
- */
-function assertNoUnhandledCause(cause: never): string {
-  return `this conversation reported a problem this version does not recognize (${String(cause)})`
-}
-
-/**
- * What a typed `cause` is said as — the whole of 085's split in one function.
- *
- * ⚠️ **A function rather than three `notice` calls, since 246 §1**, because the fold now needs the
- * SENTENCE as a value: it remembers what this turn last said so the turn's own ending cannot say it
- * a second time. Drawing and remembering from two switches would be two answers to one question.
- */
-function causeNotice(
-  cause: NonNullable<RuntimeErrorEvent['cause']>,
-  /** ⚑ The refused credential was the person's API key ({@link STALE_KEY_NOTICE}, {@link AUTH_KEY_NOTICE}). */
-  onAKey: boolean,
-  /**
-   * The provider's name where the host says this app replaces a refused copy of this sign-in, else
-   * `null`: no such fact on the row, or no provider to name.
-   */
-  replacedFor: string | null = null,
-): string {
-  switch (cause) {
-    case 'auth':
-      if (onAKey) return AUTH_KEY_NOTICE
-      return replacedFor === null ? AUTH_ERROR_NOTICE : replacedSignInNotice(replacedFor)
-    case 'auth_stale':
-      return onAKey ? STALE_KEY_NOTICE : STALE_AUTH_NOTICE
-    default:
-      return assertNoUnhandledCause(cause)
-  }
-}
 
 /**
  * 🔴 **425 · the five remedies, as the clause a person reads** (HO-023 §2.2) — the vocabulary is
@@ -1124,6 +946,7 @@ function signInNotice(
   detail: string,
   retrying: boolean,
   needsSignIn = false,
+  captions?: NonNullable<NoticeItem['signIn']>['captions'],
 ): void {
   const previous = state.items.find((item) => item.id === state.lastError?.signInNotice)
   const details = previous?.kind === 'notice' ? (previous.signIn?.details ?? []) : []
@@ -1134,6 +957,7 @@ function signInNotice(
     text,
     signIn: {
       state: retrying ? 'retrying' : 'refused',
+      ...(retrying && captions !== undefined ? { captions } : {}),
       ...(needsSignIn ? { needsSignIn: true as const } : {}),
       details: [...details, detail],
     },
@@ -1152,7 +976,8 @@ function endSignInRetry(state: TranscriptState, stopped = false): void {
   const item = currentSignInNotice(state)
   if (item?.signIn?.state !== 'retrying') return
   item.signIn.state = 'ended'
-  item.text = stopped ? 'Claude sign-in retry stopped.' : 'Claude sign-in retry ended.'
+  const text = item.signIn.captions?.[stopped ? 'stopped' : 'ended']
+  if (text !== undefined) item.text = text
   item.level = 'info'
 }
 
@@ -1916,6 +1741,29 @@ export function cardHomes(state: TranscriptState): { card: SubAgentCard; itemId:
   return out
 }
 
+export function acceptWorkAncestry(state: TranscriptState, read: WorkAncestry): void {
+  const changedEpoch = read.after !== undefined && read.after !== state.workAncestry.after
+  if (read.after !== undefined) state.workAncestry.after = read.after
+  if (read.reset === true || changedEpoch) {
+    state.subAgentHomes = {}
+    state.subAgentCards.clear()
+    state.toolItems = {}
+    state.cardTools = {}
+  }
+  if (read.reset === true || changedEpoch) {
+    state.workAncestry.agents.clear()
+    state.workAncestry.tools.clear()
+    state.workAncestry.dispatches.clear()
+    state.workAncestry.missing = []
+    state.workAncestry.truncated = false
+  }
+  for (const fact of read.agents) state.workAncestry.agents.set(fact.agentId, fact)
+  for (const fact of read.tools) state.workAncestry.tools.set(fact.callId, fact)
+  for (const fact of read.dispatches) state.workAncestry.dispatches.set(fact.callId, fact)
+  if (read.missing !== undefined) state.workAncestry.missing = read.missing
+  if (read.truncated !== undefined) state.workAncestry.truncated = read.truncated
+}
+
 /**
  * Fold one event into the transcript, and stamp whatever it added with when it happened.
  *
@@ -1930,7 +1778,33 @@ export function applyEvent(
   at?: number,
   ordinal?: number,
   humanFinal?: HumanFinalContext | null,
+  workAncestry?: WorkAncestry,
+  ancestryContext?: readonly import('../../../shared/conversation-events').PersistedEventInfo[],
 ): void {
+  if (workAncestry !== undefined) acceptWorkAncestry(state, workAncestry)
+  for (const row of workAncestry?.baseline ?? []) {
+    if (row.event.type === 'sub_agent' && findCard(state, row.event.agentId) !== undefined) continue
+    if (
+      row.event.type === 'tool_call' &&
+      (state.toolItems[row.event.id] !== undefined || state.cardTools[row.event.id] !== undefined)
+    )
+      continue
+    applyEvent(state, row.event, row.at, row.ordinal)
+  }
+  for (const row of ancestryContext ?? []) {
+    if (
+      row.event.type === 'tool_call' &&
+      (state.toolItems[row.event.id] !== undefined || state.cardTools[row.event.id] !== undefined)
+    )
+      continue
+    if (
+      row.event.type === 'sub_agent' &&
+      row.event.phase === 'started' &&
+      findCard(state, row.event.agentId) !== undefined
+    )
+      continue
+    applyEvent(state, row.event, row.at, row.ordinal)
+  }
   const before = state.seq
   const from = state.items.length
   startHumanAnswer(state.humanAnswers, event, ordinal ?? state.seq)
@@ -2312,22 +2186,9 @@ function markLevelRunning(state: TranscriptState, running: readonly BackgroundRo
   }
 }
 
-/**
- * The card for `agentId`, wherever it was placed (029) — the tool row that dispatched it, or the
- * standalone item standing in for a parent that never arrived. Found by identity, so a `progress`
- * that lands after a dozen other events still updates the right card.
- */
+/** The current provider life's card, retained by identity when its home changes. */
 function findCard(state: TranscriptState, agentId: string): SubAgentCard | undefined {
-  const home = itemById(state, state.subAgentHomes[agentId])
-  if (home?.kind === 'tool') return home.subAgents?.find((card) => card.agentId === agentId)
-  if (home?.kind === 'subAgent') return home.card
-  // A card nested inside another CARD has no item to be found through (035): its home is recorded
-  // as `card:<agentId>` precisely because there is no item id to record. Correlation is still by
-  // identity — the same rule 029 set — it just has to walk the tree to do it.
-  if (state.subAgentHomes[agentId] !== undefined) {
-    return findCardWhere(state, (card) => card.agentId === agentId)
-  }
-  return undefined
+  return state.subAgentCards.get(agentId)
 }
 
 /** Every card held by an item, whichever kind of home it is. */
@@ -2393,9 +2254,8 @@ function findCardWhere(
  * lookup, for a dispatch that happened inside a sub-agent rather than in the conversation.
  */
 function cardOwningTool(state: TranscriptState, callId: string): SubAgentCard | undefined {
-  const agentId = state.cardTools[callId]
-  if (agentId === undefined) return undefined
-  return findCardWhere(state, (card) => card.agentId === agentId)
+  const agentId = state.workAncestry.tools.get(callId)?.agentId
+  return agentId === undefined ? undefined : findCard(state, agentId)
 }
 
 /**
@@ -2407,12 +2267,8 @@ function cardOwningTool(state: TranscriptState, callId: string): SubAgentCard | 
  * `task_started`, in which case it renders in the conversation rather than being swallowed.
  */
 function cardFor(state: TranscriptState, parentToolCallId: string): SubAgentCard | undefined {
-  const parent = itemById(state, state.toolItems[parentToolCallId])
-  const onParent = cardsOf(parent).find((card) => card.parentToolCallId === parentToolCallId)
-  if (onParent) return onParent
-  // Anywhere else in the tree: still waiting at top level for this very row, or already nested
-  // inside another agent's card because the dispatching call was that agent's own (035).
-  return findCardWhere(state, (card) => card.parentToolCallId === parentToolCallId)
+  const agentId = state.workAncestry.dispatches.get(parentToolCallId)?.agentIds[0]
+  return agentId === undefined ? undefined : findCard(state, agentId)
 }
 
 /**
@@ -2420,7 +2276,7 @@ function cardFor(state: TranscriptState, parentToolCallId: string): SubAgentCard
  * CALL when that call belongs to another agent (035), else at top level.
  */
 function placeCard(state: TranscriptState, card: SubAgentCard): SubAgentCard {
-  const parentCallId = card.parentToolCallId ?? ''
+  const parentCallId = state.workAncestry.agents.get(card.agentId)?.dispatch ?? ''
   const parent = itemById(state, state.toolItems[parentCallId])
   if (parent?.kind === 'tool') {
     parent.subAgents = [...(parent.subAgents ?? []), card]
@@ -2432,6 +2288,28 @@ function placeCard(state: TranscriptState, card: SubAgentCard): SubAgentCard {
   state.items.push({ kind: 'subAgent', id, card })
   state.subAgentHomes[card.agentId] = id
   return card
+}
+
+/** Reuse a quiet card already held by this record when jumping to the latest page. */
+export function restoreSubAgent(state: TranscriptState, card: SubAgentCard): void {
+  if (state.subAgentCards.has(card.agentId)) return
+  state.subAgentCards.set(card.agentId, card)
+  placeCard(state, card)
+  const register = (parent: SubAgentCard): void => {
+    for (const row of parent.body) {
+      if (row.kind !== 'tool') continue
+      state.cardTools[row.callId] = parent.agentId
+      for (const child of row.subAgents ?? []) {
+        const home = state.subAgentHomes[child.agentId]
+        const index = state.items.findIndex((item) => item.id === home && item.kind === 'subAgent')
+        if (index >= 0) state.items.splice(index, 1)
+        state.subAgentCards.set(child.agentId, child)
+        state.subAgentHomes[child.agentId] = `card:${parent.agentId}`
+        register(child)
+      }
+    }
+  }
+  register(card)
 }
 
 /**
@@ -2573,14 +2451,15 @@ function normalizeSpeech(text: string | undefined): string {
  * should be able to tear it out of the story it is part of.
  */
 function rehome(state: TranscriptState, card: SubAgentCard): void {
-  if (!card.parentToolCallId) return
+  const dispatch = state.workAncestry.agents.get(card.agentId)?.dispatch
+  if (dispatch === undefined) return
   const current = itemById(state, state.subAgentHomes[card.agentId])
   if (current?.kind !== 'subAgent') return // already nested, in a row or in another card
   const drop = (): void => {
     const index = state.items.findIndex((item) => item.id === current.id)
     if (index >= 0) state.items.splice(index, 1)
   }
-  const parent = itemById(state, state.toolItems[card.parentToolCallId])
+  const parent = itemById(state, state.toolItems[dispatch])
   if (parent?.kind === 'tool') {
     drop()
     parent.subAgents = [...(parent.subAgents ?? []), card]
@@ -2591,7 +2470,7 @@ function rehome(state: TranscriptState, card: SubAgentCard): void {
   // another agent's own calls. Checked SECOND because a real row is the stronger claim — a call id
   // cannot be both, but if it somehow were, the conversation is where the reader is looking.
   // `nestUnderCardTool` touches nothing when it finds no home, so a miss leaves the card where it is.
-  if (nestUnderCardTool(state, card, card.parentToolCallId)) drop()
+  if (nestUnderCardTool(state, card, dispatch)) drop()
 }
 
 /**
@@ -2616,15 +2495,29 @@ function reclaimChildRows(state: TranscriptState, card: SubAgentCard): void {
   for (let index = state.items.length - 1; index >= 0; index--) {
     const item = state.items[index]
     if (!item) continue
+    if (
+      state.workAncestry.after >= 0 &&
+      (item.ordinal === undefined || item.ordinal <= state.workAncestry.after)
+    )
+      continue
     // Words the child said before its card existed (131). They become an ordinary prose run in the
     // body, indistinguishable from one that arrived after — because that is what they are.
     if (item.kind === 'assistant') {
-      if (item.parentToolCallId !== card.parentToolCallId) continue
+      if (
+        item.parentToolCallId === undefined ||
+        cardFor(state, item.parentToolCallId)?.agentId !== card.agentId
+      )
+        continue
       state.items.splice(index, 1)
       card.body.unshift({ kind: 'prose', id: nextId(state, 'says'), text: item.text })
       continue
     }
-    if (item.kind !== 'tool' || item.parentToolCallId !== card.parentToolCallId) continue
+    if (
+      item.kind !== 'tool' ||
+      state.toolItems[item.callId] !== item.id ||
+      state.workAncestry.tools.get(item.callId)?.agentId !== card.agentId
+    )
+      continue
     state.items.splice(index, 1)
     delete state.toolItems[item.callId]
     // It stops being a row and becomes a dispatch point (035): same id, different kind of home.
@@ -2647,7 +2540,10 @@ function reclaimChildRows(state: TranscriptState, card: SubAgentCard): void {
       ...(item.result ? { result: { summary: item.result.summary, ok: item.result.ok } } : {}),
       ...(item.unfinished === true ? { unfinished: true } : {}),
       ...(item.background ? { background: { ...item.background } } : {}),
+      ...(item.subAgents ? { subAgents: item.subAgents } : {}),
     })
+    for (const child of item.subAgents ?? [])
+      state.subAgentHomes[child.agentId] = `card:${card.agentId}`
     card.lastTool = item.name
     reclaimed.push(item.callId)
   }
@@ -2708,23 +2604,9 @@ function adoptWorkflows(state: TranscriptState, callId: string): void {
 }
 
 function adoptOrphans(state: TranscriptState, callId: string): void {
-  const home = state.toolItems[callId]
-  const parent = itemById(state, home)
-  // A dispatching call that lives on a CARD rather than in the conversation adopts just the same
-  // (035) — `rehome` already knows how, and going through it keeps one description of what a home is.
-  if (parent?.kind !== 'tool') {
-    if (state.cardTools[callId] === undefined) return
-    for (const card of [...everyCard(state)]) {
-      if (card.parentToolCallId === callId) rehome(state, card)
-    }
-    return
-  }
-  for (let index = state.items.length - 1; index >= 0; index--) {
-    const item = state.items[index]
-    if (item?.kind !== 'subAgent' || item.card.parentToolCallId !== callId) continue
-    state.items.splice(index, 1)
-    parent.subAgents = [item.card, ...(parent.subAgents ?? [])]
-    state.subAgentHomes[item.card.agentId] = parent.id
+  for (const agentId of state.workAncestry.dispatches.get(callId)?.agentIds ?? []) {
+    const card = findCard(state, agentId)
+    if (card !== undefined) rehome(state, card)
   }
 }
 
@@ -3288,12 +3170,13 @@ function foldEvent(
     }
 
     case 'sub_agent': {
+      const dispatch = state.workAncestry.agents.get(event.agentId)?.dispatch
       const existing = findCard(state, event.agentId)
       const card =
         existing ??
         placeCard(state, {
           agentId: event.agentId,
-          ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
+          ...(dispatch === undefined ? {} : { parentToolCallId: dispatch }),
           // WHOSE kind of id this is (111), straight off the wire. Absent on an event persisted
           // before this existed, and the card then says "child agent" rather than guessing.
           ...(event.idKind ? { idKind: event.idKind } : {}),
@@ -3301,6 +3184,7 @@ function foldEvent(
           running: true,
           body: [],
         })
+      state.subAgentCards.set(event.agentId, card)
       // MERGE, never clobber: the phases carry different subsets of the truth — `task_updated` has
       // no `tool_use_id` or `subagent_type` at all — so an absent field means "not reported by this
       // message", never "cleared". Writing undefined over a title the start already gave us would
@@ -3309,7 +3193,7 @@ function foldEvent(
       // Merged like the rest, and it is the one field a later phase can only ever CORRECT upwards:
       // an `observed` card that turns out to have been announced after all is an announced card.
       if (event.origin) card.origin = event.origin
-      if (event.parentToolCallId) card.parentToolCallId = event.parentToolCallId
+      if (dispatch !== undefined) card.parentToolCallId = dispatch
       if (event.kind) card.kind = event.kind
       if (event.title) card.title = event.title
       if (event.lastTool) card.lastTool = event.lastTool
@@ -3824,7 +3708,8 @@ function foldEvent(
               : `turn ${event.state}`,
           )
           if (event.state === 'completed' && item.signIn.state === 'retrying') {
-            item.text = 'Claude sign-in recovered.'
+            const text = item.signIn.captions?.recovered
+            if (text !== undefined) item.text = text
             item.level = 'info'
             item.signIn.state = 'recovered'
             return
@@ -3854,10 +3739,11 @@ function foldEvent(
         const retrying = event.signIn?.state === 'retrying'
         signInNotice(
           state,
-          event.signIn?.message ?? STALE_AUTH_NOTICE,
+          event.signIn?.message ?? providerErrorSentence(event.message),
           event.message,
           retrying,
           needsSignIn,
+          event.signIn?.captions,
         )
         if (event.fatal) markTerminal(state, NOTHING_WAITS_FOR_THIS_ANSWER)
         return
@@ -3870,46 +3756,18 @@ function foldEvent(
         (endingDetail === state.lastError.raw ||
           providerErrorSentence(endingDetail) === providerErrorSentence(state.lastError.raw))
       if (!repeatsAuth) endSignInRetry(state)
-      // ⚠️ **A rejected credential is the one error whose provider text is useless to a reader**
-      // (098). The measured sentence is *"Your access token could not be refreshed because your
-      // refresh token was already used. Please log out and sign in again."* — every word true, every
-      // word written for whoever wrote Codex, and what it actually means is that nothing in this
-      // conversation will work until the profile is signed in again. So the notice says THAT.
-      //
-      // The provider's own words are not lost: the event is stored verbatim in the ledger and the
-      // debug stream still prints it (`describe-event.ts`), which is 085's split — the diagnostic
-      // goes where diagnostics go, and the person gets a sentence they can act on. This is the
-      // `cause` field's consumer, and it is why the field exists rather than being a comment.
-      //
-      // Both credential refusals need an error notice. Codex can keep its process open after
-      // refusal; Claude ends the child and distinguishes a current login from its old snapshot.
-      //
-      // ⚠️ **Exhaustive over the causes THAT EXIST, enforced by the compiler.** An earlier version
-      // of this claimed exhaustiveness while ending in a `default` that fell through to the raw
-      // provider message — which is the exact leak `cause` exists to stop, waiting for the third
-      // member. Absence of a cause is handled first and separately, so `default` here really is
-      // unreachable and a new `ErrorCause` is a BUILD failure rather than a sentence on screen. Same
-      // guard, same reason, as the `Record` in `assistant-error.ts`.
       const presentation = event.presentation?.message
       if (typeof presentation === 'string' && presentation !== '') {
         // Display words come from the provider boundary; raw diagnostics still identify repeats.
         const shown = presentation
-        notice(state, event.fatal ? 'error' : 'warn', shown)
+        if (event.presentation?.repeat !== 'same-message-once' || state.lastError?.shown !== shown)
+          notice(state, event.presentation?.level ?? (event.fatal ? 'error' : 'warn'), shown)
         state.lastError = { raw: event.message, shown }
-        if (event.fatal) markTerminal(state, NOTHING_WAITS_FOR_THIS_ANSWER)
+        if (event.presentation?.terminal ?? event.fatal)
+          markTerminal(state, NOTHING_WAITS_FOR_THIS_ANSWER)
         return
       }
-      if (event.billingRefused === true) {
-        // The account can't pay: said with the ways out, since the provider's own sentence names
-        // neither the key nor what to do. That sentence stays on the event, and is remembered as
-        // `raw` so the turn's own ending doesn't repeat it. Not terminal: the conversation stays
-        // open. A second refusal in the same turn (a sub-agent's, then the turn's) is said once.
-        const shown = billingNotice(state.ref?.provider ?? null, event.onAKey === true)
-        if (state.lastError?.shown !== shown) notice(state, 'error', shown)
-        state.lastError = { raw: event.message, shown }
-        return
-      }
-      if (event.cause === undefined) {
+      {
         // ⛔ **The turn's OWN ending, which the `turn` event above states in a word** (246 §1, from
         // 244's only finding). `completeTurn` re-says the provider's terminal reason as
         // `turn failed: <reason>` — so 244's conversation read the same 177-char HTTP envelope
@@ -3947,23 +3805,6 @@ function foldEvent(
         // belongs (085).
         const shown = providerErrorSentence(event.message)
         notice(state, event.fatal ? 'error' : 'warn', shown, true)
-        state.lastError = { raw: event.message, shown }
-      } else {
-        // ⚑ **Remembered by what ARRIVED as well as by what was drawn** (246 §1). `auth-state.ts`
-        // records the pair: the credential refusal comes through as `cause: 'auth'` and is drawn as
-        // the sentence above, and then the turn's terminal message repeats the provider's own
-        // *"Your access token could not be refreshed…"* verbatim. Only `raw` catches that one.
-        const provider = state.ref?.provider ?? null
-        const shown = causeNotice(
-          event.cause,
-          event.onAKey === true,
-          // The host's fact about what this app does with a refused copy, never about which
-          // provider it is; the name is the conversation's own.
-          event.replacesRefusedSignIn === true && provider !== null
-            ? PROVIDER_NAME[provider]
-            : null,
-        )
-        notice(state, 'error', shown)
         state.lastError = { raw: event.message, shown }
       }
       if (event.fatal) markTerminal(state, NOTHING_WAITS_FOR_THIS_ANSWER)

@@ -1,8 +1,10 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
+import { providerDescriptor } from '@brobot2/shared'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, reactive } from 'vue'
 import KeptRules from '../../src/renderer/src/components/KeptRules.vue'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+
 import { PROVIDER_PARTS, type ProviderPart } from '../../src/renderer/src/lib/provider-parts'
 import { providersBridge } from '../../look/fixtures/providers'
 import { CAPABILITY_FIXTURE } from '../provider-capability-fixture'
@@ -75,6 +77,7 @@ async function card(over: Record<string, unknown> = {}) {
     setup: () => () =>
       h(ProviderCard as never, {
         provider: 'claude',
+        descriptor: providerDescriptor('claude'),
         capabilities: CAPABILITY_FIXTURE,
         limit: null,
         clock: NOW,
@@ -275,6 +278,7 @@ describe('every other part opens for what it has to say', () => {
       success: true,
       state: { state: 'usable', login: 'account', expiresAt: null },
       detail: null,
+      presentation: { message: 'Signed in to Claude.' },
     })
     expect(revealed).not.toContain('login')
     expect(open.login).toBe(false)
@@ -301,7 +305,13 @@ describe('every other part opens for what it has to say', () => {
     fold(m, 'usage')
     await nextTick()
     state['readings'] = [
-      { window: 'five_hour', usedPercent: 90, resetsAt: NOW + 4.5 * HOUR, at: NOW - 60_000 },
+      {
+        window: 'five_hour',
+        period: { word: '5-hour', durationMs: 5 * HOUR, bucket: false, bucketName: null },
+        usedPercent: 90,
+        resetsAt: NOW + 4.5 * HOUR,
+        at: NOW - 60_000,
+      },
     ]
     await settle()
     expect(revealed).not.toContain('usage')

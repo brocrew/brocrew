@@ -1,5 +1,5 @@
 import type { HandedPath } from '../../src/shared/attachment-contracts'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, type Component } from 'vue'
 import PromptComposer from '../../src/renderer/src/components/PromptComposer.vue'
 import QueuedMessage from '../../src/renderer/src/components/QueuedMessage.vue'
@@ -42,6 +42,7 @@ let book = createAttachmentBook()
 const handed = (): HandedPath[] => book.read(DRAFT)
 
 function composer(over: Record<string, unknown> = {}): Mounted {
+  stubbed().api ??= { chooseAttachment: async () => null }
   book = createAttachmentBook()
   book.write(DRAFT, (over['attachments'] as HandedPath[] | undefined) ?? [])
   const rest = { ...over }
@@ -275,10 +276,11 @@ describe('the attach control (216 §2)', () => {
   })
 
   it('⛔ the picker’s REFUSAL is shown, in the host’s own words, and announced', () => {
+    const chooseAttachment = vi.fn(async (): Promise<ChosenAttachment> => ({
+      refusal: 'there is nothing at /gone.md',
+    }))
+    stubbed().api = { chooseAttachment }
     view = composer()
-    stubbed().api = {
-      chooseAttachment: () => Promise.resolve({ refusal: 'there is nothing at /gone.md' }),
-    }
 
     return (async () => {
       ;(view!.q('attach-path') as HTMLButtonElement).click()
@@ -286,6 +288,7 @@ describe('the attach control (216 §2)', () => {
       await nextTick()
       await nextTick()
 
+      expect(chooseAttachment).toHaveBeenCalledExactlyOnceWith({ cwd: '/work/alpha' })
       const note = view!.q('attach-refused')
       expect(visible(note)).toBe(true)
       expect(note.textContent).toContain('there is nothing at /gone.md')
@@ -350,14 +353,16 @@ describe('the attach control (216 §2)', () => {
   it('⚠️ cancelling the picker changes NOTHING — it is not a refusal', () => {
     // `null` is a changed mind. A UI that conflated the two would show an error to somebody who
     // simply closed the dialog — the distinction `076` §3 and `214` both draw.
+    const chooseAttachment = vi.fn(async (): Promise<ChosenAttachment> => null)
+    stubbed().api = { chooseAttachment }
     view = composer({ attachments: [FILE] })
-    stubbed().api = { chooseAttachment: () => Promise.resolve(null) }
 
     return (async () => {
       ;(view!.q('attach-path') as HTMLButtonElement).click()
       await nextTick()
       await nextTick()
 
+      expect(chooseAttachment).toHaveBeenCalledExactlyOnceWith({ cwd: '/work/alpha' })
       expect(view!.host.querySelector('[data-cy="attach-refused"]')).toBeNull()
       expect(handed()).toEqual([FILE])
     })()

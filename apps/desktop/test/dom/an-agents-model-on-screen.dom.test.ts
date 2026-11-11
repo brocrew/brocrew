@@ -1,3 +1,4 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
 import type {
   AgentModelChoice as Choice,
   ModelCatalogue,
@@ -10,7 +11,7 @@ import { defineComponent, h, nextTick, ref } from 'vue'
 import AgentModelChoice from '../../src/renderer/src/components/AgentModelChoice.vue'
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/agent-store'
-import { createModelLists, type ModelLists } from '../../src/renderer/src/lib/model-lists'
+import { type ModelLists } from '../../src/renderer/src/lib/model-lists'
 import {
   MODEL_CHOICE_SAID,
   judgeAgainstTheList,
@@ -639,7 +640,7 @@ describe('685 §5 · an agent that has never run, and no list', () => {
   it('⚑ the list is for the provider the sheet resolves — Codex answered while Claude refused', async () => {
     reset()
     world.map = {
-      claude: { ok: false, reason: 'refused', detail: 'not signed in' },
+      claude: { ok: false, reason: 'refused', detail: 'not signed in', setupRequired: true },
       codex: { ok: true, models: CODEX_ROWS },
     }
     const onClaude = await control('claude')

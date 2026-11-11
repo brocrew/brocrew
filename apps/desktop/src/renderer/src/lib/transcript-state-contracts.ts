@@ -1,3 +1,4 @@
+import type { WorkAncestry } from '../../../shared/work-ancestry'
 import type { BackgroundRow, ScheduledRow } from '../../../shared/agent-state-contracts'
 import type { HumanAnswers } from '../../../shared/human-answer-contracts'
 import type { RefusalTold } from '../../../shared/refusals'
@@ -14,7 +15,12 @@ import type {
 import type { MessageJoins } from './message-receipt-contracts'
 import type { StopUnanswered } from './stop-unanswered'
 import type { NoticeItem, RelayedItem, TranscriptItem } from './transcript-message-contracts'
-import type { OutgoingWords, RoutedAway, WorkflowRunCard } from './transcript-tool-contracts'
+import type {
+  OutgoingWords,
+  RoutedAway,
+  WorkflowRunCard,
+  SubAgentCard,
+} from './transcript-tool-contracts'
 
 /**
  * **What is still running in this conversation, as the provider last stated the LEVEL** (248).
@@ -287,6 +293,14 @@ export interface ChangeLog {
 }
 
 export interface TranscriptState {
+  workAncestry: {
+    after: number
+    agents: Map<string, WorkAncestry['agents'][number]>
+    tools: Map<string, WorkAncestry['tools'][number]>
+    dispatches: Map<string, WorkAncestry['dispatches'][number]>
+    missing: NonNullable<WorkAncestry['missing']>
+    truncated: boolean
+  }
   humanAnswers: HumanAnswers
   items: TranscriptItem[]
   status: SessionStatus
@@ -336,6 +350,7 @@ export interface TranscriptState {
    * finds the card it belongs to — by identity, never by position.
    */
   subAgentHomes: Record<string, string>
+  subAgentCards: Map<string, SubAgentCard>
   /**
    * A sub-agent's OWN tool call → the agent that made it (035).
    *

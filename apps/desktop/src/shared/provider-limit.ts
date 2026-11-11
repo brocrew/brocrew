@@ -110,13 +110,20 @@ export type LimitStanding =
    */
   | 'stopped'
 
+/** Native limit words interpreted by core; raw diagnostics stay alongside these facts. */
+export interface ProviderLimitMeaning {
+  readonly word: string | null
+  readonly used: number | null
+  readonly untimed: boolean
+}
+
 /**
  * 🔴 **One wall, as this app recorded a provider reporting it.**
  *
- * ⚠️ **It crosses the wire** — see `RuntimeBridge.limitsForAPerson` — so every field is a primitive
- * and there is nothing on it a window could not have been told twice.
+ * The window read carries serializable facts alongside the original diagnostic.
  */
 export interface ProviderLimitSeen {
+  readonly meaning?: ProviderLimitMeaning
   readonly account?: string
   /** Which provider walled — read off the provider's own sentence, which opens with its name. */
   readonly provider: Provider
@@ -444,6 +451,7 @@ export const USAGE_NEARS_ITS_LIMIT_AT = 80
 export interface UsageNearItsLimit {
   readonly window: string
   readonly usedPercent: number | null
+  readonly period?: { readonly word: string | null }
   readonly resetsAt: number | null
   readonly at: number
 }
@@ -470,13 +478,25 @@ export function wallsFromUsage(
   walls: readonly ProviderLimitSeen[],
   now: number,
 ): readonly ProviderLimitSeen[] {
+  return usageWarnings(usage, walls, now).map((one) => one.wall)
+}
+
+/** Keep each selected warning with the reading that supplied it. */
+export function usageWarnings<Reading extends UsageNearItsLimit>(
+  usage: Readonly<Partial<Record<Provider, readonly Reading[]>>>,
+  walls: readonly ProviderLimitSeen[],
+  now: number,
+): readonly { readonly reading: Reading; readonly wall: ProviderLimitSeen }[] {
   const stopped = new Set(
     walls.filter((one) => one.standing === 'stopped').map((one) => one.provider),
   )
   const named = new Set(walls.map(providerLimitKey))
   // ⚑ One wall a key, from the fullest reading: Codex's two slots of a length it did not say are
   // both *this window*, as its own warning names the fuller of them.
-  const near = new Map<string, { readonly wall: ProviderLimitSeen; readonly used: number }>()
+  const near = new Map<
+    string,
+    { readonly reading: Reading; readonly wall: ProviderLimitSeen; readonly used: number }
+  >()
   for (const provider of PROVIDERS) {
     if (stopped.has(provider)) continue
     for (const reading of usage[provider] ?? []) {
@@ -505,10 +525,24 @@ export function wallsFromUsage(
       if (wall === null) continue
       const key = providerLimitKey(wall)
       if (named.has(key) || (near.get(key)?.used ?? -1) >= used) continue
-      near.set(key, { wall, used })
+      near.set(key, {
+        reading,
+        wall:
+          reading.period === undefined
+            ? wall
+            : {
+                ...wall,
+                meaning: {
+                  word: reading.period.word,
+                  used: Math.round(used),
+                  untimed: reading.resetsAt === null,
+                },
+              },
+        used,
+      })
     }
   }
-  return [...near.values()].map((one) => one.wall)
+  return [...near.values()]
 }
 
 /**
@@ -644,6 +678,8 @@ function providerConditionSays(
  * they act on.
  */
 export interface ProviderCondition {
+  /** Absent on old raw-only replies; those retain their supplied consequence sentence. */
+  readonly meaning?: readonly ProviderLimitMeaning[]
   /** ⛔ **One PROVIDER** — the `:key` a `v-for` reconciles by, and now unique by construction. */
   readonly key: string
   /** Which provider, so a surface can mark the row without parsing the sentence. */
@@ -682,7 +718,9 @@ export function providerConditions(
   return [...byProvider.entries()].map(([provider, group]) => {
     const resets = group.map((one) => one.resetsAt)
     const known = resets.filter((one): one is number => one !== null)
+    const meaning = group.flatMap((one) => (one.meaning === undefined ? [] : [one.meaning]))
     return {
+      ...(meaning.length === group.length ? { meaning } : {}),
       key: provider,
       provider,
       // ⛔ **The first row's**, and the group shares it — see this type's docblock.

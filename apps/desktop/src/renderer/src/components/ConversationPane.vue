@@ -48,6 +48,8 @@ import {
   parkedOnAnotherAnswer,
   sessionFacets,
   stateHere,
+  stateForRecord,
+  facetsForRecord,
   type SessionFacetInput,
 } from '../lib/agent-state'
 
@@ -118,16 +120,10 @@ import TranscriptView from './TranscriptView.vue'
 import { runtimePathCalls, useMessagePaths } from '../composables/useMessagePaths'
 
 /**
- * The conversation you are reading.
- *
- * It renders one record and holds no CONVERSATION state — not even which record that is. Switching
- * conversations is the parent handing it a different one; nothing here is torn down, and the
- * session it stops rendering keeps running and keeps receiving events.
- *
- * ⚠️ **Since 067 it does hold one piece of VIEW state — which image is open — and that state names
- * the conversation it belongs to.** The comment above used to say "no state of its own" flatly, and
- * a review caught that 067 had made it false: nothing resets a `ref` on a prop change, so an overlay
- * opened in one conversation floated over the next one. See {@link viewing}.
+ * Render the supplied conversation record; the parent owns which record is selected.
+ * Switching records leaves their running sessions and event delivery intact.
+ * Local view state, such as an open image, names its conversation and must reset
+ * when that record changes; see viewing.
  */
 const props = defineProps<{
   record: SessionRecord
@@ -1375,12 +1371,14 @@ const facetInput = computed<SessionFacetInput>(() => ({
  * over a row saying *active* was one screen saying two things.
  */
 const hostSays = computed((): AgentState | null =>
-  props.record.phase === 'recorded' ? (props.listedState ?? null) : null,
+  props.record.phase === 'recorded' && props.record.agentState === undefined
+    ? (props.listedState ?? null)
+    : null,
 )
 
 const agentFacets = computed(() => ({
   ...(hostSays.value === null
-    ? sessionFacets(facetInput.value)
+    ? facetsForRecord(props.record, sessionFacets(facetInput.value))
     : // What it needs a person for is this view's own to say: the cards it holds open.
       facetsOfState(hostSays.value, sessionFacets(facetInput.value).needing)),
   // A pending launch is current even while the transcript still shows the previous turn.
@@ -1414,13 +1412,15 @@ const settingsFixed = computed(
 const agentState = computed(
   () =>
     hostSays.value ??
-    stateHere(
-      props.record,
-      agentFacets.value,
-      props.answerFrom ?? null,
-      props.workWith ?? [],
-      props.waitsBegan,
-      props.stoppedWork ?? [],
+    stateForRecord(props.record, () =>
+      stateHere(
+        props.record,
+        agentFacets.value,
+        props.answerFrom ?? null,
+        props.workWith ?? [],
+        props.waitsBegan,
+        props.stoppedWork ?? [],
+      ),
     ),
 )
 

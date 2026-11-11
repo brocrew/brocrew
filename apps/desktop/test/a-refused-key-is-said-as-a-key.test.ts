@@ -21,7 +21,7 @@ import { nativeTranscriptPath } from '../src/main/archive/native-file'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { theStallAndItsAsk } from '../src/main/runtime/reply-rails'
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
-
+import { transcriptEventForDisplay } from '../src/main/providers/error-presentation'
 import { derivePieces } from '../src/shared/tasks'
 
 /**
@@ -49,7 +49,7 @@ import { derivePieces } from '../src/shared/tasks'
 
 const noticesFor = (...events: RuntimeEvent[]): NoticeItem[] => {
   const state = createTranscript()
-  for (const event of events) applyEvent(state, event)
+  for (const event of events) applyEvent(state, transcriptEventForDisplay(event, 'claude'))
   return state.items.filter((item): item is NoticeItem => item.kind === 'notice')
 }
 

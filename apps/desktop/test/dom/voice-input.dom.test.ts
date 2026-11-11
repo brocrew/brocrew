@@ -1,9 +1,12 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { defineComponent, h, nextTick, ref, type Component } from 'vue'
+import { defineComponent, h, nextTick, provide, ref, type Component } from 'vue'
 import PromptComposer from '../../src/renderer/src/components/PromptComposer.vue'
 import { createAttachmentBook } from '../../src/renderer/src/lib/drafts'
 import type { VoiceBridge, VoiceResult, VoiceState } from '../../src/shared/voice'
 import { mount, unmountAll } from './harness'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
+import type { ClientComposerApi } from '../../src/shared/client-composer-api'
 
 afterEach(() => {
   unmountAll()
@@ -15,6 +18,9 @@ function composer(supported = true) {
   let resolve!: (value: VoiceResult) => void
   let listener: ((value: VoiceState) => void) | undefined
   let id = ''
+  const release = vi.fn(() => {
+    listener = undefined
+  })
   const bridge: VoiceBridge = {
     supported,
     start: vi.fn((token: string) => {
@@ -26,14 +32,35 @@ function composer(supported = true) {
     stop: vi.fn(async () => {}),
     cancel: vi.fn(async () => {}),
     openSettings: vi.fn(async () => {}),
-    onState: (next) => {
+    onState(next) {
+      expect(this).toBe(bridge)
       listener = next
-      return () => {
-        listener = undefined
-      }
+      return release
     },
   }
-  ;(window as unknown as { api: unknown }).api = { voice: bridge }
+  const unused = (): never => {
+    throw new Error('Unexpected attachment or provider call')
+  }
+  const composerApi: ClientComposerApi = {
+    voice: bridge,
+    chooseAttachment: unused,
+    pathForDroppedFile: unused,
+    handDroppedPaths: unused,
+    pasteImage: unused,
+  }
+  const api = createDesktopProviderApi(
+    unused,
+    () => undefined,
+    undefined,
+    undefined,
+    () => composerApi,
+  )
+  Object.defineProperty(window, 'api', {
+    configurable: true,
+    get() {
+      throw new Error('Injected voice must not read the desktop transport')
+    },
+  })
   const draft = ref('Keep my draft')
   const state = ref('idle')
   const identity = ref('first')
@@ -41,24 +68,28 @@ function composer(supported = true) {
   const book = createAttachmentBook()
   const send = vi.fn()
   const Host = defineComponent({
-    setup: () => () =>
-      h(PromptComposer as Component, {
-        state: state.value,
-        blocked: blocked.value,
-        draft: draft.value,
-        canAttach: true,
-        cwd: '/fictional',
-        handing: book.handing(identity.value),
-        'onUpdate:draft': (value: string) => {
-          draft.value = value
-        },
-        onSend: send,
-      }),
+    setup() {
+      provide(CLIENT_PROVIDERS, api)
+      return () =>
+        h(PromptComposer as Component, {
+          state: state.value,
+          blocked: blocked.value,
+          draft: draft.value,
+          canAttach: true,
+          cwd: '/fictional',
+          handing: book.handing(identity.value),
+          'onUpdate:draft': (value: string) => {
+            draft.value = value
+          },
+          onSend: send,
+        })
+    },
   })
   const m = mount(Host, {})
   return {
     m,
     bridge,
+    release,
     draft,
     state,
     identity,
@@ -112,6 +143,7 @@ it.each(['permission', 'listening', 'transcribing'] as const)(
     await c.phase(phase)
     await click(c.m.q('voice-cancel'))
     expect(c.bridge.cancel).toHaveBeenCalledOnce()
+    expect(c.release).toHaveBeenCalledOnce()
     await c.finish({ ok: true, text: 'must not appear' })
     expect(c.draft.value).toBe('Keep my draft')
     expect(c.send).not.toHaveBeenCalled()

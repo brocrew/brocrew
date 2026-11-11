@@ -4,7 +4,7 @@ import { expect } from 'vitest'
 import type ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import type { CreatedSession } from '../../src/shared/runtime-ipc'
 import { createSessionRecord, type SessionRecord } from '../../src/renderer/src/lib/session-record'
-import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
+import { applyEvent, createTranscript } from '../lib/core-transcript'
 import { createAttachmentBook, draftKey } from '../../src/renderer/src/lib/drafts'
 import type { DrawerFit, DrawerTab } from '../../src/renderer/src/lib/drawer'
 

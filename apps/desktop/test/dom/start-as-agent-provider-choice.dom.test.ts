@@ -1,8 +1,9 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick, ref, type Component } from 'vue'
 import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+
 import { theList } from '../../src/shared/model-choice'
 import type {
   CreateSessionInput,

@@ -272,7 +272,14 @@ export type ModelCatalogue =
    * `tooSlow` is `true` when the provider did not answer in time: nothing has to change before the
    * next ask, which may find it answering.
    */
-  | { ok: false; reason: 'refused'; detail: string; tooSlow?: true }
+  | {
+      ok: false
+      reason: 'refused'
+      detail: string
+      tooSlow?: true
+      /** The original typed launch failure requires provider sign-in or program setup. */
+      setupRequired?: true
+    }
 
 /**
  * 🔴 **D-042 · R3 — the ONE list a person picks from, for one provider** (`09` §2, §4–§6): the

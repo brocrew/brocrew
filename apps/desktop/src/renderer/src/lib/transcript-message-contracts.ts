@@ -1,5 +1,5 @@
 import type { HandedPath } from '../../../shared/attachment-contracts'
-import type { MemoryNoteSeen } from '../../../shared/conversation-events'
+import type { MemoryNoteSeen, TranscriptEvent } from '../../../shared/conversation-events'
 import type { AnsweredQuestion } from '../../../shared/human-answer-contracts'
 import type { MoveOrigin } from '../../../shared/move-contracts'
 import type { MemoryRecallEntry, UnknownCategory } from '../../../shared/runtime-ipc'
@@ -530,9 +530,10 @@ export interface NoticeItem {
    * draws the same function WITH the roster, so the two differ only in which name the parent has.
    */
   text: string
-  /** Claude retries and the final refusal share one row; diagnostics stay in Details. */
+  /** Sign-in retries and the final refusal share one row; diagnostics stay in Details. */
   signIn?: {
     state: 'retrying' | 'refused' | 'recovered' | 'ended'
+    captions?: NonNullable<Extract<TranscriptEvent, { type: 'error' }>['signIn']>['captions']
     needsSignIn?: true
     details: string[]
   }

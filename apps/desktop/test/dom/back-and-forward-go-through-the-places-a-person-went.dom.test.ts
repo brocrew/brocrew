@@ -1,3 +1,4 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
@@ -5,7 +6,7 @@ import { fictionalSkills } from '../../look/fixtures/skills'
 import RuntimeScreen from '../../src/renderer/src/components/RuntimeScreen.vue'
 import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
@@ -135,7 +136,7 @@ const runtime = {
   listResumable: vi.fn(async () => []),
   listUnresumable: vi.fn(async () => []),
   agentIdentities: vi.fn(async () => agents),
-  profiles: vi.fn(async () => []),
+  profiles: vi.fn<RuntimeBridge['profiles']>(async () => []),
   capabilities: vi.fn(async () => ({})),
   providerVersions: vi.fn(async () => ({
     claude: { version: null, reason: 'No version in this fixture.' },
@@ -345,7 +346,6 @@ it('walks screens and a conversation back and forward, naming where each goes', 
   expect(back().disabled).toBe(true)
   await press('nav-forward')
   expect(on('waiting-on-you')).toBe(true)
-  // A new place clears what Forward would return to.
   await press('rail-settings')
   expect(forward().disabled).toBe(true)
   expect(runtime.send).not.toHaveBeenCalled()
@@ -360,7 +360,6 @@ it('a conversation’s tab is part of its place: kept, and never a step of its o
   await press('rail-team')
   await press('nav-back')
   expect(m.q('main-tab-files').getAttribute('aria-selected')).toBe('true')
-  // The two tab presses recorded nothing: the conversation is still the first place.
   expect(back().disabled).toBe(true)
 })
 
@@ -1020,6 +1019,7 @@ it('a conversation that can’t be opened again keeps the window where it is and
 })
 
 it('keeps the model a person picked when changing the front-door provider', async () => {
+  runtime.profiles.mockResolvedValueOnce([DEFAULT_PROFILE_ID])
   forgetProfileSignIns()
   for (const provider of ['claude', 'codex'] as const)
     useProfileSignIn(provider, DEFAULT_PROFILE_ID).auth = {

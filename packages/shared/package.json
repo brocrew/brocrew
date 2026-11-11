@@ -18,6 +18,10 @@
     "./paths": {
       "types": "./src/paths.ts",
       "default": "./src/paths.ts"
+    },
+    "./tool-naming": {
+      "types": "./src/tool-naming.ts",
+      "default": "./src/tool-naming.ts"
     }
   },
   "scripts": {

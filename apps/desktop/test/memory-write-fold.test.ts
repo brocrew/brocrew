@@ -8,7 +8,7 @@ import {
   type SubAgentCard,
   type ToolItem,
   type TranscriptState,
-} from '../src/renderer/src/lib/transcript'
+} from './lib/core-transcript'
 
 /**
  * 330 · 🔴 **The fold and the raw stream, for a memory write.**

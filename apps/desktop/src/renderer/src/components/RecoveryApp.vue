@@ -184,7 +184,8 @@ async function choose(conversation: HistoryConversation): Promise<void> {
   try {
     const events = await recovery.history.transcript(conversation.id)
     const state = createTranscript()
-    for (const { event, at } of events) applyEvent(state, event, at)
+    for (const { event, at, workAncestry } of events)
+      applyEvent(state, event, at, undefined, undefined, workAncestry)
     markReadOnly(state, READ_ONLY_NOTE)
     // A later choice, or a later verdict, wins: an answer for either is dropped.
     if (asked === generation && chosen.value?.conversation.id === conversation.id) {

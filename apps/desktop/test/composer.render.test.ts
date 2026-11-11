@@ -2,6 +2,9 @@ import type { HandedPath } from '../src/shared/attachment-contracts'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
+import { CLIENT_PROVIDERS } from '../src/renderer/src/client-provider/injection'
+import { createDesktopProviderApi } from '../src/renderer/src/client-provider/desktop'
+import type { ClientComposerApi } from '../src/shared/client-composer-api'
 import PromptComposer, {
   canSend,
   interruptKeyLabel,
@@ -35,10 +38,28 @@ const render = (props: Record<string, unknown>): Promise<string> => {
   delete rest['attachments']
   const book = createAttachmentBook()
   if (staged !== undefined) book.write('session:alpha', staged)
+  const unused = (): never => {
+    throw new Error('Rendering must not acquire attachments')
+  }
+  const composer: ClientComposerApi = {
+    chooseAttachment: unused,
+    pathForDroppedFile: unused,
+    handDroppedPaths: unused,
+    pasteImage: unused,
+  }
   return renderToString(
     createSSRApp({
       render: () => h(PromptComposer as never, { ...rest, handing: book.handing('session:alpha') }),
-    }),
+    }).provide(
+      CLIENT_PROVIDERS,
+      createDesktopProviderApi(
+        unused,
+        () => undefined,
+        undefined,
+        undefined,
+        () => composer,
+      ),
+    ),
   )
 }
 

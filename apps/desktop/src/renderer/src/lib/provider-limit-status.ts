@@ -69,10 +69,10 @@ function countdown(block: ConversationProviderBlock, now: number): string | null
 
 export function providerLimitDisplay(
   facts: ProviderBlockFacts | null | undefined,
-  state: AgentState,
+  state: AgentState | undefined,
   now: number,
 ): ProviderLimitDisplay | null {
-  if (state.is !== 'idle' && state.is !== 'scheduled') return null
+  if (state === undefined || (state.is !== 'idle' && state.is !== 'scheduled')) return null
   if (facts?.providerBlockStatus === 'unavailable') {
     const history = historicalStop(facts, now)
     return {

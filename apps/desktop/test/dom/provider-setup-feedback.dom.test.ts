@@ -1,13 +1,16 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
+import { providerDescriptor } from '@brobot2/shared'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, reactive, ref } from 'vue'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+
 import type { LimitsDisplayState } from '../../src/renderer/src/lib/limits-display'
 import type {
   AuthState,
   Provider,
   ProviderCapabilityMap,
   ProviderVersion,
+  RuntimeBridge,
 } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, type Mounted } from './harness'
 
@@ -85,7 +88,11 @@ function card(provider: Provider = 'claude') {
   const runtime = {
     checkProviderAuth: vi.fn(async () => auth.value),
     apiKeyStatus: vi.fn(async () => ({ provider, set: false, setAt: null, inUse: false })),
-    signInProvider: vi.fn(async () => ({ success: true, state: USABLE })),
+    signInProvider: vi.fn<RuntimeBridge['signInProvider']>(async () => ({
+      success: true,
+      state: USABLE,
+      presentation: { message: `Signed in to ${providerDescriptor(provider).displayName}.` },
+    })),
     reprovisionProviderAuth: vi.fn(),
     cancelProviderSignIn: vi.fn(),
   }
@@ -99,6 +106,7 @@ function card(provider: Provider = 'claude') {
   } as unknown as ProviderCapabilityMap
   const props = reactive({
     provider,
+    descriptor: providerDescriptor(provider),
     capabilities,
     limit: null,
     limitsRead: true,
@@ -166,6 +174,40 @@ function cancel(m: Mounted) {
 }
 
 describe('setup feedback follows the latest facts', () => {
+  it('renders opaque browser-completion words and keeps failed outcomes on their own detail', async () => {
+    const out = card('codex')
+    out.runtime.signInProvider.mockResolvedValueOnce({
+      success: true,
+      state: USABLE,
+      presentation: { message: 'Fable has connected this workspace.' },
+    })
+    await settled()
+    await begin(out.m)
+    out.m.q('setup-sign-in').click()
+    await settled()
+    expect(words(out.m.q('provider-inline-setup').querySelector('[role="status"]')!)).toBe(
+      'Fable has connected this workspace.',
+    )
+    out.m.unmount()
+    const failed = card('codex')
+    failed.runtime.signInProvider.mockResolvedValueOnce({
+      success: false,
+      state: ABSENT,
+      detail: 'The fictional sign-in was cancelled.',
+      presentation: { message: 'Do not show success.' },
+    })
+    await settled()
+    await begin(failed.m)
+    failed.m.q('setup-sign-in').click()
+    await settled()
+    expect(words(failed.m.q('provider-inline-setup').querySelector('[role="status"]')!)).toBe(
+      'The fictional sign-in was cancelled.',
+    )
+    expect(
+      words(failed.m.q('provider-inline-setup').querySelector('[role="status"]')!),
+    ).not.toContain('Do not show success')
+  })
+
   it.each([ABSENT, UNKNOWN, EXPIRED])(
     'drops an obsolete $state check failure from Done and the normal Login section',
     async (failed) => {

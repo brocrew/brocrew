@@ -1,3 +1,4 @@
+import { createModelLists } from '../lib/provider-launch-fixture'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
@@ -5,12 +6,8 @@ import ModelPicker from '../../src/renderer/src/components/ModelPicker.vue'
 import NewConversation from '../../src/renderer/src/components/NewConversation.vue'
 import SettingsScreen from '../../src/renderer/src/components/SettingsScreen.vue'
 import { CAPABILITY_FIXTURE } from '../provider-capability-fixture'
-import { createModelLists } from '../../src/renderer/src/lib/model-lists'
-import {
-  defaultModel,
-  providerReady,
-  readyProvider,
-} from '../../src/renderer/src/lib/provider-models'
+
+import { launchFacts, resolveProviderLaunch } from '../lib/provider-launch-fixture'
 import type { Provider, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { NO_LAUNCH_CHOICES } from '../../src/renderer/src/lib/launch-choices'
 import { assertDrawn, drawnReady } from './drawn'
@@ -44,6 +41,7 @@ const missing = (): ModelList => ({
   notAsked: {
     ok: false,
     reason: 'refused',
+    setupRequired: true,
     detail: 'personal Codex auth.json not found at /fictional/account/.codex/auth.json',
   },
 })
@@ -144,11 +142,20 @@ it('offers plain retry wording for other failures and retries the same provider'
 it('never defaults a new conversation to a known unavailable provider', async () => {
   const held = { state: 'answered' as const, list: missing() }
   const readiness = {
-    claude: providerReady({ state: 'answered', list: list('claude') }),
-    codex: providerReady(held),
+    claude: launchFacts(list('claude')).ready,
+    codex: launchFacts(held.list).ready,
   }
   expect(readiness).toEqual({ claude: true, codex: false })
-  const provider = readyProvider('codex', readiness)
+  const provider = resolveProviderLaunch(
+    {
+      askedProvider: 'codex',
+      providers: Object.entries(readiness).map(([provider, ready]) => ({
+        provider: provider as Provider,
+        ready,
+      })),
+    },
+    null,
+  ).provider
   expect(provider).toBe('claude')
   const sent = vi.fn()
   const { lists } = fixture(missing())
@@ -173,7 +180,7 @@ it('never defaults a new conversation to a known unavailable provider', async ()
   expect(sent.mock.calls[0]?.[0].provider).toBe('claude')
 })
 it('uses the declared default model if no selected pair exists', () => {
-  expect(defaultModel({ ...list('claude'), startsOn: null })).toEqual({
+  expect(launchFacts({ ...list('claude'), startsOn: null }).defaultModel).toEqual({
     model: 'claude-default',
     effort: null,
   })
@@ -263,7 +270,16 @@ it('blocks an unknown provider even with retained models, and never relabels its
     busy: false,
     error: null,
     draft: 'Review this project',
-    defaultProvider: readyProvider('codex', readiness),
+    defaultProvider: resolveProviderLaunch(
+      {
+        askedProvider: 'codex',
+        providers: Object.entries(readiness).map(([provider, ready]) => ({
+          provider: provider as Provider,
+          ready,
+        })),
+      },
+      null,
+    ).provider,
     providerReadiness: readiness,
     defaultApprovalMode: 'ask',
     approvalDefaultChosen: true,

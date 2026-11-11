@@ -147,18 +147,9 @@ type VerbRow =
   | { how: 'handed-over'; note: string; producers: readonly Producer[] }
 
 /**
- * 🔴 **`361` §1's answer, and the compiler is what keeps it complete.**
- *
- * ⛔ **`Record<RuntimeCommandKind, …>` — a verb added to the union with no row here is a COMPILE
- * ERROR**, which is the only form of enumeration this dispatch would accept: *"my counts of the N
- * places that do X have been short every single time"*, and `grep -rn` prints nothing at all for
- * `whole-session-reads.test.ts`, so a grep census over this tree is short by at least one file
- * before it starts.
- *
- * ⚠️ **The classification is about the CALL SITE, not the type.** `cancelProviderSignIn` takes
- * `{ provider, profileId? }` — two strings, no nested object anywhere in its declared shape — and it
- * is the one that threw, because what was handed over was the whole payload: a `ref` holding those
- * two strings is still a `Proxy`. ⛔ **A type-shaped census would have cleared the defect.**
+ * `Record<RuntimeCommandKind, …>` requires a row for every command, including future additions.
+ * Classify actual caller construction, not declared payload types: a two-string object can still
+ * arrive wrapped in a Vue proxy, as cancellation did. Type-shaped enumeration would miss it.
  */
 /** ⚑ The line in `CapabilitiesSheet.grant()` that builds each field of the grant. */
 const THE_SHEETS_GRANT = '[field.key, set[field.key] === true ? value[field.key] : null]'
@@ -493,6 +484,7 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   latestHistory: { how: 'plain-by-construction' },
   // ── what the app can run, and where ──────────────────────────────────────────────────────────
   capabilities: { how: 'nothing' },
+  providerCatalogue: { how: 'nothing' },
   providerConnections: { how: 'nothing' },
   profiles: { how: 'nothing' },
   checkProviderAuth: { how: 'plain-by-construction' },
@@ -573,6 +565,8 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   // every field it did not build — `provider`, `profileId`, `model` — is a string. ⚠️ No window
   // calls any of them yet: UI-012 draws the picker.
   modelList: { how: 'plain-by-construction' },
+  providerLaunchChoices: { how: 'plain-by-construction' },
+  resolveProviderLaunch: { how: 'plain-by-construction' },
   addHandAddedModel: { how: 'plain-by-construction' },
   deleteHandAddedModel: { how: 'plain-by-construction' },
   // 🔒 The API-key doors: each is built by the preload from `{ kind, ...input }`, every field a

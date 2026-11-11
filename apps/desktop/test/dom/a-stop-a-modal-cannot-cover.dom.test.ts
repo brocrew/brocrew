@@ -1,5 +1,6 @@
 // The approved plain words replace the former labels; the state and gesture checks remain.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import { page } from 'vitest/browser'
 import { assertDrawn, drawnReady } from './drawn'
 import { defineComponent, h, nextTick, type PropType, type VNode } from 'vue'
@@ -143,6 +144,7 @@ const TOOLS: ToolRegistry = { set: null, dropped: 0, at: null }
  */
 ;(window as unknown as { api?: unknown }).api = {
   runtime: {
+    providerCatalogue: async () => PROVIDER_DESCRIPTORS,
     checkProviderAuth: async () => ({ state: 'usable', login: 'account', expiresAt: null }),
     apiKeyStatus: async ({ provider }: { provider: string }) => ({
       provider,
@@ -326,9 +328,7 @@ const PATHS = [
         now: NOW,
       }),
   },
-  // ⚑ **D-016** — the screen's host lost six branches with the seed and the projects: the document
-  // drawer, the dispatch gate, the recruit and all-documents sheets, the project sheet and the
-  // new-project form. §3 reads the branch count from the source, so it moved with them.
+  // The screen's host branch count is read from its source in §3.
   // 423 · a branch of the screen's one host. ⚑ It takes no props: the overlay member carries
   // nothing, because there is no identity to name until this sheet makes one.
   { host: 'RuntimeScreen', panel: 'NewAgent', cy: 'new-agent', open: () => h(NewAgent) },

@@ -69,7 +69,9 @@ it('says an install is starting while it waits, and not as an error', async () =
 })
 it('hides Plugins without an injected or available real controller', async () => {
   const m = mount(settingsWindow('plugins', 'classic'), {}, { width: 1180, height: 900 })
-  await nextTick()
+  await vi.waitFor(() =>
+    expect(m.all('provider-row')).toHaveLength(visibleProviderDescriptors(false).length),
+  )
   expect(m.all('settings-tab-plugins')).toHaveLength(0)
   expect(m.all('plugins-section')).toHaveLength(0)
   expect(m.all('provider-row').map((row) => row.dataset['provider'])).toEqual(
