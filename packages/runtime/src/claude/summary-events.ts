@@ -11,7 +11,7 @@ export function summaryEvents(message: { readonly subtype: string }): RuntimeEve
       status.trim() !== '' &&
       typeof detail === 'string' &&
       detail.trim() !== '' &&
-      typeof needsAction === 'boolean'
+      typeof needsAction === 'string'
       ? [{ type: 'turn_summary', status, detail, needsAction }]
       : []
   }

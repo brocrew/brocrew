@@ -1996,7 +1996,7 @@ const turnSummarySchema = z.object({
   type: z.literal('turn_summary'),
   status: z.string(),
   detail: z.string(),
-  needsAction: z.boolean(),
+  needsAction: z.string(),
 })
 const commandSummarySchema = z.object({
   type: z.literal('command_summary'),
