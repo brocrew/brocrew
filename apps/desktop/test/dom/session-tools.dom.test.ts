@@ -231,7 +231,10 @@ const CLAUDE: ToolRegistry = {
   set: {
     naming: CLAUDE_NAMING,
     declared: DECLARED,
-    published: { tools: PUBLISHED_37, servers: [publishedServerForDisplay({ name: 'brobot', status: 'connected' })] },
+    published: {
+      tools: PUBLISHED_37,
+      servers: [publishedServerForDisplay({ name: 'brobot', status: 'connected' })],
+    },
   },
   dropped: 0,
   at: STATED_AT,

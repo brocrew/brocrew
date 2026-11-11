@@ -5,8 +5,11 @@ import { runtimeEventSchema } from '../src/events'
 
 describe('Claude inventory connection interpretation', () => {
   it.each([
-    ['connected', 'ready'], ['failed', 'failed'], ['needs-auth', 'sign-in'],
-    ['pending', 'connecting'], ['disabled', 'disabled'],
+    ['connected', 'ready'],
+    ['failed', 'failed'],
+    ['needs-auth', 'sign-in'],
+    ['pending', 'connecting'],
+    ['disabled', 'disabled'],
   ])('supplies %s as %s while retaining the native word', (status, connectionKind) => {
     const server = { name: 'crew', status }
     expect(publishedServerForDisplay(server)).toEqual({ ...server, connectionKind })
@@ -19,22 +22,31 @@ describe('Claude inventory connection interpretation', () => {
       { name: 'future', status: 'constructor' },
       { name: 'supplied', status: 'connected', connectionKind: '' },
       { name: 'supplied', status: 'connected', connectionKind: 'future-kind' },
-    ]) expect(publishedServerForDisplay(server)).toBe(server)
+    ])
+      expect(publishedServerForDisplay(server)).toBe(server)
   })
 
   it('bounds and validates portable facts without manufacturing absent facts', () => {
     const bounded = boundInventory({
-      naming: { prefix: '', separator: '__' }, declared: null,
-      published: { tools: [], servers: [
-        { name: 'absent', status: 'connected' },
-        { name: 'future', status: 'new', connectionKind: 'x'.repeat(MAX_STATUS_WORD + 1) },
-      ] },
+      naming: { prefix: '', separator: '__' },
+      declared: null,
+      published: {
+        tools: [],
+        servers: [
+          { name: 'absent', status: 'connected' },
+          { name: 'future', status: 'new', connectionKind: 'x'.repeat(MAX_STATUS_WORD + 1) },
+        ],
+      },
     })
     const event = runtimeEventSchema.parse({ type: 'tool_inventory', source: 'init', ...bounded })
-    expect(event).toMatchObject({ published: { servers: [
-      { name: 'absent', status: 'connected' },
-      { name: 'future', status: 'new', connectionKind: 'x'.repeat(MAX_STATUS_WORD) },
-    ] } })
+    expect(event).toMatchObject({
+      published: {
+        servers: [
+          { name: 'absent', status: 'connected' },
+          { name: 'future', status: 'new', connectionKind: 'x'.repeat(MAX_STATUS_WORD) },
+        ],
+      },
+    })
     expect(bounded.published?.servers[0]).not.toHaveProperty('connectionKind')
   })
 })

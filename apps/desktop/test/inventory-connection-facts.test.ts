@@ -9,13 +9,18 @@ import { carryForward, foldWindow } from '../src/renderer/src/lib/transcript-win
 import { catalogue, readInventory, statusWord } from '../src/renderer/src/lib/tool-inventory'
 
 const inventory = (): ToolInventoryEvent => ({
-  type: 'tool_inventory', source: 'init', naming: { prefix: 'mcp__', separator: '__' },
+  type: 'tool_inventory',
+  source: 'init',
+  naming: { prefix: 'mcp__', separator: '__' },
   declared: { server: 'crew', tools: [{ name: 'read', description: 'Read', parameters: [] }] },
-  published: { tools: ['mcp__crew__read', 'mcp__other__read'], servers: [
-    { name: 'crew', status: 'connected' },
-    { name: 'other', status: 'needs-auth' },
-    { name: 'future', status: 'quantum-entangled' },
-  ] },
+  published: {
+    tools: ['mcp__crew__read', 'mcp__other__read'],
+    servers: [
+      { name: 'crew', status: 'connected' },
+      { name: 'other', status: 'needs-auth' },
+      { name: 'future', status: 'quantum-entangled' },
+    ],
+  },
 })
 
 describe('provider-owned inventory connection facts', () => {
@@ -46,9 +51,17 @@ describe('provider-owned inventory connection facts', () => {
       { name: 'opaque', status: 'constructor' },
     ]
     expect(toolInventoryForDisplay(event)).toBe(event)
-    expect(statusWord('connected', 'disabled')).toEqual({ label: 'disabled', tone: 'off', connected: false })
+    expect(statusWord('connected', 'disabled')).toEqual({
+      label: 'disabled',
+      tone: 'off',
+      connected: false,
+    })
     for (const fact of [undefined, '', 'future-kind', 'constructor'])
-      expect(statusWord('connected', fact)).toEqual({ label: 'connected', tone: 'unknown', connected: false })
+      expect(statusWord('connected', fact)).toEqual({
+        label: 'connected',
+        tone: 'unknown',
+        connected: false,
+      })
     const nullEvent = { ...event, published: null }
     const emptyEvent = { ...event, published: { tools: [], servers: [] } }
     expect(toolInventoryForDisplay(nullEvent)).toBe(nullEvent)
@@ -67,9 +80,12 @@ describe('provider-owned inventory connection facts', () => {
     expect(rebuilt.tools.set?.published).toEqual(projected.published)
     const reading = readInventory(rebuilt.tools)
     expect(reading.own?.connectionKind).toBe('ready')
-    expect(reading.foreign.find(({name}) => name === 'other')?.connectionKind).toBe('sign-in')
-    expect(catalogue(reading).map(({ serverStatus, connectionKind }) => statusWord(serverStatus ?? '', connectionKind)))
-      .toContainEqual({ label: 'needs sign-in', tone: 'bad', connected: false })
+    expect(reading.foreign.find(({ name }) => name === 'other')?.connectionKind).toBe('sign-in')
+    expect(
+      catalogue(reading).map(({ serverStatus, connectionKind }) =>
+        statusWord(serverStatus ?? '', connectionKind),
+      ),
+    ).toContainEqual({ label: 'needs sign-in', tone: 'bad', connected: false })
     const unclaimed = readInventory({ ...rebuilt.tools, set: { ...event, declared: null } })
     expect(catalogue(unclaimed).some((row) => row.connectionKind === 'ready')).toBe(true)
   })

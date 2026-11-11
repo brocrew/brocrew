@@ -298,7 +298,8 @@ describe('what tools this conversation has (358)', () => {
   })
 
   describe('the connection word', () => {
-    const claudeStatus = (status: string) => statusWord(status, publishedServerForDisplay({ name: 'crew', status }).connectionKind)
+    const claudeStatus = (status: string) =>
+      statusWord(status, publishedServerForDisplay({ name: 'crew', status }).connectionKind)
     it('translates every word the pinned SDK declares', () => {
       expect(claudeStatus('connected')).toEqual({ label: 'connected', tone: 'ok', connected: true })
       expect(claudeStatus('failed').tone).toBe('bad')

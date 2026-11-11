@@ -11,7 +11,9 @@ const CONNECTION_KINDS: Readonly<Record<string, string>> = {
 
 export function publishedServerForDisplay(server: PublishedServer): PublishedServer {
   if (server.connectionKind !== undefined) return server
-  const connectionKind = Object.hasOwn(CONNECTION_KINDS, server.status) ? CONNECTION_KINDS[server.status] : undefined
+  const connectionKind = Object.hasOwn(CONNECTION_KINDS, server.status)
+    ? CONNECTION_KINDS[server.status]
+    : undefined
   return connectionKind === undefined ? server : { ...server, connectionKind }
 }
 

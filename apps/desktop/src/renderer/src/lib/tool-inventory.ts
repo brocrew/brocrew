@@ -35,7 +35,9 @@ export { qualify, splitQualified } from '@brobot2/shared/tool-naming'
 export type Tone = 'ok' | 'bad' | 'wait' | 'off' | 'unknown'
 
 /** Portable connection facts choose wording; raw or unknown facts never imply connection. */
-const CONNECTION_WORDS: Readonly<Record<string, { label: string; tone: Tone; connected: boolean }>> = {
+const CONNECTION_WORDS: Readonly<
+  Record<string, { label: string; tone: Tone; connected: boolean }>
+> = {
   ready: { label: 'connected', tone: 'ok', connected: true },
   failed: { label: 'failed', tone: 'bad', connected: false },
   'sign-in': { label: 'needs sign-in', tone: 'bad', connected: false },
@@ -55,10 +57,11 @@ export function statusWord(
   status: string,
   connectionKind?: string,
 ): { label: string; tone: Tone; connected: boolean } {
-  return (connectionKind === undefined || !Object.hasOwn(CONNECTION_WORDS, connectionKind)
+  return (
+    (connectionKind === undefined || !Object.hasOwn(CONNECTION_WORDS, connectionKind)
       ? undefined
-      : CONNECTION_WORDS[connectionKind]) ??
-    { label: status, tone: 'unknown', connected: false }
+      : CONNECTION_WORDS[connectionKind]) ?? { label: status, tone: 'unknown', connected: false }
+  )
 }
 
 /**

@@ -1,6 +1,10 @@
 import { STALE_KEY_NOTICE } from './error-words'
 import { splitQualified } from '@brobot2/runtime'
-import { CLAUDE_TOOL_NAMING, refusalForDisplay, toolInventoryForDisplay } from '@brobot2/runtime/claude'
+import {
+  CLAUDE_TOOL_NAMING,
+  refusalForDisplay,
+  toolInventoryForDisplay,
+} from '@brobot2/runtime/claude'
 import { scanRetention } from './retention'
 import { signInObservation } from './sign-in-observation'
 import { filesOf, memoryNotesOf } from './conversation-files'

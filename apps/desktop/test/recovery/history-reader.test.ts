@@ -432,12 +432,18 @@ describe('the history reader', () => {
     async (provider) => {
       const { copy } = await aRestoredCopy()
       const inventory: TranscriptEvent = {
-        type: 'tool_inventory', source: 'init', naming: { prefix: 'mcp__', separator: '__' },
-        declared: null, published: { tools: [], servers: [
-          { name: 'known', status: 'connected' },
-          { name: 'unknown', status: 'future-word' },
-          { name: 'supplied', status: 'connected', connectionKind: 'disabled' },
-        ] },
+        type: 'tool_inventory',
+        source: 'init',
+        naming: { prefix: 'mcp__', separator: '__' },
+        declared: null,
+        published: {
+          tools: [],
+          servers: [
+            { name: 'known', status: 'connected' },
+            { name: 'unknown', status: 'future-word' },
+            { name: 'supplied', status: 'connected', connectionKind: 'disabled' },
+          ],
+        },
       }
       const error: TranscriptEvent = { type: 'error', message: 'raw error', fatal: false }
       const db = new Database(copy)
@@ -448,26 +454,50 @@ describe('the history reader', () => {
           db.prepare('DELETE FROM provider_session WHERE id = ?').run('sess_idle')
         } else {
           db.pragma('ignore_check_constraints = ON')
-          db.prepare('UPDATE provider_session SET provider = ? WHERE id = ?').run(provider, 'sess_idle')
+          db.prepare('UPDATE provider_session SET provider = ? WHERE id = ?').run(
+            provider,
+            'sess_idle',
+          )
         }
-        const insert = db.prepare('INSERT INTO events (id,session_id,generation,ordinal,type,payload,created_at) VALUES (?, ?, 0, ?, ?, ?, ?)')
+        const insert = db.prepare(
+          'INSERT INTO events (id,session_id,generation,ordinal,type,payload,created_at) VALUES (?, ?, 0, ?, ?, ?, ?)',
+        )
         for (const [ordinal, event] of [inventory, error].entries())
-          insert.run(newEventId(), 'sess_idle', ordinal, event.type, JSON.stringify(event), T0 + ordinal)
-      } finally { db.close() }
+          insert.run(
+            newEventId(),
+            'sess_idle',
+            ordinal,
+            event.type,
+            JSON.stringify(event),
+            T0 + ordinal,
+          )
+      } finally {
+        db.close()
+      }
       const bytes = readFileSync(copy)
       const reader = createHistoryReader(copy)
       try {
         const rows = await reader.transcript('sess_idle')
-        expect(rows[0]?.event).toEqual(provider === 'claude'
-          ? { ...inventory, published: { ...inventory.published, servers: [
-            { name: 'known', status: 'connected', connectionKind: 'ready' },
-            { name: 'unknown', status: 'future-word' },
-            { name: 'supplied', status: 'connected', connectionKind: 'disabled' },
-          ] } }
-          : inventory)
+        expect(rows[0]?.event).toEqual(
+          provider === 'claude'
+            ? {
+                ...inventory,
+                published: {
+                  ...inventory.published,
+                  servers: [
+                    { name: 'known', status: 'connected', connectionKind: 'ready' },
+                    { name: 'unknown', status: 'future-word' },
+                    { name: 'supplied', status: 'connected', connectionKind: 'disabled' },
+                  ],
+                },
+              }
+            : inventory,
+        )
         expect(rows[1]?.event).toEqual(error)
         expect(rows[1]?.errorFacts).toEqual(errorFactsForEvent(error))
-      } finally { reader.close() }
+      } finally {
+        reader.close()
+      }
       expect(readFileSync(copy)).toEqual(bytes)
     },
   )

@@ -237,7 +237,10 @@ export interface ToolInventoryPayload {
       parameters: { name: string; type: string; required: boolean; description?: string }[]
     }[]
   } | null
-  published: { tools: string[]; servers: { name: string; status: string; connectionKind?: string }[] } | null
+  published: {
+    tools: string[]
+    servers: { name: string; status: string; connectionKind?: string }[]
+  } | null
   /** Rows either half named that the payload does not carry — see the field on the event. */
   dropped: number
 }
