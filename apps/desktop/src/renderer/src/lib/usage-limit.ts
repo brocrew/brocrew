@@ -217,12 +217,13 @@ export function readingSays(reading: ProviderUsageReading, now: number): string 
 export function aTurnsLimitSays(
   limit: { readonly provider: Provider; readonly resetsAt?: number; readonly window?: string },
   at: number | undefined,
+  names?: UsageProviderNames,
 ): string {
   const resetsAt = limit.resetsAt ?? null
   // A refusal that names no limit and no reset is nothing this app can time: the provider's plan or
   // its usage refused the turn, and its own words are the error just above.
   if (limit.window === undefined && resetsAt === null) {
-    return `${PROVIDER_NAME[limit.provider]} refused the turn on its plan or usage; what it said is just above`
+    return `${usageProviderName(limit.provider, names, 'This provider')} refused the turn on its plan or usage; what it said is just above`
   }
   const ahead = resetsAt !== null && (at === undefined || resetsAt > at)
   // ⛔ A reset already past is not said: it is no longer when anything comes back.
@@ -231,7 +232,7 @@ export function aTurnsLimitSays(
     : resetsAt === null
       ? '; it hasn’t said when it resets'
       : ''
-  return `${PROVIDER_NAME[limit.provider]}’s usage limit was reached${resets}`
+  return `${usageProviderName(limit.provider, names, 'the provider')}’s usage limit was reached${resets}`
 }
 
 /**
