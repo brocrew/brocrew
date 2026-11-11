@@ -45,7 +45,6 @@ const here = dirname(fileURLToPath(import.meta.url))
 const SRC = join(here, '../src')
 const migrationsFolder = join(SRC, 'main/db/migrations')
 
-/** Prose stripped, so a docblock quoting a shape is never mistaken for the shape. */
 const identity = (over: Partial<AgentIdentity> = {}): AgentIdentity => ({
   id: `aid:${over.slug ?? 'worker'}`,
   slug: 'worker',
