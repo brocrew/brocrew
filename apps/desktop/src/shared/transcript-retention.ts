@@ -10,6 +10,10 @@ export const TRANSCRIPT_RETENTION_CHOICES = [
   { value: 'forever', label: 'Forever' },
 ] as const
 export type TranscriptRetention = (typeof TRANSCRIPT_RETENTION_CHOICES)[number]['value']
+export interface TranscriptRetentionClient {
+  read(): Promise<TranscriptRetention>
+  set(period: TranscriptRetention): Promise<TranscriptRetention>
+}
 export const DEFAULT_TRANSCRIPT_RETENTION: TranscriptRetention = 90
 export const TRANSCRIPT_RETENTION_FILE = 'transcript-retention.json'
 export const TRANSCRIPT_CLEARING_DEADLINE_MS = 15_000

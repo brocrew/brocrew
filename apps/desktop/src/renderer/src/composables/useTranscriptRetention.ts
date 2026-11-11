@@ -1,7 +1,8 @@
 import { onMounted, ref } from 'vue'
+import { useClientApi } from '../client-provider/injection'
 import type { TranscriptRetention } from '../../../shared/transcript-retention'
 
-export function useTranscriptRetention(bridge = window.api?.transcriptRetention) {
+export function useTranscriptRetention(bridge = useClientApi().transcriptRetention) {
   const period = ref<TranscriptRetention | null>(null)
   const saving = ref(false)
   const status = ref('')

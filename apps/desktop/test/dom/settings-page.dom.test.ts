@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, provide, ref } from 'vue'
 import type { ClientApi } from '../../src/shared/client-api'
+import type { TranscriptRetentionClient } from '../../src/shared/transcript-retention'
 import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
 import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
 import { visibleProviderDescriptors } from '@brobot2/shared'
@@ -337,13 +338,33 @@ it('moves tab focus with arrows, Home and End while keeping just one tab selecte
   expect(m.host.querySelectorAll('[role="tab"][aria-selected="true"]')).toHaveLength(1)
 })
 
+function clientWithRetention(bridge?: TranscriptRetentionClient) {
+  return createDesktopProviderApi(
+    () => window.api.runtime,
+    () => undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    () => bridge,
+  )
+}
+
 it('keeps agents transcripts for the saved period, with 90 days as the default', async () => {
   let kept: 30 | 90 | 365 | 'forever' = 90
   const bridge = {
     read: vi.fn(async () => kept),
     set: vi.fn(async (value: typeof kept) => (kept = value)),
   }
-  const { m } = await settings('general', bridge)
+  const raw = {
+    read: vi.fn(async () => 'forever' as const),
+    set: vi.fn(async () => 'forever' as const),
+  }
+  const client = clientWithRetention(bridge)
+  const { m } = await settings('general', raw, undefined, client)
   const select = m.q('transcript-retention-period') as HTMLSelectElement
   await vi.waitFor(() => expect(select.disabled).toBe(false))
   expect(m.q('transcript-retention').textContent).toContain("Keep agents' transcripts")
@@ -367,18 +388,21 @@ it('keeps agents transcripts for the saved period, with 90 days as the default',
     expect(String(kept)).toBe(value)
   }
   m.unmount()
-  const again = await settings('general', bridge)
+  const again = await settings('general', raw, undefined, client)
   await vi.waitFor(() =>
     expect((again.m.q('transcript-retention-period') as HTMLSelectElement).value).toBe('forever'),
   )
+  expect(raw.read).not.toHaveBeenCalled()
+  expect(raw.set).not.toHaveBeenCalled()
 })
 it('a failed transcript retention save restores what was actually kept', async () => {
-  const { m } = await settings('general', {
+  const bridge: TranscriptRetentionClient = {
     read: async () => 90,
     set: async () => {
       throw new Error('fictional disk refusal')
     },
-  })
+  }
+  const { m } = await settings('general', undefined, undefined, clientWithRetention(bridge))
   const select = m.q('transcript-retention-period') as HTMLSelectElement
   await vi.waitFor(() => expect(select.disabled).toBe(false))
   select.value = '30'
@@ -387,6 +411,53 @@ it('a failed transcript retention save restores what was actually kept', async (
     expect(m.q('transcript-retention').textContent).toContain("That didn't work. Try again."),
   )
   expect(select.value).toBe('90')
+})
+
+it('keeps transcript retention unavailable when the injected client has no capability', async () => {
+  const raw = { read: vi.fn(async () => 90 as const), set: vi.fn(async () => 30 as const) }
+  const { m } = await settings('general', raw, undefined, clientWithRetention())
+  await nextTick()
+  expect((m.q('transcript-retention-period') as HTMLSelectElement).disabled).toBe(true)
+  expect(raw.read).not.toHaveBeenCalled()
+  expect(raw.set).not.toHaveBeenCalled()
+})
+
+it('waits for a transcript-retention save and shows a failed read', async () => {
+  let finish!: (value: 30) => void
+  const answer = new Promise<30>((resolve) => (finish = resolve))
+  const set = vi.fn(() => answer)
+  const { m } = await settings(
+    'general',
+    undefined,
+    undefined,
+    clientWithRetention({ read: async () => 90, set }),
+  )
+  const select = m.q('transcript-retention-period') as HTMLSelectElement
+  await vi.waitFor(() => expect(select.disabled).toBe(false))
+  select.value = '30'
+  select.dispatchEvent(new Event('change', { bubbles: true }))
+  await vi.waitFor(() => expect(select.disabled).toBe(true))
+  select.dispatchEvent(new Event('change', { bubbles: true }))
+  expect(set).toHaveBeenCalledTimes(1)
+  finish(30)
+  await vi.waitFor(() => expect(select.disabled).toBe(false))
+  expect(select.value).toBe('30')
+  m.unmount()
+  const failed = await settings(
+    'general',
+    undefined,
+    undefined,
+    clientWithRetention({
+      read: async () => {
+        throw new Error('fictional read refusal')
+      },
+      set,
+    }),
+  )
+  await vi.waitFor(() =>
+    expect(failed.m.q('transcript-retention').textContent).toContain("That didn't work. Try again."),
+  )
+  expect((failed.m.q('transcript-retention-period') as HTMLSelectElement).disabled).toBe(true)
 })
 
 it('saves the new-conversation default and preserves the confirmed value on refusal', async () => {
