@@ -23,6 +23,10 @@ for (const [id, exportPlugin] of [
     const root = path.join(base, 'export')
     exportPlugin(root)
     expect(fs.existsSync(path.join(root, 'plugins/shared/atomic-file.ts'))).toBe(true)
+    const builder = 'plugins/shared/package-archive.mjs'
+    expect(fs.readFileSync(path.join(root, builder))).toEqual(
+      execFileSync('git', ['-C', repository, 'show', `HEAD:${builder}`]),
+    )
     const template = JSON.parse(
       fs.readFileSync(path.join(root, `plugins/${id}/manifest-template.json`), 'utf8'),
     )
