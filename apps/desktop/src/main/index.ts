@@ -450,9 +450,8 @@ let theOneAppAnswer: HostGateVerdict = 'unknown'
 let thisBuildsMigrations: readonly BuildMigration[] | null = null
 
 /**
- * The long-lived runner: provider sessions live here in the main process, not in
- * the renderer. Created once the app is ready (it needs `userData`), torn down
- * before the app quits so no provider child outlives the window.
+ * Provider sessions live in the main process. Create the host after `ready` for `userData`;
+ * tear it down before quit so no provider child outlives the window.
  */
 let host: RuntimeHost | null = null
 const pluginSupervisor = new PluginSupervisorAttachment()
