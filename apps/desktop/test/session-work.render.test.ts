@@ -15,6 +15,7 @@ it.each([false, true])(
     const sessions = vi.fn(() => (present ? (transport as ClientSessionApi) : undefined))
     const app = createSSRApp(
       sessionClientView(
+        CLIENT_PROVIDERS,
         sessions,
         () => () => h(SessionWork, { conversation: 'fern', reading: null, identities: null }),
       ),

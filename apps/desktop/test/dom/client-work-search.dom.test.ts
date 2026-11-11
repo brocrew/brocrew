@@ -38,6 +38,7 @@ function screen(initial?: Partial<ClientSessionApi>) {
   const conversation = ref('fern-one')
   const view = mount(
     sessionClientView(
+      CLIENT_PROVIDERS,
       capability,
       () => () =>
         h(SessionWork, { conversation: conversation.value, reading: null, identities: null }),
