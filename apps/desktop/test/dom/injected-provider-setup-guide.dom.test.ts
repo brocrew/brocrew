@@ -99,6 +99,8 @@ it('the real Providers screen displays selected tool, command and instructions r
   await settle()
   expect(m.q('setup-command').textContent).toBe(fern.signInCommand)
   expect(m.q('provider-card').textContent).toContain(fern.signInInstructions)
+  m.q('provider-inline-setup').querySelector<HTMLButtonElement>('.setup-heading > button')!.click()
+  await settle()
   expect(m.q('provider-card').textContent).toContain(fern.tool)
   expect(m.q('provider-card').textContent).not.toContain('Ambient')
 })
