@@ -13,71 +13,23 @@ import {
 import type { PathsHere } from '../composables/useMessagePaths'
 import type { AssistantItem, TranscriptItem } from '../lib/transcript'
 
-/**
- * Streamed text while deltas land, then the authoritative message replaces it. The live tag and
- * the caret are the signal that this block is still growing — both come off `streaming`, which
- * the fold sets from the stream itself, so they can never say "live" about a settled block.
- *
- * A SETTLED block renders as Markdown (017) — agents speak in fences, lists and links, and
- * showing the literal backticks made every code block unreadable. The renderer is the same
- * `lib/markdown.ts` the document viewer uses (`html:false`, so a `<script>` in a reply is text,
- * not markup), in its chat preset — one markdown stack, restyled here for the dark chat instead
- * of the white paper. A rendered link cannot navigate this window: the main process refuses that
- * and hands http(s) to the real browser, which is what makes a model's URL safe to render.
- *
- * While it STREAMS it stays plain text. Deltas can end mid-syntax — a half-open fence, half a
- * list — and re-parsing the whole message on every delta would restyle text already on screen
- * each time the syntax closed. Plain text never lies about unfinished markdown, and it keeps the
- * caret literally at the end of the text, which no block-level rendering can.
- *
- * The swap is USUALLY the authoritative message replacing the streamed text. It is not always:
- * `closeStreaming` also settles a block on a tool call, on the end of a turn, and on an interrupt
- * (transcript.ts), and such a block is delta text no authoritative message ever confirmed. Cut off
- * inside a fence, it settles with that fence still open — markdown-it then renders the remainder
- * as a code block, which is both what the text was and the least surprising way to show a reply
- * that stopped mid-code. Nothing is dropped either way; only the styling of the tail differs.
- */
+/** Stream plain text while growing; render Markdown once settled, including interrupted tails. */
 const props = defineProps<{
   item: AssistantItem & Pick<TranscriptItem, 'at'>
-  /** Who is speaking — the provider's own name, as the header shows it. */
+  /** Who is speaking, as the header shows it. */
   who?: string
-  /**
-   * Paths of files handed to this transcript, used to make their links clickable.
-   *
-   * ⛔ **Optional, and an absent roster draws no controls at all.** ⚑ `TranscriptView` builds it
-   * from `everyResourceAReportNames`, which is the SAME predicate the work report's own press reads,
-   * so a surface with no reader behind it yields an empty roster rather than a control that cannot
-   * act.
-   *
-   * ⚠️ **It is the app's own minted ids and never a shape matched out of the words.** `548` §Q4:
-   * *"Do not regex every code span into a button."* See `the-documents-a-reply-names.ts`.
-   */
+  /** App-provided document ids for links; absent rosters draw no document controls. */
   documents?: readonly string[]
-  /**
-   * ⚑ **Whether this conversation can take a message** — `ConversationPane`'s `canTakeAMessage`.
-   * ⛔ Absent or false: the choices of a question asked without waiting are not drawn at all, so no
-   * surface shows a button with nothing behind it (the message text still lists them).
-   */
+  /** Draw question choices only when the conversation can take a message. */
   canAnswer?: boolean
   /** This conversation's paths. Absent: a path in the reply stays plain text. */
   paths?: PathsHere | null
 }>()
 
 const emit = defineEmits<{
-  /**
-   * ⛔ **562 · emitted, never performed** — `WorkReportEntry`'s own ruling for its twin: the fetch
-   * and the panel both live in `ConversationPane`, and a surface that read the bytes itself would
-   * be a second route into a door `095` spent a dispatch collecting into one place.
-   *
-   * ⚑ **It is `TranscriptView`'s EXISTING `openDocument` event** (510), so this control and the
-   * work report's button arrive at the pane through one channel and open one panel.
-   */
+  /** The pane owns document reads; forward through the transcript's existing event. */
   openDocument: [resourceId: string]
-  /**
-   * ⚑ **A choice picked on a question asked without waiting** (provider follow-ups 1) — the words to
-   * send as an ordinary message to this conversation. Raised, never sent here: the pane owns the
-   * send, and its `now` already holds a message while the conversation is busy.
-   */
+  /** Raise the chosen words; the pane owns sending and holding them while busy. */
   answer: [text: string]
 }>()
 
@@ -87,12 +39,7 @@ const choices = computed(() =>
 const questionsWithoutProse = computed(() =>
   !props.item.streaming && props.item.text.trim() === '' ? (props.item.questions ?? []) : [],
 )
-/**
- * ⚠️ **Only the moment between a press and the message showing up below.** Whether the choices are
- * spent is the transcript's to say (`TranscriptView`'s `repliedAfter` turns `canAnswer` off once a
- * message of the person's follows) — this ref only stops a second press in that moment, and says
- * what the press DID, never that anything was sent.
- */
+/** Block repeated presses until the transcript records the reply and disables the choices. */
 const pressed = ref<string | null>(null)
 
 function choose(question: AskedWithoutWaiting, option: string): void {
@@ -152,8 +99,7 @@ const noteId = computed(() => `asked-note-${props.item.id}`)
       >
         <p v-for="(question, index) in questionsWithoutProse" :key="index">{{ question.title }}</p>
       </div>
-      <!-- Questions asked without waiting, as choices (provider follow-ups 1). The message above
-           already says them; this only makes them pressable, and says what a press does. -->
+      <!-- The message lists the choices; these controls send the chosen words. -->
       <div
         v-if="props.canAnswer === true && choices.length > 0"
         class="asked"
@@ -194,6 +140,8 @@ const noteId = computed(() => `asked-note-${props.item.id}`)
   </article>
 </template>
 
+<style scoped src="./message-presentation.css"></style>
+
 <style scoped>
 .msg-body :deep(.open-the-document) {
   padding: 0;
@@ -209,18 +157,6 @@ const noteId = computed(() => `asked-note-${props.item.id}`)
 .msg-body :deep(.open-the-document:hover),
 .msg-body :deep(.open-the-document:focus-visible) {
   color: var(--accent-text-soft);
-}
-
-.msg {
-  display: grid;
-  max-width: var(--measure-message);
-  margin: 0 auto var(--space-12);
-  gap: var(--space-6);
-  grid-template-columns: var(--avatar-small) minmax(0, 1fr);
-}
-
-.msg-column {
-  min-width: 0;
 }
 
 .asked {
@@ -259,52 +195,6 @@ const noteId = computed(() => `asked-note-${props.item.id}`)
 .asked-choice:disabled {
   cursor: default;
   opacity: 0.6;
-}
-
-.msg-avatar {
-  display: grid;
-  width: var(--avatar-small);
-  height: var(--avatar-small);
-  border: var(--border-width) solid var(--accent-border-weak);
-  border-radius: var(--radius);
-  background: var(--accent-fill);
-  color: var(--accent-text);
-  place-items: center;
-}
-
-.msg-avatar .icon {
-  width: var(--icon);
-  height: var(--icon);
-}
-
-.msg-meta {
-  display: flex;
-  height: auto;
-  align-items: center;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-3) var(--space-6);
-  min-height: var(--space-10);
-  flex-wrap: wrap;
-  margin-bottom: var(--space-4);
-}
-
-.msg-meta strong {
-  color: var(--text-soft);
-  font-size: var(--type-small);
-  font-weight: var(--fw-bold);
-}
-
-.time {
-  margin-left: 0;
-  color: var(--faint);
-  font: var(--type-caption) / var(--leading-normal) var(--font-sans);
-  opacity: 1;
-  transition: opacity var(--dur-fast) ease;
-}
-
-.msg:hover .time {
-  opacity: 1;
 }
 
 .live-tag {

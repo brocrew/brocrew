@@ -1,0 +1,57 @@
+.msg {
+  display: grid;
+  max-width: var(--measure-message);
+  margin: 0 auto var(--space-12);
+  gap: var(--space-6);
+  grid-template-columns: var(--avatar-small) minmax(0, 1fr);
+}
+
+.msg-column {
+  min-width: 0;
+}
+
+.msg-avatar {
+  display: grid;
+  width: var(--avatar-small);
+  height: var(--avatar-small);
+  border: var(--border-width) solid var(--accent-border-weak);
+  border-radius: var(--radius);
+  background: var(--accent-fill);
+  color: var(--accent-text);
+  place-items: center;
+}
+
+.msg-avatar .icon {
+  width: var(--icon);
+  height: var(--icon);
+}
+
+.msg-meta {
+  display: flex;
+  height: auto;
+  align-items: center;
+  color: var(--muted);
+  font-size: var(--type-caption);
+  gap: var(--space-3) var(--space-6);
+  min-height: var(--space-10);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.msg-meta strong {
+  color: var(--text-soft);
+  font-size: var(--type-small);
+  font-weight: var(--fw-bold);
+}
+
+.time {
+  margin-left: 0;
+  color: var(--faint);
+  font: var(--type-caption) / var(--leading-normal) var(--font-sans);
+  opacity: 1;
+  transition: opacity var(--dur-fast) ease;
+}
+
+.msg:hover .time {
+  opacity: 1;
+}

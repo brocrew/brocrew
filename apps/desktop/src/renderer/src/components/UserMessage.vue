@@ -30,9 +30,7 @@ const paths = usePathsIn(
     <div class="msg-column">
       <div class="msg-meta">
         <strong>You</strong>
-        <!-- Mark imported user turns with `provider_transcript` attribution. The provider file is the only source and the app cannot verify who wrote its contents; live turns are recorded when the app sends them. Different labels let the reader distinguish those origins.
-
-             In the META row, never the body, for the reason the next comment gives. -->
+        <!-- Imported turns use provider attribution in the metadata row. -->
         <span
           v-if="item.attribution === 'provider_transcript'"
           class="attributed"
@@ -40,9 +38,7 @@ const paths = usePathsIn(
           title="From the provider's own transcript file. This app did not watch it being typed."
           >(per the transcript)</span
         >
-        <!-- The time sits in the META row, never inside the body: `textContent` of the message has
-             to be what the person actually said, which is what a copy, a search or an assertion
-             gets. Putting it in the body once turned "PINGPONG" into "PINGPONG00:55" (001). -->
+        <!-- Keep time outside the body so copying and searching return the person's words. -->
         <span class="time">{{ clockTime(item.at) }}</span>
       </div>
       <button
@@ -70,7 +66,7 @@ const paths = usePathsIn(
       >
         {{ paths.failure.value }}
       </p>
-      <!-- Show app-supplied attachments outside `user-message` and label them as BroBot's. Keep the message body's text exactly as typed so copying and searching do not conflate injected paths with the person's words. -->
+      <!-- Keep app-supplied attachments outside the person's message text. -->
       <AttachmentChips
         v-if="item.attachments?.length"
         :attachments="item.attachments"
@@ -88,68 +84,12 @@ const paths = usePathsIn(
   </article>
 </template>
 
+<style scoped src="./message-presentation.css"></style>
+
 <style scoped>
-.msg {
-  display: grid;
-  max-width: var(--measure-message);
-  margin: 0 auto var(--space-12);
-  gap: var(--space-6);
-  grid-template-columns: var(--avatar-small) minmax(0, 1fr);
-}
-
-.msg-column {
-  min-width: 0;
-}
-
-.msg-avatar {
-  display: grid;
-  width: var(--avatar-small);
-  height: var(--avatar-small);
-  border: var(--border-width) solid var(--accent-border-weak);
-  border-radius: var(--radius);
-  background: var(--accent-fill);
-  color: var(--accent-text);
-  place-items: center;
-}
-
-.msg-avatar .icon {
-  width: var(--icon);
-  height: var(--icon);
-}
-
-.msg-meta {
-  display: flex;
-  height: auto;
-  align-items: center;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-3) var(--space-6);
-  min-height: var(--space-10);
-  flex-wrap: wrap;
-  margin-bottom: var(--space-4);
-}
-
-.msg-meta strong {
-  color: var(--text-soft);
-  font-size: var(--type-small);
-  font-weight: var(--fw-bold);
-}
-
 .attributed {
   color: var(--faint);
   font-size: var(--type-caption);
-}
-
-.time {
-  margin-left: 0;
-  color: var(--faint);
-  font: var(--type-caption) / var(--leading-normal) var(--font-sans);
-  opacity: 1;
-  transition: opacity var(--dur-fast) ease;
-}
-
-.msg:hover .time {
-  opacity: 1;
 }
 
 .msg-body {
