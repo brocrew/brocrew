@@ -1,6 +1,7 @@
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import { launchFacts, resolveProviderLaunch } from '../lib/provider-launch-fixture'
 import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
-import { afterAll, afterEach, describe, expect, it, onTestFinished } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { type Component } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
@@ -254,6 +255,7 @@ const STATES: readonly [string, () => Promise<Element>][] = [
       await page.viewport(1200, 900)
       ;(window as { api?: unknown }).api = {
         runtime: {
+          providerCatalogue: async () => PROVIDER_DESCRIPTORS,
           modelList: MODELS,
           providerLaunchChoices: async (
             input: Parameters<RuntimeBridge['providerLaunchChoices']>[0],
@@ -522,11 +524,17 @@ const KNOWN_IN_CLASSIC = [
 const CLASSIC_LIFTED = { token: '--paper-wash', worst: 3.81 } as const
 
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
+let previousApi: PropertyDescriptor | undefined
+beforeEach(() => {
+  previousApi = Object.getOwnPropertyDescriptor(window, 'api')
+  Reflect.deleteProperty(window, 'api')
+})
 afterEach(() => {
   applyTheme(null)
   unmountAll()
   usePersonsQueue().forget()
-  delete (window as { api?: unknown }).api
+  Reflect.deleteProperty(window, 'api')
+  if (previousApi) Object.defineProperty(window, 'api', previousApi)
 })
 afterAll(async () => {
   await page.viewport(ORIGINAL.width, ORIGINAL.height)

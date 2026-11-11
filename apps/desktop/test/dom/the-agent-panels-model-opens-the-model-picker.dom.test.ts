@@ -1,8 +1,9 @@
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import { launchFacts, resolveProviderLaunch } from '../lib/provider-launch-fixture'
 import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
 import type { ModelList, WhatAPickBecame } from '../../src/shared/model-choice-contracts'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { userEvent } from 'vitest/browser'
 import { defineComponent, h, nextTick, type Component } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
@@ -17,7 +18,16 @@ import { META, mount, paneProps, record, unmountAll, type Mounted } from './harn
  * nothing set here would reach draws them as plain facts.
  */
 
-afterEach(unmountAll)
+let previousApi: PropertyDescriptor | undefined
+beforeEach(() => {
+  previousApi = Object.getOwnPropertyDescriptor(window, 'api')
+  Reflect.deleteProperty(window, 'api')
+})
+afterEach(() => {
+  unmountAll()
+  Reflect.deleteProperty(window, 'api')
+  if (previousApi) Object.defineProperty(window, 'api', previousApi)
+})
 
 const levels = (...ids: string[]): { id: string; label: string }[] =>
   ids.map((id) => ({ id, label: id }))
@@ -50,6 +60,7 @@ const listOf = (provider: Provider): ModelList => ({
 function installBridge(): void {
   ;(window as unknown as { api: unknown }).api = {
     runtime: {
+      providerCatalogue: async () => PROVIDER_DESCRIPTORS,
       modelList: async ({ provider }: { provider: Provider }) => listOf(provider),
       providerLaunchChoices: async ({ provider }: { provider: Provider }) =>
         launchFacts(listOf(provider)),
