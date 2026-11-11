@@ -1,11 +1,8 @@
 import { vi } from 'vitest'
 import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
-import {
-  createModelLists,
-  launchFacts,
-  resolveProviderLaunch,
-} from '../lib/provider-launch-fixture'
+import { launchFacts, resolveProviderLaunch } from '../lib/provider-launch-fixture'
+import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import { providersBridge } from '../../look/fixtures/providers'
 import type { ModelLists } from '../../src/renderer/src/lib/model-lists'
 import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
