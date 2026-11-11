@@ -225,6 +225,7 @@ describe('the existing runtime transport supplies launch decisions', () => {
       store: NULL_SESSION_STORE,
       createRuntime: forbidden,
       prepareProviderHome: forbidden,
+      providerHomePath: forbidden,
       providerVersions: forbidden,
       programFound: { claude: forbidden },
       ...overrides,
