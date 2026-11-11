@@ -13,10 +13,7 @@ import type { ClientProviderApi } from '../../src/shared/client-provider-api'
 import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
 import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
-import {
-  NO_LAUNCH_CHOICES,
-  type LaunchChoices,
-} from '../../src/renderer/src/lib/launch-choices'
+import { NO_LAUNCH_CHOICES, type LaunchChoices } from '../../src/renderer/src/lib/launch-choices'
 import ModelPicker from '../../src/renderer/src/components/ModelPicker.vue'
 import NewConversation from '../../src/renderer/src/components/NewConversation.vue'
 import { mount, unmountAll } from './harness'
