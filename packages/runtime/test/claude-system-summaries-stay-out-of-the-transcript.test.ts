@@ -4,7 +4,7 @@ import { normalizeMessage } from '../src/claude/normalize'
 
 // Reported stream shapes, with fictional text and identifiers.
 const lines = [
-  '{"type":"system","subtype":"post_turn_summary","status_category":"completed","status_detail":"Finished the reply","needs_action":false,"summarizes_uuid":"fictional-turn"}',
+  '{"type":"system","subtype":"post_turn_summary","status_category":"completed","status_detail":"Finished the reply","needs_action":"","summarizes_uuid":"fictional-turn"}',
   '{"type":"system","subtype":"task_summary","detail":"Finished the tool call"}',
   '{"type":"system","subtype":"future_housekeeping","detail":"A new provider notice"}',
 ]
@@ -21,7 +21,7 @@ describe('Claude system summaries', () => {
             type: 'turn_summary',
             status: 'completed',
             detail: 'Finished the reply',
-            needsAction: false,
+            needsAction: '',
           },
         ])
         expect(warning).not.toHaveBeenCalled()

@@ -359,7 +359,7 @@ describe('FakeRuntime — exercises every RuntimeEvent variant', () => {
       type: 'turn_summary',
       status: 'completed',
       detail: 'Checked the change',
-      needsAction: false,
+      needsAction: '',
     })
     handle.simulateSummary({ type: 'command_summary', description: 'Checking the change' })
     handle.simulateUnknown({ provider_specific: 'blob' })

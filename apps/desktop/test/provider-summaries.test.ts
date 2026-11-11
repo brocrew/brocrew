@@ -10,7 +10,7 @@ const turn = {
   type: 'turn_summary',
   status: 'completed',
   detail: 'Checked the fictional change',
-  needsAction: true,
+  needsAction: 'Review the fictional change',
 } satisfies TranscriptEvent
 const command = {
   type: 'command_summary',
@@ -33,7 +33,7 @@ describe('common summary transcript facts', () => {
         kind: 'turnSummary',
         status: 'completed',
         detail: 'Checked the fictional change',
-        needsAction: true,
+        needsAction: 'Review the fictional change',
         at: 200,
         ordinal: 2,
       }),
@@ -47,7 +47,7 @@ describe('common summary transcript facts', () => {
   })
 
   it('describes the neutral facts without native or provider names', () => {
-    expect(describeEvent(turn)).toBe('completed · Checked the fictional change · Needs action')
+    expect(describeEvent(turn)).toBe('completed · Checked the fictional change · Review the fictional change')
     expect(describeEvent(command)).toBe('Checking the fictional change')
   })
 
@@ -57,7 +57,7 @@ describe('common summary transcript facts', () => {
     applyEvent(state, turn)
     const text = composeReadable('Fictional conversation', state.items, { toolActivity: false })
     expect(text).toContain('Checking the fictional change')
-    expect(text).toContain('completed · Checked the fictional change · Needs action')
+    expect(text).toContain('completed · Checked the fictional change · Review the fictional change')
     expect(text.match(/Checked the fictional change/g)).toHaveLength(1)
     expect(text).not.toContain('post_turn_summary')
   })

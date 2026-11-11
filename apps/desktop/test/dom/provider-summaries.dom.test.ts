@@ -17,13 +17,13 @@ it('shows one quiet common line per summary in normal mode while unknowns remain
       type: 'turn_summary',
       status: 'completed',
       detail: 'The fictional change is checked',
-      needsAction: true,
+      needsAction: 'Review the fictional change',
     },
     {
       type: 'turn_summary',
       status: 'continuing',
       detail: 'No decision is needed',
-      needsAction: false,
+      needsAction: '',
     },
   ])
     applyEvent(state, event as TranscriptEvent)
@@ -44,8 +44,8 @@ it('shows one quiet common line per summary in normal mode while unknowns remain
   expect(view.all('command-summary')[0]!.textContent?.trim()).toBe('Checking a fictional change')
   expect(view.all('turn-summary')[0]!.textContent).toContain('completed')
   expect(view.all('turn-summary')[0]!.textContent).toContain('The fictional change is checked')
-  expect(view.all('turn-summary')[0]!.textContent).toContain('Needs action')
-  expect(view.all('turn-summary')[1]!.textContent).not.toContain('Needs action')
+  expect(view.all('turn-summary')[0]!.textContent).toContain('Review the fictional change')
+  expect(view.all('turn-summary')[1]!.textContent).not.toContain('Review the fictional change')
   expect(view.all('unknown-entry')).toHaveLength(0)
   expect(view.host.querySelectorAll('pre')).toHaveLength(0)
   debug = true
