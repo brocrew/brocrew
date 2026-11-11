@@ -2111,7 +2111,6 @@ function start(ownership: HostGateVerdict): void {
       mainThreadWork.add('the start', performance.now() - startBegan)
       recoveryStartSucceeded = true
       sayAtOnce(READY_LINE)
-      void letGoOfOldCopies()
     })
     .catch((error: unknown) => {
       pluginStartupTrace.failure('app-startup', error)

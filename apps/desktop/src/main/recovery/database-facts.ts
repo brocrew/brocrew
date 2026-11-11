@@ -1,3 +1,4 @@
+import { removeCheckpointEntry } from './checkpoint-deletion'
 import Database from 'better-sqlite3'
 import { createHash, randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
@@ -8,6 +9,7 @@ import {
   assertOwnedPathsAreReal,
   errorCode,
   nodeFs,
+  pathExists,
   privateDir,
   retrying,
   type RecoveryFs,
@@ -39,7 +41,6 @@ export type LineageFit =
 export interface MigrationsOfOptions {
   readonly fs?: RecoveryFs
   readonly userData?: string
-  readonly exclusiveStartup?: boolean
   /** Bytes free on the disk holding a path, or null when that cannot be told. */
   readonly freeBytes?: (path: string) => number | null
 }
@@ -153,8 +154,6 @@ export async function migrationsOf(
         ? EMPTY
         : unreadable(`it is empty, and the ${holding.suffix} beside it holds data`)
     }
-    // Before runtime writers start, SQLite can recover its own WAL without a scratch copy.
-    if (options.exclusiveStartup) return readMigrations(file, false)
     const header = await headerOf(file, fs)
     if (header === null) return unreadable('it is too short to be a database')
     if (Buffer.from(header.subarray(0, 16)).toString('latin1') !== SQLITE_MAGIC) {
@@ -423,10 +422,12 @@ export function prepareDatabaseSnapshot(
   }
 }
 
-export function prepareSnapshotDatabase(
+export async function prepareSnapshotDatabase(
+  userData: string,
   copy: string,
-  expectedMigrations?: readonly Migration[],
-): readonly Migration[] {
+  expectedMigrations: readonly Migration[] | undefined,
+  fs: RecoveryFs = nodeFs,
+): Promise<readonly Migration[]> {
   const destination = new Database(copy, { fileMustExist: true })
   let recorded: MigrationsRead
   try {
@@ -442,6 +443,8 @@ export function prepareSnapshotDatabase(
   if (expectedMigrations && !sameMigrations(recorded.migrations, expectedMigrations)) {
     throw new Error('The recovery copy does not record the migrations admitted at startup.')
   }
+  await leaveOneFile(userData, copy, fs)
+  await putOnDisk(copy, fs)
   return recorded.migrations
 }
 
@@ -450,4 +453,23 @@ export function sameMigrations(a: readonly Migration[], b: readonly Migration[])
     a.length === b.length &&
     a.every((one, index) => one.createdAt === b[index]?.createdAt && one.hash === b[index]?.hash)
   )
+}
+
+async function leaveOneFile(userData: string, copy: string, fs: RecoveryFs): Promise<void> {
+  if (await pathExists(`${copy}-journal`, fs)) {
+    throw new Error('the copy was left with an unfinished write beside it')
+  }
+  for (const suffix of ['-wal', '-shm']) {
+    await assertOwnedPathsAreReal(userData, [`${copy}${suffix}`], fs)
+    await removeCheckpointEntry(userData, dirname(copy), `${basename(copy)}${suffix}`, fs)
+  }
+}
+
+async function putOnDisk(path: string, fs: RecoveryFs): Promise<void> {
+  const handle = await fs.open(path, 'r+')
+  try {
+    await handle.sync()
+  } finally {
+    await handle.close()
+  }
 }

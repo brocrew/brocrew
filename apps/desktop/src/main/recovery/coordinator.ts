@@ -12,6 +12,7 @@ import {
   inWords,
   listCheckpoints,
   listOfferable,
+  theNewestIntact,
   makeCheckpoint,
   captureCheckpoint,
   resumeCapturedCheckpoints,
@@ -406,7 +407,6 @@ async function decide(
   const database = await migrationsOf(databaseFile(userData), {
     fs,
     userData,
-    exclusiveStartup: owner === 'sole',
     ...(deps.freeBytes === undefined ? {} : { freeBytes: deps.freeBytes }),
   })
   if (database.kind === 'absent') {
@@ -651,7 +651,7 @@ async function newer(
   lineage: readonly BuildMigration[],
   fs: RecoveryFs,
 ): Promise<StartupVerdict> {
-  const offered = (await listOfferable(deps.userData, lineage, fs))[0] ?? null
+  const offered = await theNewestIntact(await listOfferable(deps.userData, lineage, fs), fs)
   const checkpoints = await listCheckpoints(deps.userData, fs)
   return {
     kind: 'newer',

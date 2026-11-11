@@ -97,7 +97,6 @@ function declaration(name: string): string {
   return node.getText(parsed)
 }
 
-/** Execute the real main-process startup block with real recovery and themes, without Electron. */
 async function startup(
   fake: PinnableApp,
   beforeThemes?: () => void,
@@ -131,8 +130,10 @@ async function startup(
     ownershipFrom: () => ({ ask: async () => 'unknown' }),
     createRecoveryService,
     withRecoveryWork: <T>(work: () => Promise<T>) => work(),
-    // The app checks a recovery copy in a worker; here the same check runs in this thread.
     recoveryCopyVerifier: { verify: checkTheCopyHere, stop: async () => {} },
+    recoveryCopyHasher: { verify: checkTheCopyHere, stop: async () => {} },
+    recoveryCaptureAbort: new AbortController(),
+    capturedRecoveryCopies: [],
     mainThreadWork: { timed: <T>(_what: string, work: () => T): T => work() },
     buildLineage: async () => [],
     recoveryService: null,

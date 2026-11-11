@@ -1,6 +1,6 @@
 import type { VerifyCopy } from './copy-check'
 import { randomUUID } from 'node:crypto'
-import { basename, dirname, join } from 'node:path'
+import { join } from 'node:path'
 import type { OfferedCheckpoint, ProgressListener } from '../../shared/recovery'
 import type { RetainedRecoveryCopy } from '../../shared/recovery-retention'
 import { freeBytesOn } from '../archive/native-file'
@@ -163,7 +163,15 @@ export async function checkpointNeeded(
     offerable: await listOfferable(userData, lineage, fs),
     databaseChangedAt: await whenTheDatabaseLastChanged(userData, fs),
   }
-  const needed = needsACheckpoint(facts)
+  const intact = new Set<string>()
+  const reusable = hasPendingMigrations(database.migrations, lineage) ? reusableCopies(facts) : []
+  for (const candidate of reusable) {
+    if (await isIntact(candidate, fs)) {
+      intact.add(candidate.manifest.id)
+      break
+    }
+  }
+  const needed = needsACheckpoint({ ...facts, intact })
   if (needed === 'first-start-of-release') {
     try {
       const receipt = await readRetentionReceipt(userData, fs)
@@ -325,9 +333,11 @@ export async function captureCheckpoint(
   const id = randomUUID()
   const folder = checkpointDir(userData, id)
   const copy = checkpointDatabase(userData, id)
+  let hadBackups = true
   let captured = false
   let made = false
   try {
+    hadBackups = await pathExists(backupsDir(userData), fs)
     const copyDatabase = prepareDatabaseSnapshot(databaseFile(userData), {
       fs,
       signal: options.signal,
@@ -335,7 +345,6 @@ export async function captureCheckpoint(
       beforeFallback: (bytes) => checkFreeSpace(userData, bytes, options.freeBytes ?? freeBytesOn),
     })
     await privateDir(backupsDir(userData), fs)
-    const workspaceId = await workspaceIdFor(userData, fs)
     await assertOwnedPathsAreReal(userData, [folder], fs)
     await fs.mkdir(folder, { mode: 0o700 })
     made = true
@@ -347,12 +356,11 @@ export async function captureCheckpoint(
     options.signal?.throwIfAborted()
     options.progress?.(1, 3)
     beforeStep('verify')
-    const migrations = prepareSnapshotDatabase(copy, options.expectedMigrations)
-    await leaveOneFile(userData, copy, fs)
-    await putOnDisk(copy, fs)
+    const migrations = await prepareSnapshotDatabase(userData, copy, options.expectedMigrations, fs)
     beforeStep('files')
     const files = await copyStateFiles(userData, folder, fs)
     options.progress?.(2, 3)
+    const workspaceId = await workspaceIdFor(userData, fs)
     const manifest: CapturedManifest = {
       format: MANIFEST_FORMAT,
       version: 1,
@@ -374,7 +382,10 @@ export async function captureCheckpoint(
     captured = true
     return completion(options, folder, manifest)
   } catch (error) {
-    if (made && !captured) await removeUnfinished(userData, folder, fs)
+    if (made && !captured) {
+      await removeUnfinished(userData, folder, fs)
+      if (!hadBackups) await fs.rmdir(backupsDir(userData)).catch(() => undefined)
+    }
     throw failureFrom(error)
   }
 }
@@ -531,9 +542,20 @@ export async function prune(
     if (found === 'unknown') return notThisTime(`${checkpoint.folder} could not be read.`)
     if (found === 'whole') whole.push(checkpoint)
   }
-  const candidates = whole
+  let candidates = whole
   const keepingOf = (copies: readonly Checkpoint[]): Set<string> =>
     new Set(copies.slice(0, KEEP_NEWEST).map(({ manifest }) => manifest.id))
+  const intact = new Set<string>()
+  for (;;) {
+    const keeping = keepingOf(candidates)
+    if (candidates.every(({ manifest }) => keeping.has(manifest.id))) break
+    const unchecked = candidates.find(
+      ({ manifest }) => keeping.has(manifest.id) && !intact.has(manifest.id),
+    )
+    if (unchecked === undefined) break
+    if (await isIntact(unchecked, fs)) intact.add(unchecked.manifest.id)
+    else candidates = candidates.filter((checkpoint) => checkpoint !== unchecked)
+  }
   const kept = keepingOf(candidates)
   const goes: string[] = []
   for (const checkpoint of candidates) {
@@ -683,25 +705,6 @@ async function workspaceIdFor(userData: string, fs: RecoveryFs): Promise<string>
   const id = randomUUID()
   await writeAtomically(workspaceIdFile(userData), `${id}\n`, fs)
   return id
-}
-
-async function leaveOneFile(userData: string, copy: string, fs: RecoveryFs): Promise<void> {
-  if (await pathExists(`${copy}-journal`, fs)) {
-    throw new Error('the copy was left with an unfinished write beside it')
-  }
-  for (const suffix of ['-wal', '-shm']) {
-    await assertOwnedPathsAreReal(userData, [`${copy}${suffix}`], fs)
-    await removeCheckpointEntry(userData, dirname(copy), `${basename(copy)}${suffix}`, fs)
-  }
-}
-
-async function putOnDisk(path: string, fs: RecoveryFs): Promise<void> {
-  const handle = await fs.open(path, 'r+')
-  try {
-    await handle.sync()
-  } finally {
-    await handle.close()
-  }
 }
 
 async function copyStateFiles(

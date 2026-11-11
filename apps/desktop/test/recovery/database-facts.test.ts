@@ -39,23 +39,25 @@ import { nodeFs, type RecoveryFs } from '../../src/main/recovery/files'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const POSIX = process.platform !== 'win32'
 
-it('reads committed WAL migrations without scratch copying at the exclusive startup boundary', async () => {
+it('reads committed WAL migrations through a private copy without changing the live family', async () => {
   const { folder, userData } = aFolder()
   const file = join(folder, 'closed.sqlite')
   crashedInto(folder, file)
+  const before = [readFileSync(file), readFileSync(`${file}-wal`)]
   let copies = 0
   const fs: RecoveryFs = {
     ...nodeFs,
-    copyFile: async () => {
+    copyFile: async (from, to, mode) => {
       copies++
-      throw new Error('exclusive startup must use SQLite recovery')
+      return nodeFs.copyFile(from, to, mode)
     },
   }
-  expect(await migrationsOf(file, { fs, userData, exclusiveStartup: true })).toEqual({
+  expect(await migrationsOf(file, { fs, userData })).toEqual({
     kind: 'recorded',
     migrations: LINEAGE.map(({ createdAt, hash }) => ({ createdAt, hash })),
   })
-  expect(copies).toBe(0)
+  expect(copies).toBeGreaterThan(0)
+  expect([readFileSync(file), readFileSync(`${file}-wal`)]).toEqual(before)
   expect(existsSync(join(userData, 'recovery', 'scratch'))).toBe(false)
 })
 
