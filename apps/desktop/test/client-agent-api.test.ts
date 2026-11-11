@@ -14,10 +14,16 @@ import { useAgentStore } from '../src/renderer/src/composables/useAgentStore'
 
 function fixture() {
   const list: AgentIdentities = {
-    identities: [], foldersWithoutARow: [], use: [], externalMcpServers: [],
-    spawningEnabled: false, defaultApprovalMode: 'ask',
+    identities: [],
+    foldersWithoutARow: [],
+    use: [],
+    externalMcpServers: [],
+    spawningEnabled: false,
+    defaultApprovalMode: 'ask',
   }
-  const unused = (): never => { throw new Error('Unexpected agent operation') }
+  const unused = (): never => {
+    throw new Error('Unexpected agent operation')
+  }
   const read = vi.fn(async () => list)
   const write = vi.fn(async ({ enabled }: { enabled: boolean }) => ({ spawningEnabled: enabled }))
   const agents: ClientAgentApi = {
@@ -59,9 +65,16 @@ describe('the agent store belongs to its injected client', () => {
     let current = transport
     const supplier = vi.fn(() => current)
     const api = createDesktopProviderApi(
-      () => { throw new Error('Unexpected provider operation') },
+      () => {
+        throw new Error('Unexpected provider operation')
+      },
       () => undefined,
-      undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
       supplier,
     )
     expect(supplier).not.toHaveBeenCalled()
@@ -107,7 +120,9 @@ describe('the agent store belongs to its injected client', () => {
   it('does not poison a client cache when its capability was absent', () => {
     const { api, agents } = fixture()
     const supplied: ClientApi = { ...api, agents: undefined }
-    expect(() => agentStoreForClient(supplied)).toThrow('The client does not provide agent reads and intents')
+    expect(() => agentStoreForClient(supplied)).toThrow(
+      'The client does not provide agent reads and intents',
+    )
     Object.assign(supplied, { agents })
     const available = agentStoreForClient(supplied)
     expect(agentStoreForClient(supplied)).toBe(available)
