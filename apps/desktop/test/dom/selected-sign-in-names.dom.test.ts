@@ -239,12 +239,12 @@ it.each([
   ['unknown', "Couldn't check this agent's Fern sign-in"],
 ] as const)('names the %s panel without rewriting the supplied reason', async (state, heading) => {
   const props = reactive({
-    provider: 'claude',
+    provider: 'claude' as const,
     displayName: 'Fern',
     state: { state, reason: 'Exact selected reason.' },
     signIn: capability,
     reprovision: capability,
-    busy: 'idle',
+    busy: 'idle' as const,
     notice: null,
   })
   const m = mount(defineComponent({ setup: () => () => h(SignInPanel, props) }), {})
