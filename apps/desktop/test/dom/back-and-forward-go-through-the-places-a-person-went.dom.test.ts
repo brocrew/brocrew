@@ -136,7 +136,7 @@ const runtime = {
   listResumable: vi.fn(async () => []),
   listUnresumable: vi.fn(async () => []),
   agentIdentities: vi.fn(async () => agents),
-  profiles: vi.fn(async () => []),
+  profiles: vi.fn<RuntimeBridge['profiles']>(async () => []),
   capabilities: vi.fn(async () => ({})),
   providerVersions: vi.fn(async () => ({
     claude: { version: null, reason: 'No version in this fixture.' },
