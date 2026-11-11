@@ -1,7 +1,8 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import type { LoggingState } from '../../../shared/logging'
+import { useClientApi } from '../client-provider/injection'
 
-export function useLogging(bridge = globalThis.window?.api?.logging) {
+export function useLogging(bridge = useClientApi().logging) {
   const state = ref<LoggingState | null>(null)
   const saving = ref(false)
   const error = ref('')

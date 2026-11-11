@@ -3,6 +3,7 @@ import type { ClientSessionApi } from '../../../shared/client-session-api'
 import type { ClientApi } from '../../../shared/client-api'
 import type { RecoveryRetentionClient } from '../../../shared/recovery-retention'
 import type { PluginsClient } from '../../../shared/plugin-settings'
+import type { LoggingClient } from '../../../shared/logging'
 import type { ProviderSetupBridge } from '../../../shared/provider-setup'
 import type { RuntimeBridge } from '../../../shared/runtime-ipc'
 
@@ -33,6 +34,7 @@ export function createDesktopProviderApi(
   sessions: () => ClientSessionApi | undefined = () => undefined,
   composer: () => ClientComposerApi | undefined = () => undefined,
   plugins: () => PluginsClient | undefined = () => undefined,
+  logging: () => LoggingClient | undefined = () => undefined,
 ): ClientApi {
   return Object.freeze({
     providerCatalogue: () => runtime().providerCatalogue(),
@@ -58,6 +60,9 @@ export function createDesktopProviderApi(
     },
     get plugins() {
       return plugins()
+    },
+    get logging() {
+      return logging()
     },
     get recoveryCopies() {
       return recoveryCopies()

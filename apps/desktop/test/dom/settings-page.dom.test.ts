@@ -1,5 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { defineComponent, h, nextTick, ref } from 'vue'
+import { defineComponent, h, nextTick, provide, ref } from 'vue'
+import type { ClientApi } from '../../src/shared/client-api'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
 import { visibleProviderDescriptors } from '@brobot2/shared'
 import SettingsScreen, {
   type SettingsTab,
@@ -45,6 +48,7 @@ async function settings(
   start: SettingsTab = 'providers',
   retention?: NonNullable<Window['api']['transcriptRetention']>,
   logging?: NonNullable<Window['api']['logging']>,
+  client?: ClientApi,
 ) {
   providersBridge()
   let cacheState: CacheClearState | null = null
@@ -101,15 +105,18 @@ async function settings(
   await store.load()
   const tab = ref<SettingsTab>(start)
   const owner = defineComponent({
-    setup: () => () =>
-      h(SettingsScreen, {
-        tab: tab.value,
-        capabilities: null,
-        warnings: null,
-        clock: Date.now(),
-        store,
-        'onUpdate:tab': (next: SettingsTab) => (tab.value = next),
-      }),
+    setup() {
+      if (client) provide(CLIENT_PROVIDERS, client)
+      return () =>
+        h(SettingsScreen, {
+          tab: tab.value,
+          capabilities: null,
+          warnings: null,
+          clock: Date.now(),
+          store,
+          'onUpdate:tab': (next: SettingsTab) => (tab.value = next),
+        })
+    },
   })
   const m = mount(owner, {}, { width: 1000, height: 800 })
   await nextTick()
@@ -171,10 +178,28 @@ it('shows the saved choice and the full log path, and saves a change', async () 
   const path = '/fictional/very long workspace folder/logs/brocrew.log'
   const servicePath = '/fictional/plugins/service.log'
   const setLoggingDebug = vi.fn(async (debug: boolean) => ({ debug, path, servicePath }))
-  const { m } = await settings('general', undefined, {
+  const logging = {
     getLogging: async () => ({ debug: true, path, servicePath }),
     setLoggingDebug,
-  })
+  }
+  const raw = {
+    getLogging: vi.fn(async () => ({ debug: false, path: '/wrong/window.log', servicePath: null })),
+    setLoggingDebug: vi.fn(async () => ({
+      debug: false,
+      path: '/wrong/window.log',
+      servicePath: null,
+    })),
+  }
+  const client = createDesktopProviderApi(
+    () => window.api.runtime,
+    () => undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    () => logging,
+  )
+  const { m } = await settings('general', undefined, raw, client)
   const toggle = m.q('debug-mode-switch') as HTMLInputElement
   await vi.waitFor(() => expect(toggle.checked).toBe(true))
   expect(m.q('log-path').textContent).toContain(path)
@@ -182,6 +207,8 @@ it('shows the saved choice and the full log path, and saves a change', async () 
   expect(m.q('debug-mode').textContent).toContain('Errors are always logged')
   toggle.click()
   await vi.waitFor(() => expect(setLoggingDebug).toHaveBeenCalledWith(false))
+  expect(raw.getLogging).not.toHaveBeenCalled()
+  expect(raw.setLoggingDebug).not.toHaveBeenCalled()
 })
 
 it('keeps the switch disabled until the read arrives', async () => {
