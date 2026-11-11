@@ -1407,7 +1407,7 @@ export interface PersistedEventInfo {
   event: TranscriptEvent
 }
 
-/** Work, questions and app notices share the same delivery queue. */
+/** App notices share the queue, but people cannot cancel them; only notices may be retracted. */
 export const MAILBOX_KINDS = ['work', 'question', 'notice'] as const
 
 /** One of {@link MAILBOX_KINDS}. */

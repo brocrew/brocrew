@@ -63,6 +63,7 @@ export interface SessionRecord {
 
   transcript: TranscriptState
 
+  // Shares transcript at the tail; paging away preserves current control in a separate fold.
   control: TranscriptState
 
   tail: WindowState | null

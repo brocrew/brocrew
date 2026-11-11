@@ -169,6 +169,7 @@ function quietSubAgents(
   return [...state.subAgentCards.values()].filter((card) => !touched.has(card.agentId))
 }
 
+// Carry session facts and unresolved cards; rebuild event/item indexes from retained rows.
 export function carryForward(
   state: TranscriptState,
   retained: readonly RuntimeEventMessage[],
@@ -363,6 +364,7 @@ export function foldWindow(
   }
 
   let placed = false
+  // Restore cards after crossing liveFrom so markReopened cannot settle current carried work.
   const placeCarried = (): void => {
     if (carry === null || placed) return
     placed = true
