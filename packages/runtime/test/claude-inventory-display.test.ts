@@ -43,7 +43,7 @@ describe('Claude inventory connection interpretation', () => {
       published: {
         servers: [
           { name: 'absent', status: 'connected' },
-          { name: 'future', status: 'new', connectionKind: 'x'.repeat(MAX_STATUS_WORD) },
+          { name: 'future', status: 'new', connectionKind: 'x'.repeat(MAX_STATUS_WORD - 1) + '…' },
         ],
       },
     })
