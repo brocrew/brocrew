@@ -71,6 +71,7 @@ type Asked = { url: URL; headers: RequestOptions['headers']; download: boolean }
 let root: string
 let resources: PropertyDescriptor | undefined
 let platform: PropertyDescriptor | undefined
+let architecture: PropertyDescriptor | undefined
 let updater: NsisUpdater
 let updates: ReturnType<typeof startUpdates> | undefined
 let closeMacServer: (() => void) | undefined
@@ -116,6 +117,8 @@ async function start(
   installed = INSTALLED,
 ): Promise<void> {
   Object.defineProperty(process, 'platform', { value: on, configurable: true })
+  if (on === 'darwin')
+    Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true })
   primaryManifest = manifest(on)
   const { NsisUpdater, MacUpdater } =
     await vi.importActual<typeof import('electron-updater')>('electron-updater')
@@ -284,6 +287,7 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'fictional-update-feed-'))
   resources = Object.getOwnPropertyDescriptor(process, 'resourcesPath')
   platform = Object.getOwnPropertyDescriptor(process, 'platform')
+  architecture = Object.getOwnPropertyDescriptor(process, 'arch')
   Object.defineProperty(process, 'resourcesPath', { value: root, configurable: true })
   asked = []
   primaryError = null
@@ -308,6 +312,7 @@ afterEach(async () => {
   if (resources) Object.defineProperty(process, 'resourcesPath', resources)
   else Reflect.deleteProperty(process, 'resourcesPath')
   if (platform) Object.defineProperty(process, 'platform', platform)
+  if (architecture) Object.defineProperty(process, 'arch', architecture)
   rmSync(root, { recursive: true, force: true })
 })
 
@@ -752,4 +757,13 @@ describe('the public update feed', () => {
     expect([...sent.url.searchParams]).toEqual([['v', INSTALLED]])
     expect(fake.opened).not.toHaveBeenCalled()
   })
+})
+
+it('models an ARM64 Mac when the test host reports x64', async () => {
+  Object.defineProperty(process, 'arch', { value: 'x64', configurable: true })
+  vi.spyOn(dependency('node:child_process'), 'execFileSync').mockReturnValue('fictional x86_64')
+  await start('darwin')
+  await updates!.checkNow()
+  expect((await updates!.download()).state.kind).toBe('ready')
+  expect(process.arch).toBe('arm64')
 })

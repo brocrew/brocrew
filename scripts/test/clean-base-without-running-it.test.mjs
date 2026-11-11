@@ -98,9 +98,8 @@ describe('the source census — a new durable write under userData must not slip
       "'logs', 'brocrew.log'",
       "'one-host.sock'",
       "'provider-accounts.json'",
+      // The updater's settings in a hidden launch's data folder.
       "'update-settings.json'",
-      "'updates'",
-      "'updates', 'staging'",
       "'workspaces.json'",
       // The API keys a person saved. REMOVED: a fresh install has none (`LEDGER`).
       'API_KEYS_FILE',
