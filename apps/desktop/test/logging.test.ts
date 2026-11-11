@@ -151,6 +151,33 @@ it('keeps console output when the file cannot be opened, without recursive repor
   expect(child.stderr).not.toContain('Maximum call stack')
 })
 
+it('writes the standalone service log outside a package tree without falling back to stderr', async () => {
+  const root = await folder()
+  const file = join(root, 'service.log')
+  const child = spawnSync(
+    process.execPath,
+    [
+      '--experimental-strip-types',
+      '-e',
+      `
+      const logger = require(process.argv[1])
+      logger.openLog(process.argv[2], { sync: true, console: false })
+      logger.logInfo('drain', 'child-proofs', { state: 'complete' })
+      logger.logError('drain', 'stopped-write', { errno: 'EPERM' })
+      `,
+      loggerSource,
+      file,
+    ],
+    { cwd: root, encoding: 'utf8', timeout: 5000 },
+  )
+  expect(child.status, child.stderr).toBe(0)
+  const written = await text(file)
+  expect(written).toContain('child-proofs')
+  expect(written).toContain('stopped-write')
+  expect(written).toContain('EPERM')
+  expect(child.stderr).toBe('')
+})
+
 it('writes nothing, and makes no file, until a process opens its log', async () => {
   const root = await folder()
   const child = spawnSync(
