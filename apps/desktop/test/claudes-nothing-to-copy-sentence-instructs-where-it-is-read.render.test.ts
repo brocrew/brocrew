@@ -81,7 +81,12 @@ describe('Claude’s “nothing to copy” sentence', () => {
 
   it('🔴 the model picker directs missing setup to Settings instead of showing raw diagnostics', () => {
     const field = modelField({
-      catalogue: { ok: false, reason: 'refused', detail: 'credentials expired' },
+      catalogue: {
+        ok: false,
+        reason: 'refused',
+        detail: 'credentials expired',
+        setupRequired: true,
+      },
       profileExists: true,
       provider: 'claude',
       signIn: declared.signIn,

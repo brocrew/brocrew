@@ -59,7 +59,7 @@ export interface PickedModel {
  * threw (a quit's refusal, a missing person). ⚠️ An ANSWER may still say why the provider's own rows
  * are missing (`ModelList.notAsked`): that is the host's fact, and this is the window's.
  */
-export type HeldList =
+type HeldList =
   | { readonly state: 'asking' }
   | { readonly state: 'answered'; readonly list: ModelList }
   | { readonly state: 'unread'; readonly why: string }

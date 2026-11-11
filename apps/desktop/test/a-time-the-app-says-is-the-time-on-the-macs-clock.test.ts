@@ -1243,7 +1243,10 @@ describe('§5 · the window, main and the host agree on the zone', () => {
     const MOUNT = inOrder(
       'void Promise.all([keepTheMacZone(window.api), themeBeforeDrawing(windowTheme)]).then(() =>',
       'draftHandoffBeforeDrawing(window.api?.savedDrafts).then((handoff) => {',
-      "createApp(App).provide(SAVED_DRAFTS, handoff).mount('#app')",
+      'createApp(App)',
+      '.provide(SAVED_DRAFTS, handoff)',
+      '.provide(CLIENT_PROVIDERS, desktopProviderApi)',
+      ".mount('#app')",
     )
     const failing = (source: string): string[] =>
       Object.entries(PRELOAD)

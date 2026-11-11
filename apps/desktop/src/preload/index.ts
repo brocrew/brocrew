@@ -1,3 +1,4 @@
+import { command } from './runtime-command'
 import { loggingClient } from '../shared/logging'
 import type { ResolveProviderLaunchInput } from '../shared/provider-launch'
 import type { DecideMoveRequestInput, MoveRequestAck } from '../shared/move-contracts'
@@ -161,9 +162,6 @@ import {
   type RespondUserInputInput,
   type AnswerActionInput,
   type RuntimeBridge,
-  type RuntimeCommand,
-  type RuntimeCommandKind,
-  type RuntimeCommandResult,
   type RuntimeEventMessage,
   type SendInput,
   type CancelQueuedMessageInput,
@@ -201,17 +199,6 @@ import type {
  */
 
 if (process.isMainFrame) themeBeforePaint(ipcRenderer)
-
-/**
- * Send one command; it answers what `RuntimeCommandResults` says that command answers, the
- * same map main's dispatch is checked against, so a reply typed one way on one side and another way
- * on the other does not typecheck. The one cast is the wire's own: `invoke` answers `any`.
- */
-function command<K extends RuntimeCommandKind>(
-  payload: Extract<RuntimeCommand, { kind: K }> & { kind: K },
-): Promise<RuntimeCommandResult<K>> {
-  return ipcRenderer.invoke(RUNTIME_COMMAND_CHANNEL, payload) as Promise<RuntimeCommandResult<K>>
-}
 
 const runtime: RuntimeBridge = Object.freeze({
   providerLaunchChoices: (input: ProviderProfileInput) =>

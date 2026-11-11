@@ -10,22 +10,18 @@ let made = 0
 <script setup lang="ts">
 import type { ModelList, ReportedModel } from '../../../shared/model-choice-contracts'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import type {
-  CapabilityStatus,
-  Provider,
-  ProviderCapabilityMap,
-  ProviderProgram,
-} from '../../../shared/runtime-ipc'
+import type { Provider, ProviderCapabilityMap, ProviderProgram } from '../../../shared/runtime-ipc'
 import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
-import { MODEL_CHOICE_SAID, sameModel, theListedRow } from '../../../shared/model-choice'
-import { modelField } from '../lib/model-field'
+import { sameModel, theListedRow } from '../../../shared/model-choice'
+import {
+  modelPickerSection,
+  modelPickerEffortWords,
+  reportedModelSays,
+} from '../lib/model-picker-section'
 import {
   inTheListsSpelling,
-  isNoLongerListed,
-  NO_LONGER_LISTED,
   theDraftEffort,
   theEffortsOffered,
-  thePickerRows,
   type ModelLists,
   type PickedModel,
 } from '../lib/model-lists'
@@ -141,12 +137,6 @@ const addName = ref('')
 /** What a provider's list door last said — a refusal, or an id already listed. */
 const listSaid = ref<Partial<Record<Provider, string>>>({})
 
-const PENDING: CapabilityStatus = {
-  state: 'absent',
-  reason: 'Still asking this provider what it can do.',
-  checkedAgainst: 'the capability fetch has not returned yet',
-}
-
 /** The pair the draft starts on, and the one a deleted draft falls back to. */
 const startsOn = computed(() => props.drafted ?? props.shown)
 
@@ -157,17 +147,7 @@ function listOf(provider: Provider): ModelList | null {
 
 /* ------------------------------------------------------------------ the face */
 
-/** ⚑ `09` §4 — the model the provider reports, beside the selected one, only where they differ. */
-const reportedSays = computed(() => {
-  const reported = props.reported
-  if (reported == null) return null
-  const shown = props.shown
-  const effortDiffers = reported.effort !== undefined && reported.effort !== shown?.effort
-  if (shown !== null && sameModel(reported.model, shown.model) && !effortDiffers) return null
-  const provider = shown?.provider ?? props.providers[0]
-  if (provider === undefined) return null
-  return `· ${PROVIDER_NAME[provider]} reports ${reported.model}${reported.effort === undefined ? '' : ` at ${reported.effort}`}`
-})
+const reportedSays = computed(() => reportedModelSays(props.reported, props.shown, props.providers))
 
 const faceWords = computed(() => {
   const shown = props.shown
@@ -193,54 +173,18 @@ function suppliedReady(provider: Provider): boolean | null {
 }
 
 const sections = computed(() =>
-  props.providers.map((provider) => {
-    const held = store.value.held(provider, props.profileId)
-    const list = held?.state === 'answered' ? held.list : null
-    const name = PROVIDER_NAME[provider]
-    const ready =
+  props.providers.map((provider) =>
+    modelPickerSection(
+      store.value,
+      provider,
+      props.profileId,
       resolvedReadiness.value !== null && provider in resolvedReadiness.value
         ? (resolvedReadiness.value[provider] ?? null)
-        : suppliedReady(provider)
-    const field =
-      held?.state === 'unread'
-        ? {
-            message:
-              ready === false
-                ? `${name} isn't set up. Set it up in Settings → Providers.`
-                : `${name} didn't answer. Try again.`,
-            tone: 'warn' as const,
-            remedy: null,
-            detail: held.why,
-            retry: ready !== false,
-            notSetUp: ready === false,
-          }
-        : modelField({
-            catalogue:
-              list === null
-                ? null
-                : (list.notAsked ?? {
-                    ok: true,
-                    models: list.models.filter((row) => row.addedBy === 'the-provider'),
-                  }),
-            ready,
-            profileExists: true,
-            provider: name,
-            signIn: props.capabilities?.[provider]?.signIn ?? PENDING,
-            reprovision: props.capabilities?.[provider]?.reprovisionAuth ?? PENDING,
-          })
-    const current = startsOn.value?.provider === provider ? startsOn.value.model : null
-    return {
-      provider,
-      ready,
-      name,
-      list,
-      field,
-      rows: thePickerRows(list, current).map((one) => ({
-        ...one,
-        mark: one.row === null && isNoLongerListed(list, one.id) ? NO_LONGER_LISTED : null,
-      })),
-    }
-  }),
+        : suppliedReady(provider),
+      startsOn.value,
+      props.capabilities,
+    ),
+  ),
 )
 
 const visibleSections = computed(() =>
@@ -291,30 +235,12 @@ const pick = computed<PickedModel | null>(() =>
 )
 
 const levels = computed(() => (offered.value?.known === true ? offered.value.levels : []))
-/** ⚑ The provider's own words about the level drafted (076 §2). */
-const effortDescription = computed(
-  () => levels.value.find((level) => level.id === draftEffort.value)?.description ?? null,
+const effortWords = computed(() =>
+  modelPickerEffortWords(draft.value, offered.value, draftEffort.value, props.profileId),
 )
-/** ⚑ Why there is no level to pick, in one sentence — or `null` when there are levels. */
-const effortSilence = computed(() => {
-  const drafted = draft.value
-  if (drafted === null || offered.value === null) return null
-  if (!offered.value.known) {
-    return `${PROVIDER_NAME[drafted.provider]} could not be asked which efforts “${drafted.model}” offers.`
-  }
-  if (offered.value.levels.length === 0) return `“${drafted.model}” has no effort levels.`
-  return null
-})
-/** ⛔ Levels offered and none named: the door's own sentence, and Take waits for a pick. */
-const effortWanted = computed(() =>
-  draft.value !== null && draftEffort.value === undefined
-    ? MODEL_CHOICE_SAID['effort-not-offered']({
-        profileId: props.profileId ?? '',
-        model: draft.value.model,
-        offered: levels.value.map((level) => level.id),
-      })
-    : null,
-)
+const effortDescription = computed(() => effortWords.value.description)
+const effortSilence = computed(() => effortWords.value.silence)
+const effortWanted = computed(() => effortWords.value.wanted)
 const reachesSays = computed(() =>
   pick.value === null || props.reaches === undefined
     ? null

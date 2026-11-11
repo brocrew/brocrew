@@ -14,6 +14,7 @@ import ModelPicker from '../../src/renderer/src/components/ModelPicker.vue'
 import NewConversation from '../../src/renderer/src/components/NewConversation.vue'
 import { providersBridge } from '../../look/fixtures/providers'
 import { mount, unmountAll } from './harness'
+import { createAttachmentBook, draftKey } from '../../src/renderer/src/lib/drafts'
 
 const FABLE = 'fable' as Provider
 const FERN = 'fern' as Provider
@@ -47,18 +48,21 @@ function answer(provider: Provider, ready: boolean | null = true): ProviderLaunc
     defaultModelToSend: { model: 'supplied', effort: null },
   }
 }
-function fixture() {
-  const read = vi.fn<ClientProviderApi['providerLaunchChoices']>(async ({ provider }) =>
-    answer(provider),
-  )
-  const resolve = vi.fn<ClientProviderApi['resolveProviderLaunch']>(async () => ({
+function fableSelection(): ResolvedProviderLaunch {
+  return {
     provider: FABLE,
     pickerProvider: FABLE,
     readiness: [
       { provider: FERN, ready: true },
       { provider: FABLE, ready: true },
     ],
-  }))
+  }
+}
+function fixture() {
+  const read = vi.fn<ClientProviderApi['providerLaunchChoices']>(async ({ provider }) =>
+    answer(provider),
+  )
+  const resolve = vi.fn<ClientProviderApi['resolveProviderLaunch']>(async () => fableSelection())
   const api: ClientProviderApi = {
     ...createDesktopProviderApi(
       () => window.api.runtime,
@@ -119,8 +123,7 @@ it('uses the supplied nonfirst provider and model despite native-looking missing
   })
 })
 
-it('keeps a newer manual provider choice ahead of an older selection answer', async () => {
-  const out = fixture()
+async function deferredPicker(out: ReturnType<typeof fixture>) {
   await out.lists.read(FERN)
   await out.lists.read(FABLE)
   let finish!: (value: ResolvedProviderLaunch) => void
@@ -132,16 +135,15 @@ it('keeps a newer manual provider choice ahead of an older selection answer', as
   const m = picker(out)
   m.q('model-picker-face').click()
   await settle()
+  return { m, finish }
+}
+
+it('keeps a newer manual provider choice ahead of an older selection answer', async () => {
+  const out = fixture()
+  const { m, finish } = await deferredPicker(out)
   m.q('model-picker-choose-fern').click()
   await settle()
-  finish({
-    provider: FABLE,
-    pickerProvider: FABLE,
-    readiness: [
-      { provider: FERN, ready: true },
-      { provider: FABLE, ready: true },
-    ],
-  })
+  finish(fableSelection())
   await settle()
   expect((m.q('model-picker-choose-fern') as HTMLInputElement).checked).toBe(true)
   expect(m.q('model-picker-provider').getAttribute('data-provider')).toBe(FERN)
@@ -151,6 +153,7 @@ it('sends the supplied fictional launch pair instead of inferring a row default'
   const out = fixture()
   await out.lists.read(FABLE)
   const start = vi.fn()
+  const handing = createAttachmentBook().handing(draftKey('fictional-new-conversation'))
   const host = defineComponent({
     setup() {
       provide(CLIENT_PROVIDERS, out.api)
@@ -159,6 +162,7 @@ it('sends the supplied fictional launch pair instead of inferring a row default'
           busy: false,
           error: null,
           draft: 'Keep these typed words',
+          handing,
           defaultProvider: FABLE,
           providerReadiness: { [FABLE]: true },
           defaultApprovalMode: 'ask',
@@ -221,25 +225,8 @@ it('forwards an existing programme observation and uses core-returned readiness 
 
 it('focuses the arrived model after a deferred core selection', async () => {
   const out = fixture()
-  await out.lists.read(FERN)
-  await out.lists.read(FABLE)
-  let finish!: (value: ResolvedProviderLaunch) => void
-  out.resolve.mockReturnValueOnce(
-    new Promise((resolve) => {
-      finish = resolve
-    }),
-  )
-  const m = picker(out)
-  m.q('model-picker-face').click()
-  await settle()
-  finish({
-    provider: FABLE,
-    pickerProvider: FABLE,
-    readiness: [
-      { provider: FERN, ready: true },
-      { provider: FABLE, ready: true },
-    ],
-  })
+  const { m, finish } = await deferredPicker(out)
+  finish(fableSelection())
   await settle()
   const row = m.host.querySelector<HTMLInputElement>(
     '[data-cy="model-picker-row"][data-model="supplied"] input',

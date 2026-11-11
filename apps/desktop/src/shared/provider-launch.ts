@@ -1,5 +1,5 @@
 import type { Provider } from '@brobot2/shared'
-import type { ProviderProgram } from './runtime-ipc'
+import type { ProviderProgram } from '@brobot2/runtime/provider-module'
 import type { ModelAndEffort, ModelList } from './model-choice-contracts'
 
 export interface ProviderLaunchChoices {

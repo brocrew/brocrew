@@ -640,7 +640,7 @@ describe('685 §5 · an agent that has never run, and no list', () => {
   it('⚑ the list is for the provider the sheet resolves — Codex answered while Claude refused', async () => {
     reset()
     world.map = {
-      claude: { ok: false, reason: 'refused', detail: 'not signed in' },
+      claude: { ok: false, reason: 'refused', detail: 'not signed in', setupRequired: true },
       codex: { ok: true, models: CODEX_ROWS },
     }
     const onClaude = await control('claude')

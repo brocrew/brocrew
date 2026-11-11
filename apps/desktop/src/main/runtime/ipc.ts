@@ -1,3 +1,4 @@
+import { resolveProviderLaunchSchema } from './provider-launch-schema'
 import { SkillsRequest } from '../../shared/skills-window'
 import { LINK_TARGET_LIMIT } from '../../shared/link-resolution'
 import { MOVE_WORDS } from '../../shared/move-request'
@@ -1192,29 +1193,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
    */
   z.object({ kind: z.literal('modelList'), provider: providerSchema, profileId }),
   z.object({ kind: z.literal('providerLaunchChoices'), provider: providerSchema, profileId }),
-  z.object({
-    kind: z.literal('resolveProviderLaunch'),
-    profileId,
-    askedProvider: providerSchema.nullable(),
-    providers: z.array(
-      z.object({
-        provider: providerSchema,
-        ready: z.boolean().nullable(),
-        program: z
-          .object({
-            standing: z.enum([
-              'tested',
-              'older-than-tested',
-              'newer-than-tested',
-              'missing',
-              'unreadable',
-            ]),
-          })
-          .nullable()
-          .optional(),
-      }),
-    ),
-  }),
+  resolveProviderLaunchSchema(profileId),
   /**
    * ⚑ **D-042 · R3 — a model a person adds to, or takes off, a provider's list** — bounded as
    * `createSession`'s `model` is, with no control characters: it is shown in a list and sent as is.
