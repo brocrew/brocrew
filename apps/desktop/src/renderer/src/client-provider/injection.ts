@@ -1,7 +1,7 @@
 import { hasInjectionContext, inject, type InjectionKey } from 'vue'
 import type { ClientProviderApi } from '../../../shared/client-provider-api'
 import type { ClientApi } from '../../../shared/client-api'
-import { desktopProviderApi } from './desktop'
+import { desktopProviderApi } from './window'
 
 export const CLIENT_PROVIDERS: InjectionKey<ClientApi> = Symbol('client providers')
 

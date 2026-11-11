@@ -12,7 +12,7 @@ import type {
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { expandAgentCards } from './harness'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { defineComponent, h, nextTick, reactive, ref, type Component } from 'vue'
+import { nextTick, reactive } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
 import QuestionCard from '../../src/renderer/src/components/QuestionCard.vue'
@@ -31,7 +31,6 @@ import {
   markAnswerRefused,
   markRequestFailed,
   type ToolItem,
-  type TranscriptItem,
   type TranscriptState,
 } from '../../src/renderer/src/lib/transcript'
 import { usageSays } from '../../src/renderer/src/lib/usage-limit'

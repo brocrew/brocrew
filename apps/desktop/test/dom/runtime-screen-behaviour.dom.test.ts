@@ -5,7 +5,6 @@ import {
   agentStore,
   runtime,
   changed,
-  walk,
   forestWalk,
   installRuntimeScreenFixture,
   disposeRuntimeScreenFixture,

@@ -142,7 +142,7 @@ export const runtime = {
   listResumable: vi.fn(async () => []),
   listUnresumable: vi.fn(async () => []),
   agentIdentities: vi.fn(async () => agents),
-  profiles: vi.fn<RuntimeBridge['profiles']>(async () => []),
+  profiles: vi.fn<RuntimeBridge['profiles']>(async () => [DEFAULT_PROFILE_ID]),
   capabilities: vi.fn(async () => ({})),
   providerLaunchChoices: async (input: Parameters<RuntimeBridge['providerLaunchChoices']>[0]) =>
     launchFacts(
@@ -190,6 +190,7 @@ export function installRuntimeScreenFixture(): void {
   vi.clearAllMocks()
   runtime.createSession.mockReset()
   runtime.cancelLaunch.mockReset().mockResolvedValue(true)
+  runtime.profiles.mockReset().mockResolvedValue([DEFAULT_PROFILE_ID])
   runtime.resolveLink.mockReset()
   runtime.latestHistory.mockReset()
   changeListeners.clear()

@@ -13,6 +13,7 @@ import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 import { forgetProfileSignIns } from '../../src/renderer/src/composables/useProfileSignIn'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import { providersBridge } from '../../look/fixtures/providers'
+import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import { CAPABILITY_FIXTURE } from '../provider-capability-fixture'
 import type {
   AgentIdentities,
@@ -193,7 +194,7 @@ function fixture(claudeReady = false, holdFirstUsage = false) {
       listResumable: async () => [],
       listUnresumable: async () => [],
       agentIdentities: async () => identities,
-      profiles: async () => [],
+      profiles: async () => [DEFAULT_PROFILE_ID],
       capabilities: async () => CAPABILITY_FIXTURE,
       providerVersions: versions,
       modelList: async ({ provider }) => catalogue(provider, provider === 'claude' && signedIn),

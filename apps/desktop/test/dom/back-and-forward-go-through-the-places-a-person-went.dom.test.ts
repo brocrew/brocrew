@@ -1021,6 +1021,7 @@ it('a conversation that can’t be opened again keeps the window where it is and
 })
 
 it('keeps the model a person picked when changing the front-door provider', async () => {
+  runtime.profiles.mockResolvedValueOnce([DEFAULT_PROFILE_ID])
   forgetProfileSignIns()
   for (const provider of ['claude', 'codex'] as const)
     useProfileSignIn(provider, DEFAULT_PROFILE_ID).auth = {

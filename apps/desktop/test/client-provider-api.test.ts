@@ -7,7 +7,7 @@ import type { ModelList } from '../src/shared/model-choice-contracts'
 import type { ClientProviderApi } from '../src/shared/client-provider-api'
 import { createDesktopProviderApi } from '../src/renderer/src/client-provider/desktop'
 import { providerCatalogue } from '../src/renderer/src/client-provider/catalogue'
-import { useModelLists } from '../src/renderer/src/composables/useModelLists'
+import { modelListsForClient as useModelLists } from '../src/renderer/src/client-provider/model-lists'
 
 function fixture() {
   const off = vi.fn()
