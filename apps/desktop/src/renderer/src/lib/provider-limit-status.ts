@@ -50,8 +50,9 @@ function historicalStop(facts: ProviderBlockFacts, now: number): string | null {
   const block = facts.providerBlockLastKnown
   if (block == null || !Number.isFinite(now) || !Number.isFinite(block.asOf) || now < block.asOf)
     return null
-  const until = block.resetsAt ?? block.asOf + 5 * 60_000
-  if (!Number.isFinite(until) || now >= until) return null
+  // Older facts can time history only when the provider supplied an explicit reset.
+  const until = block.displayUntil ?? block.resetsAt
+  if (until == null || !Number.isFinite(until) || now >= until) return null
   return limitsDisplayWords.lastKnown(block)
 }
 

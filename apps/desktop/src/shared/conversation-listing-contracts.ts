@@ -16,6 +16,8 @@ export interface ConversationProviderBlock {
 /** Previously validated evidence, with no current or admission authority. */
 export interface LastKnownProviderBlock extends ConversationProviderBlock {
   readonly asOf: number
+  /** Core's display deadline; older unknown-reset facts omit history until refreshed. */
+  readonly displayUntil?: number
 }
 
 /**

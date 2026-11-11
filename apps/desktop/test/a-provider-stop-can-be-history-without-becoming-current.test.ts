@@ -1,6 +1,7 @@
 import type { LedgerWalk } from '../src/shared/question-contracts'
 import { describe, expect, it } from 'vitest'
 import { CurrentProviderLimitFacts } from '../src/main/runtime/current-provider-limit-facts'
+import { providerLimitDisplay } from '../src/renderer/src/lib/provider-limit-status'
 import type { ProviderLimitSeen } from '../src/shared/provider-limit'
 
 const AT = Date.UTC(2026, 9, 8, 21)
@@ -69,8 +70,13 @@ describe('historical provider stops carry no current or admission authority', ()
   it('retains the original date through rejected preparations and retires at the known reset', () => {
     const { facts, life, history } = stopped()
     facts.invalidate()
-    const original = { provider: 'claude', resetsAt: RESET, asOf: AT + 1 }
+    const original = { provider: 'claude', resetsAt: RESET, asOf: AT + 1, displayUntil: RESET }
     expect(history()).toEqual(original)
+    const disclosure = { providerBlockStatus: 'unavailable', providerBlockLastKnown: history() } as const
+    expect(providerLimitDisplay(disclosure, { is: 'idle' }, RESET - 1)?.history).toBeDefined()
+    expect(providerLimitDisplay(disclosure, { is: 'idle' }, RESET)?.history).toBeUndefined()
+    for (const now of [NaN, AT])
+      expect(providerLimitDisplay(disclosure, { is: 'idle' }, now)?.history).toBeUndefined()
     facts.gate('claude', RESET, AT + 3)
     expect(history(RESET - 1)).toEqual(original)
     expect(history(RESET)).toBeNull()
@@ -82,7 +88,17 @@ describe('historical provider stops carry no current or admission authority', ()
   it('unknown reset expires five minutes from confirmation, without expiring a valid current fact', () => {
     const { facts, life, history } = stopped(null)
     const end = AT + 1 + 5 * 60_000
-    expect(history(end - 1)).toMatchObject({ asOf: AT + 1, resetsAt: null })
+    const before = history(end - 1)
+    expect(before).toMatchObject({
+      asOf: AT + 1,
+      resetsAt: null,
+      displayUntil: end,
+    })
+    const disclosure = { providerBlockStatus: 'unavailable', providerBlockLastKnown: before } as const
+    expect(providerLimitDisplay(disclosure, { is: 'idle' }, end - 1)?.history).toBeDefined()
+    const expired = providerLimitDisplay(disclosure, { is: 'idle' }, end)
+    expect(expired?.word).toBe('Current limit status unavailable')
+    expect(expired).not.toHaveProperty('history')
     expect(history(end)).toBeNull()
     expect(facts.block('fictional', life, 'claude', false, false, end)).toEqual({
       status: 'current',

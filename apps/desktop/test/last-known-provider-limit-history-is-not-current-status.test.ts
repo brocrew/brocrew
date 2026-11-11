@@ -11,6 +11,7 @@ const history: LastKnownProviderBlock = {
   provider: 'claude',
   resetsAt: AT + 3 * 60 * 60_000,
   asOf: AT,
+  displayUntil: AT + 3 * 60 * 60_000,
 }
 const unavailable = { providerBlockStatus: 'unavailable', providerBlockLastKnown: history } as const
 
@@ -58,13 +59,38 @@ describe('dated conversation history stays separate from current facts', () => {
     expect(
       providerLimitDisplay(unavailable, { is: 'idle' }, history.resetsAt!)?.history,
     ).toBeUndefined()
-    const unknown = { ...unavailable, providerBlockLastKnown: { ...history, resetsAt: null } }
+    const unknown = {
+      ...unavailable,
+      providerBlockLastKnown: { ...history, resetsAt: null, displayUntil: AT + 5 * 60_000 },
+    }
     expect(
       providerLimitDisplay(unknown, { is: 'idle' }, AT + 5 * 60_000 - 1)?.history,
     ).toBeDefined()
     const expired = providerLimitDisplay(unknown, { is: 'idle' }, AT + 5 * 60_000)
     expect(expired?.word).toBe('Current limit status unavailable')
     expect(expired).not.toHaveProperty('history')
+  })
+
+  it('uses the supplied cutoff without deriving a duration from the reset or confirmation', () => {
+    const supplied = { ...unavailable, providerBlockLastKnown: { ...history, displayUntil: AT + 7 } }
+    expect(providerLimitDisplay(supplied, { is: 'idle' }, AT + 6)?.history).toBeDefined()
+    expect(providerLimitDisplay(supplied, { is: 'idle' }, AT + 7)?.history).toBeUndefined()
+  })
+
+  it('older facts use only their explicit finite reset, leaving unknown history absent', () => {
+    const older = { provider: history.provider, resetsAt: history.resetsAt, asOf: history.asOf }
+    const known = { ...unavailable, providerBlockLastKnown: older }
+    expect(providerLimitDisplay(known, { is: 'idle' }, older.resetsAt! - 1)?.history).toBeDefined()
+    expect(providerLimitDisplay(known, { is: 'idle' }, older.resetsAt!)?.history).toBeUndefined()
+    const unknown = { ...known, providerBlockLastKnown: { ...older, resetsAt: null } }
+    const shown = providerLimitDisplay(unknown, { is: 'idle' }, AT + 1)
+    expect(shown?.word).toBe('Current limit status unavailable')
+    expect(shown).not.toHaveProperty('history')
+  })
+
+  it.each([NaN, Infinity])('an invalid supplied deadline shows no historical stop (%s)', (displayUntil) => {
+    const invalid = { ...unavailable, providerBlockLastKnown: { ...history, displayUntil } }
+    expect(providerLimitDisplay(invalid, { is: 'idle' }, AT + 1)?.history).toBeUndefined()
   })
 
   it.each([NaN, AT - 1])('an unverifiable history clock shows no stop (%s)', (now) => {

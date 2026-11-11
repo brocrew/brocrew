@@ -199,6 +199,7 @@ export class CurrentProviderLimitFacts {
                 provider: episode.provider,
                 resetsAt: standing.resetsAt,
                 asOf: at,
+                displayUntil: standing.resetsAt ?? at + UNKNOWN_HISTORY_MS,
               }),
             })
             captured.push(conversation)
