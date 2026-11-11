@@ -7,6 +7,7 @@ import { realPathOf, type ReadRefusal, type TextFile } from '../../read-text-fil
 import { importClaudeTranscript } from './import-transcript'
 import type { ProviderChildWorkRequest } from '../transcript-policy'
 import type { ChildWorkResult } from '../../../shared/runtime-ipc'
+import { errorFactsForEvent } from '../error-diagnostic'
 /**
  * How much of a `.meta.json` sidecar is read (115 review, MEDIUM).
  *
@@ -340,6 +341,7 @@ export function readChild(request: ProviderChildWorkRequest): ChildWorkResult {
       ? {}
       : { parentToolCallId: sidecar.parentToolCallId }),
     entries: parsed.entries.map((entry) => entry.event),
+    errorFacts: parsed.entries.map((entry) => errorFactsForEvent(entry.event)),
     unreadable: parsed.unreadable,
     thinkingBlocks: countThinkingBlocks(lines),
   }

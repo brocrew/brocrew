@@ -31,7 +31,16 @@ function applyEvent(
   event: TranscriptEvent,
 ): void {
   const row = transcriptMessageForDisplay({ event }, state.ref?.provider)
-  applyDisplayedEvent(state, row.event, undefined, undefined, undefined, undefined, undefined, row.errorFacts)
+  applyDisplayedEvent(
+    state,
+    row.event,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    row.errorFacts,
+  )
 }
 
 const retry = (attempt: number): Extract<TranscriptEvent, { type: 'error' }> => ({

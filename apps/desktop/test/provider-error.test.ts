@@ -38,7 +38,16 @@ function notices(state: TranscriptState): string[] {
 function feed(state: TranscriptState, ...events: TranscriptEvent[]): TranscriptState {
   for (const event of events) {
     const row = transcriptMessageForDisplay({ event })
-    applyEvent(state, row.event, undefined, undefined, undefined, undefined, undefined, row.errorFacts)
+    applyEvent(
+      state,
+      row.event,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      row.errorFacts,
+    )
   }
   return state
 }

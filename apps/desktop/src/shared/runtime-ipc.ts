@@ -1723,6 +1723,8 @@ export type ChildWorkResult = (
       bytes: number
       /** The folded conversation, for `transcript` only. */
       entries?: TranscriptEvent[]
+      /** One optional diagnostic reading per entry, in exactly the same order. */
+      errorFacts?: readonly (import('./error-facts').ErrorFacts | undefined)[]
       /** Lines that were not JSON at all — reported, never silently dropped. */
       unreadable?: number
       /**

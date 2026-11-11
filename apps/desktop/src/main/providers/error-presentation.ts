@@ -2,7 +2,7 @@ import { errorPresentationSchema, type ErrorPresentation } from '@brobot2/runtim
 import { SUPPORTED_PROVIDERS, providerDescriptor, type Provider } from '@brobot2/shared'
 import type { TranscriptEvent } from '../../shared/conversation-events'
 import type { ErrorFacts } from '../../shared/error-facts'
-import { providerErrorSentence, turnFailureDetail } from './error-diagnostic'
+import { errorFactsForEvent } from './error-diagnostic'
 import { providerDefinitions } from './index'
 
 type ErrorEvent = Extract<TranscriptEvent, { type: 'error' }>
@@ -174,10 +174,5 @@ export function transcriptMessageForDisplay<T extends { event: TranscriptEvent }
 ): T & { errorFacts?: ErrorFacts } {
   const event = transcriptEventForDisplay(message.event, owner)
   if (event.type !== 'error') return event === message.event ? message : { ...message, event }
-  const ending = turnFailureDetail(event.message)
-  const errorFacts: ErrorFacts = {
-    sentence: providerErrorSentence(event.message),
-    ...(ending === null ? {} : { ending: { raw: ending, sentence: providerErrorSentence(ending) } }),
-  }
-  return { ...message, event, errorFacts }
+  return { ...message, event, errorFacts: errorFactsForEvent(event) }
 }

@@ -10,7 +10,8 @@ import {
   type RecoveryAction,
 } from '../lib/recovery-words'
 import { readableError } from '../lib/session-record'
-import { applyEvent, createTranscript, markReadOnly, type TranscriptState } from '../lib/transcript'
+import type { TranscriptState } from '../lib/transcript'
+import { readOnlyTranscript } from '../lib/read-only-transcript'
 import TranscriptView from './TranscriptView.vue'
 import IconSprite from './IconSprite.vue'
 import MessageLinks from './MessageLinks.vue'
@@ -183,10 +184,7 @@ async function choose(conversation: HistoryConversation): Promise<void> {
   chosen.value = { conversation, transcript: null, trouble: null }
   try {
     const events = await recovery.history.transcript(conversation.id)
-    const state = createTranscript()
-    for (const { event, at, workAncestry } of events)
-      applyEvent(state, event, at, undefined, undefined, workAncestry)
-    markReadOnly(state, READ_ONLY_NOTE)
+    const state = readOnlyTranscript(events, READ_ONLY_NOTE)
     // A later choice, or a later verdict, wins: an answer for either is dropped.
     if (asked === generation && chosen.value?.conversation.id === conversation.id) {
       chosen.value = { conversation, transcript: state, trouble: null }

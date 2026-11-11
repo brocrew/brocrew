@@ -3,6 +3,7 @@ import { readChildFile, MAX_CHILD_WORK_BYTES } from '../../child-work-file'
 import { importCodexRollout } from './import-transcript'
 import type { ProviderChildWorkRequest } from '../transcript-policy'
 import type { ChildWorkResult } from '../../../shared/runtime-ipc'
+import { errorFactsForEvent } from '../error-diagnostic'
 export function readChild(request: ProviderChildWorkRequest): ChildWorkResult {
   if (request.part !== 'transcript') return { ok: false, reason: 'unsupported' }
   const agentId = request.agents[0]!
@@ -41,6 +42,7 @@ export function readChild(request: ProviderChildWorkRequest): ChildWorkResult {
     truncated: read.truncated,
     bytes: read.bytes,
     entries: parsed.entries.map((entry) => entry.event),
+    errorFacts: parsed.entries.map((entry) => errorFactsForEvent(entry.event)),
     unreadable: parsed.unreadable,
     // ⛔ **No `thinkingBlocks`, and that is 109's asymmetry rule rather than an omission.**
     // `countThinkingBlocks` measures Claude's `message.content[].type === 'thinking'` records; a

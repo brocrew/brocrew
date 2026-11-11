@@ -72,7 +72,16 @@ const noticesFor = (...events: RuntimeEvent[]): NoticeItem[] => {
   const state = createTranscript()
   for (const event of events) {
     const row = transcriptMessageForDisplay({ event }, state.ref?.provider)
-    applyEvent(state, row.event, undefined, undefined, undefined, undefined, undefined, row.errorFacts)
+    applyEvent(
+      state,
+      row.event,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      row.errorFacts,
+    )
   }
   return state.items.filter((item): item is NoticeItem => item.kind === 'notice')
 }

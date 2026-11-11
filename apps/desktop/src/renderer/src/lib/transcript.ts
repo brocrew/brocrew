@@ -1790,7 +1790,16 @@ export function applyEvent(
       (state.toolItems[row.event.id] !== undefined || state.cardTools[row.event.id] !== undefined)
     )
       continue
-    applyEvent(state, row.event, row.at, row.ordinal, undefined, undefined, undefined, row.errorFacts)
+    applyEvent(
+      state,
+      row.event,
+      row.at,
+      row.ordinal,
+      undefined,
+      undefined,
+      undefined,
+      row.errorFacts,
+    )
   }
   for (const row of ancestryContext ?? []) {
     if (
@@ -1804,7 +1813,16 @@ export function applyEvent(
       findCard(state, row.event.agentId) !== undefined
     )
       continue
-    applyEvent(state, row.event, row.at, row.ordinal, undefined, undefined, undefined, row.errorFacts)
+    applyEvent(
+      state,
+      row.event,
+      row.at,
+      row.ordinal,
+      undefined,
+      undefined,
+      undefined,
+      row.errorFacts,
+    )
   }
   const before = state.seq
   const from = state.items.length

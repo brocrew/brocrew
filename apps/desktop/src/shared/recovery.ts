@@ -92,6 +92,7 @@ export interface HistoryConversation {
 
 /** One stored event of a conversation, with when it was recorded (epoch ms). */
 export interface HistoryEvent {
+  readonly errorFacts?: import('./error-facts').ErrorFacts
   readonly workAncestry?: WorkAncestry
   readonly event: TranscriptEvent
   readonly at: number

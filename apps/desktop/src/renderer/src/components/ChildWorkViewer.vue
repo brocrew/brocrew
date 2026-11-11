@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import type { TranscriptEvent } from '../../../shared/conversation-events'
-
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { absenceUnreadSays } from '../lib/rows-unread'
 import type {
@@ -10,7 +8,7 @@ import type {
   ChildWorkResult,
 } from '../../../shared/runtime-ipc'
 import { appClosing } from '../lib/app-closing'
-import { applyEvent, createTranscript, markReadOnly } from '../lib/transcript'
+import { readOnlyTranscript } from '../lib/read-only-transcript'
 import DocumentBody from './DocumentBody.vue'
 import TranscriptView from './TranscriptView.vue'
 
@@ -336,10 +334,15 @@ async function send(): Promise<void> {
 
 /** The child's conversation, folded exactly as a live one is. */
 const items = computed(() => {
-  if (!props.result.ok || props.result.entries === undefined) return []
-  const state = createTranscript()
-  for (const event of props.result.entries as TranscriptEvent[]) applyEvent(state, event)
-  markReadOnly(state, readOnlyNote.value)
+  const result = props.result
+  if (!result.ok || result.entries === undefined) return []
+  const state = readOnlyTranscript(
+    result.entries.map((event, index) => ({
+      event,
+      errorFacts: result.errorFacts?.[index],
+    })),
+    readOnlyNote.value,
+  )
   return state.items
 })
 
