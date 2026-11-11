@@ -50,13 +50,10 @@ import {
 import { asTheWireWouldCarry } from './lib/the-wire'
 
 /**
- * *Always allow* on every surface a permission card reaches: the card, Home's row, the person's
- * queue, Home's refusal of a failed keep, the settled card's read-back, and a card that offers the
- * wholesale grant beside it. The Codex cards are what the real host sends over a scripted
- * app-server, folded by `acceptEvent`; the Claude cards are built and sent through `toWireEvent` and
- * the same fold. SSR markup is read with the templates' comments stripped, and each absence is
- * asserted beside a reading the same markup does hold. The browser half (a real press) is
- * `test/dom/always-allow-on-every-surface.dom.test.ts`.
+ * Always allow across the card, Home, the person's queue, failed keeps and settled read-back.
+ * Codex cards come through the scripted host; Claude cards through toWireEvent. Both use
+ * acceptEvent. SSR assertions pair each absence with a positive control; browser presses are
+ * covered by test/dom/always-allow-on-every-surface.dom.test.ts.
  */
 
 const AT = 1_700_000_000_000

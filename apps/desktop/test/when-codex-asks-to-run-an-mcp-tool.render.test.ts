@@ -141,11 +141,7 @@ const BODY =
   `Seen at https://github.com/demo-org/notes-app/issues?q=is%3Aopen+label%3Arail+${'resume-after-quit-'.repeat(12)}`
 const PARAMS: Record<string, string> = { repo: 'demo-org/notes-app', title: TITLE, body: BODY }
 
-/**
- * ⚑ **Codex's own approval of an MCP tool call**, in the measured shape (`external-mcp.ts`'
- * `CodexToolApproval` docblock; `a-press-that-stops-nothing-says-so.test.ts`' `CODEX_ASKS`), with a
- * realistic call: a server a person registered, three parameters.
- */
+/** Codex's native approval frame for a registered server and three tool parameters. */
 const codexAsks = (
   params: Record<string, string> = PARAMS,
   persist: readonly string[] = ['session', 'always'],
