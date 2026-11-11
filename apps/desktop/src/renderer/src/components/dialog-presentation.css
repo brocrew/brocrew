@@ -1,4 +1,6 @@
-.list-dialog {
+.list-dialog,
+.delete-dialog,
+.job-dialog {
   display: flex;
   width: min(560px, calc(100% - 2 * var(--lane-clear)));
   max-height: min(var(--dialog-max-h), calc(100dvh - var(--dialog-gutter) * 2));
@@ -11,7 +13,9 @@
   color: var(--text);
 }
 
-.list-head {
+.list-head,
+.head,
+.job-head {
   display: flex;
   flex: none;
   align-items: center;
@@ -21,6 +25,8 @@
   gap: var(--control-gap);
 }
 
-.list-head h2 {
+.list-head h2,
+.head h2,
+.job-head h2 {
   margin: 0;
 }

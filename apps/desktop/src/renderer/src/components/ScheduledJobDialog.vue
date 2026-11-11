@@ -78,32 +78,11 @@ const longerCopy = computed(
   </section>
 </template>
 
+<style scoped src="./dialog-presentation.css"></style>
+
 <style scoped>
 .job-dialog {
-  display: flex;
   width: min(var(--dialog-w), calc(100% - 2 * var(--lane-clear)));
-  max-height: min(var(--dialog-max-h), calc(100dvh - var(--dialog-gutter) * 2));
-  flex-direction: column;
-  overflow: hidden;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-  box-shadow: var(--shadow);
-  color: var(--text);
-}
-
-.job-head {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--dialog-padding);
-  border-bottom: var(--border-width) solid var(--line);
-  gap: var(--control-gap);
-}
-
-.job-head h2 {
-  margin: 0;
 }
 
 .job-body {
