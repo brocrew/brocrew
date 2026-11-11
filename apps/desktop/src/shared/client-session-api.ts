@@ -26,6 +26,8 @@ export type ClientSessionApi = Pick<
   | 'limitsForAPerson'
   | 'listConversations'
   | 'listLibrary'
+  | 'listResumable'
+  | 'listUnresumable'
   | 'look'
   | 'mcpServerRequestsForAPerson'
   | 'onEvent'

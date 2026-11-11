@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useClientApi } from '../client-provider/injection'
 import type { AgentState as OneState } from '../../../shared/agent-state-contracts'
 import type { WhatEachConversationIsWaitingOn } from '../../../shared/task-contracts'
 
@@ -107,6 +108,7 @@ import { COLLAPSE_THE_MENU, EXPAND_THE_MENU } from '../lib/rail-fold'
  * live signal, and the spawning switch — 🔴 *"a kill switch
  * that lives two clicks away is not one"*, which is §5's own exception.
  */
+const client = useClientApi()
 const props = withDefaults(
   defineProps<{
     /** The conversations this window is fed — `SessionStore.live`. */
@@ -509,9 +511,12 @@ async function refreshListed(): Promise<void> {
   if (appClosing.value) return
   listError.value = null
   try {
+    const sessionsApi = client.sessions
+    if (!sessionsApi?.listResumable || !sessionsApi.listUnresumable)
+      throw new Error('The client does not provide session reads and intents')
     const [resumable, unresumable] = await Promise.all([
-      window.api.runtime.listResumable(),
-      window.api.runtime.listUnresumable(),
+      sessionsApi.listResumable(),
+      sessionsApi.listUnresumable(),
     ])
     if (asked !== readsAsked) return
     providerBlocks.value.acceptListed([...resumable, ...unresumable], providerReadAt)

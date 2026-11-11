@@ -25,6 +25,7 @@ import { readableError } from '../lib/session-record'
  * The ones a message cannot continue are listed too, with the reason. Leaving them out would answer
  * the original question with silence, which is what it was asking about in the first place.
  */
+const client = useClientApi()
 const sessions = ref<ResumableSessionInfo[]>([])
 const unresumable = ref<UnresumableSessionInfo[]>([])
 const loading = ref(false)
@@ -38,7 +39,7 @@ const loadError = ref<string | null>(null)
  * So there is one {@link useHomeScan} and one {@link scanSummary}, called from both. The link, the
  * wording and the refresh that follows it are exactly as they were.
  */
-const sessionsClient = useClientApi().sessions
+const sessionsClient = client.sessions
 const homeScan = useHomeScan(sessionsClient)
 const { scanning, lastScan } = homeScan
 /** The last export, per row — where it went and what it is good for. */
@@ -97,9 +98,12 @@ async function refresh(): Promise<void> {
   loading.value = true
   loadError.value = null
   try {
+    const sessionsApi = client.sessions
+    if (!sessionsApi?.listResumable || !sessionsApi.listUnresumable)
+      throw new Error('The client does not provide session reads and intents')
     const [open, closed] = await Promise.all([
-      window.api.runtime.listResumable(),
-      window.api.runtime.listUnresumable(),
+      sessionsApi.listResumable(),
+      sessionsApi.listUnresumable(),
     ])
     sessions.value = open
     unresumable.value = closed

@@ -624,7 +624,7 @@ function raceGuardBroken(fn: string, whole: string): string[] {
   const broken: string[] = []
   const numbers = fn.indexOf('readsAsked += 1')
   const asked = fn.indexOf('const asked = readsAsked')
-  const listsResumable = fn.indexOf('window.api.runtime.listResumable()')
+  const listsResumable = fn.indexOf('sessionsApi.listResumable()')
   if (numbers < 0) broken.push('the read never numbers itself')
   if (asked < 0) broken.push('the read never takes its own number')
   if (listsResumable < 0) broken.push('the read never asks the host')
@@ -670,8 +670,8 @@ describe('D-019 · a list read numbers itself before it is asked', () => {
 
   it('a read numbers itself before it is asked, and only a push heard after that number outlives its answer', () => {
     // The control: the body was found, and it is the read that asks both halves of the host.
-    expect(real).toContain('window.api.runtime.listResumable()')
-    expect(real).toContain('window.api.runtime.listUnresumable()')
+    expect(real).toContain('sessionsApi.listResumable()')
+    expect(real).toContain('sessionsApi.listUnresumable()')
     expect(raceGuardBroken(real, whole)).toEqual([])
 
     // A read that landed LATER than the push keeps a push heard while it was in flight, so the
