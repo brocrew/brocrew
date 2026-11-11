@@ -20,7 +20,7 @@ import { tmpdir } from 'node:os'
 import { performance } from 'node:perf_hooks'
 import { DatabaseSync } from 'node:sqlite'
 import { once } from 'node:events'
-import { digest, measurementFilesystem } from './mac-update-test.mjs'
+import { digest, measurementFilesystem, joinMeasurementChild } from './mac-update-test.mjs'
 import { until } from './update-rehearsal-app.mjs'
 import { readStateEntry } from './skill-tree-state.mjs'
 import {
@@ -366,7 +366,6 @@ async function embeddedCopyComparisons(input) {
   const abort = new AbortController(),
     stop = () => abort.abort()
   process.once('SIGTERM', stop)
-  const timer = setTimeout(stop, 900_000)
   try {
     requireEvidence(
       process.platform === 'darwin' &&
@@ -431,18 +430,18 @@ async function embeddedCopyComparisons(input) {
         signal: abort.signal,
         comparisons: result.comparisons,
       })
+    abort.signal.throwIfAborted()
     result.success = true
   } catch (error) {
     result.failure = measurementError(error)
     process.exitCode = 1
   } finally {
-    clearTimeout(timer)
     process.removeListener('SIGTERM', stop)
     writeFileSync(input.output, `${JSON.stringify(result, null, 2)}\n`)
   }
 }
 
-async function packagedCopyComparisons(input) {
+export async function packagedCopyComparisons(input, { launch = spawn, ...lifetime } = {}) {
   input = {
     ...input,
     next: undefined,
@@ -450,7 +449,7 @@ async function packagedCopyComparisons(input) {
     program: input.next.program,
     output: join(input.root, 'adapter-comparison.json'),
   }
-  const child = spawn(
+  const child = launch(
     input.program,
     [fileURLToPath(import.meta.url), '--embedded-copy-comparison', JSON.stringify(input)],
     {
@@ -469,11 +468,12 @@ async function packagedCopyComparisons(input) {
   child.stderr?.on('data', (part) => {
     output = (output + part.toString()).slice(-8000)
   })
-  const code = await new Promise((resolve) => child.once('close', resolve))
+  const ended = await joinMeasurementChild(child, lifetime)
   const result = existsSync(input.output) ? JSON.parse(readFileSync(input.output, 'utf8')) : {}
   Object.assign(result, {
-    child: { pid: child.pid, code, signal: child.signalCode, closed: true, launchError, output },
+    child: { pid: child.pid, ...ended, launchError, output },
   })
+  if (ended.timedOut || ended.cancelled || ended.code !== 0 || launchError) result.success = false
   writeFileSync(input.output, `${JSON.stringify(result, null, 2)}\n`)
   return result
 }

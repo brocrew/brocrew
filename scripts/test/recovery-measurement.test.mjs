@@ -1,9 +1,10 @@
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { EventEmitter } from 'node:events'
 import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { join, dirname } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   measurementSize,
   seedMeasurementDatabase,
@@ -14,6 +15,7 @@ import {
   measurementSizes,
   compareMeasurementCopies,
   measurementOrder,
+  packagedCopyComparisons,
 } from '../lib/recovery-measurement.mjs'
 import { startOrder, READY_LINE } from '../lib/upgrade-path.mjs'
 import { nodeFs } from '../../apps/desktop/src/main/recovery/files.ts'
@@ -27,6 +29,75 @@ const journal = JSON.parse(readFileSync(join(migrations, 'meta/_journal.json'), 
 const sqlOf = (tag) => readFileSync(join(migrations, `${tag}.sql`), 'utf8')
 
 describe('populated recovery measurement', () => {
+  it.each(['deadline', 'SIGTERM', 'SIGINT'])(
+    'joins an abort-ignoring measurement child on %s and rejects late preflight success',
+    async (reason) => {
+      vi.useFakeTimers()
+      const root = mkdtempSync(join(tmpdir(), 'measurement-child-test-'))
+      const child = new EventEmitter(),
+        parent = new EventEmitter()
+      child.pid = 1234
+      child.kill = vi.fn(() => true)
+      let settled = false
+      try {
+        const pending = packagedCopyComparisons(
+          { root, next: { program: '/fictional/packaged-electron' } },
+          { launch: () => child, parent, deadlineMs: 100, graceMs: 50 },
+        ).then((result) => {
+          settled = true
+          return result
+        })
+        if (reason === 'deadline') await vi.advanceTimersByTimeAsync(100)
+        else parent.emit(reason)
+        expect(child.kill.mock.calls).toEqual([['SIGTERM']])
+        expect(settled).toBe(false)
+        await vi.advanceTimersByTimeAsync(50)
+        expect(child.kill.mock.calls).toEqual([['SIGTERM'], ['SIGKILL']])
+        expect(settled).toBe(false)
+        writeFileSync(join(root, 'adapter-comparison.json'), JSON.stringify({ success: true }))
+        child.emit('close', 0, null)
+        const result = await pending
+        expect(result.success).toBe(false)
+        expect(result.child).toMatchObject({
+          closed: true,
+          code: 0,
+          timedOut: reason === 'deadline',
+          cancelled: reason === 'deadline' ? null : reason,
+        })
+        expect(parent.listenerCount('SIGTERM') + parent.listenerCount('SIGINT')).toBe(0)
+        expect(vi.getTimerCount()).toBe(0)
+      } finally {
+        vi.useRealTimers()
+        rmSync(root, { recursive: true, force: true })
+      }
+    },
+  )
+
+  it('retains a normally closed preflight success without later stop signals', async () => {
+    vi.useFakeTimers()
+    const root = mkdtempSync(join(tmpdir(), 'measurement-child-test-'))
+    const child = new EventEmitter(),
+      parent = new EventEmitter()
+    child.pid = 1234
+    child.kill = vi.fn()
+    try {
+      const pending = packagedCopyComparisons(
+        { root, next: { program: '/fictional/packaged-electron' } },
+        { launch: () => child, parent, deadlineMs: 100, graceMs: 50 },
+      )
+      writeFileSync(join(root, 'adapter-comparison.json'), JSON.stringify({ success: true }))
+      child.emit('close', 0, null)
+      expect(await pending).toMatchObject({ success: true, child: { closed: true, code: 0 } })
+      await vi.advanceTimersByTimeAsync(200)
+      expect(child.kill).not.toHaveBeenCalled()
+      expect(vi.getTimerCount()).toBe(0)
+      expect(parent.listenerCount('SIGTERM') + parent.listenerCount('SIGINT')).toBe(0)
+    } finally {
+      vi.useRealTimers()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it.runIf(process.platform === 'darwin')(
     'keeps a committed needle in WAL only and can reset that same owned fixture',
     async () => {

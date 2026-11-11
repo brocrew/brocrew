@@ -24,6 +24,48 @@ export const FEED_URL = 'http://127.0.0.1:47123/'
 export { STATE_FILES, VERSION_A, VERSION_B }
 export { CHECKPOINT_LINE, FAIL_LINE, READY_LINE }
 
+export async function joinMeasurementChild(
+  child,
+  { deadlineMs = 900_000, graceMs = 5000, parent = process } = {},
+) {
+  const facts = { closed: false, timedOut: false, cancelled: null, stops: [], errors: [] }
+  let escalation
+  const kill = (signal) => {
+    if (facts.closed || !child.pid) return
+    try {
+      facts.stops.push({ signal, sent: child.kill(signal) })
+    } catch (error) {
+      facts.errors.push({ signal, code: error.code, message: error.message })
+    }
+  }
+  const stop = (reason) => {
+    if (facts.closed || facts.timedOut || facts.cancelled) return
+    if (reason === 'deadline') facts.timedOut = true
+    else facts.cancelled = reason
+    kill('SIGTERM')
+    escalation = setTimeout(() => kill('SIGKILL'), graceMs)
+  }
+  const terminate = () => stop('SIGTERM'),
+    interrupt = () => stop('SIGINT')
+  const closed = new Promise((resolve) => {
+    child.once('close', (code, signal) => {
+      Object.assign(facts, { code, signal, closed: true })
+      resolve(facts)
+    })
+  })
+  const deadline = setTimeout(() => stop('deadline'), deadlineMs)
+  parent.on('SIGTERM', terminate)
+  parent.on('SIGINT', interrupt)
+  try {
+    return await closed
+  } finally {
+    clearTimeout(deadline)
+    clearTimeout(escalation)
+    parent.removeListener('SIGTERM', terminate)
+    parent.removeListener('SIGINT', interrupt)
+  }
+}
+
 export function observeKeychainEntries(appNames, { entryFor, attributes, run = spawnSync }) {
   const entries = [],
     attempts = []
