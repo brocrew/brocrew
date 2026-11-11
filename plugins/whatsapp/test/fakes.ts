@@ -88,6 +88,8 @@ export class FakeBridge implements Bridge {
   async call(route: string, body: unknown): Promise<BridgeReply> {
     this.requests.push({ route, body })
     const asked = (body ?? {}) as Record<string, unknown>
+    const visible = (chat: string) =>
+      asked.chats === undefined || (asked.chats as string[]).includes(chat)
     const ok = (value: unknown): BridgeReply => ({ status: 200, body: value })
     const refused = (error: string): BridgeReply => ({ status: 400, body: { error } })
     switch (route) {
@@ -112,14 +114,17 @@ export class FakeBridge implements Bridge {
               lastText: '',
               lastFromMe: false,
             },
-          ].filter(
-            (one) =>
-              !asked.query || one.name.toLowerCase().includes(String(asked.query).toLowerCase()),
-          ),
+          ]
+            .filter((one) => visible(one.jid))
+            .filter(
+              (one) =>
+                !asked.query || one.name.toLowerCase().includes(String(asked.query).toLowerCase()),
+            ),
         })
       case '/messages':
         return ok({
           messages: this.messages
+            .filter((one) => visible(one.chat))
             .filter((one) => !asked.chat || one.chat === asked.chat)
             .filter(
               (one) =>

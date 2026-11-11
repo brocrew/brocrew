@@ -4,11 +4,11 @@ import path from 'node:path'
 
 /** What the person chose on the settings page. Every choice applies to all agents. */
 export interface Settings {
-  /** Agents may read chats, messages, contacts and media. Off until the person turns it on. */
+  /** Agents may read all chats, messages, contacts and media. Off until the person turns it on. */
   read: boolean
   /** Messages agents send begin with 🤖. */
   prefix: boolean
-  /** The groups agents may send to, by group id. A group not listed cannot be written to. */
+  /** Groups agents may read and send to, even while global reading is off, by group id. */
   writable: readonly string[]
 }
 export const GROUP_ID = /^[0-9]{5,40}(?:-[0-9]{1,20})?@g\.us$/

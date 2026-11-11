@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const requestBodyLimit = 20000
+const requestBodyLimit = 128 * 1024 // Includes up to 1,024 selected group IDs.
 
 // decodeJSONBody reads exactly one bounded JSON object with only known fields; the result is a fixed code, or "".
 func decodeJSONBody(w http.ResponseWriter, r *http.Request, into any) string {
@@ -230,9 +230,7 @@ func newAPI(cfg config, s *session, unlinked func()) http.Handler {
 			writeCode(w, "not_connected")
 			return
 		}
-		lookup, cancelLookup := context.WithTimeout(r.Context(), 15*time.Second)
-		jid, ok := s.groupFor(lookup, request.Group)
-		cancelLookup()
+		jid, ok := groupJID(request.Group)
 		if !ok {
 			writeCode(w, "unknown_group")
 			return

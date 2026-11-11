@@ -1,10 +1,10 @@
 package main
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -158,6 +158,74 @@ func TestReadingTheStore(t *testing.T) {
 	}
 }
 
+func TestScopedReadsFilterBeforePagination(t *testing.T) {
+	store := fictionalStore(t)
+	token := strings.Repeat("t", 40)
+	api := newAPI(config{Token: token}, &session{store: store}, func() {})
+	selected := []string{"120363000000000001@g.us"}
+	for i := 1; i < 1024; i++ {
+		selected = append(selected, fmt.Sprintf("120363%012d@g.us", i+10))
+	}
+	manyGroups, err := json.Marshal(listQuery{Chats: selected, Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		route, body string
+		want        int
+		chat        string
+	}{
+		{"/chats", `{"limit":1}`, 1, "15550000002@s.whatsapp.net"},
+		{"/chats", `{"chats":["120363000000000001@g.us"],"limit":1}`, 1, "120363000000000001@g.us"},
+		{"/chats", `{"chats":["120363000000000001@g.us"],"limit":1,"page":1}`, 0, ""},
+		{"/chats", `{"chats":[]}`, 0, ""},
+		{"/chats", string(manyGroups), 1, "120363000000000001@g.us"},
+		{"/chats", `{"chats":["120363000000000001@g.us"],"query":"Ines"}`, 0, ""},
+		{"/messages", `{"limit":1}`, 1, "15550000001@s.whatsapp.net"},
+		{"/messages", `{"chats":["120363000000000001@g.us"],"limit":1}`, 1, "120363000000000001@g.us"},
+		{"/messages", `{"chats":["120363000000000001@g.us"],"query":"Thursday"}`, 2, "120363000000000001@g.us"},
+		{"/messages", `{"chats":["120363000000000001@g.us"],"chat":"15550000001@s.whatsapp.net"}`, 0, ""},
+		{"/messages", `{"chats":[]}`, 0, ""},
+	} {
+		t.Run(test.route+test.body, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, test.route, strings.NewReader(test.body))
+			request.Header.Set("Authorization", "Bearer "+token)
+			request.Header.Set("Content-Type", "application/json")
+			reply := httptest.NewRecorder()
+			api.ServeHTTP(reply, request)
+			if reply.Code != http.StatusOK {
+				t.Fatalf("read failed: %d %s", reply.Code, reply.Body.String())
+			}
+			var result struct {
+				Chats    []chatRow    `json:"chats"`
+				Messages []messageRow `json:"messages"`
+			}
+			if err := json.Unmarshal(reply.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if test.route == "/chats" {
+				if len(result.Chats) != test.want {
+					t.Fatalf("chats: %+v", result.Chats)
+				}
+				for _, row := range result.Chats {
+					if row.JID != test.chat {
+						t.Fatalf("unexpected chat: %+v", row)
+					}
+				}
+			} else {
+				if len(result.Messages) != test.want {
+					t.Fatalf("messages: %+v", result.Messages)
+				}
+				for _, row := range result.Messages {
+					if row.Chat != test.chat {
+						t.Fatalf("unexpected message: %+v", row)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestAnOwnSendIsRecordedAsSentByAnAgent(t *testing.T) {
 	store := fictionalStore(t)
 	stamp := time.Unix(1_800_100_000, 0)
@@ -181,10 +249,18 @@ func TestAnOwnSendIsRecordedAsSentByAnAgent(t *testing.T) {
 	}
 }
 
+func TestAChosenGroupDoesNotNeedAnotherLookup(t *testing.T) {
+	for _, group := range []string{"120363000000000001@g.us", "15550000001-1234567890@g.us"} {
+		jid, ok := groupJID(group)
+		if !ok || jid.String() != group {
+			t.Fatalf("the group chosen by Node was refused: %s", group)
+		}
+	}
+}
+
 func TestAPersonIsNeverAGroup(t *testing.T) {
-	s := &session{state: stateLinked}
 	for _, jid := range []string{"15550000001@s.whatsapp.net", "15550000001@lid", "status@broadcast", "not a jid", "120363000000000001:2@g.us"} {
-		if _, ok := s.groupFor(context.Background(), jid); ok {
+		if _, ok := groupJID(jid); ok {
 			t.Fatalf("%s was taken for a group", jid)
 		}
 	}

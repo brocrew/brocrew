@@ -146,20 +146,25 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
     throw new Error(JSON.stringify(reply))
   }
 
-  /** Reading needs the person's yes and a linked phone; the stored messages stay readable while it reconnects. */
-  function mayRead(tool: string): void {
-    if (!settings.get().read) throw refusals.refuse(tool, 'read-off')
+  function access(tool: string, mode: 'read' | 'contacts' | 'write', chat?: string) {
+    const { read, writable } = settings.get()
+    if (
+      mode !== 'write' &&
+      !read &&
+      (mode === 'contacts' ||
+        (chat === undefined ? writable.length === 0 : !writable.includes(chat)))
+    )
+      throw refusals.refuse(tool, 'read-off')
     const state = bridge.status().state
     if (state === 'unlinked' || state === 'pairing') throw refusals.refuse(tool, 'not-linked')
-  }
-
-  function writableGroups(): BridgeGroup[] {
-    const writable = new Set(settings.get().writable)
-    return bridge.groups().filter((group) => writable.has(group.jid))
+    return {
+      groups: bridge.groups().filter((group) => writable.includes(group.jid)),
+      ...(read ? {} : { chats: writable }),
+    }
   }
 
   function groupNamed(tool: string, asked: string): BridgeGroup {
-    const groups = writableGroups()
+    const { groups } = access(tool, 'write')
     if (asked.endsWith('@g.us')) {
       const found = groups.find((group) => group.jid === asked)
       if (!found) throw refusals.refuse(tool, 'cannot-write')
@@ -210,8 +215,10 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
           },
         },
         async run(a) {
-          mayRead('list_chats')
-          const body = (await ask('list_chats', '/chats', a, 15_000)) as { chats?: ChatRow[] }
+          const { chats } = access('list_chats', 'read')
+          const body = (await ask('list_chats', '/chats', { ...a, chats }, 15_000)) as {
+            chats?: ChatRow[]
+          }
           return json({
             chats: (body.chats ?? []).map((row) => ({
               id: row.jid,
@@ -245,7 +252,7 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
           required: ['chat'],
         },
         async run(a) {
-          mayRead('read_messages')
+          access('read_messages', 'read', a.chat as string)
           const body = (await ask(
             'read_messages',
             '/messages',
@@ -279,8 +286,8 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
           required: ['query'],
         },
         async run(a) {
-          mayRead('search_messages')
-          const body = (await ask('search_messages', '/messages', a, 15_000)) as {
+          const { chats } = access('search_messages', 'read', a.chat as string | undefined)
+          const body = (await ask('search_messages', '/messages', { ...a, chats }, 15_000)) as {
             messages?: MessageRow[]
           }
           return json({ messages: (body.messages ?? []).map(shownMessage) })
@@ -301,7 +308,7 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
           required: ['query'],
         },
         async run(a) {
-          mayRead('search_contacts')
+          access('search_contacts', 'contacts')
           const body = (await ask('search_contacts', '/contacts', { query: a.query }, 15_000)) as {
             contacts?: Array<{ jid: string; name: string }>
           }
@@ -327,7 +334,7 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
           required: ['chat', 'message'],
         },
         async run(a) {
-          mayRead('get_media')
+          access('get_media', 'read', a.chat as string)
           const out = path.join(
             config.downloads,
             `${randomBytes(8).toString('hex')}_${a.message as string}.jpg`,
@@ -371,11 +378,8 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
           props: {},
         },
         async run() {
-          if (bridge.status().state === 'unlinked' || bridge.status().state === 'pairing')
-            throw refusals.refuse('list_groups', 'not-linked')
-          return json({
-            groups: writableGroups().map((group) => ({ id: group.jid, name: group.name })),
-          })
+          const { groups } = access('list_groups', 'write')
+          return json({ groups: groups.map((group) => ({ id: group.jid, name: group.name })) })
         },
       },
       {
@@ -409,8 +413,6 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
           const file = a.file as string | undefined
           if (file === undefined && text.trim() === '')
             throw new PublicToolError('invalid arguments: "text" is required')
-          if (bridge.status().state === 'unlinked' || bridge.status().state === 'pairing')
-            throw refusals.refuse(tool, 'not-linked')
           const group = groupNamed(tool, a.group as string)
           if (
             characters(text) >
