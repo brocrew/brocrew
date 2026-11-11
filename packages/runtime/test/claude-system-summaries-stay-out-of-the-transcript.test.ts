@@ -15,10 +15,15 @@ describe('Claude system summaries', () => {
     try {
       const message = JSON.parse(line) as SDKMessage
       const events = normalizeMessage(message)
-      expect(events).toEqual([{
-        type: 'unknown', provider: 'claude', category: 'unrecognized',
-        label: (message as { subtype: string }).subtype, raw: message,
-      }])
+      expect(events).toEqual([
+        {
+          type: 'unknown',
+          provider: 'claude',
+          category: 'unrecognized',
+          label: (message as { subtype: string }).subtype,
+          raw: message,
+        },
+      ])
       expect(warning).toHaveBeenCalledExactlyOnceWith('Unmodeled provider event', events[0])
     } finally {
       warning.mockRestore()

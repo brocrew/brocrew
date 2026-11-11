@@ -23,9 +23,12 @@ describe('empty Codex messages in the conversation', () => {
   it.each(['normal', 'debug'] as const)(
     'shows actual final prose once and keeps malformed diagnostics in %s',
     async (mode) => {
-      vi.stubGlobal('api', { ...window.api, logging: {
-        getLogging: async () => ({ debug: true, path: '/fictional/log', servicePath: null }),
-      } })
+      vi.stubGlobal('api', {
+        ...window.api,
+        logging: {
+          getLogging: async () => ({ debug: true, path: '/fictional/log', servicePath: null }),
+        },
+      })
       const state = stateOf([
         { type: 'user_turn', text: 'Fictional question', humanInitiated: true },
         { type: 'assistant_message', text: 'Actual **answer**', phase: 'final' },

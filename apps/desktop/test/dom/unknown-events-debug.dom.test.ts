@@ -13,7 +13,10 @@ it('shows unknown provider events and their JSON only with Settings Debug mode o
   const state = createTranscript()
   for (const provider of ['claude', 'codex']) {
     applyEvent(state, {
-      type: 'unknown', provider, category: 'unrecognized', label: 'future_event',
+      type: 'unknown',
+      provider,
+      category: 'unrecognized',
+      label: 'future_event',
       raw: { type: 'future_event', detail: `${provider} fictional payload` },
     })
   }

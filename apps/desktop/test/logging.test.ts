@@ -35,7 +35,12 @@ it.each([false, true])('logs unknown events from either provider with Debug mode
   const file = appLogFile(await folder())
   openLog(file, { debug, console: false })
   for (const provider of ['claude', 'codex']) {
-    wrapUnknown(provider, { detail: `${provider} fictional unknown payload` }, 'unrecognized', 'future_event')
+    wrapUnknown(
+      provider,
+      { detail: `${provider} fictional unknown payload` },
+      'unrecognized',
+      'future_event',
+    )
   }
   await vi.waitFor(async () => {
     const written = await text(file)
