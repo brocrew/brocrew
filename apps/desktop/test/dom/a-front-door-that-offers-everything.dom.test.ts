@@ -1,6 +1,7 @@
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import { createModelLists } from '../lib/provider-launch-fixture'
 import type { ModelCatalogue, ModelList } from '../../src/shared/model-choice-contracts'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { computed, defineComponent, h, nextTick, ref, type Component } from 'vue'
 import { allProviderCapabilities } from '../../../../packages/runtime/src/capabilities'
@@ -109,7 +110,10 @@ function listsOver(answers: { value: Partial<Record<Provider, Answer>> }): Model
 
 function installBridge(): void {
   ;(window as unknown as { api: unknown }).api = {
-    runtime: { checkProviderAuth: () => Promise.resolve({ state: 'usable' }) },
+    runtime: {
+      checkProviderAuth: () => Promise.resolve({ state: 'usable' }),
+      providerCatalogue: async () => PROVIDER_DESCRIPTORS,
+    },
   }
 }
 
@@ -225,9 +229,16 @@ async function send(m: Mounted): Promise<void> {
   await nextTick()
 }
 
+let previousApi: PropertyDescriptor | undefined
+beforeEach(() => {
+  previousApi = Object.getOwnPropertyDescriptor(window, 'api')
+  Reflect.deleteProperty(window, 'api')
+})
+
 afterEach(async () => {
   unmountAll()
-  delete (window as { api?: unknown }).api
+  Reflect.deleteProperty(window, 'api')
+  if (previousApi) Object.defineProperty(window, 'api', previousApi)
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 

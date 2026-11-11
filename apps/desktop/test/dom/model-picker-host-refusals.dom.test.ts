@@ -1,7 +1,10 @@
 import { createModelLists } from '../lib/provider-launch-fixture'
 import type { ListedModel, ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick, provide } from 'vue'
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
 import ModelPicker from '../../src/renderer/src/components/ModelPicker.vue'
 
 import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
@@ -51,21 +54,38 @@ function picker() {
     }),
   } satisfies Pick<RuntimeBridge, 'modelList' | 'addHandAddedModel' | 'deleteHandAddedModel'>
   const take = vi.fn(async (): Promise<string | null> => null)
-  const m = mount(ModelPicker, {
-    providers: ['codex'],
-    profileId: 'fictional-worker',
-    shown: null,
-    takeWords: 'Use this model',
-    take,
-    lists: createModelLists(() => host),
+  const selected = {
+    ...createDesktopProviderApi(
+      (): never => {
+        throw new Error('Unexpected provider operation')
+      },
+      () => undefined,
+    ),
+    providerCatalogue: async () => PROVIDER_DESCRIPTORS,
+  }
+  const lists = createModelLists(() => host)
+  const Owner = defineComponent({
+    setup() {
+      provide(CLIENT_PROVIDERS, selected)
+      return () =>
+        h(ModelPicker, {
+          providers: ['codex'],
+          profileId: 'fictional-worker',
+          shown: null,
+          takeWords: 'Use this model',
+          take,
+          lists,
+        })
+    },
   })
+  const m = mount(Owner, {})
   return { m, host, take }
 }
 
 async function open(m: Mounted): Promise<void> {
   button(m, 'model-picker-face').click()
   await expect.poll(() => m.all('model-picker-row').length).toBe(2)
-  expect(words(m.q('model-picker-panel'))).toContain('Codex')
+  await expect.poll(() => words(m.q('model-picker-panel'))).toContain('Codex')
 }
 
 async function draft(m: Mounted, id: string): Promise<void> {
