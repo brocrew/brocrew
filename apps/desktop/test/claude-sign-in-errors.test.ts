@@ -163,7 +163,7 @@ describe('Claude sign-in failures', () => {
     expect(notice?.text).not.toContain('Start a new conversation')
   })
 
-  it('hides dev_intent in both conversation modes, retaining other unknown events', () => {
+  it('keeps unknown events for Debug mode, including dev_intent', () => {
     const state = transcript()
     for (const label of ['dev_intent', 'new-useful-event'])
       applyEvent(state, {
@@ -174,9 +174,10 @@ describe('Claude sign-in failures', () => {
         raw: { type: label },
       })
     expect(state.items).toHaveLength(2)
+    expect(visibleItems(state.items)).toEqual([])
     expect(
-      visibleItems(state.items).map((item) => (item.kind === 'unknown' ? item.label : '')),
-    ).toEqual(['new-useful-event'])
+      visibleItems(state.items, true).map((item) => (item.kind === 'unknown' ? item.label : '')),
+    ).toEqual(['dev_intent', 'new-useful-event'])
   })
 })
 

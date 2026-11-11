@@ -13,6 +13,7 @@ import type {
 } from '../../../shared/runtime-ipc'
 import type { WorkEdge } from '../../../shared/who-called-whom'
 import { useOlderHistory } from '../composables/useOlderHistory'
+import { useLogging } from '../composables/useLogging'
 import { useStickToBottom } from '../composables/useStickToBottom'
 import type { RequestDraft, TakenWithoutThisWindow } from '../lib/session-record'
 import { repliedAfter } from '../lib/asked-without-waiting'
@@ -53,9 +54,7 @@ import type { KeptFile } from '../../../shared/runtime-ipc'
 import type { PathsHere } from '../composables/useMessagePaths'
 
 /**
- * The conversation itself — one component per item kind, dispatched on the discriminant. It holds
- * no state and interprets nothing: the fold from events to items already happened upstream, and
- * `mode` only decides which of those items are shown.
+ * Render folded transcript items by kind, using the workspace's Debug setting for visibility.
  */
 const props = withDefaults(
   defineProps<{
@@ -348,7 +347,8 @@ const props = withDefaults(
   },
 )
 
-const shown = computed(() => visibleItems(props.items))
+const logging = useLogging()
+const shown = computed(() => visibleItems(props.items, logging.state.value?.debug ?? false))
 
 /** The quiet line at the end while a turn runs ({@link workingLine}). */
 const working = computed(() => workingLine(props.turnRunning, shown.value))

@@ -145,7 +145,10 @@ describe('indexed human answer history', () => {
       expect(shown.filter((item) => item.kind === 'assistant').map((item) => item.text)).toEqual([
         'Actual answer',
       ])
-      expect(shown.filter((item) => item.kind === 'unknown')).toHaveLength(1)
+      expect(shown.filter((item) => item.kind === 'unknown')).toHaveLength(0)
+      expect(
+        visibleItems(record.control.items, true).filter((item) => item.kind === 'unknown'),
+      ).toHaveLength(1)
       expect(panelWords(record.control)?.text).toBe('Actual answer')
       expect(
         record.control.items.filter((item) => item.kind === 'assistant' && item.humanFinal),
