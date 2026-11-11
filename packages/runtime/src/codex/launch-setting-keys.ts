@@ -17,5 +17,3 @@ export const CODEX_LAUNCH_SETTING_KEYS = [
    */
   'collaboration-mode',
 ] as const
-
-export type CodexLaunchSettingKey = (typeof CODEX_LAUNCH_SETTING_KEYS)[number]

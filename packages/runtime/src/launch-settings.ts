@@ -4,11 +4,23 @@
  * Provider-owned display facts are projected separately when the launch record is read.
  */
 
-import type { ClaudeLaunchSettingKey } from './claude/launch-setting-keys'
-import type { CodexLaunchSettingKey } from './codex/launch-setting-keys'
+/** @deprecated Closed legacy compatibility alias; portable records use LaunchSetting<string>. */
+export type ClaudeLaunchSettingKey =
+  | 'settings-sources'
+  | 'memory-folder'
+  | 'built-in-tools'
+  | 'denied-tools'
+  | 'mode'
+  | 'connectors'
+  | 'attribution'
 
-/** @deprecated Native compatibility aliases; portable records use LaunchSetting<string>. */
-export type { ClaudeLaunchSettingKey, CodexLaunchSettingKey }
+/** @deprecated Closed legacy compatibility alias; portable records use LaunchSetting<string>. */
+export type CodexLaunchSettingKey =
+  | 'memory'
+  | 'thread-overrides'
+  | 'plan-tool'
+  | 'approval-sandbox'
+  | 'collaboration-mode'
 
 /**
  * One of either provider's keys; the approval mode this app runs the conversation in; `tools-off`,

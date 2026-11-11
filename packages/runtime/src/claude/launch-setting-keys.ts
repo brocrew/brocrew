@@ -15,5 +15,3 @@ export const CLAUDE_LAUNCH_SETTING_KEYS = [
   /** Who decides the commit attribution it adds: `provider-default`, its own. */
   'attribution',
 ] as const
-
-export type ClaudeLaunchSettingKey = (typeof CLAUDE_LAUNCH_SETTING_KEYS)[number]

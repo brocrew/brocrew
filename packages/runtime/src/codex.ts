@@ -76,4 +76,4 @@ export {
   codexAccountIn,
 } from './codex/auth'
 
-export { CODEX_LAUNCH_SETTING_KEYS, type CodexLaunchSettingKey } from './codex/launch-setting-keys'
+export { CODEX_LAUNCH_SETTING_KEYS } from './codex/launch-setting-keys'
