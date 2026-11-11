@@ -1,6 +1,7 @@
 import type { ClientComposerApi } from '../../../shared/client-composer-api'
 import type { ClientSessionApi } from '../../../shared/client-session-api'
 import type { ClientApi } from '../../../shared/client-api'
+import type { ClientAgentApi } from '../../../shared/client-agent-api'
 import type { RecoveryRetentionClient } from '../../../shared/recovery-retention'
 import type { PluginsClient } from '../../../shared/plugin-settings'
 import type { LoggingClient } from '../../../shared/logging'
@@ -37,6 +38,7 @@ export function createDesktopProviderApi(
   plugins: () => PluginsClient | undefined = () => undefined,
   logging: () => LoggingClient | undefined = () => undefined,
   dockLabel: () => DockLabelClient | undefined = () => undefined,
+  agents: () => ClientAgentApi | undefined = () => undefined,
 ): ClientApi {
   return Object.freeze({
     providerCatalogue: () => runtime().providerCatalogue(),
@@ -68,6 +70,9 @@ export function createDesktopProviderApi(
     },
     get dockLabel() {
       return dockLabel()
+    },
+    get agents() {
+      return agents()
     },
     get recoveryCopies() {
       return recoveryCopies()

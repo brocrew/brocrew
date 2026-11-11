@@ -1,4 +1,5 @@
 import type { AgentModelChoice } from '../../../shared/model-choice-contracts'
+import type { ClientAgentApi } from '../../../shared/client-agent-api'
 import { ref, type Ref } from 'vue'
 import type { AgentInstructionsReading } from '../../../shared/own-instructions'
 import type { RulesBaseline } from '../../../shared/agent-rules'
@@ -8,7 +9,6 @@ import type {
   AnswerAck,
   NewAgent,
   Provider,
-  RuntimeBridge,
 } from '../../../shared/runtime-ipc'
 import { agentName } from '../../../shared/runtime-ipc'
 
@@ -331,7 +331,7 @@ function withServices(held: AgentIdentities, on: boolean): AgentIdentities {
   ) as unknown as AgentIdentities
 }
 
-export function createAgentStore(bridge: RuntimeBridge): AgentStore {
+export function createAgentStore(bridge: ClientAgentApi): AgentStore {
   const identities = ref<AgentIdentities | null>(null)
   const loaded = ref(false)
   const loadError = ref<string | null>(null)

@@ -5,6 +5,7 @@ import type { RecoveryRetentionClient } from './recovery-retention'
 import type { PluginsClient } from './plugin-settings'
 import type { LoggingClient } from './logging'
 import type { DockLabelClient } from './dock-label'
+import type { ClientAgentApi } from './client-agent-api'
 
 /** Client reads and intents composed at the existing injected application boundary. */
 export interface ClientApi extends ClientProviderApi {
@@ -14,4 +15,5 @@ export interface ClientApi extends ClientProviderApi {
   readonly plugins?: PluginsClient
   readonly logging?: LoggingClient
   readonly dockLabel?: DockLabelClient
+  readonly agents?: ClientAgentApi
 }
