@@ -63,7 +63,7 @@ it('keeps the original export promise and receiver for native and bundle payload
     },
     () => undefined,
     () => undefined,
-    () => transport as ClientSessionApi,
+    () => transport as unknown as ClientSessionApi,
   )
   for (const exportKind of ['native', 'bundle'] as const) {
     const input = { sessionId: 'fern', exportKind }
