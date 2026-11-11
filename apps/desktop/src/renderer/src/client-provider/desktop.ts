@@ -5,6 +5,7 @@ import type { ClientAgentApi } from '../../../shared/client-agent-api'
 import type { TranscriptRetentionClient } from '../../../shared/transcript-retention'
 import type { StorageBridge } from '../../../shared/storage'
 import type { WorkspacesClient } from '../../../shared/workspaces'
+import type { ThemesBridge } from '../../../shared/theme-library'
 import type { RecoveryRetentionClient } from '../../../shared/recovery-retention'
 import type { PluginsClient } from '../../../shared/plugin-settings'
 import type { LoggingClient } from '../../../shared/logging'
@@ -49,6 +50,7 @@ export function createDesktopProviderApi(
   transcriptRetention: () => TranscriptRetentionClient | undefined = () => undefined,
   storage: () => StorageBridge | undefined = () => undefined,
   workspaces: () => WorkspacesClient | undefined = () => undefined,
+  themes: () => ThemesBridge | undefined = () => undefined,
 ): ClientApi {
   return Object.freeze({
     providerCatalogue: () => runtime().providerCatalogue(),
@@ -96,6 +98,9 @@ export function createDesktopProviderApi(
     },
     get workspaces() {
       return workspaces()
+    },
+    get themes() {
+      return themes()
     },
     get recoveryCopies() {
       return recoveryCopies()

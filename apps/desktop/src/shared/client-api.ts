@@ -9,6 +9,7 @@ import type { ClientAgentApi } from './client-agent-api'
 import type { TranscriptRetentionClient } from './transcript-retention'
 import type { StorageBridge } from './storage'
 import type { WorkspacesClient } from './workspaces'
+import type { ThemesBridge } from './theme-library'
 
 /** Client reads and intents composed at the existing injected application boundary. */
 export interface ClientApi extends ClientProviderApi {
@@ -22,4 +23,5 @@ export interface ClientApi extends ClientProviderApi {
   readonly transcriptRetention?: TranscriptRetentionClient
   readonly storage?: StorageBridge
   readonly workspaces?: WorkspacesClient
+  readonly themes?: ThemesBridge
 }

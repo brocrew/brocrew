@@ -13,4 +13,5 @@ export const desktopProviderApi = createDesktopProviderApi(
   () => globalThis.window?.api?.transcriptRetention,
   () => globalThis.window?.api?.storage,
   () => globalThis.window?.api?.workspaces,
+  () => globalThis.window?.api?.themes,
 )

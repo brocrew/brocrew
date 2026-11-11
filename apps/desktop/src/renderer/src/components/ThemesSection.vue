@@ -12,6 +12,7 @@ import { readableError } from '../lib/session-record'
 import { previewCss } from '../lib/theme-previews'
 import { THEME_WORDS } from '../lib/theme-words'
 import { onThemesChanged } from '../lib/window-theme'
+import { useClientApi } from '../client-provider/injection'
 
 /**
  * The workspace's theme: every theme this app can use, each on a card with a small preview of the
@@ -23,7 +24,8 @@ import { onThemesChanged } from '../lib/window-theme'
  * arrives late touches its state, its stylesheet or starts another read.
  */
 const props = defineProps<{ themes?: ThemesBridge }>()
-const bridge = (): ThemesBridge | undefined => props.themes ?? window.api?.themes
+const client = useClientApi()
+const bridge = (): ThemesBridge | undefined => props.themes ?? client.themes
 
 const snapshot = shallowRef<ThemeSnapshot | null>(null)
 const unread = ref<string | null>(null)
