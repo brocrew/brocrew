@@ -10,12 +10,16 @@ const lines = [
 ]
 
 describe('Claude system summaries', () => {
-  it.each(lines)('keeps a system event out of the transcript and in the log: %s', (line) => {
+  it.each(lines)('keeps a system event available for Debug mode and in the log: %s', (line) => {
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
       const message = JSON.parse(line) as SDKMessage
-      expect(normalizeMessage(message)).toEqual([])
-      expect(warning).toHaveBeenCalledExactlyOnceWith('Claude system event', message)
+      const events = normalizeMessage(message)
+      expect(events).toEqual([{
+        type: 'unknown', provider: 'claude', category: 'unrecognized',
+        label: (message as { subtype: string }).subtype, raw: message,
+      }])
+      expect(warning).toHaveBeenCalledExactlyOnceWith('Unmodeled provider event', events[0])
     } finally {
       warning.mockRestore()
     }
