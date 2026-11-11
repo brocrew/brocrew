@@ -20,7 +20,7 @@ import {
   type ProviderLimitSeen,
 } from '../src/shared/provider-limit'
 import type { LedgerWalk } from '../src/shared/question-contracts'
-import type { ProviderUsageReading } from '../src/shared/runtime-ipc'
+import type { Provider, ProviderUsageReading } from '../src/shared/runtime-ipc'
 
 /**
  * # W4.26 · W4.63 — the Providers card's usage, in a person's words
@@ -133,7 +133,14 @@ const reading = (
   window: string,
   usedPercent: number | null,
   resetsAt: number | null,
-): ProviderUsageReading => ({ window, usedPercent, resetsAt, at: NOW, period: usagePeriod(window) })
+  provider: Provider = 'claude',
+): ProviderUsageReading => ({
+  window,
+  usedPercent,
+  resetsAt,
+  at: NOW,
+  period: usagePeriod(provider, window),
+})
 
 describe('25cca325 · readingSays — one window’s newest reading, near a limit or not', () => {
   it('🔴 Claude’s window names are said in a person’s words, with how much is used and when it resets', () => {
@@ -158,7 +165,7 @@ describe('25cca325 · readingSays — one window’s newest reading, near a limi
 
   it('⚑ Codex’s durations are said as limits, and a bucket it named stays beside the limit', () => {
     const week = at(7, 11)
-    const said = (window: string): string => readingSays(reading(window, 50, week), NOW)
+    const said = (window: string): string => readingSays(reading(window, 50, week, 'codex'), NOW)
     expect(said('a 5-hour window')).toBe(`5-hour limit: 50% used; it resets in 4 days.`)
     expect(said('a 7-day window')).toBe(`Weekly limit: 50% used; it resets in 4 days.`)
     expect(said('a 1-day window')).toBe(`Daily limit: 50% used; it resets in 4 days.`)
@@ -256,7 +263,8 @@ describe('the reset, said relative to now — one wording for every usage surfac
 })
 
 describe('the time gone in a window, beside how much of it is used', () => {
-  const windowLength = (window: string) => usagePeriod(window).durationMs
+  const windowLength = (window: string, provider: Provider = 'claude') =>
+    usagePeriod(provider, window).durationMs
   const HOUR = 3_600_000
   const DAY = 24 * HOUR
 
@@ -264,13 +272,13 @@ describe('the time gone in a window, beside how much of it is used', () => {
     expect(windowLength('five_hour')).toBe(5 * HOUR)
     expect(windowLength('seven_day')).toBe(7 * DAY)
     expect(windowLength('seven_day_opus')).toBe(7 * DAY)
-    expect(windowLength('a 7-day window')).toBe(7 * DAY)
-    expect(windowLength('a 5-hour window (GPT-5.3-Codex-Spark)')).toBe(5 * HOUR)
-    expect(windowLength('a 1-day window')).toBe(DAY)
-    expect(windowLength('a 30-day window')).toBe(30 * DAY)
+    expect(windowLength('a 7-day window', 'codex')).toBe(7 * DAY)
+    expect(windowLength('a 5-hour window (GPT-5.3-Codex-Spark)', 'codex')).toBe(5 * HOUR)
+    expect(windowLength('a 1-day window', 'codex')).toBe(DAY)
+    expect(windowLength('a 30-day window', 'codex')).toBe(30 * DAY)
     // No word, or a word that names no length: no length.
     expect(windowLength('overage')).toBeNull()
-    expect(windowLength('a 90-minute window')).toBeNull()
+    expect(windowLength('a 90-minute window', 'codex')).toBeNull()
     expect(windowLength('something new')).toBeNull()
   })
 

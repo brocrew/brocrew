@@ -1,3 +1,4 @@
+import type { UsageWindowDetails } from '../../shared/usage-window'
 import type { ProviderConfigLayout } from '@brobot2/runtime'
 import type {
   TranscriptPolicy as PortableTranscript,
@@ -13,6 +14,7 @@ export type ProviderChildWorkRequest = PortableChildRequest<DesktopProviderValue
 export type RetentionScan = PortableRetention<DesktopProviderValues>
 
 export interface ProviderDefinition {
+  usageWindow(window: string): UsageWindowDetails
   signInKey(profileId: string): string
   signInConflict(holder: string, asked: string): Error
   readonly config: ProviderConfigLayout

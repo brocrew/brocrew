@@ -1,6 +1,8 @@
 import { CODEX_CONFIG_LAYOUT } from '@brobot2/runtime/codex'
+import { usageWindow } from './usage-window'
 
 export const metadata = {
+  usageWindow,
   signInKey: () => 'codex',
   signInConflict(holder: string, asked: string): Error {
     if (holder === asked)

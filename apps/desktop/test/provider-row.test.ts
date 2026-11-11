@@ -115,14 +115,14 @@ describe('one status vocabulary and one tightest limit line', () => {
     const readings = [
       {
         window: 'five_hour',
-        period: usagePeriod('five_hour'),
+        period: usagePeriod('claude', 'five_hour'),
         usedPercent: 42,
         resetsAt: NOW + 3600000,
         at: NOW,
       },
       {
         window: 'seven_day',
-        period: usagePeriod('seven_day'),
+        period: usagePeriod('claude', 'seven_day'),
         usedPercent: 67,
         resetsAt: NOW + 86400000,
         at: NOW,
@@ -138,7 +138,7 @@ describe('one status vocabulary and one tightest limit line', () => {
         [
           {
             window: 'seven_day',
-            period: usagePeriod('seven_day'),
+            period: usagePeriod('claude', 'seven_day'),
             usedPercent: 95,
             resetsAt: NOW - 3600000,
             at: NOW - 86400000,

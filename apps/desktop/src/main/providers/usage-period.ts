@@ -1,9 +1,10 @@
 import type { ProviderUsageReading } from '../../shared/runtime-ipc'
-import { usageWindowDetails } from '../../shared/usage-window'
+import { providerDefinitions } from './index'
+import type { Provider } from '@brobot2/shared'
 
 /** Interpret a recorded window once at the core read boundary; raw words remain on the reading. */
-export function usagePeriod(window: string): NonNullable<ProviderUsageReading['period']> {
-  const details = usageWindowDetails(window)
+export function usagePeriod(provider: Provider, window: string): NonNullable<ProviderUsageReading['period']> {
+  const details = providerDefinitions[provider].usageWindow(window)
   return {
     word: details.word,
     durationMs: details.lengthMs,

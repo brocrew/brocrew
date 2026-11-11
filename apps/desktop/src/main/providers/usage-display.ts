@@ -15,7 +15,7 @@ export function usageForDisplay(
       usedPercent,
       resetsAt,
       at,
-      period: period ?? usagePeriod(window),
+      period: period ?? usagePeriod(provider, window),
       ...(unconfirmed || kept === true ? { unconfirmed: true as const } : {}),
     }),
   )

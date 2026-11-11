@@ -11,7 +11,7 @@ export function limitMeaning(said: string): ProviderLimitMeaning {
   const limit = readProviderLimit(said, 0)
   const used = /(\d+(?:\.\d+)?)% (?:of .+? )?used\b/.exec(said)?.[1]
   return {
-    word: limit === null ? null : usagePeriod(limit.window).word,
+    word: limit === null ? null : usagePeriod(limit.provider, limit.window).word,
     used: used === undefined ? null : Number(used),
     untimed: limit !== null && limit.resetsAt === null,
   }

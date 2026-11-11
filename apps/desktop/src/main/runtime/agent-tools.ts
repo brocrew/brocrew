@@ -273,7 +273,7 @@ import {
   type NewAgent,
   type ProviderUsageReading,
 } from '../../shared/runtime-ipc'
-import { usageWindowWord } from '../../shared/usage-window'
+import { usagePeriod } from '../providers/usage-period'
 import { aPairInWords, sameModel } from '../../shared/model-choice'
 import { agentStateWords } from '../../shared/agent-state'
 
@@ -5038,15 +5038,15 @@ const pieceOnTheCardText = (one: PieceOnTheCard): string =>
  */
 const cardPayload = (card: AgentCard) => ({ ...card, state: agentStateWords(card.state) })
 
-/**
- * ⚑ **F096 — a window in a person's words, with the bucket it is of** — *weekly*, *weekly
- * (GPT-5.3-Codex-Spark)* — or `null` where this app has no word for it ({@link usageWindowWord}).
- */
-const usageLimitWords = (window: string): string | null => {
-  const word = usageWindowWord(window)
+/** Format supplied display facts, projecting legacy rows through their provider when needed. */
+const usageLimitWords = (
+  provider: Provider,
+  window: string,
+  period = usagePeriod(provider, window),
+): string | null => {
+  const { word, bucketName } = period
   if (word === null) return null
-  const bucket = /\(([^)]+)\)\s*$/.exec(window)?.[1]
-  return bucket === undefined || word.endsWith(`(${bucket})`) ? word : `${word} (${bucket})`
+  return bucketName === null || word.endsWith(`(${bucketName})`) ? word : `${word} (${bucketName})`
 }
 
 /**
@@ -5065,7 +5065,7 @@ const providerUsageText = (
     return `${PROVIDER_NAME[provider]}'s usage: no reading yet — it arrives with its next turn.`
   }
   const windows = readings.map((reading) => {
-    const word = usageLimitWords(reading.window) ?? reading.window
+    const word = usageLimitWords(provider, reading.window, reading.period) ?? reading.window
     const passed = reading.resetsAt !== null && reading.resetsAt <= readAt
     const percent =
       reading.usedPercent === null ? null : `${String(Math.round(reading.usedPercent))}%`
@@ -5094,7 +5094,7 @@ const providerUsagePayload = (
     (Object.keys(usage) as Provider[]).map((provider) => [
       provider,
       usage[provider].map((reading) => {
-        const limit = usageLimitWords(reading.window)
+        const limit = usageLimitWords(provider, reading.window, reading.period)
         return {
           window: reading.window,
           ...(limit === null ? {} : { limit }),
@@ -8738,7 +8738,7 @@ export function agentToolsFor(
                         windowsReported(
                           PROVIDER_NAME[provider],
                           seen.map((one) => ({
-                            window: usageLimitWords(one.window) ?? one.window,
+                            window: usageLimitWords(provider, one.window) ?? one.window,
                             first: clockTimeFrom(one.first, reading.readAt),
                             last: clockTimeFrom(one.last, reading.readAt),
                           })),
