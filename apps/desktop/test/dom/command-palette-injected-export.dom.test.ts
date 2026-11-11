@@ -73,7 +73,7 @@ async function choose(kind: 'native' | 'bundle') {
   await settle()
   const row = document.querySelector<HTMLElement>(`[data-cy="palette-row-this-export-${kind}"]`)
   expect(row).not.toBeNull()
-  row!.click()
+  row!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
   await settle()
   expect(document.querySelector('[data-cy="palette-panel"]')).toBeNull()
 }
@@ -163,7 +163,7 @@ it('keeps the captured client across two gestures while resolving its current la
       return { ...answer, kind: 'bundle', path: '/fern/second', note: 'Second supplied meaning.' }
     }),
   }
-  out.sessions.mockReturnValueOnce(secondTransport as ClientSessionApi)
+  out.sessions.mockReturnValueOnce(secondTransport as unknown as ClientSessionApi)
   const changedGlobal = vi.fn(async () => ({ ...answer, path: '/changed-window/wrong' }))
   Reflect.set(window, 'api', { runtime: { exportSession: changedGlobal } })
   await choose('bundle')
