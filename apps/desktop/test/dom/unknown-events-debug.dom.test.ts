@@ -20,12 +20,15 @@ it('shows unknown provider events and their JSON only with Settings Debug mode o
       raw: { type: 'future_event', detail: `${provider} fictional payload` },
     })
   }
-  for (const debug of [false, true, false]) {
-    const getLogging = vi.fn().mockResolvedValue({ debug, path: '/fictional/log', servicePath: null })
-    vi.stubGlobal('api', { ...window.api, logging: { getLogging } })
-    const view = mount(TranscriptView, { items: state.items })
+  let debug = false
+  const getLogging = vi.fn(async () => ({ debug, path: '/fictional/log', servicePath: null }))
+  vi.stubGlobal('api', { ...window.api, logging: { getLogging } })
+  const view = mount(TranscriptView, { items: state.items })
+  await vi.waitFor(() => expect(getLogging).toHaveBeenCalledOnce())
+  for (const chosen of [false, true, false]) {
+    debug = chosen
+    window.dispatchEvent(new Event('focus'))
     await vi.waitFor(() => expect(view.all('unknown-entry')).toHaveLength(debug ? 2 : 0))
-    expect(getLogging).toHaveBeenCalledOnce()
     expect(view.host.querySelectorAll('.entry[data-item]')).toHaveLength(debug ? 2 : 0)
     if (debug) {
       for (const [index, provider] of ['claude', 'codex'].entries()) {
@@ -37,6 +40,5 @@ it('shows unknown provider events and their JSON only with Settings Debug mode o
         expect(body.textContent).toContain(`${provider} fictional payload`)
       }
     }
-    view.unmount()
   }
 })
