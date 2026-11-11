@@ -1,4 +1,7 @@
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick, provide } from 'vue'
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
 import { afterEach, describe, expect, it } from 'vitest'
 import ResumableSessions from '../../src/renderer/src/components/ResumableSessions.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
@@ -505,7 +508,22 @@ describe('a profile that is not the default, on the surfaces that show one (167 
         listUnresumable: () => Promise.resolve(unresumable),
       },
     }
-    const view = mount(ResumableSessions, {}, { width: 640 })
+    const client = createDesktopProviderApi(
+      () => ({ ...window.api.runtime, providerCatalogue: async () => PROVIDER_DESCRIPTORS }),
+      () => undefined,
+      () => undefined,
+      () => window.api.runtime,
+    )
+    const view = mount(
+      defineComponent({
+        setup() {
+          provide(CLIENT_PROVIDERS, client)
+          return () => h(ResumableSessions)
+        },
+      }),
+      {},
+      { width: 640 },
+    )
     await new Promise((resolve) => setTimeout(resolve, 0))
     await nextTick()
     return view

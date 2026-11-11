@@ -1,10 +1,13 @@
 import type { HandedPath } from '../../src/shared/attachment-contracts'
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import type { WorkReport } from '../../src/shared/task-contracts'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
-import { defineComponent, h, nextTick, type Component } from 'vue'
+import { defineComponent, h, nextTick, provide, type Component } from 'vue'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
 import AttentionQueue from '../../src/renderer/src/components/AttentionQueue.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import QueuedMessage from '../../src/renderer/src/components/QueuedMessage.vue'
@@ -211,7 +214,26 @@ describe('§1 · R41 (`712` F-4) — the identity a person reads is NAMED', () =
         listUnresumable: () => Promise.resolve(unresumable),
       },
     }
-    const m = mount(ResumableSessions, { identities }, { width: 640 })
+    const client = {
+      ...createDesktopProviderApi(
+        () => window.api.runtime,
+        () => undefined,
+      ),
+      providerCatalogue: async () => PROVIDER_DESCRIPTORS,
+      get sessions() {
+        return window.api.runtime
+      },
+    }
+    const m = mount(
+      defineComponent({
+        setup() {
+          provide(CLIENT_PROVIDERS, client)
+          return () => h(ResumableSessions, { identities })
+        },
+      }),
+      {},
+      { width: 640 },
+    )
     await settle()
     return m
   }
