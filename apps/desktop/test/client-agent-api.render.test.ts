@@ -11,6 +11,7 @@ import {
 import { createDesktopProviderApi } from '../src/renderer/src/client-provider/desktop'
 import { CLIENT_PROVIDERS } from '../src/renderer/src/client-provider/injection'
 import { useAgentStore } from '../src/renderer/src/composables/useAgentStore'
+import TeamWorkspace from '../src/renderer/src/components/TeamWorkspace.vue'
 
 function fixture() {
   const list: AgentIdentities = {
@@ -152,6 +153,22 @@ describe('the agent store belongs to its injected client', () => {
     })
     const html = await renderToString(createSSRApp(probe).provide(CLIENT_PROVIDERS, api))
     expect(html).toContain('not asked')
+    expect(read).not.toHaveBeenCalled()
+  })
+
+  it('a real Team surface with an explicit store never asks for the absent capability', async () => {
+    const { api, list, read } = fixture()
+    const store = agentStoreForClient(api)
+    const missing: ClientApi = {
+      ...api,
+      get agents(): never {
+        throw new Error('The explicit store must bypass this capability')
+      },
+    }
+    const app = createSSRApp(TeamWorkspace, { agents: list, store })
+    const html = await renderToString(app.provide(CLIENT_PROVIDERS, missing))
+    expect(html).toContain('data-cy="team-workspace"')
+    expect(html).toContain('data-cy="team-none"')
     expect(read).not.toHaveBeenCalled()
   })
 })
