@@ -16,6 +16,9 @@ import { writeWorkspaceFile } from '../src/main/themes/state'
 import { DOCK_LABEL_PART } from '../../../scripts/lib/clean-base.mjs'
 import type { NativeImage } from 'electron'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { createSSRApp } from 'vue'
+import { renderToString } from 'vue/server-renderer'
+import { useDockLabel } from '../src/renderer/src/composables/useDockLabel'
 import {
   DOCK_ICON_SIZE,
   DOCK_LABEL_BAND_TOP,
@@ -150,7 +153,14 @@ function started(workspaceName = 'Atlas', withDock = true) {
 }
 
 describe('a workspace’s label starts from its name', () => {
-  it('the default name follows one rule: first word, its number, vowels dropped to fit', () => {
+  it('the default name follows one rule: first word, its number, vowels dropped to fit', async () => {
+    const app = createSSRApp({
+      setup() {
+        useDockLabel()
+        return () => null
+      },
+    })
+    await expect(renderToString(app)).resolves.toBe('<!---->')
     const cases: [string, string][] = [
       // First word; the app's own name in a folder's name passed over.
       ['Atlas', 'ATLAS'],

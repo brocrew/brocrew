@@ -8,4 +8,5 @@ export const desktopProviderApi = createDesktopProviderApi(
   () => (typeof window === 'undefined' ? undefined : window.api),
   () => window.api?.plugins,
   () => globalThis.window?.api?.logging,
+  () => globalThis.window?.api?.dockLabel,
 )

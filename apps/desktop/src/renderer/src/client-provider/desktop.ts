@@ -4,6 +4,7 @@ import type { ClientApi } from '../../../shared/client-api'
 import type { RecoveryRetentionClient } from '../../../shared/recovery-retention'
 import type { PluginsClient } from '../../../shared/plugin-settings'
 import type { LoggingClient } from '../../../shared/logging'
+import type { DockLabelClient } from '../../../shared/dock-label'
 import type { ProviderSetupBridge } from '../../../shared/provider-setup'
 import type { RuntimeBridge } from '../../../shared/runtime-ipc'
 
@@ -35,6 +36,7 @@ export function createDesktopProviderApi(
   composer: () => ClientComposerApi | undefined = () => undefined,
   plugins: () => PluginsClient | undefined = () => undefined,
   logging: () => LoggingClient | undefined = () => undefined,
+  dockLabel: () => DockLabelClient | undefined = () => undefined,
 ): ClientApi {
   return Object.freeze({
     providerCatalogue: () => runtime().providerCatalogue(),
@@ -63,6 +65,9 @@ export function createDesktopProviderApi(
     },
     get logging() {
       return logging()
+    },
+    get dockLabel() {
+      return dockLabel()
     },
     get recoveryCopies() {
       return recoveryCopies()

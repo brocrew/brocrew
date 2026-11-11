@@ -43,6 +43,11 @@ export interface DockLabelChange {
   readonly colour?: DockLabelColour | null
 }
 
+export interface DockLabelClient {
+  read(): Promise<DockLabel>
+  set(change: DockLabelChange): Promise<DockLabel>
+}
+
 /**
  * A name as the band shows it: capital letters and digits only, accents dropped, at most
  * {@link DOCK_LABEL_MAX}. Empty when nothing of it can be shown.

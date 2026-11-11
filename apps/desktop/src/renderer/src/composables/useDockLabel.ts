@@ -1,4 +1,5 @@
 import { onMounted, ref, type Ref } from 'vue'
+import { useClientApi } from '../client-provider/injection'
 import {
   DOCK_LABEL_COLOURS,
   dockLabelName,
@@ -35,7 +36,7 @@ export interface DockLabelSetting {
   step(colour: DockLabelColour, by: 1 | -1): DockLabelColour
 }
 
-export function useDockLabel(bridge = window.api?.dockLabel): DockLabelSetting {
+export function useDockLabel(bridge = useClientApi().dockLabel): DockLabelSetting {
   const label = ref<DockLabel | null>(null)
   const typed = ref('')
   const statusLine = ref('')

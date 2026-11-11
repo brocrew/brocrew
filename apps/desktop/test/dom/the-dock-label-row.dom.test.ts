@@ -1,7 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick, provide } from 'vue'
 import SettingsScreen from '../../src/renderer/src/components/SettingsScreen.vue'
 import type { DockLabel, DockLabelChange } from '../../src/shared/dock-label'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
 import { dockLabelBridge } from '../../look/fixtures/dock-label'
 import { mount, unmountAll } from './harness'
 
@@ -71,6 +73,12 @@ it('is not shown where there is no Dock', async () => {
   )
   await settle()
   expect(m.host.querySelector('[data-cy="dock-label"]')).toBeNull()
+  computer.platform = 'MacIntel'
+  const absent = generalOver(undefined)
+  await settle()
+  expect((absent.q('dock-label-switch') as HTMLInputElement).disabled).toBe(true)
+  expect(absent.raw.read).not.toHaveBeenCalled()
+  expect(absent.raw.set).not.toHaveBeenCalled()
 })
 
 it('keeps a typed name to what the band shows, and saves it when it is done', async () => {
@@ -141,16 +149,40 @@ const ATLAS: DockLabel = {
 }
 
 /** The General tab over a bridge the test controls. */
-function generalOver(bridge: {
-  read: () => Promise<DockLabel>
-  set: (change: DockLabelChange) => Promise<DockLabel>
-}) {
-  ;(window as unknown as { api: Record<string, unknown> }).api = { dockLabel: bridge }
-  return mount(
-    SettingsScreen,
-    { tab: 'general', capabilities: null, warnings: null, clock: Date.now() },
-    { width: 1000, height: 700 },
+function generalOver(
+  bridge:
+    | {
+        read: () => Promise<DockLabel>
+        set: (change: DockLabelChange) => Promise<DockLabel>
+      }
+    | undefined,
+) {
+  const raw = { read: vi.fn(async () => ATLAS), set: vi.fn(async () => ATLAS) }
+  ;(window as unknown as { api: Record<string, unknown> }).api = { dockLabel: raw }
+  const client = createDesktopProviderApi(
+    () => window.api.runtime,
+    () => undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    () => bridge,
   )
+  const parent = defineComponent({
+    setup() {
+      provide(CLIENT_PROVIDERS, client)
+      return () =>
+        h(SettingsScreen, {
+          tab: 'general',
+          capabilities: null,
+          warnings: null,
+          clock: Date.now(),
+        })
+    },
+  })
+  const mounted = mount(parent, {}, { width: 1000, height: 700 })
+  return { ...mounted, raw }
 }
 
 const WORDS = "That didn't work. Try again."
@@ -171,6 +203,8 @@ it('a late reply to a save does not erase a name typed since', async () => {
   await settle()
   expect(name.value).toBe('CEDAR')
   expect(m.q('dock-label-colour-teal').getAttribute('aria-checked')).toBe('true')
+  expect(m.raw.read).not.toHaveBeenCalled()
+  expect(m.raw.set).not.toHaveBeenCalled()
 })
 
 it('a reply to an older save is ignored once a newer one is out', async () => {
