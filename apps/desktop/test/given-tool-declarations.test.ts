@@ -233,6 +233,76 @@ describe('provider declarations through the read model and request order', () =>
     },
   )
 
+  it.each(['request_user_input', 'functions.request_user_input'])(
+    'projects the recorded Codex alias %s without disabling its async neighbor',
+    (disabled) => {
+      const input = read('codex', null)
+      const names = [
+        'functions.exec',
+        'functions.request_user_input',
+        'functions.request_user_input_async',
+      ]
+      const tools = names.map((name) => {
+        const text = JSON.stringify({ name, description: `Use ${name} for this task.` })
+        return { name, text, chars: text.length }
+      })
+      const snapshot = {
+        ...givenAnswer().providerParts.snapshot!,
+        provider: 'codex' as const,
+        shape: 'functions' as const,
+        parts: [
+          {
+            id: 'codex.tools',
+            title: 'Provider tools',
+            where: 'tools' as const,
+            when: 'every-request' as const,
+            text: tools.map((tool) => tool.text).join('\n'),
+            chars: tools.reduce((sum, tool) => sum + tool.chars, 0),
+            words: 12,
+            approxTokens: 40,
+            tools,
+          },
+        ],
+      }
+      const projected: WhatTheReadIsHanded = {
+        ...input,
+        record: { ...input.record, settings: [{ key: 'tools-off', value: [disabled] }] },
+        snapshot: { model: null, answer: { found: true, snapshot } },
+      }
+      const given = whatItWasGiven(projected)
+      expect(given.tools.notSentDeclarations).toEqual(['functions.request_user_input'])
+      expect(
+        rows(given)
+          .filter((row) => row.key.startsWith('tool:'))
+          .map((row) => row.key),
+      ).toEqual(['tool:functions.exec', 'tool:functions.request_user_input_async'])
+      expect(projected.record.settings).toEqual([{ key: 'tools-off', value: [disabled] }])
+      expect(snapshot.parts[0]!.tools.map((tool) => tool.name)).toEqual(names)
+      const oldTools = { ...given.tools }
+      delete oldTools.notSentDeclarations
+      const old = { ...given, tools: oldTools }
+      expect(
+        rows(old)
+          .filter((row) => row.key.startsWith('tool:'))
+          .map((row) => row.key),
+      ).toEqual(
+        disabled === 'functions.request_user_input'
+          ? ['tool:functions.exec', 'tool:functions.request_user_input_async']
+          : names.map((name) => `tool:${name}`),
+      )
+      const unrecorded = whatItWasGiven({
+        ...projected,
+        launch: { recorded: false, why: 'not-kept', running: false },
+      })
+      expect(unrecorded.tools.notSentDeclarations).toBeUndefined()
+      expect(
+        rows(unrecorded)
+          .filter((row) => row.key.startsWith('tool:'))
+          .map((row) => row.key),
+      ).toEqual(names.map((name) => `tool:${name}`))
+    },
+  )
+
   it('keeps absence distinct from an empty published inventory in both native policies', () => {
     for (const policy of [claude, codex]) {
       expect(policy.toolNames('bakery', [], null, ['mail']).external[0]?.tools).toBeNull()

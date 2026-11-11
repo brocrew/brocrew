@@ -18,7 +18,11 @@ const declaration = (name: string): SnapshotTool => {
   return { name, text, chars: text.length }
 }
 
-async function popup(provider: Provider, launchSettings?: GivenLaunchSettings): Promise<Mounted> {
+async function popup(
+  provider: Provider,
+  launchSettings?: GivenLaunchSettings,
+  notSentDeclarations?: readonly string[],
+): Promise<Mounted> {
   const answer = givenAnswer()
   const tools =
     provider === 'claude'
@@ -54,6 +58,10 @@ async function popup(provider: Provider, launchSettings?: GivenLaunchSettings): 
     ...answer,
     provider,
     launchSettings,
+    tools: {
+      ...answer.tools,
+      ...(notSentDeclarations === undefined ? {} : { notSentDeclarations }),
+    },
     providerParts: { ...answer.providerParts, version, model: snapshot.model, snapshot },
   }
   ;(window as { api?: unknown }).api = {
@@ -96,10 +104,11 @@ describe('provider tools at launch', () => {
     'leaves the recorded turned-off %s tool out while keeping the others',
     async (provider) => {
       const off = provider === 'claude' ? 'AskUserQuestion' : 'request_user_input'
-      const m = await popup(provider, {
-        recorded: true,
-        settings: [{ key: 'tools-off', atLaunch: [off] }],
-      })
+      const m = await popup(
+        provider,
+        { recorded: true, settings: [{ key: 'tools-off', atLaunch: [off] }] },
+        [provider === 'claude' ? 'AskUserQuestion' : 'functions.request_user_input'],
+      )
       const names = await shownToolNames(m, provider)
       const capture = import.meta.env.VITE_W4452_CAPTURE
       if (capture)
@@ -149,4 +158,21 @@ describe('provider tools at launch', () => {
     })
     expect(await shownToolNames(m, 'claude')).toEqual(['Read', 'AskUserQuestion', 'Bash'])
   })
+
+  it.each([
+    [
+      'request_user_input',
+      ['functions.exec', 'functions.request_user_input', 'functions.request_user_input_async'],
+    ],
+    ['functions.request_user_input', ['functions.exec', 'functions.request_user_input_async']],
+  ] as const)(
+    'uses exact raw names for old DTOs without omission facts: %s',
+    async (disabled, expected) => {
+      const m = await popup('codex', {
+        recorded: true,
+        settings: [{ key: 'tools-off', atLaunch: [disabled] }],
+      })
+      expect(await shownToolNames(m, 'codex')).toEqual(expected)
+    },
+  )
 })
