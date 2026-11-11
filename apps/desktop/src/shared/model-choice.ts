@@ -225,7 +225,10 @@ export function whatAModelChoiceReaches(
   choice: AgentModelChoice,
   names?: Readonly<Partial<Record<Provider, string>>>,
 ): string {
-  const name = names === undefined ? PROVIDER_NAME[choice.provider] : (names[choice.provider] ?? 'the provider')
+  const name =
+    names === undefined
+      ? PROVIDER_NAME[choice.provider]
+      : (names[choice.provider] ?? 'the provider')
   return (
     `Its new conversations start on this, on ${name} — the ones you start ` +
     'and the ones another agent starts for it. A conversation already open keeps its own until it ' +
@@ -242,7 +245,10 @@ export function aChoiceInWords(
   choice: AgentModelChoice,
   names?: Readonly<Partial<Record<Provider, string>>>,
 ): string {
-  const name = names === undefined ? PROVIDER_NAME[choice.provider] : (names[choice.provider] ?? 'the provider')
+  const name =
+    names === undefined
+      ? PROVIDER_NAME[choice.provider]
+      : (names[choice.provider] ?? 'the provider')
   return `${aPairInWords(choice)} on ${name}`
 }
 
