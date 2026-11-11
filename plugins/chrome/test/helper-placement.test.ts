@@ -250,4 +250,3 @@ describe('an uncertain helper creation is never duplicated', () => {
     await expect(windows.open({ newWindow: false })).resolves.toBeDefined()
   })
 })
-

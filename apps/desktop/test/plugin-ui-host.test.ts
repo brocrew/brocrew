@@ -435,6 +435,5 @@ describe('the actual isolated host wiring', () => {
     await f.view.close()
     expect(() => call({ sender: f.contents })).toThrow()
     expect(appHandler).not.toHaveBeenCalled()
-
   })
 })
