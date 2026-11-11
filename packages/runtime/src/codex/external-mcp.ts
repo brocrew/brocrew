@@ -56,8 +56,6 @@ export function externalMcpElicitationPrompt(elicitation: CodexElicitation): str
 
 export const CODEX_TOOL_APPROVAL_KIND = 'mcp_tool_call'
 
-const CODEX_TOOL_QUESTION = /^Allow the (.+) MCP server to run tool "(.+)"\?$/s
-
 export interface ToolParameter {
   readonly name: string
   readonly value: string
@@ -108,11 +106,7 @@ export function codexToolApproval(params: unknown): CodexToolApproval | null {
   const properties = isRecord(schema) && isRecord(schema['properties']) ? schema['properties'] : {}
   if (Object.keys(properties).length > 0) return null
   const question = readString(params, 'message')
-  const asked = CODEX_TOOL_QUESTION.exec(question)
-
-  const tool =
-    readString(meta, 'tool_name') ||
-    (asked !== null && asked[1] === serverName ? (asked[2] ?? null) : null)
+  const tool = readString(meta, 'tool_name') || null
   const { kept, omitted } = displayedParameters(meta['tool_params_display'])
   const persist = meta['persist']
   return {

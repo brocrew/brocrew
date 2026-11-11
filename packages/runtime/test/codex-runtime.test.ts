@@ -2058,6 +2058,7 @@ describe('CodexRuntime — approvals', () => {
     mode: 'form',
     _meta: {
       codex_approval_kind: 'mcp_tool_call',
+      tool_name: 'note_it',
       persist: ['session', 'always'],
       tool_description: '723 probe · records that it ran, with what',
       tool_params: { note: 'one' },
@@ -2436,6 +2437,7 @@ describe('CodexRuntime — approvals', () => {
     transport.serverRequest(112, 'mcpServer/elicitation/request', {
       ...CODEX_ASKS,
       message: 'Allow the brobot723 MCP server to run tool "delete_everything"?',
+      _meta: { ...CODEX_ASKS._meta, tool_name: 'delete_everything' },
     })
     await vi.waitFor(has(events, (e) => e.type === 'permission_request'))
     expect(theServersCard(events, 112)).toBe(true)
@@ -2475,6 +2477,7 @@ describe('CodexRuntime — approvals', () => {
     transport.serverRequest(117, 'mcpServer/elicitation/request', {
       ...CODEX_ASKS,
       message: 'Allow the brobot723 MCP server to run tool "note_that"?',
+      _meta: { ...CODEX_ASKS._meta, tool_name: 'note_that' },
     })
     await vi.waitFor(() => expect(permissionCards(events)).toHaveLength(3))
     expect(theServersCard(events, 117)).toBe(false)
@@ -2502,6 +2505,7 @@ describe('CodexRuntime — approvals', () => {
     transport.serverRequest(99, 'mcpServer/elicitation/request', {
       ...CODEX_ASKS,
       message: 'Approve app tool call?',
+      _meta: { ...CODEX_ASKS._meta, tool_name: undefined },
     })
     await vi.waitFor(has(events, (e) => e.type === 'permission_request'))
     const card = firstOfType(events, 'permission_request')
@@ -2518,6 +2522,7 @@ describe('CodexRuntime — approvals', () => {
     transport.serverRequest(100, 'mcpServer/elicitation/request', {
       ...CODEX_ASKS,
       message: 'Approve app tool call?',
+      _meta: { ...CODEX_ASKS._meta, tool_name: undefined },
     })
     await vi.waitFor(() => expect(permissionCards(events)).toHaveLength(2))
     expect(theServersCard(events, 100)).toBe(true)
@@ -2533,6 +2538,7 @@ describe('CodexRuntime — approvals', () => {
       message: 'Allow the brobot723 MCP server to run tool "note\u202Eit"?',
       _meta: {
         ...CODEX_ASKS._meta,
+        tool_name: 'note\u202Eit',
         tool_params: { query: 'a\u202Eb', limit: 5, tags: ['x'] },
         tool_params_display: [
           { name: 'query', value: 'a\u202Eb', display_name: 'Search\u202E for' },
@@ -2578,6 +2584,7 @@ describe('CodexRuntime — approvals', () => {
       message: 'Allow the brobot723 MCP server to run tool "note_that"?',
       _meta: {
         ...CODEX_ASKS._meta,
+        tool_name: 'note_that',
         tool_params_display: [
           { name: 'a', value: long },
           { name: 'b', value: long },
