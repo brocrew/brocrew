@@ -9,6 +9,7 @@
 # Compiling the job code takes tens of seconds on a cold machine. With a cache path in
 # BROCREW_PLUGIN_JOB_CACHE, it is compiled once into that file in the host's private folder and
 # loaded from there after.
+$ProgressPreference = 'SilentlyContinue'
 $ErrorActionPreference = 'Stop'
 $source = @'
 using System;
