@@ -5,6 +5,7 @@ import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
 import type { Express, Request, RequestHandler, Response } from 'express'
 import { withRequestSignal } from './requestSignal.js'
+import { mcpSessions } from '../../../shared/mcp-sessions.js'
 interface McpServer {
   connect(transport: StreamableHTTPServerTransport): Promise<void>
 }
@@ -72,9 +73,8 @@ export async function startHttpMcpServer(
   }
   const app = createMcpExpressApp({ host, allowedHosts })
   for (const handler of options.middleware ?? []) app.use(handler)
-  const transports: Record<string, StreamableHTTPServerTransport> = {}
-  const pendingRequests = new Map<string, number>()
-  const closedSessions = new Set<string>()
+  const sessions = mcpSessions<StreamableHTTPServerTransport>()
+  const { transports } = sessions
   app.post('/mcp', async (req: Request, res: Response) => {
     const sessionId = req.headers['mcp-session-id'] as string | undefined
     const gone = new AbortController()
@@ -101,15 +101,7 @@ export async function startHttpMcpServer(
             transports[sid] = transport
           },
         })
-        transport.onclose = () => {
-          const sid = transport.sessionId
-          if (!sid) return
-          if (pendingRequests.get(sid)) {
-            closedSessions.add(sid)
-          } else {
-            delete transports[sid]
-          }
-        }
+        transport.onclose = () => sessions.closed(transport.sessionId)
         const server = createServer()
         await server.connect(transport)
         await withRequestSignal(gone.signal, () => transport.handleRequest(req, res, req.body))
@@ -123,21 +115,9 @@ export async function startHttpMcpServer(
         return
       }
       const sid = transport.sessionId ?? sessionId!
-      pendingRequests.set(sid, (pendingRequests.get(sid) ?? 0) + 1)
-      try {
-        await withRequestSignal(gone.signal, () => transport.handleRequest(req, res, req.body))
-      } finally {
-        const count = (pendingRequests.get(sid) ?? 1) - 1
-        if (count <= 0) {
-          pendingRequests.delete(sid)
-          if (closedSessions.has(sid)) {
-            closedSessions.delete(sid)
-            delete transports[sid]
-          }
-        } else {
-          pendingRequests.set(sid, count)
-        }
-      }
+      await sessions.request(sid, () =>
+        withRequestSignal(gone.signal, () => transport.handleRequest(req, res, req.body)),
+      )
     } catch (error) {
       console.error('Error handling MCP request:', error)
       if (!res.headersSent) {
@@ -181,16 +161,7 @@ export async function startHttpMcpServer(
     server.once('error', reject)
   })
   onListening?.()
-  const closeAllTransports = async () => {
-    for (const sid of Object.keys(transports)) {
-      try {
-        await transports[sid].close()
-        delete transports[sid]
-      } catch {
-        /* Continue without this optional result. */
-      }
-    }
-  }
+  const closeAllTransports = () => sessions.close()
   if (registerSignalHandlers) {
     const shutdown = async () => {
       await closeAllTransports()
