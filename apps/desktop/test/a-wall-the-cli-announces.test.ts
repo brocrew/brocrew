@@ -76,6 +76,12 @@ class ReplayQuery {
   private done = false
 
   emit(message: SDKMessage): void {
+    // The capture scrubs its sent UUID; the replay stamps this result with the replay's send.
+    if (message.type === 'result' && message.user_message_uuid === '<uuid>') {
+      message = { ...message }
+      delete message.user_message_uuid
+      delete message.user_message_uuids
+    }
     if (this.resolve) {
       const resolve = this.resolve
       this.resolve = null
@@ -110,8 +116,7 @@ class ReplayQuery {
   }
 
   /**
-   * ⚑ F080: the frames were recorded before the adapter sent its message's uuid, so their `result`
-   * names none; the CLI echoes the one it is sent (`claude-provider-bursts.json`), and so does this.
+   * F080: the CLI echoes the sent UUID; the replay supplies its own for the capture's placeholder.
    */
   readonly cli = new TheCliAnswersInOrder()
 }
