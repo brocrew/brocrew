@@ -1159,6 +1159,13 @@ async function collectRecoveryProofCases({ result, cases, phase, closed, check, 
     })
     if (name === 'compatible')
       check(Boolean(result.compatible.order), 'Window-before-completion was not observed.')
+    if (name === 'compatible019')
+      check(result.compatible.actual019ThenCandidate === true, 'Compatible binary reads failed.')
+    if (name === 'syntheticFuture')
+      check(
+        result.syntheticFuture.actual019RestoreReturn === true,
+        'Actual019 Restore/Return failed.',
+      )
     outcome.closed = closed()
     check(outcome.closed, `${stage}: owned proof processes are stopped`)
   }
