@@ -1,5 +1,5 @@
 import type { SDKAssistantMessageError, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { RuntimeEvent } from '../src/index'
 import { normalizeMessage } from '../src/claude/normalize'
 
@@ -144,44 +144,37 @@ describe('a refused credential (110)', () => {
     ])
   })
 
-  it('no `.d.ts` symbol survives the translation — for ANY of the thirteen error words', () => {
-    // The union, spelled out. If the SDK grows another member the `Record` in `assistant-error.ts`
-    // fails to compile, which is the guard — it did, on the 0.3.281 bump, for the three marked (680)
-    // — and this is the other half: that nothing in the thirteen reaches a reader as itself.
-    const EXPECTED_WORDS = {
-      authentication_failed: 'claude could not authenticate',
-      oauth_org_not_allowed: 'this account is not allowed to use this organization',
-      account_on_hold: 'this account is on hold and claude will not answer it', // 680
-      verification_required: 'claude will not answer until this account is verified', // 680
-      cloud_credential_error: 'claude could not load the cloud credentials it runs on', // 680
-      billing_error: 'claude reported a billing problem with this account',
-      rate_limit: 'claude is rate-limited',
-      overloaded: 'claude is overloaded',
-      invalid_request: 'claude rejected the request as invalid',
-      model_not_found: 'the model this conversation asks for is not available',
-      server_error: 'claude had a server-side error',
-      unknown: 'claude reported an error without saying what it was',
-      max_output_tokens: 'the reply hit its maximum length',
-      // ⚑ `satisfies` the union (680): a word the SDK adds and this list lacks is a type error here too.
-    } satisfies Record<SDKAssistantMessageError, string>
-    for (const word of Object.keys(EXPECTED_WORDS) as SDKAssistantMessageError[]) {
-      const events = normalizeMessage(
-        sdk({ type: 'assistant', message: { role: 'assistant', content: [] }, error: word }),
-      )
-      const error = events.find((e) => e.type === 'error')
-      if (!error || error.type !== 'error') throw new Error(`no error event for ${word}`)
-      // ⚠️ **The symbol, not the English.** `overloaded` and `unknown` are also ordinary words, and
-      // asserting their absence would forbid the sentence from saying what it means. What must
-      // never appear is a snake_case identifier, and what must never happen is the message BEING
-      // the word — the two together are exactly "no `.d.ts` symbol reached a reader".
-      expect(error.message, word).not.toContain('_')
-      expect(error.message, word).not.toBe(word)
-      expect(error.message.length, word).toBeGreaterThan(word.length)
-      // …and the exact sentence, because the three checks above are about FORM and would accept a
-      // well-formed translation of the wrong error (review). Pinned here so a mis-mapped `Record`
-      // entry — the one mistake the compile-time guard cannot catch — fails a test.
-      expect(error.message, word).toBe(EXPECTED_WORDS[word])
-    }
+  const errorCases = [
+    ['authentication_failed', 'claude could not authenticate'],
+    ['oauth_org_not_allowed', 'this account is not allowed to use this organization'],
+    ['account_on_hold', 'this account is on hold and claude will not answer it'],
+    ['verification_required', 'claude will not answer until this account is verified'],
+    ['cloud_credential_error', 'claude could not load the cloud credentials it runs on'],
+    ['billing_error', 'claude reported a billing problem with this account'],
+    ['rate_limit', 'claude is rate-limited'],
+    ['overloaded', 'claude is overloaded'],
+    ['invalid_request', 'claude rejected the request as invalid'],
+    ['model_not_found', 'the model this conversation asks for is not available'],
+    ['server_error', 'claude had a server-side error'],
+    ['unknown', 'claude reported an error without saying what it was'],
+    ['max_output_tokens', 'the reply hit its maximum length'],
+  ] as const satisfies readonly (readonly [SDKAssistantMessageError, string])[]
+
+  it('covers every SDK assistant error word with an independent expected sentence', () => {
+    expectTypeOf<(typeof errorCases)[number][0]>().toEqualTypeOf<SDKAssistantMessageError>()
+  })
+
+  it.each(errorCases)('translates %s without exposing its SDK symbol', (word, expectedSentence) => {
+    const events = normalizeMessage(
+      sdk({ type: 'assistant', message: { role: 'assistant', content: [] }, error: word }),
+    )
+    const error = events.find((e) => e.type === 'error')
+    if (!error || error.type !== 'error') throw new Error(`no error event for ${word}`)
+    // Exact wording catches a mis-mapped error; the other checks also reject raw SDK symbols.
+    expect(error.message, word).not.toContain('_')
+    expect(error.message, word).not.toBe(word)
+    expect(error.message.length, word).toBeGreaterThan(word.length)
+    expect(error.message, word).toBe(expectedSentence)
   })
 
   it('a RETRY names the same cause in words, and deliberately does not end anything', () => {
