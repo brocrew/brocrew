@@ -1,11 +1,5 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
-import type {
-  ClaudeLaunchSettingKey,
-  CodexLaunchSettingKey,
-  LaunchSetting,
-  LaunchSettingKey,
-  SessionHandle,
-} from '@brobot2/runtime'
+import type { LaunchSetting, SessionHandle } from '@brobot2/runtime'
 import { CLAUDE_LAUNCH_SETTING_KEYS } from '@brobot2/runtime/claude'
 import { CODEX_LAUNCH_SETTING_KEYS } from '@brobot2/runtime/codex'
 import { providerKnowledge } from '../src/main/providers'
@@ -28,7 +22,7 @@ const legacyKeys = [
   'approval',
   'tools-off',
   'tools-left-on',
-] as const satisfies readonly LaunchSettingKey[]
+] as const
 
 const originalGiven = providerKnowledge.claude.instructions.given
 let world: F093World | undefined
@@ -134,23 +128,13 @@ describe('registered launch keys across live and kept records', () => {
     ).toHaveLength(40)
   })
 
-  it('keeps the public default closed while the portable handle admits supplied keys', () => {
+  it('keeps native key values while default and explicitly supplied key types stay portable', () => {
     expect(CLAUDE_LAUNCH_SETTING_KEYS).toEqual(legacyKeys.slice(0, 7))
     expect(CODEX_LAUNCH_SETTING_KEYS).toEqual(legacyKeys.slice(7, 12))
-    expectTypeOf<ClaudeLaunchSettingKey>().toEqualTypeOf<
-      | 'settings-sources'
-      | 'memory-folder'
-      | 'built-in-tools'
-      | 'denied-tools'
-      | 'mode'
-      | 'connectors'
-      | 'attribution'
+    expectTypeOf<LaunchSetting['key']>().toEqualTypeOf<string>()
+    expectTypeOf<LaunchSetting<'fern-plan' | 'fern-files'>['key']>().toEqualTypeOf<
+      'fern-plan' | 'fern-files'
     >()
-    expectTypeOf<CodexLaunchSettingKey>().toEqualTypeOf<
-      'memory' | 'thread-overrides' | 'plan-tool' | 'approval-sandbox' | 'collaboration-mode'
-    >()
-    expectTypeOf<LaunchSetting['key']>().toEqualTypeOf<LaunchSettingKey>()
-    expectTypeOf<LaunchSettingKey>().toEqualTypeOf<(typeof legacyKeys)[number]>()
     expectTypeOf<
       NonNullable<SessionHandle['launchSettings']>[number]['key']
     >().toEqualTypeOf<string>()

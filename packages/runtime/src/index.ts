@@ -282,13 +282,7 @@ export {
   type FakeRuntimeOptions,
 } from './fake-runtime'
 
-export type {
-  ClaudeLaunchSettingKey,
-  CodexLaunchSettingKey,
-  LaunchSetting,
-  LaunchSettingKey,
-  LaunchSettingValue,
-} from './launch-settings'
+export type { LaunchSetting, LaunchSettingValue } from './launch-settings'
 
 export { MAX_SETTINGS_BYTES } from './settings-limits'
 
