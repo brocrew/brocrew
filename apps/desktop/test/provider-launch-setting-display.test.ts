@@ -3,7 +3,6 @@ import { given as claude } from '../src/main/providers/claude/given'
 import { given as codex } from '../src/main/providers/codex/given'
 import { launchSettingDisplay, launchSettingsAtRead } from '../src/main/providers/given-policy'
 import { settingRows, modeDiffersFromCopy } from '../src/renderer/src/lib/launch-settings'
-import type { LaunchSettingKey, LaunchSettingValue } from '@brobot2/runtime'
 import { F093World } from './lib/f093-host'
 
 const captured = { approval: 'ask' as const, planning: false }
@@ -138,7 +137,7 @@ describe('provider launch-setting display at the read', () => {
     const policy = {
       planningKey: 'mode' as const,
       prefix: 'Fern',
-      launchSetting(this: { prefix: string }, _key: LaunchSettingKey, _value: LaunchSettingValue) {
+      launchSetting(this: { prefix: string }) {
         return { label: this.prefix, words: 'Supplied words.', lines: ['opaque'] }
       },
     }
