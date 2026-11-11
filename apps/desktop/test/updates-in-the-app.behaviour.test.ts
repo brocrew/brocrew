@@ -3,31 +3,41 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { App } from 'electron'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { QUIET_LOOK_EVERY_MS } from '../src/main/updates'
 import { UPDATES_CHANNELS, type UpdatesSnapshot } from '../src/shared/updates'
 import { startUpdates } from '../src/main/updates-in-the-app'
 
 type Handler = (event: unknown, ...args: unknown[]) => unknown
-const fake = vi.hoisted(() => ({
-  handlers: new Map<string, Handler>(),
-  appEvents: new Map<string, () => void>(),
-  answer: null as null | {
-    isUpdateAvailable: boolean
-    updateInfo: { version: string; files: { url: string; sha512: string }[] }
-  },
-  fail: null as Error | null,
-  checks: 0,
-  sent: [] as UpdatesSnapshot[],
-  installer: '',
-  installerDownloads: 0,
-  cachedVersion: null as string | null,
-  downloadedVersions: [] as (string | null)[],
-  quits: 0,
-  fetched: 0,
-  nativeInstalls: 0,
-  downloadFailure: null as Error | null,
-}))
+const fake = await vi.hoisted(async () => {
+  const { EventEmitter } = await import('node:events')
+  return {
+    native: new EventEmitter(),
+    updaterEvents: new EventEmitter(),
+    autoStage: true,
+    installOnQuit: false,
+    stops: [] as { conversationId: string; agentName: string }[],
+    handlers: new Map<string, Handler>(),
+    appEvents: new Map<string, () => void>(),
+    answer: null as null | {
+      isUpdateAvailable: boolean
+      updateInfo: { version: string; files: { url: string; sha512: string }[] }
+    },
+    fail: null as Error | null,
+    checks: 0,
+    sent: [] as UpdatesSnapshot[],
+    installer: '',
+    installerDownloads: 0,
+    cachedVersion: null as string | null,
+    downloadedVersions: [] as (string | null)[],
+    quits: 0,
+    fetched: 0,
+    nativeInstalls: 0,
+    downloadFailure: null as Error | null,
+  }
+})
 
 vi.mock('electron', () => ({
+  autoUpdater: fake.native,
   ipcMain: { handle: (channel: string, handler: Handler) => fake.handlers.set(channel, handler) },
   BrowserWindow: {
     getAllWindows: () => [
@@ -53,6 +63,9 @@ vi.mock('electron', () => ({
 vi.mock('electron-updater', () => ({
   default: {
     autoUpdater: {
+      set autoInstallOnAppQuit(value: boolean) {
+        fake.installOnQuit = value
+      },
       checkForUpdates: async () => {
         fake.checks += 1
         if (fake.fail !== null) throw fake.fail
@@ -63,13 +76,17 @@ vi.mock('electron-updater', () => ({
         if (fake.downloadFailure) throw fake.downloadFailure
         fake.installerDownloads += 1
         fake.downloadedVersions.push(fake.cachedVersion)
+        if (process.platform === 'darwin' && fake.autoStage)
+          queueMicrotask(() => fake.native.emit('update-downloaded'))
         return [fake.installer]
       },
       quitAndInstall: () => {
         fake.nativeInstalls += 1
       },
-      on: () => undefined,
-      off: () => undefined,
+      on: (...args: Parameters<typeof fake.updaterEvents.on>) => fake.updaterEvents.on(...args),
+      once: (...args: Parameters<typeof fake.updaterEvents.once>) =>
+        fake.updaterEvents.once(...args),
+      off: (...args: Parameters<typeof fake.updaterEvents.off>) => fake.updaterEvents.off(...args),
     },
   },
 }))
@@ -101,7 +118,7 @@ const start = (packaged = true, hidden = true): void => {
   } as unknown as App
   updates = startUpdates({
     app,
-    host: { whatARestartWouldStop: () => [] } as never,
+    host: { whatARestartWouldStop: () => fake.stops } as never,
     hidden,
   })
 }
@@ -115,6 +132,13 @@ beforeEach(() => {
     join(root, 'app-update.yml'),
     'provider: generic\nurl: https://fictional.invalid/releases\n',
   )
+  fake.native.removeAllListeners()
+  fake.updaterEvents.removeAllListeners()
+  fake.updaterEvents.on('error', () => {})
+  fake.native.on('error', (error) => fake.updaterEvents.emit('error', error))
+  fake.autoStage = true
+  fake.stops = []
+  fake.installOnQuit = false
   fake.handlers.clear()
   fake.appEvents.clear()
   fake.answer = null
@@ -133,6 +157,7 @@ beforeEach(() => {
 
 afterEach(() => {
   updates?.stop()
+  vi.useRealTimers()
   vi.unstubAllEnvs()
   if (platformDescriptor !== undefined)
     Object.defineProperty(process, 'platform', platformDescriptor)
@@ -268,6 +293,7 @@ for (const platform of ['win32', 'darwin'] as const) {
     await ask(UPDATES_CHANNELS.checkNow)
     await ask(UPDATES_CHANNELS.download)
     expect(fake.nativeInstalls).toBe(0)
+    expect(fake.installOnQuit).toBe(platform === 'darwin')
     await ask(UPDATES_CHANNELS.restartWhenQuiet)
     await vi.waitFor(() => {
       expect(fake.nativeInstalls).toBe(platform === 'darwin' ? 1 : 0)
@@ -292,4 +318,64 @@ it('keeps a failed Mac download from becoming installable', async () => {
   await ask(UPDATES_CHANNELS.restartWhenQuiet)
   expect(fake.nativeInstalls).toBe(0)
   expect(fake.quits).toBe(0)
+})
+
+const beginMacPreparation = async (): Promise<[Promise<UpdatesSnapshot>]> => {
+  Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
+  fake.autoStage = false
+  fake.answer = {
+    isUpdateAvailable: true,
+    updateInfo: { version: '0.2.0', files: [{ url: 'fictional.zip', sha512: 'fictional' }] },
+  }
+  start()
+  await ask(UPDATES_CHANNELS.checkNow)
+  const downloading = ask<UpdatesSnapshot>(UPDATES_CHANNELS.download)
+  await vi.waitFor(() => expect(fake.installerDownloads).toBe(1))
+  return [downloading]
+}
+
+it('waits for native preparation before offering Restart, then preserves quiet waiting and Cancel', async () => {
+  const [downloading] = await beginMacPreparation()
+  expect((await ask<UpdatesSnapshot>(UPDATES_CHANNELS.read)).state.kind).toBe('downloading')
+  await ask(UPDATES_CHANNELS.restartWhenQuiet)
+  expect(fake.nativeInstalls).toBe(0)
+  fake.native.emit('update-downloaded')
+  expect((await downloading).state.kind).toBe('ready')
+  expect(fake.native.listenerCount('update-downloaded')).toBe(0)
+  vi.useFakeTimers()
+  fake.stops = [{ conversationId: 'busy', agentName: 'Fictional' }]
+  expect((await ask<UpdatesSnapshot>(UPDATES_CHANNELS.restartWhenQuiet)).state.kind).toBe(
+    'waiting-to-restart',
+  )
+  await ask(UPDATES_CHANNELS.cancelRestart)
+  fake.stops = []
+  await vi.advanceTimersByTimeAsync(QUIET_LOOK_EVERY_MS * 2)
+  expect((await ask<UpdatesSnapshot>(UPDATES_CHANNELS.read)).state.kind).toBe('ready')
+  expect(fake.nativeInstalls).toBe(0)
+})
+
+it('shows a native preparation error after ZIP download and never offers Restart', async () => {
+  const [downloading] = await beginMacPreparation()
+  fake.native.emit('error', new Error('fictional Squirrel signature failure'))
+  expect((await downloading).state).toMatchObject({
+    kind: 'error',
+    message: expect.stringContaining('fictional Squirrel signature failure'),
+  })
+  expect(fake.sent.some((one) => one.state.kind === 'ready')).toBe(false)
+  expect(fake.native.listenerCount('update-downloaded')).toBe(0)
+  expect(fake.updaterEvents.listenerCount('error')).toBe(1)
+  await ask(UPDATES_CHANNELS.restartWhenQuiet)
+  expect(fake.nativeInstalls).toBe(0)
+})
+
+it('detaches pending native preparation when the app stops', async () => {
+  const [downloading] = await beginMacPreparation()
+  updates!.stop()
+  await downloading
+  expect(fake.native.listenerCount('update-downloaded')).toBe(0)
+  expect(fake.updaterEvents.listenerCount('error')).toBe(1)
+  const sent = fake.sent.length
+  fake.native.emit('update-downloaded')
+  expect(fake.sent.length).toBe(sent)
+  expect(fake.nativeInstalls).toBe(0)
 })

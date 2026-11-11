@@ -1,6 +1,6 @@
 import { ipcMain } from './app-ipc'
 import { join } from 'node:path'
-import { BrowserWindow } from 'electron'
+import { autoUpdater as nativeUpdater, BrowserWindow } from 'electron'
 import type { App } from 'electron'
 import type { AppUpdater, BaseUpdater } from 'electron-updater'
 import { UPDATES_CHANNELS, type UpdateChannel } from '../shared/updates'
@@ -44,6 +44,7 @@ export function startUpdates(options: {
       const autoUpdater = theAutoUpdaterOf(exported)
       autoUpdater.autoDownload = false
       autoUpdater.autoInstallOnAppQuit = false
+      if (process.platform === 'darwin') autoUpdater.autoInstallOnAppQuit = true
       autoUpdater.allowDowngrade = false
       autoUpdater.requestHeaders = NOBODY_IN_PARTICULAR
       const { publicUpdateFeed, websiteUpdatesEnabled, UPDATE_REQUEST_HEADERS } =
@@ -76,6 +77,7 @@ export function startUpdates(options: {
 
   let installOnTheWayOut = false
   let installer: string | null = null
+  let stopNativePreparation: (() => void) | undefined
   const userData = app.getPath('userData')
   const wayBack = theWayBack(
     userData,
@@ -127,6 +129,25 @@ export function startUpdates(options: {
       const progress = (info: { percent: number }): void => onPercent(info.percent)
       autoUpdater.on('download-progress', progress)
       try {
+        if (process.platform === 'darwin') {
+          let ready!: () => void
+          let failed!: (error: Error) => void
+          const staged = new Promise<void>((resolve, reject) => {
+            ready = resolve
+            failed = reject
+          })
+          nativeUpdater.once('update-downloaded', ready)
+          autoUpdater.once('error', failed)
+          stopNativePreparation = () => failed(new Error('BroCrew is closing'))
+          try {
+            await Promise.all([autoUpdater.downloadUpdate(), staged])
+          } finally {
+            nativeUpdater.off('update-downloaded', ready)
+            autoUpdater.off('error', failed)
+            stopNativePreparation = undefined
+          }
+          return
+        }
         const downloaded = await autoUpdater.downloadUpdate()
         installer =
           downloaded.find((file) => file.toLowerCase().endsWith('.exe')) ?? downloaded[0] ?? null
@@ -169,6 +190,7 @@ export function startUpdates(options: {
   })
 
   const stop = (): void => {
+    stopNativePreparation?.()
     updates.stop()
   }
   app.on('before-quit', stop)

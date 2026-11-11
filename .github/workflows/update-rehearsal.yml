@@ -81,43 +81,55 @@ jobs:
     name: Build signed A and B for the Mac (dmg and zip, Apple silicon)
     needs: plan
     runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
-    timeout-minutes: 45
+    environment: mac-signing
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-desktop
-      - name: Build once, then package A and B
+      - name: Require Apple silicon
+        run: test "$(uname -m)" = arm64
+      - id: feed
         env:
-          CSC_LINK: ${{ secrets.MAC_CERT_P12_BASE64 }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
+          MODE: ${{ needs.plan.outputs.mode }}
+          REPO: ${{ needs.plan.outputs.repo || github.repository }}
+        run: |
+          echo "owner=${REPO%/*}" >> "$GITHUB_OUTPUT"
+          echo "repo=${REPO#*/}" >> "$GITHUB_OUTPUT"
+          if [ "$MODE" = local ]; then echo 'url=http://127.0.0.1:47122/' >> "$GITHUB_OUTPUT"; fi
+      - name: Package signed A
+        uses: ./.github/actions/signed-mac
+        with:
+          version: 0.0.98
+          owner: ${{ steps.feed.outputs.owner }}
+          repo: ${{ steps.feed.outputs.repo }}
+          feed_url: ${{ steps.feed.outputs.url }}
+          feed_private: ${{ needs.plan.outputs.mode == 'private' && 'true' || 'false' }}
+          marker: a-${{ github.sha }}
+          output: dist-rehearsal/a
+        env:
+          MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          MAC_CERT_P12_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          MODE: ${{ needs.plan.outputs.mode }}
-          REPO: ${{ needs.plan.outputs.repo }}
-        run: |
-          set -euo pipefail
-          [ "$(uname -m)" = arm64 ] || { echo "this runner is $(uname -m), not Apple silicon"; exit 1; }
-          umask 077
-          signing_key="$RUNNER_TEMP/mac-update-notary.p8"
-          trap 'rm -f "$signing_key"' EXIT
-          printf '%s' "$APPLE_API_KEY_P8" > "$signing_key"
-          export APPLE_API_KEY="$signing_key"
-          pnpm --filter @brobot2/desktop run build
-          for one in a b; do
-            version="$(node scripts/update-rehearsal-feed.mjs version "$one")"
-            feed=()
-            while IFS= read -r line; do feed+=("$line"); done < <(node scripts/update-rehearsal-feed.mjs builder-args "$MODE" "$REPO")
-            pnpm --filter @brobot2/desktop exec electron-builder --mac dmg zip dir --arm64 --config electron-builder.yml \
-              -c.forceCodeSigning=true -c.mac.hardenedRuntime=true \
-              -c.mac.timestamp=http://timestamp.apple.com/ts01 -c.mac.notarize=true -c.dmg.sign=true \
-              -c.artifactBuildCompleted=./build/notarize-dmg.mjs \
-              -c.extraMetadata.version="$version" -c.extraMetadata.rehearsalMarker="$one-$GITHUB_SHA" "${feed[@]}" \
-              -c.directories.output="dist-rehearsal/$one" --publish never
-            node scripts/update-rehearsal-feed.mjs check-package "$MODE" "$REPO" "$version" \
-              "apps/desktop/dist-rehearsal/$one" "apps/desktop/dist-rehearsal/$one/mac-arm64/BroCrew.app/Contents/Resources/app-update.yml"
-          done
+      - name: Package signed B
+        uses: ./.github/actions/signed-mac
+        with:
+          version: 0.0.99
+          owner: ${{ steps.feed.outputs.owner }}
+          repo: ${{ steps.feed.outputs.repo }}
+          feed_url: ${{ steps.feed.outputs.url }}
+          feed_private: ${{ needs.plan.outputs.mode == 'private' && 'true' || 'false' }}
+          marker: b-${{ github.sha }}
+          output: dist-rehearsal/b
+        env:
+          MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          MAC_CERT_P12_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       - uses: actions/upload-artifact@v4
         with:
           name: rehearsal-macos

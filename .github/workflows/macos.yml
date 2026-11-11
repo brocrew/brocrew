@@ -244,6 +244,12 @@ jobs:
         github.event_name == 'workflow_dispatch' && inputs.guided_update_rehearsal == true
       )
     uses: ./.github/workflows/mac-update-test.yml
+    secrets:
+      MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
+      MAC_CERT_P12_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
+      APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
     permissions:
       contents: read
 
