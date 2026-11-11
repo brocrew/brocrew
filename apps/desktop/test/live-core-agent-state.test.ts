@@ -21,7 +21,6 @@ it('carries the actual host state through the live store, including an equal-sta
   const messages: RuntimeEventMessage[] = []
   const states: RuntimeStatesMessage[] = []
   let receive: ((message: RuntimeEventMessage) => void) | undefined
-  let client: ReturnType<typeof createSessionStore> | undefined
   const host = world.buildHost(false, {
     statesMoved(message) {
       states.push(message)
@@ -51,7 +50,7 @@ it('carries the actual host state through the live store, including an equal-sta
     },
     onLiveness: () => () => {},
   } satisfies Partial<RuntimeBridge>
-  client = createSessionStore(bridge as RuntimeBridge)
+  const client = createSessionStore(bridge as RuntimeBridge)
   try {
     const id = await client.create({ provider: 'claude', cwd: world.project, approvalMode: 'auto' })
     expect(id).not.toBeNull()
@@ -301,6 +300,7 @@ it.each(['epoch', 'listing'] as const)(
       { provider: 'claude', cwd: fixture.world.project, approvalMode: 'auto' },
       fixture.sink,
     )
+    fixture.world.end.newest().handle.simulateBackgroundWork({ running: [] })
     await waitFor(
       () =>
         fixture.states.some((message) =>
@@ -473,7 +473,6 @@ it('keeps content while the epoch is unconfirmed, and disposes a delayed handsha
 it('rejects older publications and old runs after the reconnect handshake', async () => {
   const world = new F093World()
   let receive!: (message: RuntimeEventMessage) => void
-  let client: ReturnType<typeof createSessionStore> | undefined
   const host = world.buildHost(false, {
     statesMoved: (message) => client?.hearProviderStates(message),
   })
@@ -499,7 +498,7 @@ it('rejects older publications and old runs after the reconnect handshake', asyn
       throw new Error('Fictional reconnect has no session')
     },
   } satisfies Partial<RuntimeBridge>
-  client = createSessionStore(bridge as RuntimeBridge)
+  const client = createSessionStore(bridge as RuntimeBridge)
   try {
     await Promise.resolve()
     const row = {
@@ -522,6 +521,8 @@ it('rejects older publications and old runs after the reconnect handshake', asyn
       agentState: { is: 'scheduled', dueAt: null },
       published: { epoch, seq: 1 },
     })
+    const reconnected = client.get('fern')!
+    expect(reconnected.agentState).toEqual({ is: 'scheduled', dueAt: null })
     receive({ ...row, ordinal: 3, agentState: { is: 'idle' }, published: { epoch: old, seq: 999 } })
     receive({
       ...row,
@@ -529,8 +530,8 @@ it('rejects older publications and old runs after the reconnect handshake', asyn
       agentState: { is: 'idle' },
       published: { epoch: { ...epoch, n: 0 }, seq: 1000 },
     })
-    expect(record.agentState).toEqual({ is: 'scheduled', dueAt: null })
-    expect(record.earlyEvents.some((message) => message.ordinal === 3)).toBe(true)
+    expect(reconnected.agentState).toEqual({ is: 'scheduled', dueAt: null })
+    expect(reconnected.earlyEvents.some((message) => message.ordinal === 3)).toBe(true)
   } finally {
     client.dispose()
     await world.dispose()

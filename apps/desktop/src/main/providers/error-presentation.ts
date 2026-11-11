@@ -63,7 +63,7 @@ function staleKeyNotice(name: string | undefined): string {
 }
 
 function signInWords(event: ErrorEvent, name: string | undefined): ErrorEvent {
-  if (event.onAKey === true) return event
+  if (event.onAKey === true || event.signIn?.message !== undefined) return event
   const state = event.signIn?.state ?? (event.cause === 'auth_stale' ? 'stale' : undefined)
   const provider = name ?? 'The provider'
   const message =

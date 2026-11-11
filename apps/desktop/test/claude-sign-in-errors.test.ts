@@ -287,11 +287,11 @@ describe('core-supplied retry endings across old and current recordings', () => 
             signIn: { state, details: original.signIn!.details },
           })
           expect(
-            visibleItems('normal', replay.transcript.items).map((row) =>
+            visibleItems(replay.transcript.items).map((row) =>
               row.kind === 'notice' ? row.text : row.kind,
             ),
           ).toEqual(
-            visibleItems('normal', live.items).map((row) =>
+            visibleItems(live.items).map((row) =>
               row.kind === 'notice' ? row.text : row.kind,
             ),
           )
