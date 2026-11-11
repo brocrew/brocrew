@@ -1,5 +1,6 @@
 import { ref, type Ref } from 'vue'
 import type { AdoptionReport } from '../../../shared/runtime-ipc'
+import type { ClientSessionApi } from '../../../shared/client-session-api'
 import { readableError } from './session-record'
 
 /**
@@ -40,7 +41,7 @@ export interface HomeScan {
 }
 
 /**
- * ⛔ **The run in flight, shared by every caller** (review).
+ * The run in flight is shared by callers using the same sessions capability.
  *
  * Per-surface state is right for REPORTING and wrong for concurrency, and the first version had
  * only the former: `ResumableSessions` is mounted under a `v-show` in the rail while
@@ -51,9 +52,11 @@ export interface HomeScan {
  * Coalesced rather than refused, because both presses asked the same question: the second joins the
  * first and gets the same report to display.
  */
-let inFlight: Promise<AdoptionReport> | null = null
+type HomeScanClient = Pick<ClientSessionApi, 'adoptSessions'>
+const inFlight = new WeakMap<HomeScanClient, Promise<AdoptionReport>>()
 
-export function useHomeScan(): HomeScan {
+export function useHomeScan(sessions: HomeScanClient | undefined): HomeScan {
+  const adoptSessions = sessions?.adoptSessions
   const scanning = ref(false)
   const lastScan = ref<AdoptionReport | null>(null)
   const scannedAt = ref<number | null>(null)
@@ -69,8 +72,12 @@ export function useHomeScan(): HomeScan {
     if (scanning.value) return null
     scanning.value = true
     try {
-      inFlight ??= window.api.runtime.adoptSessions()
-      const mine = inFlight
+      if (!sessions || !adoptSessions) throw new Error('Session adoption is unavailable')
+      let mine = inFlight.get(sessions)
+      if (!mine) {
+        mine = adoptSessions.call(sessions)
+        inFlight.set(sessions, mine)
+      }
       try {
         const report = await mine
         lastScan.value = report
@@ -80,7 +87,7 @@ export function useHomeScan(): HomeScan {
       } finally {
         // Only the run that started it may retire it — a joiner clearing the slot would let a
         // third press start a second concurrent pass.
-        if (inFlight === mine) inFlight = null
+        if (inFlight.get(sessions) === mine) inFlight.delete(sessions)
       }
     } catch (cause) {
       return { error: readableError(cause) }

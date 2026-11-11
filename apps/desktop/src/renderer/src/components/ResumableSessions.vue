@@ -14,6 +14,7 @@ import { childLabel } from '../lib/child-descent'
 import { agoWords } from '../lib/clock'
 import { endedUnfinished, endingLabel } from '../lib/ending'
 import { scanSummary, useHomeScan } from '../lib/home-scan'
+import { useClientApi } from '../client-provider/injection'
 import { readableError } from '../lib/session-record'
 
 /**
@@ -37,7 +38,8 @@ const loadError = ref<string | null>(null)
  * So there is one {@link useHomeScan} and one {@link scanSummary}, called from both. The link, the
  * wording and the refresh that follows it are exactly as they were.
  */
-const homeScan = useHomeScan()
+const sessionsClient = useClientApi().sessions
+const homeScan = useHomeScan(sessionsClient)
 const { scanning, lastScan } = homeScan
 /** The last export, per row — where it went and what it is good for. */
 const exports = ref<Record<string, ExportedSession | string>>({})

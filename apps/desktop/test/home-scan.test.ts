@@ -27,6 +27,7 @@ it('captures adoption once, preserves its receiver, and never reads the global b
   const scan = useHomeScan(client)
   expect(read).toHaveBeenCalledTimes(1)
   expect(adopt).not.toHaveBeenCalled()
+  read.mockReturnValue(vi.fn(() => { throw new Error('replacement must not be read') }))
   await expect(scan.scan()).resolves.toEqual({ report })
   await expect(scan.scan()).resolves.toEqual({ report })
   expect(read).toHaveBeenCalledTimes(1)
@@ -65,8 +66,10 @@ it('keeps distinct clients independent even when they share a method', async () 
   const a = deferred<AdoptionReport>()
   const b = deferred<AdoptionReport>()
   function adoptSessions(this: { pending: Promise<AdoptionReport> }) { return this.pending }
-  const first = useHomeScan({ pending: a.promise, adoptSessions })
-  const second = useHomeScan({ pending: b.promise, adoptSessions })
+  const firstClient = { pending: a.promise, adoptSessions }
+  const secondClient = { pending: b.promise, adoptSessions }
+  const first = useHomeScan(firstClient)
+  const second = useHomeScan(secondClient)
   const one = first.scan()
   const two = second.scan()
   const other = { ...report, adopted: 0, alreadyKnown: 1 }
@@ -120,9 +123,32 @@ it('keeps an absent capability absent without falling back to a global client', 
   const globalAdopt = vi.fn(() => Promise.resolve(report))
   vi.stubGlobal('window', { api: { runtime: { adoptSessions: globalAdopt } } })
   const scan = useHomeScan(undefined)
-  expect(await scan.scan()).toEqual({ error: expect.any(String) })
+  expect(await scan.scan()).toEqual({ error: 'Session adoption is unavailable' })
   expect(globalAdopt).not.toHaveBeenCalled()
   expect(scan.scanning.value).toBe(false)
   expect(scan.lastScan.value).toBeNull()
   expect(scan.scannedAt.value).toBeNull()
+})
+
+it('does not retire a newer run when an older surface finishes its follow-up', async () => {
+  const firstRun = deferred<AdoptionReport>()
+  const nextRun = deferred<AdoptionReport>()
+  const followup = deferred<void>()
+  const client = { adoptSessions: vi.fn(() => firstRun.promise) }
+  const first = useHomeScan(client)
+  const second = useHomeScan(client)
+  const third = useHomeScan(client)
+  const one = first.scan(() => followup.promise)
+  const two = second.scan()
+  firstRun.resolve(report)
+  await two
+  client.adoptSessions.mockReturnValue(nextRun.promise)
+  const newer = second.scan()
+  followup.resolve()
+  await one
+  const join = third.scan()
+  expect(client.adoptSessions).toHaveBeenCalledTimes(2)
+  nextRun.resolve(report)
+  await expect(newer).resolves.toEqual({ report })
+  await expect(join).resolves.toEqual({ report })
 })

@@ -3,6 +3,7 @@ import type { RuntimeBridge } from './runtime-ipc'
 /** Session reads, person intents and streams, with no dependency on a window. */
 export type ClientSessionApi = Pick<
   RuntimeBridge,
+  | 'adoptSessions'
   | 'answerAction'
   | 'attachOpen'
   | 'cancelLaunch'

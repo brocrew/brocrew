@@ -198,6 +198,7 @@ import { childLabel } from '../lib/child-descent'
 import { calendarDay } from '../lib/clock'
 import { describeDerived } from '../lib/derived-state'
 import { scanSummary, useHomeScan } from '../lib/home-scan'
+import { useClientApi } from '../client-provider/injection'
 import {
   NO_FILTERS,
   activeConstraints,
@@ -331,7 +332,8 @@ const error = ref<string | null>(null)
  */
 const CHECK_HOMES = 'Check homes'
 
-const homeScan = useHomeScan()
+const sessionsClient = useClientApi().sessions
+const homeScan = useHomeScan(sessionsClient)
 /**
  * The outcome of the last import, keyed by `entry.id` — which is the PROVIDER's identity and does
  * not change when the conversation becomes one we hold. It used to be our row id, which is null
