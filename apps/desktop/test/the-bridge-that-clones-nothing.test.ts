@@ -1,3 +1,4 @@
+import { withoutProse } from './lib/source-without-prose'
 import { EventEmitter } from 'node:events'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -645,27 +646,6 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
 }
 
 /* ------------------------------------------- §3 · the exempt roster comes from the preload itself */
-
-/**
- * ⛔ **Prose stripped BEFORE anything is asserted** (`a-source-census-must-strip-prose-before-it-
- * asserts`). The preload is the most heavily commented file in the app and several of its docblocks
- * quote `ipcRenderer.invoke` while explaining a member that does not call it — `pathForDroppedFile`
- * says *"the `File` never reaches anything that could call it"* three lines above `webUtils`. A
- * census that read the comments would exempt nothing and pass.
- */
-function withoutProse(code: string): string {
-  return (
-    code
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      // ⚑ **473 · and template comments**, because §9 reads `.vue` producers as well as the
-      // preload, and a `<!-- … -->` quoting a construction is no more a construction than a
-      // docblock is.
-      .replace(/<!--[\s\S]*?-->/g, '')
-      .split('\n')
-      .filter((line) => !line.trim().startsWith('//'))
-      .join('\n')
-  )
-}
 
 /**
  * The members of one object literal, sliced ⛔ **to the NEXT member rather than by a fixed width** —

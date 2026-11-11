@@ -1,3 +1,4 @@
+import { withoutProse } from './lib/source-without-prose'
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -45,14 +46,6 @@ const SRC = join(here, '../src')
 const migrationsFolder = join(SRC, 'main/db/migrations')
 
 /** Prose stripped, so a docblock quoting a shape is never mistaken for the shape. */
-const withoutProse = (code: string): string =>
-  code
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .split('\n')
-    .filter((line) => !line.trim().startsWith('//'))
-    .join('\n')
-
 const identity = (over: Partial<AgentIdentity> = {}): AgentIdentity => ({
   id: `aid:${over.slug ?? 'worker'}`,
   slug: 'worker',
