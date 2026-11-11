@@ -5,30 +5,30 @@
       "id": "chrome",
       "name": "Chrome",
       "description": "Lets agents use Google Chrome with its own separate profiles: read pages, use sites and save downloads.",
-      "version": "0.1.13",
+      "version": "0.1.14",
       "authors": [
         "brocrew"
       ],
       "minAppVersion": "0.2.20",
-      "sourceCommit": "e58c6b7d5af1c04c9a4c12db075379bd3905a13a",
+      "sourceCommit": "cd32eaa723e3a816d32139cb90d7564c0243da63",
       "targets": [
         {
           "os": "darwin",
           "cpu": "arm64",
-          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.13/chrome-darwin-arm64.tar.gz",
-          "sha256": "a165296eb1dfe2ca7a5c30fd444fadf74651cdfc20a70ab4afd49efecee4c048",
-          "bytes": 3607469,
+          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.14/chrome-darwin-arm64.tar.gz",
+          "sha256": "a4e040f97e78ee04a5cc6b14e7bbd557a6e86518e2397c6c67e68e9377856b58",
+          "bytes": 3608061,
           "compression": "tar.gz",
-          "manifestSha256": "2eac1ced854f1602bde12b71848f2ad7de3caa65f261f224d9d5fd2e7fac8316"
+          "manifestSha256": "a424d36c3273bb7005921fe4b26d37385520a1f0e54acd3504cd9e3333480271"
         },
         {
           "os": "win32",
           "cpu": "x64",
-          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.13/chrome-win32-x64.tar.gz",
-          "sha256": "dc19205792078ac0c56fee8000a3c4633634c4268dbfd681b9bf4149ef5628c6",
-          "bytes": 3607471,
+          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.14/chrome-win32-x64.tar.gz",
+          "sha256": "188171e17862d297ad869c03dbc6b3974a8dcc03071035b89e926753eb7228fa",
+          "bytes": 3608061,
           "compression": "tar.gz",
-          "manifestSha256": "121d996d632b2c91087be5e1dca6f512c94fd1d7ada9fec9bc435733ba3656fb"
+          "manifestSha256": "d9dbbba0e3fea2e0172afd89cdcae8028fe226695a09432b4224d637350750b0"
         }
       ]
     },
