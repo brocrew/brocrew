@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { useClientApi } from '../client-provider/injection'
 import { readableError } from '../lib/session-record'
 import { onBeforeUnmount, ref, watch } from 'vue'
 import type { RuntimeBridge } from '../../../shared/runtime-ipc'
 import type { ProfileSkillMetadata } from '../../../shared/skills-window'
 
 const props = defineProps<{ profileSlug: string; active: boolean; bridge?: RuntimeBridge }>()
+const client = useClientApi()
 const emit = defineEmits<{ settings: ['skills'] }>()
 const items = ref<readonly ProfileSkillMetadata[]>([])
 const loaded = ref(false)
@@ -22,8 +24,10 @@ async function read(offset = 0): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const runtime = props.bridge ?? window.api.runtime
-    const reply = await runtime.skills({
+    const runtime = props.bridge ?? client.sessions
+    const skills = runtime?.skills
+    if (skills === undefined) throw new Error('Skills could not be read.')
+    const reply = await skills.call(runtime, {
       operation: 'profile-list',
       profileId: profile,
       ...(offset === 0 ? {} : { offset }),

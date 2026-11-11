@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { useClientApi } from '../client-provider/injection'
 import { readableError } from '../lib/session-record'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { SharedSkill, SkillsWindow } from '../../../shared/skills-window'
 
 const props = defineProps<{ bridge?: SkillsWindow }>()
+const client = useClientApi()
 const items = ref<readonly SharedSkill[]>([])
 const loaded = ref(false)
 const loading = ref(true)
@@ -19,9 +21,11 @@ const groups = computed(() => [
 const textOf = (skill: SharedSkill) =>
   skill.body.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '').trim()
 function callSkills(): SkillsWindow {
-  const call = props.bridge ?? window.api?.runtime?.skills
+  if (props.bridge) return props.bridge
+  const sessions = client.sessions
+  const call = sessions?.skills
   if (!call) throw new Error('Skills could not be read.')
-  return call
+  return call.bind(sessions)
 }
 async function refresh(): Promise<void> {
   const turn = ++serial

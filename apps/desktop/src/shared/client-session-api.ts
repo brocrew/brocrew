@@ -64,6 +64,7 @@ export type ClientSessionApi = Pick<
   | 'sendToChild'
   | 'setApprovalMode'
   | 'setSessionSetting'
+  | 'skills'
   | 'stalledWorkForAPerson'
   | 'startAndSend'
   | 'stopBackgroundWork'
