@@ -1,3 +1,15 @@
+import {
+  earliest,
+  GRANTS_MAY_MOVE,
+  howItsWorkIsDrawn,
+  MOVES_A_LIVE_FACT,
+  MOVES_A_PIECE_THAT_WAITS_ON_WHO_WROTE,
+  MOVES_ITS_GIVERS_WAIT,
+  MOVES_ITS_NAME,
+  MOVES_WHAT_A_PERSON_IS_ASKED,
+  NAMES_WHAT_A_PERSON_IS_ASKED,
+  theSameLevel,
+} from './state-publication-inputs'
 import { WorkAncestryRead } from './work-ancestry'
 import type { RuntimeHostDeps } from './host-dependencies'
 export type { RuntimeHostDeps } from './host-dependencies'
@@ -814,7 +826,6 @@ import type {
 // ⚑ **F097** — whose words a turn's messages are, read the same way by the fold.
 import { aPersonsOwnWords } from '../../shared/a-persons-own-words'
 import {
-  ROUTED_REQUEST_EVENT_TYPES,
   aRowADeliveryCanStart,
   ledgersSkippedOf,
   readOrSkip,
@@ -962,8 +973,6 @@ import {
   // `HostedSession.itsTurnDrives`; ⚑ D-027: of a turn that delivered several, the one they share.
   theDriveOfTheTurn,
   thePiecesTheTurnNames,
-  // ⚑ **D-019 · the rows that move a piece**, and so the name a question's asker waits on.
-  PIECE_EVENT_TYPES,
 } from '../../shared/tasks'
 import type { AgentMessageKind, WaitOn } from '../../shared/task-contracts'
 import type {
@@ -3145,153 +3154,6 @@ interface WhoOwesIt {
   readonly owesAnAnswerTo: readonly string[]
   /** When the oldest question it owes an answer to was put to it, epoch ms, or `null`. */
   readonly owesAnAnswerSince: number | null
-}
-
-/** The earliest of some moments, or `null` when there are none. */
-function earliest(moments: readonly number[]): number | null {
-  return moments.length === 0 ? null : Math.min(...moments)
-}
-
-/**
- * ⚑ **D-019 · the rows of a conversation's own that move a live fact its one state reads**
- * (`RuntimeHost.stateOf`), besides the wait rows (`aWaitIsReadFrom`):
- *  - `status` — its provider's `handle.status()`, which only a status moves;
- *  - `background_work` and `scheduled_work` — the two levels (`takeTheLevels`);
- *  - `instruction_proposed` and `instruction_settled` — an ask against its rules
- *    (`cardReads().askingForRules`, read afresh at every flush).
- *
- * ⛔ **Every other row the provider streams — text, tool calls, tokens — moves nothing it reads**,
- * which is why a stream costs the push nothing.
- */
-/**
- * ⚑ **W4.189 · the rows that give a conversation a piece or end one** — so the grants its window is
- * shown are read again ({@link HostedSession.grants}).
- */
-const GRANTS_MAY_MOVE: ReadonlySet<TranscriptEvent['type']> = new Set<TranscriptEvent['type']>([
-  'work_given',
-  'work_replied',
-  'work_taken_back',
-  'work_closed',
-  'message_unqueued',
-])
-
-const MOVES_A_LIVE_FACT: ReadonlySet<TranscriptEvent['type']> = new Set<TranscriptEvent['type']>([
-  'status',
-  'background_work',
-  'scheduled_work',
-  'conversation_reset',
-  'instruction_proposed',
-  'instruction_settled',
-])
-
-/**
- * ⚑ **F097 · the rows of a conversation's own that can move whether a piece it holds waits on the
- * person who wrote to it**, besides those that already mark it ({@link MOVES_A_LIVE_FACT}: the
- * status and the levels; `aWaitIsReadFrom`: a take-back, a close) — a turn opening or ending, a
- * message held (a person's reply) or leaving, a reply, its own status line on a piece, a
- * replacement. ⚑ Its one state reads that off its pieces' fold at each ask
- * (`RuntimeHost.aPieceItHoldsWaitsOnWhoWrote`), so these only mark it: nothing kept is forgotten.
- */
-const MOVES_A_PIECE_THAT_WAITS_ON_WHO_WROTE: ReadonlySet<TranscriptEvent['type']> = new Set<
-  TranscriptEvent['type']
->([
-  'user_turn',
-  'turn',
-  'message_queued',
-  'message_unqueued',
-  'work_replied',
-  'work_status_set',
-  'replaced_by',
-])
-
-/**
- * Two levels list the same jobs, in any order, each with the same known minute and the same word
- * on whether it is started for, and the same count.
- */
-const theSameLevel = (one: ScheduleLevel, other: ScheduleLevel): boolean =>
-  one.dropped === other.dropped &&
-  one.jobs.length === other.jobs.length &&
-  one.jobs.every((job) => {
-    const beside = other.jobs.find((held) => held.id === job.id)
-    return (
-      beside !== undefined &&
-      beside.schedule === job.schedule &&
-      beside.recurring === job.recurring &&
-      beside.prompt === job.prompt &&
-      beside.nominalAt === job.nominalAt &&
-      beside.notStarted === job.notStarted
-    )
-  })
-
-/**
- * ⚑ **D-019 · the rows that move what ANOTHER conversation's state calls this one** — *waiting on
- * an answer from <name>*, named by the piece it owns ({@link PIECE_EVENT_TYPES}, `workThatNames`) and
- * standing in the place of the one it replaced (`replaced_by`, `theOneInItsPlace`). ⚑ D-036 · and
- * *waiting on <name>*, named the same way.
- */
-const MOVES_ITS_NAME: ReadonlySet<TranscriptEvent['type']> = new Set<TranscriptEvent['type']>([
-  ...PIECE_EVENT_TYPES,
-  'replaced_by',
-])
-
-/**
- * ⚑ **D-036 · a piece's rows that move what its GIVER waits on** — in the owner's ledger: a give
- * opens it, a reply, a take-back or a close ends it ({@link TASK_IS_OPEN}). ⛔ A retitle, a status
- * line or a new brief moves none of that — what they can move is the name the giver's state calls
- * the owner by, which {@link MOVES_ITS_NAME} carries — and nor does a stall: a stalled piece is
- * still open.
- */
-/**
- * The rows the reads of a person's queue select — their questions and cards, asks against rules,
- * MCP server requests, and the pieces, stalls and held messages its work reads fold — so a commit
- * holding one tells every window `persons`. ⚑ A `status` counts only when it ends the provider,
- * as {@link aWaitReads} counts it; text, tool calls and tokens move nothing a person is asked.
- */
-const MOVES_WHAT_A_PERSON_IS_ASKED: ReadonlySet<TranscriptEvent['type']> = new Set<
-  TranscriptEvent['type']
->([
-  ...ROUTED_REQUEST_EVENT_TYPES,
-  ...PIECE_EVENT_TYPES,
-  ...MOVES_A_PIECE_THAT_WAITS_ON_WHO_WROTE,
-  'permission_request',
-  'user_input_request',
-  'instruction_proposed',
-  'instruction_settled',
-  'mcp_server_requested',
-  'mcp_server_request_settled',
-  'work_stall_told',
-  'work_interrupted',
-  'work_restarted',
-  'status',
-  // A level's end can leave a person's own turn's piece waiting on them.
-  'background_work',
-  'scheduled_work',
-])
-
-/** The tables whose rows name who asks and who is asked, so a write to one moves the queue. */
-const NAMES_WHAT_A_PERSON_IS_ASKED: ReadonlySet<string> = new Set(['agent_identity'])
-
-const MOVES_ITS_GIVERS_WAIT: ReadonlySet<TranscriptEvent['type']> = new Set<
-  TranscriptEvent['type']
->(['work_given', 'work_replied', 'work_taken_back', 'work_closed'])
-
-/**
- * ⚑ **D-033 · each OPEN piece a conversation holds, as a window draws it** — its composed state, and
- * a stall's cause beside it (the Work tab says why a piece stopped) — so
- * `RuntimeHost.sayWhenItsWorkMoved` compares what a window would draw differently, and nothing else.
- * ⛔ A piece that ended is left out: the verb that ended it said so.
- */
-function howItsWorkIsDrawn(composed: readonly PieceRow[]): ReadonlyMap<string, string> {
-  return new Map(
-    composed
-      .filter((piece) => TASK_IS_OPEN[piece.state])
-      .map((piece) => [piece.piece, asItIsDrawn(piece)] as const),
-  )
-}
-
-/** ⚑ **D-033 · one open piece, as a window draws it** — see {@link howItsWorkIsDrawn}. */
-function asItIsDrawn(piece: PieceRow): string {
-  return piece.stalledBecause === null ? piece.state : `${piece.state} · ${piece.stalledBecause}`
 }
 
 /** ⚑ **F009 · the most of an agent's conversations its record lists**, newest activity first. */

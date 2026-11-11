@@ -117,7 +117,7 @@ it('preserves supplied fictional retry endings through the existing runtime sche
   expect(event.message).toBe('fictional raw detail')
 })
 
-it('fills retry endings for old message-only observations without replacing supplied words or error presentation', () => {
+it('keeps supplied opaque retry rows without inventing provider endings', () => {
   const event: RuntimeEvent = {
     type: 'error',
     message: 'fictional raw detail',
@@ -132,17 +132,9 @@ it('fills retry endings for old message-only observations without replacing supp
   }
   const saved = JSON.stringify(event)
   const displayed = errorForDisplay(event, 'Fern')
-  expect(displayed).toMatchObject({
-    ...event,
-    signIn: {
-      ...event.signIn,
-      captions: {
-        stopped: 'Fern sign-in retry stopped.',
-        ended: 'Fern sign-in retry ended.',
-        recovered: 'Fern sign-in recovered.',
-      },
-    },
-  })
+  expect(displayed).toBe(event)
+  expect(displayed.signIn).toBe(event.signIn)
+  expect(displayed.signIn?.captions).toBeUndefined()
   expect(JSON.stringify(event)).toBe(saved)
   expect(errorForDisplay(displayed, 'Fern')).toBe(displayed)
   const key: RuntimeEvent = { ...event, onAKey: true }
