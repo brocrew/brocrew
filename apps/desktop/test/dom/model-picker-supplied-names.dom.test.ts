@@ -36,13 +36,15 @@ afterEach(() => {
   Reflect.deleteProperty(window, 'api')
 })
 
-function picker() {
-  const catalogue = vi.fn(async () =>
-    PROVIDER_DESCRIPTORS.map((row) => ({
-      ...row,
-      displayName: row.id === 'claude' ? 'Fern' : 'Birch',
-    })),
-  )
+const supplied = () =>
+  PROVIDER_DESCRIPTORS.map((row) => ({
+    ...row,
+    displayName: row.id === 'claude' ? 'Fern' : 'Birch',
+  }))
+function picker(
+  readCatalogue: () => Promise<ReturnType<typeof supplied>> = async () => supplied(),
+) {
+  const catalogue = vi.fn(readCatalogue)
   const add = vi.fn(async () => [])
   const selected = {
     ...createDesktopProviderApi(
@@ -122,4 +124,35 @@ it('keeps duplicate selection and refusal behavior while naming the supplied pro
     model: 'listed-model',
     effort: 'high',
   })
+})
+
+it('keeps the model and actions available while names are unread, then draws the late catalogue', async () => {
+  let answer!: (rows: ReturnType<typeof supplied>) => void
+  const waiting = new Promise<ReturnType<typeof supplied>>((resolve) => {
+    answer = resolve
+  })
+  const { view, catalogue, ambientCatalogue } = picker(() => waiting)
+  await settle()
+  expect(view.q('model-picker-face').textContent).toContain('listed-model')
+  expect(view.q('model-picker-face').textContent).not.toMatch(/Claude|Codex|Fern|Birch/)
+  view.q('model-picker-face').click()
+  await expect.poll(() => view.all('model-picker-row').length).toBe(1)
+  expect(view.q('model-picker-providers').textContent).toContain('This provider')
+  expect((view.q('model-picker-add-open') as HTMLButtonElement).disabled).toBe(false)
+  answer(supplied())
+  await settle()
+  expect(view.q('model-picker-face').textContent).toContain('Fern ·')
+  expect(view.q('model-picker-providers').textContent).toContain('Birch')
+  expect(catalogue).toHaveBeenCalledTimes(1)
+  expect(ambientCatalogue).not.toHaveBeenCalled()
+})
+
+it('keeps generic sections when the selected catalogue has no names', async () => {
+  const { view, ambientCatalogue } = picker(async () => [])
+  await settle()
+  view.q('model-picker-face').click()
+  await expect.poll(() => view.all('model-picker-row').length).toBe(1)
+  expect(view.q('model-picker-providers').textContent).toContain('This provider')
+  expect(view.q('model-picker-providers').textContent).not.toMatch(/Claude|Codex/)
+  expect(ambientCatalogue).not.toHaveBeenCalled()
 })

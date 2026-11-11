@@ -22,6 +22,7 @@ import type {
 import type { PickedModel } from '../lib/model-lists'
 import { useAgentPanel } from '../composables/useAgentPanel'
 import { useConversationControls } from '../composables/useConversationControls'
+import { useProviderNames } from '../composables/useProviderNames'
 import { useConversationModelPick } from '../composables/useConversationModelPick'
 import { useProfileSignIn } from '../composables/useProfileSignIn'
 import { useClientProviders } from '../client-provider/injection'
@@ -247,7 +248,9 @@ watch(
 )
 // The model and effort on the card open the conversation's model picker; its plan and approval
 // mode beside them ask for a change through the same route the screen carries out.
+const providerName = useProviderNames(useClientProviders())
 const modelPick = useConversationModelPick({
+  providerName,
   session: () => props.session ?? null,
   pickModel: () => props.pickModel,
   fixed: () => props.fixed ?? true,

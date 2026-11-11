@@ -11,15 +11,9 @@ let made = 0
 import type { ModelList, ReportedModel } from '../../../shared/model-choice-contracts'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { Provider, ProviderCapabilityMap, ProviderProgram } from '../../../shared/runtime-ipc'
-import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import { sameModel, theListedRow } from '../../../shared/model-choice'
+import { modelPickerSection, modelPickerWords } from '../lib/model-picker-section'
 import {
-  modelPickerSection,
-  modelPickerEffortWords,
-  reportedModelSays,
-} from '../lib/model-picker-section'
-import {
-  inTheListsSpelling,
   theDraftEffort,
   theEffortsOffered,
   type ModelLists,
@@ -27,6 +21,8 @@ import {
 } from '../lib/model-lists'
 import { readableError } from '../lib/session-record'
 import { ROLE_PROPERTIES } from '../lib/text-roles'
+import { useClientProviders } from '../client-provider/injection'
+import { useProviderNames } from '../composables/useProviderNames'
 import { useModelLists } from '../composables/useModelLists'
 
 /**
@@ -46,7 +42,7 @@ import { useModelLists } from '../composables/useModelLists'
  * ⚠️ **The panel's contents exist only while it is open**, so a closed picker is its face — and
  * nothing reads a list until a person opens it.
  *
- * ⛔ **No provider is named here**: every name is `PROVIDER_NAME`'s, and providers are iterated,
+ * ⛔ **No provider is named here**: names come from the selected catalogue, and providers are iterated,
  * never compared to a literal (`provider-neutrality.test.ts`).
  */
 const props = withDefaults(
@@ -103,6 +99,8 @@ const props = withDefaults(
   },
 )
 
+const providerName = useProviderNames(useClientProviders())
+const words = modelPickerWords(providerName)
 const store = computed(() => props.lists ?? useModelLists())
 
 made += 1
@@ -141,16 +139,8 @@ function listOf(provider: Provider): ModelList | null {
 
 /* ------------------------------------------------------------------ the face */
 
-const reportedSays = computed(() => reportedModelSays(props.reported, props.shown, props.providers))
-
-const faceWords = computed(() => {
-  const shown = props.shown
-  if (shown === null) return props.empty
-  const who = props.providers.length > 1 ? `${PROVIDER_NAME[shown.provider]} · ` : ''
-  const model = inTheListsSpelling(listOf(shown.provider), shown.model)
-  const pair = shown.effort === null ? model : `${model} · ${shown.effort}`
-  return `${who}${pair}${reportedSays.value === null ? '' : ' (selected)'}`
-})
+const reportedSays = computed(() => words.reported(props.reported, props.shown, props.providers))
+const faceWords = computed(() => words.face(props, listOf))
 
 /* ------------------------------------------------------------------ the panel */
 
@@ -177,6 +167,7 @@ const sections = computed(() =>
         : suppliedReady(provider),
       startsOn.value,
       props.capabilities,
+      providerName(provider),
     ),
   ),
 )
@@ -230,7 +221,7 @@ const pick = computed<PickedModel | null>(() =>
 
 const levels = computed(() => (offered.value?.known === true ? offered.value.levels : []))
 const effortWords = computed(() =>
-  modelPickerEffortWords(draft.value, offered.value, draftEffort.value, props.profileId),
+  words.effort(draft.value, offered.value, draftEffort.value, props.profileId),
 )
 const effortDescription = computed(() => effortWords.value.description)
 const effortSilence = computed(() => effortWords.value.silence)
@@ -540,7 +531,7 @@ async function add(provider: Provider): Promise<void> {
     sections.value.find((section) => section.provider === provider)?.ready !== true
   )
     return
-  const name = PROVIDER_NAME[provider]
+  const name = providerName(provider) ?? 'this provider'
   const list = listOf(provider)
   const listed = list === null ? undefined : theListedRow(list.models, id)
   if (listed !== undefined) {

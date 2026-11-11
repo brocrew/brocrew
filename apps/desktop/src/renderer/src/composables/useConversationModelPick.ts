@@ -9,6 +9,7 @@ import { whatAPickBecameSays, type PickedModel } from '../lib/model-lists'
  * and effort mount the picker with these.
  */
 export interface ConversationModelPickSources {
+  readonly providerName: (provider: CreatedSession['provider']) => string | undefined
   readonly session: () => CreatedSession | null
   /** The screen's pick, carried out for this conversation; absent, nothing here can change it. */
   readonly pickModel: () =>
@@ -68,7 +69,7 @@ export function useConversationModelPick(
     const press = ++presses
     const answer = await sources.pickModel()?.(pick)
     if (press === presses && asked === sources.session()?.sessionId && answer) {
-      became.value = whatAPickBecameSays(answer, session.provider)
+      became.value = whatAPickBecameSays(answer, sources.providerName(session.provider))
     }
     return null
   }

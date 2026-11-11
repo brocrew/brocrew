@@ -267,7 +267,7 @@ describe('UI-012 · a pick in a conversation', () => {
 
   // ⚑ D-048 · the prediction went: the host answers what the pick became, and the words say that.
   it('🔴 what a pick became is said from the host’s answer, in the provider’s name', () => {
-    expect(whatAPickBecameSays({ itsAgentsDefault: true, theLastPick: true }, 'claude')).toBe(
+    expect(whatAPickBecameSays({ itsAgentsDefault: true, theLastPick: true }, 'Claude')).toBe(
       'This conversation, this agent’s default for new conversations, and your last pick for Claude.',
     )
     expect(
@@ -277,7 +277,7 @@ describe('UI-012 · a pick in a conversation', () => {
           theLastPick: true,
           because: 'its-agent-runs-on-another-provider',
         },
-        'claude',
+        'Claude',
       ),
     ).toBe(
       'This conversation, and your last pick for Claude. This agent runs on another provider, so its default stays as it is.',
@@ -285,8 +285,19 @@ describe('UI-012 · a pick in a conversation', () => {
     expect(
       whatAPickBecameSays(
         { itsAgentsDefault: false, theLastPick: false, because: 'the-list-does-not-hold-it' },
-        'codex',
+        'Codex',
       ),
     ).toBe('This conversation only: Codex’s list doesn’t have it.')
+  })
+  it('uses supplied acknowledgement names and grammatical unread context', () => {
+    expect(whatAPickBecameSays({ itsAgentsDefault: true, theLastPick: true }, 'Fern')).toBe(
+      'This conversation, this agent’s default for new conversations, and your last pick for Fern.',
+    )
+    expect(
+      whatAPickBecameSays(
+        { itsAgentsDefault: false, theLastPick: false, because: 'the-list-could-not-be-read' },
+        undefined,
+      ),
+    ).toBe('This conversation only: this provider’s list couldn’t be read.')
   })
 })

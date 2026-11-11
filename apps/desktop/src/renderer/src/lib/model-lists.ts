@@ -13,7 +13,7 @@ import type {
 import { shallowRef } from 'vue'
 import type { EffortChoice, Provider } from '../../../shared/runtime-ipc'
 import type { ClientProviderApi } from '../../../shared/client-provider-api'
-import { DEFAULT_PROFILE_ID, PROVIDER_NAME } from '../../../shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID } from '../../../shared/runtime-ipc'
 import {
   sameModel,
   theEffortLadder,
@@ -44,7 +44,7 @@ import type { SessionStore } from './session-store'
  *
  * ## ⛔ No provider is named here
  *
- * Every sentence renders the provider from `PROVIDER_NAME`; nothing compares one to a literal
+ * Presentation receives the provider's supplied name; nothing compares one to a literal
  * (`provider-neutrality.test.ts`).
  */
 
@@ -391,8 +391,11 @@ export async function pickInAConversation(
  * that name no model start on it) and the person's last pick on this provider, or it does not, and
  * the sentence says why in plain words.
  */
-export function whatAPickBecameSays(became: WhatAPickBecame, provider: Provider): string {
-  const name = PROVIDER_NAME[provider]
+export function whatAPickBecameSays(
+  became: WhatAPickBecame,
+  suppliedName: string | undefined,
+): string {
+  const name = suppliedName ?? 'this provider'
   if (became.itsAgentsDefault) {
     return `This conversation, this agent’s default for new conversations, and your last pick for ${name}.`
   }
