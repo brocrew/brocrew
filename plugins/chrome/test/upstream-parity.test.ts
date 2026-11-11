@@ -50,12 +50,13 @@ it('gives only the Chrome child the OS account HOME while retaining its owned pr
   homes.push(root)
   const profileDir = path.join(root, 'fern')
   const serverHome = process.env.HOME
+  const accountHome = process.platform === 'win32' ? 'C:\\Users\\Fictional' : '/fictional/account'
   const account = vi.spyOn(os, 'userInfo').mockReturnValue({
     uid: 1000,
     gid: 1000,
     username: 'fictional',
     shell: '/bin/fictional',
-    homedir: '/fictional/account',
+    homedir: accountHome,
   })
   try {
     await launchPersistentChromium({
@@ -68,7 +69,17 @@ it('gives only the Chrome child the OS account HOME while retaining its owned pr
     expect(fake.launch).toHaveBeenCalledWith(
       profileDir,
       expect.objectContaining({
-        env: { ...process.env, HOME: '/fictional/account' },
+        env: {
+          ...process.env,
+          HOME: accountHome,
+          ...(process.platform === 'win32'
+            ? {
+                USERPROFILE: accountHome,
+                APPDATA: path.win32.join(accountHome, 'AppData', 'Roaming'),
+                LOCALAPPDATA: path.win32.join(accountHome, 'AppData', 'Local'),
+              }
+            : {}),
+        },
         args: [`--user-data-dir=${profileDir}`, '--remote-debugging-pipe'],
       }),
     )

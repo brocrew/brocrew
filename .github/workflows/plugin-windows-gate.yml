@@ -60,6 +60,40 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: The plugin host's Windows tests
         run: pnpm exec vitest run apps/desktop/test/plugin-windows-host.test.ts
+      - name: Install the Chrome package's locked dependencies
+        run: npm ci --prefix plugins/chrome --ignore-scripts --no-audit --no-fund
+      - name: Build the unmodified Windows Chrome artifact for native discovery
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+          import path from 'node:path'
+          import { buildChromePackage } from './plugins/chrome/build.mjs'
+          const out = path.join(process.env.RUNNER_TEMP, 'chrome-discovery')
+          const release = await buildChromePackage(out, process.env.GITHUB_SHA, { os: 'win32', cpu: 'x64' })
+          fs.writeFileSync(path.join(out, 'release.json'), JSON.stringify(release, null, 2))
+          NODE
+      - name: Record the installed Chrome version
+        shell: pwsh
+        run: (Get-Item 'C:\Program Files\Google\Chrome\Application\chrome.exe').VersionInfo.ProductVersion
+      - name: Prove native Windows package discovery without and with injection
+        env:
+          BROCREW_CHROME_DISCOVERY_TEST: '1'
+          BROCREW_CHROME_DISCOVERY_ARTIFACT: ${{ runner.temp }}/chrome-discovery/package
+          BROCREW_CHROME_TEST_ARTIFACT: ${{ runner.temp }}/chrome-discovery
+        run: |
+          pnpm exec vitest run --config plugins/chrome/vitest.config.ts plugins/chrome/test/browser-discovery.windows.test.ts --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/chrome-discovery/native-tests.json"
+          pnpm exec vitest run --config plugins/chrome/vitest.config.ts plugins/chrome/test/browser-discovery.test.ts plugins/chrome/test/package.test.ts plugins/chrome/test/upstream-parity.test.ts plugins/chrome/test/launch-guard.test.ts
+      - name: Retain native discovery artifact identity and test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chrome-windows-native-discovery
+          path: |
+            ${{ runner.temp }}/chrome-discovery/release.json
+            ${{ runner.temp }}/chrome-discovery/package/plugin.json
+            ${{ runner.temp }}/chrome-discovery/native-tests.json
+          if-no-files-found: warn
+          retention-days: 7
       - name: Build, install, use, restart and remove Chrome in the packaged app
         if: success() || failure()
         env:

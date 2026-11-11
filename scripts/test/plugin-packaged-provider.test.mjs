@@ -9,6 +9,8 @@ import { StreamableHTTPClientTransport } from '../../apps/desktop/node_modules/@
 import { createRepoAwarePluginVerifier } from '../../apps/desktop/src/main/plugins/package-verifier.ts'
 import { preparePluginNodeRuntime } from '../../apps/desktop/src/main/plugins/node-runtime.ts'
 import { createPluginNodeHost } from '../../apps/desktop/src/main/plugins/node-host.ts'
+import { ownedPluginNodeProcess } from '../../apps/desktop/src/main/plugins/supervisor/node-host.ts'
+import { listFor } from '../gates/plugin-packaged/release.mjs'
 import { pluginBrokerBinding } from '../../apps/desktop/src/main/plugins/lifecycle/broker-binding.ts'
 import { createLifecycleAgentBridge } from '../../apps/desktop/src/main/plugins/lifecycle/agent-bridge.ts'
 import { WorkspacePluginAttachments } from '../../apps/desktop/src/main/plugins/attachments.ts'
@@ -290,7 +292,7 @@ describe.skipIf(process.platform === 'win32')(
         )
         const built = path.join(root, 'built')
         const release = await buildChromePackage(built, 'a'.repeat(40))
-        const catalogue = Buffer.from(JSON.stringify({ format: 1, entries: [release] }))
+        const catalogue = Buffer.from(JSON.stringify(listFor(release)))
         const verified = createRepoAwarePluginVerifier({
           target: { os: process.platform, cpu: process.arch },
         })
@@ -361,6 +363,9 @@ describe.skipIf(process.platform === 'win32')(
             configRevision: 1,
           },
           package: verified,
+          workspaceId: 'fern-workspace',
+          runId: running.runId,
+          exited: ownedPluginNodeProcess(running).exited,
           current: () => true,
           connection: Promise.resolve(connection),
         }
@@ -381,6 +386,9 @@ describe.skipIf(process.platform === 'win32')(
             attach: async () => Object.freeze({}),
             detach: async () => {},
             agentAttachments: () => [view],
+            onHostChanged: () => () => {},
+            withAgentScope: (_workspace, decide) =>
+              decide({ entries: [{ pluginId: release.id, is: 'admitted', view }] }, () => true),
           },
           binding: pluginBrokerBinding,
         })
@@ -390,14 +398,17 @@ describe.skipIf(process.platform === 'win32')(
           {
             agentRoutes: async (request) => {
               attachmentReads++
-              return bridge.routes(lease, {
-                ...request,
-                kind: 'agent-routes',
-                workspace: lease.workspace,
-                generation: lease.generation,
-                lease: 'b'.repeat(64),
-                release: request.release === true,
-              })
+              return {
+                format: 1,
+                value: await bridge.routes(lease, {
+                  ...request,
+                  kind: 'agent-routes',
+                  workspace: lease.workspace,
+                  generation: lease.generation,
+                  lease: 'b'.repeat(64),
+                  release: request.release === true,
+                }),
+              }
             },
           },
           'fern-workspace',

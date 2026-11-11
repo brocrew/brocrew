@@ -6,6 +6,15 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { failureFor, printFailure, safeFailure } from '../gates/plugin-packaged/diagnostics.mjs'
 import { stageProtocolDependencies } from '../gates/plugin-packaged/prepare.mjs'
+import { listFor, projectFixtureManifest } from '../gates/plugin-packaged/release.mjs'
+import { exportChromePlugin } from '../export-chrome-plugin.mjs'
+import { createRepoAwarePluginVerifier } from '../../apps/desktop/src/main/plugins/package-verifier.ts'
+import {
+  parseRepoPluginList,
+  loadRepoPluginList,
+} from '../../apps/desktop/src/main/plugins/catalogue/repo-list.ts'
+import { localPluginArchive } from '../../apps/desktop/src/main/plugins/catalogue/local.ts'
+import { assemblePluginRelease } from '../build-plugin-release.mjs'
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const roots = []
@@ -20,6 +29,98 @@ function scratch() {
 }
 
 describe.skipIf(process.platform === 'win32')('release verifier module admission', () => {
+  it.each([1, 2])(
+    'verifies the format %s export before rebuilding through the v1 fixture route',
+    async (format) => {
+      const root = scratch(),
+        exported = path.join(root, 'exported')
+      exportChromePlugin(exported)
+      const plugin = path.join(exported, 'plugins/chrome')
+      execFileSync(
+        'npm',
+        ['ci', '--prefix', plugin, '--include=dev', '--ignore-scripts', '--no-audit', '--no-fund'],
+        { timeout: 60000 },
+      )
+      const template = path.join(plugin, 'manifest-template.json')
+      const originalTemplate = fs.readFileSync(template, 'utf8')
+      const sourceEntry = path.join(plugin, 'src/index.ts')
+      const originalEntry = fs.readFileSync(sourceEntry)
+      expect(JSON.parse(originalTemplate).format).toBe(2)
+      if (format === 1) fs.writeFileSync(template, projectFixtureManifest(originalTemplate))
+      const { buildChromePackage } = await import(
+        pathToFileURL(path.join(plugin, 'build.mjs')).href
+      )
+      const original = path.join(root, 'original'),
+        fixture = path.join(root, 'fixture')
+      const build = (out) =>
+        assemblePluginRelease({
+          id: 'chrome',
+          out,
+          sourceCommit: 'a'.repeat(40),
+          targets: [{ os: 'darwin', cpu: 'arm64' }],
+          buildPackage: buildChromePackage,
+        })
+      const release = await build(original)
+      const originalArchive = path.join(original, 'chrome-darwin-arm64.tar.gz')
+      const originalBytes = fs.readFileSync(originalArchive)
+      const parsed = parseRepoPluginList(
+        Buffer.from(JSON.stringify(listFor(release))),
+        { os: 'darwin', cpu: 'arm64' },
+        '999.0.0',
+      )
+      const verifier = createRepoAwarePluginVerifier({ target: { os: 'darwin', cpu: 'arm64' } })
+      const checked = verifier
+        .verifyCatalogue(parsed.bytes)
+        .verifyPackage(release.id, release.version, originalBytes)
+      expect(checked.manifest.format).toBe(format)
+      fs.writeFileSync(template, projectFixtureManifest(fs.readFileSync(template, 'utf8')))
+      const projected = await build(fixture)
+      fs.writeFileSync(path.join(fixture, 'catalogue.json'), JSON.stringify(listFor(projected)))
+      fs.mkdirSync(path.join(fixture, 'archives'), { mode: 0o700 })
+      fs.copyFileSync(
+        path.join(fixture, 'chrome-darwin-arm64.tar.gz'),
+        path.join(fixture, 'archives', projected.targets[0].sha256 + '.tar.gz'),
+      )
+      const state = path.join(root, 'state')
+      fs.mkdirSync(state, { mode: 0o700 })
+      const loaded = await loadRepoPluginList({
+        root: state,
+        fixtureSource: fixture,
+        target: { os: 'darwin', cpu: 'arm64' },
+        appVersion: '999.0.0',
+      })
+      expect(loaded.format).toBe(1)
+      const fixtureBytes = await localPluginArchive(fixture, loaded.releases[0])
+      const accepted = verifier
+        .verifyCatalogue(loaded.bytes)
+        .verifyPackage(projected.id, projected.version, fixtureBytes)
+      expect(listFor(projected).format).toBe(1)
+      expect(accepted.manifest.format).toBe(1)
+      for (const field of ['authors', 'executor', 'hooks', 'sharedData'])
+        expect(accepted.manifest).not.toHaveProperty(field)
+      expect(accepted.manifest.hostApi.requiredFeatures).not.toContain('shared-data-v1')
+      expect(accepted.manifest.server).toEqual(checked.manifest.server)
+      expect(accepted.manifest.ui).toEqual(checked.manifest.ui)
+      expect(accepted.filePaths).toEqual(checked.filePaths)
+      for (const name of checked.filePaths) {
+        if (name === 'plugin.json' || name === checked.manifest.server.entry) continue
+        expect(
+          Buffer.from(accepted.readFile(name)).equals(Buffer.from(checked.readFile(name))),
+        ).toBe(true)
+      }
+      expect(fs.readFileSync(sourceEntry).equals(originalEntry)).toBe(true)
+      expect(projected.targets[0].sha256 === release.targets[0].sha256).toBe(format === 1)
+      expect(projected.targets[0].manifestSha256 === release.targets[0].manifestSha256).toBe(
+        format === 1,
+      )
+      expect(fs.readFileSync(originalArchive).equals(originalBytes)).toBe(true)
+      expect(
+        fs.readFileSync(path.join(repository, 'plugins/chrome/manifest-template.json'), 'utf8'),
+      ).toBe(originalTemplate)
+    },
+    90000,
+  )
+
   it('reuses the exact release dependency files for protocol controls and refuses stale or linked destinations', () => {
     const root = scratch()
     fs.writeFileSync(path.join(root, 'fixture-owned'), 'packaged-plugin-gate\n')

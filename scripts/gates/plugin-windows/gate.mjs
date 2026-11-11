@@ -1,7 +1,4 @@
-// The hosted Windows plugin gate: the packaged Windows app installs Chrome from a local fake list,
-// starts it, lets a scripted agent use it, shows its live tabs, restarts, uninstalls and reinstalls,
-// all against the Node CDP fixture browser, never a real browser or a provider account. Only a
-// closed summary of booleans and counts, and the archives' public digests, leave the runner.
+// Hosted Windows packaged-plugin lifecycle with fictional provider and CDP browser fixtures.
 import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
@@ -15,6 +12,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 import { HIDDEN_LAUNCH_ARG } from '../../lib/hidden-launch.mjs'
 import { attach, press } from '../../lib/update-rehearsal-app.mjs'
 import { projectBuild } from '../plugin-packaged/contract.mjs'
+import { listFor, projectFixtureManifest } from '../plugin-packaged/release.mjs'
 import { GATE_REPOSITORIES } from '../plugin-packaged/fixture-guards.mjs'
 import {
   openPlugins,
@@ -274,10 +272,7 @@ export function readOwned(file, maximum = 128 * 1024 * 1024) {
 export const digest = (bytes) => createHash('sha256').update(bytes).digest('hex')
 export const privateFolder = (folder) => (fs.mkdirSync(folder, { recursive: true }), folder)
 
-/**
- * Builds the Chrome release twice from the standalone export of this commit, with the release's
- * own Node 22 and locked installs, and requires both builds' archives to be byte-identical.
- */
+/** Requires byte-identical archives from two locked standalone builds of this commit. */
 async function buildRelease(root, node22) {
   // The export of this tree is the pinned release's source; built as that commit, it must give
   // exactly the pinned archives.
@@ -291,10 +286,11 @@ async function buildRelease(root, node22) {
   for (const pass of ['first', 'second']) {
     const exported = path.join(root, `chrome-source-${pass}`)
     await command(node22, ['scripts/export-chrome-plugin.mjs', exported])
-    const script = path.join(exported, 'scripts/release.mjs')
-    const anchor = "execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()"
+    const script = path.join(exported, 'scripts/build-plugin-release.mjs')
+    const anchor =
+      /execFileSync\('git', \['-C', root, 'rev-parse', 'HEAD'\], \{\s*encoding: 'utf8',?\s*\}\)\.trim\(\)/g
     const text = fs.readFileSync(script, 'utf8')
-    if (text.split(anchor).length !== 2) throw new Error('Export release anchor changed')
+    if (text.match(anchor)?.length !== 1) throw new Error('Export release anchor changed')
     fs.writeFileSync(script, text.replace(anchor, JSON.stringify(commit)))
     const env = { ...process.env, PATH: `${path.dirname(node22)};${process.env.PATH}` }
     await command(
@@ -307,7 +303,10 @@ async function buildRelease(root, node22) {
       env,
     })
     const artifact = path.join(root, `release-${pass}`)
-    await command(node22, ['scripts/release.mjs', artifact], { cwd: exported, env })
+    await command(node22, ['scripts/build-plugin-release.mjs', 'chrome', artifact], {
+      cwd: exported,
+      env,
+    })
     builds.push({
       exported,
       artifact,
@@ -353,10 +352,7 @@ async function buildRelease(root, node22) {
     (target) => target.os === 'win32' && target.cpu === 'x64',
   )
   if (win < 0) throw new Error('No Windows target')
-  const catalogue = {
-    format: 1,
-    entries: [{ ...first.entry, targets: [first.entry.targets[win]] }],
-  }
+  const catalogue = listFor({ ...first.entry, targets: [first.entry.targets[win]] })
   fs.writeFileSync(path.join(first.artifact, 'catalogue.json'), JSON.stringify(catalogue))
   return {
     reproducible: archives.length === 2 && archives.every((one) => one.same),
@@ -452,10 +448,7 @@ function binOf(name) {
   return path.join(path.dirname(manifest), typeof bin === 'string' ? bin : bin[name])
 }
 
-/**
- * The fixture browser as `chrome.exe`: a single executable application of the runner's Node with
- * the CDP fixture inside, so Playwright starts it as it starts Chrome, with its pipe on fds 3 and 4.
- */
+/** Node CDP fixture as chrome.exe, with Playwright's pipe on fds 3 and 4. */
 async function buildFakeBrowser(root) {
   const folder = privateFolder(path.join(root, 'fake-chrome'))
   const entry = path.join(folder, 'entry.mjs')
@@ -592,12 +585,8 @@ async function closeView(record, page) {
   await press(record.cdp, '[data-cy="plugin-close"]')
 }
 
-/**
- * After a failed run: the app's logs, every receipt the plugin host and supervisor wrote (never the
- * run's auth.json or launch.json, which the host removes and these skip), and the scratch tree's
- * names and sizes, kept as a run artifact and their last lines printed to the job log. Everything
- * here is the gate's own fictional scratch: fake providers, fixture browser, no account.
- */
+/** Failed-run fictional scratch logs, receipts and file sizes; never auth.json or launch.json.
+ * Retain the artifact and print log tails for diagnosis. */
 export function keepDiagnostics(root, out) {
   try {
     fs.mkdirSync(out, { recursive: true })
@@ -671,11 +660,7 @@ export function keepDiagnostics(root, out) {
     )
   }
 }
-/**
- * The Chrome card as the window last listed it, as closed booleans, and the page's own size and the
- * plugins section's place in it, in whole CSS pixels; all false and zero when unreadable. The error
- * shown is printed to the job log too: it is the app's own fixed text.
- */
+/** Last Chrome card, page geometry and fixed error text; false/zero when unreadable. */
 async function observeCard(record) {
   try {
     const answer = await record.cdp.evaluate(
@@ -898,13 +883,26 @@ export async function gate(node22) {
     await makePrivate(root, sid)
     fs.writeFileSync(path.join(root, 'summary.json'), JSON.stringify(report()))
     const appData = privateFolder(path.join(root, 'a'))
-    const release = await step('archive', async () => {
+    const built = await step('archive', async () => {
       const built = await buildRelease(root, node22)
       check(summary, 'archiveReproducible', built.reproducible)
       check(summary, 'archiveMatchesPin', built.matchesPin)
-      return built.release
+      return built
     })
     const browser = await step('fake-browser', () => buildFakeBrowser(root))
+    // The original archives above retain their release proof; only the scratch manifest uses the v1 fixture route.
+    const release = await step('archive', async () => {
+      const manifest = path.join(built.exported, 'plugins/chrome/manifest-template.json')
+      fs.writeFileSync(manifest, projectFixtureManifest(fs.readFileSync(manifest, 'utf8')))
+      const release = path.join(root, 'release-fixture')
+      await command(node22, ['scripts/build-plugin-release.mjs', 'chrome', release], {
+        cwd: built.exported,
+      })
+      const catalogue = JSON.parse(readOwned(path.join(release, 'plugin-list-entry.json')))
+      catalogue.targets = catalogue.targets.filter((one) => one.os === 'win32' && one.cpu === 'x64')
+      fs.writeFileSync(path.join(release, 'catalogue.json'), JSON.stringify(listFor(catalogue)))
+      return release
+    })
     const app = await buildApp(root, appData, browser)
     const resources = path.join(app, 'resources')
     await step('packaged', async () => {

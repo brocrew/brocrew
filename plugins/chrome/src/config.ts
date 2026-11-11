@@ -2,6 +2,7 @@ import { privateFolder } from './privatePaths.js'
 import { lstatSync, readFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { browserChoice } from './shared/browser/launchConfig.js'
+import { chromeExecutable } from './shared/browser/chrome-executable.js'
 import type { BrowserChoice } from './shared/browser/launchConfig.js'
 import { sharedProfilesRelease, sharedProfilesReleased } from './sharedProfilesRelease.js'
 
@@ -86,6 +87,6 @@ export function loadConfig(env: Record<string, string | undefined>): AgentChrome
     ...(shared ? { shared } : {}),
     token: pair.mcpToken,
     adminToken: pair.adminToken,
-    browser: browserChoice('chrome', env.BROCREW_CHROME_EXECUTABLE),
+    browser: browserChoice('chrome', chromeExecutable(env)),
   }
 }

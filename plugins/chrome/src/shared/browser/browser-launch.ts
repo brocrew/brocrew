@@ -1,4 +1,4 @@
-import os from 'node:os'
+import { browserEnvironment } from './browser-environment.js'
 import type { BrowserContext } from 'playwright-core'
 import { assertOwnProfileDir } from './launchGuard.js'
 export interface ChromiumLaunchOptions {
@@ -28,10 +28,8 @@ export async function launchPersistentChromium(
   assertOwnProfileDir(opts)
   return chromium.launchPersistentContext(opts.profileDir, {
     headless: opts.headless,
-    // Only the Chrome child needs the account HOME for the login Keychain.
-    // Its profile is still fixed by the owned --user-data-dir; the plugin
-    // server keeps the private HOME supplied by its host.
-    env: { ...process.env, HOME: os.userInfo().homedir },
+    // The browser uses account roots; the server retains its private environment.
+    env: browserEnvironment(),
     ...(opts.executablePath !== undefined ? { executablePath: opts.executablePath } : {}),
     ...(opts.channel !== undefined ? { channel: opts.channel } : {}),
     ...(opts.ignoreDefaultArgs !== undefined
