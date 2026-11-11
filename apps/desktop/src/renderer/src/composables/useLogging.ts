@@ -1,7 +1,7 @@
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import type { LoggingState } from '../../../shared/logging'
 
-export function useLogging(bridge = window.api?.logging) {
+export function useLogging(bridge = globalThis.window?.api?.logging) {
   const state = ref<LoggingState | null>(null)
   const saving = ref(false)
   const error = ref('')
@@ -18,7 +18,11 @@ export function useLogging(bridge = window.api?.logging) {
       error.value = 'Could not read the logging setting. Try again.'
     }
   }
-  onMounted(load)
+  onMounted(() => {
+    void load()
+    window.addEventListener('focus', load)
+  })
+  onUnmounted(() => window.removeEventListener('focus', load))
 
   async function save(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement

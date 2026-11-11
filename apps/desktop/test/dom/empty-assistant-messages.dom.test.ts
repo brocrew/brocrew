@@ -1,5 +1,5 @@
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
 import AgentCard from '../../src/renderer/src/components/AgentCard.vue'
@@ -9,7 +9,10 @@ import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcr
 
 import { mount, unmountAll } from './harness'
 
-afterEach(unmountAll)
+afterEach(() => {
+  unmountAll()
+  vi.unstubAllGlobals()
+})
 function stateOf(events: TranscriptEvent[]) {
   const state = createTranscript()
   events.forEach((event, ordinal) => applyEvent(state, event, 1000 + ordinal, ordinal))
@@ -20,6 +23,12 @@ describe('empty Codex messages in the conversation', () => {
   it.each(['normal', 'debug'] as const)(
     'shows actual final prose once and keeps malformed diagnostics in %s',
     async (mode) => {
+      vi.stubGlobal('api', {
+        ...window.api,
+        logging: {
+          getLogging: async () => ({ debug: true, path: '/fictional/log', servicePath: null }),
+        },
+      })
       const state = stateOf([
         { type: 'user_turn', text: 'Fictional question', humanInitiated: true },
         { type: 'assistant_message', text: 'Actual **answer**', phase: 'final' },
@@ -49,6 +58,7 @@ describe('empty Codex messages in the conversation', () => {
         { type: 'turn', state: 'completed' },
       ])
       const m = mount(TranscriptView, { items: state.items, mode }, { width: 900, height: 700 })
+      await vi.waitFor(() => expect(m.all('unknown-entry')).toHaveLength(1))
       expect(m.all('assistant-message')).toHaveLength(1)
       expect(m.q('assistant-message').querySelector('strong')?.textContent).toBe('answer')
       expect(m.host.querySelectorAll('[data-human-final="true"]')).toHaveLength(1)
