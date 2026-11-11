@@ -185,7 +185,9 @@ describe('setup feedback follows the latest facts', () => {
     await begin(out.m)
     out.m.q('setup-sign-in').click()
     await settled()
-    expect(words(out.m.q('provider-auth-notice'))).toBe('Fable has connected this workspace.')
+    expect(words(out.m.q('provider-inline-setup').querySelector('[role="status"]')!)).toBe(
+      'Fable has connected this workspace.',
+    )
     out.m.unmount()
     const failed = card('codex')
     failed.runtime.signInProvider.mockResolvedValueOnce({
@@ -198,8 +200,12 @@ describe('setup feedback follows the latest facts', () => {
     await begin(failed.m)
     failed.m.q('setup-sign-in').click()
     await settled()
-    expect(words(failed.m.q('provider-auth-notice'))).toBe('The fictional sign-in was cancelled.')
-    expect(words(failed.m.q('provider-auth-notice'))).not.toContain('Do not show success')
+    expect(words(failed.m.q('provider-inline-setup').querySelector('[role="status"]')!)).toBe(
+      'The fictional sign-in was cancelled.',
+    )
+    expect(
+      words(failed.m.q('provider-inline-setup').querySelector('[role="status"]')!),
+    ).not.toContain('Do not show success')
   })
 
   it.each([ABSENT, UNKNOWN, EXPIRED])(

@@ -1,3 +1,4 @@
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import { createModelLists } from '../lib/provider-launch-fixture'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -145,6 +146,7 @@ function theScreen(
   const listeners: ((message: ProvidersChangedMessage) => void)[] = []
   const unsubscribe = vi.fn()
   const runtime = {
+    providerCatalogue: async () => PROVIDER_DESCRIPTORS,
     providerVersions: vi.fn(async () => versions),
     providerSetup: vi.fn(async () => ({})),
     providerUsage: vi.fn(async () => USAGE),

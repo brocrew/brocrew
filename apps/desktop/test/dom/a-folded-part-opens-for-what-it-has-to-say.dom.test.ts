@@ -278,6 +278,7 @@ describe('every other part opens for what it has to say', () => {
       success: true,
       state: { state: 'usable', login: 'account', expiresAt: null },
       detail: null,
+      presentation: { message: 'Signed in to Claude.' },
     })
     expect(revealed).not.toContain('login')
     expect(open.login).toBe(false)
@@ -304,7 +305,13 @@ describe('every other part opens for what it has to say', () => {
     fold(m, 'usage')
     await nextTick()
     state['readings'] = [
-      { window: 'five_hour', usedPercent: 90, resetsAt: NOW + 4.5 * HOUR, at: NOW - 60_000 },
+      {
+        window: 'five_hour',
+        period: { word: '5-hour', durationMs: 5 * HOUR, bucket: false, bucketName: null },
+        usedPercent: 90,
+        resetsAt: NOW + 4.5 * HOUR,
+        at: NOW - 60_000,
+      },
     ]
     await settle()
     expect(revealed).not.toContain('usage')

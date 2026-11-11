@@ -144,7 +144,20 @@ function fixture(claudeReady = false, holdFirstUsage = false) {
       })
     return {
       claude: authenticated
-        ? [{ window: 'five_hour', usedPercent: 28, resetsAt: null, at: Date.now() }]
+        ? [
+            {
+              window: 'five_hour',
+              period: {
+                word: '5-hour',
+                durationMs: 5 * 3_600_000,
+                bucket: false,
+                bucketName: null,
+              },
+              usedPercent: 28,
+              resetsAt: null,
+              at: Date.now(),
+            },
+          ]
         : [],
       codex: [],
     }

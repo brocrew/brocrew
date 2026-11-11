@@ -1,21 +1,10 @@
+import { connectedProviderReads } from './lib/connected-provider-reads'
 import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_PROFILE_ID, type RuntimeBridge } from '../src/shared/runtime-ipc'
 import { createProviderAccess } from '../src/renderer/src/lib/provider-access'
 
 function fixture() {
-  const runtime = {
-    checkProviderAuth: vi.fn<RuntimeBridge['checkProviderAuth']>(async () => ({
-      state: 'usable',
-      login: 'account',
-      expiresAt: null,
-    })),
-    apiKeyStatus: vi.fn<RuntimeBridge['apiKeyStatus']>(async () => ({
-      provider: 'claude',
-      set: false,
-      setAt: null,
-      inUse: false,
-    })),
-  }
+  const runtime = connectedProviderReads()
   const changed = vi.fn()
   return {
     runtime,

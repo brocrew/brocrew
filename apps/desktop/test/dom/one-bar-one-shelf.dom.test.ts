@@ -306,7 +306,13 @@ describe('§2 · the usage cells, and each one answers for itself', () => {
     const now = Date.now()
     const m = await cards({
       claude: [
-        { window: 'five_hour', usedPercent: 28, resetsAt: now + 3 * HOUR, at: now - 60_000 },
+        {
+          window: 'five_hour',
+          period: { word: '5-hour', durationMs: 5 * HOUR, bucket: false, bucketName: null },
+          usedPercent: 28,
+          resetsAt: now + 3 * HOUR,
+          at: now - 60_000,
+        },
       ],
       codex: [],
     })
@@ -326,7 +332,13 @@ describe('§2 · the usage cells, and each one answers for itself', () => {
     const now = Date.now()
     const m = await cards({
       claude: [
-        { window: 'five_hour', usedPercent: 28, resetsAt: now + 3 * HOUR, at: now - 60_000 },
+        {
+          window: 'five_hour',
+          period: { word: '5-hour', durationMs: 5 * HOUR, bucket: false, bucketName: null },
+          usedPercent: 28,
+          resetsAt: now + 3 * HOUR,
+          at: now - 60_000,
+        },
       ],
       codex: [],
     })

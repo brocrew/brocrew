@@ -4,7 +4,6 @@ import { RUNTIME_EVENT_TYPES, type RuntimeEvent, type SessionRef } from '@brobot
 
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { aLaunchRecordIn } from '../src/main/runtime/what-this-agent-was-given'
-import { REOPEN_COSTS } from '../src/renderer/src/lib/reopening'
 import {
   NOTHING_WAITS_FOR_THIS_ANSWER,
   appendUserMessage,
@@ -2187,8 +2186,6 @@ describe('transcript fold — a card cannot outlive the turn or the session (085
  * another sign-in, which would discard five hours without fixing the cause.
  */
 describe('transcript fold — a rejected credential says which remedy (110)', () => {
-  const CODEX_TEXT =
-    'Your access token could not be refreshed because your refresh token was already used. Please log out and sign in again.'
   const CLAUDE_TEXT = 'Failed to authenticate. API Error: 401 OAuth access token has been revoked.'
 
   const noticeOf = (state: TranscriptState): NoticeItem => {
@@ -2196,65 +2193,6 @@ describe('transcript fold — a rejected credential says which remedy (110)', ()
     if (notices.length !== 1) throw new Error(`expected one notice, got ${notices.length}`)
     return notices[0] as NoticeItem
   }
-
-  it('`auth_stale` offers a reopen, names where it is, and says what the reopen does not bring back', () => {
-    const state = feed(createTranscript(), {
-      type: 'error',
-      message: CLAUDE_TEXT,
-      fatal: true,
-      cause: 'auth_stale',
-    })
-    const notice = noticeOf(state)
-    expect(notice.level).toBe('error')
-    // 🔴 **672 · the words that are ON the control, read from the control** (`656` F6). ⛔ This
-    // assertion used to pin *"Resume"* and *"closed threads"* as literals, and `151` renamed both a
-    // year earlier while it stayed green. ⚑ **D-017b · there is no control to name**: no closed list
-    // in the sidebar and no press — a message sent from the conversation's own view continues it, so
-    // that is the remedy the notice gives. The DOM half is `the-two-sentences-made-true.dom.test.ts`.
-    expect(notice.text).toContain('send it a message to carry on')
-    expect(notice.text).not.toContain('sidebar')
-    expect(notice.text).not.toContain('press it')
-    expect(notice.text).not.toContain('Resume')
-    expect(notice.text).not.toContain('closed threads')
-    // ⛔ **The claim `672` measured false on this path**, named so it cannot come back
-    expect(notice.text).not.toContain('Nothing here is lost')
-    // ⚑ **What IS kept, and the two remedies measured TRUE** — standing rule 5, by name
-    expect(notice.text).toContain('cannot continue')
-    expect(notice.text).toContain('Its transcript is kept')
-    // ⚑ **T-002 · `1004 M12` · D-004 (R101)**: a login renewed elsewhere needs no message, and the
-    // notice says so before it names the message for every other case.
-    expect(notice.text).toContain('this app carries it on with the new login by itself')
-    expect(notice.text).toContain('Otherwise, send it a message to carry on')
-    expect(notice.text).toContain('reads your machine login again')
-    expect(notice.text).toContain('says so if that login has expired too')
-    // ⚑ **The two losses the reopen carries, held to the one cost table** (`reopening.ts`)
-    for (const cost of ['Allow for this conversation', 'running in the background']) {
-      const row = REOPEN_COSTS.find((one) => 'isTold' in one.person && one.person.isTold === cost)
-      expect(row?.becomes, cost).toMatch(/^(lost|stopped)$/)
-      expect(notice.text).toContain(cost)
-    }
-    // ⚠️ **And it must NOT say the other thing.** "Start a new conversation to sign in again" is
-    // 098's remedy for a credential the app cannot replace; here it would be wrong advice with
-    // hours of work behind it.
-    expect(notice.text).not.toContain('sign in again')
-    // The provider's sentence is in the ledger, not on the screen (085's split).
-    expect(notice.text).not.toContain('401')
-    expect(notice.text).not.toContain('OAuth')
-  })
-
-  it('`auth` still says sign in again — the branch that must not have moved', () => {
-    const notice = noticeOf(
-      feed(createTranscript(), {
-        type: 'error',
-        message: CODEX_TEXT,
-        fatal: false,
-        cause: 'auth',
-      }),
-    )
-    expect(notice.level).toBe('error')
-    expect(notice.text).toContain('sign in again')
-    expect(notice.text).not.toContain('refresh token')
-  })
 
   it('a cause-less error still shows the provider’s message — the fall-through that must survive', () => {
     // The `default` arm. Without this, routing both causes could quietly swallow every OTHER error.

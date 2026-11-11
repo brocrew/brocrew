@@ -83,7 +83,7 @@ it('loads a fictional catalogue through the injected client before its actual mo
     standIn: null,
     models: [{ id: 'fable-one', label: 'Fable One', efforts: [], addedBy: 'the-provider' }],
     lastPicked: null,
-    startsOn: { model: 'fable-one', effort: null },
+    startsOn: { model: 'fable-one', effort: null, from: 'the-providers-default' },
   }))
   const catalogue = vi.fn(async () => [descriptor])
   const api: ClientProviderApi = {
@@ -122,7 +122,7 @@ it('keeps a supplied empty catalogue empty instead of restoring native rows', as
   const m = screen(api)
   await settle()
   expect(m.all('provider-row')).toHaveLength(0)
-  expect(m.q('provider-catalogue-empty').textContent).toBe('No providers are available.')
+  expect(m.q('provider-catalogue-empty').textContent?.trim()).toBe('No providers are available.')
 })
 
 it('shows unread state and retries the same supplied read without native rows', async () => {

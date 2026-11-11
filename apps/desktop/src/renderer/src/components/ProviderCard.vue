@@ -18,7 +18,8 @@ import {
   A_STANDING_WARNS,
   DEFAULT_PROFILE_ID,
 } from '../../../shared/runtime-ipc'
-import { providerConditions, type ProviderCondition } from '../../../shared/provider-limit'
+import type { ProviderCondition } from '../../../shared/provider-limit'
+import { currentUsageWarnings } from '../lib/current-usage-warnings'
 import {
   limitsDisplayLabel,
   limitsDisplayWords,
@@ -668,17 +669,7 @@ const usage = computed<{ text: string; title: string | null; tone: 'note' | 'war
     // A retained warning can outlive its usage reading or account. The card's current
     // readings supply near-limit figures; reported stops retain their separate evidence.
     if (props.limit?.standing === 'about-to-stop') {
-      const near = (props.readings ?? []).flatMap((one) => {
-        const warning = one.warning
-        if (
-          one.unconfirmed === true ||
-          warning == null ||
-          (warning.resetsAt !== null && warning.resetsAt <= props.clock)
-        ) {
-          return []
-        }
-        return providerConditions([warning], props.clock)
-      })
+      const near = currentUsageWarnings(props.readings ?? [], props.clock)
       return {
         text:
           near.length === 0

@@ -1,3 +1,4 @@
+import { connectedProviderReads } from './lib/connected-provider-reads'
 import type { ProviderLaunchChoices } from '../src/shared/provider-launch'
 import type { Provider } from '../src/shared/runtime-ipc'
 import { describe, expect, it, vi } from 'vitest'
@@ -34,17 +35,7 @@ function fixture() {
     })),
     addHandAddedModel: vi.fn(async () => [] as readonly string[]),
     deleteHandAddedModel: vi.fn(async () => [] as readonly string[]),
-    checkProviderAuth: vi.fn<ClientProviderApi['checkProviderAuth']>(async () => ({
-      state: 'usable',
-      login: 'account',
-      expiresAt: null,
-    })),
-    apiKeyStatus: vi.fn<ClientProviderApi['apiKeyStatus']>(async () => ({
-      provider: 'claude',
-      set: false,
-      setAt: null,
-      inUse: false,
-    })),
+    ...connectedProviderReads(),
     signInProvider: vi.fn<ClientProviderApi['signInProvider']>(async () => ({
       success: true,
       state: { state: 'usable', login: 'account', expiresAt: null },

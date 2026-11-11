@@ -124,11 +124,27 @@ describe('core-supplied error display outcomes', () => {
           message: 'fictional raw detail',
           cause: 'auth',
           fatal: false,
-          signIn: { state, message: 'Fern supplied this sign-in sentence.' },
+          signIn: {
+            state,
+            message: 'Fern supplied this sign-in sentence.',
+            captions: {
+              stopped: 'Fern stopped.',
+              ended: 'Fern ended.',
+              recovered: 'Fern recovered.',
+            },
+          },
           presentation: { message: 'An ordinary notice must not replace the sign-in row.' },
         }
         expect(projected(event, owner)).toBe(event)
-        expect(event.signIn).toEqual({ state, message: 'Fern supplied this sign-in sentence.' })
+        expect(event.signIn).toEqual({
+          state,
+          message: 'Fern supplied this sign-in sentence.',
+          captions: {
+            stopped: 'Fern stopped.',
+            ended: 'Fern ended.',
+            recovered: 'Fern recovered.',
+          },
+        })
       }
     }
   })

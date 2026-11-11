@@ -28,16 +28,41 @@ async function settled(): Promise<void> {
 
 function readings(now: number, kept: boolean): Usage {
   const at = now - 4 * MIN - 10_000
-  const one = (window: string, resetsAt: number): ProviderUsageReading => ({
+  const one = (
+    window: string,
+    resetsAt: number,
+    word: string,
+    durationMs: number,
+    provider: 'claude' | 'codex',
+  ): ProviderUsageReading => ({
+    period: { word, durationMs, bucket: false, bucketName: null },
     window,
     usedPercent: 82,
     resetsAt,
     at,
     ...(kept ? { unconfirmed: true } : {}),
+    warning:
+      kept || word !== 'weekly'
+        ? null
+        : {
+            provider,
+            window,
+            standing: 'about-to-stop',
+            resetsAt,
+            at,
+            said: `${provider} is approaching its rate limit (${window}) — 82% used, by its latest reading`,
+            meaning: { word, used: 82, untimed: false },
+          },
   })
   return {
-    claude: [one('five_hour', now + 4 * HOUR), one('seven_day', now + 6 * DAY)],
-    codex: [one('a 5-hour window', now + 4 * HOUR), one('a 7-day window', now + 6 * DAY)],
+    claude: [
+      one('five_hour', now + 4 * HOUR, '5-hour', 5 * HOUR, 'claude'),
+      one('seven_day', now + 6 * DAY, 'weekly', 7 * DAY, 'claude'),
+    ],
+    codex: [
+      one('a 5-hour window', now + 4 * HOUR, '5-hour', 5 * HOUR, 'codex'),
+      one('a 7-day window', now + 6 * DAY, 'weekly', 7 * DAY, 'codex'),
+    ],
   }
 }
 
@@ -68,6 +93,7 @@ function walls(now: number, confirmed: boolean): ProviderLimitSeen[] {
           resetsAt: now + 6 * DAY,
           at: now,
           said: 'claude is approaching its rate limit (seven_day) — 82% used, by its latest reading',
+          meaning: { word: 'weekly', used: 82, untimed: false },
         },
       ]
     : []
