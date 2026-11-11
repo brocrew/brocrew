@@ -45,9 +45,8 @@ import { providerRefusalSchema } from './provider-refusal'
 export type { ProviderRefusal } from './provider-refusal'
 
 /**
- * The provider-neutral `RuntimeEvent` taxonomy — the normalized stream both
- * adapters (Claude and Codex) emit and the UI/orchestration consume: structured
- * events, never state scraped from terminal text.
+ * Provider-neutral `RuntimeEvent`s are structured adapter facts for UI/orchestration,
+ * never state scraped from terminal text.
  *
  * Each variant's zod schema documents how each provider's own events map onto it.
  */
