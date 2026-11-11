@@ -1,0 +1,133 @@
+import { execFileSync } from 'node:child_process'
+import { createRequire } from 'node:module'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { expect, it } from 'vitest'
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+const require = createRequire(join(root, 'apps/desktop/package.json'))
+const builder = createRequire(require.resolve('electron-builder/package.json'))
+const lib = createRequire(builder.resolve('app-builder-lib/package.json'))
+const { load } = lib('js-yaml')
+const read = (path) => load(readFileSync(join(root, path), 'utf8'))
+const action = read('.github/actions/signed-mac/action.yml')
+const steps = action.runs.steps
+const build = steps.find((step) => step.name?.startsWith('Build and package'))
+const keys = [
+  'MAC_CERT_P12_BASE64',
+  'MAC_CERT_P12_PASSWORD',
+  'APPLE_API_KEY_P8',
+  'APPLE_API_KEY_ID',
+  'APPLE_API_ISSUER',
+]
+
+function argumentsFor(overrides = {}) {
+  const temp = mkdtempSync(join(tmpdir(), 'mac-action-args-'))
+  try {
+    writeFileSync(
+      join(temp, 'pnpm'),
+      '#!/usr/bin/env python3\nimport json,os,sys\nwith open(os.environ["ARGUMENTS"], "a") as out: out.write(json.dumps(sys.argv[1:])+"\\n")\n',
+      { mode: 0o755 },
+    )
+    const inputs = Object.fromEntries(
+      Object.entries(action.inputs).map(([key, value]) => [key, value.default ?? '']),
+    )
+    Object.assign(inputs, { owner: 'brocrew', repo: 'brocrew', version: '0.2.22' }, overrides)
+    const env = {
+      ...process.env,
+      PATH: `${temp}:${process.env.PATH}`,
+      ARGUMENTS: join(temp, 'args'),
+    }
+    for (const [name, value] of Object.entries(build.env)) {
+      if (/^\$\{\{ inputs\./.test(value)) env[name] = inputs[value.slice(11, -3)]
+    }
+    execFileSync('bash', ['-c', build.run], { env })
+    return readFileSync(env.ARGUMENTS, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+  } finally {
+    rmSync(temp, { recursive: true, force: true })
+  }
+}
+
+it('keeps the release builder arguments unchanged with the default inputs', () => {
+  expect(argumentsFor()).toEqual([
+    ['--filter', '@brobot2/desktop', 'run', 'build'],
+    [
+      '--filter',
+      '@brobot2/desktop',
+      'exec',
+      'electron-builder',
+      '--mac',
+      'dmg',
+      'zip',
+      'dir',
+      '--arm64',
+      '--config',
+      'electron-builder.yml',
+      '-c.forceCodeSigning=true',
+      '-c.mac.hardenedRuntime=true',
+      '-c.mac.timestamp=http://timestamp.apple.com/ts01',
+      '-c.mac.notarize=true',
+      '-c.dmg.sign=true',
+      '-c.artifactBuildCompleted=./build/notarize-dmg.mjs',
+      '-c.extraMetadata.version=0.2.22',
+      '-c.publish.provider=github',
+      '-c.publish.owner=brocrew',
+      '-c.publish.repo=brocrew',
+      '--publish',
+      'never',
+    ],
+  ])
+  const release = read('.github/workflows/release.yml')
+  const call = release.jobs.macos.steps.find((step) => step.uses === './.github/actions/signed-mac')
+  expect(call.with).not.toHaveProperty('feed_url')
+  expect(call.with).not.toHaveProperty('marker')
+  expect(call.with).not.toHaveProperty('output')
+})
+
+it('uses the same signing command with generic or private rehearsal feeds', () => {
+  const generic = argumentsFor({
+    feed_url: 'http://127.0.0.1:47123/',
+    marker: 'fictional marker',
+    output: 'dist-mac-update/a',
+  })[1]
+  expect(generic).toContain('-c.publish.provider=generic')
+  expect(generic).toContain('-c.publish.url=http://127.0.0.1:47123/')
+  expect(generic).toContain('-c.extraMetadata.rehearsalMarker=fictional marker')
+  expect(generic).toContain('-c.directories.output=dist-mac-update/a')
+  expect(generic).not.toContain('-c.publish.provider=github')
+  expect(argumentsFor({ feed_private: 'true' })[1]).toContain('-c.publish.private=true')
+})
+
+it('forwards the five signing secrets explicitly and shares the existing signing action', () => {
+  const caller = read('.github/workflows/macos.yml')
+  const call = Object.values(caller.jobs).find(
+    (job) => job.uses === './.github/workflows/mac-update-test.yml',
+  )
+  expect(call.secrets).toEqual(
+    Object.fromEntries(keys.map((key) => [key, '${{ secrets.' + key + ' }}'])),
+  )
+  const mac = read('.github/workflows/mac-update-test.yml')
+  expect(mac.on.workflow_call.secrets).toEqual(
+    Object.fromEntries(keys.map((key) => [key, { required: true }])),
+  )
+  for (const [workflow, job] of [
+    [mac, mac.jobs.rehearse],
+    [
+      read('.github/workflows/update-rehearsal.yml'),
+      read('.github/workflows/update-rehearsal.yml').jobs.macos,
+    ],
+  ]) {
+    expect(workflow.on).not.toHaveProperty('pull_request')
+    expect(workflow.on).not.toHaveProperty('pull_request_target')
+    expect(job.environment).toBe('mac-signing')
+    const builds = job.steps.filter((step) => step.uses === './.github/actions/signed-mac')
+    expect(builds.map((step) => step.with.version)).toEqual(['0.0.98', '0.0.99'])
+    for (const build of builds) expect(Object.keys(build.env)).toEqual(keys)
+    expect(job.steps.some((step) => /electron-builder|notary\.p8/.test(step.run ?? ''))).toBe(false)
+  }
+})
