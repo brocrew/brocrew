@@ -1,4 +1,8 @@
-import { createModelLists } from '../lib/provider-launch-fixture'
+import {
+  createModelLists,
+  launchFacts,
+  resolveProviderLaunch,
+} from '../lib/provider-launch-fixture'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
@@ -180,6 +184,9 @@ function fixture(claudeReady = false, holdFirstUsage = false) {
       capabilities: async () => CAPABILITY_FIXTURE,
       providerVersions: versions,
       modelList: async ({ provider }) => catalogue(provider, provider === 'claude' && signedIn),
+      providerLaunchChoices: async (input) =>
+        launchFacts(await window.api.runtime.modelList(input), await checkAuth(input)),
+      resolveProviderLaunch: async (input) => resolveProviderLaunch(input, null),
       providerUsage: usage,
       questionsForAPerson: async () => walk(),
       decisionsForAPerson: async () => walk(),
