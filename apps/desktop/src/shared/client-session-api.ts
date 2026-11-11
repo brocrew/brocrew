@@ -47,6 +47,7 @@ export type ClientSessionApi = Pick<
   | 'resume'
   | 'revealPath'
   | 'revealResource'
+  | 'searchWork'
   | 'send'
   | 'sendInterrupting'
   | 'sendToChild'

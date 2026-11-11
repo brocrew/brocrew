@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useClientApi } from '../client-provider/injection'
 import { WORK_SEARCH_WORDS } from '../../../shared/work-search-words'
 import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
 import WorkSearchDialog from './WorkSearchDialog.vue'
@@ -71,6 +72,8 @@ const props = defineProps<{
  * over. The ages here are measured from when each question went out, so an instant frozen at mount
  * would make a row that was just re-read look older than the reading it came from.
  */
+const sessions = useClientApi().sessions
+const search = sessions?.searchWork?.bind(sessions)
 const minute = useMinuteClock()
 const searchOpen = ref(false)
 const cast = useWhoCalledWhom()
@@ -83,7 +86,8 @@ watch(
 function searchWork(query: WorkSearchQuery) {
   const parsed = workSearchQuery.safeParse(query)
   return parsed.success
-    ? window.api.runtime.searchWork({ conversation: props.conversation, query: parsed.data })
+    ? (search?.({ conversation: props.conversation, query: parsed.data }) ??
+        Promise.resolve({ ok: false as const, reason: 'unavailable' as const }))
     : Promise.resolve({ ok: false as const, reason: 'invalid' as const })
 }
 
