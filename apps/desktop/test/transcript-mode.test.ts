@@ -79,10 +79,11 @@ describe('transcript mode', () => {
     ['lifecycle', false],
     ['activity', false],
     ['echo', false],
-    ['unrecognized', true],
+    ['unrecognized', false],
   ] as const)('shows a %s unknown: %s', (category, inNormal) => {
     const item: TranscriptItem = { kind: 'unknown', id: 'u', provider: 'codex', category, raw: {} }
     expect(isVisibleIn(item)).toBe(inNormal)
+    expect(isVisibleIn(item, true)).toBe(category === 'unrecognized')
   })
 
   it('hides a superseded tool row while keeping an ordinary tool call', () => {

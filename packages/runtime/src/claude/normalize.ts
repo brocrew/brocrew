@@ -38,8 +38,7 @@ import {
 /**
  * Normalize Claude SDK content: assistant text, tool calls/results and non-fatal errors.
  * The handle drives session/turn lifecycle through `claudeSessionRef`, `claudeResultOutcome`
- * and `SessionMachine`, keeping ordering in one place. Unmapped system messages are logged;
- * other unmapped messages become `unknown{raw}`.
+ * and `SessionMachine`, keeping ordering in one place. Unmapped messages become `unknown{raw}`.
  *
  * Carry the session's registries across messages: some `task_*` updates/endings lack identity.
  * `SubAgentTasks` remembers declared sub-agents; a fresh registry admits only named agents.
@@ -548,11 +547,6 @@ export function normalizeMessage(
       const dispatched = subAgentEvent(message, tasks)
       if (dispatched) return [...background_, dispatched]
       const category = systemCategory(message.subtype)
-      if (category === 'unrecognized') {
-        // The app's console warning transport keeps new provider events in electron-log.
-        console.warn('Claude system event', message)
-        return background_
-      }
       // Recognized chatter keeps its classification and raw message for transcript mode.
       //
       // ⛔ **`background_tasks_changed` STAYS `lifecycle` here** (247, and `245` ruled it). The

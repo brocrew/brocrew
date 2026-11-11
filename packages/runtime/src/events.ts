@@ -2408,6 +2408,7 @@ export function wrapUnknown(
   // Set only when present: an explicit `label: undefined` would serialize over IPC as a key with a
   // null value on some paths, so absent means absent.
   if (shown) event.label = shown
+  if (category === 'unrecognized') console.warn('Unmodeled provider event', event)
   return event
 }
 

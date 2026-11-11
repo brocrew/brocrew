@@ -9,7 +9,7 @@ import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
  * Claude's `command_lifecycle` (before 2026-10-03 15:28), `vcs_state_changed` and `ping` keepalive
  * frames were stored as `unknown` rows of category `unrecognized`, and drew as grey "Unmodeled
  * event" cards in normal mode. ⚑ The fold reads them by their label as quiet lifecycle frames:
- * hidden outside debug mode, shown in it. A frame no label names is still a card.
+ * hidden in the conversation. A frame no label names is a card only in Debug mode.
  */
 
 const unknownRow = (label: string): RuntimeEvent =>
@@ -31,9 +31,10 @@ describe('F081 · old housekeeping frames stay quiet', () => {
     })
   }
 
-  it('⛔ a frame no label names is still an unmodeled card in normal mode', () => {
+  it('a frame no label names is an unmodeled card only in Debug mode', () => {
     const item = folded('something_new')
     expect(item).toMatchObject({ kind: 'unknown', category: 'unrecognized' })
-    expect(isVisibleIn(item)).toBe(true)
+    expect(isVisibleIn(item)).toBe(false)
+    expect(isVisibleIn(item, true)).toBe(true)
   })
 })

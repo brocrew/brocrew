@@ -8,6 +8,7 @@ import {
   type TranscriptState,
 } from '../../src/renderer/src/lib/transcript'
 import { visibleItems } from '../../src/renderer/src/lib/transcript-mode'
+import { transcriptRows } from '../../src/renderer/src/lib/tool-runs'
 
 import { mount, unmountAll } from './harness'
 
@@ -124,11 +125,7 @@ function ledger(frames: number): TranscriptEvent[] {
   // — any sign, and the test still green. Two rather than one so a fold that kept exactly one could
   // not pass by coincidence.
   for (let i = 0; i < 2; i += 1) events.push(chatter('lifecycle', 'message_start', i))
-  // ⚠️ **One UNRECOGNIZED payload, and it is here because leaving it out made a term untestable.**
-  // Review caught the first draft asserting an arithmetic whose `unrecognized` count was pinned at
-  // zero — so the term could have had any sign and the test would still have passed. It is also the
-  // one `unknown` category the conversation mode KEEPS (`transcript-mode.ts`), which is the fact the
-  // first draft of the live reconstruction got wrong.
+  // An unrecognized payload remains in the ledger but only draws with Settings Debug mode on.
   events.push(chatter('unrecognized', 'never_seen_before', 0))
   // Deltas of ONE reasoning block, which is what the fold makes of them — see the item tally below.
   for (let i = 0; i < 41; i += 1) {
@@ -184,7 +181,7 @@ function draw(state: TranscriptState): Rows {
 }
 
 describe('what a .entry[data-item] is (114)', () => {
-  it('is ONE ITEM IN THE CURRENT MODE — not a row of the workflow, and not an event', async () => {
+  it('draws filtered rows, including grouped tools and thoughts', async () => {
     const state = feed(ledger(12))
     await nextTick()
 
@@ -204,12 +201,10 @@ describe('what a .entry[data-item] is (114)', () => {
       assistant: 1,
     })
 
-    // ⛔ **The identity, stated as an assertion rather than as a comment.** The wrapper count IS
-    // `visibleItems(items).length`, in both modes — which is what makes it a count of the
-    // conversation's LENGTH and not of anything the workflow did.
+    // Filtering happens before settled tools and thoughts group into rows.
     for (const mode of ['normal'] as const) {
       const rows = draw(state)
-      expect(rows.wrappers, mode).toHaveLength(visibleItems(state.items).length)
+      expect(rows.wrappers, mode).toHaveLength(transcriptRows(visibleItems(state.items)).length)
       // …and the paired positive: every one of them is a real row with a real box, so the count is
       // not inflated by wrappers that render nothing. `113`'s second guess is refuted here.
       expect(rows.visible, `${mode}: some wrappers drew no box`).toHaveLength(rows.wrappers.length)
@@ -219,10 +214,10 @@ describe('what a .entry[data-item] is (114)', () => {
 
   it('keeps the conversation without lifecycle rows', async () => {
     const rows = draw(feed(ledger(12)))
-    expect(rows.wrappers).toHaveLength(6)
+    expect(rows.wrappers).toHaveLength(4)
     expect(rows.chatter).toBe(0)
     expect(rows.infoNotices).toBe(0)
-    expect(rows.unrecognized).toBe(1)
+    expect(rows.unrecognized).toBe(0)
   })
 
   it('⚑ 078’s rule, measured where it lives: TWICE the frames, and not one extra row', async () => {
@@ -270,7 +265,7 @@ describe('what a .entry[data-item] is (114)', () => {
     // ⚑ **`587` · it is there as a RUN.** A tool call with no workflow and no sub-agents is settled
     // ordinary plumbing and collapses into the quiet line beside its neighbours, so the span that
     // was a wrapper each is one wrapper — which is the same row, drawn once.
-    expect(rows.wrappers).toHaveLength(5)
+    expect(rows.wrappers).toHaveLength(3)
     expect(rows.wrappers.filter((el) => el.querySelector('[data-cy=tool-run]'))).toHaveLength(1)
   })
 })

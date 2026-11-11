@@ -206,11 +206,12 @@ describe('empty authoritative assistant messages', () => {
       ...legacy,
       raw: { type: 'agentMessage', text: '', memoryCitation: { entries: [{ path: 'old.md' }] } },
     },
-  ])('keeps other unknown payloads inspectable and prominent: %j', (event) => {
+  ])('keeps other unknown payloads inspectable in Debug mode: %j', (event) => {
     const projected = codexTranscripts.eventForDisplay?.(event) ?? event
     expect(projected).toEqual(event)
     const state = fold([projected])
-    expect(visibleItems(state.items)).toHaveLength(1)
+    expect(visibleItems(state.items)).toHaveLength(0)
+    expect(visibleItems(state.items, true)).toHaveLength(1)
     expect(state.items[0]).toMatchObject({
       kind: 'unknown',
       category: 'unrecognized',

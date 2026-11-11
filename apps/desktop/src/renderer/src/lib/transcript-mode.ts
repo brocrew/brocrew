@@ -1,15 +1,14 @@
 import type { TranscriptItem } from './transcript'
 
-/** Keep conversation content, actionable notices and unrecognized events visible. */
-export function isVisibleIn(item: TranscriptItem): boolean {
+/** Keep conversation content and actionable notices visible; unknown events need Debug mode. */
+export function isVisibleIn(item: TranscriptItem, debug = false): boolean {
   switch (item.kind) {
     case 'assistant':
       return item.streaming || item.text.trim() !== '' || (item.questions?.length ?? 0) > 0
     case 'notice':
       return item.level !== 'info' || item.wokenByAJob === true
     case 'unknown':
-      if (item.label === 'dev_intent') return false
-      return item.category === 'unrecognized'
+      return debug && item.category === 'unrecognized'
     case 'tool':
       return item.superseded !== true
     case 'continuation':
@@ -45,6 +44,6 @@ export function isVisibleIn(item: TranscriptItem): boolean {
   }
 }
 
-export function visibleItems(items: TranscriptItem[]): TranscriptItem[] {
-  return items.filter(isVisibleIn)
+export function visibleItems(items: TranscriptItem[], debug = false): TranscriptItem[] {
+  return items.filter((item) => isVisibleIn(item, debug))
 }

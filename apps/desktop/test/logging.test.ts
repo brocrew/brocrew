@@ -16,6 +16,7 @@ import {
   setDebug,
 } from '../src/main/logging/log'
 import { buildPluginSupervisor } from '../../../scripts/build-plugin-supervisor.mjs'
+import { wrapUnknown } from '@brobot2/runtime'
 
 const folders: string[] = []
 const folder = async () => {
@@ -29,6 +30,27 @@ afterEach(async () => {
 const text = (file: string) => readFile(file, 'utf8').catch(() => '')
 
 const loggerSource = fileURLToPath(new URL('../src/main/logging/log.ts', import.meta.url))
+
+it.each([false, true])(
+  'logs unknown events from either provider with Debug mode %s',
+  async (debug) => {
+    const file = appLogFile(await folder())
+    openLog(file, { debug, console: false })
+    for (const provider of ['claude', 'codex']) {
+      wrapUnknown(
+        provider,
+        { detail: `${provider} fictional unknown payload` },
+        'unrecognized',
+        'future_event',
+      )
+    }
+    await vi.waitFor(async () => {
+      const written = await text(file)
+      expect(written).toContain('claude fictional unknown payload')
+      expect(written).toContain('codex fictional unknown payload')
+    })
+  },
+)
 const run = (script: string, ...args: string[]) =>
   spawnSync(process.execPath, ['--experimental-strip-types', '-e', script, loggerSource, ...args], {
     encoding: 'utf8',
