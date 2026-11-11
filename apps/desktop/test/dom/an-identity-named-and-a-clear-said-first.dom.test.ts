@@ -7,7 +7,10 @@ import type {
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
-import { defineComponent, h, nextTick, ref, type Component } from 'vue'
+import { defineComponent, h, nextTick, provide, ref, type Component } from 'vue'
+import { SUPPORTED_PROVIDERS, providerDescriptor } from '@brobot2/shared'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { desktopProviderApi } from '../../src/renderer/src/client-provider/window'
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import NoticeEntry from '../../src/renderer/src/components/NoticeEntry.vue'
 import OwnInstructions from '../../src/renderer/src/components/OwnInstructions.vue'
@@ -263,15 +266,21 @@ async function theSheet(
   const { store, lists } = storeOver()
   await store.load()
   const pointed = ref(slug)
+  const catalogueClient = Object.create(desktopProviderApi, {
+    providerCatalogue: { value: async () => SUPPORTED_PROVIDERS.map(providerDescriptor) },
+  })
   const Host = defineComponent({
-    setup: () => () =>
-      h(CapabilitiesSheet as Component, {
-        profileSlug: pointed.value,
-        runsOn: 'claude',
-        store,
-        lists,
-        ...extra,
-      }),
+    setup() {
+      provide(CLIENT_PROVIDERS, catalogueClient)
+      return () =>
+        h(CapabilitiesSheet as Component, {
+          profileSlug: pointed.value,
+          runsOn: 'claude',
+          store,
+          lists,
+          ...extra,
+        })
+    },
   })
   const m = mount(Host, {}, { width: 700, height: 880 })
   await settle()

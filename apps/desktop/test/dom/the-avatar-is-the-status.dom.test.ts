@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick, provide } from 'vue'
+import { SUPPORTED_PROVIDERS, providerDescriptor } from '@brobot2/shared'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { desktopProviderApi } from '../../src/renderer/src/client-provider/window'
 import { page } from 'vitest/browser'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
@@ -173,16 +176,25 @@ interface Room {
 
 const room = async (over: Record<string, unknown> = {}, width = FLOOR): Promise<Room> => {
   await page.viewport(width, 900)
+  const catalogueClient = Object.create(desktopProviderApi, {
+    providerCatalogue: { value: async () => SUPPORTED_PROVIDERS.map(providerDescriptor) },
+  })
   const m = mount(
-    TeamWorkspace,
-    {
-      agents: AGENTS,
-      store: STORE,
-      beingDone: BUSY,
-      held: [],
-      conversations: LIST,
-      ...over,
-    },
+    defineComponent({
+      setup() {
+        provide(CLIENT_PROVIDERS, catalogueClient)
+        return () =>
+          h(TeamWorkspace, {
+            agents: AGENTS,
+            store: STORE,
+            beingDone: BUSY,
+            held: [],
+            conversations: LIST,
+            ...over,
+          })
+      },
+    }),
+    {},
     { width, height: 900 },
   )
   await nextTick()
@@ -710,8 +722,10 @@ describe('§5 · what moved behind the disclosure is still readable there', () =
     const { m } = await room()
     const card = cardOf(m, 'ali')
     await press(more(card, 'ali'))
+    await vi.waitFor(() => expect(q(card, 'team-provider-ali').textContent?.trim()).toBe('Codex'))
+    expect(AGENTS.use.find((row) => row.slug === 'ali')?.runsOn.provider).toBe('codex')
     const pairs: readonly [string, HTMLElement, string][] = [
-      ['Engine', q(card, 'team-provider-ali'), 'codex'],
+      ['Engine', q(card, 'team-provider-ali'), 'Codex'],
       ['Recorded', q(card, 'team-recorded-ali'), '3 conversations'],
     ]
     for (const [label, value, says] of pairs) {

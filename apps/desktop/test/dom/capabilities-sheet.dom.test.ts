@@ -1,5 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { nextTick } from 'vue'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, h, nextTick, provide } from 'vue'
+import { SUPPORTED_PROVIDERS, providerDescriptor } from '@brobot2/shared'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { desktopProviderApi } from '../../src/renderer/src/client-provider/window'
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/agent-store'
 import {
@@ -111,9 +114,17 @@ async function openSheet(
 ): Promise<{ m: Mounted; store: AgentStore }> {
   const store = storeOver()
   await store.load()
+  const catalogueClient = Object.create(desktopProviderApi, {
+    providerCatalogue: { value: async () => SUPPORTED_PROVIDERS.map(providerDescriptor) },
+  })
   const m = mount(
-    CapabilitiesSheet,
-    { profileSlug: 'pm', runsOn: 'codex', store, ...props },
+    defineComponent({
+      setup() {
+        provide(CLIENT_PROVIDERS, catalogueClient)
+        return () => h(CapabilitiesSheet, { profileSlug: 'pm', runsOn: 'codex', store, ...props })
+      },
+    }),
+    {},
     { width: 900, height: 900 },
   )
   await nextTick()
@@ -467,11 +478,17 @@ describe('355 · the capabilities sheet', () => {
      */
     it('⛔ it says a running conversation does not move, and names what the next one starts on', async () => {
       const { m } = await openSheet()
+      await vi.waitFor(() =>
+        expect(m.q('capabilities-provider-note').textContent).toContain('Codex'),
+      )
       const said = m.q('capabilities-provider-note').textContent ?? ''
       expect(said).toContain('Codex')
       expect(said).toContain('starts nothing and moves nothing')
 
       const { m: other } = await openSheet({ runsOn: 'claude' })
+      await vi.waitFor(() =>
+        expect(other.q('capabilities-provider-note').textContent).toContain('Claude'),
+      )
       const elsewhere = other.q('capabilities-provider-note').textContent ?? ''
       expect(elsewhere).toContain('Claude')
       expect(elsewhere).not.toBe(said)

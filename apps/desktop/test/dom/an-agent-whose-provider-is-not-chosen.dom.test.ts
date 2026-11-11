@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick, provide } from 'vue'
+import { SUPPORTED_PROVIDERS, providerDescriptor } from '@brobot2/shared'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { desktopProviderApi } from '../../src/renderer/src/client-provider/window'
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
@@ -72,9 +75,24 @@ describe('the sheet says it first', () => {
   it('a mixed agent’s sheet says to choose, and how many conversations ran on each', async () => {
     const store = storeOver(roster(MIXED))
     await store.load()
-    const m = mount(CapabilitiesSheet, { profileSlug: 'ana', runsOn: 'codex', store })
+    const catalogueClient = Object.create(desktopProviderApi, {
+      providerCatalogue: { value: async () => SUPPORTED_PROVIDERS.map(providerDescriptor) },
+    })
+    const m = mount(
+      defineComponent({
+        setup() {
+          provide(CLIENT_PROVIDERS, catalogueClient)
+          return () => h(CapabilitiesSheet, { profileSlug: 'ana', runsOn: 'codex', store })
+        },
+      }),
+    )
     await nextTick()
 
+    await vi.waitFor(() =>
+      expect(m.q('capabilities-provider-not-chosen').textContent).toContain(
+        'Claude (2) and Codex (1)',
+      ),
+    )
     expect(m.q('capabilities-provider-not-chosen').textContent?.trim()).toBe(
       'Choose a provider for this agent: its conversations ran on Claude (2) and Codex (1), so no agent can start a new conversation with it until a person chooses one on its sheet.',
     )
@@ -86,9 +104,22 @@ describe('the sheet says it first', () => {
   it('the control: an agent its conversations name says what they ran on, and no warning', async () => {
     const store = storeOver(roster({ provider: 'claude', from: 'its-conversations' }))
     await store.load()
-    const m = mount(CapabilitiesSheet, { profileSlug: 'ana', runsOn: 'claude', store })
+    const catalogueClient = Object.create(desktopProviderApi, {
+      providerCatalogue: { value: async () => SUPPORTED_PROVIDERS.map(providerDescriptor) },
+    })
+    const m = mount(
+      defineComponent({
+        setup() {
+          provide(CLIENT_PROVIDERS, catalogueClient)
+          return () => h(CapabilitiesSheet, { profileSlug: 'ana', runsOn: 'claude', store })
+        },
+      }),
+    )
     await nextTick()
 
+    await vi.waitFor(() =>
+      expect(m.q('capabilities-provider-note').textContent).toContain('Claude'),
+    )
     expect(m.all('capabilities-provider-not-chosen')).toEqual([])
     expect(m.q('capabilities-provider-note').textContent).toContain('Claude')
     const empty = m.q('capabilities-provider-select').querySelector('option[value=""]')
@@ -97,16 +128,26 @@ describe('the sheet says it first', () => {
 })
 
 describe('the Team card names it', () => {
-  it('its engine line says it is not chosen, with its conversations on both', () => {
+  it('its engine line says it is not chosen, with its conversations on both', async () => {
     const list = roster(MIXED)
-    const m = mount(TeamWorkspace, {
-      agents: list,
-      store: { renameTo: vi.fn(), remove: vi.fn() } as unknown as AgentStore,
+    const store = { renameTo: vi.fn(), remove: vi.fn() } as unknown as AgentStore
+    const catalogueClient = Object.create(desktopProviderApi, {
+      providerCatalogue: { value: async () => SUPPORTED_PROVIDERS.map(providerDescriptor) },
     })
+    const m = mount(
+      defineComponent({
+        setup() {
+          provide(CLIENT_PROVIDERS, catalogueClient)
+          return () => h(TeamWorkspace, { agents: list, store })
+        },
+      }),
+    )
+    await vi.waitFor(() => expect(m.q('team-provider-ida').textContent?.trim()).toBe('Codex'))
+    expect(list.use.find((row) => row.slug === 'ida')?.runsOn.provider).toBe('codex')
     expect(m.q('team-provider-ana').textContent?.trim()).toBe(
       'Not chosen: its conversations ran on both',
     )
-    expect(m.q('team-provider-ida').textContent?.trim()).toBe('codex')
+    expect(m.q('team-provider-ida').textContent?.trim()).toBe('Codex')
   })
 })
 
