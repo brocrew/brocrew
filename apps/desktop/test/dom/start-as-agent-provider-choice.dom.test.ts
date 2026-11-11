@@ -1,6 +1,9 @@
 import { createModelLists } from '../lib/provider-launch-fixture'
 import { afterEach, describe, expect, it } from 'vitest'
-import { nextTick, ref, type Component } from 'vue'
+import { defineComponent, h, nextTick, provide, ref, type Component } from 'vue'
+import { SUPPORTED_PROVIDERS, providerDescriptor } from '@brobot2/shared'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { desktopProviderApi } from '../../src/renderer/src/client-provider/window'
 import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
 
@@ -53,17 +56,26 @@ function opened(
     deleteHandAddedModel: async () => [],
   }))
   const agents = { identities: ref(null) } as unknown as AgentStore
+  const catalogueClient = Object.create(desktopProviderApi, {
+    providerCatalogue: { value: async () => SUPPORTED_PROVIDERS.map(providerDescriptor) },
+  })
   const m = mount(
-    StartAsAgent as Component,
-    {
-      profileSlug: 'draft-reader',
-      provider: 'claude',
-      defaultApprovalMode: options.approvalMode ?? 'ask',
-      capabilities: options.capabilities ?? null,
-      agents,
-      lists,
-      onStart: (input: CreateSessionInput) => started.push(input),
-    },
+    defineComponent({
+      setup() {
+        provide(CLIENT_PROVIDERS, catalogueClient)
+        return () =>
+          h(StartAsAgent as Component, {
+            profileSlug: 'draft-reader',
+            provider: 'claude',
+            defaultApprovalMode: options.approvalMode ?? 'ask',
+            capabilities: options.capabilities ?? null,
+            agents,
+            lists,
+            onStart: (input: CreateSessionInput) => started.push(input),
+          })
+      },
+    }),
+    {},
     { width: 700, height: 750 },
   )
   return { m, started, reads }

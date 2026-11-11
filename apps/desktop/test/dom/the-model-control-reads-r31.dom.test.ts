@@ -8,7 +8,10 @@ import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick, provide } from 'vue'
+import { SUPPORTED_PROVIDERS, providerDescriptor } from '@brobot2/shared'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { desktopProviderApi } from '../../src/renderer/src/client-provider/window'
 import AgentModelChoice from '../../src/renderer/src/components/AgentModelChoice.vue'
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
@@ -69,6 +72,9 @@ const settle = async (): Promise<void> => {
   }
 }
 const ev = (event: Record<string, unknown>): TranscriptEvent => event as unknown as TranscriptEvent
+const catalogueClient = Object.create(desktopProviderApi, {
+  providerCatalogue: { value: async () => SUPPORTED_PROVIDERS.map(providerDescriptor) },
+})
 
 const levels = (...ids: string[]): { id: string; label: string }[] =>
   ids.map((id) => ({ id, label: id }))
@@ -217,8 +223,20 @@ async function theControl(runsOn: 'claude' | 'codex'): Promise<Mounted> {
   const { store, lists } = storeOver()
   await store.load()
   const m = mount(
-    AgentModelChoice,
-    { profileSlug: 'worker', runsOn, itsProvider: world.itsProvider, store, lists },
+    defineComponent({
+      setup() {
+        provide(CLIENT_PROVIDERS, catalogueClient)
+        return () =>
+          h(AgentModelChoice, {
+            profileSlug: 'worker',
+            runsOn,
+            itsProvider: world.itsProvider,
+            store,
+            lists,
+          })
+      },
+    }),
+    {},
     { width: 620, height: 420 },
   )
   await settle()
@@ -396,8 +414,19 @@ async function theSheet(): Promise<Mounted> {
   const { store, lists } = storeOver()
   await store.load()
   const m = mount(
-    CapabilitiesSheet,
-    { profileSlug: world.slug, runsOn: world.itsProvider ?? 'codex', store, lists },
+    defineComponent({
+      setup() {
+        provide(CLIENT_PROVIDERS, catalogueClient)
+        return () =>
+          h(CapabilitiesSheet, {
+            profileSlug: world.slug,
+            runsOn: world.itsProvider ?? 'codex',
+            store,
+            lists,
+          })
+      },
+    }),
+    {},
     { width: 700, height: 880 },
   )
   await settle()
