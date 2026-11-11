@@ -360,8 +360,8 @@ it('keeps agents transcripts for the saved period, with 90 days as the default',
     set: vi.fn(async (value: typeof kept) => (kept = value)),
   }
   const raw = {
-    read: vi.fn(async () => 'forever' as const),
-    set: vi.fn(async () => 'forever' as const),
+    read: vi.fn<TranscriptRetentionClient['read']>(async () => 'forever'),
+    set: vi.fn<TranscriptRetentionClient['set']>(async () => 'forever'),
   }
   const client = clientWithRetention(bridge)
   const { m } = await settings('general', raw, undefined, client)
@@ -414,7 +414,10 @@ it('a failed transcript retention save restores what was actually kept', async (
 })
 
 it('keeps transcript retention unavailable when the injected client has no capability', async () => {
-  const raw = { read: vi.fn(async () => 90 as const), set: vi.fn(async () => 30 as const) }
+  const raw = {
+    read: vi.fn<TranscriptRetentionClient['read']>(async () => 90),
+    set: vi.fn<TranscriptRetentionClient['set']>(async () => 30),
+  }
   const { m } = await settings('general', raw, undefined, clientWithRetention())
   await nextTick()
   expect((m.q('transcript-retention-period') as HTMLSelectElement).disabled).toBe(true)
