@@ -1,4 +1,4 @@
-import { readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { readFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { EventEmitter } from 'node:events'
 import { spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
@@ -17,10 +17,11 @@ import {
   compareMeasurementCopies,
   measurementOrder,
   packagedCopyComparisons,
+  measurementStateComparison,
 } from '../lib/recovery-measurement.mjs'
 import { startOrder, READY_LINE } from '../lib/upgrade-path.mjs'
 import { nodeFs } from '../../apps/desktop/src/main/recovery/files.ts'
-import { measurementFilesystem } from '../lib/mac-update-test.mjs'
+import { measurementFilesystem, stateBytes } from '../lib/mac-update-test.mjs'
 
 const migrations = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -29,7 +30,98 @@ const migrations = join(
 const journal = JSON.parse(readFileSync(join(migrations, 'meta/_journal.json'), 'utf8'))
 const sqlOf = (tag) => readFileSync(join(migrations, `${tag}.sql`), 'utf8')
 
+function stateFixture() {
+  const root = mkdtempSync(join(tmpdir(), 'measurement-state-test-'))
+  const db = new DatabaseSync(join(root, 'brobot2.sqlite'))
+  db.exec(
+    'CREATE TABLE imported_side_file (name TEXT PRIMARY KEY); CREATE TABLE draft (slot TEXT PRIMARY KEY, entry TEXT)',
+  )
+  const draft = {
+    slot: 'session:measurement-oracle',
+    text: 'Fictional measurement draft.',
+    attached: [],
+  }
+  writeFileSync(join(root, 'drafts.json'), JSON.stringify({ version: 1, drafts: [draft] }))
+  writeFileSync(
+    join(root, 'workspace.json'),
+    JSON.stringify({ name: 'Fictional measurement workspace' }),
+  )
+  mkdirSync(join(root, 'skills', 'measurement-support'), { recursive: true })
+  writeFileSync(
+    join(root, 'skills', 'measurement-support', 'support.txt'),
+    'Fictional support data.',
+  )
+  const before = stateBytes(root),
+    names = Object.keys(before)
+  const imported = (mark = true, row = draft) => {
+    rmSync(join(root, 'drafts.json'))
+    if (mark) db.prepare('INSERT INTO imported_side_file VALUES (?)').run('drafts.json')
+    if (row) db.prepare('INSERT INTO draft VALUES (?, ?)').run(row.slot, JSON.stringify(row))
+  }
+  return { root, db, before, names, draft, imported }
+}
+
 describe('populated recovery measurement', () => {
+  it.each(['file', 'database'])('preserves exact coupled state with drafts in %s', (source) => {
+    const fixture = stateFixture()
+    try {
+      if (source === 'database') fixture.imported()
+      const compared = measurementStateComparison(fixture.root, fixture.before, fixture.names)
+      expect(compared.lost).toEqual([])
+      expect(compared.draftSource).toBe(source)
+      expect(compared.draft).toEqual({
+        file: source === 'file',
+        imported: source === 'database',
+        row: source === 'database',
+      })
+      expect(compared.rewritten).toEqual([])
+      expect(compared.appeared).toEqual([])
+    } finally {
+      fixture.db.close()
+      rmSync(fixture.root, { recursive: true, force: true })
+    }
+  })
+
+  it.each(['marker', 'row', 'text', 'attachments', 'version', 'skills', 'workspace'])(
+    'still rejects lost or changed %s after side-file import',
+    (changed) => {
+      const fixture = stateFixture()
+      try {
+        const row = { ...fixture.draft }
+        if (changed === 'text') row.text = 'Changed fictional text.'
+        if (changed === 'attachments') row.attached = [{ path: '/fictional/changed.txt' }]
+        fixture.imported(changed !== 'marker', changed === 'row' ? null : row)
+        if (changed === 'version')
+          fixture.before['drafts.json'] = Buffer.from(
+            JSON.stringify({ version: 2, drafts: [fixture.draft] }),
+          )
+        if (changed === 'skills')
+          writeFileSync(
+            join(fixture.root, 'skills', 'measurement-support', 'support.txt'),
+            'Changed support.',
+          )
+        if (changed === 'workspace')
+          writeFileSync(
+            join(fixture.root, 'workspace.json'),
+            JSON.stringify({ name: 'Changed workspace' }),
+          )
+        const compared = measurementStateComparison(fixture.root, fixture.before, fixture.names)
+        const lost =
+          changed === 'skills'
+            ? 'skills:'
+            : changed === 'workspace'
+              ? 'workspace.json:'
+              : 'drafts.json:'
+        expect(compared.lost.some((problem) => problem.startsWith(lost))).toBe(true)
+        expect(compared.draft.imported).toBe(changed !== 'marker')
+        expect(compared.draft.row).toBe(changed !== 'row')
+      } finally {
+        fixture.db.close()
+        rmSync(fixture.root, { recursive: true, force: true })
+      }
+    },
+  )
+
   it.each(['deadline', 'SIGTERM', 'SIGINT'])(
     'joins an abort-ignoring measurement child on %s and rejects late preflight success',
     async (reason) => {

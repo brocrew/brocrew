@@ -20,7 +20,12 @@ import { tmpdir } from 'node:os'
 import { performance } from 'node:perf_hooks'
 import { DatabaseSync } from 'node:sqlite'
 import { once } from 'node:events'
-import { digest, measurementFilesystem, joinMeasurementChild } from './mac-update-test.mjs'
+import {
+  digest,
+  measurementFilesystem,
+  joinMeasurementChild,
+  stateBytes,
+} from './mac-update-test.mjs'
 import { until } from './update-rehearsal-app.mjs'
 import { readStateEntry } from './skill-tree-state.mjs'
 import {
@@ -203,6 +208,7 @@ export function measurementFacts(db) {
 const HEADROOM = 10_000_000_000
 const OVERSHOOT = 32 * 1024 * 1024
 const STATE_AND_WAL = 64 * 1024 * 1024
+const DRAFT_SLOT = 'session:measurement-oracle'
 const measurementError = (error) => ({
   code: error.code ?? null,
   errno: error.errno ?? null,
@@ -560,23 +566,22 @@ export async function leaveMeasurementWal(file) {
   return readMeasurementFacts(file)
 }
 
-function readMeasurementFacts(file) {
+function readMeasurementDatabase(file, read) {
   const db = new DatabaseSync(file, { readOnly: true })
   try {
-    return measurementFacts(db)
+    return read(db)
   } finally {
     db.close()
   }
 }
+const readMeasurementFacts = (file) => readMeasurementDatabase(file, measurementFacts)
 
 function seedState(root) {
   writeFileSync(
     join(root, 'drafts.json'),
     JSON.stringify({
       version: 1,
-      drafts: [
-        { slot: 'session:measurement-oracle', text: 'Fictional measurement draft.', attached: [] },
-      ],
+      drafts: [{ slot: DRAFT_SLOT, text: 'Fictional measurement draft.', attached: [] }],
     }),
   )
   writeFileSync(
@@ -595,12 +600,21 @@ function seedState(root) {
   )
 }
 
-function stateAt(root, names) {
-  return Object.fromEntries(
-    names
-      .filter((name) => existsSync(join(root, name)))
-      .map((name) => [name, readStateEntry(join(root, name))]),
-  )
+export function measurementStateComparison(root, before, names) {
+  return readMeasurementDatabase(join(root, 'brobot2.sqlite'), (db) => {
+    const mark = db.prepare('SELECT name FROM imported_side_file WHERE name = ?').get('drafts.json')
+    const row = db.prepare('SELECT entry FROM draft WHERE slot = ?').get(DRAFT_SLOT)
+    const file = existsSync(join(root, 'drafts.json'))
+    const after = stateBytes(
+      root,
+      mark ? { imported_side_file: [mark], draft: row ? [row] : [] } : {},
+    )
+    return {
+      ...stateKept(before, after, names),
+      draft: { file, imported: Boolean(mark), row: Boolean(row) },
+      draftSource: file ? 'file' : mark ? 'database' : 'missing',
+    }
+  })
 }
 
 export async function checkedProofCopy(
@@ -732,7 +746,7 @@ async function runMeasurementSize({ bytes, old, next, source, version, migration
           ? 'BroCrew made a checked recovery copy before changing its data.'
           : CHECKPOINT_LINE
       const ids = new Set((await proofManifests(workspace)).map((one) => one.manifest.id))
-      const state = stateAt(workspace, names)
+      const state = stateBytes(workspace)
       requireEvidence(
         freeAt(root) >=
           expectedFacts.pages *
@@ -887,8 +901,9 @@ async function runMeasurementSize({ bytes, old, next, source, version, migration
           live.needles.some((row) => row.id === 'measurement-wal'),
           'Live committed data was lost.',
         )
+        record.stateComparison = measurementStateComparison(workspace, state, names)
         requireEvidence(
-          stateKept(state, stateAt(workspace, names), names).lost.length === 0,
+          record.stateComparison.lost.length === 0,
           'Coupled fixture state changed during startup.',
         )
         record.validationFinished = performance.now()
