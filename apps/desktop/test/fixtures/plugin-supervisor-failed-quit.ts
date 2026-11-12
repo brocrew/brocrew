@@ -46,7 +46,12 @@ async function main() {
   const configPath = join(root, 'launch.json')
   await writeFile(configPath, config)
   const { owner } = await runPluginSupervisor(configPath, hash(config))
+  if (process.argv.includes('shutdown-reject'))
+    owner.shutdown = async () => {
+      throw Object.assign(new Error('Fictional owner record write failure'), { code: 'EIO' })
+    }
   process.on('message', (message) => {
+    if (message === 'ping') process.send?.({ event: 'pong' })
     if (message !== 'adopt') return
     void (async () => {
       const runId = randomUUID()
