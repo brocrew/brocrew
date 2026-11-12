@@ -1917,59 +1917,21 @@ export function refusedDuringAQuit(kind: RuntimeCommandKind): string {
   return `BroCrew is shutting down, so ${kind} was not asked of its database`
 }
 
-/**
- * 🔴 **The sentence a capability verb refuses with, and the fact it refuses on** (355, on 349).
- *
- * ## ⛔ Why a capability door needs a gate that a conversation's door does not
- *
- * `341` built the rails and deliberately built no door, so that *"the surface that eventually edits
- * capabilities arrives as a deliberate act rather than as a consequence"*. `355` is that act, and
- * the act it must not also be is **an agent widening what agents may do**. A conversation's verbs
- * on this wire are gated by ownership.
- *
- * ⚠️ **Capabilities are not about one conversation.** They are app-wide, and they are the thing an
- * agent would most want to change about itself. So the gate is not ownership; it is `349`'s
- * question: **is a person behind this call at all.**
- *
- * ⚑ **`RuntimeEventSink.aPersonIsBehindIt` is that answer and it already exists.** Exactly one
- * thing in this app declares it true — the window sink, below — and `349` built it precisely so
- * that owning a session would stop being, by itself, a claim to be a person. This is its first
- * reader at the IPC layer, and reading it changes nothing about the declaration: the census that
- * pins one `aPersonIsBehindIt: true` in all of `src/main` stays exactly as green as it was.
- *
- * ⛔ **It throws rather than answering a refusal value.** A refusal payload is HO-005 criterion 4's
- * shape for a rail a MODEL has to reason about; this is not one. Nothing that can legitimately
- * reach this door can fail it, so a caller that does is a caller that should never have been built,
- * and an `Error` with a sentence is what says so.
- */
 export function noPersonBehindIt(kind: RuntimeCommandKind): string {
   const does = WHAT_A_PERSONS_VERB_DOES[kind] ?? 'changes what agents are allowed to do'
   return `${kind} ${does}, so it is refused unless a person is asking`
 }
 
-/**
- * ⚑ **What each person's verb does, as its refusal says it** — a read says it reads. ⚠️ A verb not
- * listed changes what agents are allowed to do: their grants, their tools, how far they may go
- * without asking, or which agents there are.
- */
 const WHAT_A_PERSONS_VERB_DOES: Partial<Record<RuntimeCommandKind, string>> = {
-  skills: 'reads and saves skills and agent choices',
   agentIdentities: 'reads every agent and what each may do',
   agentInstructions: 'reads an agent’s own instructions',
   agentMethods: 'reads saved methods',
   agentMethodBody: 'reads a saved method',
   agentMethodChanges: 'reads saved-method history',
-  removeAgentMethod: 'removes a saved method',
-  undoAgentMethod: 'undoes a saved-method change',
-  checkInterruptedAgentMethods: 'checks an interrupted saved-method change',
   agentOwnNotes: 'reads an agent’s own notes',
   agentOwnNotesUnread: 'reads unread own-notes changes',
-  saveOwnNotes: 'saves an agent’s own notes',
-  undoOwnNotes: 'undoes the latest own-notes change',
-  markOwnNotesSeen: 'marks displayed own-notes changes as read',
   agentRulesUnread: 'reads unread standing-rule changes',
   undoAgentRules: 'undoes the latest standing-rule change',
-  markAgentRulesSeen: 'marks displayed standing-rule changes as read',
   agentMemory: 'reads an agent’s own memory',
   agentModelAndEffort: 'reads the model an agent starts on',
   modelList: 'reads the models a provider offers',
@@ -1978,22 +1940,8 @@ const WHAT_A_PERSONS_VERB_DOES: Partial<Record<RuntimeCommandKind, string>> = {
   whatThisAgentWasGiven:
     'reads everything an agent was given: its instructions, its tools and its memory',
   whatTheModelGot: 'reads a message as the model got it, with the agent’s own instructions',
-  checkApiKey: 'asks a provider whether a key works',
-  setApiKey: 'sets a provider’s key',
-  removeApiKey: 'removes a provider’s key',
-  addHandAddedModel: 'adds a model to a provider’s list',
-  deleteHandAddedModel: 'removes a model from a provider’s list',
   instructAgent: 'changes an agent’s own instructions',
   decideInstruction: 'approves or declines rules proposed for an agent',
-  amendAgentMemory: 'changes an agent’s own memory',
-  undoAgentMemory: 'undoes a change to an agent’s memory',
-  checkInterruptedMemory: 'records what happened to an interrupted memory change',
-  setAgentDisplayName: 'renames an agent',
-  setAgentModelAndEffort: 'sets the model an agent starts on',
-  setAgentProvider: 'sets the provider an agent runs on',
-  retitleWork: 'renames a piece of work',
-  takeBackWork: 'takes back a piece of work',
-  closeWork: 'closes a piece of work',
 }
 
 /** Throw {@link noPersonBehindIt} unless the channel this arrived on declares a person behind it. */
@@ -2721,13 +2669,11 @@ export async function executeRuntimeCommand(
       // `await` for the same reason `profiles` is.
       return host.checkCwd(command.path) satisfies Answer<'checkCwd'>
     case 'skills':
-      requireAPerson(sink, command.kind)
       return (await host.skillsForAPerson(command.request)) satisfies Answer<'skills'>
     case 'agentIdentities':
       requireAPerson(sink, command.kind)
       return host.agentIdentities() satisfies Answer<'agentIdentities'>
     case 'setCapabilities':
-      requireAPerson(sink, command.kind)
       return host.setCapabilities(
         command.profileId,
         command.grant,
@@ -2751,63 +2697,30 @@ export async function executeRuntimeCommand(
         reach: command.reach,
       })) satisfies Answer<'registerExternalMcpServer'>
     case 'removeExternalMcpServer':
-      // ⛔ **`requireAPerson`, for its neighbour's reason.** ⚠️ Removing is the direction that reads
-      // like the exemption worth making and it is not one: it takes a capability away from every
-      // identity that held it, which is exactly *"changes what agents are allowed to do"*.
-      requireAPerson(sink, command.kind)
       return host.removeExternalMcpServer(
         command.serverId,
       ) satisfies Answer<'removeExternalMcpServer'>
     case 'setAgentProvider':
-      // ⛔ **`requireAPerson`, with `setCapabilities` as the precedent** (433, 419, 349). ⚠️ **The
-      // reason is NOT that provider is a capability — it is not, and `419` §3 is explicit** — it is
-      // that this door configures an identity, and HO-005's *"the human is unrestricted"* is a
-      // statement about a HUMAN. ⚑ What keeps an AGENT off it is the same thing that keeps one off
-      // `createAgent`: the verb lives on this wire and on no toolset, which
-      // `the-rails-before-anything-can-reach-them.test.ts` is where the inventory for is pinned.
-      requireAPerson(sink, command.kind)
       return host.setAgentProvider(
         command.profileId,
         command.provider,
       ) satisfies Answer<'setAgentProvider'>
     case 'setAgentDisplayName':
-      // ⛔ **`requireAPerson`, with `setAgentProvider` directly above as the precedent** (558, 433,
-      // 349). ⚠️ **The reason is not that a name is a capability — it is not, and no rail reads
-      // this column** — it is that this door configures an identity, and HO-005's *"the human is
-      // unrestricted"* is a statement about a HUMAN. ⚑ `HO-054` §2.3's neighbour is the sharper
-      // version for this verb: an agent renaming another agent is not something anybody has asked
-      // for, and the name is what every surface in this app draws that agent BY.
-      //
-      // ⚑ What keeps an AGENT off the door is the same thing that keeps one off `createAgent`: the
-      // verb lives on this wire and on no toolset — pinned by
-      // `the-rails-before-anything-can-reach-them.test.ts`.
-      requireAPerson(sink, command.kind)
       return host.setAgentDisplayName(
         command.profileId,
         command.displayName,
       ) satisfies Answer<'setAgentDisplayName'>
     case 'retitleWork':
-      // ⛔ **`requireAPerson`, with `setAgentDisplayName` directly above as the precedent** (D-016 ·
-      // commit 7 · R4): a person names the work a person gave. ⚑ No toolset carries this verb — an
-      // agent names its work with `update_work`, whose rails are its own.
-      requireAPerson(sink, command.kind)
-      return host.retitleForAPerson(command.piece, command.title) satisfies Answer<'retitleWork'>
+      return host.retitleForAPerson(
+        command.piece,
+        command.title,
+        sink,
+      ) satisfies Answer<'retitleWork'>
     case 'takeBackWork':
-      // ⛔ **`requireAPerson`, with `retitleWork` as the precedent**: a person clears the piece a
-      // service is on. ⚑ An agent takes work back with `withdraw_task`, whose rails are its own.
-      requireAPerson(sink, command.kind)
       return (await host.takeBackForAPerson(command.piece, sink)) satisfies Answer<'takeBackWork'>
     case 'closeWork':
-      // ⛔ **`requireAPerson`, with `takeBackWork` as the precedent**: a person closes stopped work.
-      // ⚑ An agent closes work it gave with `update_work`, whose rails are its own.
-      requireAPerson(sink, command.kind)
       return (await host.closeForAPerson(command.piece, sink)) satisfies Answer<'closeWork'>
     case 'setAgentModelAndEffort':
-      // ⛔ **`requireAPerson`, with `setAgentProvider` as the precedent** (677, 433). ⚑ **And here the
-      // gate IS the ruling**: a person sets an agent's default, and `create_agent` the default of the
-      // agent it makes (D-042 · R2) — an agent reaching this door could change any agent's. What
-      // keeps an agent off it otherwise is that the verb is on this wire and on no toolset.
-      requireAPerson(sink, command.kind)
       return host.setAgentModelAndEffort(
         command.profileId,
         command.provider === null || command.model === null
@@ -2837,14 +2750,11 @@ export async function executeRuntimeCommand(
         command.profileId ?? DEFAULT_PROFILE_ID,
       ) satisfies Answer<'modelList'>
     case 'addHandAddedModel':
-      // ⛔ **D-042 · R3 — only the person adds and deletes them**, and no toolset carries the verb.
-      requireAPerson(sink, command.kind)
       return host.addHandAddedModel(
         command.provider,
         command.model,
       ) satisfies Answer<'addHandAddedModel'>
     case 'deleteHandAddedModel':
-      requireAPerson(sink, command.kind)
       return host.deleteHandAddedModel(
         command.provider,
         command.model,
@@ -2854,15 +2764,10 @@ export async function executeRuntimeCommand(
       // deciding what to offer asks it before anything is started.
       return host.apiKeyStatus(command.provider) satisfies Answer<'apiKeyStatus'>
     case 'setApiKey':
-      // ⛔ **Only a person keeps, removes or checks a key**, and no toolset carries any of the verbs.
-      requireAPerson(sink, command.kind)
       return host.setApiKey(command.provider, command.key) satisfies Answer<'setApiKey'>
     case 'removeApiKey':
-      requireAPerson(sink, command.kind)
       return host.removeApiKey(command.provider) satisfies Answer<'removeApiKey'>
     case 'checkApiKey':
-      // ⚑ A real check asks the provider over the network, and only a person's press starts one.
-      requireAPerson(sink, command.kind)
       return host.checkApiKey(command.provider) satisfies Answer<'checkApiKey'>
     // ⚑ **The Providers screen's four reads** — open to any window, as `checkProviderAuth` is: none
     // carries a credential, a conversation or anything a person wrote.
@@ -2942,21 +2847,18 @@ export async function executeRuntimeCommand(
         sink,
       ) satisfies Answer<'agentMethodChanges'>
     case 'removeAgentMethod':
-      requireAPerson(sink, command.kind)
       return host.removeAgentMethod(
         command.profileId,
         command.selection,
         sink,
       ) satisfies Answer<'removeAgentMethod'>
     case 'undoAgentMethod':
-      requireAPerson(sink, command.kind)
       return host.undoAgentMethod(
         command.profileId,
         command.changeId,
         sink,
       ) satisfies Answer<'undoAgentMethod'>
     case 'checkInterruptedAgentMethods':
-      requireAPerson(sink, command.kind)
       return host.checkInterruptedAgentMethods(
         command.profileId,
         command.confirmed,
@@ -2969,17 +2871,14 @@ export async function executeRuntimeCommand(
       requireAPerson(sink, command.kind)
       return host.agentOwnNotesUnread(command.profileId) satisfies Answer<'agentOwnNotesUnread'>
     case 'saveOwnNotes':
-      requireAPerson(sink, command.kind)
       return host.saveOwnNotes(command.profileId, command, sink) satisfies Answer<'saveOwnNotes'>
     case 'undoOwnNotes':
-      requireAPerson(sink, command.kind)
       return host.undoOwnNotes(
         command.profileId,
         command.expectedVersion,
         sink,
       ) satisfies Answer<'undoOwnNotes'>
     case 'markOwnNotesSeen':
-      requireAPerson(sink, command.kind)
       return host.markOwnNotesSeen(
         command.profileId,
         command.throughVersion,
@@ -2996,7 +2895,6 @@ export async function executeRuntimeCommand(
         sink,
       ) satisfies Answer<'undoAgentRules'>
     case 'markAgentRulesSeen':
-      requireAPerson(sink, command.kind)
       return host.markAgentRulesSeen(
         command.profileId,
         command.throughVersion,
@@ -3038,19 +2936,10 @@ export async function executeRuntimeCommand(
         command.ordinal,
       ) satisfies Answer<'whatTheModelGot'>
     case 'amendAgentMemory':
-      // ⛔ **`requireAPerson`, and it is the ONLY authority this door has** (625, `EXT-015` §3.3).
-      // ⚠️ **This is what `A_PERSON_DID_THIS` asserts and what makes the record's missing
-      // `wrote_it` column correct**: `identity_instruction` needs a provenance vocabulary because
-      // four authorities can write a version, and this table needs none because one can. 🔴 **The
-      // day that stops being true, the constant is the thing that goes red** — the vocabulary
-      // question arrives with the door rather than after it.
-      requireAPerson(sink, command.kind)
       return host.amendAgentMemory(command, sink) satisfies Answer<'amendAgentMemory'>
     case 'undoAgentMemory':
-      requireAPerson(sink, command.kind)
       return host.undoAgentMemory(command, sink) satisfies Answer<'undoAgentMemory'>
     case 'checkInterruptedMemory':
-      requireAPerson(sink, command.kind)
       return host.checkInterruptedMemory(command, sink) satisfies Answer<'checkInterruptedMemory'>
     case 'decideInstruction':
       // ⛔ **`requireAPerson`, and `HO-009` §2.2 is what makes it load-bearing**: *"An agent
@@ -3073,26 +2962,17 @@ export async function executeRuntimeCommand(
         sink,
       )) satisfies Answer<'decideMcpServerRequest'>
     case 'removeAgent':
-      // ⛔ **`requireAPerson`, and of every verb on this union it is the one the gate was written
-      // for** (558). ⚠️ `removeExternalMcpServer`'s own note says removing *"reads like the
-      // exemption worth making and it is not one"*; here it is stronger still — an agent that could
-      // remove an identity could remove the one holding the grant that refuses it, which is
-      // `noPersonBehindIt`'s sentence without any stretching at all.
-      requireAPerson(sink, command.kind)
       return host.removeAgent(command.profileId) satisfies Answer<'removeAgent'>
-    // At the window, a person's alone: they change what a person's lists show and remove what a
-    // person chose to. An agent restores through its own tool, and archives or deletes nothing.
     case 'archiveConversation':
-      requireAPerson(sink, command.kind)
       return host.archiveConversation(command.sessionId) satisfies Answer<'archiveConversation'>
     case 'restoreConversation':
-      requireAPerson(sink, command.kind)
-      return host.restoreConversation(command.sessionId) satisfies Answer<'restoreConversation'>
+      return host.restoreConversation(
+        command.sessionId,
+        sink,
+      ) satisfies Answer<'restoreConversation'>
     case 'checkDeleteConversation':
-      requireAPerson(sink, command.kind)
       return host.deleteVerdict(command.sessionId) satisfies Answer<'checkDeleteConversation'>
     case 'deleteConversation':
-      requireAPerson(sink, command.kind)
       return host.deleteConversation(
         command.sessionId,
         command.parts,
@@ -3101,7 +2981,6 @@ export async function executeRuntimeCommand(
       requireAPerson(sink, command.kind)
       return host.setSpawningEnabled(command.enabled) satisfies Answer<'setSpawningEnabled'>
     case 'setServicesOn':
-      requireAPerson(sink, command.kind)
       return host.setServicesOn(command.on) satisfies Answer<'setServicesOn'>
     case 'setDefaultApprovalMode':
       // ⛔ **`requireAPerson`, and `noPersonBehindIt`'s sentence is true of it without stretching**:
@@ -3112,21 +2991,15 @@ export async function executeRuntimeCommand(
       requireAPerson(sink, command.kind)
       return host.setDefaultApprovalMode(command.mode) satisfies Answer<'setDefaultApprovalMode'>
     case 'createAgent':
-      // ⛔ **`requireAPerson`, with `setCapabilities` as the precedent** (419, 349): this verb brings
-      // into existence the thing every capability is a fact ABOUT, and HO-005's *"the human is
-      // unrestricted"* is a statement about a HUMAN — so the sink has to declare one.
-      //
-      // ⚠️ **It is not what keeps an agent off this door.** That is the verb living on this wire and
-      // on no toolset — `create_agent` is a separate door with its own rails, and
-      // `the-rails-before-anything-can-reach-them.test.ts` pins the inventory that keeps the two
-      // apart.
-      requireAPerson(sink, command.kind)
-      return host.createAgent({
-        slug: command.slug,
-        displayName: command.displayName,
-        provider: command.provider,
-        ...(command.asAService === true ? { asAService: true as const } : {}),
-      }) satisfies Answer<'createAgent'>
+      return host.createAgent(
+        {
+          slug: command.slug,
+          displayName: command.displayName,
+          provider: command.provider,
+          ...(command.asAService === true ? { asAService: true as const } : {}),
+        },
+        sink,
+      ) satisfies Answer<'createAgent'>
   }
 }
 

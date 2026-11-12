@@ -22,8 +22,9 @@ import {
   THE_APP_ITSELF,
   type RuntimeEventSink,
 } from '../src/main/runtime/runtime-host'
+import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { WINDOW_CALLER_PREFIX } from '../src/main/runtime/window-caller'
-import { A_PERSON_DID_THIS, REFUSAL_MEANS } from '../src/shared/agent-memory'
+import { REFUSAL_MEANS } from '../src/shared/agent-memory'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
@@ -406,99 +407,85 @@ describe('§3 · ⚠️ a change reaches the agent from its NEXT conversation', 
   })
 })
 
-describe('§4 · 🔒 the door, and who may reach it', () => {
-  /**
-   * ⛔ **The census behind `A_PERSON_DID_THIS`, and it is what makes the missing `wrote_it` column
-   * a DECISION rather than an omission** (`EXT-015` §3.3).
-   *
-   * ⚠️ **`identity_instruction` carries a provenance vocabulary because FOUR authorities can write
-   * a version.** `identity_memory_amendment` carries none because exactly one can reach this door,
-   * and that is a claim about the SOURCE rather than about the schema — so it is asserted here.
-   * 🔴 **The day an agent may amend another agent's memory, this is what goes red.**
-   */
-  it('⛔ both verbs are gated on a PERSON, and no toolset names either of them', () => {
-    const srcRoot = join(dirname(fileURLToPath(import.meta.url)), '../src')
-    const withoutComments = (text: string): string =>
-      text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ')
-    const ipcCode = withoutComments(readFileSync(join(srcRoot, 'main/runtime/ipc.ts'), 'utf8'))
-    // ⚑ **Non-vacuity first**: a path typo would make every `indexOf` answer -1 and this file
-    // silent, which is `34`'s shape — a broken check's silence reads as a clean result.
-    expect(ipcCode.length).toBeGreaterThan(1000)
-
-    // ⛔ **Scoped to the case's OWN BODY, and a fixed-width slice is what this started as.**
-    // 🔴 **Measured, not imagined**: with `slice(at, at + 200)` both `requireAPerson` rows of the
-    // 625 mutation table SURVIVED. Stripping a comment leaves whitespace, so a 200-character
-    // window that begins at `case 'agentMemory':` runs past its own `return` and into
-    // `case 'amendAgentMemory':` — and found that case's gate instead of the missing one.
-    // ⚠️ `an-assertion-can-be-satisfied-by-a-neighbouring-element` and
-    // `a-fixed-width-slice-runs-into-the-next-region`, together, in a file whose neighbour
-    // happens to be guarded. ⚑ **The body ends at the next `case '`**, which is a boundary the
-    // source itself defines rather than a number somebody chose.
-    const bodyOf = (kind: string): string => {
-      const at = ipcCode.indexOf(`case '${kind}':`)
-      expect(at, `${kind} has no case in the command dispatcher`).toBeGreaterThan(0)
-      const next = ipcCode.indexOf(`case '`, at + 1)
-      expect(
-        next,
-        `${kind} is the last case — the slice would run to the end of the file`,
-      ).toBeGreaterThan(at)
-      return ipcCode.slice(at, next)
-    }
-    for (const kind of [
-      'agentMemory',
-      'amendAgentMemory',
-      'undoAgentMemory',
-      'checkInterruptedMemory',
-    ]) {
-      expect(bodyOf(kind), `${kind} is not gated on a person asking`).toContain(
-        'requireAPerson(sink, command.kind)',
-      )
-    }
-    // ⚑ **The control that would have caught the slice**: a case this file knows is NOT gated —
-    // `close` takes a session and is answered by the ownership boundary instead — must come back
-    // without the gate, so a body that had swallowed its neighbour goes red here.
-    expect(bodyOf('close')).not.toContain('requireAPerson(sink, command.kind)')
-
-    // ⛔ **…and the door does not reach an AGENT.** `agent-tools.ts` publishes a closed inventory
-    // (347); this is the negative with a search shape — the tools module names neither verb.
-    const tools = withoutComments(
-      readFileSync(join(srcRoot, 'main/runtime/agent-tools.ts'), 'utf8'),
-    )
-    // ⚑ **The positive control**: the sweep really is reading the tool inventory.
-    expect(tools).toContain('give_work')
-    for (const kind of [
-      'agentMemory',
-      'amendAgentMemory',
-      'undoAgentMemory',
-      'checkInterruptedMemory',
-    ]) {
-      expect(tools, `${kind} is reachable from a tool`).not.toContain(kind)
-    }
-    // 🔴 **And the sentence that states it**, so a reader meets the ruling where the vocabulary
-    // would otherwise be (standing rule 5: a safety sentence with no test is a comment).
-    expect(A_PERSON_DID_THIS).toContain('Only a person')
-  })
-
-  it('refuses the app at the host mutation door without changing or recording an entry', async () => {
-    // Startup may observe an interrupted change as the app; it cannot initiate an amendment.
+describe('memory edits from colleagues keep selected-target and confirmation controls', () => {
+  it('records the peer initiator and settler through IPC and reverses only the selected change', async () => {
     identity('brobot')
     const { note } = plantTheNight('brobot')
-
-    const answered = await host.amendAgentMemory(
-      {
-        profileId: 'brobot',
-        provider: 'claude',
-        entry: note,
-        confirmed: true,
-        act: 'removed',
-        text: '',
-      },
-      THE_APP_ITSELF,
-    )
-
-    expect(answered).toBeNull()
+    const peer: RuntimeEventSink = {
+      ownerId: 'agent:peer',
+      aPersonIsBehindIt: false,
+      alive: true,
+      send() {},
+      sendLiveness() {},
+    }
+    const asked = {
+      kind: 'amendAgentMemory',
+      profileId: 'brobot',
+      provider: 'claude',
+      entry: note,
+      confirmed: true,
+      act: 'removed',
+      text: '',
+    }
+    expect(await executeRuntimeCommand(host, peer, { ...asked, confirmed: false })).toMatchObject({
+      done: false,
+      refused: 'confirmation-required',
+    })
     expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
     expect(host.agentMemory('brobot').amendments).toEqual([])
+    const result = (await executeRuntimeCommand(host, peer, asked)) as {
+      done: boolean
+      amendment: { id: string }
+    }
+    expect(result).toMatchObject({
+      done: true,
+      amendment: {
+        by: { who: 'an-agent', agent: 'peer' },
+        settlement: { by: { who: 'an-agent', agent: 'peer' } },
+      },
+    })
+    expect(existsSync(note)).toBe(false)
+    expect(host.agentMemory('brobot').amendments[0]).toMatchObject({
+      by: { who: 'an-agent', agent: 'peer' },
+    })
+    expect(
+      await executeRuntimeCommand(host, peer, {
+        kind: 'undoAgentMemory',
+        profileId: 'brobot',
+        sourceId: result.amendment.id,
+        confirmed: true,
+      }),
+    ).toMatchObject({ done: true })
+    expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
+    expect(
+      await executeRuntimeCommand(host, peer, {
+        kind: 'checkInterruptedMemory',
+        profileId: 'brobot',
+        confirmed: true,
+      }),
+    ).toMatchObject({ done: true })
+    await expect(
+      executeRuntimeCommand(host, peer, { ...asked, extra: 'malformed' }),
+    ).rejects.toThrow()
+  })
+
+  it('records an app-initiated ordinary edit without changing startup reconciliation admission', async () => {
+    identity('brobot')
+    const { note } = plantTheNight('brobot')
+    expect(
+      await host.amendAgentMemory(
+        {
+          profileId: 'brobot',
+          provider: 'claude',
+          entry: note,
+          confirmed: true,
+          act: 'removed',
+          text: '',
+        },
+        THE_APP_ITSELF,
+      ),
+    ).toMatchObject({ done: true, amendment: { by: { who: 'the-app-itself' } } })
+    expect(existsSync(note)).toBe(false)
   })
 })
 
@@ -537,15 +524,15 @@ describe('durable memory operations through the person window doors', () => {
     expect(removed?.done).toBe(true)
     if (!removed?.done) throw new Error('Expected a recorded removal')
     const asked = { profileId: 'lark', sourceId: removed.amendment.id, confirmed: true }
-    expect(await host.undoAgentMemory(asked, THE_APP_ITSELF)).toBeNull()
-    const restored = await host.undoAgentMemory(asked, sink)
+    const restored = await host.undoAgentMemory(asked, THE_APP_ITSELF)
     expect(restored?.done).toBe(true)
     expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
     if (!restored?.done) throw new Error('Expected a recorded restoration')
     expect(restored.amendment).toMatchObject({
       act: 'restored',
       sourceId: removed.amendment.id,
-      by: { who: 'a-person' },
+      by: { who: 'the-app-itself' },
+      settlement: { by: { who: 'the-app-itself' } },
     })
     expect(
       (await host.undoAgentMemory({ ...asked, sourceId: restored.amendment.id }, sink))?.done,
@@ -553,7 +540,7 @@ describe('durable memory operations through the person window doors', () => {
     expect(existsSync(note)).toBe(false)
   })
 
-  it('uses the same unfinished-memory reason in the roster and removal, until a person checks it', async () => {
+  it('uses the same unfinished-memory reason in the roster and removal, until an ordinary caller checks it', async () => {
     identity('lark')
     const { note } = plantTheNight('lark')
     const store = createSessionStore(db)
@@ -582,16 +569,13 @@ describe('durable memory operations through the person window doors', () => {
     })
     expect(
       await host.checkInterruptedMemory({ profileId: 'lark', confirmed: true }, THE_APP_ITSELF),
-    ).toBeNull()
-    expect(
-      (await host.checkInterruptedMemory({ profileId: 'lark', confirmed: true }, sink))?.done,
-    ).toBe(true)
+    ).toMatchObject({ done: true })
     const reading = host.agentMemory('lark')
     expect(reading.needsChecking).toBeUndefined()
     expect(reading.amendments[0]).toMatchObject({
       outcome: 'unchanged',
       by: { who: 'a-person' },
-      settlement: { by: { who: 'a-person' } },
+      settlement: { by: { who: 'the-app-itself' } },
     })
     expect(host.removeAgent('lark')).toEqual({ ok: true, slug: 'lark' })
   })

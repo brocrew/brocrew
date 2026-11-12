@@ -494,22 +494,6 @@ describe('355 · the grant nobody can give', () => {
      * declare one, and allowed on the one that does, at the same moment.
      */
     it.each([
-      ['agentIdentities', { kind: 'agentIdentities' }],
-      [
-        'setCapabilities',
-        {
-          kind: 'setCapabilities',
-          externalMcpServerIds: [],
-          profileId: 'pm',
-          grant: {
-            maxDepth: null,
-            canMessage: null,
-            canAssignWork: null,
-            canCreateAgents: null,
-            canWriteRules: null,
-          },
-        },
-      ],
       ['setSpawningEnabled', { kind: 'setSpawningEnabled', enabled: false }],
       // ⚑ **500 · the launch default, live through the same door.** ⛔ `'auto'` deliberately, not
       // `'ask'`: the refusal has to be measured on the value a caller would actually want, and a
@@ -525,10 +509,40 @@ describe('355 · the grant nobody can give', () => {
       await expect(overTheWire(command, window)).resolves.not.toThrow()
     })
 
+    it('lets a colleague change an existing identity grant while keeping unknown targets absent', async () => {
+      await bringIdentityIntoBeing('pm')
+      const sink = new AnonymousSink('agent:colleague')
+      await expect(overTheWire({ kind: 'agentIdentities' }, sink)).rejects.toThrow(
+        noPersonBehindIt('agentIdentities'),
+      )
+      await expect(overTheWire({ kind: 'agentIdentities' }, window)).resolves.toMatchObject({
+        identities: expect.arrayContaining([expect.objectContaining({ slug: 'pm' })]),
+      })
+      const grant = {
+        maxDepth: 3,
+        canMessage: null,
+        canAssignWork: null,
+        canCreateAgents: null,
+        canWriteRules: null,
+      }
+      await expect(
+        overTheWire(
+          { kind: 'setCapabilities', profileId: 'pm', grant, externalMcpServerIds: [] },
+          sink,
+        ),
+      ).resolves.toMatchObject({ slug: 'pm' })
+      await expect(
+        overTheWire(
+          { kind: 'setCapabilities', profileId: 'missing', grant, externalMcpServerIds: [] },
+          sink,
+        ),
+      ).resolves.toBeNull()
+    })
+
     /** ⚠️ The sentence names the fact, so a person reading a log learns what was missing. */
     it('⚠️ says what was missing rather than "forbidden"', () => {
-      expect(noPersonBehindIt('setCapabilities')).toContain('a person is asking')
-      expect(noPersonBehindIt('setCapabilities')).toContain('setCapabilities')
+      expect(noPersonBehindIt('setDefaultApprovalMode')).toContain('a person is asking')
+      expect(noPersonBehindIt('setDefaultApprovalMode')).toContain('setDefaultApprovalMode')
     })
 
     /**

@@ -501,8 +501,7 @@ function fold(rows: readonly DigestRow[], name: (id: string) => string): Tally {
         // questions fold ends them on this row, which is the whole of what says so: no row of their
         // own is written.
         for (const asked of tally.questionsAboutPiece.get(event.piece) ?? []) tally.ended.add(asked)
-        // ⚑ A person took it back (no conversation in `by`): the line says so, off the row itself.
-        if (event.by === null) {
+        if (event.actor === undefined ? event.by === null : event.actor.who === 'a-person') {
           bump(
             tally,
             'work-taken-back-by-a-person',
@@ -525,10 +524,11 @@ function fold(rows: readonly DigestRow[], name: (id: string) => string): Tally {
         const named = tally.given.get(event.piece)
         tally.spokenFor.add(event.piece)
         for (const asked of tally.questionsAboutPiece.get(event.piece) ?? []) tally.ended.add(asked)
-        // ⚑ A person closed it (no conversation in `by`): the line says so, off the row itself.
         bump(
           tally,
-          event.by === null ? 'work-closed-by-a-person' : 'work-closed',
+          (event.actor === undefined ? event.by === null : event.actor.who === 'a-person')
+            ? 'work-closed-by-a-person'
+            : 'work-closed',
           row.at,
           named === undefined ? null : pieceLine(named.label, named.title),
         )

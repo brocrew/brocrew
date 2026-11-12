@@ -24,37 +24,8 @@ import {
   neutralHostDeps,
 } from './lib/host-fixture'
 
-/**
- * # D-024 · R2 and R3 — a profile reads across its own conversations
- *
- * One profile can hold several conversations at once (two Alis, one under a person and one under
- * the PM). Since D-024 they know of each other at launch, and this file pins what each one may
- * then READ of the others, over a real `RuntimeHost`, a real ledger and the real toolsets, on the
- * Fake provider only:
- *
- *  - **§1 · `read_transcript`** reaches the caller's own profile's other conversations, by an id or
- *    by the label of a piece one of them owns — and not another profile's, a stranger's, or its own;
- *    every refusal keeps the one answer, whose last clause now says the reach it has.
- *  - **§2 · `list_tasks` naming a piece** reads the record of a piece another conversation of the
- *    profile HOLDS (the owner half) or GAVE (the giver half), and says whose a root is.
- *  - **§3 · `list_tasks` with `made`** lists the files the profile's conversations MADE — scoped by
- *    the piece's OWNER, by the role `made` and by nothing else, newest first, each with the piece it
- *    was kept on — and each listed id reads with `read_document`.
- *  - **§4 · the bound** — the newest ten, the rest counted and said, and the older ones still on
- *    their own piece's record.
- *  - **§5 · the shapes refused** — `made` beside a piece, `made` that is not a boolean, `made:
- *    false` as the board, and a conversation this app can name no profile for.
- *
- * ⚑ Two rules of the file: **the bounds are literals** (10, 11, 12), so a changed constant is read
- * as a change and not followed; and **a negative is paired with a positive from the same reader**,
- * every presence asserted before an order or a text. Every file is kept by ONE `update_work` call so
- * each resource takes its own `tick` timestamp (resource ids are random: a shared timestamp would
- * tie-break at random).
- */
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-const shaOf = (bytes: Buffer | string): string => createHash('sha256').update(bytes).digest('hex')
 
 /** The last clause of `read_transcript`'s one refusal, as a model reads it since D-024. */
 const THE_REACH_IT_NOW_SAYS = 'your profile’s other conversations are read here'
@@ -74,6 +45,7 @@ describe('D-024 · a profile reads across its own conversations', () => {
   let window: RecordingSink
   let gate: ResumeGate
   const tick = (): number => clock++
+  const shaOf = (bytes: Buffer | string): string => createHash('sha256').update(bytes).digest('hex')
 
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-d024-reads-'))

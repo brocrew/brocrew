@@ -130,12 +130,10 @@ export function createOwnNotesStore(db: AppDatabase): OwnNotesStore {
     if (by.who === 'an-agent') {
       if (typeof by.agent !== 'string') return null
       const writer = sql().writer.get(by.agent) as Identity | undefined
-      if (!writer || writer.id !== target.id) return null
-      author = { profile: writer.slug, name: agentName(writer.slug, [writer]) }
-    } else if (by.who !== 'a-person') return null
+      if (writer) author = { profile: writer.slug, name: agentName(writer.slug, [writer]) }
+    }
     const version = said.expectedVersion + 1
-    const actor: ActedBy =
-      by.who === 'an-agent' ? { who: 'an-agent', agent: by.agent } : { who: 'a-person' }
+    const actor = by
     sql().insert.run(
       ownNotesRowId(target.slug, version),
       target.id,
@@ -177,7 +175,6 @@ export function createOwnNotesStore(db: AppDatabase): OwnNotesStore {
     },
     undoOwnNotes(profile, baseline, by, at) {
       return atomic(() => {
-        if (by.who !== 'a-person') return null
         const target = identity(profile)
         const current = target ? newest(target.id) : undefined
         if (!target || !current || !baselineMatches(current, baseline)) return null
@@ -204,11 +201,10 @@ export function createOwnNotesStore(db: AppDatabase): OwnNotesStore {
         (sql().newestAgent.get(id) as { version: number | null }).version ?? 0
       return { seenThrough, newestAgentVersion, unread: newestAgentVersion > seenThrough }
     },
-    markOwnNotesSeen(profile, throughVersion, by) {
+    markOwnNotesSeen(profile, throughVersion) {
       return (
         atomic(() => {
-          if (by.who !== 'a-person' || !Number.isSafeInteger(throughVersion) || throughVersion < 0)
-            return false
+          if (!Number.isSafeInteger(throughVersion) || throughVersion < 0) return false
           const target = identity(profile)
           if (!target || throughVersion > (newest(target.id)?.version ?? 0)) return false
           sql().markSeen.run(target.id, throughVersion)

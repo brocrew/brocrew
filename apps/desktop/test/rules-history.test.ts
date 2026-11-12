@@ -332,11 +332,18 @@ describe('standing rules retain their author and can be restored without losing 
       newestDirectVersion: 1,
       unread: true,
     })
-    expect(store.markInstructionsSeen('lark', 1, { who: 'an-agent', agent: 'ses-wren' })).toBe(
-      false,
-    )
+    expect(store.markInstructionsSeen('lark', 1, { who: 'an-agent', agent: 'ses-wren' })).toBe(true)
+    expect(store.instructionUnread('lark')).toEqual({
+      seenThrough: 1,
+      newestDirectVersion: 1,
+      unread: false,
+    })
     store = createSessionStore(db, () => now++) as unknown as HistoryStore
-    expect(store.instructionUnread('lark').unread).toBe(true)
+    expect(store.instructionUnread('lark')).toEqual({
+      seenThrough: 1,
+      newestDirectVersion: 1,
+      unread: false,
+    })
     expect(store.markInstructionsSeen('lark', 1, person)).toBe(true)
     write('Direct second', {
       whoWroteIt: 'an-agent-direct',

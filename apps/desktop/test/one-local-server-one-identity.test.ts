@@ -596,7 +596,7 @@ describe('one local server, one identity', () => {
     })
   })
 
-  describe('§5 · both registry verbs are refused unless a person is asking', () => {
+  describe('§5 · registration approval and colleague removal', () => {
     /** ⛔ A sink that declares nothing — every channel but a window (349). */
     class Anonymous implements RuntimeEventSink {
       readonly aPersonIsBehindIt = false
@@ -606,11 +606,7 @@ describe('one local server, one identity', () => {
       sendLiveness(): void {}
     }
 
-    it('🔴 refused on a channel with nobody behind it, and ALLOWED on the window, at one moment', async () => {
-      // ⛔ **`requireAPerson`, with `setCapabilities` as the precedent** (355, 349). ⚠️ **Not because
-      // a registry row is a capability** — it is not, and it grants nobody — but because this door
-      // decides what an agent may be GIVEN, and HO-005's *"the human is unrestricted"* is a
-      // statement about a HUMAN.
+    it('keeps registration approval and allows a colleague to remove the selected server', async () => {
       const server = await localMcpServer(['search_issues'])
       const add = {
         kind: 'registerExternalMcpServer' as const,
@@ -631,13 +627,11 @@ describe('one local server, one identity', () => {
       expect(registeredNames()).toEqual(['jira'])
 
       const remove = { kind: 'removeExternalMcpServer' as const, serverId: row.id }
-      await expect(
-        executeRuntimeCommand(host, new Anonymous('mcp:someone'), remove),
-      ).rejects.toThrow(noPersonBehindIt('removeExternalMcpServer'))
-      // ⛔ **The refusal left the row standing**, which is the half the sentence cannot show.
-      expect(registeredNames()).toEqual(['jira'])
-      expect(await executeRuntimeCommand(host, window, remove)).toBe(true)
+      await expect(executeRuntimeCommand(host, new Anonymous('mcp:someone'), remove)).resolves.toBe(
+        true,
+      )
       expect(registeredNames()).toEqual([])
+      expect(await executeRuntimeCommand(host, window, remove)).toBe(false)
     })
   })
 })

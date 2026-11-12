@@ -104,14 +104,30 @@ describe('own notes belong to an identity and retain exact attributable history'
     expect(store.ownInstructionsOf('lark').versions).toEqual([])
   })
 
-  it('refuses another profile, an unknown conversation and app actors without changing history', () => {
-    expect(write('Not mine', wren)).toBeNull()
-    expect(write('Unknown', { who: 'an-agent', agent: 'missing-session' })).toBeNull()
-    expect(write('App', { who: 'the-app-itself' })).toBeNull()
-    expect(write('Unknown caller', { who: 'a-caller-this-app-cannot-name' })).toBeNull()
-    expect(notes().ownNotesOf('lark')!.versions).toEqual([])
-    expect(write()).not.toBeNull()
-  })
+  it.each([
+    { text: 'Not mine', by: wren, author: { profile: 'wren', name: expect.any(String) } },
+    { text: 'Unknown', by: { who: 'an-agent', agent: 'missing-session' }, author: null },
+    { text: 'App', by: { who: 'the-app-itself' }, author: null },
+    { text: 'Unknown caller', by: { who: 'a-caller-this-app-cannot-name' }, author: null },
+  ] as const)(
+    'records $text with the actual actor and only a known author',
+    ({ text, by, author }) => {
+      const written = write(text, by)
+      expect(written).toMatchObject({ version: 1, text, by, author })
+      expect(notes().ownNotesOf('lark')!.versions).toEqual([written])
+      const raw = db
+        .prepare(
+          `SELECT n.actor, n.author FROM identity_own_notes n
+           JOIN agent_identity i ON i.id = n.identity_id WHERE i.slug = 'lark' AND n.version = 1`,
+        )
+        .get() as { actor: string; author: string | null }
+      expect(JSON.parse(raw.actor)).toEqual(by)
+      expect(raw.author === null ? null : JSON.parse(raw.author)).toEqual(author)
+      expect(
+        write('Keep the agreed review order.', lark, 'lark', { expectedVersion: 1 }),
+      ).toMatchObject({ version: 2, by: lark, author: { profile: 'lark' } })
+    },
+  )
 
   it('rejects stale reads from another connection by checking the version', () => {
     const otherDb = openDatabase(join(folder, 'app.sqlite'))
@@ -141,8 +157,16 @@ describe('own notes belong to an identity and retain exact attributable history'
     const baseline = { expectedVersion: 1 }
     expect(write(text + 'é', lark, 'lark', baseline)).toBeNull()
     expect(write('Fine', person, 'wren', { expectedVersion: 0 }, 'x'.repeat(4001))).toBeNull()
-    expect(write('Fine', lark, 'wren', { expectedVersion: 0 })).toBeNull()
-    expect(write('Fine', person, 'wren', { expectedVersion: 0 })).not.toBeNull()
+    expect(write('Fine', lark, 'wren', { expectedVersion: 0 })).toMatchObject({
+      version: 1,
+      by: lark,
+      author: { profile: 'lark' },
+    })
+    expect(write('Fine', person, 'wren', { expectedVersion: 1 })).toMatchObject({
+      version: 2,
+      by: person,
+      author: null,
+    })
   })
 
   it('rejects blank reasons and malformed baseline versions, and saves clearing as a new version', () => {
@@ -155,26 +179,31 @@ describe('own notes belong to an identity and retain exact attributable history'
     expect(notes().ownNotesOf('lark')!.versions).toEqual([empty, first])
   })
 
-  it('records a person edit honestly, and Undo appends only against the exact latest baseline', () => {
-    const first = write('Agent text')!
-    const second = write('Person text', person, 'lark', {
-      expectedVersion: 1,
-    })!
-    expect(second).toMatchObject({ by: person, author: null, version: 2 })
-    const baseline = { expectedVersion: 2 }
-    expect(notes().undoOwnNotes('lark', baseline, lark, clock++)).toBeNull()
-    const undone = notes().undoOwnNotes('lark', baseline, person, clock++)!
-    expect(undone).toMatchObject({
-      version: 3,
-      text: first.text,
-      by: person,
-      author: null,
-      restoredFromVersion: 1,
-      reason: 'Undo latest change',
-    })
-    expect(notes().undoOwnNotes('lark', baseline, person, clock++)).toBeNull()
-    expect(notes().ownNotesOf('lark')!.versions).toEqual([undone, second, first])
-  })
+  it.each([
+    { actor: 'person', by: person, author: null },
+    { actor: 'agent', by: lark, author: { profile: 'lark', name: expect.any(String) } },
+  ] as const)(
+    'records a person edit and an Undo by $actor against the exact latest baseline',
+    ({ by, author }) => {
+      const first = write('Agent text')!
+      const second = write('Person text', person, 'lark', {
+        expectedVersion: 1,
+      })!
+      expect(second).toMatchObject({ by: person, author: null, version: 2 })
+      const baseline = { expectedVersion: 2 }
+      const undone = notes().undoOwnNotes('lark', baseline, by, clock++)!
+      expect(undone).toMatchObject({
+        version: 3,
+        text: first.text,
+        by,
+        author,
+        restoredFromVersion: 1,
+        reason: 'Undo latest change',
+      })
+      expect(notes().undoOwnNotes('lark', baseline, person, clock++)).toBeNull()
+      expect(notes().ownNotesOf('lark')!.versions).toEqual([undone, second, first])
+    },
+  )
 
   it('refuses an in-transaction version collision without reporting a save or leaving history', () => {
     notes()
@@ -318,14 +347,19 @@ describe('own notes belong to an identity and retain exact attributable history'
     })
   })
 
-  it('acknowledges only the version a person saw and retains a later agent change as unread', () => {
+  it('acknowledges only an existing version and retains a later agent change as unread', () => {
     write('One')
     expect(notes().ownNotesUnread('lark')).toEqual({
       unread: true,
       newestAgentVersion: 1,
       seenThrough: 0,
     })
-    expect(notes().markOwnNotesSeen('lark', 1, lark)).toBe(false)
+    expect(notes().markOwnNotesSeen('lark', 1, lark)).toBe(true)
+    expect(notes().ownNotesUnread('lark')).toEqual({
+      unread: false,
+      newestAgentVersion: 1,
+      seenThrough: 1,
+    })
     expect(notes().markOwnNotesSeen('lark', 2, person)).toBe(false)
     write('Two', lark, 'lark', { expectedVersion: 1 })
     expect(notes().markOwnNotesSeen('lark', 1, person)).toBe(true)

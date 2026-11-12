@@ -100,7 +100,7 @@ afterEach(async () => {
   rmSync(root, { recursive: true, force: true })
 })
 
-describe('a person manages saved methods through bounded window commands', () => {
+describe('saved methods through bounded window commands', () => {
   it('reads a page and the selected body without accepting a file path', async () => {
     const listed = (await read('agentMethods', { offset: 0, limit: 1 })) as MethodLibrary
     expect(listed.items).toHaveLength(1)
@@ -115,22 +115,11 @@ describe('a person manages saved methods through bounded window commands', () =>
       problem: 'missing',
     })
   })
-  it('refuses every method command from an agent before reaching the service', async () => {
+  it('keeps main method reads gated before reaching the service', async () => {
     for (const [kind, extra] of [
       ['agentMethods', {}],
       ['agentMethodBody', { key: 'method:review.md' }],
       ['agentMethodChanges', {}],
-      [
-        'removeAgentMethod',
-        {
-          selection: {
-            confirmed: true,
-            key: 'method:review.md',
-          },
-        },
-      ],
-      ['undoAgentMethod', { changeId: 'change-one' }],
-      ['checkInterruptedAgentMethods', { confirmed: true }],
     ] as const) {
       expect(runtimeCommandSchema.safeParse({ kind, profileId: 'lark', ...extra }).success).toBe(
         true,
@@ -139,6 +128,33 @@ describe('a person manages saved methods through bounded window commands', () =>
     }
     expect(existsSync(join(folder, 'review.md'))).toBe(true)
     expect(service.history('lark')).toMatchObject({ ok: true, changes: [] })
+  })
+  it('uses the window to select while the colleague reversibly edits with its caller recorded', async () => {
+    const listed = (await read('agentMethods')) as MethodLibrary
+    expect(listed.items.map((item) => item.name)).toContain('review.md')
+    const selected = await selection()
+    expect(await read('agentMethodBody', { key: selected.key })).toMatchObject({
+      ok: true,
+      text: '# Review\nkept text',
+    })
+    expect(await read('agentMethodChanges')).toMatchObject({ ok: true, changes: [] })
+    expect(
+      await read('removeAgentMethod', { selection: { ...selected, confirmed: false } }, agent),
+    ).toMatchObject({ reason: 'confirmation-required' })
+    const removed = (await read('removeAgentMethod', { selection: selected }, agent)) as {
+      ok: boolean
+      change: { id: string; by: unknown }
+    }
+    expect(removed).toMatchObject({ ok: true, change: { by: { who: 'an-agent', agent: 'wren' } } })
+    expect(existsSync(join(folder, 'review.md'))).toBe(false)
+    expect(await read('undoAgentMethod', { changeId: removed.change.id }, agent)).toMatchObject({
+      ok: true,
+      change: { by: { who: 'an-agent', agent: 'wren' } },
+    })
+    expect(readFileSync(join(folder, 'review.md'), 'utf8')).toBe('# Review\nkept text')
+    expect(await read('checkInterruptedAgentMethods', { confirmed: true }, agent)).toMatchObject({
+      reason: 'no-interrupted-change',
+    })
   })
   it('requires confirmation and records a reversible named change', async () => {
     const selected = await selection()
@@ -184,15 +200,18 @@ describe('a person manages saved methods through bounded window commands', () =>
         JSON.stringify(packet),
       ).toBe(false)
   })
-  it('keeps the host service gate closed even when called without IPC', async () => {
+  it('keeps the host read refusal and real mutation confirmation without IPC', async () => {
     const list = Reflect.get(host, 'agentMethods') as (...args: unknown[]) => unknown
     const remove = Reflect.get(host, 'removeAgentMethod') as (...args: unknown[]) => unknown
     expect(list).toBeTypeOf('function')
     expect(remove).toBeTypeOf('function')
     expect(list.call(host, 'lark', 0, 50, agent)).toBeNull()
-    expect(await remove.call(host, 'lark', { confirmed: true }, agent)).toMatchObject({
+    expect(
+      (list.call(host, 'lark', 0, 50, person) as MethodLibrary).items.map((item) => item.name),
+    ).toContain('review.md')
+    expect(await remove.call(host, 'lark', { confirmed: false }, agent)).toMatchObject({
       ok: false,
-      reason: 'person-required',
+      reason: 'confirmation-required',
     })
   })
 })

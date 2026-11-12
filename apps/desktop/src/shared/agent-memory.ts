@@ -124,39 +124,12 @@ export type MemoryEditAct = (typeof MEMORY_EDIT)[number]
 /** One of {@link MEMORY_AMENDMENT}. */
 export type MemoryAmendmentAct = (typeof MEMORY_AMENDMENT)[number]
 
-/**
- * ⛔ **What each amendment MEANS, rendered from the word** (standing rule 8).
- *
- * 🔴 **Every sentence names a PERSON, and that is `EXT-015` §3.3 in the vocabulary rather than in a
- * comment:** *"Never let a person's edit look like the agent's own."* ⚑ There is no arm for an
- * agent because no agent can reach this door — see {@link A_PERSON_DID_THIS}.
- */
+/** Describes the edit; the amendment records its actor separately. */
 export const AMENDMENT_MEANS: Readonly<Record<MemoryAmendmentAct, string>> = {
-  removed: 'a person took this entry out of the agent’s memory',
-  corrected: 'a person replaced what this entry said',
-  restored: 'a person brought this back from its saved copy',
+  removed: 'this entry was taken out of the agent’s memory',
+  corrected: 'the text of this entry was replaced',
+  restored: 'this entry was brought back from its saved copy',
 }
-
-/**
- * 🔴 **Why there is no `whoWroteIt` on an amendment, said where a reader will look for one.**
- *
- * ⛔ **`identity_instruction` carries `WHO_WROTE_IT` because FOUR authorities can write a
- * version** — a person, an approval, a relay and a creator. ⚑ **Exactly one authority can amend a
- * memory store**: the verb lives on the window wire behind `requireAPerson` and on no toolset, and
- * `the-rails-before-anything-can-reach-them.test.ts` is what holds that.
- *
- * ⚠️ **So a vocabulary here would have one member**, and a closed set of one is a column that
- * cannot ever disagree with the door — `a-closed-vocabulary-guards-what-a-member-says` with nothing
- * to guard. ⛔ **What IS recorded is {@link MemoryAmendment.by}**, the same `ActedBy` every other
- * settled act in this app records, because *which* person and *which* caller is a fact
- * `wroteIt` was never able to answer (`477`).
- *
- * 🔴 **The day an agent may amend another agent's memory, this constant is the thing that goes
- * red** — it is asserted by name, so the vocabulary question arrives with the door rather than
- * after it.
- */
-export const A_PERSON_DID_THIS =
-  'Only a person can change an agent’s memory. No agent has a tool that reaches this.'
 
 /**
  * ⛔ **What a person is told when an entry's bytes are NOT inside BroBot's own folders** — and the
@@ -268,7 +241,7 @@ export interface MemoryObservation {
 }
 export type MemoryOutcome = 'pending' | 'done' | 'partial' | 'unchanged'
 export interface MemorySettlement {
-  readonly by: { readonly who: 'a-person' } | { readonly who: 'the-app-itself' }
+  readonly by: ActedBy
   readonly at: number
 }
 

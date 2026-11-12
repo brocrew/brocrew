@@ -186,20 +186,24 @@ describe('memory writes retain their intent under one profile lock until honest 
     expect(readFileSync(entry(), 'utf8')).toBe('External text.')
     expect(store.memoryAmendmentsOf('lark')).toHaveLength(count)
   })
-  it('refuses an agent or the app before looking up an identity or touching files', async () => {
+  it.each([agent, app])('records the actual caller for reversible memory edits: %j', async (by) => {
     const service = await create()
-    const identities = vi.spyOn(store, 'agentIdentities')
-    for (const by of [agent, app]) {
-      expect(await service.amend(selection(), by)).toMatchObject({ reason: 'person-required' })
-      expect(await service.undo('lark', 'not-a-row', true, by)).toMatchObject({
-        reason: 'person-required',
-      })
-      expect(await service.checkInterrupted('lark', true, by)).toMatchObject({
-        reason: 'person-required',
-      })
-    }
-    expect(identities).not.toHaveBeenCalled()
+    expect(await service.amend(selection({ confirmed: false }), by)).toMatchObject({
+      reason: 'confirmation-required',
+    })
+    const changed = await service.amend(selection(), by)
+    expect(changed).toMatchObject({ ok: true, amendment: { by, settlement: { by } } })
+    expect(existsSync(entry())).toBe(false)
+    const restored = await service.undo('lark', changed.amendment!.id, true, by)
+    expect(restored).toMatchObject({ ok: true, amendment: { by, settlement: { by } } })
     expect(readFileSync(entry(), 'utf8')).toBe(original)
+    expect(await service.undo('lark', 'not-a-row', true, by)).toMatchObject({
+      reason: 'source-changed',
+    })
+    expect(await service.checkInterrupted('lark', false, by)).toMatchObject({
+      reason: 'confirmation-required',
+    })
+    expect(await service.checkInterrupted('lark', true, by)).toEqual({ ok: true })
   })
   it('requires a known identity and primary confirmation before begin', async () => {
     const service = await create()

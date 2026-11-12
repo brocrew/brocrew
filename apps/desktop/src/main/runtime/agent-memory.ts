@@ -34,47 +34,7 @@ import {
   type AgentMemoryStoreRead,
 } from './instructions'
 
-/**
- * 🔴 **An agent's memory store read WITHOUT a conversation, and the one door a person may change it
- * through** (625, `EXT-015` §1 · §3).
- *
- * ## ⛔ Why this module exists beside `instructions.ts` rather than inside it
- *
- * ⚑ **`instructions.ts` answers a LAUNCH's question.** Every entry point it has takes an
- * `InstructionInputs` — a provider, a provider home, a cwd, a published bundle — because it is
- * composing what one conversation's model will be told. ⚠️ **This module has no conversation**: it
- * is handed a profile and asked what is on disk for it, under every provider, right now.
- *
- * ⛔ **The READERS are not duplicated.** {@link readClaudeAgentMemory} and
- * {@link readCodexAgentMemory} are `instructions.ts`' own per-provider walks, exported for exactly
- * this caller — `169` §1's rule, and the thing it protects against here is specific: two answers to
- * *which files are in this store* would let the popup offer a removal for a file the drawer never
- * listed, or refuse one it did.
- *
- * ## 🔒 It is the only module in this feature that may touch the filesystem
- *
- * ⛔ **`no-byte-authority.test.ts` pins `runtime/ipc.ts` and `runtime-host.ts` at ZERO `node:fs`
- * imports**, and the house ruling behind it is the load-bearing half here: **the renderer never
- * supplies a path.** ⚠️ A caller names an entry by the string this app itself produced, and
- * {@link amendAgentMemory} looks that string up in a list it derives FRESH — the path it opens is
- * always its own. 🔴 A caller-supplied string is never joined, never resolved and never opened.
- *
- * ## ⛔ The write follows NO link, and that is the opposite of the read — on purpose
- *
- * ⚑ **`readMemoryStore` follows links** under `170` §2: the provider read the target before this
- * app was asked anything, so refusing removed the row from the panel and removed nothing from the
- * prompt. ⛔ **That argument inverts for a write.** Following a link here would delete or rewrite a
- * file outside `~/Library/Application Support/@brobot2/desktop/`, which `EXT-015` §5 forbids by
- * name — *"Never `~/.claude` and never `~/.codex`"* — and unlike the read, refusing costs a person
- * nothing they cannot get another way. ⚠️ **Refusing the read buys nothing. Refusing the write buys
- * everything.**
- *
- * 🔴 **Two independent checks, because provenance alone is not enough** (`workflow-output.ts`'
- * standing rule): the entry must be a MEMBER of the freshly derived candidate list, AND its real
- * path must resolve inside the managed provider-homes root. ⛔ Neither is sufficient — the
- * membership check alone would pass an entry the reader deliberately followed out of the store, and
- * the containment check alone would pass any file under the root that no store ever named.
- */
+/** Memory writes use selected entries under managed provider homes. */
 
 /**
  * ⛔ **One reader per provider, as an exhaustive table** — the rail that makes a third provider a
@@ -909,7 +869,11 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
           row.outcome !== 'pending' &&
           row.outcome !== 'unchanged',
       )
-  const observePending = async (slug: string, app: boolean): Promise<MemoryServiceResult> => {
+  const observePending = async (
+    slug: string,
+    by: ActedBy,
+    app = false,
+  ): Promise<MemoryServiceResult> => {
     context.check()
     const one = identity(slug)
     if (one === undefined) return failed('no-such-agent')
@@ -923,7 +887,7 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
         context.check()
         const recorded = app
           ? deps.reconcile(one.id, row.id, actual, { who: 'the-app-itself' })
-          : deps.store.settleMemoryAmendment(slug, row.id, actual, { who: 'a-person' })
+          : deps.store.settleMemoryAmendment(slug, row.id, actual, by)
         if (!recorded) throw new Error('The interruption could not be recorded')
         // Observation never changes memory. Only hidden, inactive app stages are swept.
         const location = memoryLocation(deps.inputsOf(slug), row.provider, row.entry)
@@ -957,23 +921,21 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
   }
   // The same lock is used at boot and for every later app writer on every platform.
   for (const one of deps.store.agentIdentities())
-    await exclusive(one.slug, () => observePending(one.slug, true))
+    await exclusive(one.slug, () => observePending(one.slug, { who: 'the-app-itself' }, true))
 
   const change = async (
     slug: string,
     plan: Omit<MemoryAmendmentWrite, 'profileSlug' | 'by'>,
     capture: MemoryCapture,
     access: MemoryOperation,
+    by: ActedBy,
     source?: MemoryAmendment,
   ): Promise<MemoryServiceResult> => {
     access.check()
     if (identity(slug) === undefined) return failed('no-such-agent')
     if (deps.store.hasPendingMemoryAmendment(slug)) return failed('pending')
     capture.check()
-    const row = deps.store.beginMemoryAmendment(
-      { ...plan, profileSlug: slug, by: { who: 'a-person' } },
-      deps.now(),
-    )
+    const row = deps.store.beginMemoryAmendment({ ...plan, profileSlug: slug, by }, deps.now())
     if (row === null) return failed('not-recorded')
     announce(slug)
     const guard = () => {
@@ -1026,7 +988,7 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
       access.check()
       const actual = observeMemoryEntry(deps.inputsOf(slug), plan.provider, capture.entry)
       access.check()
-      if (!deps.store.settleMemoryAmendment(slug, row.id, actual, { who: 'a-person' }))
+      if (!deps.store.settleMemoryAmendment(slug, row.id, actual, by))
         throw new Error('The outcome was not recorded')
       announce(slug)
       const settled = deps.store.memoryAmendment(slug, row.id)
@@ -1044,26 +1006,23 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
       return { ok: false, reason: 'not-recorded', cause: `${capture.entry}: ${String(error)}` }
     }
   }
-  const person = (
+  const operate = (
     slug: string,
-    by: ActedBy,
     operation: (access: MemoryOperation) => Promise<MemoryServiceResult>,
   ) =>
-    by.who !== 'a-person'
-      ? Promise.resolve(failed('person-required'))
-      : exclusive(slug, async (access) => {
-          try {
-            access.check()
-            if (identity(slug) === undefined) return failed('no-such-agent')
-            return await operation(access)
-          } catch (error) {
-            return {
-              ok: false,
-              reason: databaseAvailable ? 'changed-or-unreadable' : 'closing',
-              cause: String(error),
-            }
-          }
-        })
+    exclusive(slug, async (access) => {
+      try {
+        access.check()
+        if (identity(slug) === undefined) return failed('no-such-agent')
+        return await operation(access)
+      } catch (error) {
+        return {
+          ok: false,
+          reason: databaseAvailable ? 'changed-or-unreadable' : 'closing',
+          cause: String(error),
+        }
+      }
+    })
   return {
     busy(slug: string): boolean {
       return (counts.get(slug) ?? 0) > 0
@@ -1078,7 +1037,7 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
       }
     },
     amend(said: MemoryServiceEdit, by: ActedBy): Promise<MemoryServiceResult> {
-      return person(said.profile, by, async (access) => {
+      return operate(said.profile, async (access) => {
         if (said.confirmed !== true) return failed('confirmation-required')
         const capture = captureMemoryEntry(deps.inputsOf(said.profile), said.provider, said.entry)
         if (capture === null || capture.text === null) return failed('changed-or-unreadable')
@@ -1093,11 +1052,12 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
           },
           capture,
           access,
+          by,
         )
       })
     },
     undo(slug: string, sourceId: string, confirmed: boolean, by: ActedBy) {
-      return person(slug, by, async (access) => {
+      return operate(slug, async (access) => {
         if (confirmed !== true) return failed('confirmation-required')
         const source = deps.store.memoryAmendment(slug, sourceId)
         if (
@@ -1133,13 +1093,14 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
           },
           capture,
           access,
+          by,
           source,
         )
       })
     },
     checkInterrupted(slug: string, confirmed: boolean, by: ActedBy) {
-      return person(slug, by, async () =>
-        confirmed ? observePending(slug, false) : failed('confirmation-required'),
+      return operate(slug, async () =>
+        confirmed ? observePending(slug, by) : failed('confirmation-required'),
       )
     },
     close(waitMs = 5000): Promise<void> {

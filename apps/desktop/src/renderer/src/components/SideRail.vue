@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { useClientApi } from '../client-provider/injection'
+import { useProviderNames } from '../composables/useProviderNames'
+import { providerNamesIn } from '../lib/front-door-words'
 import type { AgentState as OneState } from '../../../shared/agent-state-contracts'
 import type { WhatEachConversationIsWaitingOn } from '../../../shared/task-contracts'
 
@@ -92,23 +94,12 @@ import VersionButton from './VersionButton.vue'
 import { COLLAPSE_THE_MENU, EXPAND_THE_MENU } from '../lib/rail-fold'
 
 /**
- * The left rail: everything you can navigate to, in the order the design fixes.
- *
- * ## 🔴 **It is destinations, one live signal and a kill switch** — `EXT-008` §5, finished at `572`
- *
- * ⛔ **`EXT-008` §1 measured this column doing three jobs at once** — navigation, live state and
- * configuration lists — ⚑ and the three lists left one at a time: **External tools at `566`**,
- * **Agents at `570`**, **Projects at `572`**. ⚠️ Each took its count, its `+`, its rows and its
- * sentences to the page a person is already looking for that subject on; each left a destination
- * row with none of the four.
- *
- * ⚑ **What remains that is not a destination is named and small:** ⚑ **D-017b · one list of
- * conversations** — every conversation, whatever it is doing, and a press opens it; since
- * 2026-10-01 in two folding sections, BroBot's and the other agents' — `571`'s one
- * live signal, and the spawning switch — 🔴 *"a kill switch
- * that lives two clicks away is not one"*, which is §5's own exception.
+ * The rail holds destinations, the conversation list, one live signal and the stop switch.
+ * Tools, agents and projects keep their counts and actions on their own pages.
+ * Conversations stay split between BroBot and other agents; the stop switch stays in reach.
  */
 const client = useClientApi()
+const nameOfProvider = useProviderNames(client)
 const props = withDefaults(
   defineProps<{
     /** The conversations this window is fed — `SessionStore.live`. */
@@ -396,7 +387,9 @@ const workspaceInitial = computed(
   () => [...(workspaceName.value?.trim() ?? '')][0]?.toUpperCase() ?? '',
 )
 
-const liveSignal = computed(() => liveSignalView(props.workspace, props.limits, railMinute.value))
+const liveSignal = computed(() =>
+  liveSignalView(props.workspace, props.limits, railMinute.value, providerNamesIn(nameOfProvider)),
+)
 
 /* ---------------------------------------------------------------------------
    ⚑ D-017b · the ONE list — the host's two reads, folded by `conversation-list.ts`,

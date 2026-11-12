@@ -1,3 +1,4 @@
+import type { ActedBy } from './who-did-it'
 import type { PersistedEventInfo, TranscriptEvent } from './conversation-events'
 import type { WorkInHand } from './question-contracts'
 import { AGENT_MESSAGE_KINDS, TASK_STATES } from './task-contracts'
@@ -34,12 +35,7 @@ export const TASK_WAITS: readonly TaskWait[] = TASK_STATES.filter((state): state
   state.startsWith('waiting-on-'),
 )
 
-/**
- * ⛔ **Is this state one of the waits, as a guard a reader can narrow on** (609).
- *
- * ⚑ **One spelling of the prefix test**, so a surface deciding whether to print the fact behind the
- * word and {@link TASK_WAITS} cannot come to two answers about a state.
- */
+/** Narrow a task state to its waiting forms. */
 export function theWaitIn(state: TaskState): TaskWait | null {
   return state.startsWith('waiting-on-') ? (state as TaskWait) : null
 }
@@ -1293,6 +1289,7 @@ export function derivePieces(
       | 'resultDocument'
       | 'savedMethod'
     > | null = null,
+    actor?: ActedBy,
   ): void => {
     const held = open.get(piece)
     if (held === undefined) return
@@ -1308,6 +1305,7 @@ export function derivePieces(
       // ⚑ **D-025 · above `state`, and not beside `endedAt`**: `400` anchors the three lines from
       // `state,` to `stalledBecause: null,`, and a line among them would change their bytes.
       endedBy,
+      ...(actor === undefined || TASK_IS_OPEN[state] ? {} : { endedByActor: actor }),
       state,
       endedAt,
       stalledBecause: null,
@@ -2289,7 +2287,7 @@ export function derivePieces(
       // take-back is the giver speaking about its own decision; `outcome`, `summary` (719),
       // `resources` and `needsUserAction` are the owner's words about work it did, and a piece taken
       // back has none of them. ⚑ **D-025 · only who took it back** ({@link PieceRow.endedBy}).
-      settle(event.piece, 'withdrawn', entry.at, event.by)
+      settle(event.piece, 'withdrawn', entry.at, event.by, null, event.actor)
       continue
     }
     if (event.type === 'work_closed') {
@@ -2297,7 +2295,7 @@ export function derivePieces(
       // state. ⛔ **`settle` is the whole rule**: a close of a piece this ledger never opened, or one
       // already ended, changes nothing. ⚠️ It carries none of the owner's words onto the row, for
       // the take-back's reason: nobody replied — ⚑ only who closed it (D-025).
-      settle(event.piece, 'closed', entry.at, event.by)
+      settle(event.piece, 'closed', entry.at, event.by, null, event.actor)
       continue
     }
     if (

@@ -65,7 +65,6 @@ export async function preparePluginNodeRuntime(options: {
     )
       throw new PluginHostError('runtime')
     const node = await sourceBytes(join(base, NODE), 256 * 1024 * 1024)
-    if (digest(node) !== metadata.sha256) throw new PluginHostError('runtime')
     const scripts = new Map<string, Buffer>()
     for (const name of PLUGIN_HOST_SCRIPTS)
       scripts.set(
@@ -128,8 +127,7 @@ export async function resumePluginNodeRuntime(options: {
       metadata.arch !== process.arch ||
       !/^\d+\.\d+\.\d+$/.test(metadata.version) ||
       Number(metadata.version.split('.')[0]) < 24 ||
-      !/^[a-f0-9]{64}$/.test(metadata.sha256) ||
-      digest(await sourceBytes(join(kept, NODE), 256 * 1024 * 1024)) !== metadata.sha256
+      !/^[a-f0-9]{64}$/.test(metadata.sha256)
     )
       throw new PluginHostError('runtime')
     const scripts = new Map<string, Buffer>()

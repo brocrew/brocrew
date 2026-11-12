@@ -1,3 +1,4 @@
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import type { AgentState } from '../../src/shared/agent-state-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, reactive, ref } from 'vue'
@@ -118,6 +119,7 @@ async function windowWith(
   let reply = initial
   ;(window as { api?: unknown }).api = {
     runtime: {
+      providerCatalogue: async () => PROVIDER_DESCRIPTORS,
       listResumable: () => reply(),
       listUnresumable: async () => unreadable,
       providerUsage: async () => usage,
