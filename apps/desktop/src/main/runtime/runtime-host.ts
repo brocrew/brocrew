@@ -22384,10 +22384,7 @@ export class RuntimeHost implements LiveHost {
             const open = TASK_IS_OPEN[row.state]
             let name = helperNames.get(row.owner)
             if (name === undefined) {
-              if (
-                !this.withinMessagingReach(
-                  this.theOneInItsPlace(row.owner))
-              )
+              if (!this.withinMessagingReach(this.theOneInItsPlace(row.owner)))
                 throw new Error('helper name is outside card reach')
               name = this.whatToCallTheConversation(row.owner)
               helperNames.set(row.owner, name)
@@ -30002,8 +29999,7 @@ export class RuntimeHost implements LiveHost {
       return { outcome: 'refused', reason: MOVE_WORDS.hereAlready }
     if (
       !this.moveDestinationAvailable(offer.destination) ||
-      !this.withinMessagingReach(
-        offer.destination)
+      !this.withinMessagingReach(offer.destination)
     )
       return { outcome: 'refused', reason: MOVE_WORDS.unavailable }
     const original = originalMoveRequest(
@@ -30030,8 +30026,7 @@ export class RuntimeHost implements LiveHost {
     if ('refusal' in handed) return { outcome: 'refused', reason: handed.refusal }
     if (
       !this.moveDestinationAvailable(offer.destination) ||
-      !this.withinMessagingReach(
-        offer.destination)
+      !this.withinMessagingReach(offer.destination)
     )
       return { outcome: 'refused', reason: MOVE_WORDS.unavailable }
     if (this.runsNow(offer.destination)) {
@@ -33185,9 +33180,7 @@ export class RuntimeHost implements LiveHost {
     if (this.deps.store.recordedOne(sessionId) === null) return { is: 'no-such-agent' }
     const archived = this.theArchivedTreeOf(sessionId)
     if (archived.length === 0) {
-      return this.withinMessagingReach(sessionId)
-        ? { is: 'not-archived' }
-        : { is: 'no-such-agent' }
+      return this.withinMessagingReach(sessionId) ? { is: 'not-archived' } : { is: 'no-such-agent' }
     }
     const beingSetAside = archived.some((conversation) => this.settingAside.has(conversation))
     const restored = this.restoreFromTheArchive(
@@ -41668,9 +41661,8 @@ export class RuntimeHost implements LiveHost {
   }
 
   private assertMayMessage(slot: SessionSlot, by: Caller): void {
-    if (this.withinMessagingReach(slot.id)) return
-    // ⚑ The caller whose piece a service is on may send it words, while that piece is on.
-    if (this.thePieceItIsOnFor(slot.id, by) !== null) return
+    const speaking = sessionSpeakingAs(by)
+    if (speaking !== null && speaking !== slot.id) return
     this.assertMayControl(slot, by)
   }
 

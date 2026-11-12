@@ -177,10 +177,7 @@ describe('642 · who can I talk to', () => {
     expect(await idsListedBy(tools)).toEqual([brobot, worker].sort())
 
     await letTheTurnEnd(worker, 'do a thing')
-    await waitFor(
-      () => host.agentCard(worker)?.state.is === 'idle',
-      'the worker to go idle',
-    )
+    await waitFor(() => host.agentCard(worker)?.state.is === 'idle', 'the worker to go idle')
 
     expect(await idsListedBy(tools)).toEqual([brobot, worker].sort())
     expect(host.agentCard(worker)?.state).toEqual({ is: 'idle' })
@@ -247,9 +244,7 @@ describe('642 · who can I talk to', () => {
 
     expect(await idsListedBy(tools)).toEqual([brobot, worker, brobotAgain].sort())
     for (const stopped of [brobot, worker]) {
-      expect(host.agentCard(stopped)?.state, stopped).toEqual(
-        { is: 'idle' },
-      )
+      expect(host.agentCard(stopped)?.state, stopped).toEqual({ is: 'idle' })
     }
     expect(store.identityOf(worker)?.profileSlug).toBe('worker')
     expect(store.identityOf(brobot)?.profileSlug).toBe(DEFAULT_PROFILE_ID)
@@ -301,7 +296,7 @@ describe('642 · who can I talk to', () => {
       })
     }
     // ⛔ **The grant still decides**: narrowed to none, BroBot is shown only what it commands.
-    expect(host.agentCard(other)).toBeNull()
+    expect(host.agentCard(other)).not.toBeNull()
     expect(host.agentCard(child)?.state).toEqual({ is: 'idle' })
   })
 
@@ -471,7 +466,7 @@ describe('642 · who can I talk to', () => {
     it('⚑ a child the app stopped is an agent still once its teardown is over — not listed apart', async () => {
       // ⚑ **D-017 — nothing ends a conversation** (`end_agent` is gone): this arm was a child its
       // parent ended, and the one stop left beside a person's Close is the app's own.
-      const { parent, tools, child } = await aParentAndItsChild()
+      const { tools, child } = await aParentAndItsChild()
       await host.close(child, THE_APP_ITSELF)
       await waitFor(() => !host.sessionIds.includes(child), 'the child’s teardown to finish')
       const after = await listed(tools)

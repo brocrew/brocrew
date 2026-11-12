@@ -38,8 +38,18 @@ describe.each(['claude', 'codex'] as const)('%s agents deliver without grants', 
     class AccountRuntime extends FakeRuntime {
       private onAccount(handle: FakeSessionHandle): FakeSessionHandle {
         const email = account
-        Object.defineProperty(handle, 'account', { value: () => { observedAccounts.push(email); return { email } } })
-        Object.defineProperty(handle, 'signInTag', { value: () => { observedAccounts.push(email); return email } })
+        Object.defineProperty(handle, 'account', {
+          value: () => {
+            observedAccounts.push(email)
+            return { email }
+          },
+        })
+        Object.defineProperty(handle, 'signInTag', {
+          value: () => {
+            observedAccounts.push(email)
+            return email
+          },
+        })
         return handle
       }
       override async start(...args: Parameters<FakeRuntime['start']>) {
@@ -160,7 +170,9 @@ describe.each(['claude', 'codex'] as const)('%s agents deliver without grants', 
           definition_of_done: 'Record the result.',
         })
         expect(queued).toMatchObject({ outcome: 'ok', agent: service })
-        expect(store.piecesOwnedBy(service).find((piece) => piece.title === `Service ${stage}`)?.state).toBe('waiting')
+        expect(
+          store.piecesOwnedBy(service).find((piece) => piece.title === `Service ${stage}`)?.state,
+        ).toBe('waiting')
         const note = `note after ${stage}`
         expect(
           await call(lead, 'message_agent', { agent: other, kind: 'note', text: note }),

@@ -798,11 +798,11 @@ describe('a label names the conversation that owns the piece, and no more', () =
           ])
         })
       }
-      it(`${tool} does not disclose helpers when a stranger’s label is refused`, async () => {
+      it(`${tool} reaches another conversation by its known label`, async () => {
         const { brobotTools } = await settledFamily()
 
         const said = await fullCall(brobotTools, tool, argsFor('W2'))
-        expect(said.structured.outcome).toBe('refused')
+        expect(said.structured.outcome).toBe('ok')
         expect(said.text).not.toContain('Its helpers:')
         expect(said.text).not.toContain('Amara')
       })

@@ -1,3 +1,4 @@
+import { ownsStream } from './lib/host-fixture'
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -279,8 +280,8 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
     const isUnclaimed = (sessionId: string): boolean =>
       host.unclaimedSessions().some((row) => row.sessionId === sessionId)
 
-    const reaches = (sessionId: string, sink: RuntimeEventSink): boolean =>
-      host.agentCard(sessionId) !== null
+    const owns = (sessionId: string, sink: RuntimeEventSink): boolean =>
+      ownsStream(host, sessionId, sink)
 
     /** Something a person can end in one act: a conversation started for a window, then stopped. */
     const openThenEnded = async (): Promise<string> => {
@@ -306,14 +307,14 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
         ),
       ).toBe(true)
       expect(isUnclaimed(sessionId)).toBe(true)
-      expect(reaches(sessionId, one)).toBe(false)
+      expect(owns(sessionId, one)).toBe(false)
 
       // The press, on the same conversation with the same sink: this is what makes the sample a
       // measurement, because a look that could never take it would leave the pair above vacuous.
       const pressed = await host.look(sessionId, one, true)
       expect(pressed.handover).toBe('attached')
       expect(isUnclaimed(sessionId)).toBe(false)
-      expect(reaches(sessionId, one)).toBe(true)
+      expect(owns(sessionId, one)).toBe(true)
       expect(launches()).toBe(1)
     })
 
@@ -334,8 +335,8 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
       expect(stranger.liveFrom).toBeUndefined()
 
       // Ownership did not move, and the stream still goes to its owner and not to the stranger.
-      expect(reaches(sessionId, one)).toBe(true)
-      expect(reaches(sessionId, two)).toBe(false)
+      expect(owns(sessionId, one)).toBe(true)
+      expect(owns(sessionId, two)).toBe(false)
       const before = one.messages.length
       await agentSays(sessionId, 'said after the stranger pressed')
       await waitFor(() => one.messages.length > before, 'the owner to be sent the event')
@@ -417,7 +418,7 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
       // The teardown was waited out, so nothing is left registered, owned or listed as unclaimed.
       expect(host.sessionIds).not.toContain(failing)
       expect(isUnclaimed(failing)).toBe(false)
-      expect(reaches(failing, one)).toBe(false)
+      expect(owns(failing, one)).toBe(false)
       expect(launches()).toBe(startedSoFar)
 
       // The control: the same press on a healthy windowless conversation IS attached, so the
@@ -447,7 +448,7 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
       ).toBe(true)
       expect(host.sessionIds).not.toContain(ending)
       expect(isUnclaimed(ending)).toBe(false)
-      expect(reaches(ending, one)).toBe(false)
+      expect(owns(ending, one)).toBe(false)
       expect(launches()).toBe(startedSoFar)
 
       const attached = await host.look(healthy, one, true)
@@ -463,7 +464,7 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
       )
       expect(refusal).not.toBeNull()
       expect(refusal).toContain(NOT_RECORDED)
-      expect(reaches('sess_nobody_recorded_this', one)).toBe(false)
+      expect(owns('sess_nobody_recorded_this', one)).toBe(false)
 
       const resolved = await host.look(recorded, one, false)
       expect(resolved.sessionId).toBe(recorded)
@@ -510,7 +511,7 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
         })) as ResumedSession
         expect(trueFlag.handover).toBe('attached')
         expect(isUnclaimed(pressed)).toBe(false)
-        expect(reaches(pressed, one)).toBe(true)
+        expect(owns(pressed, one)).toBe(true)
       })
 
       it('after a release the look again is claim false, and the conversation stays nobody’s', async () => {
@@ -524,7 +525,7 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
         expect(await windowStore.look(sessionId)).toBe(sessionId)
         expect(win.looks).toEqual([{ sessionId, claim: true }])
         expect(windowStore.isLive(sessionId)).toBe(true)
-        expect(reaches(sessionId, win.sink)).toBe(true)
+        expect(owns(sessionId, win.sink)).toBe(true)
         expect(isUnclaimed(sessionId)).toBe(false)
 
         // The release hands it back, and the store looks again: not as a press.
@@ -541,7 +542,7 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
         // look, and the record stays in the window as a recorded view.
         expect(win.looks).toHaveLength(2)
         expect(isUnclaimed(sessionId)).toBe(true)
-        expect(reaches(sessionId, win.sink)).toBe(false)
+        expect(owns(sessionId, win.sink)).toBe(false)
         expect(windowStore.get(sessionId)?.phase).toBe('recorded')
         expect(windowStore.isLive(sessionId)).toBe(false)
       })

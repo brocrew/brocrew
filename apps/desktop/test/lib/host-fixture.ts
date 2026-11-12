@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Provider } from '@brobot2/shared'
 import { NO_DISCOVERY } from '../../src/main/adopt/discover-sessions'
-import type { RuntimeEventSink, RuntimeHostDeps } from '../../src/main/runtime/runtime-host'
+import type { RuntimeEventSink, RuntimeHost, RuntimeHostDeps } from '../../src/main/runtime/runtime-host'
 import type { ProviderConfigInfo, RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 
 export class RecordingSink implements RuntimeEventSink {
@@ -42,4 +42,9 @@ export function neutralHostDeps(
     nativeTranscriptPath: () => null,
     exportDirectory: () => join(rootGetter(), 'exports'),
   }
+}
+
+export function ownsStream(host: RuntimeHost, sessionId: string, sink: RuntimeEventSink): boolean {
+  const slots = (host as unknown as { slots: ReadonlyMap<string, { ownerId: string | null }> }).slots
+  return slots.get(sessionId)?.ownerId === sink.ownerId
 }

@@ -433,12 +433,5 @@ describe('433 §B · the agents a reach can see', () => {
    * every `away` rail went too). ⛔ **What is left is the one that holds for any vocabulary**: each
    * grant a model reads names what its own gate asks, in the bytes the person's sheet draws.
    */
-  describe('§4 · one word, two composites, and the three places that publish it', () => {
-    /**
-     * ⛔ **The MODEL's own copy of the rule, against the enforcement above** (standing rule 5).
-     *
-     * ⚑ **It is the same bytes the person's sheet draws**, which is the property that makes this
-     * one sentence rather than three that happen to agree today — `433` F8's shape, refused.
-     */
-  })
+
 })

@@ -19,7 +19,13 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { type AgentCard } from './helpers/giver-notice-host'
-import { TOOL_NAMES, agentToolsFor, TOOL_REFUSALS, refuseTool, type ToolName } from '../src/main/runtime/agent-tools'
+import {
+  TOOL_NAMES,
+  agentToolsFor,
+  TOOL_REFUSALS,
+  refuseTool,
+  type ToolName,
+} from '../src/main/runtime/agent-tools'
 import {
   INTERRUPT_RAILS,
   admitInterrupt,
@@ -1495,48 +1501,48 @@ describe('395 · the interruption that looks like a provider fault', () => {
   })
 
   it('⛔ no interrupt rail NAME collides with the compared roster — but the one it shares on purpose', () => {
-      // ⚑ `374`'s census extended to this vocabulary: one grammar, and a `rail` that says which
-      // rule stopped a call whichever door built the payload. The global roster is derived in
-      // `what-an-agent-is-told-about-its-work.test.ts`; this local comparison names its inputs below.
-      //
-      // 🔴 **650 · ONE located exception, and it is named here rather than let through.** ⛔ A
-      // launch in flight is one fact, and `message_agent` meets it too; since `650` it answers with
-      // this vocabulary's word rather than folding it into `agent-cannot-take-a-message`. ⚠️ **The
-      // exception is as narrow as the fact**: one word, one other vocabulary, and the same
-      // permanence and act at both doors — which is what stops a shared NAME becoming a shared
-      // name for two things. The sentences differ, because each states a fact about its own call.
-      const SHARED = 'that-conversation-has-not-started'
-      const others = [
-        ...SPAWN_RAILS,
-        ...TOOL_REFUSALS,
-        ...REPLY_RAILS,
-        ...QUESTION_RAILS,
-      ] as readonly string[]
-      for (const rail of INTERRUPT_RAILS) {
-        if (rail === SHARED) continue
-        expect(others).not.toContain(rail)
-      }
-      // ⛔ **Where the shared word lives, exactly**: in `TOOL_REFUSALS` and in no other list.
-      const owners = (
-        [
-          ['SPAWN_RAILS', SPAWN_RAILS],
-          ['TOOL_REFUSALS', TOOL_REFUSALS],
-          ['REPLY_RAILS', REPLY_RAILS],
-          ['QUESTION_RAILS', QUESTION_RAILS],
-        ] as const
-      )
-        .filter(([, rails]) => (rails as readonly string[]).includes(SHARED))
-        .map(([name]) => name)
-      expect(owners).toEqual(['TOOL_REFUSALS'])
-      // ⚑ **One meaning at both doors**: the same permanence, the same act, a different sentence.
-      const atTheInterruptDoor = refuseInterrupt(SHARED, { agent: 'sess_x' })
-      const atTheMessageDoor = refuseTool(SHARED, { agent: 'sess_x' })
-      expect(atTheMessageDoor.permanence).toBe(interruptPermanenceOf(SHARED))
-      expect(atTheMessageDoor.remedy).toBe(atTheInterruptDoor.remedy)
-      expect(atTheMessageDoor.retryable).toBe(interruptRetryableOf(SHARED))
-      expect(atTheMessageDoor.reason).not.toBe(atTheInterruptDoor.reason)
-      // ⚑ The control: the list it is being compared against is not empty, and it does contain the
-      // names it should.
-      expect(others).toContain('no-such-agent')
-    })
+    // ⚑ `374`'s census extended to this vocabulary: one grammar, and a `rail` that says which
+    // rule stopped a call whichever door built the payload. The global roster is derived in
+    // `what-an-agent-is-told-about-its-work.test.ts`; this local comparison names its inputs below.
+    //
+    // 🔴 **650 · ONE located exception, and it is named here rather than let through.** ⛔ A
+    // launch in flight is one fact, and `message_agent` meets it too; since `650` it answers with
+    // this vocabulary's word rather than folding it into `agent-cannot-take-a-message`. ⚠️ **The
+    // exception is as narrow as the fact**: one word, one other vocabulary, and the same
+    // permanence and act at both doors — which is what stops a shared NAME becoming a shared
+    // name for two things. The sentences differ, because each states a fact about its own call.
+    const SHARED = 'that-conversation-has-not-started'
+    const others = [
+      ...SPAWN_RAILS,
+      ...TOOL_REFUSALS,
+      ...REPLY_RAILS,
+      ...QUESTION_RAILS,
+    ] as readonly string[]
+    for (const rail of INTERRUPT_RAILS) {
+      if (rail === SHARED) continue
+      expect(others).not.toContain(rail)
+    }
+    // ⛔ **Where the shared word lives, exactly**: in `TOOL_REFUSALS` and in no other list.
+    const owners = (
+      [
+        ['SPAWN_RAILS', SPAWN_RAILS],
+        ['TOOL_REFUSALS', TOOL_REFUSALS],
+        ['REPLY_RAILS', REPLY_RAILS],
+        ['QUESTION_RAILS', QUESTION_RAILS],
+      ] as const
+    )
+      .filter(([, rails]) => (rails as readonly string[]).includes(SHARED))
+      .map(([name]) => name)
+    expect(owners).toEqual(['TOOL_REFUSALS'])
+    // ⚑ **One meaning at both doors**: the same permanence, the same act, a different sentence.
+    const atTheInterruptDoor = refuseInterrupt(SHARED, { agent: 'sess_x' })
+    const atTheMessageDoor = refuseTool(SHARED, { agent: 'sess_x' })
+    expect(atTheMessageDoor.permanence).toBe(interruptPermanenceOf(SHARED))
+    expect(atTheMessageDoor.remedy).toBe(atTheInterruptDoor.remedy)
+    expect(atTheMessageDoor.retryable).toBe(interruptRetryableOf(SHARED))
+    expect(atTheMessageDoor.reason).not.toBe(atTheInterruptDoor.reason)
+    // ⚑ The control: the list it is being compared against is not empty, and it does contain the
+    // names it should.
+    expect(others).toContain('no-such-agent')
+  })
 })

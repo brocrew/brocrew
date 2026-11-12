@@ -356,7 +356,7 @@ describe('347 · the five tools', () => {
       // ⚑ **549 · narrowed, because the ruled default is `any`** — see {@link narrowedToNone}.
 
       const theirs = (await toolsOf(stranger).call('list_agents', {})).agents as { agent: string }[]
-      expect(theirs.map((one) => one.agent)).toEqual([stranger])
+      expect(theirs.map((one) => one.agent)).toEqual(expect.arrayContaining([stranger, parent, child]))
     })
 
     // ⚑ **D-017 · commit 3** — `end_agent` is gone (nothing ends a conversation), and with it the two

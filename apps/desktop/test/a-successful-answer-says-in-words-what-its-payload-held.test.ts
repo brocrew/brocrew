@@ -368,7 +368,7 @@ describe('a successful answer says in words what its payload held', () => {
     })
 
     it('an ask its provider has not answered: the turn running now, said with its relation', async () => {
-      const { pm, pmTools, worker } = await aPmAndItsWorker({
+      const { pmTools, worker } = await aPmAndItsWorker({
         decorate: (handle) => holdingAWorkingTurn(handle, 'never'),
       })
       await waitFor(

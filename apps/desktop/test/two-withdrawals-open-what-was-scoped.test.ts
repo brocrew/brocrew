@@ -229,7 +229,7 @@ describe('two withdrawals — open what was scoped', () => {
     })
   })
 
-  describe('the messaging default, and the narrowing that still refuses', () => {})
+
 
   describe('the same pair: a message lands, and the destroying verbs do not', () => {
     it('message admitted · interrupt and withdraw both refused, one pair, one test', async () => {

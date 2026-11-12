@@ -184,13 +184,5 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
    * since §3 below stops the target, the only thing that can admit a STOPPED one.
    */
 
-  describe('§3 · a stopped, out-of-reach conversation meets the reach rail, never no-such-agent', () => {
-    /**
-     * 🔴 **M131's shape, named**: `whyItIsOutOfReach`'s `!this.slots.has(sessionId)` branch only
-     * runs for a STOPPED conversation — every out-of-reach case `a-reach-you-can-see.test.ts` §1
-     * drives is a RUNNING one, which never enters this branch at all. ⚑ **The granted caller, over
-     * the identical stopped id, is the paired positive**: it is not the target having stopped that
-     * excludes `explorer`, because `brobot` reaches the very same stopped conversation fine.
-     */
-  })
+
 })

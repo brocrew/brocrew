@@ -20,7 +20,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { giverStallNotices, RuntimeHost,  } from './helpers/giver-notice-host'
+import { giverStallNotices, RuntimeHost } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -203,8 +203,7 @@ describe('F097 · a person owes the agent that answered them', () => {
   }
 
   /** The one state, derived fresh, as the app itself reads it. */
-  const stateOf = (id: string): AgentState | undefined =>
-    host.agentCard(id)?.state
+  const stateOf = (id: string): AgentState | undefined => host.agentCard(id)?.state
   /** The last state the host pushed for a conversation. */
   const lastSaid = (id: string): AgentState | undefined =>
     pushed

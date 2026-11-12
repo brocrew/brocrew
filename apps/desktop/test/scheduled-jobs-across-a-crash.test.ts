@@ -302,8 +302,7 @@ describe('scheduled jobs across a crash', () => {
   const kept = (id: string) => scheduleAttemptsIn(now.db).read().conversations[id]
   const keptAsMade = (id: string): boolean =>
     kept(id)?.attempts.some((one) => one.attempted) === true
-  const stateOf = (id: string): AgentState | undefined =>
-    now.host.agentCard(id)?.state
+  const stateOf = (id: string): AgentState | undefined => now.host.agentCard(id)?.state
   const wakeUpOf = (id: string): unknown =>
     (now.host as unknown as { wakeUps: Map<string, unknown> }).wakeUps.get(id)
 

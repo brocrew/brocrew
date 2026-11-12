@@ -9,7 +9,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost,  } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -90,8 +90,7 @@ describe('an answer to an asker the quit left open really starts it', () => {
     return (await tool.call(args)).structured as Record<string, unknown>
   }
 
-  const stateOf = (sessionId: string): AgentState | undefined =>
-    host.agentCard(sessionId)?.state
+  const stateOf = (sessionId: string): AgentState | undefined => host.agentCard(sessionId)?.state
 
   async function waitFor(predicate: () => boolean, what: string): Promise<void> {
     for (let attempt = 0; attempt < 400; attempt++) {

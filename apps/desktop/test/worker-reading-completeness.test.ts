@@ -104,7 +104,7 @@ describe('complete worker metadata on conversation readings', () => {
     conversation: string,
     expected?: WorkerBindingReading,
   ) {
-    const by = { ownerId: agentCallerId(caller) }
+
     const card = host.agentCard(conversation)
     expect(card).not.toBeNull()
     if (card === null) throw new Error('fictional conversation card missing')

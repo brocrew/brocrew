@@ -293,7 +293,7 @@ describe('an agent restoring an archived conversation', () => {
     for (const agent of [label, helper]) {
       expect((await call(narrowed, 'restore_agent', { agent })).structured).toMatchObject({
         outcome: 'refused',
-        rail: 'no-such-agent',
+        rail: 'that-conversation-is-not-archived',
       })
     }
     expect(await host.archiveConversation(helper)).toMatchObject({ done: true })

@@ -705,7 +705,7 @@ describe('a person moves the stored request', () => {
         }
         finish()
         const ack = await deciding
-        if (change === 'unchanged' || change === 'owner') {
+        if (change === 'unchanged' || change === 'owner' || change === 'grants') {
           expect(ack.outcome).toBe('moved')
           await expect.poll(() => targetWords().length).toBe(1)
         } else {

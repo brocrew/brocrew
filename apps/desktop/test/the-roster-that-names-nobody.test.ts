@@ -505,9 +505,7 @@ describe('610 · the roster that names nobody', () => {
       const ada = await personOpens('ada')
       const everyCard: AgentCard[] = [
         ...host.agentsVisibleTo({ ownerId: window.ownerId }, null).agents,
-        ...(host.agentCard(ada) === null
-          ? []
-          : [host.agentCard(ada) as AgentCard]),
+        ...(host.agentCard(ada) === null ? [] : [host.agentCard(ada) as AgentCard]),
       ]
       expect(everyCard.length).toBeGreaterThan(0)
       for (const card of everyCard) {
