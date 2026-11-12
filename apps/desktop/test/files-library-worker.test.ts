@@ -159,9 +159,23 @@ it('runs real native worker queries/pages/provenance and closes its owned connec
       const result = await lifetime.read({ ...query, size: 2 }, libraryContext)
       expect(result.type).toBe('files')
       if (result.type !== 'files') throw new Error(JSON.stringify(result))
-      expect([result.totalFiles, result.totalKeeps, result.files.length]).toEqual([16, 22, 2])
-      const page = await lifetime.read({ operation: 'page', cursor: result.next! }, libraryContext)
-      expect(page.type).toBe('files')
+      expect(result.complete).toBe(false)
+      expect([result.totalFiles, result.files.length]).toEqual([2, 2])
+      const seen = result.files.map((group) => group.file.sha256)
+      let page = result
+      while (page.next !== null) {
+        const next = await lifetime.read(
+          { operation: 'page', cursor: page.next, size: 2 },
+          libraryContext,
+        )
+        if (next.type !== 'files') throw new Error(JSON.stringify(next))
+        page = next
+        seen.push(...page.files.map((group) => group.file.sha256))
+      }
+      expect(page.complete).toBe(true)
+      expect([page.totalFiles, page.totalKeeps, seen.length, new Set(seen).size]).toEqual([
+        16, 22, 16, 16,
+      ])
       const provenance = await lifetime.read(
         {
           operation: 'provenance',
