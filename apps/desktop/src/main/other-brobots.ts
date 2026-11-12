@@ -56,6 +56,12 @@ export function otherBroBotsRunning(
   executable: string,
   own: ReadonlySet<number>,
 ): Promise<number | null> {
+  if (process.platform === 'darwin') {
+    return macAppProcesses(executable).then(
+      (pids) => pids.filter((pid) => !own.has(pid)).length,
+      () => null,
+    )
+  }
   const { file, args } = listingCommand(executable)
   return new Promise((resolve) => {
     execFile(
@@ -64,6 +70,28 @@ export function otherBroBotsRunning(
       { timeout: 15_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true },
       (error, stdout) => {
         resolve(error ? null : otherBroBotsIn(String(stdout), own))
+      },
+    )
+  })
+}
+
+export function macAppProcessesIn(listing: string, executable: string): number[] {
+  return listing.split(/\r?\n/).flatMap((line) => {
+    const match = /^\s*(\d+)\s+(.+)$/.exec(line)
+    return match !== null && match[2]!.trim() === executable ? [Number(match[1])] : []
+  })
+}
+
+/** macOS lists the executable separately from arguments, so spaces in workspace paths do not matter. */
+export function macAppProcesses(executable: string): Promise<number[]> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      '/bin/ps',
+      ['-axo', 'pid=,comm='],
+      { maxBuffer: 16 * 1024 * 1024 },
+      (error, stdout) => {
+        if (error) reject(error)
+        else resolve(macAppProcessesIn(String(stdout), executable))
       },
     )
   })

@@ -37,7 +37,7 @@ export function workspaceStartup(app: PinnableApp): ExistingWorkspace | undefine
 }
 
 /** Select and fence the workspace before Chromium's lock or any database access. */
-export function pinTheDataFolder(app: PinnableApp): void {
+export function pinTheDataFolder(app: PinnableApp, reopen?: string): void {
   existingWorkspaces.delete(app)
   const explicit = app.commandLine.hasSwitch('user-data-dir')
   let folder: string
@@ -52,7 +52,7 @@ export function pinTheDataFolder(app: PinnableApp): void {
     )
     folder = explicit
       ? app.getPath('userData')
-      : ((app.isPackaged ? routing.first : undefined) ?? defaultDataFolder(appData))
+      : (reopen ?? (app.isPackaged ? routing.first : undefined) ?? defaultDataFolder(appData))
     const refusal = routing.refusal(folder)
     if (refusal) throw new Error(refusal)
     const existing =

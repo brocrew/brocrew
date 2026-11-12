@@ -1,6 +1,11 @@
 /** Which releases a BroBot is offered: full releases, or betas too. */
 export type UpdateChannel = 'stable' | 'beta'
 
+export interface UpdateRestartWorkspace {
+  readonly path: string
+  readonly name: string
+}
+
 /** One conversation a restart would stop, and why — what the person is told before it happens. */
 export interface WhatARestartWouldStopIn {
   readonly conversation: string
@@ -54,6 +59,7 @@ export type UpdateState =
 
 /** What `updates:read` answers, and `updates:changed` carries. */
 export interface UpdatesSnapshot {
+  readonly updateNow?: boolean
   /** This BroBot's version. */
   readonly version: string
   /** Whether it checks by itself, at launch and once a day. A person can always check now. */
@@ -69,6 +75,8 @@ export const UPDATES_CHANNELS = {
   set: 'updates:set',
   download: 'updates:download',
   restartWhenQuiet: 'updates:restart-when-quiet',
+  restartPlan: 'updates:restart-plan',
+  restartNow: 'updates:restart-now',
   cancelRestart: 'updates:cancel-restart',
   changed: 'updates:changed',
 } as const

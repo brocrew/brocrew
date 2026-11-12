@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import type { UpdateState, WhatARestartWouldStopIn } from '../../../shared/updates'
+import type {
+  UpdateRestartWorkspace,
+  UpdateState,
+  WhatARestartWouldStopIn,
+} from '../../../shared/updates'
+import OverlayHost from './OverlayHost.vue'
+import SheetShell from './SheetShell.vue'
 import { clockTime } from '../../../shared/clock'
 import { useUpdates } from '../composables/useUpdates'
 import { readableError } from '../lib/session-record'
@@ -18,6 +24,18 @@ const panel = ref<HTMLElement | null>(null)
 /** What the last press could not do, said once — the answer's own words. */
 const refused = ref<string | null>(null)
 const busy = ref(false)
+const confirmWorkspaces = ref<readonly UpdateRestartWorkspace[] | null>(null)
+
+async function beginRestart(): Promise<void> {
+  await press(async () => {
+    confirmWorkspaces.value = await updates.restartPlan()
+  })
+}
+
+async function confirmRestart(): Promise<void> {
+  confirmWorkspaces.value = null
+  await press(updates.restartNow)
+}
 
 const version = computed(() => snapshot.value?.version ?? props.version ?? null)
 const state = computed((): UpdateState | null => snapshot.value?.state ?? null)
@@ -191,11 +209,17 @@ onMounted(async () => {
             class="go"
             :disabled="busy"
             data-cy="updates-restart"
-            @click="press(updates.restartWhenQuiet)"
+            @click="snapshot?.updateNow ? beginRestart() : press(updates.restartWhenQuiet)"
           >
-            Restart to update
+            {{ snapshot?.updateNow ? 'Update now' : 'Restart to update' }}
           </button>
-          <p class="aside">It restarts once nothing is running.</p>
+          <p class="aside">
+            {{
+              snapshot?.updateNow
+                ? 'Saves drafts, stops agents, and restarts all open workspaces.'
+                : 'It restarts once nothing is running.'
+            }}
+          </p>
         </template>
 
         <template v-else-if="state.kind === 'waiting-to-restart'">
@@ -263,6 +287,47 @@ onMounted(async () => {
       </div>
     </template>
   </div>
+  <OverlayHost
+    v-if="confirmWorkspaces !== null"
+    label="Update all workspaces"
+    @close="confirmWorkspaces = null"
+  >
+    <SheetShell glyph="↑" @close="confirmWorkspaces = null">
+      <template #header>
+        <strong>Update all {{ confirmWorkspaces.length }} workspaces?</strong>
+        <small>BroCrew {{ notesVersion }} is ready.</small>
+      </template>
+      <template #body>
+        <p>Save drafts, stop running agents, update BroCrew, and reopen these workspaces:</p>
+        <ul data-cy="updates-confirm-workspaces">
+          <li v-for="workspace in confirmWorkspaces" :key="workspace.path">{{ workspace.name }}</li>
+        </ul>
+        <p>
+          Running turns stop. Interrupted agents continue in their saved sessions where possible;
+          unfinished commands may need attention.
+        </p>
+        <p class="aside">If drafts cannot be saved, the update stays on hold.</p>
+      </template>
+      <template #actions>
+        <button
+          type="button"
+          class="small"
+          data-cy="updates-confirm-cancel"
+          @click="confirmWorkspaces = null"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="small primary"
+          data-cy="updates-confirm-now"
+          @click="confirmRestart"
+        >
+          Update now
+        </button>
+      </template>
+    </SheetShell>
+  </OverlayHost>
 </template>
 
 <style scoped>

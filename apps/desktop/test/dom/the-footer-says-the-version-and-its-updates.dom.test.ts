@@ -19,6 +19,8 @@ type Fake = {
   checkNow: ReturnType<typeof vi.fn>
   set: ReturnType<typeof vi.fn>
   download: ReturnType<typeof vi.fn>
+  restartPlan: ReturnType<typeof vi.fn>
+  restartNow: ReturnType<typeof vi.fn>
   restartWhenQuiet: ReturnType<typeof vi.fn>
   cancelRestart: ReturnType<typeof vi.fn>
   onChanged: ReturnType<typeof vi.fn>
@@ -39,6 +41,12 @@ function fakeUpdates(first: UpdatesSnapshot): Fake {
     checkNow: answer(snapshotOf({ kind: 'checking' })),
     set: vi.fn(async (change: Partial<UpdatesSnapshot>) => ({ ...first, ...change })),
     download: answer(snapshotOf({ kind: 'downloading', version: '0.2.0', percent: 0 })),
+    restartPlan: vi.fn(async () => [
+      { path: '/default', name: 'Default' },
+      { path: '/bakery', name: 'Bakery' },
+      { path: '/planning', name: 'Planning' },
+    ]),
+    restartNow: answer(first),
     restartWhenQuiet: answer(first),
     cancelRestart: answer(
       snapshotOf({ kind: 'ready', version: '0.2.0', how: 'restart', path: null }),
@@ -142,6 +150,36 @@ describe('B2 · the menu, state by state', () => {
     ;(m.q('updates-restart') as HTMLButtonElement).click()
     await settle()
     expect(fake.restartWhenQuiet).toHaveBeenCalledTimes(1)
+  })
+
+  it('confirms every affected workspace before updating, and Cancel leaves agents running', async () => {
+    const { m, fake } = await menuIn(
+      { kind: 'ready', version: '0.2.0', how: 'restart', path: null },
+      { updateNow: true },
+    )
+    const click = (cy: string) => {
+      const button = document.querySelector<HTMLButtonElement>(`[data-cy="${cy}"]`)
+      expect(button).not.toBeNull()
+      button!.click()
+    }
+    expect(text(m.q('updates-restart'))).toBe('Update now')
+    click('updates-restart')
+    await settle()
+    expect(fake.restartPlan).toHaveBeenCalledTimes(1)
+    expect(fake.restartNow).not.toHaveBeenCalled()
+    expect(
+      [...document.querySelectorAll('[data-cy="updates-confirm-workspaces"] li')].map(text),
+    ).toEqual(['Default', 'Bakery', 'Planning'])
+    click('updates-confirm-cancel')
+    await settle()
+    expect(document.querySelector('[data-cy="updates-confirm-now"]')).toBeNull()
+    expect(fake.restartNow).not.toHaveBeenCalled()
+    click('updates-restart')
+    await settle()
+    click('updates-confirm-now')
+    await settle()
+    expect(fake.restartNow).toHaveBeenCalledTimes(1)
+    expect(fake.restartWhenQuiet).not.toHaveBeenCalled()
   })
 
   it('🔴 waiting to restart · what still runs, in words, other BroBots, and Cancel', async () => {

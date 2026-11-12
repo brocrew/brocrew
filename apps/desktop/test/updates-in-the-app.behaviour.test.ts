@@ -117,6 +117,7 @@ const start = (packaged = true, hidden = true): void => {
     on: (name: string, run: () => void) => fake.appEvents.set(name, run),
     quit: () => {
       fake.quits += 1
+      updates?.finishQuit()
     },
     getAppMetrics: () => [],
   } as unknown as App
@@ -124,6 +125,7 @@ const start = (packaged = true, hidden = true): void => {
     app,
     host: { whatARestartWouldStop: () => fake.stops } as never,
     hidden,
+    prepareForQuit: async () => {},
   })
 }
 
@@ -302,7 +304,7 @@ for (const platform of ['win32', 'darwin'] as const) {
     await ask(UPDATES_CHANNELS.restartWhenQuiet)
     await vi.waitFor(() => {
       expect(fake.nativeInstalls).toBe(platform === 'darwin' ? 1 : 0)
-      expect(fake.quits).toBe(platform === 'win32' ? 1 : 0)
+      expect(fake.quits).toBe(1)
     })
   })
 }

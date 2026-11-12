@@ -3,6 +3,16 @@ import { lstatSync, mkdirSync, realpathSync, statSync, unlinkSync, type Stats } 
 import { connect, createServer, type Server } from 'node:net'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
+import type {
+  UpdateWorkspace,
+  UpdateWorkspaceId,
+  WorkspaceUpdateRequest,
+} from './update-workspaces'
+
+export interface WorkspaceUpdateConnection {
+  details(): UpdateWorkspace
+  receive(request: WorkspaceUpdateRequest): Promise<void>
+}
 
 /** Workspace presence for the chooser. Startup ownership comes from Electron's OS lock. */
 export type HostGateVerdict =
@@ -183,12 +193,38 @@ type Answer =
  * Keep the error handler attached for the listener's lifetime: an unhandled accept error would
  * otherwise terminate the process after startup has settled.
  */
-function listen(path: string, token: string): Promise<Server | 'in-use' | 'failed'> {
+function listen(
+  path: string,
+  token: string,
+  updates?: WorkspaceUpdateConnection,
+): Promise<Server | 'in-use' | 'failed'> {
   return new Promise((resolve) => {
     const server = createServer((socket) => {
-      // Close after replying so repeated presence queries do not accumulate open descriptors.
-      socket.end(token)
       socket.on('error', () => {})
+      if (updates === undefined) {
+        socket.end(token)
+        return
+      }
+      socket.write(`${JSON.stringify({ ...updates.details(), token, updateProtocol: 1 })}\n`)
+      // Older presence callers wait for EOF instead of reading the first line.
+      socket.setTimeout(ANSWER_MS, () => socket.end())
+      socket.setEncoding('utf8')
+      let request = ''
+      socket.on('data', (chunk: string) => {
+        request += chunk
+        if (!request.includes('\n')) return
+        socket.setTimeout(0)
+        socket.removeAllListeners('data')
+        void Promise.resolve()
+          .then(() => updates.receive(JSON.parse(request) as WorkspaceUpdateRequest))
+          .then(
+            () => socket.end(`${JSON.stringify({ ok: true })}\n`),
+            (error: unknown) =>
+              socket.end(
+                `${JSON.stringify({ error: error instanceof Error ? error.message : String(error) })}\n`,
+              ),
+          )
+      })
     })
     const settle = (answer: Server | 'in-use' | 'failed'): void => {
       clearTimeout(timer)
@@ -228,12 +264,22 @@ function askOnce(path: string, timeoutMs: number): Promise<Answer | { kind: 'tim
     const timer = setTimeout(() => settle({ kind: 'timeout' }), timeoutMs)
     timer.unref()
     socket.setEncoding('utf8')
-    socket.on('data', (chunk: string) => (said += chunk))
+    socket.on('data', (chunk: string) => {
+      said += chunk
+      const newline = said.indexOf('\n')
+      if (newline >= 0) settle({ kind: 'token', token: said.slice(0, newline) })
+    })
     // A listener that closes without identifying itself leaves presence unknown.
     socket.on('end', () =>
       settle(said === '' ? { kind: 'unclear' } : { kind: 'token', token: said }),
     )
-    socket.on('error', () => settle({ kind: 'silent' }))
+    socket.on('error', (error: NodeJS.ErrnoException) =>
+      settle(
+        error.code === 'ECONNREFUSED' || error.code === 'ENOENT'
+          ? { kind: 'silent' }
+          : { kind: 'unclear' },
+      ),
+    )
   })
 }
 
@@ -276,7 +322,8 @@ export async function publishWorkspacePresence(
   userData: string,
   platform: string = process.platform,
   outside: Partial<OutsideGates> = {},
-): Promise<void> {
+  updates?: WorkspaceUpdateConnection,
+): Promise<() => Promise<void>> {
   const token = randomUUID()
   let path: string
   let external = false
@@ -301,10 +348,99 @@ export async function publishWorkspacePresence(
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
   }
-  const bound = await listen(path, token)
+  const bound = await listen(path, token, updates)
   if (typeof bound === 'string') throw new Error(`The workspace presence listener ${bound}.`)
   keep(bound)
   if (external) letGoAtExit(path)
+  return () =>
+    new Promise((resolve, reject) => {
+      holding.delete(bound)
+      bound.close((error) => (error ? reject(error) : resolve()))
+    })
+}
+
+/** A live older workspace is an unsupported participant, never a closed one. */
+export async function readWorkspaceForUpdate(
+  userData: string,
+  platform: string = process.platform,
+  outside: Partial<OutsideGates> = {},
+): Promise<UpdateWorkspace | null> {
+  const answer = await ask(hostGatePath(userData, platform, outside))
+  if (answer.kind === 'silent') return null
+  if (answer.kind === 'token') {
+    try {
+      const value = JSON.parse(answer.token) as UpdateWorkspace & { updateProtocol?: number }
+      if (value.updateProtocol === 1) return value
+    } catch {
+      // A legacy presence reply is a token rather than an update participant.
+    }
+  }
+  throw new Error(`BroCrew could not prepare the running workspace ${userData}`)
+}
+
+/** Preparation has no deadline: only a completed reply acknowledges saved drafts and teardown. */
+export function requestWorkspaceUpdate(
+  peer: UpdateWorkspaceId,
+  request: WorkspaceUpdateRequest,
+  platform: string = process.platform,
+  outside: Partial<OutsideGates> = {},
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const socket = connect(hostGatePath(peer.folder, platform, outside))
+    let buffer = ''
+    let identified = false
+    let acknowledged = false
+    let refused = false
+    const timer = setTimeout(
+      () => socket.destroy(new Error(`BroCrew could not reach ${peer.folder}`)),
+      ANSWER_MS,
+    )
+    socket.setEncoding('utf8')
+    socket.on('data', (chunk: string) => {
+      buffer += chunk
+      let newline: number
+      while ((newline = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, newline)
+        buffer = buffer.slice(newline + 1)
+        try {
+          const value = JSON.parse(line) as UpdateWorkspace & { ok?: boolean; error?: string }
+          if (!identified) {
+            if (value.pid !== peer.pid || value.folder !== peer.folder) {
+              throw new Error(`The workspace ${peer.folder} restarted while preparing the update`)
+            }
+            identified = true
+            clearTimeout(timer)
+            socket.write(`${JSON.stringify(request)}\n`)
+          } else {
+            if (value.error !== undefined) {
+              refused = true
+              throw new Error(value.error)
+            }
+            if (value.ok !== true)
+              throw new Error('The workspace did not finish preparing the update')
+            acknowledged = true
+            socket.end()
+            resolve()
+          }
+        } catch (error) {
+          socket.destroy(error instanceof Error ? error : new Error(String(error)))
+        }
+      }
+    })
+    socket.on('error', (error) =>
+      reject(Object.assign(error, { updateRequestSent: identified && !refused })),
+    )
+    socket.on('close', () => {
+      clearTimeout(timer)
+      if (!acknowledged)
+        reject(
+          Object.assign(
+            new Error(`The workspace ${peer.folder} closed before acknowledging the update`),
+            { updateRequestSent: identified && !refused },
+          ),
+        )
+    })
+  })
 }
 
 /** Which file this name refers to right now, or null when it refers to none. */

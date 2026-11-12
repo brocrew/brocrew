@@ -23,6 +23,7 @@ export interface FoundUpdate {
 }
 
 export interface UpdatesDeps {
+  readonly updateNow?: boolean
   /** This BroBot's version. */
   readonly version: string
   /** Why this build never checks, or null when it does. */
@@ -171,6 +172,7 @@ export function createUpdates(deps: UpdatesDeps): Updates {
   const snapshot = (): UpdatesSnapshot => {
     const settings = deps.settings.read()
     return {
+      ...(deps.updateNow ? { updateNow: true } : {}),
       version: deps.version,
       checkAutomatically: settings.checkAutomatically,
       channel: settings.channel,

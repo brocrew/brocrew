@@ -56,6 +56,7 @@ export interface AppLifetimeDeps {
    * that keeps asking after it gets better-sqlite3's `The database connection is not open` for every
    * poll. A renderer that has been told stops asking.
    */
+  holdQuit?: () => boolean
   announceClosing: () => void
   /**
    * Close and finalize every live session. The quit WAITS for this: provider children are spawned
@@ -236,6 +237,8 @@ const ELECTRON_EXIT_GRACE_MS = 2_000
 const SLOW_TEARDOWN_MS = 3_000
 
 export interface AppLifetime {
+  /** Save and finish normal teardown while keeping the process available for the update's quit. */
+  prepareForQuit(): Promise<void>
   /**
    * `before-quit`: defer EVERY quit until everything is down in order, then let one through.
    *
@@ -380,6 +383,7 @@ function leaveThisTurn(): Promise<void> {
 
 export function createAppLifetime(deps: AppLifetimeDeps): AppLifetime {
   let shutdown: Promise<void> | null = null
+  let preparation: Promise<void> | null = null
   /**
    * **The app may exit** — set on the last line before the quit this module issues itself (070, from
    * 068 finding 1).
@@ -476,7 +480,7 @@ export function createAppLifetime(deps: AppLifetimeDeps): AppLifetime {
    * the connection most needs closing cleanly, and an unhandled rejection here would leave the app
    * deferred on a quit that never completes.
    */
-  const runShutdown = async (): Promise<void> => {
+  const runShutdown = async (stopOnFailure: boolean): Promise<void> => {
     /**
      * ⚑ **What each step cost, so a slow quit names itself** (271 §1).
      *
@@ -508,7 +512,7 @@ export function createAppLifetime(deps: AppLifetimeDeps): AppLifetime {
         await run()
       } catch (error) {
         deps.log(`BroCrew failed to ${what}:`, error)
-        if (run === keepUnsentDrafts) throw error
+        if (stopOnFailure || run === keepUnsentDrafts) throw error
       }
       // ⚠️ Stamped in the `finally` sense — outside the `catch`, so a step that THREW still reports
       // what it spent. A failure that took forty seconds is the most interesting row there is, and
@@ -535,7 +539,25 @@ export function createAppLifetime(deps: AppLifetimeDeps): AppLifetime {
     )
   }
 
+  const prepareForQuit = (stopOnFailure = true): Promise<void> => {
+    if (stopOnFailure && shutdown !== null)
+      return Promise.reject(new Error('This workspace already started quitting'))
+    if (preparation !== null) return preparation
+    quitStartedAt = deps.now()
+    try {
+      deps.announceClosing()
+    } catch (error) {
+      deps.log('BroCrew could not tell its windows it is closing:', error)
+    }
+    preparation = runShutdown(stopOnFailure).catch((error: unknown) => {
+      preparation = null
+      throw error
+    })
+    return preparation
+  }
+
   return {
+    prepareForQuit,
     beforeQuit(event): void {
       // The quit this module issues once the teardown is over. It must be allowed through, or the
       // app defers its own quit forever.
@@ -544,6 +566,7 @@ export function createAppLifetime(deps: AppLifetimeDeps): AppLifetime {
       // joining it is all there is to do. Deferring costs the user nothing: the internal quit below
       // follows, so the app still exits, it just exits with everything down.
       event.preventDefault()
+      if (deps.holdQuit?.()) return
       // 🔴 **A deferred press is a person asking again, and it is answered by a promise** (271 §2).
       // See {@link AppLifetime.beforeQuit}: absorbing it is unchanged, and until now absorbing it
       // was ALL that happened, so ⌘Q was the one door with no clock behind it.
@@ -551,20 +574,14 @@ export function createAppLifetime(deps: AppLifetimeDeps): AppLifetime {
         if (!issuingQuit) beImpatient('a quit gesture')
         return
       }
-      quitStartedAt = deps.now()
       // ⛔ **Before the first `await`, and before the first step.** See
       // {@link AppLifetimeDeps.announceClosing} — announced later it would be a race with the very
       // step that takes the time, and on an idle app it would never be seen at all. Guarded like
       // every step below: a window that cannot be told must not stop the app from closing.
-      try {
-        deps.announceClosing()
-      } catch (error) {
-        deps.log('BroCrew could not tell its windows it is closing:', error)
-      }
       // `quit()` is inside the guarded promise too, so `shuttingDown` never rejects: it is awaited
       // by tests and, more importantly, a rejection here would be unhandled — there is nobody above
       // an Electron event listener to catch it.
-      shutdown = runShutdown()
+      shutdown = prepareForQuit(false)
         // ⚠️ **The final quit leaves this callback's own turn of the event loop first** (097), and
         // without that line the app NEVER EXITS. See {@link leaveThisTurn}.
         .then(leaveThisTurn)
