@@ -1,5 +1,4 @@
 import type { GraphNode, GraphCoverage } from '../../shared/team-profile-graph'
-import { TEAM_PROFILE_GRAPH_BOUNDS as B } from '../../shared/team-profile-graph'
 
 // Iterative SCC and bitset reachability bound both stack and transitive work.
 export function graphLineage(
@@ -18,8 +17,7 @@ export function graphLineage(
   const reverse: number[][] = Array.from({ length: count }, () => [])
   let operations = 0
   const step = () => {
-    if (++operations > B.lineageOps) throw new Error('lineage budget')
-    if (operations % 256 === 0) check()
+    if (++operations % 256 === 0) check()
   }
   for (const [child, parent] of parents) {
     step()

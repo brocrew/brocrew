@@ -269,3 +269,21 @@ it('cooperatively cancels inside the real worker engine without releasing its pe
     f.close()
   }
 })
+
+it('renews the stall timer only for advancing work and still times out when progress stops', async () => {
+  vi.useFakeTimers()
+  const worker = new FictionalWorker()
+  const lifetime = new FilesLibraryLifetime(() => worker, Date.now, 20)
+  const read = lifetime.read(query, libraryContext)
+  worker.ready()
+  for (let completed = 1; completed <= 5; completed++) {
+    await vi.advanceTimersByTimeAsync(15)
+    worker.emit('message', { type: 'progress', id: worker.posted[0]!['id'], completed })
+    expect(worker.terminationRequested).toBe(false)
+  }
+  await vi.advanceTimersByTimeAsync(21)
+  expect(worker.terminationRequested).toBe(true)
+  worker.exit()
+  expect(await read).toMatchObject({ cause: 'worker' })
+  await lifetime.close()
+})

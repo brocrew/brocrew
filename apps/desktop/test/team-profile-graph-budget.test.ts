@@ -62,7 +62,7 @@ it('matches independent small randomized reachability, including self/cycles', (
     expect(nodes.map((n) => n.descendants)).toEqual(expected)
   }
 })
-it('processes deep lineage without recursion and checks its operation budget', () => {
+it('processes deep lineage without recursion and reports progress', () => {
   const nodes = Array.from({ length: 10_000 }, (_, i) => node(i)),
     parents = new Map(nodes.slice(1).map((n, i) => [n.id, nodes[i]!.id]))
   let reserved = 0,
@@ -129,7 +129,7 @@ it('expires immutable pages on a monotonic clock despite wall-clock reversal', (
     cause: 'expired',
   })
 })
-it('refuses a row-budget overflow completely, retaining no zero-filled metrics', () => {
+it('finishes correct graph counts beyond the former total-row cap', () => {
   const f = graphFixture()
   owned.push(f)
   f.identity('aid:a')
@@ -144,7 +144,11 @@ it('refuses a row-budget overflow completely, retaining no zero-filled metrics',
   const engine = new TeamProfileGraphEngine(f.file, () => graphCutoff)
   owned.push(engine)
   const r = engine.read({ operation: 'snapshot' }, graphContext)
-  expect(r).toMatchObject({ type: 'unavailable', cause: 'budget', complete: false })
-  expect(r).not.toHaveProperty('metrics')
-  if (r.type === 'unavailable') expect(r.visited).toBeLessThanOrEqual(250000)
+  expect(r).toMatchObject({ type: 'snapshot', nodeCount: 1, edgeCount: 0 })
+  if (r.type === 'snapshot') {
+    expect(r.metrics.rows).toBeGreaterThan(250_000)
+    const nodes = engine.read({ operation: 'nodes', snapshot: r.snapshot }, graphContext)
+    if (nodes.type !== 'nodes') throw new Error(JSON.stringify(nodes))
+    expect(nodes.nodes[0]?.messagesSent).toBe(250_001)
+  }
 })
