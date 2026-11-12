@@ -64,18 +64,10 @@ export function createTeamProfileGraph(options: {
     attempted = true
     error.value = null
     markStale()
-    const started = performance.now()
     const current = (): void => {
       if (serial !== generation || !active || disposed) throw graphUnavailable('cancelled')
-      if (performance.now() - started > 6500) throw graphUnavailable('worker')
     }
-    let watchdog: ReturnType<typeof setTimeout> | undefined
     try {
-      watchdog = setTimeout(() => {
-        if (serial !== generation) return
-        cancel()
-        error.value = graphUnavailable('worker')
-      }, 6500)
       await releases
       current()
       const read = async (request: TeamProfileGraphRequest): Promise<TeamProfileGraphResult> => {
@@ -89,6 +81,7 @@ export function createTeamProfileGraph(options: {
         return parsed.data
       }
       const header = await read({ operation: 'snapshot' })
+      const completedAt = performance.now()
       // The cutoff precedes the build; the worker's expiry starts at completion.
       if (
         header.type !== 'snapshot' ||
@@ -101,8 +94,7 @@ export function createTeamProfileGraph(options: {
         edges: GraphEdge[] = []
       const ids = new Set<string>(),
         pairs = new Set<string>()
-      let projected = bytes(header),
-        isStale = header.stale
+      let isStale = header.stale
       for (const operation of ['nodes', 'edges'] as const) {
         let cursor: string | undefined
         const cursors = new Set<string>()
@@ -120,8 +112,6 @@ export function createTeamProfileGraph(options: {
           )
             throw graphUnavailable('metadata', 'page')
           isStale ||= page.stale
-          projected += bytes(page)
-          if (projected > B.aggregateBytes) throw graphUnavailable('budget', 'page')
           if (page.type === 'nodes') {
             for (const node of page.nodes) {
               if (ids.has(node.id) || node.createdAt > header.readAt)
@@ -167,7 +157,7 @@ export function createTeamProfileGraph(options: {
       })
       stale.value = isStale || mutation !== revision + 1
       clearTimeout(expiry)
-      expiry = setTimeout(markStale, Math.max(0, B.ttlMs - (performance.now() - started)))
+      expiry = setTimeout(markStale, Math.max(0, B.ttlMs - (performance.now() - completedAt)))
       release()
     } catch (failure) {
       if (serial !== generation) return
@@ -186,7 +176,6 @@ export function createTeamProfileGraph(options: {
       }
       release()
     } finally {
-      clearTimeout(watchdog)
       if (serial === generation) busy.value = false
     }
   }

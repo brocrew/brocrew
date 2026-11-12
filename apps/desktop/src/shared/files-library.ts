@@ -2,12 +2,9 @@ import { z } from 'zod'
 import { DOCUMENT_FORMS, formOfName } from './documents'
 
 export const FILES_LIBRARY_BOUNDS = {
-  rows: 100_000,
-  bytes: 32 * 1024 * 1024,
   replyBytes: 512 * 1024,
   fieldBytes: 32 * 1024,
   page: 256,
-  deadlineMs: 5_000,
   parentDeadlineMs: 6_000,
   idleMs: 60_000,
   restarts: 3,

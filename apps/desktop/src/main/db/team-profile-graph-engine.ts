@@ -263,8 +263,7 @@ export class TeamProfileGraphEngine {
       const rows = statement.all(...args) as Row[]
       const bytes = serialize(rows).byteLength
       this.projectedBytes = graphAdd(this.projectedBytes, bytes)
-      if (bytes * 3 + rows.length * 1024 > nativeBudget)
-        throw new Failed('budget')
+      if (bytes * 3 + rows.length * 1024 > nativeBudget) throw new Failed('budget')
       this.projectedResident = bytes * 2 + rows.length * 1024
       try {
         this.reserve(0)
