@@ -159,7 +159,9 @@ describe('§2 · only while a person can see it', () => {
 
   it('⛔ a glance that lands after a newer one, or on another page, writes nothing', () => {
     expect(linesWith(GRAPH_READ, 'beingDone.value = atWork')).toHaveLength(1)
-    expect(GRAPH_READ).toContain("surface.value === 'team' && epoch === forestEpoch && window === forestWindow.value")
+    expect(GRAPH_READ).toContain(
+      "surface.value === 'team' && epoch === forestEpoch && window === forestWindow.value",
+    )
     expect(GRAPH_READ).toMatch(
       /const atWork = await doing\s+if \(!current\(\)\) return\s+beingDone.value = atWork/,
     )

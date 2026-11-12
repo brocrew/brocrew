@@ -561,7 +561,9 @@ describe('the graph draws each conversation as the rail does, and opens only wha
    */
   it('🔴 a family too big for the tab is panned inside it — this conversation is in view, Fit brings in the rest, and the page never scrolls sideways', async () => {
     const kids = Array.from({ length: 8 }, (_, i) => `sess_kid_${String(i)}`)
-    const inspectors = kids.map((_, i) => identity(`inspector-${String(i)}`, `Inspector ${String(i)}`))
+    const inspectors = kids.map((_, i) =>
+      identity(`inspector-${String(i)}`, `Inspector ${String(i)}`),
+    )
     const m = await show({
       forest: viewOf(
         [
