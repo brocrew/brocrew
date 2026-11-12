@@ -11,7 +11,7 @@ import {
 } from '../src/main/update-settings'
 import { macAppProcessesIn } from '../src/main/other-brobots'
 
-function cluster(held = false) {
+function cluster(held = false, ownerReady = false) {
   const actors = new Map<string, ReturnType<typeof workspaceUpdate>>()
   const journal: string[] = []
   const saves = new Map<string, () => void>()
@@ -19,6 +19,7 @@ function cluster(held = false) {
   let remembered: readonly string[] | null = null
   let loseInstallReply = false
   let refuseInstall = false
+  let refuseQuit = false
   for (let i = 0; i < 3; i += 1) {
     const folder = `/workspace-${i}`
     const saved = held
@@ -26,11 +27,12 @@ function cluster(held = false) {
       : Promise.resolve()
     const actor: ReturnType<typeof workspaceUpdate> = workspaceUpdate({
       self: { folder, pid: i + 1, startedAt: i, name: folder, executable: '/BroCrew' },
-      ready: () => i > 0,
+      ready: () => ownerReady || i > 0,
       discover: async () => [...actors.values()].map((peer) => peer.details()),
       request: async (peer, request) => {
         const target = actors.get(peer.folder)
         if (!target) throw new Error('workspace closed before acknowledgement')
+        if (request.kind === 'quit' && refuseQuit) throw new Error('quit not delivered')
         if (request.kind === 'install' && refuseInstall) throw new Error('not delivered')
         await target.receive(request)
         if (request.kind === 'install' && loseInstallReply)
@@ -61,6 +63,12 @@ function cluster(held = false) {
     saves,
     failures,
     remembered: () => remembered,
+    refuseQuit: () => {
+      refuseQuit = true
+    },
+    allowQuit: () => {
+      refuseQuit = false
+    },
     refuseInstall: () => {
       refuseInstall = true
     },
@@ -85,7 +93,7 @@ it('waits for all three durable preparations, then invokes one installer and qui
   for (const release of c.saves.values()) release()
   await updating
   expect(c.remembered()).toEqual(['/workspace-1', '/workspace-0', '/workspace-2'])
-  expect(c.journal.slice(-4)).toEqual(['quit 1', 'native install 1', 'quit 2', 'quit 0'])
+  expect(c.journal.slice(-4)).toEqual(['quit 2', 'quit 1', 'native install 1', 'quit 0'])
   for (let i = 0; i < 3; i += 1) {
     expect(c.journal.indexOf(`closed database ${i}`)).toBeLessThan(
       c.journal.indexOf('native install 1'),
@@ -142,16 +150,35 @@ it('a lost install reply keeps the reopen set and cannot issue a second uncertai
   expect(c.remembered()).not.toBeNull()
 })
 
-it('a refused install leaves all workspaces open, removes the quit hold, and keeps no stale reopen set', async () => {
+it('a refused install keeps its caller and owner open, removes the quit hold, and keeps no stale reopen set', async () => {
   const c = cluster()
   c.refuseInstall()
   await expect(c.first.restart('0.2.24')).rejects.toThrow('not delivered')
   expect(c.remembered()).toBeNull()
-  expect(c.journal.some((step) => step.startsWith('quit'))).toBe(false)
+  expect(c.journal).not.toContain('quit 0')
+  expect(c.journal).not.toContain('quit 1')
   expect([...c.actors.values()].some((actor) => actor.holdsQuit())).toBe(false)
   c.allowInstall()
   await c.first.restart('0.2.24')
   expect(c.journal.filter((step) => step.includes('native install'))).toHaveLength(1)
+})
+
+it('does not install after an undelivered peer quit, and releases ordinary quit holds', async () => {
+  const c = cluster()
+  c.refuseQuit()
+  await expect(c.first.restart('0.2.24')).rejects.toThrow('quit not delivered')
+  expect(c.remembered()).toBeNull()
+  expect(c.journal.some((step) => step.includes('native install'))).toBe(false)
+  expect([...c.actors.values()].some((actor) => actor.holdsQuit())).toBe(false)
+  c.allowQuit()
+  await c.first.restart('0.2.24')
+  expect(c.journal.filter((step) => step.includes('native install'))).toHaveLength(1)
+})
+
+it('when the owner is the installer, all peer quit replies precede its local native install', async () => {
+  const c = cluster(false, true)
+  await c.actors.get('/workspace-0')!.restart('0.2.24')
+  expect(c.journal.slice(-4)).toEqual(['quit 1', 'quit 2', 'quit 0', 'native install 0'])
 })
 
 let folder: string | undefined
