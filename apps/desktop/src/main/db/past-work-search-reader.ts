@@ -7,6 +7,10 @@ import {
 
 export class PastWorkSearchReader {
   private worker: Worker | undefined
+  private timer: ReturnType<typeof setTimeout> | undefined
+  private exited: Promise<void> = Promise.resolve()
+  private retiring: Promise<void> = Promise.resolve()
+  private closeError: { error: unknown } | undefined
   private closed = false
   private queued = 0
   private serial = 0
@@ -30,14 +34,17 @@ export class PastWorkSearchReader {
     caller: string,
     words: string,
   ): Promise<PastWorkSearchResult> {
+    await this.retiring
     if (this.closed) return { ok: false, reason: 'unavailable' }
     let worker: Worker
     try {
       if (this.worker === undefined) {
         const opened = this.start(source.file)
         this.worker = opened
+        this.exited = new Promise<void>((resolve) => opened.once('exit', () => resolve()))
         opened.on('error', () => {
-          void opened.terminate().catch(() => {})
+          this.retiring = this.exited
+          this.requestClose(opened)
         })
         opened.once('exit', () => {
           if (this.worker === opened) this.worker = undefined
@@ -53,7 +60,7 @@ export class PastWorkSearchReader {
       const finish = (result: PastWorkSearchResult) => {
         if (finished) return
         finished = true
-        clearTimeout(timer)
+        clearTimeout(this.timer)
         worker.off('message', message)
         worker.off('error', failed)
         worker.off('exit', exited)
@@ -64,8 +71,9 @@ export class PastWorkSearchReader {
         finish({ ok: false, reason: 'unavailable' })
       }
       const failed = () => {
-        // Keep the queue occupied until the failed worker has exited.
-        void worker.terminate().catch(() => {})
+        this.retiring = this.exited
+        finish({ ok: false, reason: 'unavailable' })
+        this.requestClose(worker)
       }
       const message = (value: unknown) => {
         if (
@@ -85,7 +93,7 @@ export class PastWorkSearchReader {
         }
         finish(parsed.data)
       }
-      const timer = setTimeout(failed, 180_000)
+      this.timer = setTimeout(failed, 180_000)
       worker.on('message', message)
       worker.once('error', failed)
       worker.once('exit', exited)
@@ -101,9 +109,20 @@ export class PastWorkSearchReader {
     this.closed = true
     const worker = this.worker
     if (worker !== undefined) {
-      await worker.terminate().catch(() => {})
+      clearTimeout(this.timer)
+      this.requestClose(worker)
+      await this.exited
       if (this.worker === worker) this.worker = undefined
     }
     await this.tail
+    if (this.closeError) throw this.closeError.error
+  }
+
+  private requestClose(worker: Worker): void {
+    try {
+      worker.postMessage({ type: 'close' })
+    } catch (error) {
+      this.closeError = { error }
+    }
   }
 }

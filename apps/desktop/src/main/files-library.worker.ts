@@ -18,6 +18,16 @@ if (parentPort !== null) {
     const engine = new FilesLibraryEngine(options.parse(workerData).file)
     port.postMessage({ type: 'ready' })
     port.on('message', (message: unknown) => {
+      if (
+        typeof message === 'object' &&
+        message !== null &&
+        'type' in message &&
+        message.type === 'close'
+      ) {
+        engine.close()
+        port.close()
+        return
+      }
       const parsed = incoming.safeParse(message)
       if (!parsed.success) {
         engine.close()

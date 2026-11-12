@@ -42,6 +42,7 @@ type Owned = {
   expired: boolean
   failed: boolean
   terminating: boolean
+  closeError?: { error: unknown }
   exited: Promise<void>
   resolveExit: () => void
 }
@@ -90,6 +91,7 @@ export class ReaderWorkerLifetime<Request, Context, Result> {
   async close(): Promise<void> {
     if (this.closed) {
       await this.owned?.exited
+      if (this.owned?.closeError) throw this.owned.closeError.error
       return
     }
     this.closed = true
@@ -101,8 +103,10 @@ export class ReaderWorkerLifetime<Request, Context, Result> {
       this.finish(this.rules.unavailable('closed'))
       return
     }
-    this.fail(owned)
+    if (this.active?.timer !== undefined) clearTimeout(this.active.timer)
+    this.requestClose(owned)
     await owned.exited
+    if (owned.closeError) throw owned.closeError.error
   }
 
   private async begin(job: Job<Request, Context, Result>): Promise<void> {
@@ -204,7 +208,7 @@ export class ReaderWorkerLifetime<Request, Context, Result> {
     }
   }
   private receive(owned: Owned, incoming: unknown): void {
-    if (this.owned !== owned || owned.failed) return
+    if (this.owned !== owned || owned.failed || this.closed) return
     if (incoming === null || typeof incoming !== 'object' || Array.isArray(incoming)) {
       this.fail(owned)
       return
@@ -271,9 +275,21 @@ export class ReaderWorkerLifetime<Request, Context, Result> {
   private fail(owned: Owned): void {
     if (!owned.failed && !this.closed) this.rules.failure?.()
     owned.failed = true
+    if (this.active !== undefined) {
+      Atomics.store(this.active.flag, 0, 1)
+      clearTimeout(this.active.timer)
+      this.active.resolve(this.rules.unavailable(this.closed ? 'closed' : 'worker'))
+    }
+    this.requestClose(owned)
+  }
+
+  private requestClose(owned: Owned): void {
     if (owned.terminating) return
     owned.terminating = true
-    // The exit listener releases the active permit; terminate's promise alone never does.
-    void owned.worker.terminate().catch(() => {})
+    try {
+      owned.worker.postMessage({ type: 'close' })
+    } catch (error) {
+      owned.closeError = { error }
+    }
   }
 }

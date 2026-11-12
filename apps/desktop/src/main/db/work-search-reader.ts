@@ -13,6 +13,7 @@ export interface WorkSearchReader {
 }
 
 export class WorkSearchWorkerReader implements WorkSearchReader {
+  private timer: ReturnType<typeof setTimeout> | undefined
   private closed = false
   private active: Worker | undefined
   private exiting: Promise<void> | undefined
@@ -44,13 +45,17 @@ export class WorkSearchWorkerReader implements WorkSearchReader {
     let discarded = false
     let received = false
     let progress: WorkSearchResult | undefined
+    let reportFailure!: () => void
+    const failure = new Promise<WorkSearchResult>((resolve) => {
+      reportFailure = () => resolve(result)
+    })
     const exit = new Promise<void>((resolve) => {
       worker.on('message', (message: unknown) => {
         if (discarded) return
         if (received) {
           discarded = true
           result = { ok: false, reason: 'unavailable' }
-          void worker.terminate().catch(() => {})
+          reportFailure()
           return
         }
         const checkpoint =
@@ -74,13 +79,13 @@ export class WorkSearchWorkerReader implements WorkSearchReader {
         if (read.success && !checkpoint) result = read.data
         else {
           discarded = true
-          void worker.terminate().catch(() => {})
+          reportFailure()
         }
       })
       worker.on('error', () => {
         discarded = true
         result = { ok: false, reason: 'unavailable' }
-        void worker.terminate().catch(() => {})
+        reportFailure()
       })
       worker.once('exit', (code) => {
         if (code !== 0 || this.closed || discarded) result = { ok: false, reason: 'unavailable' }
@@ -88,37 +93,29 @@ export class WorkSearchWorkerReader implements WorkSearchReader {
       })
     })
     this.exiting = exit
-    let timer: ReturnType<typeof setTimeout> | undefined
     const settled = exit.then(() => {
-      clearTimeout(timer)
+      clearTimeout(this.timer)
       if (this.active === worker) this.active = undefined
       if (this.exiting === exit) this.exiting = undefined
       this.waiting.shift()?.()
       return result
     })
     const deadline = new Promise<WorkSearchResult>((resolve) => {
-      timer = setTimeout(() => {
+      this.timer = setTimeout(() => {
         const partial =
           !discarded && !this.closed && !(received && !result.ok) ? progress : undefined
         discarded = true
         result = partial ?? { ok: false, reason: 'unavailable' }
-        void worker.terminate().catch(() => {})
         resolve(result)
       }, WORK_SEARCH_BOUNDS.workerMs)
     })
-    return await Promise.race([settled, deadline])
+    return await Promise.race([settled, deadline, failure])
   }
 
   async close(): Promise<void> {
     this.closed = true
     for (const resume of this.waiting.splice(0)) resume()
-    if (this.active !== undefined) {
-      try {
-        await this.active.terminate()
-      } catch {
-        // Keep the slot until the worker's exit is confirmed.
-      }
-    }
+    clearTimeout(this.timer)
     await this.exiting
   }
 }

@@ -1,3 +1,4 @@
+import { closeDatabase } from './db/close-database'
 import electronLog from 'electron-log/main'
 import { pluginStartupTrace } from './plugins/startup-failure'
 import type { HandedPath } from '../shared/attachment-contracts'
@@ -2164,7 +2165,7 @@ const lifetime = createAppLifetime({
     await themes?.close()
   },
   closeDatabase: () => {
-    db?.close()
+    if (db !== null) closeDatabase(db)
     db = null
   },
   quit: () => app.quit(),

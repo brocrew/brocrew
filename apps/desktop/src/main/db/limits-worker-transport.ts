@@ -26,6 +26,7 @@ export class LimitsWorkerTransport {
   private nextId = 0
   private closed = false
   private failed = false
+  private closeError: { error: unknown } | undefined
   private terminationRequested = false
 
   constructor(private readonly worker: ReadWorker) {
@@ -71,29 +72,19 @@ export class LimitsWorkerTransport {
       if (this.closed || this.failed) throw new LimitsReadUnavailable('failed')
       this.worker.postMessage({ type: 'read', id, input: wanted })
     } catch {
-      this.fail()
+      if (!this.closed) this.fail()
     }
     return result
   }
 
-  async stop(terminateAfterMs = 3000): Promise<void> {
-    if (!Number.isFinite(terminateAfterMs) || terminateAfterMs <= 0)
-      throw new RangeError('Invalid stop deadline')
+  async stop(): Promise<void> {
     if (!this.closed) {
       this.closed = true
       this.rejectReady(new LimitsReadUnavailable('closed'))
-      try {
-        this.worker.postMessage({ type: 'close' })
-      } catch {
-        this.fail()
-      }
+      this.retire()
     }
-    const timer = setTimeout(() => this.terminate(), terminateAfterMs)
-    try {
-      await this.exited
-    } finally {
-      clearTimeout(timer)
-    }
+    await this.exited
+    if (this.closeError) throw this.closeError.error
   }
 
   private receive(incoming: unknown): void {
@@ -138,13 +129,17 @@ export class LimitsWorkerTransport {
   private fail(): void {
     this.failed = true
     this.rejectReady(new LimitsReadUnavailable('failed'))
-    // Do not settle the native promise until exit proves its connection has stopped.
-    this.terminate()
+    this.pending?.reject(new LimitsReadUnavailable('failed'))
+    this.retire()
   }
 
-  private terminate(): void {
+  private retire(): void {
     if (this.terminationRequested) return
     this.terminationRequested = true
-    void this.worker.terminate().catch(() => {})
+    try {
+      this.worker.postMessage({ type: 'close' })
+    } catch (error) {
+      this.closeError = { error }
+    }
   }
 }

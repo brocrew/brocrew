@@ -85,7 +85,7 @@ it('cancels before ready without allocating another native worker', async () => 
   await closed
 })
 
-it('waits for actual exit on timeout, limits forced replacements and respects the rolling cooldown', async () => {
+it('waits for actual exit on timeout, limits replacements and respects the rolling cooldown', async () => {
   vi.useFakeTimers()
   let now = 0
   const workers: FictionalWorker[] = []
@@ -109,8 +109,9 @@ it('waits for actual exit on timeout, limits forced replacements and respects th
       settled = true
     })
     await vi.advanceTimersByTimeAsync(21)
-    expect(worker.terminationRequested).toBe(true)
-    expect(settled).toBe(false)
+    expect(worker.terminationRequested).toBe(false)
+    expect(worker.posted.at(-1)).toEqual({ type: 'close' })
+    expect(settled).toBe(true)
     expect(workers).toHaveLength(i + 1)
     worker.exit()
     expect(await read).toMatchObject({ cause: 'worker' })
@@ -137,7 +138,8 @@ it('malformed or oversized worker replies fail closed and release only after exi
   const read = lifetime.read(query, libraryContext)
   worker.ready()
   worker.emit('message', { type: 'read', id: 1, result: { type: 'files', files: [] } })
-  expect(worker.terminationRequested).toBe(true)
+  expect(worker.terminationRequested).toBe(false)
+    expect(worker.posted.at(-1)).toEqual({ type: 'close' })
   worker.exit()
   expect(await read).toMatchObject({ cause: 'worker' })
   await lifetime.close()
