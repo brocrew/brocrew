@@ -145,7 +145,7 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       ).toThrow('Build anchor changed')
     for (const anchor of [
       'const updateReopenAtLaunch =',
-      'pinTheDataFolder(app',
+      'pinTheDataFolder(app,',
       '    loginRenewal: providerAuth.loginRenewal,\n',
       'providerModules[provider].createRuntime()',
       'return providerModules[provider].prepareLaunch(profileId, connection)',
@@ -162,6 +162,14 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
           ),
         ).toThrow('Build anchor changed')
     }
+    expect(() =>
+      projectBuild(
+        config,
+        entry.replace('pinTheDataFolder(app,', 'pinTheDataFolder(otherApp,'),
+        '/private/tmp/fictional/a',
+        '/private/tmp/fictional/browser',
+      ),
+    ).toThrow('Build anchor changed')
     const prepare = read('scripts/gates/plugin-packaged/prepare.mjs')
     expect(prepare).toMatch(
       /finally\s*\{\s*fs.writeFileSync\(configPath, original.config\)\s*fs.writeFileSync\(entryPath, original.entry\)/,
