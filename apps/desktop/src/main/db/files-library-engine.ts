@@ -75,7 +75,6 @@ type FileSnapshot = Snapshot & {
     rows: Iterator<StreamRow>
     pending?: StreamRow
     done: boolean
-    failure?: unknown
     metadata: ReturnType<FilesLibraryEngine['metadata']>
     selected: Set<string> | null
   }
@@ -150,6 +149,7 @@ export class FilesLibraryEngine {
     this.abandoned = abandoned
     this.progress = progress
     if (this.closed) return libraryUnavailable('closed')
+    let reading: FileSnapshot | undefined
     try {
       const request = filesLibraryRequest.parse(input)
       this.expire()
@@ -162,6 +162,8 @@ export class FilesLibraryEngine {
         return { type: 'released' }
       }
       if (request.operation === 'query') {
+        this.closeStream(this.files)
+        this.files = undefined
         const snapshot =
           request.query.sort === 'newest' &&
           libraryWords(request.query.query).length === 0 &&
@@ -181,10 +183,12 @@ export class FilesLibraryEngine {
       }
       if (request.operation === 'page') {
         const { snapshot, offset } = this.fileCursor(request.cursor, 'files', context)
+        reading = snapshot
         return this.checkedReply(this.filePage(snapshot, offset, request.size ?? 60, context))
       }
       if (request.operation === 'provenance') {
         const snapshot = this.requireFiles(request.snapshot, context)
+        reading = snapshot
         const group = snapshot.groups.find((one) => one.representative.sha256 === request.sha256)
         this.loadProvenance(snapshot, request.sha256)
         const keeps = snapshot.provenance.get(request.sha256)
@@ -238,6 +242,13 @@ export class FilesLibraryEngine {
       this.tasks = snapshot
       return result
     } catch (error) {
+      if (
+        reading?.stream !== undefined &&
+        !(error instanceof Failed && error.cause === 'invalid-cursor')
+      ) {
+        this.closeStream(reading)
+        if (this.files === reading) this.files = undefined
+      }
       if (this.db.inTransaction) this.db.exec('ROLLBACK')
       return libraryUnavailable(
         error instanceof Failed ? error.cause : 'worker',
@@ -413,13 +424,7 @@ export class FilesLibraryEngine {
     size: number,
     context: LibraryReadContext,
   ): FilesLibraryResult {
-    if (snapshot.stream?.failure !== undefined) throw snapshot.stream.failure
-    try {
-      this.advance(snapshot, offset + size)
-    } catch (error) {
-      if (snapshot.stream !== undefined) snapshot.stream.failure = error
-      throw error
-    }
+    this.advance(snapshot, offset + size)
     const end = Math.min(snapshot.groups.length, offset + size)
     return {
       type: 'files',
