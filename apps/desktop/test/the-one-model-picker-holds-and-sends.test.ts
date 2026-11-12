@@ -69,7 +69,7 @@ describe('UI-012 · the window’s holder of the picker’s lists', () => {
     expect(lists.held('claude')?.state).toBe('answered')
   })
 
-  it('⚑ the key is provider and profile: two profiles hold two lists', async () => {
+  it('keeps separate profile choices over one provider catalogue', async () => {
     const { lists, modelList } = holder(async () => list())
     await lists.read('claude')
     await lists.read('claude', 'work')
@@ -124,7 +124,7 @@ describe('UI-012 · the window’s holder of the picker’s lists', () => {
     failNow = true
     const kept = lists.held('claude')
     await lists.reread()
-    expect(lists.held('claude'), 'a failed re-read dropped the answer it had').toBe(kept)
+    expect(lists.held('claude'), 'a failed re-read dropped the answer it had').toEqual(kept)
   })
 
   it('🔴 add() trims the name, then reads that provider’s lists again; the door’s words come back', async () => {

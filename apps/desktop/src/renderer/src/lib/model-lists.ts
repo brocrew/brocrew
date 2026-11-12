@@ -29,14 +29,12 @@ import type { SessionStore } from './session-store'
  *
  * Use one popover picker wherever a model is chosen: launch form, conversation settings and agent sheet. `modelList` supplies the provider's models followed by models the person added.
  *
- * ⛔ **One holder for the window, keyed `provider:profile`**, so the three places read the same
- * answer and a hand-added model shows in all of them at once: hand-added models are per provider
- * and app-wide. ⚑ It is {@link createModelLists}; `composables/useModelLists.ts` binds it to the
- * window.
+ * One catalogue per provider supplies every screen; profile contexts retain only their choices
+ * and readiness. Hand-added models are also shared across the provider's screens.
  *
  * ## ⚠️ A list read is a probe, and a probe is a LAUNCH
  *
- * ⚑ The host memoizes each provider's answer per home, so a GOOD list is re-read at no cost — that
+ * ⚑ The host memoizes each provider's answer, so a GOOD list is re-read at no cost — that
  * is what {@link ModelLists.reread} does when the agents subject moves (a last pick, a default, a
  * hand-added model). ⛔ **A FAILED list is asked again only on a person's press** — the host
  * re-probes a cached failure once — and never on a roster change, which would be one child per
@@ -229,7 +227,7 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
       if (running !== undefined) return running
       const now = heldFor(provider, profileId)
       if (now?.state === 'answered' && now.list.notAsked === null) return Promise.resolve()
-      if (options?.once === true && now !== undefined) return Promise.resolve()
+      if (options?.once === true && now !== null) return Promise.resolve()
       return ask(provider, profileId)
     },
     async reread() {
