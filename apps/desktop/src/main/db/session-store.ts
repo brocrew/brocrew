@@ -3287,6 +3287,7 @@ export function createSessionStore(
     invalidateForAppend,
     markOwnAppend,
     forgetTheKeptFoldsOf,
+    theFoldsMayBeKept,
     keptUntilItsLedgerGrows,
     theKeptOnly,
   } = createLedgerFoldState(

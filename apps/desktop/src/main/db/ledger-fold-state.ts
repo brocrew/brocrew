@@ -208,6 +208,7 @@ export function createLedgerFoldState(
     invalidateForAppend,
     markOwnAppend,
     forgetTheKeptFoldsOf,
+    theFoldsMayBeKept,
     keptUntilItsLedgerGrows,
     theKeptOnly,
   }
