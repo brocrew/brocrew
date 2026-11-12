@@ -118,6 +118,7 @@ export class FilesLibraryEngine {
   private started = 0
   private abandoned: () => boolean = () => false
   private progress: () => void = () => {}
+  private idleTimer: ReturnType<typeof setTimeout> | undefined
   private closed = false
 
   constructor(
@@ -159,6 +160,7 @@ export class FilesLibraryEngine {
         this.closeStream(this.files)
         this.files = undefined
         this.tasks = undefined
+        this.scheduleExpiry()
         return { type: 'released' }
       }
       if (request.operation === 'query') {
@@ -175,6 +177,7 @@ export class FilesLibraryEngine {
           const result = this.checkedReply(this.filePage(snapshot, 0, request.size ?? 60, context))
           this.closeStream(this.files)
           this.files = snapshot
+          this.scheduleExpiry()
           return result
         } catch (error) {
           this.closeStream(snapshot)
@@ -240,6 +243,7 @@ export class FilesLibraryEngine {
         next: end < snapshot.tasks.length ? this.cursor(snapshot.token, 'tasks', end) : null,
       })
       this.tasks = snapshot
+      this.scheduleExpiry()
       return result
     } catch (error) {
       if (
@@ -261,6 +265,7 @@ export class FilesLibraryEngine {
   close(): void {
     if (this.closed) return
     this.closed = true
+    clearTimeout(this.idleTimer)
     this.closeStream(this.files)
     this.files = undefined
     this.tasks = undefined
@@ -328,6 +333,21 @@ export class FilesLibraryEngine {
     snapshot.metrics.cacheBytes = this.cacheSize(snapshot)
     return snapshot
   }
+  private scheduleExpiry(): void {
+    clearTimeout(this.idleTimer)
+    const touched = [this.files?.touchedAt, this.tasks?.touchedAt].filter(
+      (at): at is number => at !== undefined,
+    )
+    if (this.closed || touched.length === 0) return
+    this.idleTimer = setTimeout(
+      () => {
+        this.expire()
+        this.scheduleExpiry()
+      },
+      Math.max(0, Math.min(...touched) + B.idleMs - this.now()),
+    )
+    this.idleTimer.unref()
+  }
   private expire(): void {
     if (this.files !== undefined && this.now() - this.files.touchedAt >= B.idleMs) {
       this.closeStream(this.files)
@@ -342,6 +362,7 @@ export class FilesLibraryEngine {
   private stamp(snapshot: Snapshot, context: LibraryReadContext) {
     this.boundContext(snapshot, context)
     snapshot.touchedAt = this.now()
+    this.scheduleExpiry()
     return {
       snapshot: snapshot.token,
       readAt: snapshot.readAt,
