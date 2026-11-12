@@ -128,7 +128,6 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
     return last
   }
 
-
   const idsListedBy = async (toolset: AgentToolset): Promise<string[]> => {
     const listed = (await callOn(toolset, 'list_agents', {})) as { agents: { agent: string }[] }
     return listed.agents.map((one) => one.agent).sort()
