@@ -42,3 +42,13 @@ export function checkBetaKeyContract({ beta, sealedRows, status, entries, entryF
   }
   return facts
 }
+
+export function keyEntryPreserved(before, entries) {
+  return (
+    entries.length === 1 &&
+    entries[0].service === before.service &&
+    entries[0].account === before.account &&
+    entries[0].created === before.created &&
+    entries[0].modified === before.modified
+  )
+}

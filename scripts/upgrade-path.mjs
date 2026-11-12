@@ -7,7 +7,7 @@ import {
   until,
 } from './lib/update-rehearsal-app.mjs'
 import { digest, observeKeychainEntries } from './lib/mac-update-test.mjs'
-import { checkBetaKeyContract } from './lib/recovery-key-contract.mjs'
+import { checkBetaKeyContract, keyEntryPreserved } from './lib/recovery-key-contract.mjs'
 import {
   runRecoveryMeasurement,
   measurementSize,
@@ -2983,11 +2983,7 @@ async function runUpgradePath() {
       const entries = keychainEntries('after-candidate')
       summary.keychain.afterTheCandidateAskedForTheKey = entries
       check(
-        entries.length === 1 &&
-          entries[0].service === betaEntry.service &&
-          entries[0].account === betaEntry.account &&
-          entries[0].created === betaEntry.created &&
-          entries[0].modified === betaEntry.modified,
+        keyEntryPreserved(betaEntry, entries),
         `the beta’s Keychain entry ("${betaEntry.service}", account "${betaEntry.account}") is as the beta left it, and the candidate made no other`,
         { before: betaEntry, now: entries },
       )
