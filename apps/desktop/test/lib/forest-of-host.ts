@@ -2,7 +2,7 @@ import { readForestPages, type ForestSnapshot } from '../../src/renderer/src/lib
 import type { ForestScope, TheWholeForest } from '../../src/shared/the-whole-forest'
 import type { RuntimeHost } from '../../src/main/runtime/runtime-host'
 import type { ForestedNode, SessionStore } from '../../src/main/db/session-store'
-import { listedInOrder } from '../../src/main/db/forest-listing'
+import { listedInOrder } from '../../src/main/db/forest-first-read'
 import type { LedgerWalk } from '../../src/shared/question-contracts'
 
 /** Every conversation this app's agents hold, as the workspace's `all` window reads it. */

@@ -220,4 +220,3 @@ export function forestListing(db: AppDatabase, asked: ForestListingAsked): Fores
     behind: behindOf(drawn),
   }
 }
-
