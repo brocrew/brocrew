@@ -57,9 +57,7 @@ import { createAppLifetime } from '../src/main/app-lifetime'
 /**
  * # 🔴 744 · R100 — what a person typed and did not send survives a restart
  *
- * Save every draft slot and its attached paths in userData shortly after each change and on
- * quit. Restore them to the same slot at launch with the cursor at the end, and clear a draft
- * when sent. Saving a draft sends nothing.
+ * Keep unsent text and attachments across restart without sending them.
  *
  * ⚠️ **What each half can prove.** This file holds the RULES — the book copied out and put back
  * (§1), the sweep that would have thrown a restored draft away (§2), the bounded read before the
