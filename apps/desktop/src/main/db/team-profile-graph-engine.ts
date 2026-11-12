@@ -92,7 +92,6 @@ export class TeamProfileGraphEngine {
   private closed = false
   private visited = 0
   private projectedBytes = 0
-  private projectedResident = 0
   private workingBytes = 0
   private aggregateEstimate = 4096
   private started = 0
@@ -264,8 +263,6 @@ export class TeamProfileGraphEngine {
       const bytes = serialize(rows).byteLength
       this.projectedBytes = graphAdd(this.projectedBytes, bytes)
       if (bytes * 3 + rows.length * 1024 > nativeBudget) throw new Failed('budget')
-      this.projectedResident = bytes * 2 + rows.length * 1024
-      try {
         this.reserve(0)
         this.visited += rows.length
         for (const row of rows) {
@@ -290,9 +287,6 @@ export class TeamProfileGraphEngine {
             if (name.startsWith('bad_') && value !== 0) throw new Failed('metadata', 1)
           yield row
         }
-      } finally {
-        this.projectedResident = 0
-      }
       if (rows.length < pageSize) return
     }
   }
