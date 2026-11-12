@@ -1,4 +1,3 @@
-// 695-visible: this checks person-like starts on a GitHub-hosted runner: a release installed as a person
 import { spawn, spawnSync } from 'node:child_process'
 import { readStateEntry } from './lib/skill-tree-state.mjs'
 import {
@@ -8,6 +7,7 @@ import {
   until,
 } from './lib/update-rehearsal-app.mjs'
 import { digest, observeKeychainEntries } from './lib/mac-update-test.mjs'
+import { checkBetaKeyContract } from './lib/recovery-key-contract.mjs'
 import {
   runRecoveryMeasurement,
   measurementSize,
@@ -2474,6 +2474,7 @@ async function runUpgradePath() {
   )
   must(Boolean(drafted), 'the beta kept an unsent draft')
   await screenshot('beta-with-data.png')
+  summary.betaKeyStatus = await observeTheSavedKey('the beta, started again')
   await quit('the beta, started again')
   if (claudeDueAt !== null) {
     check(
@@ -2482,14 +2483,19 @@ async function runUpgradePath() {
       { closedAt: new Date().toISOString(), dueAt: claudeDueAt.toISOString() },
     )
   }
+  const before = readDatabase(data)
   // File-backed betas need no Keychain entry. Keep attributes of any entry an older beta left.
   summary.keychain = { candidateAppName, afterTheBeta: keychainEntries('after-beta') }
-  const betaEntry = summary.keychain.afterTheBeta[0] ?? null
-  if (os === 'mac') {
-    check(existsSync(join(data, 'api-keys.json')), 'the beta saved its API keys in api-keys.json')
-  }
-
-  const before = readDatabase(data)
+  if (os === 'mac')
+    summary.keychain.contract = checkBetaKeyContract({
+      beta: summary.betaApp,
+      sealedRows: before.tables.provider_api_key?.length,
+      status: { ...summary.betaKeyStatus, keyFilePresent: existsSync(join(data, 'api-keys.json')) },
+      entries: summary.keychain.afterTheBeta,
+      entryFor: keychainEntryFor,
+      check,
+    })
+  const betaEntry = summary.keychain.contract?.preservedEntry ?? null
   const claudeKeyWasSealed = (before.tables.provider_api_key ?? []).some(
     (row) => row.provider === 'claude',
   )

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { observeKeychainEntries } from '../lib/mac-update-test.mjs'
+import { checkBetaKeyContract } from '../lib/recovery-key-contract.mjs'
 import {
   CHECKPOINT_LINE,
   READY_LINE,
@@ -171,6 +172,123 @@ describe('status-only existing Keychain observations', () => {
     ])
     expect(JSON.stringify(seen)).not.toMatch(/Fictional|stdout|stderr|unread/)
     expect(results).toEqual([])
+  })
+})
+
+describe('the actual beta key storage contract', () => {
+  const beta = {
+    version: '0.2.19',
+    build: { commit: '0c7edaba8b6bb35b07248061f51d5c49827d558a', dirty: false },
+  }
+  const status = { provider: 'codex', set: true, inUse: true, keyFilePresent: true }
+  const entry = { appName: 'app', ...keychainEntryFor('app') }
+  const judge = (changes = {}) => {
+    const checks = []
+    const contract = checkBetaKeyContract({
+      beta,
+      sealedRows: 0,
+      status,
+      entries: [],
+      entryFor: keychainEntryFor,
+      ...changes,
+      check: (ok, name) => checks.push({ ok, name }),
+    })
+    return { contract, passed: checks.length > 0 && checks.every((one) => one.ok === true), checks }
+  }
+  it('records the file-backed release contract and legacy coverage not exercised', () => {
+    const seen = judge()
+    expect(seen.passed).toBe(true)
+    expect(seen.contract).toMatchObject({
+      storage: 'file-backed',
+      legacySealed: 'not-exercised',
+      entry: null,
+      sealedRows: 0,
+      source: beta.build.commit,
+    })
+  })
+  it.each([
+    undefined,
+    {},
+    { ...status, set: true, inUse: false },
+    { ...status, set: false, inUse: true },
+    { ...status, set: true, inUse: true, readState: 'unreadable' },
+    { ...status, keyFilePresent: false },
+    { ...status, keyFilePresent: undefined },
+  ])('rejects failed public status %j despite a known file-backed fixture', (status) => {
+    const seen = judge({ status })
+    expect(seen.passed).toBe(false)
+    expect(seen.contract.storage).toBe('file-backed')
+    expect(seen.contract.legacySealed).toBe('not-exercised')
+  })
+  it('retains an older entry for candidate preservation without requiring new sealing', () => {
+    const seen = judge({ entries: [entry] })
+    expect(seen.passed).toBe(true)
+    expect(seen.contract.entry).toBeNull()
+    expect(seen.contract.preservedEntry).toEqual(entry)
+    expect(seen.contract.legacySealed).toBe('not-exercised')
+  })
+  it.each(['0.2.19', '0.2.20', '0.2.21', '0.2.99', '0.3.0', '1.0.0'])(
+    'uses the file-backed contract for release %s without build-pin exemptions',
+    (version) => {
+      for (const build of [undefined, { dirty: true }, { commit: 'another-source' }]) {
+        const seen = judge({ beta: { version, build } })
+        expect(seen.passed).toBe(true)
+        expect(seen.contract.legacySealed).toBe('not-exercised')
+      }
+    },
+  )
+  it.each([
+    { beta: undefined },
+    { beta: {} },
+    ...['', 'unknown', '0.2', '0.02.19', '0.2.19-next', '0.2.19.1'].map((version) => ({
+      beta: { version },
+    })),
+    { sealedRows: undefined },
+    { sealedRows: null },
+    { sealedRows: -1 },
+    { sealedRows: 1 },
+  ])('never substitutes legacy sealing for unknown or inconsistent facts: %j', (changes) => {
+    const seen = judge(changes)
+    expect(seen.passed).toBe(false)
+    expect(seen.contract.storage).toBe('unknown')
+    expect(judge({ ...changes, entries: [entry] }).passed).toBe(false)
+  })
+  it.each(['0.0.1', '0.1.99', '0.2.18'])(
+    'keeps legacy sealing before the boundary: %s',
+    (version) => {
+      const seen = judge({ beta: { version }, sealedRows: 1, entries: [entry], status: undefined })
+      expect(seen.passed).toBe(true)
+      expect(seen.contract.storage).toBe('legacy-sealed')
+      expect(judge({ beta: { version }, sealedRows: 0 }).passed).toBe(false)
+    },
+  )
+  it('keeps a genuine sealed fixture entry for the existing candidate-preservation check', () => {
+    const seen = judge({
+      beta: { version: '0.2.18' },
+      sealedRows: 1,
+      entries: [entry],
+      status: undefined,
+    })
+    expect(seen.passed).toBe(true)
+    expect(seen.contract).toMatchObject({
+      storage: 'legacy-sealed',
+      legacySealed: 'required',
+      entry,
+    })
+  })
+  it.each([
+    { entries: [] },
+    { entries: [entry, entry] },
+    { entries: [{ ...entry, service: 'another service' }] },
+    { entries: [{ ...entry, account: 'another account' }] },
+    { entries: undefined },
+    { entries: null },
+    { entries: {} },
+    { entries: [null] },
+  ])('rejects missing or wrong legacy entry %j', ({ entries }) => {
+    const seen = judge({ beta: { version: '0.2.18' }, sealedRows: 1, entries })
+    expect(seen.passed).toBe(false)
+    expect(seen.contract.storage).toBe('legacy-sealed')
   })
 })
 
