@@ -1,3 +1,4 @@
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import { fullTime } from '../../src/renderer/src/lib/clock'
@@ -38,6 +39,7 @@ async function shelf(usage: Usage, width = 900): Promise<Mounted> {
   current = usage
   ;(window as { api?: unknown }).api = {
     runtime: {
+      providerCatalogue: async () => PROVIDER_DESCRIPTORS,
       providerUsage: () => Promise.resolve(current),
       onProvidersChanged: (listener: (message: ProvidersChangedMessage) => void) => {
         told = listener
