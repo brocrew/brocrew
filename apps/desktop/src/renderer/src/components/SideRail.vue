@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useClientApi } from '../client-provider/injection'
+import { useModalDepth } from './OverlayHost.vue'
 import { useProviderNames } from '../composables/useProviderNames'
 import { providerNamesIn } from '../lib/front-door-words'
 import type { AgentState as OneState } from '../../../shared/agent-state-contracts'
@@ -317,6 +318,7 @@ const railMinute = useMinuteClock()
  * ⚑ Closed by Esc, a second press, or a press anywhere else; focus goes back to the footer.
  */
 const updatesOpen = ref(false)
+const modalDepth = useModalDepth()
 const footerBox = ref<HTMLElement | null>(null)
 const footerButton = ref<HTMLButtonElement | null>(null)
 const workspacesOpen = ref(false)
@@ -326,7 +328,7 @@ const footerName = computed(() => `${workspaceName.value ?? 'Local workspace'}, 
 
 /** ⚑ Esc closes it from anywhere while it is open, wherever focus went after a press. */
 function escapeCloses(event: KeyboardEvent): void {
-  if (event.key !== 'Escape') return
+  if (event.key !== 'Escape' || modalDepth.value > 0) return
   if (updatesOpen.value) closeUpdates()
   else if (workspacesOpen.value) {
     workspacesOpen.value = false
@@ -358,6 +360,7 @@ function closeUpdates(): void {
 }
 
 function pressElsewhere(event: PointerEvent): void {
+  if (modalDepth.value > 0) return
   if (footerBox.value !== null && !footerBox.value.contains(event.target as Node)) {
     updatesOpen.value = false
     workspacesOpen.value = false

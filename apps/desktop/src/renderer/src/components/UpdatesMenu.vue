@@ -11,8 +11,6 @@ import { clockTime } from '../../../shared/clock'
 import { useUpdates } from '../composables/useUpdates'
 import { readableError } from '../lib/session-record'
 
-defineOptions({ inheritAttrs: false })
-
 const props = defineProps<{
   /** This BroBot's version where the app said it before the updates answer — `AppInfo.version`. */
   version?: string | null
@@ -98,7 +96,7 @@ const NOT_HERE: Readonly<Record<'a-development-build' | 'no-release-feed', strin
 }
 
 function onKey(event: KeyboardEvent): void {
-  if (event.key !== 'Escape') return
+  if (event.key !== 'Escape' || confirmWorkspaces.value !== null) return
   event.stopPropagation()
   emit('close')
 }
@@ -129,7 +127,6 @@ onMounted(async () => {
 <template>
   <div
     ref="panel"
-    v-bind="$attrs"
     class="updates-menu"
     data-on-white
     role="dialog"
@@ -289,48 +286,50 @@ onMounted(async () => {
         </label>
       </div>
     </template>
+    <OverlayHost
+      v-if="confirmWorkspaces !== null"
+      label="Update all workspaces"
+      @close="confirmWorkspaces = null"
+    >
+      <SheetShell glyph="↑" @close="confirmWorkspaces = null">
+        <template #header>
+          <strong>Update all {{ confirmWorkspaces.length }} workspaces?</strong>
+          <small>BroCrew {{ notesVersion }} is ready.</small>
+        </template>
+        <template #body>
+          <p>Save drafts, stop running agents, update BroCrew, and reopen these workspaces:</p>
+          <ul data-cy="updates-confirm-workspaces">
+            <li v-for="workspace in confirmWorkspaces" :key="workspace.path">
+              {{ workspace.name }}
+            </li>
+          </ul>
+          <p>
+            Running turns stop. Interrupted agents continue in their saved sessions where possible;
+            unfinished commands may need attention.
+          </p>
+          <p class="aside">If drafts cannot be saved, the update stays on hold.</p>
+        </template>
+        <template #actions>
+          <button
+            type="button"
+            class="small"
+            data-cy="updates-confirm-cancel"
+            @click="confirmWorkspaces = null"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="small primary"
+            data-cy="updates-confirm-now"
+            @click="confirmRestart"
+          >
+            Update now
+          </button>
+        </template>
+      </SheetShell>
+    </OverlayHost>
   </div>
-  <OverlayHost
-    v-if="confirmWorkspaces !== null"
-    label="Update all workspaces"
-    @close="confirmWorkspaces = null"
-  >
-    <SheetShell glyph="↑" @close="confirmWorkspaces = null">
-      <template #header>
-        <strong>Update all {{ confirmWorkspaces.length }} workspaces?</strong>
-        <small>BroCrew {{ notesVersion }} is ready.</small>
-      </template>
-      <template #body>
-        <p>Save drafts, stop running agents, update BroCrew, and reopen these workspaces:</p>
-        <ul data-cy="updates-confirm-workspaces">
-          <li v-for="workspace in confirmWorkspaces" :key="workspace.path">{{ workspace.name }}</li>
-        </ul>
-        <p>
-          Running turns stop. Interrupted agents continue in their saved sessions where possible;
-          unfinished commands may need attention.
-        </p>
-        <p class="aside">If drafts cannot be saved, the update stays on hold.</p>
-      </template>
-      <template #actions>
-        <button
-          type="button"
-          class="small"
-          data-cy="updates-confirm-cancel"
-          @click="confirmWorkspaces = null"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          class="small primary"
-          data-cy="updates-confirm-now"
-          @click="confirmRestart"
-        >
-          Update now
-        </button>
-      </template>
-    </SheetShell>
-  </OverlayHost>
 </template>
 
 <style scoped>
