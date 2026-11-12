@@ -1,3 +1,4 @@
+// 695-visible: observes native relaunch for the existing hosted Mac rehearsals; it opens no window.
 import { readFile, lstat, realpath } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'

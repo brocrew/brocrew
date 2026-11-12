@@ -101,6 +101,7 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
     selectWorkspace: vi.fn(),
     requireEvidence,
     click: vi.fn(async () => order.push('restart-choice')),
+    run: vi.fn(),
     processInfo: vi.fn(async () => null),
     waitFor: async (check) => {
       expect(await check()).toBe(true)
@@ -139,6 +140,14 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
     'no-app-or-ShipIt',
   ])
   expect(fixture.click).toHaveBeenCalledExactlyOnceWith(workspace.cdp, '[data-cy=updates-restart]')
+  expect(fixture.observeMacReplacement).toHaveBeenCalledExactlyOnceWith({
+    app: fixture.app,
+    version: '0.2.23',
+    previous,
+    run: fixture.run,
+    processInfo: fixture.processInfo,
+  })
+  expect(fixture.run).not.toHaveBeenCalled()
   expect(fixture.completedProofCopy).toHaveBeenCalledExactlyOnceWith(
     '/fictional/default',
     new Set(['A-copy']),
