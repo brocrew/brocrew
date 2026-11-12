@@ -1,4 +1,5 @@
 import { vi } from 'vitest'
+import { readingOf } from './forest-fixture'
 import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 import { launchFacts, resolveProviderLaunch } from '../lib/provider-launch-fixture'
@@ -167,12 +168,8 @@ export const runtime = {
     conversations: [],
   })),
   processMemory: vi.fn<RuntimeBridge['processMemory']>(async () => ({ conversations: [] })),
-  theWholeForest: vi.fn<RuntimeBridge['theWholeForest']>(async () => ({
-    readAt: 1,
-    nodes: forestWalk(),
-    conversations: 0,
-    heldByNoAgent: 0,
-  })),
+  forestReading: vi.fn<RuntimeBridge['forestReading']>(async (scope) => readingOf([], scope)),
+  forestNodes: vi.fn<RuntimeBridge['forestNodes']>(async () => ({ nodes: forestWalk(), gone: [], readAt: 1 })),
 }
 
 export function installRuntimeScreenFixture(): void {
@@ -185,6 +182,8 @@ export function installRuntimeScreenFixture(): void {
       expiresAt: null,
     }
   vi.clearAllMocks()
+  runtime.forestReading.mockReset().mockImplementation(async (scope) => readingOf([], scope))
+  runtime.forestNodes.mockReset().mockResolvedValue({ nodes: forestWalk(), gone: [], readAt: 1 })
   runtime.createSession.mockReset()
   runtime.cancelLaunch.mockReset().mockResolvedValue(true)
   runtime.profiles.mockReset().mockResolvedValue([DEFAULT_PROFILE_ID])

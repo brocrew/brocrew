@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createSessionStore, type SessionStore } from '../src/renderer/src/lib/session-store'
 import type { RuntimeBridge } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
+import { readingOf } from './dom/forest-fixture'
 
 const stores: SessionStore[] = []
 afterEach(() => {
@@ -20,7 +21,6 @@ const readers = [
   'readWorkspace',
   'whatIsBeingDone',
   'whatEachConversationIsWaitingOn',
-  'theWholeForest',
   'processMemory',
   'readLimitsDisplay',
 ] as const
@@ -43,18 +43,7 @@ describe('an unavailable host read never claims that the workspace is empty', ()
   })
 
   it('preserves the host’s forest completeness and reading time when it recovers', async () => {
-    const reading = {
-      readAt: 1234,
-      conversations: 12,
-      heldByNoAgent: 3,
-      nodes: {
-        rows: [],
-        walk: 'every-conversation-this-app-placed' as const,
-        ledgers: 8,
-        rowsUnread: 2,
-        ledgersSkipped: 1,
-      },
-    }
+    const reading = readingOf([], undefined, { readAt: 1234, members: { total: 12, admitted: ['neri'] }, unfolded: ['neri'] })
     const read = vi
       .fn()
       .mockRejectedValueOnce(new Error('Temporarily unavailable'))
@@ -63,12 +52,21 @@ describe('an unavailable host read never claims that the workspace is empty', ()
       everythingOverTheWire({
         onEvent: () => () => {},
         onLiveness: () => () => {},
-        theWholeForest: read,
+        forestReading: read,
       }) as unknown as RuntimeBridge,
     )
     stores.push(store)
 
-    expect(await store.theWholeForest()).toBeNull()
-    expect(await store.theWholeForest()).toEqual(reading)
+    expect(await store.forestReading({ is: 'the-workspace', window: 'day' })).toBeNull()
+    expect(await store.forestReading({ is: 'the-workspace', window: 'day' })).toEqual(reading)
   })
+})
+
+it('keeps a failed graph page distinct from an empty page', async () => {
+  const read = vi.fn().mockRejectedValueOnce(new Error('The page could not be read')).mockResolvedValueOnce({ nodes: readingOf([]).nodes, gone: [], readAt: 55 })
+  const store = createSessionStore(everythingOverTheWire({ onEvent: () => () => {}, onLiveness: () => () => {}, forestNodes: read }) as unknown as RuntimeBridge)
+  stores.push(store)
+  expect(await store.forestNodes('fictional-reading', ['neri'])).toBeNull()
+  expect(await store.forestNodes('fictional-reading', ['neri'])).toEqual({ nodes: readingOf([]).nodes, gone: [], readAt: 55 })
+  expect(read).toHaveBeenLastCalledWith('fictional-reading', ['neri'])
 })

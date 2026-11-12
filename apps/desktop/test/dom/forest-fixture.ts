@@ -4,7 +4,7 @@ import type { RailSays } from '../../src/renderer/src/lib/agent-state'
 import { forestView, type ForestView } from '../../src/renderer/src/lib/the-forest'
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 
-import type { ForestNode, TheWholeForest } from '../../src/shared/the-whole-forest'
+import type { ForestNode, TheWholeForest, ForestReading, ForestScope } from '../../src/shared/the-whole-forest'
 
 /**
  * # ⚑ A forest to draw — for the surfaces that draw `TeamForest` outside the Team page
@@ -97,4 +97,30 @@ export async function forestDrawn(): Promise<void> {
   await nextTick()
   await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
   await nextTick()
+}
+
+/** One supplied read, with explicit fixture membership and no renderer window filtering. */
+export function readingOf(
+  rows: readonly ForestNode[],
+  scope: ForestScope = { is: 'the-workspace', window: 'day' },
+  over: Partial<ForestReading> = {},
+): ForestReading {
+  const forest = forestOf(rows)
+  const admitted = rows.flatMap((row) => row.node === 'a-conversation' ? [row.conversation] : [])
+  const count = admitted.length
+  return {
+    id: 'fictional-reading',
+    scope,
+    measuredFrom: NOW,
+    counts: scope.is === 'the-workspace' ? { active: count, hour: count, day: count, week: count, all: count } : null,
+    root: scope.is === 'the-tree-of' ? admitted[0] ?? null : null,
+    members: { total: count, admitted },
+    context: [],
+    behind: [],
+    nodes: forest.nodes,
+    unfolded: [],
+    heldByNoAgent: 0,
+    readAt: NOW,
+    ...over,
+  }
 }

@@ -29,7 +29,7 @@ import type {
 import type { ResolvedMessageLink } from '../../src/renderer/src/lib/message-links'
 import { idlePanel } from './sub-agents-idle-fixture'
 import { drawnReady } from './drawn'
-import { conv, forestOf, forestDrawn } from './forest-fixture'
+import { conv, forestOf, forestDrawn, readingOf } from './forest-fixture'
 import { mount, META } from './harness'
 
 // Register the fixture's mocks before loading the root's composable imports.
@@ -424,10 +424,10 @@ afterEach(disposeRuntimeScreenFixture)
 it('opens Team from the rail and reads its work only when that page is shown', async () => {
   const m = mount(RuntimeScreen, {})
   await nextTick()
-  expect(runtime.theWholeForest).not.toHaveBeenCalled()
+  expect(runtime.forestReading).not.toHaveBeenCalled()
   m.q('rail-team').click()
   await expect.poll(() => m.all('team-workspace').length).toBe(1)
-  await expect.poll(() => runtime.theWholeForest.mock.calls.length).toBe(1)
+  await expect.poll(() => runtime.forestReading.mock.calls.length).toBe(1)
   expect(m.q('team-workspace').textContent).toContain('Team')
 })
 
@@ -470,20 +470,15 @@ it('refreshes Team after work changes and stops requesting its forest on another
   const m = mount(RuntimeScreen, {})
   m.q('rail-team').click()
   await expect.poll(() => m.all('forest-empty').length).toBe(1)
-  runtime.theWholeForest.mockResolvedValueOnce({
-    readAt: 2,
-    nodes: forestWalk(),
-    conversations: 0,
-    heldByNoAgent: 7,
-  })
+  runtime.forestReading.mockResolvedValueOnce(readingOf([conv('neri', null)]))
   changed({ what: 'work' })
-  await expect.poll(() => m.all('forest-outside')[0]?.textContent).toContain('7 more conversations')
+  await expect.poll(() => m.all('forest-drawn')[0]?.textContent).toBe('1 conversation')
   m.q('new-conversation').click()
   await nextTick()
-  const reads = runtime.theWholeForest.mock.calls.length
+  const reads = runtime.forestReading.mock.calls.length
   changed({ what: 'work' })
   await nextTick()
-  expect(runtime.theWholeForest).toHaveBeenCalledTimes(reads)
+  expect(runtime.forestReading).toHaveBeenCalledTimes(reads)
   expect(m.all('team-workspace')).toHaveLength(0)
   expect(m.q('prompt-input')).toBeTruthy()
 })
@@ -500,18 +495,18 @@ it('shows a failed startup read without hiding the successful app information', 
 })
 
 it('says the forest could not be read instead of displaying an empty Team', async () => {
-  runtime.theWholeForest.mockRejectedValueOnce(new Error('The work ledger is unavailable'))
+  runtime.forestReading.mockRejectedValueOnce(new Error('The work ledger is unavailable'))
   const m = mount(RuntimeScreen, {})
   m.q('rail-team').click()
-  await expect.poll(() => runtime.theWholeForest.mock.calls.length).toBe(1)
+  await expect.poll(() => runtime.forestReading.mock.calls.length).toBe(1)
   await nextTick()
   expect(m.q('forest-not-read').textContent).toContain('Nothing has been read')
   expect(m.all('forest-empty')).toHaveLength(0)
 })
 
 it('keeps the launcher open when a Team read finishes after the person leaves', async () => {
-  let finish!: (answer: Awaited<ReturnType<typeof runtime.theWholeForest>>) => void
-  runtime.theWholeForest.mockImplementationOnce(
+  let finish!: (answer: Awaited<ReturnType<typeof runtime.forestReading>>) => void
+  runtime.forestReading.mockImplementationOnce(
     () =>
       new Promise((resolve) => {
         finish = resolve
@@ -519,10 +514,10 @@ it('keeps the launcher open when a Team read finishes after the person leaves', 
   )
   const m = mount(RuntimeScreen, {})
   m.q('rail-team').click()
-  await expect.poll(() => runtime.theWholeForest.mock.calls.length).toBe(1)
+  await expect.poll(() => runtime.forestReading.mock.calls.length).toBe(1)
   m.q('new-conversation').click()
   await nextTick()
-  finish({ readAt: 3, nodes: forestWalk(), conversations: 0, heldByNoAgent: 9 })
+  finish(readingOf([], undefined, { heldByNoAgent: 9 }))
   await nextTick()
   await nextTick()
   expect(m.q('prompt-input')).toBeTruthy()
@@ -850,7 +845,7 @@ it.each(['activity', 'forest'] as const)(
     runtime.whatIsBeingDone.mockImplementationOnce(() =>
       slow === 'activity' ? activity.promise : Promise.resolve({ readAt: 2, conversations: [] }),
     )
-    runtime.theWholeForest.mockImplementationOnce(() =>
+    runtime.forestReading.mockImplementationOnce(() =>
       slow === 'forest'
         ? forest.promise
         : Promise.resolve({ readAt: 2, nodes: forestWalk(), conversations: 0, heldByNoAgent: 0 }),
@@ -904,13 +899,13 @@ it('ignores old graph and activity refinements after a newer relationship readin
   const oldForest = deferred<Awaited<ReturnType<RuntimeBridge['theWholeForest']>>>()
   runtime.whoCalledWhom.mockResolvedValueOnce(panelRead())
   runtime.whatIsBeingDone.mockReturnValueOnce(oldActivity.promise)
-  runtime.theWholeForest.mockReturnValueOnce(oldForest.promise)
+  runtime.forestReading.mockReturnValueOnce(oldForest.promise)
   const screen = await panelScreen()
   try {
     await expect.poll(() => screen.all('cast-sub-agents').length).toBe(1)
     runtime.whoCalledWhom.mockResolvedValueOnce(panelRead(2))
     runtime.whatIsBeingDone.mockResolvedValueOnce({ readAt: 200, conversations: [] })
-    runtime.theWholeForest.mockResolvedValueOnce({
+    runtime.forestReading.mockResolvedValueOnce({
       readAt: 200,
       nodes: forestWalk(),
       conversations: 0,
@@ -1001,7 +996,7 @@ it('keeps Graph unread until the independent forest arrives, then draws the curr
     conv('fictional-reader-1', 'fictional-source', { identity: 'reader-1' }),
   ])
   runtime.whoCalledWhom.mockResolvedValueOnce(panelRead())
-  runtime.theWholeForest.mockReturnValueOnce(forest.promise)
+  runtime.forestReading.mockReturnValueOnce(forest.promise)
   const screen = await panelScreen()
   try {
     await expect.poll(() => screen.all('cast-sub-agents').length).toBe(1)
@@ -1016,7 +1011,7 @@ it('keeps Graph unread until the independent forest arrives, then draws the curr
     expect(screen.all('forest-not-read')).toHaveLength(0)
     expect(screen.all('forest-row-fictional-reader-1')).toHaveLength(1)
     expect(screen.q('forest-row-fictional-source').dataset.current).toBe('true')
-    expect(runtime.theWholeForest).toHaveBeenCalledTimes(1)
+    expect(runtime.forestReading).toHaveBeenCalledTimes(1)
     expect(runtime.send).not.toHaveBeenCalled()
     expect(runtime.resume).not.toHaveBeenCalled()
   } finally {
@@ -1154,3 +1149,52 @@ it('replies that land after the screen is gone write nothing the next screen wou
 })
 
 registerRootProviderCases(RuntimeScreen)
+
+
+it('asks the read layer for every selected time window and pairs its supplied counts with membership', async () => {
+  const counts = { active: 2, hour: 3, day: 6, week: 10, all: 520 }
+  runtime.forestReading.mockImplementation(async (scope) => readingOf([conv('aster', null)], scope, { counts }))
+  const m = mount(RuntimeScreen, {})
+  m.q('rail-team').click()
+  await expect.poll(() => m.all('forest-drawn')[0]?.textContent).toBe('1 conversation')
+  expect(runtime.forestReading).toHaveBeenLastCalledWith({ is: 'the-workspace', window: 'day' })
+  m.q('team-tab-forest').click()
+  for (const window of ['active', 'hour', 'day', 'week', 'all'] as const) {
+    m.q(`forest-window-${window}`).click()
+    await expect.poll(() => runtime.forestReading.mock.lastCall?.[0]).toEqual({ is: 'the-workspace', window })
+    await expect.poll(() => m.q(`forest-window-${window}`).getAttribute('aria-pressed')).toBe('true')
+    expect(m.q(`forest-window-${window}`).textContent).toContain(String(counts[window]))
+  }
+})
+
+it('ignores an older window reply and reads the last window chosen during it', async () => {
+  let finish!: (reading: ReturnType<typeof readingOf>) => void
+  runtime.forestReading.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+  const m = mount(RuntimeScreen, {})
+  m.q('rail-team').click()
+  await expect.poll(() => runtime.forestReading.mock.calls.length).toBe(1)
+  m.q('team-tab-forest').click()
+  m.q('forest-window-week').click()
+  await nextTick()
+  runtime.forestReading.mockResolvedValueOnce(readingOf([conv('neri', null)], { is: 'the-workspace', window: 'week' }, { counts: { active: 0, hour: 0, day: 0, week: 1, all: 1 } }))
+  finish(readingOf([conv('outdated', null)], { is: 'the-workspace', window: 'day' }, { counts: { active: 7, hour: 7, day: 7, week: 7, all: 7 } }))
+  await expect.poll(() => m.all('forest-row-neri').length).toBe(1)
+  expect(m.all('forest-row-outdated')).toHaveLength(0)
+  expect(m.q('forest-window-week').textContent).toContain('1')
+  expect(runtime.forestReading).toHaveBeenLastCalledWith({ is: 'the-workspace', window: 'week' })
+})
+
+it('reads the full containing tree only when the conversation Graph tab is opened', async () => {
+  const m = await screenWithLink()
+  expect(runtime.forestReading).not.toHaveBeenCalled()
+  runtime.forestReading.mockImplementation(async (scope) => readingOf([
+    conv('fictional-source', null, { updatedAt: 1 }),
+    conv('august-helper', 'fictional-source', { updatedAt: 1 }),
+  ], scope))
+  m.q('main-tab-graph').click()
+  await expect.poll(() => runtime.forestReading.mock.calls.length).toBe(1)
+  expect(runtime.forestReading).toHaveBeenLastCalledWith({ is: 'the-tree-of', conversation: 'fictional-source' })
+  await expect.poll(() => m.all('forest-row-august-helper').length).toBe(1)
+  expect(m.all('forest-window-day')).toHaveLength(0)
+  expect(m.q('forest-drawn').textContent).toBe('2 conversations')
+})

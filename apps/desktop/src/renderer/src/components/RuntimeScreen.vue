@@ -206,7 +206,8 @@ import {
 } from '../lib/conversation-waits'
 
 import type { WhatIsBeingDone } from '../../../shared/what-is-being-done'
-import type { TheWholeForest } from '../../../shared/the-whole-forest'
+import type { TheWholeForest, ForestWindow } from '../../../shared/the-whole-forest'
+import { readForestPages, type ForestSnapshot } from '../lib/forest-reading'
 import { forestView } from '../lib/the-forest'
 import { ROSTER_EVERY_MS } from '../lib/team-roster'
 import { refusedToOpen } from '../lib/taking-over'
@@ -2671,32 +2672,37 @@ watch(lastSeen.since, () => void readActivity())
  * without it — less rather than something else, and never a tool name from a minute ago.
  */
 const beingDone = ref<WhatIsBeingDone | null>(null)
-/**
- * Read the whole forest for the Team page's Graph tab.
- *
- * ⛔ **Read in the SAME call as {@link beingDone} and on the same tick**, which is `637` §5's
- * printed shape and the reason this screen does not grow a second interval: the docblock above
- * warns that *"a FASTER interval of its own would put TWO ages on one band"*, and a forest drawn
- * beside a doing word has exactly that hazard — two readings, two moments.
- *
- * ⚠️ **`null` is NOT kept on a refusal**, like its sibling and for its reason. ⚑ A stale TREE
- * reads as *this is the shape of your work*, which is a louder false claim than an absent one. `641` §5.5: *"`null` from the read draws we could not tell, never
- * an empty tree."*
- */
-const theForest = ref<TheWholeForest | null>(null)
-/**
- * ⚑ **641 · the forest, folded for the drawing** — one derivation, and the window's own `held` is
- * what makes `hereIsOf`'s fourth navigation state reachable.
- */
-const theForestView = computed(() => foldTheForest(theForest.value, beingDone.value))
-
-/**
- * Fold the conversation's Graph tab from the same forest as the Team page. {@link readTheCast} supplies the polled forest and what each running conversation was last told.
- */
+const forestWindow = ref<ForestWindow>('day')
+const theForest = ref<ForestSnapshot | null>(null)
+const forestPending = ref(false)
+const forestError = ref<string | null>(null)
+let forestEpoch = 0
+const theForestView = computed(() => foldGraphReading(theForest.value, beingDone.value))
+const ownForest = ref<ForestSnapshot | null>(null)
+const ownForestFor = ref<string | null>(null)
+const ownForestPending = ref(false)
+const ownForestError = ref<string | null>(null)
+let ownForestEpoch = 0
 const conversationForestView = computed(() =>
-  foldTheForest(cast.forest.value, cast.reading.value?.atWork ?? null),
+  ownForestFor.value === activeId.value
+    ? foldGraphReading(ownForest.value, cast.reading.value?.atWork ?? null)
+    : null,
 )
 const readConversationForest = () => conversationForestView.value
+
+function foldGraphReading(snapshot: ForestSnapshot | null, atWork: WhatIsBeingDone | null) {
+  const view = foldTheForest(snapshot?.forest ?? null, atWork)
+  if (view === null || snapshot === null) return null
+  const context = new Set(snapshot.reading.context)
+  const reason = snapshot.reading.scope.is === 'the-workspace' && snapshot.reading.scope.window === 'all' ? 'limit' as const : 'window' as const
+  return {
+    ...view,
+    reading: snapshot,
+    rows: view.rows.map((row) => row.kind === 'a-conversation' && context.has(row.conversation)
+      ? { ...row, conversationRow: { ...row.conversationRow!, context: reason } }
+      : row),
+  }
+}
 
 /** ⚑ **One fold for both drawings of the forest** — the Team page's and a conversation's tab. */
 function foldTheForest(forest: TheWholeForest | null, atWork: WhatIsBeingDone | null) {
@@ -2715,42 +2721,66 @@ function foldTheForest(forest: TheWholeForest | null, atWork: WhatIsBeingDone | 
   })
 }
 
-/**
- * 🔴 **593 · the Team page's reading** — {@link beingDone} and the forest.
- *
- * ⛔ `whatIsBeingDone` is complete and keyed by conversation, and `byIdentity` is the door `575`
- * named for this page. ⚑ **Gated on the page being on screen**, and re-checked after the await,
- * which is what stops an answer landing on a screen that has moved: a tick nothing paints is pure
- * cost.
- *
- * 🔴 **672 · one read at a time, and the last change always read** — see {@link oneReadAtATime}.
- * ⛔ `668` put this read on every `conversations` and `work` announcement, and a burst of six held
- * the main process for 132–146 ms on a 200-conversation workspace (`672` §3, measured). ⚑ **Every
- * trigger goes through the one wrapped function** — the arrival watch and both arms (W4.74 took the
- * tick away: D-033 pushes every move of the work) — so
- * two reads are never in the air at once, ⚠️ and the sequence number this read used to carry
- * (`rosterRead`'s rule, for a tick landing beside an arrival) had nothing left to order: it is gone
- * rather than kept as a line no mutation could make fail.
- */
+/** Read membership, counts and pages together; a moved screen cannot accept an older answer. */
 async function readWhoIsWorkingOnce(): Promise<void> {
   if (surface.value !== 'team') return
-  // ⚑ **641 · ONE call for both** — `637` §5 prints this exact shape, and a second await here
-  // would be a second moment for one page.
-  const [doing, grown] = await Promise.all([store.whatIsBeingDone(), store.theWholeForest()])
-  // ⚑ **The person moved while it was in flight.** Writing it would leave the next screen holding
-  // a reading taken for one nobody is looking at — and this ref is the ONE place on this screen
-  // that does not keep its last good answer (see {@link beingDone}).
-  if (surface.value !== 'team') return
-  beingDone.value = doing
-  theForest.value = grown
+  const window = forestWindow.value
+  const epoch = forestEpoch
+  const current = () => surface.value === 'team' && epoch === forestEpoch && window === forestWindow.value
+  forestPending.value = true
+  forestError.value = null
+  let received = false
+  const doing = store.whatIsBeingDone()
+  const complete = await readForestPages(store, { is: 'the-workspace', window }, current, (snapshot) => {
+    received = true
+    theForest.value = snapshot
+    castFacts.update({ forest: snapshot.forest })
+  })
+  const atWork = await doing
+  if (!current()) return
+  beingDone.value = atWork
+  forestPending.value = false
+  if (!complete) {
+    forestError.value = 'Could not finish reading the graph.'
+    if (!received) theForest.value = null
+  }
 }
 const readWhoIsWorking = oneReadAtATime(readWhoIsWorkingOnce)
-
-// ⚑ **Arriving at Team re-reads immediately** — a page just opened is read, never one left from
-// before; every move after that is pushed (W4.74) — `readActivity`'s `watch(surface, …)` exactly, one
-// surface over.
+function chooseForestWindow(window: ForestWindow): void {
+  forestEpoch += 1
+  forestWindow.value = window
+  void readWhoIsWorking()
+}
 watch(surface, (now) => {
+  forestEpoch += 1
   if (now === 'team') void readWhoIsWorking()
+})
+
+const readOwnForest = oneReadAtATime(async () => {
+  const asked = surface.value === 'conversation' && mainTab.value === 'graph' ? activeId.value : null
+  if (asked === null) return
+  const epoch = ownForestEpoch
+  const current = () => epoch === ownForestEpoch && surface.value === 'conversation' && mainTab.value === 'graph' && activeId.value === asked
+  if (ownForestFor.value !== asked) ownForest.value = null
+  ownForestFor.value = asked
+  ownForestPending.value = true
+  ownForestError.value = null
+  let received = false
+  const complete = await readForestPages(store, { is: 'the-tree-of', conversation: asked }, current, (snapshot) => {
+    received = true
+    ownForest.value = snapshot
+    castFacts.update({ forest: snapshot.forest })
+  })
+  if (!current()) return
+  ownForestPending.value = false
+  if (!complete) {
+    ownForestError.value = 'Could not finish reading the graph.'
+    if (!received) ownForest.value = null
+  }
+})
+watch([mainTab, activeId, surface], () => {
+  ownForestEpoch += 1
+  if (surface.value === 'conversation' && mainTab.value === 'graph') void readOwnForest()
 })
 
 /* ---------------------------------------------------------------------------
@@ -2860,12 +2890,6 @@ async function readTheCast(): Promise<void> {
   castFacts.update({ loadingFor: asked })
   const answerPending = store.whoCalledWhom(asked)
   const doingPending = store.whatIsBeingDone()
-  // The graph and activity refine the cards; neither holds up their first relationship reading.
-  const forestPending = store.theWholeForest().then((grown) => {
-    if (mine === castRead && asked === activeId.value && grown !== null) {
-      castFacts.update({ forest: grown })
-    }
-  })
   const answer = await answerPending
   if (mine !== castRead || asked !== activeId.value) return
   castFacts.update({ loadingFor: null })
@@ -2892,7 +2916,6 @@ async function readTheCast(): Promise<void> {
   if (reading?.conversation === asked && reading.answered) {
     castFacts.update({ reading: { ...reading, atWork: doing } })
   }
-  await forestPending
 }
 
 // ⚑ **Opening a conversation re-reads immediately** — a band just opened is read, never one left
@@ -2947,14 +2970,8 @@ async function glance(): Promise<void> {
   glanceRead += 1
   const mine = glanceRead
   if (surface.value === 'team') {
-    // ⚑ A forest read that did not answer is asked again, whole.
-    if (theForest.value === null) {
-      void readWhoIsWorking()
-      return
-    }
-    const doing = await store.whatIsBeingDone()
-    // ⚑ {@link beingDone}'s own rule: no kept answer — a refusal draws no doing words.
-    if (surface.value === 'team' && mine === glanceRead) beingDone.value = doing
+    // Rolling windows and their counts advance together on the existing visible-page glance.
+    void readWhoIsWorking()
     return
   }
   const asked = surface.value === 'conversation' ? activeId.value : null
@@ -3191,6 +3208,7 @@ onMounted(() => {
   stopHearingStates = listenProviderStates(window.api.runtime, store, (message) => {
     rail.value?.hearStates(message)
     teamProfileGraph.markStale()
+    void readWhoIsWorking()
     // ⚑ **UI-002 · a file kept anywhere is read again at once** — see {@link readTheFiles}.
     if (message.kept.length > 0) {
       filesLibrary.markStale()
@@ -3215,6 +3233,7 @@ onMounted(() => {
       // rule: do not add a subject nothing reads)*, and `631`'s two task lists are the reader that
       // rule was waiting for.
       void readTheCast()
+      void readOwnForest()
       // Refresh the Team forest when a conversation opens, ends or is spawned, rather than waiting for arrival or its periodic tick. `readWhoIsWorking` runs only while the page is visible.
       void readWhoIsWorking()
       // 🔴 **571 · and the rail's live signal**, whose `open` half is a count of conversations that
@@ -3239,6 +3258,7 @@ onMounted(() => {
       teamProfileGraph.markStale()
       filesLibrary.markStale()
       void readTheCast()
+      void readOwnForest()
       // ⚑ **D-016 · commit 7 · R2 — and the rail's list, for the work that names each
       // conversation**, which a give, a reply, a take-back, a close or a retitle moves and nothing
       // pushes. ⛔ Not for what each agent is doing, which arrives on its own
@@ -3332,6 +3352,8 @@ onUnmounted(() => {
   document.removeEventListener('visibilitychange', glanceOnReturn)
   // Every read still out belongs to this screen, so none of them may write once it has gone.
   castRead++
+  forestEpoch++
+  ownForestEpoch++
   memoryRead++
   filesRead++
   glanceRead++
@@ -3966,6 +3988,11 @@ onUnmounted(() => {
             :held="store.live.value.map((record) => record.sessionId)"
             :conversations="rail?.theOneList ?? null"
             :forest="theForestView"
+            :forest-window="forestWindow"
+            :forest-counts="theForest?.reading.counts ?? null"
+            :forest-pending="forestPending"
+            :forest-error="forestError"
+            @forest-window="chooseForestWindow"
             @create="overlays.open({ kind: 'newAgent' })"
             @open="(profileSlug) => overlays.open({ kind: 'agentCapabilities', profileSlug })"
             @open-shapes="(profileSlug) => overlays.open({ kind: 'agentSections', profileSlug })"
@@ -4005,6 +4032,9 @@ onUnmounted(() => {
             ref="pane"
             :record="active"
             :forest="readConversationForest"
+            :forest-pending="ownForestPending"
+            :forest-error="ownForestError"
+            @refresh-forest="readOwnForest"
             :drawer-open="drawerOpen"
             :drawer-tab="drawerTab"
             :pick-model="pickModelForActive"

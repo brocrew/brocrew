@@ -17,6 +17,8 @@ const props = defineProps<{
   conversation: string
   /** The forest is read only by the graph or a file's link to its holder. */
   forest: ForestView | null | (() => ForestView | null)
+  forestPending?: boolean
+  forestError?: string | null
   /** Legacy per-piece counts for the Graph; absent or null means unread. */
   files?: FilesRead | null
   /** ⚑ `true` where a reader can open a file, so the Files tab's lines are presses. */
@@ -24,6 +26,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  refreshForest: []
   /** ⚑ **UI-006 · a node, pressed** — select that agent. The pane owns the selection's door. */
   select: [conversation: string]
   /** ⚑ **UI-002 · show this file** — the pane's viewer opens it. */
@@ -38,7 +41,7 @@ const forest = computed(() => (typeof props.forest === 'function' ? props.forest
 const graphView = computed(() => conversationForest(forest.value, props.conversation))
 /** A different tree gets a fresh viewport; a stand-in keeps its predecessor's tree key. */
 const graphTree = computed<string | undefined>((previous) => {
-  const root = graphView.value?.rows.find((row) => row.kind === 'a-conversation')?.conversation
+  const root = graphView.value?.reading?.reading.root ?? graphView.value?.rows.find((row) => row.kind === 'a-conversation')?.conversation
   return root && previous && (forest.value?.placeOf?.get(previous) ?? previous) === root
     ? previous
     : root
@@ -116,6 +119,9 @@ const fileCount = computed(() => library?.count.value ?? null)
       <TeamForest
         :key="graphTree"
         :view="graphView"
+        :pending="props.forestPending"
+        :error="props.forestError"
+        @retry="emit('refreshForest')"
         direction="right"
         :current="props.conversation"
         :file-counts="fileCounts"

@@ -31,6 +31,7 @@ import AgentState from './AgentState.vue'
 import TeamForest from './TeamForest.vue'
 import TeamProfileGraph from './TeamProfileGraph.vue'
 import type { ForestRow, ForestView } from '../lib/the-forest'
+import type { ForestWindow } from '../../../shared/the-whole-forest'
 import { NEW_AGENT } from '../lib/where-agents-are-created'
 import { agentProviderSays, providerNamesIn } from '../lib/front-door-words'
 import { useClientProviders } from '../client-provider/injection'
@@ -87,6 +88,10 @@ const props = withDefaults(
     /** Folded Graph facts; null is not asked yet, never an empty tree.
      * Provider names are read separately through the selected catalogue. */
     forest?: ForestView | null
+    forestWindow?: ForestWindow
+    forestCounts?: Readonly<Record<ForestWindow, number>> | null
+    forestPending?: boolean
+    forestError?: string | null
   }>(),
   {
     store: undefined,
@@ -94,9 +99,14 @@ const props = withDefaults(
     held: () => [],
     conversations: null,
     forest: null,
+    forestWindow: 'day',
+    forestCounts: null,
+    forestPending: false,
+    forestError: null,
   },
 )
 const emit = defineEmits<{
+  forestWindow: [window: ForestWindow]
   create: []
   open: [slug: string]
   /**
@@ -112,6 +122,13 @@ const emit = defineEmits<{
   openConversation: [id: string]
 }>()
 const store = props.store ?? useAgentStore()
+const FOREST_WINDOWS: readonly { id: ForestWindow; label: string }[] = [
+  { id: 'active', label: 'Active now' },
+  { id: 'hour', label: 'Past hour' },
+  { id: 'day', label: 'Past 24 h' },
+  { id: 'week', label: 'Past week' },
+  { id: 'all', label: 'All' },
+]
 
 /**
  * 🔴 **641 · which of the two views this page is showing.**
@@ -311,7 +328,15 @@ function pressForest(row: ForestRow): void {
       aria-labelledby="team-tab-forest"
       data-cy="team-panel-forest"
     >
-      <TeamForest :view="props.forest" @press="pressForest" />
+      <TeamForest :view="props.forest" :pending="props.forestPending" :error="props.forestError" @retry="emit('forestWindow', props.forestWindow)" @press="pressForest">
+        <template #filters>
+          <div class="forest-windows" role="group" aria-label="Conversation time window">
+            <button v-for="window in FOREST_WINDOWS" :key="window.id" type="button" :class="{ on: props.forestWindow === window.id }" :aria-pressed="props.forestWindow === window.id" :data-cy="`forest-window-${window.id}`" @click="emit('forestWindow', window.id)">
+              {{ window.label }}<span v-if="props.forestCounts">{{ props.forestCounts[window.id] }}</span>
+            </button>
+          </div>
+        </template>
+      </TeamForest>
     </div>
 
     <div
@@ -691,6 +716,12 @@ function pressForest(row: ForestRow): void {
 </template>
 
 <style scoped>
+.forest-windows { display: flex; min-width: 0; flex-wrap: wrap; gap: var(--space-2); }
+.forest-windows button { display: inline-flex; align-items: center; padding: var(--space-2) var(--space-4); border: var(--border-width) solid var(--line); border-radius: var(--radius-pill); background: var(--panel); color: var(--muted); cursor: pointer; font: inherit; font-size: var(--type-caption); gap: var(--space-2); white-space: nowrap; }
+.forest-windows button.on { border-color: var(--accent); background: var(--wash-3); color: var(--accent-text); }
+.forest-windows button:hover { color: var(--text); }
+.forest-windows button span { font-family: var(--font-mono); font-size: var(--type-caption); }
+
 .shelf-rows.team-workers {
   margin: var(--space-6) 0 0;
   padding-left: var(--space-5);

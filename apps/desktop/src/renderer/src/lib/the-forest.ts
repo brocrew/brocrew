@@ -1,3 +1,4 @@
+import type { ForestSnapshot } from './forest-reading'
 import type { LedgerWalkKind } from '../../../shared/question-contracts'
 import type { WhatEachConversationIsWaitingOn } from '../../../shared/task-contracts'
 import type { AgentIdentityName } from '../../../shared/runtime-ipc'
@@ -227,6 +228,7 @@ interface ForestCoverage {
 }
 
 export interface ForestView {
+  readonly reading?: Pick<ForestSnapshot, 'reading' | 'loaded' | 'expected' | 'complete'>
   /** ⚑ **Every row, in the order a person reads it** — pre-order, person first. */
   readonly rows: readonly ForestRow[]
   readonly coverage: ForestCoverage

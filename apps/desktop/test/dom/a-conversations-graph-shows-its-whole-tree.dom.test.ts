@@ -58,8 +58,8 @@ describe("a conversation's Graph shows only its whole top-level tree", () => {
           .map((row) => row.textContent?.trim())
           .sort(),
       ).toEqual(['W1', 'W1.1', 'W1.1.1'])
-      expect(m.q('forest-person').textContent).toContain("This conversation's tree")
-      expect(m.q('forest-drawn').textContent).toContain('Workspace reading:')
+      expect(m.all('forest-person')).toHaveLength(0)
+      expect(m.q('forest-drawn').textContent).toBe('4 conversations')
     })
   }
 
@@ -105,16 +105,14 @@ describe("a conversation's Graph shows only its whole top-level tree", () => {
     expect(m.all('forest-not-read')).toHaveLength(1)
   })
 
-  it('keeps every tree on the Team page and leaves its caption unchanged', async () => {
+  it('keeps every tree on the Team page with one compact count', async () => {
     const m = mount(TeamWorkspace, { agents: null, store: {} as AgentStore, forest: forest() })
     m.q('team-tab-forest').click()
     await forestDrawn()
     await forestDrawn()
     expect(ids(m)).toEqual([...ALL].sort())
     expect(cards(m).every((row) => row.dataset.current === 'false')).toBe(true)
-    expect(m.q('forest-person').textContent).toContain(
-      'Everything this app started, and everything it started in turn',
-    )
-    expect(m.q('forest-drawn').textContent).not.toContain('Workspace reading:')
+    expect(m.all('forest-person')).toHaveLength(0)
+    expect(m.q('forest-drawn').textContent).toBe('7 conversations')
   })
 })

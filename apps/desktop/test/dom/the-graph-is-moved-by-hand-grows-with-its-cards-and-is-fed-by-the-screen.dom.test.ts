@@ -272,12 +272,12 @@ describe('the Graph is moved by hand, grows with its cards, and is fed by the sc
       // ⚑ It is drawn: cards are there, so the heights below are a forest's and not an empty box's.
       expect(tab.all('forest-row-sess_ana')).toHaveLength(1)
       expect(tab.q('forest-rows').getBoundingClientRect().height).toBeGreaterThan(clamp + 150)
-      // ⚑ …and it reaches the bottom of the tab: only the tab's own padding is below the coverage lines.
+      // ⚑ …and it reaches the bottom of the tab: only the tab's own padding is below the canvas.
       const column = tab.q('conversation-graph')
       const padding = parseFloat(getComputedStyle(column).paddingBottom)
       expect(
         column.getBoundingClientRect().bottom -
-          tab.q('forest-covers').getBoundingClientRect().bottom,
+          tab.q('forest-rows').getBoundingClientRect().bottom,
       ).toBeLessThanOrEqual(padding + 2)
 
       // (b) The control: the same forest on a page, at the same viewport, with the same room.
@@ -291,7 +291,7 @@ describe('the Graph is moved by hand, grows with its cards, and is fed by the sc
       // ⚑ A page's forest does not stretch to the room it is given.
       expect(
         alone.host.getBoundingClientRect().bottom -
-          alone.q('forest-covers').getBoundingClientRect().bottom,
+          alone.q('forest-rows').getBoundingClientRect().bottom,
       ).toBeGreaterThan(300)
     })
   })

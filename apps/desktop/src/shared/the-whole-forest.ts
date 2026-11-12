@@ -352,3 +352,117 @@ export interface TheWholeForest {
    */
   readonly heldByNoAgent: number
 }
+
+/** The workspace graph's time windows: running a turn now, the past hour, day and week, or all. */
+export const FOREST_WINDOWS = ['active', 'hour', 'day', 'week', 'all'] as const
+export type ForestWindow = (typeof FOREST_WINDOWS)[number]
+export const DEFAULT_FOREST_WINDOW: ForestWindow = 'day'
+
+/** How far back each rolling window reaches from {@link ForestReading.measuredFrom}. */
+export const FOREST_WINDOW_SPAN_MS = {
+  hour: 3_600_000,
+  day: 86_400_000,
+  week: 604_800_000,
+} as const satisfies Partial<Record<ForestWindow, number>>
+
+/** How many conversations `all` admits, newest first. The time windows admit every match. */
+export const ALL_ADMITS_NEWEST = 500
+
+/** How many conversations one answer folds the ledgers of; the rest come by `forestNodes`. */
+export const FOREST_PAGE = 250
+
+/** What a forest reading covers: the workspace in one window, or one conversation's whole tree. */
+export type ForestScope =
+  | { readonly is: 'the-workspace'; readonly window: ForestWindow }
+  | { readonly is: 'the-tree-of'; readonly conversation: string }
+
+/** How many conversations each window holds, counted under the rules its membership follows. */
+export type ForestCounts = Readonly<Record<ForestWindow, number>>
+
+/**
+ * The conversations one window or tree holds, with the ancestors that connect them and the first
+ * page of their nodes.
+ *
+ * A conversation is in a reading when an agent of this app holds it and it is not archived. One
+ * replaced by a conversation in the reading is drawn in its stand-in's place: never a member and
+ * never counted, listed in {@link behind}. Every list names each conversation once, and no
+ * conversation is in two of them.
+ */
+export interface ForestReading {
+  /** Names this reading for `forestNodes`, which reads its later pages. */
+  readonly id: string
+  readonly scope: ForestScope
+  /**
+   * The one instant the windows reach back from, at which the running set was taken: counts and
+   * membership both use it.
+   */
+  readonly measuredFrom: number
+  /** For the workspace, every window's count; for a tree, `null`. */
+  readonly counts: ForestCounts | null
+  /**
+   * For a tree, its top-level conversation, at its place; `null` when the asked conversation is in
+   * no reading. For the workspace, `null`.
+   */
+  readonly root: string | null
+  readonly members: {
+    /** How many conversations match: never capped. */
+    readonly total: number
+    /**
+     * The matching conversations this reading draws, newest first. Every match, except in `all`,
+     * where it is the newest {@link ALL_ADMITS_NEWEST}.
+     */
+    readonly admitted: readonly string[]
+  }
+  /** Ancestors that connect the admitted conversations, outside the window. Never counted. */
+  readonly context: readonly string[]
+  /** Replaced conversations whose stand-in is in this reading. Never counted, never drawn alone. */
+  readonly behind: readonly string[]
+  /**
+   * The nodes of the conversations in this reading that this answer folded, composed as
+   * {@link TheWholeForest.nodes} is: each conversation with the pieces it holds.
+   */
+  readonly nodes: LedgerWalk<ForestNode>
+  /** The conversations of this reading whose nodes are still to be read, in the order to ask. */
+  readonly unfolded: readonly string[]
+  /** How many conversations this app records that no agent of this app holds. */
+  readonly heldByNoAgent: number
+  /** When the answer was finished. */
+  readonly readAt: number
+}
+
+/** A later page of a {@link ForestReading}'s nodes. */
+export interface ForestNodesPage {
+  /** Composed as {@link ForestReading.nodes}: parents and givers named as in that reading. */
+  readonly nodes: LedgerWalk<ForestNode>
+  /** Asked conversations no longer in any reading: archived or deleted since. */
+  readonly gone: readonly string[]
+  readonly readAt: number
+}
+
+/**
+ * A reading and the pages read after it, as one {@link TheWholeForest}: every node read so far,
+ * with {@link TheWholeForest.conversations} the conversations the reading lists that are not gone,
+ * so `conversations - nodes.ledgers` is what is still to be read.
+ */
+export function theForestSoFar(
+  reading: ForestReading,
+  pages: readonly ForestNodesPage[],
+): TheWholeForest {
+  const walks = [reading.nodes, ...pages.map((page) => page.nodes)]
+  const skipped = walks.reduce((total, walk) => total + (walk.ledgersSkipped ?? 0), 0)
+  const gone = new Set(pages.flatMap((page) => page.gone))
+  const listed =
+    reading.members.admitted.length + reading.context.length + reading.behind.length - gone.size
+  return {
+    readAt: pages.reduce((at, page) => Math.max(at, page.readAt), reading.readAt),
+    nodes: {
+      walk: reading.nodes.walk,
+      rows: walks.flatMap((walk) => walk.rows),
+      ledgers: walks.reduce((total, walk) => total + walk.ledgers, 0),
+      rowsUnread: walks.reduce((total, walk) => total + walk.rowsUnread, 0),
+      ...(skipped > 0 ? { ledgersSkipped: skipped } : {}),
+    },
+    conversations: listed,
+    heldByNoAgent: reading.heldByNoAgent,
+  }
+}

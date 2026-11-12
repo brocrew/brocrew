@@ -28,6 +28,8 @@ import { ROWS_UNREAD_LEAD } from '../lib/rows-unread'
 const props = defineProps<{
   /** ⛔ **`null` until this window has asked** — the tab says so rather than drawing an empty tree. */
   view: ForestView | null
+  pending?: boolean
+  error?: string | null
   /** ⚑ The conversation a person is in, outlined — absent on the Team page. */
   current?: string | null
   /** Team uses generation rows; a conversation uses columns from left to right. */
@@ -41,6 +43,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  retry: []
   /**
    * 🔴 **668 · a node, pressed — the ROW, so the page can open its conversation.** ⚑ The act is
    * the screen's (`506`).
@@ -180,6 +183,13 @@ function pressNode(data: unknown): void {
 const count = computed(() => {
   const view = props.view
   if (!view?.coverage.walked) return null
+  if (view.reading) {
+    const { reading, loaded, expected, complete } = view.reading
+    if (!complete) return `Loaded ${loaded} of ${expected}`
+    const admitted = reading.members.admitted.length
+    if (admitted < reading.members.total) return `Newest ${admitted} of ${reading.members.total}`
+    return `${admitted} ${admitted === 1 ? 'conversation' : 'conversations'}`
+  }
   if (!props.current && view.coverage.cut > 0) return `Newest ${view.coverage.drawn} of ${view.coverage.there}`
   const total = view.rows.filter((row) => row.kind === 'a-conversation' && !row.conversationRow?.context).length
   return `${total} ${total === 1 ? 'conversation' : 'conversations'}`
@@ -201,16 +211,12 @@ function toggle(conversation: string): void {
     :class="{ fill: props.fill }"
     data-cy="team-forest"
     aria-label="Who called whom"
+    :aria-busy="props.pending"
   >
-    <!-- ⛔ **Nothing has been read yet** — one line, and never an empty tree (`641` §5.5). -->
-    <p v-if="props.view === null" class="quiet" data-cy="forest-not-read">
-      Nothing has been read about this workspace yet.
-    </p>
-
-    <template v-else>
       <div class="graph-toolbar" data-cy="forest-toolbar">
         <slot name="filters" />
-        <span v-if="count !== null" class="compact-count" data-cy="forest-drawn">{{ count }}</span>
+        <span v-if="props.pending" class="compact-count" role="status">{{ props.view?.reading && !props.view.reading.complete ? count : 'Reading…' }}</span>
+        <span v-else-if="count !== null" class="compact-count" data-cy="forest-drawn">{{ count }}</span>
         <div class="zoom" role="group" aria-label="Zoom the forest">
           <button type="button" title="Zoom out" data-cy="forest-zoom-out" @click="flow.zoomOut()">
             −
@@ -229,6 +235,13 @@ function toggle(conversation: string): void {
         </div>
       </div>
 
+    <p v-if="props.error" class="quiet" role="status" data-cy="forest-error">
+      {{ props.error }} <button type="button" @click="emit('retry')">Try again</button>
+    </p>
+    <p v-else-if="props.view === null" class="quiet" data-cy="forest-not-read">
+      {{ props.pending ? 'Reading conversations…' : 'Nothing has been read about these conversations yet.' }}
+    </p>
+    <template v-else>
       <!-- 🔴 **The forest, on Vue Flow** (2026-09-30) — pan, zoom and fit inside this box, never the
            page; the placement is `forest-graph.ts`'s, the lines are Vue Flow's. -->
       <div
@@ -301,7 +314,7 @@ function toggle(conversation: string): void {
         {{
           props.current
             ? 'This conversation is not in the current graph reading.'
-            : 'This app has not started a conversation yet.'
+            : 'No conversations in this time window.'
         }}
       </p>
 

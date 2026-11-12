@@ -130,6 +130,8 @@ const props = defineProps<{
   record: SessionRecord
   /** The main panel reads the forest lazily; `null` means it has not been read. */
   forest?: ForestView | null | (() => ForestView | null)
+  forestPending?: boolean
+  forestError?: string | null
 
   /**
    * Whether the drawer is showing (080). A view preference, owned and
@@ -381,6 +383,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  refreshForest: []
   openBook: [profileSlug: string]
   /** ⛔ The text, the intent, and the paths handed with it (216) — one event, so they cannot part. */
   send: [text: string, intent: SendIntent, attachments: HandedPath[]]
@@ -1925,6 +1928,9 @@ onUnmounted(() => {
         data-cy="reading-surface"
         :conversation="props.record.sessionId"
         :forest="props.forest ?? null"
+        :forest-pending="props.forestPending"
+        :forest-error="props.forestError"
+        @refresh-forest="emit('refreshForest')"
         :files="treeFiles"
         :can-open-document="mayOpenADocument"
         @open-document="(resourceId) => void openResource(resourceId)"

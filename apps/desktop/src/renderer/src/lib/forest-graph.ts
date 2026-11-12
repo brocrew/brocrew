@@ -39,7 +39,7 @@ interface Building {
   readonly row: ForestRow
   readonly tasks: ForestRow[]
   readonly children: Building[]
-  readonly parent: Building | null
+  parent: Building | null
   readonly generation: number
   span: number
   centre: number
@@ -123,7 +123,7 @@ function buildForest(view: ForestView, grouped = false): { all: Building[]; root
     if (!seen.delete(node)) continue
     const parent = original.parent === null ? null : replacement.get(original.parent)!
     // The original parent relation is retained even when its card groups several conversations.
-    Object.assign(node, { parent })
+    node.parent = parent
     if (parent) parent.children.push(node)
     else groupedRoots.push(node)
   }

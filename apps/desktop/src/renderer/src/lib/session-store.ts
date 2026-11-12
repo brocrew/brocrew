@@ -27,7 +27,7 @@ import type { RecentActivityReading } from '../../../shared/recent-activity'
 import type { WorkspaceReading } from '../../../shared/workspace-reading'
 import { activityOf, type WhatIsBeingDone } from '../../../shared/what-is-being-done'
 
-import type { TheWholeForest } from '../../../shared/the-whole-forest'
+import type { ForestReading, ForestNodesPage, ForestScope } from '../../../shared/the-whole-forest'
 import type {
   AnswerAck,
   ProviderAnswerAck,
@@ -439,16 +439,8 @@ export interface SessionStore {
    * waiting on them.
    */
   whatEachConversationIsWaitingOn(): Promise<WhatEachConversationIsWaitingOn | null>
-  /**
-   * 🔴 **The whole forest, from the person down** (637) — see {@link TheWholeForest}.
-   *
-   * ⛔ **`null` is *the read did not answer*, and it is NOT an empty workspace** — the reads above
-   * carry the whole argument. ⚠️ **Take it beside {@link whatIsBeingDone} and
-   * {@link whatEachConversationIsWaitingOn} in ONE `Promise.all`** and stamp the caller's own
-   * instant (`588`), joining them on the CONVERSATION id — never on the identity slug, which the
-   * three readings do not all spell the same way.
-   */
-  theWholeForest(): Promise<TheWholeForest | null>
+  forestReading(scope: ForestScope): Promise<ForestReading | null>
+  forestNodes(reading: string, conversations: readonly string[]): Promise<ForestNodesPage | null>
   /**
    * 🔴 **D-018 · the memory each running conversation's process holds** — see
    * {@link ProcessMemory}, for a person's agent card.
@@ -1998,17 +1990,16 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
         return null
       }
     },
-    /**
-     * ⚑ **The tenth read whose refusal is a VALUE** (637) — the notes above, unchanged.
-     *
-     * ⛔ **`null`, never a forest with no nodes.** An empty `rows` under a real walk word is a REAL
-     * answer meaning *this app has placed no conversation anywhere*, and minting one out of a
-     * dropped call would draw a person an empty workspace and stamp it with a moment this window
-     * never measured.
-     */
-    async theWholeForest(): Promise<TheWholeForest | null> {
+    async forestReading(scope): Promise<ForestReading | null> {
       try {
-        return await bridge.theWholeForest()
+        return await bridge.forestReading(scope)
+      } catch {
+        return null
+      }
+    },
+    async forestNodes(reading, conversations): Promise<ForestNodesPage | null> {
+      try {
+        return await bridge.forestNodes(reading, conversations)
       } catch {
         return null
       }

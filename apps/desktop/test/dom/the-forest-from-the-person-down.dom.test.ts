@@ -106,23 +106,14 @@ async function draw(view: ForestView | null, width = 1200, current?: string) {
 
 afterEach(unmountAll)
 
-describe('§0 · the person is at the top, and he is not an agent', () => {
-  /**
-   * ⛔ **`641` §4.1: *"The root is the PERSON and he is not a conversation … do not invent a fake
-   * root node."*** ⚠️ **So he must NOT wear a plate**: this app has no name for him, no `doing` and
-   * no conversation, and a plate drawn for him would be the one thing on the page that looks like
-   * an agent and is not — which is the defect `631` §3 found on the dotted circle.
-   */
-  it('🔴 the person is drawn above every row, and wears no plate', async () => {
+describe('the graph starts with its compact toolbar', () => {
+  it('draws one count and zoom controls above the canvas without an explanation header', async () => {
     const m = await draw(viewOf([conversation()]))
-    const person = m.q('forest-person')
-    expect(visible(person)).toBe(true)
-    // ⛔ **No plate anywhere inside him** — the assertion that keeps him a person.
-    expect(person.querySelector('[data-cy="agent-state"]'), 'the person wears a plate').toBeNull()
-    // ⚑ **Above the rows, in PIXELS** — source order could not make this claim.
-    expect(person.getBoundingClientRect().top).toBeLessThan(
-      m.q('forest-rows').getBoundingClientRect().top,
-    )
+    expect(m.all('forest-person')).toHaveLength(0)
+    expect(m.q('forest-drawn').textContent).toBe('1 conversation')
+    const toolbar = m.q('forest-toolbar').getBoundingClientRect()
+    expect(toolbar.bottom).toBeLessThanOrEqual(m.q('forest-rows').getBoundingClientRect().top)
+    expect(m.q('forest-zoom-in').getBoundingClientRect().top).toBeGreaterThanOrEqual(toolbar.top)
   })
 })
 
@@ -228,7 +219,7 @@ describe('§2 · what this reading left out, said rather than swallowed', () => 
    * A large tree must disclose omissions rather than silently appear complete. The
    * completeness explanation is useful here even though the conversation band omits it.
    */
-  it('⛔ the bound, the unread rows and the excluded population are all on screen', async () => {
+  it('shows the explicit admission count and incomplete work reading', async () => {
     const m = await draw(
       viewOf([conversation()], {
         conversations: 900,
@@ -241,11 +232,9 @@ describe('§2 · what this reading left out, said rather than swallowed', () => 
         },
       }),
     )
-    expect(visible(m.q('forest-cut'))).toBe(true)
-    expect(m.q('forest-cut').textContent).toContain('400')
     expect(m.q('forest-rows-unread').textContent).toContain('3')
-    expect(m.q('forest-outside').textContent).toContain('2027')
-    expect(m.q('forest-drawn').textContent).toContain('500')
+    expect(m.q('forest-drawn').textContent).toBe('Newest 500 of 900')
+    expect(m.all('forest-covers')).toHaveLength(0)
   })
 
   /**
