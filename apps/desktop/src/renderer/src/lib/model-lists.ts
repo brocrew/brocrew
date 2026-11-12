@@ -86,8 +86,8 @@ export interface ModelLists {
    */
   reread(): Promise<void>
   /**
-   * ⛔ **A credential gesture for this profile settled** (257 §2, 293 §5): every list of it goes,
-   * and a read still out for the old account can no longer land.
+   * A credential gesture settled: discard this profile's facts and retire outstanding catalogue
+   * reads across all profiles. The next reads use the provider's current account.
    */
   forget(profileId: string): void
   /** ⚑ Add a model to a provider's list by hand — `null`, or the door's words. */
@@ -114,8 +114,8 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
   const choices = new Map<string, Omit<ProviderLaunchChoices, 'list'>>()
   const asked = new Map<string, { readonly provider: Provider; readonly profileId?: string }>()
   const inFlight = new Map<string, Promise<void>>()
-  /** ⛔ 293 §5 — the ticket a profile's reads are answered under; {@link ModelLists.forget} moves it. */
-  const tickets = new Map<string, number>()
+  // A sign-in change retires outstanding responses for the shared catalogue.
+  const tickets = new Map<Provider, number>()
 
   const profileOf = (profileId: string | undefined): string => profileId ?? DEFAULT_PROFILE_ID
   const keyOf = (provider: Provider, profileId: string | undefined): string =>
@@ -152,9 +152,8 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
     const key = keyOf(provider, profileId)
     const running = inFlight.get(key)
     if (running !== undefined) return running
-    const profile = profileOf(profileId)
-    const ticket = tickets.get(profile) ?? 0
-    const ours = (): boolean => (tickets.get(profile) ?? 0) === ticket
+    const ticket = tickets.get(provider) ?? 0
+    const ours = (): boolean => (tickets.get(provider) ?? 0) === ticket
     asked.set(key, profileId === undefined ? { provider } : { provider, profileId })
     // ⚑ An answer stays on screen while it is asked again; only nothing, or a failure, says *asking*.
     if (lists.value[key]?.state !== 'answered') put(key, { state: 'asking' })
@@ -241,7 +240,10 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
       )
     },
     forget(profileId) {
-      tickets.set(profileId, (tickets.get(profileId) ?? 0) + 1)
+      for (const provider of new Set([...asked.values()].map((parts) => parts.provider))) {
+        tickets.set(provider, (tickets.get(provider) ?? 0) + 1)
+      }
+      inFlight.clear()
       const next = { ...lists.value }
       for (const [key, parts] of asked) {
         if (profileOf(parts.profileId) !== profileId) continue
