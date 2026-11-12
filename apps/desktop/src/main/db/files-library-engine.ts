@@ -52,7 +52,13 @@ type FullTask = {
 }
 type FullKeep = LibraryKeep
 type Group = { representative: FullKeep; matching: Set<string>; matchingCount?: number }
-type StreamRow = Resource & { matching: number; documents: number; images: number; made: number; input: number }
+type StreamRow = Resource & {
+  matching: number
+  documents: number
+  images: number
+  made: number
+  input: number
+}
 type Metrics = { rows: number; bytes: number; elapsedMs: number; cacheBytes: number }
 type Snapshot = {
   token: string
@@ -157,7 +163,8 @@ export class FilesLibraryEngine {
         const snapshot =
           request.query.sort === 'newest' &&
           libraryWords(request.query.query).length === 0 &&
-          request.query.kind === 'all' && request.query.role === 'all'
+          request.query.kind === 'all' &&
+          request.query.role === 'all'
             ? this.buildStream(request.query, context)
             : this.transaction(() => this.buildFiles(request.query, context))
         try {
@@ -366,7 +373,12 @@ export class FilesLibraryEngine {
     this.boundContext(this.files, context)
     return {
       snapshot: this.files,
-      offset: this.offset(cursor, this.files.token, kind, this.files.groups.length + (this.files.stream?.done === false ? 1 : 0)),
+      offset: this.offset(
+        cursor,
+        this.files.token,
+        kind,
+        this.files.groups.length + (this.files.stream?.done === false ? 1 : 0),
+      ),
     }
   }
   private checkedReply<T extends FilesLibraryResult>(result: T): T {
@@ -414,7 +426,10 @@ export class FilesLibraryEngine {
       totalKeeps: snapshot.totalKeeps,
       scopeKeeps: snapshot.scopeKeeps,
       facets: snapshot.facets,
-      next: end < snapshot.groups.length || snapshot.stream?.done === false ? this.cursor(snapshot.token, 'files', end) : null,
+      next:
+        end < snapshot.groups.length || snapshot.stream?.done === false
+          ? this.cursor(snapshot.token, 'files', end)
+          : null,
     }
   }
 
@@ -428,9 +443,10 @@ export class FilesLibraryEngine {
       source.db.prepare("SELECT rootpage FROM sqlite_schema WHERE name = 'work_resource'").get()
       const metadata = source.metadata()
       const selected = source.scope(query, context, metadata.task)
-      source.db.function('library_kind', { deterministic: true }, (name: unknown) =>
-        libraryKind(String(name)),
-      )
+      source.db.function('library_kind', { deterministic: true }, (name: unknown) => {
+        source.check()
+        return libraryKind(String(name))
+      })
       const sql = `WITH ranked AS (
         SELECT id, sha256, created_at,
           row_number() OVER (PARTITION BY sha256 ORDER BY created_at DESC, id DESC) AS rank,
@@ -448,11 +464,21 @@ export class FilesLibraryEngine {
         ranked.matching,ranked.documents,ranked.images,ranked.made,ranked.input
         FROM ranked JOIN work_resource r ON r.id=ranked.id WHERE ranked.rank=1
         ORDER BY ranked.created_at DESC, ranked.sha256 ASC`
-      const rows = source.iterate<StreamRow>(sql, ...(selected === null ? [] : [JSON.stringify([...selected])]))
+      const rows = source.iterate<StreamRow>(
+        sql,
+        ...(selected === null ? [] : [JSON.stringify([...selected])]),
+      )
       return {
-        ...this.base(context), query, groups: [], provenance: new Map(),
-        scopeKeeps: 0, totalKeeps: 0,
-        facets: { kinds: { all: 0, documents: 0, images: 0 }, roles: { all: 0, made: 0, input: 0 } },
+        ...this.base(context),
+        query,
+        groups: [],
+        provenance: new Map(),
+        scopeKeeps: 0,
+        totalKeeps: 0,
+        facets: {
+          kinds: { all: 0, documents: 0, images: 0 },
+          roles: { all: 0, made: 0, input: 0 },
+        },
         stream: { source, rows, done: false, metadata, selected },
       }
     } catch (error) {
@@ -468,7 +494,8 @@ export class FilesLibraryEngine {
     source.abandoned = this.abandoned
     source.progress = this.progress
     while (snapshot.groups.length < end && !stream.done) {
-      const next = stream.pending === undefined ? stream.rows.next() : { value: stream.pending, done: false }
+      const next =
+        stream.pending === undefined ? stream.rows.next() : { value: stream.pending, done: false }
       stream.pending = undefined
       if (next.done) {
         stream.done = true
@@ -476,7 +503,11 @@ export class FilesLibraryEngine {
       }
       const row = next.value
       const file = stream.metadata.keep(row)
-      const group = { representative: file, matching: new Set<string>(), matchingCount: row.matching }
+      const group = {
+        representative: file,
+        matching: new Set<string>(),
+        matchingCount: row.matching,
+      }
       snapshot.groups.push(group)
       snapshot.metrics.cacheBytes += serialize(group).byteLength
       snapshot.totalKeeps += row.matching
@@ -488,13 +519,14 @@ export class FilesLibraryEngine {
       snapshot.facets.roles.made += row.made
       snapshot.facets.roles.input += row.input
     }
-    if (!stream.done) {
+    if (!stream.done && stream.pending === undefined) {
       const next = stream.rows.next()
       if (next.done) stream.done = true
       else stream.pending = next.value
     }
     snapshot.metrics = {
-      rows: source.visited, bytes: source.nativeBytes + source.workingBytes,
+      rows: source.visited,
+      bytes: source.nativeBytes + source.workingBytes,
       elapsedMs: this.now() - source.started,
       cacheBytes: snapshot.metrics.cacheBytes,
     }
@@ -510,11 +542,13 @@ export class FilesLibraryEngine {
     source.progress = this.progress
     const keeps: FullKeep[] = []
     for (const row of source.iterate<Resource>(
-      'SELECT id,work_id,role,title,name,sha256,bytes,added_by_session_id,created_at FROM work_resource WHERE sha256=? ORDER BY created_at DESC,id DESC', sha256,
+      'SELECT id,work_id,role,title,name,sha256,bytes,added_by_session_id,created_at FROM work_resource WHERE sha256=? ORDER BY created_at DESC,id DESC',
+      sha256,
     )) {
       const file = stream.metadata.keep(row)
       keeps.push(file)
-      if (stream.selected === null || stream.selected.has(file.piece)) group.matching.add(file.resourceId)
+      if (stream.selected === null || stream.selected.has(file.piece))
+        group.matching.add(file.resourceId)
     }
     snapshot.provenance.set(sha256, keeps)
   }

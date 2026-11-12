@@ -174,7 +174,7 @@ it('keeps mixed generations, cutoffs, unknown bindings and route deduplication a
   })
 })
 for (const stop of ['deadline', 'cancellation'] as const)
-  it(`refuses the entire reading when ${stop} arrives during a batch`, () => {
+  it(`handles ${stop} during a batch without treating elapsed time as a failure`, () => {
     const f = fixture()
     f.identity('aid:fiction')
     f.session('fiction', 'aid:fiction')
@@ -194,14 +194,18 @@ for (const stop of ['deadline', 'cancellation'] as const)
     )
     owned.push(engine)
     const result = engine.read({ operation: 'snapshot' }, graphContext, () => cancelled)
-    expect(result).toMatchObject({
-      type: 'unavailable',
-      cause: stop === 'deadline' ? 'budget' : 'cancelled',
-      complete: false,
-      phase: 'turns',
-    })
-    expect(result).not.toHaveProperty('metrics')
-    expect(result).not.toHaveProperty('nodes')
+    if (stop === 'deadline') {
+      expect(result).toMatchObject({ type: 'snapshot', nodeCount: 1 })
+    } else {
+      expect(result).toMatchObject({
+        type: 'unavailable',
+        cause: 'cancelled',
+        complete: false,
+        phase: 'turns',
+      })
+      expect(result).not.toHaveProperty('metrics')
+      expect(result).not.toHaveProperty('nodes')
+    }
     expect(f.db.inTransaction).toBe(false)
   })
 
