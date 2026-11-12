@@ -1,15 +1,15 @@
+import { waitForNativeMacDownload, unpackDownloadedMacZip, quitRestartedMacApp, observeMacReplacement, macFirstStartReceipt } from './lib/mac-native-upgrade.mjs'
 import { readUpdateFile } from './release-check.mjs'
 import { parseArgs, isDeepStrictEqual } from 'node:util'
 import { createServer } from 'node:http'
 import { createReadStream } from 'node:fs'
-import { mkdir, readFile, writeFile, readdir, lstat, realpath } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
   checkedMacBundle,
   launchServicesArguments,
   exists,
-  digest,
   waitFor,
   macCommands,
   observeMacWindow,
@@ -189,19 +189,7 @@ async function quit() {
   active = await quitMacChild(active, app, processInfo, passed)
 }
 async function quitSquirrelApp() {
-  if (squirrelApp === null) return
-  const current = await processInfo(squirrelApp.pid)
-  requireEvidence(
-    current && current.started === squirrelApp.started && current.command === squirrelApp.command,
-    'Restarted test process identity changed before quit.',
-  )
-  process.kill(squirrelApp.pid, 'SIGTERM')
-  await waitFor(
-    async () => !(await processInfo(squirrelApp.pid)),
-    'Squirrel-restarted B quits normally',
-    60_000,
-  )
-  squirrelApp = null
+  squirrelApp = await quitRestartedMacApp(squirrelApp, processInfo)
 }
 /** On this fresh hosted runner, forget only this packaged app's sealing entry, never its password. */
 async function forgetHostedSealingEntry() {
@@ -562,30 +550,10 @@ try {
   }, 'window offers B')
   await screenshot(cdpA, 'a-offers-b.png')
   await click(cdpA, '[data-cy=updates-download]')
-  await waitFor(
-    async () => {
-      const state = (await cdpA.evaluate('return await window.api.updates.read()')).state
-      if (state.kind === 'error') throw new Error(state.message)
-      return state.kind === 'ready' && state.how === 'restart' && state.version === VERSION_B
-    },
-    'electron-updater ZIP download completes',
-    600_000,
-  )
-  const appUpdate = await readFile(join(app, 'Contents', 'Resources', 'app-update.yml'), 'utf8')
-  const cacheName = /^updaterCacheDirName: ['"]?([^'"\n]+)['"]?$/m.exec(appUpdate)?.[1]
-  requireEvidence(cacheName, 'The packaged updater cache name is missing.')
-  const pending = join(homedir(), 'Library', 'Caches', cacheName, 'pending')
-  const cached = JSON.parse(await readFile(join(pending, 'update-info.json'), 'utf8'))
-  const zip = join(pending, cached.fileName)
-  requireEvidence(
-    (await realpath(zip)) === zip &&
-      (await lstat(zip)).size === published.size &&
-      (await digest(zip, 'sha512', 'base64')) === published.sha512,
-    'Downloaded ZIP bytes or feed SHA-512 differ.',
-  )
-  const unpacked = join(process.env.RUNNER_TEMP, 'mac-update-downloaded-b')
-  await run('/usr/bin/ditto', ['-x', '-k', zip, unpacked])
-  const downloadedBundle = join(unpacked, 'BroCrew.app')
+  await waitForNativeMacDownload(cdpA, VERSION_B, 'electron-updater ZIP download completes')
+  const { zip, bundle: downloadedBundle } = await unpackDownloadedMacZip({
+    app, published, unpacked: join(process.env.RUNNER_TEMP, 'mac-update-downloaded-b'), run,
+  })
   await run('/usr/bin/xcrun', ['stapler', 'validate', downloadedBundle])
   await run('/usr/sbin/spctl', ['-a', '-vv', downloadedBundle])
   await quarantine(zip, 'downloaded-b-zip')
@@ -636,34 +604,9 @@ try {
   active = null
   previous.browser.close()
   cdpA.close()
-  await waitFor(
-    async () => {
-      try {
-        return packageOfAsar(join(app, 'Contents', 'Resources', 'app.asar')).version === VERSION_B
-      } catch {
-        return false
-      }
-    },
-    'Squirrel.Mac replaces A with B',
-    600_000,
-  )
-  const restarted = (squirrelApp = await waitFor(async () => {
-    const listing = await run('/bin/ps', ['-axo', 'pid=,command='])
-    const line = listing.split('\n').find((one) => {
-      const match = /^\s*(\d+)\s+(.+)$/.exec(one)
-      return (
-        match &&
-        Number(match[1]) !== previous.pid &&
-        (match[2] === `${app}/Contents/MacOS/BroCrew` ||
-          match[2].startsWith(`${app}/Contents/MacOS/BroCrew `))
-      )
-    })
-    return line ? processInfo(Number(/^\s*(\d+)/.exec(line)[1])) : null
-  }, 'Squirrel.Mac automatically starts B'))
-  const startup = await waitFor(async () => {
-    const receipt = JSON.parse(await readFile(join(data, 'backups', 'retention.json'), 'utf8'))
-    return receipt.appVersion === VERSION_B && receipt.successfulStarts === 1 ? receipt : null
-  }, 'Squirrel first start completes recovery and opens its database')
+  squirrelApp = await observeMacReplacement({ app, version: VERSION_B, previous, run, processInfo })
+  const restarted = squirrelApp
+  const startup = await macFirstStartReceipt(data, VERSION_B)
   summary.restart = {
     previous: { pid: previous.pid, command: previous.command, started: previous.started },
     restarted,

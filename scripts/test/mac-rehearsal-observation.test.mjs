@@ -6,11 +6,10 @@ import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ts from 'typescript'
 import { openUpdates, saveRehearsalCodexKey } from '../lib/update-rehearsal-app.mjs'
+import { waitForNativeMacDownload } from '../lib/mac-native-upgrade.mjs'
 import { credentialPreserved } from '../mac-signed-upgrade-contract.mjs'
 import {
   databaseSnapshot,
-  downloadedImagePath,
-  mountedImageOf,
   keepModelFailureEvidence,
   requireEvidence,
   nativeFiles,
@@ -434,7 +433,7 @@ it.each(['mac-signed-upgrade.mjs', 'mac-update-test.mjs'])(
   keepsFailureEvidence,
 )
 
-it('uses Updates and its ordinary Download/mount path from offered or checking state', async () => {
+it('uses Updates and its native Download/restart preparation from offered or checking state', async () => {
   const source = ts.createSourceFile(
     'mac-signed-upgrade.mjs',
     readFileSync(new URL('../mac-signed-upgrade.mjs', import.meta.url), 'utf8'),
@@ -442,16 +441,13 @@ it('uses Updates and its ordinary Download/mount path from offered or checking s
     true,
     ts.ScriptKind.JS,
   )
-  const guided = source.statements.find(
-    (node) => ts.isFunctionDeclaration(node) && node.name?.text === 'guidedDownload',
+  const download = source.statements.find(
+    (node) => ts.isFunctionDeclaration(node) && node.name?.text === 'nativeDownload',
   )
-  expect(guided).toBeDefined()
+  expect(download).toBeDefined()
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
-  const downloads = join(folder(), 'Downloads')
-  const image = join(downloads, 'BroCrew-0.2.16-arm64.dmg')
-  const mount = '/Volumes/BroCrew 0.2.16-arm64'
-  const message =
-    'BroCrew 0.2.16 is downloaded and opened. Quit every open copy of BroCrew, then drag the new one into Applications.'
+  const zip = join(folder(), 'BroCrew-0.2.16-arm64-mac.zip')
+  const bundle = join(folder(), 'BroCrew.app')
   for (const initiallyOpen of [false, true])
     for (const kind of ['available', 'checking']) {
       let opened = initiallyOpen
@@ -461,7 +457,7 @@ it('uses Updates and its ordinary Download/mount path from offered or checking s
         checkNow: vi.fn(async () => ({ state })),
         read: vi.fn(async () => {
           if (downloaded)
-            return { state: { kind: 'ready', how: 'opened', version: '0.2.16', path: image } }
+            return { state: { kind: 'ready', how: 'restart', version: '0.2.16', path: null } }
           const current = state
           state = { kind: 'available', version: '0.2.16' }
           return { state: current }
@@ -469,8 +465,6 @@ it('uses Updates and its ordinary Download/mount path from offered or checking s
       }
       const document = {
         querySelector(selector) {
-          if (selector === '[data-cy=updates-said]') return { textContent: message }
-          if (selector === '[data-cy=updates-restart]') return null
           expect(['[data-cy=rail-version]', '[data-cy=updates-menu]']).toContain(selector)
           return {
             disabled: false,
@@ -496,14 +490,8 @@ it('uses Updates and its ordinary Download/mount path from offered or checking s
         expect(selector).toBe('[data-cy=updates-download]')
         downloaded = true
       })
-      const commands = vi.fn(async (program, args) => {
-        expect(['/usr/sbin/screencapture', '/usr/bin/xcrun', '/usr/sbin/spctl']).toContain(program)
-        if (program === '/usr/bin/xcrun') expect(args).toEqual(['stapler', 'validate', image])
-        return ''
-      })
-      const plist = vi.fn(async () => ({
-        images: [{ 'image-path': image, 'system-entities': [{ 'mount-point': mount }] }],
-      }))
+      const commands = vi.fn()
+      const unpackDownloadedMacZip = vi.fn(async () => ({ zip, bundle }))
       const quarantine = vi.fn()
       const fixture = {
         workspace: { cdp },
@@ -517,36 +505,42 @@ it('uses Updates and its ordinary Download/mount path from offered or checking s
         },
         screenshot: vi.fn(),
         VERSION_B: '0.2.16',
-        downloadedImagePath,
-        downloads,
-        realpath: async (path) => path,
-        requireEvidence,
-        mountedImageOf,
-        plist,
+        app: '/Applications/BroCrew.app',
+        fixtureRoot: folder(),
+        waitForNativeMacDownload,
+        unpackDownloadedMacZip,
         quarantine,
         run: commands,
         join,
         evidence: folder(),
         summary: {},
-        bundleChecked: async () => ({ version: '0.2.16' }),
+        bundleChecked: vi.fn(async () => ({ version: '0.2.16' })),
         transport: { requireHealthy: vi.fn() },
         passed: vi.fn(),
       }
       const run = new AsyncFunction(
         'fixture',
         `const { ${Object.keys(fixture).join(', ')} } = fixture
-        let mountedCandidate
-        ${guided.getText(source)}
-        return await guidedDownload(workspace, {})`,
+        ${download.getText(source)}
+        return await nativeDownload(workspace, {size:123,sha512:"published"})`,
       )
-      expect(await run(fixture)).toBe(join(mount, 'BroCrew.app'))
-      expect(click).toHaveBeenCalledOnce()
-      expect(plist).toHaveBeenCalledExactlyOnceWith('/usr/bin/hdiutil', ['info', '-plist'])
-      expect(quarantine).toHaveBeenCalledExactlyOnceWith(image, 'downloaded-image')
-      expect(fixture.summary.download.guided).toBe(message)
-      expect(commands.mock.calls.some(([program]) => program === '/usr/bin/osascript')).toBe(false)
+      await run(fixture)
+      expect(click).toHaveBeenCalledExactlyOnceWith(cdp, '[data-cy=updates-download]')
+      expect(unpackDownloadedMacZip).toHaveBeenCalledExactlyOnceWith({
+        app: fixture.app,
+        published: { size: 123, sha512: 'published' },
+        unpacked: join(fixture.fixtureRoot, 'signed-upgrade-downloaded-b'),
+        run: commands,
+      })
+      expect(fixture.bundleChecked).toHaveBeenCalledExactlyOnceWith(bundle, '0.2.16')
+      expect(quarantine).toHaveBeenCalledExactlyOnceWith(zip, 'downloaded-zip')
+      expect(fixture.summary.download).toEqual({
+        zip, size: 123, sha512: 'published', bundle: { version: '0.2.16' },
+      })
+      expect(fixture.transport.requireHealthy).toHaveBeenCalledOnce()
+      expect(commands).not.toHaveBeenCalled()
       expect(updates.checkNow).toHaveBeenCalledOnce()
-      expect(updates.read).toHaveBeenCalledTimes(kind === 'checking' ? 4 : 3)
+      expect(updates.read).toHaveBeenCalledTimes(kind === 'checking' ? 3 : 2)
       expect(cdp.send).toHaveBeenCalledTimes(initiallyOpen ? 0 : 3)
       await openUpdates(cdp)
       expect(cdp.send).toHaveBeenCalledTimes(initiallyOpen ? 0 : 3)
