@@ -183,8 +183,10 @@ export function createFilesLibrary(options: {
       const seen = new Set(original.files.map((one) => one.file.sha256))
       if (
         answer.files.some((one) => seen.has(one.file.sha256)) ||
-        answer.totalFiles !== original.totalFiles ||
-        original.files.length + answer.files.length > original.totalFiles
+        (original.complete !== false &&
+          (answer.totalFiles !== original.totalFiles || answer.complete === false)) ||
+        answer.totalFiles < original.totalFiles ||
+        original.files.length + answer.files.length > answer.totalFiles
       ) {
         setError(libraryUnavailable('metadata'))
         markStale()
