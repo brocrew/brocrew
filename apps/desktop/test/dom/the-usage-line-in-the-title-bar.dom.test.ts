@@ -1,6 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick, provide } from 'vue'
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
+import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { providersBridge } from '../../look/fixtures/providers'
 import AppTitleBar from '../../src/renderer/src/components/AppTitleBar.vue'
 import { railFacts, screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { ProviderUsageReading } from '../../src/shared/runtime-ipc'
@@ -18,6 +22,7 @@ const HOUR = 3_600_000
 
 afterEach(async () => {
   unmountAll()
+  vi.restoreAllMocks()
   delete (window as { api?: unknown }).api
   railFacts().update({ runningConversations: null })
   screenFacts().update({ forest: null })
@@ -216,4 +221,71 @@ it('places fictional raw windows by supplied period facts and excludes supplied 
   const line = mounted.q('app-usage')
   expect(line.textContent).toContain('week 23%')
   expect(line.textContent).not.toContain('99%')
+})
+
+async function namedTitle(name: string, delayed = false) {
+  providersBridge()
+  const raw = vi.spyOn(window.api.runtime, 'providerCatalogue')
+  let release!: () => void
+  const hold = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const runtime = {
+    ...window.api.runtime,
+    providerUsage: vi.fn(async () => READ),
+    providerCatalogue: vi.fn(async function (this: object) {
+      expect(this).toBe(runtime)
+      if (delayed) await hold
+      return PROVIDER_DESCRIPTORS.map((row) => ({
+        ...row,
+        displayName: row.id === 'claude' ? name : 'Birch',
+      }))
+    }),
+  }
+  const api = createDesktopProviderApi(
+    () => runtime,
+    () => undefined,
+  )
+  const Root = defineComponent({
+    setup() {
+      provide(CLIENT_PROVIDERS, api)
+      return () => h(AppTitleBar, { info: null, error: null })
+    },
+  })
+  const m = mount(Root, {}, { width: 1180, height: 32 })
+  await new Promise((done) => setTimeout(done, 0))
+  await nextTick()
+  return { m, raw, runtime, release: () => release() }
+}
+
+it('uses selected names in real title usage with the same numbers and popover action', async () => {
+  const first = await namedTitle('Fern')
+  const line = first.m.q('app-usage')
+  expect(line.textContent).toContain('Fern 5h 28% · week 61% · Birch week 35%')
+  expect(line.getAttribute('aria-label')).toBe(line.title)
+  expect(line.title).toContain('Fern 5-hour usage: 28% used')
+  const second = await namedTitle('Willow')
+  expect(second.m.q('app-usage').textContent).toContain('Willow 5h 28%')
+  expect(line.textContent).toContain('Fern 5h 28%')
+  line.click()
+  await nextTick()
+  expect(first.m.q('app-usage-cards').matches(':popover-open')).toBe(true)
+  expect(
+    first.m.q('app-usage-cards').querySelector('[data-cy="shelf-usage-claude-5h"]')!.textContent,
+  ).toContain('28% · resets in')
+  expect(first.runtime.providerUsage.mock.results).toHaveLength(1)
+  expect(first.raw).not.toHaveBeenCalled()
+  expect(second.raw).not.toHaveBeenCalled()
+})
+
+it('retains title usage amounts while names are unread and updates on their selected answer', async () => {
+  const out = await namedTitle('Fern', true)
+  const line = out.m.q('app-usage')
+  expect(line.textContent).toContain('28%')
+  expect(line.textContent).toMatch(/provider/i)
+  expect(line.textContent).not.toContain('Claude')
+  out.release()
+  await vi.waitFor(() => expect(line.textContent).toContain('Fern 5h 28%'))
+  expect(out.runtime.providerCatalogue).toHaveBeenCalledTimes(1)
+  expect(out.raw).not.toHaveBeenCalled()
 })
