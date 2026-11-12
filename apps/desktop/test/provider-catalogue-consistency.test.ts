@@ -178,38 +178,49 @@ describe('one current catalogue per provider', () => {
     let closing = false
     let release!: (models: ModelChoice[]) => void
     let first = true
-    const { holder, probe } = catalogue(async () => {
-      if (!first) return currentModels
-      first = false
-      return new Promise<ModelChoice[]>((resolve) => { release = resolve })
-    }, () => closing)
+    const { holder, probe } = catalogue(
+      async () => {
+        if (!first) return currentModels
+        first = false
+        return new Promise<ModelChoice[]>((resolve) => {
+          release = resolve
+        })
+      },
+      () => closing,
+    )
     const before = holder.modelList('claude')
     holder.forgetModels('claude')
     closing = true
     release(oldModels)
-    expect((await before).notAsked).toEqual({ok: false, reason: 'closing'})
+    expect((await before).notAsked).toEqual({ ok: false, reason: 'closing' })
     expect(probe).toHaveBeenCalledTimes(1)
   })
 
-
-  it.each(['claude', 'codex'] as const)('a cold %s screen can warm again after another profile signs in', async (provider) => {
-    let release!: (models: ModelChoice[]) => void
-    let first = true
-    const lists = screenLists(async () => {
-      if (!first) return currentModels
-      first = false
-      return new Promise<ModelChoice[]>((resolve) => { release = resolve })
-    })
-    const pending = lists.read(provider, 'birch', {once: true})
-    await lists.read('claude', 'fern')
-    lists.forget('fern')
-    release(oldModels)
-    await pending
-    await lists.read(provider, 'birch', {once: true})
-    expect(lists.held(provider, 'birch')).toMatchObject({state: 'answered', list: {
-      models: currentModels.map((row) => ({...row, addedBy: 'the-provider'}))
-    }})
-    expect(lists.readiness(provider, 'birch').state).toBe('settled')
-  })
-
+  it.each(['claude', 'codex'] as const)(
+    'a cold %s screen can warm again after another profile signs in',
+    async (provider) => {
+      let release!: (models: ModelChoice[]) => void
+      let first = true
+      const lists = screenLists(async () => {
+        if (!first) return currentModels
+        first = false
+        return new Promise<ModelChoice[]>((resolve) => {
+          release = resolve
+        })
+      })
+      const pending = lists.read(provider, 'birch', { once: true })
+      await lists.read('claude', 'fern')
+      lists.forget('fern')
+      release(oldModels)
+      await pending
+      await lists.read(provider, 'birch', { once: true })
+      expect(lists.held(provider, 'birch')).toMatchObject({
+        state: 'answered',
+        list: {
+          models: currentModels.map((row) => ({ ...row, addedBy: 'the-provider' })),
+        },
+      })
+      expect(lists.readiness(provider, 'birch').state).toBe('settled')
+    },
+  )
 })
