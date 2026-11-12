@@ -11,6 +11,8 @@ import { clockTime } from '../../../shared/clock'
 import { useUpdates } from '../composables/useUpdates'
 import { readableError } from '../lib/session-record'
 
+defineOptions({ inheritAttrs: false })
+
 const props = defineProps<{
   /** This BroBot's version where the app said it before the updates answer — `AppInfo.version`. */
   version?: string | null
@@ -127,6 +129,7 @@ onMounted(async () => {
 <template>
   <div
     ref="panel"
+    v-bind="$attrs"
     class="updates-menu"
     data-on-white
     role="dialog"
