@@ -508,9 +508,30 @@ export async function servePersonPluginControl(options: {
           )
     })
   })
+  if (isSocketFile()) {
+    const leftover = await lstat(path, { bigint: true }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return null
+      throw error
+    })
+    if (leftover?.isSocket()) {
+      const stale = await new Promise<boolean>((resolve) => {
+        const probe = createConnection(path)
+        probe.once('connect', () => {
+          probe.destroy()
+          resolve(false)
+        })
+        probe.once('error', (error: NodeJS.ErrnoException) =>
+          resolve(error.code === 'ECONNREFUSED'),
+        )
+      })
+      if (stale) {
+        const now = await lstat(path, { bigint: true }).catch(() => null)
+        if (now && now.dev === leftover.dev && now.ino === leftover.ino) await unlink(path)
+      }
+    }
+  }
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
-    // Never remove a socket at startup: an incumbent/uncertain endpoint is a refusal.
     server.listen(path, () => {
       server.off('error', reject)
       resolve()

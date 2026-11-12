@@ -150,7 +150,7 @@ it('retains supplied fictional readiness and model choices instead of interpreti
   transport.providerLaunchChoices.mockResolvedValueOnce(supplied)
   const lists = useModelLists(api)
   await lists.read(provider)
-  expect(lists.choices(provider)).toBe(supplied)
+  expect(lists.choices(provider)).toEqual(supplied)
   expect(lists.held(provider)).toEqual({ state: 'answered', list: supplied.list })
   expect(transport.modelList).not.toHaveBeenCalled()
   expect(transport.checkProviderAuth).not.toHaveBeenCalled()
@@ -179,7 +179,7 @@ it('disowns an older choice answer with the same profile invalidation as its mod
   await lists.read('claude', 'profile-a')
   finish({ ...latest, ready: true, defaultModel: { model: 'old', effort: null } })
   await old
-  expect(lists.choices('claude', 'profile-a')).toBe(latest)
+  expect(lists.choices('claude', 'profile-a')).toEqual(latest)
   expect(lists.held('claude', 'profile-a')).toEqual({ state: 'answered', list })
 })
 

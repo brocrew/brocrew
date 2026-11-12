@@ -1,5 +1,6 @@
 import { parentPort, workerData } from 'node:worker_threads'
 import { z } from 'zod'
+import { readerWorkCallbacks } from './db/reader-work-callbacks'
 import { FilesLibraryEngine } from './db/files-library-engine'
 import { filesLibraryRequest, libraryReadContext } from '../shared/files-library'
 
@@ -17,6 +18,16 @@ if (parentPort !== null) {
     const engine = new FilesLibraryEngine(options.parse(workerData).file)
     port.postMessage({ type: 'ready' })
     port.on('message', (message: unknown) => {
+      if (
+        typeof message === 'object' &&
+        message !== null &&
+        'type' in message &&
+        message.type === 'close'
+      ) {
+        engine.close()
+        port.close()
+        return
+      }
       const parsed = incoming.safeParse(message)
       if (!parsed.success) {
         engine.close()
@@ -24,11 +35,13 @@ if (parentPort !== null) {
         return
       }
       const { id, request, context, cancellation } = parsed.data
-      const flag = new Int32Array(cancellation)
+      const callbacks = readerWorkCallbacks(cancellation, (completed) =>
+        port.postMessage({ type: 'progress', id, completed }),
+      )
       port.postMessage({
         type: 'read',
         id,
-        result: engine.read(request, context, () => Atomics.load(flag, 0) !== 0),
+        result: engine.read(request, context, callbacks.cancelled, callbacks.progress),
       })
     })
     port.on('close', () => engine.close())

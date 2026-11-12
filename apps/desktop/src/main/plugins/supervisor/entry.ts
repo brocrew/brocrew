@@ -41,8 +41,10 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
       })
     },
     traceDrain: recordDrainTrace,
-    // Exit with the lock held so the next owner rechecks run receipts before starting.
-    onBlockedWithoutProcesses: () => process.exit(0),
+    // Retain the failed record; guardians reap on disconnect and the next owner recovers it.
+    onBlocked: () => {
+      void stop()
+    },
   })
   const host = createPluginNodeHost({
     root: join(config.root, 'host'),
@@ -58,11 +60,23 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
         : 'Invalid plugin service configuration'
     console.error(pluginStartupStderr(message) ?? 'Plugin service failed')
   }
-  const stop = async () => {
-    if (await owner.shutdown()) {
-      await host.stop()
-      process.exit(0)
-    }
+  let stopping: Promise<void> | undefined
+  function stop(): Promise<void> {
+    return (stopping ??= (async () => {
+      let drained = false
+      try {
+        drained = await owner.shutdown()
+      } catch (error) {
+        reportFailure(error)
+      }
+      try {
+        const stopped = await host.stop()
+        process.exit(drained && stopped.exited ? 0 : 1)
+      } catch (error) {
+        reportFailure(error)
+        process.exit(1)
+      }
+    })())
   }
   process.on('SIGTERM', () => {
     void stop()
@@ -70,10 +84,7 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
   process.on('SIGINT', () => {
     void stop()
   })
-  void owner.closed.then(async () => {
-    await host.stop()
-    process.exit(0)
-  })
+  void owner.closed.then(stop)
   writeReceipt(receipts, 'service.json', { format: 1, ready: true, pid: process.pid })
   if (config.lifecycle) {
     const bootstrap = async () => {

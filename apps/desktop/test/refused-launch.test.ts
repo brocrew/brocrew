@@ -138,7 +138,7 @@ describe('203 · a refused launch provisions nothing (195 H4)', () => {
     expect(listProfileIds(userData)).toEqual([DEFAULT_PROFILE_ID])
   })
 
-  it('…and the SAME launch with a folder that exists provisions exactly one home, with the credential', async () => {
+  it('…and the SAME launch with a folder that exists provisions its home and the shared catalogue home', async () => {
     // The pairing. Without it, a host that refused every launch would pass the test above.
     const host = buildHost()
     const created = await launch(host, 'painter', work)
@@ -147,9 +147,11 @@ describe('203 · a refused launch provisions nothing (195 H4)', () => {
     expect(existsSync(homeOf('painter'))).toBe(true)
     expect(existsSync(join(homeOf('painter'), 'auth.json'))).toBe(true)
     expect(listProfileIds(userData).sort()).toEqual([DEFAULT_PROFILE_ID, 'painter'])
-    // Exactly one, not one per attempt: `provider-homes/default` holds this profile and nothing
-    // a refused attempt left beside it.
-    expect(readdirSync(join(userData, 'provider-homes', HOME_FOLDER))).toEqual(['painter'])
+    // The shared catalogue reads in BroBot's home; neither home came from a refused attempt.
+    expect(readdirSync(join(userData, 'provider-homes', HOME_FOLDER)).sort()).toEqual([
+      DEFAULT_PROFILE_ID,
+      'painter',
+    ])
     await host.closeAll()
   })
 

@@ -5,6 +5,10 @@ import type { ClientProviderApi } from '../../src/shared/client-provider-api'
 import type { ApiKeyStatus, ProviderVersion } from '../../src/shared/runtime-ipc'
 import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
+import ModelPicker from '../../src/renderer/src/components/ModelPicker.vue'
+import type { ModelList } from '../../src/shared/model-choice-contracts'
+import { modelListsForClient } from '../../src/renderer/src/client-provider/model-lists'
+import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll } from './harness'
 
 const settle = async () => {
@@ -17,7 +21,7 @@ afterEach(() => {
   unmountAll()
   Reflect.deleteProperty(window, 'api')
 })
-function card() {
+function card(models: ModelList['models'] = []) {
   const descriptor = {
     ...providerDescriptor('claude'),
     displayName: 'Fern',
@@ -28,7 +32,7 @@ function card() {
   let stored = empty
   const list = {
     provider: 'claude' as const,
-    models: [],
+    models,
     notAsked: null,
     standIn: null,
     startsOn: null,
@@ -139,6 +143,7 @@ function card() {
   )
   return {
     api,
+    list,
     props,
     m,
     forbidden,
@@ -210,4 +215,76 @@ it('copies all profiles through the injected operation and retains its result', 
   expect(api.reprovisionProviderHomes).toHaveBeenCalledExactlyOnceWith({ provider: 'claude' })
   expect(m.q('copy-all-sign-ins').textContent).toContain('1 switched now, 0 will switch')
   expect(forbidden).not.toHaveBeenCalled()
+})
+
+it('one refreshed provider catalogue feeds the drawer, the agent picker and the taken launch aliases', async () => {
+  const rows = (current: boolean): ModelList['models'] => [
+    {
+      id: 'default',
+      label: 'Default (recommended)',
+      resolvesTo: current ? 'claude-opus-5-5' : 'claude-sonnet-5-5',
+      isDefault: true,
+      addedBy: 'the-provider',
+    },
+    {
+      id: 'fable',
+      label: current ? 'Fable 5.2' : 'Fable',
+      resolvesTo: current ? 'claude-fable-5-2' : 'claude-fable-5-1',
+      addedBy: 'the-provider',
+    },
+  ]
+  const out = card(rows(false))
+  const lists = modelListsForClient(out.api)
+  await lists.read('claude', 'fern')
+  const take = vi.fn(async () => null)
+  const picker = mount(
+    defineComponent({
+      setup() {
+        provide(CLIENT_PROVIDERS, out.api)
+        return () =>
+          h(ModelPicker, {
+            providers: ['claude'],
+            profileId: 'fern',
+            shown: { provider: 'claude', model: 'default', effort: null },
+            takeWords: 'Switch from your next message',
+            take,
+            lists,
+            readiness: { claude: true },
+          })
+      },
+    }),
+    {},
+    { width: 760, height: 900 },
+  )
+  await settle()
+  ;(picker.q('model-picker-face') as HTMLElement).click()
+  await settle()
+  out.list.models = rows(true)
+  lists.forget(DEFAULT_PROFILE_ID)
+  await lists.read('claude')
+  await settle()
+  const drawerRows = out.m.all('provider-model-row')
+  const pickerRows = picker.all('model-picker-row')
+  expect(drawerRows).toHaveLength(2)
+  expect(pickerRows).toHaveLength(2)
+  for (const [index, row] of rows(true).entries()) {
+    for (const drawn of [drawerRows[index]!, pickerRows[index]!]) {
+      expect(drawn.getAttribute('data-model')).toBe(row.id)
+      expect(drawn.textContent).toContain(row.label)
+      expect(drawn.textContent).toContain(row.resolvesTo)
+    }
+  }
+  for (const row of rows(true)) {
+    if (picker.q('model-picker-face').getAttribute('aria-expanded') !== 'true') {
+      ;(picker.q('model-picker-face') as HTMLElement).click()
+      await settle()
+    }
+    const input = picker.host.querySelector<HTMLInputElement>(`input[value="claude:${row.id}"]`)!
+    input.checked = true
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+    await settle()
+    ;(picker.q('model-picker-take') as HTMLButtonElement).click()
+    await settle()
+    expect(take).toHaveBeenLastCalledWith({ provider: 'claude', model: row.id, effort: null })
+  }
 })

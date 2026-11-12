@@ -110,7 +110,6 @@ const SEND_REFUSALS: Readonly<Record<string, RefusalCode>> = Object.freeze({
   rate_limited: 'too-many',
   unsupported_media_type: 'file-type',
   outside: 'file',
-  changed: 'file',
   not_found: 'file',
 })
 const refusalIn = (map: Readonly<Record<string, RefusalCode>>, body: unknown) => {
@@ -431,7 +430,13 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
             : text
           const reply = await bridge.call(
             '/send',
-            { group: group.jid, text: sent, ...(attached ? { file: attached } : {}) },
+            {
+              group: group.jid,
+              text: sent,
+              ...(attached
+                ? { file: { path: attached.path, name: attached.name, size: attached.size } }
+                : {}),
+            },
             { signal: currentRequestSignal(), timeoutMs: attached ? 115_000 : 30_000 },
           )
           if (reply.status === 200)

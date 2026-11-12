@@ -5,18 +5,26 @@ import type { PastWorkSource } from '../src/shared/past-work-search'
 
 it('answers a worker crash with an error and restarts for the next search', async () => {
   let starts = 0
+  let replacementExit: Promise<number> | undefined
+  const replacementErrors: string[] = []
   const reader = new PastWorkSearchReader(() => {
     starts++
-    return new Worker(
+    const worker = new Worker(
       starts === 1
         ? `const { parentPort } = require('node:worker_threads');
            parentPort.on('message', () => { throw new Error('fictional search worker failure') });`
         : `const { parentPort } = require('node:worker_threads');
-           parentPort.on('message', ({ id }) => {
-             parentPort.postMessage({ id, result: { ok: true, hits: [] } });
+           parentPort.on('message', (message) => {
+             if (message.type === 'close') { parentPort.close(); return; }
+             parentPort.postMessage({ id: message.id, result: { ok: true, hits: [] } });
            });`,
       { eval: true },
     )
+    if (starts === 2) {
+      replacementExit = new Promise((resolve) => worker.once('exit', resolve))
+      worker.on('error', (error) => replacementErrors.push(error.message))
+    }
+    return worker
   })
   const source: PastWorkSource = {
     file: 'fictional-records.db',
@@ -38,4 +46,7 @@ it('answers a worker crash with an error and restarts for the next search', asyn
   } finally {
     await reader.close()
   }
+  expect(replacementExit).toBeDefined()
+  expect(await replacementExit).toBe(0)
+  expect(replacementErrors).toEqual([])
 }, 30_000)

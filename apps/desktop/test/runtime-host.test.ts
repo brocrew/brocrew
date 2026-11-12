@@ -1447,9 +1447,7 @@ describe('RuntimeHost — the workspace cwd is recorded and replayed (006)', () 
 })
 
 /**
- * ⚑ **D-049 · both providers' lists for one profile**, each asked through the host's one-provider
- * read ({@link RuntimeHost.providerModels}), together. The cache these tests hold to account is per
- * provider and per profile; asking both is how they see both halves of it.
+ * Both providers' shared catalogues, read through the host for one profile's choices.
  */
 const bothLists = async (
   host: RuntimeHost,
@@ -1589,7 +1587,7 @@ describe('RuntimeHost — the model catalogue, asked once (058)', () => {
   })
 })
 
-describe('257 · one model menu per PROFILE, because a catalogue is what a login may run', () => {
+describe('one shared model catalogue per provider', () => {
   let userData: string
   let host: RuntimeHost
   /** Every `(provider, profileId)` a probe actually prepared a home for. */
@@ -1644,8 +1642,7 @@ describe('257 · one model menu per PROFILE, because a catalogue is what a login
           listModels: async (context: ProviderRuntimeContext) => runtime.listModels(context),
         })
       },
-      // ⛔ The home records the PROFILE, which is the whole subject: `256` H1 found every profile's
-      // launcher showing a catalogue probed in `default`'s home.
+      // Record which home the shared provider probe prepares.
       prepareProviderHome: (provider, profileId) => {
         prepared.push(`${provider}:${profileId}`)
         return join(userData, 'provider-homes', profileId, provider)
@@ -1667,19 +1664,13 @@ describe('257 · one model menu per PROFILE, because a catalogue is what a login
     })
   }
 
-  it('🔴 asks in the profile it was asked about, and remembers the two answers apart', async () => {
+  it('asks once per provider, sharing the answer across profiles', async () => {
     host = build()
     await bothLists(host, 'work')
     await bothLists(host, 'personal')
     await bothLists(host, 'work')
 
-    // Two profiles, two probes each; the repeat is served from the cache and spawns nothing.
-    expect(prepared.sort()).toEqual([
-      'claude:personal',
-      'claude:work',
-      'codex:personal',
-      'codex:work',
-    ])
+    expect(prepared.sort()).toEqual(['claude:brobot', 'codex:brobot'])
   })
 
   it('🔴 a profile that does not exist is NOT probed — asking would create it', async () => {
@@ -1698,7 +1689,7 @@ describe('257 · one model menu per PROFILE, because a catalogue is what a login
     expect(prepared, 'nothing was prepared, so no home and no credential were made').toEqual([])
   })
 
-  it('⛔ a settled sign-in drops THAT profile’s menu, and leaves every other one alone', async () => {
+  it('a settled sign-in refreshes that provider for every profile, leaving the other provider cached', async () => {
     host = build()
     await bothLists(host, 'work')
     await bothLists(host, 'personal')
@@ -1713,9 +1704,7 @@ describe('257 · one model menu per PROFILE, because a catalogue is what a login
 
     await bothLists(host, 'work')
     await bothLists(host, 'personal')
-    // Codex was re-asked for `work` and NOTHING else was: not Claude in the same home, and not the
-    // other profile. A cache that dropped more than the credential moved would be a spawn per menu.
-    expect(prepared).toEqual(['codex:work'])
+    expect(prepared).toEqual(['codex:brobot'])
   })
 
   it('⛔ …and a re-copied credential is the other door, with the same reach', async () => {
@@ -1728,7 +1717,7 @@ describe('257 · one model menu per PROFILE, because a catalogue is what a login
 
     await bothLists(host, 'work')
     await bothLists(host, 'personal')
-    expect(prepared).toEqual(['codex:work'])
+    expect(prepared).toEqual(['codex:brobot'])
   })
 
   it('⛔ a quit refuses the provider whose list is no longer remembered, and only that one', async () => {
@@ -1738,34 +1727,27 @@ describe('257 · one model menu per PROFILE, because a catalogue is what a login
     // by invalidating one provider's list, which is the only way this state occurs.
     host = build()
     const work = await bothLists(host, 'work')
-    const complete = await bothLists(host, 'personal')
+    await bothLists(host, 'personal')
     expect(await host.reprovisionProviderAuth('codex', 'work')).toBe('replaced')
 
     await host.closeAll()
     await expect(host.providerModels('work', 'codex')).rejects.toThrow(/shutting down/)
-    // …while every list still remembered is handed back, because that is a value and not a process
-    // — the other provider in the same profile, and the other profile whole. Both halves, or the
-    // refusal is just "a quit answers nothing".
     expect(await host.providerModels('work', 'claude')).toEqual(work.claude)
-    expect(await bothLists(host, 'personal')).toEqual(complete)
+    expect(await host.providerModels('personal', 'claude')).toEqual(work.claude)
+    await expect(host.providerModels('personal', 'codex')).rejects.toThrow(/shutting down/)
   })
 
-  it('⚠️ the cache is BOUNDED, and the oldest entry is what a seventeenth ask costs', async () => {
-    // ⛔ 257 §2's own warning, made a test: *"do not turn one never-invalidated promise into N
-    // never-invalidated promises with no bound"*. Sixteen entries is eight profiles across both
-    // providers; the ninth evicts the first, and revisiting it pays for one more short-lived child.
+  it('the cache stays at one entry per provider even when many profiles ask', async () => {
     const many = Array.from({ length: 9 }, (_, i) => `p${i}`)
     host = build(many)
     for (const id of many) await bothLists(host, id)
+    expect(prepared).toEqual(['claude:brobot', 'codex:brobot'])
     prepared.length = 0
 
     await bothLists(host, 'p8')
     expect(prepared, 'the newest is still remembered').toEqual([])
     await bothLists(host, 'p0')
-    expect(prepared, 'and the oldest was dropped to make room for it').toEqual([
-      'claude:p0',
-      'codex:p0',
-    ])
+    expect(prepared, 'another profile uses the same provider catalogues').toEqual([])
   })
 })
 

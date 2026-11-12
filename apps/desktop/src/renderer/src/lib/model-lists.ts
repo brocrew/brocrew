@@ -29,14 +29,12 @@ import type { SessionStore } from './session-store'
  *
  * Use one popover picker wherever a model is chosen: launch form, conversation settings and agent sheet. `modelList` supplies the provider's models followed by models the person added.
  *
- * ⛔ **One holder for the window, keyed `provider:profile`**, so the three places read the same
- * answer and a hand-added model shows in all of them at once: hand-added models are per provider
- * and app-wide. ⚑ It is {@link createModelLists}; `composables/useModelLists.ts` binds it to the
- * window.
+ * One catalogue per provider supplies every screen; profile contexts retain only their choices
+ * and readiness. Hand-added models are also shared across the provider's screens.
  *
  * ## ⚠️ A list read is a probe, and a probe is a LAUNCH
  *
- * ⚑ The host memoizes each provider's answer per home, so a GOOD list is re-read at no cost — that
+ * ⚑ The host memoizes each provider's answer, so a GOOD list is re-read at no cost — that
  * is what {@link ModelLists.reread} does when the agents subject moves (a last pick, a default, a
  * hand-added model). ⛔ **A FAILED list is asked again only on a person's press** — the host
  * re-probes a cached failure once — and never on a roster change, which would be one child per
@@ -65,6 +63,10 @@ type HeldList =
   | { readonly state: 'answered'; readonly list: ModelList }
   | { readonly state: 'unread'; readonly why: string }
 
+type HeldContext =
+  | Exclude<HeldList, { readonly state: 'answered' }>
+  | { readonly state: 'answered'; readonly list: Omit<ModelList, 'models'> }
+
 export interface ModelLists {
   /** What is held for one provider's list in one profile — `null`: nobody asked yet. */
   held(provider: Provider, profileId?: string): HeldList | null
@@ -84,8 +86,8 @@ export interface ModelLists {
    */
   reread(): Promise<void>
   /**
-   * ⛔ **A credential gesture for this profile settled** (257 §2, 293 §5): every list of it goes,
-   * and a read still out for the old account can no longer land.
+   * A credential gesture settled: discard this profile's facts and retire outstanding catalogue
+   * reads across all profiles. The next reads use the provider's current account.
    */
   forget(profileId: string): void
   /** ⚑ Add a model to a provider's list by hand — `null`, or the door's words. */
@@ -105,28 +107,53 @@ type ListDoors = Pick<
  * draws the picker's face never reaches `window` (`useAgentStore`'s rule).
  */
 export function createModelLists(bridge: () => ListDoors): ModelLists {
-  const lists = shallowRef<Readonly<Record<string, HeldList>>>({})
-  const choices = new Map<string, ProviderLaunchChoices>()
+  const lists = shallowRef<Readonly<Record<string, HeldContext>>>({})
+  const catalogues = shallowRef<Partial<Record<Provider, Pick<ModelList, 'models' | 'notAsked'>>>>(
+    {},
+  )
+  const choices = new Map<string, Omit<ProviderLaunchChoices, 'list'>>()
   const asked = new Map<string, { readonly provider: Provider; readonly profileId?: string }>()
   const inFlight = new Map<string, Promise<void>>()
-  /** ⛔ 293 §5 — the ticket a profile's reads are answered under; {@link ModelLists.forget} moves it. */
-  const tickets = new Map<string, number>()
+  // A sign-in change retires outstanding responses for the shared catalogue.
+  const tickets = new Map<Provider, number>()
 
   const profileOf = (profileId: string | undefined): string => profileId ?? DEFAULT_PROFILE_ID
   const keyOf = (provider: Provider, profileId: string | undefined): string =>
     `${provider}:${profileOf(profileId)}`
 
   function put(key: string, next: HeldList): void {
-    lists.value = { ...lists.value, [key]: next }
+    if (next.state !== 'answered') {
+      lists.value = { ...lists.value, [key]: next }
+      return
+    }
+    const { models, ...list } = next.list
+    if (list.notAsked?.reason !== 'no-profile' || catalogues.value[list.provider] === undefined) {
+      catalogues.value = {
+        ...catalogues.value,
+        [list.provider]: { models, notAsked: list.notAsked },
+      }
+    }
+    lists.value = { ...lists.value, [key]: { state: 'answered', list } }
+  }
+
+  function heldFor(provider: Provider, profileId?: string): HeldList | null {
+    const context = lists.value[keyOf(provider, profileId)]
+    if (context?.state !== 'answered') return context ?? null
+    const catalogue = catalogues.value[provider]!
+    const list = { ...context.list, ...catalogue }
+    if (context.list.notAsked?.reason === 'no-profile') {
+      list.notAsked = context.list.notAsked
+      list.models = list.models.filter((row) => row.addedBy === 'a-person')
+    }
+    return { state: 'answered', list }
   }
 
   function ask(provider: Provider, profileId: string | undefined): Promise<void> {
     const key = keyOf(provider, profileId)
     const running = inFlight.get(key)
     if (running !== undefined) return running
-    const profile = profileOf(profileId)
-    const ticket = tickets.get(profile) ?? 0
-    const ours = (): boolean => (tickets.get(profile) ?? 0) === ticket
+    const ticket = tickets.get(provider) ?? 0
+    const ours = (): boolean => (tickets.get(provider) ?? 0) === ticket
     asked.set(key, profileId === undefined ? { provider } : { provider, profileId })
     // ⚑ An answer stays on screen while it is asked again; only nothing, or a failure, says *asking*.
     if (lists.value[key]?.state !== 'answered') put(key, { state: 'asking' })
@@ -137,8 +164,9 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
           ...(profileId === undefined ? {} : { profileId }),
         })
         if (ours()) {
-          choices.set(key, resolved)
-          put(key, { state: 'answered', list: resolved.list })
+          const { list, ...facts } = resolved
+          choices.set(key, facts)
+          put(key, { state: 'answered', list })
         }
       } catch (error) {
         // ⛔ A failed re-read keeps the answer it had (`refreshProfiles`' rule).
@@ -171,7 +199,7 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
 
   return {
     held(provider, profileId) {
-      return lists.value[keyOf(provider, profileId)] ?? null
+      return heldFor(provider, profileId)
     },
     readiness(provider, profileId) {
       const key = keyOf(provider, profileId)
@@ -186,32 +214,39 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
     },
     choices(provider, profileId) {
       const key = keyOf(provider, profileId)
-      return lists.value[key]?.state === 'answered' ? (choices.get(key) ?? null) : null
+      const held = heldFor(provider, profileId)
+      const facts = choices.get(key)
+      return held?.state === 'answered' && facts !== undefined
+        ? { ...facts, list: held.list }
+        : null
     },
     read(provider, profileId, options) {
       const key = keyOf(provider, profileId)
       const running = inFlight.get(key)
       if (running !== undefined) return running
-      const now = lists.value[key]
+      const now = heldFor(provider, profileId)
       if (now?.state === 'answered' && now.list.notAsked === null) return Promise.resolve()
-      if (options?.once === true && now !== undefined) return Promise.resolve()
+      if (options?.once === true && now !== null) return Promise.resolve()
       return ask(provider, profileId)
     },
     async reread() {
       await Promise.all(
-        Object.entries(lists.value)
-          .filter(([, held]) => held.state === 'answered' && held.list.notAsked === null)
-          .flatMap(([key]) => {
-            const parts = asked.get(key)
-            return parts === undefined ? [] : [askAfresh(parts.provider, parts.profileId)]
-          }),
+        [...asked.values()]
+          .filter(({ provider, profileId }) => {
+            const held = heldFor(provider, profileId)
+            return held?.state === 'answered' && held.list.notAsked === null
+          })
+          .map(({ provider, profileId }) => askAfresh(provider, profileId)),
       )
     },
     forget(profileId) {
-      tickets.set(profileId, (tickets.get(profileId) ?? 0) + 1)
+      for (const provider of new Set([...asked.values()].map((parts) => parts.provider))) {
+        tickets.set(provider, (tickets.get(provider) ?? 0) + 1)
+      }
+      inFlight.clear()
       const next = { ...lists.value }
       for (const [key, parts] of asked) {
-        if (profileOf(parts.profileId) !== profileId) continue
+        if (profileOf(parts.profileId) !== profileId && next[key]?.state !== 'asking') continue
         delete next[key]
         choices.delete(key)
         inFlight.delete(key)

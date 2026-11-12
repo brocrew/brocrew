@@ -696,16 +696,18 @@ describe('memory shutdown and missing-service boundaries', () => {
       release = yes
     })
     const gated = new RuntimeHost(await hostDeps({ closeWaitMs: 0, closeGate: gate }))
+    const failure = new Error('Fictional session close failure')
+    let sessionId: string | undefined
+    let closing: Promise<void> | undefined
     let restoreClose = (): void => {}
     try {
-      await gated.createSession({ provider: 'claude', profileId: 'lark' }, sink)
-      const close = vi
-        .spyOn(gated, 'close')
-        .mockRejectedValueOnce(new Error('Fictional session close failure'))
+      sessionId = (await gated.createSession({ provider: 'claude', profileId: 'lark' }, sink))
+        .sessionId
+      const close = vi.spyOn(gated, 'close').mockRejectedValueOnce(failure)
       restoreClose = () => {
         close.mockRestore()
       }
-      const closing = gated.closeAll()
+      closing = gated.closeAll()
       let settled = false
       void closing.then(
         () => {
@@ -718,11 +720,29 @@ describe('memory shutdown and missing-service boundaries', () => {
       await new Promise<void>((yes) => setImmediate(yes))
       expect(settled).toBe(false)
       release()
-      await expect(closing).rejects.toThrow('Fictional session close failure')
+      await expect(closing).rejects.toMatchObject({
+        name: 'AggregateError',
+        message: 'Runtime shutdown did not finish',
+        errors: [failure],
+      })
+      expect(gated.closeAll()).toBe(closing)
     } finally {
       release()
       restoreClose()
-      await gated.closeAll()
+      try {
+        if (closing === undefined) await gated.closeAll()
+        else {
+          expect(gated.closeAll()).toBe(closing)
+          await expect(closing).rejects.toMatchObject({
+            name: 'AggregateError',
+            message: 'Runtime shutdown did not finish',
+            errors: [failure],
+          })
+        }
+      } finally {
+        if (closing !== undefined && sessionId !== undefined)
+          await gated.close(sessionId, THE_APP_ITSELF)
+      }
     }
   })
   it('does not attempt a change when no durable service was bound', async () => {

@@ -1,3 +1,10 @@
+import {
+  waitForNativeMacDownload,
+  unpackDownloadedMacZip,
+  quitRestartedMacApp,
+  observeMacReplacement,
+  macFirstStartReceipt,
+} from './lib/mac-native-upgrade.mjs'
 import { execFile } from 'node:child_process'
 import { promisify, parseArgs, isDeepStrictEqual } from 'node:util'
 import { mkdir, readFile, writeFile, lstat, realpath, rm } from 'node:fs/promises'
@@ -21,9 +28,7 @@ import {
   assertHostedMac,
   assertOwnedProcess,
   dataPreserved,
-  downloadedImagePath,
   hash,
-  mountedImageOf,
   packagedRegistryFile,
   nativeTranscriptsPresent,
   recoveryOrder,
@@ -38,7 +43,8 @@ import {
   verifyCheckpoint,
 } from './lib/mac-update-test.mjs'
 import { startControlledTransport } from './mac-signed-upgrade-transport.mjs'
-import { resultLine } from './lib/upgrade-path.mjs'
+import { CHECKPOINT_LINE, resultLine, startOrder } from './lib/upgrade-path.mjs'
+import { completedProofCopy, proofManifests } from './lib/recovery-measurement.mjs'
 import {
   candidateNames,
   publicFeedUnchanged,
@@ -58,6 +64,7 @@ import {
   press,
   screenshot as captureScreenshot,
   openUpdates,
+  sleep,
 } from './lib/update-rehearsal-app.mjs'
 
 // Only disposable GitHub-hosted arm64 runners may install.
@@ -67,6 +74,7 @@ const { values } = parseArgs({
     predecessor: { type: 'string' },
     'predecessor-source': { type: 'string' },
     candidate: { type: 'string' },
+    'candidate-source': { type: 'string' },
     evidence: { type: 'string' },
   },
 })
@@ -81,7 +89,10 @@ async function releaseFolder(folder, source) {
   return { version, source, directory, manifest, names: candidateNames(version) }
 }
 const predecessor = await releaseFolder(values.predecessor, values['predecessor-source'])
-const candidate = await releaseFolder(values.candidate, process.env.GITHUB_SHA)
+const candidate = await releaseFolder(
+  values.candidate,
+  values['candidate-source'] ?? process.env.GITHUB_SHA,
+)
 const VERSION_A = predecessor.version,
   VERSION_B = candidate.version
 requireEvidence(VERSION_A !== VERSION_B, `The candidate is already the published ${VERSION_A}.`)
@@ -108,7 +119,6 @@ let currentWorkspace = null,
   nativeRoot
 const settings = join(dataRoot, 'settings.json')
 const registry = packagedRegistryFile(dataRoot)
-const downloads = join(homedir(), 'Downloads')
 const exec = promisify(execFile)
 const summary = {
   format: 'brocrew-mac-upgrade-proof-v1',
@@ -117,7 +127,7 @@ const summary = {
   harnessSource: process.env.GITHUB_SHA,
   from: { version: VERSION_A, source: predecessor.source },
   to: { version: VERSION_B, source: candidate.source },
-  mode: 'guided',
+  mode: 'native',
   workspaceCount: 3,
   workspaces: workspaces.map((one) => one.result),
   replacementCount: 0,
@@ -132,7 +142,7 @@ const summary = {
 let active = null,
   model = null,
   mountedA = null,
-  mountedCandidate = null,
+  squirrelApp = null,
   installedByHarness = false,
   transport = null
 const channels = []
@@ -170,10 +180,25 @@ async function bundleChecked(bundle, version) {
   }
   return { version: base.version, bundleId: base.bundleId, signature: identity }
 }
-async function requireNoInstalledProcesses() {
-  const listing = await run('/bin/ps', ['-axo', 'pid=,command='])
-  const processes = listing.split('\n').filter((line) => line.includes(`${app}/Contents/`))
-  requireEvidence(processes.length === 0, `Installed app processes remain: ${processes.join('; ')}`)
+async function requireNoInstalledProcesses({ now = Date.now, pause = sleep } = {}) {
+  const deadline = now() + 2_000
+  let last = []
+  const diagnostic = () => `Installed app processes remain: ${last.join('; ') || 'none observed'}`
+  for (;;) {
+    const remaining = deadline - now()
+    requireEvidence(remaining > 0, diagnostic())
+    let listing
+    try {
+      listing = await run('/bin/ps', ['-axo', 'pid=,command='], { timeout: remaining })
+    } catch (error) {
+      throw new Error(`${diagnostic()}; process census failed: ${String(error)}`, { cause: error })
+    }
+    const processes = listing.split('\n').filter((line) => line.includes(`${app}/Contents/`))
+    if (processes.length > 0) last = processes
+    requireEvidence(deadline - now() > 0, diagnostic())
+    if (processes.length === 0) return
+    await pause(Math.min(100, deadline - now()))
+  }
 }
 async function launch(
   stage,
@@ -383,8 +408,9 @@ async function allRunning(version, phase) {
   passed('all-three-workspaces-concurrently-use-the-same-installed-app', records)
 }
 
-async function quitAll(stage) {
+async function quitAll(stage, except = null) {
   for (const workspace of workspaces) {
+    if (workspace === except) continue
     selectWorkspace(workspace)
     const child = active
     await quit()
@@ -415,10 +441,10 @@ async function quitAll(stage) {
       })
     }
   }
-  await requireNoInstalledProcesses()
+  if (except === null) await requireNoInstalledProcesses()
 }
 
-async function guidedDownload(workspace, published) {
+async function nativeDownload(workspace, published) {
   selectWorkspace(workspace)
   const cdp = workspace.cdp
   await openUpdates(cdp)
@@ -430,59 +456,78 @@ async function guidedDownload(workspace, published) {
   }, 'the published version offers the candidate')
   await screenshot(cdp, 'a-offers-candidate.png')
   await click(cdp, '[data-cy=updates-download]')
-  await waitFor(
-    async () => {
-      const state = (await cdp.evaluate('return await window.api.updates.read()')).state
-      if (state.kind === 'error') throw new Error(state.message)
-      return state.kind === 'ready' && state.how === 'opened' && state.version === VERSION_B
-    },
-    'real guided download/SHA/open finishes',
-    600_000,
-  )
-  const image = downloadedImagePath(
-    (await cdp.evaluate('return await window.api.updates.read()')).state,
-    downloads,
-  )
-  requireEvidence((await realpath(image)) === image, 'Downloaded image path differs.')
-  const mounted = await waitFor(
-    async () => mountedImageOf(await plist('/usr/bin/hdiutil', ['info', '-plist']), image),
-    'the app actually opens and mounts its downloaded DMG',
-  )
-  mountedCandidate = mounted.mount
-  await quarantine(image, 'downloaded-image')
-  const guided = await cdp.evaluate(
-    'return document.querySelector("[data-cy=updates-said]")?.textContent.replace(/\\s+/g," ").trim()',
-  )
-  requireEvidence(
-    guided ===
-      `BroCrew ${VERSION_B} is downloaded and opened. Quit every open copy of BroCrew, then drag the new one into Applications.`,
-    'Guided quit-every-copy text differs.',
-  )
-  requireEvidence(
-    await cdp.evaluate('return document.querySelector("[data-cy=updates-restart]") === null'),
-    'The baseline unexpectedly offers automatic replacement.',
-  )
-  await screenshot(cdp, 'guided-quit-every-copy.png')
-  await run('/usr/bin/xcrun', ['stapler', 'validate', image])
-  await run('/usr/sbin/spctl', [
-    '--assess',
-    '--verbose=4',
-    '--type',
-    'open',
-    '--context',
-    'context:primary-signature',
-    image,
-  ])
-  const source = join(mounted.mount, 'BroCrew.app')
+  await waitForNativeMacDownload(cdp, VERSION_B, 'native ZIP download and preparation finish')
+  const { zip, bundle: downloadedBundle } = await unpackDownloadedMacZip({
+    app,
+    published,
+    unpacked: join(fixtureRoot, 'signed-upgrade-downloaded-b'),
+    run,
+  })
+  await quarantine(zip, 'downloaded-zip')
   summary.download = {
-    image,
+    zip,
     ...published,
-    guided,
-    bundle: await bundleChecked(source, VERSION_B),
+    bundle: await bundleChecked(downloadedBundle, VERSION_B),
   }
   transport.requireHealthy()
-  passed('guided-download-mount-and-message', summary.download)
-  return source
+  await screenshot(cdp, 'a-ready-to-restart.png')
+  passed('native-download-zip-sha512-and-signed-bundle', summary.download)
+}
+
+async function quitSquirrelApp() {
+  squirrelApp = await quitRestartedMacApp(squirrelApp, processInfo)
+}
+
+async function nativeRestart(workspace) {
+  selectWorkspace(workspace)
+  const previous = active
+  await click(workspace.cdp, '[data-cy=updates-restart]')
+  await waitFor(async () => !(await processInfo(previous.pid)), 'A quits for Squirrel.Mac', 60_000)
+  const shutdown = await readFile(previous.log, 'utf8')
+  requireEvidence(
+    shutdown.includes(`updates: restarting to install ${VERSION_B}`) &&
+      /BroCrew shut down in \d+ms/.test(shutdown) &&
+      [
+        'close its sessions',
+        'keep its unsent drafts',
+        'drain its archive work',
+        'close its database',
+      ].every(
+        (step) => shutdown.includes(step) && !shutdown.includes(`BroCrew failed to ${step}:`),
+      ),
+    'The native restart did not record the install choice and normal A shutdown.',
+  )
+  workspace.result.shutdowns ??= []
+  workspace.result.shutdowns.push({
+    stage: 'native-restart',
+    pid: previous.pid,
+    normalLifetimeDrain: true,
+  })
+  active = null
+  workspace.active = null
+  previous.browser.close()
+  workspace.cdp.close()
+  squirrelApp = await observeMacReplacement({ app, version: VERSION_B, previous, run, processInfo })
+  const startup = await macFirstStartReceipt(data, VERSION_B)
+  const completed = await completedProofCopy(data, new Set(workspace.baseline.copiesBefore))
+  requireEvidence(
+    completed.manifest.madeBy?.appVersion === VERSION_B &&
+      completed.manifest.madeBy?.build === candidate.source,
+    'The native first start did not finish its candidate recovery copy.',
+  )
+  summary.installedCandidate = await bundleChecked(app, VERSION_B)
+  summary.replacementCount++
+  workspace.result.nativeStartup = { ...startup, completedCheckpointId: completed.manifest.id }
+  summary.restart = {
+    previous: { pid: previous.pid, command: previous.command, started: previous.started },
+    restarted: squirrelApp,
+    startup,
+    completedCheckpointId: completed.manifest.id,
+    package: summary.installedCandidate,
+  }
+  passed('squirrel-replacement-restart-and-first-start', summary.restart)
+  await quitSquirrelApp()
+  await requireNoInstalledProcesses()
 }
 
 async function captureBaseline(workspace, registryBefore, settingsBefore) {
@@ -531,16 +576,39 @@ async function captureBaseline(workspace, registryBefore, settingsBefore) {
 async function reopenFirst(workspace) {
   selectWorkspace(workspace)
   const baseline = workspace.baseline
+  const launched = performance.now()
   const cdp = await launch('b-first', workspace.port, VERSION_B)
   workspace.cdp = cdp
-  const order = recoveryOrder(await readFile(join(evidence, 'b-first.log'), 'utf8'), {
-    checkpoint: true,
-  })
+  const responsive = performance.now()
+  const manifestAbsent = !(await proofManifests(data)).some(
+    (one) => !baseline.copiesBefore.includes(one.manifest.id),
+  )
+  const observation = { launched, responsive, absent: performance.now(), manifestAbsent }
+  await completedProofCopy(data, new Set(baseline.copiesBefore))
+  if (!workspace.result.nativeStartup)
+    await waitFor(
+      async () =>
+        (await readFile(join(evidence, 'b-first.log'), 'utf8'))
+          .split(/\r?\n/)
+          .includes(CHECKPOINT_LINE),
+      'the candidate records its finished background copy',
+      600_000,
+    )
+  observation.completed = performance.now()
+  const log = await readFile(join(evidence, 'b-first.log'), 'utf8')
+  const order = workspace.result.nativeStartup
+    ? recoveryOrder(log, { checkpoint: false })
+    : startOrder(log, { checkpoint: true, completion: 'functional-background', observation })
   const added = (await checkpointIds(data)).filter((id) => !baseline.copiesBefore.includes(id))
   requireEvidence(
     added.length === 1,
     'The candidate must make exactly one checked recovery copy per workspace.',
   )
+  if (workspace.result.nativeStartup)
+    requireEvidence(
+      workspace.result.nativeStartup.completedCheckpointId === added[0],
+      'The native first start did not record its recovery copy.',
+    )
   const checkpoint = join(data, 'backups', added[0])
   const manifest = JSON.parse(await readFile(join(checkpoint, 'manifest.json'), 'utf8'))
   requireEvidence(
@@ -717,7 +785,10 @@ try {
   for (const workspace of workspaces)
     requireEvidence(!(await exists(workspace.data)), 'A fixture workspace already exists.')
   await mkdir(evidenceRoot, { recursive: true })
-  const published = diskImageFrom(candidate.manifest, VERSION_B)
+  const published = readUpdateFile(candidate.manifest).files.find((one) =>
+    one.url.endsWith('-mac.zip'),
+  )
+  requireEvidence(published?.sha512 && published.size > 0, 'Candidate ZIP metadata is missing.')
   const baselineImage = join(
     predecessor.directory,
     diskImageFrom(predecessor.manifest, VERSION_A).url,
@@ -747,20 +818,15 @@ try {
   for (const workspace of workspaces) await seedWorkspace(workspace)
   await allRunning(VERSION_A, 'concurrentBaseline')
   transport.switchTo(candidate)
-  const source = await guidedDownload(workspaces[0], published)
+  await nativeDownload(workspaces[0], published)
   await allRunning(VERSION_A, 'concurrentBeforeNormalQuit')
-  await quitAll('baseline-before-single-replacement')
+  await quitAll('baseline-peers-before-native-restart', workspaces[0])
   const registryBefore = JSON.parse(await readFile(registry, 'utf8')),
     settingsBefore = await readFile(settings)
   for (const workspace of workspaces)
     await captureBaseline(workspace, registryBefore, settingsBefore)
   await bundleChecked(app, VERSION_A)
-  await requireNoInstalledProcesses()
-  await rm(app, { recursive: true })
-  await run('/usr/bin/ditto', ['--rsrc', '--extattr', source, app])
-  summary.replacementCount++
-  await quarantine(app, 'installed-candidate')
-  summary.installedCandidate = await bundleChecked(app, VERSION_B)
+  await nativeRestart(workspaces[0])
   for (const workspace of workspaces) await reopenFirst(workspace)
   await allRunning(VERSION_B, 'concurrentSignedFirst')
   await quitAll('candidate-first-reopening')
@@ -796,7 +862,7 @@ try {
   transport.requireHealthy()
   requireEvidence(
     summary.replacementCount === 1 && summary.workspaces.every((one) => one.verified),
-    'Three-workspace guided proof is incomplete.',
+    'Three-workspace native proof is incomplete.',
   )
   summary.success = true
 } catch (error) {
@@ -852,8 +918,15 @@ try {
       }
     }
   }
+  try {
+    await quitSquirrelApp()
+  } catch (error) {
+    summary.cleanupFailure = String(error)
+    summary.success = false
+    process.exitCode = 1
+  }
   for (const channel of channels) channel.close()
-  for (const mount of [mountedA, mountedCandidate])
+  for (const mount of [mountedA])
     if (mount) {
       try {
         await run('/usr/bin/hdiutil', ['detach', mount])

@@ -85,7 +85,7 @@ it('cancels before ready without allocating another native worker', async () => 
   await closed
 })
 
-it('waits for actual exit on timeout, limits forced replacements and respects the rolling cooldown', async () => {
+it('waits for actual exit on timeout, limits replacements and respects the rolling cooldown', async () => {
   vi.useFakeTimers()
   let now = 0
   const workers: FictionalWorker[] = []
@@ -109,8 +109,9 @@ it('waits for actual exit on timeout, limits forced replacements and respects th
       settled = true
     })
     await vi.advanceTimersByTimeAsync(21)
-    expect(worker.terminationRequested).toBe(true)
-    expect(settled).toBe(false)
+    expect(worker.terminationRequested).toBe(false)
+    expect(worker.posted.at(-1)).toEqual({ type: 'close' })
+    expect(settled).toBe(true)
     expect(workers).toHaveLength(i + 1)
     worker.exit()
     expect(await read).toMatchObject({ cause: 'worker' })
@@ -137,7 +138,8 @@ it('malformed or oversized worker replies fail closed and release only after exi
   const read = lifetime.read(query, libraryContext)
   worker.ready()
   worker.emit('message', { type: 'read', id: 1, result: { type: 'files', files: [] } })
-  expect(worker.terminationRequested).toBe(true)
+  expect(worker.terminationRequested).toBe(false)
+  expect(worker.posted.at(-1)).toEqual({ type: 'close' })
   worker.exit()
   expect(await read).toMatchObject({ cause: 'worker' })
   await lifetime.close()
@@ -159,9 +161,23 @@ it('runs real native worker queries/pages/provenance and closes its owned connec
       const result = await lifetime.read({ ...query, size: 2 }, libraryContext)
       expect(result.type).toBe('files')
       if (result.type !== 'files') throw new Error(JSON.stringify(result))
-      expect([result.totalFiles, result.totalKeeps, result.files.length]).toEqual([16, 22, 2])
-      const page = await lifetime.read({ operation: 'page', cursor: result.next! }, libraryContext)
-      expect(page.type).toBe('files')
+      expect(result.complete).toBe(false)
+      expect([result.totalFiles, result.files.length]).toEqual([2, 2])
+      const seen = result.files.map((group) => group.file.sha256)
+      let page = result
+      while (page.next !== null) {
+        const next = await lifetime.read(
+          { operation: 'page', cursor: page.next, size: 2 },
+          libraryContext,
+        )
+        if (next.type !== 'files') throw new Error(JSON.stringify(next))
+        page = next
+        seen.push(...page.files.map((group) => group.file.sha256))
+      }
+      expect(page.complete).toBe(true)
+      expect([page.totalFiles, page.totalKeeps, seen.length, new Set(seen).size]).toEqual([
+        16, 22, 16, 16,
+      ])
       const provenance = await lifetime.read(
         {
           operation: 'provenance',
@@ -186,7 +202,7 @@ it('runs real native worker queries/pages/provenance and closes its owned connec
   }
 })
 
-it('bounds time and abandoned native scans honestly without poisoning the surviving engine', () => {
+it('allows continuing work beyond elapsed time and cooperatively cancels without poisoning retry', () => {
   let now = 0
   const f = filesLibraryFixture()
   f.example()
@@ -198,7 +214,12 @@ it('bounds time and abandoned native scans honestly without poisoning the surviv
         if (++checks === 10) now = 5_001
         return false
       }),
-    ).toMatchObject({ cause: 'budget', complete: false })
+    ).toMatchObject({ type: 'files', complete: true })
+    checks = 0
+    expect(engine.read(query, libraryContext, () => ++checks >= 10)).toMatchObject({
+      cause: 'cancelled',
+      complete: false,
+    })
     expect(engine.read(query, libraryContext).type).toBe('files')
   } finally {
     engine.close()
@@ -225,7 +246,13 @@ it('cooperatively cancels inside the real worker engine without releasing its pe
       }
     })
     parentPort.postMessage({ type: 'ready' })
-    parentPort.on('message', ({ id, request, context, cancellation }) => {
+    parentPort.on('message', (message) => {
+      if (message.type === 'close') {
+        engine.close()
+        parentPort.close()
+        return
+      }
+      const { id, request, context, cancellation } = message
       flag = new Int32Array(cancellation)
       parentPort.postMessage({ type: 'read', id,
         result: engine.read(request, context, () => Atomics.load(flag, 0) !== 0) })
@@ -236,6 +263,8 @@ it('cooperatively cancels inside the real worker engine without releasing its pe
   const entered = new Promise<void>((resolve) => {
     nativeStarted = resolve
   })
+  let exitCode: number | undefined
+  const workerErrors: string[] = []
   class ObservedWorker extends EventEmitter implements ReaderWorker {
     constructor(readonly worker: Worker) {
       super()
@@ -243,8 +272,14 @@ it('cooperatively cancels inside the real worker engine without releasing its pe
         if (message.type === 'native-reading') nativeStarted()
         else this.emit('message', message)
       })
-      worker.on('error', (error) => this.emit('error', error))
-      worker.on('exit', (code) => this.emit('exit', code))
+      worker.on('error', (error) => {
+        workerErrors.push(error.message)
+        this.emit('error', error)
+      })
+      worker.on('exit', (code) => {
+        exitCode = code
+        this.emit('exit', code)
+      })
     }
     postMessage: Worker['postMessage'] = (...args) => this.worker.postMessage(...args)
     terminate: Worker['terminate'] = () => this.worker.terminate()
@@ -268,4 +303,65 @@ it('cooperatively cancels inside the real worker engine without releasing its pe
     await lifetime?.close()
     f.close()
   }
+  expect(exitCode).toBe(0)
+  expect(workerErrors).toEqual([])
+})
+
+it('renews the stall timer only for advancing work and still times out when progress stops', async () => {
+  vi.useFakeTimers()
+  const worker = new FictionalWorker()
+  let starts = 0
+  const lifetime = new FilesLibraryLifetime(
+    () => {
+      starts++
+      return worker
+    },
+    Date.now,
+    20,
+  )
+  let readSettled = false
+  const read = lifetime.read(query, libraryContext)
+  void read.then(() => {
+    readSettled = true
+  })
+  worker.ready()
+  const flag = new Int32Array(worker.posted[0]!['cancellation'] as SharedArrayBuffer)
+  for (let completed = 1; completed <= 5; completed++) {
+    await vi.advanceTimersByTimeAsync(15)
+    expect(readSettled).toBe(false)
+    expect(Atomics.load(flag, 0)).toBe(0)
+    expect(worker.posted).toHaveLength(1)
+    expect(starts).toBe(1)
+    worker.emit('message', { type: 'progress', id: worker.posted[0]!['id'], completed })
+    expect(worker.terminationRequested).toBe(false)
+    expect(readSettled).toBe(false)
+    expect(Atomics.load(flag, 0)).toBe(0)
+    expect(worker.posted).toHaveLength(1)
+    expect(starts).toBe(1)
+  }
+  await vi.advanceTimersByTimeAsync(21)
+  expect(worker.terminationRequested).toBe(false)
+  expect(worker.posted.at(-1)).toEqual({ type: 'close' })
+  expect(
+    Atomics.load(new Int32Array(worker.posted[0]!['cancellation'] as SharedArrayBuffer), 0),
+  ).toBe(1)
+  expect(await read).toMatchObject({ cause: 'worker' })
+  const waiting = lifetime.read(query, libraryContext)
+  await Promise.resolve()
+  expect(worker.posted).toHaveLength(2)
+  expect(starts).toBe(1)
+  let joined = 0
+  const closing = lifetime.close().then(() => {
+    joined++
+  })
+  const repeated = lifetime.close().then(() => {
+    joined++
+  })
+  expect(await waiting).toMatchObject({ cause: 'closed' })
+  expect(joined).toBe(0)
+  expect(starts).toBe(1)
+  expect(worker.terminationRequested).toBe(false)
+  worker.exit()
+  await Promise.all([closing, repeated])
+  expect(joined).toBe(2)
 })

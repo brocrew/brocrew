@@ -1622,9 +1622,8 @@ function notedInBoth(own: RowsUnread, answer: RowsUnread): RowsUnread {
 
 /**
  * Why the worker did not serve a window read: every caller permit was held; the writer moved under
- * both tries, or could not be sampled; the worker's read failed (its wait for a lock ran out, or
- * it passed a bound); the worker is gone; or it needs a restart. The read is then answered on the
- * main thread.
+ * both tries, or could not be sampled; the worker's read failed; the worker is gone; or it needs
+ * a restart. The failed read is reported to its caller.
  */
 type WindowReadMiss =
   | 'callers-full'
@@ -1675,7 +1674,7 @@ export interface WaitOnAsked {
 const A_WAIT_ENDS_WITHIN_MS = 30 * 24 * 60 * 60 * 1000
 
 /**
- * How long a window read the worker failed is answered on the main thread
+ * How long a failed read is remembered
  * before the worker is asked again at the same writer stamp: doubled after each further failure
  * there, up to the most. A write that moves the stamp asks again at once.
  */
@@ -1698,12 +1697,6 @@ const COPY_SLICE_BYTES = 256 * 1024
 const COPY_SLICE_TARGET_MS = 4
 const COPY_BUSY_WAIT_MS = { least: 10, most: 1000 } as const
 const SAY_COPY_PROGRESS_EVERY_MS = 60_000
-
-/** How often each cause of a window read answered on the main thread is logged, at most. */
-const SAY_A_WINDOW_READ_MISS_EVERY_MS = 60_000
-
-/** Maximum frequency of a canonical incident read while the worker cannot answer. */
-const INCIDENT_MAIN_READ_EVERY_MS = 30_000
 
 /** The page a start nobody hands on carries: nothing, and everything before `next` still to read. */
 function noPageBefore(next: number): HistoryWindow {
@@ -5461,7 +5454,6 @@ export class RuntimeHost implements LiveHost {
     { readonly stamp: WindowWriterStamp; readonly result: WindowReadResult } | undefined
   private windowIncidentsPending:
     { readonly stamp: WindowWriterStamp; readonly read: Promise<WindowReadResult> } | undefined
-  private lastIncidentMainReadAt: number | undefined
   /** A shared window read the worker failed, by kind: at which stamp, why, and until when. */
   private readonly windowReadsFailed = new Map<
     'routes' | 'incidents',
@@ -5474,11 +5466,6 @@ export class RuntimeHost implements LiveHost {
   >()
   private windowIncidentsKept:
     { readonly stamp: WindowWriterStamp; readonly result: WindowReadResult } | undefined
-  /** Each cause of a window read answered on the main thread: how many, and when it was last said. */
-  private readonly windowReadMisses = new Map<
-    WindowReadMiss,
-    { readonly count: number; readonly saidAt: number }
-  >()
 
   private readonly workReads: WorkReads
 
@@ -8780,7 +8767,7 @@ export class RuntimeHost implements LiveHost {
     const conversation = life.id
     const agent = this.deps.store.identityOf(conversation)?.profileSlug ?? null
     this.servicesReadingAPair.add(conversation)
-    void this.theSelectedModel(life.provider, agent, agent ?? DEFAULT_PROFILE_ID, {})
+    void this.theSelectedModel(life.provider, agent, {})
       .then(
         (own) => {
           this.pairsReadForTheHead.set(conversation, { piece, life, pair: own })
@@ -16357,12 +16344,7 @@ export class RuntimeHost implements LiveHost {
     })
   }
 
-  /**
-   * Await one canonical routing snapshot, then compose without an asynchronous gap. ⚑ Where the
-   * worker does not serve it ({@link WindowReadMiss}), the same answer is read here, on the main
-   * thread. ⛔ Only a read the main thread can't answer either, or one asked while the app closes,
-   * is refused.
-   */
+  /** Compose a window answer only after its canonical routing snapshot was read off main. */
   async readForWindow<T>(answer: () => T): Promise<T> {
     if (this.deps.windowReader === undefined) {
       this.deps.store.checkCommitted()
@@ -16373,47 +16355,14 @@ export class RuntimeHost implements LiveHost {
       if (result.kind !== 'routes') throw new WindowReadMissed('worker-gone')
       return this.windowRoutingReads.run(result, answer)
     }
-    if (this.windowReadCallers >= WINDOW_READ_BOUNDS.callers) {
-      // Past the bound a caller joins the read already pending, and starts none of its own.
-      try {
-        return await this.freshWindowQuery({ kind: 'routes' }, compose, undefined, true)
-      } catch (error) {
-        if (!(error instanceof WindowReadMissed) || this.launches.closed) throw error
-        return this.answeredOnTheMainThread(error.missed, answer)
-      }
-    }
+    if (this.windowReadCallers >= WINDOW_READ_BOUNDS.callers)
+      return this.freshWindowQuery({ kind: 'routes' }, compose, undefined, true)
     this.windowReadCallers++
-    let missed: WindowReadMiss
     try {
       return await this.freshWindowQuery({ kind: 'routes' }, compose)
-    } catch (error) {
-      if (!(error instanceof WindowReadMissed) || this.launches.closed) throw error
-      missed = error.missed
     } finally {
       this.windowReadCallers--
     }
-    return this.answeredOnTheMainThread(missed, answer)
-  }
-
-  /**
-   * `answer`, read here on the main thread because the worker did not serve it. ⚑ The cause and how
-   * often it happened are logged, each cause at most once a minute; nothing the answer holds is.
-   */
-  private answeredOnTheMainThread<T>(missed: WindowReadMiss, answer: () => T): T {
-    // Another connection's commit is heard before the answer is composed.
-    this.deps.store.checkCommitted()
-    const at = this.now()
-    const before = this.windowReadMisses.get(missed)
-    const count = (before?.count ?? 0) + 1
-    const say = before === undefined || at - before.saidAt >= SAY_A_WINDOW_READ_MISS_EVERY_MS
-    this.windowReadMisses.set(missed, { count, saidAt: say ? at : (before?.saidAt ?? at) })
-    if (say) {
-      console.warn(`window read answered on the main thread: ${missed} (${count} since launch)`)
-    }
-    const work = this.deps.mainThreadWork
-    return work === undefined
-      ? answer()
-      : work.timed('runtime window read on the main thread', answer)
   }
 
   private sampleWindowWriter(query: WindowReadQuery): WindowWriterStamp | null {
@@ -16507,7 +16456,7 @@ export class RuntimeHost implements LiveHost {
 
   /**
    * Remembers a shared read the worker failed at `stamp`, so callers at that
-   * stamp are answered on the main thread until its wait passes, and the next asks again.
+   * stamp receive the same error until its wait passes, and the next asks again.
    */
   private rememberAFailedWindowRead(
     kind: 'routes' | 'incidents',
@@ -17825,10 +17774,7 @@ export class RuntimeHost implements LiveHost {
     )
   }
 
-  /**
-   * `compose`, an incidents reading, run on the worker's incident snapshot, or by `onMain` on the
-   * main thread where the worker does not serve it and the fallback is due.
-   */
+  /** Compose incident facts from the worker snapshot; a failed read stays failed. */
   private async incidentsForWindow<T>(
     compose: () => T,
     onMain: () => T = () => this.windowIncidentReads.run(compose),
@@ -17841,28 +17787,14 @@ export class RuntimeHost implements LiveHost {
     )
       throw new WindowReadUnavailable('busy')
     this.windowReadCallers++
-    let missed: WindowReadMiss
     try {
       return await this.freshWindowQuery({ kind: 'incidents' }, (result) => {
         if (result.kind !== 'incidents') throw new WindowReadMissed('worker-gone')
         return this.windowIncidentReads.run(compose, result)
       })
-    } catch (error) {
-      if (!(error instanceof WindowReadMissed) || this.launches.closed) throw error
-      if (error.missed === 'worker-busy') throw error
-      missed = error.missed
     } finally {
       this.windowReadCallers--
     }
-    // The monotonic clock bounds heavy fallback work even if the system clock changes.
-    const at = performance.now()
-    if (
-      this.lastIncidentMainReadAt !== undefined &&
-      at - this.lastIncidentMainReadAt < INCIDENT_MAIN_READ_EVERY_MS
-    )
-      throw new WindowReadUnavailable()
-    this.lastIncidentMainReadAt = at
-    return this.answeredOnTheMainThread(missed, onMain)
   }
 
   /**
@@ -21247,7 +21179,7 @@ export class RuntimeHost implements LiveHost {
     // (a launch of its own) comes first. Recorded on the row below, which every later start
     // replays. Nothing runs on an unnamed default; the effort is absent only for a model that
     // offers none.
-    const selected = await this.theSelectedModel(input.provider, profileId, profileId, {
+    const selected = await this.theSelectedModel(input.provider, profileId, {
       ...(input.model === undefined ? {} : { model: input.model }),
       ...(input.reasoningEffort === undefined ? {} : { effort: input.reasoningEffort }),
     })
@@ -31734,7 +31666,11 @@ export class RuntimeHost implements LiveHost {
           })
         : ask()
       this.launches.finish(launch, work)
-      return await work
+      const versions = await work
+      for (const provider of Object.keys(versions) as Provider[]) {
+        this.modelCatalogues.setProviderVersion(provider, versions[provider].version)
+      }
+      return versions
     } catch (error) {
       if (launch !== null) this.launches.finish(launch)
       console.warn(`runtime host could not read the providers' versions: ${errorMessage(error)}`)
@@ -32732,7 +32668,7 @@ export class RuntimeHost implements LiveHost {
       return false
     } finally {
       credential.release()
-      this.forgetModels(provider, profileId)
+      this.forgetModels(provider)
     }
   }
 
@@ -32757,7 +32693,7 @@ export class RuntimeHost implements LiveHost {
       return await ops.reprovision(provider, profileId)
     } finally {
       credential.release()
-      this.forgetModels(provider, profileId)
+      this.forgetModels(provider)
     }
   }
 
@@ -32924,7 +32860,7 @@ export class RuntimeHost implements LiveHost {
     // have: tear the app-server down and report the sign-in as cancelled.
     if (launch.signal.aborted) {
       this.signIns.delete(key)
-      this.forgetModels(provider, profileId)
+      this.forgetModels(provider)
       // ⛔ **Both claims outlive this method** (293 §2). There is an app-server here and it is being
       // torn down; the port is not free and the home may still receive an `auth.json` until that
       // teardown really settles.
@@ -32966,7 +32902,7 @@ export class RuntimeHost implements LiveHost {
       // fail after writing one, and the timeout path has no outcome at all — and the cost of being
       // wrong is one short-lived child on the NEXT ask, against a menu that silently describes
       // somebody else's account. Nothing re-probes on its own; see {@link providerModels}.
-      this.forgetModels(provider, profileId)
+      this.forgetModels(provider)
       // Idempotent, reached on the timeout and throw paths too — and itself bounded, because the
       // thing being cancelled is exactly the app-server that may have stopped answering.
       const { teardown, bounded } = this.startCancel(signIn, launch)
@@ -37876,11 +37812,9 @@ export class RuntimeHost implements LiveHost {
     provider: Provider,
     /** The identity whose default is asked — `null` for a conversation no identity holds. */
     profileSlug: string | null,
-    /** ⚑ The profile whose home the launch prepared, where a list it needs is asked. */
-    askIn: string,
     named: { readonly model?: string; readonly effort?: string },
   ): Promise<SelectedModel> {
-    return this.modelCatalogues.theSelectedModel(provider, profileSlug, askIn, named)
+    return this.modelCatalogues.theSelectedModel(provider, profileSlug, named)
   }
 
   /**
@@ -38965,8 +38899,8 @@ export class RuntimeHost implements LiveHost {
     return this.modelCatalogues.providerModels(profileId, provider)
   }
 
-  private forgetModels(provider: Provider, profileId: string): void {
-    return this.modelCatalogues.forgetModels(provider, profileId)
+  private forgetModels(provider: Provider): void {
+    return this.modelCatalogues.forgetModels(provider)
   }
 
   private async askProviderForModels(
@@ -40127,7 +40061,7 @@ export class RuntimeHost implements LiveHost {
     // The runtime first, as a start makes it: a missing program is refused in its own words, never
     // as a list that names no model.
     const rawRuntime = preparedRuntime ?? this.deps.createRuntime(row.provider)
-    const selected = await this.theSelectedModel(row.provider, row.profileId, profileId, {
+    const selected = await this.theSelectedModel(row.provider, row.profileId, {
       ...(recordedModel === undefined ? {} : { model: recordedModel }),
       ...(recordedEffort === undefined ? {} : { effort: recordedEffort }),
     })
@@ -41791,65 +41725,68 @@ export class RuntimeHost implements LiveHost {
 
   private quitRecorded = false
 
-  async closeAll(): Promise<void> {
-    this.recordOpenForQuit()
-    this.stopHearingCommits()
-    const memoryClosed = this.deps.memoryKnowledge?.close() ?? Promise.resolve()
-    this.deps.store.closePastWorkSearch?.()
-    this.deps.closeSharedSkills?.()
-    this.windowIncidentReads.invalidate()
-    this.windowRoutesKept = undefined
-    this.windowIncidentsKept = undefined
-    this.workReconciler?.close()
-    clearInterval(this.reconciliationTimer)
-    this.launches.closeAdmission()
-    const limitsClosed = this.deps.limitsReader?.close() ?? Promise.resolve()
-    const workSearchClosed = this.deps.workSearchReader?.close() ?? Promise.resolve()
-    const pastWorkSearchClosed = this.deps.pastWorkSearchReader?.close() ?? Promise.resolve()
-    const windowReadsClosed = this.deps.windowReader?.close() ?? Promise.resolve()
-    const filesLibrariesClosed = this.deps.filesLibraries?.close() ?? Promise.resolve()
-    const teamProfileGraphsClosed = this.deps.teamProfileGraphs?.close() ?? Promise.resolve()
-    if (this.providerLimitExpiry !== null) clearTimeout(this.providerLimitExpiry)
-    this.providerLimitExpiry = null
-    this.providerLimitFacts.invalidate()
-    this.signInReopens.close()
-    // ⚠️ **Sign-ins are processes too** (098, review finding 3). An in-flight sign-in owns a
-    // `detached` app-server holding a loopback OAuth-redirect port, tracked in its own map rather
-    // than in `slots` — so the session teardown below walks straight past it and the child outlives
-    // the app. Cancelled first, bounded, and the map is cleared so a second quit finds nothing.
-    //
-    // ⚑ **The cancel is still made here even though the abort above reaches the same child**, and
-    // the reason is the ack: `account/login/cancel` tells the provider to forget the `loginId`,
-    // which a bare transport close does not. What has changed is that stopping waiting is no longer
-    // the same as letting go — {@link boundedCancel} hands the un-deadlined teardown to the registry
-    // first, so the drain below covers whatever is left of it.
-    const signIns = [...this.signIns.values()]
-    this.signIns.clear()
-    await Promise.all(signIns.map(({ signIn }) => this.boundedCancel(signIn)))
-    // ⚑ **D-029 · no wake-up outlives the quit** — the next launch reads the ledger again. ⚠️ One
-    // that fires first already starts nothing: admission closed on the first line.
-    for (const conversation of [...this.wakeUps.keys()]) this.forgetItsWakeUp(conversation)
-    // ⚑ **F074 — nor a reset's timer**: the next launch reads the walls again.
-    for (const { timer } of this.theResets.values()) clearTimeout(timer)
-    this.theResets.clear()
-    const terminated = settledWithin(this.launches.pending(), this.closeDrainTimeoutMs * 2)
-    let confirmed: boolean
+  private closingAll: Promise<void> | undefined
+
+  closeAll(): Promise<void> {
+    return (this.closingAll ??= this.closeAllOwned())
+  }
+
+  private async closeAllOwned(): Promise<void> {
+    const readersClosed = Promise.allSettled(
+      [
+        () => this.deps.memoryKnowledge?.close(),
+        () => this.deps.limitsReader?.close(),
+        () => this.deps.workSearchReader?.close(),
+        () => this.deps.pastWorkSearchReader?.close(),
+        () => this.deps.windowReader?.close(),
+        () => this.deps.filesLibraries?.close(),
+        () => this.deps.teamProfileGraphs?.close(),
+      ].map((close) => Promise.resolve().then(close)),
+    )
+    const failures: unknown[] = []
+    let confirmed = false
     try {
-      ;[, confirmed] = await Promise.all([
-        Promise.all([...this.slots.keys()].map((id) => this.close(id, THE_APP_ITSELF))),
-        terminated,
-        limitsClosed,
-        workSearchClosed,
-        pastWorkSearchClosed,
-        windowReadsClosed,
-        filesLibrariesClosed,
-        teamProfileGraphsClosed,
-        memoryClosed,
-      ])
+      this.recordOpenForQuit()
+      this.stopHearingCommits()
+      this.deps.store.closePastWorkSearch?.()
+      this.deps.closeSharedSkills?.()
+      this.windowIncidentReads.invalidate()
+      this.windowRoutesKept = undefined
+      this.windowIncidentsKept = undefined
+      this.workReconciler?.close()
+      clearInterval(this.reconciliationTimer)
+      this.launches.closeAdmission()
+      if (this.providerLimitExpiry !== null) clearTimeout(this.providerLimitExpiry)
+      this.providerLimitExpiry = null
+      this.providerLimitFacts.invalidate()
+      this.signInReopens.close()
+      const signIns = [...this.signIns.values()]
+      this.signIns.clear()
+      const signInsClosed = await Promise.allSettled(
+        signIns.map(({ signIn }) => this.boundedCancel(signIn)),
+      )
+      for (const result of signInsClosed)
+        if (result.status === 'rejected') failures.push(result.reason)
+      // ⚑ **D-029 · no wake-up outlives the quit** — the next launch reads the ledger again. ⚠️ One
+      // that fires first already starts nothing: admission closed on the first line.
+      for (const conversation of [...this.wakeUps.keys()]) this.forgetItsWakeUp(conversation)
+      // ⚑ **F074 — nor a reset's timer**: the next launch reads the walls again.
+      for (const { timer } of this.theResets.values()) clearTimeout(timer)
+      this.theResets.clear()
+      const terminated = settledWithin(this.launches.pending(), this.closeDrainTimeoutMs * 2)
+      const sessionsClosed = await Promise.allSettled(
+        [...this.slots.keys()].map((id) => this.close(id, THE_APP_ITSELF)),
+      )
+      for (const result of sessionsClosed)
+        if (result.status === 'rejected') failures.push(result.reason)
+      confirmed = await terminated
+    } catch (error) {
+      failures.push(error)
     } finally {
-      // A failed session close must still leave memory quiescent before SQLite closes.
-      await Promise.allSettled([memoryClosed, teamProfileGraphsClosed])
+      for (const result of await readersClosed)
+        if (result.status === 'rejected') failures.push(result.reason)
     }
+    if (failures.length) throw new AggregateError(failures, 'Runtime shutdown did not finish')
     // Bounded like every other wait a quit makes, and for the same reason: one adapter that will not
     // let go must not be able to hold the whole application open. What the bound costs is the same
     // thing it costs in `doStopProvider` — the guarantee that the child is down BY NOW — and the

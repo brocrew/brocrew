@@ -120,12 +120,13 @@ describe('every Electron launcher under scripts/', () => {
         .sort()
     expect(by('visible')).toEqual([
       'lane-geometry-probe.mjs',
+      'lib/mac-native-upgrade.mjs',
       'lib/mac-update-test.mjs',
       'mac-signed-upgrade-contract.mjs',
-      'mac-update-test.mjs',
       'upgrade-path.mjs',
       'window-controls-probe.mjs',
     ])
+    expect(verdictOf(readFileSync(join(SCRIPTS, 'mac-update-test.mjs'), 'utf8'))).toBe('visible')
     expect(by('own-main')).toEqual([
       'drop-hazard-probe.mjs',
       'nav-order-probe.mjs',

@@ -33,6 +33,7 @@ type Job<Request, Context, Result> = {
   context: Context
   resolve: (result: Result) => void
   flag: Int32Array
+  progress: number
   timer?: ReturnType<typeof setTimeout>
 }
 type Owned = {
@@ -41,6 +42,7 @@ type Owned = {
   expired: boolean
   failed: boolean
   terminating: boolean
+  closeError?: { error: unknown }
   exited: Promise<void>
   resolveExit: () => void
 }
@@ -72,6 +74,7 @@ export class ReaderWorkerLifetime<Request, Context, Result> {
         request,
         context,
         resolve,
+        progress: 0,
         flag: new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)),
       }
       if (this.active === undefined) {
@@ -88,6 +91,7 @@ export class ReaderWorkerLifetime<Request, Context, Result> {
   async close(): Promise<void> {
     if (this.closed) {
       await this.owned?.exited
+      if (this.owned?.closeError) throw this.owned.closeError.error
       return
     }
     this.closed = true
@@ -99,8 +103,10 @@ export class ReaderWorkerLifetime<Request, Context, Result> {
       this.finish(this.rules.unavailable('closed'))
       return
     }
-    this.fail(owned)
+    if (this.active?.timer !== undefined) clearTimeout(this.active.timer)
+    this.requestClose(owned)
     await owned.exited
+    if (owned.closeError) throw owned.closeError.error
   }
 
   private async begin(job: Job<Request, Context, Result>): Promise<void> {
@@ -146,10 +152,15 @@ export class ReaderWorkerLifetime<Request, Context, Result> {
       }
     }
     if (this.active !== job) return
-    job.timer = setTimeout(() => {
-      if (this.owned !== undefined) this.fail(this.owned)
-    }, this.deadlineMs)
+    this.watch(job, this.owned)
     if (this.owned.ready) this.post(job, this.owned)
+  }
+
+  private watch(job: Job<Request, Context, Result>, owned: Owned): void {
+    clearTimeout(job.timer)
+    job.timer = setTimeout(() => {
+      if (this.active === job && this.owned === owned) this.fail(owned)
+    }, this.deadlineMs)
   }
 
   private subscribe(worker: ReaderWorker): Owned {
@@ -197,7 +208,7 @@ export class ReaderWorkerLifetime<Request, Context, Result> {
     }
   }
   private receive(owned: Owned, incoming: unknown): void {
-    if (this.owned !== owned || owned.failed) return
+    if (this.owned !== owned || owned.failed || this.closed) return
     if (incoming === null || typeof incoming !== 'object' || Array.isArray(incoming)) {
       this.fail(owned)
       return
@@ -219,6 +230,20 @@ export class ReaderWorkerLifetime<Request, Context, Result> {
       return
     }
     const job = this.active
+    if (
+      owned.ready &&
+      job !== undefined &&
+      message.type === 'progress' &&
+      Object.keys(message).length === 3 &&
+      message.id === job.id &&
+      typeof message.completed === 'number' &&
+      Number.isSafeInteger(message.completed) &&
+      message.completed > job.progress
+    ) {
+      job.progress = message.completed
+      if (Atomics.load(job.flag, 0) === 0) this.watch(job, owned)
+      return
+    }
     if (
       !owned.ready ||
       job === undefined ||
@@ -250,9 +275,21 @@ export class ReaderWorkerLifetime<Request, Context, Result> {
   private fail(owned: Owned): void {
     if (!owned.failed && !this.closed) this.rules.failure?.()
     owned.failed = true
+    if (this.active !== undefined) {
+      Atomics.store(this.active.flag, 0, 1)
+      clearTimeout(this.active.timer)
+      this.active.resolve(this.rules.unavailable(this.closed ? 'closed' : 'worker'))
+    }
+    this.requestClose(owned)
+  }
+
+  private requestClose(owned: Owned): void {
     if (owned.terminating) return
     owned.terminating = true
-    // The exit listener releases the active permit; terminate's promise alone never does.
-    void owned.worker.terminate().catch(() => {})
+    try {
+      owned.worker.postMessage({ type: 'close' })
+    } catch (error) {
+      owned.closeError = { error }
+    }
   }
 }

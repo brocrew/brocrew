@@ -51,7 +51,15 @@ type FullTask = {
   depth: number
 }
 type FullKeep = LibraryKeep
-type Group = { representative: FullKeep; matching: Set<string> }
+type Group = { representative: FullKeep; matching: Set<string>; matchingCount?: number }
+type StreamRow = {
+  id: string
+  matching: number
+  documents: number
+  images: number
+  made: number
+  input: number
+}
 type Metrics = { rows: number; bytes: number; elapsedMs: number; cacheBytes: number }
 type Snapshot = {
   token: string
@@ -62,6 +70,14 @@ type Snapshot = {
   metrics: Metrics
 }
 type FileSnapshot = Snapshot & {
+  stream?: {
+    source: FilesLibraryEngine
+    rows: Iterator<StreamRow>
+    pending?: StreamRow
+    done: boolean
+    metadata: ReturnType<FilesLibraryEngine['metadata']>
+    selected: Set<string> | null
+  }
   query: FilesLibraryQuery
   groups: Group[]
   provenance: Map<string, FullKeep[]>
@@ -90,7 +106,7 @@ const object = (payload: string): Record<string, unknown> => {
   throw new Failed('metadata', 1)
 }
 
-/** Owns complete immutable populations on a read-only connection, never a transaction between gestures. */
+/** Reads file pages from an immutable SQLite snapshot. */
 export class FilesLibraryEngine {
   private readonly db: Database.Database
   private files: FileSnapshot | undefined
@@ -101,10 +117,12 @@ export class FilesLibraryEngine {
   private residentBytes = 0
   private started = 0
   private abandoned: () => boolean = () => false
+  private progress: () => void = () => {}
+  private idleTimer: ReturnType<typeof setTimeout> | undefined
   private closed = false
 
   constructor(
-    file: string,
+    private readonly file: string,
     private readonly now: () => number = Date.now,
     private readonly trace?: (sql: string, bindings: readonly unknown[]) => void,
   ) {
@@ -123,37 +141,59 @@ export class FilesLibraryEngine {
     input: FilesLibraryRequest,
     context: LibraryReadContext,
     abandoned: () => boolean = () => false,
+    progress: () => void = () => {},
   ): FilesLibraryResult {
     this.visited = 0
     this.nativeBytes = 0
     this.workingBytes = 0
     this.started = this.now()
     this.abandoned = abandoned
+    this.progress = progress
     if (this.closed) return libraryUnavailable('closed')
+    let reading: FileSnapshot | undefined
     try {
       const request = filesLibraryRequest.parse(input)
       this.expire()
       this.residentBytes =
         (this.files?.metrics.cacheBytes ?? 0) + (this.tasks?.metrics.cacheBytes ?? 0)
       if (request.operation === 'release') {
+        this.closeStream(this.files)
         this.files = undefined
         this.tasks = undefined
+        this.scheduleExpiry()
         return { type: 'released' }
       }
       if (request.operation === 'query') {
-        const snapshot = this.transaction(() => this.buildFiles(request.query, context))
-        const result = this.filePage(snapshot, 0, request.size ?? 60, context)
-        this.checkedReply(result)
-        this.files = snapshot
-        return result
+        this.closeStream(this.files)
+        this.files = undefined
+        const snapshot =
+          request.query.sort === 'newest' &&
+          libraryWords(request.query.query).length === 0 &&
+          request.query.kind === 'all' &&
+          request.query.role === 'all'
+            ? this.buildStream(request.query, context)
+            : this.transaction(() => this.buildFiles(request.query, context))
+        try {
+          const result = this.checkedReply(this.filePage(snapshot, 0, request.size ?? 60, context))
+          this.closeStream(this.files)
+          this.files = snapshot
+          this.scheduleExpiry()
+          return result
+        } catch (error) {
+          this.closeStream(snapshot)
+          throw error
+        }
       }
       if (request.operation === 'page') {
         const { snapshot, offset } = this.fileCursor(request.cursor, 'files', context)
+        reading = snapshot
         return this.checkedReply(this.filePage(snapshot, offset, request.size ?? 60, context))
       }
       if (request.operation === 'provenance') {
         const snapshot = this.requireFiles(request.snapshot, context)
+        reading = snapshot
         const group = snapshot.groups.find((one) => one.representative.sha256 === request.sha256)
+        this.loadProvenance(snapshot, request.sha256)
         const keeps = snapshot.provenance.get(request.sha256)
         if (group === undefined || keeps === undefined) throw new Failed('invalid-cursor')
         const offset =
@@ -175,7 +215,7 @@ export class FilesLibraryEngine {
             matching: group.matching.has(file.resourceId),
           })),
           total: keeps.length,
-          matching: group.matching.size,
+          matching: group.matchingCount ?? group.matching.size,
           next:
             end < keeps.length
               ? this.cursor(snapshot.token, `provenance:${request.sha256}`, end)
@@ -203,8 +243,16 @@ export class FilesLibraryEngine {
         next: end < snapshot.tasks.length ? this.cursor(snapshot.token, 'tasks', end) : null,
       })
       this.tasks = snapshot
+      this.scheduleExpiry()
       return result
     } catch (error) {
+      if (
+        reading?.stream !== undefined &&
+        !(error instanceof Failed && error.cause === 'invalid-cursor')
+      ) {
+        this.closeStream(reading)
+        if (this.files === reading) this.files = undefined
+      }
       if (this.db.inTransaction) this.db.exec('ROLLBACK')
       return libraryUnavailable(
         error instanceof Failed ? error.cause : 'worker',
@@ -217,25 +265,27 @@ export class FilesLibraryEngine {
   close(): void {
     if (this.closed) return
     this.closed = true
+    clearTimeout(this.idleTimer)
+    this.closeStream(this.files)
     this.files = undefined
     this.tasks = undefined
     this.db.close()
   }
 
+  private closeStream(snapshot?: FileSnapshot): void {
+    snapshot?.stream?.rows.return?.()
+    snapshot?.stream?.source.close()
+  }
+
   private check(): void {
     if (this.abandoned()) throw new Failed('cancelled')
-    if (this.now() - this.started > B.deadlineMs) throw new Failed('budget')
+    this.progress()
   }
   private counted<T>(row: T): T {
     this.check()
     if (row !== undefined) {
       this.visited++
       this.nativeBytes += serialize(row).byteLength
-      if (
-        this.visited > B.rows ||
-        this.nativeBytes + this.workingBytes + this.residentBytes > B.bytes
-      )
-        throw new Failed('budget')
       if (typeof row === 'object' && row !== null && 'oversized' in row && row.oversized)
         throw new Failed('budget')
     }
@@ -279,15 +329,30 @@ export class FilesLibraryEngine {
   private cacheSize(snapshot: FileSnapshot | TaskSnapshot): number {
     return serialize(snapshot).byteLength
   }
-  private finish<T extends FileSnapshot | TaskSnapshot>(snapshot: T, other?: Snapshot): T {
+  private finish<T extends FileSnapshot | TaskSnapshot>(snapshot: T): T {
     snapshot.metrics.cacheBytes = this.cacheSize(snapshot)
-    const combined = snapshot.metrics.cacheBytes + (other?.metrics.cacheBytes ?? 0)
-    if (combined > B.bytes) throw new Failed('budget')
     return snapshot
   }
+  private scheduleExpiry(): void {
+    clearTimeout(this.idleTimer)
+    const touched = [this.files?.touchedAt, this.tasks?.touchedAt].filter(
+      (at): at is number => at !== undefined,
+    )
+    if (this.closed || touched.length === 0) return
+    this.idleTimer = setTimeout(
+      () => {
+        this.expire()
+        this.scheduleExpiry()
+      },
+      Math.max(0, Math.min(...touched) + B.idleMs - this.now()),
+    )
+    this.idleTimer.unref()
+  }
   private expire(): void {
-    if (this.files !== undefined && this.now() - this.files.touchedAt >= B.idleMs)
+    if (this.files !== undefined && this.now() - this.files.touchedAt >= B.idleMs) {
+      this.closeStream(this.files)
       this.files = undefined
+    }
     if (this.tasks !== undefined && this.now() - this.tasks.touchedAt >= B.idleMs)
       this.tasks = undefined
   }
@@ -297,6 +362,7 @@ export class FilesLibraryEngine {
   private stamp(snapshot: Snapshot, context: LibraryReadContext) {
     this.boundContext(snapshot, context)
     snapshot.touchedAt = this.now()
+    this.scheduleExpiry()
     return {
       snapshot: snapshot.token,
       readAt: snapshot.readAt,
@@ -340,7 +406,12 @@ export class FilesLibraryEngine {
     this.boundContext(this.files, context)
     return {
       snapshot: this.files,
-      offset: this.offset(cursor, this.files.token, kind, this.files.groups.length),
+      offset: this.offset(
+        cursor,
+        this.files.token,
+        kind,
+        this.files.groups.length + (this.files.stream?.done === false ? 1 : 0),
+      ),
     }
   }
   private checkedReply<T extends FilesLibraryResult>(result: T): T {
@@ -374,20 +445,157 @@ export class FilesLibraryEngine {
     size: number,
     context: LibraryReadContext,
   ): FilesLibraryResult {
+    this.advance(snapshot, offset + size)
     const end = Math.min(snapshot.groups.length, offset + size)
     return {
       type: 'files',
+      complete: snapshot.stream === undefined || snapshot.stream.done,
       ...this.stamp(snapshot, context),
       files: snapshot.groups.slice(offset, end).map((group) => ({
         file: this.displayKeep(group.representative),
-        matchingKeeps: group.matching.size,
+        matchingKeeps: group.matchingCount ?? group.matching.size,
       })),
       totalFiles: snapshot.groups.length,
       totalKeeps: snapshot.totalKeeps,
       scopeKeeps: snapshot.scopeKeeps,
-      facets: snapshot.facets,
-      next: end < snapshot.groups.length ? this.cursor(snapshot.token, 'files', end) : null,
+      facets: { kinds: { ...snapshot.facets.kinds }, roles: { ...snapshot.facets.roles } },
+      next:
+        end < snapshot.groups.length || snapshot.stream?.done === false
+          ? this.cursor(snapshot.token, 'files', end)
+          : null,
     }
+  }
+
+  private buildStream(query: FilesLibraryQuery, context: LibraryReadContext): FileSnapshot {
+    const source = new FilesLibraryEngine(this.file, this.now, this.trace)
+    source.abandoned = this.abandoned
+    source.progress = this.progress
+    source.started = this.now()
+    try {
+      source.db.exec('BEGIN')
+      source.db.prepare("SELECT rootpage FROM sqlite_schema WHERE name = 'work_resource'").get()
+      const metadata = source.metadata()
+      const selected = source.scope(query, context, metadata.task)
+      source.db.function('library_kind', { deterministic: true }, (name: unknown) => {
+        source.check()
+        return libraryKind(String(name))
+      })
+      source.db.function('library_id_key', { deterministic: true }, (id: unknown) =>
+        Buffer.from(String(id), 'utf16le').swap16(),
+      )
+      const sql = `WITH ranked AS (
+        SELECT id, sha256, created_at,
+          row_number() OVER (PARTITION BY sha256 ORDER BY created_at DESC, library_id_key(id) DESC) AS rank,
+          count(*) OVER (PARTITION BY sha256) AS matching,
+          max(library_kind(name)='documents') OVER (PARTITION BY sha256) AS documents,
+          max(library_kind(name)='images') OVER (PARTITION BY sha256) AS images,
+          max(role='made') OVER (PARTITION BY sha256) AS made,
+          max(role='input') OVER (PARTITION BY sha256) AS input
+        FROM work_resource
+        ${selected === null ? '' : 'WHERE work_id IN (SELECT value FROM json_each(?))'}
+      ) SELECT id,matching,documents,images,made,input FROM ranked WHERE rank=1
+        ORDER BY created_at DESC, sha256 ASC`
+      const rows = source.iterate<StreamRow>(
+        sql,
+        ...(selected === null ? [] : [JSON.stringify([...selected])]),
+      )
+      return {
+        ...this.base(context),
+        query,
+        groups: [],
+        provenance: new Map(),
+        scopeKeeps: 0,
+        totalKeeps: 0,
+        facets: {
+          kinds: { all: 0, documents: 0, images: 0 },
+          roles: { all: 0, made: 0, input: 0 },
+        },
+        stream: { source, rows, done: false, metadata, selected },
+      }
+    } catch (error) {
+      source.close()
+      throw error
+    }
+  }
+
+  private advance(snapshot: FileSnapshot, end: number): void {
+    const stream = snapshot.stream
+    if (stream === undefined || stream.done) return
+    const source = stream.source
+    source.abandoned = this.abandoned
+    source.progress = this.progress
+    while (snapshot.groups.length < end && !stream.done) {
+      const next =
+        stream.pending === undefined ? stream.rows.next() : { value: stream.pending, done: false }
+      stream.pending = undefined
+      if (next.done) {
+        stream.done = true
+        break
+      }
+      const row = next.value
+      const resource = source.get<Resource>(
+        `SELECT id,work_id,role,sha256,bytes,added_by_session_id,created_at,
+          CASE WHEN length(CAST(title AS BLOB)) <= ${B.fieldBytes} THEN title END AS title,
+          CASE WHEN length(CAST(name AS BLOB)) <= ${B.fieldBytes} THEN name END AS name,
+          (length(CAST(title AS BLOB)) > ${B.fieldBytes} OR length(CAST(name AS BLOB)) > ${B.fieldBytes}) AS oversized
+          FROM work_resource WHERE id=?`,
+        row.id,
+      )
+      if (resource === undefined) throw new Failed('metadata', 1)
+      const file = stream.metadata.keep(resource)
+      const group = {
+        representative: file,
+        matching: new Set<string>(),
+        matchingCount: row.matching,
+      }
+      snapshot.groups.push(group)
+      snapshot.metrics.cacheBytes += serialize(group).byteLength
+      snapshot.totalKeeps += row.matching
+      snapshot.scopeKeeps += row.matching
+      snapshot.facets.kinds.all++
+      snapshot.facets.roles.all++
+      snapshot.facets.kinds.documents += row.documents
+      snapshot.facets.kinds.images += row.images
+      snapshot.facets.roles.made += row.made
+      snapshot.facets.roles.input += row.input
+    }
+    if (!stream.done && stream.pending === undefined) {
+      const next = stream.rows.next()
+      if (next.done) stream.done = true
+      else stream.pending = next.value
+    }
+    snapshot.metrics = {
+      rows: source.visited,
+      bytes: source.nativeBytes + source.workingBytes,
+      elapsedMs: this.now() - source.started,
+      cacheBytes: snapshot.metrics.cacheBytes,
+    }
+  }
+
+  private loadProvenance(snapshot: FileSnapshot, sha256: string): void {
+    const stream = snapshot.stream
+    if (stream === undefined || snapshot.provenance.has(sha256)) return
+    const group = snapshot.groups.find((one) => one.representative.sha256 === sha256)
+    if (group === undefined) return
+    const source = stream.source
+    source.abandoned = this.abandoned
+    source.progress = this.progress
+    const keeps: FullKeep[] = []
+    for (const row of source.iterate<Resource>(
+      `SELECT id,work_id,role,sha256,bytes,added_by_session_id,created_at,
+        CASE WHEN length(CAST(title AS BLOB)) <= ${B.fieldBytes} THEN title END AS title,
+        CASE WHEN length(CAST(name AS BLOB)) <= ${B.fieldBytes} THEN name END AS name,
+        (length(CAST(title AS BLOB)) > ${B.fieldBytes} OR length(CAST(name AS BLOB)) > ${B.fieldBytes}) AS oversized
+        FROM work_resource WHERE sha256=?`,
+      sha256,
+    )) {
+      const file = stream.metadata.keep(row)
+      keeps.push(file)
+      if (stream.selected === null || stream.selected.has(file.piece))
+        group.matching.add(file.resourceId)
+    }
+    keeps.sort((a, b) => b.keptAt - a.keptAt || b.resourceId.localeCompare(a.resourceId, 'en'))
+    snapshot.provenance.set(sha256, keeps)
   }
 
   private metadata() {
@@ -585,8 +793,6 @@ export class FilesLibraryEngine {
   }
   private allocated(value: unknown): void {
     this.workingBytes += serialize(value).byteLength + 128
-    if (this.nativeBytes + this.workingBytes + this.residentBytes > B.bytes)
-      throw new Failed('budget')
   }
   private *resources(): Generator<Resource> {
     let after = Number.NEGATIVE_INFINITY
@@ -682,25 +888,22 @@ export class FilesLibraryEngine {
     const ordered = [...groups.values()].sort((a, b) =>
       compareLibraryFiles(a.representative, b.representative, query.sort),
     )
-    return this.finish(
-      {
-        ...this.base(context),
-        query,
-        groups: ordered,
-        provenance,
-        scopeKeeps,
-        totalKeeps,
-        facets: {
-          kinds: {
-            all: kinds.all.size,
-            documents: kinds.documents.size,
-            images: kinds.images.size,
-          },
-          roles: { all: roles.all.size, made: roles.made.size, input: roles.input.size },
+    return this.finish({
+      ...this.base(context),
+      query,
+      groups: ordered,
+      provenance,
+      scopeKeeps,
+      totalKeeps,
+      facets: {
+        kinds: {
+          all: kinds.all.size,
+          documents: kinds.documents.size,
+          images: kinds.images.size,
         },
+        roles: { all: roles.all.size, made: roles.made.size, input: roles.input.size },
       },
-      this.tasks,
-    )
+    })
   }
   private buildTasks(
     query: string,
@@ -757,6 +960,6 @@ export class FilesLibraryEngine {
       (a, b) =>
         a.label.localeCompare(b.label, 'en', { numeric: true }) || a.id.localeCompare(b.id, 'en'),
     )
-    return this.finish({ ...this.base(context), query, parent, tasks }, this.files)
+    return this.finish({ ...this.base(context), query, parent, tasks })
   }
 }

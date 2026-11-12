@@ -322,11 +322,7 @@ describe('a service takes one piece at a time', () => {
       ): Promise<{ readonly model: string; readonly effort: string }>
     }
     type Given = Extract<GiveOutcome, { ok: true }>
-    /**
-     * A Codex service whose agent names no pair, its first piece (which asked for high) stalled.
-     * Every read of the pair its agent starts on is counted, and the first answers low, every other
-     * the provider's own default (medium): a pair sent says which read it came from.
-     */
+    /** An unnamed Codex service; its first resumed pair reads low, later reads keep the provider default. */
     const aCodexServiceOnAPieceThatAskedHigh = async (): Promise<{
       host: RuntimeHost
       caller: string
@@ -369,6 +365,9 @@ describe('a service takes one piece at a time', () => {
     > => {
       const first = await aCodexServiceOnAPieceThatAskedHigh()
       const { host, caller, service, one } = first
+      // The shared catalogue may already be warm from the first give. A completed install
+      // makes the next piece wait for a fresh provider answer.
+      host.providerSetupCompleted('codex', 'install')
       let release = (): void => {}
       world.listsWait = new Promise((done) => {
         release = done
@@ -381,7 +380,7 @@ describe('a service takes one piece at a time', () => {
         summary: 'Booked.',
       })
       await vi.waitFor(() => {
-        expect(world.listedFor.slice(asked)).toContain('browser-driver')
+        expect(world.listedFor.slice(asked)).toContain('brobot')
       })
       return {
         ...first,

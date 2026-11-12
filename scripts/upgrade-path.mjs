@@ -17,10 +17,10 @@ import {
   checkedProofCopy,
 } from './lib/recovery-measurement.mjs'
 import { withMovedFiles } from './lib/moved-state-files.mjs'
+import { describeDatabase, readDatabase, whole } from './lib/upgrade-database.mjs'
 import {
   appendFileSync,
   closeSync,
-  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -43,7 +43,6 @@ import {
   betaAsset,
   bundleIn,
   buildLineage,
-  canonicalRow,
   CHECKPOINT_LINE,
   contains,
   copiesSince,
@@ -65,7 +64,6 @@ import {
   launchSetupExpected,
   lineageFits,
   READY_LINE,
-  recordedLineage,
   recordedWith,
   registryKept,
   workspaceRegistrySnapshot,
@@ -1178,13 +1176,13 @@ async function verdict(stage) {
   return Date.now() - running.launchedAt
 }
 
-function wholeLog(stage, { checkpoint }) {
+function wholeLog(stage, { checkpoint, completion, observation }) {
   const log = readFileSync(join(evidence, `${stage}.log`), 'utf8')
   const order = holds(
     checkpoint
-      ? `${stage}: over its whole log, one checked recovery copy, then READY, and no failure`
+      ? `${stage}: over its whole log, one checked recovery copy (${completion}), one READY, and no failure`
       : `${stage}: over its whole log, READY, no recovery copy and no failure`,
-    () => startOrder(log, { checkpoint }),
+    () => startOrder(log, { checkpoint, completion, observation }),
   )
   const other = join(evidence, `${stage}.stdout.log`)
   if (existsSync(other)) {
@@ -1275,72 +1273,6 @@ async function phase(stage, body) {
   }
 }
 
-function readDatabase(folder, file = 'brobot2.sqlite') {
-  const copy = mkdtempSync(join(tmpdir(), 'upgrade-path-db-'))
-  try {
-    for (const suffix of ['', '-wal', '-shm', '-journal']) {
-      if (existsSync(join(folder, `${file}${suffix}`))) {
-        copyFileSync(join(folder, `${file}${suffix}`), join(copy, `brobot2.sqlite${suffix}`))
-      }
-    }
-    const db = new DatabaseSync(join(copy, 'brobot2.sqlite'), { readOnly: true })
-    try {
-      const integrity = db
-        .prepare('PRAGMA integrity_check')
-        .all()
-        .map((row) => row.integrity_check)
-      const names = db
-        .prepare(
-          "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
-        )
-        .all()
-        .map((row) => row.name)
-      const quoted = (name) => `"${name.replace(/"/g, '""')}"`
-      const tables = Object.fromEntries(
-        names.map((name) => [name, db.prepare(`SELECT * FROM ${quoted(name)}`).all()]),
-      )
-      const keys = Object.fromEntries(
-        names.map((name) => [
-          name,
-          db
-            .prepare(`PRAGMA table_info(${quoted(name)})`)
-            .all()
-            .filter((column) => column.pk > 0)
-            .sort((a, b) => a.pk - b.pk)
-            .map((column) => column.name),
-        ]),
-      )
-      const lineage = recordedLineage(
-        db.prepare('SELECT hash, created_at FROM __drizzle_migrations ORDER BY created_at').all(),
-      )
-      return { integrity, tables, keys, lineage }
-    } finally {
-      db.close()
-    }
-  } finally {
-    rmSync(copy, { recursive: true, force: true })
-  }
-}
-const whole = (read) => read.integrity.length === 1 && read.integrity[0] === 'ok'
-const describeDatabase = (read) => ({
-  integrity: read.integrity,
-  schema: read.lineage.length,
-  lineage: read.lineage,
-  tables: Object.fromEntries(
-    Object.entries(read.tables).map(([name, rows]) => [
-      name,
-      {
-        rows: rows.length,
-        sha256: sha256(
-          rows
-            .map((row) => canonicalRow(row))
-            .sort()
-            .join('\n'),
-        ),
-      },
-    ]),
-  ),
-})
 const stateFiles = stateFileNames(
   readFileSync(join(REPO, 'apps', 'desktop', 'src', 'main', 'recovery', 'state-files.ts'), 'utf8'),
 )
@@ -1868,6 +1800,7 @@ async function theOwedStartOnTheKey(into, owed, { stamped, jobIds, keyWasSealed 
 }
 
 const FIRST_OPEN_STARTS_MS = 180_000
+const COPY_FINISH_MS = 120_000
 
 function theStartAndTheKey(conversation, called, atFirstOpen) {
   const logs = ['candidate-first', 'candidate-second'].map((stage) => loggedBy(stage)).join('\n')
@@ -2603,6 +2536,12 @@ async function runUpgradePath() {
   )
   const expectedReason =
     candidateLineage.length > before.lineage.length ? 'before-migration' : 'first-start-of-release'
+  // With migrations to run, the start finishes the copy before READY; otherwise it finishes it in
+  // the background once the first window is shown, and the first window's own observations are kept.
+  const firstCopyCompletion =
+    expectedReason === 'before-migration' ? 'before-ready' : 'functional-background'
+  const betasCopyIds = new Set(copiesTheBetaLeft.map(({ manifest }) => manifest?.id))
+  let firstCopyObservation = null
 
   const candidateDir = resolve(args['candidate-dir'])
   const candidateFile = join(
@@ -2698,6 +2637,16 @@ async function runUpgradePath() {
     await screenshot('candidate-first.png')
     await dialogsAtAStart('first start', summary.firstStart)
     const info = await running.cdp.evaluate('return await window.api.getAppInfo()')
+    const responsive = performance.now()
+    const manifestAbsent = !(await proofManifests(data)).some(
+      (one) => !betasCopyIds.has(one.manifest.id),
+    )
+    firstCopyObservation = {
+      launched: running.launchedMono,
+      responsive,
+      absent: performance.now(),
+      manifestAbsent,
+    }
     summary.firstStart.app = info
     check(
       info?.version === args['candidate-version'] && info?.build?.commit === args['source-sha'],
@@ -2746,10 +2695,26 @@ async function runUpgradePath() {
     }
     await observeTheSavedKey('first start')
     wholeScreen('screen-after-the-first-start.png')
+    if (firstCopyCompletion === 'functional-background') {
+      const finished = await until(
+        () => (readFileSync(running.log, 'utf8').includes(CHECKPOINT_LINE) ? true : null),
+        COPY_FINISH_MS,
+        500,
+      )
+      if (finished === true) firstCopyObservation.completed = performance.now()
+      check(
+        finished === true,
+        `first start: the recovery copy finished in the background before the app was asked to close (waited up to ${String(COPY_FINISH_MS / 1_000)} s)`,
+      )
+    }
     await quit('the candidate, after its first start')
   })
   summary.firstStart.order = existsSync(join(evidence, 'candidate-first.log'))
-    ? wholeLog('candidate-first', { checkpoint: true })
+    ? wholeLog('candidate-first', {
+        checkpoint: true,
+        completion: firstCopyCompletion,
+        observation: firstCopyObservation,
+      })
     : check(false, 'first start: its log was kept')
 
   const copiesAfterFirst = await copies()
@@ -2766,6 +2731,7 @@ async function runUpgradePath() {
     const folder = join(data, 'backups', made)
     requireEvidence(existsSync(join(folder, 'manifest.json')), 'The copy has no manifest.')
     summary.checkpointMarkerLeft = existsSync(join(folder, 'unfinished'))
+    requireEvidence(!summary.checkpointMarkerLeft, 'The copy still carries its unfinished marker.')
     const manifest = JSON.parse(readFileSync(join(folder, 'manifest.json'), 'utf8'))
     keep('checkpoint-manifest.json', manifest)
     const files = { 'database.sqlite': readFileSync(join(folder, 'database.sqlite')) }

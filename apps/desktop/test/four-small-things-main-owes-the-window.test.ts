@@ -424,25 +424,25 @@ describe('689 · four small things main owes the window', () => {
   describe('§3 · `685` H1 — a cached FAILURE is asked once more when a person asks', () => {
     it('🔴 one failed probe does not stand for the life of the app — the next ask asks again, and gets the list', async () => {
       await aProfileThatHasRun('developer')
-      failing.add('developer/claude')
+      failing.add('brobot/claude')
       const first = await host.providerModels('developer', 'claude')
       expect(first).toMatchObject({ ok: false, reason: 'refused' })
-      expect(asked('developer/claude')).toBe(1)
+      expect(asked('brobot/claude')).toBe(1)
       failing.clear()
 
       const again = await host.providerModels('developer', 'claude')
 
       // 🔴 **THE MEASUREMENT** — a new child, and the list it answered.
-      expect(asked('developer/claude')).toBe(2)
+      expect(asked('brobot/claude')).toBe(2)
       expect(again.ok, JSON.stringify(again)).toBe(true)
       // ⚑ Cached now, and a success: the next ask spawns nothing.
       await host.providerModels('developer', 'claude')
-      expect(asked('developer/claude')).toBe(2)
+      expect(asked('brobot/claude')).toBe(2)
     })
 
     it('⚑ THE CONTROLS: a probe that SUCCEEDED stays cached, and a failure this very ask produced is not asked twice', async () => {
       await aProfileThatHasRun('developer')
-      failing.add('developer/claude')
+      failing.add('brobot/claude')
       /** ⚑ Both providers' lists for the profile, each through the one-provider door. */
       const both = () =>
         Promise.all([
@@ -453,40 +453,40 @@ describe('689 · four small things main owes the window', () => {
       await both()
       // ⛔ **A fresh failure is asked ONCE** — asking again at once would spend a second child on
       // an answer a moment old (the Save door's own round-two rule).
-      expect(asked('developer/claude')).toBe(1)
-      expect(asked('developer/codex')).toBe(1)
+      expect(asked('brobot/claude')).toBe(1)
+      expect(asked('brobot/codex')).toBe(1)
 
       await both()
       // ⚑ **An answer that SUCCEEDED is a value, not a question** — no child for it.
-      expect(asked('developer/codex')).toBe(1)
+      expect(asked('brobot/codex')).toBe(1)
       // …while the failure, cached now, was asked once more.
-      expect(asked('developer/claude')).toBe(2)
+      expect(asked('brobot/claude')).toBe(2)
     })
 
     it('⚑ asks in the same tick share ONE child — over a failure already cached, and over one still being asked', async () => {
       await aProfileThatHasRun('developer')
-      failing.add('developer/claude')
+      failing.add('brobot/claude')
       // ⛔ **Nothing cached, two asks at once**: the second meets the first's probe IN FLIGHT, which
       // is fresh — so it takes that answer rather than asking again (`689`'s review).
       await Promise.all([
         host.providerModels('developer', 'claude'),
         host.providerModels('developer', 'claude'),
       ])
-      expect(asked('developer/claude')).toBe(1)
+      expect(asked('brobot/claude')).toBe(1)
       // ⛔ **A failure cached and settled, two asks at once**: ONE of them asks again and the other
       // joins it — each forgets only the promise it awaited, never a probe still running.
       await Promise.all([
         host.providerModels('developer', 'claude'),
         host.providerModels('developer', 'claude'),
       ])
-      expect(asked('developer/claude')).toBe(2)
+      expect(asked('brobot/claude')).toBe(2)
     })
 
     it('⛔ …and an ask already in flight when the quit starts does not ask again either', async () => {
       await aProfileThatHasRun('developer')
-      failing.add('developer/codex')
+      failing.add('brobot/codex')
       const first = await host.providerModels('developer', 'codex')
-      rmSync(join(homes(), 'developer', 'codex'), { recursive: true, force: true })
+      rmSync(join(homes(), 'brobot', 'codex'), { recursive: true, force: true })
       failing.clear()
 
       // ⚑ **Asked BEFORE the quit** — it passes the door, and meets the quit while it waits on the
@@ -497,16 +497,16 @@ describe('689 · four small things main owes the window', () => {
       await closing
 
       expect(during).toEqual(first)
-      expect(asked('developer/codex')).toBe(1)
-      expect(existsSync(join(homes(), 'developer', 'codex')), 'a quit laid down a home').toBe(false)
+      expect(asked('brobot/codex')).toBe(1)
+      expect(existsSync(join(homes(), 'brobot', 'codex')), 'a quit laid down a home').toBe(false)
     })
 
     it('⛔ once a quit has started, a cached FAILURE is handed back as it is — never asked again, and no home laid down', async () => {
       await aProfileThatHasRun('developer')
-      failing.add('developer/codex')
+      failing.add('brobot/codex')
       const first = await host.providerModels('developer', 'codex')
       expect(first).toMatchObject({ ok: false, reason: 'refused' })
-      rmSync(join(homes(), 'developer', 'codex'), { recursive: true, force: true })
+      rmSync(join(homes(), 'brobot', 'codex'), { recursive: true, force: true })
       failing.clear()
 
       const closing = host.closeAll()
@@ -515,8 +515,8 @@ describe('689 · four small things main owes the window', () => {
 
       // ⚑ **The same answer, not `closing`** — a quit hands back what it has (070).
       expect(during).toEqual(first)
-      expect(asked('developer/codex')).toBe(1)
-      expect(existsSync(join(homes(), 'developer', 'codex')), 'a quit laid down a home').toBe(false)
+      expect(asked('brobot/codex')).toBe(1)
+      expect(existsSync(join(homes(), 'brobot', 'codex')), 'a quit laid down a home').toBe(false)
     })
   })
 
@@ -535,7 +535,7 @@ describe('689 · four small things main owes the window', () => {
 
       expect(list.ok, JSON.stringify(list)).toBe(true)
       // 🔴 **THE MEASUREMENT** — one child, for the provider named, and nothing made for the other.
-      expect(listed.slice(before)).toEqual(['developer/claude'])
+      expect(listed.slice(before)).toEqual(['brobot/claude'])
       expect(existsSync(codexHome), 'asking Claude made a Codex home').toBe(false)
     })
 
@@ -575,7 +575,7 @@ describe('689 · four small things main owes the window', () => {
       })
 
       expect(list).toMatchObject({ provider: 'claude', notAsked: null })
-      expect(listed.slice(before)).toEqual(['developer/claude'])
+      expect(listed.slice(before)).toEqual(['brobot/claude'])
       await expect(
         executeRuntimeCommand(host, window, {
           kind: 'modelList',
@@ -583,7 +583,7 @@ describe('689 · four small things main owes the window', () => {
           provider: 'gemini',
         } as never),
       ).rejects.toThrow()
-      expect(listed.slice(before)).toEqual(['developer/claude'])
+      expect(listed.slice(before)).toEqual(['brobot/claude'])
     })
 
     it('⚑ once a quit has started, a list nobody has asked for is refused rather than spawned — and no home is laid down', async () => {
@@ -591,7 +591,7 @@ describe('689 · four small things main owes the window', () => {
       const closing = host.closeAll()
       await expect(host.providerModels('developer', 'codex')).rejects.toThrow(/shutting down/)
       await closing
-      expect(asked('developer/codex')).toBe(0)
+      expect(asked('brobot/codex')).toBe(0)
       expect(existsSync(join(homes(), 'developer', 'codex')), 'a quit laid down a home').toBe(false)
     })
 

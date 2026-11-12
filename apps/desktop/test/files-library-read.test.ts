@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { serialize } from 'node:v8'
 import { FilesLibraryEngine } from '../src/main/db/files-library-engine'
@@ -24,6 +24,7 @@ const fixture = (now?: () => number) => {
 }
 afterEach(() => {
   for (const one of owned.splice(0)) one.close()
+  vi.useRealTimers()
 })
 const sha = (text: string) => createHash('sha256').update(text).digest('hex')
 function files(result: FilesLibraryResult) {
@@ -335,22 +336,22 @@ it('pages unique groups across interleaved keeps and preserves an immutable popu
   const first = files(
     f.engine.read({ operation: 'query', query: workspaceQuery, size: 17 }, libraryContext),
   )
-  expect([first.totalFiles, first.totalKeeps]).toEqual([125, 250])
+  expect([first.totalFiles, first.totalKeeps, first.complete]).toEqual([17, 34, false])
   f.keep('later', root, sha('later'), { at: 999 })
   let page = first
   const seen = first.files.map((one) => one.file.sha256)
   while (page.next !== null) {
     page = files(f.engine.read({ operation: 'page', cursor: page.next, size: 17 }, libraryContext))
     expect(page.stale).toBe(true)
-    expect(page.totalFiles).toBe(125)
+    expect(page.totalFiles).toBeLessThanOrEqual(125)
     seen.push(...page.files.map((one) => one.file.sha256))
   }
   expect(new Set(seen).size).toBe(125)
   expect(seen).toHaveLength(125)
   expect(seen).toEqual(Array.from({ length: 125 }, (_, i) => sha(String(124 - i))))
   expect(
-    files(f.engine.read({ operation: 'query', query: workspaceQuery }, libraryContext)).totalFiles,
-  ).toBe(126)
+    files(f.engine.read({ operation: 'query', query: workspaceQuery }, libraryContext)).complete,
+  ).toBe(false)
   expect(f.engine.read({ operation: 'page', cursor: first.next! }, libraryContext)).toMatchObject({
     cause: 'invalid-cursor',
   })
@@ -610,3 +611,28 @@ it('strictly rejects conflicting scopes, unbounded paging and path/SQL/giver inp
     }).success,
   ).toBe(false)
 })
+
+it.each([1, 100])(
+  'releases an idle snapshot of page size %s without another library request',
+  async (size) => {
+    vi.useFakeTimers()
+    const f = fixture()
+    f.example()
+    f.db.pragma('wal_autocheckpoint = 0')
+    f.db.pragma('wal_checkpoint(TRUNCATE)')
+    const first = files(
+      f.engine.read({ operation: 'query', query: workspaceQuery, size }, libraryContext),
+    )
+    expect(first.complete).toBe(size === 100)
+    f.keep('after-snapshot', 't19', sha('after-snapshot'), { at: Date.now() })
+    const pinned = f.db.pragma('wal_checkpoint(PASSIVE)') as { log: number; checkpointed: number }[]
+    expect(pinned[0]!.log).toBeGreaterThan(pinned[0]!.checkpointed)
+    await vi.advanceTimersByTimeAsync(FILES_LIBRARY_BOUNDS.idleMs)
+    const released = f.db.pragma('wal_checkpoint(PASSIVE)') as {
+      log: number
+      checkpointed: number
+    }[]
+    expect(released[0]!.log).toBeGreaterThan(0)
+    expect(released[0]!.checkpointed).toBe(released[0]!.log)
+  },
+)

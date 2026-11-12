@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -28,8 +26,7 @@ func fileRequest(t *testing.T, path string, data []byte, name string) sendFile {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	sum := sha256.Sum256(data)
-	return sendFile{Path: path, Name: name, Size: int64(len(data)), SHA256: hex.EncodeToString(sum[:])}
+	return sendFile{Path: path, Name: name, Size: int64(len(data))}
 }
 
 func TestAnAttachmentComesOnlyFromTheFilesFolder(t *testing.T) {
@@ -54,16 +51,11 @@ func TestAnAttachmentComesOnlyFromTheFilesFolder(t *testing.T) {
 	if err := os.Symlink(outside.Path, link); err != nil {
 		t.Fatal(err)
 	}
-	if _, code := openAttachment(files, sendFile{Path: link, Name: "link.pdf", Size: inside.Size, SHA256: inside.SHA256}); code != "outside" {
+	if _, code := openAttachment(files, sendFile{Path: link, Name: "link.pdf", Size: inside.Size}); code != "outside" {
 		t.Fatalf("a link out of the folder: %q", code)
 	}
-	if _, code := openAttachment(files, sendFile{Path: files + "/../elsewhere.pdf", Name: "x.pdf", Size: inside.Size, SHA256: inside.SHA256}); code != "outside" {
+	if _, code := openAttachment(files, sendFile{Path: files + "/../elsewhere.pdf", Name: "x.pdf", Size: inside.Size}); code != "outside" {
 		t.Fatalf("a path that climbs out: %q", code)
-	}
-	changed := inside
-	changed.SHA256 = strings.Repeat("0", 64)
-	if _, code := openAttachment(files, changed); code != "changed" {
-		t.Fatalf("a file whose bytes changed: %q", code)
 	}
 	hard := filepath.Join(files, "second-name.pdf")
 	if err := os.Link(inside.Path, hard); err != nil {

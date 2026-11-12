@@ -1322,8 +1322,9 @@ function authChangedFor(profileId: string, changedProvider?: Provider): void {
   // ⛔ **This DISOWNS the read in flight as well as forgetting the answer** (293 §5). Without the
   // ticket, a read started under the previous account was free to land after the replacement.
   modelLists.forget(profileId)
+  void modelLists.reread()
   for (const shown of listsShown.value) {
-    if (shown.profileId === profileId) void modelLists.read(shown.provider, shown.profileId)
+    void modelLists.read(shown.provider, shown.profileId)
   }
 }
 

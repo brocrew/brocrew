@@ -147,12 +147,12 @@ describe('native setup completion reaches existing runtime readiness notificatio
     return answer.ok ? answer.models.map((model) => model.id) : []
   }
 
-  it('drops all affected profile catalogues and only that provider’s old usage, telling windows once', async () => {
+  it('drops the shared provider catalogue and only that provider’s old usage, telling windows once', async () => {
     const old = await ids('cedar', 'claude')
     await ids('orbit', 'claude')
     const unrelated = await ids('cedar', 'codex')
     await ids('cedar', 'claude')
-    expect(listed).toHaveLength(3)
+    expect(listed).toHaveLength(2)
     expect(host.providerUsage().claude).toHaveLength(1)
     service.signIn()
     revision = 1
@@ -169,7 +169,7 @@ describe('native setup completion reaches existing runtime readiness notificatio
     expect((await ids('cedar', 'claude'))[0]).toMatch(/^r1-/)
     expect((await ids('orbit', 'claude'))[0]).toMatch(/^r1-/)
     expect(await ids('cedar', 'codex')).toEqual(unrelated)
-    expect(listed).toHaveLength(5)
+    expect(listed).toHaveLength(3)
     child.emit('close', 0)
     expect(moved).toHaveBeenCalledTimes(2)
     expect(legacySignIn).not.toHaveBeenCalled()
@@ -229,7 +229,7 @@ describe('native setup completion reaches existing runtime readiness notificatio
     release()
     const old = await before,
       fresh = await after
-    expect(old.ok && old.models[0]?.id).toMatch(/^r0-/)
+    expect(old).toEqual(fresh)
     expect(fresh.ok && fresh.models[0]?.id).toMatch(/^r1-/)
     expect((await ids('cedar', 'claude'))[0]).toMatch(/^r1-/)
     expect(listed).toHaveLength(2)
