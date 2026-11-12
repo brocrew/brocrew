@@ -18,7 +18,6 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
@@ -104,9 +103,7 @@ describe('two withdrawals — open what was scoped', () => {
   }
 
   /** One capability, changed and nothing else — the *"one grant over"* half of every pair below. */
-  const reach = (profileSlug: string, edit: Record<string, unknown>): void => {
-    expect(store.setCapabilities(profileSlug, edit as never)).toBe(true)
-  }
+  
 
   const rawColumn = (slug: string, column: string): unknown =>
     (

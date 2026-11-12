@@ -28,10 +28,6 @@ import {
   refuseInterrupt,
 } from '../src/main/runtime/interrupt-rails'
 
-import { QUESTION_RAILS } from '../src/main/runtime/question-rails'
-import { REPLY_RAILS } from '../src/main/runtime/reply-rails'
-import { SPAWN_RAILS } from '../src/main/runtime/spawn-rails'
-import { TOOL_REFUSALS, refuseTool } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {

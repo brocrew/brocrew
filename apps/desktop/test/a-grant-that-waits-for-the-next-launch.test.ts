@@ -240,12 +240,7 @@ describe('470 · a grant that waits for the next launch', () => {
     return (await tool.call(args)).structured as Record<string, unknown>
   }
 
-  const messageWorker = (caller: string, worker: string): Promise<Record<string, unknown>> =>
-    callOn(caller, 'message_agent', {
-      agent: worker,
-      kind: 'note',
-      text: 'A fictional fixture note.',
-    })
+  
 
   /** Every launch this app has made for one identity, oldest first. */
   const launchesFor = (who: string): Launched[] => launches.filter((one) => one.who === who)

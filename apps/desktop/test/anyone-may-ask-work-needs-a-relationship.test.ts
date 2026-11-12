@@ -14,7 +14,6 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { ToolWatchingRuntime } from './lib/provider-double'
 import {
@@ -105,9 +104,7 @@ describe('553 · anyone may ask; work needs a relationship', () => {
   }
 
   /** One capability, changed and nothing else — the *"one grant over"* half of every pair below. */
-  const reach = (profileSlug: string, edit: Record<string, unknown>): void => {
-    expect(store.setCapabilities(profileSlug, edit as never)).toBe(true)
-  }
+  
 
   /**
    * ⛔ **The RAW column, not `capabilitiesOf`** — a NULL column is *nobody has chosen*, and it is
