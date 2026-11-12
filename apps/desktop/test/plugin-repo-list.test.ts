@@ -1,3 +1,5 @@
+import { join } from 'node:path'
+import { readdir, rm, writeFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseRepoPluginList, loadRepoPluginList } from '../src/main/plugins/catalogue/repo-list'
 import { PLUGIN_LIST_URL } from '../src/main/plugins/catalogue/download'
@@ -104,11 +106,19 @@ describe.skipIf(process.platform === 'win32')(
       const release = loaded.releases[0]!
       const vault = new PluginPackageVault(f.root, f.opts.target)
       await vault.stage(release, f.pkg.archive, { bytes: loaded.bytes })
+      const kept = join(f.root, 'package-vault', release.archive.sha256)
+      const names = await readdir(kept)
+      const proof = join(kept, 'catalogue.sha256')
+      await rm(proof, { force: true })
+      await writeFile(proof, '0'.repeat(64))
       const changed = repoListFor(f.pkg.release, 'Chrome')
       changed.entries[0]!.description = 'Fictional revised description.'
       const next = parseRepoPluginList(Buffer.from(JSON.stringify(changed)), f.opts.target, '1.0.0')
       expect(next.sha256).not.toBe(loaded.sha256)
       const reopened = new PluginPackageVault(f.root, f.opts.target)
+      expect((await reopened.load(release)).manifest.id).toBe('chrome')
+      expect(names.sort()).toEqual(['archive', 'catalogue.json'])
+      await rm(proof)
       expect((await reopened.load(release)).manifest.id).toBe('chrome')
       await expect(reopened.load({ ...release, manifestSha256: '0'.repeat(64) })).rejects.toThrow()
     })
