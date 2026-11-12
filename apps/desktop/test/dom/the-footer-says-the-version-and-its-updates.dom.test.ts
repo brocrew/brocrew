@@ -285,6 +285,7 @@ describe('B2 · the footer opens it', () => {
     await settle()
     expect(footer.getAttribute('aria-expanded')).toBe('true')
     expect(text(r.q('updates-version'))).toBe('BroCrew 0.1.0')
+    expect(getComputedStyle(r.q('updates-menu')).position).toBe('absolute')
     // ⚑ A development build's menu has no control: the menu itself takes focus, so Esc reaches it.
     expect(document.activeElement).toBe(r.q('updates-menu'))
     document.activeElement!.dispatchEvent(
