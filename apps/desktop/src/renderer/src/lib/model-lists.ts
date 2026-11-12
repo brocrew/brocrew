@@ -110,7 +110,9 @@ type ListDoors = Pick<
  */
 export function createModelLists(bridge: () => ListDoors): ModelLists {
   const lists = shallowRef<Readonly<Record<string, HeldContext>>>({})
-  const catalogues = shallowRef<Partial<Record<Provider, Pick<ModelList, 'models' | 'notAsked'>>>>({})
+  const catalogues = shallowRef<Partial<Record<Provider, Pick<ModelList, 'models' | 'notAsked'>>>>(
+    {},
+  )
   const choices = new Map<string, Omit<ProviderLaunchChoices, 'list'>>()
   const asked = new Map<string, { readonly provider: Provider; readonly profileId?: string }>()
   const inFlight = new Map<string, Promise<void>>()
@@ -217,7 +219,9 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
       const key = keyOf(provider, profileId)
       const held = heldFor(provider, profileId)
       const facts = choices.get(key)
-      return held?.state === 'answered' && facts !== undefined ? { ...facts, list: held.list } : null
+      return held?.state === 'answered' && facts !== undefined
+        ? { ...facts, list: held.list }
+        : null
     },
     read(provider, profileId, options) {
       const key = keyOf(provider, profileId)

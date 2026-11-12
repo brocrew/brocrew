@@ -7,7 +7,12 @@ import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
 const oldModels: ModelChoice[] = [
-  { id: 'default', label: 'Default (recommended)', resolvesTo: 'claude-sonnet-5-5', isDefault: true },
+  {
+    id: 'default',
+    label: 'Default (recommended)',
+    resolvesTo: 'claude-sonnet-5-5',
+    isDefault: true,
+  },
   { id: 'fable', label: 'Fable', resolvesTo: 'claude-fable-5-1' },
 ]
 const currentModels: ModelChoice[] = [
@@ -65,7 +70,9 @@ describe('one current catalogue per provider', () => {
     const { holder } = catalogue(async () => {
       if (!first) return currentModels
       first = false
-      return new Promise<ModelChoice[]>((resolve) => { release = resolve })
+      return new Promise<ModelChoice[]>((resolve) => {
+        release = resolve
+      })
     })
     const before = holder.modelList('claude')
     holder.forgetModels('claude', DEFAULT_PROFILE_ID)
@@ -98,14 +105,23 @@ describe('one current catalogue per provider', () => {
         const own = { model: profileId === 'fern' ? 'fable' : 'default', effort: null }
         return {
           list: {
-            provider, models: models.map((row) => ({ ...row, addedBy: 'the-provider' as const })),
-            standIn: null, notAsked: null, lastPicked: null, startsOn: own,
+            provider,
+            models: models.map((row) => ({ ...row, addedBy: 'the-provider' as const })),
+            standIn: null,
+            notAsked: null,
+            lastPicked: null,
+            startsOn: { ...own, from: 'its-default' as const },
           },
-          ready: true, defaultModel: own, defaultModelToSend: own,
+          ready: true,
+          defaultModel: own,
+          defaultModelToSend: own,
         }
       },
-      resolveProviderLaunch: async () => { throw new Error('not used') },
-      addHandAddedModel: async () => [], deleteHandAddedModel: async () => [],
+      resolveProviderLaunch: async () => {
+        throw new Error('not used')
+      },
+      addHandAddedModel: async () => [],
+      deleteHandAddedModel: async () => [],
     }))
     await lists.read('claude')
     await lists.read('claude', 'fern')
@@ -118,9 +134,10 @@ describe('one current catalogue per provider', () => {
     expect(picker?.state).toBe('answered')
     if (drawer?.state !== 'answered' || picker?.state !== 'answered') throw new Error('no rows')
     expect(drawer.list.models).toEqual(picker.list.models)
-    expect(picker.list.models).toEqual(currentModels.map((row) => ({ ...row, addedBy: 'the-provider' })))
+    expect(picker.list.models).toEqual(
+      currentModels.map((row) => ({ ...row, addedBy: 'the-provider' })),
+    )
     expect(lists.choices('claude')?.defaultModel?.model).toBe('default')
     expect(lists.choices('claude', 'fern')?.defaultModel?.model).toBe('fable')
   })
-
 })

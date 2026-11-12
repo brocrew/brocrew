@@ -382,9 +382,7 @@ export class ModelCatalogues {
    * 🔴 **Never during a quit** (`689`'s review): asking again runs `prepareProviderHome` before the
    * launch registry can refuse the child, and a quit hands back what it has (070, from 068 finding 7).
    */
-  private async modelsAskedAgainIfTheyFailed(
-    provider: Provider,
-  ): Promise<ModelCatalogue> {
+  private async modelsAskedAgainIfTheyFailed(provider: Provider): Promise<ModelCatalogue> {
     const key = provider
     const cached = this.modelProbes.get(key)
     const stale = cached !== undefined && this.settledModelProbes.has(cached)
@@ -666,11 +664,15 @@ export class ModelCatalogues {
   private probeModelsFor(provider: Provider): Promise<ModelCatalogue> {
     const known = this.modelProbes.get(provider)
     if (known) return known
-    const probe: Promise<ModelCatalogue> = this.askProviderForModels(provider, DEFAULT_PROFILE_ID)
-      .then((catalogue) =>
-        this.modelProbes.get(provider) === probe ? catalogue : this.probeModelsFor(provider),
-      )
-    const settled = (): void => { this.settledModelProbes.add(probe) }
+    const probe: Promise<ModelCatalogue> = this.askProviderForModels(
+      provider,
+      DEFAULT_PROFILE_ID,
+    ).then((catalogue) =>
+      this.modelProbes.get(provider) === probe ? catalogue : this.probeModelsFor(provider),
+    )
+    const settled = (): void => {
+      this.settledModelProbes.add(probe)
+    }
     void probe.then(settled, settled)
     void probe.then(
       (catalogue) => this.modelsAnswered.set(probe, catalogue),
