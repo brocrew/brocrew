@@ -1,4 +1,3 @@
-import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
@@ -16,7 +15,7 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { theDirectionLine } from '../src/main/runtime/turn-origin'
 import { agentName, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { fixtureFolder, fixtureDatabase, syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 🔴 D-011 · every message says who sent it and how they relate (proposal §8)

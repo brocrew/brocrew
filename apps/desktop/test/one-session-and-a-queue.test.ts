@@ -1,4 +1,3 @@
-import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
@@ -16,12 +15,7 @@ import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { mailboxOf, stillHeld } from '../src/shared/mailbox'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import {
-  RecordingSink,
-  syntheticProviderHome,
-  fixtureProviderConfig,
-  neutralHostDeps,
-} from './lib/host-fixture'
+import { fixtureFolder, fixtureDatabase, RecordingSink, syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * One worker and the callers who reach it: a second caller asks or leaves a note rather than

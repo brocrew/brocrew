@@ -1,4 +1,3 @@
-import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
@@ -20,7 +19,7 @@ import {
   type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
 import { ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { fixtureFolder, fixtureDatabase, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # D-016 · what `give_work` asks of a NEW agent, and which piece a give hangs under

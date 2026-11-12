@@ -1,4 +1,3 @@
-import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { expectIdsOnlyInLinkTargets } from './helpers/navigation-reply'
@@ -24,12 +23,7 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { RETITLE_SAID } from '../src/shared/piece-called'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import type { RuntimeChangeMessage } from '../src/shared/runtime-ipc'
-import {
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
-} from './lib/host-fixture'
+import { fixtureFolder, fixtureDatabase, RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 /**
  * ⚑ **A piece's label names the conversation that owns it — and no more** (W1.2).
  *

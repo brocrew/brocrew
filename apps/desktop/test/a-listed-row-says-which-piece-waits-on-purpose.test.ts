@@ -1,4 +1,3 @@
-import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { PieceRow } from '../src/shared/task-contracts'
 import { rmSync } from 'node:fs'
@@ -19,12 +18,7 @@ import {
   type ResumableSessionInfo,
   type UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
-import {
-  fixtureProviderConfig,
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-} from './lib/host-fixture'
+import { fixtureFolder, fixtureDatabase, fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * The window's list of conversations says which piece a helper waits on on purpose.
