@@ -69,7 +69,6 @@ export class PluginProfileLedger {
       if ((await readdir(parent)).length >= 12288) return refuse()
     }
     const verify = async (directory: string) => {
-      await verifyImmutableFile(join(directory, 'birth'), Buffer.from(installId))
       await privateChild(directory, 'intents', false)
     }
     const directory = create
