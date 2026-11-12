@@ -38,6 +38,17 @@ const roles = [
   ['made', 'Made'],
   ['input', 'Inputs'],
 ] as const
+const countSuffix = computed(() => (library?.page.value?.complete === false ? '+' : ''))
+function onScroll(): void {
+  if (!props.active || !library || !scroller.value) return
+  const element = scroller.value
+  library.state.scrollTop = element.scrollTop
+  if (
+    !library.page.value?.stale &&
+    element.scrollHeight - element.clientHeight - element.scrollTop < 160
+  )
+    void library.more()
+}
 const currentScope = computed(() => library?.state.scope.type ?? 'workspace')
 watch(
   () => library?.workspaceVersion.value,
@@ -199,13 +210,21 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
           <select v-model="library.state.kind" aria-label="File kind" data-cy="files-kind">
             <option v-for="[kind, label] in kinds" :key="kind" :value="kind">
               {{ label
-              }}{{ library.page.value ? ` (${library.page.value.facets.kinds[kind]})` : '' }}
+              }}{{
+                library.page.value
+                  ? ` (${library.page.value.facets.kinds[kind]}${countSuffix})`
+                  : ''
+              }}
             </option>
           </select>
           <select v-model="library.state.role" aria-label="File role" data-cy="files-role">
             <option v-for="[role, label] in roles" :key="role" :value="role">
               {{ label
-              }}{{ library.page.value ? ` (${library.page.value.facets.roles[role]})` : '' }}
+              }}{{
+                library.page.value
+                  ? ` (${library.page.value.facets.roles[role]}${countSuffix})`
+                  : ''
+              }}
             </option>
           </select>
           <select v-model="library.state.sort" aria-label="Sort files" data-cy="files-sort">
@@ -214,8 +233,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
             <option value="name">Name A–Z</option>
           </select>
           <span v-if="library.page.value" class="count" role="status" data-cy="files-count"
-            >{{ library.page.value.totalFiles }} files ·
-            {{ library.page.value.totalKeeps }} keeps</span
+            >{{ library.page.value.totalFiles }}{{ countSuffix }} files ·
+            {{ library.page.value.totalKeeps }}{{ countSuffix }} keeps</span
           >
         </div>
       </header>
@@ -227,6 +246,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
           Files have not been read yet.
         </p>
         <p v-if="library.busy.value" data-cy="files-loading">Reading files…</p>
+        <p
+          v-if="
+            library.page.value?.complete === false && !library.busy.value && !library.error.value
+          "
+          data-cy="files-reading-more"
+        >
+          Reading more files… Counts will update.
+        </p>
         <p v-if="library.error.value" data-cy="files-error">
           {{ libraryFailureSays(library.error.value) }}
           <button
@@ -250,12 +277,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
           </button>
         </p>
       </div>
-      <div
-        ref="scroller"
-        class="results"
-        data-cy="files-results"
-        @scroll="props.active && (library.state.scrollTop = scroller?.scrollTop ?? 0)"
-      >
+      <div ref="scroller" class="results" data-cy="files-results" @scroll="onScroll">
         <ul
           v-if="library.page.value && library.page.value.files.length > 0"
           class="file-items"
@@ -311,7 +333,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
           </li>
         </ul>
         <div
-          v-else-if="library.page.value && !library.busy.value"
+          v-else-if="
+            library.page.value && library.page.value.complete !== false && !library.busy.value
+          "
           class="empty"
           data-cy="files-empty"
         >
@@ -334,8 +358,12 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
         </div>
         <div v-if="library.page.value?.next" class="load-more">
           <span
-            >{{ library.page.value.files.length }} of {{ library.page.value.totalFiles }} files
-            loaded</span
+            ><template v-if="library.page.value.complete === false"
+              >{{ library.page.value.files.length }} files loaded · more to read</template
+            ><template v-else
+              >{{ library.page.value.files.length }} of {{ library.page.value.totalFiles }} files
+              loaded</template
+            ></span
           ><button
             type="button"
             data-cy="files-more"
