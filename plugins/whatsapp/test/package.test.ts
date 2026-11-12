@@ -1,7 +1,6 @@
 import { packageTestHelpers } from '../../shared/test/package-helpers.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
-import { createHash } from 'node:crypto'
 import { Readable } from 'node:stream'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -474,7 +473,7 @@ describe('sending', () => {
     ).toContain('"sent":true')
   })
 
-  it('takes a file only from the files folder, with its size and SHA-256', async () => {
+  it('takes a file only from the files folder, sending its path, name and size', async () => {
     const { call, bridge, config } = await boot({ writable: [ROWING.jid] })
     const inside = path.join(config.files, 'minutes.pdf')
     const bytes = Buffer.from('%PDF-1.7\nfictional minutes\n')
@@ -490,7 +489,6 @@ describe('sending', () => {
         path: fs.realpathSync(inside),
         name: 'minutes.pdf',
         size: bytes.length,
-        sha256: createHash('sha256').update(bytes).digest('hex'),
       },
     })
     const outside = path.join(config.home, 'elsewhere.pdf')

@@ -1,10 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"io"
 	"os"
@@ -64,10 +61,9 @@ func (l *groupLimiter) reserve(now time.Time) bool {
 }
 
 type sendFile struct {
-	Path   string `json:"path"`
-	Name   string `json:"name"`
-	Size   int64  `json:"size"`
-	SHA256 string `json:"sha256"`
+	Path string `json:"path"`
+	Name string `json:"name"`
+	Size int64  `json:"size"`
 }
 
 type sendRequest struct {
@@ -87,7 +83,6 @@ type attachment struct {
 	Mime string
 	Kind string
 	Name string
-	SHA  []byte
 	Ext  string
 }
 
@@ -111,14 +106,9 @@ func within(root, real string) bool {
 	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
-// openAttachment opens a file under the plugin's files folder without following links, then checks its size, its type from the
-// bytes and the SHA-256 the Node server computed. The file stays open; the caller closes it.
+// openAttachment checks the local file and its media type. The caller closes the open file.
 func openAttachment(filesDir string, request sendFile) (attachment, string) {
-	if request.Size <= 0 || request.Size > fileMaxBytes || len(request.SHA256) != 64 || len(request.Name) > 300 {
-		return attachment{}, "invalid_request"
-	}
-	wantSHA, err := hex.DecodeString(request.SHA256)
-	if err != nil {
+	if request.Size <= 0 || request.Size > fileMaxBytes || len(request.Name) > 300 {
 		return attachment{}, "invalid_request"
 	}
 	root, err := filepath.EvalSymlinks(filesDir)
@@ -151,18 +141,11 @@ func openAttachment(filesDir string, request sendFile) (attachment, string) {
 	if !ok {
 		return refuse("unsupported_media_type")
 	}
-	hasher := sha256.New()
-	if n, err := io.Copy(hasher, io.NewSectionReader(file, 0, request.Size)); err != nil || n != request.Size {
-		return refuse("invalid_request")
-	}
-	if !bytes.Equal(hasher.Sum(nil), wantSHA) {
-		return refuse("changed")
-	}
 	return attachment{File: file, Size: request.Size, Mime: typ.Mime, Kind: typ.Kind, Name: displayName(request.Name, typ.Ext),
-		SHA: wantSHA, Ext: typ.Ext}, ""
+		Ext: typ.Ext}, ""
 }
 
-var errChangedFile = errors.New("the file changed while it was uploaded")
+var errUploadLength = errors.New("uploaded file length differs from the declared size")
 
 type mediaUploader interface {
 	UploadReader(ctx context.Context, plaintext io.Reader, tempFile io.ReadWriteSeeker, appInfo whatsmeow.MediaType) (whatsmeow.UploadResponse, error)
@@ -192,8 +175,7 @@ func mediaTypeFor(kind string) whatsmeow.MediaType {
 	return whatsmeow.MediaDocument
 }
 
-// uploadAttachment encrypts the file into a scratch file as it is read, and uploads from there; the hash the upload computed
-// must equal the one that was checked, so what is sent is what was checked.
+// uploadAttachment uploads through a temporary scratch file and retains the provider response.
 func uploadAttachment(ctx context.Context, up mediaUploader, att attachment, dir string) (whatsmeow.UploadResponse, error) {
 	scratch, err := os.CreateTemp(dir, "upload-*")
 	if err != nil {
@@ -207,8 +189,8 @@ func uploadAttachment(ctx context.Context, up mediaUploader, att attachment, dir
 	if err != nil {
 		return whatsmeow.UploadResponse{}, err
 	}
-	if !bytes.Equal(resp.FileSHA256, att.SHA) || resp.FileLength != uint64(att.Size) {
-		return whatsmeow.UploadResponse{}, errChangedFile
+	if resp.FileLength != uint64(att.Size) {
+		return whatsmeow.UploadResponse{}, errUploadLength
 	}
 	return resp, nil
 }
