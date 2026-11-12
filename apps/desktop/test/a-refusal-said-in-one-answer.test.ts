@@ -778,4 +778,24 @@ describe('the approved success words, spelled once', () => {
     )
     expect(noFileHoldsThoseWords('on your tree')).toBe('No file on your tree holds those words.')
   })
+
+  it('never says a person must act, where an agent answering clears it', () => {
+    const until = [
+      // Cleared when the conversation it waits on answers, which may be the caller.
+      answered(
+        refuseInterrupt('it-is-waiting-on-an-answer', { agent: 'sess_typed', askedOf: 'sess_me' }),
+      ),
+      // Cancelled by its parent: nobody else acts, and the same call then starts.
+      answered(refuseTool('agent-did-not-start', { profile: 'helper', because: 'cancelled' })),
+    ]
+    for (const one of until) {
+      const tail = added(one)
+      expect(tail.endsWith(UNTIL)).toBe(true)
+      expect(tail).not.toMatch(/a person must|retry/i)
+    }
+  })
+
+  it('adds nothing but permanence where the reason says every fact', () => {
+    expect(added(answered(refuse('it-would-wait-on-itself', { profileId: 'helper' })))).toBe(` ${WHILE}`)
+  })
 })

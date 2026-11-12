@@ -8903,10 +8903,7 @@ export class RuntimeHost implements LiveHost {
    * Whether `by` reaches `service` through the piece it is on, asked as a message to it is asked,
    * with the reach floor a message meets: a start it would need is then its own.
    */
-  private itsCallerMessagesAService(
-    service: string,
-    by: Caller,
-  ): boolean {
+  private itsCallerMessagesAService(service: string, by: Caller): boolean {
     return this.thePieceItIsOnFor(service, by) !== null
   }
 
@@ -9027,7 +9024,7 @@ export class RuntimeHost implements LiveHost {
     says: AgentMessageKind,
   ): Promise<QueueOutcome> {
     const to = this.theOneInItsPlace(sessionId)
-    await this.refuseBeforeAStart(to, text, by, attachments, says)
+    await this.refuseBeforeAStart(to, text, by, attachments)
     const from = this.originOf(by)
     const toProfile = from?.who === 'a-caller-with-an-id' ? this.profileOf(to) : null
     const kept = await this.keptUntilItStarts(to, text, facts, kind, { by, says, attachments })
@@ -9117,7 +9114,8 @@ export class RuntimeHost implements LiveHost {
       if (
         queued.piece === undefined &&
         (queued.about === undefined || this.deps.store.workById(queued.about)?.owner !== sessionId)
-      ) return null
+      )
+        return null
       const kind = this.theServiceOf(sessionId)
       if (kind === null) return null
       if (kind === 'unknown' && !this.profileExecution.readable) return 'unknown'
@@ -11482,19 +11480,17 @@ export class RuntimeHost implements LiveHost {
   private conversationsVisibleTo(by: Caller, me: string | null): readonly VisibleConversation[] {
     const reads = this.cardReads()
     return [
-      ...[...this.slots.values()]
-        .map((slot) => ({
-          id: slot.id,
-          // ⚑ A reservation with no row yet is the newest activity there is.
-          at: this.deps.store.recordedOne(slot.id)?.updatedAt ?? this.now(),
-          card: () => this.cardFor(slot, reads),
-        })),
-      ...this.everythingStartable()
-        .map(({ startable, at }) => ({
-          id: startable.id,
-          at,
-          card: () => this.stoppedCard(startable, reads),
-        })),
+      ...[...this.slots.values()].map((slot) => ({
+        id: slot.id,
+        // ⚑ A reservation with no row yet is the newest activity there is.
+        at: this.deps.store.recordedOne(slot.id)?.updatedAt ?? this.now(),
+        card: () => this.cardFor(slot, reads),
+      })),
+      ...this.everythingStartable().map(({ startable, at }) => ({
+        id: startable.id,
+        at,
+        card: () => this.stoppedCard(startable, reads),
+      })),
       // ⚑ The caller's own conversation first, whatever its activity, so the cap never cuts the
       // one `list_agents` promises ("including your own"); then the newest activity first.
     ].sort((one, other) => (one.id === me ? -1 : other.id === me ? 1 : other.at - one.at))
@@ -11536,7 +11532,7 @@ export class RuntimeHost implements LiveHost {
     return this.cardFor(slot, this.cardReads())
   }
 
-  withinMessagingReach(sessionId: string, _by: Caller, _me?: string | null): boolean {
+  withinMessagingReach(sessionId: string): boolean {
     return this.slots.has(sessionId) || this.startable(sessionId) !== null
   }
 
@@ -11549,7 +11545,7 @@ export class RuntimeHost implements LiveHost {
   ): OutOfReach | null {
     // ⚑ **R10** — one that could never be reopened is reached through the one in its place.
     const sessionId = this.theOneInItsPlace(id)
-    if (this.withinMessagingReach(sessionId, by, me)) return null
+    if (this.withinMessagingReach(sessionId)) return null
     if (forAMessage && this.thePieceItIsOnFor(sessionId, by) !== null) return null
     if (!this.slots.has(sessionId)) {
       const row = this.deps.store.recordedOne(sessionId)
@@ -11753,7 +11749,7 @@ export class RuntimeHost implements LiveHost {
     const unread = rowsUnreadOnce()
     const inReach = this.deps.store
       .conversationsOf(agent.profile)
-      .filter((one) => this.withinMessagingReach(this.theOneInItsPlace(one.conversation), by, me))
+      .filter((one) => this.withinMessagingReach(this.theOneInItsPlace(one.conversation)))
     const shown = inReach.slice(0, CONVERSATIONS_ON_A_RECORD)
     // ⚑ **Each conversation's agent named once a record** — a name reads the whole roster.
     const agentsNamed = new Map<string, string>()
@@ -11798,10 +11794,10 @@ export class RuntimeHost implements LiveHost {
     const made = this.madeFilesOf(agent.profile, FILES_ON_A_RECORD)
     // ⚑ **Its rules, to a caller that reaches this agent** — one of its conversations, or (its grant)
     // any conversation it did not start.
-    const rules: RulesOnARecord =
-      ((line) => (line === null ? { is: 'none' } : { is: 'they-begin', line }))(
-            howTheRulesBegin(this.deps.store.configuredLayerFor(agent.profile), RULES_BEGIN_CHARS),
-          )
+    const rules: RulesOnARecord = ((line) =>
+      line === null ? { is: 'none' } : { is: 'they-begin', line })(
+      howTheRulesBegin(this.deps.store.configuredLayerFor(agent.profile), RULES_BEGIN_CHARS),
+    )
     return {
       is: 'a-record',
       record: {
@@ -14378,7 +14374,7 @@ export class RuntimeHost implements LiveHost {
     ) {
       return { ok: false, refusal: refuseQuestion('move-offer-not-available') }
     }
-    if (this.archived.has(destination) || !this.withinMessagingReach(destination, by, session.id)) {
+    if (this.archived.has(destination) || !this.withinMessagingReach(destination)) {
       return { ok: false, refusal: refuseQuestion('move-offer-needs-a-person') }
     }
     if (this.settingAside.has(destination)) {
@@ -14430,7 +14426,7 @@ export class RuntimeHost implements LiveHost {
     const named = input.agent ?? ''
     const agent = named === '' ? '' : this.theOneInItsPlace(named)
     if (input.who === 'an-agent') {
-      if (agent === '' || agent === speaking || !this.withinMessagingReach(agent, by, speaking)) {
+      if (agent === '' || agent === speaking || !this.withinMessagingReach(agent)) {
         return {
           ok: false,
           refusal: refuseQuestion('no-agent-you-can-ask-by-that-name', { agent: named }),
@@ -20233,7 +20229,7 @@ export class RuntimeHost implements LiveHost {
    */
   private stoppedCardFor(sessionId: string, by: Caller, me: string | null): AgentCard | null {
     const stopped = this.startable(sessionId)
-    if (stopped === null || !this.withinMessagingReach(sessionId, by, me)) return null
+    if (stopped === null || !this.withinMessagingReach(sessionId)) return null
     return this.stoppedCard(stopped, this.cardReads())
   }
 
@@ -22390,10 +22386,7 @@ export class RuntimeHost implements LiveHost {
             if (name === undefined) {
               if (
                 !this.withinMessagingReach(
-                  this.theOneInItsPlace(row.owner),
-                  { ownerId: agentCallerId(session.id) },
-                  session.id,
-                )
+                  this.theOneInItsPlace(row.owner))
               )
                 throw new Error('helper name is outside card reach')
               name = this.whatToCallTheConversation(row.owner)
@@ -26554,7 +26547,7 @@ export class RuntimeHost implements LiveHost {
     const onArrival = (async () => {
       const arriving = this.theOneInItsPlace(sessionId)
       if (!this.runsNow(arriving)) {
-        await this.refuseBeforeAStart(arriving, text, by, attachments, says)
+        await this.refuseBeforeAStart(arriving, text, by, attachments)
       }
     })()
     const inLine = this.afterWhatArrivedFirst(sessionId, async () => {
@@ -26568,7 +26561,7 @@ export class RuntimeHost implements LiveHost {
         this.aPersonsWindowTakesIt(to, theSurfaceAsking(by))
         return deliver(to)
       }
-      await this.refuseBeforeAStart(to, text, by, attachments, says)
+      await this.refuseBeforeAStart(to, text, by, attachments)
       const waker = sessionSpeakingAs(by)
       this.noteWhatBringsItBack(to, () => {
         const who =
@@ -26765,12 +26758,11 @@ export class RuntimeHost implements LiveHost {
     text: string,
     by: Caller,
     attachments: readonly HandedPath[],
-    says: AgentMessageKind | null,
   ): Promise<void> {
     const me = sessionSpeakingAs(by)
     if (me !== null) {
       if (this.itsCallerMessagesAService(sessionId, by)) return
-      if (!this.withinMessagingReach(sessionId, by, me)) {
+      if (!this.withinMessagingReach(sessionId)) {
         throw new Error(`unknown session: ${sessionId}`)
       }
       return
@@ -26783,7 +26775,7 @@ export class RuntimeHost implements LiveHost {
       if (by !== THE_APP_ITSELF) this.assertMayMessage(slot, by)
     } else if (row === null || this.startable(sessionId) === null) {
       throw new Error(`unknown session: ${sessionId}`)
-    } else if (theSurfaceAsking(by) === null && !this.withinMessagingReach(sessionId, by)) {
+    } else if (theSurfaceAsking(by) === null && !this.withinMessagingReach(sessionId)) {
       // ⛔ **A caller that is no person's window, no agent and not this app** — a commander (340) —
       // starts only a conversation it would command as it runs, and a restart hands command to no
       // caller that did not ask for it ({@link reserve}'s re-derived `commandedBy`): it fails closed,
@@ -27247,8 +27239,7 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **D-017 · R1** — the same words, once more, through the conversation's start.
     const startItAgain = (again: (to: string) => Promise<QueueOutcome>): Promise<QueueOutcome> =>
       this.deliverWhenItRuns(sessionId, text, by, attachments, says, again)
-    const session = this.requireToMessage(sessionId, by, () => {
-    })
+    const session = this.requireToMessage(sessionId, by, () => {})
     // ⚑ **708 · the same `this.originOf(by)` the held branch records below** — the gate refuses a
     // person's command that carries attachments at the QUEUE, while the composer still holds them.
     // 🔴 **A sign-in that moved on HOLDS the words a reopen carries** ({@link aReopenCarriesIt}): an
@@ -29002,10 +28993,17 @@ export class RuntimeHost implements LiveHost {
    * Whether a caller's words, about to go straight in to `sessionId`, a service, no longer reach it:
    * the piece they carry has ended, or whether they reach it can't be read.
    */
-  private aCallersWordsNoLongerGoStraightIn(sessionId: string, by: Caller, about: string | null): boolean {
+  private aCallersWordsNoLongerGoStraightIn(
+    sessionId: string,
+    by: Caller,
+    about: string | null,
+  ): boolean {
     const from = this.originOf(by)
     if (from === null) return false
-    const reach = this.theReachOfACallersWords(sessionId, { origin: from, ...(about === null ? {} : { about }) })
+    const reach = this.theReachOfACallersWords(sessionId, {
+      origin: from,
+      ...(about === null ? {} : { about }),
+    })
     return reach === 'outlived' || reach === 'unknown'
   }
 
@@ -30005,10 +30003,7 @@ export class RuntimeHost implements LiveHost {
     if (
       !this.moveDestinationAvailable(offer.destination) ||
       !this.withinMessagingReach(
-        offer.destination,
-        { ownerId: agentCallerId(input.sessionId) },
-        input.sessionId,
-      )
+        offer.destination)
     )
       return { outcome: 'refused', reason: MOVE_WORDS.unavailable }
     const original = originalMoveRequest(
@@ -30036,10 +30031,7 @@ export class RuntimeHost implements LiveHost {
     if (
       !this.moveDestinationAvailable(offer.destination) ||
       !this.withinMessagingReach(
-        offer.destination,
-        { ownerId: agentCallerId(input.sessionId) },
-        input.sessionId,
-      )
+        offer.destination)
     )
       return { outcome: 'refused', reason: MOVE_WORDS.unavailable }
     if (this.runsNow(offer.destination)) {
@@ -33193,7 +33185,7 @@ export class RuntimeHost implements LiveHost {
     if (this.deps.store.recordedOne(sessionId) === null) return { is: 'no-such-agent' }
     const archived = this.theArchivedTreeOf(sessionId)
     if (archived.length === 0) {
-      return this.withinMessagingReach(sessionId, by, me)
+      return this.withinMessagingReach(sessionId)
         ? { is: 'not-archived' }
         : { is: 'no-such-agent' }
     }
@@ -41676,7 +41668,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   private assertMayMessage(slot: SessionSlot, by: Caller): void {
-    if (this.withinMessagingReach(slot.id, by)) return
+    if (this.withinMessagingReach(slot.id)) return
     // ⚑ The caller whose piece a service is on may send it words, while that piece is on.
     if (this.thePieceItIsOnFor(slot.id, by) !== null) return
     this.assertMayControl(slot, by)

@@ -4447,9 +4447,7 @@ function whatBecameOfTheStop(
  */
 const outOfReachAnswer = (out: OutOfReach, agent: string): AgentToolAnswer => {
   if (out.is === 'no-such-agent') return refusalAnswer(refuseTool('no-such-agent', { agent }))
-  if (out.is === 'takes-no-messages') {
-    return refusalAnswer(refuseTool('that-conversation-takes-no-messages', { agent }))
-  }
+  return refusalAnswer(refuseTool('that-conversation-takes-no-messages', { agent }))
 }
 
 /**

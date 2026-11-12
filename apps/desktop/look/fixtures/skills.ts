@@ -17,8 +17,6 @@ export const SKILLS_CAST: AgentIdentities = {
       capabilities: { ...DEFAULT_CAPABILITIES },
       chosen: {
         maxDepth: 'default',
-        canMessage: 'default',
-        canAssignWork: 'default',
         canCreateAgents: 'default',
         canWriteRules: 'default',
       },
@@ -34,8 +32,6 @@ export const SKILLS_CAST: AgentIdentities = {
       capabilities: { ...DEFAULT_CAPABILITIES },
       chosen: {
         maxDepth: 'default',
-        canMessage: 'default',
-        canAssignWork: 'default',
         canCreateAgents: 'default',
         canWriteRules: 'default',
       },
