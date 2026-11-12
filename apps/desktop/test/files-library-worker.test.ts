@@ -319,8 +319,26 @@ it('renews the stall timer only for advancing work and still times out when prog
     expect(worker.terminationRequested).toBe(false)
   }
   await vi.advanceTimersByTimeAsync(21)
-  expect(worker.terminationRequested).toBe(true)
-  worker.exit()
+  expect(worker.terminationRequested).toBe(false)
+  expect(worker.posted.at(-1)).toEqual({ type: 'close' })
+  expect(
+    Atomics.load(new Int32Array(worker.posted[0]!['cancellation'] as SharedArrayBuffer), 0),
+  ).toBe(1)
   expect(await read).toMatchObject({ cause: 'worker' })
-  await lifetime.close()
+  const waiting = lifetime.read(query, libraryContext)
+  await Promise.resolve()
+  expect(worker.posted).toHaveLength(2)
+  let joined = 0
+  const closing = lifetime.close().then(() => {
+    joined++
+  })
+  const repeated = lifetime.close().then(() => {
+    joined++
+  })
+  expect(await waiting).toMatchObject({ cause: 'closed' })
+  expect(joined).toBe(0)
+  expect(worker.terminationRequested).toBe(false)
+  worker.exit()
+  await Promise.all([closing, repeated])
+  expect(joined).toBe(2)
 })
