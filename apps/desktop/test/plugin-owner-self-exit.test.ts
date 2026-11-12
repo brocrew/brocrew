@@ -263,7 +263,7 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
     successors.push(successor)
   })
   it.each(['live', 'unproved', 'start-failure'])(
-    'keeps the fence for a %s physical witness and gives bounded restart advice',
+    'without standalone retirement, keeps the fence for a %s physical witness and gives bounded restart advice',
     async (mode) => {
       const target = await fixture('target-' + mode, mode)
       const closing = target.lease.close()

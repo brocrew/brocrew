@@ -61,8 +61,8 @@ export interface OwnerOptions {
   /** Trusted standalone bootstrap only. Runs inside the unchanged predecessor fence. */
   recoverPrevious?: (previous: OwnerRecord | null) => Promise<boolean>
   traceDrain?: (event: DrainTrace) => void
-  /** Standalone bootstrap only: exit synchronously with the fence still held. Never admission. */
-  onBlockedWithoutProcesses?: () => void
+  /** Standalone bootstrap only: end the service; guardians and successor recovery own leftovers. */
+  onBlocked?: () => void
 }
 declare global {
   var __brobotPluginOwnersV1: Set<string> | undefined
@@ -280,6 +280,7 @@ export class PluginSupervisor {
       })
     }
     clearInterval(this.timer)
+    this.options.onBlocked?.()
   }
   private clock(): number {
     const current = this.now()
@@ -603,7 +604,6 @@ export class PluginSupervisor {
         await Promise.all(this.starting)
         return Promise.all(
           [...this.children].map(async (child) => ({
-            inProcess: child.inProcess === true,
             // A timeout cannot prove that the consumer or its children exited.
             proven:
               child.inProcess === true
@@ -626,15 +626,6 @@ export class PluginSupervisor {
       ) {
         this.trace({ stage: 'child-proofs', state: 'failed' })
         this.fail()
-        // Exit with the lock held so unfinished consumer work cannot overlap a successor.
-        if (
-          this.options.onBlockedWithoutProcesses &&
-          !this.startFailed &&
-          result?.every((child) => child.inProcess || child.proven)
-        ) {
-          // No child remains; exiting releases the lock for recovery.
-          this.options.onBlockedWithoutProcesses()
-        }
         return false
       }
       this.trace({ stage: 'child-proofs', state: 'complete' })
