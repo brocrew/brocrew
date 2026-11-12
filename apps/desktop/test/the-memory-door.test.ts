@@ -701,10 +701,9 @@ describe('memory shutdown and missing-service boundaries', () => {
     let closing: Promise<void> | undefined
     let restoreClose = (): void => {}
     try {
-      sessionId = (await gated.createSession({ provider: 'claude', profileId: 'lark' }, sink)).sessionId
-      const close = vi
-        .spyOn(gated, 'close')
-        .mockRejectedValueOnce(failure)
+      sessionId = (await gated.createSession({ provider: 'claude', profileId: 'lark' }, sink))
+        .sessionId
+      const close = vi.spyOn(gated, 'close').mockRejectedValueOnce(failure)
       restoreClose = () => {
         close.mockRestore()
       }
