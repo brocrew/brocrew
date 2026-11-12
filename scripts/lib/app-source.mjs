@@ -212,29 +212,56 @@ export function brobotWorkspace(userDataDir) {
  * @returns {string[]} the field names, in source order.
  */
 export function placedDoorSends() {
-  const source = readFileSync(join(DESKTOP, 'src/renderer/src/components/StartAsAgent.vue'), 'utf8')
-  const at = source.indexOf("emit(\n    'start',\n    {")
-  if (at === -1) {
-    throw new Error(
-      '⛔ StartAsAgent.vue no longer emits `start` with an object literal this can read. The ' +
-        "placed door's payload is derived from the component on purpose — a restated list would " +
-        'go on being true after the component stopped agreeing with it.',
-    )
-  }
-  const open = source.indexOf('{', at)
-  let depth = 0
-  let close = open
-  for (let i = open; i < source.length; i += 1) {
-    if (source[i] === '{') depth += 1
-    else if (source[i] === '}') {
-      depth -= 1
-      if (depth === 0) {
-        close = i
-        break
+  return placedDoorSendsFrom(
+    readFileSync(join(DESKTOP, 'src/renderer/src/components/StartAsAgent.vue'), 'utf8'),
+  )
+}
+
+/** Read the emitted object, including a local constant shared with the awaited submit path. */
+export function placedDoorSendsFrom(source) {
+  const script = source.match(/<script\b[^>]*>([\s\S]*?)<\/script>/)?.[1] ?? source
+  const tree = ts.createSourceFile('StartAsAgent.ts', script, ts.ScriptTarget.Latest, true)
+  let payload
+  function visit(node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'emit' &&
+      ts.isStringLiteral(node.arguments[0]) &&
+      node.arguments[0].text === 'start'
+    ) {
+      let value = node.arguments[1]
+      if (value && ts.isIdentifier(value)) {
+        const name = value.text
+        value = undefined
+        for (let scope = node.parent; scope; scope = scope.parent) {
+          if (!ts.isBlock(scope) && !ts.isSourceFile(scope)) continue
+          const binding = scope.statements
+            .filter(ts.isVariableStatement)
+            .filter((statement) => statement.declarationList.flags & ts.NodeFlags.Const)
+            .flatMap((statement) => [...statement.declarationList.declarations])
+            .find(
+              (declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === name,
+            )
+          if (binding) {
+            value = binding.initializer
+            break
+          }
+        }
       }
+      if (!value || !ts.isObjectLiteralExpression(value)) {
+        throw new Error(
+          'StartAsAgent start payload is not an object literal or a local constant object',
+        )
+      }
+      payload = value
+      return
     }
+    ts.forEachChild(node, visit)
   }
-  const fields = fieldsOf(source.slice(open + 1, close))
+  visit(tree)
+  if (!payload) throw new Error('StartAsAgent.vue has no readable start payload')
+  const fields = fieldsOf(script.slice(payload.getStart(tree) + 1, payload.end - 1))
   if (fields.length === 0) {
     throw new Error('⛔ StartAsAgent.vue’s start payload read as empty — refusing to answer.')
   }

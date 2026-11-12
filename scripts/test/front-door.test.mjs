@@ -15,6 +15,7 @@ import {
   fieldsOf,
   nativeDelegationTools,
   placedDoorSends,
+  placedDoorSendsFrom,
   themeTokenFrom,
 } from '../lib/app-source.mjs'
 
@@ -277,6 +278,47 @@ describe('427 · the REAL placed door, and what it still cannot carry', () => {
       'cwd',
       'approvalMode',
     ])
+  })
+
+  it('reads added fields from the actual shared payload binding instead of a mirrored list', () => {
+    const source = readFileSync(
+      join(REPO, 'apps/desktop/src/renderer/src/components/StartAsAgent.vue'),
+      'utf8',
+    )
+    const changed = source.replace(
+      '    profileId: props.profileSlug,',
+      '    fixtureOnly: true,\n    profileId: props.profileSlug,',
+    )
+    expect(changed).not.toBe(source)
+    expect(placedDoorSendsFrom(changed)).toEqual([SENDS[0], 'fixtureOnly', ...SENDS.slice(1)])
+  })
+
+  it('resolves the real local payload when its name changes and an outer object uses the old name', () => {
+    const source = readFileSync(
+      join(REPO, 'apps/desktop/src/renderer/src/components/StartAsAgent.vue'),
+      'utf8',
+    )
+    const renamed = source
+      .replace('const input:', 'const placement:')
+      .replace("emit('start', input,", "emit('start', placement,")
+      .replace('props.submit(input,', 'props.submit(placement,')
+    expect(renamed).not.toBe(source)
+    const decoy = renamed.replace(
+      '<script setup lang="ts">',
+      '<script setup lang="ts">\nconst input = { fabricatedKey: true }',
+    )
+    expect(decoy).not.toBe(renamed)
+    expect(placedDoorSendsFrom(decoy)).toEqual(SENDS)
+  })
+
+  it('does not substitute a field list when the actual emitted payload is not source-readable', () => {
+    const source = readFileSync(
+      join(REPO, 'apps/desktop/src/renderer/src/components/StartAsAgent.vue'),
+      'utf8',
+    )
+    const changed = source.replace("emit('start', input,", "emit('start', unknownPayload,")
+    expect(changed).not.toBe(source)
+    expect(() => placedDoorSendsFrom(changed)).toThrow('not an object literal')
   })
 
   it('⛔ every field it sends is a field the wire accepts', () => {
