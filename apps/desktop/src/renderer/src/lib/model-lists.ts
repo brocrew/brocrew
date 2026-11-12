@@ -164,9 +164,9 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
           ...(profileId === undefined ? {} : { profileId }),
         })
         if (ours()) {
-          const { list: _list, ...facts } = resolved
+          const { list, ...facts } = resolved
           choices.set(key, facts)
-          put(key, { state: 'answered', list: resolved.list })
+          put(key, { state: 'answered', list })
         }
       } catch (error) {
         // ⛔ A failed re-read keeps the answer it had (`refreshProfiles`' rule).

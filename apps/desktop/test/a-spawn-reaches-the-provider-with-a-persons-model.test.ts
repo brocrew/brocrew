@@ -42,7 +42,7 @@ import {
 } from './helpers/giver-notice-host'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
@@ -411,8 +411,7 @@ describe('677 §1-§2 · a spawn reaches the provider with exactly the person’
     await spawn(pm, 'builder')
     await spawn(pm, 'plain-codex')
     // ⚑ One app-server per launch, opened in the child's OWN home — so the home names the transport.
-    // ⚑ **D-042 · and the one that opened a thread is the session's**: a launch naming nothing first
-    // asks Codex's list, in the same home, on an app-server of its own (a probe is a launch).
+    // The catalogue probe uses the provider's default home; each conversation opens its own thread.
     const opened = (profileId: string): RecordingTransport[] =>
       codexTransports.filter(
         (one) => one.home === homeOf('codex', profileId) && one.first('thread/start') !== undefined,
@@ -428,7 +427,8 @@ describe('677 §1-§2 · a spawn reaches the provider with exactly the person’
     }
     // 🔴 **D-042 · R1 — Codex's default is a ROW of its list**: the control read it once; a launch
     // whose default names its pair read nothing.
-    expect(listed('plain-codex')).toHaveLength(1)
+    expect(listed(DEFAULT_PROFILE_ID)).toHaveLength(1)
+    expect(listed('plain-codex')).toHaveLength(0)
     expect(listed('builder')).toHaveLength(0)
 
     // ⚑ What the HOST handed the adapter — the launch options the brief asks for.
