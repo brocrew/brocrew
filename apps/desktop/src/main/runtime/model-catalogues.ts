@@ -39,51 +39,12 @@ import {
 } from './model-rails'
 import { SessionUnavailable } from './session-unavailable'
 
-/** One provider's catalogue in one profile's home — the cache key {@link RuntimeHost.providerModels} keeps. */
-function modelProbeKey(provider: Provider, profileId: string): string {
-  return `${provider}:${profileId}`
-}
-
-/**
- * **How many `provider:profileId` catalogues are remembered at once** (257 §2).
- *
- * ⛔ A bound rather than a policy: the entries are settled promises holding a short array, so the
- * memory is nothing — what this refuses is the shape, *"one promise that is never invalidated"*
- * quietly becoming *"N promises that are never invalidated"*. Sixteen is eight profiles across both
- * providers, which is more than a person has open in one app run; past it the oldest is dropped and
- * the next visit pays for one more short-lived child. Nothing here starts a probe on its own.
- */
-const MAX_MODEL_PROBES = 16
-
 /** The existing model choices and the one per-host catalogue cache. */
 export class ModelCatalogues {
-  /**
-   * The model probes this app run has made, keyed `provider:profileId` (058, re-keyed by 257 §2) —
-   * the PROMISE, so concurrent askers share one child.
-   *
-   * 🔴 **It used to be a single app-wide promise, probed in `DEFAULT_PROFILE_ID`'s home and shown to
-   * every profile** (`256` H2/§2 H1). Account identity is per profile and a model list is *what this
-   * login may run*, so a second profile's launcher was presenting the default profile's catalogue.
-   * ⚠️ `256` confirmed the code path and did NOT provoke a wrong menu — that needs two accounts with
-   * different model access, which it did not have — so this is a correctness fix, not the repair of
-   * an observed wrong catalogue.
-   *
-   * ⚑ **Still no timer and still no background refresh.** An entry is created only when somebody asks
-   * about that profile, and an ANSWER is dropped only on the one event that can change it — see
-   * {@link forgetModels}. ⚑ **689 · a FAILURE is dropped by the next ask too** — see
-   * {@link modelsAskedAgainIfTheyFailed}. What is new is a BOUND: {@link MAX_MODEL_PROBES}, because "one promise that
-   * is never invalidated" becoming "N promises that are never invalidated" is a leak with a nicer
-   * name. Scrolling a profile picker spawns nothing; only asking does.
-   */
-  private readonly modelProbes = new Map<string, Promise<ModelCatalogue>>()
-  /**
-   * ⚑ **689 · the probes in {@link modelProbes} that have SETTLED** — so *a failure already cached*
-   * can be told from one another ask is still waiting on (see {@link modelsAskedAgainIfTheyFailed}).
-   * ⚠️ Weak, so an evicted or forgotten promise is not kept alive by being remembered here.
-   */
+  private readonly modelProbes = new Map<Provider, Promise<ModelCatalogue>>()
   private readonly settledModelProbes = new WeakSet<Promise<ModelCatalogue>>()
-  /** What each settled probe answered, for {@link theListsAsLastRead}, which cannot wait for one. */
   private readonly modelsAnswered = new WeakMap<Promise<ModelCatalogue>, ModelCatalogue>()
+  private readonly modelVersions = new Map<Provider, string>()
 
   constructor(
     private readonly store: Pick<
@@ -423,15 +384,14 @@ export class ModelCatalogues {
    */
   private async modelsAskedAgainIfTheyFailed(
     provider: Provider,
-    folder: string,
   ): Promise<ModelCatalogue> {
-    const key = modelProbeKey(provider, folder)
+    const key = provider
     const cached = this.modelProbes.get(key)
     const stale = cached !== undefined && this.settledModelProbes.has(cached)
-    const catalogue = await this.probeModelsFor(provider, folder)
+    const catalogue = await this.probeModelsFor(provider)
     if (catalogue.ok || !stale || this.isClosing()) return catalogue
-    if (this.modelProbes.get(key) === cached) this.forgetModels(provider, folder)
-    return this.probeModelsFor(provider, folder)
+    if (this.modelProbes.get(key) === cached) this.forgetModels(provider)
+    return this.probeModelsFor(provider)
   }
 
   /**
@@ -440,8 +400,8 @@ export class ModelCatalogues {
    * {@link modelsAskedAgainIfTheyFailed}, the one memo every door shares, so a launch after a window
    * read costs no second child.
    */
-  private async theListIn(provider: Provider, profileId: string): Promise<TheListAsked> {
-    const catalogue = await this.modelsAskedAgainIfTheyFailed(provider, profileId)
+  private async theListIn(provider: Provider, _profileId: string): Promise<TheListAsked> {
+    const catalogue = await this.modelsAskedAgainIfTheyFailed(provider)
     return this.theListOf(provider, catalogue)
   }
 
@@ -472,12 +432,7 @@ export class ModelCatalogues {
     }
   }
 
-  /**
-   * Each provider's list as this app last read it — in {@link STAND_IN_PROFILE}'s home, where an agent
-   * nothing has run is judged, else in the home asked most recently that answered — with the models a
-   * person added ({@link theListOf}, the list a give's refusal names). A provider whose list this
-   * app has not read is left out. It asks no provider: a launch names what is known.
-   */
+  /** The latest shared provider rows, with hand-added models, without starting another read. */
   theListsAsLastRead(): ListsAsLastRead {
     const answered = (probe: Promise<ModelCatalogue> | undefined): ModelCatalogue | undefined => {
       const catalogue = probe === undefined ? undefined : this.modelsAnswered.get(probe)
@@ -485,14 +440,7 @@ export class ModelCatalogues {
     }
     const lists: ListsAsLastRead = {}
     for (const provider of Object.keys(PROVIDER_NAME) as Provider[]) {
-      const itsHomes = modelProbeKey(provider, '')
-      const read =
-        answered(this.modelProbes.get(modelProbeKey(provider, STAND_IN_PROFILE))) ??
-        [...this.modelProbes]
-          .filter(([key]) => key.startsWith(itsHomes))
-          .map(([, probe]) => answered(probe))
-          .filter((one) => one !== undefined)
-          .at(-1)
+      const read = answered(this.modelProbes.get(provider))
       if (read !== undefined) lists[provider] = this.theListOf(provider, read).rows
     }
     return lists
@@ -648,32 +596,7 @@ export class ModelCatalogues {
       : selected
   }
 
-  /**
-   * 🔴 **What ONE provider will run today for ONE profile** (058, re-scoped by 257 §2, one provider
-   * since `689`/`685` H2) — asked of the provider, cached per `provider:profileId`; an answer for
-   * the app's life, a failure until the next ask ({@link modelsAskedAgainIfTheyFailed}).
-   *
-   * ⛔ **Why it asks one provider and never both.** The one list a person picks from
-   * ({@link modelList}, through {@link theListFor}), and every read of it a choice is judged by,
-   * must not probe the other: a probe is `prepareProviderHome` first, so a Claude agent would get a
-   * Codex home in its folder — on Codex, a copy of the machine credential — for a list nothing
-   * draws. ⚑ **D-049 · no window asks it directly**: the window asks the list door.
-   *
-   * ⚠️ **Unlike {@link capabilities} this is not free.** Each ask costs a short-lived provider child
-   * process (Claude ~1.4 s, Codex ~0.6 s, measured) — no turn, no tokens, but a real spawn. The
-   * PROMISE is cached rather than its value: two surfaces asking in the same moment share one probe
-   * instead of racing two.
-   *
-   * ⚠️ **A provider that cannot answer yields a REASON, never a throw and never `[]`** — no login, no
-   * binary, a rejected call all mean "we do not know", and the person keeps the free-text field.
-   * ⛔ **The reason CROSSES** (310): see {@link ModelCatalogue}; *"this profile does not exist yet"*,
-   * *"Codex refused"* and *"the app is closing"* are known here and nowhere else.
-   *
-   * ⛔ **The probe runs in the SAME per-profile home a session would launch in, because a model list
-   * is what THIS login may run** (`256` H1: every non-default profile was once shown the default
-   * profile's catalogue). ⚠️ The free-text model field stays: it is why a stale or missing menu is
-   * survivable at all, and the reason this cache can be allowed no timer.
-   */
+  /** Read the shared catalogue without creating a home for a profile that does not exist. */
   providerModels(profileId: string, provider: Provider): Promise<ModelCatalogue> {
     // ⚠️ **Refused once a quit has started, and only when nothing is cached** (070, from 068
     // finding 7). A probe answered earlier is a value, not a process, and handing it back during a
@@ -692,7 +615,7 @@ export class ModelCatalogues {
     // stand-in list is refused during a quit rather than decided from a store that may be gone, and
     // a failure is handed back rather than asked again ({@link modelsAskedAgainIfTheyFailed}).
     if (this.isClosing()) {
-      const answered = this.modelProbes.get(modelProbeKey(provider, profileId))
+      const answered = this.modelProbes.get(provider)
       return (
         answered ??
         Promise.reject(
@@ -721,55 +644,39 @@ export class ModelCatalogues {
     }
     // ⚑ **689 · a failure already cached is asked once more** (`685` H1) — the Save door's rule;
     // see {@link modelsAskedAgainIfTheyFailed}.
-    return this.modelsAskedAgainIfTheyFailed(provider, askIn).then((one) =>
+    return this.modelsAskedAgainIfTheyFailed(provider).then((one) =>
       standIn !== null && one.ok ? { ...one, standIn } : one,
     )
   }
 
-  /**
-   * **Forget what a provider said about one profile's models** (257 §2) — a no-op when nothing was
-   * asked, which is the ordinary case.
-   *
-   * ⛔ This is the whole invalidation story for an ANSWER, and it is deliberately not a schedule. A
-   * sign-in, a cancelled sign-in or a re-copied credential is the one moment the catalogue for that
-   * home can change under a running app; every other moment it cannot, and re-asking would be a
-   * spawn nobody requested. The next ask pays for one short-lived child; nothing pays in the meantime.
-   *
-   * ⚑ **689 · a FAILURE is forgotten by the next ask too** — see
-   * {@link modelsAskedAgainIfTheyFailed}. ⛔ Still not a schedule: it costs a child only when
-   * somebody asks and the last answer was a failure.
-   */
-  forgetModels(provider: Provider, profileId: string): void {
-    this.modelProbes.delete(modelProbeKey(provider, profileId))
+  /** Sign-in changes invalidate the provider's catalogue, regardless of which profile changed. */
+  forgetModels(provider: Provider, _profileId?: string): void {
+    this.modelProbes.delete(provider)
   }
 
-  /**
-   * One provider's catalogue in one profile's home, memoized — the PROMISE, so two surfaces asking
-   * in the same tick share one child rather than racing two.
-   */
-  private probeModelsFor(provider: Provider, profileId: string): Promise<ModelCatalogue> {
-    const key = modelProbeKey(provider, profileId)
-    const known = this.modelProbes.get(key)
+  setProviderVersion(provider: Provider, version: string | null): void {
+    if (version === null || this.modelVersions.get(provider) === version) return
+    this.modelVersions.set(provider, version)
+    const hadModels = this.modelProbes.has(provider)
+    this.forgetModels(provider)
+    if (hadModels) this.agentsMoved()
+  }
+
+  /** One provider-owned catalogue; profiles keep their choices, not copies of its model rows. */
+  private probeModelsFor(provider: Provider): Promise<ModelCatalogue> {
+    const known = this.modelProbes.get(provider)
     if (known) return known
-    const probe = this.askProviderForModels(provider, profileId)
-    // ⚑ **689** — see {@link settledModelProbes}. Both arms, so a rejection is not left unhandled.
-    const settled = (): void => {
-      this.settledModelProbes.add(probe)
-    }
+    const probe: Promise<ModelCatalogue> = this.askProviderForModels(provider, DEFAULT_PROFILE_ID)
+      .then((catalogue) =>
+        this.modelProbes.get(provider) === probe ? catalogue : this.probeModelsFor(provider),
+      )
+    const settled = (): void => { this.settledModelProbes.add(probe) }
     void probe.then(settled, settled)
     void probe.then(
       (catalogue) => this.modelsAnswered.set(probe, catalogue),
       () => undefined,
     )
-    // ⛔ **The bound, and what it costs when it bites** (257 §2). Oldest-first, by insertion order —
-    // an evicted entry is a settled promise, so dropping it cancels nothing and loses no process;
-    // the only cost is that a profile revisited after {@link MAX_MODEL_PROBES} others is asked again.
-    // A person who has opened seventeen profiles in one app run has paid one extra 1.4 s spawn.
-    if (this.modelProbes.size >= MAX_MODEL_PROBES) {
-      const oldest = this.modelProbes.keys().next().value
-      if (oldest !== undefined) this.modelProbes.delete(oldest)
-    }
-    this.modelProbes.set(key, probe)
+    this.modelProbes.set(provider, probe)
     return probe
   }
 

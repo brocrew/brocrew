@@ -65,6 +65,10 @@ type HeldList =
   | { readonly state: 'answered'; readonly list: ModelList }
   | { readonly state: 'unread'; readonly why: string }
 
+type HeldContext =
+  | Exclude<HeldList, { readonly state: 'answered' }>
+  | { readonly state: 'answered'; readonly list: Omit<ModelList, 'models'> }
+
 export interface ModelLists {
   /** What is held for one provider's list in one profile — `null`: nobody asked yet. */
   held(provider: Provider, profileId?: string): HeldList | null
@@ -105,8 +109,9 @@ type ListDoors = Pick<
  * draws the picker's face never reaches `window` (`useAgentStore`'s rule).
  */
 export function createModelLists(bridge: () => ListDoors): ModelLists {
-  const lists = shallowRef<Readonly<Record<string, HeldList>>>({})
-  const choices = new Map<string, ProviderLaunchChoices>()
+  const lists = shallowRef<Readonly<Record<string, HeldContext>>>({})
+  const catalogues = shallowRef<Partial<Record<Provider, Pick<ModelList, 'models' | 'notAsked'>>>>({})
+  const choices = new Map<string, Omit<ProviderLaunchChoices, 'list'>>()
   const asked = new Map<string, { readonly provider: Provider; readonly profileId?: string }>()
   const inFlight = new Map<string, Promise<void>>()
   /** ⛔ 293 §5 — the ticket a profile's reads are answered under; {@link ModelLists.forget} moves it. */
@@ -117,7 +122,30 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
     `${provider}:${profileOf(profileId)}`
 
   function put(key: string, next: HeldList): void {
-    lists.value = { ...lists.value, [key]: next }
+    if (next.state !== 'answered') {
+      lists.value = { ...lists.value, [key]: next }
+      return
+    }
+    const { models, ...list } = next.list
+    if (list.notAsked?.reason !== 'no-profile' || catalogues.value[list.provider] === undefined) {
+      catalogues.value = {
+        ...catalogues.value,
+        [list.provider]: { models, notAsked: list.notAsked },
+      }
+    }
+    lists.value = { ...lists.value, [key]: { state: 'answered', list } }
+  }
+
+  function heldFor(provider: Provider, profileId?: string): HeldList | null {
+    const context = lists.value[keyOf(provider, profileId)]
+    if (context?.state !== 'answered') return context ?? null
+    const catalogue = catalogues.value[provider]!
+    const list = { ...context.list, ...catalogue }
+    if (context.list.notAsked?.reason === 'no-profile') {
+      list.notAsked = context.list.notAsked
+      list.models = list.models.filter((row) => row.addedBy === 'a-person')
+    }
+    return { state: 'answered', list }
   }
 
   function ask(provider: Provider, profileId: string | undefined): Promise<void> {
@@ -137,7 +165,8 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
           ...(profileId === undefined ? {} : { profileId }),
         })
         if (ours()) {
-          choices.set(key, resolved)
+          const { list: _list, ...facts } = resolved
+          choices.set(key, facts)
           put(key, { state: 'answered', list: resolved.list })
         }
       } catch (error) {
@@ -171,7 +200,7 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
 
   return {
     held(provider, profileId) {
-      return lists.value[keyOf(provider, profileId)] ?? null
+      return heldFor(provider, profileId)
     },
     readiness(provider, profileId) {
       const key = keyOf(provider, profileId)
@@ -186,25 +215,27 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
     },
     choices(provider, profileId) {
       const key = keyOf(provider, profileId)
-      return lists.value[key]?.state === 'answered' ? (choices.get(key) ?? null) : null
+      const held = heldFor(provider, profileId)
+      const facts = choices.get(key)
+      return held?.state === 'answered' && facts !== undefined ? { ...facts, list: held.list } : null
     },
     read(provider, profileId, options) {
       const key = keyOf(provider, profileId)
       const running = inFlight.get(key)
       if (running !== undefined) return running
-      const now = lists.value[key]
+      const now = heldFor(provider, profileId)
       if (now?.state === 'answered' && now.list.notAsked === null) return Promise.resolve()
       if (options?.once === true && now !== undefined) return Promise.resolve()
       return ask(provider, profileId)
     },
     async reread() {
       await Promise.all(
-        Object.entries(lists.value)
-          .filter(([, held]) => held.state === 'answered' && held.list.notAsked === null)
-          .flatMap(([key]) => {
-            const parts = asked.get(key)
-            return parts === undefined ? [] : [askAfresh(parts.provider, parts.profileId)]
-          }),
+        [...asked.values()]
+          .filter(({ provider, profileId }) => {
+            const held = heldFor(provider, profileId)
+            return held?.state === 'answered' && held.list.notAsked === null
+          })
+          .map(({ provider, profileId }) => askAfresh(provider, profileId)),
       )
     },
     forget(profileId) {
