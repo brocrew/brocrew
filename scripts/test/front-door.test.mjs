@@ -311,6 +311,21 @@ describe('427 · the REAL placed door, and what it still cannot carry', () => {
     expect(placedDoorSendsFrom(decoy)).toEqual(SENDS)
   })
 
+  it('does not read an outer constant when the actual emitted payload has a nearer mutable binding', () => {
+    const source = readFileSync(
+      join(REPO, 'apps/desktop/src/renderer/src/components/StartAsAgent.vue'),
+      'utf8',
+    )
+    const mutable = source.replace('const input:', 'let input:')
+    expect(mutable).not.toBe(source)
+    const changed = mutable.replace(
+      '<script setup lang="ts">',
+      '<script setup lang="ts">\nconst input = { fabricatedKey: true }',
+    )
+    expect(changed).not.toBe(mutable)
+    expect(() => placedDoorSendsFrom(changed)).toThrow('not an object literal')
+  })
+
   it('does not substitute a field list when the actual emitted payload is not source-readable', () => {
     const source = readFileSync(
       join(REPO, 'apps/desktop/src/renderer/src/components/StartAsAgent.vue'),

@@ -238,13 +238,12 @@ export function placedDoorSendsFrom(source) {
           if (!ts.isBlock(scope) && !ts.isSourceFile(scope)) continue
           const binding = scope.statements
             .filter(ts.isVariableStatement)
-            .filter((statement) => statement.declarationList.flags & ts.NodeFlags.Const)
             .flatMap((statement) => [...statement.declarationList.declarations])
             .find(
               (declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === name,
             )
           if (binding) {
-            value = binding.initializer
+            if (binding.parent.flags & ts.NodeFlags.Const) value = binding.initializer
             break
           }
         }
