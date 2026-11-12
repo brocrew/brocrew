@@ -6339,22 +6339,8 @@ describe('the WHOLESALE session grant an opaque tool can be asked for (058)', ()
 })
 
 describe('the model list, asked of the provider rather than written down (058)', () => {
-  /**
-   * 038 shipped free text and argued a menu would go stale. 044 falsified the half of that argument
-   * that mattered: `Query.supportedModels()` exists, so the list can be ASKED FOR, and a list asked
-   * for at runtime is whatever the provider said a moment ago.
-   *
-   * Measured live at the pinned 0.3.218 before any of this was written — 1.4 s, four rows, no turn:
-   * `default`, `opus[1m]`, `sonnet`, `haiku`. The fixture below is that answer.
-   *
-   * ⚠️ **Re-measured in 106, and the effort fields are the correction** (`probe:model-effort`). The
-   * fixture carried no `supportsEffort`/`supportedEffortLevels` because the adapter used to invent
-   * the same five levels for every row, explaining itself with *"`ModelInfo` carries nothing per-
-   * model to narrow it with"*. It does — `sdk.d.ts:1347` and `:1351` — and the CLI SENDS it, and it
-   * does not send the same answer for every model. `haiku` carries neither field, in a response
-   * where the other three carry both, which is why "the provider did not say" is a state this
-   * fixture now has to contain rather than a sentence in a doc.
-   */
+  // The public supportedModels answer supplies rows and per-row effort facts. This historical
+  // fixture includes aliases, punctuation and a row with no advertised efforts.
   const SUPPORTED: ModelInfo[] = [
     {
       value: 'default',
@@ -6364,10 +6350,7 @@ describe('the model list, asked of the provider rather than written down (058)',
       supportsEffort: true,
       supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
     },
-    // The bracketed id, restored after 058's review pointed out this fixture said "four rows" and
-    // had three. It is the row worth not dropping: `opus[1m]` is the only id in the real catalogue
-    // whose VALUE contains punctuation, so any future handling that splits, slices or pattern-
-    // matches an id would pass a fixture that quietly omitted it.
+    // Keep the bracketed alias intact; the resolved target is not the ID sent to the provider.
     {
       value: 'opus[1m]',
       resolvedModel: 'claude-opus-4-8[1m]',
@@ -6430,13 +6413,7 @@ describe('the model list, asked of the provider rather than written down (058)',
     const { runtime, closes } = probeRuntime({ supportedModels: async () => SUPPORTED })
     const models = await runtime.listModels({ providerHome: '/tmp/x/home' })
 
-    // `value`, not `resolvedModel`: the id we persist and send is the one the SDK's own doc says a
-    // host should persist — `resolvedModel` exists so a host can match a stored id BACK to its
-    // alias row, which makes it the resolution, not the identity.
-    //
-    // The efforts each row carries are the PROVIDER's own answer for that row (106). This used to
-    // be one shared `efforts` constant applied to all four, on the grounds that `ModelInfo` said
-    // nothing per model — it does, and the CLI sends it, and it left `haiku` out.
+    // Persist/send the alias and retain its resolved target and provider-supplied efforts.
     const efforts = [
       { id: 'low', label: 'low' },
       { id: 'medium', label: 'medium' },
@@ -6444,10 +6421,7 @@ describe('the model list, asked of the provider rather than written down (058)',
       { id: 'xhigh', label: 'xhigh' },
       { id: 'max', label: 'max' },
     ]
-    // ⚑ **D-042 moved three facts onto these rows.** `resolvesTo` is the SDK's `resolvedModel`, kept
-    // as what the alias points at (a choice naming the target matches its row, F5) — still not the
-    // id we send. `isDefault` marks Claude's default BY NAME, the `default` row alone (R1).
-    // `defaultEffort: 'medium'` sits on each row that lists `medium` (W4.28; `high` until then, F3).
+    // The native default alias alone is marked; medium is used only where offered.
     expect(models).toEqual([
       {
         id: 'default',
@@ -6480,13 +6454,7 @@ describe('the model list, asked of the provider rather than written down (058)',
       // ⚑ D-042: so no `defaultEffort` either — a row that lists no levels is not given one.
       { id: 'haiku', label: 'haiku', resolvesTo: 'claude-haiku-4-5-20251001' },
     ])
-    // Assert the two additional reasoning levels by name. Updating the expected list to a
-    // shortened three-level catalogue could satisfy `toEqual` while restoring the missing
-    // choices.
-    //
-    // Scoped to the rows the provider described, and the count is asserted so this cannot quietly
-    // become a loop over nothing — which is exactly what it WOULD have become when `haiku` stopped
-    // carrying efforts, had it been left as `for (const row of models)`.
+    // Count described rows before checking their additional levels, so an empty loop cannot pass.
     const described = models.filter((row) => row.efforts !== undefined)
     expect(described, 'three of the four rows describe their efforts').toHaveLength(3)
     for (const row of described) {
@@ -6506,19 +6474,7 @@ describe('the model list, asked of the provider rather than written down (058)',
     expect(closes(), 'the probe query must not be left running').toBe(1)
   })
 
-  /**
-   * The half the four-row fixture cannot show (106): a model whose list is SHORT.
-   *
-   * The measured catalogue is all-or-nothing — three rows name every level, one names none — so on
-   * that evidence alone "pass the provider's list through" and "give a described row all five" are
-   * the same function. `EffortLevel` has five members and `supportedEffortLevels` is typed as a
-   * subset of them, so a short list is a shape the SDK explicitly allows and a login on a different
-   * plan could return tomorrow.
-   *
-   * ⚠️ It matters beyond tidiness because the launcher's ultracode control asks exactly one question
-   * of this field — *does it contain `xhigh`* — so a row that was quietly padded would be offered a
-   * mode it cannot run.
-   */
+  // A short effort list must remain short; a paired full row catches unconditional truncation.
   it('passes a SHORT effort list through unpadded — the provider narrows, we do not widen', async () => {
     const rows: ModelInfo[] = [
       {
@@ -6547,14 +6503,6 @@ describe('the model list, asked of the provider rather than written down (058)',
     expect(models[1]?.efforts?.map((e) => e.id)).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
   })
 
-  /**
-   * An EMPTY array is the third shape, and it is not the same as absent.
-   *
-   * `ModelChoice.efforts` says *"Empty or absent means the provider did not say"*, and the surface
-   * treats them alike — but `[]` reaching the renderer would make `modelChoices`' own "an empty
-   * `<datalist>` reads as a broken control" problem appear one control along. Omitting the key is
-   * the shape the rest of the mapper already uses for "there was nothing to say".
-   */
   it('keeps the current Default and Fable catalogue identities and resolutions verbatim', async () => {
     const rows: ModelInfo[] = [
       {
@@ -6589,6 +6537,14 @@ describe('the model list, asked of the provider rather than written down (058)',
     expect(closes()).toBe(1)
   })
 
+  /**
+   * An EMPTY array is the third shape, and it is not the same as absent.
+   *
+   * `ModelChoice.efforts` says *"Empty or absent means the provider did not say"*, and the surface
+   * treats them alike — but `[]` reaching the renderer would make `modelChoices`' own "an empty
+   * `<datalist>` reads as a broken control" problem appear one control along. Omitting the key is
+   * the shape the rest of the mapper already uses for "there was nothing to say".
+   */
   it('a row that answers with an EMPTY effort list gets no key, like one that answers with none', async () => {
     const rows: ModelInfo[] = [
       {
