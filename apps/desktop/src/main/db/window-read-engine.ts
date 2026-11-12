@@ -2,7 +2,7 @@ import Database from 'better-sqlite3'
 import { recentActivity } from '../runtime/recent-activity'
 import { createSessionStore, type ThreadLeadRow } from './session-store'
 import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
-import { readTheForestFirst } from './forest-listing'
+import { readTheForestFirst } from './forest-first-read'
 import {
   WINDOW_READ_BOUNDS,
   windowReadQuery,

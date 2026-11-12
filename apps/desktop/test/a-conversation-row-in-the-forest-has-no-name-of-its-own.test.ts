@@ -1,5 +1,6 @@
+import { closeHostFixture } from './lib/host-fixture'
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
 import { forestOf } from './lib/forest-of-host'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -151,10 +152,7 @@ describe('a conversation row in the forest carries no name of its own', () => {
     })
 
     afterEach(async () => {
-      await host.closeAll()
-      db.close()
-      rmSync(userData, { recursive: true, force: true })
-      rmSync(workspace, { recursive: true, force: true })
+      await closeHostFixture(host, db, userData, workspace)
     })
 
     const open = (id: string, profileId: string): string => {

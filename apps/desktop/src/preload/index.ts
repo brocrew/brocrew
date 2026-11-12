@@ -87,12 +87,7 @@ import type { WhoCalledWhom } from '../shared/who-called-whom'
 import type { WorkspaceReading } from '../shared/workspace-reading'
 import type { WhatIsBeingDone } from '../shared/what-is-being-done'
 
-import type {
-  ForestListed,
-  ForestNodesPage,
-  ForestReading,
-  ForestScope,
-} from '../shared/the-whole-forest'
+import { forestBridge } from './forest'
 import type { DigestReading } from '../shared/digest'
 import type { RecentActivityReading } from '../shared/recent-activity'
 import { LAST_DRAFT_SAVE_CHANNEL, type SavedDrafts } from '../shared/saved-drafts'
@@ -408,25 +403,7 @@ const runtime: RuntimeBridge = Object.freeze({
     command({
       kind: 'whatEachConversationIsWaitingOn',
     }),
-  /** One forest reading (see `ForestReading`); the scope's literal is written here, field by field. */
-  forestReading: (scope: ForestScope): Promise<ForestReading> =>
-    command({
-      kind: 'forestReading',
-      scope:
-        scope.is === 'the-workspace'
-          ? { is: 'the-workspace', window: scope.window }
-          : { is: 'the-tree-of', conversation: scope.conversation },
-    }),
-  /** A later page of a forest reading's nodes (see `ForestNodesPage`). */
-  forestNodes: (
-    reading: ForestListed,
-    conversations: readonly string[],
-  ): Promise<ForestNodesPage> =>
-    command({
-      kind: 'forestNodes',
-      drawn: [...reading.members.admitted, ...reading.context, ...reading.behind],
-      conversations: [...conversations],
-    }),
+  ...forestBridge,
   /**
    * 🔴 **D-018 · the memory each running conversation's provider process holds** — for a person's
    * agent card, and never an agent's.

@@ -1,3 +1,4 @@
+import { executeForestCommand } from './forest-command'
 import { resolveProviderLaunchSchema } from './provider-launch-schema'
 import { SkillsRequest } from '../../shared/skills-window'
 import { LINK_TARGET_LIMIT } from '../../shared/link-resolution'
@@ -2514,17 +2515,10 @@ export async function executeRuntimeCommand(
         return host.whatEachConversationIsWaitingOn()
       }) satisfies Answer<'whatEachConversationIsWaitingOn'>
     case 'forestReading':
-      // A read that takes no sink and no owner, and offers no act: a tree's conversation is only
-      // what it is drawn around. The worker reads it, so it awaits rather than holding this thread.
-      return host.forestReading(command.scope) satisfies Promise<Answer<'forestReading'>>
     case 'forestNodes':
-      return host.forestNodes(command.drawn, command.conversations) satisfies Promise<
-        Answer<'forestNodes'>
-      >
+      return executeForestCommand(host, command)
     case 'processMemory':
-      // ⛔ **A read, and it takes no sink and no owner** (D-018) — `whatIsBeingDone`'s note. ⚠️ **No
-      // `requireAPerson`**: it names no conversation, so `203`'s owner check has nothing to be
-      // about, and it offers no act; no agent reaches this door.
+      // Reads process memory without an owner or sink.
       return host.processMemory() satisfies Answer<'processMemory'>
     case 'claim':
       // ⛔ **Synchronous, and here that is a requirement rather than an economy** (336): the owner

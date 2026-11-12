@@ -116,7 +116,7 @@ import {
 } from '../../shared/external-mcp'
 import { THE_APP_DID_IT } from '../../shared/who-did-it'
 import { workEdge, type SpawnEdge, type WorkEdge } from '../../shared/who-called-whom'
-import type { ForestConversation, ForestParent, ForestTask } from '../../shared/the-whole-forest'
+import type { ForestParent } from '../../shared/the-whole-forest'
 import {
   PHRASES,
   PROVIDER_WALL_LOOKBACK_MS,
@@ -159,7 +159,8 @@ import {
   type TiedOutside,
   type TreeDeleted,
 } from './conversation-tree'
-import { forestListing, type ForestListing, type ForestListingAsked } from './forest-listing'
+import { forestListing } from './forest-listing'
+import { EMPTY_FOREST_STORE, type ForestStore } from './forest-store'
 import { FOLD_EVENT_TYPES, FOLD_TERM } from './fold-index'
 import {
   ensureQuestionCopies,
@@ -293,12 +294,8 @@ import { workFileGroup } from '../../shared/work-file-groups'
 
 type SpawnedConversation = Omit<SpawnEdge, 'running'>
 
-export type ForestedConversation = Omit<
-  ForestConversation,
-  'running' | 'standsInFor' | 'inItsPlace'
->
-
-export type ForestedNode = ForestedConversation | ForestTask
+export type { ForestedConversation, ForestedNode } from './forest-store'
+import type { ForestedConversation, ForestedNode } from './forest-store'
 
 interface ConversationBinding {
   /** Always present when this app holds the row — the column is `NOT NULL`. */
@@ -839,7 +836,7 @@ export interface ScheduleEvidenceRow {
   readonly payload: unknown
 }
 
-export interface SessionStore extends OwnNotesStore, WorkLedgerRead {
+export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore {
   /** Indexed candidate pages; the caller folds owners within its turn-block budget. */
   turnBlockCandidates(
     giver: string,
@@ -1218,17 +1215,6 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead {
   /** The same vocabulary, materialized only inside this exact window and never cached. */
   activityWindow(from: number, to: number): LedgerWalk<DigestRow>
   conversationsHeldByNoAgent(): number
-  /** One forest reading's conversations, read structurally (`forest-listing.ts`). */
-  forestListing(asked: ForestListingAsked): ForestListing
-  /**
-   * The nodes of the asked conversations that are still in a reading, in the order asked, each
-   * parent and giver named as drawn when `drawn` holds it; the others asked are `gone`.
-   */
-  forestNodesOf(
-    conversations: readonly string[],
-    drawn: ReadonlySet<string>,
-    hidden: readonly string[],
-  ): { readonly nodes: LedgerWalk<ForestedNode>; readonly gone: readonly string[] }
   piecesGivenBy(sessionId: string, unread?: RowsUnread): readonly PieceRow[]
   workGivenOutBy(sessionId: string): LedgerWalk<WorkGivenOut>
   spawnedBy(sessionId: string): LedgerWalk<SpawnedConversation>
@@ -1506,18 +1492,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   digestWindow: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
   activityWindow: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
   conversationsHeldByNoAgent: () => 0,
-  forestListing: () => ({
-    counts: null,
-    root: null,
-    total: 0,
-    admitted: [],
-    context: [],
-    behind: [],
-  }),
-  forestNodesOf: (conversations) => ({
-    nodes: { rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 },
-    gone: [...conversations],
-  }),
+  ...EMPTY_FOREST_STORE,
   workGivenOutBy: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
   spawnedBy: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
   conversationTree: () => [],

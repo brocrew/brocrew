@@ -206,9 +206,9 @@ import {
 } from '../lib/conversation-waits'
 
 import type { WhatIsBeingDone } from '../../../shared/what-is-being-done'
-import type { TheWholeForest, ForestWindow } from '../../../shared/the-whole-forest'
+import type { ForestWindow } from '../../../shared/the-whole-forest'
 import { readForestPages, type ForestSnapshot } from '../lib/forest-reading'
-import { forestView } from '../lib/the-forest'
+import { foldGraphReading } from '../lib/forest-graph-reading'
 import { ROSTER_EVERY_MS } from '../lib/team-roster'
 import { refusedToOpen } from '../lib/taking-over'
 import { THE_COMPACT_COMMAND } from '../lib/compaction-offer'
@@ -2659,26 +2659,20 @@ const sinceLastHere = computed(() => {
 })
 watch(lastSeen.since, () => void readActivity())
 
-/**
- * 🔴 **What each running conversation was last told it is doing** (593) — `575`'s read, taken with
- * the forest ({@link readWhoIsWorking}) and, between pushes, by the one glance ({@link glance}).
- *
- * ⛔ **The read makes ZERO database calls**, *"which is what makes it affordable on a 30-second
- * poll"* (`575`). ⚠️ **A FASTER interval of its own would put TWO ages on one page** — the
- * forest's and the doing words' — and the page has one sentence for how old it is.
- *
- * ⚠️ **`null` on a refusal, deliberately, and it is the one place this screen does NOT keep the
- * last good answer.** Every other kept read is a LIST whose absence would read as *nothing is
- * here*; this one is a REFINEMENT, and dropping it returns a card to the plate it would draw
- * without it — less rather than something else, and never a tool name from a minute ago.
- */
+/** Live activity refines graph rows; paged graph facts keep their own read time. */
+const forestFacts = () => ({
+  waits: conversationWaits.value,
+  identities: agentStore.identities.value?.identities ?? null,
+  held: new Set(store.live.value.map((record) => record.sessionId)),
+  said: cast.railSays.value,
+})
 const beingDone = ref<WhatIsBeingDone | null>(null)
 const forestWindow = ref<ForestWindow>('day')
 const theForest = ref<ForestSnapshot | null>(null)
 const forestPending = ref(false)
 const forestError = ref<string | null>(null)
 let forestEpoch = 0
-const theForestView = computed(() => foldGraphReading(theForest.value, beingDone.value))
+const theForestView = computed(() => foldGraphReading(theForest.value, beingDone.value, forestFacts()))
 const ownForest = ref<ForestSnapshot | null>(null)
 const ownForestFor = ref<string | null>(null)
 const ownForestPending = ref(false)
@@ -2686,46 +2680,10 @@ const ownForestError = ref<string | null>(null)
 let ownForestEpoch = 0
 const conversationForestView = computed(() =>
   ownForestFor.value === activeId.value
-    ? foldGraphReading(ownForest.value, cast.reading.value?.atWork ?? null)
+    ? foldGraphReading(ownForest.value, cast.reading.value?.atWork ?? null, forestFacts())
     : null,
 )
 const readConversationForest = () => conversationForestView.value
-
-function foldGraphReading(snapshot: ForestSnapshot | null, atWork: WhatIsBeingDone | null) {
-  const view = foldTheForest(snapshot?.forest ?? null, atWork)
-  if (view === null || snapshot === null) return null
-  const context = new Set(snapshot.reading.context)
-  const reason =
-    snapshot.reading.scope.is === 'the-workspace' && snapshot.reading.scope.window === 'all'
-      ? ('limit' as const)
-      : ('window' as const)
-  return {
-    ...view,
-    reading: snapshot,
-    rows: view.rows.map((row) =>
-      row.kind === 'a-conversation' && context.has(row.conversation)
-        ? { ...row, conversationRow: { ...row.conversationRow!, context: reason } }
-        : row,
-    ),
-  }
-}
-
-/** ⚑ **One fold for both drawings of the forest** — the Team page's and a conversation's tab. */
-function foldTheForest(forest: TheWholeForest | null, atWork: WhatIsBeingDone | null) {
-  return forestView({
-    forest,
-    atWork,
-    // ⛔ **Already on this screen and ungated** — `636`'s reading, reused rather than read again.
-    waits: conversationWaits.value,
-    identities: agentStore.identities.value?.identities ?? null,
-    held: new Set(store.live.value.map((record) => record.sessionId)),
-    // 🔴 **UI-004 · every card is the rail's row** — the rail's plate and the rail's word, on D-019's
-    // push, so the Graph and the Team page change the moment the rail and the right panel do (668's
-    // `live` was this for the conversations this window holds; the rail derives those the same way,
-    // `recordFacets` on this screen's waits). See `ForestViewInput.said`.
-    said: cast.railSays.value,
-  })
-}
 
 /** Read membership, counts and pages together; a moved screen cannot accept an older answer. */
 async function readWhoIsWorkingOnce(): Promise<void> {

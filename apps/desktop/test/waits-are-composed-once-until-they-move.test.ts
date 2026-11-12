@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { aServiceWorld, RecordingSink, type AServiceWorld } from './helpers/a-service-world'
+import { aGiverAndHelper, RecordingSink, type AServiceWorld } from './helpers/a-service-world'
 import { openDatabase } from '../src/main/db/connection'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 
@@ -24,11 +24,7 @@ describe('waits are composed once until they move', () => {
   }
 
   beforeEach(async () => {
-    world = aServiceWorld()
-    world.anAgent('giver', 'normal')
-    world.anAgent('helper', 'normal')
-    host = world.aHost({ servicesOn: false })
-    giver = await world.aPersonOpens(host, 'giver')
+    ;({ world, host, giver } = await aGiverAndHelper())
   })
   afterEach(async () => {
     vi.restoreAllMocks()

@@ -284,7 +284,6 @@ export interface TheWholeForest {
 /** The workspace graph's time windows: running a turn now, the past hour, day and week, or all. */
 export const FOREST_WINDOWS = ['active', 'hour', 'day', 'week', 'all'] as const
 export type ForestWindow = (typeof FOREST_WINDOWS)[number]
-export const DEFAULT_FOREST_WINDOW: ForestWindow = 'day'
 
 /** How far back each rolling window reaches from {@link ForestReading.measuredFrom}. */
 export const FOREST_WINDOW_SPAN_MS = {

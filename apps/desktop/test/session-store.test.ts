@@ -1,3 +1,4 @@
+import { emptyForestBridge } from './lib/forest-fixture'
 import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import { launchFacts, resolveProviderLaunch } from './lib/provider-launch-fixture'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
@@ -476,32 +477,7 @@ function fakeBridge() {
       calls.push('whatEachConversationIsWaitingOn')
       return { conversations: [], readAt: 1_700_000_000_000, rowsUnread: 0 }
     },
-    // ⚑ **637 · the tenth read whose refusal is a VALUE** — a real reading with no nodes, so the
-    // store's `null` can only have come from a REFUSAL and never from an empty workspace.
-    forestReading: async (scope) => {
-      calls.push('forestReading')
-      return {
-        scope,
-        measuredFrom: 1_700_000_000_000,
-        counts: null,
-        root: null,
-        members: { total: 0, admitted: [] },
-        context: [],
-        behind: [],
-        nodes: { rows: [], walk: 'every-conversation-this-app-placed', ledgers: 0, rowsUnread: 0 },
-        unfolded: [],
-        heldByNoAgent: 0,
-        readAt: 1_700_000_000_000,
-      }
-    },
-    forestNodes: async () => {
-      calls.push('forestNodes')
-      return {
-        nodes: { rows: [], walk: 'every-conversation-this-app-placed', ledgers: 0, rowsUnread: 0 },
-        gone: [],
-        readAt: 1_700_000_000_000,
-      }
-    },
+    ...emptyForestBridge(calls),
     // ⚑ **D-018's read, faked the same way**: an EMPTY population, so the store's `null` can only
     // have come from a REFUSAL and never from *this app is running nothing*.
     processMemory: async () => {

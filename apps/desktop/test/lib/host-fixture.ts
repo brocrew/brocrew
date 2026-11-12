@@ -1,4 +1,5 @@
-import { mkdirSync } from 'node:fs'
+import { FakeRuntime, type FakeSessionHandle, type FakeProviderSessions, type StartOptions, type SessionRef, type ResumeOptions } from '@brobot2/runtime'
+import { mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Provider } from '@brobot2/shared'
 import { NO_DISCOVERY } from '../../src/main/adopt/discover-sessions'
@@ -43,3 +44,40 @@ export function neutralHostDeps(
     exportDirectory: () => join(rootGetter(), 'exports'),
   }
 }
+
+/** Close the fixture host before its database and owned directories. */
+export async function closeHostFixture(host: Pick<import('../../src/main/runtime/runtime-host').RuntimeHost, 'closeAll'>, db: Pick<import('../../src/main/db/connection').AppDatabase, 'close'>, ...folders: string[]): Promise<void> {
+  await host.closeAll()
+  db.close()
+  for (const folder of folders) rmSync(folder, { recursive: true, force: true })
+}
+
+/** ⚑ A reopen the test can hold at the provider: `hold` is awaited by every `resume`. */
+export interface ResumeGate {
+  hold: Promise<void> | null
+  entered: number
+}
+
+export class ProviderDouble extends FakeRuntime {
+  constructor(
+    provider: Provider,
+    private readonly handles: FakeSessionHandle[],
+    sessions: FakeProviderSessions,
+    private readonly resumeGate: ResumeGate,
+  ) {
+    super(provider, { sessions })
+  }
+  override async start(options: StartOptions): Promise<FakeSessionHandle> {
+    const handle = await super.start(options)
+    this.handles.push(handle)
+    return handle
+  }
+  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
+    this.resumeGate.entered += 1
+    if (this.resumeGate.hold !== null) await this.resumeGate.hold
+    const handle = await super.resume(ref, options)
+    this.handles.push(handle)
+    return handle
+  }
+}
+

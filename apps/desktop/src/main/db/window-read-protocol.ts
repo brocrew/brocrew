@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { MAX_DIGEST_SPAN_MS } from '../../shared/digest'
 import { RECENT_ACTIVITY_LINES, type RecentActivityReading } from '../../shared/recent-activity'
 import { FOREST_PAGE, FOREST_WINDOWS } from '../../shared/the-whole-forest'
-import type { ForestFirstRead } from './forest-listing'
+import type { ForestFirstRead } from './forest-first-read'
 import type { SessionStore, ThreadLeadRow } from './session-store'
 import type { SkipNote } from './rows-unread'
 

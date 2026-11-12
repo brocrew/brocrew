@@ -470,3 +470,13 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
   })
   return world
 }
+
+/** Two ordinary profiles and the person's opened giver, using the existing service world. */
+export async function aGiverAndHelper() {
+  const world = aServiceWorld()
+  world.anAgent('giver', 'normal')
+  world.anAgent('helper', 'normal')
+  const host = world.aHost({ servicesOn: false })
+  const giver = await world.aPersonOpens(host, 'giver')
+  return { world, host, giver }
+}

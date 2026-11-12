@@ -1,5 +1,6 @@
+import { closeHostFixture } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -95,10 +96,7 @@ describe('20f1a2a0 · what each named conversation last reported', () => {
   })
 
   afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    rmSync(userData, { recursive: true, force: true })
-    rmSync(workspace, { recursive: true, force: true })
+    await closeHostFixture(host, db, userData, workspace)
   })
 
   /** A Codex conversation this app started, optionally started BY another and set to a model. */
