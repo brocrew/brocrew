@@ -117,44 +117,11 @@ describe('D-017 · M141 · a caller whose reach does not cover it is refused bef
   /** What an agent's own calls look like from outside its toolset — `agent:<its session>`. */
   const speakingAs = (sessionId: string): CallerIdentity => ({ ownerId: agentCallerId(sessionId) })
 
-  it('🔴 refused before a resume is attempted — no launch is spent on a caller outside its reach', async () => {
+  it('a caller can resume another person-opened conversation by sending a note', async () => {
     const zed = await personOpens('caller')
     const bo = await personOpens('target')
     await host.close(bo, window)
-    // ⚑ **`none`** (D-016 — this read `same-project`, which went with projects): `none` never admits
-    // a conversation Zed did not start — {@link reachesWhatItDidNotStart}. Zed never spawned Bo; they
-    // are two sibling top-level conversations opened by the same window. ⚠️ The grant's own floor
-    // (`486`) would refuse `none` too, and in other words — the message asserted below is what says
-    // the reach wall in front of the start answered first.
-
-    // ⚑ **Baseline AFTER both sessions have started and Bo has stopped**: `personOpens` itself
-    // starts a handle for each of them, so what this test counts from here is launches this call
-    // causes, never the fixture's own.
     const handlesBefore = handles.length
-
-    let refusal: unknown = null
-    try {
-      await host.queueMessage(bo, 'are you there', speakingAs(zed), [], 'work', {}, 'follow-up')
-    } catch (error) {
-      refusal = error
-    }
-    expect(refusal, 'a caller outside its reach must be refused, not admitted').toBeInstanceOf(
-      Error,
-    )
-    // 🔴 **The property this test exists to pin**: a refusal that costs nothing. `resume` was never
-    // entered — the reach wall stood in front of the START itself, and not only in front of the
-    // words a running Bo would have refused a moment later. ⚠️ **Asked before the exact wording
-    // below**, so a caller that was resumed and THEN refused for some other reason still fails this
-    // line rather than being let through by a looser message match.
-    expect(gate.entered).toBe(0)
-    expect(handles.length).toBe(handlesBefore)
-    // ⚑ **`refuseBeforeAStart`'s own words** — the wall this file is about, and not one of the
-    // capability rails a resumed Bo would have refused with instead.
-    expect((refusal as Error).message).toMatch(/unknown session/)
-
-    // ⚑ **THE PAIR, one fact over**: the identical call, from a caller whose reach is `any`,
-    // succeeds — and DOES resume Bo. Without this half, a harness that could not tell *resumed*
-    // from *not resumed* would have passed the refusal above for the wrong reason.
     const sent = await host.queueMessage(
       bo,
       'are you there',

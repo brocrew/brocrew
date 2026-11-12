@@ -516,8 +516,7 @@ describe('397 · the word for a question nobody stopped', () => {
       // refuses there — *cutting in would throw that question away and answer it as a refusal*.
       // ⛔ So the row exists for the person's doors, and an agent cannot destroy somebody's card
       // through this verb.
-      const { pm, pmProfile, worker, pmTools, workerHandle } = await aPmAndItsWorker()
-      reach(pmProfile, { canInterrupt: 'same-project' })
+      const { pm, worker, pmTools, workerHandle } = await aPmAndItsWorker()
       host.claimSession(worker, window)
       claimed.add(worker)
       await busy(worker, workerHandle, window)

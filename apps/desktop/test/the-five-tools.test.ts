@@ -185,7 +185,6 @@ describe('347 · the five tools', () => {
     await host.close(id, window)
   }
 
-
   /**
    * The ledger's event kinds for one session.
    *

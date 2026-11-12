@@ -30,8 +30,6 @@ const row = (one: (typeof AGENTS)[number]): AgentIdentity => ({
   capabilities: { ...DEFAULT_CAPABILITIES },
   chosen: {
     maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
     canCreateAgents: 'default',
     canWriteRules: 'default',
   },

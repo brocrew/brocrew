@@ -17,8 +17,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { CallerIdentity } from '../src/main/runtime/runtime-host'
-import { agentCallerId } from '../src/main/runtime/agent-tools'
+import type {  } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
@@ -131,7 +130,6 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
   }
 
   /** What an agent's own calls look like from outside the toolset — `agent:<its session>`. */
-  
 
   /** ⚑ **The raw order `list_agents` hands back** — unsorted, because §1 is about that order. */
   const agentsInOrder = async (toolset: AgentToolset): Promise<string[]> => {

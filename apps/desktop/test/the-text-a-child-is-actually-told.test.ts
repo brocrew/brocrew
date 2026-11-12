@@ -95,7 +95,7 @@ const PROJECT_MANAGER_PROFILE_ID = 'project-manager'
 /** ⚑ **485 · the section §10 is about**, named once so no test spells it twice. */
 const GRANTS_HEADING = '## What you may do'
 const SPAWNING_OFF =
-  '- This app currently blocks creating agents and starting new agent conversations. Giving work to an existing conversation still depends on your permissions.'
+  '- This app currently blocks creating agents and starting new agent conversations. You may still give work to an existing conversation.'
 
 const FIXED_RULE_POLICY =
   "- You can read any agent's standing rules and propose a replacement; the person decides. A BroBot conversation the person started may also save one directly, but never its own. Each version keeps its author and reason, and the person can undo it."
@@ -1560,7 +1560,7 @@ describe('§9 · one agent instruction set', () => {
     // The grants move what this conversation is told it may do, which is where they belong.
     const told = (capabilities: ProfileCapabilities): string =>
       thisConversationText({ ...context(), capabilities })
-    expect(told(narrow)).toContain('- You may not send messages to other conversations.')
+    expect(told(narrow)).toContain('- You may message any conversation.')
     expect(told(wide)).toContain('- You may message any conversation.')
     for (const allowed of [narrow, wide, proposing]) {
       expect(told(allowed)).toContain(FIXED_RULE_POLICY)

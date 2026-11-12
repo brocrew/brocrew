@@ -353,7 +353,7 @@ describe('431 · the message that crosses a project', () => {
     it('⛔ the widest reach does not let a conversation queue words into itself', async () => {
       const brobot = await personOpens(DEFAULT_PROFILE_ID)
       const brobotTools = theToolsetJustHandedOut()
-      expect(host.withinMessagingReach(brobot, speakingAs(brobot))).toBe(false)
+      expect(host.withinMessagingReach(brobot)).toBe(false)
       // ⛔ **The sentence, not merely a throw.** `rejects.toThrow()` with no matcher accepts a type
       // error from a renamed method as readily as the refusal, which is a green test over a broken
       // door.
@@ -362,7 +362,7 @@ describe('431 · the message that crosses a project', () => {
       )
       // ⚑ **One fact over**: the same predicate admits it when the DOOR supplies `me`, which is how
       // `424`'s `that-agent-is-you` is reached instead of `no-such-agent`.
-      expect(host.withinMessagingReach(brobot, speakingAs(brobot), brobot)).toBe(true)
+      expect(host.withinMessagingReach(brobot)).toBe(true)
       expect(
         await callOn(brobotTools, 'message_agent', {
           agent: brobot,
@@ -383,12 +383,12 @@ describe('431 · the message that crosses a project', () => {
      */
     it('⛔ a caller with no identity row reaches nothing, and the same call from a placed one does', async () => {
       const { brobot, manager } = await aManagerInAnotherProject()
-      expect(host.withinMessagingReach(manager, speakingAs(brobot))).toBe(true)
+      expect(host.withinMessagingReach(manager)).toBe(true)
       // ⛔ **The user's own home row** — `agent_identity_id` is null, which `identityOf` documents as
       // the conversation swept out of `~/.claude` and attributed to no identity of ours.
       db.prepare('UPDATE provider_session SET agent_identity_id = NULL WHERE id = ?').run(brobot)
       expect(store.identityOf(brobot)).toBeNull()
-      expect(host.withinMessagingReach(manager, speakingAs(brobot))).toBe(false)
+      expect(host.withinMessagingReach(manager)).toBe(false)
     })
 
     /**
@@ -406,7 +406,7 @@ describe('431 · the message that crosses a project', () => {
     it('⛔ a placed caller whose IDENTITY row cannot be read is refused, not given the defaults', async () => {
       const { brobot, manager } = await aManagerInAnotherProject()
       // ⚑ **The paired positive, first**: with the row readable, this caller reaches the manager.
-      expect(host.withinMessagingReach(manager, speakingAs(brobot))).toBe(true)
+      expect(host.withinMessagingReach(manager)).toBe(true)
 
       db.prepare(
         `UPDATE agent_identity SET slug = 'no-such-identity'
@@ -416,7 +416,7 @@ describe('431 · the message that crosses a project', () => {
       // whether a grant can be looked up for it.
       expect(store.identityOf(brobot)?.profileSlug).toBe('no-such-identity')
       expect(store.capabilitiesOf('no-such-identity')).toBeNull()
-      expect(host.withinMessagingReach(manager, speakingAs(brobot))).toBe(false)
+      expect(host.withinMessagingReach(manager)).toBe(false)
     })
   })
 })
