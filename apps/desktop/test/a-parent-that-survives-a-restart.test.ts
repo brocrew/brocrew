@@ -641,10 +641,10 @@ describe('373 · a parent that survives a restart', () => {
 
       const admitted: CallerIdentity = { ownerId: agentCallerId(pm) }
       expect(host.agentCard(worker)).not.toBeNull()
-      // ⛔ The child speaking as itself is not its own commander…
-      expect(host.agentCard(worker)).not.toBeNull()
-      // …and the bare session id is not an identity at all: the namespace is load-bearing (347).
-      expect(host.agentCard(worker)).not.toBeNull()
+      await expect(host.interrupt(worker, { ownerId: agentCallerId(worker) })).rejects.toThrow()
+      await expect(host.interrupt(worker, { ownerId: pm })).rejects.toThrow()
+      await expect(host.interrupt(worker, admitted)).resolves.toBeUndefined()
+
     })
 
     it('⚠️ a commander that was NOT the parent cannot be stood up — only a conversation gives', async () => {
@@ -682,7 +682,8 @@ describe('373 · a parent that survives a restart', () => {
       const given = await host.giveWork(request, { ownerId: agentCallerId(parent) })
       if (!given.ok) throw new Error(`the give was refused: ${given.refusal.rail}`)
       expect(host.agentCard(given.owner)).not.toBeNull()
-      expect(host.agentCard(given.owner)).not.toBeNull()
+      expect(store.parentOf(given.owner)).toBe(parent)
+      await expect(host.interrupt(given.owner, planner)).rejects.toThrow()
     })
 
     it('⛔ a conversation nobody spawned comes back commanded by nobody, and discloses it', async () => {

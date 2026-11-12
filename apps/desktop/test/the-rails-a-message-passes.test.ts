@@ -242,7 +242,6 @@ describe('374 · the rails a message passes', () => {
       const { pm, worker } = await aPmAndItsWorker()
       const by = speakingAs(pm)
 
-
       await expect(host.queueMessage(worker, 'x', by)).resolves.toBeDefined()
     })
   })
@@ -364,7 +363,6 @@ describe('374 · the rails a message passes', () => {
    * ruled word is also the widest (`same-project` went); the two loops that walk
    * {@link MESSAGING_ACTS} pass both explicitly.
    */
-
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
   // §9 · the interrupt verbs an agent holds — 395 REVERSED the first half of this section

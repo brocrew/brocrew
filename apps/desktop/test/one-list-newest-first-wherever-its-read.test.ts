@@ -184,5 +184,4 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
    * since §3 below stops the target, the only thing that can admit a STOPPED one.
    */
 
-
 })
