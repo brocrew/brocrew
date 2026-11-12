@@ -174,12 +174,9 @@ export interface DraftKeeper {
  * answered at once, and from then on every change goes at once too — a message the quit refuses is
  * put back in the book, and words typed under the closing shade are words. ⚑ Then, AFTER the
  * conversations are closed, main asks for the book once more (`onLastSave`) and waits for that one
- * (until the final save finishes): every refusal that closing them produced has reached this window by
- * then, so the book it answers with is the one to keep. ⚠️ **Not a send or a start still on its way
- * PAST the close** — one waiting on a path check of a stalled volume, or a launch outliving the
- * close's own bound: its words are in the flight and in no book, and its refusal can come after the
- * app is gone. ⚠️ The sweep empties nothing while the app is closing (`sweepDrafts`), so the quit's
- * own endings never reach the file.
+ * until the final save finishes. Sends and launches retain their submitted words and attachments
+ * in the book until acceptance, including while a path check or launch outlives the close.
+ * The sweep empties nothing while the app is closing, so the quit's own endings never reach the file.
  *
  * ⛔ **A kill is announced by nothing**, which is why the delay is short: what was typed more than
  * {@link DRAFT_SAVE_DELAY_MS} before a kill has been handed to main (measured on the built app: back

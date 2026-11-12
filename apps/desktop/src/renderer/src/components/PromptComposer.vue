@@ -146,7 +146,7 @@ export const MISSING_ON_RESTORE =
 </script>
 
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { createAttachmentBook, type DraftHanding } from '../lib/drafts'
 import { A_STOP_ASKS_THE_TURN } from '../lib/stop-unanswered'
 import { A_STOP_THEN_THIS_IS_SENT } from '../lib/stop-unanswered'
@@ -169,6 +169,8 @@ const props = withDefaults(
      * text was then whatever the DOM happened to be holding — the previous conversation's.
      */
     draft: string
+    /** The draft owner clears only after runtime acceptance. */
+    submit?: (text: string, intent: SendIntent, attachments: HandedPath[]) => Promise<void>
     /** What the box invites you to type — a new thread asks a different question. */
     placeholder?: string
     /** Who is working, when a turn is running. */
@@ -631,6 +633,11 @@ const stopWordOnly = computed(
  * press into a QUEUE"*. Dropping the second press's meaning on the floor would be `106`'s *"the
  * gesture happened and quietly did nothing"* arriving inside the fix for it.
  */
+let mounted = true
+onBeforeUnmount(() => {
+  mounted = false
+})
+
 const sending = shallowRef<{
   run: Promise<void>
   interrupting: boolean
@@ -668,6 +675,7 @@ async function emitOnce(latch: { interrupting: boolean; voiceVersion: number }):
   // composer that no longer exists. ⚑ A refusal here costs nothing — the words and the chips are
   // still in the box, which is what `019` means by not losing typing.
   if (
+    !mounted ||
     voiceActive.value ||
     latch.voiceVersion !== voice.version.value ||
     !canSend(text.value, props.state, blockedWords.value, staged.value.length)
@@ -684,6 +692,10 @@ async function emitOnce(latch: { interrupting: boolean; voiceVersion: number }):
   // multi-line field the leading whitespace is content, only the trailing newline is noise.
   // ⛔ Read BEFORE the clear below, and passed with the send — see the emit's own note.
   const handed = [...staged.value]
+  if (props.submit) {
+    await props.submit(text.value.trimEnd(), intent, handed)
+    return
+  }
   emit('send', text.value.trimEnd(), intent, handed)
   text.value = ''
   // A refusal from an earlier picker attempt does not describe the next message.

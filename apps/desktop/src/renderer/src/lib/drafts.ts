@@ -1,4 +1,5 @@
 import type { HandedPath } from '../../../shared/attachment-contracts'
+import { isNewAgentDraftSlot } from '../../../shared/saved-drafts'
 import { reactive, shallowReactive, watch, type WatchStopHandle } from 'vue'
 import {
   MAX_HANDED_PATHS,
@@ -281,6 +282,8 @@ export interface DraftBook {
   read(key: string): string
   /** Remember what is typed here. Empty text is forgotten rather than stored as a blank. */
   write(key: string, text: string): void
+  /** Coalesce a submitted gesture for this slot until runtime settles, across composer mounts. */
+  send(key: string, send: () => Promise<boolean>): Promise<void>
   /**
    * Forget every draft that is not in `live`. Called with the conversations still open, so a
    * conversation that ends takes its draft with it: no unbounded growth, and no ghost text
@@ -457,6 +460,8 @@ export function sweepDrafts(
         ...holding.map(draftKey),
         ...waiting.map(draftKey),
         ...inTheList.map(draftKey),
+        ...drafts.keys().filter(isNewAgentDraftSlot),
+        ...drafts.paths.keys().filter(isNewAgentDraftSlot),
       ])
     },
     { immediate: true },
@@ -490,10 +495,19 @@ export function sweepDrafts(
 export function createDraftBook(): DraftBook {
   const drafts = reactive(new Map<string, string>())
   const paths = createAttachmentBook()
+  const sending = new Map<string, Promise<void>>()
 
-  return {
+  const book: DraftBook = {
     paths,
     read: (key) => drafts.get(key) ?? '',
+
+    send(key, send) {
+      const pending = sending.get(key)
+      if (pending) return pending
+      const run = sendKeptDraftOnce(book, key, send).finally(() => sending.delete(key))
+      sending.set(key, run)
+      return run
+    },
 
     write: (key, text) => {
       // An empty draft is the absence of one. Storing '' would leave a slot behind for every
@@ -548,6 +562,7 @@ export function createDraftBook(): DraftBook {
       return refused
     },
   }
+  return book
 }
 
 /**
@@ -621,4 +636,23 @@ export function withTheseToo(
     merged.push(one)
   }
   return { staged: merged, didNotFit }
+}
+
+/** Keep the persisted draft until acceptance; edits made during the send stay in their slot. */
+async function sendKeptDraftOnce(
+  book: DraftBook,
+  key: string,
+  send: () => Promise<boolean>,
+): Promise<void> {
+  const text = book.read(key)
+  const paths = [...book.paths.read(key)]
+  const handing = book.paths.handing(key)
+  const refusal = handing.refusal
+  if (!(await send())) return
+  if (handing.refusal === refusal) handing.refuse(null)
+  if (book.read(key) === text) book.write(key, '')
+  const now = book.paths.read(key)
+  if (now.length === paths.length && now.every((path, index) => path === paths[index])) {
+    book.paths.write(key, [])
+  }
 }

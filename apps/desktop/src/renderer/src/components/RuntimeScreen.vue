@@ -176,6 +176,7 @@ import {
   handRefusedBack,
   sweepDrafts,
 } from '../lib/drafts'
+import { newAgentDraftSlot } from '../../../shared/saved-drafts'
 import { keepTheDraftBook, SAVED_DRAFTS } from '../lib/kept-drafts'
 import { appClosing } from '../lib/app-closing'
 import { homeAttention } from '../lib/home-attention'
@@ -1207,8 +1208,11 @@ function agentHeadingFor(profileSlug: string): string {
 }
 
 /** The sheet owns its presentation; both launch doors still use the same start operation. */
-const startFromSheet: SheetStart = (input, firstMessage, attachments, told) =>
-  start(input, firstMessage, attachments, 'sheet', told)
+const startFromSheet: SheetStart = async (input, firstMessage, attachments, told) => {
+  await drafts.send(newAgentDraftSlot(input.profileId), () =>
+    start(input, firstMessage, attachments, 'sheet', told),
+  )
+}
 
 const notice = ref<string | null>(null)
 
@@ -1650,9 +1654,13 @@ async function startFromFrontDoor(
   firstMessage: string,
   attachments: HandedPath[] = [],
 ): Promise<void> {
-  await frontDoorLaunch.run((release) =>
-    start(input, firstMessage, attachments, 'front-door', { navigated: release }),
-  )
+  await drafts.send(draftSlot(null), async () => {
+    let accepted = false
+    await frontDoorLaunch.run(async (release) => {
+      accepted = await start(input, firstMessage, attachments, 'front-door', { navigated: release })
+    })
+    return accepted
+  })
 }
 
 async function start(
@@ -1661,38 +1669,10 @@ async function start(
   attachments: HandedPath[] = [],
   door: LaunchDoor = 'front-door',
   told: LaunchTold = {},
-): Promise<void> {
+): Promise<boolean> {
   const from = view()
   const sessionId = await store.create(input, door, told.refused)
-  // 🔴 **534 · `if (sessionId) refreshAgents()` used to be here and it has been retired.**
-  //
-  // `355` put it here because *"a conversation that opened may have brought an identity into
-  // being"* — true, and written by `ensureIdentityRow` inside the same `store.create` the host
-  // runs from `register`. ⛔ **That is now where it is announced from**, so the rule lives beside
-  // the write instead of beside one of the callers that can cause it — and the caller it was never
-  // beside was an agent's own start (`spawn_agent` then, `give_work` since D-016), which is how
-  // `534` got a rail that had never heard of an identity a project manager made.
-  // Left where it was typed on failure: the launcher's own slot still holds it (NewConversation
-  // hands it back), and no conversation that did not write it can end up with it. The composer
-  // emptied that slot itself on send, so there is nothing to clear here on the way past.
-  if (!sessionId) {
-    // ⚑ **718 · the sheet keeps its own words** (`710` F-9): its composer hands them back when its
-    // launch settles refused, exactly as the launcher's does (`shouldRestoreDraft`), so nothing is
-    // written into the LAUNCHER's slot for a press that was not made there.
-    if (door === 'sheet') return
-    const home = firstMessageBelongsTo({
-      opened: sessionId,
-      launchError: store.launchError.value,
-      sendError: null,
-    })
-    if (home === 'launcher') {
-      // ⛔ **Both halves, through the book's own restore** (217). `drafts.write` returned the words
-      // and left the paths where the composer had already cleared them — a draft that looks whole
-      // and is not, which is `211`'s defect wearing a new coat and exactly what §2 names.
-      restoreRefused(draftSlot(null), firstMessage, attachments)
-    }
-    return
-  }
+  if (!sessionId) return false
   if (door === 'front-door') {
     const refusal = await saveFirstApproval(
       sessionId,
@@ -1702,8 +1682,7 @@ async function start(
     )
     if (refusal !== null) {
       store.noteLaunchFailure(refusal)
-      restoreRefused(draftSlot(null), firstMessage, attachments)
-      return
+      return false
     }
   }
   told.opened?.()
@@ -1724,7 +1703,7 @@ async function start(
   // ⛔ **The first message carries what was attached to it** (217). `013` makes this the FIRST
   // turn, and it goes through the same `store.send` every later turn does — so the composition and
   // the disclosure `216` built are already here, and what was missing was only the carriage.
-  await store.send(sessionId, firstMessage, 'now', attachments)
+  const accepted = await store.send(sessionId, firstMessage, 'now', attachments)
   // ⛔ **The session opened and its first message did not get out** (221 §2). The conversation is
   // kept — see {@link firstMessageBelongsTo} for why closing it would replace a row you can act on
   // with one you cannot — and the words come back in ITS composer, one press from going out.
@@ -1734,6 +1713,7 @@ async function start(
     sendError: store.get(sessionId)?.error ?? null,
   })
   if (home === 'conversation') restoreRefused(draftKey(sessionId), firstMessage, attachments)
+  return accepted
 }
 
 /**
@@ -1910,37 +1890,23 @@ function select(sessionId: string): void {
 }
 
 /**
- * Send, and if it does not get through, PUT THE TEXT BACK (077).
- *
- * ⚠️ **The composer clears the box the instant it emits**, so without this a refused send takes the
- * message with it. *"A silently dropped message is the worst outcome"* is the dispatch's own
- * standard, and losing it in the renderer would fail that standard just as completely as losing it in
- * the host.
- *
- * Written to the slot the message CAME FROM, keyed by conversation (019) rather than to whatever is
- * on screen when the command finally settles — an await is long enough to change threads in.
- *
- * ⚑ **D-017b · a recorded conversation is continued by what is sent to it** ({@link continueIt}) —
- * and while that start is on its way in, a second message waits behind it (the host queues it behind
- * the start, D-017 · R1).
+ * Keep the original conversation's draft while runtime validates the message. Acceptance clears
+ * only unchanged content in that slot, even if the person has moved to another conversation.
+ * A recorded conversation continues through its existing start-and-send path.
  */
-function send(text: string, intent: SendIntent = 'now', attachments: HandedPath[] = []): void {
+async function send(
+  text: string,
+  intent: SendIntent = 'now',
+  attachments: HandedPath[] = [],
+): Promise<void> {
   const sessionId = activeId.value
   if (!sessionId) return
-  const slot = draftKey(sessionId)
-  const starting = store.isLaunching(sessionId)
-  if (store.get(sessionId)?.phase === 'recorded' && !starting) {
-    void continueIt(sessionId, text, attachments, true)
-    return
-  }
-  // ⛔ **`attachments` comes from the EVENT, not from the book** (216). It was read from the book
-  // here — except it was not read at all, and every attachment a person made was cleared from the
-  // composer and dropped. Carried on the send event, this cannot be forgotten again.
-  void store.send(sessionId, text, starting ? 'queue' : intent, attachments).then((ok) => {
-    // ⛔ **The words and the paths go back together, and each guards itself** — the rule lives in
-    // the book (see {@link DraftBook.restore}) rather than here, because nothing mounts this
-    // component and a rule the mutation table cannot reach is a rule nobody is checking.
-    if (!ok) restoreRefused(slot, text, attachments)
+  await drafts.send(draftKey(sessionId), async () => {
+    const starting = store.isLaunching(sessionId)
+    if (store.get(sessionId)?.phase === 'recorded' && !starting) {
+      return continueIt(sessionId, text, attachments, true, true)
+    }
+    return store.send(sessionId, text, starting ? 'queue' : intent, attachments)
   })
 }
 
@@ -1961,7 +1927,8 @@ async function continueIt(
   attachments: HandedPath[],
   /** ⚑ `false` for words the person did not type — a drawer's *Compact now* — which go back nowhere. */
   giveTheWordsBack: boolean,
-): Promise<void> {
+  draftKept = false,
+): Promise<boolean> {
   const from = view()
   const answer: { came: FirstMessageCameTo | null } = { came: null }
   await draftSweep.reopening(sessionId, async () => {
@@ -1969,10 +1936,15 @@ async function continueIt(
     return answer.came?.openHere ?? false
   })
   const came = answer.came
-  if (giveTheWordsBack && (came === null || !came.sent)) {
+  if (
+    giveTheWordsBack &&
+    (came === null || !came.sent) &&
+    (!draftKept || came?.tookItsPlace !== undefined)
+  ) {
     restoreRefused(draftKey(came?.tookItsPlace ?? sessionId), text, attachments)
   }
   if (came?.tookItsPlace !== undefined && came.openHere) showConversation(came.tookItsPlace, from)
+  return came?.sent ?? false
 }
 
 /**
@@ -1980,7 +1952,7 @@ async function continueIt(
  *
  * ⚑ **`store.send`, the composer's own door**, so the host decides it exactly as it decides a typed
  * `/compact` — the person's turn, the provider's road, every refusal. ⛔ **Not {@link send}**: that
- * one writes a refused message back into the composer's draft, and a person who pressed a button in
+ * one owns the composer's retained draft, and a person who pressed a button in
  * the drawer did not type these words — a refusal is drawn beside the conversation by the pane
  * (`session-error`), as every refused send is, and their draft is left as they left it.
  * ⚑ **D-017b** — a recorded conversation takes it as it takes any message ({@link continueIt}).
@@ -4051,7 +4023,7 @@ onUnmounted(() => {
             :on-read-child-work="readChildWorkForActive"
             :on-read-child-state="readChildStateForActive"
             :on-send-to-child="sendToChildForActive"
-            @send="send"
+            :submit="send"
             @compact-now="compactNow"
             @update:draft="(text) => drafts.write(draftKeyForActive, text)"
             @decide="decide"
@@ -4138,7 +4110,7 @@ onUnmounted(() => {
               @set-approval-default="(mode) => void setApprovalDefault(mode)"
               @auth-changed="authChangedFor"
               @open-providers="openProviderSettings"
-              @start="startFromFrontDoor"
+              :submit="startFromFrontDoor"
               @cancel="store.cancelLaunch()"
               @update:draft="(text) => drafts.write(draftSlot(null), text)"
             />
@@ -4173,6 +4145,7 @@ onUnmounted(() => {
         :capabilities="capabilities"
         :default-approval-mode="frontDoorApproval"
         :start="startFromSheet"
+        :drafts="drafts"
         @settings="openSettings"
         @reopen="(sessionId) => void reopenForGrant(sessionId)"
         @archived="archivedFromTheSheet"

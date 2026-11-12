@@ -4,7 +4,7 @@ import type { CreateSessionInput } from '../../../shared/runtime-ipc'
 
 /** The shared launch reports opening/refusal synchronously at their original points. */
 export type SheetStart = (
-  input: CreateSessionInput,
+  input: CreateSessionInput & { profileId: string },
   firstMessage: string,
   attachments: HandedPath[],
   told: { opened?(): void; refused?(sentence: string): void },
@@ -21,6 +21,8 @@ import { useModelLists } from '../composables/useModelLists'
 import { useClientProviders } from '../client-provider/injection'
 import { readableError } from '../lib/session-record'
 import { afterAPlacedLaunch } from '../lib/placed-launch'
+import type { DraftBook } from '../lib/drafts'
+import { newAgentDraftSlot } from '../../../shared/saved-drafts'
 import { conversationsToReopen, type AConversationToReopen } from '../lib/reopening'
 import { useOverlays, type Overlay } from '../lib/overlay-store'
 import OverlayHost from './OverlayHost.vue'
@@ -35,6 +37,7 @@ const props = defineProps<{
   capabilities: ProviderCapabilityMap | null
   defaultApprovalMode: 'ask' | 'auto' | null
   start: SheetStart
+  drafts: DraftBook
 }>()
 const emit = defineEmits<{
   settings: [tab: SettingsTab]
@@ -121,30 +124,29 @@ function agentHeadingFor(profileSlug: string): string {
  * A refusal after replacement goes through the window-wide notice above the modal layer.
  * The parent still owns creating the conversation, navigating and sending the first message.
  */
-function startPlaced(
-  input: CreateSessionInput,
+async function startPlaced(
+  input: CreateSessionInput & { profileId: string },
   firstMessage: string,
   attachments: HandedPath[],
-): void {
+): Promise<void> {
   const sheet = overlays.overlay.value
   placedFrom.value = sheet
   const stillThere = (): boolean => sheet !== null && overlays.overlay.value === sheet
   let refusal: string | null = null
-  void props
-    .start(input, firstMessage, attachments, {
-      opened: () => {
-        if (afterAPlacedLaunch({ kind: 'opened' }, stillThere()).close) overlays.close()
-      },
-      refused: (sentence) => {
-        refusal = sentence
-      },
-    })
-    .then(() => {
-      if (refusal === null) return
-      const { notice } = afterAPlacedLaunch({ kind: 'refused', sentence: refusal }, stillThere())
-      if (notice !== null) overlays.notify(notice)
-    })
+  await props.start(input, firstMessage, attachments, {
+    opened: () => {
+      if (afterAPlacedLaunch({ kind: 'opened' }, stillThere()).close) overlays.close()
+    },
+    refused: (sentence) => {
+      refusal = sentence
+    },
+  })
+  if (refusal !== null) {
+    const { notice } = afterAPlacedLaunch({ kind: 'refused', sentence: refusal }, stillThere())
+    if (notice !== null) overlays.notify(notice)
+  }
 }
+
 /** Busy/error belong to the overlay object that pressed Start, not just to an agent slug. */
 const placedFrom = shallowRef<unknown>(null)
 const placedHere = computed(
@@ -153,6 +155,12 @@ const placedHere = computed(
 
 /** Closing the current sheet cancels its pending launch; a launch that opened first wins the race. */
 function closeOverlay(): void {
+  const overlay = overlays.overlay.value
+  if (overlay?.kind === 'startAsAgent') {
+    const slot = newAgentDraftSlot(overlay.profileSlug)
+    props.drafts.write(slot, '')
+    props.drafts.paths.write(slot, [])
+  }
   if (placedHere.value && store.isPlacing()) void store.cancelPlaced()
   overlays.close()
 }
@@ -261,7 +269,17 @@ const openAsForSheet = computed<readonly AConversationToReopen[]>(() => {
           :capabilities="props.capabilities"
           :busy="placedHere && store.isPlacing()"
           :error="placedHere ? store.placedError.value : null"
-          @start="startPlaced"
+          :draft="props.drafts.read(newAgentDraftSlot(overlays.overlay.value.profileSlug))"
+          :handing="
+            props.drafts.paths.handing(newAgentDraftSlot(overlays.overlay.value.profileSlug))
+          "
+          :submit="startPlaced"
+          @update:draft="
+            (text) => {
+              if (overlays.overlay.value?.kind === 'startAsAgent')
+                props.drafts.write(newAgentDraftSlot(overlays.overlay.value.profileSlug), text)
+            }
+          "
           @cancel="void store.cancelPlaced()"
           @close="closeOverlay()"
         />

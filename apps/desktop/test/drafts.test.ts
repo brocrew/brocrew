@@ -287,3 +287,21 @@ describe('what a sweep keeps (217 §2)', () => {
     expect(book.read(draftKey('gone'))).toBe('')
   })
 })
+
+describe('a submitted draft releases its pending owner', () => {
+  it('releases on refusal and on error so the same draft can be tried again', async () => {
+    const book = createDraftBook()
+    const key = draftKey('sess_A')
+    book.write(key, 'Still unsent')
+    await expect(
+      book.send(key, async () => {
+        throw new Error('not accepted')
+      }),
+    ).rejects.toThrow('not accepted')
+    expect(book.read(key)).toBe('Still unsent')
+    await book.send(key, async () => false)
+    expect(book.read(key)).toBe('Still unsent')
+    await book.send(key, async () => true)
+    expect(book.read(key)).toBe('')
+  })
+})

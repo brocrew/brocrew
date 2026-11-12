@@ -176,6 +176,7 @@ const props = withDefaults(
 
     /** What is typed on THIS surface and not yet sent (019) — its own slot, no session id yet. */
     draft: string
+    submit?: (input: CreateSessionInput, text: string, attachments: HandedPath[]) => Promise<void>
     /**
      * ⛔ **The FIRST message's attachment transaction** (217, 292 §2) — owned by the caller and keyed
      * `NEW_CONVERSATION`, exactly as {@link draft} is, for the same `019` reason: this surface is
@@ -766,12 +767,17 @@ let lastTried = ''
 /** ⛔ **And the paths that were attached to them** (217, 292 §2) — see the watcher below. */
 let lastTriedPaths: HandedPath[] = []
 
-function startWith(
+async function startWith(
   text: string,
   _intent: SendIntent = 'now',
   attachments: HandedPath[] = [],
-): void {
+): Promise<void> {
   if (approvalBlocked.value !== null || props.busy) return
+  if (props.submit) {
+    launchedFromHere.value = true
+    await props.submit(settings.value, text, attachments)
+    return
+  }
   lastTried = text
   lastTriedPaths = attachments
   // 098: mark this failure as OURS to interpret — see `launchedFromHere` above for why it is kept
@@ -922,6 +928,7 @@ watch(
               :handing="props.handing"
               :can-attach="true"
               :blocked="launchBlocked"
+              :submit="props.submit ? startWith : undefined"
               @send="startWith"
               @interrupt="emit('cancel')"
               @update:draft="(text) => emit('update:draft', text)"

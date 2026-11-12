@@ -50,6 +50,7 @@ import {
   conversationOfSlot,
   LAST_DRAFT_SAVE_CHANNEL,
   LAUNCHER_SLOT,
+  newAgentDraftSlot,
   type SavedDrafts,
 } from '../src/shared/saved-drafts'
 import { createAppLifetime } from '../src/main/app-lifetime'
@@ -624,6 +625,57 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
   ): Promise<SavedDrafts> => {
     return restoreSavedDrafts(savedDraftsBook(db), deps)
   }
+
+  it('keeps distinct new-agent drafts through a quit before any conversation exists', async () => {
+    const first = newAgentDraftSlot('fictional-alpha')
+    const second = newAgentDraftSlot('fictional-beta')
+    const present = join(userData, 'notes.md')
+    writeFileSync(present, 'fixture')
+    const saved = {
+      drafts: [
+        { slot: NEW_CONVERSATION, text: 'BroBot draft', attached: [] },
+        { slot: first, text: 'Alpha draft', attached: [] },
+        { slot: second, text: '', attached: [FILE(present)] },
+      ],
+    }
+    const writer = createDraftWriter(db)
+    writer.expectQuitSaves(1)
+    await writer.write({ ...saved, last: true })
+    expect(await writer.quitSaves()).toBe('saved')
+    const restored = await readBack({ exists: () => false })
+    expect(restored).toEqual(saved)
+    const book = createDraftBook()
+    expect(restoreDrafts(book, restored)).toEqual([])
+    const sweep = sweepDrafts(
+      book,
+      () => [],
+      () => NEW_CONVERSATION,
+      () => [],
+    )
+    expect(book.read(NEW_CONVERSATION)).toBe('BroBot draft')
+    expect(book.read(first)).toBe('Alpha draft')
+    expect(book.paths.read(second)).toEqual([FILE(present)])
+    expect(draftsToSave(book)).toEqual(saved)
+    sweep.stop()
+  })
+
+  it('clearing one agent draft leaves the other agent and launcher slots intact', async () => {
+    const first = newAgentDraftSlot('fictional-alpha')
+    const second = newAgentDraftSlot('fictional-beta')
+    const writer = createDraftWriter(db)
+    await writer.write({
+      drafts: [
+        { slot: NEW_CONVERSATION, text: 'BroBot draft', attached: [] },
+        { slot: first, text: 'Alpha draft', attached: [] },
+        { slot: second, text: 'Beta draft', attached: [] },
+      ],
+    })
+    await writer.write({ drafts: [], cleared: [first] })
+    expect((await readBack({ exists: () => false })).drafts.map((draft) => draft.slot)).toEqual([
+      NEW_CONVERSATION,
+      second,
+    ])
+  })
 
   it('🔴 what is written comes back', async () => {
     const present = join(userData, 'present.md')

@@ -14,7 +14,7 @@ import type { HandedPath } from './attachment-contracts'
 
 /** One slot's unsent message: its words and what is attached to it. */
 export interface SavedDraft {
-  /** `new`, or `session:<id>` — `drafts.ts`' `NEW_CONVERSATION` and `draftKey`. */
+  /** Launcher `new`, agent launcher `new-agent:<profile>`, or conversation `session:<id>`. */
   slot: string
   /** What is typed, or `''` when only attachments are waiting. */
   text: string
@@ -52,6 +52,16 @@ export const LAST_DRAFT_SAVE_CHANNEL = 'app:last-draft-save'
 /** The launcher's slot — `drafts.ts`' `NEW_CONVERSATION`, which has no conversation. */
 export const LAUNCHER_SLOT = 'new'
 
+const NEW_AGENT_SLOT = 'new-agent:'
+
+export function newAgentDraftSlot(profileSlug: string): string {
+  return `${NEW_AGENT_SLOT}${profileSlug}`
+}
+
+export function isNewAgentDraftSlot(slot: string): boolean {
+  return slot.startsWith(NEW_AGENT_SLOT) && slot.length > NEW_AGENT_SLOT.length
+}
+
 const CONVERSATION_SLOT = 'session:'
 
 /**
@@ -59,7 +69,7 @@ const CONVERSATION_SLOT = 'session:'
  * string that is neither — which a reader of the saved file DROPS rather than guesses at.
  */
 export function conversationOfSlot(slot: string): string | null | undefined {
-  if (slot === LAUNCHER_SLOT) return null
+  if (slot === LAUNCHER_SLOT || isNewAgentDraftSlot(slot)) return null
   if (!slot.startsWith(CONVERSATION_SLOT)) return undefined
   const id = slot.slice(CONVERSATION_SLOT.length)
   return id === '' ? undefined : id

@@ -256,6 +256,7 @@ const props = defineProps<{
   identities?: readonly AgentIdentity[] | null
   /** What is typed in THIS conversation and not yet sent (019). Owned by the screen, keyed by id. */
   draft: string
+  submit?: (text: string, intent: SendIntent, attachments: HandedPath[]) => Promise<void>
   /**
    * ⛔ **This conversation's ATTACHMENT TRANSACTION** (216 §2, 292 §2) — owned by the screen and
    * keyed beside {@link draft}, because a message and its attachments are one message.
@@ -2195,6 +2196,7 @@ onUnmounted(() => {
           :interruptible="interruptible"
           :who="who"
           :draft="props.draft"
+          :submit="props.submit"
           :blocked="sendBlocked"
           :handing="props.handing"
           :cwd="props.cwd"

@@ -13,7 +13,7 @@ import {
 import { useAgentStore } from '../composables/useAgentStore'
 import type { AgentStore } from '../lib/agent-store'
 import { YOLO_MEANS } from '../lib/approval-mode'
-import { joiningTheBox, shouldRestoreDraft } from '../lib/drafts'
+import { joiningTheBox, shouldRestoreDraft, type DraftHanding } from '../lib/drafts'
 import PromptComposer from './PromptComposer.vue'
 import ModelPicker from './ModelPicker.vue'
 import type { ModelLists, PickedModel } from '../lib/model-lists'
@@ -122,6 +122,13 @@ const props = defineProps<{
    * is not on screen when a person starts from a Team card: it showed nowhere.
    */
   error?: string | null
+  draft?: string
+  handing?: DraftHanding
+  submit?: (
+    input: CreateSessionInput & { profileId: string },
+    text: string,
+    attachments: HandedPath[],
+  ) => Promise<void>
 }>()
 
 const emit = defineEmits<{
@@ -130,6 +137,7 @@ const emit = defineEmits<{
   /** ⚑ **718** — stop the launch this sheet is running (the composer's Cancel while `starting`). */
   cancel: []
   close: []
+  'update:draft': [text: string]
 }>()
 
 /**
@@ -208,8 +216,14 @@ const yoloReach = computed(() => {
   return status?.state === 'available' ? (status.note ?? '') : ''
 })
 
-const words = ref('')
-const handed = ref<HandedPath[]>([])
+const localWords = ref('')
+const words = computed({
+  get: () => props.draft ?? localWords.value,
+  set: (text: string) => {
+    if (props.draft === undefined) localWords.value = text
+    else emit('update:draft', text)
+  },
+})
 
 /**
  * ⚑ **718 · what was last sent from here, so a refusal can hand it back** — the launcher's
@@ -250,29 +264,25 @@ watch(
   },
 )
 
-function startWith(text: string, _intent?: unknown, attachments: HandedPath[] = []): void {
-  handed.value = attachments
+async function startWith(
+  text: string,
+  _intent?: unknown,
+  attachments: HandedPath[] = [],
+): Promise<void> {
+  const input: CreateSessionInput & { profileId: string } = {
+    provider: provider.value,
+    profileId: props.profileSlug,
+    ...(picked.value === null ? {} : { model: picked.value.model }),
+    ...(picked.value?.effort == null ? {} : { reasoningEffort: picked.value.effort }),
+    ...(folder.value === null ? {} : { cwd: folder.value }),
+    approvalMode: props.defaultApprovalMode ?? 'ask',
+  }
+  if (props.submit) {
+    await props.submit(input, text, attachments)
+    return
+  }
   lastTried = text
-  emit(
-    'start',
-    {
-      provider: provider.value,
-      profileId: props.profileSlug,
-      ...(picked.value === null ? {} : { model: picked.value.model }),
-      ...(picked.value?.effort == null ? {} : { reasoningEffort: picked.value.effort }),
-      // ⚑ **D-016 · omitted for the workspace**, which is what the host resolves an absent `cwd` to.
-      ...(folder.value === null ? {} : { cwd: folder.value }),
-      // 🔴 **The mode the PERSON set, like the other door** (500, HO-036 §3.1). ⛔ **This line used
-      // to read `'ask'` with the note that `417`'s ruling *"is about every launch, not only the
-      // front door's"* — and that is still true, which is exactly why it moved here too.**
-      // HO-036 §3.1 is about every conversation a person starts, and this sheet starts one.
-      // ⚠️ **`?? 'ask'` because `null` is *the row has not been read***, and a launch may only ever
-      // send a word; the safe word is the one that keeps somebody being asked.
-      approvalMode: props.defaultApprovalMode ?? 'ask',
-    },
-    text,
-    attachments,
-  )
+  emit('start', input, text, attachments)
 }
 </script>
 
@@ -365,6 +375,8 @@ function startWith(text: string, _intent?: unknown, attachments: HandedPath[] = 
         :who="who"
         :placeholder="`Tell ${who} what this conversation is about…`"
         :draft="words"
+        :handing="props.handing"
+        :submit="props.submit ? startWith : undefined"
         :can-attach="false"
         @send="startWith"
         @interrupt="cancel"

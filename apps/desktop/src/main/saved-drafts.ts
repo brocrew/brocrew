@@ -65,7 +65,7 @@ function handedFrom(raw: unknown): HandedPath | null {
 
 /**
  * ⚑ **What a reader can recognise of a saved book — from the file, or from the renderer handing one
- * over.** A slot that is neither the launcher's nor a conversation's is dropped; a slot holding
+ * over.** A slot outside the launcher, new-agent and conversation key spaces is dropped; a slot holding
  * nothing is dropped (an empty draft is the absence of one, `drafts.ts`' own rule); a slot met twice
  * keeps its first. ⛔ At most {@link MAX_HANDED_PATHS} paths a slot, the ceiling a message has.
  */
