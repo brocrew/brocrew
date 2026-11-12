@@ -1,7 +1,8 @@
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick, ref } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import UpdatesMenu from '../../src/renderer/src/components/UpdatesMenu.vue'
+import { provideOverlayLayer } from '../../src/renderer/src/components/OverlayHost.vue'
 import { forgetUpdates } from '../../src/renderer/src/composables/useUpdates'
 import type { UpdateState, UpdatesSnapshot } from '../../src/shared/updates'
 import { mount, unmountAll } from './harness'
@@ -294,6 +295,53 @@ describe('B2 · the footer opens it', () => {
     await settle()
     expect(r.all('updates-menu')).toHaveLength(0)
     expect(document.activeElement).toBe(footer)
+  })
+
+  it('keeps the footer menu open while a portaled confirmation owns Escape and pointer presses', async () => {
+    const fake = fakeUpdates(
+      snapshotOf(
+        { kind: 'ready', version: '0.2.0', how: 'restart', path: null },
+        { updateNow: true },
+      ),
+    )
+    const fixture = defineComponent({
+      setup() {
+        const overlay = ref<HTMLElement | null>(null)
+        provideOverlayLayer(overlay)
+        return () =>
+          h('div', [
+            h(SideRail, {
+              open: [],
+              activeId: null,
+              place: null,
+              workspaceFolder: { name: 'Default', path: '/somewhere', isDefault: true },
+            }),
+            h('div', { ref: overlay }),
+          ])
+      },
+    })
+    const r = mount(fixture, {}, { width: 300 })
+    await settle()
+    ;(r.q('rail-version') as HTMLButtonElement).click()
+    await settle()
+    ;(r.q('updates-restart') as HTMLButtonElement).click()
+    await settle()
+    document.activeElement!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    )
+    await settle()
+    expect(r.all('updates-menu')).toHaveLength(1)
+    expect(document.querySelector('[data-cy="updates-confirm-now"]')).toBeNull()
+    ;(r.q('updates-restart') as HTMLButtonElement).click()
+    await settle()
+    const button = document.querySelector<HTMLButtonElement>('[data-cy="updates-confirm-now"]')!
+    expect(button).not.toBeNull()
+    button.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    await nextTick()
+    expect(document.querySelector('[data-cy="updates-confirm-now"]')).toBe(button)
+    button.click()
+    await settle()
+    expect(fake.restartNow).toHaveBeenCalledTimes(1)
   })
 
   it('⚑ Esc closes it from wherever focus went after a press', async () => {
