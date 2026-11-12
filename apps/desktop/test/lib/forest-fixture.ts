@@ -119,7 +119,9 @@ export function readingOf(
 }
 
 /** Empty graph answers on a fake bridge, retaining the calls a store test observes. */
-export function emptyForestBridge(calls: string[]): Pick<import('../../src/shared/runtime-ipc').RuntimeBridge, 'forestReading' | 'forestNodes'> {
+export function emptyForestBridge(
+  calls: string[],
+): Pick<import('../../src/shared/runtime-ipc').RuntimeBridge, 'forestReading' | 'forestNodes'> {
   return {
     // ⚑ **637 · the tenth read whose refusal is a VALUE** — a real reading with no nodes, so the
     // store's `null` can only have come from a REFUSAL and never from an empty workspace.

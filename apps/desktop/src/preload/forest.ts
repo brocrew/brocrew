@@ -1,5 +1,10 @@
 import { command } from './runtime-command'
-import type { ForestScope, ForestReading, ForestListed, ForestNodesPage } from '../shared/the-whole-forest'
+import type {
+  ForestScope,
+  ForestReading,
+  ForestListed,
+  ForestNodesPage,
+} from '../shared/the-whole-forest'
 
 export const forestBridge = {
   /** One forest reading (see `ForestReading`); the scope's literal is written here, field by field. */

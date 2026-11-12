@@ -1,4 +1,11 @@
-import { FakeRuntime, type FakeSessionHandle, type FakeProviderSessions, type StartOptions, type SessionRef, type ResumeOptions } from '@brobot2/runtime'
+import {
+  FakeRuntime,
+  type FakeSessionHandle,
+  type FakeProviderSessions,
+  type StartOptions,
+  type SessionRef,
+  type ResumeOptions,
+} from '@brobot2/runtime'
 import { mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Provider } from '@brobot2/shared'
@@ -46,7 +53,11 @@ export function neutralHostDeps(
 }
 
 /** Close the fixture host before its database and owned directories. */
-export async function closeHostFixture(host: Pick<import('../../src/main/runtime/runtime-host').RuntimeHost, 'closeAll'>, db: Pick<import('../../src/main/db/connection').AppDatabase, 'close'>, ...folders: string[]): Promise<void> {
+export async function closeHostFixture(
+  host: Pick<import('../../src/main/runtime/runtime-host').RuntimeHost, 'closeAll'>,
+  db: Pick<import('../../src/main/db/connection').AppDatabase, 'close'>,
+  ...folders: string[]
+): Promise<void> {
   await host.closeAll()
   db.close()
   for (const folder of folders) rmSync(folder, { recursive: true, force: true })

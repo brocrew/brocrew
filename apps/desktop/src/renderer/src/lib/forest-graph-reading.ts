@@ -2,7 +2,11 @@ import type { ForestSnapshot } from './forest-reading'
 import type { WhatIsBeingDone } from '../../../shared/what-is-being-done'
 import { forestView, type ForestViewInput } from './the-forest'
 
-export function foldGraphReading(snapshot: ForestSnapshot | null, atWork: WhatIsBeingDone | null, facts: Omit<ForestViewInput, 'forest' | 'atWork'>) {
+export function foldGraphReading(
+  snapshot: ForestSnapshot | null,
+  atWork: WhatIsBeingDone | null,
+  facts: Omit<ForestViewInput, 'forest' | 'atWork'>,
+) {
   const view = forestView({ ...facts, forest: snapshot?.forest ?? null, atWork })
   if (view === null || snapshot === null) return null
   const context = new Set(snapshot.reading.context)
@@ -20,4 +24,3 @@ export function foldGraphReading(snapshot: ForestSnapshot | null, atWork: WhatIs
     ),
   }
 }
-

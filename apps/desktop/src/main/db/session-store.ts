@@ -295,7 +295,7 @@ import { workFileGroup } from '../../shared/work-file-groups'
 type SpawnedConversation = Omit<SpawnEdge, 'running'>
 
 export type { ForestedConversation, ForestedNode } from './forest-store'
-import type { ForestedConversation, ForestedNode } from './forest-store'
+import type { ForestedNode } from './forest-store'
 
 interface ConversationBinding {
   /** Always present when this app holds the row — the column is `NOT NULL`. */

@@ -2672,7 +2672,9 @@ const theForest = ref<ForestSnapshot | null>(null)
 const forestPending = ref(false)
 const forestError = ref<string | null>(null)
 let forestEpoch = 0
-const theForestView = computed(() => foldGraphReading(theForest.value, beingDone.value, forestFacts()))
+const theForestView = computed(() =>
+  foldGraphReading(theForest.value, beingDone.value, forestFacts()),
+)
 const ownForest = ref<ForestSnapshot | null>(null)
 const ownForestFor = ref<string | null>(null)
 const ownForestPending = ref(false)
