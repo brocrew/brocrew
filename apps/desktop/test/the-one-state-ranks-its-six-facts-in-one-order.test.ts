@@ -10,7 +10,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
+import { RuntimeHost,  } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   IN_THE_BACKGROUND,
@@ -313,7 +313,7 @@ describe('§2 · a live session’s levels reach the wire as the ONE state', () 
     throw new Error(`timed out waiting for ${what}`)
   }
   /** ⚑ Asked through the clause no grant narrows, as `a-card-that-says-idle.test.ts` does. */
-  const cardOf = (id: string) => host.agentCard(id, THE_APP_ITSELF, id)
+  const cardOf = (id: string) => host.agentCard(id)
 
   it('🔴 what a live session says it is still running reaches the wire as `running in the background · <it>`', async () => {
     const { sessionId } = await host.createSession({ provider: 'claude', cwd: work }, window)

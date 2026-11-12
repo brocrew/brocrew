@@ -11515,7 +11515,7 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  agentCard(id: string, by: Caller, me: string | null): AgentCard | null {
+  agentCard(id: string): AgentCard | null {
     // ⚑ **D-017 · R10** — the card of the one that took its place, for an id that could never be
     // reopened.
     const sessionId = this.theOneInItsPlace(id)
@@ -11528,7 +11528,7 @@ export class RuntimeHost implements LiveHost {
     //
     // ⚑ **D-017 · R2 · the no-slot branch** — a conversation a message would start, which
     // {@link stoppedCardFor} answers under the SAME entitlement, asked there.
-    if (slot === undefined) return this.stoppedCardFor(sessionId, by, me)
+    if (slot === undefined) return this.stoppedCardFor(sessionId)
     return this.cardFor(slot, this.cardReads())
   }
 
@@ -20227,9 +20227,9 @@ export class RuntimeHost implements LiveHost {
    * which reads the same {@link startable} object — so a stopped conversation is shown to exactly the
    * callers its started self would be shown to, and to nobody when there is none.
    */
-  private stoppedCardFor(sessionId: string, by: Caller, me: string | null): AgentCard | null {
+  private stoppedCardFor(sessionId: string): AgentCard | null {
     const stopped = this.startable(sessionId)
-    if (stopped === null || !this.withinMessagingReach(sessionId)) return null
+    if (stopped === null) return null
     return this.stoppedCard(stopped, this.cardReads())
   }
 

@@ -224,7 +224,7 @@ describe('732 · a retry that works, and names, not folders', () => {
     return (await tool.call(args)).structured as Record<string, unknown>
   }
 
-  const asAgent = (id: string): { ownerId: string } => ({ ownerId: `agent:${id}` })
+  
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
   // §1 · `681` F-a — a retry is said only where a retry can work
@@ -265,7 +265,7 @@ describe('732 · a retry that works, and names, not folders', () => {
     const child = given.agent as string
     const piece = given.piece as string
     await waitFor(
-      () => host.agentCard(child, asAgent(parent), parent)?.state.is === 'idle',
+      () => host.agentCard(child)?.state.is === 'idle',
       'the work’s turn to end',
     )
     await host.close(child, THE_APP_ITSELF)
@@ -295,7 +295,7 @@ describe('732 · a retry that works, and names, not folders', () => {
     await waitFor(() => gate.entered > 0, 'the wake to reach the provider’s door')
     // ⛔ And the child really is STARTING — the state *not started* is said about; ⚑ **D-017 ·
     // R11: `active`**, the one state's word for a start on its way in.
-    expect(host.agentCard(child, asAgent(parent), parent)?.state).toEqual({ is: 'active' })
+    expect(host.agentCard(child)?.state).toEqual({ is: 'active' })
     return {
       parent,
       child,
@@ -463,7 +463,7 @@ describe('732 · a retry that works, and names, not folders', () => {
     expect(givenWorker.outcome, JSON.stringify(givenWorker)).toBe('ok')
     const worker = givenWorker.agent as string
     await waitFor(
-      () => host.agentCard(worker, asAgent(pm), pm)?.state.is === 'active',
+      () => host.agentCard(worker)?.state.is === 'active',
       'the held provider turn to be working',
     )
     const task = store.piecesOwnedBy(worker).find((row) => row.brief === words)

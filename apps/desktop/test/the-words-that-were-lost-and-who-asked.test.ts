@@ -414,7 +414,7 @@ describe('729 · the words that were lost, and who asked', () => {
       if (piece === undefined) throw new Error('no piece')
       host.claimSession(pm, window)
       await waitFor(
-        () => host.agentCard(pm, window, null)?.state.is === 'active',
+        () => host.agentCard(pm)?.state.is === 'active',
         'the giver’s turn to be working',
       )
       await theAnswerIsHeldFor(pm, worker, piece)

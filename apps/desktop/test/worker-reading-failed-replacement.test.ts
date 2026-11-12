@@ -100,7 +100,7 @@ describe('worker metadata after a later replacement with an unread ordinary cach
         } else {
           expect(latest.worker).toMatchObject({ number: 1, bornAs: birth })
           expect(
-            next.agentCard(current, { ownerId: agentCallerId(caller) }, caller)?.worker,
+            next.agentCard(current)?.worker,
           ).toMatchObject({ number: 1, bornAs: birth })
         }
       } finally {

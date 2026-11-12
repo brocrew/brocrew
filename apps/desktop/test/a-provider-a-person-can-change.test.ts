@@ -193,7 +193,7 @@ describe('433 §A · the provider a person can change', () => {
       expect(sessionProvider(chosen.agent)).toBe('codex')
 
       expect(sessionProvider(brobot)).toBe('claude')
-      expect(host.agentCard(brobot, { ownerId: window.ownerId }, null)?.provider).toBe('claude')
+      expect(host.agentCard(brobot)?.provider).toBe('claude')
       expect(host.sessionIds).toContain(brobot)
       expect(sessionProvider(inherited.agent)).toBe('claude')
     })

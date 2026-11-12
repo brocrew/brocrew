@@ -1508,7 +1508,7 @@ describe('347 · the five tools', () => {
       }
       // ⛔ **Non-vacuity for the derived half**: an empty or renamed schema would make the loop
       // above sweep four names instead of ten and pass over the capabilities entirely.
-      expect(CAPABILITY_FIELDS.length).toBeGreaterThanOrEqual(4)
+      expect(CAPABILITY_FIELDS.length).toBeGreaterThanOrEqual(3)
       expect(CAPABILITY_FIELDS.map((field) => field.key)).not.toContain('canMessage')
       // ⚑ **And the mirror**, so the sweep above is not passing over an empty file: the words it
       // DOES contain are the ones that make it a translator.

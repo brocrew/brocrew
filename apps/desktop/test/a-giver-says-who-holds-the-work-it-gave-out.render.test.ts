@@ -26,7 +26,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
+import { RuntimeHost,  } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -725,7 +725,7 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
   const lastSaid = (id: string): AgentState | undefined => saidOf(id).at(-1)?.state
 
   /** The card the app itself reads, through the clause no grant narrows. */
-  const cardOf = (id: string) => host.agentCard(id, THE_APP_ITSELF, id)
+  const cardOf = (id: string) => host.agentCard(id)
   const stateOf = (id: string): AgentState | undefined => cardOf(id)?.state
 
   /** A list read, as the window makes it — it resets what was last said of every row it names. */

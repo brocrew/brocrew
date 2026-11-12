@@ -366,7 +366,7 @@ describe('433 §B · the agents a reach can see', () => {
       // ⛔ **The same card, asked by a caller nobody disputes is entitled**: the conversation
       // itself, through the `me` clause. ⚑ **D-017 · R11** — a tool's payload carries the card's one
       // state in its words (`agentStateWords`), so the host's card is compared in those words.
-      const itsOwn = host.agentCard(manager, speakingAs(manager), manager)
+      const itsOwn = host.agentCard(manager)
       expect(itsOwn).not.toBeNull()
       if (itsOwn === null) throw new Error('unreachable')
       expect({ ...itsOwn, state: agentStateWords(itsOwn.state) }).toEqual(fromAcross.agent)

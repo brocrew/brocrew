@@ -302,7 +302,7 @@ describe('a successful answer says in words what its payload held', () => {
         decorate: (handle) => holdingAWorkingTurn(handle, 'interrupted'),
       })
       await waitFor(
-        () => host.agentCard(worker, { ownerId: `agent:${pm}` }, pm)?.state.is === 'active',
+        () => host.agentCard(worker)?.state.is === 'active',
         'the held turn to be working',
       )
       await ok(pmTools, 'interrupt_agent', { agent: worker, reason: 'a change of plan' })
@@ -320,7 +320,7 @@ describe('a successful answer says in words what its payload held', () => {
         decorate: (handle) => holdingAWorkingTurn(handle, 'completed'),
       })
       await waitFor(
-        () => host.agentCard(worker, { ownerId: `agent:${pm}` }, pm)?.state.is === 'active',
+        () => host.agentCard(worker)?.state.is === 'active',
         'the held turn to be working',
       )
       await ok(pmTools, 'interrupt_agent', { agent: worker, reason: 'a change of plan' })
@@ -372,7 +372,7 @@ describe('a successful answer says in words what its payload held', () => {
         decorate: (handle) => holdingAWorkingTurn(handle, 'never'),
       })
       await waitFor(
-        () => host.agentCard(worker, { ownerId: `agent:${pm}` }, pm)?.state.is === 'active',
+        () => host.agentCard(worker)?.state.is === 'active',
         'the held turn to be working',
       )
       await ok(pmTools, 'interrupt_agent', { agent: worker, reason: 'a change of plan' })

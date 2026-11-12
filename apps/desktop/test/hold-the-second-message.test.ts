@@ -275,7 +275,7 @@ describe('657 · hold the second message instead of refusing it', () => {
     expect(replied.outcome, JSON.stringify(replied)).toBe('ok')
     await aPersonLetsItFinish(child)
     await until(
-      () => host.agentCard(child, window, null)?.state.is === 'idle',
+      () => host.agentCard(child)?.state.is === 'idle',
       'the child to be idle',
     )
     // ⚑ …and hands it back, so the child is nobody's again — as a child a give started is.
@@ -452,7 +452,7 @@ describe('657 · hold the second message instead of refusing it', () => {
     gateTheSecondAttempt = false
     await aPersonLetsItFinish(child)
     await until(
-      () => host.agentCard(child, window, null)?.state.is === 'idle',
+      () => host.agentCard(child)?.state.is === 'idle',
       'the child to be free',
     )
     signInGate?.open()

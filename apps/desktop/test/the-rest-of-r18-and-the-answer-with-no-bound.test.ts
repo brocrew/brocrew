@@ -591,7 +591,7 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
         }),
         tick(),
       )
-      const card = host.agentCard(worker, window, worker)
+      const card = host.agentCard(worker)
       expect(card?.lastAskToStop?.by).toBe('a-person')
       expect(card?.rowsUnread).toBe(0)
     })
@@ -599,7 +599,7 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
     it('🔴 a torn ask and NO readable one: the card says nobody asked — and that it passed one over', async () => {
       const worker = await personOpens('worker')
       plantAsk(worker, 90_001, TORN)
-      const card = host.agentCard(worker, window, worker)
+      const card = host.agentCard(worker)
       expect(card?.lastAskToStop).toBeNull()
       expect(card?.rowsUnread).toBe(1)
     })
@@ -608,7 +608,7 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
       const worker = await personOpens('worker')
       plantAsk(worker, 90_001, readable)
       plantAsk(worker, 90_002, TORN)
-      const card = host.agentCard(worker, window, worker)
+      const card = host.agentCard(worker)
       expect(card?.lastAskToStop?.by).toBe('a-person')
       // ⛔ **Until `676` this was silent** (`671` F3): the answer may be older than the truth.
       expect(card?.rowsUnread).toBe(1)
@@ -618,13 +618,13 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
       const worker = await personOpens('worker')
       plantAsk(worker, 90_001, TORN)
       plantAsk(worker, 90_002, readable)
-      expect(host.agentCard(worker, window, worker)?.rowsUnread).toBe(0)
+      expect(host.agentCard(worker)?.rowsUnread).toBe(0)
     })
 
     it('🔴 a torn row in the LAST ENDED TURN’s rows is counted — and get_agent_status hands the model the count', async () => {
       const { worker, pmTools } = await aPmAndItsWorker()
       await letTheTurnFinish(worker)
-      expect(host.agentCard(worker, window, worker)?.rowsUnread).toBe(0)
+      expect(host.agentCard(worker)?.rowsUnread).toBe(0)
       expect((await call(pmTools, 'get_agent_status', { agent: worker })).text).not.toContain(
         'could not be read',
       )
@@ -633,7 +633,7 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
         TORN,
         worker,
       )
-      expect(host.agentCard(worker, window, worker)?.rowsUnread).toBe(1)
+      expect(host.agentCard(worker)?.rowsUnread).toBe(1)
       const status = await call(pmTools, 'get_agent_status', { agent: worker })
       expect(status.structured.outcome).toBe('ok')
       expect((status.structured.agent as { rowsUnread: number }).rowsUnread).toBe(1)

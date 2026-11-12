@@ -456,7 +456,7 @@ describe('610 · the roster that names nobody', () => {
       await expect(host.resumeSession(his, window)).rejects.toThrow(
         /can be read and exported, but not continued here/,
       )
-      expect(host.agentCard(his, { ownerId: window.ownerId }, null)).toBeNull()
+      expect(host.agentCard(his)).toBeNull()
     })
 
     it('⚑ the paired positive · a row of OURS has no refusal and does reopen', async () => {
@@ -465,7 +465,7 @@ describe('610 · the roster that names nobody', () => {
       expect(store.find(ours)?.homeRefusal).toBeNull()
       const back = await host.resumeSession(ours, window)
       expect(back.sessionId).toBe(ours)
-      expect(host.agentCard(ours, { ownerId: window.ownerId }, null)?.whose).toEqual({
+      expect(host.agentCard(ours)?.whose).toEqual({
         is: 'an-identity-this-app-holds',
         profile: 'ada',
         name: 'Ada',
@@ -505,9 +505,9 @@ describe('610 · the roster that names nobody', () => {
       const ada = await personOpens('ada')
       const everyCard: AgentCard[] = [
         ...host.agentsVisibleTo({ ownerId: window.ownerId }, null).agents,
-        ...(host.agentCard(ada, { ownerId: window.ownerId }, null) === null
+        ...(host.agentCard(ada) === null
           ? []
-          : [host.agentCard(ada, { ownerId: window.ownerId }, null) as AgentCard]),
+          : [host.agentCard(ada) as AgentCard]),
       ]
       expect(everyCard.length).toBeGreaterThan(0)
       for (const card of everyCard) {

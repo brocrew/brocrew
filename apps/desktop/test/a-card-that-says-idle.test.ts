@@ -15,7 +15,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
+import { RuntimeHost,  } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
 /**
@@ -198,7 +198,7 @@ describe('656 · a card that says idle while the door says closing', () => {
   }
 
   /** ⚑ Asked through the clause no grant narrows — a conversation is told about itself. */
-  const cardOf = (id: string) => host.agentCard(id, THE_APP_ITSELF, id)
+  const cardOf = (id: string) => host.agentCard(id)
 
   /**
    * ⛔ **Is the finalize window open?** — the one fact the test waits on, read off the LIST a window
