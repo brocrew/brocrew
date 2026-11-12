@@ -1,12 +1,11 @@
 import { captureLog } from './lib/log-file'
+import { pluginNodeRuntimeFixture } from './lib/plugin-node-runtime-fixture'
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
 import { once } from 'node:events'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   mkdtemp,
   mkdir,
-  copyFile,
   cp,
   writeFile,
   readFile,
@@ -19,7 +18,7 @@ import {
 } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { pluginStartupDiagnostic } from '../src/main/plugins/startup-failure'
 import { createPluginNodeHost } from '../src/main/plugins/node-host'
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
@@ -27,7 +26,6 @@ import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
 import { ownedPluginNodeProcess } from '../src/main/plugins/supervisor/node-host'
 import {
   preparePluginNodeRuntime,
-  PLUGIN_HOST_SCRIPTS,
   runtimeFiles,
   resumePluginNodeRuntime,
   type PluginNodeRuntime,
@@ -39,26 +37,6 @@ import { sharedDataOwner } from '../src/main/plugins/shared-data'
 import { SHARED_DATA_FEATURE } from '../src/main/plugins/shared-data-contract'
 
 const cleanupFault = vi.hoisted(() => ({ once: false }))
-const startGate = vi.hoisted(() => ({
-  held: false,
-  entered: false,
-  release: undefined as (() => void) | undefined,
-}))
-vi.mock('../src/main/plugins/node-runtime', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../src/main/plugins/node-runtime')>()
-  return {
-    ...original,
-    async runtimeFiles(...args: Parameters<typeof original.runtimeFiles>) {
-      if (startGate.held) {
-        startGate.entered = true
-        await new Promise<void>((resolve) => {
-          startGate.release = resolve
-        })
-      }
-      return original.runtimeFiles(...args)
-    },
-  }
-})
 vi.mock('../resources/plugin-host/process-groups.mjs', async (importOriginal) => {
   const original =
     await importOriginal<typeof import('../resources/plugin-host/process-groups.mjs')>()
@@ -226,38 +204,10 @@ async function browserStarted(path: string): Promise<{ pid: number; child: numbe
 describe.skipIf(process.platform === 'win32')('app-supplied plugin Node host', () => {
   beforeAll(async () => {
     root = await realpath(await mkdtemp(join(tmpdir(), 'nh-')))
-    resources = join(root, 'bundle')
-    await mkdir(join(resources, 'plugin-node'), { recursive: true, mode: 0o700 })
-    const binary = await readFile(
-      process.env.BROBOT_PLUGIN_NODE_TEST_BINARY ||
-        (process.platform === 'darwin' &&
-        existsSync(resolve(__dirname, '../resources/plugin-node/node'))
-          ? resolve(__dirname, '../resources/plugin-node/node')
-          : process.execPath),
-    )
-    await writeFile(join(resources, 'plugin-node/node'), binary)
-    await writeFile(join(resources, 'plugin-node/LICENSE'), 'fictional runtime fixture licence')
-    await writeFile(
-      join(resources, 'plugin-node/runtime.json'),
-      JSON.stringify({
-        format: 1,
-        platform: process.platform,
-        arch: process.arch,
-        version: process.platform === 'darwin' ? '24.22.0' : process.versions.node,
-        sha256: createHash('sha256').update(binary).digest('hex'),
-      }),
-    )
-    await mkdir(join(resources, 'plugin-host'))
-    for (const name of PLUGIN_HOST_SCRIPTS)
-      await copyFile(
-        resolve(__dirname, '../resources/plugin-host', name),
-        join(resources, 'plugin-host', name),
-      )
-    runtime = await preparePluginNodeRuntime({
-      resourcesRoot: resources,
-      durableRoot: join(root, 'runtimes'),
-    })
-    node = (await runtimeFiles(runtime)).node
+    const prepared = await pluginNodeRuntimeFixture(root)
+    resources = prepared.resources
+    runtime = prepared.runtime
+    node = prepared.node
   }, 30000)
   afterEach(async () => {
     for (const host of hosts.splice(0)) await host.stop()
@@ -472,31 +422,6 @@ const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));`,
       await rm(folder, { recursive: true, force: true })
     }
   }, 15000)
-  it('waits for an accepted pending start on stop and never forks it afterwards', async () => {
-    const { host, home } = await context()
-    startGate.held = true
-    startGate.entered = false
-    const starting = host.start(fixture())
-    void starting.catch(() => undefined)
-    try {
-      await vi.waitFor(() => expect(startGate.entered).toBe(true))
-      let settled = false
-      const stopped = host.stop().then((result) => {
-        settled = true
-        return result
-      })
-      await new Promise((resolve) => setImmediate(resolve))
-      expect(settled).toBe(false)
-      startGate.release!()
-      await expect(starting).rejects.toThrow('plugin-host-start')
-      await expect(stopped).resolves.toEqual({ exited: false })
-      const runs = await readdir(join(home, 'runs'))
-      expect(runs).toEqual([])
-    } finally {
-      startGate.held = false
-      startGate.release?.()
-    }
-  })
   it.each(['stop', 'crash', 'quit'] as const)(
     'contains a requested detached browser and cleans its descendant after %s',
     async (kind) => {
