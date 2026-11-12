@@ -26770,14 +26770,14 @@ export class RuntimeHost implements LiveHost {
     const row = this.deps.store.recordedOne(sessionId)
     if (slot !== undefined) {
       if (by !== THE_APP_ITSELF) this.assertMayMessage(slot, by)
-    } else if (row === null || this.startable(sessionId) === null) {
-      throw new Error(`unknown session: ${sessionId}`)
-    } else if (theSurfaceAsking(by) === null && !this.withinMessagingReach(sessionId)) {
-      // ⛔ **A caller that is no person's window, no agent and not this app** — a commander (340) —
-      // starts only a conversation it would command as it runs, and a restart hands command to no
-      // caller that did not ask for it ({@link reserve}'s re-derived `commandedBy`): it fails closed,
-      // before anything is started, with the word a conversation this host is not running gave it.
-      throw new Error(`unknown session: ${sessionId}`)
+    } else {
+      const stopped = this.startable(sessionId)
+      if (row === null || stopped === null) {
+        throw new Error(`unknown session: ${sessionId}`)
+      }
+      if (theSurfaceAsking(by) === null && !mayCommand(this.commandedNow(stopped), by)) {
+        throw new Error(`unknown session: ${sessionId}`)
+      }
     }
     if (theSurfaceAsking(by) === null) return
     if (!hasSomethingToSend(text, attachments.length)) throw new Error(NOTHING_TO_SEND)
@@ -41663,6 +41663,7 @@ export class RuntimeHost implements LiveHost {
   private assertMayMessage(slot: SessionSlot, by: Caller): void {
     const speaking = sessionSpeakingAs(by)
     if (speaking !== null && speaking !== slot.id) return
+    if (speaking === null && mayCommand(this.commandedNow(slot), by)) return
     this.assertMayControl(slot, by)
   }
 

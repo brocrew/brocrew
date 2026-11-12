@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeRuntime, type FakeSessionHandle, type StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
@@ -273,6 +273,13 @@ describe('340 · a session an agent may drive and may not decide for', () => {
 
       await host.send(sessionId, 'DO IT', PLANNER)
       await waitFor(() => providerEchoed(sessionId, 'DO IT'), 'the commanded turn to finish')
+      await host.queueMessage(sessionId, 'QUEUED WORK', PLANNER)
+      await waitFor(() => providerEchoed(sessionId, 'QUEUED WORK'), 'the queued turn to finish')
+      expect(
+        ledger(sessionId)
+          .filter((event) => event.type === 'user_turn')
+          .map((event) => event.text),
+      ).toEqual(['DO IT', 'QUEUED WORK'])
     })
 
     it('⛔ …and the same session spawned with NO commander refuses that identical caller', async () => {
@@ -652,6 +659,8 @@ describe('340 · a session an agent may drive and may not decide for', () => {
 
       // ⛔ **What a restart is, from this host's point of view**: the ledger survives and the slots
       // do not. `commandedBy` lives on a slot and `db/` has never held an owner of any kind.
+      const start = vi.spyOn(provider(), 'start')
+      const resume = vi.spyOn(provider(), 'resume')
       const afterRestart = buildHost()
       try {
         expect(afterRestart.sessionIds).toEqual([])
@@ -662,6 +671,16 @@ describe('340 · a session an agent may drive and may not decide for', () => {
         expect(await refusalOf(() => afterRestart.send(sessionId, 'still mine?', PLANNER))).toBe(
           `unknown session: ${sessionId}`,
         )
+        for (const by of [PLANNER, STRANGER]) {
+          expect(await refusalOf(() => afterRestart.send(sessionId, 'stopped send', by))).toBe(
+            `unknown session: ${sessionId}`,
+          )
+          expect(
+            await refusalOf(() => afterRestart.queueMessage(sessionId, 'stopped queue', by)),
+          ).toBe(`unknown session: ${sessionId}`)
+        }
+        expect(start).not.toHaveBeenCalled()
+        expect(resume).not.toHaveBeenCalled()
         // …and the conversation itself is not lost — it is a recording a person reopens.
         expect(providerEchoed(sessionId, 'BEFORE THE RESTART')).toBe(true)
       } finally {
