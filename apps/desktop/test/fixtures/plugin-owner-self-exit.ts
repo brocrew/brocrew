@@ -43,10 +43,12 @@ const owner = await PluginSupervisor.start({
   revoke: async () => {
     if (mode === 'start-failure' || mode === 'revoke-hung') await revocations
   },
-  onBlockedWithoutProcesses: () => {
-    if (mode === 'gated') process.send?.({ event: 'retirement-ready' })
-    else process.exit(0)
-  },
+  onBlocked: ['live', 'unproved', 'start-failure'].includes(mode)
+    ? undefined
+    : () => {
+        if (mode === 'gated') process.send?.({ event: 'retirement-ready' })
+        else process.exit(0)
+      },
 })
 void owner.closed.then(() => process.exit(0))
 let physical: ChildProcess | undefined
