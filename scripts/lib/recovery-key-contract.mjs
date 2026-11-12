@@ -16,7 +16,7 @@ export function checkBetaKeyContract({ beta, sealedRows, status, entries, entryF
     status: status ?? null,
     entries,
     entry,
-    preservedEntry: fileBacked ? entries?.[0] ?? null : entry,
+    preservedEntry: fileBacked ? (entries?.[0] ?? null) : entry,
   }
   if (fileBacked) {
     check(status?.keyFilePresent === true, 'the beta saved its API keys in api-keys.json', facts)
