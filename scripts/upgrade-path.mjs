@@ -17,10 +17,10 @@ import {
   checkedProofCopy,
 } from './lib/recovery-measurement.mjs'
 import { withMovedFiles } from './lib/moved-state-files.mjs'
+import { describeDatabase, readDatabase, whole } from './lib/upgrade-database.mjs'
 import {
   appendFileSync,
   closeSync,
-  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -43,7 +43,6 @@ import {
   betaAsset,
   bundleIn,
   buildLineage,
-  canonicalRow,
   CHECKPOINT_LINE,
   contains,
   copiesSince,
@@ -65,7 +64,6 @@ import {
   launchSetupExpected,
   lineageFits,
   READY_LINE,
-  recordedLineage,
   recordedWith,
   registryKept,
   workspaceRegistrySnapshot,
@@ -1275,72 +1273,6 @@ async function phase(stage, body) {
   }
 }
 
-function readDatabase(folder, file = 'brobot2.sqlite') {
-  const copy = mkdtempSync(join(tmpdir(), 'upgrade-path-db-'))
-  try {
-    for (const suffix of ['', '-wal', '-shm', '-journal']) {
-      if (existsSync(join(folder, `${file}${suffix}`))) {
-        copyFileSync(join(folder, `${file}${suffix}`), join(copy, `brobot2.sqlite${suffix}`))
-      }
-    }
-    const db = new DatabaseSync(join(copy, 'brobot2.sqlite'), { readOnly: true })
-    try {
-      const integrity = db
-        .prepare('PRAGMA integrity_check')
-        .all()
-        .map((row) => row.integrity_check)
-      const names = db
-        .prepare(
-          "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
-        )
-        .all()
-        .map((row) => row.name)
-      const quoted = (name) => `"${name.replace(/"/g, '""')}"`
-      const tables = Object.fromEntries(
-        names.map((name) => [name, db.prepare(`SELECT * FROM ${quoted(name)}`).all()]),
-      )
-      const keys = Object.fromEntries(
-        names.map((name) => [
-          name,
-          db
-            .prepare(`PRAGMA table_info(${quoted(name)})`)
-            .all()
-            .filter((column) => column.pk > 0)
-            .sort((a, b) => a.pk - b.pk)
-            .map((column) => column.name),
-        ]),
-      )
-      const lineage = recordedLineage(
-        db.prepare('SELECT hash, created_at FROM __drizzle_migrations ORDER BY created_at').all(),
-      )
-      return { integrity, tables, keys, lineage }
-    } finally {
-      db.close()
-    }
-  } finally {
-    rmSync(copy, { recursive: true, force: true })
-  }
-}
-const whole = (read) => read.integrity.length === 1 && read.integrity[0] === 'ok'
-const describeDatabase = (read) => ({
-  integrity: read.integrity,
-  schema: read.lineage.length,
-  lineage: read.lineage,
-  tables: Object.fromEntries(
-    Object.entries(read.tables).map(([name, rows]) => [
-      name,
-      {
-        rows: rows.length,
-        sha256: sha256(
-          rows
-            .map((row) => canonicalRow(row))
-            .sort()
-            .join('\n'),
-        ),
-      },
-    ]),
-  ),
-})
 const stateFiles = stateFileNames(
   readFileSync(join(REPO, 'apps', 'desktop', 'src', 'main', 'recovery', 'state-files.ts'), 'utf8'),
 )
