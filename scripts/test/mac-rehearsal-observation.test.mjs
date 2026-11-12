@@ -535,7 +535,10 @@ it('uses Updates and its native Download/restart preparation from offered or che
       expect(fixture.bundleChecked).toHaveBeenCalledExactlyOnceWith(bundle, '0.2.16')
       expect(quarantine).toHaveBeenCalledExactlyOnceWith(zip, 'downloaded-zip')
       expect(fixture.summary.download).toEqual({
-        zip, size: 123, sha512: 'published', bundle: { version: '0.2.16' },
+        zip,
+        size: 123,
+        sha512: 'published',
+        bundle: { version: '0.2.16' },
       })
       expect(fixture.transport.requireHealthy).toHaveBeenCalledOnce()
       expect(commands).not.toHaveBeenCalled()

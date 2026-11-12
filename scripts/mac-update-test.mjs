@@ -1,4 +1,10 @@
-import { waitForNativeMacDownload, unpackDownloadedMacZip, quitRestartedMacApp, observeMacReplacement, macFirstStartReceipt } from './lib/mac-native-upgrade.mjs'
+import {
+  waitForNativeMacDownload,
+  unpackDownloadedMacZip,
+  quitRestartedMacApp,
+  observeMacReplacement,
+  macFirstStartReceipt,
+} from './lib/mac-native-upgrade.mjs'
 import { readUpdateFile } from './release-check.mjs'
 import { parseArgs, isDeepStrictEqual } from 'node:util'
 import { createServer } from 'node:http'
@@ -552,7 +558,10 @@ try {
   await click(cdpA, '[data-cy=updates-download]')
   await waitForNativeMacDownload(cdpA, VERSION_B, 'electron-updater ZIP download completes')
   const { zip, bundle: downloadedBundle } = await unpackDownloadedMacZip({
-    app, published, unpacked: join(process.env.RUNNER_TEMP, 'mac-update-downloaded-b'), run,
+    app,
+    published,
+    unpacked: join(process.env.RUNNER_TEMP, 'mac-update-downloaded-b'),
+    run,
   })
   await run('/usr/bin/xcrun', ['stapler', 'validate', downloadedBundle])
   await run('/usr/sbin/spctl', ['-a', '-vv', downloadedBundle])

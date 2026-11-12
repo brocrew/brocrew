@@ -48,7 +48,6 @@ export async function quitRestartedMacApp(child, processInfo) {
   return null
 }
 
-
 export async function observeMacReplacement({ app, version, previous, run, processInfo }) {
   await waitFor(
     async () => {

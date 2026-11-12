@@ -1,4 +1,10 @@
-import { waitForNativeMacDownload, unpackDownloadedMacZip, quitRestartedMacApp, observeMacReplacement, macFirstStartReceipt } from './lib/mac-native-upgrade.mjs'
+import {
+  waitForNativeMacDownload,
+  unpackDownloadedMacZip,
+  quitRestartedMacApp,
+  observeMacReplacement,
+  macFirstStartReceipt,
+} from './lib/mac-native-upgrade.mjs'
 import { execFile } from 'node:child_process'
 import { promisify, parseArgs, isDeepStrictEqual } from 'node:util'
 import { mkdir, readFile, writeFile, lstat, realpath, rm } from 'node:fs/promises'
@@ -452,7 +458,10 @@ async function nativeDownload(workspace, published) {
   await click(cdp, '[data-cy=updates-download]')
   await waitForNativeMacDownload(cdp, VERSION_B, 'native ZIP download and preparation finish')
   const { zip, bundle: downloadedBundle } = await unpackDownloadedMacZip({
-    app, published, unpacked: join(fixtureRoot, 'signed-upgrade-downloaded-b'), run,
+    app,
+    published,
+    unpacked: join(fixtureRoot, 'signed-upgrade-downloaded-b'),
+    run,
   })
   await quarantine(zip, 'downloaded-zip')
   summary.download = {
@@ -478,8 +487,14 @@ async function nativeRestart(workspace) {
   requireEvidence(
     shutdown.includes(`updates: restarting to install ${VERSION_B}`) &&
       /BroCrew shut down in \d+ms/.test(shutdown) &&
-      ['close its sessions', 'keep its unsent drafts', 'drain its archive work', 'close its database']
-        .every((step) => shutdown.includes(step) && !shutdown.includes(`BroCrew failed to ${step}:`)),
+      [
+        'close its sessions',
+        'keep its unsent drafts',
+        'drain its archive work',
+        'close its database',
+      ].every(
+        (step) => shutdown.includes(step) && !shutdown.includes(`BroCrew failed to ${step}:`),
+      ),
     'The native restart did not record the install choice and normal A shutdown.',
   )
   workspace.result.shutdowns ??= []
@@ -572,7 +587,10 @@ async function reopenFirst(workspace) {
   await completedProofCopy(data, new Set(baseline.copiesBefore))
   if (!workspace.result.nativeStartup)
     await waitFor(
-      async () => (await readFile(join(evidence, 'b-first.log'), 'utf8')).split(/\r?\n/).includes(CHECKPOINT_LINE),
+      async () =>
+        (await readFile(join(evidence, 'b-first.log'), 'utf8'))
+          .split(/\r?\n/)
+          .includes(CHECKPOINT_LINE),
       'the candidate records its finished background copy',
       600_000,
     )
