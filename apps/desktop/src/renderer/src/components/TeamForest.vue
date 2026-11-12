@@ -162,9 +162,7 @@ async function firstView(): Promise<void> {
   viewed = true
   await nextTick()
   await flow.fitView({ padding: 0.12, maxZoom: 1, minZoom: LEAST_ZOOM })
-  const here = currentHere.value
-    ? nodes.value.find((node) => isCurrent(node.data!))
-    : undefined
+  const here = currentHere.value ? nodes.value.find((node) => isCurrent(node.data!)) : undefined
   if (here && flow.viewport.value.zoom <= LEAST_ZOOM + 0.001) {
     const height = heights.value.get(here.id) ?? UNMEASURED
     await flow.setCenter(here.position.x + CARD / 2, here.position.y + height / 2, { zoom: 0.85 })
@@ -174,7 +172,8 @@ async function firstView(): Promise<void> {
 /** ⚑ The node a card is, from Vue Flow's own slot — typed once, here. */
 const asNode = (data: unknown): GraphNode => data as GraphNode
 const isCurrent = (node: GraphNode): boolean =>
-  node.row.conversation === currentHere.value || node.members?.some((member) => member.row.conversation === currentHere.value) === true
+  node.row.conversation === currentHere.value ||
+  node.members?.some((member) => member.row.conversation === currentHere.value) === true
 function pressNode(data: unknown): void {
   const node = asNode(data)
   if (node.members) toggle(node.row.conversation)
@@ -190,8 +189,11 @@ const count = computed(() => {
     if (admitted < reading.members.total) return `Newest ${admitted} of ${reading.members.total}`
     return `${admitted} ${admitted === 1 ? 'conversation' : 'conversations'}`
   }
-  if (!props.current && view.coverage.cut > 0) return `Newest ${view.coverage.drawn} of ${view.coverage.there}`
-  const total = view.rows.filter((row) => row.kind === 'a-conversation' && !row.conversationRow?.context).length
+  if (!props.current && view.coverage.cut > 0)
+    return `Newest ${view.coverage.drawn} of ${view.coverage.there}`
+  const total = view.rows.filter(
+    (row) => row.kind === 'a-conversation' && !row.conversationRow?.context,
+  ).length
   return `${total} ${total === 1 ? 'conversation' : 'conversations'}`
 })
 
@@ -213,32 +215,47 @@ function toggle(conversation: string): void {
     aria-label="Who called whom"
     :aria-busy="props.pending"
   >
-      <div class="graph-toolbar" data-cy="forest-toolbar">
-        <slot name="filters" />
-        <span class="compact-count" :role="props.pending ? 'status' : undefined" :data-cy="!props.pending && count !== null ? 'forest-drawn' : undefined">{{ props.pending ? (props.view?.reading && !props.view.reading.complete ? count : 'Reading…') : count }}</span>
-        <div class="zoom" role="group" aria-label="Zoom the forest">
-          <button type="button" title="Zoom out" data-cy="forest-zoom-out" @click="flow.zoomOut()">
-            −
-          </button>
-          <button type="button" title="Zoom in" data-cy="forest-zoom-in" @click="flow.zoomIn()">
-            +
-          </button>
-          <button
-            type="button"
-            title="Show the whole forest"
-            data-cy="forest-fit"
-            @click="flow.fitView({ padding: 0.12, maxZoom: 1 })"
-          >
-            Fit
-          </button>
-        </div>
+    <div class="graph-toolbar" data-cy="forest-toolbar">
+      <slot name="filters" />
+      <span
+        class="compact-count"
+        :role="props.pending ? 'status' : undefined"
+        :data-cy="!props.pending && count !== null ? 'forest-drawn' : undefined"
+        >{{
+          props.pending
+            ? props.view?.reading && !props.view.reading.complete
+              ? count
+              : 'Reading…'
+            : count
+        }}</span
+      >
+      <div class="zoom" role="group" aria-label="Zoom the forest">
+        <button type="button" title="Zoom out" data-cy="forest-zoom-out" @click="flow.zoomOut()">
+          −
+        </button>
+        <button type="button" title="Zoom in" data-cy="forest-zoom-in" @click="flow.zoomIn()">
+          +
+        </button>
+        <button
+          type="button"
+          title="Show the whole forest"
+          data-cy="forest-fit"
+          @click="flow.fitView({ padding: 0.12, maxZoom: 1 })"
+        >
+          Fit
+        </button>
       </div>
+    </div>
 
     <p v-if="props.error" class="quiet" role="status" data-cy="forest-error">
       {{ props.error }} <button type="button" @click="emit('retry')">Try again</button>
     </p>
     <p v-else-if="props.view === null" class="quiet" data-cy="forest-not-read">
-      {{ props.pending ? 'Reading conversations…' : 'Nothing has been read about these conversations yet.' }}
+      {{
+        props.pending
+          ? 'Reading conversations…'
+          : 'Nothing has been read about these conversations yet.'
+      }}
     </p>
     <template v-else>
       <!-- 🔴 **The forest, on Vue Flow** (2026-09-30) — pan, zoom and fit inside this box, never the
@@ -269,7 +286,12 @@ function toggle(conversation: string): void {
           <template #node-agent="{ data }">
             <!-- ⚑ One name for the node Vue Flow hands the slot, so the card reads as it did. -->
             <template v-for="node in [asNode(data)]" :key="node.row.key">
-              <div class="node" :class="{ 'context-parent': node.row.conversationRow?.context }" :data-context="node.row.conversationRow?.context ? 'parent' : undefined" :style="{ width: `${CARD}px` }">
+              <div
+                class="node"
+                :class="{ 'context-parent': node.row.conversationRow?.context }"
+                :data-context="node.row.conversationRow?.context ? 'parent' : undefined"
+                :style="{ width: `${CARD}px` }"
+              >
                 <Handle
                   type="target"
                   :position="rightward ? Position.Left : Position.Top"
@@ -305,7 +327,6 @@ function toggle(conversation: string): void {
           </template>
         </VueFlow>
         <!-- ⚑ **Zoom and fit, beside the drawing** — a trackpad pinch zooms too. -->
-
       </div>
 
       <!-- ⚑ **A read that ANSWERED and found nothing** — and it is not the same as not having read. -->
@@ -367,8 +388,13 @@ function toggle(conversation: string): void {
   white-space: nowrap;
 }
 
-.context-parent { opacity: 0.55; }
-.context-parent:hover, .context-parent:focus-within { opacity: 1; }
+.context-parent {
+  opacity: 0.55;
+}
+.context-parent:hover,
+.context-parent:focus-within {
+  opacity: 1;
+}
 
 /* 🔴 **The drawing's own box** (2026-09-30) — Vue Flow pans and zooms inside it; ⛔ never the page.
    ⚠️ Vue Flow needs a box with a height: a page gets a tall one, the Graph tab the whole column. */
@@ -440,5 +466,4 @@ function toggle(conversation: string): void {
 .zoom button:hover {
   background: var(--wash-3);
 }
-
 </style>

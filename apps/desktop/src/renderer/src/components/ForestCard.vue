@@ -80,7 +80,13 @@ const shown = computed(() =>
     <!-- ⚑ **D-017b · one press on every conversation node**: it opens in its full
        view, whatever it is doing. ⚑ **UI-005** — a button still, so a keyboard reaches it, and its
        click, like any on the card, is the node's (`TeamForest`'s `@node-click`). -->
-    <button type="button" class="head" data-cy="forest-open" :title="props.node.members ? 'Show conversations' : OPEN_THE_CONVERSATION" :aria-expanded="props.node.members ? props.opened : undefined">
+    <button
+      type="button"
+      class="head"
+      data-cy="forest-open"
+      :title="props.node.members ? 'Show conversations' : OPEN_THE_CONVERSATION"
+      :aria-expanded="props.node.members ? props.opened : undefined"
+    >
       <!-- Bind the whole plate so scheduled and background states retain their clock or terminal here. Use the rail row's avatar size. -->
       <AgentState size="row" v-bind="props.node.row.facets" :label="props.node.row.name" />
       <span class="who">
@@ -123,7 +129,11 @@ const shown = computed(() =>
       </button>
     </span>
     <span v-if="props.node.row.conversationRow?.context" class="absent" data-cy="forest-context">
-      {{ props.node.row.conversationRow.context === 'limit' ? 'Outside newest 500 · parent' : 'Outside window · parent' }}
+      {{
+        props.node.row.conversationRow.context === 'limit'
+          ? 'Outside newest 500 · parent'
+          : 'Outside window · parent'
+      }}
     </span>
     <!-- 🔴 **A named absence, never a missing parent** — `641` §1.1. -->
     <span

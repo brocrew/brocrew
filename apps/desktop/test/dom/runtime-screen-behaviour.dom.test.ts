@@ -848,7 +848,9 @@ it.each(['activity', 'forest'] as const)(
     runtime.forestReading.mockImplementationOnce(() =>
       slow === 'forest'
         ? forest.promise
-        : Promise.resolve(readingOf([], { is: 'the-tree-of', conversation: 'fictional-source' }, { readAt: 2 })),
+        : Promise.resolve(
+            readingOf([], { is: 'the-tree-of', conversation: 'fictional-source' }, { readAt: 2 }),
+          ),
     )
     const screen = await panelScreen()
     await expect.poll(() => screen.all('main-tab-graph').length).toBe(1)
@@ -867,7 +869,9 @@ it.each(['activity', 'forest'] as const)(
       expect(runtime.whoCalledWhom).toHaveBeenCalledTimes(1)
     } finally {
       activity.resolve({ readAt: 3, conversations: [] })
-      forest.resolve(readingOf([], { is: 'the-tree-of', conversation: 'fictional-source' }, { readAt: 3 }))
+      forest.resolve(
+        readingOf([], { is: 'the-tree-of', conversation: 'fictional-source' }, { readAt: 3 }),
+      )
     }
     await expect
       .poll(() => useWhoCalledWhom().reading.value?.atWork?.readAt)
@@ -992,10 +996,13 @@ it.each(['B', 'A'] as const)(
 it('keeps Graph unread until the independent forest arrives, then draws the current tree', async () => {
   screenFacts().update({ forest: null })
   const forest = deferred<Awaited<ReturnType<RuntimeBridge['forestReading']>>>()
-  const complete = readingOf([
-    conv('fictional-source', null, { identity: 'editor' }),
-    conv('fictional-reader-1', 'fictional-source', { identity: 'reader-1' }),
-  ], { is: 'the-tree-of', conversation: 'fictional-source' })
+  const complete = readingOf(
+    [
+      conv('fictional-source', null, { identity: 'editor' }),
+      conv('fictional-reader-1', 'fictional-source', { identity: 'reader-1' }),
+    ],
+    { is: 'the-tree-of', conversation: 'fictional-source' },
+  )
   runtime.whoCalledWhom.mockResolvedValueOnce(panelRead())
   runtime.forestReading.mockReturnValueOnce(forest.promise)
   const screen = await panelScreen()
@@ -1151,10 +1158,11 @@ it('replies that land after the screen is gone write nothing the next screen wou
 
 registerRootProviderCases(RuntimeScreen)
 
-
 it('asks the read layer for every selected time window and pairs its supplied counts with membership', async () => {
   const counts = { active: 2, hour: 3, day: 6, week: 10, all: 520 }
-  runtime.forestReading.mockImplementation(async (scope) => readingOf([conv('aster', null)], scope, { counts }))
+  runtime.forestReading.mockImplementation(async (scope) =>
+    readingOf([conv('aster', null)], scope, { counts }),
+  )
   const m = mount(RuntimeScreen, {})
   m.q('rail-team').click()
   await expect.poll(() => m.all('forest-drawn')[0]?.textContent).toBe('1 conversation')
@@ -1162,23 +1170,44 @@ it('asks the read layer for every selected time window and pairs its supplied co
   m.q('team-tab-forest').click()
   for (const window of ['active', 'hour', 'day', 'week', 'all'] as const) {
     m.q(`forest-window-${window}`).click()
-    await expect.poll(() => runtime.forestReading.mock.lastCall?.[0]).toEqual({ is: 'the-workspace', window })
-    await expect.poll(() => m.q(`forest-window-${window}`).getAttribute('aria-pressed')).toBe('true')
+    await expect
+      .poll(() => runtime.forestReading.mock.lastCall?.[0])
+      .toEqual({ is: 'the-workspace', window })
+    await expect
+      .poll(() => m.q(`forest-window-${window}`).getAttribute('aria-pressed'))
+      .toBe('true')
     expect(m.q(`forest-window-${window}`).textContent).toContain(String(counts[window]))
   }
 })
 
 it('ignores an older window reply and reads the last window chosen during it', async () => {
   let finish!: (reading: ReturnType<typeof readingOf>) => void
-  runtime.forestReading.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+  runtime.forestReading.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+  )
   const m = mount(RuntimeScreen, {})
   m.q('rail-team').click()
   await expect.poll(() => runtime.forestReading.mock.calls.length).toBe(1)
   m.q('team-tab-forest').click()
   m.q('forest-window-week').click()
   await nextTick()
-  runtime.forestReading.mockResolvedValueOnce(readingOf([conv('neri', null)], { is: 'the-workspace', window: 'week' }, { counts: { active: 0, hour: 0, day: 0, week: 1, all: 1 } }))
-  finish(readingOf([conv('outdated', null)], { is: 'the-workspace', window: 'day' }, { counts: { active: 7, hour: 7, day: 7, week: 7, all: 7 } }))
+  runtime.forestReading.mockResolvedValueOnce(
+    readingOf(
+      [conv('neri', null)],
+      { is: 'the-workspace', window: 'week' },
+      { counts: { active: 0, hour: 0, day: 0, week: 1, all: 1 } },
+    ),
+  )
+  finish(
+    readingOf(
+      [conv('outdated', null)],
+      { is: 'the-workspace', window: 'day' },
+      { counts: { active: 7, hour: 7, day: 7, week: 7, all: 7 } },
+    ),
+  )
   await expect.poll(() => m.all('forest-row-neri').length).toBe(1)
   expect(m.all('forest-row-outdated')).toHaveLength(0)
   expect(m.q('forest-window-week').textContent).toContain('1')
@@ -1188,13 +1217,21 @@ it('ignores an older window reply and reads the last window chosen during it', a
 it('reads the full containing tree only when the conversation Graph tab is opened', async () => {
   const m = await screenWithLink()
   expect(runtime.forestReading).not.toHaveBeenCalled()
-  runtime.forestReading.mockImplementation(async (scope) => readingOf([
-    conv('fictional-source', null, { updatedAt: 1 }),
-    conv('august-helper', 'fictional-source', { updatedAt: 1 }),
-  ], scope))
+  runtime.forestReading.mockImplementation(async (scope) =>
+    readingOf(
+      [
+        conv('fictional-source', null, { updatedAt: 1 }),
+        conv('august-helper', 'fictional-source', { updatedAt: 1 }),
+      ],
+      scope,
+    ),
+  )
   m.q('main-tab-graph').click()
   await expect.poll(() => runtime.forestReading.mock.calls.length).toBe(1)
-  expect(runtime.forestReading).toHaveBeenLastCalledWith({ is: 'the-tree-of', conversation: 'fictional-source' })
+  expect(runtime.forestReading).toHaveBeenLastCalledWith({
+    is: 'the-tree-of',
+    conversation: 'fictional-source',
+  })
   await expect.poll(() => m.all('forest-row-august-helper').length).toBe(1)
   expect(m.all('forest-window-day')).toHaveLength(0)
   expect(m.q('forest-drawn').textContent).toBe('2 conversations')

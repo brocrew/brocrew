@@ -3,19 +3,18 @@ import type { RailSays } from '../../src/renderer/src/lib/agent-state'
 import { forestView, type ForestView } from '../../src/renderer/src/lib/the-forest'
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 
-import type { ForestNode, TheWholeForest, ForestReading, ForestScope } from '../../src/shared/the-whole-forest'
+import type {
+  ForestNode,
+  TheWholeForest,
+  ForestReading,
+  ForestScope,
+} from '../../src/shared/the-whole-forest'
 
-/**
- * # ⚑ A forest to draw — for the surfaces that draw `TeamForest` outside the Team page
- *
- * The main panel’s Graph tab and Team page share the same forest. Graph suites therefore
- * build the same `TheWholeForest` fixture as the Team suites, using the shapes written inline
- * in `who-called-whom-as-generations.dom.test.ts`.
- */
+/** Fictional conversation, work and reading fixtures shared by Node and DOM checks. */
 
 const NOW = 1_800_000_000_000
 
-/** ⚑ One conversation, under the person (`parent` null) or under another conversation. */
+/** One conversation, under the person (`parent` null) or under another conversation. */
 export const conv = (
   id: string,
   parent: string | null,
@@ -36,7 +35,7 @@ export const conv = (
     ...over,
   }) as ForestNode
 
-/** ⚑ One piece of work, held by `holder` and given by `giver` (null is a person). */
+/** One piece of work, held by `holder` and given by `giver` (null is a person). */
 export const task = (
   holder: string,
   piece: string,
@@ -76,7 +75,7 @@ export const forestOf = (rows: readonly ForestNode[]): TheWholeForest =>
     heldByNoAgent: 0,
   }) as unknown as TheWholeForest
 
-/** ⚑ The forest, folded as the screen folds it for both drawings. */
+/** The forest, folded as the screen folds it for both drawings. */
 export const viewOf = (
   rows: readonly ForestNode[],
   identities: readonly AgentIdentity[] | null = null,
@@ -98,13 +97,16 @@ export function readingOf(
   over: Partial<ForestReading> = {},
 ): ForestReading {
   const forest = forestOf(rows)
-  const admitted = rows.flatMap((row) => row.node === 'a-conversation' ? [row.conversation] : [])
+  const admitted = rows.flatMap((row) => (row.node === 'a-conversation' ? [row.conversation] : []))
   const count = admitted.length
   return {
     scope,
     measuredFrom: NOW,
-    counts: scope.is === 'the-workspace' ? { active: count, hour: count, day: count, week: count, all: count } : null,
-    root: scope.is === 'the-tree-of' ? admitted[0] ?? null : null,
+    counts:
+      scope.is === 'the-workspace'
+        ? { active: count, hour: count, day: count, week: count, all: count }
+        : null,
+    root: scope.is === 'the-tree-of' ? (admitted[0] ?? null) : null,
     members: { total: count, admitted },
     context: [],
     behind: [],

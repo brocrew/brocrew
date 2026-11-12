@@ -416,12 +416,7 @@ export function forestView(input: ForestViewInput): ForestView | null {
     named.is === 'the-person' || placed(named) !== null ? null : named.conversation
 
   const rows: ForestRow[] = []
-  // ⚠️ **Iterative, not recursive**: depth is unbounded and a chain of two thousand would be a
-  // stack a person's own data could overflow. ⛔ **668 · this comment was FALSE until `668`**: the
-  // walk called itself once per child, and `668`'s 3,000-deep chain overflowed it. ⚑ An explicit
-  // stack now, in the same pre-order — `visit` draws one conversation and its tasks, and the loop
-  // below hands it the children. (`MAX_FOREST_CONVERSATIONS` is 500 today, which is why no real
-  // reading ever reached the overflow.)
+  // Keep deep trees off the call stack while visiting each conversation and its work in order.
   const visit = (node: ForestConversation, depth: number): void => {
     // ⚑ **UI-004 · the rail's row, where a rail is on screen** — see {@link ForestViewInput.said}.
     const railed = input.said?.get(node.conversation)

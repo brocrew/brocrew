@@ -169,7 +169,11 @@ export const runtime = {
   })),
   processMemory: vi.fn<RuntimeBridge['processMemory']>(async () => ({ conversations: [] })),
   forestReading: vi.fn<RuntimeBridge['forestReading']>(async (scope) => readingOf([], scope)),
-  forestNodes: vi.fn<RuntimeBridge['forestNodes']>(async () => ({ nodes: forestWalk(), gone: [], readAt: 1 })),
+  forestNodes: vi.fn<RuntimeBridge['forestNodes']>(async () => ({
+    nodes: forestWalk(),
+    gone: [],
+    readAt: 1,
+  })),
 }
 
 export function installRuntimeScreenFixture(): void {

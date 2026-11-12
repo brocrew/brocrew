@@ -2694,13 +2694,18 @@ function foldGraphReading(snapshot: ForestSnapshot | null, atWork: WhatIsBeingDo
   const view = foldTheForest(snapshot?.forest ?? null, atWork)
   if (view === null || snapshot === null) return null
   const context = new Set(snapshot.reading.context)
-  const reason = snapshot.reading.scope.is === 'the-workspace' && snapshot.reading.scope.window === 'all' ? 'limit' as const : 'window' as const
+  const reason =
+    snapshot.reading.scope.is === 'the-workspace' && snapshot.reading.scope.window === 'all'
+      ? ('limit' as const)
+      : ('window' as const)
   return {
     ...view,
     reading: snapshot,
-    rows: view.rows.map((row) => row.kind === 'a-conversation' && context.has(row.conversation)
-      ? { ...row, conversationRow: { ...row.conversationRow!, context: reason } }
-      : row),
+    rows: view.rows.map((row) =>
+      row.kind === 'a-conversation' && context.has(row.conversation)
+        ? { ...row, conversationRow: { ...row.conversationRow!, context: reason } }
+        : row,
+    ),
   }
 }
 
@@ -2726,16 +2731,22 @@ async function readWhoIsWorkingOnce(): Promise<void> {
   if (surface.value !== 'team') return
   const window = forestWindow.value
   const epoch = forestEpoch
-  const current = () => surface.value === 'team' && epoch === forestEpoch && window === forestWindow.value
+  const current = () =>
+    surface.value === 'team' && epoch === forestEpoch && window === forestWindow.value
   forestPending.value = true
   forestError.value = null
   let received = false
   const doing = store.whatIsBeingDone()
-  const complete = await readForestPages(store, { is: 'the-workspace', window }, current, (snapshot) => {
-    received = true
-    theForest.value = snapshot
-    castFacts.update({ forest: snapshot.forest })
-  })
+  const complete = await readForestPages(
+    store,
+    { is: 'the-workspace', window },
+    current,
+    (snapshot) => {
+      received = true
+      theForest.value = snapshot
+      castFacts.update({ forest: snapshot.forest })
+    },
+  )
   const atWork = await doing
   if (!current()) return
   beingDone.value = atWork
@@ -2757,20 +2768,30 @@ watch(surface, (now) => {
 })
 
 const readOwnForest = oneReadAtATime(async () => {
-  const asked = surface.value === 'conversation' && mainTab.value === 'graph' ? activeId.value : null
+  const asked =
+    surface.value === 'conversation' && mainTab.value === 'graph' ? activeId.value : null
   if (asked === null) return
   const epoch = ownForestEpoch
-  const current = () => epoch === ownForestEpoch && surface.value === 'conversation' && mainTab.value === 'graph' && activeId.value === asked
+  const current = () =>
+    epoch === ownForestEpoch &&
+    surface.value === 'conversation' &&
+    mainTab.value === 'graph' &&
+    activeId.value === asked
   if (ownForestFor.value !== asked) ownForest.value = null
   ownForestFor.value = asked
   ownForestPending.value = true
   ownForestError.value = null
   let received = false
-  const complete = await readForestPages(store, { is: 'the-tree-of', conversation: asked }, current, (snapshot) => {
-    received = true
-    ownForest.value = snapshot
-    castFacts.update({ forest: snapshot.forest })
-  })
+  const complete = await readForestPages(
+    store,
+    { is: 'the-tree-of', conversation: asked },
+    current,
+    (snapshot) => {
+      received = true
+      ownForest.value = snapshot
+      castFacts.update({ forest: snapshot.forest })
+    },
+  )
   if (!current()) return
   ownForestPending.value = false
   if (!complete) {

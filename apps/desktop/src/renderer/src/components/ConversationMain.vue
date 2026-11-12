@@ -41,7 +41,9 @@ const forest = computed(() => (typeof props.forest === 'function' ? props.forest
 const graphView = computed(() => conversationForest(forest.value, props.conversation))
 /** A different tree gets a fresh viewport; a stand-in keeps its predecessor's tree key. */
 const graphTree = computed<string | undefined>((previous) => {
-  const root = graphView.value?.reading?.reading.root ?? graphView.value?.rows.find((row) => row.kind === 'a-conversation')?.conversation
+  const root =
+    graphView.value?.reading?.reading.root ??
+    graphView.value?.rows.find((row) => row.kind === 'a-conversation')?.conversation
   return root && previous && (forest.value?.placeOf?.get(previous) ?? previous) === root
     ? previous
     : root

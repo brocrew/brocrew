@@ -93,10 +93,13 @@ function buildForest(view: ForestView, grouped = false): { all: Building[]; root
   const replacement = new Map<Building, Building>()
   for (const [key, bucket] of buckets) {
     if (bucket.length < 2) continue
-    const members = bucket.map(asGraphNode).sort((a, b) =>
-      (b.row.conversationRow?.updatedAt ?? 0) - (a.row.conversationRow?.updatedAt ?? 0) ||
-      b.row.conversation.localeCompare(a.row.conversation),
-    )
+    const members = bucket
+      .map(asGraphNode)
+      .sort(
+        (a, b) =>
+          (b.row.conversationRow?.updatedAt ?? 0) - (a.row.conversationRow?.updatedAt ?? 0) ||
+          b.row.conversation.localeCompare(a.row.conversation),
+      )
     const latest = members[0]!
     const group: Building = {
       ...bucket[0]!,
@@ -112,7 +115,11 @@ function buildForest(view: ForestView, grouped = false): { all: Building[]; root
   const groupedRoots: Building[] = []
   const seen = new Set<Building>()
   for (const original of all) {
-    const node = replacement.get(original) ?? { ...original, children: [], waitingOnParent: waitsOnIt(asGraphNode(original)) }
+    const node = replacement.get(original) ?? {
+      ...original,
+      children: [],
+      waitingOnParent: waitsOnIt(asGraphNode(original)),
+    }
     replacement.set(original, node)
     if (seen.has(node)) continue
     seen.add(node)

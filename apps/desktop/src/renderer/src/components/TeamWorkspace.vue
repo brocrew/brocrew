@@ -262,7 +262,12 @@ function pressForest(row: ForestRow): void {
 </script>
 
 <template>
-  <section class="team-workspace" :class="{ 'showing-forest': showing === 'forest' }" data-cy="team-workspace" data-chat-theme="light">
+  <section
+    class="team-workspace"
+    :class="{ 'showing-forest': showing === 'forest' }"
+    data-cy="team-workspace"
+    data-chat-theme="light"
+  >
     <header class="team-header">
       <div>
         <p class="eyebrow">Workspace directory</p>
@@ -329,11 +334,28 @@ function pressForest(row: ForestRow): void {
       aria-labelledby="team-tab-forest"
       data-cy="team-panel-forest"
     >
-      <TeamForest fill direction="right" :view="props.forest" :pending="props.forestPending" :error="props.forestError" @retry="emit('forestWindow', props.forestWindow)" @press="pressForest">
+      <TeamForest
+        fill
+        direction="right"
+        :view="props.forest"
+        :pending="props.forestPending"
+        :error="props.forestError"
+        @retry="emit('forestWindow', props.forestWindow)"
+        @press="pressForest"
+      >
         <template #filters>
           <div class="forest-windows" role="group" aria-label="Conversation time window">
-            <button v-for="window in FOREST_WINDOWS" :key="window.id" type="button" :class="{ on: props.forestWindow === window.id }" :aria-pressed="props.forestWindow === window.id" :data-cy="`forest-window-${window.id}`" @click="emit('forestWindow', window.id)">
-              {{ window.label }}<span v-if="props.forestCounts">{{ props.forestCounts[window.id] }}</span>
+            <button
+              v-for="window in FOREST_WINDOWS"
+              :key="window.id"
+              type="button"
+              :class="{ on: props.forestWindow === window.id }"
+              :aria-pressed="props.forestWindow === window.id"
+              :data-cy="`forest-window-${window.id}`"
+              @click="emit('forestWindow', window.id)"
+            >
+              {{ window.label
+              }}<span v-if="props.forestCounts">{{ props.forestCounts[window.id] }}</span>
             </button>
           </div>
         </template>
@@ -717,11 +739,38 @@ function pressForest(row: ForestRow): void {
 </template>
 
 <style scoped>
-.forest-windows { display: flex; min-width: 0; flex-wrap: wrap; gap: var(--space-2); }
-.forest-windows button { display: inline-flex; align-items: center; padding: var(--space-2) var(--space-4); border: var(--border-width) solid var(--line); border-radius: var(--radius-pill); background: var(--panel); color: var(--muted); cursor: pointer; font: inherit; font-size: var(--type-caption); gap: var(--space-2); white-space: nowrap; }
-.forest-windows button.on { border-color: var(--accent); background: var(--wash-3); color: var(--accent-text); }
-.forest-windows button:hover { color: var(--text); }
-.forest-windows button span { font-family: var(--font-mono); font-size: var(--type-caption); }
+.forest-windows {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.forest-windows button {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--type-caption);
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+.forest-windows button.on {
+  border-color: var(--accent);
+  background: var(--wash-3);
+  color: var(--accent-text);
+}
+.forest-windows button:hover {
+  color: var(--text);
+}
+.forest-windows button span {
+  font-family: var(--font-mono);
+  font-size: var(--type-caption);
+}
 
 .shelf-rows.team-workers {
   margin: var(--space-6) 0 0;
@@ -752,8 +801,15 @@ function pressForest(row: ForestRow): void {
   padding-bottom: var(--space-6);
 }
 .showing-forest > .team-header,
-.showing-forest > .team-tabs { flex-shrink: 0; }
-.team-forest-panel { display: flex; min-height: 0; flex: 1; flex-direction: column; }
+.showing-forest > .team-tabs {
+  flex-shrink: 0;
+}
+.team-forest-panel {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
 
 .team-count-bar {
   display: flex;

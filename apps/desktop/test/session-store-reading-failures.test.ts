@@ -43,7 +43,11 @@ describe('an unavailable host read never claims that the workspace is empty', ()
   })
 
   it('preserves the host’s forest completeness and reading time when it recovers', async () => {
-    const reading = readingOf([], undefined, { readAt: 1234, members: { total: 12, admitted: ['neri'] }, unfolded: ['neri'] })
+    const reading = readingOf([], undefined, {
+      readAt: 1234,
+      members: { total: 12, admitted: ['neri'] },
+      unfolded: ['neri'],
+    })
     const read = vi
       .fn()
       .mockRejectedValueOnce(new Error('Temporarily unavailable'))
@@ -64,10 +68,23 @@ describe('an unavailable host read never claims that the workspace is empty', ()
 
 it('keeps a failed graph page distinct from an empty page', async () => {
   const listing = readingOf([])
-  const read = vi.fn().mockRejectedValueOnce(new Error('The page could not be read')).mockResolvedValueOnce({ nodes: readingOf([]).nodes, gone: [], readAt: 55 })
-  const store = createSessionStore(everythingOverTheWire({ onEvent: () => () => {}, onLiveness: () => () => {}, forestNodes: read }) as unknown as RuntimeBridge)
+  const read = vi
+    .fn()
+    .mockRejectedValueOnce(new Error('The page could not be read'))
+    .mockResolvedValueOnce({ nodes: readingOf([]).nodes, gone: [], readAt: 55 })
+  const store = createSessionStore(
+    everythingOverTheWire({
+      onEvent: () => () => {},
+      onLiveness: () => () => {},
+      forestNodes: read,
+    }) as unknown as RuntimeBridge,
+  )
   stores.push(store)
   expect(await store.forestNodes(listing, ['neri'])).toBeNull()
-  expect(await store.forestNodes(listing, ['neri'])).toEqual({ nodes: readingOf([]).nodes, gone: [], readAt: 55 })
+  expect(await store.forestNodes(listing, ['neri'])).toEqual({
+    nodes: readingOf([]).nodes,
+    gone: [],
+    readAt: 55,
+  })
   expect(read).toHaveBeenLastCalledWith(listing, ['neri'])
 })

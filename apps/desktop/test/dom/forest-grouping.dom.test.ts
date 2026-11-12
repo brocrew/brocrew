@@ -9,21 +9,30 @@ import { mount, unmountAll } from './harness'
 
 afterEach(unmountAll)
 
-const fixture = () => viewOf([
-  conv('aster', null),
-  conv('teo-one', 'aster', { identity: 'teo', updatedAt: 10 }),
-  task('teo-one', 'piece-one', 'W1.1', 'Check spacing', 'aster'),
-  conv('teo-two', 'aster', { identity: 'teo', updatedAt: 20 }),
-  task('teo-two', 'piece-two', 'W1.2', 'Check colours', 'aster'),
-], null, new Map([
-  ['teo-one', { facets: { doing: 'working' }, word: 'Working' }],
-  ['teo-two', { facets: { doing: 'idle' }, word: 'Idle' }],
-]))
+const fixture = () =>
+  viewOf(
+    [
+      conv('aster', null),
+      conv('teo-one', 'aster', { identity: 'teo', updatedAt: 10 }),
+      task('teo-one', 'piece-one', 'W1.1', 'Check spacing', 'aster'),
+      conv('teo-two', 'aster', { identity: 'teo', updatedAt: 20 }),
+      task('teo-two', 'piece-two', 'W1.2', 'Check colours', 'aster'),
+    ],
+    null,
+    new Map([
+      ['teo-one', { facets: { doing: 'working' }, word: 'Working' }],
+      ['teo-two', { facets: { doing: 'idle' }, word: 'Idle' }],
+    ]),
+  )
 
 describe('compact graph groups and navigation', () => {
   it('expands same-agent conversations and opens the exact pressed member', async () => {
     const pressed: string[] = []
-    const m = mount(TeamForest, { view: fixture(), current: 'teo-one', onPress: (row: { conversation: string }) => pressed.push(row.conversation) })
+    const m = mount(TeamForest, {
+      view: fixture(),
+      current: 'teo-one',
+      onPress: (row: { conversation: string }) => pressed.push(row.conversation),
+    })
     await forestDrawn()
     await forestDrawn()
     expect(m.all('forest-group')).toHaveLength(1)
@@ -35,7 +44,10 @@ describe('compact graph groups and navigation', () => {
     m.q('forest-group-toggle').focus()
     await userEvent.keyboard('{Enter}')
     await nextTick()
-    expect(m.all('forest-group-member').map((member) => member.dataset.conversation)).toEqual(['teo-two', 'teo-one'])
+    expect(m.all('forest-group-member').map((member) => member.dataset.conversation)).toEqual([
+      'teo-two',
+      'teo-one',
+    ])
     m.all('forest-group-member')[1]!.click()
     expect(pressed).toEqual(['teo-one'])
     m.q('forest-group-toggle').click()
@@ -53,9 +65,19 @@ describe('compact graph groups and navigation', () => {
 
   it('keeps out-of-window parents openable and visibly faded', async () => {
     const view = fixture()
-    const context = { ...view, rows: view.rows.map((row) => row.conversation === 'aster' ? { ...row, conversationRow: { ...row.conversationRow!, context: 'window' as const } } : row) }
+    const context = {
+      ...view,
+      rows: view.rows.map((row) =>
+        row.conversation === 'aster'
+          ? { ...row, conversationRow: { ...row.conversationRow!, context: 'window' as const } }
+          : row,
+      ),
+    }
     const pressed: string[] = []
-    const m = mount(TeamForest, { view: context, onPress: (row: { conversation: string }) => pressed.push(row.conversation) })
+    const m = mount(TeamForest, {
+      view: context,
+      onPress: (row: { conversation: string }) => pressed.push(row.conversation),
+    })
     await forestDrawn()
     await forestDrawn()
     const parent = m.q('forest-row-aster')
@@ -73,26 +95,46 @@ describe('compact graph groups and navigation', () => {
     await forestDrawn()
     m.q('forest-group-toggle').click()
     await forestDrawn()
-    const transform = m.host.querySelector<HTMLElement>('.vue-flow__transformationpane')!.style.transform
-    view.value = { ...view.value, rows: view.value.rows.map((row) => row.conversation === 'teo-one' && row.kind === 'a-conversation' ? { ...row, conversationRow: { ...row.conversationRow!, updatedAt: 30 } } : row) }
+    const transform = m.host.querySelector<HTMLElement>('.vue-flow__transformationpane')!.style
+      .transform
+    view.value = {
+      ...view.value,
+      rows: view.value.rows.map((row) =>
+        row.conversation === 'teo-one' && row.kind === 'a-conversation'
+          ? { ...row, conversationRow: { ...row.conversationRow!, updatedAt: 30 } }
+          : row,
+      ),
+    }
     await forestDrawn()
     await forestDrawn()
     expect(m.q('forest-group').textContent).toContain('Working')
     expect(m.all('forest-group-member')).toHaveLength(2)
-    expect(m.host.querySelector<HTMLElement>('.vue-flow__transformationpane')!.style.transform).toBe(transform)
+    expect(
+      m.host.querySelector<HTMLElement>('.vue-flow__transformationpane')!.style.transform,
+    ).toBe(transform)
   })
 })
 
-
 it('uses the workspace height and keeps chips, count and zoom together on one row at 760px', async () => {
-  const m = mount(TeamWorkspace, { agents: null, store: {} as AgentStore, forest: fixture(), forestCounts: { active: 2, hour: 2, day: 6, week: 10, all: 12 } }, { width: 760, height: 800 })
+  const m = mount(
+    TeamWorkspace,
+    {
+      agents: null,
+      store: {} as AgentStore,
+      forest: fixture(),
+      forestCounts: { active: 2, hour: 2, day: 6, week: 10, all: 12 },
+    },
+    { width: 760, height: 800 },
+  )
   m.q('team-tab-forest').click()
   await forestDrawn()
   await forestDrawn()
   const canvas = m.q('forest-rows').getBoundingClientRect()
   const workspace = m.q('team-workspace')
   const bottomPadding = parseFloat(getComputedStyle(workspace).paddingBottom)
-  expect(Math.abs(workspace.getBoundingClientRect().bottom - canvas.bottom - bottomPadding)).toBeLessThan(2)
+  expect(
+    Math.abs(workspace.getBoundingClientRect().bottom - canvas.bottom - bottomPadding),
+  ).toBeLessThan(2)
   const count = m.q('forest-drawn').getBoundingClientRect()
   const zoom = m.q('forest-zoom-out').getBoundingClientRect()
   expect(zoom.left - count.right).toBeLessThan(20)
