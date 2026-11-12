@@ -2,6 +2,9 @@
 import { useId } from 'vue'
 import type { Provider } from '../../../shared/runtime-ipc'
 import { useUsageCells } from '../composables/useUsageCells'
+import { useClientProviders } from '../client-provider/injection'
+import { useProviderNames } from '../composables/useProviderNames'
+import { providerNamesIn } from '../lib/front-door-words'
 import UsageCards from './UsageCards.vue'
 
 /**
@@ -13,7 +16,11 @@ const props = withDefaults(
   defineProps<{ readiness?: Readonly<Partial<Record<Provider, boolean | null>>> | null }>(),
   { readiness: null },
 )
-const { cells, line, description } = useUsageCells(() => props.readiness)
+const nameOfProvider = useProviderNames(useClientProviders())
+const { cells, line, description } = useUsageCells(
+  () => props.readiness,
+  () => providerNamesIn(nameOfProvider),
+)
 const cardsId = `title-usage-${useId()}`
 </script>
 

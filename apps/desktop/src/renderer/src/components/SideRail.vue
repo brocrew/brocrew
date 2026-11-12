@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { useClientApi } from '../client-provider/injection'
+import { useProviderNames } from '../composables/useProviderNames'
+import { providerNamesIn } from '../lib/front-door-words'
 import type { AgentState as OneState } from '../../../shared/agent-state-contracts'
 import type { WhatEachConversationIsWaitingOn } from '../../../shared/task-contracts'
 
@@ -109,6 +111,7 @@ import { COLLAPSE_THE_MENU, EXPAND_THE_MENU } from '../lib/rail-fold'
  * that lives two clicks away is not one"*, which is §5's own exception.
  */
 const client = useClientApi()
+const nameOfProvider = useProviderNames(client)
 const props = withDefaults(
   defineProps<{
     /** The conversations this window is fed — `SessionStore.live`. */
@@ -396,7 +399,9 @@ const workspaceInitial = computed(
   () => [...(workspaceName.value?.trim() ?? '')][0]?.toUpperCase() ?? '',
 )
 
-const liveSignal = computed(() => liveSignalView(props.workspace, props.limits, railMinute.value))
+const liveSignal = computed(() =>
+  liveSignalView(props.workspace, props.limits, railMinute.value, providerNamesIn(nameOfProvider)),
+)
 
 /* ---------------------------------------------------------------------------
    ⚑ D-017b · the ONE list — the host's two reads, folded by `conversation-list.ts`,

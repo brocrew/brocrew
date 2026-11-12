@@ -95,6 +95,7 @@ async function rail(
   const stub = window as unknown as { api?: unknown }
   stub.api = {
     runtime: {
+      providerCatalogue: async () => PROVIDER_DESCRIPTORS,
       listResumable: () => Promise.resolve([]),
       listUnresumable: () => Promise.resolve([]),
     },
