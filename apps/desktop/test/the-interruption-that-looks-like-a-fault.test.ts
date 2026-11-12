@@ -19,7 +19,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { type AgentCard } from './helpers/giver-notice-host'
-import { TOOL_NAMES, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { TOOL_NAMES, agentToolsFor, TOOL_REFUSALS, refuseTool, type ToolName } from '../src/main/runtime/agent-tools'
 import {
   INTERRUPT_RAILS,
   admitInterrupt,
@@ -28,6 +28,9 @@ import {
   refuseInterrupt,
 } from '../src/main/runtime/interrupt-rails'
 
+import { SPAWN_RAILS } from '../src/main/runtime/spawn-rails'
+import { REPLY_RAILS } from '../src/main/runtime/reply-rails'
+import { QUESTION_RAILS } from '../src/main/runtime/question-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
