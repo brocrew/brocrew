@@ -315,34 +315,6 @@ describe('650 · a refusal that clears on its own', () => {
     expect(sentence).not.toBe(THE_FOLDS_SENTENCE)
   })
 
-  /**
-   * ⚠️ **What the shared word answers AFTER** (found by `650`'s own review, re-ordered at `681`).
-   * ⛔ `sessionFor` threw before `queueMessage` asked its target-dependent walls, so a starting
-   * target answered first — `650` F1. ⚑ **`681` (PM ruling R30b) moved those walls into the
-   * entitlement's gate**, ahead of the throw: entitlement, then the boundary and the work walls, then
-   * *not started* — `a-starting-child-is-already-in-its-project.test.ts` §3 is where that order is
-   * measured. ⚑ **This test is the FIRST of those walls**, asked at the top of `message_agent`: a
-   * caller a person has narrowed to `can_message: none` is never told to retry a launch it may not
-   * message at all.
-   */
-  it('§1.1 a caller narrowed to message nobody is refused by its own wall, not told to retry a launch', async () => {
-    const { call } = await aParentWithASibling()
-    const { id, spawning } = await aSpawnInFlight(call)
-    expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'none' })).toBe(true)
-    expect(
-      payload(await call('message_agent', { agent: id, text: 'hello', kind: 'note' })),
-    ).toMatchObject({ outcome: 'refused', rail: 'may-not-message' })
-    // ⚠️ **The control**: the same launch, the grant put back, is not refused — ⚑ **D-017 · R1** —
-    // the words wait for the start, and are delivered once it lands.
-    expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'any' })).toBe(true)
-    const waiting = call('message_agent', { agent: id, text: 'hello', kind: 'note' })
-    expect(await stillPending(waiting)).toBe('still pending')
-    hold?.release()
-    hold = null
-    await Promise.allSettled([spawning])
-    expect(payload(await waiting)).toMatchObject({ outcome: 'ok', agent: id })
-  })
-
   // ───────────────────────────────────────────────────────────────────────────────────────────
   // §2 · the same arm, cleared by FAILING — and what the retry meets at both doors
   // ───────────────────────────────────────────────────────────────────────────────────────────

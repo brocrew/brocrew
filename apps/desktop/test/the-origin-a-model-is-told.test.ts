@@ -45,50 +45,6 @@ const PAM_GAVE_W1_3 = (): WhereTheSenderStands => ({
   about: null,
 })
 
-/**
- * 🔴 **414 · the origin a model is told** — HO-020 §5.3 half 2, and the last item of its fix round.
- *
- * ## ⛔ What `413` measured and did not fix
- *
- * ⚠️ **`410` F2 counted app-delivered turns rendering as the person's own, live, on every run.**
- * `413` fixed the SURFACE and then measured the model's half rather than reading it off HO-020's
- * sentence — and the answer was neither option the brief offered:
- *
- * | producer | what the provider receives | carries its origin? |
- * |---|---|---|
- * | **`message_agent`** | **the calling model's string, verbatim** | ⛔ **nothing** |
- * | `deliverQuestion` · `deliverReply` · `tellOneParent` | app-composed sentences | ✔ by id |
- * | the composer | the person's words | ✔ — **since 607** a rendered line; `414` left it to silence |
- *
- * Work hand-off must frame its origin at the producer. Without that framing, a receiver can
- * act on words as if the person authorized them when the person never said them.
- *
- * ## ⚑ The one thing a model already knew, and why it was not enough
- *
- * ⛔ **A spawned conversation is ALREADY told who started it at launch** — HO-015 §3 accepted the
- * sentence and `factory-text.ts` renders it; it named the parent's session id until D-016 · commit 7,
- * and names it by the piece it owns since. ⚠️ **That says who CAN send. This says
- * who DID**, and `can_message: 'any'` means the sender need not be the parent at all. A model
- * holding the first and reading an unframed turn cannot tell its parent's words from the words of
- * the person at the keyboard, which is the whole of `410` F2.
- *
- * ## 🔴 607 · the third row's tick was an INFERENCE, and this suite pinned it as a fact
- *
- * ⛔ **Three assertions in here said a person's typed turn reaches the provider byte for byte, and
- * from `607` they say what it reaches it with.** ⚑ They were CORRECTED rather than deleted or
- * relaxed: each still measures the same door, one fact over from an agent's turn, and each now
- * names the sentence instead of asserting its absence. ⚠️ **The half that did not move is the one
- * worth keeping in view** — the LEDGER still holds the person's bare words, and every one of these
- * tests still asserts that, because `214`'s defect is a transcript defect and 607 is not near it.
- *
- * ## ⚠️ What this suite is careful about
- *
- * ⛔ **Every assertion about the provider's string is read off the double's echo**, which is the
- * exact argument that crossed `SessionHandle.send` — never off the call, and never off the ledger,
- * because `216`'s rule is that those two strings differ on purpose and this dispatch widens the
- * difference.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
@@ -963,13 +919,6 @@ describe('414 · the origin a model is told', () => {
     })
 
     it('⚑ the interrupting door asks too — measured where the two readings DIVERGE', async () => {
-      // ⛔ **A window alone would measure nothing here** (standing rule 3): `originOf(window)` and
-      // a hard-coded `null` produce the same string, so both a fixed door and a derived one pass.
-      // ⚠️ Nothing in the PRODUCT reaches this door as an agent — `message-rails.ts`: *"No agent
-      // tool reaches `interrupt` or `sendInterrupting` today"* — but `RuntimeHost` is a class the
-      // tool layer holds a reference to, and a parent COMMANDS its child, so the method can be
-      // driven the way tomorrow would drive it. ⚑ That is where the readings part.
-      // ⚑ D-016 · the brief's turn is let end (`auto`), so the worker is idle as a spawn left it.
       const made = await aPmAndItsWorker('the work this dispatch is about', 'auto')
       const asThePm: Caller = { ownerId: agentCallerId(made.pm) }
       await host.sendInterrupting(made.worker, 'stop and do this instead', asThePm)

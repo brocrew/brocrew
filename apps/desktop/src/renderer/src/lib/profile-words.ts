@@ -68,32 +68,6 @@ export const PROFILE_OWNS =
  * nothing reads in the meantime.
  */
 
-/**
- * ⛔ **What a profile is NOT** — the clause `382 §9.2` found v2.3 asserting with nothing behind it.
- *
- * The mock's launch explanation reads *"It is not a role or a trust boundary."* ⚑ **The claim is
- * true and it is the half a person most needs**, because a home that carries an agent's memory
- * across every project LOOKS like a rank; and until now no constant carried it, so no test could.
- *
- * ## ⚑ Each clause, and the code it is read off
- *
- * **"not a rank"** — an identity has no role: every rule reads the capability grants, and a row
- * nobody has changed follows the one default set every agent holds.
- *
- * **"read from its capability grants"** — 369 §3 moved the capability columns onto
- * `agent_identity` and the rule it recorded is that *"nothing that ENFORCES a capability has ever
- * been able to see a project"*. ⚑ Since D-016 the schema has no profile table at all:
- * `agent_identity` is the only table that carries a grant, so there is no profile row an answer
- * could be read from.
- *
- * ## ⚠️ What this deliberately does NOT say, and why the shorter claim would be false
- *
- * ⛔ **It does not say a profile grants nothing.** Most of `DEFAULT_CAPABILITIES` is not the
- * narrowest value, and each is a ruling: `canMessage`, `canAssignWork` and `canCreateAgents` rule to
- * `any`, and `maxDepth` to 6. A new identity therefore starts with real reach it was never granted
- * by a person. What is true is the thing said below: those defaults are the SAME for every
- * identity, so choosing a profile is not how anyone gets more of them.
- */
 export const PROFILE_IS_NOT =
   'A profile is a home, not a rank. What an agent may do is read from its own capability grants — ' +
   'never from its name or the profile it runs in, and the defaults are the same for ' +

@@ -23,45 +23,6 @@ import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-/**
- * # 🔴 681 · a starting child is already in its project (PM ruling R30)
- *
- * ⛔ **`657` F-a:** a parent could not end its own child while that child was still starting —
- * `end_agent` answered a permanent project refusal, because the boundary read the TARGET's project
- * off its committed `agent_profile` row, and a reservation has none yet. ⚠️ **`650` F1, one door
- * over:** `message_agent` answered `that-conversation-has-not-started` ahead of the walls a running
- * target would be refused by, so a caller narrowed only on giving work was told to retry and then
- * met `may-not-assign-work`.
- *
- * ⚑ **R30a · the reservation carries the project its spawn will run in**, and every wall reads a
- * starting child as it will read it running. **R30b · the walls answer before the shared word** —
- * entitlement, then boundary, then *not started*. **R30c · `459`'s same-tick narrowing is
- * re-derived**: one identity into two projects in one tick is admitted; into one project twice is
- * still refused.
- *
- * ⛔ **Every arm starts from the parent's RULED grants**, and nothing here widens one; the one arm
- * that narrows a grant (§3's `can_assign_work: none`) is a person's narrowing, set in the test.
- *
- * ⚑ **D-017 — `end_agent` and `resume_agent` are gone** (nothing ends a conversation; a message
- * starts a stopped one), so `657` F-a's own section (§1, ending a starting child) went with the
- * first, and §3b's wake arm with the second. ⚑ The walls they measured are still measured at the
- * doors left: `interrupt_agent` (§2) and `message_agent` (§3, §3b).
- *
- * ⚑ **D-016 — projects are gone**, and with them R30a's subject: a reservation carries no project
- * because nothing places a conversation in one, `spawn_agent` takes no `project`, the card names
- * none and the `same-project` narrowings are gone. ⛔ So every arm that put a child in ANOTHER
- * project (§2's, §3's and §3b's), §4's two-projects-in-one-tick and its unplaced parent, and §5–§7
- * (the card's project, a reopen placed by its row, a row that failed to write) went. ⚑ **R30b
- * stays, whole**: every wall a starting child meets is the wall its running self meets, and it
- * answers before the shared *not started* — §2, §2b and §3. ⚑ **D-016 · `spawn_agent` is gone**:
- * work is GIVEN, by profile, to the giver's own conversation with that agent — so §3 gives with
- * `give_work`, §3b's relationship wall is now the give's construction, and §4's same-identity
- * refusal is now the give's lookup, which finds the first start in the same tick.
- *
- * ⚑ Real host, real SQLite ledger, real migrations; the only double is the provider, and
- * {@link FakeLaunchGate} holds one launch inside `start` so the child stays `starting` for as long
- * as a test needs it to.
- */
 describe('681 · a starting child is already in its project', () => {
   class PersonSink implements RuntimeEventSink {
     // ⚑ A window IS a person — the sink a person's own conversations are opened through.
@@ -258,7 +219,7 @@ describe('681 · a starting child is already in its project', () => {
     const mine = store.identityOf(parent)
     expect(mine).toMatchObject({ profileSlug: 'lead' })
     expect(store.capabilitiesOf('lead')).toEqual(DEFAULT_CAPABILITIES)
-    expect(store.capabilitiesOf('lead')).toMatchObject({ canMessage: 'any', canAssignWork: 'any' })
+    expect(store.capabilitiesOf('lead')).toMatchObject({   })
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -337,7 +298,7 @@ describe('681 · a starting child is already in its project', () => {
       const child = await aStartingChild(parent)
       // ⚑ **Narrowed once both children exist** — a person's narrowing, and D-016's give asks it
       // of the caller alone, before it looks up the conversation the work would reach.
-      grant('lead', { canAssignWork: 'none' })
+
       const call = toolsOf(parent)
       const toRunning = payload(await giveTo(call, 'worker'))
       const toStarting = payload(await giveTo(call, 'helper'))
@@ -345,9 +306,6 @@ describe('681 · a starting child is already in its project', () => {
       child.held.release()
       await child.spawning
       const retried = payload(await giveTo(call, 'helper'))
-      // ⚠️ **One comparison over all three, so a red names every rail it met.** 🔴 **RED on `main`
-      // @ `5c8dffab`**: the starting child answered `that-conversation-has-not-started`, retryable —
-      // and the retry it promised met `may-not-assign-work`.
       expect(running).not.toBe(child.id)
       expect({
         running: toRunning.rail,

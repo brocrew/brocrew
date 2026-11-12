@@ -151,7 +151,7 @@ describe('D-020 · a field nobody declared is refused by name', () => {
   const heldBy = (slug: string): { depth: unknown; message: unknown } =>
     db
       .prepare(
-        `SELECT ${capabilityField('maxDepth').column} AS depth, ${capabilityField('canMessage').column} AS message FROM agent_identity WHERE slug = ?`,
+        `SELECT ${capabilityField('maxDepth').column} AS depth, ${capabilityField('canCreateAgents').column} AS message FROM agent_identity WHERE slug = ?`,
       )
       .get(slug) as { depth: unknown; message: unknown }
 
@@ -178,8 +178,8 @@ describe('D-020 · a field nobody declared is refused by name', () => {
     it.each([
       [
         'a capability sent beside the grant instead of inside it',
-        { canMessage: 'none' },
-        'canMessage',
+        {  },
+        'canCreateAgents',
       ],
       ['a mistyped second ids list', { externalMcpServerId: [] }, 'externalMcpServerId'],
     ] as const)(
@@ -227,8 +227,7 @@ describe('D-020 · a field nobody declared is refused by name', () => {
   describe('§3 · the window sends exactly the declared fields', () => {
     const PLAIN_GRANT: CapabilityGrant = {
       maxDepth: 4,
-      canMessage: 'none',
-      canAssignWork: null,
+
       canCreateAgents: null,
       canWriteRules: null,
     }
@@ -246,8 +245,7 @@ describe('D-020 · a field nobody declared is refused by name', () => {
           capabilities: DEFAULT_CAPABILITIES,
           chosen: {
             maxDepth: 'default',
-            canMessage: 'default',
-            canAssignWork: 'default',
+
             canCreateAgents: 'default',
             canWriteRules: 'default',
           },

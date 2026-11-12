@@ -1210,7 +1210,6 @@ describe('a service queues the work it is given', () => {
       const { owner: service } = await aServiceAtWork(host, first)
       accepted(await world.gives(host, second, 'browser-driver', { title: 'Queued' }))
       // A grant to reach what it did not start never reaches a service.
-      expect(world.store.setCapabilities('other-caller', { canMessage: 'any' } as never)).toBe(true)
       const before = world.ledger(service).length
       await expect(
         host.queueMessage(service, 'a note', { ownerId: agentCallerId(second) }),

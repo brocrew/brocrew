@@ -13,11 +13,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import {
-  MESSAGE_RAILS,
-  messagePermanenceOf,
-  messageRetryableOf,
-} from '../src/main/runtime/message-rails'
+
 import { SPAWN_RAILS, permanenceOf, retryableOf } from '../src/main/runtime/spawn-rails'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
@@ -306,12 +302,12 @@ describe('486 · the doors our own verbs do not need', () => {
     // ⚑ **D-016** — `list_projects`, the second door on the same reach, is gone with projects.
     it('⛔ message_agent · the same order, on the reach a person granted', async () => {
       const worker = await anAgentRunning('worker')
-      grant('worker', { canMessage: 'none' })
+
       const tools = toolsOf(worker)
       expect((await tools.call('message_agent', { kind: 'follow-up' }))['rail']).toBe(
         'may-not-message',
       )
-      grant('worker', { canMessage: 'any' })
+
       const widened = toolsOf(worker)
       expect((await widened.call('message_agent', { kind: 'follow-up' }))['rail']).toBe(
         'malformed-request',
@@ -405,27 +401,6 @@ describe('486 · the doors our own verbs do not need', () => {
   })
 
   describe('§4 · the permanence that describes the wall it came from', () => {
-    it('🔴 every messaging rail is one a column decides, and each is `until-a-person-changes-it`', () => {
-      // ⛔ **HO-031 §2.5:** *a permanence that describes the wrong thing is a promise about the world
-      // that is false.* ⚠️ The `-outside-your-project` rails read `permanent`, and
-      // `admitMessaging` reached one only while that column resolved to `same-project` — by the
-      // ruled default or an explicit choice — so widening it to `any` made the IDENTICAL call
-      // succeed, which is what `permanent` denies. ⚑ D-016 deleted them with `same-project`.
-      // ⚑ **D-016 · the one rail no column decided is gone**: D-014's
-      // `assign-work-to-one-you-did-not-start` — no person could change who started a conversation,
-      // so it was `permanent` — went with work sent as a message; a give reaches only the giver's own
-      // conversation with that agent, by the shape of the act.
-      for (const rail of MESSAGE_RAILS) {
-        expect(messagePermanenceOf(rail), rail).toBe('until-a-person-changes-it')
-        // ⚑ `retryable` is DERIVED, and the repricing must not have moved it: neither word is one a
-        // caller should spin on.
-        expect(messageRetryableOf(rail), rail).toBe(false)
-      }
-      expect([...MESSAGE_RAILS].sort()).toEqual(['may-not-assign-work', 'may-not-message'])
-      // ⚑ **D-016** — the sibling pair (`may-not-assign-work` beside
-      // `assign-work-outside-your-project`, one value of the same column narrower) went with
-      // `same-project`; the column has one value that refuses now, and one rail for it.
-    })
 
     it('⛔ `too-deep` is a capability a person sets, and the piece rail beside it is still `permanent`', () => {
       // ⚑ `max_depth` is a count on the grant sheet, and the caller cannot choose a shallower

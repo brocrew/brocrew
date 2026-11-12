@@ -9,57 +9,6 @@ import type { Provider } from '@brobot2/shared'
 
 import type { RunningState } from './conversation-running'
 
-/**
- * 🔴 **Who called whom — one conversation's own edges, in ids that name CONVERSATIONS** (543,
- * `540` §7 slice 1).
- *
- * ## ⛔ The fact existed and the projection threw it away
- *
- * Carry conversation ids across the renderer boundary to draw caller relationships and navigate them. `WorkGivenOut`'s identity slug alone cannot identify a recipient because one identity can hold several conversations.
- *
- * ⚑ **And BroBot measured the same hole from inside:** *"Visibility stops one level down. I can see
- * that my grandchild exists, its state, and who spawned it — but not a word it said."*
- *
- * ## 🔴 The property this shape exists to make true
- *
- * > ⚑ **A window can ask, for one conversation: who started it, what it started, and what work
- * > passed between them — in ids that name conversations, not slugs.**
- *
- * ## ⛔ Two kinds of edge, and they are NOT the same edge
- *
- * ⚠️ **A spawn and a handoff are independent**, which `540` §5 measured rather than assumed: a
- * conversation may give work to one it never spawned and may spawn one it never gives work to.
- * ⛔ **So {@link children} and {@link workGivenOut} are two lists and one may never be derived from
- * the other** — v2.8's *other conversations given work* group is a real product case and not
- * authored decoration.
- *
- * 🔴 **553 · this said *work is admitted by `can_message` and not by descent*, and HO-060 §2 made
- * both halves false.** ⛔ Work is admitted by `can_assign_work`, and since D-014 only to a
- * conversation the giver started — since D-016 a give starts it when there is none — so every work
- * edge has a spawn edge under it. ⚠️ **The two lists still cannot be derived from each other**: one
- * spawn edge carries every piece its giver gave that conversation, and a conversation may be
- * started once and given work many times. ⚑ `553` is why the sentence says the property rather than
- * the gate.
- *
- * ## ⚠️ What is NOT here, and where each of those lives
- *
- * ⛔ **No `HereIs` and no gesture.** {@link SpawnEdge.running} is the raw fact and `hereIsOf` is the
- * fold, because the fourth navigation state — `open-in-another-window` — is *running, owned by a
- * surface that is not this one*, and **whether a surface is THIS one is a question the host cannot
- * answer** (`RUNNING_STATES`' own docblock). ⚑ Folding here would collapse the state this read is
- * required to leave reachable (`540` MI-20); the mapping is `540`'s slice 4.
- *
- * ⛔ **No ancestor chain and no recursive traversal.** `540`'s slice 1 is the DIRECT edges, and
- * `SessionStore.ancestorsOf`'s own CTE is bounded at 64 precisely because a hand-edited row can make
- * a cycle — a walk this read performed for a window would be a bound nobody has priced.
- *
- * ⛔ **Nothing a transcript says.** ⚑ **549 · this said the rail was *a product question with the
- * PO*, and HO-057 answered it**: any agent may read what another handed back. ⚠️ **That changes
- * nothing here** — a transcript is not a resource, and this shape still makes the EDGES visible and
- * nothing about the words across them. ⚑ W4.203 · beside the edges, {@link WhoCalledWhom.lastReported}
- * says what each conversation last ran on and how full its context was — facts about it, never its
- * words.
- */
 export interface WhoCalledWhom {
   /** The conversation that was asked about — echoed, so a late answer can be matched to its ask. */
   readonly conversation: string

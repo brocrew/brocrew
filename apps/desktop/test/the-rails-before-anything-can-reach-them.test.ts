@@ -943,12 +943,12 @@ describe('341 · the rails, before anything can reach them', () => {
         )
         .get('pm') as Record<string, unknown>
       expect(Object.values(row)).toEqual(CAPABILITY_COLUMNS.map(() => null))
-      expect(CAPABILITY_COLUMNS.length).toBeGreaterThanOrEqual(5)
+      expect(CAPABILITY_COLUMNS.length).toBeGreaterThanOrEqual(3)
     })
 
     it('⛔ an edit leaves every field it did not name alone, nulls included', async () => {
       await bringIdentityIntoBeing('pm')
-      grant('pm', { canMessage: 'none' })
+
       const row = db
         .prepare(`SELECT ${CAPABILITY_COLUMNS.join(', ')} FROM agent_identity WHERE slug = ?`)
         .get('pm') as Record<string, unknown>
@@ -961,7 +961,7 @@ describe('341 · the rails, before anything can reach them', () => {
           (column) => row[column],
         ),
       ).toEqual(CAPABILITY_COLUMNS.filter((column) => column !== 'can_message').map(() => null))
-      expect(CAPABILITY_COLUMNS.length).toBeGreaterThanOrEqual(5)
+      expect(CAPABILITY_COLUMNS.length).toBeGreaterThanOrEqual(3)
     })
 
     it('🔴 a word that is not the right SHAPE never reaches the column — its CHECK refuses it (R6)', async () => {
@@ -969,32 +969,16 @@ describe('341 · the rails, before anything can reach them', () => {
       const write = (column: string, value: unknown): void => {
         db.prepare(`UPDATE agent_identity SET ${column} = ? WHERE slug = 'pm'`).run(value)
       }
-      // 🔴 **D-016 · R6 — re-aimed from the fold to the CHECK.** `can_message` was the one column
-      // `schema.ts` could not afford a CHECK for, so the fold WAS the constraint; ⚑ the one migration
-      // builds each column's CHECK from the descriptor the wire's own schema is built from, so a
-      // word outside the vocabulary is refused where it is written, by the constraint named for it.
       expect(() => write('can_message', 'everyone')).toThrow(/agent_identity_can_message_ck/)
       // ⛔ …and the row keeps what it said: nothing, which reads the ruled default.
-      expect(store.capabilitiesOf('pm')?.canMessage).toBe(DEFAULT_CAPABILITIES.canMessage)
       // ⚑ **The pair, and it is what makes the refusal about the WORD**: both words of the
       // vocabulary land and read as written — `none` is not the default, `any` is not the narrowest.
       write('can_message', 'none')
-      expect(store.capabilitiesOf('pm')?.canMessage).toBe('none')
       write('can_message', 'any')
-      expect(store.capabilitiesOf('pm')?.canMessage).toBe('any')
-      // ⛔ **And a SECOND choice column over the same vocabulary** — `can_assign_work` — refused by
-      // its OWN constraint, so a CHECK that named one column for both would fail here.
       expect(() => write('can_assign_work', 'whenever')).toThrow(
         /agent_identity_can_assign_work_ck/,
       )
       write('can_assign_work', 'none')
-      expect(store.capabilitiesOf('pm')?.canAssignWork).toBe('none')
-      // ⚑ **…and the two are INDEPENDENT.** `can_message` is still `any` while `can_assign_work`
-      // is `none`, so a reader that answered one column from the other would disagree with one.
-      expect(store.capabilitiesOf('pm')?.canMessage).toBe('any')
-      expect(store.capabilitiesOf('pm')?.canMessage).not.toBe(
-        store.capabilitiesOf('pm')?.canAssignWork,
-      )
     })
   })
 })

@@ -9,7 +9,6 @@ import type { WorkReport } from '../../shared/task-contracts'
 import type { GivenFolder } from '../../shared/work-folders'
 import type { GivenInput } from '../db/session-store'
 import type { InterruptRefusal } from './interrupt-rails'
-import type { MessageRefusal } from './message-rails'
 import type { AnswerOutcome } from './question-rails'
 import type { QueuedMessage } from './queued-message'
 
@@ -351,7 +350,6 @@ export type MessageNowOutcome =
 export type OutOfReach =
   | { readonly is: 'no-such-agent' }
   | { readonly is: 'takes-no-messages' }
-  | { readonly is: 'outside-its-reach'; readonly refusal: MessageRefusal }
 
 /**
  * 🔴 **D-016 · commit 7 · R1 — the reach a door resolves a label by** — see

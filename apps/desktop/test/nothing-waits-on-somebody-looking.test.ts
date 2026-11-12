@@ -133,9 +133,6 @@ describe('396 · nothing waits on somebody looking', () => {
   const asPm = (pm: string): { ownerId: string } => ({ ownerId: `agent:${pm}` })
 
   /** One capability, changed and nothing else. */
-  const reach = (profileId: string, edit: { canMessage?: string }): void => {
-    expect(store.setCapabilities(profileId, edit as never)).toBe(true)
-  }
 
   /** The latest provider status stays idle when later app receipts are written. */
   const quiet = (sessionId: string): boolean => {
@@ -268,7 +265,7 @@ describe('396 · nothing waits on somebody looking', () => {
     pmTools: AgentToolset
     workerHandle: FakeSessionHandle
   }): Promise<void> => {
-    reach(pmProfile, { canMessage: 'any' })
+
     const first = await callOn(pmTools, 'message_agent', {
       agent: worker,
       text: 'first',

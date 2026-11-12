@@ -344,8 +344,7 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
     profileId: 'pm',
     grant: {
       maxDepth: null,
-      canMessage: null,
-      canAssignWork: null,
+
       canCreateAgents: null,
       // ⚑ **582 · nobody has chosen** — the whole grant on this fixture is nulls.
       canWriteRules: null,

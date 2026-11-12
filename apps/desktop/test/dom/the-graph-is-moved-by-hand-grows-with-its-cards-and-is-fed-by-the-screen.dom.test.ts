@@ -231,8 +231,7 @@ describe('the Graph is moved by hand, grows with its cards, and is fed by the sc
       capabilities: { ...DEFAULT_CAPABILITIES },
       chosen: {
         maxDepth: 'default',
-        canMessage: 'default',
-        canAssignWork: 'default',
+
         canCreateAgents: 'default',
         canWriteRules: 'default',
       },

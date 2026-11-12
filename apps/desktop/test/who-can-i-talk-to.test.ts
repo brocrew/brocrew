@@ -301,7 +301,6 @@ describe('642 · who can I talk to', () => {
       })
     }
     // ⛔ **The grant still decides**: narrowed to none, BroBot is shown only what it commands.
-    expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'none' })).toBe(true)
     expect(host.agentCard(other, speakingAs(brobot), brobot)).toBeNull()
     expect(host.agentCard(child, speakingAs(brobot), brobot)?.state).toEqual({ is: 'idle' })
   })

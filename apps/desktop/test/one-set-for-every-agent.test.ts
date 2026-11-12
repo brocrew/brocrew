@@ -45,7 +45,7 @@ const LAUNCHES: readonly Omit<InstructionContext, 'cwd' | 'spawningEnabled' | 'o
     profileSlug: 'project-manager',
     startedBy: theConversationCalled('Giver', { label: 'W1', title: 'Bakery website' }),
     depth: 1,
-    capabilities: { ...DEFAULT_CAPABILITIES, canAssignWork: 'none' },
+    capabilities: { ...DEFAULT_CAPABILITIES,  },
     root: null,
   },
   {
@@ -119,7 +119,7 @@ describe('one set of instructions for every agent', () => {
       const [first] = contexts
       if (first === undefined) throw new Error('no launch')
       expect(
-        factoryOf({ ...first, capabilities: { ...DEFAULT_CAPABILITIES, canMessage: 'none' } }),
+        factoryOf({ ...first, capabilities: { ...DEFAULT_CAPABILITIES,  } }),
       ).toBe(factories[0])
     })
   }

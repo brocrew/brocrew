@@ -321,8 +321,6 @@ describe('a profile name reaches its one conversation', () => {
       rail: 'that-agent-has-several-conversations',
     })
 
-    expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'none' })).toBe(true)
-
     // Only the worker it started is in reach now, so the name names that one.
     const one = await callOn(giverTools, 'ask_question', aQuestion('worker'))
     expect(one, JSON.stringify(one)).toMatchObject({ outcome: 'ok', agent: worker })
@@ -383,7 +381,6 @@ describe('a profile name reaches its one conversation', () => {
       outcome: 'refused',
       rail: 'that-agent-is-not-below-you',
     })
-    expect(store.setCapabilities('reviewer', { canMessage: 'none' })).toBe(true)
     const denied = await fullCall(callerTools, 'message_agent', aNote('worker'))
     const unknown = await fullCall(callerTools, 'message_agent', aNote('nobody-by-this-name'))
     expect(denied.structured.rail).toBe(unknown.structured.rail)

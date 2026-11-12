@@ -758,22 +758,6 @@ export interface CardNobodyHolds {
 /** One of {@link LEDGER_WALK_KINDS}. */
 export type LedgerWalkKind = (typeof LEDGER_WALK_KINDS)[number]
 
-/**
- * 🔴 **One walk over ledgers: what it covered, how many it read, how many it could not, and what it
- * found** (453).
- *
- * ⛔ **The three counts are computed from the QUERY and never from {@link LedgerWalk.rows}.**
- * {@link ledgers} is the candidate set's own size — the number of conversations the walk opened —
- * so `ledgers: 47, rows: 0` is *forty-seven ledgers say nothing is waiting* and `ledgers: 0` with
- * `LedgerWalkKind` `every-conversation-that-routed` is *nothing in this app has ever routed a
- * request*. ⚠️ Those are different facts and `rows.length` is `0` for both of them, and for
- * `no-ledger` as well.
- *
- * ⚑ **Shared by the store and the host rather than translated between them**, for
- * `MessageRefusalDetail.reach`'s reason exactly (`448`): the party that WALKED is the only one that
- * can say what it walked, and a second derivation one layer up could answer a number the walk never
- * used.
- */
 export interface LedgerWalk<Row> {
   /** What the walk found, in the reader's own order. */
   readonly rows: readonly Row[]
@@ -1701,27 +1685,7 @@ export const LEDGER_WALK_KINDS = [
    * because they are two different narrowings and only one of them is the candidate set's.
    */
   'every-conversation-this-one-gave-work-to',
-  /**
-   * 🔴 **Every conversation this app recorded one conversation as having SPAWNED** (543) —
-   * `SELECT … FROM provider_session WHERE parent_session_id = ?`, served by
-   * `provider_session_parent_idx`, over the self-FK `341` wrote.
-   *
-   * ⛔ **The first member that opens NO LEDGER, and that is why it is a word rather than a
-   * borrowing.** Every sentence above promises something about what was read out of a ledger;
-   * lineage is one column of a `provider_session` row, written with the row, and this walk reads
-   * those rows and folds nothing. ⚑ So {@link LedgerWalk.rowsUnread} is `0` here: since D-016 the
-   * parent is the whole of the edge, and there is no half-written one to count.
-   *
-   * ⚑ **Not a narrowing of the word above it, and the two lists coincide only by accident.** A
-   * conversation may give work to one it never spawned — `540` §5 measured that population and
-   * named it — and may spawn one it never gives work to.
-   *
-   * ⚠️ **557 · this clause used to end *work is admitted by `can_message` and not by descent*, and
-   * HO-060 §2 made it false.** ⚑ **Since D-014 work needs `can_assign_work` AND a conversation the
-   * giver started**, and since D-016 a give starts the conversation it gives to when there is none,
-   * so descent is the relationship rather than the thing the gate ignores. 🔴 **The two lists still
-   * differ**: a conversation may start one it never gives more work to once the first piece ends.
-   */
+
   'every-conversation-this-one-spawned',
   /**
    * 🔴 **One conversation's own ledger, read whole, for the work it was GIVEN** (543) —

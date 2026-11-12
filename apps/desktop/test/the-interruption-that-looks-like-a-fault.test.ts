@@ -27,7 +27,7 @@ import {
   interruptRetryableOf,
   refuseInterrupt,
 } from '../src/main/runtime/interrupt-rails'
-import { MESSAGE_RAILS } from '../src/main/runtime/message-rails'
+
 import { QUESTION_RAILS } from '../src/main/runtime/question-rails'
 import { REPLY_RAILS } from '../src/main/runtime/reply-rails'
 import { SPAWN_RAILS } from '../src/main/runtime/spawn-rails'
@@ -226,9 +226,6 @@ describe('395 · the interruption that looks like a provider fault', () => {
   const asPm = (pm: string): { ownerId: string } => ({ ownerId: `agent:${pm}` })
 
   /** One capability, changed and nothing else — the *"one fact over"* half of every pair. */
-  const reach = (profileId: string, edit: { canMessage?: string }): void => {
-    expect(store.setCapabilities(profileId, edit as never)).toBe(true)
-  }
 
   /**
    * `393`'s helper: a PM in a window with one child of its own, started through the real door.
@@ -885,54 +882,6 @@ describe('395 · the interruption that looks like a provider fault', () => {
       expect(asked?.reason).toContain('Only the person answering ends this')
     })
 
-    it('⛔ no interrupt rail NAME collides with the compared roster — but the one it shares on purpose', () => {
-      // ⚑ `374`'s census extended to this vocabulary: one grammar, and a `rail` that says which
-      // rule stopped a call whichever door built the payload. The global roster is derived in
-      // `what-an-agent-is-told-about-its-work.test.ts`; this local comparison names its inputs below.
-      //
-      // 🔴 **650 · ONE located exception, and it is named here rather than let through.** ⛔ A
-      // launch in flight is one fact, and `message_agent` meets it too; since `650` it answers with
-      // this vocabulary's word rather than folding it into `agent-cannot-take-a-message`. ⚠️ **The
-      // exception is as narrow as the fact**: one word, one other vocabulary, and the same
-      // permanence and act at both doors — which is what stops a shared NAME becoming a shared
-      // name for two things. The sentences differ, because each states a fact about its own call.
-      const SHARED = 'that-conversation-has-not-started'
-      const others = [
-        ...SPAWN_RAILS,
-        ...MESSAGE_RAILS,
-        ...TOOL_REFUSALS,
-        ...REPLY_RAILS,
-        ...QUESTION_RAILS,
-      ] as readonly string[]
-      for (const rail of INTERRUPT_RAILS) {
-        if (rail === SHARED) continue
-        expect(others).not.toContain(rail)
-      }
-      // ⛔ **Where the shared word lives, exactly**: in `TOOL_REFUSALS` and in no other list.
-      const owners = (
-        [
-          ['SPAWN_RAILS', SPAWN_RAILS],
-          ['MESSAGE_RAILS', MESSAGE_RAILS],
-          ['TOOL_REFUSALS', TOOL_REFUSALS],
-          ['REPLY_RAILS', REPLY_RAILS],
-          ['QUESTION_RAILS', QUESTION_RAILS],
-        ] as const
-      )
-        .filter(([, rails]) => (rails as readonly string[]).includes(SHARED))
-        .map(([name]) => name)
-      expect(owners).toEqual(['TOOL_REFUSALS'])
-      // ⚑ **One meaning at both doors**: the same permanence, the same act, a different sentence.
-      const atTheInterruptDoor = refuseInterrupt(SHARED, { agent: 'sess_x' })
-      const atTheMessageDoor = refuseTool(SHARED, { agent: 'sess_x' })
-      expect(atTheMessageDoor.permanence).toBe(interruptPermanenceOf(SHARED))
-      expect(atTheMessageDoor.remedy).toBe(atTheInterruptDoor.remedy)
-      expect(atTheMessageDoor.retryable).toBe(interruptRetryableOf(SHARED))
-      expect(atTheMessageDoor.reason).not.toBe(atTheInterruptDoor.reason)
-      // ⚑ The control: the list it is being compared against is not empty, and it does contain the
-      // names it should.
-      expect(others).toContain('may-not-message')
-      expect(others).toContain('no-such-agent')
-    })
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
@@ -1083,7 +1032,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
       // ⚑ Work given through the real door, so the piece is a derived row and not a fixture — ⚑
       // D-016: the give is that door, and its brief the turn now parked on its card.
       const { pm, pmProfile, worker, piece, pmTools, workerHandle } = await aPmAndItsWorker()
-      reach(pmProfile, { canMessage: 'any' })
+
       expect(workerHandle.status()).toBe('waiting_permission')
       // ⚑ A second message, held behind the running turn — `354`'s singleton, still one for work.
       // ⛔ **415 · it is a QUESTION** (HO-021 §1 property 3): the child is holding an open piece of
@@ -1229,7 +1178,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
       // ⚑ **D-016 · the turn is started by the give's brief**, so the message this test needs HELD
       // is a follow-up on that piece, meeting the running turn.
       const { pmProfile, worker, piece, pmTools, workerHandle } = await aPmAndItsWorker()
-      reach(pmProfile, { canMessage: 'any' })
+
       expect(workerHandle.status()).toBe('waiting_permission')
       const held = await callOn(pmTools, 'message_agent', {
         kind: 'follow-up',
@@ -1250,7 +1199,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
       // and the turn ends the same way — through the provider rather than through a person, so no
       // window is ever attached.
       const alone = await aPmAndItsWorker()
-      reach(alone.pmProfile, { canMessage: 'any' })
+
       // ⚑ **D-016 · the brief opens the turn here too**, for the reason the arm above states.
       expect(alone.workerHandle.status()).toBe('waiting_permission')
       const stranded = await callOn(alone.pmTools, 'message_agent', {
@@ -1276,7 +1225,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
     it('⛔ a conversation ENDING settles all three, which is the sentence that IS true', async () => {
       // ⚑ D-016 · the give is the work, and its brief the turn parked on its card.
       const { pmProfile, worker, workerHandle } = await aPmAndItsWorker()
-      reach(pmProfile, { canMessage: 'any' })
+
       expect(workerHandle.status()).toBe('waiting_permission')
       // ⛔ **496 · the PERSON's ending, because this is work IN FLIGHT** (HO-034 §1). ⚠️ What this
       // test is about is what an ENDING does to a task, a question and a held message — not who

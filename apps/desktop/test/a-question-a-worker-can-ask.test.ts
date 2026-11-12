@@ -481,60 +481,6 @@ describe('437 · a question a worker can ask its parent', () => {
    * it a measurement of the REACH rather than of the worker.
    */
   describe('§2 · the reach did not move', () => {
-    it('⛔ a worker still cannot address its parent with message_agent — and CAN ask it', async () => {
-      const { pm, worker, workerTools, piece } = await aWorkerHoldingWork()
-      // 🔴 **549 · the worker is NARROWED here, and that is a change worth reading** (HO-058 §1).
-      // ⛔ **The ruled default is `any` now, so a worker CAN address its parent with
-      // `message_agent`** — which is the sentence this test's own title denies, and `437` built
-      // `ask_parent` in a world where it could not. ⚑ **What `437` built is untouched and is still
-      // the only verb that BLOCKS and comes back with an answer**; what moved is whether plain
-      // words can go upward at all. ⚠️ **The rail below is kept measurable by a person's
-      // narrowing** — to `none` since D-016 took `same-project` away — and the widening is
-      // measured in `two-withdrawals-open-what-was-scoped.test.ts` §4.
-      const workerProfile = store.identityOf(worker)?.profileSlug ?? ''
-      expect(store.setCapabilities(workerProfile, { canMessage: 'none' })).toBe(true)
-      // ⛔ **The negative.** The worker names the exact conversation that gave it the work.
-      // ⚑ **D-016 · a `note`**: a follow-up names a piece the SENDER gave, and the worker gave none.
-      const refused = await callOn(workerTools, 'message_agent', {
-        agent: pm,
-        text: 'postgres or sqlite?',
-        kind: 'note',
-      })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      // ⚑ **D-017 · R12 — the reach rail, and no longer `no-such-agent`**: the parent exists, and
-      // `no-such-agent` is said only about an id no conversation has (`05` rule 6).
-      expect(refused.rail).toBe('may-not-message')
-      // ⚑ **The positive, one verb over, same caller, same target.** The reach did not admit it;
-      // the task edge did.
-      const said = await startAsking(workerTools, {
-        piece,
-        question: 'postgres or sqlite?',
-      })
-      expect(said.outcome, JSON.stringify(said)).toBe('ok')
-      const { requestId, part } = theQuestionWaitingOn(pm)
-      const answered = await host.answerQuestion(
-        { questionId: requestId, answers: [{ part, answer: ['postgres'] }] },
-        asAgent(pm),
-      )
-      // ⚑ **608 · the ANSWER is what proves the edge, and it is read off the row** (HO-084 §4).
-      // ⛔ It used to be read off the call's own `answered: true`, which only existed while the
-      // call was parked on the answer.
-      expect(answered.ok, JSON.stringify(answered)).toBe(true)
-      expect(store.routedRequestsOf(worker).find((one) => one.requestId === requestId)?.state).toBe(
-        'answered',
-      )
-      // ⚠️ **And SEEING did not widen either** — `433`'s ruling is *a caller may see exactly what it
-      // may send to*, so a verb that granted a send without a sight would have broken it and one
-      // that granted a sight is what this asserts did not happen.
-      // ⛔ **Asked of the AGENT IDS and never of the whole payload.** The worker's own card carries
-      // `parent`, which IS the pm's id — so a `toContain` over the JSON would be satisfied by a
-      // neighbouring field and would fail for a reason that is not the reach.
-      const listed = await callOn(workerTools, 'list_agents', {})
-      const named = (listed.agents as { agent: string }[]).map((one) => one.agent)
-      expect(named).not.toContain(pm)
-      // ⚑ **The non-vacuity control**: it really did list something — itself.
-      expect(named).toContain(worker)
-    })
 
     it('⛔ every spelling of an addressee is refused, and the list is the one reply_to_parent refuses', async () => {
       const { worker, workerTools, piece } = await aWorkerHoldingWork()

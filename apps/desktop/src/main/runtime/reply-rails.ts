@@ -224,29 +224,6 @@ export function replyRemedyOf(rail: ReplyRail): RefusalRemedy | null {
  */
 export const REPLY_SUMMARY_LIMIT = 1_280
 
-/**
- * The facts a reply refusal may state beyond the rail itself, carried as DATA (`341`, 100).
- *
- * ## ⛔ The fields that are deliberately NOT here
- *
- * ⚠️ **No id names the GIVER, nor anybody else.** A caller that could read its giver's session id
- * off a refusal would have been handed the addressing primitive HO-015 §1.3 refuses to accept as an
- * argument — from the other direction, which is the same fact arriving through the return value.
- *
- * ⚑ **D-025 · a display NAME is carried, and only on `piece-already-ended`** ({@link called}): who
- * ended the caller's own piece, named as this app's notice of that ending names it
- * (`RuntimeHost.tellItsOwnerItWasClosed`). ⛔ **It reaches no conversation but the caller's own.**
- * `give_work`, the one door that takes an agent's name and reaches a conversation with it, looks
- * only among the conversations the caller, or one it stands for, started (`RuntimeHost.helperAs`),
- * and the one that ended the caller's piece — its giver, or the conversation in its giver's place —
- * is not among them; every other door that reaches a conversation takes its id or a piece's label.
- * ⚠️ Nor is it the address {@link messageNamingThePiece} leaves out *in any spelling*: that rule
- * keeps a brief from naming whom its reply goes to, and this names who ended a piece no reply is
- * owed for.
- *
- * ⛔ **And nothing names another conversation's piece**, for `MessageRefusalDetail`'s reason: the
- * one gate that says *"there is no such piece"* must not be the reader that says whose it is.
- */
 export interface ReplyRefusalDetail {
   readonly unreadQuestion?: UnreadQuestion
   /** The rejected main-document spelling, for the caller's answer only. */

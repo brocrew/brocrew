@@ -130,14 +130,6 @@ import type {
   WhoseConversation,
 } from './runtime-host'
 import {
-  MessagingRefused,
-  isAMessageRefusal,
-  messagePermanenceOf,
-  messageRemedyOf,
-  messageRetryableOf,
-  type MessageRefusal,
-} from './message-rails'
-import {
   ABriefThatDidNotArrive,
   AGiveThatGaveNothing,
   AStartThatDidNotHappen,
@@ -291,64 +283,6 @@ const WHEN_THE_ASK_LANDED: Readonly<
   'a-turn-that-ended-earlier': 'an-earlier-turn',
   'a-turn-that-is-running-now': 'the-turn-running-now',
 }
-
-/**
- * 🔴 **The published tools, over a chokepoint that already refuses** (347).
- *
- * ## ⛔ There is not one capability check in this file, and that is the design
- *
- * `341` landed the session-creation chokepoint and its rails, each demonstrated by an actual
- * refusal, and the whole point of that ordering was that a tool would arrive into a door that
- * already says no. ⚑ **So `give_work` hands its arguments to the host's `giveWork`, which asks
- * `admitGive`; it does not ask whether the caller may give.** `169` §1: one rule in two places
- * drifts, and the copy that drifts is always the one further from the thing it protects.
- *
- * ⚑ **`374` did the same for MESSAGING and this file gained no check for that either.**
- * `can_message` is read by `RuntimeHost.assertMayReach`, above the messaging verbs `340` named —
- * `cancelQueuedMessage` is deliberately outside it, and its own docblock says why; what arrives
- * here is a `MessagingRefused` to CLASSIFY.
- *
- * ⛔ **A source census enforces it** — `the-five-tools.test.ts` §6 forbids every
- * `CAPABILITY_FIELDS` key and column in this file, and it extended itself to `374`'s field on the
- * day the field existed, because it is derived from the schema rather than typed out.
- *
- * ⚠️ **What this file DOES contain is translation**, which is not policy: a host that throws is
- * turned into a payload that says refused, a `'no-such-agent'` word is given a sentence, and an
- * argument shape is checked before the door is bothered. The test for whether a line here is a rail
- * is whether removing it could let something through that the chokepoint would have stopped. Nothing
- * here can.
- *
- * ## 🔴 A refusal is a SUCCESSFUL call whose payload says refused
- *
- * `307` measured both halves of this on real children of both providers. A thrown handler becomes
- * transport-shaped `-32603` and *"carries no machine-readable policy meaning"* — the child learns a
- * tool broke. The structured form is a protocol success whose payload denies the request, and both
- * models *"named the rail and obeyed its permanence text"*. ⛔ **So nothing in this file throws a
- * refusal** — ⚠️ **and it does not follow that nothing here throws, which is what this line said
- * until `657`.** A host failure a tool does not classify still propagates, and reaches the model as
- * that broken tool; that is `375`'s ruling (*a teardown that failed is not a policy answer*), and
- * a failed launch was the case it hid. ⚑ Each tool classifies the typed failures it
- * knows — see `guarded`'s own note.
- *
- * ⚑ **The payload shape is `341`'s, carried over MCP unchanged** — `{rail, permanence, retryable,
- * reason, detail}` — because it was fixed at the door precisely so this dispatch would not reinvent
- * it, and because a model that meets one shape everywhere can learn it once. ⚠️ **Every rail
- * vocabulary in this app shares it**, {@link TOOL_REFUSALS} among them, and
- * `what-an-agent-is-told-about-its-work.test.ts` §3 derives sentence uniqueness and pins the
- * deliberately shared-name allowlist from the modules rather than restating its size — so `rail`
- * says which rule stopped a call whichever door built the payload.
- *
- * ⛔ **This said *"Three vocabularies now share it"* until `412`, and it named them.** `405` F8
- * reported the census gap; the count went stale twice over before anybody read it again — the
- * shared payload had reached seven lists and the strongest assertion had reached five. ⚑ **A
- * sentence that names a count is a sentence that goes stale the next time the list moves**, which
- * is the rule {@link TOOL_NAMES}' own note already states one paragraph down, so this one no longer
- * names one.
- *
- * ## ⛔ There is no dispatch tool here, and that is criterion 6
- *
- * See {@link TOOL_NAMES}, which is the enumeration criterion 6's negative is measured against.
- */
 
 /**
  * 🔴 **The MCP server name every one of this app's own tools is published under** (466).
@@ -3445,17 +3379,6 @@ function carryRailRefusal(refusal: SpawnRefusal): PublishedRefusal {
  * ⛔ **Re-derived through `message-rails.ts`'s own table**, for `carryRailRefusal`'s reason: the
  * payload states the permanence, and a payload is a thing that can be built wrong.
  */
-function carryMessageRefusal(refusal: MessageRefusal): PublishedRefusal {
-  return {
-    outcome: 'refused',
-    rail: refusal.rail,
-    permanence: messagePermanenceOf(refusal.rail),
-    retryable: messageRetryableOf(refusal.rail),
-    reason: refusal.reason,
-    remedy: messageRemedyOf(refusal.rail),
-    detail: refusal.detail,
-  }
-}
 
 /**
  * 🔴 **Every spelling of *"send it to this one"*, refused as a set** (393 §2, HO-015 §1.3).
@@ -4527,10 +4450,7 @@ const outOfReachAnswer = (out: OutOfReach, agent: string): AgentToolAnswer => {
   if (out.is === 'takes-no-messages') {
     return refusalAnswer(refuseTool('that-conversation-takes-no-messages', { agent }))
   }
-  return answer(
-    carryMessageRefusal(out.refusal),
-    `refused (${out.refusal.rail}): ${out.refusal.reason}`,
-  )
+
 }
 
 /**
@@ -4562,10 +4482,7 @@ function whatADeliveryMet(
   // narrowed what this identity may do, and `agent-cannot-take-a-message` would say something false
   // about the agent on the other end (340's *a reason answering with another reason's sentence*).
   // ⚠️ **The payload is `341`'s shape and is carried unchanged.**
-  if (error instanceof MessagingRefused) {
-    const carried = carryMessageRefusal(error.refusal)
-    return answer(carried, `refused (${error.refusal.rail}): ${error.refusal.reason}`)
-  }
+
   // 🔴 **692 · the START this delivery asked for did not happen** — ⚑ **D-017 · R1**: of any
   // conversation that was not running — answered in the WAKE's words, because it was a wake: the
   // reopen's failure classified by {@link aWakeThatDidNotHappen}, with its true reason. ⛔ Only this
@@ -4775,23 +4692,8 @@ export interface AgentToolHost {
    * model's efforts — before anything is minted.
    */
   judgeTheDefaultItNames: RuntimeHost['judgeTheDefaultItNames']
-  /**
-   * 🔴 **486 · the standing walls, asked before a door reads an argument** (HO-031 §2.5).
-   *
-   * ⛔ **Each of these answers a question that needs NOTHING the caller wrote**, which is the only
-   * property that makes it safe to ask first: the answer is byte-identical for every argument a
-   * call could carry, so a refusal hoisted above the shape check cannot become an oracle about what
-   * exists. ⚠️ **They do not replace the door they sit in front of** — `createAgentFor` and
-   * `assertMayReach` each ask the whole question again, in their own order,
-   * against the target; these only move an answer the caller was going to get anyway in front of a
-   * check that could not have changed it.
-   *
-   * ⚑ **Opt-in, one line per verb.** *A narrowing is opt-in at the call site too*: a verb that got
-   * this question by being on a list is a verb nobody decided about, so every door that asks it
-   * says so in its own body.
-   */
+
   mayCreateAgents: RuntimeHost['mayCreateAgents']
-  mayReachAtAll: RuntimeHost['mayReachAtAll']
   /**
    * 🔴 **437's verb, and since `608` it does NOT hold the caller's turn open** (HO-084 §4).
    *
@@ -5692,99 +5594,13 @@ export function agentToolsFor(
     {
       name: 'list_agents',
       handlerOwnsMissingInput: true,
-      /**
-       * 🔴 **The sentence states the INVARIANT, not one caller's answer** (433, standing rule 8).
-       *
-       * ⛔ **It said *"the ones you spawned, and yourself"* until 433, and `431` made that false**
-       * without touching this line: an identity a person grants a global reach may write to
-       * conversations it never spawned. ⚠️ A description that enumerates what a capability admits
-       * *"drifts every time the capability changes"*; one that names the RULE two doors share
-       * cannot.
-       *
-       * ## ⛔ And the rule is about NAMING, not about writing — the first draft of this got it wrong
-       *
-       * ⚠️ **A draft of this line read *"exactly the set message_agent will let you write to"*, and
-       * that is FALSE for every caller on every call** (found in this dispatch's own review). The
-       * listing includes the caller's own row, and `message_agent` refuses that row permanently with
-       * `that-agent-is-you` — which is `424`'s trap, put back in prose by a sentence meant to close
-       * a different one. ⛔ **A counterexample that does not involve `me`**: an identity holding
-       * `can_message: 'none'` lists its own children and may write to none of them
-       * (`may-not-message`).
-       *
-       * ⚑ **What IS true of both doors is the entitlement**: an id this names is an id no door will
-       * answer `no-such-agent` about, and an id it omits is one every door will. `a-reach-you-can-see.test.ts`
-       * §1 measures exactly that biconditional — and says out loud that a refusal about the ACT is
-       * not what it is about.
-       *
-       * ## 🔴 610 · the last clause named four fields and the row was unusable (HO-092 §2)
-       *
-       * ⛔ **It said *"Reports **id**, project, profile, state and where each came from"* — and it
-       * was TRUE then.** ⚑ **No name, so every assertion in this tree passed**: nothing ever claimed a
-       * name was there. ⚠️ **That is `530`'s clipped grant line again** — a surface answering
-       * correctly and saying nothing anybody can use — and nobody caught it because it answers
-       * AGENTS rather than people.
-       *
-       * A model needs the agent's display name to relay a message reliably. The app already knows that identity from the conversation and its work; expose it instead of leaving the model to interpret an id substring.
-       *
-       * ⚑ **So the clause names WHO before it names WHAT**, and it names the other arm rather than
-       * leaving it out — see {@link whoseText}, where that choice is argued.
-       *
-       * ## ⚑ D-017 · R12 — ONE list (`05` rule 6)
-       *
-       * ⛔ **It listed what this app was RUNNING, then (D-007) apart from them the caller's children
-       * *"none can be reached"*** — and a conversation a quit left open was `no-such-agent` to every
-       * agent but its starter (Ayo's work to Ana, measured live). ⚑ **Every conversation within the
-       * caller's reach is listed now, running or not, newest activity first** — a message starts
-       * any of them, so whether one runs is not a line this list draws (rule 5). ⚠️ **Cut at
-       * {@link CONVERSATIONS_LISTED}**, and the answer says how many more: an id it omits is still
-       * one `get_agent_status` and `message_agent` take. ⚑ `a-reach-you-can-see.test.ts` §1's
-       * biconditional reads *listed ⇔ reachable* now, and `no-such-agent` is said only about an id no
-       * conversation has.
-       *
-       * ## 🔴 643 · a FOURTH family of *seeing is not sending*, and it is not an entitlement rail
-       *
-       * Being listed does not guarantee that the provider will admit a message. {@link RuntimeHost.assertSignInCurrent} can reject a stale machine credential. Hold an agent's words and reopen on the current sign-in; a person's own turn is still refused there.
-       *
-       * 🔴 **It is not the only condition that refuses a LISTED agent and that no field of
-       * {@link AgentCard} predicts — `650` measured a second.** ⛔ This said *"the ONLY"* and that
-       * *every other arm of that catch-all is already carried by {@link AgentCard.state}*. A card
-       * that reads `idle` also gets refused when another sender's turn opens between the idle read
-       * and the handover, and no card field can carry a race. ⚑ `650` gave that arm its own word
-       * and `657` retired it: the lost race is HELD now, so it is not a refusal at all. `starting`
-       * has its own word too, `that-conversation-has-not-started`. ⚠️ **What the catch-all still folds that no card field
-       * predicts is the provider-handover failures** its permanence note names
-       * — and a reservation a person Closed before its provider arrived, which the card still reads
-       * as `starting` (it asks for a session before it asks for the phase) while `message_agent`
-       * folds it here. ⛔ `AgentCard` was not `650`'s to change. ⚑ **D-017 · R11** — the card's
-       * state is the one derivation's now, and no process fact is on it.
-       *
-       * ⚠️ **And a card field would not have closed it, which is why 643 changed no payload.**
-       * `ClaudeSessionHandle.checkSignIn` runs at the TURN BOUNDARY — and, since `690`, at a wake
-       * of a running conversation — never for a listing, because it costs a `security` subprocess;
-       * so the latch is `false` on every conversation nobody has tried to send to or wake yet. ⚑ `send-refusals.ts` already has the word for that and `219` already ruled it
-       * for the person's window: `first-press`. ⛔ **A listing cannot carry a fact that does not
-       * exist until somebody has been refused.** The surface that can is the REFUSAL.
-       *
-       * ## 🔴 644 · the empty answer names a door
-       *
-       * ⛔ **Everything above is the DESCRIPTION, which a caller reads once at launch.** ⚠️ The
-       * answer text is what it reads when the listing comes back empty, and until `644` that was
-       * four words that named nothing — `642` F2, backlog `D29`, and the branch
-       * `factory-text.ts`'s degradation table already credits as the quiet one.
-       *
-       * 🔴 {@link RuntimeHost.withinMessagingReach} answers `true` for `slot.id === me` before it
-       * asks any grant, so the listing always names at least the caller — ⛔ **it is empty only
-       * once the caller's own slot has left the map**, which is the window after its own
-       * conversation ended while it still holds this toolset. ⚑ So the empty answer names
-       * `list_profiles`, for *who could I give work to* — and it is no promise: `list_profiles`
-       * takes no grant and always answers.
-       */
+
       // ⚑ **D-016 · *"starting one opens a new conversation"* came out**: a give reaches the one
       // conversation a giver has with an agent, and starts one only the first time. ⚑ And each card
       // names the work it holds — its root and its open pieces, by label (spec D17).
       // 🔴 **D-016 · commit 7 · R1 · R3 — each is NAMED by the piece it owns**, and that label is
       // what every door that takes an agent takes; the id stays in the payload.
-      description: `List the agents you can reach: every conversation this app will let you message, including your own, whatever it is doing. Up to ${String(CONVERSATIONS_LISTED)}, the most recently active first; the answer says how many more there are, and message_agent and get_agent_status take any of them by the label of a piece it owns (W1.2) or by its id. Each one's state says what it is doing: active, needs you (a person's answer or approval is waiting in it, or it answered a person who wrote to it and waits for their next words), waiting on another conversation's answer, owes another conversation an answer (and whom), running in the background (and what), scheduled (and when it next wakes), waiting on the agents holding work it gave out (and who), or idle. The agents themselves outlive their conversations — list_profiles names every agent this app holds. Being listed is not a promise that every message to it is admitted — message_agent answers that separately. Each says the provider, model and effort its conversation runs on, and what its provider last reported when that differs. An archived conversation is put away and left out: archived: true lists those instead, each with when it was archived and by whom. Its label still reaches it; restore_agent brings it back without sending it anything, and whatever is sent to it brings it and the helpers archived with it back too. Each is named by the piece of work it owns (the owner of W1.2 · its title), or by its id when it holds none, then who it is — the name a person gave that agent, and the profile slug give_work takes — its state, the conversation that started it, named the same way, and the work it holds: its own root, when a person gave it one, and its open pieces, by label. A conversation this app cannot attribute is still listed, and says so rather than being given a name.`,
+      description: `List every conversation in this app, including your own, whatever it is doing. Up to ${String(CONVERSATIONS_LISTED)}, the most recently active first; the answer says how many more there are, and message_agent and get_agent_status take any of them by the label of a piece it owns (W1.2) or by its id. Each one's state says what it is doing: active, needs you (a person's answer or approval is waiting in it, or it answered a person who wrote to it and waits for their next words), waiting on another conversation's answer, owes another conversation an answer (and whom), running in the background (and what), scheduled (and when it next wakes), waiting on the agents holding work it gave out (and who), or idle. The agents themselves outlive their conversations — list_profiles names every agent this app holds. Being listed is not a promise that every message to it is admitted — message_agent answers that separately. Each says the provider, model and effort its conversation runs on, and what its provider last reported when that differs. An archived conversation is put away and left out: archived: true lists those instead, each with when it was archived and by whom. Its label still reaches it; restore_agent brings it back without sending it anything, and whatever is sent to it brings it and the helpers archived with it back too. Each is named by the piece of work it owns (the owner of W1.2 · its title), or by its id when it holds none, then who it is — the name a person gave that agent, and the profile slug give_work takes — its state, the conversation that started it, named the same way, and the work it holds: its own root, when a person gave it one, and its open pieces, by label. A conversation this app cannot attribute is still listed, and says so rather than being given a name.`,
       /**
        * 🔴 **486 · the rails are the whole gate** (HO-031 §2.4).
        *
@@ -6059,9 +5875,7 @@ export function agentToolsFor(
             const carried =
               'outcome' in refusal
                 ? { ...refusal }
-                : isAMessageRefusal(refusal)
-                  ? carryMessageRefusal(refusal)
-                  : carryRailRefusal(refusal)
+                : carryRailRefusal(refusal)
             return answer(carried, `refused (${refusal.rail}): ${refusal.reason}`)
           }
           // ⚑ **The agent by the name every surface says**, and its conversation by the label it was
@@ -6151,13 +5965,7 @@ export function agentToolsFor(
     {
       name: 'message_agent',
       handlerOwnsMissingInput: true,
-      /**
-       * 🔴 **D-016 · a message hands nothing over, and the sentence says where work goes instead.**
-       *
-       * ⛔ **It sent work until D-016** — a third kind opened a task — and a description that still
-       * offered it would walk a model into a refusal; ⚑ work is `give_work`'s now, and the sentence
-       * names it. ⚠️ The sentence INSTRUCTS rather than describing `can_message` (standing rule 8).
-       */
+
       description:
         'Send a message to an agent: a note for its information, or a follow-up on a piece of work you gave it, which you name — say which. To give work, use give_work; to ask something and get the answer back, use ask_question. It is held until that agent is free, then delivered with whatever else is held for it, oldest first (a person\u2019s command goes on its own). With interrupt: true, the turn that agent is running is also asked to stop, so that the message need not wait for its work to finish; the agent is told who asked for the stop. ' +
         theRuleOfAStopForWords(undefined, 'it') +
@@ -6176,12 +5984,7 @@ export function agentToolsFor(
        * `a-question-is-not-work.test.ts` §2 reads it back out of the JSON Schema each provider is
        * handed.
        */
-      /**
-       * 🔴 **486 · the rails are the whole gate** (HO-031 §2.4).
-       *
-       * ⚑ **Words into this app's own mailbox.** `can_message` and the reach answer it, and a message
-       * to a busy receiver is HELD rather than pushed.
-       */
+
       beyondItsRails: 'nothing-its-rails-do-not-cover',
       // With `interrupt`, a call cuts the receiver's running turn, as `interrupt_agent` does.
       beyondItsRailsWhen: (args) =>
@@ -6232,15 +6035,7 @@ export function agentToolsFor(
       ),
       call: (args) =>
         guarded(async () => {
-          // 🔴 **486 · the standing wall first** (HO-031 §2.5). ⛔ **`may-not-message` sat behind
-          // both the shape below and `no-such-agent`**, and both of those are `permanent` — so a
-          // caller a person had granted no reach at all was told *change the call* about a wall no
-          // call changes. ⚑ Argument-independent by construction: {@link RuntimeHost.mayReachAtAll}
-          // asks the caller's own grant and nothing about the target this line has not read.
-          const wall = host.mayReachAtAll('message', by)
-          if (wall !== null) {
-            return answer(carryMessageRefusal(wall), `refused (${wall.rail}): ${wall.reason}`)
-          }
+
           args = toolArgumentsAtHandler(args)
           const problems: z.core.$ZodIssue[] = []
           const problem = (field: keyof MessageAgentArguments, message: string): void => {

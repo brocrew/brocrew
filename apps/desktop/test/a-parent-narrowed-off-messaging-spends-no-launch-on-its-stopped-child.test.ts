@@ -16,7 +16,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { MessagingRefused } from '../src/main/runtime/message-rails'
+
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -170,56 +170,4 @@ describe('D-016a · a commander narrowed off messaging spends no launch on its s
       'follow-up',
     )
 
-  it('🔴 a commander whose grant says it may message nobody is refused by the reach wall, and no provider is launched for it', async () => {
-    const { lead, child } = await aLeadAndItsStoppedChild()
-    // ⚑ **It still COMMANDS the child** — the grant narrows what it may message, and nothing here
-    // took the child away from it, which is why `withinMessagingReach` lets it through to the wall.
-    expect(store.setCapabilities('lead', { canMessage: 'none' })).toBe(true)
-    const before = handles.length
-
-    const refused = await asTheLead(lead, child).then(
-      () => null,
-      (error: unknown) => error,
-    )
-    expect(refused, 'the message was not refused').toBeInstanceOf(MessagingRefused)
-    expect((refused as MessagingRefused).refusal.rail).toBe('may-not-message')
-    await letItSettle()
-    // ⛔ **The count is the property**: the refusal is the same either way, the launch is not.
-    expect(handles.length - before, 'a provider was launched for a message the wall refuses').toBe(
-      0,
-    )
-  })
-
-  it('⚑ the RUNNING child refuses the same commander by the same wall — the stopped one is asked what it would be asked running', async () => {
-    const { lead, child } = await aLeadAndItsStoppedChild()
-    // ⚑ The control: a person presses the child's row so it RUNS, THEN the lead is narrowed — the
-    // running child's own gate.
-    await host.resumeSession(child, window)
-    expect(store.setCapabilities('lead', { canMessage: 'none' })).toBe(true)
-    const before = handles.length
-
-    const refused = await asTheLead(lead, child).then(
-      () => null,
-      (error: unknown) => error,
-    )
-    expect(refused).toBeInstanceOf(MessagingRefused)
-    expect((refused as MessagingRefused).refusal.rail).toBe('may-not-message')
-    await letItSettle()
-    expect(handles.length - before).toBe(0)
-  })
-
-  it('⚑ the same commander, its grant one step over, starts the stopped child — the launch is spent on a message the walls admit', async () => {
-    const { lead, child } = await aLeadAndItsStoppedChild()
-    expect(store.setCapabilities('lead', { canMessage: 'none' })).toBe(true)
-    const before = handles.length
-    await expect(asTheLead(lead, child)).rejects.toBeInstanceOf(MessagingRefused)
-    await letItSettle()
-    expect(handles.length - before).toBe(0)
-
-    // ⚑ **THE PAIR**: the same call, the same caller, the same stopped child — with the grant it
-    // had. It is admitted, and it DOES start the child.
-    expect(store.setCapabilities('lead', { canMessage: 'any' })).toBe(true)
-    await expect(asTheLead(lead, child)).resolves.toMatchObject({ outcome: 'sent' })
-    expect(handles.length - before, 'the admitted message did not start the child').toBe(1)
-  })
 })

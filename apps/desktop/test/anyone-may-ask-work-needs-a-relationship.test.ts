@@ -13,8 +13,8 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { admitReachAtAll } from '../src/main/runtime/message-rails'
-import { ASSIGNMENT_REACH_ADMITS, DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
+
+import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { ToolWatchingRuntime } from './lib/provider-double'
 import {
@@ -26,57 +26,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-/**
- * # 🔴 553 · anyone may ask; work needs a relationship
- *
- * **Two PO rulings, and the first one narrows what `549` shipped three hours earlier.**
- *
- * > ⚑ **HO-060 §2:** *Anyone may ask anyone. Assigning work requires a relationship.*
- * > ⛔ **§2.2, the property rather than the mechanism:** *You spawned it, or a person granted you
- * > the right.*
- * >
- * > ⚑ **HO-060 §3:** *`kind` defaulting to `work` means a model that simply sends a message
- * > assigns work. That is backwards wherever it happens, including between a parent and its own
- * > child.*
- *
- * ⚑ **D-014 kept §2.2's first arm and nothing else**: work goes only to a conversation the giver
- * started, and no grant admits one it did not start. `can_assign_work` says whether that reaches —
- * `any`, the ruled default; `none` nowhere. ⚠️ **D-016** took `same-project` and the project half
- * of the composite with it.
- *
- * ## ⚑ D-016 · work is GIVEN, by profile, and a message never carries it
- *
- * ⛔ **The `work` kind of message is gone**, and with it the rail that refused one to a conversation
- * the caller did not start (`assign-work-to-one-you-did-not-start`) and `admitAssignment`. ⚑ Work is
- * handed out with `give_work`, which names an AGENT, not a conversation: it goes to the giver's one
- * conversation with that agent, started for it the first time. **So the relationship is how the
- * give finds its conversation** — a conversation a person opened is never one a give reaches — and
- * the grant (`can_assign_work`) is the give's whole wall, asked by `admitReachAtAll('assign', …)`.
- * A message is a note or a follow-up on a piece the sender gave.
- *
- * ## ⛔ Why a GIVE and two strangers are in the fixture
- *
- * ⚠️ **A test that exercised only the admitted pair would pass under a gate that admitted
- * everything.** ⛔ So the fixture below plants two conversations a person opened, which this caller
- * did not start, and a child this caller started — and every section asks the same question of
- * each, which is `a-comparison-tested-where-both-sides-agree-measures-nothing`.
- *
- * ## ⚑ What fails on `main` at `b688a9b2`, and it is every section
- *
- * ⛔ **§1** — there is no `can_assign_work` column, so a `work` message to a conversation the
- * caller did not start is ADMITTED by `can_message: 'any'` and mints a task. ⛔ **§3** — the omitted `kind` defaulted to
- * `'work'` there, so it opened one. ⚑ Since D-010 there is no default: an omitted kind is refused,
- * and since D-016 no kind of message gives work at all.
- *
- * ## ⚠️ What this file does NOT measure, and where it is measured instead
- *
- * ⛔ **The provider asymmetry behind §3's choice** — the MCP SDK's parse-and-throw against Codex's
- * unparsed hand-off — is `538` §3.3's measurement and is not re-derived here; what §3 asserts is
- * the CHOICE that measurement decided, which is that the argument stayed optional.
- * ⛔ **The exhaustive act and rail tables** are `the-rails-a-message-passes.test.ts` and
- * `a-floor-under-the-most-destructive-verb.test.ts` §7, which `553` re-aimed rather than copied.
- */
 
 /** ⚑ **A `FakeRuntime` that keeps the toolset it was launched with** — `431`'s device. */
 describe('553 · anyone may ask; work needs a relationship', () => {
@@ -323,76 +272,14 @@ describe('553 · anyone may ask; work needs a relationship', () => {
      * ⚠️ **Paired with the sibling one fact over**: the same caller can still SPEAK to the same
      * child, which is what makes this a narrowing of one act rather than of the conversation.
      */
-    it('⛔ a person who narrows it to `none` stops work to its OWN child, and not the talking', async () => {
-      const { bossTools, child, label } = await aBossItsChildAndAStranger()
-      reach('lead', { canAssignWork: 'none' })
 
-      const given = await callOn(bossTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'hand',
-        title: 'the thing',
-        brief: 'do the thing',
-      })
-      expect(given.outcome, JSON.stringify(given)).toBe('refused')
-      expect(given.rail).toBe('may-not-assign-work')
-      // ⚑ **The grant that WAS read is reported**, which is `MessageRefusalDetail`'s presence rule.
-      expect((given.detail as { reach?: string }).reach).toBe('none')
-
-      const asked = await callOn(bossTools, 'message_agent', {
-        agent: child,
-        text: 'how is it going?',
-        kind: 'follow-up',
-        piece: label,
-      })
-      expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
-    })
-
-    /**
-     * 🔴 **Two columns, two gates — which is HO-060 §2.3 made true rather than aspirational.**
-     *
-     * > ⚑ *"I claimed that sending and assigning were separate acts with separate gates. They were
-     * > separate names under one gate."*
-     *
-     * ⛔ **So the test is that each column moves ONE of the two acts and not the other**, measured
-     * where the two readings diverge: `can_message: 'none'` stops the note and not the give,
-     * `can_assign_work: 'none'` stops only the give, and each refusal comes back under its own rail.
-     */
-    it('🔴 the two gates are two columns — each refusal names its own, on one pair', async () => {
-      const { bossTools, child } = await aBossItsChildAndAStranger()
-      const askIt = { agent: child, text: 'how is it going?', kind: 'note' }
-      const giveIt = {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'hand',
-        title: 'the thing',
-        brief: 'do the thing',
-      }
-
-      reach('lead', { canMessage: 'none', canAssignWork: 'any' })
-      expect((await callOn(bossTools, 'message_agent', askIt)).rail).toBe('may-not-message')
-      // ⛔ **D-016 · a give is not a message**, so `can_message` does not gate it — where a work
-      // message met the message rail first. ⚑ The two acts are two gates all the way down now.
-      expect((await callOn(bossTools, 'give_work', giveIt)).outcome).toBe('ok')
-
-      reach('lead', { canMessage: 'any', canAssignWork: 'none' })
-      expect((await callOn(bossTools, 'message_agent', askIt)).outcome).toBe('ok')
-      expect((await callOn(bossTools, 'give_work', giveIt)).rail).toBe('may-not-assign-work')
-    })
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
   // §1b · the gate's own contract, where a product door cannot reach it
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-  /**
-   * 🔴 **The gate's `none` clause, pinned on the function as well as through the door** (standing
-   * rule 5). ⚠️ **D-016** took the project half of the composite — *a conversation you started
-   * that is not here*, and *a conversation this app cannot place* — with `same-project`, so the two
-   * cases that pressed it with hand-built parties went with it. ⚑ **And it took `admitAssignment`**:
-   * a give has no target the grant could be asked about, so `admitReachAtAll('assign', …)` is the
-   * whole question.
-   */
   describe('§1b · the grant, asserted on `admitReachAtAll` itself', () => {
-    const caps = (canAssignWork: string) => ({ ...DEFAULT_CAPABILITIES, canAssignWork }) as never
 
     /**
      * ⛔ **`none` reaches nothing at all, and the SENTENCE says so in as many words** (standing
@@ -403,15 +290,7 @@ describe('553 · anyone may ask; work needs a relationship', () => {
      * WALKED from this table — so the two move together and an assertion over the help alone is a
      * comparison tested where both sides agree.
      */
-    it('⛔ `none` refuses a conversation it started, and the shipped sentence says exactly that', () => {
-      expect(admitReachAtAll('assign', caps('none'))?.rail).toBe('may-not-assign-work')
-      expect(ASSIGNMENT_REACH_ADMITS.none).toContain('not even a conversation it started itself')
-      // ⚑ **And the widest word is not the same claim**, so the table is two answers and not one:
-      // it never drops the relationship (D-014) — the work goes to the giver's own conversation.
-      expect(admitReachAtAll('assign', caps('any'))).toBeNull()
-      expect(ASSIGNMENT_REACH_ADMITS.any).toContain('a conversation it has with that agent')
-      expect(ASSIGNMENT_REACH_ADMITS.any).not.toContain('whoever started it')
-    })
+
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -594,7 +473,6 @@ describe('553 · anyone may ask; work needs a relationship', () => {
      */
     it('🔴 the widest message grants buy no destruction — interrupt still refuses', async () => {
       const { bossTools, stranger } = await aBossItsChildAndAStranger()
-      reach('lead', { canMessage: 'any', canAssignWork: 'any' })
 
       // ⚑ **Admitted**, so the refusals below are about the act and not about the pair.
       expect(

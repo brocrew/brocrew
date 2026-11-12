@@ -66,10 +66,8 @@ describe('what a profile is NOT (PROFILE_IS_NOT)', () => {
     ).map((field) => field.key)
     expect(wider, 'the fields whose ruled default is wider than the narrowest value').toEqual([
       'maxDepth',
-      'canMessage',
       // ⚑ **553** — `any` ruled (D-014), `none` narrowest, so `parseChoice`'s narrow-on-unreadable
       // direction is observable on this column too (HO-060 §2).
-      'canAssignWork',
       // ⚑ **D-014** — every agent may create a profile unless a person narrows it.
       'canCreateAgents',
     ])

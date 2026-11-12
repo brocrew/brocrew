@@ -169,43 +169,4 @@ describe('D-017 · a start that costs one launch or none', () => {
     expect(wordsIn(bo)).toEqual(['first', 'second'])
   })
 
-  it('a caller out of reach is refused a stopped conversation before anything starts — no launch is spent on a refusal', async () => {
-    const zed = await personOpens('worker')
-    const bo = await personOpens('reviewer')
-    await host.close(bo, window)
-    // ⚑ **`none`, since D-016 took `same-project`**: the reach vocabulary is `none | any`, so the
-    // one grant that keeps Zed from a conversation it did not start is the one that keeps it from
-    // every conversation — the argument-independent wall (`486`), asked of a STOPPED conversation
-    // exactly as of a running one, before anything is started for it.
-    expect(store.setCapabilities('worker', { canMessage: 'none' })).toBe(true)
-
-    const handlesBefore = handles.length
-    const refused = await callOn(agentToolsFor(host, zed), 'message_agent', {
-      agent: bo,
-      text: 'are you there',
-      kind: 'note',
-    })
-
-    // ⚑ **The reach rail, not `no-such-agent`** — the refusal `message_agent` gives for a running
-    // conversation too, naming the grant that decided it, and nothing else.
-    expect(refused).toMatchObject({
-      outcome: 'refused',
-      rail: 'may-not-message',
-      detail: { reach: 'none' },
-    })
-    // ⛔ **Nothing was started for a refusal**: no launch was attempted for Bo.
-    expect(handles.length).toBe(handlesBefore)
-
-    // ⚑ **THE PAIR**: the identical call, from a caller whose reach is the default (unnarrowed),
-    // succeeds — and DOES start Bo.
-    const ada = await personOpens(DEFAULT_PROFILE_ID)
-    const beforeTheSend = handles.length
-    const sent = await callOn(agentToolsFor(host, ada), 'message_agent', {
-      agent: bo,
-      text: 'are you there',
-      kind: 'note',
-    })
-    expect(sent).toMatchObject({ outcome: 'ok', agent: bo })
-    expect(handles.length).toBe(beforeTheSend + 1)
-  })
 })

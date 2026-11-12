@@ -59,9 +59,9 @@ const identity = (over: Partial<AgentIdentity> = {}): AgentIdentity => ({
     // ⚑ **D-014 · the one default set** — six levels below the root.
     maxDepth: 6,
     // ⚑ **549** — HO-058 §1's ruled word, and the one that is NOT `same-project` any more.
-    canMessage: 'any',
+
     // ⚑ **D-014** — the ruled word, which is *a conversation you started*.
-    canAssignWork: 'any',
+
     canCreateAgents: 'any',
     // ⚑ **582 · the ruled default, which is the narrowest** — an identity nobody has spoken about
     // may not reach into what another agent is told.
@@ -69,8 +69,7 @@ const identity = (over: Partial<AgentIdentity> = {}): AgentIdentity => ({
   },
   chosen: {
     maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
+
     canCreateAgents: 'default',
     canWriteRules: 'default',
   },

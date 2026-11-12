@@ -26,7 +26,7 @@ import {
   refuseTool,
 } from '../src/main/runtime/agent-tools'
 import { SPAWN_RAILS, refuse, type SpawnRefusalDetail } from '../src/main/runtime/spawn-rails'
-import { MESSAGE_RAILS, refuseMessage } from '../src/main/runtime/message-rails'
+
 import { REPLY_RAILS, refuseReply, replyUnkeptFileReason } from '../src/main/runtime/reply-rails'
 import { QUESTION_RAILS, refuseQuestion } from '../src/main/runtime/question-rails'
 import { INTERRUPT_RAILS, refuseInterrupt } from '../src/main/runtime/interrupt-rails'
@@ -335,12 +335,7 @@ const VOCABULARIES: readonly {
         (detail) => refuse(rail as never, detail).reason,
       ),
   },
-  {
-    name: 'MESSAGE_RAILS',
-    module: 'runtime/message-rails.ts',
-    rails: MESSAGE_RAILS,
-    arms: (rail) => [refuseMessage(rail as never).reason],
-  },
+
   {
     name: 'REPLY_RAILS',
     module: 'runtime/reply-rails.ts',
@@ -846,12 +841,9 @@ const ACT: Readonly<Record<string, string>> = {
     'Do this work here, or ask a person whether to change your approval mode',
   'SPAWN_RAILS|wider-than-its-parent/2':
     'Do this work here, or ask a person whether to change your approval mode',
-  'MESSAGE_RAILS|may-not-message': 'ask one, or do the work yourself',
   // ⚑ **D-014** — a note, a follow-up or `ask_question`: since D-010 no message is a question.
   // ⚑ **D-016 · commit 3** — work is given with `give_work`, so this is `give_work`'s wall;
   // `assign-work-to-one-you-did-not-start` went with message_agent's `work` kind.
-  'MESSAGE_RAILS|may-not-assign-work':
-    'Send it as a note, ask with ask_question, or do the work yourself',
   'REPLY_RAILS|no-piece-by-that-name': 'list_tasks names the pieces you hold',
   // ⚑ **D-016 · commit 3** — a root is a person's gift, so its answer goes to the person.
   'REPLY_RAILS|a-person-gave-that-piece': 'answer the person here',

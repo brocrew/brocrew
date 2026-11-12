@@ -385,7 +385,7 @@ describe('732 · a retry that works, and names, not folders', () => {
       // open work, then *not started*. ⛔ A read asked ahead of the walls would tell this parent to
       // withdraw or ask about work it may no longer give at all.
       const wake = await aWakeInFlightIntoWorkItHolds(false)
-      grant('lead', { canAssignWork: 'none' })
+
       // ⚑ **D-016 · more work is a give**, which finds this very child — the parent's one
       // conversation with `worker`. ⚑ The wall is asked before the lookup (R2 step 3).
       const more = {

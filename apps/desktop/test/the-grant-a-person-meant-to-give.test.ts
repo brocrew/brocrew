@@ -67,21 +67,5 @@ function withoutProse(source: string): string {
 }
 
 describe('shared grant labels and the launch permission sentences', () => {
-  it('the launch uses the agreed permission sentence rather than the sheet label', () => {
-    const factory = withoutProse(readFileSync(FACTORY, 'utf8'))
-    const text = thisConversationSpans({
-      profileSlug: 'fictional-agent',
-      cwd: '/tmp/fictional-work',
-      startedBy: null,
-      depth: 0,
-      capabilities: { ...DEFAULT_CAPABILITIES, canMessage: 'any' },
-      spawningEnabled: true,
-      root: null,
-      others: { shown: [], more: 0 },
-    }).text
-    expect(text).toContain('- You may message any conversation.')
-    expect(text).not.toContain(`${capabilityField('canMessage').label}:`)
-    expect(factory).not.toContain('CAPABILITY_VALUES')
-    expect(factory).not.toContain('${field.label}: ')
-  })
+
 })

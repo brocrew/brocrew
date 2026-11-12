@@ -126,16 +126,12 @@ describe('D-017 · M141 · a caller whose reach does not cover it is refused bef
     // are two sibling top-level conversations opened by the same window. ⚠️ The grant's own floor
     // (`486`) would refuse `none` too, and in other words — the message asserted below is what says
     // the reach wall in front of the start answered first.
-    expect(store.setCapabilities('caller', { canMessage: 'none' })).toBe(true)
 
     // ⚑ **Baseline AFTER both sessions have started and Bo has stopped**: `personOpens` itself
     // starts a handle for each of them, so what this test counts from here is launches this call
     // causes, never the fixture's own.
     const handlesBefore = handles.length
 
-    // ⛔ **`'follow-up'`, deliberately**: a WORK message would meet `assertMayAssign`'s own wall
-    // first (`can_assign_work`, a different column), which would refuse this call for a second
-    // reason and leave the entitlement wall this test is about unmeasured.
     let refusal: unknown = null
     try {
       await host.queueMessage(bo, 'are you there', speakingAs(zed), [], 'work', {}, 'follow-up')
@@ -159,7 +155,6 @@ describe('D-017 · M141 · a caller whose reach does not cover it is refused bef
     // ⚑ **THE PAIR, one fact over**: the identical call, from a caller whose reach is `any`,
     // succeeds — and DOES resume Bo. Without this half, a harness that could not tell *resumed*
     // from *not resumed* would have passed the refusal above for the wrong reason.
-    expect(store.setCapabilities('caller', { canMessage: 'any' })).toBe(true)
     const sent = await host.queueMessage(
       bo,
       'are you there',

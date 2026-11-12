@@ -89,14 +89,12 @@ describe('an identity that outlives a project', () => {
         maxDepth: 3,
         canCreateAgents: null,
         canWriteRules: null,
-        canMessage: null,
-        canAssignWork: null,
+
       })
       expect(saved?.capabilities.maxDepth).toBe(3)
       expect(saved?.chosen).toEqual({
         maxDepth: 'chosen',
-        canMessage: 'default',
-        canAssignWork: 'default',
+
         canCreateAgents: 'default',
         canWriteRules: 'default',
       })
@@ -117,8 +115,7 @@ describe('an identity that outlives a project', () => {
           maxDepth: 3,
           canCreateAgents: null,
           canWriteRules: null,
-          canMessage: null,
-          canAssignWork: null,
+
         }),
       ).toBeNull()
       expect(db.prepare('SELECT count(*) AS n FROM agent_identity').get()).toEqual({ n: 0 })

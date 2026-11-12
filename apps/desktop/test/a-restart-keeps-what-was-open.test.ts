@@ -726,7 +726,6 @@ describe('692 · a restart keeps what was open', () => {
       // the giver's OWN conversation with that agent** by the parent its row names, so this is the
       // state where a start that forgot its parent would reach a NEW conversation and the running
       // child is not.
-      expect(store.setCapabilities('lead', { canAssignWork: 'any' })).toBe(true)
       // The control: the running child takes the parent's work under the same grant.
       await giveTo(leadTools, children[0], 'the running one')
       await quitAndRelaunch()
@@ -1094,7 +1093,6 @@ describe('692 · a restart keeps what was open', () => {
         window,
       )
       const neighbourTools = lastToolset()
-      expect(store.setCapabilities('neighbour', { canMessage: 'any' })).toBe(true)
       const listedBy = async (tools: AgentToolset): Promise<string[]> =>
         ((await callOn(tools, 'list_agents', {})).agents as { agent: string }[]).map(
           (card) => card.agent,
@@ -1144,7 +1142,6 @@ describe('692 · a restart keeps what was open', () => {
         { provider: 'claude', profileId: 'neighbour', approvalMode: 'ask', cwd: root },
         window,
       )
-      expect(store.setCapabilities('neighbour', { canMessage: 'none' })).toBe(true)
       await quitAndRelaunch()
       await personPresses(neighbour)
       const before = launched.length
@@ -1165,37 +1162,8 @@ describe('692 · a restart keeps what was open', () => {
       expect(listed(children[0])).toEqual({ running: 'not-running' })
 
       // ⚑ **The control, one grant over**: the same call, the same caller, and it starts it.
-      expect(store.setCapabilities('neighbour', { canMessage: 'any' })).toBe(true)
       await expect(asTheNeighbour()).resolves.toMatchObject({ outcome: 'sent' })
       expect(launched.length - before).toBe(1)
-    })
-
-    it('⛔ its parent, narrowed to give no work, is refused THAT wall — as by the running child — and starts nothing', async () => {
-      const { lead, children, leadTools } = await theFourOpen()
-      expect(store.setCapabilities('lead', { canAssignWork: 'none' })).toBe(true)
-      // The control: the RUNNING child refuses its own parent's work by this wall.
-      const running = await callOn(leadTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: profileOf(children[0]),
-        title: 'do this',
-        brief: 'do this',
-      })
-      expect(running, JSON.stringify(running)).toMatchObject({
-        outcome: 'refused',
-        rail: 'may-not-assign-work',
-      })
-      await quitAndRelaunch()
-      const tools = await personPresses(lead)
-      const before = launched.length
-
-      const said = await callOn(tools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: profileOf(children[1]),
-        title: 'do this',
-        brief: 'do this',
-      })
-      expect(said, JSON.stringify(said)).toMatchObject({ outcome: 'refused', rail: running.rail })
-      expect(launched.length - before, 'a start was spent on work the wall refuses').toBe(0)
     })
 
     // ⛔ **`its parent re-sending work the child still holds is refused before any start` is gone

@@ -288,7 +288,6 @@ describe('an agent restoring an archived conversation', () => {
   it('names nothing to a caller that cannot reach it, unless it is archived', async () => {
     const { helper, label } = await aGiverAndItsHelper()
     const narrowed = await world.open(host, 'claude', 'explorer')
-    expect(world.store.setCapabilities('explorer', { canMessage: 'none' })).toBe(true)
 
     // Not archived and out of reach: the address names nothing, by its label or its id.
     for (const agent of [label, helper]) {

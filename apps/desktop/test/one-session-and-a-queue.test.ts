@@ -188,7 +188,6 @@ describe('one session, and the callers who wait', () => {
       [given.label, first],
     ])
     expect(store.capabilitiesOf('archivist')).toEqual(DEFAULT_CAPABILITIES)
-    expect(store.capabilitiesOf('archivist')?.canAssignWork).toBe('any')
     return {
       worker,
       first,

@@ -42,8 +42,7 @@ const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
 
 const CHOSEN = {
   maxDepth: 'default',
-  canMessage: 'default',
-  canAssignWork: 'default',
+
   canCreateAgents: 'default',
   canWriteRules: 'default',
 } as unknown as AgentIdentity['chosen']
