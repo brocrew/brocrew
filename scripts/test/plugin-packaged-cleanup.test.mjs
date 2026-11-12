@@ -234,12 +234,12 @@ describe('killed journey witness', () => {
     fs.chmodSync(root, 0o700)
     fs.writeFileSync(path.join(root, 'fixture-owned'), 'packaged-plugin-gate\n')
     const sleeper = path.join(root, 'fern-sleeper')
-    fs.copyFileSync('/bin/sleep', sleeper)
+    fs.copyFileSync(process.execPath, sleeper)
     fs.chmodSync(sleeper, 0o700)
     const script = path.join(root, 'journey.cjs')
     fs.writeFileSync(
       script,
-      `const {spawn}=require('node:child_process');const child=spawn(${JSON.stringify(sleeper)},['60'],{detached:true,stdio:'ignore'});child.unref();process.send(child.pid);setInterval(()=>{},1000);`,
+      `const {spawn}=require('node:child_process');const child=spawn(${JSON.stringify(sleeper)},['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'});child.unref();process.send(child.pid);setInterval(()=>{},1000);`,
     )
     const leader = spawn(process.execPath, [script], {
       env: { HOME: root, PATH: '/usr/bin:/bin' },
