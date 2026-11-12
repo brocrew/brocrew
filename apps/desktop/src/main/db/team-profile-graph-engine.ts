@@ -263,30 +263,30 @@ export class TeamProfileGraphEngine {
       const bytes = serialize(rows).byteLength
       this.projectedBytes = graphAdd(this.projectedBytes, bytes)
       if (bytes * 3 + rows.length * 1024 > nativeBudget) throw new Failed('budget')
-        this.reserve(0)
-        this.visited += rows.length
-        for (const row of rows) {
-          this.check()
-          const position = row.position
-          const session = sessionPage ? key(row.session_id) : afterSession
-          // SQLite orders session keys by their UTF-8 bytes, including non-BMP keys.
-          const order =
-            session === afterSession
-              ? 0
-              : Buffer.compare(Buffer.from(session), Buffer.from(afterSession))
-          if (
-            typeof position !== 'number' ||
-            !Number.isSafeInteger(position) ||
-            (sessionPage && (order < 0 || position < 0)) ||
-            (order === 0 && position <= after)
-          )
-            throw new Failed('metadata', 1)
-          afterSession = session
-          after = position
-          for (const [name, value] of Object.entries(row))
-            if (name.startsWith('bad_') && value !== 0) throw new Failed('metadata', 1)
-          yield row
-        }
+      this.reserve(0)
+      this.visited += rows.length
+      for (const row of rows) {
+        this.check()
+        const position = row.position
+        const session = sessionPage ? key(row.session_id) : afterSession
+        // SQLite orders session keys by their UTF-8 bytes, including non-BMP keys.
+        const order =
+          session === afterSession
+            ? 0
+            : Buffer.compare(Buffer.from(session), Buffer.from(afterSession))
+        if (
+          typeof position !== 'number' ||
+          !Number.isSafeInteger(position) ||
+          (sessionPage && (order < 0 || position < 0)) ||
+          (order === 0 && position <= after)
+        )
+          throw new Failed('metadata', 1)
+        afterSession = session
+        after = position
+        for (const [name, value] of Object.entries(row))
+          if (name.startsWith('bad_') && value !== 0) throw new Failed('metadata', 1)
+        yield row
+      }
       if (rows.length < pageSize) return
     }
   }
