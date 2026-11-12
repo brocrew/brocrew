@@ -512,7 +512,8 @@ export class FilesLibraryEngine {
           CASE WHEN length(CAST(title AS BLOB)) <= ${B.fieldBytes} THEN title END AS title,
           CASE WHEN length(CAST(name AS BLOB)) <= ${B.fieldBytes} THEN name END AS name,
           (length(CAST(title AS BLOB)) > ${B.fieldBytes} OR length(CAST(name AS BLOB)) > ${B.fieldBytes}) AS oversized
-          FROM work_resource WHERE id=?`, row.id,
+          FROM work_resource WHERE id=?`,
+        row.id,
       )
       if (resource === undefined) throw new Failed('metadata', 1)
       const file = stream.metadata.keep(resource)
@@ -861,24 +862,22 @@ export class FilesLibraryEngine {
     const ordered = [...groups.values()].sort((a, b) =>
       compareLibraryFiles(a.representative, b.representative, query.sort),
     )
-    return this.finish(
-      {
-        ...this.base(context),
-        query,
-        groups: ordered,
-        provenance,
-        scopeKeeps,
-        totalKeeps,
-        facets: {
-          kinds: {
-            all: kinds.all.size,
-            documents: kinds.documents.size,
-            images: kinds.images.size,
-          },
-          roles: { all: roles.all.size, made: roles.made.size, input: roles.input.size },
+    return this.finish({
+      ...this.base(context),
+      query,
+      groups: ordered,
+      provenance,
+      scopeKeeps,
+      totalKeeps,
+      facets: {
+        kinds: {
+          all: kinds.all.size,
+          documents: kinds.documents.size,
+          images: kinds.images.size,
         },
+        roles: { all: roles.all.size, made: roles.made.size, input: roles.input.size },
       },
-    )
+    })
   }
   private buildTasks(
     query: string,
