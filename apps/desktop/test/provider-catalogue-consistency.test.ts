@@ -39,7 +39,7 @@ function catalogue(read: (provider: Provider, profile: string) => Promise<ModelC
 }
 
 function screenLists(read: () => Promise<ModelChoice[]>) {
-return createModelLists(() => ({
+  return createModelLists(() => ({
     providerLaunchChoices: async ({ provider, profileId }) => {
       const own = { model: profileId === 'fern' ? 'fable' : 'default', effort: null }
       return {
@@ -151,7 +151,9 @@ describe('one current catalogue per provider', () => {
     const lists = screenLists(async () => {
       if (!first) return currentModels
       first = false
-      return new Promise<ModelChoice[]>((resolve) => { release = resolve })
+      return new Promise<ModelChoice[]>((resolve) => {
+        release = resolve
+      })
     })
     const oldDrawer = lists.read('claude')
     await lists.read('claude', 'fern')
@@ -163,8 +165,9 @@ describe('one current catalogue per provider', () => {
     const drawer = lists.held('claude')
     expect(drawer?.state).toBe('answered')
     if (drawer?.state !== 'answered') throw new Error('no rows')
-    expect(drawer.list.models).toEqual(currentModels.map((row) => ({ ...row, addedBy: 'the-provider' })))
-    expect(lists.held('claude', 'fern')).toMatchObject({list: {models: drawer.list.models}})
+    expect(drawer.list.models).toEqual(
+      currentModels.map((row) => ({ ...row, addedBy: 'the-provider' })),
+    )
+    expect(lists.held('claude', 'fern')).toMatchObject({ list: { models: drawer.list.models } })
   })
-
 })
