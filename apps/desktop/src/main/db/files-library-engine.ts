@@ -52,7 +52,8 @@ type FullTask = {
 }
 type FullKeep = LibraryKeep
 type Group = { representative: FullKeep; matching: Set<string>; matchingCount?: number }
-type StreamRow = Resource & {
+type StreamRow = {
+  id: string
   matching: number
   documents: number
   images: number
@@ -74,6 +75,7 @@ type FileSnapshot = Snapshot & {
     rows: Iterator<StreamRow>
     pending?: StreamRow
     done: boolean
+    failure?: unknown
     metadata: ReturnType<FilesLibraryEngine['metadata']>
     selected: Set<string> | null
   }
@@ -311,9 +313,8 @@ export class FilesLibraryEngine {
   private cacheSize(snapshot: FileSnapshot | TaskSnapshot): number {
     return serialize(snapshot).byteLength
   }
-  private finish<T extends FileSnapshot | TaskSnapshot>(snapshot: T, other?: Snapshot): T {
+  private finish<T extends FileSnapshot | TaskSnapshot>(snapshot: T): T {
     snapshot.metrics.cacheBytes = this.cacheSize(snapshot)
-    void other
     return snapshot
   }
   private expire(): void {
@@ -412,7 +413,13 @@ export class FilesLibraryEngine {
     size: number,
     context: LibraryReadContext,
   ): FilesLibraryResult {
-    this.advance(snapshot, offset + size)
+    if (snapshot.stream?.failure !== undefined) throw snapshot.stream.failure
+    try {
+      this.advance(snapshot, offset + size)
+    } catch (error) {
+      if (snapshot.stream !== undefined) snapshot.stream.failure = error
+      throw error
+    }
     const end = Math.min(snapshot.groups.length, offset + size)
     return {
       type: 'files',
@@ -425,7 +432,7 @@ export class FilesLibraryEngine {
       totalFiles: snapshot.groups.length,
       totalKeeps: snapshot.totalKeeps,
       scopeKeeps: snapshot.scopeKeeps,
-      facets: snapshot.facets,
+      facets: { kinds: { ...snapshot.facets.kinds }, roles: { ...snapshot.facets.roles } },
       next:
         end < snapshot.groups.length || snapshot.stream?.done === false
           ? this.cursor(snapshot.token, 'files', end)
@@ -447,9 +454,12 @@ export class FilesLibraryEngine {
         source.check()
         return libraryKind(String(name))
       })
+      source.db.function('library_id_key', { deterministic: true }, (id: unknown) =>
+        Buffer.from(String(id), 'utf16le').swap16(),
+      )
       const sql = `WITH ranked AS (
         SELECT id, sha256, created_at,
-          row_number() OVER (PARTITION BY sha256 ORDER BY created_at DESC, id DESC) AS rank,
+          row_number() OVER (PARTITION BY sha256 ORDER BY created_at DESC, library_id_key(id) DESC) AS rank,
           count(*) OVER (PARTITION BY sha256) AS matching,
           max(library_kind(name)='documents') OVER (PARTITION BY sha256) AS documents,
           max(library_kind(name)='images') OVER (PARTITION BY sha256) AS images,
@@ -457,13 +467,8 @@ export class FilesLibraryEngine {
           max(role='input') OVER (PARTITION BY sha256) AS input
         FROM work_resource
         ${selected === null ? '' : 'WHERE work_id IN (SELECT value FROM json_each(?))'}
-      ) SELECT r.id,r.work_id,r.role,r.sha256,r.bytes,r.added_by_session_id,r.created_at,
-        CASE WHEN length(CAST(r.title AS BLOB)) <= ${B.fieldBytes} THEN r.title END AS title,
-        CASE WHEN length(CAST(r.name AS BLOB)) <= ${B.fieldBytes} THEN r.name END AS name,
-        (length(CAST(r.title AS BLOB)) > ${B.fieldBytes} OR length(CAST(r.name AS BLOB)) > ${B.fieldBytes}) AS oversized,
-        ranked.matching,ranked.documents,ranked.images,ranked.made,ranked.input
-        FROM ranked JOIN work_resource r ON r.id=ranked.id WHERE ranked.rank=1
-        ORDER BY ranked.created_at DESC, ranked.sha256 ASC`
+      ) SELECT id,matching,documents,images,made,input FROM ranked WHERE rank=1
+        ORDER BY created_at DESC, sha256 ASC`
       const rows = source.iterate<StreamRow>(
         sql,
         ...(selected === null ? [] : [JSON.stringify([...selected])]),
@@ -502,7 +507,15 @@ export class FilesLibraryEngine {
         break
       }
       const row = next.value
-      const file = stream.metadata.keep(row)
+      const resource = source.get<Resource>(
+        `SELECT id,work_id,role,sha256,bytes,added_by_session_id,created_at,
+          CASE WHEN length(CAST(title AS BLOB)) <= ${B.fieldBytes} THEN title END AS title,
+          CASE WHEN length(CAST(name AS BLOB)) <= ${B.fieldBytes} THEN name END AS name,
+          (length(CAST(title AS BLOB)) > ${B.fieldBytes} OR length(CAST(name AS BLOB)) > ${B.fieldBytes}) AS oversized
+          FROM work_resource WHERE id=?`, row.id,
+      )
+      if (resource === undefined) throw new Failed('metadata', 1)
+      const file = stream.metadata.keep(resource)
       const group = {
         representative: file,
         matching: new Set<string>(),
@@ -542,7 +555,11 @@ export class FilesLibraryEngine {
     source.progress = this.progress
     const keeps: FullKeep[] = []
     for (const row of source.iterate<Resource>(
-      'SELECT id,work_id,role,title,name,sha256,bytes,added_by_session_id,created_at FROM work_resource WHERE sha256=? ORDER BY created_at DESC,id DESC',
+      `SELECT id,work_id,role,sha256,bytes,added_by_session_id,created_at,
+        CASE WHEN length(CAST(title AS BLOB)) <= ${B.fieldBytes} THEN title END AS title,
+        CASE WHEN length(CAST(name AS BLOB)) <= ${B.fieldBytes} THEN name END AS name,
+        (length(CAST(title AS BLOB)) > ${B.fieldBytes} OR length(CAST(name AS BLOB)) > ${B.fieldBytes}) AS oversized
+        FROM work_resource WHERE sha256=?`,
       sha256,
     )) {
       const file = stream.metadata.keep(row)
@@ -550,6 +567,7 @@ export class FilesLibraryEngine {
       if (stream.selected === null || stream.selected.has(file.piece))
         group.matching.add(file.resourceId)
     }
+    keeps.sort((a, b) => b.keptAt - a.keptAt || b.resourceId.localeCompare(a.resourceId, 'en'))
     snapshot.provenance.set(sha256, keeps)
   }
 
@@ -860,7 +878,6 @@ export class FilesLibraryEngine {
           roles: { all: roles.all.size, made: roles.made.size, input: roles.input.size },
         },
       },
-      this.tasks,
     )
   }
   private buildTasks(
@@ -918,6 +935,6 @@ export class FilesLibraryEngine {
       (a, b) =>
         a.label.localeCompare(b.label, 'en', { numeric: true }) || a.id.localeCompare(b.id, 'en'),
     )
-    return this.finish({ ...this.base(context), query, parent, tasks }, this.files)
+    return this.finish({ ...this.base(context), query, parent, tasks })
   }
 }
