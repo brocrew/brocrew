@@ -369,6 +369,9 @@ describe('a service takes one piece at a time', () => {
     > => {
       const first = await aCodexServiceOnAPieceThatAskedHigh()
       const { host, caller, service, one } = first
+      // The shared catalogue may already be warm from the first give. A completed install
+      // makes the next piece wait for a fresh provider answer.
+      host.providerSetupCompleted('codex', 'install')
       let release = (): void => {}
       world.listsWait = new Promise((done) => {
         release = done
@@ -381,7 +384,7 @@ describe('a service takes one piece at a time', () => {
         summary: 'Booked.',
       })
       await vi.waitFor(() => {
-        expect(world.listedFor.slice(asked)).toContain('browser-driver')
+        expect(world.listedFor.slice(asked)).toContain('brobot')
       })
       return {
         ...first,

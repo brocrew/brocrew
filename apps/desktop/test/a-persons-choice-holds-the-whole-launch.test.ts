@@ -346,10 +346,10 @@ describe('682 · a person’s choice holds the whole launch', () => {
         codex: { ok: false, reason: 'no-profile' },
       })
       expect(world.listed).toEqual([])
-      // ⚑ CONTROL · an agent that HAS run answers from its own home, with no `standIn`.
+      // Creating the agent home changes its context marker, not the provider catalogue.
       mkdirSync(join(homes(), 'fresh', 'codex'), { recursive: true })
       const own = await bothLists('fresh')
-      expect(own.codex).toEqual({ ok: true, models: [NARROW] })
+      expect(own.codex).toEqual({ ok: true, models: [WIDE, NARROW] })
     })
 
     it('🔴 given a choice, then its FIRST SPAWN runs on it — judged once, at the door: the launch asks no list of its own', async () => {
