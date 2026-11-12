@@ -16,10 +16,16 @@ import {
 import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
+import { agentIdentityRowId } from '../src/main/db/identity'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { agentCallerId, TOOL_NAMES } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { RuntimeHost, type Caller, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import {
+  RuntimeHost,
+  THE_APP_ITSELF,
+  type Caller,
+  type RuntimeEventSink,
+} from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage, RuntimeChangeMessage } from '../src/shared/runtime-ipc'
 import type { OwnNotesReading, OwnNotesWrite, OwnNotesUnread } from '../src/shared/own-notes'
@@ -498,7 +504,7 @@ describe('own notes tools bind to their caller and person controls stay in the w
     expect(store.ownNotesOf('lark')!.versions[0]!.text).toBe('😀'.repeat(4000))
   })
 
-  it('keeps person editing, Undo and acknowledgement behind person-only IPC and host gates', async () => {
+  it('keeps main read refusals while person editing and version controls remain', async () => {
     const me = await start('lark')
     expect(await call(me, 'write_own_notes', input('Agent note.'))).toMatchObject({
       outcome: 'ok',
@@ -524,10 +530,7 @@ describe('own notes tools bind to their caller and person controls stay in the w
       { kind: 'undoOwnNotes', profileId: 'lark', expectedVersion: 1 },
       { kind: 'markOwnNotesSeen', profileId: 'lark', throughVersion: 1 },
     ]
-    for (const c of commands) await expect(command(agentSink, c)).rejects.toThrow()
-    expect(notes().saveOwnNotes('lark', { ...said(), expectedVersion: 1 }, caller(me))).toBeNull()
-    expect(notes().undoOwnNotes('lark', 1, caller(me))).toBeNull()
-    expect(notes().markOwnNotesSeen('lark', 1, caller(me))).toBe(false)
+    for (const c of commands.slice(0, 2)) await expect(command(agentSink, c)).rejects.toThrow()
     expect(store.ownNotesUnread('lark').unread).toBe(true)
     expect(await command(window, commands[0]!)).toMatchObject({
       profile: 'lark',
@@ -564,6 +567,139 @@ describe('own notes tools bind to their caller and person controls stay in the w
     expect(store.ownNotesUnread('lark').seenThrough).toBe(3)
   })
 
+  it.each(['app', 'unknown', 'unresolved-agent'] as const)(
+    'records %s save and Undo without inventing an author',
+    async (kind) => {
+      await start('lark')
+      expect(
+        notes().saveOwnNotes(
+          'lark',
+          { expectedVersion: 0, text: 'Original.\r\n', why: 'Original reason' },
+          window,
+        ),
+      ).not.toBeNull()
+      const by: Caller =
+        kind === 'app'
+          ? THE_APP_ITSELF
+          : kind === 'unknown'
+            ? { ownerId: 'unidentifiable-fixture-caller' }
+            : caller('unresolved-agent-session')
+      const actor =
+        kind === 'app'
+          ? { who: 'the-app-itself' }
+          : kind === 'unknown'
+            ? { who: 'a-caller-this-app-cannot-name' }
+            : { who: 'an-agent', agent: 'unresolved-agent-session' }
+      const said = {
+        expectedVersion: 1,
+        text: 'Actual correction.\r\nCafé.',
+        why: 'Actual caller reason',
+      }
+      expect(notes().saveOwnNotes('missing', said, by)).toBeNull()
+      const written = notes().saveOwnNotes('lark', said, by)
+      expect(written).toMatchObject({
+        versions: [
+          { version: 2, text: said.text, by: actor, author: null, reason: said.why },
+          { version: 1 },
+        ],
+      })
+      expect(notes().saveOwnNotes('lark', said, by)).toBeNull()
+      expect(notes().undoOwnNotes('lark', 1, by)).toBeNull()
+      expect(notes().undoOwnNotes('lark', 3, by)).toBeNull()
+      const restored = notes().undoOwnNotes('lark', 2, by)
+      expect(restored).toMatchObject({
+        versions: [
+          {
+            version: 3,
+            text: 'Original.\r\n',
+            by: actor,
+            author: null,
+            restoredFromVersion: 1,
+            reason: 'Undo latest change',
+          },
+          { version: 2 },
+          { version: 1 },
+        ],
+      })
+      const rows = db
+        .prepare(
+          'SELECT version,text,actor,author,reason,restored_from_version FROM identity_own_notes WHERE identity_id=? ORDER BY version',
+        )
+        .all(agentIdentityRowId('lark')) as {
+        version: number
+        text: string
+        actor: string
+        author: string | null
+        reason: string
+        restored_from_version: number | null
+      }[]
+      expect(rows).toHaveLength(3)
+      for (const row of rows.slice(1)) {
+        expect(JSON.parse(row.actor)).toEqual(actor)
+        expect(row.author).toBeNull()
+      }
+      expect(rows[2]).toMatchObject({
+        version: 3,
+        text: 'Original.\r\n',
+        reason: 'Undo latest change',
+        restored_from_version: 1,
+      })
+      expect(notes().agentOwnNotes('lark')).toEqual(restored)
+      expect(notes().agentOwnNotesUnread('lark')).toMatchObject({
+        seenThrough: 1,
+        newestAgentVersion: kind === 'unresolved-agent' ? 3 : 0,
+      })
+      expect(notes().markOwnNotesSeen('lark', 4, by)).toBe(false)
+      expect(notes().markOwnNotesSeen('lark', 3, by)).toBe(true)
+    },
+  )
+
+  it('records a colleague edit and Undo without accepting a stale version', async () => {
+    const owner = await start('lark')
+    const me = await start('wren')
+    await call(owner, 'write_own_notes', input('Original note.'))
+    const agentSink: RuntimeEventSink = {
+      ...window,
+      ownerId: agentCallerId(me),
+      aPersonIsBehindIt: false,
+      send() {},
+      sendLiveness() {},
+    }
+    expect(
+      await command(agentSink, {
+        kind: 'saveOwnNotes',
+        profileId: 'lark',
+        expectedVersion: 1,
+        text: 'Colleague correction.',
+        why: 'Correct the note.',
+      }),
+    ).toMatchObject({
+      versions: [
+        { version: 2, by: { who: 'an-agent', agent: me }, author: { profile: 'wren' } },
+        { version: 1 },
+      ],
+    })
+    expect(notes().saveOwnNotes('lark', { ...said(), expectedVersion: 1 }, caller(me))).toBeNull()
+    expect(
+      await command(agentSink, { kind: 'undoOwnNotes', profileId: 'lark', expectedVersion: 1 }),
+    ).toBeNull()
+    expect(
+      await command(agentSink, { kind: 'undoOwnNotes', profileId: 'lark', expectedVersion: 2 }),
+    ).toMatchObject({
+      versions: [
+        { version: 3, text: 'Original note.', by: { who: 'an-agent', agent: me } },
+        { version: 2 },
+        { version: 1 },
+      ],
+    })
+    expect(
+      await command(agentSink, { kind: 'markOwnNotesSeen', profileId: 'lark', throughVersion: 4 }),
+    ).toBe(false)
+    expect(
+      await command(agentSink, { kind: 'markOwnNotesSeen', profileId: 'lark', throughVersion: 3 }),
+    ).toBe(true)
+  })
+
   it('announces a seen marker only when it actually advances, keeping valid repeat calls successful', async () => {
     const me = await start('lark')
     await call(me, 'write_own_notes', input('A note to read.'))
@@ -575,7 +711,7 @@ describe('own notes tools bind to their caller and person controls stay in the w
     expect(notes().markOwnNotesSeen('lark', 0, window)).toBe(true)
     expect(announce.mock.calls.filter(([message]) => message.what === 'agents')).toHaveLength(1)
     expect(notes().markOwnNotesSeen('lark', 2, window)).toBe(false)
-    expect(notes().markOwnNotesSeen('lark', 1, caller(me))).toBe(false)
+    expect(notes().markOwnNotesSeen('lark', 1, caller(me))).toBe(true)
     expect(notes().markOwnNotesSeen('absent', 0, window)).toBe(false)
     expect(announce.mock.calls.filter(([message]) => message.what === 'agents')).toHaveLength(1)
     expect(store.ownNotesUnread('lark').seenThrough).toBe(1)

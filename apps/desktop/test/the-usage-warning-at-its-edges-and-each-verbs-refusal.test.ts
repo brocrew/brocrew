@@ -81,21 +81,18 @@ describe('F096 · the usage warning at its edges', () => {
 describe('28085e11 · a person’s verb refused says what that verb does', () => {
   const GENERIC = 'changes what agents are allowed to do'
 
-  it('🔴 a read says it reads — its own words, never the generic sentence', () => {
-    expect(noPersonBehindIt('agentMemory')).toBe(
-      'agentMemory reads an agent’s own memory, so it is refused unless a person is asking',
+  it('describes only the actual approval and rule-write gates as person-only', () => {
+    expect(noPersonBehindIt('undoAgentRules')).toBe(
+      'undoAgentRules undoes the latest standing-rule change, so it is refused unless a person is asking',
     )
-    expect(noPersonBehindIt('whatTheModelGot')).toBe(
-      'whatTheModelGot reads a message as the model got it, with the agent’s own instructions, so it is refused unless a person is asking',
-    )
-    for (const kind of ['agentMemory', 'modelList', 'retitleWork', 'setApiKey'] as const) {
+    for (const kind of ['undoAgentRules', 'instructAgent', 'decideInstruction'] as const) {
       expect(noPersonBehindIt(kind), kind).not.toContain(GENERIC)
     }
   })
 
-  it('⚑ a verb with no sentence of its own keeps the generic one', () => {
-    expect(noPersonBehindIt('setCapabilities')).toBe(
-      `setCapabilities ${GENERIC}, so it is refused unless a person is asking`,
+  it('keeps the generic sentence for the actual default-approval gate', () => {
+    expect(noPersonBehindIt('setDefaultApprovalMode')).toBe(
+      `setDefaultApprovalMode ${GENERIC}, so it is refused unless a person is asking`,
     )
   })
 })

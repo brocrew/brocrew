@@ -15,7 +15,7 @@ import type { ExternalMcpServerRow } from '../src/shared/external-mcp'
 import type { IdentityUse } from '../src/shared/agent-roster'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { executeRuntimeCommand, noPersonBehindIt } from '../src/main/runtime/ipc'
+import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { providerForALaunch } from '../src/renderer/src/lib/agent-store'
 import { providerTakesEffectNextTime } from '../src/renderer/src/lib/front-door-words'
@@ -231,15 +231,21 @@ describe('433 §A · the provider a person can change', () => {
       ).toEqual({ n: 0 })
     })
 
-    it('⛔ a channel with nobody behind it is refused by name, and writes nothing', async () => {
+    it('lets a colleague change a selected existing provider and keeps unknown identities absent', async () => {
       await personOpens(DEFAULT_PROFILE_ID)
       await expect(
         ask(
           { kind: 'setAgentProvider', profileId: DEFAULT_PROFILE_ID, provider: 'codex' },
           new NobodyThere('agent:sess_1'),
         ),
-      ).rejects.toThrow(noPersonBehindIt('setAgentProvider'))
-      expect(providerColumn(DEFAULT_PROFILE_ID)).toBe(seededProviderFor(DEFAULT_PROFILE_ID))
+      ).resolves.toMatchObject({ provider: 'codex' })
+      expect(providerColumn(DEFAULT_PROFILE_ID)).toBe('codex')
+      expect(
+        await ask(
+          { kind: 'setAgentProvider', profileId: 'absent', provider: 'codex' },
+          new NobodyThere('agent:sess_1'),
+        ),
+      ).toBeNull()
       expect((await chooseFor(DEFAULT_PROFILE_ID, 'codex')) as AgentIdentity | null).toMatchObject({
         provider: 'codex',
       })

@@ -66,7 +66,7 @@ import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
  *  - **§3 · the rule** — `judgeAgainstTheList` (a person's door) and `judgeAnAgentsChoice` (the
  *    agents' seam), against lists shaped like the two the adapters really produce since D-042.
  *  - **§4 · the door** — `setAgentModelAndEffort`, refusing what the list does not hold, over a
- *    real host and a real database; the person gate over the real wire; and R1 at a give's start.
+ *    real host and a real database; caller allowance over the real wire; and R1 at a give's start.
  *  - **§5 · the column** — the fold that reads `agent_identity.model_choice`.
  *
  * ⚠️ **What reaches the PROVIDER, and what a wake does, are in
@@ -776,8 +776,9 @@ describe('677 §4 · the door — `setAgentModelAndEffort`, against the provider
     expect(announced).toEqual(['agents', 'agents'])
   })
 
-  it('🔴 THE GATE · refused when nobody is behind the channel — and allowed on the window, at the same moment', async () => {
+  it('lets a colleague save an offered choice while the window reads it', async () => {
     anAgent('worker')
+    const sink = new NobodyBehindIt('agent:colleague')
     const command = {
       kind: 'setAgentModelAndEffort',
       profileId: 'worker',
@@ -785,17 +786,22 @@ describe('677 §4 · the door — `setAgentModelAndEffort`, against the provider
       model: 'opus',
       effort: null,
     }
-    await expect(executeRuntimeCommand(host, new NobodyBehindIt('mcp:x'), command)).rejects.toThrow(
-      noPersonBehindIt('setAgentModelAndEffort'),
-    )
-    expect(store.modelChoiceOf('worker')).toBeNull()
-    await expect(executeRuntimeCommand(host, window, command)).resolves.toMatchObject({ ok: true })
+    expect(await executeRuntimeCommand(host, sink, command)).toMatchObject({ ok: true })
+    expect(store.modelChoiceOf('worker')).toMatchObject({
+      provider: 'claude',
+      model: 'opus',
+      effort: 'high',
+    })
     await expect(
-      executeRuntimeCommand(host, new NobodyBehindIt('mcp:x'), {
-        kind: 'agentModelAndEffort',
-        profileId: 'worker',
-      }),
+      executeRuntimeCommand(host, sink, { kind: 'agentModelAndEffort', profileId: 'worker' }),
     ).rejects.toThrow(noPersonBehindIt('agentModelAndEffort'))
+    expect(
+      await executeRuntimeCommand(host, window, { kind: 'agentModelAndEffort', profileId: 'worker' }),
+    ).toMatchObject({ provider: 'claude', model: 'opus' })
+    expect(await executeRuntimeCommand(host, window, command)).toMatchObject({ ok: true })
+    expect(
+      await executeRuntimeCommand(host, sink, { ...command, profileId: 'missing' }),
+    ).toMatchObject({ ok: false })
   })
 
   it('⛔ a model or an effort with NO provider beside it is refused at the wire — and, D-042, a provider with NO model', async () => {

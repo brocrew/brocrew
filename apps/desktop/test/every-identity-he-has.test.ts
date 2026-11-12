@@ -17,11 +17,7 @@ import {
 } from '../src/main/db/session-store'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  executeRuntimeCommand,
-  noPersonBehindIt,
-  refusedDuringAQuit,
-} from '../src/main/runtime/ipc'
+import { executeRuntimeCommand, refusedDuringAQuit } from '../src/main/runtime/ipc'
 import {
   DEFAULT_PROFILE_ID,
   RUNTIME_CHANGE_SUBJECTS,
@@ -61,41 +57,7 @@ const NOTHING_INJECTED: SessionInstructions = {
   composed: null,
 }
 
-/**
- * 🔴 **558 · every identity he has — the read, the writes, and the rename** (`HO-063` gaps 1 and 2).
- *
- * ## ⛔ What `HO-063` gap 1 says, and the half of it that was already true
- *
- * ⚠️ **The gap reads *"There is no list of identities… nothing shows a person"*, and on the code
- * that is not what is missing.** ⛔ `listIdentities` is `SELECT … FROM agent_identity ORDER BY slug`
- * — no project filter and no session join, because `369` DELETED `WHERE project_id = ?` and wrote
- * down why — and a surface draws every row it returns, with a count, a create button and an
- * orphan-folder note. ⚠️ **That surface was `SideRail.vue`'s Agents section and is
- * `TeamWorkspace.vue` since `570`** (`EXT-008` §4.4); the argument is about the LIST and does not
- * turn on which surface draws it. ⚑ **§2's first test is that control**: it passes on `main`, and
- * it is what says the LIST was never the problem.
- *
- * 🔴 **What IS missing is what the list cannot say about a row.** *Which projects it works in* and
- * *whether anything has ever run it* are derivable from two tables nothing joins to this one, and
- * `createdAt` cannot answer the second — both creation doors and the launch stamp it. ⛔ **So an
- * identity created six weeks ago and never used, and one that has held forty conversations, come
- * back from `agentIdentities()` as the same shape with different names.** ⚠️ That is the property
- * §2 measures, and it is what fails on `main`.
- *
- * ⚑ **D-016 · the projects half went with projects.** What the read says about a row now is how
- * many conversations have run as it and whether a launch of it is in flight or starting.
- *
- * ## ⚑ And the removal turned out to be the same question read backwards
- *
- * ⛔ **`HO-063` gap 1 also asks for *"a way to remove one nothing runs"*, and the facts that refuse
- * a removal are exactly the facts a roster row displays.** ⚑ So there is ONE record — `IdentityUse`
- * — and one derivation over it, `whatHoldsIt`, read by the roster to explain a control and by
- * `RuntimeHost.removeAgent` to refuse a press. §3 is what pins that they cannot come apart.
- *
- * ## ⚠️ Real host, real SQLite ledger, real migrations
- *
- * The only double is the provider. Every refusal below is the door's own.
- */
+/** Identity use and removal share the same underlying records. */
 
 class Sink implements RuntimeEventSink {
   // ⚠️ Annotated rather than inferred, so `AnonymousSink` can override it.
@@ -1048,23 +1010,31 @@ describe('558 · every identity he has', () => {
       command: Parameters<typeof executeRuntimeCommand>[2],
     ): Promise<unknown> => executeRuntimeCommand(host, sink, command)
 
-    it('⛔ both writes are refused unless a person is asking', async () => {
+    it('allows colleague name/removal edits and keeps unknown targets absent', async () => {
       host.createAgent({ slug: 'worker', displayName: null, provider: null })
-      const nobody = new AnonymousSink('webContents:anon')
-      await expect(
-        asked(nobody, { kind: 'setAgentDisplayName', profileId: 'worker', displayName: 'W' }),
-      ).rejects.toThrow(noPersonBehindIt('setAgentDisplayName'))
-      await expect(asked(nobody, { kind: 'removeAgent', profileId: 'worker' })).rejects.toThrow(
-        noPersonBehindIt('removeAgent'),
-      )
-      // 🔴 **The PAIR, one fact over** (standing rule 3): the same payloads on a window sink are
-      // allowed, so the refusals above are about the channel and not about the payload.
-      await expect(
-        asked(window, { kind: 'setAgentDisplayName', profileId: 'worker', displayName: 'W' }),
-      ).resolves.not.toThrow()
-      await expect(
-        asked(window, { kind: 'removeAgent', profileId: 'worker' }),
-      ).resolves.not.toThrow()
+      const nobody = new AnonymousSink('agent:colleague')
+      expect(
+        await asked(nobody, { kind: 'setAgentDisplayName', profileId: 'worker', displayName: 'W' }),
+      ).toMatchObject({ slug: 'worker', displayName: 'W' })
+      expect(store.agentIdentities().find((one) => one.slug === 'worker')?.displayName).toBe('W')
+      expect(
+        await asked(nobody, { kind: 'setAgentDisplayName', profileId: 'absent', displayName: 'W' }),
+      ).toBeNull()
+      expect(await asked(nobody, { kind: 'removeAgent', profileId: 'worker' })).toMatchObject({
+        ok: true,
+      })
+      expect(store.agentIdentities().some((one) => one.slug === 'worker')).toBe(false)
+      host.createAgent({ slug: 'person-worker', displayName: null, provider: null })
+      expect(
+        await asked(window, {
+          kind: 'setAgentDisplayName',
+          profileId: 'person-worker',
+          displayName: 'P',
+        }),
+      ).toMatchObject({ displayName: 'P' })
+      expect(
+        await asked(window, { kind: 'removeAgent', profileId: 'person-worker' }),
+      ).toMatchObject({ ok: true })
     })
 
     it('⛔ both are refused during a quit', async () => {

@@ -27,7 +27,6 @@ import {
 import {
   AMENDMENT_MEANS,
   AMENDMENT_REFUSED,
-  A_PERSON_DID_THIS,
   MEMORY_AMENDMENT,
   REFUSAL_MEANS,
 } from '../src/shared/agent-memory'
@@ -394,18 +393,12 @@ describe('§3 · 🔴 the record — and it is written at the moment of the act'
     expect(write('corrected', 'y')?.act).toBe('corrected')
   })
 
-  it('⚠️ every act has a sentence, and every sentence names a PERSON', () => {
+  it('describes every amendment without claiming a person performed every edit', () => {
     expect(Object.keys(AMENDMENT_MEANS).sort()).toEqual([...MEMORY_AMENDMENT].sort())
     for (const act of MEMORY_AMENDMENT) {
-      expect(AMENDMENT_MEANS[act], `${act} does not name a person`).toContain('a person')
+      expect(AMENDMENT_MEANS[act].length).toBeGreaterThan(0)
+      expect(AMENDMENT_MEANS[act]).not.toContain('a person')
     }
-    // 🔴 **And the reason there is no `wrote_it` column, asserted by name** (`EXT-015` §3.3).
-    // ⛔ `identity_instruction` carries a provenance vocabulary because four authorities can write
-    // a version; exactly one can reach this door. ⚠️ **The day that stops being true this constant
-    // is what goes red**, which is what makes the missing column a decision rather than an
-    // omission.
-    expect(A_PERSON_DID_THIS).toContain('Only a person')
-    expect(A_PERSON_DID_THIS).toContain('No agent has a tool')
   })
 })
 

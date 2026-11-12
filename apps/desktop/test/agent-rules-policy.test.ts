@@ -559,13 +559,13 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     expect(await call(me, 'write_agent_rules', input)).toMatchObject({ outcome: 'ok', version: 1 })
   })
 
-  it('allows only a person to undo or acknowledge, and Undo supersedes pending proposals', async () => {
+  it('keeps rule Undo person-only while colleagues acknowledge, and Undo supersedes proposals', async () => {
     await start('lark')
     const me = await start(DEFAULT_PROFILE_ID)
     expect(replace(me).ok).toBe(true)
     expect(propose(me, 'Waiting replacement', 1).ok).toBe(true)
     expect(policy().undoAgentRules('lark', 1, caller(me))).toBeNull()
-    expect(policy().markAgentRulesSeen('lark', 1, caller(me))).toBe(false)
+    expect(policy().markAgentRulesSeen('lark', 1, caller(me))).toBe(true)
     expect(
       policy().instructAgent('lark', 'Stale person save', undefined, window, {
         expectedVersion: 0,
@@ -580,13 +580,13 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     }
     await expect(
       command(agentSink, { kind: 'agentRulesUnread', profileId: 'lark' }),
-    ).rejects.toThrow()
+    ).resolves.toMatchObject({ seenThrough: 1 })
     await expect(
       command(agentSink, { kind: 'undoAgentRules', profileId: 'lark', expectedVersion: 1 }),
     ).rejects.toThrow()
     await expect(
       command(agentSink, { kind: 'markAgentRulesSeen', profileId: 'lark', throughVersion: 1 }),
-    ).rejects.toThrow()
+    ).resolves.toBe(true)
     expect(policy().undoAgentRules('lark', 1, window)?.own.versions[0]?.text).toBe('')
     expect(store.instructionAsksWaiting()).toEqual([])
     expect(policy().undoAgentRules('lark', 1, window)).toBeNull()

@@ -5,46 +5,14 @@ import type {
   TaskOutcome,
 } from './work-report-contracts'
 import type { RuntimeEvent } from '@brobot2/runtime'
-import type { StopAsker, WhoStoppedIt } from './who-did-it'
+import type { ActedBy, StopAsker, WhoStoppedIt } from './who-did-it'
 import type { ModelAndEffort } from './model-choice-contracts'
 import type { GivenFolder } from './work-folders'
 
 /** Work a conversation gave has a giver; work a person gave has nobody to tell. */
 export type PieceAConversationGave = PieceRow & { readonly giver: string }
 
-/**
- * 🔴 **One piece of work a conversation GAVE OUT, as the window that gave it reads it** (508).
- *
- * Show work the conversation gave out with its live state and the agent holding it.
- *
- * ## ⛔ Why this is a second shape and not {@link PieceRow} on the wire
- *
- * ⚠️ **{@link WorkReport}'s own rule governs:** *"A dead field on a DURABLE wire contract is worse
- * than dead code."* A {@link PieceRow} carries many more fields than this surface draws; the brief,
- * the held message, the ending, the resources, the stall's moment and asker, the lost question and
- * the summary would each arrive at a renderer with no reader **on this row**. ⚠️ **543 · some of
- * them have a reader on a DIFFERENT row** — `WorkEdge` carries `endedAt`, because a relationship
- * panel draws when work ended — and a field is carried where it is read.
- *
- * ## ⚑ It is worded by `WorkReading`, and that is a compiler fact rather than a convention
- *
- * ⛔ **The state fields are {@link WorkReport}'s, spelled identically — absences and all** — so
- * `workReading` words this row and the transcript's report row through ONE function. ⚠️ `222`
- * §4's one-vocabulary rule, kept by construction: another {@link TaskState} gains a word in
- * `WORK_STATE_WORD` and both surfaces get it, and neither can be given its own.
- *
- * ## 🔴 What is deliberately NOT here
- *
- * ⛔ **No liveness, of any shape.** `runningStateOf` can say who is WATCHING a conversation and
- * nothing about whether it is making progress (`505`), so a field of that kind on this row would
- * put a word a person acts on over a fact this app cannot check. ⚠️ {@link state} is the PIECE's
- * state, folded from events the app watched happen, and it claims nothing about the worker.
- *
- * ⛔ **No session id.** {@link givenToProfile} is the IDENTITY, which is what `agentName` joins on.
- * ⚠️ **543 · a reader for that id EXISTS, and this row still does not carry it**: `WorkEdge` names
- * both ends because a relationship panel draws an edge, and widening this row instead would have put
- * the id on the Work tab, which offers no press over it.
- */
+/** Work given out, as read by the conversation that gave it. */
 export interface WorkGivenOut {
   /** Null is known absence; omitted when the ledger read was incomplete. */
   readonly definitionOfDone?: string | null
@@ -227,6 +195,7 @@ export interface PieceRow {
    * a guess at the giver. ⛔ An id, as {@link giver} is: a sentence names it through the host.
    */
   readonly endedBy: string | null
+  readonly endedByActor?: ActedBy
   /**
    * 🔴 **How the agent said it went, or null because it has not said** (393).
    *
@@ -867,6 +836,8 @@ export interface WorkTakenBackEvent {
    * `null`: a person, who takes back only the piece a service is on.
    */
   by: string | null
+  /** When present, takes precedence over legacy by attribution. */
+  actor?: ActedBy
 }
 
 /**
@@ -886,6 +857,8 @@ export interface WorkRetitledEvent {
    * (D-016 · commit 7 · R4).
    */
   by: string | null
+  /** When present, takes precedence over legacy by attribution. */
+  actor?: ActedBy
 }
 
 /**
@@ -969,6 +942,8 @@ export interface WorkClosedEvent {
    * `null`: a person, who closes only stopped work *Waiting on you* lists.
    */
   by: string | null
+  /** When present, takes precedence over legacy by attribution. */
+  actor?: ActedBy
 }
 
 /**

@@ -110,12 +110,14 @@ describe('the app records interrupted method outcomes without impersonating the 
     })
   })
 
-  it('allows only the app to reconcile, without granting it begin or ordinary settle', () => {
+  it('keeps automatic reconciliation app-only while recording ordinary app edits', () => {
     const started = begin()
     expect(api.reconcile(lark, started.id, absent, person)).toBe(false)
     expect(api.reconcile(lark, started.id, absent, agent)).toBe(false)
-    expect(api.begin(wren, intent, app, 1001)).toBeNull()
-    expect(api.settle(lark, started.id, 'done', absent, app)).toBe(false)
+    const appStarted = api.begin(wren, intent, app, 1001)!
+    expect(api.read(wren, appStarted.id)?.by).toEqual(app)
+    expect(api.settle(wren, appStarted.id, 'done', absent, agent)).toBe(true)
+    expect(api.read(wren, appStarted.id)?.settlement?.by).toEqual(agent)
     expect(api.read(lark, started.id)).toMatchObject({ outcome: 'pending', settlement: null })
     const at = clock
     expect(api.settle(lark, started.id, 'done', absent, person)).toBe(true)
@@ -124,6 +126,26 @@ describe('the app records interrupted method outcomes without impersonating the 
       settlement: { by: person, at },
     })
   })
+
+  it.each([person, agent, app, { who: 'a-caller-this-app-cannot-name' } as const])(
+    'roundtrips independent ordinary actors: $who',
+    (by) => {
+      const settler = by.who === 'an-agent' ? app : agent
+      const started = api.begin(lark, intent, by, 1000)!
+      expect(api.settle(lark, started.id, 'done', absent, settler)).toBe(true)
+      expect(api.read(lark, started.id)).toMatchObject({
+        by,
+        outcome: 'done',
+        actual: absent,
+        settlement: { by: settler },
+      })
+      const raw = db
+        .prepare('SELECT by,settled_by FROM identity_method_change WHERE id=?')
+        .get(started.id) as { by: string; settled_by: string }
+      expect(JSON.parse(raw.by)).toEqual(by)
+      expect(JSON.parse(raw.settled_by)).toEqual(settler)
+    },
+  )
 
   it.each([
     { name: 'unchanged original bytes', actual: [{ name: 'review.md', base64 }] },
@@ -255,13 +277,15 @@ describe('the app records interrupted method outcomes without impersonating the 
       [JSON.stringify(app), null],
       [null, 5000],
       ['{}', 5000],
-      [JSON.stringify(agent), 5000],
+      [JSON.stringify({ who: 'an-agent', agent: '' }), 5000],
       [JSON.stringify(app), -1],
       [JSON.stringify(app), 0.5],
       [JSON.stringify(app), Number.MAX_SAFE_INTEGER + 1],
     ]) {
       expect(() => update.run(by, at, started.id)).toThrow(/identity_method_change_settlement_ck/)
     }
+    update.run(JSON.stringify(agent), 5000, started.id)
+    expect(api.read(lark, started.id)?.settlement?.by).toEqual(agent)
     const pending = begin()
     expect(() => update.run(JSON.stringify(app), 5000, pending.id)).toThrow(
       /identity_method_change_settlement_ck/,

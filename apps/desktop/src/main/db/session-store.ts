@@ -260,7 +260,7 @@ import {
   type TranscriptTurn,
   type Words,
 } from '../../shared/last-exchange'
-import { actedByFrom, type ActedBy } from '../../shared/who-did-it'
+import { actedByFrom, isWhoDidIt, type ActedBy } from '../../shared/who-did-it'
 import {
   MEMORY_AMENDMENT,
   type MemoryAmendment,
@@ -874,7 +874,10 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead {
   reconciliationNames(
     conversations: readonly string[],
   ): readonly (AgentIdentityName & { conversation: string })[]
-  createAgentIdentity(said: NewAgent, broughtIntoBeingBy: IdentityCreator): AgentIdentity | null
+  createAgentIdentity(
+    said: NewAgent,
+    broughtIntoBeingBy: IdentityCreator | null,
+  ): AgentIdentity | null
   providerOf(profileSlug: string): Provider | null
   startedOnOf(profileSlug: string): StartedOn
   saveProviderIfNoneIsSaved(profileSlug: string, provider: Provider): boolean
@@ -1348,13 +1351,11 @@ export const NULL_SESSION_STORE: SessionStore = {
   instructionAsksWaitingIn: () => null,
   replyQuestionWithoutARequest: () => null,
   settleInstructionAsk: () => false,
-  // No ledger and no registry: nothing waits, nothing settles, and there is no server to grant.
   mcpServerRequestsWaiting: () => [],
   mcpServerRequestWasMade: () => false,
   grantExternalMcpServer: () => null,
   externalMcpServers: () => [],
   registerExternalMcpServer: () => null,
-  // Nothing was removed, so nothing may be claimed to have been — `setCapabilities`'s `false`.
   removeExternalMcpServer: () => false,
   externalMcpServersFor: () => [],
   setAgentProvider: () => false,
@@ -2258,7 +2259,6 @@ export function createSessionStore(
   const connection = db
   // Installed before any transaction on this connection is made, so every one is framed.
   const committed = committedChangesOf(connection)
-  // The derived copies, created or repaired before any read of them.
   ensureQuestionCopies(connection)
   const ownNotesStore = createOwnNotesStore(connection)
   const methodChangeStore = createMethodChangeStore(connection, now)
@@ -2660,7 +2660,9 @@ export function createSessionStore(
       !['done', 'partial', 'unchanged'].includes(row.outcome) ||
       actual === null ||
       observer === null ||
-      !['a-person', 'the-app-itself'].includes(observer.who) ||
+      !isWhoDidIt(observer.who) ||
+      (observer.who === 'an-agent' &&
+        (typeof observer.agent !== 'string' || observer.agent === '')) ||
       !Number.isSafeInteger(row.settled_at) ||
       row.settled_at === null ||
       row.settled_at < 0
@@ -2669,7 +2671,7 @@ export function createSessionStore(
     return {
       outcome: row.outcome,
       actual,
-      settlement: { by: { who: observer.who }, at: row.settled_at },
+      settlement: { by: actedByFrom(observer), at: row.settled_at },
     }
   }
 
@@ -2701,13 +2703,7 @@ export function createSessionStore(
       if (memoryRecoveryStore.hasPending(rowId)) return null
       const linked = said.act === 'restored' || said.sourceId !== undefined
       if (linked) {
-        if (
-          said.by.who !== 'a-person' ||
-          typeof said.sourceId !== 'string' ||
-          !Number.isSafeInteger(at) ||
-          at < 0
-        )
-          return null
+        if (typeof said.sourceId !== 'string' || !Number.isSafeInteger(at) || at < 0) return null
         const raw = memoryAmendmentSql().newestForEntry.get(rowId, said.provider, said.entry) as
           MemoryAmendmentRow | undefined
         if (raw === undefined || raw.id !== said.sourceId) return null
@@ -2738,7 +2734,7 @@ export function createSessionStore(
         } else return null
         if (!knownMemorySource(source, said.textBefore)) return null
       }
-      const by: ActedBy = linked || outcome === 'pending' ? { who: 'a-person' } : said.by
+      const by = said.by
       const newest = memoryAmendmentSql().newestOf.get(rowId) as { seq: number } | undefined
       const seq = (newest?.seq ?? 0) + 1
       const id = memoryAmendmentRowId(said.profileSlug, seq)
@@ -2862,7 +2858,7 @@ export function createSessionStore(
     profileSlug: string,
     at: number,
     said: SaidAtCreation,
-    broughtIntoBeingBy: IdentityCreator,
+    broughtIntoBeingBy: IdentityCreator | null,
   ): void => {
     spawnSql().ensureIdentityRow.run(
       agentIdentityRowId(profileSlug),
@@ -2870,7 +2866,7 @@ export function createSessionStore(
       said.displayName,
       said.provider,
       at,
-      identityCreatorColumn(broughtIntoBeingBy),
+      broughtIntoBeingBy === null ? null : identityCreatorColumn(broughtIntoBeingBy),
     )
   }
 
@@ -2899,7 +2895,11 @@ export function createSessionStore(
   )
 
   const createAgentIdentityTx = db.transaction(
-    (said: NewAgent, at: number, broughtIntoBeingBy: IdentityCreator): AgentIdentity | null => {
+    (
+      said: NewAgent,
+      at: number,
+      broughtIntoBeingBy: IdentityCreator | null,
+    ): AgentIdentity | null => {
       const slug = foldProfileName(said.slug)
       if (spawnSql().identityBySlug.get(slug) !== undefined) return null
       writeIdentityRow(
@@ -6923,9 +6923,9 @@ export function createSessionStore(
       return { seenThrough, newestDirectVersion, unread: newestDirectVersion > seenThrough }
     },
 
-    markInstructionsSeen(profileSlug, version, by) {
+    markInstructionsSeen(profileSlug, version) {
       return db.transaction(() => {
-        if (by.who !== 'a-person' || !Number.isSafeInteger(version) || version < 0) return false
+        if (!Number.isSafeInteger(version) || version < 0) return false
         const rowId = agentIdentityRowId(profileSlug)
         if (spawnSql().identityBySlug.get(foldProfileName(profileSlug)) === undefined) return false
         const newest = ownInstructionSql().newestOf.get(rowId) as OwnInstructionRow | undefined

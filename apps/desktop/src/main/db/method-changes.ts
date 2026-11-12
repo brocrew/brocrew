@@ -1,4 +1,4 @@
-import type { ActedBy } from '../../shared/who-did-it'
+import { actedByFrom, isWhoDidIt, type ActedBy } from '../../shared/who-did-it'
 import type { AppDatabase } from './connection'
 
 export interface MethodFileImage {
@@ -31,14 +31,14 @@ export interface MethodChangeIntent {
 }
 
 export interface MethodSettlement {
-  readonly by: { readonly who: 'a-person' } | { readonly who: 'the-app-itself' }
+  readonly by: ActedBy
   readonly at: number
 }
 
 export interface MethodChangeRecord extends MethodChangeIntent {
   readonly id: string
   readonly sequence: number
-  readonly by: { readonly who: 'a-person' }
+  readonly by: ActedBy
   readonly outcome: 'pending' | 'done' | 'partial'
   readonly actual: readonly MethodFileState[] | null
   readonly createdAt: number
@@ -238,9 +238,12 @@ function settlementFrom(row: Stored): MethodSettlement | null {
     throw new Error('Saved-method settlement is unreadable')
   }
   const observer = object(JSON.parse(row.settled_by))
-  if (observer?.['who'] === 'a-person') return { by: { who: 'a-person' }, at: row.settled_at }
-  if (observer?.['who'] === 'the-app-itself')
-    return { by: { who: 'the-app-itself' }, at: row.settled_at }
+  if (
+    isWhoDidIt(observer?.['who']) &&
+    (observer?.['who'] !== 'an-agent' ||
+      (typeof observer['agent'] === 'string' && observer['agent'] !== ''))
+  )
+    return { by: actedByFrom(observer), at: row.settled_at }
   throw new Error('Saved-method settlement is unreadable')
 }
 
@@ -251,7 +254,8 @@ function record(row: Stored): MethodChangeRecord {
     row.actual === null || files === null ? null : statesFrom(JSON.parse(row.actual), files)
   if (
     files === null ||
-    by?.['who'] !== 'a-person' ||
+    !isWhoDidIt(by?.['who']) ||
+    (by?.['who'] === 'an-agent' && (typeof by['agent'] !== 'string' || by['agent'] === '')) ||
     !methodChangeName(row.target) ||
     (row.outcome === 'pending' ? row.actual !== null : actual === null)
   ) {
@@ -264,7 +268,7 @@ function record(row: Stored): MethodChangeRecord {
     sourceId: row.source_id,
     target: row.target,
     files,
-    by: { who: 'a-person' },
+    by: actedByFrom(by),
     outcome: row.outcome,
     actual,
     createdAt: row.created_at,
@@ -356,7 +360,8 @@ export function createMethodChangeStore(
     },
     begin(identityId, said, by, at) {
       if (
-        by.who !== 'a-person' ||
+        !isWhoDidIt(by?.who) ||
+        (by.who === 'an-agent' && (typeof by.agent !== 'string' || by.agent === '')) ||
         !methodChangeName(said.target) ||
         (said.operation !== 'delete' && said.operation !== 'undo') ||
         (said.operation === 'delete' ? said.sourceId !== null : typeof said.sourceId !== 'string')
@@ -392,15 +397,15 @@ export function createMethodChangeStore(
           said.sourceId,
           said.target,
           JSON.stringify(files),
-          JSON.stringify({ who: 'a-person' }),
+          JSON.stringify(by),
           at,
         )
         return record(queries.read.get(identityId, id) as Stored)
       })()
     },
     settle(identityId, id, outcome, actual, by) {
-      if (by.who !== 'a-person' || (outcome !== 'done' && outcome !== 'partial')) return false
-      return finish(identityId, id, outcome, actual, { who: 'a-person' })
+      if (outcome !== 'done' && outcome !== 'partial') return false
+      return finish(identityId, id, outcome, actual, actedByFrom(by))
     },
     reconcile(identityId, id, actual, by) {
       if (by.who !== 'the-app-itself') return false

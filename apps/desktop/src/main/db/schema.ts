@@ -514,7 +514,7 @@ export const identityMemoryAmendment = sqliteTable(
     ),
     check(
       'identity_memory_amendment_source_person_ck',
-      sql`${t.sourceId} is null or (case when json_valid(${t.by}) then json_extract(${t.by}, '$.who') is 'a-person' else 0 end)`,
+      sql`${t.sourceId} is null or (case when json_valid(${t.by}) then (coalesce(json_extract(${t.by}, '$.who'), '') IN ('a-person', 'the-app-itself', 'a-caller-this-app-cannot-name') OR (json_extract(${t.by}, '$.who') IS 'an-agent' AND json_type(${t.by}, '$.agent') IS 'text' AND length(json_extract(${t.by}, '$.agent')) > 0)) else 0 end)`,
     ),
     check(
       'identity_memory_amendment_outcome_ck',
@@ -522,7 +522,7 @@ export const identityMemoryAmendment = sqliteTable(
     ),
     check(
       'identity_memory_amendment_recovery_person_ck',
-      sql`(${t.outcome} = 'done' AND ${t.actual} IS NULL AND ${t.settledBy} IS NULL AND ${t.settledAt} IS NULL) OR (CASE WHEN json_valid(${t.by}) THEN json_extract(${t.by}, '$.who') IS 'a-person' ELSE 0 END)`,
+      sql`(${t.outcome} = 'done' AND ${t.actual} IS NULL AND ${t.settledBy} IS NULL AND ${t.settledAt} IS NULL) OR (CASE WHEN json_valid(${t.by}) THEN (coalesce(json_extract(${t.by}, '$.who'), '') IN ('a-person', 'the-app-itself', 'a-caller-this-app-cannot-name') OR (json_extract(${t.by}, '$.who') IS 'an-agent' AND json_type(${t.by}, '$.agent') IS 'text' AND length(json_extract(${t.by}, '$.agent')) > 0)) ELSE 0 END)`,
     ),
     check(
       'identity_memory_amendment_recovery_ck',
@@ -546,7 +546,7 @@ export const identityMemoryAmendment = sqliteTable(
     END
   ELSE 0 END AND
   CASE WHEN json_valid(${t.settledBy}) THEN
-    json_type(${t.settledBy}) IS 'object' AND coalesce(json_extract(${t.settledBy}, '$.who'), '') IN ('a-person', 'the-app-itself')
+    json_type(${t.settledBy}) IS 'object' AND (coalesce(json_extract(${t.settledBy}, '$.who'), '') IN ('a-person', 'the-app-itself', 'a-caller-this-app-cannot-name') OR (json_extract(${t.settledBy}, '$.who') IS 'an-agent' AND json_type(${t.settledBy}, '$.agent') IS 'text' AND length(json_extract(${t.settledBy}, '$.agent')) > 0))
   ELSE 0 END
 )`,
     ),
@@ -688,7 +688,7 @@ export const identityMethodChange = sqliteTable(
     ),
     check(
       'identity_method_change_settlement_ck',
-      sql`(${t.settledBy} IS NULL AND ${t.settledAt} IS NULL) OR (${t.settledBy} IS NOT NULL AND ${t.settledAt} IS NOT NULL AND ${t.outcome} IN ('done', 'partial') AND typeof(${t.settledAt}) = 'integer' AND ${t.settledAt} >= 0 AND ${t.settledAt} <= 9007199254740991 AND CASE WHEN json_valid(${t.settledBy}) THEN coalesce(json_extract(${t.settledBy}, '$.who'), '') IN ('a-person', 'the-app-itself') ELSE 0 END)`,
+      sql`(${t.settledBy} IS NULL AND ${t.settledAt} IS NULL) OR (${t.settledBy} IS NOT NULL AND ${t.settledAt} IS NOT NULL AND ${t.outcome} IN ('done', 'partial') AND typeof(${t.settledAt}) = 'integer' AND ${t.settledAt} >= 0 AND ${t.settledAt} <= 9007199254740991 AND CASE WHEN json_valid(${t.settledBy}) THEN (coalesce(json_extract(${t.settledBy}, '$.who'), '') IN ('a-person', 'the-app-itself', 'a-caller-this-app-cannot-name') OR (json_extract(${t.settledBy}, '$.who') IS 'an-agent' AND json_type(${t.settledBy}, '$.agent') IS 'text' AND length(json_extract(${t.settledBy}, '$.agent')) > 0)) ELSE 0 END)`,
     ),
   ],
 )
@@ -726,11 +726,11 @@ export const identityOwnNotes = sqliteTable(
     ),
     check(
       'identity_own_notes_actor_ck',
-      sql`json_valid(${t.actor}) AND coalesce(json_extract(${t.actor}, '$.who') IN ('a-person', 'an-agent'), 0)`,
+      sql`json_valid(${t.actor}) AND coalesce(json_extract(${t.actor}, '$.who') IN ('a-person', 'an-agent', 'the-app-itself', 'a-caller-this-app-cannot-name'), 0)`,
     ),
     check(
       'identity_own_notes_author_ck',
-      sql`(json_extract(${t.actor}, '$.who') = 'a-person' AND ${t.author} IS NULL) OR (json_extract(${t.actor}, '$.who') = 'an-agent' AND ${t.author} IS NOT NULL AND json_valid(${t.author}))`,
+      sql`(json_extract(${t.actor}, '$.who') IN ('a-person', 'the-app-itself', 'a-caller-this-app-cannot-name') AND ${t.author} IS NULL) OR (json_extract(${t.actor}, '$.who') = 'an-agent' AND (${t.author} IS NULL OR json_valid(${t.author})))`,
     ),
   ],
 )

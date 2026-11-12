@@ -293,6 +293,7 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
     files: readonly FilePlan[],
     target: string,
     source: MethodChangeRecord | null,
+    by: ActedBy,
   ): Promise<SavedMethodResult> {
     if (!validNames(files.map((file) => file.name)) || !files.some((file) => file.name === target))
       return failed('unsafe-name')
@@ -316,7 +317,7 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
     }
     let row: MethodChangeRecord | null
     try {
-      row = deps.changes.begin(one.id, intent, { who: 'a-person' }, deps.now())
+      row = deps.changes.begin(one.id, intent, by, deps.now())
     } catch (error) {
       return { ok: false, reason: 'history-unreadable', cause: String(error) }
     }
@@ -406,11 +407,7 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
       return !state.unreadable && state.base64 === plan.afterBase64 && state.mode === plan.afterMode
     })
     try {
-      if (
-        !deps.changes.settle(one.id, row.id, matches ? 'done' : 'partial', actual, {
-          who: 'a-person',
-        })
-      )
+      if (!deps.changes.settle(one.id, row.id, matches ? 'done' : 'partial', actual, by))
         return { ok: false, reason: 'settlement-pending', change: summary(row) }
       const saved = deps.changes.read(one.id, row.id)!
       announce(one.slug)
@@ -433,10 +430,8 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
 
   const mutate = async (
     slug: string,
-    by: ActedBy,
     run: (one: Identity, inputs: MethodLibraryInputs) => Promise<SavedMethodResult>,
   ): Promise<SavedMethodResult> => {
-    if (by.who !== 'a-person') return failed('person-required')
     if (identity(slug) === undefined) return failed('no-such-agent')
     return locked(keyOf(slug), async () => {
       const one = identity(slug)
@@ -495,22 +490,22 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
       by: ActedBy,
     ): Promise<SavedMethodResult> {
       if (selection.confirmed !== true) return Promise.resolve(failed('confirmation-required'))
-      return mutate(slug, by, async (one, inputs) => {
+      return mutate(slug, async (one, inputs) => {
         const plan = captureSavedMethodDeletion(inputs, selection)
         const files = plan.files.map((file) => ({
           ...file,
           afterMode: file.after === null ? null : file.before!.mode,
         }))
-        return apply(one, inputs, files, plan.target, null)
+        return apply(one, inputs, files, plan.target, null, by)
       })
     },
     undo(slug: string, id: string, by: ActedBy): Promise<SavedMethodResult> {
-      return mutate(slug, by, async (one, inputs) => {
+      return mutate(slug, async (one, inputs) => {
         const row = undoCandidate(one.id)
         if (row === undefined || row.id !== id) return failed('not-latest-change')
         const files = reversePlan(inputs, row, one.id)
         if (!canUndo(inputs, row, one.id)) return failed('nothing-to-restore')
-        return apply(one, inputs, files, row.target, row)
+        return apply(one, inputs, files, row.target, row, by)
       })
     },
     async checkInterrupted(
@@ -518,7 +513,6 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
       confirmed: boolean,
       by: ActedBy,
     ): Promise<SavedMethodResult> {
-      if (by.who !== 'a-person') return failed('person-required')
       if (confirmed !== true) return failed('confirmation-required')
       if (identity(slug) === undefined) return failed('no-such-agent')
       return locked(keyOf(slug), async () => {
@@ -539,11 +533,7 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
               state.mode === file.afterMode
             )
           })
-          if (
-            !deps.changes.settle(one.id, row.id, done ? 'done' : 'partial', actual, {
-              who: 'a-person',
-            })
-          )
+          if (!deps.changes.settle(one.id, row.id, done ? 'done' : 'partial', actual, by))
             return failed('settlement-pending')
           announce(slug)
           const change = summary(deps.changes.read(one.id, row.id)!)

@@ -96,7 +96,12 @@ describe('memory restoration keeps absence, source and author in the existing hi
     expect(rows).toEqual([result, source])
     expect(rows[1]).toMatchObject({ textBefore: saved, textAfter: null, act: 'removed' })
   })
-  it('refuses forged source, provider, entry, text and actor without appending a row', () => {
+  it.each([
+    person,
+    { who: 'an-agent', agent: 'ses-wren' } as const,
+    { who: 'the-app-itself' } as const,
+    { who: 'a-caller-this-app-cannot-name' } as const,
+  ])('keeps source controls and records the restoring caller $who', (by) => {
     const source = removed()
     const foreign = removed('wren', '/fictional/wren/memory/note.md')
     for (const overrides of [
@@ -107,12 +112,24 @@ describe('memory restoration keeps absence, source and author in the existing hi
       { textAfter: 'invented' },
       { textBefore: '' },
       { sourceId: undefined },
-      { by: { who: 'an-agent', agent: 'ses-wren' } as const },
-      { by: { who: 'the-app-itself' } as const },
     ])
-      expect(write({ ...restoration(source), ...overrides })).toBeNull()
+      expect(write({ ...restoration(source), by, ...overrides })).toBeNull()
     expect(store.memoryAmendmentsOf('lark')).toHaveLength(1)
-    expect(write(restoration(source))).not.toBeNull()
+    const restored = write({ ...restoration(source), by })!
+    expect(restored).toMatchObject({
+      act: 'restored',
+      sourceId: source.id,
+      textBefore: null,
+      textAfter: saved,
+      by,
+    })
+    store = createSessionStore(db)
+    expect(store.memoryAmendmentsOf('lark')[0]).toEqual(restored)
+    const raw = db
+      .prepare('SELECT by FROM identity_memory_amendment WHERE id=?')
+      .get(restored.id) as { by: string }
+    expect(JSON.parse(raw.by)).toEqual(by)
+    expect(write({ ...restoration(source), by })).toBeNull()
   })
   it('refuses a corrected source, a superseded deletion and a duplicate restoration', () => {
     const source = removed()
@@ -132,7 +149,12 @@ describe('memory restoration keeps absence, source and author in the existing hi
     expect(write(restoration(next))).toBeNull()
     expect(store.memoryAmendmentsOf('lark')).toHaveLength(4)
   })
-  it('records the inverse of a restoration only against its exact current text', () => {
+  it.each([
+    person,
+    { who: 'an-agent', agent: 'ses-wren' } as const,
+    { who: 'the-app-itself' } as const,
+    { who: 'a-caller-this-app-cannot-name' } as const,
+  ])('records the inverse by $who only against its exact current text', (by) => {
     const source = removed()
     const restored = write(restoration(source))!
     const inverse: Written = {
@@ -140,22 +162,27 @@ describe('memory restoration keeps absence, source and author in the existing hi
       provider: 'claude',
       entry,
       act: 'removed',
-      by: person,
+      by,
       textBefore: saved,
       textAfter: null,
       sourceId: restored.id,
     }
     expect(write({ ...inverse, sourceId: source.id })).toBeNull()
     expect(write({ ...inverse, textBefore: 'external' })).toBeNull()
-    expect(write({ ...inverse, by: { who: 'an-agent', agent: 'ses-wren' } })).toBeNull()
     const undone = write(inverse)!
     expect(undone).toMatchObject({
       act: 'removed',
       sourceId: restored.id,
-      by: person,
+      by,
       textBefore: saved,
       textAfter: null,
     })
+    store = createSessionStore(db)
+    expect(store.memoryAmendmentsOf('lark')[0]).toEqual(undone)
+    const raw = db
+      .prepare('SELECT by FROM identity_memory_amendment WHERE id=?')
+      .get(undone.id) as { by: string }
+    expect(JSON.parse(raw.by)).toEqual(by)
     expect(write(inverse)).toBeNull()
     expect(write(restoration(undone))).toMatchObject({ act: 'restored', sourceId: undone.id })
   })

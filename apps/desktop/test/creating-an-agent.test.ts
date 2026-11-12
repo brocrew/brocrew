@@ -563,19 +563,24 @@ describe('419 · creating an agent, and the provider it runs on', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§5 · two doors, and the chokepoint sees both', () => {
-    it('⛔ a person’s door needs a person behind the channel, and the same payload on a window does not', async () => {
-      const command = {
-        kind: 'createAgent',
-        slug: 'archivist',
-        displayName: null,
-        provider: null,
-      }
-      await expect(
-        executeRuntimeCommand(host, new AnonymousSink('mcp:someone'), command),
-      ).rejects.toThrow('createAgent changes what agents are allowed to do')
-      expect(identityRow('archivist')).toBeUndefined()
-      // ⚑ The pair, at the same moment: the same payload on a window's sink creates.
-      await expect(executeRuntimeCommand(host, window, command)).resolves.toBeDefined()
+    it('records person, known colleague identity, and genuinely unknown creators truthfully', async () => {
+      const create = (slug: string, sink: RuntimeEventSink) =>
+        executeRuntimeCommand(host, sink, {
+          kind: 'createAgent',
+          slug,
+          displayName: null,
+          provider: null,
+        })
+      expect(await create('person-made', window)).toMatchObject({ createdBy: { by: 'a-person' } })
+      const me = await personOpens(DEFAULT_PROFILE_ID)
+      expect(await create('agent-made', new AnonymousSink(`agent:${me}`))).toMatchObject({
+        createdBy: { by: 'an-agent', agent: DEFAULT_PROFILE_ID },
+      })
+      expect(await create('unknown-made', new AnonymousSink('mcp:someone'))).toMatchObject({
+        createdBy: null,
+      })
+      expect(identityRow('unknown-made')?.['created_by']).toBeNull()
+      await expect(create('unknown-made', new AnonymousSink('mcp:someone'))).rejects.toThrow()
     })
 
     it('⚑ `create_agent` is published, and its refusals reach the ledger like every other tool’s', async () => {

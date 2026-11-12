@@ -106,11 +106,12 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
     expect(store.ownInstructionsOf('lark').versions).toEqual([])
   })
 
-  it('records no change for a missing identity or a non-person actor', () => {
+  it('requires a real identity and records ordinary actor identities', () => {
     expect(begin(deletion(), person, 'absent')).toBeNull()
-    expect(begin(deletion(), agent)).toBeNull()
-    expect(begin(deletion(), { who: 'the-app-itself' })).toBeNull()
-    expect(recovery().methodChanges('lark')).toEqual([])
+    const started = begin(deletion(), agent)!
+    expect(started.by).toEqual(agent)
+    expect(recovery().methodChange('lark', started.id)?.by).toEqual(agent)
+    expect(recovery().methodChanges('absent')).toEqual([])
   })
 
   it('refuses unsafe names, corrupt or oversized before-images, and no-op deletion intents', () => {
@@ -187,10 +188,9 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
     expect(begin()).not.toBeNull()
   })
 
-  it('settles once, only for the identity and person, without changing the intent bytes', () => {
+  it('settles once for the selected identity, keeping the initiator distinct from its observer', () => {
     const started = begin()!
     const actual = [{ name: 'review.md', base64: null }]
-    expect(recovery().settleMethodChange('lark', started.id, 'done', actual, agent)).toBe(false)
     expect(recovery().settleMethodChange('wren', started.id, 'done', actual, person)).toBe(false)
     expect(
       recovery().settleMethodChange(
@@ -202,13 +202,13 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
       ),
     ).toBe(false)
     const settledAt = clock
-    expect(recovery().settleMethodChange('lark', started.id, 'done', actual, person)).toBe(true)
+    expect(recovery().settleMethodChange('lark', started.id, 'done', actual, agent)).toBe(true)
     expect(recovery().settleMethodChange('lark', started.id, 'partial', actual, person)).toBe(false)
     expect(recovery().methodChange('lark', started.id)).toEqual({
       ...started,
       actual,
       outcome: 'done',
-      settlement: { by: person, at: settledAt },
+      settlement: { by: agent, at: settledAt },
     })
     expect(recovery().methodChange('wren', started.id)).toBeNull()
   })
