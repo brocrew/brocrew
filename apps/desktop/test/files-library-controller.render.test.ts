@@ -437,3 +437,29 @@ it('exposes recoverable cancellation for current provenance instead of a blank l
   expect(library.provenance.value?.total).toBe(1)
   expect(library.provenanceError.value).toBeNull()
 })
+
+it('appends progressive pages with growing lower bounds and retains the exact final count', async () => {
+  const read = vi
+    .fn<LibraryApi>()
+    .mockResolvedValueOnce(page({ complete: false, next: 'next' }))
+    .mockResolvedValueOnce(
+      page({
+        complete: true,
+        totalFiles: 2,
+        totalKeeps: 3,
+        files: [{ file: { ...keep, resourceId: 'two', sha256: 'b'.repeat(64) }, matchingKeeps: 2 }],
+      }),
+    )
+  const { library } = controller(read)
+  await library.refresh()
+  expect(library.page.value?.complete).toBe(false)
+  await library.more()
+  expect(library.error.value).toBeNull()
+  expect(library.page.value).toMatchObject({
+    complete: true,
+    totalFiles: 2,
+    totalKeeps: 3,
+    next: null,
+  })
+  expect(library.page.value?.files.map((group) => group.file.resourceId)).toEqual(['one', 'two'])
+})

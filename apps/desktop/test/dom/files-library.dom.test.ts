@@ -536,3 +536,34 @@ it('marks an open task catalog stale on a known mutation and refreshes it before
   await vi.waitFor(() => expect(text(m.q('files-task-picker'))).not.toContain('Earlier reading'))
   expect((m.q('files-task-use') as HTMLButtonElement).disabled).toBe(false)
 })
+
+it('shows approved lower bounds, scrolls a continuation, and replaces them with exact final counts', async () => {
+  const replies = filesLibraryReplies(true)
+  const { s, m } = await ready(true, 1180, 650, async (request) => {
+    const answer = await replies.read(request)
+    if (answer.type === 'files' && request.operation === 'query' && request.query.query === '')
+      return {
+        ...answer,
+        complete: false,
+        totalFiles: 60,
+        totalKeeps: 60,
+        facets: {
+          kinds: { all: 60, documents: 0, images: 0 },
+          roles: { all: 60, made: 0, input: 0 },
+        },
+      }
+    return answer.type === 'files' ? { ...answer, complete: true } : answer
+  })
+  expect(text(m.q('files-count'))).toBe('60+ files · 60+ keeps')
+  expect(text(m.q('files-reading-more'))).toBe('Reading more files… Counts will update.')
+  expect(m.q('files-kind').textContent).toContain('All kinds (60+)')
+  const results = m.q('files-results')
+  results.scrollTop = results.scrollHeight
+  results.dispatchEvent(new Event('scroll'))
+  await vi.waitFor(() => expect(m.all('library-file')).toHaveLength(80))
+  expect(text(m.q('files-count'))).toBe('80 files · 86 keeps')
+  expect(m.all('files-reading-more')).toHaveLength(0)
+  s.library.state.query = 'no fictional file matches this phrase'
+  await vi.waitFor(() => expect(m.all('files-empty')).toHaveLength(1))
+  expect(text(m.q('files-empty'))).toContain('No files match these filters.')
+})
