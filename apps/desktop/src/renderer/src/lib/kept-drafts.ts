@@ -174,7 +174,7 @@ export interface DraftKeeper {
  * answered at once, and from then on every change goes at once too — a message the quit refuses is
  * put back in the book, and words typed under the closing shade are words. ⚑ Then, AFTER the
  * conversations are closed, main asks for the book once more (`onLastSave`) and waits for that one
- * (`QUIT_SAVE_WITHIN_MS`): every refusal that closing them produced has reached this window by
+ * (until the final save finishes): every refusal that closing them produced has reached this window by
  * then, so the book it answers with is the one to keep. ⚠️ **Not a send or a start still on its way
  * PAST the close** — one waiting on a path check of a stalled volume, or a launch outliving the
  * close's own bound: its words are in the flight and in no book, and its refusal can come after the

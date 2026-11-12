@@ -64,7 +64,7 @@ it('an incomplete last book preserves the other saved slots through a fresh writ
   await writer.write(packet(fern, 'f'.repeat(8000)))
   await writer.write(packet(brook, 'b'.repeat(66)))
   writer.expectQuitSaves(1)
-  const waiting = writer.quitSaves(1000)
+  const waiting = writer.quitSaves()
   await writer.write({ ...packet(brook, 'b'.repeat(67)), last: true })
   expect(await waiting).toBe('saved')
   // A new process reads the file, without any of the old writer's memory.
@@ -79,12 +79,15 @@ it('an incomplete last book preserves the other saved slots through a fresh writ
   expect(read(path).drafts.find((draft) => draft.slot === fern)?.text.length).toBe(8000)
 })
 
-it('a last handover arriving after the quit stopped waiting is still saved, and still cannot clear', async () => {
+it('a late last handover is still saved, and still cannot clear', async () => {
   const path = folder()
   const writer = createDraftWriter(dbAt(path))
   await writer.write(packet(fern, 'f'.repeat(8000)))
   writer.expectQuitSaves(1)
-  expect(await writer.quitSaves(1)).toBe('unanswered')
+  const done = vi.fn()
+  void writer.quitSaves().then(done)
+  await Promise.resolve()
+  expect(done).not.toHaveBeenCalled()
   await writer.write({ ...packet(brook, 'typed last'), last: true, cleared: [fern] })
   expect(read(path).drafts.map((draft) => [draft.slot, draft.text.length])).toEqual([
     [fern, 8000],
@@ -109,7 +112,7 @@ it('an empty quit snapshot cannot clear a saved slot even if it contains a remov
   const writer = createDraftWriter(dbAt(path))
   await writer.write(packet(fern, 'fern words'))
   writer.expectQuitSaves(1)
-  const waiting = writer.quitSaves(1000)
+  const waiting = writer.quitSaves()
   await writer.write({ drafts: [], cleared: [fern], last: true })
   expect(await waiting).toBe('saved')
   expect(read(path).drafts.map((draft) => draft.slot)).toEqual([fern])
@@ -152,7 +155,10 @@ it('the renderer names a real removal explicitly and long typing reaches the fil
   await Promise.all(saves)
   keeper.stop()
   writer.expectQuitSaves(1)
-  expect(await writer.quitSaves(1)).toBe('unanswered')
+  const done = vi.fn()
+  void writer.quitSaves().then(done)
+  await Promise.resolve()
+  expect(done).not.toHaveBeenCalled()
   const back = createDraftBook()
   restoreDrafts(back, read(path))
   expect(draftsToSave(back).drafts[0]?.text.length).toBe(9000)
@@ -202,7 +208,7 @@ it('a failed final disk write leaves the previous saved draft available to a new
   savesFail(path, true)
   try {
     writer.expectQuitSaves(1)
-    const waiting = writer.quitSaves(1000)
+    const waiting = writer.quitSaves()
     await writer.write({ ...packet(fern, 'stale'), last: true })
     expect(await waiting).toBe('failed')
     expect(read(path).drafts[0]?.text.length).toBe(8000)
@@ -312,7 +318,7 @@ it.each(['rejected', 'held'])(
       await nextTick()
       expect(last).toEqual(expect.any(Function))
       writer.expectQuitSaves(1)
-      const waiting = writer.quitSaves(1000)
+      const waiting = writer.quitSaves()
       last!()
       expect(await waiting).toBe('saved')
       expect(read(path).drafts.find((draft) => draft.slot === fern)?.text.length).toBe(9000)
@@ -529,7 +535,7 @@ it.each([false, true])(
       // No debounce timer has fired, and the initial read stays held through the final save.
       expect(last).toEqual(expect.any(Function))
       writer.expectQuitSaves(1)
-      const quitting = writer.quitSaves(1000)
+      const quitting = writer.quitSaves()
       last!()
       expect(await quitting).toBe('saved')
       const saved = await restoreSavedDrafts(bookAt(path), {

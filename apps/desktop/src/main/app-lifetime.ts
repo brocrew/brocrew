@@ -63,7 +63,7 @@ export interface AppLifetimeDeps {
    */
   closeAllSessions: () => Promise<void>
   /**
-   * 🔴 **744 · R100 — wait, bounded, for each window's last draft book** — asked AFTER the sessions
+   * Wait for each window's last draft book — asked AFTER the sessions
    * are closed, because closing them refuses what was still in flight and a refusal puts its words
    * back in a window's book. Optional: a lifetime with nothing to keep has no such step, and its
    * report names only the four.
@@ -508,6 +508,7 @@ export function createAppLifetime(deps: AppLifetimeDeps): AppLifetime {
         await run()
       } catch (error) {
         deps.log(`BroCrew failed to ${what}:`, error)
+        if (run === keepUnsentDrafts) throw error
       }
       // ⚠️ Stamped in the `finally` sense — outside the `catch`, so a step that THREW still reports
       // what it spent. A failure that took forty seconds is the most interesting row there is, and
@@ -582,6 +583,12 @@ export function createAppLifetime(deps: AppLifetimeDeps): AppLifetime {
             deps.log('BroCrew could not arm its last-resort exit:', error)
           }
           askElectronToQuit('BroCrew failed to quit:')
+        })
+        .catch(() => {
+          if (forcedExit !== null) clearTimeout(forcedExit)
+          forcedExit = null
+          shutdown = null
+          deps.log('BroCrew is staying open because its unsent drafts were not saved')
         })
     },
 

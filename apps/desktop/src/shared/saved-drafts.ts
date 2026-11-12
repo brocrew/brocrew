@@ -44,7 +44,7 @@ export interface SavedDrafts {
  * ⚑ **Sent by the quit AFTER it has closed the conversations**, because closing them is what
  * refuses a send or a start that was still in flight, and the refusal puts its words back in the
  * book: the book the window holds at this moment is the one to keep, and main waits for it
- * (`QUIT_SAVE_WITHIN_MS`). ⚠️ Its own channel, like `app:closing`, because it is about the
+ * (until the final save finishes). ⚠️ Its own channel, like `app:closing`, because it is about the
  * application ending rather than about any conversation.
  */
 export const LAST_DRAFT_SAVE_CHANNEL = 'app:last-draft-save'

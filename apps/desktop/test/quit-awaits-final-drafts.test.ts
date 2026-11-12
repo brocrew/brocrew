@@ -29,7 +29,7 @@ function fixture() {
     closeAllSessions: async () => {},
     keepUnsentDrafts: async () => {
       writer.expectQuitSaves(1)
-      const result = await writer.quitSaves(1000)
+      const result = await writer.quitSaves()
       if (result !== 'saved') throw new Error('Drafts were not saved')
     },
     drainArchiveWork: async () => {},
@@ -67,7 +67,9 @@ it('keeps the database and window open past the old deadline, then saves before 
 it('holds a failed save and allows quit to retry after the write failure is fixed', async () => {
   const { writer, quit, lifetime } = fixture()
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-  database.exec("CREATE TRIGGER no_save BEFORE INSERT ON draft BEGIN SELECT RAISE(ABORT, 'disk full'); END")
+  database.exec(
+    "CREATE TRIGGER no_save BEFORE INSERT ON draft BEGIN SELECT RAISE(ABORT, 'disk full'); END",
+  )
   lifetime.beforeQuit(event)
   await Promise.resolve()
   await Promise.resolve()

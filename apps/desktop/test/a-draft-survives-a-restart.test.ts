@@ -835,13 +835,13 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
     ).resolves.toBeUndefined()
   })
 
-  it('🔴 the quit WAITS for each asked window’s LAST book to be on disk — only a book marked `last` counts — and says so when one never comes', async () => {
+  it('🔴 the quit WAITS for each asked window’s LAST book to be on disk — only a book marked `last` counts — without treating a late book as a completed save', async () => {
     const writer = createDraftWriter(db)
     writer.expectQuitSaves(0)
-    expect(await writer.quitSaves(1_000)).toBe('saved')
+    expect(await writer.quitSaves()).toBe('saved')
 
     writer.expectQuitSaves(1)
-    const waiting = writer.quitSaves(1_000)
+    const waiting = writer.quitSaves()
     let settled = false
     void waiting.then(() => (settled = true))
     // ⚑ an ordinary save does not answer the request
@@ -860,7 +860,10 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
     ])
 
     writer.expectQuitSaves(1)
-    expect(await writer.quitSaves(20)).toBe('unanswered')
+    const done = vi.fn()
+    void writer.quitSaves().then(done)
+    await Promise.resolve()
+    expect(done).not.toHaveBeenCalled()
   })
 
   it('⛔ a last book that could NOT be written is reported as failed — never as saved', async () => {
@@ -870,7 +873,7 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     try {
       writer.expectQuitSaves(1)
-      const waiting = writer.quitSaves(1_000)
+      const waiting = writer.quitSaves()
       void writer.write({
         drafts: [{ slot: NEW_CONVERSATION, text: 'x', attached: [] }],
         last: true,
@@ -997,9 +1000,7 @@ describe('§5 · the wiring — `main.ts`, `RuntimeScreen` and main’s doors, w
     expect(index).toMatch(/draftReaders\.has\(window\.webContents\.id\)/)
     expect(index).toMatch(/writer\.expectQuitSaves\(windows\.length\)/)
     expect(index).toMatch(/window\.webContents\.send\(LAST_DRAFT_SAVE_CHANNEL\)/)
-    expect(index).toMatch(
-      /const outcome = await writer\.quitSaves\(QUIT_SAVE_WITHIN_MS\)\n\s+if \(outcome === 'unanswered'\) \{\n\s+throw /,
-    )
+    expect(index).toMatch(/const outcome = await writer\.quitSaves\(\)/)
     expect(index).toMatch(
       /keepDraftedPastes\(database, userData, Date\.now\(\)\)\n\s+void sweepPastedImages\(pastedImagesRoot\(userData\), Date\.now\(\)\)/,
     )
@@ -1073,12 +1074,13 @@ describe('§7 · the quit keeps the unsent drafts in a step of its OWN — after
     )
   })
 
-  it('⚑ an answer that never came is LOGGED through the lifetime’s own writer — and the quit goes on', async () => {
+  it('⚑ a failed draft save is logged and holds the quit with its database open', async () => {
     const { lifetime, log } = aLifetime(() => Promise.reject(new Error('a window did not answer')))
     lifetime.beforeQuit(quitting)
     await lifetime.shuttingDown
     expect(log).toContain('log:BroCrew failed to keep its unsent drafts:')
-    expect(log).toContain('closeDatabase')
+    expect(log).not.toContain('closeDatabase')
+    expect(log).not.toContain('quit')
   })
 
   it('⚑ the control — a lifetime with nothing to keep has no such step, and its report names only the four', async () => {

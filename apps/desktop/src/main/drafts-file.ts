@@ -16,12 +16,6 @@ import { savedDraftsFrom } from './saved-drafts'
 /** The file older builds kept the drafts in, imported once into `draft`. */
 export const SAVED_DRAFTS_FILE = 'drafts.json'
 
-/**
- * How long a quit waits for each window's last save (`app:last-draft-save`), so a window too wedged
- * to answer does not hold the quit.
- */
-export const QUIT_SAVE_WITHIN_MS = 1_000
-
 /** The kept drafts as one book (`{ version, drafts }`), for `saved-drafts.ts` to read. */
 export function savedDraftsBook(database: AppDatabase): unknown {
   const rows = database.prepare('SELECT entry FROM draft ORDER BY rowid').all() as {
@@ -51,10 +45,9 @@ export interface DraftWriter {
   /** The quit has asked `windows` windows for their last save: count the books marked `last`. */
   expectQuitSaves(windows: number): void
   /**
-   * Resolve once that many `last` books have arrived, or after `withinMs`: `saved`, `failed` (the
-   * last save was not kept) or `unanswered`.
+   * Resolve once every requested last book has arrived and its write has finished.
    */
-  quitSaves(withinMs: number): Promise<'saved' | 'failed' | 'unanswered'>
+  quitSaves(): Promise<'saved' | 'failed'>
 }
 
 /**
@@ -151,15 +144,13 @@ export function createDraftWriter(database: AppDatabase): DraftWriter {
       arrived = 0
     },
 
-    quitSaves(withinMs) {
+    quitSaves() {
       if (arrived >= expected) return Promise.resolve(lastFailed ? 'failed' : 'saved')
       return new Promise((resolve) => {
         const check = (): void => {
           if (arrived >= expected) finish(lastFailed ? 'failed' : 'saved')
         }
-        const timer = setTimeout(() => finish('unanswered'), withinMs)
-        function finish(outcome: 'saved' | 'failed' | 'unanswered'): void {
-          clearTimeout(timer)
+        function finish(outcome: 'saved' | 'failed'): void {
           listeners.delete(check)
           resolve(outcome)
         }

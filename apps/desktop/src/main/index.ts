@@ -268,7 +268,6 @@ import {
   createDraftWriter,
   importDraftsFile,
   keepDraftedPastes,
-  QUIT_SAVE_WITHIN_MS,
   savedDraftsBook,
   type DraftWriter,
 } from './drafts-file'
@@ -467,12 +466,7 @@ async function theLastDraftSaves(): Promise<void> {
       // A window already on its way out has handed over what it had, on `pagehide`.
     }
   }
-  const outcome = await writer.quitSaves(QUIT_SAVE_WITHIN_MS)
-  if (outcome === 'unanswered') {
-    throw new Error(
-      `a window did not hand over its unsent drafts within ${String(QUIT_SAVE_WITHIN_MS)}ms`,
-    )
-  }
+  const outcome = await writer.quitSaves()
   if (outcome === 'failed') throw new Error('the last unsent drafts could not be written to disk')
 }
 
