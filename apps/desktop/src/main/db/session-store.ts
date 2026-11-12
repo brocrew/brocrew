@@ -33,6 +33,12 @@ import type {
 } from '../../shared/conversation-events'
 import type { MoveReceipt } from '../../shared/move-contracts'
 import type { AgentModelChoice, ModelAndEffort } from '../../shared/model-choice-contracts'
+import {
+  parseProvider,
+  parseModelChoice,
+  modelChoiceWritten,
+} from './session-store-parts/model-choice-storage'
+export { parseModelChoice, modelChoiceWritten } from './session-store-parts/model-choice-storage'
 import type {
   AnsweredQuestion,
   HumanAnswers,
@@ -92,7 +98,7 @@ import {
   type NotStartedBecause,
 } from '@brobot2/runtime'
 import type { Provider, SessionStatus, TurnEnding } from '@brobot2/shared'
-import { DEFAULT_IDENTITY_PROVIDER, providerSchema, turnEndingSchema } from '@brobot2/shared'
+import { DEFAULT_IDENTITY_PROVIDER, turnEndingSchema } from '@brobot2/shared'
 import {
   CAPABILITY_COLUMNS,
   CAPABILITY_FIELDS,
@@ -2082,35 +2088,6 @@ function parseChoice<K extends ChoiceKey>(key: K, stored: string | null): Profil
   if (stored === null) return field.ruled
   const words: readonly string[] = field.vocabulary ?? []
   return words.includes(stored) ? (stored as ProfileCapabilities[K]) : field.narrowest
-}
-
-function parseProvider(stored: string | null): Provider | null {
-  return providerSchema.safeParse(stored).data ?? null
-}
-
-export function parseModelChoice(stored: string | null): AgentModelChoice | null {
-  if (stored === null) return null
-  let raw: unknown
-  try {
-    raw = JSON.parse(stored)
-  } catch {
-    return null
-  }
-  if (typeof raw !== 'object' || raw === null) return null
-  const said = raw as Record<string, unknown>
-  const provider = parseProvider(typeof said['provider'] === 'string' ? said['provider'] : null)
-  if (provider === null) return null
-  const model = said['model']
-  if (typeof model !== 'string' || model.trim() === '') return null
-  const effort = said['effort']
-  if (effort === null || effort === undefined) return { provider, model, effort: null }
-  if (typeof effort !== 'string') return null
-  return { provider, model, effort: effort.trim() === '' ? null : effort }
-}
-
-export function modelChoiceWritten(choice: AgentModelChoice | null): string | null {
-  if (choice === null) return null
-  return JSON.stringify({ provider: choice.provider, model: choice.model, effort: choice.effort })
 }
 
 function parseStrings(stored: string | null): readonly string[] {
