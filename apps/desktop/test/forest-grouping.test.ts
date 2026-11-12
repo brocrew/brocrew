@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { forestGraph, forestNodes, waitsOnIt } from '../src/renderer/src/lib/forest-graph'
-import { conv, task, viewOf } from './dom/forest-fixture'
+import { conv, task, viewOf } from './lib/forest-fixture'
 
 const repeated = () => viewOf([
   conv('aster', null),

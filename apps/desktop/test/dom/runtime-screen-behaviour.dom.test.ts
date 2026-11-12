@@ -851,6 +851,7 @@ it.each(['activity', 'forest'] as const)(
         : Promise.resolve(readingOf([], { is: 'the-tree-of', conversation: 'fictional-source' }, { readAt: 2 })),
     )
     const screen = await panelScreen()
+    await expect.poll(() => screen.all('main-tab-graph').length).toBe(1)
     screen.q('main-tab-graph').click()
     try {
       await expect.poll(() => screen.all('cast-loading').length).toBe(1)
@@ -903,6 +904,7 @@ it('coalesces graph refreshes and discards stale activity after a newer relation
   runtime.whatIsBeingDone.mockReturnValueOnce(oldActivity.promise)
   runtime.forestReading.mockReturnValueOnce(oldForest.promise)
   const screen = await panelScreen()
+  await expect.poll(() => screen.all('main-tab-graph').length).toBe(1)
   screen.q('main-tab-graph').click()
   try {
     await expect.poll(() => screen.all('cast-sub-agents').length).toBe(1)

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { readForestPages, type ForestSnapshot } from '../src/renderer/src/lib/forest-reading'
-import { conv, readingOf, forestOf } from './dom/forest-fixture'
+import { conv, readingOf, forestOf } from './lib/forest-fixture'
 
 const scope = { is: 'the-workspace', window: 'day' } as const
 

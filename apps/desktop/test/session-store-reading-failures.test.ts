@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createSessionStore, type SessionStore } from '../src/renderer/src/lib/session-store'
 import type { RuntimeBridge } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
-import { readingOf } from './dom/forest-fixture'
+import { readingOf } from './lib/forest-fixture'
 
 const stores: SessionStore[] = []
 afterEach(() => {
