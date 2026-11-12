@@ -46,6 +46,7 @@ import {
 import type { AppInfo, ProviderConnection } from '@brobot2/shared'
 import {
   UPDATES_CHANNELS,
+  type UpdateRestartWorkspace,
   type UpdatesSettingsChange,
   type UpdatesSnapshot,
 } from '../shared/updates'
@@ -1060,6 +1061,12 @@ const api = Object.freeze({
       ipcRenderer.invoke(UPDATES_CHANNELS.download) as Promise<UpdatesSnapshot>,
     restartWhenQuiet: (): Promise<UpdatesSnapshot> =>
       ipcRenderer.invoke(UPDATES_CHANNELS.restartWhenQuiet) as Promise<UpdatesSnapshot>,
+    restartPlan: (): Promise<readonly UpdateRestartWorkspace[]> =>
+      ipcRenderer.invoke(UPDATES_CHANNELS.restartPlan) as Promise<
+        readonly UpdateRestartWorkspace[]
+      >,
+    restartNow: (): Promise<UpdatesSnapshot> =>
+      ipcRenderer.invoke(UPDATES_CHANNELS.restartNow) as Promise<UpdatesSnapshot>,
     cancelRestart: (): Promise<UpdatesSnapshot> =>
       ipcRenderer.invoke(UPDATES_CHANNELS.cancelRestart) as Promise<UpdatesSnapshot>,
     onChanged: (listener: (snapshot: UpdatesSnapshot) => void): (() => void) => {

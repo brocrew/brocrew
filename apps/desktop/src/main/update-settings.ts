@@ -60,6 +60,10 @@ export function readUpdateSettings(file: string, defaults: UpdateSettings): Upda
 }
 
 export function writeUpdateSettings(file: string, settings: UpdateSettings): void {
+  writeSettingsObject(file, { ...readSettingsObject(file), updates: settings })
+}
+
+function readSettingsObject(file: string): Record<string, unknown> {
   let rest: Record<string, unknown> = {}
   try {
     const said = JSON.parse(readFileSync(file, 'utf8')) as unknown
@@ -69,6 +73,57 @@ export function writeUpdateSettings(file: string, settings: UpdateSettings): voi
   } catch {
     // No file yet, or one that is not JSON: it is replaced.
   }
+  return rest
+}
+
+function writeSettingsObject(file: string, settings: Record<string, unknown>): void {
   mkdirSync(dirname(file), { recursive: true })
-  writeAtomicallySync(file, `${JSON.stringify({ ...rest, updates: settings }, null, 2)}\n`)
+  writeAtomicallySync(file, `${JSON.stringify(settings, null, 2)}\n`)
+}
+
+export interface UpdateReopen {
+  readonly executable: string
+  readonly version: string
+  readonly folders: readonly string[]
+}
+
+export function rememberUpdateWorkspaces(file: string, reopen: UpdateReopen): void {
+  writeSettingsObject(file, { ...readSettingsObject(file), updateReopen: reopen })
+}
+
+export function forgetUpdateWorkspaces(file: string): void {
+  const settings = readSettingsObject(file)
+  delete settings.updateReopen
+  writeSettingsObject(file, settings)
+}
+
+/** Only the installed target version reopens the captured workspace set. */
+export function updateWorkspacesToReopen(
+  file: string,
+  executable: string,
+  version: string,
+): UpdateReopen | null {
+  const value = readSettingsObject(file).updateReopen as UpdateReopen | undefined
+  if (
+    value?.executable !== executable ||
+    value.version !== version ||
+    !Array.isArray(value.folders) ||
+    value.folders.length === 0 ||
+    !value.folders.every((folder) => typeof folder === 'string')
+  )
+    return null
+  return value
+}
+
+/** The primary workspace holds Electron's single-instance lock before consuming this set. */
+export function takeUpdateWorkspaces(
+  file: string,
+  executable: string,
+  version: string,
+  primary: string,
+): readonly string[] {
+  const reopen = updateWorkspacesToReopen(file, executable, version)
+  if (reopen === null || reopen.folders[0] !== primary) return []
+  forgetUpdateWorkspaces(file)
+  return reopen.folders
 }

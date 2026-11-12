@@ -60,7 +60,7 @@ export function startWorkspaces(options: {
   readonly hidden: boolean
   /** The folder picker, on the window that asked (a hidden launch answers cancelled). */
   readonly pickFolder: (event: IpcMainInvokeEvent) => Promise<string | null>
-}): void {
+}): (folder: string) => Promise<string | null> {
   const { app } = options
   const userData = app.getPath('userData')
   const requiredPolicy = app.isPackaged && requiresWorkspacePolicy(app.getAppPath())
@@ -395,6 +395,7 @@ export function startWorkspaces(options: {
       }
     },
   )
+  return openOn
 }
 
 /** A path from the window: a non-empty string of a sane length, or null. */

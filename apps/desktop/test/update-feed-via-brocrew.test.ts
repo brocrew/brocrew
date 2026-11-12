@@ -276,7 +276,12 @@ async function start(
     quit,
     getAppMetrics: () => [],
   } as unknown as App
-  updates = startUpdates({ app, hidden: true, host: { whatARestartWouldStop: () => [] } as never })
+  updates = startUpdates({
+    app,
+    hidden: true,
+    host: { whatARestartWouldStop: () => [] } as never,
+    prepareForQuit: async () => {},
+  })
 }
 
 beforeEach(() => {

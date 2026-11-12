@@ -1,5 +1,9 @@
 import { shallowRef, type ShallowRef } from 'vue'
-import type { UpdatesSettingsChange, UpdatesSnapshot } from '../../../shared/updates'
+import type {
+  UpdateRestartWorkspace,
+  UpdatesSettingsChange,
+  UpdatesSnapshot,
+} from '../../../shared/updates'
 
 /**
  * 🔴 **B2 · where updates stand, for the rail's footer and its menu** (`window.api.updates`, B1).
@@ -17,6 +21,8 @@ export interface Updates {
   checkNow(): Promise<void>
   download(): Promise<void>
   restartWhenQuiet(): Promise<void>
+  restartPlan(): Promise<readonly UpdateRestartWorkspace[]>
+  restartNow(): Promise<void>
   cancelRestart(): Promise<void>
   set(change: UpdatesSettingsChange): Promise<void>
   /** ⚑ Read again — for a first read that never answered. */
@@ -80,6 +86,8 @@ function updatesOver(bridge: UpdatesBridge | null): {
       checkNow: () => take(bridge?.checkNow),
       download: () => take(bridge?.download),
       restartWhenQuiet: () => take(bridge?.restartWhenQuiet),
+      restartPlan: () => bridge?.restartPlan() ?? Promise.resolve([]),
+      restartNow: () => take(bridge?.restartNow),
       cancelRestart: () => take(bridge?.cancelRestart),
       set: (change) => take(bridge === null ? undefined : () => bridge.set(change)),
       refresh: () => take(bridge?.read).catch(() => {}),

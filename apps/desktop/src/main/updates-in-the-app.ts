@@ -1,17 +1,26 @@
 import { ipcMain } from './app-ipc'
 import { join } from 'node:path'
-import { autoUpdater as nativeUpdater, BrowserWindow } from 'electron'
+import { autoUpdater as nativeUpdater, BrowserWindow, dialog } from 'electron'
 import type { App } from 'electron'
 import type { AppUpdater, BaseUpdater } from 'electron-updater'
 import { UPDATES_CHANNELS, type UpdateChannel } from '../shared/updates'
 import { shownVersion } from './build-identity'
-import { defaultDataFolder } from './data-folder'
+import { defaultDataFolder, workspaceOf } from './data-folder'
 import { feedOfTheApp } from './release-feed'
 import { otherDataFolder } from './launch-presentation'
-import { otherBroBotsRunning } from './other-brobots'
+import { macAppProcesses, otherBroBotsRunning } from './other-brobots'
+import { readWorkspaceForUpdate, requestWorkspaceUpdate } from './one-host-gate'
+import { readWorkspaceList, workspaceListFile } from './workspaces'
+import { packagedWorkspaceOwners } from './workspace-routing-store'
+import { workspaceUpdate, type UpdateWorkspace } from './update-workspaces'
 import { startTheInstaller, theWayBack } from './reopen-after-update'
 import type { RuntimeHost } from './runtime/runtime-host'
-import { readUpdateSettings, updateSettingsOf, writeUpdateSettings } from './update-settings'
+import {
+  readUpdateSettings,
+  rememberUpdateWorkspaces,
+  updateSettingsOf,
+  writeUpdateSettings,
+} from './update-settings'
 import {
   createUpdates,
   parseSettingsChange,
@@ -28,7 +37,12 @@ export function startUpdates(options: {
   readonly app: App
   readonly host: RuntimeHost
   readonly hidden: boolean
-}): Updates & { drain(): Promise<void> } {
+  readonly prepareForQuit: () => Promise<void>
+}): Updates & {
+  drain(): Promise<void>
+  workspaceUpdates: ReturnType<typeof workspaceUpdate>
+  finishQuit(): boolean
+} {
   const { app } = options
   const feed = app.isPackaged ? feedOfTheApp(join(process.resourcesPath, 'app-update.yml')) : null
   const settings = updateSettingsOf({
@@ -81,6 +95,63 @@ export function startUpdates(options: {
   let installer: string | null = null
   let stopNativePreparation: (() => void) | undefined
   const userData = app.getPath('userData')
+  let nativeInstallOnQuit = false
+  let nativeInstalled = false
+  const installNative = (): void => {
+    if (nativeInstalled) return
+    nativeInstalled = true
+    updater!.quitAndInstall()
+  }
+  const workspaceUpdates: ReturnType<typeof workspaceUpdate> = workspaceUpdate({
+    self: {
+      folder: userData,
+      pid: process.pid,
+      startedAt: performance.timeOrigin,
+      executable: process.execPath,
+      name: workspaceOf(userData, userData === defaultDataFolder(app.getPath('appData'))).name,
+    },
+    ready: () => {
+      const state = updates.snapshot().state
+      return state.kind === 'ready' || state.kind === 'waiting-to-restart'
+    },
+    discover: async (): Promise<readonly UpdateWorkspace[]> => {
+      const list = workspaceListFile({
+        appData: app.getPath('appData'),
+        userData,
+        hidden: options.hidden,
+        packaged: app.isPackaged,
+      })
+      const folders = new Set([
+        userData,
+        ...readWorkspaceList(list).map((row) => row.path),
+        ...(options.hidden ? [] : packagedWorkspaceOwners(app.getPath('appData'))),
+      ])
+      const peers = (
+        await Promise.all(
+          [...folders].map((folder) =>
+            folder === userData ? workspaceUpdates.details() : readWorkspaceForUpdate(folder),
+          ),
+        )
+      ).filter(
+        (peer): peer is UpdateWorkspace => peer !== null && peer.executable === process.execPath,
+      )
+      const pids = await macAppProcesses(process.execPath)
+      if (
+        pids.length !== peers.length ||
+        pids.some((pid) => !peers.some((peer) => peer.pid === pid))
+      ) {
+        throw new Error('A running copy of BroCrew could not be matched to its workspace')
+      }
+      return peers
+    },
+    request: requestWorkspaceUpdate,
+    prepare: options.prepareForQuit,
+    remember: (version, folders) =>
+      rememberUpdateWorkspaces(settings.file, { executable: process.execPath, version, folders }),
+    report: (error) => console.error('BroCrew update could not confirm a workspace reply:', error),
+    quit: () => app.quit(),
+    install: installNative,
+  })
   const wayBack = theWayBack(
     userData,
     otherDataFolder(userData, defaultDataFolder(app.getPath('appData'))) === null,
@@ -105,6 +176,7 @@ export function startUpdates(options: {
   })
 
   const updates = createUpdates({
+    updateNow: process.platform === 'darwin',
     version: shownVersion(app.getVersion(), app.isPackaged),
     notHere: !app.isPackaged ? 'a-development-build' : feed === null ? 'no-release-feed' : null,
     settings: {
@@ -159,7 +231,8 @@ export function startUpdates(options: {
     },
     install: () => {
       if (process.platform === 'darwin') {
-        updater!.quitAndInstall()
+        nativeInstallOnQuit = true
+        app.quit()
         return
       }
       installOnTheWayOut = true
@@ -204,10 +277,40 @@ export function startUpdates(options: {
   )
   ipcMain.handle(UPDATES_CHANNELS.download, () => updates.download())
   ipcMain.handle(UPDATES_CHANNELS.restartWhenQuiet, () => updates.restartWhenQuiet())
+  ipcMain.handle(UPDATES_CHANNELS.restartPlan, async () =>
+    (await workspaceUpdates.plan()).map(({ folder, name }) => ({ path: folder, name })),
+  )
+  ipcMain.handle(UPDATES_CHANNELS.restartNow, async () => {
+    const state = updates.snapshot().state
+    if (
+      process.platform !== 'darwin' ||
+      (state.kind !== 'ready' && state.kind !== 'waiting-to-restart')
+    )
+      return updates.snapshot()
+    try {
+      await workspaceUpdates.restart(state.version)
+    } catch (error) {
+      console.error('BroCrew could not update its workspaces:', error)
+      if (!options.hidden)
+        dialog.showErrorBox(
+          'BroCrew could not update',
+          error instanceof Error ? error.message : String(error),
+        )
+      throw error
+    }
+    return updates.snapshot()
+  })
   ipcMain.handle(UPDATES_CHANNELS.cancelRestart, () => updates.cancelRestart())
   updates.start()
   return {
     ...updates,
+    workspaceUpdates,
+    finishQuit: () => {
+      if (workspaceUpdates.finishQuit()) return true
+      if (!nativeInstallOnQuit) return false
+      installNative()
+      return true
+    },
     stop,
     drain: () => {
       stop()

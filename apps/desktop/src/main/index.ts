@@ -288,6 +288,7 @@ import {
 } from './window-navigation'
 import { startUpdates } from './updates-in-the-app'
 import { startWorkspaces } from './workspaces-in-the-app'
+import { takeUpdateWorkspaces, updateSettingsOf, updateWorkspacesToReopen } from './update-settings'
 import { startProviderSnapshots } from './provider-snapshots'
 import { importSignInChangesFile, signInChangesIn } from './sign-in-changes'
 import { archivedConversationsIn, importArchivedFile } from './archived-file'
@@ -301,8 +302,21 @@ import {
 import { WorkspaceUnavailable } from './workspace-startup'
 import { nodeFs as recoveryFiles } from './recovery/files'
 
+const updateReopenAtLaunch =
+  app.isPackaged && !app.commandLine.hasSwitch('brobot-hidden')
+    ? updateWorkspacesToReopen(
+        updateSettingsOf({
+          appData: app.getPath('appData'),
+          userData: app.getPath('userData'),
+          hidden: false,
+        }).file,
+        process.execPath,
+        app.getVersion(),
+      )
+    : null
+
 try {
-  pinTheDataFolder(app)
+  pinTheDataFolder(app, updateReopenAtLaunch?.folders[0])
   workspaceStartup(app)?.assertDatabase()
 } catch (error) {
   try {
@@ -1863,7 +1877,27 @@ function start(ownership: HostGateVerdict): void {
   openLog(appLogFile(app.getPath('userData')))
   electronLog.initialize()
   debugChoiceRead = readDebugChoice(app.getPath('userData')).then(setDebug)
-  void publishWorkspacePresence(app.getPath('userData')).catch((error: unknown) =>
+  void publishWorkspacePresence(
+    app.getPath('userData'),
+    process.platform,
+    {},
+    {
+      details: () =>
+        updates?.workspaceUpdates.details() ?? {
+          folder: app.getPath('userData'),
+          pid: process.pid,
+          executable: process.execPath,
+          startedAt: performance.timeOrigin,
+          name: workspaceOf(app.getPath('userData'), false).name,
+          ready: false,
+          owner: null,
+        },
+      receive: async (request) => {
+        if (updates === null) throw new Error('BroCrew is still starting this workspace')
+        await updates.workspaceUpdates.receive(request)
+      },
+    },
+  ).catch((error: unknown) =>
     console.warn('BroCrew could not announce this open workspace:', error),
   )
 
@@ -1987,8 +2021,13 @@ function start(ownership: HostGateVerdict): void {
       finishStartupPhase()
       registerIpc(host, localZone)
       startTheDockLabel()
-      updates = startUpdates({ app, host, hidden: presentation.hidden })
-      startWorkspaces({
+      updates = startUpdates({
+        app,
+        host,
+        hidden: presentation.hidden,
+        prepareForQuit: () => lifetime.prepareForQuit(),
+      })
+      const openWorkspace = startWorkspaces({
         app,
         hidden: presentation.hidden,
         pickFolder: async (event) => {
@@ -2003,6 +2042,25 @@ function start(ownership: HostGateVerdict): void {
       installAssetProtocol(session.defaultSession.protocol)
       installThemeProtocol(session.defaultSession.protocol, themes)
       theDataOpened = true
+      if (updateReopenAtLaunch !== null) {
+        const file = updateSettingsOf({
+          appData: app.getPath('appData'),
+          userData: app.getPath('userData'),
+          hidden: false,
+        }).file
+        const folders = takeUpdateWorkspaces(
+          file,
+          process.execPath,
+          app.getVersion(),
+          app.getPath('userData'),
+        )
+        for (const folder of folders) {
+          if (folder === app.getPath('userData')) continue
+          const failure = await openWorkspace(folder)
+          if (failure !== null)
+            console.error(`BroCrew could not reopen ${folder} after updating: ${failure}`)
+        }
+      }
       try {
         const root = pluginSupervisorRoot({
           appData: app.getPath('appData'),
@@ -2114,6 +2172,7 @@ function start(ownership: HostGateVerdict): void {
 }
 
 const lifetime = createAppLifetime({
+  holdQuit: () => updates?.workspaceUpdates.holdsQuit() ?? false,
   recordOpenSessions: () => host?.recordOpenForQuit(),
   announceClosing: () => {
     for (const window of BrowserWindow.getAllWindows()) {
@@ -2163,7 +2222,13 @@ const lifetime = createAppLifetime({
     db = null
   },
   quit: () => app.quit(),
-  quitAfterShutdown: () => (theDataOpened && !startFailed ? app.quit() : app.exit(1)),
+  quitAfterShutdown: () => {
+    if (!theDataOpened || startFailed) {
+      app.exit(1)
+      return
+    }
+    if (!updates?.finishQuit()) app.quit()
+  },
   exit: (code) => app.exit(code),
   armLastResort: (withinMs) =>
     armLastResortExit(
