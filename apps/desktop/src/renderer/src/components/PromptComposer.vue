@@ -593,45 +593,9 @@ const stopWordOnly = computed(
 )
 
 /**
- * # 🔴 One press or five, ONE submission — the latch `288` H1 asked for (292 §1)
- *
- * ## ⛔ What was wrong, measured before it was fixed
- *
- * `262` made Send WAIT for an attachment being written, and ⚠️ **the wait is the window.** Two
- * presses while a screenshot was mid-write both reached `await settle()` and both came back: the
- * first emitted `inspect this` with the picture and cleared the draft, and the second — reading a
- * draft the PARENT owns and Vue had not patched yet — emitted `inspect this` again, **with no
- * attachment at all.** One intended submission, two runtime sends; if the host accepts both the
- * person sent a duplicate they never wrote, and if it refuses the second the refusal path hands
- * back text that has already gone.
- *
- * ⚑ **Tenth recorded instance of a correct fix moving a cost somewhere nobody was looking**, and
- * the second time in this file: `232` making the classifier async is what widened `236` §4's window
- * from a `stat` to an IPC round trip.
- *
- * ## ⛔ Set before the FIRST await, which is the only place it can be set
- *
- * Everything from entering {@link send} to the latch is straight-line JavaScript, so no second
- * press can run in between — the same guarantee {@link DraftHanding.acquire} makes about its
- * reservation, for the same reason. A press that finds the latch set **coalesces**: it returns the
- * send already running rather than starting a second continuation.
- *
- * ## ⚠️ It is LOCAL, and that is a decision the transaction cannot make for it
- *
- * {@link DraftHanding} is keyed by draft precisely so an operation outlives this component. ⛔ **A
- * latch keyed the same way would be a deadlock**: a send left waiting when you switch conversations
- * can never emit — Vue drops emissions from an unmounted component — so a composer returning to
- * that draft would coalesce every press into a send that can never complete, and the conversation
- * would be permanently unsendable. ⚑ A press belongs to a mounted button; the acquisition it waits
- * on belongs to the draft. What a person who leaves mid-send comes back to is their words, their
- * chip — the picture lands in the draft it was pasted into — and a Send that works.
- *
- * ## ⚑ …and the LAST intent wins, so neither press is a silent no-op
- *
- * A coalesced ⇧⌘↵ raises the pending send to interrupting, because {@link send} reads the intent
- * *after* the wait anyway — *"a turn that started while the picture was being written turns this
- * press into a QUEUE"*. Dropping the second press's meaning on the floor would be `106`'s *"the
- * gesture happened and quietly did nothing"* arriving inside the fix for it.
+ * Coalesce presses while attachment acquisition is pending. An unmounted composer does not submit
+ * after acquisition. Once submitted, the draft book owns pending acceptance across remounts.
+ * A later interrupting press updates the pending gesture's intent.
  */
 let mounted = true
 onBeforeUnmount(() => {
