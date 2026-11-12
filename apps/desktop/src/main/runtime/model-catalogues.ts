@@ -398,7 +398,7 @@ export class ModelCatalogues {
    * {@link modelsAskedAgainIfTheyFailed}, the one memo every door shares, so a launch after a window
    * read costs no second child.
    */
-  private async theListIn(provider: Provider, _profileId: string): Promise<TheListAsked> {
+  private async theListIn(provider: Provider): Promise<TheListAsked> {
     const catalogue = await this.modelsAskedAgainIfTheyFailed(provider)
     return this.theListOf(provider, catalogue)
   }
@@ -550,8 +550,6 @@ export class ModelCatalogues {
     provider: Provider,
     /** The identity whose default is asked — `null` for a conversation no identity holds. */
     profileSlug: string | null,
-    /** ⚑ The profile whose home the launch prepared, where a list it needs is asked. */
-    askIn: string,
     named: { readonly model?: string; readonly effort?: string },
   ): Promise<SelectedModel> {
     const unnamed = (list: TheListAsked, model: string | null): SessionUnavailable => {
@@ -573,19 +571,19 @@ export class ModelCatalogues {
       if (named.effort !== undefined) {
         return { model: named.model, effort: named.effort, from: 'named' }
       }
-      const list = await this.theListIn(provider, askIn)
+      const list = await this.theListIn(provider)
       const effort = this.theEffortOfAModelNamedAlone(list, provider, named.model)
       if (effort === undefined) throw unnamed(list, named.model)
       return { model: named.model, effort, from: 'named' }
     }
     let selected = this.theSelectedPairIfNamed(provider, profileSlug)
     if (selected === null) {
-      const list = await this.theListIn(provider, askIn)
+      const list = await this.theListIn(provider)
       selected = this.theProvidersDefaultIn(list, provider, named.effort)
       if (selected === null) throw unnamed(list, null)
     }
     if (named.effort === undefined) return selected
-    const list = await this.theListIn(provider, askIn)
+    const list = await this.theListIn(provider)
     const row = theListedRow(list.rows, selected.model)
     const offered = row === undefined ? theEffortLadder(list.rows) : theEffortsOf(row)
     const judged = list.notAsked === null || offered.length > 0
@@ -648,7 +646,7 @@ export class ModelCatalogues {
   }
 
   /** Sign-in changes invalidate the provider's catalogue, regardless of which profile changed. */
-  forgetModels(provider: Provider, _profileId?: string): void {
+  forgetModels(provider: Provider): void {
     this.modelProbes.delete(provider)
   }
 
