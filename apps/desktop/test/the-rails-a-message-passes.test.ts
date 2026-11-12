@@ -24,93 +24,16 @@ import {
   refuseTool,
   type ToolName,
 } from '../src/main/runtime/agent-tools'
-import {
-  MESSAGE_RAILS,
-  MESSAGING_ACTS,
-  type MessagingAct,
-  MessagingRefused,
-  admitReachAtAll,
-  describeMessageRail,
-  messagePermanenceOf,
-  messageRetryableOf,
-  type MessageRail,
-} from '../src/main/runtime/message-rails'
-import { SPAWN_RAILS, describeRail, permanenceOf } from '../src/main/runtime/spawn-rails'
-import { CAPABILITY_FIELDS, MESSAGING_REACH, capabilityField } from '../src/shared/capabilities'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
-/**
- * 🔴 **374 · the rails a message passes** — Slice 4 P3, the last rail dispatch before the S-work.
- *
- * ## ⛔ The ticket, and the two halves of it
- *
- * `can_message` was a capability nothing branched on — `341` landed the column and said so out loud,
- * in a test — and `can_interrupt` did not exist at all. HO-007 §2.1: *"`can_message` gets its
- * chokepoint — same-project by default, BroBot global, the human unrestricted — and `can_interrupt`
- * arrives as a capability of its own."*
- *
- * ⚑ **The chokepoint is the five verbs that give a conversation work, and the gate is a SECOND
- * line at four of them rather than a wider `mayCommand`.** ⚠️ **Two of the five ask
- * `requireToMessage` since `431` and three still ask `requireToCommand`**; what that changed is
- * which callers ARRIVE at the gate below, not what it asks them. That predicate also answers
- * `endAgent`, `interruptAgent`, `withdrawTask`, the two answer verbs and the spawn door's
- * `not-your-parent`; narrowing it would make an identity with `can_message: none` stop being able
- * to SEE its own children, which nobody revoked. 340 §5's rule in the other direction — a narrowing
- * is opt-in at the call site too.
- *
- * ⚠️ **`375` added a FIFTH line, at `endAgent`, and the sentence above is still true of it**: the
- * predicate was not narrowed and the line is written at that verb's own call site.
- *
- * 🔴 **`433` moved TWO of the questions that are not verbs — `agentsVisibleTo` and `agentCard` —
- * onto `withinMessagingReach`**, so *"still answer exactly as they did"* is no longer true of them
- * and this paragraph no longer says it. ⛔ **`mayCommand` itself was not touched**: those two now
- * reach it as clause 2 of that reader, which is the same admission with a grant after it.
- *
- * ## ⚠️ Where the readings diverge, which is where every section is written
- *
- *  - **§1** `can_message` allowed vs refused — an identity that may SPAWN but may not MESSAGE. A
- *    test whose identity holds both passes under *"one gate"* and *"two gates"* alike.
- *  - **§2** `can_message` refused while interrupting stays open — D-014 deleted `can_interrupt`,
- *    so a commander may always stop what it commands, and only the words are gated.
- *  - **§3** a live parent vs a **rehydrated** one — `373`'s new state. A test that restarts nothing
- *    passes under both readings.
- *  - **§4** same-project vs any — criterion 6. ⚠️ **D-016 took `same-project` and projects with
- *    it**, so §4 went; the reach vocabulary is `none | any`.
- *
- * ⚑ **Real host, real SQLite ledger, real migrations, real rails.** The only double is the provider,
- * subclassed to keep the toolsets the HOST handed out — so an agent's calls go through the toolset
- * this app built for it rather than through an identity the test minted.
- */
+import { SPAWN_RAILS, describeRail, permanenceOf } from '../src/main/runtime/spawn-rails'
+import { CAPABILITY_FIELDS, capabilityField } from '../src/shared/capabilities'
+import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
 
 /** `373`'s double, and its registry is shared for `373`'s reason — see {@link issued}. */
-/**
- * 🔴 **Which capability each act reads, as a table the compiler keeps exhaustive** (439).
- *
- * ⛔ **The two loops below held `act === 'message' ? … : …`**, a literal that meant *the message act
- * and everything else* — and `439` added `read`, a SECOND act on `can_message`. ⚠️ The ternary then
- * handed it `can_interrupt`, so both loops asserted the opposite of what they mean about the one act
- * that was new. ⚑ **A `Record` over {@link MessagingAct} cannot be written for three acts when there
- * are four**: the next act fails to compile until somebody says which column it reads, which is
- * `REACH_OF`'s own argument moved into the tests that walk it.
- *
- * ⚠️ **It is declared once and used at both sites**, because two copies of one table are two things
- * to keep in step — which is the defect this file exists to measure, one subject over.
- */
-const READS_THE_MESSAGE_REACH: Record<MessagingAct, 'canMessage' | 'canAssignWork'> = {
-  // ⚠️ **D-016 took `read`** (it asked about a project) — two acts now, and the Record still
-  // refuses to compile a third that nobody placed.
-  message: 'canMessage',
-  // 🔴 **553 · a THIRD column, and the boolean this table used to hold could not say so**
-  // (HO-060 §2). ⛔ It was `Record<MessagingAct, boolean>` — *reads the message reach, or does
-  // not* — and `assign` reads neither of the two it could name. ⚑ **Re-aimed rather than
-  // stripped** (standing rule 26): what it pins now is which of THREE columns each act reads, so a
-  // fourth act still cannot compile until somebody decides.
-  assign: 'canAssignWork',
-}
 
 describe('374 · the rails a message passes', () => {
   let userData: string
@@ -238,56 +161,14 @@ describe('374 · the rails a message passes', () => {
   }
 
   /** One capability, changed and nothing else — the *"one fact over"* half of every pair below. */
-  const reach = (profileId: string, edit: { canMessage?: string }): void => {
-    expect(store.setCapabilities(profileId, edit as never)).toBe(true)
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §1 · can_message at the chokepoint — an identity that may SPAWN but may not MESSAGE
-  // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§1 · `can_message` is read at the chokepoint', () => {
-    it('🔴 an identity that may spawn but may not message is refused BY NAME, and one fact over it is allowed', async () => {
-      const { worker, pmTools } = await aPmAndItsWorker()
-      // ⛔ **The divergence.** This identity still holds `can_spawn` and still spawned the child two
-      // lines ago — so a test that only checked *"can it reach its own child"* would pass under one
-      // gate and under two alike. What differs is one word in one column.
-      reach('pm', { canMessage: 'none' })
-      const refused = await callOn(pmTools, 'message_agent', {
-        // ⚑ **D-016** — a follow-up names a piece; these words only need to be DELIVERED, so a note.
-        kind: 'note',
-        agent: worker,
-        text: 'do the thing',
-      })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('may-not-message')
-      // ⚑ **A refusal is a SUCCESSFUL call whose payload names the rule** — 341's shape, carried
-      // over the tool boundary unchanged, permanence and all.
-      expect(refused.permanence).toBe('until-a-person-changes-it')
-      expect(refused.retryable).toBe(false)
-      expect(String(refused.reason)).toMatch(/not allowed to send/i)
-
-      // ⚑ **The same call, one fact over.** Nothing else moved: same parent, same child, same words.
-      reach('pm', { canMessage: 'any' })
-      const allowed = await callOn(pmTools, 'message_agent', {
-        kind: 'note',
-        agent: worker,
-        text: 'do the thing',
-      })
-      expect(allowed.outcome, JSON.stringify(allowed)).toBe('ok')
-    })
 
     it('⛔ it did NOT stop seeing its child, and that is what a wider `mayCommand` would have cost', async () => {
       // ⚑ **D-016 · an `auto` PM**, so its worker's brief runs with no card: a child parked on a
       // person's card refuses an interrupt BY THAT CARD first (§9), which is not the grant measured.
       const { worker, pmTools } = await aPmAndItsWorker('pm', 'worker', 'auto')
-      reach('pm', { canMessage: 'none' })
-      // 🔴 **The narrowing is opt-in at each call site and nowhere else.** Had it gone into
-      // `mayCommand`, all three of these would have flipped with it — an identity a person revoked
-      // MESSAGING from would have lost sight of its own workers and the ability to stop them.
-      // ⚠️ **D-014 · no grant stands in front of the third line at all**: interrupting reaches the
-      // chain below the caller, so `can_message: none` still leaves this parent able to interrupt its
-      // worker. ⚑ **D-017** — it was `end_agent`, which is gone; `interrupt_agent` is the verb left.
+
       const listed = await callOn(pmTools, 'list_agents', {})
       expect((listed.agents as { agent: string }[]).map((card) => card.agent)).toContain(worker)
       expect((await callOn(pmTools, 'get_agent_status', { agent: worker })).outcome).toBe('ok')
@@ -298,7 +179,7 @@ describe('374 · the rails a message passes', () => {
 
     it('🔴 a PERSON is never asked the question — the same session, the same words, the same moment', async () => {
       const pm = await personOpens('pm')
-      reach('pm', { canMessage: 'none' })
+
       // ⛔ **HO-007: *"the human unrestricted."*** The gate decodes the caller first, and a window
       // is not an identity — so there is no capability to look up rather than an exemption to grant.
       // ⚠️ This is the paired positive for every refusal in this file: the refusals below are about
@@ -311,67 +192,12 @@ describe('374 · the rails a message passes', () => {
       await expect(host.sendInterrupting(pm, 'no, this', window)).resolves.toBeUndefined()
     })
 
-    it('⛔ a speaker this app cannot place is refused rather than given the ruled default', async () => {
-      const { pm, worker } = await aPmAndItsWorker()
-      const by = speakingAs(pm)
-      // ⚑ **The paired positive FIRST, so the refusal below is about the one fact that changes.**
-      await expect(host.queueMessage(worker, 'hello', by)).resolves.toBeDefined()
-
-      // ⛔ **A conversation with no `agent_identity_id`** — `identityOf`'s own documented state, the
-      // one swept out of the user's own `~/.claude` and *"attributed to no agent of ours on
-      // purpose"*. ⚠️ It still commands the child: `commandedBy` is a string comparison and 373
-      // established it asks nothing else. So this is a caller the gate must answer for, and the only
-      // honest answer is no — falling back to `DEFAULT_CAPABILITIES` would hand a conversation this
-      // app cannot place the ruled `same-project`, which is a grant nobody made. `unknown-profile`'s
-      // direction, one door over.
-      // ⚑ **The binding is kept, so the paired positive below can put it back** — the one fact
-      // that differs between the two halves is whether this app can find the caller's identity.
-      const binding = (
-        db.prepare('SELECT agent_identity_id AS id FROM provider_session WHERE id = ?').get(pm) as {
-          id: string | null
-        }
-      ).id
-      // ⚠️ **The premise, asserted**: the caller WAS placed, so the NULL below is the one change.
-      expect(binding).not.toBeNull()
-      db.prepare('UPDATE provider_session SET agent_identity_id = NULL WHERE id = ?').run(pm)
-      expect(store.identityOf(pm)).toBeNull()
-      await expect(host.queueMessage(worker, 'hello', by)).rejects.toThrow(/not allowed to send/i)
-
-      // 🔴 **…and the payload states NOTHING about a grant, because none was read.** ⚠️ `reach:
-      // 'none'` here would be a column value nobody looked at: a model relaying it would tell a
-      // person their sheet says `none`, and the sheet would say `same-project`. 340's finding — a
-      // reason answering with another reason's sentence — in a payload field.
-      const refusedWith = async (): Promise<MessagingRefused> => {
-        try {
-          await host.queueMessage(worker, 'hello', by)
-        } catch (error) {
-          if (error instanceof MessagingRefused) return error
-          throw error
-        }
-        throw new Error('that call was not refused')
-      }
-      const unplaceable = await refusedWith()
-      expect(unplaceable.refusal.rail).toBe('may-not-message')
-      expect(unplaceable.refusal.detail.reach).toBeUndefined()
-
-      // ⚑ **The paired positive, so the absence above is THIS state and not every refusal**: put the
-      // binding back, set the column to `none`, and the same rail now says which value refused it.
-      db.prepare('UPDATE provider_session SET agent_identity_id = ? WHERE id = ?').run(binding, pm)
-      reach('pm', { canMessage: 'none' })
-      const chosen = await refusedWith()
-      expect(chosen.refusal.rail).toBe('may-not-message')
-      expect(chosen.refusal.detail.reach).toBe('none')
-    })
   })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §2 · can_message refused, and interrupting still open — D-014 deleted can_interrupt
-  // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§2 · one capability, one gate — interrupting asks none', () => {
     it('🔴 may NOT message and still stops what it commands: the interrupt goes, the queue is refused', async () => {
       const { pm, worker } = await aPmAndItsWorker()
-      reach('pm', { canMessage: 'none' })
+
       const by = speakingAs(pm)
 
       // ⛔ **D-014 · what a caller commands it may always stop**, so the one grant left in front of
@@ -399,7 +225,7 @@ describe('374 · the rails a message passes', () => {
       // a new act against the conversation, and the fifth commanding verb is deliberately outside
       // this dispatch's gate — a caller that could no longer withdraw what it had already put there
       // would be worse off than one that had never been allowed to put it.
-      reach('pm', { canMessage: 'none' })
+
       await expect(host.cancelQueuedMessage(worker, held, by)).resolves.toBeUndefined()
       // ⚑ …and the pair: a second message is still refused, so the grant really did narrow.
       await expect(host.queueMessage(worker, 'one more', by)).rejects.toThrow(
@@ -413,36 +239,6 @@ describe('374 · the rails a message passes', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§3 · the rail holds on a relationship that was derived rather than live', () => {
-    it('🔴 after a restart the reopened parent is refused BY THIS RAIL, and one fact over it is allowed', async () => {
-      const { pm, worker } = await aPmAndItsWorker()
-      reach('pm', { canMessage: 'none' })
-      await restart()
-      await reopenInto(worker, secondWindow)
-      const toolset = await reopenInto(pm, window)
-
-      // ⛔ **`373`'s state and this dispatch's rail, in one call.** The commander was derived from
-      // the provenance row; the capability is looked up for a parent whose slot is brand new. A gate
-      // that read the speaker's profile off the old slot would have had nothing to read.
-      // ⚑ **D-016** — a follow-up names a piece; these words only need to be DELIVERED, so a note.
-      const refused = await callOn(toolset, 'message_agent', {
-        agent: worker,
-        text: 'carry on',
-        kind: 'note',
-      })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('may-not-message')
-
-      reach('pm', { canMessage: 'any' })
-      expect(
-        (
-          await callOn(toolset, 'message_agent', {
-            agent: worker,
-            text: 'carry on',
-            kind: 'note',
-          })
-        ).outcome,
-      ).toBe('ok')
-    })
 
     it('🔴 …and it works when the parent itself was never reopened, which the slot could not answer', async () => {
       const { pm, worker } = await aPmAndItsWorker()
@@ -455,11 +251,11 @@ describe('374 · the rails a message passes', () => {
       expect(host.agentCard(pm, secondWindow, null)).toBeNull()
 
       const by = speakingAs(pm)
-      reach('pm', { canMessage: 'none' })
+
       await expect(host.queueMessage(worker, 'x', by)).rejects.toThrow(/not allowed to send/i)
       // ⚑ **The paired positive on the state that matters**: the grant, and nothing else, is what
       // decides. Without it this test would be satisfied by a gate that refuses every dead parent.
-      reach('pm', { canMessage: 'any' })
+
       await expect(host.queueMessage(worker, 'x', by)).resolves.toBeDefined()
     })
 
@@ -468,9 +264,9 @@ describe('374 · the rails a message passes', () => {
       // section, a gate that could not survive a restart would still pass it.
       const { pm, worker } = await aPmAndItsWorker()
       const by = speakingAs(pm)
-      reach('pm', { canMessage: 'none' })
+
       await expect(host.queueMessage(worker, 'x', by)).rejects.toThrow(/not allowed to send/i)
-      reach('pm', { canMessage: 'any' })
+
       await expect(host.queueMessage(worker, 'x', by)).resolves.toBeDefined()
     })
   })
@@ -513,7 +309,7 @@ describe('374 · the rails a message passes', () => {
         window,
       )
       const pmTools = theToolsetJustHandedOut()
-      reach('pm', { canMessage: 'any' })
+
       const given = await callOn(pmTools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker2',
@@ -538,7 +334,7 @@ describe('374 · the rails a message passes', () => {
         window,
       )
       const askingTools = theToolsetJustHandedOut()
-      reach('pm2', { canMessage: 'any' })
+
       const asking = await callOn(askingTools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker2',
@@ -563,7 +359,7 @@ describe('374 · the rails a message passes', () => {
 
     it('⛔ `340` §2 · a commander granted everything still may not answer for a person', async () => {
       const { pm, worker } = await aPmAndItsWorker()
-      reach('pm', { canMessage: 'any' })
+
       // 🔴 **HO-005 Q2, untouched.** *"Knowledge escalates, authority does not."* The widest grant
       // this dispatch can give is about giving a conversation WORK; nothing about it decides what
       // that work is allowed to do, and `setApprovalMode` is still `mayControl`'s.
@@ -592,148 +388,8 @@ describe('374 · the rails a message passes', () => {
    * ruled word is also the widest (`same-project` went); the two loops that walk
    * {@link MESSAGING_ACTS} pass both explicitly.
    */
-  const capsFor = (canMessage: string, canAssignWork = 'any') =>
-    ({
-      maxDepth: 2,
-      canMessage,
-      canAssignWork,
-    }) as never
-  /**
-   * ⛔ **553 · `assign` had its own door**, because its composite asked *did this caller start it*.
-   * ⚑ **D-016** — `give_work` asks `assign` of the caller alone, through {@link admitReachAtAll},
-   * because work goes only to the giver's own conversation by construction; so every act reads its
-   * grant through the one door.
-   */
-  const admitAct = (act: MessagingAct, allowed: never) => admitReachAtAll(act, allowed)
-
   describe('§6 · the payload a model meets', () => {
-    it('⛔ every rail has one permanence, and `retryable` is DERIVED from it', () => {
-      for (const rail of MESSAGE_RAILS) {
-        expect(messageRetryableOf(rail)).toBe(messagePermanenceOf(rail) === 'while-this-holds')
-      }
-      // 🔴 **ONE permanence, and `486` is why** (HO-031 §2.5). ⛔ It read *"both named permanences
-      // are used, and each is honest for its remedy"* — and the four `-outside-your-project` rails
-      // were `permanent` while the four `may-not-` rails were not, from ONE column. ⚠️
-      // `admitMessaging` reached an `-outside-` rail only when a person had set that column to
-      // `same-project`, so widening it to `any` made the IDENTICAL call succeed — which is what
-      // `permanent` denies. ⚑ **D-016 took those rails with `same-project`.** ⚑ **The table is now
-      // uniform because the wall is**: every rail here is a grant only a person can widen.
-      // 🔴 **D-014 gave it ONE exception, and D-016 took it**: work went only to a conversation the
-      // caller started, a `permanent` rail no person could widen. ⚑ The give's lookup makes that
-      // true by construction now, so no rail says it and nothing here is `permanent`.
-      expect(new Set(MESSAGE_RAILS.map(messagePermanenceOf))).toEqual(
-        new Set(['until-a-person-changes-it']),
-      )
-      expect(MESSAGE_RAILS.filter((rail) => messagePermanenceOf(rail) === 'permanent')).toEqual([])
-      // ⛔ Nothing here is retryable, and that is asserted rather than left to be read off the table.
-      expect(MESSAGE_RAILS.some(messageRetryableOf)).toBe(false)
-    })
 
-    it('⛔ every sentence reads as one, names no session id, no column and no rail slug', () => {
-      for (const rail of MESSAGE_RAILS) {
-        const sentence = describeMessageRail(rail)
-        expect(sentence.length, rail).toBeGreaterThan(40)
-        expect(sentence.trim().endsWith('.'), rail).toBe(true)
-        expect(sentence).not.toContain('sess_')
-        // ⚑ **A refusal INSTRUCTS; it does not DESCRIBE** (HO-015 §2). A sentence naming the column
-        // it was refused by is a sentence about how the system works, and it drifts when the system
-        // does — which is exactly what happened to eight of `370`'s.
-        for (const field of CAPABILITY_FIELDS) {
-          expect(sentence, `${rail} names ${field.key}`).not.toContain(field.key)
-          expect(sentence, `${rail} names ${field.column}`).not.toContain(field.column)
-        }
-        expect(sentence.toLowerCase(), rail).not.toContain(rail)
-      }
-    })
-
-    it('⛔ no two rails in the compared roster share a sentence', () => {
-      // ⚠️ **One model meets the roster through the same published tools.** Two rules with one sentence is
-      // a model that cannot tell them apart, whichever list they live in.
-      // ⚠️ **Every list named below is included, including the one that matters most** (found reviewing
-      // this diff — the title said *ANYWHERE* while its roster was incomplete). `MessagingRefused` and
-      // `agent-cannot-take-a-message` are classified in the SAME catch block of `message_agent`, so
-      // those are the two sentences one model has to tell apart in one payload stream.
-      // `TOOL_SENTENCES` is not exported; `refuseTool` is, and it is the thing that builds the
-      // payload, so asking it is asking the shipped answer rather than a copy of the table.
-      const sentences = [
-        ...MESSAGE_RAILS.map((rail) => describeMessageRail(rail)),
-        ...SPAWN_RAILS.map((rail) => describeRail(rail)),
-        ...TOOL_REFUSALS.map((rail) => refuseTool(rail).reason),
-      ]
-      expect(new Set(sentences).size).toBe(sentences.length)
-      expect(sentences.length).toBe(
-        MESSAGE_RAILS.length + SPAWN_RAILS.length + TOOL_REFUSALS.length,
-      )
-      // ⛔ **…and no NAME 374 added collides with one that already existed**, so a payload's `rail`
-      // field says which rule stopped the call whichever door built it.
-      const older: string[] = [...SPAWN_RAILS, ...TOOL_REFUSALS]
-      for (const rail of MESSAGE_RAILS) expect(older, rail).not.toContain(rail)
-      expect(new Set(MESSAGE_RAILS).size).toBe(MESSAGE_RAILS.length)
-      // ⚠️ **A deliberate share in the older lists is exercised as a positive control**: `341`'s
-      // door and `347`'s tools both answer `malformed-request`, for the same reason, with different
-      // sentences. ⛔ The complete shared-name allowlist belongs to
-      // `what-an-agent-is-told-about-its-work.test.ts`; this assertion proves only that the local
-      // comparison did not accidentally assume the older lists were disjoint.
-      expect(older.filter((rail) => rail === 'malformed-request')).toHaveLength(2)
-    })
-
-    it('🔴 every rail in the vocabulary is REACHED by the door, and each by an actual refusal', () => {
-      // ⛔ **`341`'s twin rule, and `366` is where it cost something**: a vocabulary that lists a
-      // rule the door no longer applies is a committed statement of a false machine fact. ⚠️ The
-      // spawn door's version greps for `no('<rail>'`; this door dispatches through one table keyed
-      // by the act, so the census is over THAT table — the site that decides which member fires.
-      const code = readFileSync(join(mainRoot, 'runtime/message-rails.ts'), 'utf8')
-        .replace(/\/\*[\s\S]*?\*\//g, ' ')
-        .replace(/^\s*\/\/.*$/gm, ' ')
-      expect(code).toContain('export function admitReachAtAll')
-      for (const rail of MESSAGE_RAILS) {
-        expect(code, `${rail} is in the vocabulary and nothing dispatches to it`).toContain(
-          `'${rail}'`,
-        )
-      }
-      // ⚑ **The control**: a member that exists only inside a comment must fail the same sweep, so
-      // the strip is doing the work rather than a `toContain` a docblock would satisfy.
-      const planted = `/** a rail nothing dispatches to: 'may-not-broadcast' */`
-      expect(code + planted).toContain(`'may-not-broadcast'`)
-      expect((code + planted).replace(/\/\*[\s\S]*?\*\//g, ' ')).not.toContain(
-        `'may-not-broadcast'`,
-      )
-      // ⛔ **…and the behavioural half, which the source census cannot give**: every member of the
-      // vocabulary is produced by a call somewhere in this file. `refuseMessage` builds the whole
-      // payload from the rail, so reaching one here is the same thing the host reaches.
-      const reached = new Set<MessageRail>()
-      // ⛔ **`MESSAGING_ACTS` and not a literal** (375). This loop held `['message', 'interrupt']`
-      // when there were two acts, so the day a third arrived it would have swept the same four rails
-      // and reported the two new ones as *"in the vocabulary and nothing dispatches to them"* — a
-      // census weaker than it reads, which is exactly the defect it exists to catch. The list is
-      // exported now and `RAILS_OF` is a `Record` over it, so neither can gain a member alone.
-      // ⚑ **D-016 · the relationship half `assign` pressed is gone** — work goes only to the giver's
-      // own conversation by construction — so each act is pressed at each word of its own grant.
-      // ⚠️ D-016 also took the `same-project` row between them, with the rails it reached.
-      for (const act of MESSAGING_ACTS) {
-        for (const word of MESSAGING_REACH) {
-          const outcome = admitAct(
-            act,
-            READS_THE_MESSAGE_REACH[act] === 'canMessage'
-              ? capsFor(word, 'any')
-              : capsFor('any', word),
-          )
-          if (outcome !== null) reached.add(outcome.rail)
-        }
-      }
-      expect([...reached].sort()).toEqual([...MESSAGE_RAILS].sort())
-    })
-
-    it('⚑ the vocabulary is the schema’s, so a grant and a rail cannot come to disagree', () => {
-      // ⛔ Both columns offer exactly the words the rails branch on — one list, two fields.
-      // ⚑ **`capabilityField` and not a `find`**: the descriptor's type narrows on the key, so
-      // `vocabulary` is a field of THIS capability rather than a maybe-property of the union — which
-      // is the compile-time half of what makes the assertion below about the right thing.
-      for (const key of ['canMessage', 'canAssignWork'] as const) {
-        expect(capabilityField(key).vocabulary, key).toEqual([...MESSAGING_REACH])
-      }
-      expect(MESSAGING_REACH).toEqual(['none', 'any'])
-    })
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
@@ -774,30 +430,5 @@ describe('374 · the rails a message passes', () => {
   describe('§7 · `admitReachAtAll`, at each reading', () => {
     const caps = capsFor
 
-    it('⛔ `none` refuses, and `any` allows', () => {
-      expect(admitReachAtAll('message', caps('none', 'any'))?.rail).toBe('may-not-message')
-      expect(admitReachAtAll('message', caps('any', 'none'))).toBeNull()
-    })
-
-    it('⛔ an identity with no capabilities at all is refused, never defaulted', () => {
-      expect(admitReachAtAll('message', null)?.rail).toBe('may-not-message')
-    })
-
-    it('⚑ every reading of every act is covered, and no act reads a column it was not given', () => {
-      // ⚑ **D-014 · the destructive acts left this table with `can_interrupt`**, so what is measured
-      // is that sending reads `can_message` and giving work reads its own column.
-      // ⛔ **A comparison tested where both readings agree measures nothing**, so this walks the
-      // whole product: each act, each word, with the OTHER capability set to the value that would
-      // give the opposite answer if the gates were sharing a field.
-      for (const act of MESSAGING_ACTS) {
-        for (const word of MESSAGING_REACH) {
-          const other = word === 'none' ? 'any' : 'none'
-          const allowed =
-            READS_THE_MESSAGE_REACH[act] === 'canMessage' ? caps(word, other) : caps(other, word)
-          const outcome = admitAct(act, allowed)
-          expect(outcome === null, `${act} · ${word}`).toBe(word !== 'none')
-        }
-      }
-    })
   })
 })

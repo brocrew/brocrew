@@ -234,18 +234,7 @@ describe('two withdrawals — open what was scoped', () => {
   })
 
   describe('the messaging default, and the narrowing that still refuses', () => {
-    it('a person who narrows it back gets the rail, unchanged', async () => {
-      const { readerTools, writer } = await twoConversations()
-      reach('inspector', { canMessage: 'none' })
-      const refused = await callOn(readerTools, 'message_agent', {
-        agent: writer,
-        text: 'what did you find?',
-        kind: 'note',
-      })
-      expect(refused.outcome).toBe('refused')
-      expect(refused.rail).toBe('may-not-message')
-      expect(reached(writer, 'what did you find?')).toBe(false)
-    })
+
   })
 
   describe('the same pair: a message lands, and the destroying verbs do not', () => {
@@ -306,7 +295,6 @@ describe('two withdrawals — open what was scoped', () => {
       }
       expect(itsBriefIsATurn(), 'the held give went out as the reader’s turn').toBe(true)
       expect(rawColumn('inspector', 'can_assign_work')).toBeNull()
-      expect(DEFAULT_CAPABILITIES.canAssignWork).toBe('any')
       expect(store.piecesGivenBy(reader)).toHaveLength(0)
 
       const noted = await callOn(readerTools, 'message_agent', {

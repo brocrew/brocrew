@@ -2070,8 +2070,6 @@ function parseBound(stored: number | null, fallback: number): number {
 
 interface CapabilityRow {
   max_depth: number | null
-  can_message: string | null
-  can_assign_work: string | null
   can_create_agents: string | null
   can_write_rules: string | null
 }
@@ -2800,8 +2798,6 @@ export function createSessionStore(
     if (row === undefined) return null
     return {
       maxDepth: parseBound(row.max_depth, DEFAULT_CAPABILITIES.maxDepth),
-      canMessage: parseChoice('canMessage', row.can_message),
-      canAssignWork: parseChoice('canAssignWork', row.can_assign_work),
       canCreateAgents: parseChoice('canCreateAgents', row.can_create_agents),
       canWriteRules: parseChoice('canWriteRules', row.can_write_rules),
     }
@@ -7201,8 +7197,6 @@ export function createSessionStore(
       if (row === undefined) return false
       const written: Record<CapabilityKey, string | number | null> = {
         maxDepth: edit.maxDepth === undefined ? row.max_depth : edit.maxDepth,
-        canMessage: edit.canMessage === undefined ? row.can_message : edit.canMessage,
-        canAssignWork: edit.canAssignWork === undefined ? row.can_assign_work : edit.canAssignWork,
         canCreateAgents:
           edit.canCreateAgents === undefined ? row.can_create_agents : edit.canCreateAgents,
         canWriteRules: edit.canWriteRules === undefined ? row.can_write_rules : edit.canWriteRules,

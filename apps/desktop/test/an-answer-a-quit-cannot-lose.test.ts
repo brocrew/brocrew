@@ -397,7 +397,6 @@ describe('an answer a quit cannot lose', () => {
         window,
       )
       const giverTools = lastToolset()
-      expect(store.setCapabilities('giver', { canMessage: 'any' })).toBe(true)
 
       // A root, built directly and then closed.
       const { sessionId: root_ } = await host.createSession(

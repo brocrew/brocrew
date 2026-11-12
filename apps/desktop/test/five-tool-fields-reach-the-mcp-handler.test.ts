@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentToolAnswer } from '@brobot2/runtime'
 import { claudeMcpServersFor } from '../../../packages/runtime/src/claude/agent-tools'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { refuseMessage } from '../src/main/runtime/message-rails'
+
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 type Packet = {
@@ -176,22 +176,6 @@ describe('five more tools answer field failures through Claude MCP', () => {
     starts: [...world.startedAs],
     sends: [...world.sent],
     owned: world.store.piecesOwnedBy(caller),
-  })
-
-  it('a denied message asks its authority wall without touching the supplied object', async () => {
-    const tool = toolOf('message_agent')
-    const wall = refuseMessage('may-not-message')
-    const authority = vi.spyOn(host, 'mayReachAtAll').mockReturnValue(wall)
-    const reads = vi.fn(() => {
-      throw new Error('arguments were read before the wall')
-    })
-    const args = new Proxy({}, { ownKeys: reads, get: reads })
-    const before = effects()
-    const result = await tool.call(args)
-    expect(result.structured).toMatchObject({ rail: wall.rail, reason: wall.reason })
-    expect(authority).toHaveBeenCalledExactlyOnceWith('message', expect.any(Object))
-    expect(reads).not.toHaveBeenCalled()
-    expect(effects()).toEqual(before)
   })
 
   it('give_work still requires definition_of_done at the handler', async () => {

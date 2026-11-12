@@ -39,8 +39,7 @@ const person = (): AgentIdentity => ({
   capabilities: { ...DEFAULT_CAPABILITIES },
   chosen: {
     maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
+
     canCreateAgents: 'default',
     canWriteRules: 'default',
   },
@@ -157,7 +156,7 @@ describe('capabilities sheet pending actions', () => {
         structuredClone(input)
         return pending.promise
       })
-      await pick(m, 'capability-canMessage-select', 'any')
+      await pick(m, 'capability-canCreateAgents-select', 'any')
       enter(m, null)
       expect(host.setCapabilities).not.toHaveBeenCalled()
       enter(m, modifier)
@@ -172,8 +171,7 @@ describe('capabilities sheet pending actions', () => {
         externalMcpServerIds: [],
         grant: {
           maxDepth: null,
-          canMessage: 'any',
-          canAssignWork: null,
+
           canCreateAgents: null,
           canWriteRules: null,
         },

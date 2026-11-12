@@ -162,11 +162,7 @@ describe('§1 · ⛔ the factory text says which verb a check-in is', () => {
  * `611` — is caught without anybody adding a case for it.
  */
 describe('§2 · 🔴 every tool the factory text names is a tool this app publishes', () => {
-  /**
-   * ⛔ **A `snake_case` word, which is the shape every tool in this app is named in.** ⚠️ It over-
-   * collects by design — `can_message` is not a tool — so the census subtracts a
-   * named, argued exemption list rather than narrowing the pattern until only tools survive.
-   */
+
   const SNAKE = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g
 
   /**

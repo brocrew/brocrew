@@ -697,7 +697,7 @@ describe('a person moves the stored request', () => {
       try {
         await entered
         if (change === 'grants')
-          host.setCapabilities('source', { ...DEFAULT_CAPABILITIES, canMessage: 'none' })
+          host.setCapabilities('source', { ...DEFAULT_CAPABILITIES,  })
         if (change === 'archive') expect((await host.archiveConversation(target)).done).toBe(true)
         if (change === 'owner') {
           await host.close(target, world.window)

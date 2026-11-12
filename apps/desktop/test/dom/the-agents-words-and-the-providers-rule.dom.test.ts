@@ -161,8 +161,7 @@ const CHOSEN = {
   canStaff: 'default',
   maxDepth: 'default',
   maxConcurrent: 'default',
-  canMessage: 'default',
-  canAssignWork: 'default',
+
   canInterrupt: 'default',
   canCreateAgents: 'default',
   takesWorkFrom: 'default',

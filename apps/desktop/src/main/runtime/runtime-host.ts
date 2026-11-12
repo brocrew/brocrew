@@ -867,14 +867,6 @@ import {
 } from '../../shared/external-mcp'
 import type { RefusalFacts, ToolName, ToolRefusal } from './agent-tools'
 import {
-  MessagingRefused,
-  admitReachAtAll,
-  reachesWhatItDidNotStart,
-  refuseOutOfReach,
-  type MessageRefusal,
-  type MessagingAct,
-} from './message-rails'
-import {
   aTurnOfSeveral,
   messageNamingItsSender,
   aTurnThatHasSaidNothing,
@@ -8917,7 +8909,6 @@ export class RuntimeHost implements LiveHost {
     says: AgentMessageKind | null,
   ): boolean {
     if (this.thePieceItIsOnFor(service, by) === null) return false
-    if (says !== null) this.assertMayReach('message', service, by)
     return true
   }
 
@@ -11497,7 +11488,6 @@ export class RuntimeHost implements LiveHost {
     const reads = this.cardReads()
     return [
       ...[...this.slots.values()]
-        .filter((slot) => this.withinMessagingReach(slot.id, by, me))
         .map((slot) => ({
           id: slot.id,
           // ⚑ A reservation with no row yet is the newest activity there is.
@@ -11505,7 +11495,6 @@ export class RuntimeHost implements LiveHost {
           card: () => this.cardFor(slot, reads),
         })),
       ...this.everythingStartable()
-        .filter(({ startable }) => this.withinMessagingReach(startable.id, by, me))
         .map(({ startable, at }) => ({
           id: startable.id,
           at,
@@ -11516,43 +11505,6 @@ export class RuntimeHost implements LiveHost {
     ].sort((one, other) => (one.id === me ? -1 : other.id === me ? 1 : other.at - one.at))
   }
 
-  /**
-   * One agent's card, or null when this caller may not be told about it.
-   *
-   * ⛔ **Entitlement is asked BEFORE existence, and the two answers are deliberately the same**
-   * (341's ordering, one door over). A caller that may not see this id gets `null`, and so does a
-   * caller asking about an id that was never a session — so probing this reader cannot enumerate
-   * the app's agents.
-   *
-   * 🔴 **Since 433 the entitlement is {@link withinMessagingReach} and no longer `mayCommand`
-   * directly** — *a caller may SEE exactly what it may SEND to*. ⚠️ **Enumerating and inspecting
-   * are one question asked for a set and for one id**, so `list_agents` ({@link agentsVisibleTo})
-   * and `get_agent_status` (this reader) ask one reach rather than two rulings.
-   *
-   * ⚠️ **643 · this reader has a second caller**: `list_tasks`' holder read —
-   * `agentCard(row.owner, by, me)?.state`. ⚑ It does not widen the entitlement, because it asks this
-   * same reach. 🔴 **A count nothing compares to is a count that drifts** — the same lesson
-   * `the-interruption-that-looks-like-a-fault.test.ts` records against its own title at `610`.
-   *
-   * ## ⛔ Nothing on a card is redacted
-   *
-   * ⚠️ **A narrower card for a wider reach would be a SECOND question** — *may you see it*, and
-   * *how much of it* — asked at two call sites, with no rail behind it and no refusal to name.
-   * `431` bought one named question; a second axis here would be the widening-by-degree that
-   * ruling was written against.
-   *
-   * ⛔ **The cost, stated rather than implied.** An identity holding `can_message: 'any'` — since
-   * `549` the ruled value, so every identity a person has not narrowed — can read the profile,
-   * provider, state, parent, last-turn ending and held pieces — the root's title and every open
-   * piece's label, title and state — of every LIVE conversation in this app. That is a real widening
-   * and it is what the ruling asks for. ⚠️ It is bounded by the grant
-   * — which a person can narrow to `none` in one control that no restart undoes (`710`, `707` F-4:
-   * this said only BroBot's seed held it, false since `549`).
-   *
-   * ⚑ **D-017 · R2 — and a conversation this app is not running is named too**, by
-   * {@link startable}, under the SAME entitlement, with the one state (R11): a message starts it,
-   * however it stopped.
-   */
   /**
    * ⚑ **What opened a conversation's last turn that ended** — for `get_agent_status`, beside its
    * card's {@link AgentCard.lastEndedTurn}: the one in its place, as that card is. `took` is `null`
@@ -11586,132 +11538,13 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **D-017 · R2 · the no-slot branch** — a conversation a message would start, which
     // {@link stoppedCardFor} answers under the SAME entitlement, asked there.
     if (slot === undefined) return this.stoppedCardFor(sessionId, by, me)
-    if (!this.withinMessagingReach(sessionId, by, me)) return null
     return this.cardFor(slot, this.cardReads())
   }
 
-  /**
-   * 🔴 **Is that conversation within this caller's messaging REACH?** (431 · HO-024 §4 row 6,
-   * criterion 6; HO-022 §3's *"BroBot is global"*.)
-   *
-   * ## ⛔ Why it is a SEPARATE question and not a wider {@link mayCommand}
-   *
-   * ⚠️ **`mayCommand` answers FOURTEEN questions from FIVE call sites, and every hand count of it
-   * so far has been short.** `431` wrote *ten*; `433`'s own first draft wrote *twelve* and was
-   * corrected by its review. ⛔ The ones a reader keeps missing are the verbs that do not spell the
-   * predicate themselves: {@link takeBackPiece} and {@link updateWork}'s close ask it through
-   * {@link whereItsHolderStands}, {@link interruptAgent} and {@link theConversationAddressed} through {@link mayInterrupt}, and `respondPermission` and `respondUserInput` reach it through
-   * {@link requireToAnswer}, which nobody counting `mayCommand(` can see.
-   *
-   * 🔴 **553 · and it was short AGAIN, in the direction this paragraph predicts.** ⛔ It said
-   * *fourteen* from `433` to here while `a-reach-you-can-see.test.ts` §3 had been computing
-   * **fifteen** since `441` put `decideProposal` on {@link requireToAnswer} — **the derived number
-   * moved and the sentence beside it did not**, which is the shape this very paragraph exists to
-   * warn about. ⚑ `553` added `assertMayAssign` and corrected both halves in one commit.
-   *
-   * 🔴 **So the number is DERIVED and no longer restated anywhere it can rot** — except here, and
-   * the line above is what that cost. `a-reach-you-can-see.test.ts` §3 computes it: the seven call
-   * sites in this file, plus the callers of each `require…` helper, plus this method's own two
-   * readers — and it pins the fourteen question names, so a fifteenth goes red with the list in
-   * front of whoever added it. ⚑ **D-017 · sixteen became fifteen, and ten sites seven** —
-   * `endAgent`'s question went with `end_agent`, and `703`'s two (which only chose a held
-   * message's refusal words) went with D-010. ⚑ **D-016 · fifteen became fourteen** —
-   * `decideProposal`'s question went with proposals, ⚑ **and fourteen became twelve, and seven sites
-   * five** — the spawn door's `not-your-parent` and `assertMayAssign`'s went with `spawn_agent` and
-   * the work message: a give goes to the giver's own conversation with an agent, found rather than
-   * asked. ⚑ **D-016c · and twelve became thirteen** — a close asks the holder's reach as a take-back
-   * does, through {@link whereItsHolderStands}. ⚑ **D-016 · commit 7 · and thirteen became fourteen** — the reading
-   * of a piece label asks `interrupt_agent`'s entitlement, through {@link mayInterrupt} as the verb
-   * does. ⚠️ The SITE count moved at `433` too, from nine to seven, because two of them became
-   * callers of this method instead.
-   *
-   * ⚑ **Widening the predicate would widen all fourteen**, and `430` said so in as many words:
-   * *"widening `mayCommand` globally would also widen other commands and is not the price of this
-   * criterion."* ⛔ An identity granted a global reach would then be able to INTERRUPT every
-   * conversation it may message, where that reaches only the chain below it.
-   *
-   * 🔴 **So `mayCommand` still answers all fourteen, and FOUR of them ask it through here.** `send`
-   * and {@link queueMessage} reach it as clause 2 below (431) — the latter through its private
-   * worker `queueAs` since `657`, which is the name the census reads; {@link agentsVisibleTo} and
-   * {@link agentCard} joined them at 433, because *a caller may SEE exactly what it may SEND to*
-   * and a narrower reader would be a capability no model could discover — ⚑ and F009's
-   * {@link agentRecord}, a third reader, which lists an agent's conversations by it: a fifth that asks
-   * it through here. ⛔ **The other ten ask
-   * it directly or through the other gates, and are unchanged by this method existing** —
-   * {@link replyToParent}, `sendInterrupting`, `cancelQueuedMessage` and `interrupt` through
-   * {@link requireToCommand}; `respondPermission` and `respondUserInput` through
-   * {@link requireToAnswer}; {@link interruptAgent} and {@link theConversationAddressed} through
-   * {@link mayInterrupt}; and {@link takeBackPiece} and
-   * {@link updateWork}'s close through {@link whereItsHolderStands}. ⚠️ A verb added tomorrow
-   * gets the strict question by writing the name every other verb writes
-   * ({@link requireToCommand}) — 340's *"an entitlement widening must be opt-in at the call site"*,
-   * in the direction it was written for.
-   *
-   * ## ⚠️ What it does NOT promise, and why the two answers are one
-   *
-   * ⛔ **`false` is *not within your reach* and *there is no such conversation*, deliberately
-   * folded** — 341's ordering, which {@link agentCard} held first and now reads back off this
-   * method. A caller outside its reach gets the same `false` for a live conversation in another
-   * project as for an id that was never a session, so probing this cannot enumerate the app. ⚑ For
-   * a caller whose grant DOES admit what it did not start, `false` is an honest *there is nothing
-   * there*: it may reach everything, so there is nothing left to hide from it. ⚠️ **That is what
-   * makes 433 safe to route both readers through here**: the leak negative is a property of this
-   * one boolean, so the list, the card and the send cannot come to three shapes of it.
-   *
-   * ## ⛔ Three clauses, in the one order they may be asked in
-   *
-   *  1. **`me`** — a caller is entitled to be told about ITSELF, which is {@link agentsVisibleTo}'s
-   *     `me` and for its reason. ⚠️ `me` is an id and not a permission; only the tool layer supplies
-   *     one, minted from the session its toolset was built for. `424`'s `that-agent-is-you` is what
-   *     the door says one line later, and it needs this clause to get there.
-   *  2. **{@link mayCommand}, unchanged** — what you started, you may reach.
-   *  3. **The GRANT** — {@link reachesWhatItDidNotStart}, over the reach a person granted this
-   *     identity. ⛔ **Never for the caller's own session**: the gate below has no `me`, and a
-   *     conversation queueing words to itself is a loop no door offers and this clause will not
-   *     open. ⚠️ **An identity with no row is refused rather than defaulted**, which is
-   *     {@link admitReachAtAll}'s own direction: handing {@link DEFAULT_CAPABILITIES} to a caller
-   *     this app cannot place is the widening `unknown-profile` exists to refuse one door over.
-   *
-   * ⚑ **The grant is read from the LEDGER, not from the slot** — {@link assertMayReach}'s
-   * reasoning, and `373`'s: a commander derived from a provenance row is admitted even when its own
-   * conversation is not open, and a capability that could not be looked up for it would quietly
-   * close that door.
-   */
-  withinMessagingReach(sessionId: string, by: Caller, me: string | null = null): boolean {
-    // ⚑ **D-017 · R2 · …or one this app is not running**, whose two fields are the ones
-    // {@link mayCommand} reads below — see {@link startable}. ⚑ The grant below decides for it as
-    // for a running one: a message starts it ({@link ensureRunning}).
-    const target = this.slots.get(sessionId) ?? this.startable(sessionId)
-    if (target === undefined || target === null) return false
-    if (target.id === me) return true
-    // ⚑ **D-017 · R10** — a commander that could never be reopened commands through the one in its
-    // place ({@link commandedNow}).
-    if (mayCommand(this.commandedNow(target), by)) return true
-    const speaking = sessionSpeakingAs(by)
-    if (speaking === null || speaking === sessionId) return false
-    const mine = this.deps.store.identityOf(speaking)
-    if (mine === null) return false
-    const allowed = this.deps.store.capabilitiesOf(mine.profileSlug)
-    if (allowed === null) return false
-    // ⛔ A grant to reach what it did not start never reaches a service: its work comes through
-    // give_work, one piece at a time.
-    return reachesWhatItDidNotStart(allowed.canMessage) && this.theServiceOf(sessionId) === null
+  withinMessagingReach(sessionId: string, _by: Caller, _me: string | null = null): boolean {
+    return this.slots.has(sessionId) || this.startable(sessionId) !== null
   }
 
-  /**
-   * ⚑ **D-017 · R12 — why this caller may not reach that conversation, or `null` when it may** — the
-   * one answer every door that takes an agent id gives (`message_agent`, `get_agent_status`,
-   * `ask_question`), so an id `list_agents` would not name is refused in one sentence whichever
-   * door was asked. ⚑ **D-016 · commit 7 · R1 — and the reach a label is resolved by at those three
-   * doors** ({@link theConversationAddressed}), so there a label names only what that list could
-   * have named; `interrupt_agent` and `read_transcript` widen it by their own ({@link TheDoorsReach}).
-   *
-   * ⛔ **`no-such-agent` only for an id no conversation has** (`05` rule 6): the fold that answered
-   * *not yours* in the words of *not there* is gone — a conversation a quit left open was
-   * `no-such-agent` to every agent but its starter. ⚠️ **A caller now learns that an id exists**, which
-   * the fold hid; what it learns about it is the rail, and the rail volunteers nothing about the
-   * conversation ({@link MessageRefusalDetail}).
-   */
   whyItIsOutOfReach(
     id: string,
     by: Caller,
@@ -11728,15 +11561,7 @@ export class RuntimeHost implements LiveHost {
       if (row === null) return { is: 'no-such-agent' }
       if (!aRowADeliveryCanStart(row)) return { is: 'takes-no-messages' }
     }
-    const speaking = sessionSpeakingAs(by)
-    const mine = speaking === null ? null : this.deps.store.identityOf(speaking)
-    const refusal = refuseOutOfReach(
-      mine === null ? null : this.deps.store.capabilitiesOf(mine.profileSlug),
-    )
-    return {
-      is: 'outside-its-reach',
-      refusal: { ...refusal, detail: { ...refusal.detail, agent: sessionId } },
-    }
+    return null
   }
 
   /**
@@ -11979,9 +11804,7 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **Its rules, to a caller that reaches this agent** — one of its conversations, or (its grant)
     // any conversation it did not start.
     const rules: RulesOnARecord =
-      inReach.length === 0 && !this.itsGrantReachesWhatItDidNotStart(by)
-        ? { is: 'not-told' }
-        : ((line) => (line === null ? { is: 'none' } : { is: 'they-begin', line }))(
+      ((line) => (line === null ? { is: 'none' } : { is: 'they-begin', line }))(
             howTheRulesBegin(this.deps.store.configuredLayerFor(agent.profile), RULES_BEGIN_CHARS),
           )
     return {
@@ -12114,19 +11937,6 @@ export class RuntimeHost implements LiveHost {
     return this.theStarterCalled(starter, conversation, null, agent)
   }
 
-  /**
-   * ⚑ **F009 · does this caller's grant reach conversations it did not start?** — clause 3 of
-   * {@link withinMessagingReach} (`reachesWhatItDidNotStart`, one table), asked of no target: an
-   * agent's record tells how that agent's rules begin to a caller whose grant reaches every
-   * conversation it will ever have. ⛔ An identity with no row is not (that predicate's own rule).
-   */
-  private itsGrantReachesWhatItDidNotStart(by: Caller): boolean {
-    const speaking = sessionSpeakingAs(by)
-    const mine = speaking === null ? null : this.deps.store.identityOf(speaking)
-    const allowed = mine === null ? null : this.deps.store.capabilitiesOf(mine.profileSlug)
-    return allowed !== null && reachesWhatItDidNotStart(allowed.canMessage)
-  }
-
   // ── the pieces a conversation holds and gave, taking one back, and replies (393, S2 + S3) ───────
 
   pieceBoard(sessionId: string): PieceBoard {
@@ -12198,56 +12008,6 @@ export class RuntimeHost implements LiveHost {
     })
   }
 
-  /**
-   * 🔴 **Take a piece of work back** (429 as a task, HO-023 §4.3 + §5; one path since D-016).
-   *
-   * ## ⛔ It closes the piece and touches nothing else it does not have to
-   *
-   * **`422` §4, honoured line by line:** a take-back *"does **not** delete a session slot … or end
-   * provider work by itself."* ⚑ An owner mid-turn on a piece taken back keeps running; what it may
-   * no longer do is ANSWER, which is `piece-already-ended`'s arm. ⚠️ **703 · and in the CALLER's own
-   * mailbox**: this app's notices about that work, held for it, describe it open, so they are taken
-   * back unread ({@link takeBackWhatALaterFactMadeFalse}).
-   *
-   * ## ⚠️ The refusals, in the one order they may be asked in
-   *
-   *  1. **not a piece you gave** — the piece's own giver must be the caller or one it stands for;
-   *     the entitlement is that lookup rather than a rail. 🔴 **F089 · a piece the caller holds is
-   *     said as what it is** ({@link thePieceItHolds}), and every other name keeps the one answer.
-   *  2. **already ended** — `answered`, `withdrawn` and `closed` take DIFFERENT words, because they
-   *     are different claims about history.
-   *  3. **the conversation holding it**, asked as a close asks it ({@link whereItsHolderStands}):
-   *     out of reach, still starting, or a message carrying the piece on the wire — the one
-   *     refusable condition here that CLEARS.
-   *
-   * ⛔ **Nothing durable is written above a refusal**, which is `replyToParent`'s ordering.
-   *
-   * ## 🔴 What it writes, in order
-   *
-   *  1. **Every held message carrying the piece comes back** — its brief, and any new brief —
-   *     from the mailbox, from what a stop handed on ({@link heldAtAStop}), or from a stopped
-   *     owner's still-open `message_queued` rows, so no start sends one
-   *     ({@link takeBackTheHeldMessages}).
-   *  2. **`work_taken_back`, into the OWNER's ledger** ({@link endThePiece}). ⚑ **The owner's
-   *     questions about the piece end with it**: the questions fold ends them on this row (591's
-   *     repair, folded rather than written — no row of their own), and they are counted before it
-   *     is written so the answer can say how many. ⚑ The copies passed up of them end in the same
-   *     transaction, each with a row in the ledger that passed it up.
-   *  3. **The notices this caller holds about it are taken back**, and the window is told work moved.
-   *  4. 🔴 **The owner is TOLD** (plan ruling 8) — through {@link toItsHolderAlone}, which starts it
-   *     when nothing runs in it: an agent is never dead. ⛔ **Only while it is still the
-   *     conversation in its own place** (spec D27), before the words go and at every start they
-   *     wait for: one that could never be reopened can never hear it, and the one that took its
-   *     place never held the piece. ⚠️ A tell that fails is logged and undoes nothing: the piece is
-   *     taken back either way.
-   *
-   * ## ⛔ No {@link assertMayReach}, and {@link assertMayCommand}'s own docblock is the argument
-   *
-   * ⚑ **`cancelQueuedMessage` deliberately does not have one** — *"taking back words you already put
-   * there is not a new act against the conversation."* ⛔ Taking back WORK is the same sentence about
-   * a bigger object: a giver whose grant was narrowed after it gave would otherwise be left owed a
-   * piece it could never close.
-   */
   async takeBackPiece(input: { readonly piece: string }, by: Caller): Promise<TakeBackOutcome> {
     const asking = sessionSpeakingAs(by)
     const waiting = this.untilTheCopiesCanBeEnded(
@@ -12258,10 +12018,6 @@ export class RuntimeHost implements LiveHost {
           : null,
     )
     if (waiting !== null) await waiting
-    // ⚠️ **`asAgent`, not `speaking`, and that is not style.** `374`'s `M13` anchors on
-    // `const speaking = sessionSpeakingAs(by)` followed by `if (speaking === null) return` in
-    // {@link assertMayReach}; a second copy of those two lines anywhere in this file makes that row
-    // match twice and RETIRE.
     const asAgent = sessionSpeakingAs(by)
     const notYours: TakeBackOutcome = { ok: false, refused: { rail: 'not-a-piece-you-gave' } }
     // ⚑ **A person reaches `not-a-piece-you-gave`, and that is the ordinary answer**: a person takes
@@ -12820,34 +12576,6 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /**
-   * 🔴 **D-016 · R1 — hand the owner a piece's new brief**, in its giver's words — only to the
-   * conversation holding it ({@link toItsHolderAlone}), which wakes it (D-017). ⚑ `says` is `null`,
-   * as for a give: no `can_message` wall and no `message_sent` receipt; {@link TurnFacts.rebriefing}
-   * names the piece, so the owner reads the words as its giver's.
-   *
-   * 🔴 **703 · a new brief that REACHED its holder makes false what its giver still holds about the
-   * work** — *"…is not being worked on"*: the holder is running on it
-   * ({@link takeBackWhatALaterFactMadeFalse}, `'rebriefed'`), `message_agent`'s rule for the giver's
-   * message about the work. ⛔ **Sent, never held**: a held brief has reached nobody, and the push
-   * is still true.
-   *
-   * 🔴 **D-022 · R1 — a new brief of a piece whose give still waits RIDES that give**
-   * (`withItsGive`, asked by {@link updateWork} as it wrote the row): nothing is queued, since the
-   * give's send reads the newest brief ({@link runFlush}). ⚑ It still reaches the holder through
-   * {@link toItsHolderAlone}, so a stopped owner is woken and its start sends the give — ⚑ and the
-   * answer is where that give stands once what was on its way there has gone
-   * ({@link whereTheGiveItRidesStands}): `sent` when it went out as the holder's turn now, carrying
-   * the new brief; `with-its-give` only while it is still held — for a turn to end, or (D-027)
-   * behind a person's command held before it.
-   *
-   * 🔴 **R2 — a piece that ended while the words were on their way** — in the holder's line, or
-   * before they were held — is given no new brief: `after-it-ended`, and the giver reads that any
-   * answer it got is to the brief before.
-   *
-   * ⚠️ A tell that fails is logged and answered `not-delivered`; the new brief stands — its owner
-   * reads it in `list_tasks`.
-   */
   private async tellItsOwnerItsNewBrief(
     piece: PieceAConversationGave,
     brief: string,
@@ -13690,45 +13418,6 @@ export class RuntimeHost implements LiveHost {
     return this.keptFiles.titleTheOlderFiles()
   }
 
-  /**
-   * ⚑ **Put the reply into the conversation that gave the piece** (393).
-   *
-   * ## ⛔ It goes through `queueMessage`, and that is reuse rather than a shortcut
-   *
-   * ⚠️ **A brief arrives in an owner as a `user_turn`; a reply arrives in a giver the same way.** The
-   * symmetry is the point — `queueMessage` already sends when the target is idle, holds when it is
-   * busy, records both in the ledger, and renders in both providers' transcripts. ⛔ A second
-   * delivery path would be a second set of answers to *"what happens when the target is busy"*.
-   *
-   * 🔴 **Called as {@link THE_APP_ITSELF}**, so a reply lands as words and never as a message an
-   * agent sent. ⚠️ It also means `assertMayReach` returns immediately: a capability grant is a fact
-   * about an AGENT reaching another conversation, and this is the runtime completing an edge the
-   * give already created.
-   *
-   * ## ⚑ D-017 · R14 — a giver that is not running is STARTED
-   *
-   * ⚑ `queueMessage` starts it ({@link deliverWhenItRuns}), once, in its line of arrivals — so the
-   * reply never goes before what arrived first, and `sent` or `held` says what became of it.
-   *
-   * ## 🔴 D-030 — a delivery that fails KEEPS the reply
-   *
-   * ⛔ **Never dropped while its giver can still hear it**: the words are held for it as an answer is
-   * held for its asker ({@link holdUntilItStarts}) — in its mailbox while it takes turns in this
-   * life (`held`), else in its LEDGER for its next start, whatever starts it (`kept`, with the
-   * failure's reason as `why`): a start that failed or was refused, or a quit in flight. ⚑ A launch
-   * keeps them unless a crash cut the life that held them
-   * ({@link SessionStore.settleStrandedMessages}). ⚑ No retry: a start that keeps failing is never
-   * looped on.
-   *
-   * ## 🔴 A delivery that lands NOWHERE leaves a row (415, HO-021 §5)
-   *
-   * ⛔ **One of the answers below means the words reached no conversation** (`not-delivered`), and
-   * it used to leave nothing behind but a `console.warn`. ⚑ **The PO named that the worst outcome
-   * in the system** (*"the one failure mode with no signal"*), so the record is
-   * {@link ReplyUndeliveredEvent}, written into the REPLIER's ledger. ⚑ **D-030 · what is left to
-   * it**: words nothing holds for the giver — its record would not take them, or they could not be
-   * composed.
-   */
   private async deliverReply(
     piece: PieceAConversationGave,
     input: { outcome: TaskOutcome; summary: string; needsUserAction: boolean },
@@ -14710,106 +14399,6 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /**
-   * 🔴 **A worker asks the conversation that gave it work for a decision, and keeps the work**
-   * (437, criterion 29, HO-019 §1).
-   *
-   * ## ⛔ The destination is DERIVED and there is no argument for it
-   *
-   * ⚑ **`reply_to_parent`'s rule, one verb over and for the same reason** — HO-015 §1.3: *"the
-   * runtime derives and validates the destination from the durable task edge. The model names which
-   * task it is finishing, never who to send it to."* ⚠️ A question that let a worker name who to ask
-   * would be an addressing primitive an agent could aim, and the reach `431` measured would be live
-   * again. ⚑ **D-016 · the edge is the PIECE's**: the conversation that gave it — and for a root, whose
-   * giver is a person, the question goes to a person (spec D15), which is how a conversation a person
-   * started gains the person route; so does one about work it took on for a person (commit 6).
-   *
-   * ⛔ **So NOTHING about messaging moves for this verb.** {@link withinMessagingReach} is untouched,
-   * {@link mayCommand} is untouched, and no capability is widened: the words travel as
-   * {@link THE_APP_ITSELF}, which {@link assertMayReach} returns for before it reads a grant, exactly
-   * as a reply and a provider-raised question already do. ⚑ **The negative that follows is
-   * structural rather than guarded** — a worker still cannot address anything that is not its
-   * parent, because there is no argument through which it could name one.
-   *
-   * ## 🔴 The edge is the PIECE's and NOT the chain's
-   *
-   * ⚠️ **{@link routeRequest} routes a PROVIDER-raised question by `parentOf`** — the conversation
-   * that started this one. This verb routes by {@link PieceRow.giver} — the conversation that gave
-   * this piece. ⚑ **Since D-016 the two name the same conversation for a piece** — only a
-   * conversation's parent gives it work — and each derivation still answers its own question: a
-   * question the MODEL raised is about the conversation, and a question this verb raises is about a
-   * named piece of work.
-   *
-   * ## ⛔ It NO LONGER holds the turn, and `603` is what made that safe (608, HO-084 §4)
-   *
-   * ⚠️ **`437` awaited an answer here, and the await WAS the mechanism.** A provider-raised
-   * question keeps its child's turn open — both adapters sit on the request and neither emits a
-   * `turn` — so the fold never reached its stall branch and the work derived `working`
-   * throughout. ⛔ **A verb that returned immediately ended the turn**, and the fold then said
-   * `stalled` with `turn_ended`: *"its turn ended and it replied nothing"* — the words `624`
-   * replaced, see {@link UNDRIVEN_SENTENCES} — which is false of a
-   * worker that asked. ⚑ **So the hold bought one thing and only one: it kept the fold from
-   * lying.**
-   *
-   * 🔴 **`603` built the condition the fold was missing** — the state `609` renamed
-   * `waiting-on-an-answer`, `true` in {@link TASK_IS_OPEN}, composed above both folds by
-   * {@link composeWhatEachPieceIsWaitingOn} — so every surface that reports a piece's state now
-   * reports *waiting on an answer* over whatever the fold left. ⛔ **The hold's whole reason is therefore gone**, which is `HO-084` §4 in as many words:
-   * *"a task now has a condition distinct from its lifecycle, so the blocking goes."*
-   *
-   * ⚠️ **And it never covered the whole case even while it stood.** The five-minute bound ended
-   * this CALL and — since `591` — left the QUESTION open, so the turn ended underneath an
-   * answerable question anyway; all the hold ever bought was that it happened LATER. ⛔ **`608`
-   * removed a delay in front of a case that already happened**, never a guarantee.
-   *
-   * ## 🔴 The answer arrives as a TURN, and that is the load-bearing fact
-   *
-   * ⛔ **A worker that asks now ends its turn.** ⚑ The answer reaches it through
-   * {@link deliverAnswer} and `queueMessage`, which SENDS when the receiver is idle and HOLDS when
-   * it is busy — so a conversation whose turn has ended takes a NEW one carrying the words.
-   *
-   * ⚠️ **Measured rather than assumed, and measured BEFORE the hold came off** (`608` §3):
-   * `the-turn-that-no-longer-waits.test.ts` asks, lets the worker's turn END, answers, and finds a
-   * `user_turn` in the worker's own ledger with NO `message_queued` beside it — which is the
-   * observable difference between the sent path and the held one. ⛔ **If that were not true,
-   * every question asked after this dispatch would be silently stranded** — the row would read
-   * `waiting-on-an-answer`, the answer would be delivered, and nobody would ever read it. ⚑ A test
-   * asserting
-   * that {@link deliverAnswer} was CALLED would not have said so.
-   *
-   * ## ⚠️ The order of the writes, and there is no fourth
-   *
-   *  1. **The question row, into the WORKER's ledger** — the words, so `list_questions` can render
-   *     them after a resume. `394`'s gap, closed for this origin at the moment it is created.
-   *  2. **The routing row, beside it** — which is what makes the parent able to answer at all, and
-   *     it is written whether or not the parent is running. ⛔ `394`'s ruling: *"a durable row that
-   *     waited on somebody being there to read it would be lost exactly when the parent went
-   *     first."*
-   *  3. **Delivery, best effort** — and a parent with no slot costs nobody the question.
-   *
-   * ⛔ **`437`'s fourth step was the bounded wait, and `608` deleted it with the number behind
-   * it.** ⚑ An expiry was already *a successful call with nothing to report* — standing rule 13's
-   * own distinction — and the call now returns that way immediately. ⚠️ The three writes above are
-   * unchanged: `394`'s durability is what makes a question answerable at all and none of it
-   * depended on anybody waiting.
-   *
-   * ## 🔴 What ends a question, and it is still the ledger (591, HO-082 §2)
-   *
-   * ⚑ **A question ends when it is answered, when the piece it belongs to is taken back, or when the
-   * app holding it goes away — and never on elapsed time.** ⛔ `591` took the clock out of
-   * both answer doors; `608` took the clock out.
-   *
-   * > ⚑ **A question outlives the turn that asked it. An answer given hours later reaches the
-   * > agent.**
-   *
-   * ⚑ **D-017 · R6 — the asker's own `question_asked` row is what makes that route exist**
-   * ({@link theWordsOf}): the words, so a late answer can quote the question back and can never fall
-   * through to a provider with an id it never minted.
-   *
-   * ⚑ **`437`'s reason for holding the turn open was re-derived rather than assumed** (HO-082
-   * §3.1), and the re-derivation is what surfaced the gap: `591` wrote it down, `HO-085` read it,
-   * `603` built the condition it named, and this removed the hold.
-   */
   async raiseAQuestion(
     input: {
       moveTo?: string
@@ -23337,10 +22926,7 @@ export class RuntimeHost implements LiveHost {
     // ⚠️ Spelled at both call sites rather than hoisted, because `the-origin-a-model-is-told.test.ts`
     // §6 reads the HANDOVER's origin off its call; the gate's is spelled the same for symmetry.
     const session = this.requireToMessage(sessionId, by)
-    // ⚑ **D-016 · a give's brief meets no `can_message` wall** — see {@link queueAs}, which asked
-    // the gate for it already.
     if (how.ifItLosesTheRace !== 'pass-it-on' || how.says !== null) {
-      this.assertMayReach('message', sessionId, by)
     }
     // ⚑ **D-017 · R1** — a stop that lands in the gate's awaits is waited out and the words go after
     // the start ({@link aDeliveryAStopCaught}), never refused *still closing*.
@@ -24143,7 +23729,6 @@ export class RuntimeHost implements LiveHost {
     //
     // ⚑ **Above the latch, which costs nothing and is the same placement `requireToCommand` has.**
     // A call refused here never raises `holdingQueue`, so it never has to be released.
-    this.assertMayReach('message', sessionId, by)
     // ⚠️ **The queue is held back for the whole of this, and without it the queued message JUMPS
     // THE INTERRUPT** (found in review). `interrupt()` terminalizes the running turn, which emits
     // `status: idle` — the exact signal {@link flushQueued} waits for. That event is delivered on a
@@ -25791,8 +25376,6 @@ export class RuntimeHost implements LiveHost {
         return session !== null && session.turnOpened ? session.itsTurnDrives : null
       },
       isAHelper: () => this.theParentInItsPlace(giving.sessionId) !== null,
-      // ⚑ **`can_assign_work`, asked of the caller alone** — the give has no conversation yet.
-      mayGiveWork: () => this.mayReachAtAll('assign', by),
       depthOf: (piece) => this.deps.store.depthOf(piece),
       capabilitiesOf: (profileSlug) => this.deps.store.capabilitiesOf(profileSlug),
       helperAs: (giver, profileSlug, provider) => this.helperAs(giver, profileSlug, provider),
@@ -27184,19 +26767,6 @@ export class RuntimeHost implements LiveHost {
     return mine
   }
 
-  /**
-   * ⚑ **D-017 · R1 — the rails a message meets, asked of a conversation that is not running** —
-   * the ones {@link queueAs} asks inside its gate, so the conversation its started self would refuse
-   * the message to is refused now, and nothing is started to be refused afterwards.
-   *
-   * ⚑ **An agent**: its reach ({@link withinMessagingReach}, the grant deciding as for a running
-   * one), and — for a message — the reach floor. ⚑ **A give's brief meets no `can_message` wall**
-   * (`says` is `null`): the give asked `may-not-assign-work`, and it goes to the giver's own
-   * conversation with that agent, which it commands.
-   * ⚑ **Anyone else**: a conversation this app can start; and for a surface — a person's window —
-   * words to send, and what is attached still where it was. ⚑ **This app** is refused nothing more.
-   * ⛔ **A caller that is none of those** — a commander — only one it would command as it runs.
-   */
   private async refuseBeforeAStart(
     sessionId: string,
     text: string,
@@ -27210,7 +26780,6 @@ export class RuntimeHost implements LiveHost {
       if (!this.withinMessagingReach(sessionId, by, me)) {
         throw new Error(`unknown session: ${sessionId}`)
       }
-      if (says !== null) this.assertMayReach('message', sessionId, by)
       return
     }
     // ⚑ **A conversation starting or on its way out is waited on, and whose it is is asked first**
@@ -27685,23 +27254,7 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **D-017 · R1** — the same words, once more, through the conversation's start.
     const startItAgain = (again: (to: string) => Promise<QueueOutcome>): Promise<QueueOutcome> =>
       this.deliverWhenItRuns(sessionId, text, by, attachments, says, again)
-    // 🔴 **`requireToMessage`, and the word IS the widening** (431 · criterion 6). ⛔ `send` asks
-    // the same gate — see its own note for why the pair is the rule — and the three siblings left
-    // on {@link requireToCommand} are `sendInterrupting`, `cancelQueuedMessage` and `interrupt`.
-    // What this verb asks is {@link withinMessagingReach}, which admits everything `mayCommand` does
-    // and, for an identity a person granted a global reach, one conversation more: the one it did
-    // not start. ⚠️ **The capability rail is asked after the entitlement**, so `may-not-message`
-    // still refuses an identity a person narrowed.
-    //
-    // 🔴 **681 · and the wall is asked INSIDE the gate, so it answers before *not started*** (PM
-    // ruling R30b): the order is entitlement, the wall, then *not started* — and a starting receiver
-    // meets the SAME policy wall a running one does.
-    //
-    // ⚑ **D-016 · a give's brief meets no `can_message` wall** (`says` is `null`): the give asked
-    // `may-not-assign-work` before anything was sent, and a give goes only to the giver's own
-    // conversation with that agent.
     const session = this.requireToMessage(sessionId, by, () => {
-      if (says !== null) this.assertMayReach('message', sessionId, by)
     })
     // ⚑ **708 · the same `this.originOf(by)` the held branch records below** — the gate refuses a
     // person's command that carries attachments at the QUEUE, while the composer still holds them.
@@ -28186,60 +27739,6 @@ export class RuntimeHost implements LiveHost {
     })
   }
 
-  /**
-   * 🔴 **Who is asking, as the two facts the ledger holds about them** (414) — see
-   * {@link TurnOrigin}.
-   *
-   * ## ⛔ One derivation, two destinations, and that is the point
-   *
-   * ⚠️ **`379` computed this pair inline** for the `task_assigned` row (until D-016); `414` needed
-   * the same pair for the string the PROVIDER receives. ⛔ Two spellings of *who
-   * is asking* are free to disagree the day either changes — 149's shape — and the disagreement
-   * would put one conversation on a board row and a different one in the words a model reads.
-   * ⚑ So the row and the turn now come out of one call.
-   *
-   * ## 🔴 Every `null` is a POSITIVE test, and the open set falls the other way
-   *
-   * ⛔ **The tempting spelling is *"an origin when {@link sessionSpeakingAs} names one, otherwise
-   * none"*, and it is `413`'s defect one layer down.** That reads *not an agent, therefore a
-   * person*, and {@link THE_APP_ITSELF}'s own docblock names the caller it would be wrong about:
-   * *"tomorrow the MCP tool a PM would spawn agents through … gets its own prefix from whatever
-   * registers it."* ⚠️ **Such a caller is not a window and not an `agent:` id, so it would reach
-   * a model's provider with no frame at all — read as the person's, which is the whole of
-   * `410` F2.**
-   *
-   * ⚑ So there are THREE answers and each is asked ON ITS OWN TERMS — 🔴 **607 split the second
-   * one out; it used to share the first one's `null`:**
-   *
-   *  - ⛔ **{@link THE_APP_ITSELF} · `null`** — BroBot's own composed sentences already name the
-   *    conversation they are about ({@link replyText}, {@link questionText},
-   *    {@link undrivenWorkText}); a frame would be BroBot introducing itself.
-   *  - ⛔ **A WINDOW · {@link THE_PERSON_AT_A_WINDOW}** — a person typed it, and since 607 the
-   *    turn SAYS so (`HO-088` §4) instead of leaving a receiver to infer it from the absence of
-   *    the other two — ⚠️ except a person's published command, which since `708` (`R42`) goes as
-   *    typed; the decision is {@link handToProvider}'s, from this same answer. ⚑ Asked as {@link aPersonTypedIt}, the same call `whoDidIt` makes for the
-   *    ledger's `a-person`, so the row and the line cannot drift.
-   *  - ⛔ **Anything else · an id** — framed with `ownerId` when it is not a conversation. An
-   *    opaque id is worth more than silence.
-   *
-   * ⚠️ **What `414`'s version of this bullet said** — *"a person typed it, and `414`'s §1 pins
-   * that their words reach the provider exactly as typed"* — ⛔ **is false from this commit** (607;
-   * ⚑ `708`'s `R42` made it true again for a person's published COMMAND, and only that), and
-   * it is written out here rather than deleted because the TEST that pinned it is still in the
-   * tree under a corrected name. ⚑ Its second half survives and is now literal: the person's arm
-   * and the ledger's word come out of one function.
-   *
-   * ⚠️ **Named `conversation` and not `speaking`, which is not style.** `374`'s `M13` anchors on
-   * `const speaking = sessionSpeakingAs(by)` followed by `if (speaking === null) return` in
-   * {@link assertMayReach}, and a second copy of those two lines anywhere in this file makes that
-   * row match twice and retire — a row of somebody else's going dark because of a variable name
-   * here. `414` moved the copy that used to sit in the task minting in here, and kept the rule
-   * with it.
-   *
-   * ⚑ **One query, and only for a conversation.** ⛔ **607 kept that**: a window's turn is still
-   * decided before the store is asked, and {@link THE_PERSON_AT_A_WINDOW} is a constant rather
-   * than anything derived — so the only thing that changed is that the answer has a word in it.
-   */
   /**
    * 🔴 **One conversation, one identity** (545) — `agent_identity.slug`, folded, or `null` when
    * this app holds no identity for that conversation.
@@ -36331,34 +35830,6 @@ export class RuntimeHost implements LiveHost {
     return { ok: true, creator: { by: 'an-agent', agent: foldProfileName(caller.profileId) } }
   }
 
-  /**
-   * 🔴 **May this caller perform this act on ANY conversation — asked of no target** (486,
-   * HO-031 §2.5).
-   *
-   * ⛔ **{@link admitReachAtAll}'s rails and no others**, so a door may ask *are you allowed to
-   * message anything at all* before it has read the id it was given. ⚑ **For `assign` it is the
-   * whole question** (D-016): `give_work` asks it of the caller alone, because a give has no target
-   * until its lookup has found one.
-   *
-   * ⚑ **A person is not asked** — `sessionSpeakingAs` decodes only `agent:<id>`, and HO-007's
-   * *the human unrestricted* is an ABSENCE of a question here exactly as it is in
-   * {@link RuntimeHost.assertMayReach}.
-   *
-   * ⛔ **It never replaces `assertMayReach`.** For a message the full question is still asked at the
-   * verb, against the target, in the order it always was; this one only moves
-   * the answer a caller was going to get anyway in front of an argument check that cannot change
-   * it.
-   */
-  mayReachAtAll(act: MessagingAct, by: Caller): MessageRefusal | null {
-    const speaking = sessionSpeakingAs(by)
-    if (speaking === null) return null
-    const mine = this.deps.store.identityOf(speaking)
-    return admitReachAtAll(
-      act,
-      mine === null ? null : this.deps.store.capabilitiesOf(mine.profileSlug),
-    )
-  }
-
   /** Tool visibility uses the conversation's origin, including before its provider has started. */
   private agentToolsForSession(sessionId: string): AgentToolset {
     const slot = this.slots.get(sessionId)
@@ -42050,88 +41521,13 @@ export class RuntimeHost implements LiveHost {
   private requireToMessage(
     sessionId: string,
     by: Caller,
-    /**
-     * 🔴 **681 · the walls a running receiver would be refused by, asked BEFORE *not started***
-     * (PM ruling R30b) — entitlement, then these, then {@link sessionFor}'s not-started throw.
-     *
-     * ⛔ **Inside the gate and not after the call**, because the gate is the one place
-     * {@link sessionFor} asks anything between *is there such a slot* and *has it started*: asked
-     * after this method returned, a caller the walls refuse was first told to RETRY — `650` F1's
-     * narrowed caller, told *not started* and then `may-not-assign-work` when the launch landed.
-     * ⚑ **Empty unless a door asks**, so {@link sendAs} — whose target has already passed these at
-     * {@link queueAs} whenever a model is the caller — meets exactly the gate it always met.
-     */
+
     walls: (receiver: SessionSlot) => void = () => {},
   ): HostedSession {
     return this.sessionFor(sessionId, (slot) => {
       this.assertMayMessage(slot, by)
       walls(slot)
     })
-  }
-
-  /**
-   * 🔴 **May this caller do THIS to a conversation it already commands?** (374, HO-007 §2.1 P3.)
-   *
-   * ## ⛔ Why it is a fourth question and not a wider {@link mayCommand}
-   *
-   * `mayCommand` answers FOURTEEN questions from FIVE call sites in this file — the five verbs,
-   * {@link interruptAgent} and {@link theConversationAddressed} through {@link mayInterrupt}, {@link takeBackPiece}, {@link updateWork}'s close, {@link agentsVisibleTo}, {@link agentCard},
-   * `replyToParent`'s own resolution and the two answer verbs on {@link requireToAnswer};
-   * `a-reach-you-can-see.test.ts` §3 is where that count is COMPUTED rather than restated — **and
-   * this enumeration had been one short since `441` while the number beside it read *fourteen*,
-   * which is why the count is the test's and not this list's.** ⚠️ **Narrowing it would narrow all
-   * of them**: an identity with `can_message: none` would stop being able to see its own children in
-   * `list_agents` and stop being able to interrupt them — none of which anybody granted or revoked. 340 §5's rule, in the other direction: *"an entitlement widening must be opt-in at the
-   * call site"*, and so must a narrowing.
-   *
-   * ⚑ **So this is a separate line at each verb that delivers words** — `send`, `queueMessage` and
-   * `sendInterrupting` — and `cancelQueuedMessage` deliberately does NOT have it. ⚠️ **Two of those
-   * reach that line through {@link requireToMessage} since `431` rather than through
-   * {@link requireToCommand}**, which changes which callers arrive here and changes nothing about
-   * what this question asks of them. Taking back words you already put there is not a new act
-   * against the conversation, and refusing it would strand a message a caller could no longer
-   * withdraw the moment a person narrowed the grant.
-   *
-   * ⛔ **Stopping is not asked it** (D-014): {@link interruptAgent} reaches the chain below the
-   * caller, whatever it may message.
-   *
-   * ## 🔴 A person is not asked the question at all
-   *
-   * HO-007: *"the human unrestricted."* `sessionSpeakingAs` decodes only `agent:<id>`; a window's
-   * `webContents:<n>` and {@link THE_APP_ITSELF} both give `null`, and this returns immediately.
-   * ⛔ **That is an absence of a question rather than an exemption** — there is no clause here that a
-   * later edit could make say `true` for a caller that is not an agent, because there is no clause.
-   *
-   * ## ⚠️ The SPEAKER comes from the LEDGER, and that is 373's state working
-   *
-   * The speaker's identity is read through `identityOf`, which is a row rather than a slot. ⛔
-   * **Reading the speaker's profile off `this.slots` would have made this gate ask a
-   * liveness question that {@link mayCommand} deliberately does not**: `373` established that a
-   * commander derived from the provenance row admits a parent whose own conversation is not open, and
-   * a capability that could not be looked up for such a parent would have quietly closed that door.
-   *
-   * ⚠️ **An identity with no row refuses**, which is `unknown-profile`'s direction one door over:
-   * falling back to `DEFAULT_CAPABILITIES` would hand the ruled grant to a caller this app cannot
-   * place.
-   */
-  private assertMayReach(
-    /**
-     * ⛔ **Every act but `assign`** — `give_work` asks that one of the caller alone, through
-     * {@link mayReachAtAll}, because a give has no conversation to ask it about until its lookup has
-     * found one (D-016).
-     */
-    act: Exclude<MessagingAct, 'assign'>,
-    sessionId: string,
-    by: Caller,
-  ): void {
-    const speaking = sessionSpeakingAs(by)
-    if (speaking === null) return
-    const refusal = this.mayReachAtAll(act, by)
-    if (refusal === null) return
-    console.warn(
-      `runtime host refused to ${act} ${sessionId}: ${speaking} is refused by ${refusal.rail}`,
-    )
-    throw new MessagingRefused({ ...refusal, detail: { ...refusal.detail, agent: sessionId } })
   }
 
   /**
@@ -42286,21 +41682,6 @@ export class RuntimeHost implements LiveHost {
     this.assertMayControl(slot, by)
   }
 
-  /**
-   * Refuse words aimed at a conversation this caller neither started nor was granted a reach to
-   * (431).
-   *
-   * ⛔ **It borrows {@link assertMayControl}'s refusal for {@link assertMayCommand}'s reason, and
-   * the borrow is still exact**: {@link withinMessagingReach} admits everything `mayCommand` admits,
-   * so a caller that fails the wider question fails both narrower ones and the line below always
-   * throws. ⚑ A stranger is told the same thing whether it tried to send, to message or to close.
-   *
-   * ⚠️ **This is the ENTITLEMENT and never the capability.** {@link assertMayReach} is asked on the
-   * line after {@link queueMessage} passes this one, reads `can_message` and refuses under
-   * `may-not-message` — so an identity admitted here by a global
-   * grant is still narrowed by the same rails as everybody else, and `374`'s two-gate shape is
-   * unchanged.
-   */
   private assertMayMessage(slot: SessionSlot, by: Caller): void {
     if (this.withinMessagingReach(slot.id, by)) return
     // ⚑ The caller whose piece a service is on may send it words, while that piece is on.

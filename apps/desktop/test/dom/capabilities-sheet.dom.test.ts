@@ -6,11 +6,8 @@ import { desktopProviderApi } from '../../src/renderer/src/client-provider/windo
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/agent-store'
 import {
-  ASSIGNMENT_REACH_ADMITS,
   CAPABILITY_FIELDS,
   DEFAULT_CAPABILITIES,
-  MESSAGING_REACH,
-  MESSAGING_REACH_ADMITS,
   type AnyCapabilityField,
 } from '../../src/shared/capabilities'
 import type { AgentIdentities, AgentIdentity, RuntimeBridge } from '../../src/shared/runtime-ipc'
@@ -59,8 +56,7 @@ const identity = (over: Partial<AgentIdentity> = {}): AgentIdentity => ({
   capabilities: DEFAULT_CAPABILITIES,
   chosen: {
     maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
+
     canCreateAgents: 'default',
     canWriteRules: 'default',
   },
@@ -238,9 +234,6 @@ describe('355 · the capabilities sheet', () => {
         help: 'Which conversations this identity may say one thing to at once.',
         ruled: 'none',
         narrowest: 'none',
-        // ⛔ **Its own words, not `canMessage`'s** (review). With the same words, *"reads the
-        // schema's own vocabulary"* was equally satisfied by a hardcoded list copied from the field
-        // beside it — a positive that does not differ from what it is measured against.
         vocabulary: ['never', 'when-idle', 'always'],
       } as unknown as AnyCapabilityField
 
@@ -259,7 +252,7 @@ describe('355 · the capabilities sheet', () => {
       // this field's vocabulary rather than about whatever the last `<select>` happened to hold.
       // ⚠️ **D-016 · two words now** — `same-project` went with projects.
       expect(
-        [...(m.q('capability-canMessage-select') as HTMLSelectElement).options].map((o) => o.value),
+        [...(m.q('capability-canCreateAgents-select') as HTMLSelectElement).options].map((o) => o.value),
       ).toEqual(['none', 'any'])
       // ⛔ …and it is NOT rendered by the unknown-editor branch, which would also be "on screen".
       expect(m.all('capability-canBroadcast-unknown-editor')).toHaveLength(0)
@@ -277,53 +270,6 @@ describe('355 · the capabilities sheet', () => {
       m.q('capabilities-save').click()
       await new Promise((resolve) => setTimeout(resolve, 0))
       expect(lastGrant()).toHaveProperty('canBroadcast', 'when-idle')
-    })
-
-    /**
-     * 🔴 **449 · a person picking a reach reads what it ADMITS, on the screen, at the real width.**
-     *
-     * ⛔ **`canInterrupt`'s help said nothing whatever about reach**, so the ruled default read as a
-     * control that lets this identity cut into anything in its project — which HO-016 §1 already
-     * caught this field's NAME implying once. ⚠️ `canMessage`'s said *"Anything but `any` reaches
-     * only conversations it started"*, which is true of `same-project` and false of the word beside
-     * it.
-     *
-     * ⚑ **PAINTED, not merely present.** A help sentence a person cannot see is a comment, and this
-     * file's own `shown` is what tells those apart.
-     *
-     * ⚠️ **D-014 · `canInterrupt` is gone** — ending and interrupting read no grant, they reach the
-     * chain below the caller — so the second reach control on this sheet is `canAssignWork`, the
-     * other field over {@link MESSAGING_REACH}. ⚑ **493's divergence is still the point**: its `any`
-     * admits only conversations its holder started, where `canMessage`'s admits any.
-     */
-    it('🔴 449/493 · both reach controls visibly say what their own gate admits', async () => {
-      const { m } = await openSheet()
-      for (const key of ['canMessage', 'canAssignWork'] as const) {
-        const control = m.q(`capability-${key}`)
-        const note = [...control.querySelectorAll('p.note')].at(-1) as HTMLElement | null
-        expect(shown(note), `${key} has no visible help`).toBe(true)
-        const admits = key === 'canMessage' ? MESSAGING_REACH_ADMITS : ASSIGNMENT_REACH_ADMITS
-        for (const word of MESSAGING_REACH) {
-          expect(note?.textContent ?? '', `${key} does not say what ${word} admits`).toContain(
-            admits[word],
-          )
-        }
-      }
-      // 🔴 **493's divergent control.** The two fields use the same word `any`, but messaging
-      // may reach what this identity did not start and giving work may not.
-      expect(MESSAGING_REACH_ADMITS.any).not.toBe(ASSIGNMENT_REACH_ADMITS.any)
-      expect(m.q('capability-canMessage').textContent).toContain(MESSAGING_REACH_ADMITS.any)
-      expect(m.q('capability-canAssignWork').textContent).toContain(ASSIGNMENT_REACH_ADMITS.any)
-      expect(m.q('capability-canAssignWork').textContent).not.toContain(MESSAGING_REACH_ADMITS.any)
-      // ⛔ **The control, and it is the field one row down.** A grant on the OTHER two-word
-      // vocabulary carries none of these sentences, so the loop above is about this vocabulary
-      // rather than about every note on the sheet being long. ⚠️ **D-016** took `same-project`,
-      // the one word this control used to read, so it reads every word the vocabulary has left.
-      for (const word of MESSAGING_REACH) {
-        expect(m.q('capability-canCreateAgents').textContent ?? '').not.toContain(
-          MESSAGING_REACH_ADMITS[word],
-        )
-      }
     })
 
     /**
@@ -373,7 +319,7 @@ describe('355 · the capabilities sheet', () => {
       for (const field of CAPABILITY_FIELDS.filter((one) => one.key !== 'maxDepth')) {
         expect(grant[field.key], `${field.key} was written`).toBe(null)
       }
-      expect(grant.canMessage).toBe(null)
+      expect(grant.canCreateAgents).toBe(null)
     })
 
     it('⚑ “Use the default” takes a field back to null, and only that field', async () => {
@@ -381,7 +327,7 @@ describe('355 · the capabilities sheet', () => {
       const depth = m.q('capability-maxDepth-input') as HTMLInputElement
       depth.value = '5'
       depth.dispatchEvent(new Event('input'))
-      const select = m.q('capability-canMessage-select') as HTMLSelectElement
+      const select = m.q('capability-canCreateAgents-select') as HTMLSelectElement
       select.value = 'any'
       select.dispatchEvent(new Event('change'))
       await nextTick()
@@ -398,7 +344,7 @@ describe('355 · the capabilities sheet', () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
       expect(lastGrant().maxDepth).toBe(null)
       // ⚑ The pair: the OTHER field somebody chose is untouched by the reversal.
-      expect(lastGrant().canMessage).toBe('any')
+      expect(lastGrant().canCreateAgents).toBe('any')
     })
   })
 

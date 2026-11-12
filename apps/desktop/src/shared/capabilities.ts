@@ -77,29 +77,7 @@ export interface ProfileCapabilities {
    * conversation's own work, its root, and a piece it took on for them (D-016 · commit 6).
    */
   readonly maxDepth: number
-  /**
-   * 🔴 **Which conversations this identity may SEND to, and so SEE** (374, HO-007 §2.1 P3).
-   *
-   * ⛔ At `none` a caller reaches nothing; `'any'` also admits a conversation its holder did not
-   * start — see `message-rails.ts`'s `reachesWhatItDidNotStart`. ⚑ **A caller may SEE exactly what
-   * it may SEND to** (`433`): `list_agents` and `get_agent_status` read this word too.
-   *
-   * ⚠️ **It does not decide giving work** — {@link canAssignWork} does — and interrupting reads no
-   * grant at all: it reaches the conversations below the caller in the chain that created them.
-   */
-  readonly canMessage: MessagingReach
-  /**
-   * 🔴 **Whether this identity may give WORK** (553, HO-060 §2; `give_work` since D-016).
-   *
-   * > ⚑ **Anyone may ask anyone. Giving work is its own grant.**
-   *
-   * ⛔ **Its own gate and not {@link canMessage} read twice**: a give hands a piece of work over,
-   * where a note or a follow-up consumes nothing. `give_work` asks it of the caller alone, before
-   * its lookup, and the work goes to the giver's one conversation with that agent —
-   * {@link ASSIGNMENT_REACH_ADMITS} says what each word admits, and `none` refuses every give.
-   * ⚠️ A note, a follow-up and a question never reach this field.
-   */
-  readonly canAssignWork: MessagingReach
+
   /**
    * 🔴 **Whether this identity may bring ANOTHER identity into existence** (419, HO-020 §4).
    *
@@ -135,126 +113,14 @@ export interface ProfileCapabilities {
   readonly canWriteRules: RuleWriting
 }
 
-/**
- * ⛔ **How far a messaging capability reaches, as a closed vocabulary** (374).
- *
- * ⚑ **`any` is every agent's ruled default** (HO-058 §1), and `'none'` is what makes a capability a
- * capability rather than a description. ⚠️ **The human is not a value here** — a person is not an
- * identity and never reaches these gates; see `message-rails.ts`.
- *
- * ⚠️ **D-016 · `same-project` went with projects.** A row that still holds it is a word outside
- * this vocabulary, and `parseChoice` folds it to the narrowest value, never to the default.
- *
- * ⚠️ **Shared by {@link ProfileCapabilities.canMessage} and {@link
- * ProfileCapabilities.canAssignWork}, and derived by neither.** They are separate columns, grants
- * and gates that happen to answer the same shape of question. A reader who takes one for the other
- * gets a compile error at neither; the test that stops it is a behaviour test, not this type.
- */
-export const MESSAGING_REACH = ['none', 'any'] as const
-
-/** One of {@link MESSAGING_REACH}. */
-export type MessagingReach = (typeof MESSAGING_REACH)[number]
-
-/**
- * 🔴 **What `list_profiles` counts, as a sentence a model may relay** (488; D-014).
- *
- * ⛔ **Any agent this app holds can be named to `give_work`**, so the listing is folded through
- * nothing and its count is the roster's. ⚑ It is said beside the number anyway (`448`): a count
- * that cannot say what it counted is read as a claim about something else. ⚠️ **It states the
- * roster, never the caller's grant**: a person can narrow `can_assign_work` to `none`, and a
- * sentence saying *you may* would then be false about the one reading it.
- */
 export const EVERY_AGENT_THIS_APP_HOLDS =
   'This counts every agent this app holds; any of them can be named to give_work.'
 
-/**
- * 🔴 **What `can_message` admits, said once, for every surface that publishes the word**
- * (449, corrected at 493).
- *
- * ⛔ **A model once read the bare vocabulary token as a rule and got the rule wrong**, so every
- * surface that publishes the grant — the sheet's help and the line `factory-text.ts` renders —
- * says what the word ADMITS, from this one table.
- *
- * ⚠️ **Verb-free, deliberately.** It names the SET and never the act: the field's own `label`
- * supplies the verb, so what the model is told a grant is called and what the person setting it
- * reads are one string.
- */
-export const MESSAGING_REACH_ADMITS: Readonly<Record<MessagingReach, string>> = {
-  // ⚑ **Not even its own children**: `admitReachAtAll` refuses `none` before it asks anything else.
-  none: 'nothing at all — not even a conversation it started itself',
-  any: 'any conversation, whoever started it',
-}
-
-/**
- * 🔴 **What `can_assign_work` admits — its own table over the same words** (553, HO-060 §2).
- *
- * > ⚑ **The ruling:** *Anyone may ask anyone. Giving work is its own grant.*
- *
- * ⛔ **Not {@link MESSAGING_REACH_ADMITS} reused, because sharing a vocabulary is not sharing a
- * gate** (`493`): `can_message` at `any` admits a conversation its holder did not start, and this
- * field at `any` gives work only to its holder's own conversation with each agent (D-016) — the
- * relationship is `give_work`'s lookup, and it is never dropped. ⚑ `a-reach-you-can-see.test.ts`
- * §4 maps each field to its table by name.
- *
- * ⚠️ **`none` refuses giving work to a conversation this identity started ITSELF**, and that is the
- * person's act: the app never re-grants what a person removed, whatever the receiver is.
- */
-export const ASSIGNMENT_REACH_ADMITS: Readonly<Record<MessagingReach, string>> = {
-  none: 'nothing at all — not even a conversation it started itself',
-  any: 'any agent — the work goes to a conversation it has with that agent, started for it when needed',
-}
-
-/**
- * ⛔ **The vocabulary, spelled out for a person, WALKED rather than enumerated** (449).
- *
- * ⚑ **Any word added to {@link MESSAGING_REACH} joins this sentence**, with
- * nobody editing a help string — which is the difference between a sentence that describes a
- * capability and one rendered from it (standing rule 8). ⛔ A help that enumerated the words in prose
- * is the shape `370` paid eight false sentences for, and it is the shape that was in this file.
- */
-function reachSentence(admits: Readonly<Record<MessagingReach, string>>): string {
-  return `${MESSAGING_REACH.map((word) => `${word}: ${admits[word]}`).join('; ')}.`
-}
-
-/**
- * ⛔ **How far a CREATION capability reaches, as a closed vocabulary** (419, HO-020 §4).
- *
- * ⚠️ **Its words are {@link MESSAGING_REACH}'s, spelled identically**, so
- * a person meets one grammar down the capability sheet and a model meets one across the refusals.
- * ⛔ **They are not the same TYPE**, and that is deliberate: `parseChoice` in `session-store.ts`
- * checks each column against its own field's vocabulary, and a shared type would let a word out of
- * one vocabulary pass as a word of the other.
- */
 const CREATION_REACH = ['none', 'any'] as const
 
 /** One of {@link CREATION_REACH}. */
 export type CreationReach = (typeof CREATION_REACH)[number]
 
-/**
- * ⛔ **How far an identity may reach into ANOTHER identity's own instructions, as a closed
- * vocabulary** (582, `HO-009` §2.2).
- *
- * 🔴 **A LADDER and not a reach, which is why it is neither {@link CREATION_REACH} nor
- * {@link MESSAGING_REACH} reused.** The other vocabularies narrow WHICH conversations a verb may
- * touch; this one narrows what HAPPENS when it is used, and the two wide values differ in whether a
- * person is asked at all:
- *
- *  - ⚑ **`none`** — this identity may not put a rule in front of anybody. **The ruled default and
- *    the narrowest**: an identity nobody has spoken about must not be able to reach into what
- *    another agent is told.
- *  - ⚑ **`propose`** — it may ASK. A person approves, and approval is the only thing that writes.
- *  - 🔴 **`relay`** — it may write immediately, claiming a person gave it the rule. `HO-009` §2.2's
- *    one exception: *"provenance* relayed from user *IS the authorization."*
- *
- * ⛔ **`relay` is not *propose, but louder*. It is the gate removed**, and the only thing standing
- * between it and instruction drift is that the identity holding it was chosen by a person — which
- * is why it is a grant a person sets on one identity and never a default.
- *
- * ⚑ **The ladder is asked by name**, through {@link mayProposeRules} and {@link mayRelayRules},
- * rather than compared inline: one field answers two questions, and
- * `widening-a-predicate-widens-every-question-its-field-answers` is what happens when each call
- * site spells its own comparison.
- */
 export const RULE_WRITING = ['none', 'propose', 'relay'] as const
 
 /** One of {@link RULE_WRITING}. */
@@ -387,22 +253,7 @@ export interface CapabilityField<K extends keyof ProfileCapabilities> {
    * nothing*. ⛔ Falling back to the default would let a typo WIDEN a profile.
    */
   readonly narrowest: ProfileCapabilities[K]
-  /**
-   * For `choice`, every word it may hold. Absent for every other editor.
-   *
-   * 🔴 **Typed to the FIELD's own value type since 374, and that is what makes the fold sound.** It
-   * was `readonly string[]`, so `satisfies readonly AnyCapabilityField[]` checked nothing about it:
-   * an unsupported word added to `canMessage` here would have compiled, been accepted by
-   * `capabilityValueSchema` (which builds its `z.enum` from this list), written to the column, and
-   * come back out of `parseChoice` cast to a type it is not a member of. ⛔ **The one place a
-   * vocabulary can be wrong is now a compile error rather than a runtime assertion.**
-   *
-   * ⚠️ **`never` for a field whose value is not a word**, which is stricter than *optional*: a
-   * `vocabulary` on `maxDepth` does not compile at all. ⛔ It also keeps the union narrow, so
-   * `AnyCapabilityField['vocabulary']` is still a list of STRINGS and the sheet's `v-for` over it
-   * needs no cast — the tightening cost the renderer nothing, which is the only reason it is safe
-   * to make in a dispatch that claims the surface did not change.
-   */
+
   readonly vocabulary?: ProfileCapabilities[K] extends string
     ? readonly ProfileCapabilities[K][]
     : never
@@ -479,16 +330,6 @@ const CHAIN_ENDS_HERE =
 /** The other arm. ⛔ It promises nothing but the absence of THIS refusal — see {@link CHAIN_ENDS_HERE}. */
 const CHAIN_MAY_GO_ON = 'not reached — work you give from here is not too deep'
 
-/**
- * 🔴 **The schema. Adding a capability is adding an entry here.**
- *
- * ⚑ **One default set for every agent** (D-014): any agent may give work, ask anyone, create an
- * agent, and give work six deep below the work a person gave, so `maxDepth`, `canMessage`,
- * `canAssignWork` and `canCreateAgents` default wider than their narrowest value. `canWriteRules`
- * defaults to the narrowest, because the wide word removes a person from a loop rather than
- * granting a reach. ⚑ A table of `ruled` and `narrowest` side by side is what makes that visible
- * for every field at once.
- */
 export const CAPABILITY_FIELDS = [
   {
     key: 'maxDepth',
@@ -516,89 +357,6 @@ export const CAPABILITY_FIELDS = [
     // ⚑ **D-014 · six levels below the work a person gives** (plan §4.1; D-016 · R2; commit 6).
     ruled: 6,
     narrowest: 0,
-    whenItTakesEffect: null,
-  },
-  {
-    key: 'canMessage',
-    column: 'can_message',
-    editor: 'choice',
-    label: 'May message',
-    /**
-     * 🔴 **The help text carries its SECOND consequence since 433.**
-     *
-     * ⛔ **This field decides what an identity may SEE as well as what it may SEND to.** `433` §B
-     * put `list_agents` and `get_agent_status` on the same question — *a caller may SEE exactly
-     * what it may SEND to* — so a person moving this control is deciding what that identity can
-     * enumerate and inspect. ⚠️ **A person choosing a grant has to be told the whole of what they
-     * are choosing**, which is the shape `370` paid eight false sentences for.
-     *
-     * ⚑ **The last sentence is WALKED from {@link MESSAGING_REACH_ADMITS}** (449), so any new word
-     * joins this help with nobody editing it.
-     */
-    help:
-      'Which conversations this identity may send a message to — and, because an agent can see ' +
-      'exactly what it may write to, which ones it can list and ask about. ' +
-      reachSentence(MESSAGING_REACH_ADMITS),
-    /**
-     * 🔴 **449 · the WORD was the whole line, and a model read it and got the rule wrong.**
-     *
-     * ⚑ **{@link MESSAGING_REACH_ADMITS} and not a sentence typed here**, because this field's own
-     * `help` says the same thing from the same table — one string, two readers, for the reason the
-     * label is one string.
-     */
-    says: (held) => MESSAGING_REACH_ADMITS[held],
-    /**
-     * 🔴 **`any`** (HO-058 §1): *a message consumes nothing, destroys nothing, and transfers no
-     * authority.*
-     *
-     * ⛔ **This default also decides what an identity may be told about** — `list_agents`,
-     * `get_agent_status`, and the holder state `list_tasks` and `withdraw_task` read. ⚠️ Giving WORK is
-     * {@link ProfileCapabilities.canAssignWork}'s, and a NULL column follows this value: a person
-     * who pressed *Use the default* follows it, and one who narrowed keeps their word.
-     */
-    ruled: 'any',
-    narrowest: 'none',
-    vocabulary: [...MESSAGING_REACH],
-    whenItTakesEffect: null,
-  },
-  {
-    key: 'canAssignWork',
-    column: 'can_assign_work',
-    editor: 'choice',
-    /**
-     * ⚑ **It says ALSO, because the grant above it is the one a reader meets first**, and a label
-     * standing on its own — *May give work to* — would read as a second, unrelated verb.
-     * `capabilityLines` renders the two adjacent because this entry sits beside `canMessage`.
-     */
-    label: 'May also give work to',
-    /**
-     * ⚠️ **What the CONTROL does, and nothing about how the system works** (standing rule 8).
-     *
-     * ⛔ **Both halves are here because a person is choosing both.** The first says what narrowing
-     * this does NOT touch — a question still goes anywhere `May message` reaches — because a help
-     * that named only the work half would let a reader believe setting this to `none` silences the
-     * identity. ⚠️ That belief is the one HO-060 §2.1 exists to refuse: a worker asking another
-     * agent how it handled this last time opens nothing.
-     *
-     * ⚑ **The vocabulary is WALKED from {@link ASSIGNMENT_REACH_ADMITS}**, so a fourth word joins
-     * this sentence with nobody editing a string.
-     */
-    help: `Whether this identity may give pieces of work (give_work) to conversations it has with each agent — a question takes nothing and is decided by the grant above. ${reachSentence(ASSIGNMENT_REACH_ADMITS)}`,
-    // 🔴 **553 · its own table**: `can_message` at `any` reaches what its holder did not start, and
-    // this word at `any` gives work only to its holder's own conversation with each agent.
-    says: (held) => ASSIGNMENT_REACH_ADMITS[held],
-    /**
-     * 🔴 **D-014 · `any`** (plan §4.2) — so a giver gives work to its own conversation with an
-     * agent, started for it the first time (D-016).
-     *
-     * ⛔ **The relationship is never dropped** ({@link ASSIGNMENT_REACH_ADMITS}): work flows down
-     * through the conversations a giver started, so nothing but a person gives work to a
-     * conversation a person started. ⚠️ `narrowest` and `ruled` DIFFER here, so `parseChoice`'s
-     * narrow-on-unreadable direction is observable on this column.
-     */
-    ruled: 'any',
-    narrowest: 'none',
-    vocabulary: [...MESSAGING_REACH],
     whenItTakesEffect: null,
   },
   {
@@ -724,30 +482,6 @@ export type CapabilityEdit = {
   readonly [K in keyof ProfileCapabilities]?: ProfileCapabilities[K] | null
 }
 
-/**
- * ⚑ **Whether a row has CHOSEN this capability** — and it is a fact about the COLUMN, not about the
- * value (086's rule, one table over).
- *
- * ⛔ **A field whose column is NULL and a field somebody set to exactly the default draw the same
- * number**, and they are not the same thing: the first follows {@link CapabilityField.ruled} if it
- * ever changes and the second does not. A sheet that could not tell them apart would make its own
- * first save a decision nobody took.
- *
- * ## ⚠️ The third state this deliberately does NOT have, and why
- *
- * A column can hold something that is not the right shape; the store folds it to
- * {@link CapabilityField.narrowest} and the rails then behave correctly with nobody told. **This
- * type cannot report that**, because *"is this text readable"* is a question only the parsing folds in
- * `session-store.ts` answer, and answering it a second time here is two spellings of one rule —
- * which this repo has already paid for once (`memory-bound.ts` and `confinement.ts` disagreed about
- * one string and 256 KiB went to disk with no card).
- *
- * 🔴 **So the blind spot is named rather than papered over**: a row whose `can_message` was mangled
- * reads `chosen`, and the sheet shows the narrowest value it folded to. The surface says so in
- * words next to the field. Closing it properly means the folds reporting what they narrowed, which
- * is a change to those parsing functions whose exact bodies `341`'s mutation table measures — its
- * own dispatch, and it is written up in this one's response.
- */
 type CapabilityOrigin =
   /** The column is NULL. This row has chosen nothing and follows the ruled default. */
   | 'default'
@@ -755,15 +489,6 @@ type CapabilityOrigin =
    *  business — see the blind spot above. */
   | 'chosen'
 
-/**
- * ⛔ **The columns, in field order, and the ONLY place a statement may learn them.**
- *
- * 341's `SELECT can_spawn, max_depth, max_concurrent, can_message` and its matching `UPDATE … SET`
- * were two hand-written lists that had to agree with each other, with the reader's row type, and
- * with the writer's argument order. ⚑ A new capability changes none of them — and a retired one
- * leaves them just as quietly: `can_spawn` and `max_concurrent` went with D-014, and their
- * columns with D-016's schema.
- */
 export const CAPABILITY_COLUMNS: readonly string[] = CAPABILITY_FIELDS.map((field) => field.column)
 
 /** One field by name, for callers that legitimately want a single one. */

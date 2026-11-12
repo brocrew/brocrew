@@ -144,8 +144,7 @@ const identity = (slug: string, displayName: string | null): AgentIdentity => ({
   ) as unknown as ProfileCapabilities,
   chosen: {
     maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
+
     canCreateAgents: 'default',
     canWriteRules: 'default',
   },

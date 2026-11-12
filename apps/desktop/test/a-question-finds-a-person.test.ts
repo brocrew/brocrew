@@ -32,7 +32,7 @@ import {
   questionRetryableOf,
   refuseQuestion,
 } from '../src/main/runtime/question-rails'
-import { MESSAGE_RAILS } from '../src/main/runtime/message-rails'
+
 import { REPLY_RAILS } from '../src/main/runtime/reply-rails'
 import { SPAWN_RAILS } from '../src/main/runtime/spawn-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
@@ -885,7 +885,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
       // which rule stopped a call whichever door built the payload.
       const every = [
         ...SPAWN_RAILS,
-        ...MESSAGE_RAILS,
+
         ...REPLY_RAILS,
         ...QUESTION_RAILS,
         ...CHANNEL_REFUSALS,

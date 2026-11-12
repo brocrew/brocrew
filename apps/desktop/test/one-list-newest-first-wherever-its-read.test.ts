@@ -157,8 +157,6 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
      * assertion the sort could satisfy by coincidence would have to coincide twice.
      */
     it("list_agents orders newest activity first, and closing an older conversation moves it back to the front of a running one's", async () => {
-      // ⚑ **BroBot opens first** — `canMessage: 'any'` is the ruled default (549), so nothing here
-      // narrows or widens a grant; the whole test is about ORDER.
       const brobot = await personOpens(DEFAULT_PROFILE_ID)
       const brobotTools = theToolsetJustHandedOut()
       // ⛔ **Strict sequence.** Each `personOpens` call advances the shared clock (`tick`), so
@@ -206,9 +204,6 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
     const explorerTools = theToolsetJustHandedOut()
     // ⚠️ **The premise, asserted rather than assumed.** ⚑ **`none` since D-016** — the reach
     // vocabulary is `none | any`, and `none` is the one word that leaves a caller out of reach.
-    expect(store.setCapabilities('explorer', { canMessage: 'none' })).toBe(true)
-    expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canMessage).toBe('any')
-    expect(store.capabilitiesOf('explorer')?.canMessage).toBe('none')
     // ⛔ **And neither COMMANDS it**, which the door that still asks `mayCommand` says for both.
     // ⚑ **D-016 · the parent alone** — nothing started the manager, so nothing is above it.
     expect(store.parentOf(manager)).toBeNull()
@@ -225,45 +220,6 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
      * the identical stopped id, is the paired positive**: it is not the target having stopped that
      * excludes `explorer`, because `brobot` reaches the very same stopped conversation fine.
      */
-    it("a stopped conversation out of the caller's reach is refused the reach rail, not no-such-agent, and is left off that caller's list — the granted caller still reaches it", async () => {
-      const { brobotTools, explorerTools, manager } = await twoCallersAndOneTarget()
 
-      // 🔴 **The target stops.**
-      await host.close(manager, window)
-
-      // ⛔ **The narrow caller** — refused by REACH, in the same shape and the same words
-      // `message_agent` gives for the identical call, and never `no-such-agent`: the conversation
-      // exists, and `05` rule 6 reserves that word for an id no conversation has.
-      const refused = await callOn(explorerTools, 'get_agent_status', { agent: manager })
-      expect(refused, JSON.stringify(refused)).toMatchObject({
-        outcome: 'refused',
-        rail: 'may-not-message',
-        permanence: 'until-a-person-changes-it',
-        detail: { reach: 'none' },
-      })
-      expect(refused['rail']).not.toBe('no-such-agent')
-      // ⚠️ **All but the detail**: at `none` `message_agent` answers from its argument-independent
-      // wall (`486`), before it reads the id, so its detail names the grant and no agent.
-      const withoutDetail = (answer: Record<string, unknown>): Record<string, unknown> => ({
-        ...answer,
-        detail: undefined,
-      })
-      const said = await callOn(explorerTools, 'message_agent', {
-        agent: manager,
-        text: 'anything at all',
-        // ⚑ **D-016 · a note** — a follow-up names a piece the sender gave, and this caller gave none.
-        kind: 'note',
-      })
-      expect(withoutDetail(said)).toStrictEqual(withoutDetail(refused))
-      expect(said['detail']).toStrictEqual({ reach: 'none' })
-      expect(await idsListedBy(explorerTools)).not.toContain(manager)
-
-      // ⚑ **THE PAIRED POSITIVE — the granted caller, over the identical stopped id.**
-      expect(await callOn(brobotTools, 'get_agent_status', { agent: manager })).toMatchObject({
-        outcome: 'ok',
-        agent: { state: 'idle' },
-      })
-      expect(await idsListedBy(brobotTools)).toContain(manager)
-    })
   })
 })

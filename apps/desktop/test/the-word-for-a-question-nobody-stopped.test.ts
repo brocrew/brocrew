@@ -192,10 +192,6 @@ describe('397 · the word for a question nobody stopped', () => {
     return handle
   }
 
-  const reach = (profileId: string, edit: { canMessage?: string; canInterrupt?: string }): void => {
-    expect(store.setCapabilities(profileId, edit as never)).toBe(true)
-  }
-
   /**
    * `393`'s helper: a PM in a window with one child of its own, started through the real door.
    * ⚑ **D-016** — `give_work` starts it, and the brief is its first turn, run in the giver's mode.
@@ -408,7 +404,7 @@ describe('397 · the word for a question nobody stopped', () => {
       // — answered, by the parent through the real door
       {
         const { pm, pmProfile, worker, pmTools, workerHandle } = await aPmAndItsWorker()
-        reach(pmProfile, { canMessage: 'any' })
+
         const asked = await childAsks(worker, workerHandle)
         const said = await callOn(pmTools, 'answer_question', {
           question: asked.id,
@@ -664,7 +660,7 @@ describe('397 · the word for a question nobody stopped', () => {
       // ABOVE the adapter and the refusal names the ending — which is what `393`'s
       // `task-already-ended` established the shape for.
       const { pm, pmProfile, worker, pmTools, workerHandle } = await aPmAndItsWorker()
-      reach(pmProfile, { canMessage: 'any' })
+
       const asked = await childAsks(worker, workerHandle)
       host.claimSession(worker, window)
       claimed.add(worker)

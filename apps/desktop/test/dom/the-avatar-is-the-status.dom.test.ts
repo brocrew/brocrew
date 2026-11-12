@@ -58,8 +58,7 @@ const NOW = Date.now()
 
 const CHOSEN = {
   maxDepth: 'default',
-  canMessage: 'default',
-  canAssignWork: 'default',
+
   canCreateAgents: 'default',
   canWriteRules: 'default',
 } as unknown as AgentIdentity['chosen']

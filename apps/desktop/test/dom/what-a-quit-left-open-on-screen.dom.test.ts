@@ -153,8 +153,7 @@ const identity = (slug: string, displayName: string | null): AgentIdentity => ({
   capabilities: { ...DEFAULT_CAPABILITIES },
   chosen: {
     maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
+
     canCreateAgents: 'default',
     canWriteRules: 'default',
   },

@@ -31,59 +31,8 @@ import { undrivenSentence } from '../../shared/tasks'
 // a value import back would be a runtime cycle; `CallerIdentity` is erased at compile time and the
 // two files stay one-directional.
 import type { CallerIdentity, TellDelivery } from './runtime-host'
-import type { MessageRefusal } from './message-rails'
 import type { ResourceRefusal } from '../resources/resources'
 import type { ModelRefusal } from './model-rails'
-
-/**
- * 🔴 **D-016 · the rails of the GIVE — `give_work`'s, asked before anything can be written** (341's
- * door, re-purposed: a conversation is started only by a give that found none).
- *
- * ⛔ **The ordering ruling this file exists to honour** (341 §0). *"Tools and rails together. **Not
- * tools first.**"* The published tool adds no rail of its own — it hands the arguments to the host,
- * which asks {@link admitGive}, and every refusal below is decided here, against facts the host
- * supplies.
- *
- * ## ⚑ What a refusal IS here, and why it is not a `SessionUnavailable`
- *
- * HO-005 criterion 4, as the PO refined it: *"the refusal is a **successful call** whose payload
- * names the rail, its permanence and whether it is retryable — and the rail holds regardless of what
- * the model does with it."* So a {@link SpawnRefusal} is **data returned**, not an error thrown,
- * written for an agent that must decide what to do next.
- *
- * ## 🔴 The order the rails are asked in (D-016 · R2), and why it is not arbitrary
- *
- *  1. **The request shape** — a request that cannot be read is one no rule below can be applied to
- *     (`303` B: eight keys in, seven out, an agent asked for something else).
- *  2. **The piece it is given under** — the caller's own, named, or inferred: the one open piece
- *     that has reached it, of several the one its turn drives, else its root (D-022 · R4). ⛔ A
- *     piece the caller does not hold is answered as one that does not exist: one answer, so no id
- *     is an oracle.
- *     ⚠️ A caller that speaks as no conversation holds none: `RuntimeHost.giveWork` answers it
- *     `no-piece-to-give-from` before these are asked.
- *  3. **`may-not-assign-work`** — the grant a person sets on giving (`can_assign_work`), asked of the
- *     caller alone.
- *  4. **Depth** — six below the work a person gave, counted on `work`, or the giver's own
- *     `max_depth`.
- *  5. **The lookup** — the one conversation this giver has with that agent, over reservations in
- *     flight and rows alike ({@link GiveFacts.helperAs}). ⚠️ It is not a rail: it finds, and a give
- *     that finds one goes there, woken if it has stopped.
- *  6. **No stall rule**: a piece of this giver's that stalled there refuses nothing. The host
- *     names it in the give's answer, read as the answer is formed, with its cause, a follow-up and a
- *     take-back.
- *  7. **Only when nothing was found**, the rails of a START: the spawning switch, `can_create_agents`
- *     for a new agent, `wider-than-its-parent`, the profile rule (D-016 · R3), then the folder — the
- *     one clause that touches the disk, and asked only for a conversation that will work in it.
- *
- * ⛔ **Nothing is written on any path through {@link admitGive}.** A new agent's identity row, the
- * number the piece takes and the conversation's reservation all come after it, in the host's one
- * synchronous stretch — so a give refused by any rail leaves no row behind (R2).
- *
- * ⚠️ **The spawning switch is asked late, and that is ruling 12**: it refuses a give only when the
- * give would START a conversation, so work to an agent this giver already has goes on while a person
- * has switched starting off. ⚑ It is still asked before anything about the agent's row, so what it
- * answers is a fact about the app and not about the name.
- */
 
 /**
  * The rails, as a closed vocabulary. Derived-from-the-list types, `session-unavailable.ts`'s rule:
@@ -802,8 +751,7 @@ export interface GiveFacts {
    * what a person asked it directly.
    */
   readonly isAHelper: () => boolean
-  /** ⚑ `can_assign_work` asked of the caller alone — `admitReachAtAll('assign', …)`. */
-  readonly mayGiveWork: () => MessageRefusal | null
+
   /**
    * How far below the work a person gave a piece sits: a root is 0, and so is a piece taken on for
    * a person (D-016 · commit 6).
@@ -877,7 +825,7 @@ export type ServiceAtAGive =
  * host's first write, made after every rail has answered.
  */
 export type GiveAdmission =
-  | { readonly ok: false; readonly refusal: SpawnRefusal | MessageRefusal }
+  | { readonly ok: false; readonly refusal: SpawnRefusal }
   | {
       readonly ok: true
       readonly asked: GiveRequest
@@ -979,7 +927,7 @@ export type GiveOutcome =
    */
   | {
       readonly ok: false
-      readonly refusal: SpawnRefusal | MessageRefusal | ResourceRefusal | ModelRefusal
+      readonly refusal: SpawnRefusal | ResourceRefusal | ModelRefusal
     }
 
 /**
@@ -1121,12 +1069,6 @@ export function admitGive(
     under = inferred
   }
 
-  // 3 · the grant on giving, asked of the caller alone.
-  const wall = facts.mayGiveWork()
-  if (wall !== null) return { ok: false, refusal: wall }
-
-  // 4 · depth. ⛔ **`?? DEFAULT_CAPABILITIES` is the one default set every agent holds** — a caller
-  // `may-not-assign-work` admitted has a row, and a row nobody narrowed reads as exactly this.
   const giver = facts.capabilitiesOf(giving.profileId) ?? DEFAULT_CAPABILITIES
   const depth = facts.depthOf(under.piece) + 1
   if (depth > giver.maxDepth) {

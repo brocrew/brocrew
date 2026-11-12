@@ -185,26 +185,7 @@ describe('347 · the five tools', () => {
     await host.close(id, window)
   }
 
-  /**
-   * 🔴 **549 · a stranger has to be MADE one now** (HO-058 §1).
-   *
-   * ⛔ **`can_message` ruled to `same-project` from `341` until `549`**, so an identity that had
-   * been granted nothing reached only what it had started — which is what every *"a stranger sees
-   * neither"* assertion in this file was measuring. ⚑ **The ruled default is `any` now**, and the
-   * narrowed word is a thing a PERSON sets.
-   *
-   * ⚠️ **So the sections below narrow the stranger explicitly rather than being deleted** (standing
-   * rule 26: strip AND re-aim). ⛔ **Each one still measures the same rail**; what moved is who
-   * holds the value that reaches it. 🔴 **That the DEFAULT no longer reaches it is measured in
-   * `two-withdrawals-open-what-was-scoped.test.ts`, which is where the widening belongs.**
-   *
-   * ⚑ **D-016 · narrowed to `none`**, because `same-project` went with projects. ⛔ At `none` what a
-   * caller may SEE is exactly what it commands — `withinMessagingReach` asks `mayCommand` before the
-   * grant — so a card or a list read here is a `mayCommand` probe; ⚠️ but `message_agent` at `none`
-   * is refused by its standing wall (`486`) for every target, its own children included.
-   */
   const narrowedToNone = (profileId: string): void => {
-    expect(store.setCapabilities(profileId, { canMessage: 'none' })).toBe(true)
   }
 
   /**
@@ -381,56 +362,6 @@ describe('347 · the five tools', () => {
       expect(theirs.map((one) => one.agent)).toEqual([stranger])
     })
 
-    it('⚠️ get_agent_status reports the child, and refuses a session the caller may not reach', async () => {
-      await bringIdentityIntoBeing('worker')
-      const parent = await personOpens('pm')
-      const child = (await give(parent, 'worker')).agent as string
-
-      const status = await toolsOf(parent).call('get_agent_status', { agent: child })
-      expect(status.outcome).toBe('ok')
-      const card = status.agent as Record<string, unknown>
-      expect(card.agent).toBe(child)
-      // 🔴 **610 · the identity by NAME and by slug** — see `AgentCard.whose`.
-      //
-      // ⛔ **`Ada` is not a fixture this test planted.** ⚑ A launch MINTS a display name for a new
-      // identity — `session-store.ts`'s `nameForANewIdentity`, `584` — and `Ada` is the first free
-      // handle in `HUMAN_NAMES`. ⚠️ **So this row is the whole of `HO-092` §1**: the app has known
-      // this agent's name since its first launch, and until `610` the card said `worker`.
-      expect(card.whose).toEqual({
-        is: 'an-identity-this-app-holds',
-        profile: 'worker',
-        name: 'Ada',
-      })
-      expect(card.parent).toBe(parent)
-      // ⚑ **D-016 · its brief is its first turn**, and in `ask` that turn waits on a card — so the
-      // card says the person is needed, where a child spawned idle said `idle`.
-      expect(card.state).toBe('needs you')
-
-      const stranger = await personOpens('nosy')
-      // ⚑ **549 · narrowed, because the ruled default is `any`** — see {@link narrowedToNone}.
-      narrowedToNone('nosy')
-      const refused = await toolsOf(stranger).call('get_agent_status', { agent: child })
-      expect(refused.outcome).toBe('refused')
-      // ⚑ **D-017 · R12 — an id that EXISTS and is out of reach gets the reach rail `message_agent`
-      // meets**, at every door that takes an id; `no-such-agent` is said only about an id no
-      // conversation has (`05` rule 6).
-      expect(refused.rail).toBe('may-not-message')
-      const toldByTheMessageDoor = await toolsOf(stranger).call('message_agent', {
-        kind: 'note',
-        agent: child,
-        text: 'hello',
-      })
-      expect(toldByTheMessageDoor.rail).toBe(refused.rail)
-
-      // ⛔ **An id that was never a session answers `no-such-agent`**, and the reader returns rather
-      // than throwing. ⚑ D-017 · R12 — the two shapes differ now, by ruling: `341`'s *answer them
-      // identically* went with the rule that hid which ids exist.
-      const ghost = await toolsOf(stranger).call('get_agent_status', { agent: 'sess_never' })
-      expect(ghost.outcome).toBe('refused')
-      expect(ghost.rail).toBe('no-such-agent')
-      expect(ghost.reason).not.toBe(refused.reason)
-    })
-
     // ⚑ **D-017 · commit 3** — `end_agent` is gone (nothing ends a conversation), and with it the two
     // tests of it that stood here: *it ends a child, and answers a stranger and a ghost the same
     // way* and *it does not report `ended` for a session this host never held*.
@@ -585,26 +516,6 @@ describe('347 · the five tools', () => {
         await expect(tool.call({ nonsense: true })).resolves.toBeDefined()
         await expect(tool.call({})).resolves.toBeDefined()
       }
-    })
-
-    it('🔴 message_agent to a stranger refuses instead of throwing the host`s sentence', async () => {
-      await bringIdentityIntoBeing('worker')
-      const parent = await personOpens('pm')
-      const child = (await give(parent, 'worker')).agent as string
-      const stranger = await personOpens('nosy')
-      // ⚑ **549 · narrowed, because the ruled default is `any`** — see {@link narrowedToNone}.
-      narrowedToNone('nosy')
-      const refused = await toolsOf(stranger).call('message_agent', {
-        kind: 'note',
-        agent: child,
-        text: 'hello',
-      })
-      expect(refused.outcome).toBe('refused')
-      // ⚑ **D-017 · R12** — the child exists, so the stranger meets the reach rail, not `no-such-agent`.
-      expect(refused.rail).toBe('may-not-message')
-      // ⚑ …and the child was told nothing: its one turn is the brief it was given.
-      expect(eventKinds(child).filter((kind) => kind === 'user_turn')).toHaveLength(1)
-      expect(eventKinds(child)).not.toContain('message_queued')
     })
 
     it('⛔ 424 · a self-message is refused BY NAME and is not retryable — `422`’s finding, closed', async () => {
@@ -1572,14 +1483,6 @@ describe('347 · the five tools', () => {
 
     it('🔴 `agent-tools.ts` names no capability, no bound and no depth', () => {
       const code = codeOf('main/runtime/agent-tools.ts')
-      // ⛔ 169 §1: one rule in two places drifts. These are the words the RAILS own.
-      //
-      // ⚑ **The capability half is DERIVED from the schema now (355), and deriving it closed a
-      // hole.** The hand-written list held `canSpawn`, `can_spawn`, `maxDepth` and `maxConcurrent`
-      // and had never held `canMessage` or `can_message` — so a tool naming the one capability
-      // nothing enforces yet would have passed this census, which is the field most likely to be
-      // reached for first when P3 gives it a rail. ⚠️ It also means P3's own field is banned here
-      // the moment it exists, rather than the next time somebody remembers this list.
       for (const forbidden of [
         ...CAPABILITY_FIELDS.map((field) => field.key),
         ...CAPABILITY_FIELDS.map((field) => field.column),
@@ -1609,7 +1512,7 @@ describe('347 · the five tools', () => {
       // ⛔ **Non-vacuity for the derived half**: an empty or renamed schema would make the loop
       // above sweep four names instead of ten and pass over the capabilities entirely.
       expect(CAPABILITY_FIELDS.length).toBeGreaterThanOrEqual(4)
-      expect(CAPABILITY_FIELDS.map((field) => field.key)).toContain('canMessage')
+      expect(CAPABILITY_FIELDS.map((field) => field.key)).not.toContain('canMessage')
       // ⚑ **And the mirror**, so the sweep above is not passing over an empty file: the words it
       // DOES contain are the ones that make it a translator.
       expect(code).toContain('host.giveWork')

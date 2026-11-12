@@ -48,11 +48,10 @@ const IDENTITIES: AgentIdentity[] = [
     // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
     externalMcpServerIds: [],
     // ⚑ **D-016** — `none`, the one reach word left that is not the default (`same-project` went).
-    capabilities: { ...DEFAULT_CAPABILITIES, canMessage: 'none' },
+    capabilities: { ...DEFAULT_CAPABILITIES,  },
     chosen: {
       maxDepth: 'default',
-      canMessage: 'chosen',
-      canAssignWork: 'default',
+
       canCreateAgents: 'default',
       canWriteRules: 'default',
     },
@@ -70,8 +69,7 @@ const IDENTITIES: AgentIdentity[] = [
     capabilities: DEFAULT_CAPABILITIES,
     chosen: {
       maxDepth: 'default',
-      canMessage: 'default',
-      canAssignWork: 'default',
+
       canCreateAgents: 'default',
       canWriteRules: 'default',
     },

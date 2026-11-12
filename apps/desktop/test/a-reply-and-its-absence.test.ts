@@ -1060,15 +1060,8 @@ describe('393 · a reply, and its absence', () => {
       expect(ledger(worker).some((event) => event.type === 'message_sent')).toBe(false)
     })
 
-    /**
-     * ⚑ **710 · `707` F-5 — the replier's own reach is never asked**, which is `deliverReply`'s stated
-     * property: the app delivers the answer, so a child a person narrowed to `can_message: none` is
-     * still heard by the parent that gave it the work. ⛔ Delivered as the child, it would be refused
-     * at the words door and the reply would reach nobody — `not-delivered` about a task already closed.
-     */
     it('⚑ a child a person narrowed to no reach at all is still heard — the app delivers its answer', async () => {
       const { pm, worker, siblings, task } = await workWasGiven()
-      expect(store.setCapabilities(siblings[0] as string, { canMessage: 'none' })).toBe(true)
       const landed = await reply(worker, {
         piece: task,
         outcome: 'done',
@@ -1419,66 +1412,6 @@ describe('393 · a reply, and its absence', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§7 · what nothing in this file may quietly stop being true', () => {
-    it('⛔ shared rail names are the named exceptions, and no sentence is shared', async () => {
-      // ⚑ **`374`'s rule, extended to the reply list.** A model meets the complete roster through
-      // one door and must not see one word mean two things.
-      const { SPAWN_RAILS, describeRail } = await import('../src/main/runtime/spawn-rails')
-      const { MESSAGE_RAILS, describeMessageRail } =
-        await import('../src/main/runtime/message-rails')
-      // ⚑ **D-016 · the resource module's words, where the document registry's were.**
-      const { RESOURCE_RAILS, refuseResource } = await import('../src/main/resources/resources')
-      const { TOOL_REFUSALS, refuseTool } = await import('../src/main/runtime/agent-tools')
-      const names = [
-        ...SPAWN_RAILS,
-        ...MESSAGE_RAILS,
-        ...RESOURCE_RAILS,
-        ...TOOL_REFUSALS,
-        ...REPLY_RAILS,
-      ]
-      // ⛔ **`malformed-request` is deliberately shared between the spawn door and the tools** and
-      // was so before this dispatch; every OTHER name must be unique, and `393` added none that
-      // collides. ⚠️ (`no-task-by-that-name` was spelled so because the document registry owned
-      // `no-such-task`; D-016 took both, and the reply's word is `no-piece-by-that-name`.)
-      //
-      // 🔴 **`spawning-disabled` is the SECOND deliberate share, added at 419.** ⛔ Two doors stand
-      // in front of ONE switch a person threw — `give_work` (it was `spawn_agent`'s) and
-      // `create_agent` — and a second
-      // spelling would be a second thing for a model to learn about it, which is `374`'s rule
-      // broken rather than kept. ⚠️ **What sharing a name costs is that the two tables could come
-      // to disagree about what the word MEANS**, and that is asserted next door rather than here:
-      // `what-an-agent-is-told-about-its-work.test.ts` §3 checks that every vocabulary carrying a
-      // shared word answers the same PERMANENCE for it.
-      // ⚑ **D-016 · two more deliberate shares.** `may-not-create-agents` is one grant a person
-      // narrowed, met at `create_agent` and at a give with `new: true`; `no-piece-by-that-name` is
-      // one absence — the caller holds no piece by that name — met at `reply_to_parent` and at the
-      // tools that name a piece (`withdraw_task`, `list_tasks`), each in its own sentence.
-      // A piece that cannot end with the copies of its questions is one fact at a take-back, a
-      // close and a reply, so its two words are shared too, each in its own sentence.
-      const duplicated = names.filter((name, index) => names.indexOf(name) !== index)
-      expect([...new Set(duplicated)].sort()).toEqual([
-        'a-conversation-with-its-questions-is-starting',
-        'its-questions-could-not-all-be-read',
-        'malformed-request',
-        'may-not-create-agents',
-        'no-piece-by-that-name',
-        'spawning-disabled',
-      ])
-      // ⚠️ **`describeRail` and `describeMessageRail` return the STRING**, not a payload — a
-      // `.reason` on them is `undefined`, which is how `347`'s own version of this census went green
-      // measuring nothing until it was found reviewing that diff.
-      const sentences = [
-        ...SPAWN_RAILS.map((rail) => describeRail(rail)),
-        ...MESSAGE_RAILS.map((rail) => describeMessageRail(rail)),
-        ...RESOURCE_RAILS.map((rail) => refuseResource(rail).reason),
-        ...TOOL_REFUSALS.map((rail) => refuseTool(rail).reason),
-        ...REPLY_RAILS.map((rail) => refuseReply(rail).reason),
-      ]
-      expect(new Set(sentences).size).toBe(sentences.length)
-      // ⚑ **Non-vacuity: these really are prose, not slugs**, or the set above would be comparing
-      // `undefined` to itself.
-      expect(sentences.every((one) => one.includes(' '))).toBe(true)
-      expect(sentences.length).toBe(names.length)
-    })
 
     it('⛔ every reply rail has a permanence, a retryability derived from it, and a sentence of substance', () => {
       for (const rail of REPLY_RAILS) {

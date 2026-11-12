@@ -729,7 +729,6 @@ describe('F009 · what an agent has done, read on demand', () => {
     it('🔴 a caller that reaches only what it started reads only those conversations, and every file', async () => {
       const { one, two, oneTools, twoTools, first, standIn, second, file } =
         await aTesterWithAHistory()
-      expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'none' } as never)).toBe(true)
 
       const fromOne = await theRecordOf(oneTools, 'tester')
       expect(fromOne.structured, fromOne.text).toMatchObject({ outcome: 'ok' })
@@ -787,7 +786,6 @@ describe('F009 · what an agent has done, read on demand', () => {
       })
       expect(told.text).toContain('It has no conversation within your reach.')
 
-      expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'none' } as never)).toBe(true)
       const NOT_TOLD =
         'How its standing rules begin is told only to a caller that can reach its conversations.'
       for (const name of ['auditor', 'scribe']) {

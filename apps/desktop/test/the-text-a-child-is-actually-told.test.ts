@@ -48,11 +48,8 @@ import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mj
 import { CODEX_INSTRUCTIONS_FILE } from '../src/main/providers/codex/layout.mjs'
 import { WORKSPACE_INSTRUCTIONS, workspaceInstructionFiles } from '../src/main/runtime/workspace'
 import {
-  ASSIGNMENT_REACH_ADMITS,
   CAPABILITY_FIELDS,
   DEFAULT_CAPABILITIES,
-  MESSAGING_REACH,
-  MESSAGING_REACH_ADMITS,
   capabilityField,
   grantSays,
 } from '../src/shared/capabilities'
@@ -156,7 +153,7 @@ const NOT_ONE_DOMAIN: Record<string, RegExp> = {
 
 const GRANTED: ProfileCapabilities = {
   ...DEFAULT_CAPABILITIES,
-  canMessage: 'any',
+
 }
 
 /**
@@ -744,19 +741,6 @@ describe('§3 · the dynamic layer moves when the data moves', () => {
     expect(grantLines(text)).toEqual(expectedPermissions(DEFAULT_CAPABILITIES))
   })
 
-  it('says the reach of each tool route without extending giving-work permission', () => {
-    for (const value of MESSAGING_REACH) {
-      const capabilities = { ...DEFAULT_CAPABILITIES, canMessage: value, canAssignWork: value }
-      expect(grantLines(thisConversationText(context({ capabilities })))).toEqual(
-        expectedPermissions(capabilities),
-      )
-      expect(capabilityField('canMessage').help).toContain(MESSAGING_REACH_ADMITS[value])
-      expect(capabilityField('canAssignWork').help).toContain(ASSIGNMENT_REACH_ADMITS[value])
-    }
-    expect(ASSIGNMENT_REACH_ADMITS.any).not.toBe(MESSAGING_REACH_ADMITS.any)
-    expect(ASSIGNMENT_REACH_ADMITS.any).not.toContain('whoever started it')
-  })
-
   it('an unknown identity gets no invented permission', () => {
     const none = thisConversationText(context({ capabilities: null }))
     expect(none).toContain(GRANTS_HEADING)
@@ -1288,13 +1272,12 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     await host.close(first, window)
     // ⚑ **D-014 · the narrowing is on a grant that survived** — `canSpawn` and `canStaff` are gone.
     // ⚑ **What this test is about is untouched**: it is the fallback losing to a stored row.
-    expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'none' })).toBe(true)
     await personOpens(DEFAULT_PROFILE_ID)
     const ctx = seen.at(-1) as InstructionContext
-    expect(ctx.capabilities?.canMessage).toBe('none')
+    expect(ctx.capabilities?.canCreateAgents).toBe('none')
     // ⚑ **And the fallback is what it was narrowed FROM**, so this is a comparison rather than an
     // assertion about a grant that was narrow all along.
-    expect(DEFAULT_CAPABILITIES.canMessage).toBe('any')
+    expect(DEFAULT_CAPABILITIES.canCreateAgents).toBe('any')
     // ⚑ **D-024 · R1 — two texts, each asked for its own layer**: the narrowed grant LINE is in
     // this conversation's own text, and the delegation rule it bounds is factory text in the file.
     const said = thisConversationText(ctx)
@@ -1337,7 +1320,7 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     await host.close(first, window)
     await personOpens(DEFAULT_PROFILE_ID)
     const ctx = seen.at(-1) as InstructionContext
-    expect(ctx.capabilities?.canMessage).toBe('any')
+    expect(ctx.capabilities?.canCreateAgents).toBe('any')
     expect(thisConversationText(ctx)).toMatch(/You may message any conversation\./)
   })
 
@@ -1565,12 +1548,12 @@ describe('§9 · one agent instruction set', () => {
   it('says the same core whatever the grants: what an agent may do is said under its own heading', () => {
     const narrow = {
       ...DEFAULT_CAPABILITIES,
-      canMessage: 'none' as const,
+
       canWriteRules: 'none' as const,
     }
     const wide = {
       ...narrow,
-      canMessage: 'any' as const,
+
       canWriteRules: 'relay' as const,
     }
     const proposing = { ...wide, canWriteRules: 'propose' as const }
@@ -1770,11 +1753,6 @@ describe('§10 · a grant says its own value, and every grant says one', () => {
   })
 
   it('🔴 a grant’s sentence is handed its OWN value and can reach no neighbour', () => {
-    // ⛔ **The property the `Record<CapabilityKey, (allowed: ProfileCapabilities) => string>` this
-    // replaced could not express.** Every entry in that table was handed the whole object, so
-    // `canAssignWork`'s could have rendered `canMessage`'s word and only review would have caught
-    // it — `464` in the one place every agent reads. ⚑ `says` takes the field's own value, and
-    // this is that promise measured rather than trusted.
     for (const field of CAPABILITY_FIELDS) {
       let low = DEFAULT_CAPABILITIES
       let high = DEFAULT_CAPABILITIES
@@ -1851,12 +1829,8 @@ describe('the workspace rules in the conversation block', () => {
 
 function expectedPermissions(allowed: ProfileCapabilities): string[] {
   return [
-    allowed.canMessage === 'any'
-      ? '- You may message any conversation.'
-      : '- You may not send messages to other conversations.',
-    allowed.canAssignWork === 'any'
-      ? '- You may give work to any agent, through your own conversation with it.'
-      : '- You may not give work to other agents.',
+    '- You may message any conversation.',
+    '- You may give work to any agent, through your own conversation with it.',
     allowed.canCreateAgents === 'any'
       ? '- You may create agents and give them their initial rules.'
       : '- You may not create agents.',

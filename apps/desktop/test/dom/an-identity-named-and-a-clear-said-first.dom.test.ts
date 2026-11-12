@@ -730,11 +730,11 @@ const reopenSays = (name: string): string =>
 // The real editable message rail gets fixture-only launch metadata to exercise the generic offer.
 // This does not claim that the shipped message control has a Reopen offer.
 const R41_FIELDS = CAPABILITY_FIELDS.map((field) =>
-  field.key === 'canMessage'
+  field.key === 'canCreateAgents'
     ? { ...field, whenItTakesEffect: 'Fixture-only launch disclosure for the naming contract.' }
     : field,
 )
-const LAUNCH_TIME = R41_FIELDS.filter((field) => field.key === 'canMessage')
+const LAUNCH_TIME = R41_FIELDS.filter((field) => field.key === 'canCreateAgents')
 const OPEN: readonly AConversationToReopen[] = [
   { sessionId: 'sess_1', where: '/work', heldBy: null, busy: false },
 ]
@@ -768,14 +768,14 @@ describe('712 §2d · R41 — the capabilities sheet names the identity it is ab
     reset({ roster: NAMED() })
     const m = await theSheet('project-manager', { openAs: OPEN })
     expect(
-      CAPABILITY_FIELDS.find((field) => field.key === 'canMessage')?.whenItTakesEffect,
+      CAPABILITY_FIELDS.find((field) => field.key === 'canCreateAgents')?.whenItTakesEffect,
     ).toBeNull()
-    expect(visible(m.q('capability-canMessage-select'))).toBe(true)
-    expect(m.all('grant-canMessage-open-now')).toHaveLength(0)
+    expect(visible(m.q('capability-canCreateAgents-select'))).toBe(true)
+    expect(m.all('grant-canCreateAgents-open-now')).toHaveLength(0)
     expect(m.all('capability-canWriteRules')).toHaveLength(0)
-    await pick(m, 'capability-canMessage-select', 'none')
-    expect((m.q('capability-canMessage-select') as HTMLSelectElement).value).toBe('none')
-    expect(m.all('grant-canMessage-open-now')).toHaveLength(0)
+    await pick(m, 'capability-canCreateAgents-select', 'none')
+    expect((m.q('capability-canCreateAgents-select') as HTMLSelectElement).value).toBe('none')
+    expect(m.all('grant-canCreateAgents-open-now')).toHaveLength(0)
   })
 
   it('🔴 project-manager named Ada: title, owner, servers and the reopen offer say Ada — the glyph and the Slug row keep the key', async () => {
@@ -784,7 +784,7 @@ describe('712 §2d · R41 — the capabilities sheet names the identity it is ab
     expect(serversSay('Ada')).toBe(SERVERS_ADA)
     expect(reopenSays('Ada')).toBe(REOPEN_ADA)
     expect(LAUNCH_TIME.length).toBeGreaterThan(0)
-    expect(LAUNCH_TIME.map((field) => field.key)).toEqual(['canMessage'])
+    expect(LAUNCH_TIME.map((field) => field.key)).toEqual(['canCreateAgents'])
 
     reset({ roster: NAMED() })
     const reopened: string[] = []
@@ -808,14 +808,14 @@ describe('712 §2d · R41 — the capabilities sheet names the identity it is ab
     expect('Ada'.slice(0, 1)).not.toBe('P')
     expect(said(m.q('capabilities-slug'))).toBe('project-manager')
     expect(m.all('capability-canWriteRules')).toHaveLength(0)
-    const reopen = m.q('grant-canMessage-reopen-sess_1') as HTMLButtonElement
+    const reopen = m.q('grant-canCreateAgents-reopen-sess_1') as HTMLButtonElement
     expect(reopen.disabled).toBe(false)
-    await pick(m, 'capability-canMessage-select', 'none')
+    await pick(m, 'capability-canCreateAgents-select', 'none')
     expect(reopen.disabled).toBe(true)
     reopen.click()
     expect(reopened).toEqual([])
-    expect(said(m.q('grant-canMessage-cost-sess_1'))).toContain('Save first')
-    await press(m, 'capability-canMessage-use-default')
+    expect(said(m.q('grant-canCreateAgents-cost-sess_1'))).toContain('Save first')
+    await press(m, 'capability-canCreateAgents-use-default')
     expect(reopen.disabled).toBe(false)
     reopen.click()
     expect(reopened).toEqual(['sess_1'])

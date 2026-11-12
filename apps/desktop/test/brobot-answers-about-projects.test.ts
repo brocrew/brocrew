@@ -248,7 +248,6 @@ describe('439 · BroBot asks a PM, and both conversations hold both halves', () 
     const brobot = await personOpens(DEFAULT_PROFILE_ID)
     const brobotTools = theToolsetJustHandedOut()
     // ⚠️ **The premise, asserted rather than assumed.**
-    expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canMessage).toBe('any')
     expect(store.parentOf(manager)).toBeNull()
     return { brobot, brobotTools, manager, managerTools }
   }

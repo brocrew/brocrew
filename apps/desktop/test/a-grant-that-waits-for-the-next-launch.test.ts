@@ -484,63 +484,6 @@ describe('470 · a grant that waits for the next launch', () => {
       },
     )
 
-    it('a real message grant widens at the rail while launch text changes only on reopen', async () => {
-      await bringIdentityIntoBeing('lead')
-      const worker = await personOpens('worker')
-      expect(store.setCapabilities('lead', { canMessage: 'none' })).toBe(true)
-      const lead = await personOpens('lead')
-      const snapshot = launchesFor('lead').at(-1)?.hint ?? ''
-      expect(snapshot).toContain(MAY_NOT_MESSAGE)
-      expect(snapshot).not.toContain(MAY_MESSAGE)
-      expectFixedRules(snapshot)
-      const atLaunch = launchesFor('lead').length
-      expect(await messageWorker(lead, worker)).toMatchObject({
-        outcome: 'refused',
-        rail: 'may-not-message',
-      })
-      const everyLaunch = launches.length
-      expect(store.setCapabilities('lead', { canMessage: 'any' })).toBe(true)
-      expect(launches.length, 'the write launched something').toBe(everyLaunch)
-      expect(await messageWorker(lead, worker)).toMatchObject({ outcome: 'ok' })
-      expect(launchesFor('lead')).toHaveLength(atLaunch)
-      expect(launchesFor('lead').at(-1)?.hint).toBe(snapshot)
-      await closeAndReopen(lead)
-      expect(launchesFor('lead')).toHaveLength(atLaunch + 1)
-      expect(launchesFor('lead').at(-1)?.kind).toBe('resume')
-      const refreshed = launchesFor('lead').at(-1)?.hint ?? ''
-      expect(refreshed).toContain(MAY_MESSAGE)
-      expect(refreshed).not.toContain(MAY_NOT_MESSAGE)
-      expectFixedRules(refreshed)
-    })
-
-    it('a real message grant narrows at the rail while the provider keeps its earlier launch text', async () => {
-      await bringIdentityIntoBeing('lead')
-      const worker = await personOpens('worker')
-      expect(store.setCapabilities('lead', { canMessage: 'any' })).toBe(true)
-      const lead = await personOpens('lead')
-      const snapshot = launchesFor('lead').at(-1)?.hint ?? ''
-      expect(snapshot).toContain(MAY_MESSAGE)
-      expect(snapshot).not.toContain(MAY_NOT_MESSAGE)
-      expectFixedRules(snapshot)
-      const atLaunch = launchesFor('lead').length
-      expect(await messageWorker(lead, worker)).toMatchObject({ outcome: 'ok' })
-      const everyLaunch = launches.length
-      expect(store.setCapabilities('lead', { canMessage: 'none' })).toBe(true)
-      expect(launches.length, 'the write launched something').toBe(everyLaunch)
-      expect(await messageWorker(lead, worker)).toMatchObject({
-        outcome: 'refused',
-        rail: 'may-not-message',
-      })
-      expect(launchesFor('lead')).toHaveLength(atLaunch)
-      expect(launchesFor('lead').at(-1)?.hint).toBe(snapshot)
-      await closeAndReopen(lead)
-      expect(launchesFor('lead')).toHaveLength(atLaunch + 1)
-      expect(launchesFor('lead').at(-1)?.kind).toBe('resume')
-      const refreshed = launchesFor('lead').at(-1)?.hint ?? ''
-      expect(refreshed).toContain(MAY_NOT_MESSAGE)
-      expect(refreshed).not.toContain(MAY_MESSAGE)
-      expectFixedRules(refreshed)
-    })
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────

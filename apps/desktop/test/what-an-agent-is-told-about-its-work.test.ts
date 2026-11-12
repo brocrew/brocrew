@@ -25,7 +25,7 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { composeProfileBundle, thisConversationSpans } from '../src/main/runtime/factory-text'
 import { messageNamingThePiece } from '../src/main/runtime/reply-rails'
 import { SPAWN_RAILS, refuse } from '../src/main/runtime/spawn-rails'
-import { MESSAGE_RAILS, refuseMessage } from '../src/main/runtime/message-rails'
+
 import { REPLY_RAILS, refuseReply } from '../src/main/runtime/reply-rails'
 import { QUESTION_RAILS, refuseQuestion } from '../src/main/runtime/question-rails'
 import { INTERRUPT_RAILS, refuseInterrupt } from '../src/main/runtime/interrupt-rails'
@@ -387,12 +387,7 @@ describe('what an agent is told about its work', () => {
         reason: (rail: string) => refuseTool(rail as never).reason,
         permanence: (rail: string) => refuseTool(rail as never).permanence,
       },
-      {
-        name: 'MESSAGE_RAILS',
-        rails: MESSAGE_RAILS as readonly string[],
-        reason: (rail: string) => refuseMessage(rail as never).reason,
-        permanence: (rail: string) => refuseMessage(rail as never).permanence,
-      },
+
       {
         name: 'REPLY_RAILS',
         rails: REPLY_RAILS as readonly string[],

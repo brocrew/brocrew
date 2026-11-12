@@ -102,8 +102,7 @@ const FLOOR = 972
 
 const CHOSEN: AgentIdentity['chosen'] = {
   maxDepth: 'default',
-  canMessage: 'default',
-  canAssignWork: 'default',
+
   canCreateAgents: 'default',
   canWriteRules: 'default',
 }

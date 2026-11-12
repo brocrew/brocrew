@@ -52,25 +52,6 @@ import type { TranscriptItem } from './transcript'
  */
 
 /**
- * ⛔ **Who else can give this conversation work** (`349`, HO-006 §4.5).
- *
- * **Each clause, and the code it is read off:**
- *
- * - *another caller … can reach into this conversation while you have it open* —
- *   `CreatedSession.hasACommander`, which is `SessionSlot.commandedBy` reduced to a boolean
- *   because there is no spawn-tree UI to resolve an `ownerId` into a name (`085`).
- * - *it can go as far as sending messages here, stopping what this conversation is doing, and
- *   ending it* — the three verbs `mayCommand` admits. ⚑ **"As far as", because sending also asks
- *   the caller's own `can_message`**, which a person may narrow; stopping and ending ask nothing
- *   more of a caller that started this conversation (D-014).
- * - *It cannot answer what this session stops to ask* — `mayAnswerAsAHuman`, which refuses every
- *   commander and refuses the app itself. ⚠️ **This clause is the one that does not move**: it is
- *   structural, so no grant widens it and no dispatch can add a verb that does.
- *
- * ⛔ **Not shown on an ENDED conversation.** Every verb named here is refused once the session is
- * over, so the sentence would describe a capability nobody has — `469`'s class, said once.
- */
-/**
  * ⛔ **That there IS one, and nothing about what it may do** (529 relay 1).
  *
  * ⚑ **The index line.** `527`'s Info surface is a list of facts, one line each; this is the fact.

@@ -362,14 +362,6 @@ describe('355 · the grant nobody can give', () => {
       }
     })
 
-    /**
-     * ⚑ **The reverse gesture, and it is asked of EVERY field rather than of one.**
-     *
-     * ⛔ **A row of this dispatch's own table is why.** The first version set and cleared `maxDepth`
-     * alone, so the row that collapsed `undefined` and `null` into one answer for `can_message`
-     * survived: the fold it broke was never exercised. Each capability has its own ternary in
-     * `setCapabilities`, so each one has to be cleared here.
-     */
     it('⚑ `null` hands ANY field back to the default, and its column goes back to NULL', async () => {
       await bringIdentityIntoBeing('pm')
       /** A value that is not the ruled default, per editor kind — so the clear has work to do. */
@@ -503,8 +495,7 @@ describe('355 · the grant nobody can give', () => {
           profileId: 'pm',
           grant: {
             maxDepth: null,
-            canMessage: null,
-            canAssignWork: null,
+
             canCreateAgents: null,
             canWriteRules: null,
           },
@@ -578,15 +569,14 @@ describe('355 · the grant nobody can give', () => {
      */
     const A_WHOLE_GRANT = {
       maxDepth: 1,
-      canMessage: 'none',
-      canAssignWork: null,
+
       canCreateAgents: 'none',
       canWriteRules: 'none',
     } as const
     const MALFORMED_GRANTS = [
-      ['a grant missing a field', { maxDepth: null, canMessage: null }],
+      ['a grant missing a field', { maxDepth: null,  }],
       ['a bound that is not a whole number', { ...A_WHOLE_GRANT, maxDepth: 1.5 }],
-      ['a word outside the vocabulary', { ...A_WHOLE_GRANT, canMessage: 'everyone' }],
+      ['a word outside the vocabulary', { ...A_WHOLE_GRANT,  }],
       // ⛔ **A capability nobody has declared**, and the one shape a non-strict object would have
       // STRIPPED: six keys in, five keys out, and a caller told its grant landed. `303` B is the
       // measured cost of that, and the first rail of `admitGive` makes the same ruling one door over.
@@ -684,10 +674,10 @@ describe('355 · the grant nobody can give', () => {
         maxDepth: 6,
         // ⚑ **549 · `any`** (HO-058 §1) — *a message consumes nothing, destroys nothing, and
         // transfers no authority.*
-        canMessage: 'any',
+
         // ⚑ **D-014 · `any`**: work still goes only to a conversation the giver started — see
         // `ASSIGNMENT_REACH_ADMITS`.
-        canAssignWork: 'any',
+
         canCreateAgents: 'any',
         canWriteRules: 'none',
       })

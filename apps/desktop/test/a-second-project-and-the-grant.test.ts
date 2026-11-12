@@ -168,7 +168,6 @@ describe('376 · a second project, and the grant the app gives itself', () => {
       }
       // ⚑ **The control**: the same read sees a person's own save, so the NULLs above are the rows
       // and not the reader.
-      expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'none' })).toBe(true)
       expect(rawColumn(DEFAULT_PROFILE_ID, 'can_message')).toBe('none')
     })
   })

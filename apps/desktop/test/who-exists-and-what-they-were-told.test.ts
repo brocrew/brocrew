@@ -309,7 +309,7 @@ describe('488 · who exists, and what they were told', () => {
       // this is the only place that can see what actually crossed.
       await bringIdentityIntoBeing('builder')
       expect(store.setAgentProvider('builder', 'codex')).toBe(true)
-      grant('builder', { maxDepth: 9, canMessage: 'any' })
+      grant('builder', { maxDepth: 9,  })
       const me = await anAgentRunning('lead')
 
       const said = await toolsOf(me).call('list_profiles')
@@ -345,7 +345,6 @@ describe('488 · who exists, and what they were told', () => {
       // 🔴 **Non-vacuity**: the values above are real on the target, so the absence is a fold and
       // not an empty database.
       expect(store.capabilitiesOf('builder')?.maxDepth).toBe(9)
-      expect(store.capabilitiesOf('builder')?.canMessage).toBe('any')
     })
 
     it('🔴 the HOST’s reading is bounded too, and not only the payload built from it', async () => {
@@ -354,7 +353,7 @@ describe('488 · who exists, and what they were told', () => {
       // leak the day anybody widened the door. ⚑ **Measured here it is a defect now**, which is the
       // difference between a bound and a coincidence.
       await bringIdentityIntoBeing('builder')
-      grant('builder', { maxDepth: 9, canMessage: 'any' })
+      grant('builder', { maxDepth: 9,  })
       await anAgentRunning('lead')
 
       // ⚑ **D-014 · the reading takes no caller** — every agent sees every identity.

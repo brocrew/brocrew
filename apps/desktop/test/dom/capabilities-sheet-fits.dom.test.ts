@@ -47,15 +47,13 @@ const CROWDED: AgentIdentity[] = [
     // word that is not its default, and the one whose sentence is longest.
     capabilities: {
       maxDepth: 3,
-      canMessage: 'none',
-      canAssignWork: 'none',
+
       canCreateAgents: 'none',
       canWriteRules: 'propose',
     },
     chosen: {
       maxDepth: 'chosen',
-      canMessage: 'chosen',
-      canAssignWork: 'chosen',
+
       canCreateAgents: 'chosen',
       canWriteRules: 'chosen',
     },
@@ -73,8 +71,7 @@ const CROWDED: AgentIdentity[] = [
     capabilities: DEFAULT_CAPABILITIES,
     chosen: {
       maxDepth: 'default' as const,
-      canMessage: 'default' as const,
-      canAssignWork: 'default' as const,
+
       canCreateAgents: 'default' as const,
       canWriteRules: 'default' as const,
     },

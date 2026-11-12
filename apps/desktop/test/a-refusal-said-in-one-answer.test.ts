@@ -38,7 +38,7 @@ import { refuseModel, MODEL_RAILS } from '../src/main/runtime/model-rails'
 import { refuseReply, REPLY_RAILS } from '../src/main/runtime/reply-rails'
 import { refuseQuestion, QUESTION_RAILS } from '../src/main/runtime/question-rails'
 import { refuseInterrupt, INTERRUPT_RAILS } from '../src/main/runtime/interrupt-rails'
-import { refuseMessage, MESSAGE_RAILS } from '../src/main/runtime/message-rails'
+
 import {
   readOfferedResource,
   refuseResource,
@@ -127,7 +127,6 @@ describe('fresh refusal reasons and their composed prefixes', () => {
     ['reply', () => REPLY_RAILS.map((rail) => refuseReply(rail))],
     ['question', () => QUESTION_RAILS.map((rail) => refuseQuestion(rail))],
     ['interrupt', () => INTERRUPT_RAILS.map((rail) => refuseInterrupt(rail))],
-    ['message', () => MESSAGE_RAILS.map((rail) => refuseMessage(rail))],
     ['resource', () => RESOURCE_RAILS.map((rail) => refuseResource(rail))],
   ] as const
 
@@ -289,23 +288,6 @@ describe('permanence, true on every rail of its class', () => {
       expect(tail.endsWith(NEVER)).toBe(true)
       expect(tail).not.toContain(FIX_IT_AND_CALL_AGAIN)
       expect(tail).not.toMatch(/call again|retry/i)
-    }
-  })
-
-  it('never says a person must act, where an agent answering clears it', () => {
-    const until = [
-      // Cleared when the conversation it waits on answers, which may be the caller.
-      answered(
-        refuseInterrupt('it-is-waiting-on-an-answer', { agent: 'sess_typed', askedOf: 'sess_me' }),
-      ),
-      // Cancelled by its parent: nobody else acts, and the same call then starts.
-      answered(refuseTool('agent-did-not-start', { profile: 'helper', because: 'cancelled' })),
-      answered(refuseMessage('may-not-message')),
-    ]
-    for (const one of until) {
-      const tail = added(one)
-      expect(tail.endsWith(UNTIL)).toBe(true)
-      expect(tail).not.toMatch(/a person must|retry/i)
     }
   })
 
@@ -661,15 +643,6 @@ describe('nothing said twice, and nothing the caller sent said back', () => {
     const after = answerInWords(before, context)
     expect(after.text).toBe(`${before.text} ${UNTIL}`)
     expect(after.text.split('“sonnet”').length - 1).toBe(1)
-  })
-
-  it('adds nothing but permanence where the reason says every fact', () => {
-    expect(added(answered(refuse('it-would-wait-on-itself', { profileId: 'helper' })))).toBe(
-      ` ${WHILE}`,
-    )
-    expect(added(answered(refuseMessage('may-not-message', { agent: 'sess_typed' })))).toBe(
-      ` ${UNTIL}`,
-    )
   })
 
   it('never dumps the detail, and never says back what the caller sent', () => {

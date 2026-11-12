@@ -35,21 +35,6 @@ describe('a model lookup before the first use of another provider', () => {
     return { host, giver }
   }
 
-  it('a refused give does not prepare the target agent on another provider', async () => {
-    const { host, giver } = await setup()
-    expect(world.store.setCapabilities('review-lead', { canAssignWork: 'none' })).toBe(true)
-    const before = world.preparedIn.filter((path) => path.endsWith('/draft-reader/codex')).length
-    const given = await world.gives(host, giver, 'draft-reader', {
-      provider: 'codex',
-      model: 'fake-codex-a',
-    })
-    expect(given).toMatchObject({ ok: false, refusal: { rail: 'may-not-assign-work' } })
-    expect(world.preparedIn.filter((path) => path.endsWith('/draft-reader/codex'))).toHaveLength(
-      before,
-    )
-    expect(existsSync(join(world.folder, 'provider-homes/draft-reader/codex'))).toBe(false)
-  })
-
   it('reading both picker lists uses the stand-in for a provider this agent has not used', async () => {
     const { host } = await setup()
     const result = await host.modelList('codex', 'draft-reader')

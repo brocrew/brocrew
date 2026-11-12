@@ -65,8 +65,7 @@ const identity = (slug: string): AgentIdentity => ({
   capabilities: { ...DEFAULT_CAPABILITIES },
   chosen: {
     maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
+
     canCreateAgents: 'default',
     canWriteRules: 'default',
   },
@@ -190,7 +189,7 @@ describe('470 · synthetic launch-bound field and live external-MCP grant', () =
       }
       // ⚑ …and the sheet really did draw every other control, so the sweep above is not passing
       // over a sheet that rendered nothing.
-      expect(m.all('capability-canMessage')).toHaveLength(1)
+      expect(m.all('capability-canMessage')).toHaveLength(0)
       expect(m.all('capability-maxDepth')).toHaveLength(1)
     })
 

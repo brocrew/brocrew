@@ -19,13 +19,7 @@ import {
   remedyOf,
   type SpawnRail,
 } from '../src/main/runtime/spawn-rails'
-import {
-  MESSAGE_RAILS,
-  messagePermanenceOf,
-  messageRemedyOf,
-  refuseMessage,
-  type MessageRail,
-} from '../src/main/runtime/message-rails'
+
 import {
   REPLY_RAILS,
   REPLY_SUMMARY_LIMIT,
@@ -180,13 +174,7 @@ const VOCABULARIES: readonly Vocabulary[] = [
     remedyOf: (rail) => remedyOf(rail as SpawnRail),
     built: (rail) => refuse(rail as SpawnRail),
   },
-  {
-    name: 'MESSAGE_RAILS',
-    rails: MESSAGE_RAILS,
-    permanenceOf: (rail) => messagePermanenceOf(rail as MessageRail),
-    remedyOf: (rail) => messageRemedyOf(rail as MessageRail),
-    built: (rail) => refuseMessage(rail as MessageRail),
-  },
+
   {
     name: 'TOOL_REFUSALS',
     rails: TOOL_REFUSALS,
@@ -627,153 +615,6 @@ describe('425 · a refusal carries its remedy', () => {
       const quiet = everyRail().filter((one) => one.permanence !== 'while-this-holds')
       const wrong = quiet.filter((one) => one.remedy !== null)
       expect(wrong).toEqual([])
-      // ⚑ **The historical checkpoints remain explicit, not mistaken for a live total.** At `425`
-      // there were forty-three such memberships: thirty before `424` repriced twelve and split
-      // another. `429` brought that to forty-six by adding three permanent rails, each a fact about a
-      // CALL rather than the world. `437` added the forty-seventh under HO-025 §1's split.
-      // ⛔ **HO-025 §1 allows a permanent rail to carry a remedy and `no-open-work-by-that-name`
-      // still carries none** — deliberately: it folds three causes and a remedy would have to be
-      // true of all three, which is the `document-registry-unavailable` shape `425` withdrew. ⚠️ So
-      // this assertion is no longer the biconditional its title reads as, and the day a permanent
-      // rail DOES carry a remedy it will go red for a reason it does not mean. **That is a finding
-      // reported to the PM by `433` and again by `437`, not something either was licensed to fix.**
-      // ⚑ **`439` brought the checkpoint to fifty** — `may-not-read-a-project` and
-      // `read-outside-your-project` on
-      // `MESSAGE_RAILS`, plus `no-project-by-that-name` on `TOOL_REFUSALS`. ⛔ All three carry
-      // `null`, and each is why: a capability a person has not granted, a project boundary, and a
-      // name that names nothing. `441` added four more under the same rule. The live total is derived
-      // by `everyRail` and pinned only in the machine assertion below.
-      // ⚑ **Fifty-five since `459` added `not-your-project` to `SPAWN_RAILS`** (HO-027 §2.2). ⛔ It
-      // carries `null` and the biconditional decided it before anybody wrote the table: `permanent`,
-      // therefore not retryable, therefore silent. ⚠️ The act that would clear it — propose the
-      // project and have a person approve it — is a DIFFERENT call, and `425` §2 is the rule that a
-      // remedy names what is left for THIS one.
-      // ⚑ **Fifty-eight since `489` added the three a declared FOLDER meets** (HO-031 §2.6).
-      // ⛔ All three carry `null`, and the biconditional decided every one of them before the table
-      // was written: `folder-is-not-allowed` and `folder-already-exists` are `permanent`,
-      // `no-such-folder` is `until-a-person-changes-it`, and not one of the three is retryable. ⚠️
-      // The acts they leave — name somewhere else, make the directory or declare that approving
-      // should, say it is already there — are all a DIFFERENT call, which is `425` §2's rule again.
-      // ⚑ **Fifty-nine since `496` gave ENDING a vocabulary of its own** (HO-034 §1). ⛔ Its one
-      // member carries `null` for the reason written beside it in `NAMED_WITHOUT_REMEDIES` above.
-      // ⚑ **Sixty-one since `517` split the document READER's answers** (HO-043 §1).
-      // ⛔ `document-path-outside-tree` is `permanent` and `document-bytes-unreadable` is
-      // `until-a-person-changes-it`; the biconditional decided both `null` before the table was
-      // written, and each says in its own sentence what is left — *no call you can make moves it
-      // back inside*, and *asking again will not help until a person has looked at it*.
-      // ⚑ **Sixty-three since `553` split the assignment off the message door** (HO-060 §2).
-      // ⛔ Both are `until-a-person-changes-it` and neither is retryable, so the biconditional
-      // decided both `null` before the table was written. ⚠️ **And `may-not-assign-work` is the
-      // one where a remedy was tempting and still wrong**: *ask it instead* is genuinely open to
-      // this caller — HO-060 §2.1 keeps that arm open — but a `RefusalRemedy` means *the thing you
-      // were trying to do is waiting on something*, and asking is a different act with a different
-      // outcome. ⚑ Each says so in its own SENTENCE, which is what this assertion is about.
-      // ⚑ **Sixty-five since `582` gave the `configured` layer its own two rails**:
-      // `may-not-write-rules` and `may-not-relay-a-rule`, which could not be one rail because they
-      // carry different news — the first means *nothing will happen until somebody grants you
-      // this*, the second means *your request is fine and the shortcut you took is not yours*, and
-      // a caller told the first would stop asking. ⛔ Both are `until-a-person-changes-it` and
-      // neither is retryable, so the biconditional decided both `null` before the table was
-      // written. ⚠️ **And `may-not-relay-a-rule` is the one where a remedy was tempting and still
-      // wrong**: *ask instead* is genuinely open to this caller, and its SENTENCE says so — but a
-      // `RefusalRemedy` means *the thing you were trying to do is waiting on something*, and
-      // asking is a different act with a different outcome (`may-not-assign-work`'s own ruling).
-      // ⚑ **Sixty-seven since `611` gave the pass-up door its own two rails** (HO-088 §3.2):
-      // `nobody-to-pass-it-up-to` and `this-app-does-not-hold-those-words`, which could not be one
-      // rail because they carry different news — the first means *that end does not exist for this
-      // conversation and the other one does*, the second means *the words are gone and nothing
-      // will bring them back*. ⛔ Both are `permanent`, so the biconditional decided both `null`
-      // before the table was written. ⚠️ **And `nobody-to-pass-it-up-to` is the one where a remedy
-      // was tempting and still wrong**: *pass it to a person instead* is genuinely open to this
-      // caller, and its SENTENCE says so — but a `RefusalRemedy` means *the thing you were trying
-      // to do is waiting on something*, and naming the other end is a different call.
-      // ⚑ **Sixty-eight since `628` split `that-is-work-you-hold` off** (`HO-095` §3.2). ⛔ It is
-      // `permanent` — a `message_agent` naming work the caller HOLDS can never become the right
-      // call — so the biconditional decided the `null` before the table was written. ⚠️ **And it
-      // is the third row on this list where a remedy was tempting and still wrong**: *ask with
-      // `ask_question` instead* is genuinely open to this caller, and its SENTENCE names it — but
-      // a `RefusalRemedy` means *the thing you were trying to do is waiting on something*, and
-      // asking is a different call that keeps the work rather than sending it.
-      // ⚑ **Sixty-nine since `657` answered a failed launch** — `agent-did-not-start` is a person's
-      // to change (a Close, a sign-in, a missing binary), so the biconditional decided its `null`.
-      // ⚑ **Seventy since `661` gave the answer doors `the-conversation-that-asked-has-ended`**
-      // (`656` F3). ⛔ It is `until-a-person-changes-it` — a reopen is what changes it — so
-      // the biconditional decided the `null`; the next step (the question coming back) is in its
-      // SENTENCE, where a non-retryable rail puts it.
-      // ⚑ **Seventy-two since `663` gave `resume_agent` two words that no retry passes** — one
-      // `permanent` (a conversation already running: the act is `message_agent`, a different call) and
-      // one a person's to change (a conversation that could not be brought back) — so the
-      // biconditional decided both `null`s.
-      // ⚑ **Seventy-three since `675` gave a wake the fold refuses its own word**
-      // (`no-conversation-of-yours-to-wake`, `663` F4). ⛔ It is `no-such-agent`'s fold and its price —
-      // `permanent`: the identical wake succeeds only in a different world, one where the caller
-      // started that conversation and gave it work — so the biconditional decided its `null`; the
-      // door a wakeable id comes from (`list_tasks`) is in its SENTENCE.
-      // Location alone causes no refusal: `SPAWN_RAILS`’ `cwd-outside-parent`,
-      // `TOOL_REFUSALS`’ `folder-is-not-allowed`, and `DOCUMENT_RAILS`’
-      // `resource-outside-workspace` are absent. All three were permanent, non-retryable,
-      // and carried `null`, so their absence does not alter the retryability biconditional.
-      // ⚑ **D-009** — +3: the three question rails F012 added, each `permanent` with no remedy.
-      // ⚑ **D-012** — +2: `read_transcript`'s reach (`permanent`) and a shared service's
-      // (`until-a-person-changes-it`), neither retryable, neither with a remedy.
-      // ⚑ **D-014** — −8 +1: the start grant and the two fan-out counts at the spawn door, the four
-      // end and interrupt grant rails at the message door, and the create-projects grant went; the
-      // give door gained `assign-work-to-one-you-did-not-start` (not retryable, no remedy).
-      // ⚑ **D-017** — −1: `the-conversation-that-asked-has-ended` went (`661`'s row above): an
-      // answer to a question this app asked is written into its asker's ledger and starts it.
-      // ⚑ **D-017, commit 3** — −4 +3: `END_RAILS`' one member, `INTERRUPT_RAILS`'
-      // `that-conversation-has-already-ended` and the wake's `that-conversation-is-running` and
-      // `no-conversation-of-yours-to-wake` went with the ending and `resume_agent`; `not-below-you`,
-      // `it-is-waiting-on-an-answer` and `that-conversation-takes-no-messages` came (see
-      // `NAMED_WITHOUT_REMEDIES` above).
-      // ⚑ **D-016** — −12, every one `null` and none retryable: `TOOL_REFUSALS`'
-      // `no-project-by-that-name`, `project-name-taken`, `a-proposal-is-already-waiting`,
-      // `no-person-to-ask`, `that-agent-serves-every-caller` (with `takes_work_from`) and the two
-      // folder words `489` spread in; `MESSAGE_RAILS`' `message-outside-your-project`,
-      // `may-not-read-a-project`, `read-outside-your-project` and
-      // `assign-work-outside-your-project`; and `SPAWN_RAILS`' `not-your-project` — all with
-      // projects and proposals.
-      // ⚑ **D-016, commit 3 (the tree)** — +4, none retryable and none with a remedy:
-      // `SPAWN_RAILS` lost `no-such-parent`, `not-your-parent`, `not-the-model-a-person-chose`,
-      // `profile-already-live` and `unknown-profile` with `spawn_agent`, and gained the give's
-      // `no-piece-to-give-from`, `name-the-piece-you-give-from`, `no-piece-you-hold-by-that-name`,
-      // `that-profile-exists`, `may-not-create-agents` and `no-such-profile`; `MESSAGE_RAILS` lost
-      // `assign-work-to-one-you-did-not-start`; `TOOL_REFUSALS` renamed its task words to pieces
-      // and gained `no-piece-by-that-name`, `that-is-your-own-work`, `that-piece-has-ended` and
-      // `the-giver-names-a-piece`, less the open-work rail; `REPLY_RAILS` renamed its two task
-      // words to pieces and gained `a-person-gave-that-piece`; `QUESTION_RAILS` gained
-      // `name-the-piece-you-ask-about` and `no-piece-to-ask-about`; and the document registry's ten
-      // quiet words became the resource store's seven.
-      // ⚑ **D-016, commit 5 (the giver's verbs)** — +2, both `permanent` and so both `null` by the
-      // biconditional: `TOOL_REFUSALS`' `the-giver-briefs-and-closes-a-piece` (an owner asking for
-      // a brief or a close — the giver's acts, whatever the moment) and
-      // `that-piece-was-already-closed` (a take-back of a piece its giver closed).
-      // ⚑ **D-016, commit 6 (a request the person makes)** — +1, `permanent` and so `null` by the
-      // biconditional: `TOOL_REFUSALS`' `no-work-of-your-own` (`take_on_work` from a caller that
-      // owns no root, which it never will). ⚠️ Its SENTENCE carries what is left — do the work as
-      // part of a piece it holds, or without one — and that is a different call.
-      // ⚑ **+1**, `permanent` and so `null`: `TOOL_REFUSALS`' `that-agent-is-not-below-you`
-      // (`message_agent` with interrupt, to an agent the caller may not interrupt).
-      // ⚑ **F009 · +1**, `permanent` and so `null`: `TOOL_REFUSALS`' `no-agent-by-that-name`
-      // (`list_profiles` naming an agent this app does not hold) — its sentence names the list.
-      // ⚑ **+1**, `until-a-person-changes-it` and so `null`: `SPAWN_RAILS`' `its-provider-is-not-chosen`
-      // (an agent with no provider saved whose conversations ran on both) — its sentence names a
-      // person's choice on its sheet, or another agent.
-      // ⚑ **+2**, `restore_agent`'s: `that-conversation-is-not-archived` (`permanent`) and
-      // `it-could-not-be-restored` (`until-a-person-changes-it`: a person repairs the file this app
-      // keeps the archived conversations in). Its third word is retryable and carries the act.
-      // ⚑ **+3**, a give to a service: `services-are-off` and `its-kind-is-unknown`
-      // (`until-a-person-changes-it`) and `that-is-this-conversation` (`permanent`) — each sentence
-      // names another agent, or doing it here.
-      // ⚑ **+1**, `permanent` and so `null`: `its-record-cannot-be-read`, a give to a service whose
-      // waits can't be read — its sentence names another agent.
-      // ⚑ **+3**, `request_mcp_server`'s: `server-already-registered` (`permanent`), and
-      // `server-already-asked-for` and `too-many-server-requests` (`until-a-person-changes-it`: the
-      // person deciding what waits clears them) — each sentence says what to do instead.
-      // ⚑ **+2**, the move offer's two that carry no act.
-      // ⚑ **+1**, `until-a-person-changes-it` and so `null`: `services-are-off-so-none-is-made`, a
-      // service asked for while services are off — its sentence names the person who turns them on.
-      // Two provider choices cannot be cleared by retrying: a fixed service and a full pool.
       expect(quiet).toHaveLength(87)
       for (const [rail, permanence] of [
         ['service-provider-is-fixed', 'permanent'],
@@ -929,92 +770,6 @@ describe('425 · a refusal carries its remedy', () => {
           walked.push(label)
         }
       }
-      // ⚑ **Fifty-two since `424` split `that-agent-is-you` out of `agent-cannot-take-a-message`,**
-      // and that rail is why this table is a `Record` rather than a lookup with a default: the merge
-      // would not compile until `425` had answered for it.
-      // ⚑ **Fifty-six since `429` added four to `TOOL_REFUSALS`.**
-      // ⚑ **Fifty-seven since `437` added one to `QUESTION_RAILS`** — `no-open-work-by-that-name`,
-      // the ask door's whole vocabulary.
-      // ⚑ **Sixty since `439` added two to `MESSAGE_RAILS`** for its `read` act, and one to
-      // `TOOL_REFUSALS` — `no-project-by-that-name`, which the project door asks after the reach.
-      // ⚑ **Sixty-four since `441` added four to `TOOL_REFUSALS`.** The machine boundary remains
-      // beside an owner-qualified equality that names every membership.
-      // ⚑ **Sixty-five since `459` added one to `SPAWN_RAILS`.**
-      // ⚑ **Sixty-eight since `489` added three to `TOOL_REFUSALS`** — `project-folder-rails.ts`'
-      // own vocabulary, spread into the model's one closed list rather than re-typed there.
-      // ⚑ **Sixty-nine since `496` gave ENDING its own one-member vocabulary** (HO-034 §1), whose
-      // word is `INTERRUPT_RAILS`' word shared under the census's named exception and whose sentence
-      // could not be.
-      // ⚑ **Seventy-one since `517` gave the document reader two answers it could not give**
-      // (HO-043 §1): `document-path-outside-tree`, because a row that points out of the tree is
-      // not `resource-outside-workspace`'s *the path you named*, and `document-bytes-unreadable`,
-      // because *the file is gone* was being said about a file that is sitting there.
-      // ⚑ **Seventy-three since `553` gave assigning work its own two rails** (HO-060 §2):
-      // `may-not-assign-work` and `assign-work-outside-your-project`, which could not be narrower
-      // spellings of the two `message` rails because a caller that meets either of them CAN still
-      // speak to the conversation it named.
-      // ⚑ **Seventy-five since `582` gave the `configured` layer its own two rails** — see the
-      // note on `quiet` above for why they are two and not one.
-      // ⚑ **Seventy-seven since `611` gave the pass-up door its own two rails** — see the note on
-      // `quiet` above for why they are two and not one.
-      // ⚑ **Seventy-eight since `628` gave `message_agent` the rail that names the MISTAKE** —
-      // see the note on `quiet` above. ⛔ It could not be a narrower spelling of
-      // `no-task-you-gave-that-agent`, which is `that-agent-is-you`'s own argument one object
-      // over: a caller speaking about work it holds was told the id was not hers, which is the one
-      // thing it was not.
-      // ⚑ **Eighty since `650` split two arms out of `agent-cannot-take-a-message`**, each of which
-      // clears with nobody acting — a launch in flight and a turn another sender opened first. ⛔ The
-      // catch-all could not have carried either: its permanence is one word, and no single word is
-      // true of those and of the sign-in arm it still folds.
-      // ⚑ **Eighty-one since `657`**: one retired (a lost race is held now) and two added (a spawn
-      // whose conversation did not start, and one whose provider did not answer in time).
-      // ⚑ **Eighty-two since `661` split `the-conversation-that-asked-has-ended` off
-      // `question-has-already-ended`**, whose *never* is false of an app-raised question a reopen in
-      // this app run routes again — see the note on `quiet` above.
-      // ⚑ **Eighty-five since `663` gave `resume_agent` its three words** — running, still stopping,
-      // and could not be resumed; its other answers are words it shares.
-      // ⚑ **Eighty-six since `675`** — `no-conversation-of-yours-to-wake`, the fold's own word at the
-      // wake door, which answered `no-such-agent` until then.
-      // ⚑ **Eighty-seven since `677`**: `spawn_agent`'s `not-the-model-a-person-chose`.
-      // ⚑ **Eighty-nine since `679`** — `more-than-one-question-has-that-id`, the word both answer
-      // doors refuse an id with when two of the caller's children raised a request under it, and
-      // `that-conversation-did-not-ask-that`, for an `asked_by` that raised nothing by it.
-      // ⚑ **Ninety since `705`** — `that-conversation-could-not-be-woken-just-now` (R39).
-      // ⚑ **Ninety-one since `703`** — `a-message-you-cannot-withdraw-is-waiting`, the held rail's
-      // word for a held message the caller cannot withdraw, whose act `withdraw_task` never was.
-      // ⚑ **Ninety-two since `707`** — `agent-could-not-start-just-now` (R39, extended).
-      // ⚑ **Ninety-three since `710`** — `agent-could-not-be-started` (R51), its permanent mirror.
-      // ⚑ **Ninety since `726` · R92** — `cwd-outside-parent`, `folder-is-not-allowed` and
-      // `resource-outside-workspace` went with the location guards they named (see `quiet` above).
-      // ⚑ **D-009** — +3: the same three, each built at its door.
-      // ⚑ **D-010** — −2: both mailbox words, with the one-held-message rule.
-      // ⚑ **D-012** — +2: `read_transcript`'s two words.
-      // ⚑ **D-014** — −8 +1: the words that went with the start grant, the fan-out cap, the end and
-      // interrupt grant and the create-projects grant, and the give door's new relationship word.
-      // ⚑ **D-017** — −1: `the-conversation-that-asked-has-ended`, with the rail (see `quiet` above).
-      // ⚑ **D-017, commit 3** — −4 +3, the same memberships as `quiet` above.
-      // ⚑ **D-016** — −12, the same memberships as `quiet` above.
-      // ⚑ **D-016, commit 3 (the tree)** — +5: the four `quiet` gained, and the stall rule's and the
-      // unhappened start's retryable words beside the open-work rail that went.
-      // ⚑ **D-016, commit 5 (the giver's verbs)** — +2, the same two words as `quiet` above.
-      // ⚑ **D-016, commit 6 (a request the person makes)** — +1, the same word as `quiet` above.
-      // ⚑ **Eighty-one** — `answer-too-long`, an answer over the bound.
-      // ⚑ **Eighty-two** — `that-agent-is-not-below-you`, the same word as `quiet` above.
-      // ⚑ **Eighty-three** — F009's `no-agent-by-that-name`, the same word as `quiet` above.
-      // ⚑ **Eighty-four** — `its-provider-is-not-chosen`, the same word as `quiet` above.
-      // ⚑ **Eighty-seven** — `restore_agent`'s three: the two `quiet` gained, and
-      // `it-is-being-archived-or-deleted`, which the same call clears once that has landed.
-      // ⚑ **Ninety-three** — a give to a service's six: the four `quiet` gained, and
-      // `it-would-wait-on-itself` and `its-waits-cannot-all-be-checked`, which the same give clears
-      // once that work has ended.
-      // ⚑ **Two more** — a stop of a service on another caller's piece, and a message about a
-      // piece still queued at one, each the same call once that has settled.
-      // ⚑ **Three more** came with Move and work search, and one went: the stall rule is out, so
-      // a give is no longer refused over a stall.
-      // The walk includes worker selection and the current-work read failure.
-      // ⚑ And one more: a service asked for while services are off.
-      // ⚑ Four more: a piece that cannot end with the copies of its questions, at two vocabularies.
-      // The walk also includes the fixed service provider and a pool with no matching provider.
       expect(walked).toHaveLength(118)
       expect(walked).toEqual(everyRail().map((one) => `${one.vocabulary} · ${one.rail}`))
     })

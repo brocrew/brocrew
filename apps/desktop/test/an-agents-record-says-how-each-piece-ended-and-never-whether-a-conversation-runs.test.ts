@@ -375,8 +375,6 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
         rules_begin: 'You are a careful tester of web pages.',
       })
 
-      expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'none' } as never)).toBe(true)
-
       const told = await theRecordOf(starterTools, 'tester')
       expect(told.structured, told.text).toMatchObject({
         outcome: 'ok',

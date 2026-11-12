@@ -83,8 +83,7 @@ const identities = (): AgentIdentities => ({
       capabilities: { ...DEFAULT_CAPABILITIES },
       chosen: {
         maxDepth: 'default',
-        canMessage: 'default',
-        canAssignWork: 'default',
+
         canCreateAgents: 'default',
         canWriteRules: 'default',
       },

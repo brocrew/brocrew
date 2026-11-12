@@ -180,7 +180,6 @@ describe('405 · a refusal you can see', () => {
     takeOnWork: (...args) => host.takeOnWork(...args),
     whatAPieceIsTo: (...args) => host.whatAPieceIsTo(...args),
     mayCreateAgents: (...args) => host.mayCreateAgents(...args),
-    mayReachAtAll: (...args) => host.mayReachAtAll(...args),
     readResource: (...args) => host.readResource(...args),
     queueMessage: (...args) => host.queueMessage(...args),
     messageAgentNow: (...args) => host.messageAgentNow(...args),

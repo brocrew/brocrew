@@ -54,8 +54,7 @@ const identity = (slug: string, granted: readonly string[] = []): AgentIdentity 
   capabilities: DEFAULT_CAPABILITIES,
   chosen: {
     maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
+
     canCreateAgents: 'default',
     canWriteRules: 'default',
   },
