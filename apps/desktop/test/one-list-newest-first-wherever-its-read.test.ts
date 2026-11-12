@@ -183,5 +183,4 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
    * spawn between any two of them, so the only thing that can admit an answer is the grant — and,
    * since §3 below stops the target, the only thing that can admit a STOPPED one.
    */
-
 })

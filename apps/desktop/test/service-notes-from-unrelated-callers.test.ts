@@ -23,23 +23,29 @@ it('flushes an unrelated caller’s held note while the next service piece stays
     const next = await world.gives(host, other, 'browser-driver', { title: 'Two' })
     if (!first.ok || !next.ok) throw new Error('service work was refused')
     const service = first.owner
-    const waiting = () => world.store.piecesOwnedBy(service).find((row) => row.piece === next.piece)?.state
+    const waiting = () =>
+      world.store.piecesOwnedBy(service).find((row) => row.piece === next.piece)?.state
     await vi.waitFor(() => {
       expect(world.ledger(service).filter((row) => row.type === 'user_turn')).toHaveLength(1)
     })
     const text = 'A note from a caller with no piece at this service.'
-    const message = agentToolsFor(host, stranger).tools.find((tool) => tool.name === 'message_agent')
+    const message = agentToolsFor(host, stranger).tools.find(
+      (tool) => tool.name === 'message_agent',
+    )
     if (message === undefined) throw new Error('message tool missing')
     const sent = await message.call({ agent: service, kind: 'note', text })
     expect(sent.structured).toMatchObject({ outcome: 'ok', delivery: 'queued' })
-    const delivered = () => world.ledger(service).some((row) => row.type === 'user_turn' && row.text.includes(text))
+    const delivered = () =>
+      world.ledger(service).some((row) => row.type === 'user_turn' && row.text.includes(text))
     expect(delivered()).toBe(false)
     expect(waiting()).toBe('waiting')
     world.turnsWait = null
     release()
     await vi.waitFor(() => {
       expect(delivered()).toBe(true)
-      expect(world.sent.some((row) => row.as === 'browser-driver' && row.words.includes(text))).toBe(true)
+      expect(
+        world.sent.some((row) => row.as === 'browser-driver' && row.words.includes(text)),
+      ).toBe(true)
     })
     expect(waiting()).toBe('waiting')
   } finally {

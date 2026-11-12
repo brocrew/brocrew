@@ -644,7 +644,6 @@ describe('373 · a parent that survives a restart', () => {
       await expect(host.interrupt(worker, { ownerId: agentCallerId(worker) })).rejects.toThrow()
       await expect(host.interrupt(worker, { ownerId: pm })).rejects.toThrow()
       await expect(host.interrupt(worker, admitted)).resolves.toBeUndefined()
-
     })
 
     it('⚠️ a commander that was NOT the parent cannot be stood up — only a conversation gives', async () => {

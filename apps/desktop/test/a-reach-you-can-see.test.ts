@@ -428,5 +428,4 @@ describe('433 §B · the agents a reach can see', () => {
    * every `away` rail went too). ⛔ **What is left is the one that holds for any vocabulary**: each
    * grant a model reads names what its own gate asks, in the bytes the person's sheet draws.
    */
-
 })

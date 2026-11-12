@@ -125,7 +125,6 @@ describe('parallel worker tools and conversation readings', () => {
     const reads = ['workersBorn', 'workerLineage', 'workerInItsPlace', 'workerLedger'] as const
     const probes = reads.map((name) => vi.spyOn(world.store, name))
     try {
-
       expect(next.agentCard(a.owner)?.worker).toEqual({
         identity,
         giver: caller,

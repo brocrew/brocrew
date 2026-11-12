@@ -296,7 +296,9 @@ describe('an agent restoring an archived conversation', () => {
       })
     }
     expect(await host.archiveConversation(helper)).toMatchObject({ done: true })
-    expect(agentsIn(await call(narrowed, 'list_agents', { archived: true }), 'archived')).toEqual([helper])
+    expect(agentsIn(await call(narrowed, 'list_agents', { archived: true }), 'archived')).toEqual([
+      helper,
+    ])
     expect((await call(narrowed, 'restore_agent', { agent: label })).structured).toMatchObject({
       outcome: 'ok',
       restored: [{ agent: helper }],

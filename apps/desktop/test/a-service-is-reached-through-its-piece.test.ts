@@ -173,7 +173,6 @@ describe('a service is reached through the piece it is on', () => {
       expect(asked.structured).toMatchObject({ outcome: 'ok', agent: service })
     })
 
-
     it('lets the caller whose piece it is on stop its turn, follow it up and give it a new brief', async () => {
       const { host, caller, service, one } = await aServiceOnTheFirstPiece()
       const stopped = await call(host, caller, 'interrupt_agent', {
