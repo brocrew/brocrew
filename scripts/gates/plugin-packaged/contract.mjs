@@ -93,6 +93,7 @@ export function safeReport(value) {
 /** Only temporary build inputs change. The committed product remains fail-closed. */
 export function projectBuild(config, entry, appData, browser) {
   if (![appData, browser].every(path.isAbsolute)) throw new Error('Invalid gate build inputs')
+  if (entry.split('pinTheDataFolder(app').length !== 2) throw new Error('Build anchor changed')
   const replace = (source, before, after) => {
     if (source.split(before).length !== 2) throw new Error('Build anchor changed')
     return source.replace(before, after)
@@ -124,8 +125,8 @@ export function projectBuild(config, entry, appData, browser) {
   )
   entry = replace(
     entry,
-    'pinTheDataFolder(app)',
-    `/* ${GATE_BUILD_MARKER} */ app.setPath('appData', ${JSON.stringify(appData)})\npinTheDataFolder(app)`,
+    'const updateReopenAtLaunch =',
+    `/* ${GATE_BUILD_MARKER} */ app.setPath('appData', ${JSON.stringify(appData)})\nconst updateReopenAtLaunch =`,
   )
   entry = replace(
     entry,

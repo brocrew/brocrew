@@ -111,6 +111,13 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     expect(projected.entry).toContain('fixtureSource: "/private/tmp/fictional/a/repo-fixture"')
     expect(projected.entry).toContain('browserExecutable: "/private/tmp/fictional/browser"')
     expect(projected.entry).toContain('app.setPath(\'appData\', "/private/tmp/fictional/a")')
+    const scratchSelection = projected.entry.indexOf(
+      'app.setPath(\'appData\', "/private/tmp/fictional/a")',
+    )
+    const reopenRead = projected.entry.indexOf('const updateReopenAtLaunch =')
+    expect(scratchSelection).toBeGreaterThan(-1)
+    expect(scratchSelection).toBeLessThan(reopenRead)
+    expect(reopenRead).toBeLessThan(projected.entry.indexOf('pinTheDataFolder(app'))
     expect(projected.entry).toContain(
       'return preparePackagedGateHome("/private/tmp/fictional", userData, provider, profileId)',
     )
@@ -137,6 +144,8 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
         projectBuild(config, changed, '/private/tmp/fictional/a', '/private/tmp/fictional/browser'),
       ).toThrow('Build anchor changed')
     for (const anchor of [
+      'const updateReopenAtLaunch =',
+      'pinTheDataFolder(app',
       '    loginRenewal: providerAuth.loginRenewal,\n',
       'providerModules[provider].createRuntime()',
       'return providerModules[provider].prepareLaunch(profileId, connection)',
