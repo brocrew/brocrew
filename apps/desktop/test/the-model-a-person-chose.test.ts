@@ -796,7 +796,10 @@ describe('677 §4 · the door — `setAgentModelAndEffort`, against the provider
       executeRuntimeCommand(host, sink, { kind: 'agentModelAndEffort', profileId: 'worker' }),
     ).rejects.toThrow(noPersonBehindIt('agentModelAndEffort'))
     expect(
-      await executeRuntimeCommand(host, window, { kind: 'agentModelAndEffort', profileId: 'worker' }),
+      await executeRuntimeCommand(host, window, {
+        kind: 'agentModelAndEffort',
+        profileId: 'worker',
+      }),
     ).toMatchObject({ provider: 'claude', model: 'opus' })
     expect(await executeRuntimeCommand(host, window, command)).toMatchObject({ ok: true })
     expect(

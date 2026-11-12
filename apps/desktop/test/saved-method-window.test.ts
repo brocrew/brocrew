@@ -121,7 +121,9 @@ describe('saved methods through bounded window commands', () => {
       ['agentMethodBody', { key: 'method:review.md' }],
       ['agentMethodChanges', {}],
     ] as const) {
-      expect(runtimeCommandSchema.safeParse({ kind, profileId: 'lark', ...extra }).success).toBe(true)
+      expect(runtimeCommandSchema.safeParse({ kind, profileId: 'lark', ...extra }).success).toBe(
+        true,
+      )
       await expect(read(kind, extra, agent)).rejects.toThrow(/person/)
     }
     expect(existsSync(join(folder, 'review.md'))).toBe(true)
