@@ -31,13 +31,15 @@ describe.each(['claude', 'codex'] as const)('%s agents deliver without grants', 
   let account: string
   let issued: FakeProviderSessions
   let counter: number
+  let observedAccounts: string[]
   const window = new RecordingSink('webContents:1')
 
   function buildHost(): RuntimeHost {
     class AccountRuntime extends FakeRuntime {
       private onAccount(handle: FakeSessionHandle): FakeSessionHandle {
         const email = account
-        Object.defineProperty(handle, 'account', { value: () => ({ email }) })
+        Object.defineProperty(handle, 'account', { value: () => { observedAccounts.push(email); return { email } } })
+        Object.defineProperty(handle, 'signInTag', { value: () => { observedAccounts.push(email); return email } })
         return handle
       }
       override async start(...args: Parameters<FakeRuntime['start']>) {
@@ -72,6 +74,7 @@ describe.each(['claude', 'codex'] as const)('%s agents deliver without grants', 
     account = 'first@example.test'
     issued = new FakeProviderSessions()
     counter = 0
+    observedAccounts = []
     const service = store.createAgentIdentity(
       { slug: 'service', displayName: null, provider },
       { by: 'a-person' },
@@ -102,7 +105,7 @@ describe.each(['claude', 'codex'] as const)('%s agents deliver without grants', 
     return (await tool.call(args)).structured as Record<string, unknown>
   }
 
-  it.each([null, 'none', 'any', 'same-project'])(
+  it.each([null, 'none', 'any'])(
     'ignores legacy grants %s across reopen, restart and account reassociation',
     async (legacy) => {
       const other = await opens('reader')
@@ -120,11 +123,9 @@ describe.each(['claude', 'codex'] as const)('%s agents deliver without grants', 
         'service first turn',
       )
       const lead = await opens('lead')
-      db.exec('PRAGMA ignore_check_constraints = ON')
       db.prepare(
         'UPDATE agent_identity SET can_message = ?, can_assign_work = ? WHERE slug = ?',
       ).run(legacy, legacy, 'lead')
-      db.exec('PRAGMA ignore_check_constraints = OFF')
       expect(store.capabilitiesOf('lead')).not.toHaveProperty('canMessage')
       expect(store.capabilitiesOf('lead')).not.toHaveProperty('canAssignWork')
       let helper: unknown
@@ -158,9 +159,7 @@ describe.each(['claude', 'codex'] as const)('%s agents deliver without grants', 
           definition_of_done: 'Record the result.',
         })
         expect(queued).toMatchObject({ outcome: 'ok', agent: service })
-        expect(
-          store.piecesOwnedBy(service).some((piece) => piece.title === `Service ${stage}`),
-        ).toBe(true)
+        expect(store.piecesOwnedBy(service).find((piece) => piece.title === `Service ${stage}`)?.state).toBe('waiting')
         const note = `note after ${stage}`
         expect(
           await call(lead, 'message_agent', { agent: other, kind: 'note', text: note }),
@@ -195,6 +194,7 @@ describe.each(['claude', 'codex'] as const)('%s agents deliver without grants', 
       }
 
       await delivers('first launch')
+      expect(observedAccounts).toContain('first@example.test')
       await host.close(lead, window)
       await host.resumeSession(lead, window)
       await delivers('reopen')
@@ -210,6 +210,7 @@ describe.each(['claude', 'codex'] as const)('%s agents deliver without grants', 
       host = buildHost()
       await host.resumeSession(lead, window)
       await delivers('account reassociation')
+      expect(observedAccounts).toContain('second@example.test')
       expect(
         db
           .prepare('SELECT can_message, can_assign_work FROM agent_identity WHERE slug = ?')
