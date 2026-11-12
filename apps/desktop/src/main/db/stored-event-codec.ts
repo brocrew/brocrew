@@ -1,5 +1,6 @@
 import type { EventRow, PersistedEvent } from './ledger-row-types'
 import type { SkipNote } from './rows-unread'
+import { answeredQuestionFields } from '../../shared/answered-question-fields'
 import { MAILBOX_KINDS } from '../../shared/conversation-events'
 import type {
   MailboxKind,
@@ -102,13 +103,7 @@ function answerStoredOn(value: unknown): AnsweredQuestion | undefined {
     !(one.clipped === undefined || one.clipped === true)
   )
     return undefined
-  return {
-    requestId: one.requestId,
-    answeredBy: one.answeredBy,
-    answer: one.answer,
-    ...(one.cannotAnswer === true ? { cannotAnswer: true } : {}),
-    ...(one.clipped === true ? { clipped: true } : {}),
-  }
+  return answeredQuestionFields(one)
 }
 
 function boundCardFacts(event: TranscriptEvent): TranscriptEvent {

@@ -1,4 +1,5 @@
 import type { AnsweredQuestion } from '../../../shared/human-answer-contracts'
+import { answeredQuestionFields } from '../../../shared/answered-question-fields'
 
 import type { TranscriptItem } from './transcript-message-contracts'
 
@@ -22,13 +23,7 @@ export function readAnsweredQuestion(value: unknown): AnsweredQuestion | undefin
     (one.clipped !== undefined && one.clipped !== true)
   )
     return undefined
-  return {
-    requestId: one.requestId,
-    answeredBy: one.answeredBy,
-    answer: one.answer,
-    ...(one.cannotAnswer === true ? { cannotAnswer: true } : {}),
-    ...(one.clipped === true ? { clipped: true } : {}),
-  }
+  return answeredQuestionFields(one)
 }
 export type AnswerItem = Extract<TranscriptItem, { kind: 'appNotice' | 'relayed' | 'queued' }>
 export function answerIn(item: TranscriptItem): AnsweredQuestion | undefined {
