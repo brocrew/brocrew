@@ -1,5 +1,3 @@
-import { waitFor } from './lib/f093-host'
-import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -23,6 +21,8 @@ import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { ProviderDouble, type ResumeGate } from './lib/provider-double'
 import {
+  waitFor,
+  type TranscriptEvent,
   fixtureFolder,
   fixtureDatabase,
   RecordingSink,

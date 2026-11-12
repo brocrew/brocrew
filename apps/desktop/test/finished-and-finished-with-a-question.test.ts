@@ -1,17 +1,13 @@
-import { waitFor } from './lib/f093-host'
 import { TASK_OUTCOMES, TASK_STALL_CAUSES, TASK_STATES } from '../src/shared/task-contracts'
 import type { TaskState, WorkReport } from '../src/shared/task-contracts'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { tmpdir } from 'node:os'
-import { fileURLToPath } from 'node:url'
+import { rmSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -36,6 +32,9 @@ import {
 } from '../src/renderer/src/lib/work-report'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import {
+  waitFor,
+  fixtureFolder,
+  fixtureDatabase,
   RecordingSink,
   syntheticProviderHome,
   neutralHostDeps,
@@ -85,8 +84,6 @@ import {
  * ⚑ **Real host, real SQLite, real migrations, real tools.** The only double is the provider.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 describe('406 · finished, and finished with a question', () => {
   let userData: string
@@ -120,10 +117,10 @@ describe('406 · finished, and finished with a question', () => {
   }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-finished-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-finished-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-finished-')
+    root = fixtureFolder('brobot2-finished-root-')
+    db = fixtureDatabase(userData)
+
     clock = 9_000_000
     store = createSessionStore(db, tick)
     counter = 0

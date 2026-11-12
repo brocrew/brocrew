@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './host-fixture'
+import { neutralHostDeps, waitFor } from './host-fixture'
 import type { LaunchedEvent, TranscriptEvent } from '../../src/shared/conversation-events'
 import type { UserTurnEvent } from '../../src/shared/human-answer-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -131,13 +131,7 @@ export class RecordingSink implements RuntimeEventSink {
 }
 
 /** ⚑ Bounded: 400 × 10 ms at most, then a named failure. */
-export async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
+export { waitFor } from './host-fixture'
 
 export class F093World {
   readonly userData = mkdtempSync(join(tmpdir(), 'brobot2-f093-gaps-'))
