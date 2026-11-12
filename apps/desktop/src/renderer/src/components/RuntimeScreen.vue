@@ -2744,7 +2744,6 @@ async function readWhoIsWorkingOnce(): Promise<void> {
     (snapshot) => {
       received = true
       theForest.value = snapshot
-      castFacts.update({ forest: snapshot.forest })
     },
   )
   const atWork = await doing

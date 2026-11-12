@@ -1543,7 +1543,7 @@ export const PASS_UP_RECIPIENTS = [
  * |---|---|---|
  * | `every-conversation-that-routed` | every conversation in this app that ever routed a request | the live projection |
  * | `one-window-over-every-agents-conversation` | every conversation one of this app's agents holds | the live projection, **and a clock** |
- * | `every-conversation-this-app-placed` | **the same conversations as the row above**, newest first | the live projection, **and a LIMIT** |
+ * | `every-conversation-this-app-placed` | the conversations of one forest reading: a window or a tree, with the ancestors that connect them | the live projection |
  * | `every-conversation-this-one-gave-work-to` | every conversation one conversation ever gave work to | the live projection |
  * | `every-conversation-this-one-spawned` | every conversation this app recorded as started by one conversation | nothing — **no ledger row is read at all** |
  * | `every-piece-of-work-this-one-was-given` | one conversation's own ledger | the live projection |
@@ -1671,19 +1671,14 @@ export const LEDGER_WALK_KINDS = [
    */
   'one-window-over-every-agents-conversation',
   /**
-   * 🔴 **Every conversation one of this app's agents holds, BOUNDED** (637 §2.2) — every row, newest
-   * first, up to `MAX_FOREST_CONVERSATIONS`.
+   * The conversations of one forest reading: a window of the workspace or a
+   * conversation's whole tree, with the ancestors that connect them; `all` admits the newest
+   * `ALL_ADMITS_NEWEST`, and `ForestReading.members.total` says how many there are. A drawn
+   * conversation whose parent is outside the reading says so in a word rather than pointing at
+   * nothing.
    *
-   * 🔴 **The LIMIT is why this may not be the digest's word read wider.** ⚠️ Every
-   * other sentence in {@link WALK_COVERS} that READS anything promises *no limit*; this one cannot, and a
-   * walk inheriting a promise it breaks is the defect `466` spent a word to avoid. ⛔ **Past the
-   * bound the answer is SHORT and never a refusal** — `TheWholeForest.conversations` beside
-   * {@link LedgerWalk.ledgers} is how short, and a drawn conversation whose parent fell outside
-   * says so in a word rather than pointing at nothing.
-   *
-   * ⚠️ **A conversation no agent of this app holds is in no forest** — `agent_identity_id IS NULL`,
-   * the population `TheWholeForest.heldByNoAgent` discloses. ⛔ Excluded by the candidate query
-   * rather than dropped by a filter.
+   * A conversation no agent of this app holds is in no forest (`agent_identity_id IS NULL`), the
+   * population `ForestReading.heldByNoAgent` discloses, excluded by the candidate query.
    */
   'every-conversation-this-app-placed',
   /**

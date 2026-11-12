@@ -452,19 +452,7 @@ describe('§3 · what RuntimeScreen asks, and what it keeps', () => {
     return rest.slice(0, next < 0 ? undefined : next)
   })()
 
-  it('requests relationships, activity and graph together without delaying the first answer', () => {
-    const firstAwait = readTheCast.indexOf('const answer = await answerPending')
-    expect(firstAwait).toBeGreaterThan(0)
-    const requested = readTheCast.slice(0, firstAwait)
-    expect(requested).toContain('const answerPending = store.whoCalledWhom(asked)')
-    expect(requested).toContain('const doingPending = store.whatIsBeingDone()')
-    expect(requested).toContain('const forestPending = store.theWholeForest()')
-    expect(requested).not.toContain('await ')
-    const publication = readTheCast.indexOf('answered: true, atWork: null')
-    expect(publication).toBeGreaterThan(firstAwait)
-    expect(publication).toBeLessThan(readTheCast.indexOf('const doing = await doingPending'))
-    expect(publication).toBeLessThan(readTheCast.indexOf('await forestPending'))
-  })
+
 
   it('⛔ a refusal keeps the cards and DROPS the doing words', () => {
     // 🔴 **`beingDone`'s own rule, inherited.** Every other kept read is a LIST whose absence would
@@ -480,15 +468,7 @@ describe('§3 · what RuntimeScreen asks, and what it keeps', () => {
     expect(readTheCast).toContain('reading?.conversation === asked && reading.answered')
   })
 
-  it('⛔ a failed forest read keeps the last good one', () => {
-    // A failed graph refinement keeps the last good tree.
-    const written = readTheCast.split('\n').filter((line) => line.includes('forest:'))
-    expect(written).toHaveLength(1)
-    expect(readTheCast).toContain(
-      'if (mine === castRead && asked === activeId.value && grown !== null) {\n      castFacts.update({ forest: grown })',
-    )
-    expect(written[0]).toContain('castFacts.update({ forest: grown })')
-  })
+
 })
 
 // ───────────────────────────────────────────────────────────────────────────────────────────────

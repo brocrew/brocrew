@@ -23,7 +23,7 @@ import { WALK_COVERS } from '../src/shared/questions'
 import { PERMANENCE_SAID, RAIL_PERMANENCES } from '../src/shared/refusals'
 import { activitySays } from '../src/renderer/src/lib/recent-activity'
 import type { RecentActivityReading } from '../src/shared/recent-activity'
-import { MAX_FOREST_CONVERSATIONS } from '../src/shared/the-whole-forest'
+import { storeForestOf } from './lib/forest-of-host'
 
 /**
  * 🔴 **466 · the night the digest could not describe** — `463` F6 and F3, criterion 16's exit.
@@ -587,7 +587,7 @@ describe('§5 · relay 1 · one register, and the table that says what each word
       profileId: 'one-identity',
     })
     const digest = store.digestWindow(FROM, TO)
-    const forest = store.everyPlacedConversation(MAX_FOREST_CONVERSATIONS)
+    const forest = storeForestOf(store)
     // ⚑ **Two conversations, one binding** — the premise the assertion below needs, asserted
     // rather than assumed (`a-fixture-must-plant-what-the-subject-eats`).
     expect(

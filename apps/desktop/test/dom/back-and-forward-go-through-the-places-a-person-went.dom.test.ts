@@ -1,3 +1,5 @@
+import { readingOf } from './forest-fixture'
+import type { ForestScope } from '../../src/shared/the-whole-forest'
 import { createModelLists } from '../lib/provider-launch-fixture'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -161,12 +163,8 @@ const runtime = {
   readWorkspace: vi.fn(async () => null),
   whatEachConversationIsWaitingOn: vi.fn(async () => null),
   whatIsBeingDone: vi.fn(async () => ({ readAt: 1, conversations: [] })),
-  theWholeForest: vi.fn(async () => ({
-    readAt: 1,
-    nodes: forestWalk(),
-    conversations: 0,
-    heldByNoAgent: 0,
-  })),
+  forestReading: vi.fn(async (scope: ForestScope) => readingOf([], scope)),
+  forestNodes: vi.fn(async () => ({ nodes: forestWalk(), gone: [], readAt: 1 })),
 }
 
 beforeEach(() => {

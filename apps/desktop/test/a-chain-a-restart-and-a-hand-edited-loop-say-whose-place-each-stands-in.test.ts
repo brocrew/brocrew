@@ -1,5 +1,6 @@
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { forestOf } from './lib/forest-of-host'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -24,7 +25,7 @@ import {
 /**
  * # D-034 — a chain of replacements, a restart, and a hand-edited loop
  *
- * ⚑ **`theWholeForest()` follows each replacement to the END of its chain** (`theOneInItsPlace`,
+ * ⚑ **The forest reading follows each replacement to the END of its chain** (`theOneInItsPlace`,
  * the rule every other door follows), so every link names the same stand-in and the stand-in
  * names every link; **it reads them from the host's memory of replacements**, which a new host
  * loads off the old ledgers' `replaced_by` rows as it starts; and **a chain that loops** — only a
@@ -136,9 +137,9 @@ describe('D-034 — a chain, a restart and a hand-edited loop', () => {
     )
 
   /** ⚑ Each drawn conversation's two D-034 fields, by id, as the host `on` reads the forest. */
-  const places = (on: RuntimeHost): Map<string, Place> => {
+  const places = async (on: RuntimeHost): Promise<Map<string, Place>> => {
     const read = new Map<string, Place>()
-    for (const node of on.theWholeForest().nodes.rows) {
+    for (const node of (await forestOf(on)).nodes.rows) {
       if (node.node !== 'a-conversation') continue
       read.set(node.conversation, { standsInFor: node.standsInFor, inItsPlace: node.inItsPlace })
     }
@@ -228,7 +229,7 @@ describe('D-034 — a chain, a restart and a hand-edited loop', () => {
 
   it('D · a chain: the worker replaced twice — the end of the chain stands in for both, and both name the end', async () => {
     const { pm, worker, worker2, worker3 } = await aChainOfTwo()
-    const read = places(host)
+    const read = await places(host)
     // ⚑ Every link names the END, never the next link.
     expect(placeIn(read, worker).inItsPlace).toEqual(drawnOne(worker3))
     expect(placeIn(read, worker2).inItsPlace).toEqual(drawnOne(worker3))
@@ -254,11 +255,11 @@ describe('D-034 — a chain, a restart and a hand-edited loop', () => {
     })
     expect(sent.outcome, JSON.stringify(sent)).toBe('ok')
     const next = sent.went_to as string
-    const beforeTheRestart = places(host)
+    const beforeTheRestart = await places(host)
     expect(placeIn(beforeTheRestart, worker).inItsPlace).toEqual(drawnOne(next))
 
     const again = await restart()
-    const afterTheRestart = places(again)
+    const afterTheRestart = await places(again)
     expect(placeIn(afterTheRestart, worker)).toEqual({
       standsInFor: [],
       inItsPlace: drawnOne(next),
@@ -275,7 +276,7 @@ describe('D-034 — a chain, a restart and a hand-edited loop', () => {
   it('E · a chain survives a restart: on a second host both links still name the end, and the end both links', async () => {
     const { worker, worker2, worker3 } = await aChainOfTwo()
     const again = await restart()
-    const read = places(again)
+    const read = await places(again)
     expect(placeIn(read, worker).inItsPlace).toEqual(drawnOne(worker3))
     expect(placeIn(read, worker2)).toEqual({ standsInFor: [], inItsPlace: drawnOne(worker3) })
     expect(sortedIds(placeIn(read, worker3).standsInFor)).toEqual(
@@ -289,13 +290,13 @@ describe('D-034 — a chain, a restart and a hand-edited loop', () => {
     if (a === undefined || b === undefined || c === undefined)
       throw new Error('three conversations')
     // ⚑ Paired: before the hand edit, nobody stands anywhere.
-    for (const id of [a, b, c]) expect(placeIn(places(host), id), id).toEqual(NOWHERE)
+    for (const id of [a, b, c]) expect(placeIn(await places(host), id), id).toEqual(NOWHERE)
     // A loop of three, written straight into the ledgers: a → b → c → a.
     handWrites(a, b)
     handWrites(b, c)
     handWrites(c, a)
     const again = await restart()
-    const read = places(again)
+    const read = await places(again)
     for (const id of [a, b, c]) expect(placeIn(read, id), id).toEqual(NOWHERE)
   })
 
@@ -307,7 +308,7 @@ describe('D-034 — a chain, a restart and a hand-edited loop', () => {
     // ⚑ a → b → c ends at c: the loop guard is what silences the loop above, not the hand edit.
     handWrites(a, b)
     handWrites(b, c)
-    const ended = places(await restart())
+    const ended = await places(await restart())
     expect(placeIn(ended, a)).toEqual({ standsInFor: [], inItsPlace: drawnOne(c) })
     expect(placeIn(ended, b)).toEqual({ standsInFor: [], inItsPlace: drawnOne(c) })
     expect(sortedIds(placeIn(ended, c).standsInFor)).toEqual(sortedIds([drawnOne(a), drawnOne(b)]))
@@ -317,7 +318,7 @@ describe('D-034 — a chain, a restart and a hand-edited loop', () => {
     // ⛔ c → a closes the loop, and d → a runs into it: none of the four names a stand-in now.
     handWrites(c, a)
     handWrites(d, a)
-    const looped = places(await restart())
+    const looped = await places(await restart())
     for (const id of [a, b, c, d]) expect(placeIn(looped, id), id).toEqual(NOWHERE)
   })
 })

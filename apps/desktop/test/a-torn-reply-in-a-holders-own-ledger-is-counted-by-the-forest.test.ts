@@ -1,5 +1,6 @@
 import { personOpener } from './helpers/person-opens-session'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
+import { forestOf } from './lib/forest-of-host'
 import {
   RecordingSink,
   fixtureProviderConfig,
@@ -36,7 +37,7 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
  * too, under the same `(ledger, ordinal)` key, and hides a fold that lost its counter. A torn reply
  * is met by the fold alone.
  *
- * ⚑ Measured through the host's own door (`theWholeForest`), over real SQLite and real migrations,
+ * ⚑ Measured through the host's own door (`forestReading`), over real SQLite and real migrations,
  * with a PM that gave its worker a piece through the real `give_work`; the clean database and a
  * torn row the fold does not select are the controls.
  */
@@ -136,26 +137,26 @@ describe('a torn reply in a holder’s own ledger is counted by the forest', () 
     ).run(`evt_torn_${type}_${String(ordinal)}`, sessionId, ordinal, type, tick())
   }
 
-  const theForestsTasks = (): number =>
-    host.theWholeForest().nodes.rows.filter((node) => node.node === 'a-task').length
+  const theForestsTasks = async (): Promise<number> =>
+    (await forestOf(host)).nodes.rows.filter((node) => node.node === 'a-task').length
 
   it('⚑ THE CONTROL: on a clean database the forest draws the open work and counts 0 unread rows', async () => {
     await aWorkerHoldingOpenWork()
-    expect(host.theWholeForest().nodes.rowsUnread).toBe(0)
-    expect(theForestsTasks()).toBe(1)
+    expect((await forestOf(host)).nodes.rowsUnread).toBe(0)
+    expect(await theForestsTasks()).toBe(1)
   })
 
   it('🔴 a torn `work_replied` in the holder’s own ledger: the forest ANSWERS, still draws the work, and counts the row', async () => {
     const { worker } = await aWorkerHoldingOpenWork()
-    expect(host.theWholeForest().nodes.rowsUnread).toBe(0)
+    expect((await forestOf(host)).nodes.rowsUnread).toBe(0)
     tearARow(worker, 'work_replied', 90_000)
-    const forest = host.theWholeForest()
+    const forest = await forestOf(host)
     // ⛔ **Met by the holder's fold and nothing else**: `selectPieceEvents` selects the type, and no
     // wait read opens it — so a 1 here is the fold's own counter reaching the walk's set, which is
     // what the forest owes a person whose work has a reply the app could not read.
     expect(forest.nodes.rowsUnread).toBe(1)
     // ⚑ **…and a person's surface is not blank**: the reply is unread, so the work is still drawn.
-    expect(theForestsTasks()).toBe(1)
+    expect(await theForestsTasks()).toBe(1)
     // ⚑ **Three conversations, all drawn**: the one that seeded the worker's profile, the PM, and
     // the worker itself — a torn row in one ledger drops none of them.
     expect(forest.nodes.rows.filter((node) => node.node === 'a-conversation')).toHaveLength(3)
@@ -164,10 +165,10 @@ describe('a torn reply in a holder’s own ledger is counted by the forest', () 
   it('⚑ the same torn row is one row however often it is read, and a second torn reply is a second', async () => {
     const { worker } = await aWorkerHoldingOpenWork()
     tearARow(worker, 'work_replied', 90_000)
-    expect(host.theWholeForest().nodes.rowsUnread).toBe(1)
-    expect(host.theWholeForest().nodes.rowsUnread).toBe(1)
+    expect((await forestOf(host)).nodes.rowsUnread).toBe(1)
+    expect((await forestOf(host)).nodes.rowsUnread).toBe(1)
     tearARow(worker, 'work_replied', 90_001)
-    expect(host.theWholeForest().nodes.rowsUnread).toBe(2)
+    expect((await forestOf(host)).nodes.rowsUnread).toBe(2)
   })
 
   it('⛔ a torn row of a type the piece fold does not select is met by nobody: the count stays 0', async () => {
@@ -176,7 +177,7 @@ describe('a torn reply in a holder’s own ledger is counted by the forest', () 
     // the same torn payload — one fact different, the row's TYPE. ⚠️ A count that rose here would
     // be the forest reading rows it has no business opening.
     tearARow(worker, 'tool_result', 90_000)
-    expect(host.theWholeForest().nodes.rowsUnread).toBe(0)
-    expect(theForestsTasks()).toBe(1)
+    expect((await forestOf(host)).nodes.rowsUnread).toBe(0)
+    expect(await theForestsTasks()).toBe(1)
   })
 })

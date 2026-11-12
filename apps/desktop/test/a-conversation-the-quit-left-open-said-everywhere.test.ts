@@ -86,7 +86,7 @@ describe('§1 · the Team shelf says what the rail says', () => {
 
 /* ================================================================ §2 · the forest */
 
-/** ⚑ One forest node, as `theWholeForest` lists it — a stop's `ended` on it, as above. */
+/** ⚑ One forest node, as `forestReading` lists it — a stop's `ended` on it, as above. */
 const node = (over: Partial<ForestConversation> = {}): ForestConversation => ({
   node: 'a-conversation',
   conversation: 'sess_stopped',

@@ -93,7 +93,7 @@ import type { DocumentForm, DrawnAs, ResourceRole } from './documents'
 import type { RulesBaseline } from './agent-rules'
 import type { InstructionUnread } from './own-instructions'
 import type { OwnNotesReading, OwnNotesWrite, OwnNotesUnread } from './own-notes'
-import type { TheWholeForest } from './the-whole-forest'
+import type { ForestListed, ForestNodesPage, ForestReading, ForestScope } from './the-whole-forest'
 // ⚑ **582 · the `configured` layer's shapes.** ⛔ Type-only, and that module is a LEAF — it imports
 // one type from `who-did-it.ts` and nothing at all from here — so unlike the four edges above there
 // is no cycle to erase in either direction.
@@ -4226,22 +4226,15 @@ export type RuntimeCommand =
    */
   | { kind: 'whatEachConversationIsWaitingOn' }
   /**
-   * Read the whole forest from the person down; see {@link TheWholeForest}.
-   *
-   * ⛔ **No arguments at all, and it is the two verbs above's ruling with one more reason of its
-   * own.** ⚑ The answer is rooted at the PERSON, so there is nothing above it for an argument to
-   * name; a conversation would make it {@link whoCalledWhom}.
-   *
-   * ⚠️ **The BOUND is not on the wire either**, and that is deliberate: `MAX_FOREST_CONVERSATIONS`
-   * is a rule about what may cross this boundary and not a page a caller chooses — `capabilities.ts`'
-   * own sentence. ⛔ A `limit` field here would let a hostile renderer ask for every row, which is
-   * the thing the constant exists to refuse.
-   *
-   * ⛔ **It reads and it offers no act**, on the window wire and on no toolset — a picture of every
-   * conversation in the workspace, across every project, is not a fact this app hands to a
-   * conversation.
+   * One forest reading: the workspace in one window, or the whole top-level tree holding a
+   * conversation — see {@link ForestReading}. A read that offers no act, on the window wire only.
    */
-  | { kind: 'theWholeForest' }
+  | { kind: 'forestReading'; scope: ForestScope }
+  /**
+   * A later page of a forest reading's nodes — see {@link ForestNodesPage}. `drawn` is every
+   * conversation the reading lists, so the page names parents and givers as the reading does.
+   */
+  | { kind: 'forestNodes'; drawn: string[]; conversations: string[] }
   /**
    * 🔴 **D-018 · the memory each running conversation's provider process holds** — see
    * {@link ProcessMemory}.
@@ -4957,8 +4950,8 @@ export interface RuntimeCommandResults {
    * {@link WhatEachConversationIsWaitingOn}.
    */
   whatEachConversationIsWaitingOn: WhatEachConversationIsWaitingOn
-  /** Every conversation this app placed, its parent and its work (637) — see {@link TheWholeForest}. */
-  theWholeForest: TheWholeForest
+  forestReading: ForestReading
+  forestNodes: ForestNodesPage
   /** The memory each running conversation's process holds (D-018) — see {@link ProcessMemory}. */
   processMemory: ProcessMemory
   /** One page of the library: our sessions and the user's own, merged (047). */
@@ -5600,21 +5593,22 @@ export interface RuntimeBridge {
    */
   whatEachConversationIsWaitingOn(): Promise<WhatEachConversationIsWaitingOn>
   /**
-   * 🔴 **The whole forest, from the person down** (637) — every conversation this app placed, where
-   * each one hangs, and the work each one holds, as of one stated moment.
+   * One forest reading, its counts, members, context and first page — see {@link ForestReading}.
+   * It moves when a conversation is created, spawned or updated and when work is given or closed,
+   * so a surface drawing an age beside a DOING word draws {@link WhatIsBeingDone}'s stamp.
    *
-   * ⛔ **A poll, and the slowest-moving of the three population reads.** It moves when a
-   * conversation is created or spawned and when work is given or closed — never on a timer — so a
-   * surface drawing an age beside a DOING word draws {@link WhatIsBeingDone}'s stamp and not this
-   * one.
-   *
-   * ⚠️ **Join it to its two neighbours on the CONVERSATION id and never on the identity slug.**
+   * Join it to its two neighbours on the conversation id and never on the identity slug:
    * {@link ConversationAtWork.identity} is the launcher's raw spelling and
    * `ForestConversation.identity` is the identity's folded one, and the two can differ on an
    * identity a person first launched with a capital letter — see that field, where the measurement
    * is.
    */
-  theWholeForest(): Promise<TheWholeForest>
+  forestReading(scope: ForestScope): Promise<ForestReading>
+  /**
+   * A later page of a reading's nodes: at most `FOREST_PAGE` of its `unfolded` conversations — see
+   * {@link ForestNodesPage}.
+   */
+  forestNodes(reading: ForestListed, conversations: readonly string[]): Promise<ForestNodesPage>
   /**
    * 🔴 **D-018 · the memory each running conversation's provider process holds** — see
    * {@link ProcessMemory}. ⚑ Read by main off the pids its adapters hold, one `ps` for all of

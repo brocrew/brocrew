@@ -5,6 +5,7 @@ import {
   syntheticProviderHome,
   neutralHostDeps,
 } from './lib/host-fixture'
+import { forestOf } from './lib/forest-of-host'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -542,7 +543,7 @@ describe('642 · who can I talk to', () => {
       // conversation stopped is a process fact a person no longer reads, `05` rule 5). ⛔ So the
       // crash's child and the person's closed one are drawn ALIKE — both nodes there, neither
       // running, and neither carrying a word about how it stopped.
-      const nodes = host.theWholeForest().nodes.rows
+      const nodes = (await forestOf(host)).nodes.rows
       const nodeOf = (id: string) =>
         nodes.find((one) => one.node === 'a-conversation' && one.conversation === id)
       for (const stopped of [child, closed]) {

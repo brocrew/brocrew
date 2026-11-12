@@ -1,5 +1,6 @@
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { forestOf } from './lib/forest-of-host'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -167,18 +168,16 @@ describe('a conversation row in the forest carries no name of its own', () => {
       return id
     }
 
-    const rowFor = (id: string): ForestConversation => {
-      const found = host
-        .theWholeForest()
-        .nodes.rows.find(
-          (row): row is ForestConversation =>
-            row.node === 'a-conversation' && row.conversation === id,
-        )
+    const rowFor = async (id: string): Promise<ForestConversation> => {
+      const found = (await forestOf(host)).nodes.rows.find(
+        (row): row is ForestConversation =>
+          row.node === 'a-conversation' && row.conversation === id,
+      )
       if (found === undefined) throw new Error(`no node for ${id}`)
       return found
     }
 
-    it('🔴 an identity that HAS a display name still draws only its slug in the conversation row', () => {
+    it('🔴 an identity that HAS a display name still draws only its slug in the conversation row', async () => {
       const named = open('sess_named', 'Dev')
       const plain = open('sess_plain', 'worker')
       // ⚑ **A person's own name for one identity** — the column a second answer would read.
@@ -187,7 +186,7 @@ describe('a conversation row in the forest carries no name of its own', () => {
         .run()
       expect(changed.changes).toBe(1)
 
-      const row = rowFor(named)
+      const row = await rowFor(named)
       // ⛔ **The row says WHO by the folded slug and by nothing else** — no key of it is a name, and
       // no value of it is the name a person chose.
       expect(row.identity).toBe('dev')
@@ -202,8 +201,8 @@ describe('a conversation row in the forest carries no name of its own', () => {
         .prepare(`SELECT display_name AS name FROM agent_identity WHERE slug = 'dev'`)
         .get() as { name: string | null }
       expect(stored.name).toBe('Nadia the Planner')
-      expect(rowFor(plain).identity).toBe('worker')
-      expect(Object.keys(rowFor(plain))).toEqual(Object.keys(row))
+      expect((await rowFor(plain)).identity).toBe('worker')
+      expect(Object.keys(await rowFor(plain))).toEqual(Object.keys(row))
     })
   })
 })

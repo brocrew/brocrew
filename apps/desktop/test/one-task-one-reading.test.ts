@@ -17,7 +17,7 @@ import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { aPersonOwesAnAnswerIn } from '../src/shared/questions'
-import { MAX_FOREST_CONVERSATIONS } from '../src/shared/the-whole-forest'
+import { forestOf, storeForestOf } from './lib/forest-of-host'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import {
   RecordingSink,
@@ -137,20 +137,19 @@ describe('one task, one reading, in every place it is drawn', () => {
     return { giver, holder, piece: piece.piece, surface }
   }
 
-  const readingsOf = (
+  const readingsOf = async (
     giver: string,
     holder: string,
     piece: string,
-  ): Record<string, string | undefined> => ({
+  ): Promise<Record<string, string | undefined>> => ({
     'the giver’s drawer': host
       .whoCalledWhom(giver)
       .workGivenOut.rows.find((one) => one.piece === piece)?.state,
     'the receiver’s line': host
       .whoCalledWhom(holder)
       .workTakenIn.rows.find((one) => one.piece === piece)?.state,
-    'the Team forest': host
-      .theWholeForest()
-      .nodes.rows.flatMap((one) => (one.node === 'a-task' ? [one.work] : []))
+    'the Team forest': (await forestOf(host)).nodes.rows
+      .flatMap((one) => (one.node === 'a-task' ? [one.work] : []))
       .find((one) => one.piece === piece)?.state,
     'the agent’s list_tasks': host.pieceBoard(giver).gave.find((one) => one.piece === piece)?.state,
     'the person’s Work tab': store.workGivenOutBy(giver).rows.find((one) => one.piece === piece)
@@ -181,7 +180,7 @@ describe('one task, one reading, in every place it is drawn', () => {
       const { giver, holder, piece } = await aTaskGivenOut()
       expect(store.piecesOwnedBy(holder).find((one) => one.piece === piece)?.state).toBe('working')
       const before = (db.prepare('SELECT total_changes() AS n').get() as { n: number }).n
-      expect(readingsOf(giver, holder, piece)).toEqual(everywhere('waiting-on-a-person'))
+      expect(await readingsOf(giver, holder, piece)).toEqual(everywhere('waiting-on-a-person'))
       expect((db.prepare('SELECT total_changes() AS n').get() as { n: number }).n).toBe(before)
     })
 
@@ -200,7 +199,7 @@ describe('one task, one reading, in every place it is drawn', () => {
         'the holder’s turn to end',
       )
       expect(aPersonOwesAnAnswerIn(store.routedRequestsOf(holder))).toBe(false)
-      expect(readingsOf(giver, holder, piece)).toEqual(everywhere('stalled'))
+      expect(await readingsOf(giver, holder, piece)).toEqual(everywhere('stalled'))
     })
   })
 })
@@ -320,7 +319,7 @@ describe('one wait read per holder, whatever it holds', () => {
       .run('evt_unkept', holder, nextOrdinal(holder), '{not json', tick())
     expect(armed, 'the questions read was never prepared through the probe').toBe(1)
 
-    const forest = store.everyPlacedConversation(MAX_FOREST_CONVERSATIONS)
+    const forest = storeForestOf(store)
     expect(
       forest.rows
         .flatMap((node) => (node.node === 'a-task' ? [node.work] : []))
@@ -344,14 +343,14 @@ describe('one wait read per holder, whatever it holds', () => {
     const holder = conversation('sess_holder', 'worker', giver)
     const elsewhere = conversation('sess_elsewhere', 'worker', giver)
     given(holder, giver, 'work_1')
-    expect(store.everyPlacedConversation(MAX_FOREST_CONVERSATIONS).rowsUnread).toBe(0)
+    expect(storeForestOf(store).rowsUnread).toBe(0)
     raw
       .prepare(
         `INSERT INTO events (id, session_id, generation, ordinal, type, payload, created_at)
          VALUES (?, ?, 0, ?, 'work_given', ?, ?)`,
       )
       .run('evt_torn', elsewhere, 900, '{not json', tick())
-    const forest = store.everyPlacedConversation(MAX_FOREST_CONVERSATIONS)
+    const forest = storeForestOf(store)
     expect(forest.rowsUnread).toBe(1)
     expect(
       forest.rows.flatMap((node) => (node.node === 'a-task' ? [node.work.piece] : [])),
@@ -370,7 +369,7 @@ describe('one wait read per holder, whatever it holds', () => {
          VALUES (?, ?, 0, ?, 'user_input_request', ?, ?)`,
       )
       .run('evt_torn_question', holder, nextOrdinal(holder), '{not json', tick())
-    const forest = store.everyPlacedConversation(MAX_FOREST_CONVERSATIONS)
+    const forest = storeForestOf(store)
     expect(forest.rowsUnread).toBe(1)
     expect(forest.rows.some((node) => node.node === 'a-task')).toBe(true)
     const taken = store.workThisOneWasGiven(holder)

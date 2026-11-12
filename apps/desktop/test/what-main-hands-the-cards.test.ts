@@ -1,5 +1,6 @@
 import { waitFor } from './lib/f093-host'
 import type { MessageSentEvent, TranscriptEvent } from '../src/shared/conversation-events'
+import { forestOf } from './lib/forest-of-host'
 import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -557,7 +558,7 @@ describe('671 · what main hands the cards', () => {
     ): Promise<Record<string, number>> => {
       const listed = await call(pmTools, 'list_tasks', {})
       return {
-        forest: host.theWholeForest().nodes.rowsUnread,
+        forest: (await forestOf(host)).nodes.rowsUnread,
         line: host.whoCalledWhom(worker).workTakenIn.rowsUnread,
         drawer: host.whoCalledWhom(pm).workGivenOut.rowsUnread,
         listTasks: listed.structured.rows_unread as number,
@@ -579,7 +580,7 @@ describe('671 · what main hands the cards', () => {
         stalled: 1,
       })
       // ⚑ **…and a person's surface is not blank**: the forest still draws the work.
-      const forest = host.theWholeForest()
+      const forest = await forestOf(host)
       expect(forest.nodes.rows.filter((node) => node.node === 'a-task')).toHaveLength(1)
       expect(host.whoCalledWhom(pm).workGivenOut.rows).toHaveLength(1)
       // 🔴 **list_tasks SAYS it, to the model, in its words** — not only in a log.

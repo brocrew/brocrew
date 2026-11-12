@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { forestOf } from './lib/forest-of-host'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { claudeProjectDirName } from '@brobot2/runtime/claude'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
@@ -32,10 +33,10 @@ const listed = (): string[] => [
   ...host.unresumableSessions().map(({ sessionId }) => sessionId),
 ]
 
-const forest = (): string[] =>
-  host
-    .theWholeForest()
-    .nodes.rows.flatMap((row) => (row.node === 'a-conversation' ? [row.conversation] : []))
+const forest = async (): Promise<string[]> =>
+  (await forestOf(host)).nodes.rows.flatMap((row) =>
+    row.node === 'a-conversation' ? [row.conversation] : [],
+  )
 
 /** A helper row below `parent`, as a give makes one, in the same agent's folder. */
 function aHelperOf(parent: string, id: string): string {
@@ -55,7 +56,7 @@ describe('archiving a conversation', () => {
     const root = await world.open(host, 'claude', 'pm')
     const helper = aHelperOf(root, 'helper_1')
     expect(listed()).toEqual(expect.arrayContaining([root, helper]))
-    expect(forest()).toEqual(expect.arrayContaining([root, helper]))
+    expect(await forest()).toEqual(expect.arrayContaining([root, helper]))
 
     expect(await host.archiveConversation(root)).toEqual({
       done: true,
@@ -63,8 +64,8 @@ describe('archiving a conversation', () => {
     })
     expect(listed()).not.toContain(root)
     expect(listed()).not.toContain(helper)
-    expect(forest()).not.toContain(root)
-    expect(forest()).not.toContain(helper)
+    expect(await forest()).not.toContain(root)
+    expect(await forest()).not.toContain(helper)
     // Kept: its records are all there, and All conversations lists it, marked.
     expect(world.store.recordedOne(root)).not.toBeNull()
     const library = await host.listLibrary()

@@ -161,7 +161,8 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   // conversation this app is RUNNING and what it is waiting on, and a set the caller named would
   // bound the answer by the question it happened to ask.
   whatEachConversationIsWaitingOn: { kind: 'whatEachConversationIsWaitingOn' },
-  theWholeForest: { kind: 'theWholeForest' },
+  forestReading: { kind: 'forestReading', scope: { is: 'the-workspace', window: 'day' } },
+  forestNodes: { kind: 'forestNodes', drawn: [SESSION], conversations: [SESSION] },
   // D-018 · no arguments, for `whatIsBeingDone`'s reason: the answer is every conversation this app
   // is RUNNING, by the pid of the process it started.
   processMemory: { kind: 'processMemory' },

@@ -1,5 +1,6 @@
 import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
+import { forestOf, THE_WHOLE_WORKSPACE } from './lib/forest-of-host'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -171,7 +172,7 @@ describe('a conversation is found by its agent and not by its directory name', (
     rmSync(workspace, { recursive: true, force: true })
   })
 
-  it('a conversation is placed by its identity: one with no directory name is placed, and one with no identity is held by no agent', () => {
+  it('a conversation is placed by its identity: one with no directory name is placed, and one with no identity is held by no agent', async () => {
     // Premise: the fixture separates the columns, or nothing below means anything.
     expect(rowCount('1 = 1')).toBe(5)
     expect(rowCount('profile_id IS NULL')).toBe(2)
@@ -180,7 +181,8 @@ describe('a conversation is found by its agent and not by its directory name', (
     expect(rawProfileId('sess_pre')).toBeNull()
     expect(rawProfileId('sess_swept')).toBeNull()
 
-    const forest = host.theWholeForest()
+    const forest = await forestOf(host)
+    const counted = (await host.forestReading(THE_WHOLE_WORKSPACE)).counts
 
     // The set first, so a missing node fails as a set mismatch and not as a helper throw.
     expect(
@@ -195,9 +197,9 @@ describe('a conversation is found by its agent and not by its directory name', (
     // identity is held by no agent. By profile_id these would be 3 and 2.
     expect(forest.conversations).toBe(4)
     expect(forest.heldByNoAgent).toBe(1)
-    expect(store.placedConversations()).toBe(4)
+    expect(counted?.all).toBe(4)
     expect(store.conversationsHeldByNoAgent()).toBe(1)
-    expect(store.placedConversations() + store.conversationsHeldByNoAgent()).toBe(rowCount('1 = 1'))
+    expect((counted?.all ?? 0) + store.conversationsHeldByNoAgent()).toBe(rowCount('1 = 1'))
   })
 
   it('the digest window reads placed conversations by identity, so a pre-profile row is in it and a conversation no agent holds is not', () => {
@@ -216,7 +218,7 @@ describe('a conversation is found by its agent and not by its directory name', (
     expect(host.digest(FROM, TO).heldByNoAgent).toBe(1)
   })
 
-  it("every reader answers the identity's folded slug and never the directory's spelling", () => {
+  it("every reader answers the identity's folded slug and never the directory's spelling", async () => {
     // The fixture really does separate the two spellings.
     expect(rawProfileId('sess_mixed')).toBe('Worker')
     expect(store.conversationBinding('sess_pm')?.identity).toBe('project-manager')
@@ -236,7 +238,7 @@ describe('a conversation is found by its agent and not by its directory name', (
     // The negative, over everything a reader hands out: the directory's spelling reaches no answer,
     // and the identity's does.
     const text = JSON.stringify({
-      forest: host.theWholeForest(),
+      forest: await forestOf(host),
       children,
       breadcrumb: host.whoCalledWhom('sess_mixed'),
       binding: store.conversationBinding('sess_mixed'),

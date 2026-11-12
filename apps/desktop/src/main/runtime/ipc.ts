@@ -1,6 +1,7 @@
 import { resolveProviderLaunchSchema } from './provider-launch-schema'
 import { SkillsRequest } from '../../shared/skills-window'
 import { LINK_TARGET_LIMIT } from '../../shared/link-resolution'
+import { FOREST_PAGE, FOREST_WINDOWS } from '../../shared/the-whole-forest'
 import { MOVE_WORDS } from '../../shared/move-request'
 import type { IpcMainInvokeEvent, WebContents } from 'electron'
 import { isAbsolute } from 'node:path'
@@ -1005,13 +1006,18 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
   // it by the question it happened to ask. ⛔ Nothing on the wire for `wire-bounds.test.ts` to
   // bound, and no array for a hostile renderer to make unbounded.
   z.object({ kind: z.literal('whatEachConversationIsWaitingOn') }),
-  // ⚑ **637 · no fields at all, and it is the two lines above's ruling with one more reason.** The
-  // answer is rooted at the PERSON, so there is nothing above it for an argument to name.
-  // ⛔ **The BOUND is deliberately not a field**: `MAX_FOREST_CONVERSATIONS` is a rule about what
-  // may cross this boundary, and a `limit` here would let a hostile renderer ask for every row —
-  // which is the thing the constant exists to refuse. ⚠️ Nothing on the wire for
-  // `wire-bounds.test.ts` to bound, and no array for a caller to make unbounded.
-  z.object({ kind: z.literal('theWholeForest') }),
+  z.object({
+    kind: z.literal('forestReading'),
+    scope: z.discriminatedUnion('is', [
+      z.object({ is: z.literal('the-workspace'), window: z.enum(FOREST_WINDOWS) }),
+      z.object({ is: z.literal('the-tree-of'), conversation: sessionId }),
+    ]),
+  }),
+  z.object({
+    kind: z.literal('forestNodes'),
+    drawn: z.array(sessionId),
+    conversations: z.array(sessionId).min(1).max(FOREST_PAGE),
+  }),
   // ⚑ **D-018 · no fields at all, and it is `whatIsBeingDone`'s ruling**: the answer is every
   // conversation this app is RUNNING, and the pids are main's own. ⛔ A pid on the wire would be a
   // renderer naming a process for main to read — the one thing this read must never do.
@@ -1832,11 +1838,10 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // MAP that `closeAll` is emptying, AND it opens three ledgers per conversation — so during a quit
   // it would be a picture of a teardown bought with reads the app is shutting down around.
   whatEachConversationIsWaitingOn: 'refused',
-  // ⛔ **637 · `refused`, for the line above's reason and one of its own.** ⚑ It walks the SLOT MAP
-  // that `closeAll` is emptying for `running`, AND it folds one ledger per drawn conversation — so
-  // during a quit it would be the most expensive picture this app can take, of a teardown, bought
-  // with reads the app is shutting down around.
-  theWholeForest: 'refused',
+  // Refused for the line above's reason: they walk the slot map `closeAll` is emptying, and fold
+  // a ledger per drawn conversation, a costly picture of a teardown.
+  forestReading: 'refused',
+  forestNodes: 'refused',
   // ⛔ **D-018 · `refused`, for `whatIsBeingDone`'s reason**: it walks the SLOT MAP that `closeAll`
   // is emptying, and would fork a `ps` about the very processes the quit is stopping. ⚠️ And the
   // window that asked is going away: a figure for a process on its way out is worth nothing.
@@ -2508,14 +2513,14 @@ export async function executeRuntimeCommand(
       return host.readForWindow(() => {
         return host.whatEachConversationIsWaitingOn()
       }) satisfies Answer<'whatEachConversationIsWaitingOn'>
-    case 'theWholeForest':
-      // ⛔ **A read, and it takes no sink and no owner** (637) — `whatEachConversationIsWaitingOn`'s
-      // note one verb over, and the same three clauses. ⚠️ **No `requireAPerson`**: it names no
-      // conversation, so `203`'s owner check has nothing to be about, and it offers no act.
-      // ⚑ **Synchronous, and load-bearing for the same reason**: `TheWholeForest.readAt` is one
-      // completion point over every node, and `better-sqlite3` runs on this thread — so nothing can
-      // be written between two of the ledgers this folds.
-      return host.readForWindow(() => host.theWholeForest()) satisfies Answer<'theWholeForest'>
+    case 'forestReading':
+      // A read that takes no sink and no owner, and offers no act: a tree's conversation is only
+      // what it is drawn around. The worker reads it, so it awaits rather than holding this thread.
+      return host.forestReading(command.scope) satisfies Promise<Answer<'forestReading'>>
+    case 'forestNodes':
+      return host.forestNodes(command.drawn, command.conversations) satisfies Promise<
+        Answer<'forestNodes'>
+      >
     case 'processMemory':
       // ⛔ **A read, and it takes no sink and no owner** (D-018) — `whatIsBeingDone`'s note. ⚠️ **No
       // `requireAPerson`**: it names no conversation, so `203`'s owner check has nothing to be

@@ -29,7 +29,7 @@ import type {
 import type { ResolvedMessageLink } from '../../src/renderer/src/lib/message-links'
 import { idlePanel } from './sub-agents-idle-fixture'
 import { drawnReady } from './drawn'
-import { conv, forestDrawn, readingOf } from './forest-fixture'
+import { conv, forestOf, forestDrawn, readingOf } from './forest-fixture'
 import { mount, META } from './harness'
 
 // Register the fixture's mocks before loading the root's composable imports.
@@ -1235,4 +1235,19 @@ it('reads the full containing tree only when the conversation Graph tab is opene
   await expect.poll(() => m.all('forest-row-august-helper').length).toBe(1)
   expect(m.all('forest-window-day')).toHaveLength(0)
   expect(m.q('forest-drawn').textContent).toBe('2 conversations')
+})
+
+
+it('workspace graph windows preserve the independent conversation relationship metadata', async () => {
+  screenFacts().update({ forest: forestOf([conv('older-holder', null)]) })
+  const remembered = useWhoCalledWhom().forest.value
+  runtime.forestReading.mockImplementation(async (scope) => readingOf([conv('recent-holder', null)], scope))
+  const m = mount(RuntimeScreen, {})
+  try {
+    m.q('rail-team').click()
+    await expect.poll(() => m.all('forest-drawn')[0]?.textContent).toBe('1 conversation')
+    expect(useWhoCalledWhom().forest.value).toBe(remembered)
+  } finally {
+    screenFacts().update({ forest: null })
+  }
 })

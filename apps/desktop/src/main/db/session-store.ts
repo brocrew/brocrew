@@ -159,6 +159,7 @@ import {
   type TiedOutside,
   type TreeDeleted,
 } from './conversation-tree'
+import { forestListing, type ForestListing, type ForestListingAsked } from './forest-listing'
 import { FOLD_EVENT_TYPES, FOLD_TERM } from './fold-index'
 import {
   ensureQuestionCopies,
@@ -297,7 +298,7 @@ export type ForestedConversation = Omit<
   'running' | 'standsInFor' | 'inItsPlace'
 >
 
-type ForestedNode = ForestedConversation | ForestTask
+export type ForestedNode = ForestedConversation | ForestTask
 
 interface ConversationBinding {
   /** Always present when this app holds the row — the column is `NOT NULL`. */
@@ -1217,8 +1218,17 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead {
   /** The same vocabulary, materialized only inside this exact window and never cached. */
   activityWindow(from: number, to: number): LedgerWalk<DigestRow>
   conversationsHeldByNoAgent(): number
-  everyPlacedConversation(limit: number, hidden?: readonly string[]): LedgerWalk<ForestedNode>
-  placedConversations(hidden?: readonly string[]): number
+  /** One forest reading's conversations, read structurally (`forest-listing.ts`). */
+  forestListing(asked: ForestListingAsked): ForestListing
+  /**
+   * The nodes of the asked conversations that are still in a reading, in the order asked, each
+   * parent and giver named as drawn when `drawn` holds it; the others asked are `gone`.
+   */
+  forestNodesOf(
+    conversations: readonly string[],
+    drawn: ReadonlySet<string>,
+    hidden: readonly string[],
+  ): { readonly nodes: LedgerWalk<ForestedNode>; readonly gone: readonly string[] }
   piecesGivenBy(sessionId: string, unread?: RowsUnread): readonly PieceRow[]
   workGivenOutBy(sessionId: string): LedgerWalk<WorkGivenOut>
   spawnedBy(sessionId: string): LedgerWalk<SpawnedConversation>
@@ -1496,8 +1506,18 @@ export const NULL_SESSION_STORE: SessionStore = {
   digestWindow: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
   activityWindow: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
   conversationsHeldByNoAgent: () => 0,
-  everyPlacedConversation: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
-  placedConversations: () => 0,
+  forestListing: () => ({
+    counts: null,
+    root: null,
+    total: 0,
+    admitted: [],
+    context: [],
+    behind: [],
+  }),
+  forestNodesOf: (conversations) => ({
+    nodes: { rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 },
+    gone: [...conversations],
+  }),
   workGivenOutBy: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
   spawnedBy: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
   conversationTree: () => [],
@@ -3268,27 +3288,59 @@ export function createSessionStore(
         AND CASE WHEN json_valid(payload) THEN json_type(payload, @path) END = 'array'
       ORDER BY ordinal DESC LIMIT 1`,
   )
-  const selectEveryPlacedConversation = db.prepare(
+  const selectPlacedConversationsAmong = db.prepare(
     `SELECT provider_session.id AS id, identity.slug AS profile_slug,
             provider_session.provider AS provider, provider_session.status AS status,
             provider_session.created_at AS created_at,
             provider_session.updated_at AS updated_at,
             provider_session.parent_session_id AS parent_session_id
-       FROM provider_session
+       FROM json_each(@ids) asked
+       JOIN provider_session ON provider_session.id = asked.value
        JOIN agent_identity identity ON identity.id = provider_session.agent_identity_id
-      ORDER BY provider_session.updated_at DESC, provider_session.id DESC
-      LIMIT ?`,
+      WHERE provider_session.id NOT IN (SELECT value FROM json_each(@hidden))
+      ORDER BY asked.key`,
   )
+
+  /** Each placed conversation's node with the pieces it holds; parents and givers named against `drawn`. */
+  function forestNodesAmong(
+    placed: readonly ForestSessionRow[],
+    drawn: ReadonlySet<string>,
+  ): LedgerWalk<ForestedNode> {
+    const unread = rowsUnreadOnce()
+    const waiting = oneWaitReadPerHolder(unread)
+    const identityOfGiver = identitiesOnce()
+    return walkLedgers(
+      'every-conversation-this-app-placed',
+      placed,
+      (sessionId, noteSkip, row) => {
+        return [
+          {
+            node: 'a-conversation',
+            conversation: row.id,
+            under: underWhat(row.parent_session_id, drawn),
+            identity: row.profile_slug,
+            provider: row.provider as Provider,
+            status: row.status as SessionStatus,
+            startedAt: row.created_at,
+            updatedAt: row.updated_at,
+          },
+          ...composeWhatEachPieceIsWaitingOn(piecesOfSession(sessionId, noteSkip), waiting).map(
+            (piece) => ({
+              node: 'a-task' as const,
+              under: { is: 'a-conversation' as const, conversation: row.id },
+              givenBy: underWhat(piece.giver, drawn),
+              work: workEdge(piece, row.profile_slug, identityOfGiver(piece.giver)),
+            }),
+          ),
+        ]
+      },
+      unread,
+    )
+  }
 
   const countPlacedConversations = db.prepare(
     `SELECT count(*) AS n FROM provider_session WHERE agent_identity_id IS NOT NULL`,
   )
-  /** How many of a list of conversations are placed: the ones a person's lists leave out. */
-  const countPlacedAmong = db.prepare(
-    `SELECT count(*) AS n FROM provider_session
-      WHERE agent_identity_id IS NOT NULL AND id IN (SELECT value FROM json_each(?))`,
-  )
-
   const selectDigestWindow = db.prepare(
     `SELECT e.session_id AS session_id, e.ordinal AS ordinal, e.payload AS payload,
             e.created_at AS created_at
@@ -8865,49 +8917,20 @@ export function createSessionStore(
       return (countConversationsHeldByNoAgent.get() as { n: number }).n
     },
 
-    placedConversations(hidden = []) {
-      const placed = (countPlacedConversations.get() as { n: number }).n
-      if (hidden.length === 0) return placed
-      return placed - (countPlacedAmong.get(JSON.stringify(hidden)) as { n: number }).n
+    forestListing(asked) {
+      return forestListing(db, asked)
     },
 
-    everyPlacedConversation(limit, hidden = []) {
-      // The hidden are left out after the read, which reads as many more as there are of them.
-      const hiding = new Set(hidden)
-      const placed = (selectEveryPlacedConversation.all(limit + hiding.size) as ForestSessionRow[])
-        .filter((row) => !hiding.has(row.id))
-        .slice(0, limit)
-      const drawn = new Set(placed.map((row) => row.id))
-      const unread = rowsUnreadOnce()
-      const waiting = oneWaitReadPerHolder(unread)
-      const identityOfGiver = identitiesOnce()
-      return walkLedgers(
-        'every-conversation-this-app-placed',
-        placed,
-        (sessionId, noteSkip, row) => {
-          return [
-            {
-              node: 'a-conversation',
-              conversation: row.id,
-              under: underWhat(row.parent_session_id, drawn),
-              identity: row.profile_slug,
-              provider: row.provider as Provider,
-              status: row.status as SessionStatus,
-              startedAt: row.created_at,
-              updatedAt: row.updated_at,
-            },
-            ...composeWhatEachPieceIsWaitingOn(piecesOfSession(sessionId, noteSkip), waiting).map(
-              (piece) => ({
-                node: 'a-task' as const,
-                under: { is: 'a-conversation' as const, conversation: row.id },
-                givenBy: underWhat(piece.giver, drawn),
-                work: workEdge(piece, row.profile_slug, identityOfGiver(piece.giver)),
-              }),
-            ),
-          ]
-        },
-        unread,
-      )
+    forestNodesOf(conversations, drawn, hidden) {
+      const placed = selectPlacedConversationsAmong.all({
+        ids: JSON.stringify(conversations),
+        hidden: JSON.stringify(hidden),
+      }) as ForestSessionRow[]
+      const found = new Set(placed.map((row) => row.id))
+      return {
+        nodes: forestNodesAmong(placed, drawn),
+        gone: conversations.filter((id) => !found.has(id)),
+      }
     },
 
     routedRequestsOf(sessionId, unread) {

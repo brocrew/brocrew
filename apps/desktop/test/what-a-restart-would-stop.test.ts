@@ -159,4 +159,40 @@ describe('what a restart of this app would stop', () => {
     await say(one, IDLE)
     expect(host.whatARestartWouldStop()).toEqual([])
   })
+
+  /** The conversations the workspace's Active window draws, checked against its own count. */
+  const activeNow = async (): Promise<readonly string[]> => {
+    const reading = await host.forestReading({ is: 'the-workspace', window: 'active' })
+    expect(reading.counts?.active).toBe(reading.members.total)
+    return reading.members.admitted
+  }
+
+  it('a turn running is active now, and a conversation at rest is not', async () => {
+    const one = await open()
+    const resting = await open()
+    expect(await activeNow()).toEqual([])
+    await host.send(one, 'do the thing', window)
+    await say(one, WORKING)
+    expect(await activeNow()).toEqual([one])
+    await say(one, { type: 'turn', state: 'completed' } as RuntimeEvent)
+    await say(one, IDLE)
+    expect(await activeNow()).toEqual([])
+    expect(await activeNow()).not.toContain(resting)
+  })
+
+  it('a turn waiting on a person is not active now, though a restart would still stop it', async () => {
+    const { sessionId: asking } = await host.createSession(
+      { provider: 'claude', cwd: userData, profileId: 'alice', approvalMode: 'ask' },
+      window,
+    )
+    await host.send(asking, 'run the thing', window)
+    await waitFor(
+      () => host.whatARestartWouldStop().some((row) => row.waitingOnAPerson),
+      'the provider to ask a person',
+    )
+    expect(await activeNow()).toEqual([])
+    expect(host.whatARestartWouldStop()).toEqual([
+      expect.objectContaining({ conversation: asking, turnRunning: true, waitingOnAPerson: true }),
+    ])
+  })
 })

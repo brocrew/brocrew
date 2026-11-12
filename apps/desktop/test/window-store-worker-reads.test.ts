@@ -31,6 +31,7 @@ import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { aLibraryHost } from './helpers/files-library-fixture'
 import { joinLiveHosts } from '../src/main/runtime/live-hosts'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
+import type { ForestReading } from '../src/shared/the-whole-forest'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 const opening = 'Composed by BroCrew for this conversation at this launch:'
@@ -228,9 +229,12 @@ describe('canonical window worker folds and independent live-store reads', () =>
     }
   })
 
-  it('does not silently return a partial answer when materialization exceeds its bound', () => {
+  it('returns a complete lead larger than the former reply budget', () => {
     row('alpha', 'user_turn', { sent: opening + 'x'.repeat(5 * 1024 * 1024) })
-    expect(() => engine.read(query)).toThrow(WindowReadUnavailable)
+    expect(engine.read(query)).toEqual({
+      kind: 'leads',
+      rows: store.threadLeadRows?.('alpha', opening, query.before, query.historicalOpening),
+    })
     expect(routesMatch().questions.rows).toHaveLength(1)
   })
 
@@ -832,7 +836,7 @@ describe('canonical window worker folds and independent live-store reads', () =>
 
   describe('a read the worker does not serve is answered on the main thread', () => {
     const said = (): string[] => vi.mocked(console.warn).mock.calls.map((call) => String(call[0]))
-    const theEightReads = [
+    const theSevenReads = [
       'listResumable',
       'listUnresumable',
       'questionsForAPerson',
@@ -840,7 +844,6 @@ describe('canonical window worker folds and independent live-store reads', () =>
       'readWorkspace',
       'whatIsBeingDone',
       'whatEachConversationIsWaitingOn',
-      'theWholeForest',
     ] as const
     /** An answer without the moment it was read, which two reads never share. */
     const unstamped = (answer: unknown): unknown => {
@@ -952,7 +955,7 @@ describe('canonical window worker folds and independent live-store reads', () =>
       expect(said().some((line) => line.startsWith('window read answered'))).toBe(false)
     })
 
-    it.each(theEightReads)(
+    it.each(theSevenReads)(
       '%s answers on the main thread while the worker is gone',
       async (kind) => {
         const read = vi.fn(async (): Promise<WindowReadResult> => {
@@ -966,6 +969,52 @@ describe('canonical window worker folds and independent live-store reads', () =>
         expect(read).toHaveBeenCalledOnce()
       },
     )
+
+    const workspace = { is: 'the-workspace', window: 'all' } as const
+    /** A reading without the moments it was taken at, which two reads never share. */
+    const unclocked = ({ readAt, measuredFrom, ...rest }: ForestReading) => {
+      void readAt
+      void measuredFrom
+      return rest
+    }
+
+    it('a forest reading and its page are the worker’s, and read as a host with no worker reads them', async () => {
+      const { host } = hostWith({
+        read: async (asked) => engine.read(asked),
+        close: async () => {},
+      })
+      const { host: direct } = hostWith()
+      const reading = await host.forestReading(workspace)
+      expect([...reading.members.admitted].sort()).toEqual(['alpha', 'beta'])
+      expect(unclocked(reading)).toEqual(unclocked(await direct.forestReading(workspace)))
+      const page = await host.forestNodes(['alpha', 'beta'], ['beta'])
+      const { readAt, ...rest } = await direct.forestNodes(['alpha', 'beta'], ['beta'])
+      void readAt
+      expect({ ...page, readAt: undefined }).toEqual({ ...rest, readAt: undefined })
+      expect(said().some((line) => line.startsWith('window read answered'))).toBe(false)
+    })
+
+    it('a forest read the worker missed is refused, and folds nothing on the main thread', async () => {
+      const read = vi.fn(async (): Promise<WindowReadResult> => {
+        throw new WindowReadUnavailable()
+      })
+      const { host } = hostWith({ read, close: async () => {} })
+      const listed = vi.spyOn(store, 'forestListing')
+      const folded = vi.spyOn(store, 'forestNodesOf')
+      await expect(
+        executeRuntimeCommand(host, sink, { kind: 'forestReading', scope: workspace }),
+      ).rejects.toBeInstanceOf(WindowReadUnavailable)
+      await expect(
+        executeRuntimeCommand(host, sink, {
+          kind: 'forestNodes',
+          drawn: ['alpha'],
+          conversations: ['alpha'],
+        }),
+      ).rejects.toBeInstanceOf(WindowReadUnavailable)
+      expect(listed).not.toHaveBeenCalled()
+      expect(folded).not.toHaveBeenCalled()
+      expect(said().some((line) => line.startsWith('window read answered'))).toBe(false)
+    })
 
     it('says each cause with its count at most once a minute, and nothing the answer holds', async () => {
       let clock = 1_000_000

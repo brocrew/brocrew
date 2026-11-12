@@ -1,5 +1,6 @@
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { forestOf } from './lib/forest-of-host'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -424,13 +425,13 @@ describe('711 · a notice that cannot be true is replaced', () => {
        * ⚑ What each of the three readers carries for one conversation: its `running`, or why not.
        * ⚑ **D-016** took the fourth, the project's list, out with projects.
        */
-      const whatEachListSays = (
+      const whatEachListSays = async (
         parent: string,
         id: string,
-      ): { forest: unknown; edge: unknown; rail: unknown } => {
-        const inTheForest = host
-          .theWholeForest()
-          .nodes.rows.find((node) => node.node === 'a-conversation' && node.conversation === id)
+      ): Promise<{ forest: unknown; edge: unknown; rail: unknown }> => {
+        const inTheForest = (await forestOf(host)).nodes.rows.find(
+          (node) => node.node === 'a-conversation' && node.conversation === id,
+        )
         const asAnEdge = host
           .whoCalledWhom(parent)
           .children.rows.find((edge) => edge.conversation === id)
@@ -457,7 +458,7 @@ describe('711 · a notice that cannot be true is replaced', () => {
         const { pm, worker } = await aPmAndItsParkedWorker()
         gate.silentUntilItsFirstTurn = silent
         await quitAndRelaunch()
-        expect(whatEachListSays(pm, worker)).toEqual({
+        expect(await whatEachListSays(pm, worker)).toEqual({
           forest: 'not-running',
           edge: 'not-running',
           rail: 'not-running',
@@ -477,19 +478,19 @@ describe('711 · a notice that cannot be true is replaced', () => {
         await host.close(worker, window)
         gate.silentUntilItsFirstTurn = silent
         await quitAndRelaunch()
-        expect(whatEachListSays(pm, worker)).toEqual({
+        expect(await whatEachListSays(pm, worker)).toEqual({
           forest: 'not-running',
           edge: 'not-running',
           rail: 'not-running',
         })
-        expect(whatEachListSays(pm, pm)).toMatchObject({
+        expect(await whatEachListSays(pm, pm)).toMatchObject({
           forest: 'not-running',
           rail: 'not-running',
         })
         // ⚑ A person's start (what their message runs) — the positive control: every list moves.
         await host.resumeSession(pm, window)
         expect(host.whoCalledWhom(worker).parent).toMatchObject({ running: 'in-a-window' })
-        expect(whatEachListSays(pm, pm)).toEqual({
+        expect(await whatEachListSays(pm, pm)).toEqual({
           forest: 'in-a-window',
           edge: 'n/a',
           rail: 'in-a-window',

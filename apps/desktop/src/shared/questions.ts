@@ -943,21 +943,10 @@ export const WALK_COVERS: Readonly<Record<LedgerWalkKind, string>> = {
     'Every conversation in this app that has ever routed a request was read: no window, no page and no limit narrowed it. Only each conversation’s live projection is read, so a request that exists solely in one this app has replaced is not counted.',
   'one-window-over-every-agents-conversation':
     'Every conversation one of this app’s agents holds was read, and from each one only the rows stamped inside the window you chose: no page and no limit narrowed it further. Only each conversation’s live projection is read, so a row that exists solely in one this app has replaced is not counted.',
-  // 🔴 **The one READING sentence in this table that does NOT promise *no limit*, and it says the
-  // number** — the three `no-…` words promise nothing because they read nothing
-  // (637 §2.2). ⛔ Every other entry can promise it; this walk is bounded at
-  // `MAX_FOREST_CONVERSATIONS` and a sentence inheriting a promise it breaks is exactly what
-  // `466` spent a word to avoid. ⚑ The clause about a parent that fell outside is what keeps the
-  // picture honest: the tree is short at the TOP, which is the end a person would not notice.
-  //
-  // ⚠️ **The number is WRITTEN OUT and pinned rather than interpolated**, which is this table's own
-  // device one entry down: `every-provider-wall-recently-recorded` spells `PROVIDER_WALL_LOOKBACK_MS`
-  // as *"the last month"* because importing the value would be a cycle — `the-whole-forest.ts`
-  // takes `LedgerWalk` from this module, so a value import back is the same cycle with the arrow
-  // reversed. ⛔ `the-whole-forest.test.ts` §4 asserts this sentence still contains the constant,
-  // which is what stops `a-number-can-survive-the-death-of-its-derivation`.
+  // The clause about a parent outside the reading keeps the picture honest: the tree is short at
+  // the top, which is the end a person would not notice.
   'every-conversation-this-app-placed':
-    'Every conversation one of this app’s agents holds was read, whether or not anything is waiting in any of them: no window narrowed it. Newest first, up to 500 of them — past that the forest is short, it says how many conversations there are, and a drawn conversation whose parent was not reached says so rather than pointing at nothing. A conversation no agent of this app holds is in no forest and is counted separately. Only each conversation’s live projection is read, so work that exists solely in one this app has replaced is not drawn beside it.',
+    'Every conversation in this reading was read: the window or tree you chose, and the conversations above them that connect them. A drawn conversation whose parent is outside the reading says so rather than pointing at nothing. A conversation no agent of this app holds is in no forest and is counted separately. Only each conversation’s live projection is read, so work that exists solely in one this app has replaced is not drawn beside it.',
   'every-conversation-this-one-gave-work-to':
     'Every conversation this one has ever given work to was read, whether or not anything is still open in it: no window, no page and no limit narrowed it. Only each of those conversations’ live projections is read, so work that exists solely in one this app has replaced is not counted.',
   // ⛔ **The one sentence in this table that promises nothing about a ledger, because this walk

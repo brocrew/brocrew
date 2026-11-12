@@ -476,14 +476,29 @@ function fakeBridge() {
       calls.push('whatEachConversationIsWaitingOn')
       return { conversations: [], readAt: 1_700_000_000_000, rowsUnread: 0 }
     },
-    // ⚑ **637 · the tenth read whose refusal is a VALUE** — a real forest with no nodes, so the
+    // ⚑ **637 · the tenth read whose refusal is a VALUE** — a real reading with no nodes, so the
     // store's `null` can only have come from a REFUSAL and never from an empty workspace.
-    theWholeForest: async () => {
-      calls.push('theWholeForest')
+    forestReading: async (scope) => {
+      calls.push('forestReading')
+      return {
+        scope,
+        measuredFrom: 1_700_000_000_000,
+        counts: null,
+        root: null,
+        members: { total: 0, admitted: [] },
+        context: [],
+        behind: [],
+        nodes: { rows: [], walk: 'every-conversation-this-app-placed', ledgers: 0, rowsUnread: 0 },
+        unfolded: [],
+        heldByNoAgent: 0,
+        readAt: 1_700_000_000_000,
+      }
+    },
+    forestNodes: async () => {
+      calls.push('forestNodes')
       return {
         nodes: { rows: [], walk: 'every-conversation-this-app-placed', ledgers: 0, rowsUnread: 0 },
-        conversations: 0,
-        heldByNoAgent: 0,
+        gone: [],
         readAt: 1_700_000_000_000,
       }
     },

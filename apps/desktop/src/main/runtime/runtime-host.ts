@@ -847,6 +847,7 @@ import type {
   RecordedSession,
   ResumableSession,
   ResourceRow,
+  ForestedConversation,
   SessionStore,
   ThreadLeadRow,
   WaitingMessage,
@@ -1113,10 +1114,19 @@ import type {
 // edge from a task row and is the STORE's to call, beside the walk that found it.
 import type { LastReported, SpawnEdge, WhoCalledWhom, WorkEdge } from '../../shared/who-called-whom'
 import {
-  MAX_FOREST_CONVERSATIONS,
+  type ForestNode,
+  type ForestNodesPage,
+  type ForestReading,
+  type ForestScope,
+  type ForestTask,
   type NamedConversation,
-  type TheWholeForest,
 } from '../../shared/the-whole-forest'
+import {
+  listedInOrder,
+  readTheForestFirst,
+  type ForestFirstRead,
+  type ForestListingAsked,
+} from '../db/forest-listing'
 import type { ActedBy } from '../../shared/who-did-it'
 // ⚑ **533** — this host hands the store's rows straight on, so the recogniser and its fold stay
 // where the store is; ⚑ F096 adds only the walls a usage reading near its limit makes
@@ -1670,6 +1680,7 @@ const A_WAIT_ENDS_WITHIN_MS = 30 * 24 * 60 * 60 * 1000
  * there, up to the most. A write that moves the stamp asks again at once.
  */
 const A_FAILED_WINDOW_READ_WAITS_MS = 1_000
+
 const A_FAILED_WINDOW_READ_WAITS_AT_MOST_MS = 30_000
 /**
  * The worker's misses remembered at a stamp: a read that failed there. A busy worker is asked
@@ -7707,7 +7718,7 @@ export class RuntimeHost implements LiveHost {
    * ## ⛔ What the category IS, so a future writer is not guessing (standing rule 20)
    *
    * 🔴 **637 · the list below is now FOUR answers, and the fourth is why.** ⛔ The three named
-   * readings are all about CONVERSATIONS AS ROWS; {@link RuntimeHost.theWholeForest} is about
+   * readings are all about CONVERSATIONS AS ROWS; {@link RuntimeHost.forestReading} is about
    * conversations as rows AND the work each one holds, so a durable WORK write moves it.
    *
    * ⛔ **`637` adds the READING and deliberately adds NO call site**, because `638` is the dispatch
@@ -7723,7 +7734,7 @@ export class RuntimeHost implements LiveHost {
    *
    * ⚠️ **A write belongs here when it changes what one of these FOUR answers**:
    * {@link RuntimeHost.resumableSessions}, {@link RuntimeHost.unresumableSessions},
-   * {@link RuntimeHost.agentIdentities} and {@link RuntimeHost.theWholeForest}.
+   * {@link RuntimeHost.agentIdentities} and {@link RuntimeHost.forestReading}.
    * ⛔ **Not *"a write to the session table"*, and not *"a slot
    * mutation"*** — a reservation mutates the slot map and changes none of the three, because the
    * row is not written yet (`509` measured exactly that: a launch held at the provider's door is on
@@ -12009,7 +12020,7 @@ export class RuntimeHost implements LiveHost {
    * ⚑ **F009 · the conversation standing in the place of one that could never be reopened** — the end
    * of its chain of replacements (D-017 · R10), with the work that names it — or `null`: it was never
    * replaced. ⚠️ A chain that loops — only a hand-edited ledger makes one — has no end, so it names
-   * none ({@link theWholeForest}'s rule).
+   * none ({@link theEndOf}'s rule).
    */
   private whoStandsInItsPlace(
     conversation: string,
@@ -18389,13 +18400,7 @@ export class RuntimeHost implements LiveHost {
       const row: WhatARestartWouldStopIn = {
         conversation,
         name: this.whatToCallTheConversation(conversation),
-        turnRunning:
-          this.startsInFlight.has(conversation) ||
-          this.arrivals.has(conversation) ||
-          (slot !== undefined && session === null) ||
-          status === 'working' ||
-          (session !== null &&
-            (session.turnOpened || session.flushing !== null || session.handingOver.length > 0)),
+        turnRunning: this.aTurnIsRunningIn(conversation),
         waitingOnAPerson: status === 'waiting_permission',
         heldMessages: session?.mailbox.length ?? 0,
         inTheBackground: session?.background.running.length ?? 0,
@@ -18410,6 +18415,29 @@ export class RuntimeHost implements LiveHost {
       }
     }
     return stopped
+  }
+
+  /**
+   * Whether a turn is running in the conversation: it is starting, a message is arriving, its
+   * provider is working, or a message is on its way into a turn.
+   */
+  private aTurnIsRunningIn(conversation: string): boolean {
+    const slot = this.slots.get(conversation)
+    const session = slot?.session ?? null
+    return (
+      this.startsInFlight.has(conversation) ||
+      this.arrivals.has(conversation) ||
+      (slot !== undefined && session === null) ||
+      session?.handle.status() === 'working' ||
+      (session !== null &&
+        (session.turnOpened || session.flushing !== null || session.handingOver.length > 0))
+    )
+  }
+
+  /** A turn is running in the conversation and it is not waiting on a person to answer. */
+  private workingOnATurnNow(conversation: string): boolean {
+    const status = this.slots.get(conversation)?.session?.handle.status() ?? null
+    return this.aTurnIsRunningIn(conversation) && status !== 'waiting_permission'
   }
 
   /**
@@ -18618,153 +18646,133 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * Read the whole forest from the person down. See {@link TheWholeForest} for its coverage contract.
-   *
-   * ## ⛔ Why this is one method and not `whoCalledWhom` called once per conversation
-   *
-   * ⚠️ **That read's own docblock rules the wider walk out of it:** *"No ancestor chain and no
-   * recursive traversal… a walk this read performed for a window would be a bound nobody has
-   * priced."* ⛔ N calls are N round trips on N clocks, and one `readAt` over them would be
-   * `HO-050` §3's animal — a figure that is not measuring what it claims. ⚑ **This is that
-   * aggregate**: `better-sqlite3` executes on the calling thread, every statement below is
-   * synchronous, and there is no `await` anywhere between the first of them and the stamp.
-   *
-   * ## ⚠️ What this adds to the store's answer — what only the host's memory holds
-   *
-   * ⛔ **{@link RunningState}, from the slot map** — `whoCalledWhom`'s rule and the same private
-   * {@link runningStateOf} rather than a second derivation. ⚑ **Left UNFOLDED**:
-   * `hereIsOf(running, held)` needs the window's own `held` to reach `open-in-another-window`, and
-   * whether a surface is THIS one is a question no host can answer about a list command.
-   *
-   * ⚑ **D-034 · and where each conversation stands in a replacement** — `standsInFor` and
-   * `inItsPlace`, from {@link replacedBy} through {@link theOneInItsPlace}, the rule every other
-   * door follows a replacement by.
-   *
-   * ⛔ **A PIECE gets nothing added**, which is why only one arm of {@link ForestedNode} is an
-   * `Omit`: a piece is folded out of the ledger holding it and COMPOSED by the store (`664`), and
-   * the slot map knows nothing about one. ⚠️ A root is not a node (R1): it shows through its
-   * conversation.
-   *
-   * ## 🔴 What it does NOT read, and each absence is argued
-   *
-   * ⛔ **No doing word and no wait.** Both are already population-wide on this wire —
-   * {@link whatIsBeingDone} and {@link whatEachConversationIsWaitingOn} — and folding either here
-   * would be a second answer to a question that already has one (`HO-095` §4). ⚠️ It would also
-   * falsify the paragraph that justifies the first one's cost: *"No store read of any kind."*
-   * ⚑ **A caller that wants all three takes them in ONE `Promise.all` and stamps its own instant**,
-   * which is `588`'s rule and what `RuntimeScreen.readTheCast` already does with two of them.
-   *
-   * ⚠️ **That wait is the CONVERSATION's, and a PIECE node's state is a different question.** Since
-   * `664` the store hands each piece row COMPOSED — {@link composeWhatEachPieceIsWaitingOn}, whose
-   * arms are keyed to the PIECE (`answers.has(piece)`, `childrenOpen.has(piece)`) where
-   * {@link theWaitAConversationIsIn}'s are keyed to the conversation (`621` §4.4) — so this is not a
-   * second answer to either one: it is the same answer the giver's drawer and the owner's line
-   * carry for the same piece (`D32`).
-   *
-   * ## ⚠️ What that composition costs, priced (`664` §3)
-   *
-   * ⚑ **One `whatThisConversationIsWaitingOn` per conversation that holds OPEN work**, memoised
-   * across the whole forest, and **none** for a conversation whose work has all finished or that
-   * holds none — the composition asks only for open rows. ⛔ **Each such read is three**: the
-   * routings and the questions raised, each a read of the holder's own ledger, and the pieces the
-   * holder gave (`piecesGivenBy`), which then folds ONE more ledger per conversation it gave a piece
-   * to.
-   *
-   * ⚑ **D-016 · the candidates of that last read are NARROW now** — an indexed read of `work` by giver
-   * (`work_given_by_idx`), where they were a `json_extract` over every assignment row in the
-   * database. ⚠️ **Worst case, at {@link MAX_FOREST_CONVERSATIONS}**: H holders × (two reads of their
-   * own ledger + one indexed read of `work`), plus one fold per (holder → conversation it gave a
-   * piece to) pair — on top of the N ledgers this walk already folds. The routings ARE floored at
-   * their first row's ordinal, so a holder that never asked anything pays one indexed query for
-   * them. ⚑ **This is the per-holder cost the person's stalled-work queue already pays every FIVE
-   * seconds** (`stalledWorkNobodyWasToldAbout` composes through the same read); the forest pays it
-   * on arrival and every `ROSTER_EVERY_MS` (30 s), only while the Team surface is showing.
-   *
-   * ⛔ **And what it costs when a row is TORN — since `671`, a COUNT** (R18, the PM's ruling on
-   * `664` F1): the forest ANSWERS, and every row it could not read is in `nodes.rowsUnread`, once.
-   *
-   * ⛔ **No `LivenessState`.** `509`'s rule is that the word may only ride on a reader whose
-   * re-read cadence is shorter than the silence window, and nothing bounds this read's cadence.
-   *
-   * ## ⚑ The entitlement, written down rather than implied
-   *
-   * ⛔ **`no session`, {@link whatIsBeingDone}'s word and its reason**: it names no conversation, so
-   * `203`'s owner check has nothing to be about, and it offers no act. ⚠️ **On the window wire and
-   * on NO toolset** — a picture of every conversation in the workspace is not a fact this app hands
-   * to a conversation.
+   * Adds what only this host's memory holds to each conversation node: whether this app runs it,
+   * and where it stands in a replacement, each conversation named with whether `drawn` holds it.
    */
-  theWholeForest(): TheWholeForest {
-    return this.atTheListing(
-      'theWholeForest',
-      () => this.theWholeForestComposed(),
-      (forest) => everyRowWasRead(forest.nodes),
-    )
-  }
-
-  private theWholeForestComposed(): TheWholeForest {
-    // ⚑ **The bound is passed, not defaulted** — see {@link SessionStore.everyPlacedConversation}.
-    // ⛔ One constant, on the wire, where `WALK_COVERS` already spells it for a person.
-    // Archived conversations are left out of the walk and of its count alike.
-    const archived = [...this.archived.ids()]
-    const walked = this.deps.store.everyPlacedConversation(MAX_FOREST_CONVERSATIONS, archived)
-    // ⚑ **D-034 · who stands where**, off {@link replacedBy} — kept in memory, so no read (F071) —
-    // each conversation named with whether this reading drew it.
-    const drawn = new Set(
-      walked.rows.flatMap((row) => (row.node === 'a-conversation' ? [row.conversation] : [])),
-    )
+  private placedHere(
+    rows: readonly (ForestedConversation | ForestTask)[],
+    drawn: ReadonlySet<string>,
+  ): ForestNode[] {
+    // Who stands where comes from the replacements kept in memory, so it costs no read.
     const named = (conversation: string): NamedConversation =>
       drawn.has(conversation)
         ? { is: 'a-conversation', conversation }
         : { is: 'a-conversation-this-reading-did-not-draw', conversation }
-    // ⚑ The end of a chain of replacements ({@link theOneInItsPlace}), or `null` for none. ⛔ A chain
-    // that loops — a hand-edited ledger — has no end, so it names none.
-    const theEndOf = (conversation: string): string | null => {
-      const now = this.theOneInItsPlace(conversation)
-      return now === conversation || this.replacedBy.has(now) ? null : now
-    }
-    // ⚑ Each stand-in, with the ones it took the place of — built once for the whole forest.
+    // Each stand-in with the ones it took the place of, built once per answer.
     const standsInFor = new Map<string, NamedConversation[]>()
     for (const old of this.replacedBy.keys()) {
-      const now = theEndOf(old)
+      const now = this.theEndOf(old)
       if (now !== null) standsInFor.set(now, [...(standsInFor.get(now) ?? []), named(old)])
     }
     const inItsPlace = (conversation: string): NamedConversation | null => {
-      const now = theEndOf(conversation)
+      const now = this.theEndOf(conversation)
       return now === null ? null : named(now)
     }
-    return {
-      // ⛔ **Every field spelled out** — `a-spread-writes-past-a-declared-type`: a spread into an
-      // object literal is checked for what it brings and not for what the literal owes, and the
-      // three counts are the half of this answer a caller cannot recompute.
-      nodes: {
-        walk: walked.walk,
-        ledgers: walked.ledgers,
-        rowsUnread: walked.rowsUnread,
-        ...ledgersSkippedOf(walked.ledgersSkipped),
-        // 🔴 **The fact the database cannot hold**, which is the reason this read is on the host
-        // rather than being handed straight out of the store.
-        rows: walked.rows.map((row) =>
-          row.node === 'a-task'
-            ? row
-            : {
-                ...row,
-                running: this.runningStateOf(row.conversation),
-                // ⚑ **D-034** — where it stands in a replacement, from this host's memory of them.
-                standsInFor: standsInFor.get(row.conversation) ?? [],
-                inItsPlace: inItsPlace(row.conversation),
-              },
-        ),
+    return rows.map((row) =>
+      row.node === 'a-task'
+        ? row
+        : {
+            ...row,
+            running: this.runningStateOf(row.conversation),
+            standsInFor: standsInFor.get(row.conversation) ?? [],
+            inItsPlace: inItsPlace(row.conversation),
+          },
+    )
+  }
+
+  /**
+   * The end of a conversation's chain of replacements ({@link theOneInItsPlace}), or `null` for
+   * none. A chain that loops, which only a hand-edited ledger makes, has no end.
+   */
+  private theEndOf(conversation: string): string | null {
+    const now = this.theOneInItsPlace(conversation)
+    return now === conversation || this.replacedBy.has(now) ? null : now
+  }
+
+  /**
+   * One forest reading: the workspace in one window, or the whole top-level tree holding a
+   * conversation. See {@link ForestReading}. Read in the window-read worker where there is one.
+   */
+  async forestReading(scope: ForestScope): Promise<ForestReading> {
+    const hidden = [...this.archived.ids()]
+    const present = new Set([
+      ...this.slots.keys(),
+      ...this.startsInFlight.keys(),
+      ...this.arrivals.keys(),
+    ])
+    const asked = {
+      scope,
+      measuredFrom: this.now(),
+      running: [...present].filter((conversation) => this.workingOnATurnNow(conversation)),
+      hidden,
+      insteadOf: [...this.replacedBy.keys()].flatMap((replaced): [string, string][] => {
+        const standIn = this.theEndOf(replaced)
+        return standIn === null ? [] : [[replaced, standIn]]
+      }),
+    } satisfies ForestListingAsked
+    const first = await this.forestRead(
+      { kind: 'forest', asked },
+      (result) => {
+        if (result.kind !== 'forest') throw new WindowReadUnavailable()
+        return result as ForestFirstRead
       },
-      // 🔴 **Counted, never derived from `rows`**: the party that WALKED is the only one that can say
-      // what it walked, and `rows.length` would answer *what was drawn* to a question that asked
-      // *how many there are*. ⚑ Past the bound they differ, which is the whole reason this number is
-      // here.
-      conversations: this.deps.store.placedConversations(archived),
-      // Read the count of conversations excluded from this forest rather than recomputing it.
-      heldByNoAgent: this.deps.store.conversationsHeldByNoAgent(),
-      // ⛔ **LAST.** See {@link TheWholeForest.readAt}.
+      () => readTheForestFirst(this.deps.store, asked),
+    )
+    const listed = new Set(listedInOrder(first.listing))
+    return {
+      scope,
+      measuredFrom: asked.measuredFrom,
+      counts: first.listing.counts,
+      root: first.listing.root,
+      members: { total: first.listing.total, admitted: first.listing.admitted },
+      context: first.listing.context,
+      behind: first.listing.behind,
+      nodes: { ...first.nodes, rows: this.placedHere(first.nodes.rows, listed) },
+      unfolded: first.unfolded,
+      heldByNoAgent: first.heldByNoAgent,
       readAt: Date.now(),
     }
+  }
+
+  /**
+   * A later page of a {@link forestReading}'s nodes, its parents and givers named as drawn when
+   * that reading lists them: `drawn` is every conversation it lists.
+   */
+  async forestNodes(
+    drawn: readonly string[],
+    conversations: readonly string[],
+  ): Promise<ForestNodesPage> {
+    const hidden = [...this.archived.ids()]
+    const page = await this.forestRead(
+      { kind: 'forest-nodes', conversations: [...conversations], drawn: [...drawn], hidden },
+      (result) => {
+        if (result.kind !== 'forest-nodes') throw new WindowReadUnavailable()
+        return result
+      },
+      () => this.deps.store.forestNodesOf(conversations, new Set(drawn), hidden),
+    )
+    return {
+      nodes: { ...page.nodes, rows: this.placedHere(page.nodes.rows, new Set(drawn)) },
+      gone: page.gone,
+      readAt: Date.now(),
+    }
+  }
+
+  /**
+   * A forest read in the window-read worker. A read the worker missed is refused
+   * ({@link WindowReadUnavailable}) rather than folded here: a whole tree's ledgers are too much
+   * for this thread, and the window asks again. Only a host with no worker reads in place.
+   */
+  private async forestRead<T>(
+    query: WindowReadQuery,
+    compose: (result: WindowReadResult) => T,
+    here: () => T,
+  ): Promise<T> {
+    if (this.deps.windowReader === undefined) {
+      this.deps.store.checkCommitted()
+      return here()
+    }
+    return this.freshWindowQuery(query, compose)
   }
 
   /**

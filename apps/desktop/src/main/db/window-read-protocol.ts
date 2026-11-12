@@ -1,21 +1,46 @@
 import { z } from 'zod'
 import { MAX_DIGEST_SPAN_MS } from '../../shared/digest'
 import { RECENT_ACTIVITY_LINES, type RecentActivityReading } from '../../shared/recent-activity'
+import { FOREST_PAGE, FOREST_WINDOWS } from '../../shared/the-whole-forest'
+import type { ForestFirstRead } from './forest-listing'
 import type { SessionStore, ThreadLeadRow } from './session-store'
 import type { SkipNote } from './rows-unread'
 
 export const WINDOW_READ_BOUNDS = {
-  sessions: 2_000,
-  rows: 100_000,
-  bytes: 32 * 1024 * 1024,
-  replyBytes: 4 * 1024 * 1024,
   pending: 16,
   callers: 16,
   leadPageRows: 256,
-  foldPageRows: 256,
 } as const
 
+const conversationId = z.string().min(1).max(512)
+const conversationIds = z.array(conversationId)
+
 export const windowReadQuery = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('forest'),
+      asked: z
+        .object({
+          scope: z.discriminatedUnion('is', [
+            z.object({ is: z.literal('the-workspace'), window: z.enum(FOREST_WINDOWS) }).strict(),
+            z.object({ is: z.literal('the-tree-of'), conversation: conversationId }).strict(),
+          ]),
+          measuredFrom: z.number().int().nonnegative().safe(),
+          running: conversationIds,
+          hidden: conversationIds,
+          insteadOf: z.array(z.tuple([conversationId, conversationId])),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('forest-nodes'),
+      conversations: conversationIds.min(1).max(FOREST_PAGE),
+      drawn: conversationIds,
+      hidden: conversationIds,
+    })
+    .strict(),
   z.object({ kind: z.literal('routes') }).strict(),
   z.object({ kind: z.literal('incidents') }).strict(),
   z
@@ -30,7 +55,7 @@ export const windowReadQuery = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('files'),
       sessionId: z.string().min(1).max(512),
-      givers: z.array(z.string().min(1).max(512)).max(WINDOW_READ_BOUNDS.sessions),
+      givers: z.array(z.string().min(1).max(512)),
     })
     .strict(),
   z
@@ -85,41 +110,82 @@ export interface WindowIncidents {
   readonly kind: 'incidents'
   readonly owners: readonly IncidentReading[]
 }
+interface WindowForest extends ForestFirstRead {
+  readonly kind: 'forest'
+}
+interface WindowForestNodes {
+  readonly kind: 'forest-nodes'
+  readonly nodes: ReturnType<SessionStore['forestNodesOf']>['nodes']
+  readonly gone: readonly string[]
+}
 export type WindowReadResult =
-  WindowRoutes | WindowLeads | WindowFiles | WindowActivity | WindowIncidents
+  | WindowRoutes
+  | WindowLeads
+  | WindowFiles
+  | WindowActivity
+  | WindowIncidents
+  | WindowForest
+  | WindowForestNodes
 
 const skipped = z.union([z.number().int().nonnegative().safe(), z.literal('the-whole-ledger')])
 const walk = z
   .object({
     walk: z.string(),
-    rows: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
+    rows: z.array(z.unknown()),
     ledgers: z.number().int().nonnegative(),
     rowsUnread: z.number().int().nonnegative(),
     ledgersSkipped: z.number().int().nonnegative().optional(),
   })
   .strict()
+const ids = z.array(z.string().min(1))
 export const windowReadResult = z.discriminatedUnion('kind', [
   z
     .object({
-      kind: z.literal('incidents'),
-      owners: z
-        .array(
-          z
+      kind: z.literal('forest'),
+      listing: z
+        .object({
+          counts: z
             .object({
-              sessionId: z.string().min(1),
-              pieces: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
-              work: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
-              routes: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
-              messages: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
-              stop: z.unknown(),
-              piecesSkipped: z.array(skipped).max(WINDOW_READ_BOUNDS.rows),
-              routesSkipped: z.array(skipped).max(WINDOW_READ_BOUNDS.rows),
-              messagesSkipped: z.array(skipped).max(WINDOW_READ_BOUNDS.rows),
-              stopSkipped: z.array(skipped).max(WINDOW_READ_BOUNDS.rows),
+              active: z.number().int().nonnegative(),
+              hour: z.number().int().nonnegative(),
+              day: z.number().int().nonnegative(),
+              week: z.number().int().nonnegative(),
+              all: z.number().int().nonnegative(),
             })
-            .strict(),
-        )
-        .max(WINDOW_READ_BOUNDS.sessions),
+            .strict()
+            .nullable(),
+          root: z.string().min(1).nullable(),
+          total: z.number().int().nonnegative(),
+          admitted: ids,
+          context: ids,
+          behind: ids,
+        })
+        .strict(),
+      nodes: walk,
+      unfolded: ids,
+      heldByNoAgent: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z.object({ kind: z.literal('forest-nodes'), nodes: walk, gone: ids }).strict(),
+  z
+    .object({
+      kind: z.literal('incidents'),
+      owners: z.array(
+        z
+          .object({
+            sessionId: z.string().min(1),
+            pieces: z.array(z.unknown()),
+            work: z.array(z.unknown()),
+            routes: z.array(z.unknown()),
+            messages: z.array(z.unknown()),
+            stop: z.unknown(),
+            piecesSkipped: z.array(skipped),
+            routesSkipped: z.array(skipped),
+            messagesSkipped: z.array(skipped),
+            stopSkipped: z.array(skipped),
+          })
+          .strict(),
+      ),
     })
     .strict(),
   z
@@ -155,32 +221,28 @@ export const windowReadResult = z.discriminatedUnion('kind', [
   z
     .object({
       kind: z.literal('files'),
-      tree: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
-      added: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
-      roster: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.sessions),
+      tree: z.array(z.unknown()),
+      added: z.array(z.unknown()),
+      roster: z.array(z.unknown()),
     })
     .strict(),
   z
     .object({
       kind: z.literal('routes'),
-      routes: z
-        .array(
-          z
-            .object({
-              sessionId: z.string().min(1),
-              requests: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
-              skipped: z.array(skipped).max(WINDOW_READ_BOUNDS.rows),
-            })
-            .strict(),
-        )
-        .max(WINDOW_READ_BOUNDS.sessions),
+      routes: z.array(
+        z
+          .object({
+            sessionId: z.string().min(1),
+            requests: z.array(z.unknown()),
+            skipped: z.array(skipped),
+          })
+          .strict(),
+      ),
       questions: walk,
       decisions: walk,
     })
     .strict(),
-  z
-    .object({ kind: z.literal('leads'), rows: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows) })
-    .strict(),
+  z.object({ kind: z.literal('leads'), rows: z.array(z.unknown()) }).strict(),
 ])
 
 export interface WindowStoreReader {

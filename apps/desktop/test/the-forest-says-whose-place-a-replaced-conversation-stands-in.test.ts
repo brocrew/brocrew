@@ -1,5 +1,6 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
+import { forestOf, storeForestOf } from './lib/forest-of-host'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,7 +19,6 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import {
-  MAX_FOREST_CONVERSATIONS,
   type ForestConversation,
   type ForestTask,
   type NamedConversation,
@@ -36,7 +36,7 @@ import {
  * ⚑ **A conversation that could never be reopened is replaced** by a new conversation of the same
  * agent (D-017 · R10, `replaceWhatCanNeverBeReopened`). Until D-034 the forest drew both as two
  * unrelated nodes, so a parent's new work to its child hung off a conversation the Graph did not
- * draw over that child. `RuntimeHost.theWholeForest()` now names, on each conversation,
+ * draw over that child. `RuntimeHost.forestReading` now names, on each conversation,
  * `standsInFor` (the ones whose chain of replacements ends at it) and `inItsPlace` (the end of its
  * own chain), each named with whether this reading drew it.
  *
@@ -159,10 +159,10 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
       `${id} to be over`,
     )
 
-  const read = (): Reading => {
+  const read = async (): Promise<Reading> => {
     const conversations = new Map<string, ForestConversation>()
     const pieces: ForestTask[] = []
-    for (const node of host.theWholeForest().nodes.rows) {
+    for (const node of (await forestOf(host)).nodes.rows) {
       if (node.node === 'a-conversation') conversations.set(node.conversation, node)
       else pieces.push(node)
     }
@@ -231,7 +231,7 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
   it('A · a CHILD that could never be reopened: its stand-in stands in for it, it names its stand-in, and nobody else moves', async () => {
     const { pm, worker, label } = await aWorkerOver()
     // ⚑ Before the replacement nothing stands anywhere: the same conversation, the same reading.
-    const before = read()
+    const before = await read()
     expect(placeOf(before, worker)).toEqual(NOWHERE)
     expect(placeOf(before, pm)).toEqual(NOWHERE)
 
@@ -247,7 +247,7 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
     expect(next).not.toBe(worker)
     expect(host.tookItsPlace(worker)).toBe(next)
 
-    const after = read()
+    const after = await read()
     expect(placeOf(after, worker)).toEqual({ standsInFor: [], inItsPlace: drawnOne(next) })
     expect(placeOf(after, next)).toEqual({ standsInFor: [drawnOne(worker)], inItsPlace: null })
     // ⚑ The stand-in hangs under the same parent, and the old child's stalled piece is still held
@@ -264,7 +264,7 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
     for (const id of elsewhere) expect(placeOf(after, id), id).toEqual(NOWHERE)
 
     // ⚑ Read again: built for each read, so a second read says the same and nothing piles up.
-    const again = read()
+    const again = await read()
     expect(placeOf(again, next)).toEqual({ standsInFor: [drawnOne(worker)], inItsPlace: null })
     expect(placeOf(again, worker)).toEqual({ standsInFor: [], inItsPlace: drawnOne(next) })
   })
@@ -311,7 +311,7 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
     expect(second.outcome, JSON.stringify(second)).toBe('ok')
     expect(second.agent).toBe(worker)
 
-    const after = read()
+    const after = await read()
     expect(placeOf(after, pm)).toEqual({ standsInFor: [], inItsPlace: drawnOne(pmNext) })
     expect(placeOf(after, pmNext)).toEqual({ standsInFor: [drawnOne(pm)], inItsPlace: null })
     // ⚑ D-034's symptom, which the two fields are what let a window mend: the child still hangs
@@ -332,7 +332,7 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
     await stopped(pm)
     // ⚑ Its provider still has it, so the reopen keeps its id, as a reopen on a renewed sign-in does.
     await host.resumeSession(pm, window)
-    const after = read()
+    const after = await read()
     expect(placeOf(after, pm)).toEqual(NOWHERE)
     expect(host.tookItsPlace(pm)).toBeNull()
     expect(ledger(pm).some((event) => event.type === 'replaced_by')).toBe(false)
@@ -344,11 +344,11 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
     it('a predecessor no agent holds any more is named by its stand-in as one this reading did not draw', async () => {
       const { worker, next } = await replaceTheWorker()
       // ⚑ Paired positive: while it is placed, the stand-in names it as drawn.
-      expect(placeOf(read(), next).standsInFor).toEqual([drawnOne(worker)])
+      expect(placeOf(await read(), next).standsInFor).toEqual([drawnOne(worker)])
 
       db.prepare('UPDATE provider_session SET agent_identity_id = NULL WHERE id = ?').run(worker)
 
-      const after = read()
+      const after = await read()
       expect(after.conversations.has(worker)).toBe(false)
       expect(placeOf(after, next)).toEqual({ standsInFor: [notDrawn(worker)], inItsPlace: null })
     })
@@ -356,11 +356,11 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
     it('a stand-in no agent holds is named by the one it replaced as one this reading did not draw', async () => {
       const { worker, next } = await replaceTheWorker()
       // ⚑ Paired positive: while the stand-in is placed, the old one names it as drawn.
-      expect(placeOf(read(), worker).inItsPlace).toEqual(drawnOne(next))
+      expect(placeOf(await read(), worker).inItsPlace).toEqual(drawnOne(next))
 
       db.prepare('UPDATE provider_session SET agent_identity_id = NULL WHERE id = ?').run(next)
 
-      const after = read()
+      const after = await read()
       expect(after.conversations.has(next)).toBe(false)
       expect(placeOf(after, worker)).toEqual({ standsInFor: [], inItsPlace: notDrawn(next) })
     })
@@ -384,9 +384,9 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
     ])
 
     // ⚑ And the rows: the store's rows for both ends of the replacement carry neither key …
-    const fromTheStore = store
-      .everyPlacedConversation(MAX_FOREST_CONVERSATIONS)
-      .rows.flatMap((row) => (row.node === 'a-conversation' ? [row] : []))
+    const fromTheStore = storeForestOf(store).rows.flatMap((row) =>
+      row.node === 'a-conversation' ? [row] : [],
+    )
     const storeRow = (id: string): ForestedConversation | undefined =>
       fromTheStore.find((row) => row.conversation === id)
     for (const id of [worker, next]) {
@@ -396,7 +396,7 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
       expect(row !== undefined && 'inItsPlace' in row, id).toBe(false)
     }
     // … while the host's rows for the same two carry both, filled.
-    const fromTheHost = read()
+    const fromTheHost = await read()
     expect(placeOf(fromTheHost, worker).inItsPlace).toEqual(drawnOne(next))
     expect(placeOf(fromTheHost, next).standsInFor).toEqual([drawnOne(worker)])
   })

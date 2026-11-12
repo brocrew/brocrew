@@ -1,7 +1,6 @@
 import type { WhatEachConversationIsWaitingOn } from '../src/shared/task-contracts'
 import { describe, expect, it } from 'vitest'
 import { forestView, type ForestViewInput } from '../src/renderer/src/lib/the-forest'
-import { MAX_FOREST_CONVERSATIONS } from '../src/shared/the-whole-forest'
 import type { ForestNode, TheWholeForest } from '../src/shared/the-whole-forest'
 import type { WhatIsBeingDone } from '../src/shared/what-is-being-done'
 
@@ -98,7 +97,7 @@ const show = (over: Partial<ForestViewInput> = {}) =>
 
 describe('§0 · `null` is a read that did not answer, and it is not an empty tree', () => {
   /**
-   * ⛔ **`641` §5.5** and `session-store.ts`'s own docblock: `theWholeForest()` answers `null` for
+   * ⛔ **`641` §5.5** and `session-store.ts`'s own docblock: a forest read answers `null` for
    * *the read did not answer* and NEVER for a forest with no nodes.
    */
   it('🔴 no reading at all folds to null — never to a view with no rows', () => {
@@ -299,11 +298,10 @@ describe('§3 · the shape the person asked for — person, then conversations, 
   })
 
   /**
-   * ⚠️ **A chain deeper than a recursive component would survive.** ⛔ `MAX_FOREST_CONVERSATIONS`
-   * is the bound and a chain may reach it, so the fold is iterative over a queue rather than a
-   * recursion a person's own data could overflow.
+   * ⚠️ **A chain deeper than a recursive component would survive.** A whole tree has no bound, so
+   * the fold is iterative over a queue rather than a recursion a person's own data could overflow.
    */
-  it('⛔ a chain as deep as the bound allows is drawn to its end', () => {
+  it('⛔ a deep chain is drawn to its end', () => {
     const deep = Array.from({ length: 60 }, (_, i) =>
       conversation({
         conversation: `sess_${i}`,
@@ -314,9 +312,6 @@ describe('§3 · the shape the person asked for — person, then conversations, 
     const v = show({ forest: forest(deep) })
     expect(v!.rows).toHaveLength(60)
     expect(v!.rows.at(-1)!.depth, 'the chain was cut short').toBe(59)
-    // ⚑ The bound is the READ's and this fold never spells it — it is asserted here only to say
-    // the chain under test is well inside it.
-    expect(60).toBeLessThan(MAX_FOREST_CONVERSATIONS)
   })
 
   /** ⚑ **The name is `agentName`'s**, never composed on a row. */
@@ -356,7 +351,7 @@ describe('§4 · 641 §3 — the truncation is disclosed, and the equality is no
 
   /**
    * ⛔ **`there === drawn` is satisfied VACUOUSLY by a store that never looked** — `NULL_SESSION_STORE`
-   * answers `ledgers: 0` and `placedConversations()` answers `0`, so `0 === 0`.
+   * answers `ledgers: 0` and lists no conversation, so `0 === 0`.
    * ⚑ **`walked` is the guard**, and this is the assertion that keeps them two facts
    * ([[a-comparison-tested-where-both-sides-agree]]).
    */

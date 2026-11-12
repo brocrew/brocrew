@@ -12,7 +12,6 @@ import { WindowReadEngine } from '../src/main/db/window-read-engine'
 import {
   windowReadQuery,
   windowReadResult,
-  WINDOW_READ_BOUNDS,
   WindowReadUnavailable,
   type WindowStoreReader,
 } from '../src/main/db/window-read-protocol'
@@ -231,7 +230,7 @@ it('keeps unread rows and skipped ledgers distinct from an empty complete answer
   })
 })
 
-it('refuses rather than silently truncating the native row bound', () => {
+it('reads the complete activity window beyond the former native row budget', () => {
   expect(read).not.toThrow()
   const complete = read()
   expect(complete.lines).toHaveLength(1)
@@ -240,8 +239,8 @@ it('refuses rather than silently truncating the native row bound', () => {
     `WITH RECURSIVE n(x) AS (VALUES(0) UNION ALL SELECT x+1 FROM n WHERE x < @rows)
     INSERT INTO events(id,session_id,generation,ordinal,type,payload,created_at)
     SELECT 'noise-'||x,'owner',0,100+x,'turn','{"type":"turn","state":"completed"}',500 FROM n`,
-  ).run({ rows: WINDOW_READ_BOUNDS.rows })
-  expect(() => read()).toThrow(WindowReadUnavailable)
+  ).run({ rows: 100_000 })
+  expect(read()).toEqual(complete)
 })
 
 it.each([
@@ -388,7 +387,7 @@ it('a sparse historical window ignores many later digest rows', () => {
     `WITH RECURSIVE n(x) AS (VALUES(0) UNION ALL SELECT x+1 FROM n WHERE x < @rows)
     INSERT INTO events(id,session_id,generation,ordinal,type,payload,created_at)
     SELECT 'later-'||x,'owner',0,100+x,'turn','{"type":"turn","state":"completed"}',2000 FROM n`,
-  ).run({ rows: WINDOW_READ_BOUNDS.rows })
+  ).run({ rows: 100_000 })
   expect(read).not.toThrow()
   const answer = read()
   expect(answer.lines).toHaveLength(1)

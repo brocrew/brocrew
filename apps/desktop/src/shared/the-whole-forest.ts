@@ -21,8 +21,8 @@ import type { WorkEdge } from './who-called-whom'
  * that handed that null to a renderer would make it guess, and `a-value-beside-a-word-or-a-union-of-arms`
  * is this repository's rule for exactly that: a value that stands on one arm belongs on that arm.
  *
- * ⚑ **The third arm is about THIS READING and never about the ledger** — a conversation outside
- * the reading's window, archived, or held by no agent of this app. ⚠️ The word is the same for all
+ * The third arm is about this reading and never about the ledger: a conversation outside the
+ * reading's window, archived, or held by no agent of this app. The word is the same for all
  * because the fact is the same: the row exists and this answer does not contain it.
  */
 export type ForestParent =
@@ -44,8 +44,8 @@ export type ForestParent =
   /** ⚑ **Another node in this reading** — see {@link UnderAConversation}. */
   | UnderAConversation
   /**
-   * 🔴 **That conversation exists and this reading did not draw it** (637 §2.2) — outside the
-   * reading's window, archived, or held by no agent of this app.
+   * That conversation exists and this reading did not draw it: it is outside the reading's
+   * window, archived, or held by no agent of this app.
    *
    * ⛔ **A WORD rather than an id the renderer would have to look up and fail to find.** ⚠️ The
    * alternative was measured on paper and it is worse both ways: dropping the child hides work a
@@ -240,13 +240,12 @@ export type ForestNode = ForestConversation | ForestTask
  * > followed by all brobot conversations right after, and each brobot converation with its own
  * > children etc.. each of them represent a task or converation."***
  *
- * ⛔ **{@link readAt} is not a claim about NOW**: a surface drawing an age beside a doing word
+ * {@link readAt} is not a claim about now: a surface drawing an age beside a doing word
  * draws `WhatIsBeingDone`'s stamp and not this one.
  */
 export interface TheWholeForest {
   /**
-   * 🔴 **The moment the last of its pages had been read by** — a completion point, never a start
-   * time.
+   * The moment the last of its pages had been read by: a completion point, never a start time.
    */
   readonly readAt: number
   /**
@@ -264,12 +263,12 @@ export interface TheWholeForest {
    * yet"*. ⚠️ So a non-zero count is not only *a piece list short by a row*: a piece's composed
    * STATE may be wrong by one too, and the count cannot say which.
    *
-   * ⚠️ Each conversation's pieces follow it; nothing else may be concluded from a position: a
+   * Each conversation's pieces follow it; nothing else may be concluded from a position: a
    * surface that wants an order sorts on a field it can name.
    */
   readonly nodes: LedgerWalk<ForestNode>
   /**
-   * 🔴 **How many conversations the reading lists**, counted rather than derived from
+   * How many conversations the reading lists, counted rather than derived from
    * {@link nodes}: equal to `nodes.ledgers` means every one has been read.
    */
   readonly conversations: number

@@ -258,10 +258,9 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   // `{ kind: 'whatEachConversationIsWaitingOn' }` has no field at all because the answer is the
   // WHOLE population this app is running. ⚑ Nothing to build and nothing to hand over.
   whatEachConversationIsWaitingOn: { how: 'nothing' },
-  // ⚑ **637 · `{ kind: 'theWholeForest' }` carries no field at all**, for its neighbour's reason:
-  // the answer is rooted at the person and the BOUND is a constant rather than a page a caller
-  // chooses — so there is nothing for a call site to build or to hand over.
-  theWholeForest: { how: 'nothing' },
+  // The preload writes the scope's literal field by field, and copies the asked conversations.
+  forestReading: { how: 'plain-by-construction' },
+  forestNodes: { how: 'plain-by-construction' },
   // ⚑ **D-018 · `{ kind: 'processMemory' }` carries no field at all**, for `whatIsBeingDone`'s
   // reason: the answer is every conversation this app is running.
   processMemory: { how: 'nothing' },

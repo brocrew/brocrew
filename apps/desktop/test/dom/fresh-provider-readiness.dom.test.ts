@@ -1,3 +1,5 @@
+import { readingOf } from './forest-fixture'
+import type { ForestScope } from '../../src/shared/the-whole-forest'
 import {
   createModelLists,
   launchFacts,
@@ -218,12 +220,8 @@ function fixture(claudeReady = false, holdFirstUsage = false) {
         rowsUnread: 0,
       }),
       whatIsBeingDone: async () => ({ readAt: 1, conversations: [] }),
-      theWholeForest: async () => ({
-        readAt: 1,
-        nodes: { ...walk(), walk: 'every-conversation-this-app-placed' },
-        conversations: 0,
-        heldByNoAgent: 0,
-      }),
+      forestReading: async (scope: ForestScope) => readingOf([], scope),
+      forestNodes: async () => ({ nodes: readingOf([]).nodes, gone: [], readAt: 1 }),
       createSession,
       send,
     },
