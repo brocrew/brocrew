@@ -712,8 +712,6 @@ export class ModelCatalogues {
   }
 
   forgetProviderModels(provider: Provider): void {
-    for (const key of this.modelProbes.keys()) {
-      if (key.startsWith(`${provider}:`)) this.modelProbes.delete(key)
-    }
+    this.forgetModels(provider)
   }
 }

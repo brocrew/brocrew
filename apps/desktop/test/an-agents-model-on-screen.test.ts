@@ -432,12 +432,13 @@ describe('685 · a person chooses each agent’s model and effort — over the r
     expect(heldReachesSays(again.held, null)).toBe(whatAModelChoiceReaches(again.held))
   })
 
-  it('⚑ §5 · the control: an agent that HAS run is answered from its own home, and nothing is marked', async () => {
+  it('an agent that has run reads the shared provider catalogue without making its home', async () => {
     anAgent('worker')
     const list = await menuFor('worker', 'claude')
     expect(list.models.map((row) => row.id)).toEqual(CLAUDE_ROWS.map((row) => row.id))
     expect(list.standIn).toBeNull()
-    expect(existsSync(join(userData, 'provider-homes', 'worker'))).toBe(true)
+    expect(existsSync(join(userData, 'provider-homes', 'worker'))).toBe(false)
+    expect(existsSync(join(userData, 'provider-homes', 'brobot'))).toBe(true)
   })
 
   it('🔴 §5 · `no-profile` — a name with no agent: nothing asked, and the Save door’s own sentence', async () => {

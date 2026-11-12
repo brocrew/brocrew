@@ -569,11 +569,10 @@ describe('696 §6 · D-042 — a default a stand-in’s list admitted is what it
 
   it('🔴 the default BroBot’s list admitted is SENT as chosen — named at the launch, recorded on the row, said in the answer — and set aside nowhere', async () => {
     const { child, said } = await spawnedWithAChoice('fresh', 'wide')
-    // ⚑ The premise `682` set it aside on: the agent's OWN list — its home exists now — does not
-    // offer `wide` (D-042's one list door, asked in that home).
+    // The agent reads the same provider rows that admitted its saved choice.
     const its = await host.modelList('codex', 'fresh')
     expect(its.standIn).toBeNull()
-    expect(its.models.map((one) => one.id)).toEqual(['narrow'])
+    expect(its.models.map((one) => one.id)).toEqual(['wide', 'narrow'])
     // 🔴 R1 — the launch names the conversation's pair, its agent's default, by name.
     const launches = started.filter((one) => one.provider === 'codex')
     expect(launches).toHaveLength(1)
@@ -592,6 +591,7 @@ describe('696 §6 · D-042 — a default a stand-in’s list admitted is what it
     // ⚑ The agent's own list offers `narrow`, so `682` sent it as well — and still does.
     const { child, said } = await spawnedWithAChoice('steady', 'narrow')
     expect((await host.modelList('codex', 'steady')).models.map((one) => one.id)).toEqual([
+      'wide',
       'narrow',
     ])
     const launches = started.filter((one) => one.provider === 'codex')
