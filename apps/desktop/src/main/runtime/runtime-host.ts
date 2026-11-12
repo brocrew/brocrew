@@ -8769,7 +8769,7 @@ export class RuntimeHost implements LiveHost {
     const conversation = life.id
     const agent = this.deps.store.identityOf(conversation)?.profileSlug ?? null
     this.servicesReadingAPair.add(conversation)
-    void this.theSelectedModel(life.provider, agent, agent ?? DEFAULT_PROFILE_ID, {})
+    void this.theSelectedModel(life.provider, agent, {})
       .then(
         (own) => {
           this.pairsReadForTheHead.set(conversation, { piece, life, pair: own })
@@ -21239,7 +21239,7 @@ export class RuntimeHost implements LiveHost {
     // (a launch of its own) comes first. Recorded on the row below, which every later start
     // replays. Nothing runs on an unnamed default; the effort is absent only for a model that
     // offers none.
-    const selected = await this.theSelectedModel(input.provider, profileId, profileId, {
+    const selected = await this.theSelectedModel(input.provider, profileId, {
       ...(input.model === undefined ? {} : { model: input.model }),
       ...(input.reasoningEffort === undefined ? {} : { effort: input.reasoningEffort }),
     })
@@ -32728,7 +32728,7 @@ export class RuntimeHost implements LiveHost {
       return false
     } finally {
       credential.release()
-      this.forgetModels(provider, profileId)
+      this.forgetModels(provider)
     }
   }
 
@@ -32753,7 +32753,7 @@ export class RuntimeHost implements LiveHost {
       return await ops.reprovision(provider, profileId)
     } finally {
       credential.release()
-      this.forgetModels(provider, profileId)
+      this.forgetModels(provider)
     }
   }
 
@@ -32920,7 +32920,7 @@ export class RuntimeHost implements LiveHost {
     // have: tear the app-server down and report the sign-in as cancelled.
     if (launch.signal.aborted) {
       this.signIns.delete(key)
-      this.forgetModels(provider, profileId)
+      this.forgetModels(provider)
       // ⛔ **Both claims outlive this method** (293 §2). There is an app-server here and it is being
       // torn down; the port is not free and the home may still receive an `auth.json` until that
       // teardown really settles.
@@ -32962,7 +32962,7 @@ export class RuntimeHost implements LiveHost {
       // fail after writing one, and the timeout path has no outcome at all — and the cost of being
       // wrong is one short-lived child on the NEXT ask, against a menu that silently describes
       // somebody else's account. Nothing re-probes on its own; see {@link providerModels}.
-      this.forgetModels(provider, profileId)
+      this.forgetModels(provider)
       // Idempotent, reached on the timeout and throw paths too — and itself bounded, because the
       // thing being cancelled is exactly the app-server that may have stopped answering.
       const { teardown, bounded } = this.startCancel(signIn, launch)
@@ -37872,11 +37872,9 @@ export class RuntimeHost implements LiveHost {
     provider: Provider,
     /** The identity whose default is asked — `null` for a conversation no identity holds. */
     profileSlug: string | null,
-    /** ⚑ The profile whose home the launch prepared, where a list it needs is asked. */
-    askIn: string,
     named: { readonly model?: string; readonly effort?: string },
   ): Promise<SelectedModel> {
-    return this.modelCatalogues.theSelectedModel(provider, profileSlug, askIn, named)
+    return this.modelCatalogues.theSelectedModel(provider, profileSlug, named)
   }
 
   /**
@@ -38961,8 +38959,8 @@ export class RuntimeHost implements LiveHost {
     return this.modelCatalogues.providerModels(profileId, provider)
   }
 
-  private forgetModels(provider: Provider, profileId: string): void {
-    return this.modelCatalogues.forgetModels(provider, profileId)
+  private forgetModels(provider: Provider): void {
+    return this.modelCatalogues.forgetModels(provider)
   }
 
   private async askProviderForModels(
@@ -40123,7 +40121,7 @@ export class RuntimeHost implements LiveHost {
     // The runtime first, as a start makes it: a missing program is refused in its own words, never
     // as a list that names no model.
     const rawRuntime = preparedRuntime ?? this.deps.createRuntime(row.provider)
-    const selected = await this.theSelectedModel(row.provider, row.profileId, profileId, {
+    const selected = await this.theSelectedModel(row.provider, row.profileId, {
       ...(recordedModel === undefined ? {} : { model: recordedModel }),
       ...(recordedEffort === undefined ? {} : { effort: recordedEffort }),
     })

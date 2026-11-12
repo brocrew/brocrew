@@ -86,7 +86,7 @@ describe('one current catalogue per provider', () => {
     await holder.modelList('claude')
     await holder.modelList('claude', 'fern')
     models = currentModels
-    holder.forgetModels('claude', 'fern')
+    holder.forgetModels('claude')
     const drawer = await holder.modelList('claude')
     const agent = await holder.modelList('claude', 'fern')
     expect(drawer.models).toEqual(currentModels.map((row) => ({ ...row, addedBy: 'the-provider' })))
@@ -104,7 +104,7 @@ describe('one current catalogue per provider', () => {
       })
     })
     const before = holder.modelList('claude')
-    holder.forgetModels('claude', DEFAULT_PROFILE_ID)
+    holder.forgetModels('claude')
     const after = holder.modelList('claude')
     release(oldModels)
     expect((await before).models).toEqual((await after).models)
