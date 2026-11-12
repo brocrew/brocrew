@@ -8,33 +8,56 @@ it.each(['success', 'sign-in failure', 'session failure'])(
     const release: Array<() => void> = []
     let finishSession!: () => void
     let sessionStarted!: () => void
-    const sessionActive = new Promise<void>((resolve) => { sessionStarted = resolve })
-    const finalWrite = new Promise<void>((resolve) => { finishSession = resolve })
+    const sessionActive = new Promise<void>((resolve) => {
+      sessionStarted = resolve
+    })
+    const finalWrite = new Promise<void>((resolve) => {
+      finishSession = resolve
+    })
     let finalWriteFinished = false
     const names = [
-      'memoryKnowledge', 'limitsReader', 'workSearchReader', 'pastWorkSearchReader',
-      'windowReader', 'filesLibraries', 'teamProfileGraphs',
+      'memoryKnowledge',
+      'limitsReader',
+      'workSearchReader',
+      'pastWorkSearchReader',
+      'windowReader',
+      'filesLibraries',
+      'teamProfileGraphs',
     ]
-    const deps = Object.fromEntries(names.map((name) => [name, {
-      close: () => new Promise<void>((resolve) => release.push(() => {
-        finished.push(name)
-        resolve()
-      })),
-    }]))
+    const deps = Object.fromEntries(
+      names.map((name) => [
+        name,
+        {
+          close: () =>
+            new Promise<void>((resolve) =>
+              release.push(() => {
+                finished.push(name)
+                resolve()
+              }),
+            ),
+        },
+      ]),
+    )
     // Only the surrounding host effects are fictional; closeAll and its join are the product methods.
     const host = Object.assign(Object.create(RuntimeHost.prototype), {
       deps: { ...deps, store: {} },
-      recordOpenForQuit() {}, stopHearingCommits() {},
+      recordOpenForQuit() {},
+      stopHearingCommits() {},
       windowIncidentReads: { invalidate() {} },
       launches: { closeAdmission() {}, pending: () => Promise.resolve(), size: 0 },
-      providerLimitExpiry: null, providerLimitFacts: { invalidate() {} },
+      providerLimitExpiry: null,
+      providerLimitFacts: { invalidate() {} },
       signInReopens: { close() {} },
       signIns: new Map([['fictional-sign-in', { signIn: {} }]]),
       boundedCancel: async () => {
         if (mode === 'sign-in failure') throw new Error('fictional sign-in failed')
       },
-      wakeUps: new Map(), theResets: new Map(),
-      slots: new Map([['fictional-failure', {}], ['fictional-final-write', {}]]),
+      wakeUps: new Map(),
+      theResets: new Map(),
+      slots: new Map([
+        ['fictional-failure', {}],
+        ['fictional-final-write', {}],
+      ]),
       close: async (id: string) => {
         if (id === 'fictional-failure') {
           if (mode === 'session failure') throw new Error('fictional session failed')
@@ -48,10 +71,14 @@ it.each(['success', 'sign-in failure', 'session failure'])(
     }) as RuntimeHost
     let settled = false
     const closing = host.closeAll()
-    const outcome = closing.then(
-      () => ({ ok: true as const }),
-      (error: unknown) => ({ ok: false as const, error }),
-    ).finally(() => { settled = true })
+    const outcome = closing
+      .then(
+        () => ({ ok: true as const }),
+        (error: unknown) => ({ ok: false as const, error }),
+      )
+      .finally(() => {
+        settled = true
+      })
     expect(host.closeAll()).toBe(closing)
     // All readers are admitted in the next microtask, without a scheduling sleep.
     await Promise.resolve()

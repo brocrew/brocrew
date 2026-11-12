@@ -194,7 +194,9 @@ describe('window reader owns its native connection until confirmed exit', () => 
     expect(worker.sent.at(-1)).toEqual({ type: 'close' })
     expect(settled).toBe(true)
     let closed = false
-    const closing = reader.close().then(() => { closed = true })
+    const closing = reader.close().then(() => {
+      closed = true
+    })
     await drain()
     expect(closed).toBe(false)
     worker.emit('exit', 1)

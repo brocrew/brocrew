@@ -139,7 +139,7 @@ it('malformed or oversized worker replies fail closed and release only after exi
   worker.ready()
   worker.emit('message', { type: 'read', id: 1, result: { type: 'files', files: [] } })
   expect(worker.terminationRequested).toBe(false)
-    expect(worker.posted.at(-1)).toEqual({ type: 'close' })
+  expect(worker.posted.at(-1)).toEqual({ type: 'close' })
   worker.exit()
   expect(await read).toMatchObject({ cause: 'worker' })
   await lifetime.close()

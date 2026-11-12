@@ -25,33 +25,51 @@ async function main() {
   const { port1, port2 } = new MessageChannel()
   const gate = new Int32Array(new SharedArrayBuffer(8))
   let active!: () => void
-  const iterating = new Promise<void>((resolve) => { active = resolve })
+  const iterating = new Promise<void>((resolve) => {
+    active = resolve
+  })
   let unwound = false
   let exited = false
   let workerExitCode: number | undefined
   const workerErrors: string[] = []
   const shutdownErrors: string[] = []
   let finishWrites!: () => void
-  const writesReleased = new Promise<void>((resolve) => { finishWrites = resolve })
+  const writesReleased = new Promise<void>((resolve) => {
+    finishWrites = resolve
+  })
   let finalWritesDone = false
   let siblingAdmitted!: () => void
-  const siblingClosing = new Promise<void>((resolve) => { siblingAdmitted = resolve })
+  const siblingClosing = new Promise<void>((resolve) => {
+    siblingAdmitted = resolve
+  })
   let failed!: () => void
-  const failureObserved = new Promise<void>((resolve) => { failed = resolve })
+  const failureObserved = new Promise<void>((resolve) => {
+    failed = resolve
+  })
   let workerExited!: () => void
-  const nativeExited = new Promise<void>((resolve) => { workerExited = resolve })
+  const nativeExited = new Promise<void>((resolve) => {
+    workerExited = resolve
+  })
   let hostClosed = false
   let shutdownFinished = false
   let closeStarted!: () => void
-  const closingStarted = new Promise<void>((resolve) => { closeStarted = resolve })
+  const closingStarted = new Promise<void>((resolve) => {
+    closeStarted = resolve
+  })
   let closeSettled = false
   let cancellation: Int32Array | undefined
   let checkpointResult: unknown
   const wal = `${file}-wal`
   const walBeforeQuit = statSync(wal).size
   assert.ok(walBeforeQuit > 0, 'fixture must have committed WAL before Quit')
-  const reader = new ReaderWorkerLifetime<Record<string, never>, Record<string, never>, { ok: boolean }>(() => {
-    const worker = new Worker(`
+  const reader = new ReaderWorkerLifetime<
+    Record<string, never>,
+    Record<string, never>,
+    { ok: boolean }
+  >(
+    () => {
+      const worker = new Worker(
+        `
       const { parentPort, workerData } = require('node:worker_threads');
       const Database = require(workerData.sqliteModule);
       const db = new Database(workerData.file, { readonly: true });
@@ -69,33 +87,51 @@ async function main() {
         parentPort.postMessage({ type: 'read', id: message.id, result: { ok: true } });
       });
       parentPort.postMessage({ type: 'ready' });
-    `, { eval: true, workerData: { sqliteModule, file, gate: gate.buffer, phase: port2 }, transferList: [port2] })
-    const post = worker.postMessage.bind(worker)
-    worker.postMessage = (message, transfer) => {
-      if (message.type === 'read') cancellation = new Int32Array(message.cancellation)
-      return post(message, transfer)
-    }
-    const terminate = worker.terminate.bind(worker)
-    worker.terminate = () => { order.push('forced-termination'); return terminate() }
-    port1.on('message', (message) => {
-      if (message.active) { order.push('active'); active() }
-    })
-    worker.on('error', (error) => workerErrors.push(error.message))
-    worker.once('exit', (code) => {
-      workerExitCode = code
-      unwound = Atomics.load(gate, 1) === 1
-      if (unwound) order.push('unwound')
-      exited = true
-      order.push('exit')
-      workerExited()
-    })
-    return worker
-  }, Date.now, 30_000, {
-    bounds: { restarts: 0, restartWindowMs: 1_000, replyBytes: 1024 },
-    unavailable: () => ({ ok: false }),
-    accept: (result) => result && typeof result === 'object' && 'ok' in result
-      ? result as { ok: boolean } : undefined,
-  })
+    `,
+        {
+          eval: true,
+          workerData: { sqliteModule, file, gate: gate.buffer, phase: port2 },
+          transferList: [port2],
+        },
+      )
+      const post = worker.postMessage.bind(worker)
+      worker.postMessage = (message, transfer) => {
+        if (message.type === 'read') cancellation = new Int32Array(message.cancellation)
+        return post(message, transfer)
+      }
+      const terminate = worker.terminate.bind(worker)
+      worker.terminate = () => {
+        order.push('forced-termination')
+        return terminate()
+      }
+      port1.on('message', (message) => {
+        if (message.active) {
+          order.push('active')
+          active()
+        }
+      })
+      worker.on('error', (error) => workerErrors.push(error.message))
+      worker.once('exit', (code) => {
+        workerExitCode = code
+        unwound = Atomics.load(gate, 1) === 1
+        if (unwound) order.push('unwound')
+        exited = true
+        order.push('exit')
+        workerExited()
+      })
+      return worker
+    },
+    Date.now,
+    30_000,
+    {
+      bounds: { restarts: 0, restartWindowMs: 1_000, replyBytes: 1024 },
+      unavailable: () => ({ ok: false }),
+      accept: (result) =>
+        result && typeof result === 'object' && 'ok' in result
+          ? (result as { ok: boolean })
+          : undefined,
+    },
+  )
   const outstanding = reader.read({}, {})
   await iterating
   let sessionSequence = 0
@@ -112,13 +148,26 @@ async function main() {
       read: async () => ({ ok: false, reason: 'unavailable' }),
       close: () => {
         const closing = reader.close()
-        void closing.then(() => { closeSettled = true }, () => { closeSettled = true })
+        void closing.then(
+          () => {
+            closeSettled = true
+          },
+          () => {
+            closeSettled = true
+          },
+        )
         closeStarted()
         return closing
       },
     },
   })
-  const sink = { ownerId: 'fictional-quit-window', alive: true, aPersonIsBehindIt: true as const, send() {}, sendLiveness() {} }
+  const sink = {
+    ownerId: 'fictional-quit-window',
+    alive: true,
+    aPersonIsBehindIt: true as const,
+    send() {},
+    sendLiveness() {},
+  }
   const first = await host.createSession({ provider: 'claude' }, sink)
   const sibling = await host.createSession({ provider: 'claude' }, sink)
   const originalClose = host.close.bind(host)
@@ -143,11 +192,20 @@ async function main() {
     })
   }
   const lifetime = createAppLifetime({
-    announceClosing: () => {}, recordOpenSessions: () => {},
-    stopArchiveWork: () => {}, drainArchiveWork: async () => {},
+    announceClosing: () => {},
+    recordOpenSessions: () => {},
+    stopArchiveWork: () => {},
+    drainArchiveWork: async () => {},
     closeAllSessions: () => {
       const closing = host.closeAll()
-      void closing.then(() => { hostClosed = true }, () => { hostClosed = true })
+      void closing.then(
+        () => {
+          hostClosed = true
+        },
+        () => {
+          hostClosed = true
+        },
+      )
       return closing
     },
     closeDatabase: () => {
@@ -158,39 +216,65 @@ async function main() {
       assert.equal(finalWritesDone, true, 'sibling final writes must finish before checkpoint')
       const observedWriter = new Proxy(writer, {
         get(target, key) {
-          if (key === 'pragma') return (sql: string) => {
-            const result = target.pragma(sql)
-            checkpointResult = result
-            assert.deepEqual(result, [{ busy: 0, log: 0, checkpointed: 0 }])
-            assert.equal(statSync(wal).size, 0, 'shutdown checkpoint must drain WAL before close')
-            order.push('checkpoint')
-            return result
-          }
-          if (key === 'close') return () => {
-            assert.notEqual(checkpointResult, undefined)
-            target.close()
-            order.push('writer-closed')
-          }
+          if (key === 'pragma')
+            return (sql: string) => {
+              const result = target.pragma(sql)
+              checkpointResult = result
+              assert.deepEqual(result, [{ busy: 0, log: 0, checkpointed: 0 }])
+              assert.equal(statSync(wal).size, 0, 'shutdown checkpoint must drain WAL before close')
+              order.push('checkpoint')
+              return result
+            }
+          if (key === 'close')
+            return () => {
+              assert.notEqual(checkpointResult, undefined)
+              target.close()
+              order.push('writer-closed')
+            }
           return Reflect.get(target, key, target)
         },
       })
       closeDatabase(observedWriter)
     },
-    quit: () => {}, exit: (code) => { throw new Error(`unexpected exit ${code}`) },
-    armLastResort: () => {}, log: (message, error) => {
-      if (error) shutdownErrors.push(error instanceof AggregateError
-        ? `${String(error)}: ${error.errors.map(String).join('; ')}` : String(error))
-    }, now: Date.now,
+    quit: () => {},
+    exit: (code) => {
+      throw new Error(`unexpected exit ${code}`)
+    },
+    armLastResort: () => {},
+    log: (message, error) => {
+      if (error)
+        shutdownErrors.push(
+          error instanceof AggregateError
+            ? `${String(error)}: ${error.errors.map(String).join('; ')}`
+            : String(error),
+        )
+    },
+    now: Date.now,
   })
   lifetime.beforeQuit({ preventDefault() {} })
   const shutdown = lifetime.shuttingDown!
-  void shutdown.then(() => { shutdownFinished = true }, () => { shutdownFinished = true })
+  void shutdown.then(
+    () => {
+      shutdownFinished = true
+    },
+    () => {
+      shutdownFinished = true
+    },
+  )
   lifetime.beforeQuit({ preventDefault() {} })
   try {
     await Promise.race([
-      Promise.all([closingStarted, siblingClosing, mode === 'success' ? Promise.resolve() : failureObserved]),
-      nativeExited.then(() => { throw new Error('native worker exited before held shutdown phases were observed') }),
-      shutdown.then(() => { throw new Error('shutdown finished before held shutdown phases were observed') }),
+      Promise.all([
+        closingStarted,
+        siblingClosing,
+        mode === 'success' ? Promise.resolve() : failureObserved,
+      ]),
+      nativeExited.then(() => {
+        throw new Error('native worker exited before held shutdown phases were observed')
+      }),
+      shutdown.then(() => {
+        throw new Error('shutdown finished before held shutdown phases were observed')
+      }),
     ])
     assert.equal(Atomics.load(gate, 0), 0)
     assert.equal(Atomics.load(gate, 1), 0)
@@ -228,18 +312,41 @@ async function main() {
   assert.equal((await outstanding).ok, false)
   assert.equal(writer.open, false)
   const reopened = new Database(file)
-  assert.deepEqual(reopened.prepare('SELECT n FROM kept ORDER BY n').all(), [{ n: 1 }, { n: 2 }, { n: 3 }, { n: 4 }])
+  assert.deepEqual(reopened.prepare('SELECT n FROM kept ORDER BY n').all(), [
+    { n: 1 },
+    { n: 2 },
+    { n: 3 },
+    { n: 4 },
+  ])
   assert.equal(reopened.pragma('integrity_check', { simple: true }), 'ok')
   reopened.close()
   assert.equal(existsSync(wal) ? statSync(wal).size : 0, 0)
   assert.deepEqual(order, ['active', 'unwound', 'exit', 'checkpoint', 'writer-closed'])
   assert.equal(shutdownErrors.length, mode === 'success' ? 0 : 1)
-  if (mode !== 'success') assert.ok(shutdownErrors[0]!.includes(mode === 'sign-in failure'
-    ? 'fictional sign-in failed' : 'fictional session failed'))
+  if (mode !== 'success')
+    assert.ok(
+      shutdownErrors[0]!.includes(
+        mode === 'sign-in failure' ? 'fictional sign-in failed' : 'fictional session failed',
+      ),
+    )
   assert.equal(workerExitCode, 0)
   assert.deepEqual(workerErrors, [])
-  console.log(JSON.stringify({ mode, order, workerExitCode, workerErrors, shutdownErrors,
-    committedValues: [1, 2, 3, 4], integrity: 'ok', checkpointResult, walBeforeQuit, walAtCheckpoint: 0 }))
-
+  console.log(
+    JSON.stringify({
+      mode,
+      order,
+      workerExitCode,
+      workerErrors,
+      shutdownErrors,
+      committedValues: [1, 2, 3, 4],
+      integrity: 'ok',
+      checkpointResult,
+      walBeforeQuit,
+      walAtCheckpoint: 0,
+    }),
+  )
 }
-void main().catch((error) => { console.error(error); process.exitCode = 1 })
+void main().catch((error) => {
+  console.error(error)
+  process.exitCode = 1
+})

@@ -41724,15 +41724,17 @@ export class RuntimeHost implements LiveHost {
   }
 
   private async closeAllOwned(): Promise<void> {
-    const readersClosed = Promise.allSettled([
-      () => this.deps.memoryKnowledge?.close(),
-      () => this.deps.limitsReader?.close(),
-      () => this.deps.workSearchReader?.close(),
-      () => this.deps.pastWorkSearchReader?.close(),
-      () => this.deps.windowReader?.close(),
-      () => this.deps.filesLibraries?.close(),
-      () => this.deps.teamProfileGraphs?.close(),
-    ].map((close) => Promise.resolve().then(close)))
+    const readersClosed = Promise.allSettled(
+      [
+        () => this.deps.memoryKnowledge?.close(),
+        () => this.deps.limitsReader?.close(),
+        () => this.deps.workSearchReader?.close(),
+        () => this.deps.pastWorkSearchReader?.close(),
+        () => this.deps.windowReader?.close(),
+        () => this.deps.filesLibraries?.close(),
+        () => this.deps.teamProfileGraphs?.close(),
+      ].map((close) => Promise.resolve().then(close)),
+    )
     const failures: unknown[] = []
     let confirmed = false
     try {

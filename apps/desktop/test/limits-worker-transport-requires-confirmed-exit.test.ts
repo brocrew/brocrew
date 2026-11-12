@@ -73,7 +73,9 @@ describe('limits transport waits for confirmed worker exit', () => {
       await vi.advanceTimersByTimeAsync(1)
       expect(settled).toBe(true)
       let exited = false
-      void transport.whenExited.then(() => { exited = true })
+      void transport.whenExited.then(() => {
+        exited = true
+      })
       await vi.advanceTimersByTimeAsync(0)
       expect(exited).toBe(false)
       expect(terminate).toHaveBeenCalledTimes(0)
@@ -113,7 +115,9 @@ describe('limits transport waits for confirmed worker exit', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(settled).toBe(true)
     let exited = false
-    void transport.whenExited.then(() => { exited = true })
+    void transport.whenExited.then(() => {
+      exited = true
+    })
     await vi.advanceTimersByTimeAsync(0)
     expect(exited).toBe(false)
     events.emit('exit', 1)
