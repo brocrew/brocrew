@@ -63,8 +63,13 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
   let stopping: Promise<void> | undefined
   function stop(): Promise<void> {
     return (stopping ??= (async () => {
+      let drained = false
       try {
-        const drained = await owner.shutdown()
+        drained = await owner.shutdown()
+      } catch (error) {
+        reportFailure(error)
+      }
+      try {
         const stopped = await host.stop()
         process.exit(drained && stopped.exited ? 0 : 1)
       } catch (error) {

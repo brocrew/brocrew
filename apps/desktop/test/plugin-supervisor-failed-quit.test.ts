@@ -55,6 +55,27 @@ describe.skipIf(process.platform === 'win32')(
           js: "import {createRequire} from 'node:module'; const require=createRequire(import.meta.url); const module={};",
         },
         external: ['better-sqlite3'],
+        plugins: [
+          {
+            name: 'fictional-held-host-stop',
+            setup(builder: {
+              onResolve(
+                options: { filter: RegExp },
+                resolve: (args: { importer: string }) => { path: string } | undefined,
+              ): void
+            }) {
+              builder.onResolve({ filter: /^\.\.\/node-host$/ }, (args) =>
+                args.importer.replaceAll('\\', '/').endsWith('/supervisor/entry.ts')
+                  ? {
+                      path: fileURLToPath(
+                        new URL('./fixtures/plugin-supervisor-held-host.ts', import.meta.url),
+                      ),
+                    }
+                  : undefined,
+              )
+            },
+          },
+        ],
       })
     })
     afterEach(async () => {
@@ -84,6 +105,38 @@ describe.skipIf(process.platform === 'win32')(
     afterAll(async () => {
       if (folder) await rm(folder, { recursive: true, force: true })
     })
+    it('awaits held host cleanup after owner shutdown rejects and coalesces another signal', async () => {
+      const root = join(folder, 'reject'),
+        workspace = join(root, 'w')
+      await mkdir(workspace, { recursive: true })
+      const child = fork(
+        join(folder, 'owner.mjs'),
+        [
+          root,
+          workspace,
+          fileURLToPath(new URL('../resources/plugin-host', import.meta.url)),
+          'shutdown-reject',
+        ],
+        { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] },
+      )
+      children.push(child)
+      await message(child, 'ready')
+      const stopping = message(child, 'host-stop-waiting')
+      child.kill('SIGTERM')
+      await stopping
+      let calls = 1
+      child.on('message', (value: { event?: string }) => {
+        if (value.event === 'host-stop-waiting') calls++
+      })
+      child.kill('SIGTERM')
+      const pong = message(child, 'pong')
+      child.send('ping')
+      await pong
+      expect(child.exitCode).toBeNull()
+      expect(calls).toBe(1)
+      child.send('release-host-stop')
+      await expect.poll(() => child.exitCode, { timeout: 5000 }).toBe(1)
+    }, 30000)
     it.each(['quit', 'SIGTERM'] as const)(
       'exits after %s, lets the guardian kill a stubborn group, and recovers before a successor starts',
       async (how) => {
