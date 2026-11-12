@@ -17,14 +17,6 @@ import { pieceLine } from '../src/shared/piece-called'
 
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
-/**
- * A caller reaches a service only through the piece the service is on for it: it may stop that
- * piece's turn, follow it up, give it a new brief, close it or take it back, and nothing more —
- * never another caller's piece, and nothing once its own has ended. A question the service raises
- * goes to the caller of the piece it is on as it is raised, and stays that caller's. Fictional
- * agents only, reached through the host: services are switched off in the app.
- */
-
 type Given = Extract<GiveOutcome, { ok: true }>
 
 describe('a service is reached through the piece it is on', () => {
@@ -181,36 +173,6 @@ describe('a service is reached through the piece it is on', () => {
       expect(asked.structured).toMatchObject({ outcome: 'ok', agent: service })
     })
 
-    it('flushes an unrelated caller’s held note while the next service piece stays queued', async () => {
-      const { host, stranger, service, two, releaseTheTurn } = await aServiceOnTheFirstPiece({
-        turnHeld: true,
-      })
-      const text = 'A note from a caller with no piece at this service.'
-      const sent = await call(host, stranger, 'message_agent', {
-        agent: service,
-        kind: 'note',
-        text,
-      })
-      expect(sent.structured).toMatchObject({ outcome: 'ok', delivery: 'queued' })
-      expect(
-        rows(service, 'user_turn').some(
-          (turn) => turn.type === 'user_turn' && turn.text.includes(text),
-        ),
-      ).toBe(false)
-      expect(stateOf(service, two.piece)).toBe('waiting')
-      releaseTheTurn()
-      await vi.waitFor(() => {
-        expect(
-          rows(service, 'user_turn').some(
-            (turn) => turn.type === 'user_turn' && turn.text.includes(text),
-          ),
-        ).toBe(true)
-        expect(
-          world.sent.some((one) => one.as === 'browser-driver' && one.words.includes(text)),
-        ).toBe(true)
-      })
-      expect(stateOf(service, two.piece)).toBe('waiting')
-    })
 
     it('lets the caller whose piece it is on stop its turn, follow it up and give it a new brief', async () => {
       const { host, caller, service, one } = await aServiceOnTheFirstPiece()

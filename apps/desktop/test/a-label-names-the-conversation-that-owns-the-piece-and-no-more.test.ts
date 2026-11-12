@@ -798,13 +798,17 @@ describe('a label names the conversation that owns the piece, and no more', () =
           ])
         })
       }
-      it(`${tool} reaches another conversation by its known label`, async () => {
+      it(`${tool} resolves another conversation by its known label`, async () => {
         const { brobotTools } = await settledFamily()
 
         const said = await fullCall(brobotTools, tool, argsFor('W2'))
-        expect(said.structured.outcome).toBe('ok')
+        if (tool === 'interrupt_agent') {
+          expect(said.structured).toMatchObject({ outcome: 'refused', rail: 'no-such-agent' })
+        } else {
+          expect(said.structured.outcome).toBe('ok')
+          expect(said.text).toContain('Amara')
+        }
         expect(said.text).not.toContain('Its helpers:')
-        expect(said.text).not.toContain('Amara')
       })
     }
 

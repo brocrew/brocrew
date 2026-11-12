@@ -14,13 +14,12 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { anOpenGate, ProviderDouble, type ResumeGate } from './lib/provider-double'
 import {
   RecordingSink,
   syntheticProviderHome,
   neutralHostDeps,
-  fixtureProviderConfig,
+  fixtureProviderPaths,
 } from './lib/host-fixture'
 
 /**
@@ -68,11 +67,9 @@ describe('D-017 · a start that costs one launch or none', () => {
       ...neutralHostDeps(() => userData),
       createRuntime: runtime,
       prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
+      ...fixtureProviderPaths(userData),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

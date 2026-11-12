@@ -3,8 +3,7 @@ import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type {
@@ -16,8 +15,8 @@ import type {
   UserInputResponse,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
+import { migratedTestDatabase } from './helpers/migrated-test-database'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -171,8 +170,7 @@ describe('679 · a question is known by who asked it', () => {
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-679-'))
     root = mkdtempSync(join(tmpdir(), 'brobot2-679-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations'))
+    db = migratedTestDatabase(join(userData, 'brobot2.sqlite'))
     clock = 9_000_000
     store = createSessionStore(db, tick)
     counter = 0

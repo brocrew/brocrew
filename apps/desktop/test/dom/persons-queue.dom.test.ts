@@ -18,7 +18,7 @@ import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
 import { usePersonsQueue, type PersonsQueueRow } from '../../src/renderer/src/lib/persons-queue'
 import type { AttentionDecision, AttentionRequest } from '../../src/renderer/src/lib/attention'
 import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
+import { pmIdentities } from '../helpers/pm-identities'
 import {
   NOTHING_NAMED_THE_WORK,
   chainReading,
@@ -68,34 +68,7 @@ let travelled: PersonsQueueRow[] = []
 let settled: { row: PersonsQueueRow; decision: AttentionDecision }[] = []
 let takenOver: PersonsQueueRow[] = []
 
-const identities = (): AgentIdentities => ({
-  identities: [
-    {
-      id: 'agp:default:pm',
-      slug: 'pm',
-      displayName: null,
-      createdAt: NOW,
-      // ⚑ **598 · who brought it into being** — null is *nobody recorded it*; see `AgentIdentity.createdBy`.
-      createdBy: null,
-      provider: null,
-      // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
-      externalMcpServerIds: [],
-      capabilities: { ...DEFAULT_CAPABILITIES },
-      chosen: {
-        maxDepth: 'default',
-
-        canCreateAgents: 'default',
-        canWriteRules: 'default',
-      },
-    },
-  ],
-  foldersWithoutARow: [],
-  use: [],
-  spawningEnabled: true,
-  defaultApprovalMode: 'ask',
-  // ⚑ **516** — the global registry, carried on the same read; empty is a real answer.
-  externalMcpServers: [],
-})
+const identities = (): AgentIdentities => pmIdentities(NOW)
 
 const NAME = (id: string): string => id.replace('sess_', '')
 

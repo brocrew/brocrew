@@ -6,14 +6,13 @@ import {
 } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime } from '@brobot2/runtime'
 import type { RuntimeEvent, SessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
+import { migratedTestDatabase } from './helpers/migrated-test-database'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -63,9 +62,6 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
  * starts it again. So the gap is still held open, and what is asserted in it is that the card says
  * the SAME word on both sides of it.
  */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** ⛔ The two levers, per launch: fail the stream, and hold `close()`. */
 interface Levers {
@@ -152,8 +148,7 @@ describe('656 · a card that says idle while the door says closing', () => {
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-656-'))
     root = mkdtempSync(join(tmpdir(), 'brobot2-656-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    db = migratedTestDatabase(join(userData, 'brobot2.sqlite'))
     clock = 5_000_000
     store = createSessionStore(db, tick)
     counter = 0

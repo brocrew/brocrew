@@ -1,14 +1,13 @@
 import { RecordingSink, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { AgentRuntime, RuntimeEvent, SessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
+import { migratedTestDatabase } from './helpers/migrated-test-database'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -39,9 +38,6 @@ import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
  * control: its FIRST launch's event stream hangs; its resume, once teardown finally completes, runs
  * for real, so the redelivery this file measures is actually observed end to end rather than assumed.
  */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /**
  * ⚑ **The real events, until the real stream would END — and then never.** The FIRST events a Fake
@@ -149,8 +145,7 @@ describe('M55 · a Close counts as a stop before its own finalize', () => {
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-m55-'))
     work = mkdtempSync(join(tmpdir(), 'brobot2-m55-work-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    db = migratedTestDatabase(join(userData, 'brobot2.sqlite'))
     clock = 9_000_000
     store = createSessionStore(db, () => clock++)
     counter = 0

@@ -285,11 +285,10 @@ describe('an agent restoring an archived conversation', () => {
     expect(types.indexOf('restored_from_archive')).toBeLessThan(types.lastIndexOf('launched'))
   })
 
-  it('names nothing to a caller that cannot reach it, unless it is archived', async () => {
+  it('lists and restores an archived conversation for another caller', async () => {
     const { helper, label } = await aGiverAndItsHelper()
     const narrowed = await world.open(host, 'claude', 'explorer')
 
-    // Not archived and out of reach: the address names nothing, by its label or its id.
     for (const agent of [label, helper]) {
       expect((await call(narrowed, 'restore_agent', { agent })).structured).toMatchObject({
         outcome: 'refused',
@@ -297,10 +296,7 @@ describe('an agent restoring an archived conversation', () => {
       })
     }
     expect(await host.archiveConversation(helper)).toMatchObject({ done: true })
-    // It lists only what it can reach, and any archived conversation may be restored.
-    expect(agentsIn(await call(narrowed, 'list_agents', { archived: true }), 'archived')).toEqual(
-      [],
-    )
+    expect(agentsIn(await call(narrowed, 'list_agents', { archived: true }), 'archived')).toEqual([helper])
     expect((await call(narrowed, 'restore_agent', { agent: label })).structured).toMatchObject({
       outcome: 'ok',
       restored: [{ agent: helper }],

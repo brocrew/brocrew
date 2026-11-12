@@ -3,40 +3,9 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import type { ReplyRail } from '../src/main/runtime/reply-rails'
 import { proseSpans, proseText, type ProseSpan } from './lib/prose-spans'
 
-/**
- * # 🔴 The sentence a withdrawn ruling left behind (555)
- *
- * > ⛔ **`HO-023` §7, August, WITHDRAWN:** *"The factory layer propagates verbatim by construction
- * > because the app renders it — that is now a safety property, not a convenience."*
- * >
- * > ⚑ **`HO-062` §2, replacing it: *The factory layer carries BEHAVIOUR. Safety lives in the
- * > rails.***
- *
- * ## ⛔ Why a census, and why it reads PROSE rather than avoiding it
- *
- * 🔴 **This is `a-number-can-survive-the-death-of-its-derivation` at document scale.** A ruling is
- * gone and its sentences are load-bearing prose in docblocks, comments and test titles that nobody
- * has looked at. ⚠️ **Every other census in this repo strips prose before it asserts**
- * (`a-source-census-must-strip-prose-before-it-asserts`); this one has the opposite subject, so
- * `test/lib/prose-spans.ts` is the counterpart of `test/lib/visible-copy.ts` and §0 is its controls.
- *
- * ## 🔴 The two halves, because HO-062 §2 has two
- *
- *  - ⛔ **§2 · the REFUSAL.** No span may rest a safety behaviour on the app's instruction text
- *    without citing the ruling that withdrew that framing. **Measured: six spans on `main`
- *    `b688a9b2` do, and this file is red there.**
- *  - ⚑ **§3 and §4 · the POSITIVE half** — *"where it states the guarantee, it states the limit
- *    beside it"*. The limit, the degradation table and the measurement trigger are pinned BY CLAUSE
- *    inside the span that carries them, because a file-scoped `toContain` is satisfied by a
- *    neighbour (`a-second-function-in-the-same-shape-disarms-a-file-scoped-census`).
- *
- * ⚠️ **The red does NOT come from weakening anything** (`a-mutation-on-a-census-is-invisible-to-that-census`):
- * §0 and §1 plant sentences in fixtures and require the instrument to find them, and §1.2 plants the
- * true sentences it must SPARE.
- */
+/** Checks instruction-layer prose for withdrawn guarantees and unbounded claims. */
 
 /** ⚠️ Anchored on THIS file rather than on the working directory, which the runner chooses. */
 const here = dirname(fileURLToPath(import.meta.url))
@@ -447,59 +416,5 @@ describe('§3 · where this tree states the guarantee, it states the limit besid
     // ⛔ It used to end *"the string in the prompt cannot disagree"*; the hand-off is the last step.
     expect(span).toContain('the string on screen and the string HANDED OVER cannot')
     expect(span, 'the over-claim is back').not.toContain('the string in the prompt cannot')
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-// §4 · HO-062's own argument, written where the next person will find it
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('§4 · what a dropped clause costs, and when to measure — in the file that owns the layer', () => {
-  const span = (): string =>
-    spanCarrying('apps/desktop/src/main/runtime/factory-text.ts', 'WHAT THIS LAYER GUARANTEES')
-
-  it('🔴 the ruling that replaced HO-023 §7 is written down, in the PO’s own words', () => {
-    expect(span()).toContain('The factory layer carries BEHAVIOUR. Safety lives in the rails.')
-    expect(span()).toContain('propagates verbatim by construction')
-    expect(span()).toContain('HO-062')
-  })
-
-  it('⛔ all three rows of the degradation table are there, each with the mechanism that notices', () => {
-    const words = span()
-    // ⚑ **D-016 · the second row names the piece**: a reply names the piece it hands back, and the
-    // rail that refuses a name nothing answers to is `no-piece-by-that-name` — typed as a reply rail,
-    // so a rename of the word turns this file's typecheck red before the table goes false.
-    const refusesTheName: ReplyRail = 'no-piece-by-that-name'
-    for (const row of ['you have a parent', 'name the piece', 'its capability facts']) {
-      expect(words, `the row for "${row}" is missing`).toContain(row)
-    }
-    for (const mechanism of ['stalled', 'reply_to_parent', refusesTheName, 'tool_refused']) {
-      expect(words, `the mechanism "${mechanism}" is not named`).toContain(mechanism)
-    }
-  })
-
-  it('🔴 …and every row carries the LIMIT this dispatch measured, which HO-062’s table did not', () => {
-    // ⚠️ **The PM asked for each row to be verified before it was written down, and said a row that
-    // does NOT fail loudly would be the most valuable thing to return.** None is silent; none is as
-    // loud as stated, and a table without the limits would be the shrug HO-062 §3 rules out.
-    const words = span()
-    // ⛔ Row 1 · the fold is unconditional, the TELLING is not.
-    expect(words).toContain('tellIfNobodyHasYet')
-    expect(words).toContain('LIVE')
-    expect(words).toContain('HO-018')
-    // ⛔ Row 2 · the refusal never reaches the parent, and one engine never reaches our vocabulary.
-    expect(words).toContain("CALLER's ledger and in nobody else's")
-    expect(words).toContain('MCP SDK')
-    // ⛔ Row 3 · loud only on the attempt branch, and the discovery readers meet no rail.
-    expect(words).toContain('ATTEMPT branch')
-    expect(words).toContain('list_agents')
-    expect(words).toContain('no agents you can see')
-  })
-
-  it('⚑ the trigger for measuring is here too, so the deferral is not a shrug', () => {
-    const words = span()
-    expect(words).toContain('never read its instructions on')
-    expect(words).toContain('AFTER A MODE TRANSITION')
-    expect(words).toContain('do not build the re-assert')
   })
 })

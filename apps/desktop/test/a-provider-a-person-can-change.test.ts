@@ -2,14 +2,13 @@ import { ToolWatchingRuntime } from './lib/provider-double'
 import { neutralHostDeps, syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
+import { migratedTestDatabase } from './helpers/migrated-test-database'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import type { ExternalMcpServerRow } from '../src/shared/external-mcp'
 import type { IdentityUse } from '../src/shared/agent-roster'
@@ -30,9 +29,6 @@ import {
 } from '../src/shared/runtime-ipc'
 
 const PROJECT_MANAGER_PROFILE_ID = 'project-manager'
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 class RecordingSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt: boolean = true
@@ -82,8 +78,7 @@ describe('433 §A · the provider a person can change', () => {
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-provider-'))
     root = mkdtempSync(join(tmpdir(), 'brobot2-provider-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    db = migratedTestDatabase(join(userData, 'brobot2.sqlite'))
     clock = Date.UTC(2030, 0, 1)
     store = createSessionStore(db, tick)
     counter = 0

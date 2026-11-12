@@ -450,7 +450,7 @@ describe('what a chain is told about its own depth', () => {
       expect(depthLineOfTheLast()).toBe(NOT_REACHED)
       // ⚑ **D-016** — the switch's sentence is the rail's own, worded for a give.
       expect(told.at(-1) as string).toContain(
-        '- This app currently blocks creating agents and starting new agent conversations. Giving work to an existing conversation still depends on your permissions.',
+        '- This app currently blocks creating agents and starting new agent conversations. You may still give work to an existing conversation.',
       )
       // ⛔ **And the door, because this file's argument is that a sentence is measured beside the
       // rail it describes.** ⚠️ A switch nothing enforced would leave the paragraph above standing

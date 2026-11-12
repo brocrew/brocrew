@@ -1,13 +1,12 @@
 import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
+import { migratedTestDatabase } from './helpers/migrated-test-database'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -24,9 +23,6 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
  * ⚠️ `every-identity-he-has.test.ts` states those absences in a comment and never counts them;
  * this file is where the zero-row facts are measured, off the DATABASE rather than any surface.
  */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 describe('639 · a name a person creates, and what creating it writes', () => {
   let userData: string
@@ -53,8 +49,7 @@ describe('639 · a name a person creates, and what creating it writes', () => {
 
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-639-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    db = migratedTestDatabase(join(userData, 'brobot2.sqlite'))
     clock = Date.UTC(2030, 0, 1)
     store = createSessionStore(db, tick)
     counter = 0

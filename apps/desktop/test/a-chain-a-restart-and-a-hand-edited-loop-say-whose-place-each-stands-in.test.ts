@@ -12,10 +12,9 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { ForestConversation, NamedConversation } from '../src/shared/the-whole-forest'
 import {
-  fixtureProviderConfig,
+  fixtureProviderPaths,
   RecordingSink,
   syntheticProviderHome,
   neutralHostDeps,
@@ -71,11 +70,9 @@ describe('D-034 — a chain, a restart and a hand-edited loop', () => {
       ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: issued }),
       prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
+      ...fixtureProviderPaths(userData),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

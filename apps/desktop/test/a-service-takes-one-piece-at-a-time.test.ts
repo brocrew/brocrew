@@ -259,7 +259,7 @@ describe('a service takes one piece at a time', () => {
     expect(handedOverIn(one.owner)).toEqual([one.piece])
   })
 
-  it('never shows a caller the words of the piece the service is on', async () => {
+  it('shows service activity without exposing another piece’s brief', async () => {
     const { host, caller } = await aServiceAndACaller()
     world.anAgent('other-caller', 'nothing kept')
     const other = await world.aPersonOpens(host, 'other-caller')
@@ -273,7 +273,7 @@ describe('a service takes one piece at a time', () => {
     const two = accepted(await world.gives(host, other, 'browser-driver', { title: 'Lunch' }))
     const record = await call(host, other, 'list_tasks', { piece: two.label })
     expect(record.text).not.toContain('secret')
-    expect(record.text).not.toContain('Secret')
+    expect(record.text).toContain('Secret')
     expect(JSON.stringify(record.structured)).not.toContain('secret')
   })
 

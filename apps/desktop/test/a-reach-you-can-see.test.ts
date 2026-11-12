@@ -7,14 +7,13 @@ import {
 } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
+import { migratedTestDatabase } from './helpers/migrated-test-database'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { CallerIdentity } from '../src/main/runtime/runtime-host'
@@ -66,9 +65,6 @@ import { agentStateWords } from '../src/shared/agent-state'
  * HOST handed the launch.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
-
 /** Keeps the toolsets the HOST handed out, so an agent's calls go through the real one. */
 describe('433 §B · the agents a reach can see', () => {
   let userData: string
@@ -105,8 +101,7 @@ describe('433 §B · the agents a reach can see', () => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-seeing-'))
     root = mkdtempSync(join(tmpdir(), 'brobot2-seeing-root-'))
     elsewhere = mkdtempSync(join(tmpdir(), 'brobot2-seeing-elsewhere-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    db = migratedTestDatabase(join(userData, 'brobot2.sqlite'))
     // ⛔ **Past `0013`'s own wall clock** — `a-second-project-and-the-grant.test.ts` argues why.
     clock = Date.UTC(2030, 0, 1)
     store = createSessionStore(db, tick)

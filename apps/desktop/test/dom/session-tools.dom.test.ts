@@ -8,8 +8,7 @@ import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import SessionTools from '../../src/renderer/src/components/SessionTools.vue'
 import type { SessionRecord } from '../../src/renderer/src/lib/session-record'
 import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
-import type { AgentIdentities } from '../../src/shared/runtime-ipc'
+import { pmIdentities } from '../helpers/pm-identities'
 import type { ToolRegistry } from '../../src/renderer/src/lib/transcript'
 import { catalogue, readInventory } from '../../src/renderer/src/lib/tool-inventory'
 import { mount, paneProps, permission, record, unmountAll, visible } from './harness'
@@ -34,34 +33,7 @@ import { mount, paneProps, permission, record, unmountAll, visible } from './har
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
 const safety = useSpawnSafety()
 
-const IDENTITIES: AgentIdentities = {
-  identities: [
-    {
-      id: 'agp:default:pm',
-      slug: 'pm',
-      displayName: null,
-      createdAt: 0,
-      // ⚑ **598 · who brought it into being** — null is *nobody recorded it*; see `AgentIdentity.createdBy`.
-      createdBy: null,
-      provider: null,
-      // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
-      externalMcpServerIds: [],
-      capabilities: { ...DEFAULT_CAPABILITIES },
-      chosen: {
-        maxDepth: 'default',
-
-        canCreateAgents: 'default',
-        canWriteRules: 'default',
-      },
-    },
-  ],
-  foldersWithoutARow: [],
-  use: [],
-  spawningEnabled: true,
-  defaultApprovalMode: 'ask',
-  // ⚑ **516** — the global registry, carried on the same read; empty is a real answer.
-  externalMcpServers: [],
-}
+const IDENTITIES = pmIdentities(0)
 
 beforeEach(() => {
   // The lane is `v-if`'d on a supplied identities read (355), and §2 measures where it sits.

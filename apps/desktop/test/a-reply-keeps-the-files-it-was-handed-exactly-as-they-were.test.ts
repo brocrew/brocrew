@@ -1443,7 +1443,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         ).held
 
       // Vacuity guards: there are enough columns, and every one has a word that is not its own.
-      expect(fields.length).toBeGreaterThanOrEqual(4)
+      expect(fields.map((field) => field.column)).toEqual(['can_create_agents', 'can_write_rules'])
       for (const field of fields) {
         const foreign = [...union].filter((word) => !field.vocabulary.includes(word))
         expect(foreign.length, `${field.column} has no foreign word to be refused`).toBeGreaterThan(

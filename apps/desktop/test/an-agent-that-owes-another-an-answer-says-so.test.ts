@@ -3,8 +3,7 @@ import type { AgentState } from '../src/shared/agent-state-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type {
@@ -15,8 +14,8 @@ import type {
   StartOptions,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
+import { migratedTestDatabase } from './helpers/migrated-test-database'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -40,9 +39,6 @@ import {
  * "owes an answer to …", and the word moves when the question, the asker's status or a replacement
  * moves it. Every assertion on a pushed word reads `pushed`; fresh reads are compared after.
  */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** BroBot's child, as every door names her: the first new agent, by the piece she owns. */
 const ADA = 'Ada (the owner of W1.1 · Build the pages)'
@@ -148,8 +144,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-owes-'))
     root = mkdtempSync(join(tmpdir(), 'brobot2-owes-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    db = migratedTestDatabase(join(userData, 'brobot2.sqlite'))
     clock = 9_000_000
     store = createSessionStore(db, tick)
     // Call-through: the host still reads the real index; the test counts how often it does.
