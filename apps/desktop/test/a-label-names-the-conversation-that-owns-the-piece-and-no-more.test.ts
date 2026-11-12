@@ -519,7 +519,6 @@ describe('a label names the conversation that owns the piece, and no more', () =
     const rootPiece = store.rootOf(brobot)
     expect(rootPiece?.label).toBe('W1')
 
-    // Before: the root is named by its label alone.
     expect(store.workThatNames(brobot)).toEqual({
       label: 'W1',
       title: null,
@@ -528,7 +527,6 @@ describe('a label names the conversation that owns the piece, and no more', () =
     expect(host.nameByItsWork(brobot)).toBe('BroBot (the owner of W1)')
     expect(retitlesIn(brobot)).toHaveLength(0)
 
-    // The title is trimmed, and the answer names the piece as it now stands.
     const renamed = host.retitleForAPerson('W1', '  Build the pages ')
     expect(renamed).toEqual({
       ok: true,
@@ -546,7 +544,6 @@ describe('a label names the conversation that owns the piece, and no more', () =
     })
     expect(host.nameByItsWork(brobot)).toBe('BroBot (the owner of W1 · Build the pages)')
 
-    // A second rename wins, and the first stays in the ledger as the history it is.
     const again = host.retitleForAPerson('W1', 'Ship the pages', { ownerId: `agent:${brobot}` })
     expect(again).toMatchObject({ ok: true, label: 'W1', title: 'Ship the pages' })
     expect(retitlesIn(brobot).at(-1)).toMatchObject({ type: 'work_retitled', by: brobot })
@@ -558,7 +555,6 @@ describe('a label names the conversation that owns the piece, and no more', () =
     })
     expect(host.nameByItsWork(brobot)).toBe('BroBot (the owner of W1 · Ship the pages)')
 
-    // ⚑ The same conversation, read by another reader: the agents' list carries the new title.
     const listed = await callOn(agentToolsFor(host, brobot), 'list_agents', {})
     const mine = (listed.agents as { agent: string; named: unknown }[]).find(
       (one) => one.agent === brobot,
@@ -571,7 +567,6 @@ describe('a label names the conversation that owns the piece, and no more', () =
     expect(store.rootOf(brobot)?.label).toBe('W1')
     const rowsBefore = ledger(brobot).length
 
-    // A blank title, whichever piece it is asked of — even one that does not exist.
     for (const [spelled, title] of [
       ['W1', ''],
       ['W1', '   '],
@@ -588,7 +583,6 @@ describe('a label names the conversation that owns the piece, and no more', () =
       'Nothing was renamed: a title is one line of 1 to 200 characters.',
     )
 
-    // A good title, asked of a name no piece carries: the labels are exact.
     for (const spelled of ['W99', 'W01', 'w1', ' W1 ', 'work_nope']) {
       const refused = host.retitleForAPerson(spelled, 'Build the world')
       expect(refused, spelled).toEqual({
@@ -601,12 +595,10 @@ describe('a label names the conversation that owns the piece, and no more', () =
       'Nothing was renamed: this app holds no piece by that name.',
     )
 
-    // ⛔ Nothing was written, and the conversation is named as it was.
     expect(retitlesIn(brobot)).toHaveLength(0)
     expect(ledger(brobot)).toHaveLength(rowsBefore)
     expect(host.nameByItsWork(brobot)).toBe('BroBot (the owner of W1)')
 
-    // ⚑ The paired positive, from the same door: a good title for the piece that exists.
     const renamed = host.retitleForAPerson('W1', ' Build the world ')
     expect(renamed).toMatchObject({ ok: true, label: 'W1', title: 'Build the world' })
     expect(retitlesIn(brobot)).toHaveLength(1)
@@ -642,7 +634,6 @@ describe('a label names the conversation that owns the piece, and no more', () =
     expect(renamed).toMatchObject({ ok: true, label: 'W1', title: 'Build the site' })
     expect(retitlesIn(brobot)).toHaveLength(1)
     expect(worksAnnounced()).toBe(announcedBefore + 1)
-    // ...and the child, still, is named as it was.
     expect(host.nameByItsWork(ada)).toBe(ADA_BY_ITS_WORK)
   })
 
