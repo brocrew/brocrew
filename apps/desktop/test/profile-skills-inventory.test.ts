@@ -281,7 +281,7 @@ describe('the profile Skills inventory uses the real delivery policy', () => {
     ).toBe(false)
   })
 
-  it('accepts only profile and bounded paging fields, and keeps the operation person-only', async () => {
+  it('accepts only profile and bounded paging fields for colleague and window reads', async () => {
     const valid = { operation: 'profile-list', profileId: 'quill' }
     expect(SkillsRequest.safeParse(valid).success).toBe(true)
     expect(runtimeCommandSchema.safeParse({ kind: 'skills', request: valid }).success).toBe(true)
@@ -303,8 +303,13 @@ describe('the profile Skills inventory uses the real delivery policy', () => {
     const host = { closing: false, skillsForAPerson: run } as unknown as RuntimeHost
     await expect(
       executeRuntimeCommand(host, sink(false), { kind: 'skills', request: valid }),
-    ).rejects.toThrow('unless a person is asking')
-    expect(run).not.toHaveBeenCalled()
+    ).resolves.toMatchObject({
+      operation: 'profile-list',
+      profileId: 'quill',
+      skills: expect.arrayContaining([expect.objectContaining({ folder: 'remember' })]),
+    })
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(run).toHaveBeenCalledWith(valid)
     await expect(
       executeRuntimeCommand(host, sink(true), { kind: 'skills', request: valid }),
     ).resolves.toMatchObject({ operation: 'profile-list', profileId: 'quill' })

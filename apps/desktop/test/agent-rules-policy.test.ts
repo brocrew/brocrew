@@ -580,6 +580,9 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     }
     await expect(
       command(agentSink, { kind: 'agentRulesUnread', profileId: 'lark' }),
+    ).rejects.toThrow()
+    await expect(
+      command(window, { kind: 'agentRulesUnread', profileId: 'lark' }),
     ).resolves.toMatchObject({ seenThrough: 1 })
     await expect(
       command(agentSink, { kind: 'undoAgentRules', profileId: 'lark', expectedVersion: 1 }),

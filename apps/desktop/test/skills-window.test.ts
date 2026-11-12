@@ -37,12 +37,14 @@ it.each<SkillsRequest>([
     revision: 0,
     selection: 'off',
   },
-])('refuses a non-person before the %j operation reaches the service', async (request) => {
-  const run = vi.fn<SkillsWindow>()
+])('routes the colleague %j operation and returns the service answer', async (request) => {
+  const reply = { operation: 'refused', reason: 'source-unavailable' } as const
+  const run = vi.fn<SkillsWindow>().mockResolvedValue(reply)
   await expect(
     executeRuntimeCommand(host(run), sink(false), { kind: 'skills', request }),
-  ).rejects.toThrow('unless a person is asking')
-  expect(run).not.toHaveBeenCalled()
+  ).resolves.toBe(reply)
+  expect(run).toHaveBeenCalledTimes(1)
+  expect(run).toHaveBeenCalledWith(request)
 })
 
 it('refuses writes and imports during quit before calling the service', async () => {

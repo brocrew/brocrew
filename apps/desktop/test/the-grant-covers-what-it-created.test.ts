@@ -194,7 +194,7 @@ describe('598 · the grant covers what it created', () => {
       // each of them wrote was byte-identical, which is why nothing could tell them apart.
       const brobot = await personOpens(DEFAULT_PROFILE_ID)
       void brobot
-      host.createAgent({ slug: 'typed-by-hand', displayName: null, provider: null })
+      host.createAgent({ slug: 'typed-by-hand', displayName: null, provider: null }, window)
       expect(creatorColumn('typed-by-hand')).toBe('a-person')
       expect(createdByOf('typed-by-hand')).toEqual({ by: 'a-person' })
 
@@ -215,7 +215,7 @@ describe('598 · the grant covers what it created', () => {
 
       // ⚑ **The control in the same sample**: an identity a person creates is `a-person`, so
       // `this-app` above is a distinction this column really draws rather than its only value.
-      host.createAgent({ slug: 'a-second', displayName: null, provider: null })
+      host.createAgent({ slug: 'a-second', displayName: null, provider: null }, window)
       expect(creatorColumn('a-second')).toBe('a-person')
     })
   })
@@ -260,7 +260,7 @@ describe('598 · the grant covers what it created', () => {
       expect(ddl).toMatch(/CONSTRAINT "agent_identity_can_message_ck" CHECK\(/)
       // ⚑ **The control in the same read**: a row written through a door carries one, so `null`
       // above is a state this reader distinguishes rather than its only answer.
-      host.createAgent({ slug: 'from-today', displayName: null, provider: null })
+      host.createAgent({ slug: 'from-today', displayName: null, provider: null }, window)
       expect(createdByOf('from-today')).toEqual({ by: 'a-person' })
     })
   })

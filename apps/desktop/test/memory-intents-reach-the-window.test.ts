@@ -107,10 +107,40 @@ describe('the window host uses the durable memory service', () => {
       expect(store.memoryAmendmentsOf('lark')).toEqual([])
     },
   )
-  it('refuses an app-initiated change before touching or recording the file', async () => {
-    expect(await host.amendAgentMemory(asked(), THE_APP_ITSELF)).toBeNull()
+  it('records an app removal and Undo with the exact saved bytes and actor', async () => {
+    expect(await host.amendAgentMemory(asked({ confirmed: false }), THE_APP_ITSELF)).toMatchObject({
+      done: false,
+    })
     expect(readFileSync(entry, 'utf8')).toBe(text)
     expect(store.memoryAmendmentsOf('lark')).toEqual([])
+    const actor = { who: 'the-app-itself' } as const
+    const removed = await host.amendAgentMemory(asked(), THE_APP_ITSELF)
+    expect(removed).toMatchObject({
+      done: true,
+      amendment: { by: actor, settlement: { by: actor }, textBefore: text, textAfter: null },
+    })
+    if (!removed?.done) throw new Error('Expected an app removal')
+    expect(existsSync(entry)).toBe(false)
+    expect(store.memoryAmendmentsOf('lark')).toMatchObject([
+      { id: removed.amendment.id, by: actor, settlement: { by: actor } },
+    ])
+    const restored = await host.undoAgentMemory(
+      { profileId: 'lark', sourceId: removed.amendment.id, confirmed: true },
+      THE_APP_ITSELF,
+    )
+    expect(restored).toMatchObject({
+      done: true,
+      amendment: {
+        by: actor,
+        settlement: { by: actor },
+        sourceId: removed.amendment.id,
+        textAfter: text,
+      },
+    })
+    expect(readFileSync(entry, 'utf8')).toBe(text)
+    const history = store.memoryAmendmentsOf('lark')
+    expect(history).toHaveLength(2)
+    for (const row of history) expect(row).toMatchObject({ by: actor, settlement: { by: actor } })
   })
   it('reports the pending-memory hold when removal is refused', () => {
     expect(

@@ -643,13 +643,37 @@ describe('a helper that stopped with a piece open reads as stopped', () => {
     },
   )
 
-  it('refuses a close of work that is not stopped, of a root, and from no person', async () => {
-    const { brobot, ada, piece } = await aHelperThatStopped()
-    // No person behind the caller: refused, and the piece stays stopped.
+  it('records an app close of stopped work with its actual actor', async () => {
+    const { ada, piece } = await aHelperThatStopped()
+    expect(await host.closeForAPerson(piece, THE_APP_ITSELF)).toEqual({
+      ok: true,
+      piece,
+      label: 'W1.1',
+      askedItsTurnToStop: false,
+    })
+    expect(pieceOf(ada, piece)?.state).toBe('closed')
+    expect(
+      createSessionStore(db, tick)
+        .piecesOwnedBy(ada)
+        .find((one) => one.piece === piece)?.state,
+    ).toBe('closed')
+    const closed = ledger(ada).filter((event) => event.type === 'work_closed')
+    expect(closed).toHaveLength(1)
+    expect(closed[0]).toMatchObject({
+      type: 'work_closed',
+      piece,
+      by: null,
+      actor: { who: 'the-app-itself' },
+    })
     expect(await host.closeForAPerson(piece, THE_APP_ITSELF)).toEqual({
       ok: false,
       rail: 'not-a-stopped-piece',
     })
+    expect(ledger(ada).filter((event) => event.type === 'work_closed')).toHaveLength(1)
+  })
+
+  it('refuses a close of a root, an unknown piece and work its holder is asking about', async () => {
+    const { brobot, ada, piece } = await aHelperThatStopped()
     expect(pieceOf(ada, piece)?.state).toBe('stalled')
     // A conversation's own root: no ledger row closes it.
     const root = store.rootOf(brobot)
