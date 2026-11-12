@@ -10,12 +10,7 @@ interface KeptFold<T> {
   readonly newest: number | null
   readonly answer: T
 }
-type CarriedForward<T> = (
-  sessionId: string,
-  generation: number,
-  after: number,
-  held: T,
-) => T | null
+type CarriedForward<T> = (sessionId: string, generation: number, after: number, held: T) => T | null
 
 export function createLedgerFoldState(
   db: AppDatabase,
