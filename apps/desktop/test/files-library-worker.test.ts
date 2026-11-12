@@ -310,13 +310,30 @@ it('cooperatively cancels inside the real worker engine without releasing its pe
 it('renews the stall timer only for advancing work and still times out when progress stops', async () => {
   vi.useFakeTimers()
   const worker = new FictionalWorker()
-  const lifetime = new FilesLibraryLifetime(() => worker, Date.now, 20)
+  let starts = 0
+  const lifetime = new FilesLibraryLifetime(
+    () => {
+      starts++
+      return worker
+    },
+    Date.now,
+    20,
+  )
+  let readSettled = false
   const read = lifetime.read(query, libraryContext)
+  void read.then(() => {
+    readSettled = true
+  })
   worker.ready()
+  const flag = new Int32Array(worker.posted[0]!['cancellation'] as SharedArrayBuffer)
   for (let completed = 1; completed <= 5; completed++) {
     await vi.advanceTimersByTimeAsync(15)
     worker.emit('message', { type: 'progress', id: worker.posted[0]!['id'], completed })
     expect(worker.terminationRequested).toBe(false)
+    expect(readSettled).toBe(false)
+    expect(Atomics.load(flag, 0)).toBe(0)
+    expect(worker.posted).toHaveLength(1)
+    expect(starts).toBe(1)
   }
   await vi.advanceTimersByTimeAsync(21)
   expect(worker.terminationRequested).toBe(false)
@@ -328,6 +345,7 @@ it('renews the stall timer only for advancing work and still times out when prog
   const waiting = lifetime.read(query, libraryContext)
   await Promise.resolve()
   expect(worker.posted).toHaveLength(2)
+  expect(starts).toBe(1)
   let joined = 0
   const closing = lifetime.close().then(() => {
     joined++
@@ -337,6 +355,7 @@ it('renews the stall timer only for advancing work and still times out when prog
   })
   expect(await waiting).toMatchObject({ cause: 'closed' })
   expect(joined).toBe(0)
+  expect(starts).toBe(1)
   expect(worker.terminationRequested).toBe(false)
   worker.exit()
   await Promise.all([closing, repeated])
