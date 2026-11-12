@@ -99,14 +99,24 @@ it('takes the command through a dedicated real worker with no main-thread legacy
         request: { operation: 'query', query: workspaceQuery, size: 1 },
       }),
     )
-    expect(result).toMatchObject({ type: 'files', totalFiles: 16, totalKeeps: 22 })
+    expect(result).toMatchObject({ type: 'files', complete: false, totalFiles: 1, totalKeeps: 2 })
     if (result.type !== 'files' || result.next === null) throw new Error('Missing first page')
-    expect(
+    const final = filesLibraryResult.parse(
       await executeRuntimeCommand(host, sink, {
         kind: 'filesLibrary',
         request: { operation: 'page', cursor: result.next },
       }),
-    ).toMatchObject({ type: 'files', totalFiles: 16 })
+    )
+    expect(final).toMatchObject({
+      type: 'files',
+      complete: true,
+      totalFiles: 16,
+      totalKeeps: 22,
+      next: null,
+    })
+    if (final.type !== 'files') throw new Error(JSON.stringify(final))
+    const hashes = [...result.files, ...final.files].map((group) => group.file.sha256)
+    expect([hashes.length, new Set(hashes).size]).toEqual([16, 16])
     expect(
       await executeRuntimeCommand(host, sink, {
         kind: 'filesLibrary',

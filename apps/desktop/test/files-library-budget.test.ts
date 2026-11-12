@@ -4,7 +4,7 @@ import { Worker } from 'node:worker_threads'
 import { FilesLibraryEngine } from '../src/main/db/files-library-engine'
 import { FilesLibraryLifetime } from '../src/main/db/files-library-reader'
 import { bundleAWorker } from './helpers/bundle-a-worker'
-import type { FilesLibraryResult } from '../src/shared/files-library'
+import { libraryKind, type FilesLibraryResult } from '../src/shared/files-library'
 import {
   filesLibraryFixture,
   workspaceQuery,
@@ -128,6 +128,18 @@ it('completes a fictional 10000-keep snapshot with indexed canonical metadata be
       expected.set(hash, id)
     }
   })()
+  expect(() => f.db.prepare("EXPLAIN QUERY PLAN SELECT library_kind('report.md')")).toThrow(
+    'no such function: library_kind',
+  )
+  expect(() => f.db.prepare("EXPLAIN QUERY PLAN SELECT library_id_key('one')")).toThrow(
+    'no such function: library_id_key',
+  )
+  f.db.function('library_kind', { deterministic: true }, (name: unknown) =>
+    libraryKind(String(name)),
+  )
+  f.db.function('library_id_key', { deterministic: true }, (id: unknown) =>
+    Buffer.from(String(id), 'utf16le').swap16(),
+  )
   const plans = new Map<string, string[]>()
   const engine = new FilesLibraryEngine(f.file, Date.now, (sql, bindings) => {
     if (!plans.has(sql))
