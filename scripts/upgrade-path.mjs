@@ -1178,13 +1178,13 @@ async function verdict(stage) {
   return Date.now() - running.launchedAt
 }
 
-function wholeLog(stage, { checkpoint }) {
+function wholeLog(stage, { checkpoint, completion, observation }) {
   const log = readFileSync(join(evidence, `${stage}.log`), 'utf8')
   const order = holds(
     checkpoint
-      ? `${stage}: over its whole log, one checked recovery copy, then READY, and no failure`
+      ? `${stage}: over its whole log, one checked recovery copy (${completion}), one READY, and no failure`
       : `${stage}: over its whole log, READY, no recovery copy and no failure`,
-    () => startOrder(log, { checkpoint }),
+    () => startOrder(log, { checkpoint, completion, observation }),
   )
   const other = join(evidence, `${stage}.stdout.log`)
   if (existsSync(other)) {
@@ -1868,6 +1868,7 @@ async function theOwedStartOnTheKey(into, owed, { stamped, jobIds, keyWasSealed 
 }
 
 const FIRST_OPEN_STARTS_MS = 180_000
+const COPY_FINISH_MS = 120_000
 
 function theStartAndTheKey(conversation, called, atFirstOpen) {
   const logs = ['candidate-first', 'candidate-second'].map((stage) => loggedBy(stage)).join('\n')
@@ -2603,6 +2604,12 @@ async function runUpgradePath() {
   )
   const expectedReason =
     candidateLineage.length > before.lineage.length ? 'before-migration' : 'first-start-of-release'
+  // With migrations to run, the start finishes the copy before READY; otherwise it finishes it in
+  // the background once the first window is shown, and the first window's own observations are kept.
+  const firstCopyCompletion =
+    expectedReason === 'before-migration' ? 'before-ready' : 'functional-background'
+  const betasCopyIds = new Set(copiesTheBetaLeft.map(({ manifest }) => manifest?.id))
+  let firstCopyObservation = null
 
   const candidateDir = resolve(args['candidate-dir'])
   const candidateFile = join(
@@ -2698,6 +2705,16 @@ async function runUpgradePath() {
     await screenshot('candidate-first.png')
     await dialogsAtAStart('first start', summary.firstStart)
     const info = await running.cdp.evaluate('return await window.api.getAppInfo()')
+    const responsive = performance.now()
+    const manifestAbsent = !(await proofManifests(data)).some(
+      (one) => !betasCopyIds.has(one.manifest.id),
+    )
+    firstCopyObservation = {
+      launched: running.launchedMono,
+      responsive,
+      absent: performance.now(),
+      manifestAbsent,
+    }
     summary.firstStart.app = info
     check(
       info?.version === args['candidate-version'] && info?.build?.commit === args['source-sha'],
@@ -2746,10 +2763,26 @@ async function runUpgradePath() {
     }
     await observeTheSavedKey('first start')
     wholeScreen('screen-after-the-first-start.png')
+    if (firstCopyCompletion === 'functional-background') {
+      const finished = await until(
+        () => (readFileSync(running.log, 'utf8').includes(CHECKPOINT_LINE) ? true : null),
+        COPY_FINISH_MS,
+        500,
+      )
+      if (finished === true) firstCopyObservation.completed = performance.now()
+      check(
+        finished === true,
+        `first start: the recovery copy finished in the background before the app was asked to close (waited up to ${String(COPY_FINISH_MS / 1_000)} s)`,
+      )
+    }
     await quit('the candidate, after its first start')
   })
   summary.firstStart.order = existsSync(join(evidence, 'candidate-first.log'))
-    ? wholeLog('candidate-first', { checkpoint: true })
+    ? wholeLog('candidate-first', {
+        checkpoint: true,
+        completion: firstCopyCompletion,
+        observation: firstCopyObservation,
+      })
     : check(false, 'first start: its log was kept')
 
   const copiesAfterFirst = await copies()
@@ -2766,6 +2799,7 @@ async function runUpgradePath() {
     const folder = join(data, 'backups', made)
     requireEvidence(existsSync(join(folder, 'manifest.json')), 'The copy has no manifest.')
     summary.checkpointMarkerLeft = existsSync(join(folder, 'unfinished'))
+    requireEvidence(!summary.checkpointMarkerLeft, 'The copy still carries its unfinished marker.')
     const manifest = JSON.parse(readFileSync(join(folder, 'manifest.json'), 'utf8'))
     keep('checkpoint-manifest.json', manifest)
     const files = { 'database.sqlite': readFileSync(join(folder, 'database.sqlite')) }
