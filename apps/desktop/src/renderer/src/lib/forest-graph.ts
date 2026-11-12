@@ -4,7 +4,7 @@ import type { ForestRow, ForestView } from './the-forest'
 
 /** ⚑ One conversation in the graph, with the tasks it holds. */
 export interface GraphNode {
-  /** ⛔ The conversation row itself, unchanged — every fact the node prints is on it. */
+  /** The representative row; group members retain their original conversation ids. */
   readonly row: ForestRow
   /** ⚑ **The tasks this conversation holds**, in the list's order — the rows that followed it. */
   readonly tasks: readonly ForestRow[]
@@ -95,7 +95,7 @@ function buildForest(view: ForestView, grouped = false): { all: Building[]; root
     if (bucket.length < 2) continue
     const members = bucket.map(asGraphNode).sort((a, b) =>
       (b.row.conversationRow?.updatedAt ?? 0) - (a.row.conversationRow?.updatedAt ?? 0) ||
-      a.row.conversation.localeCompare(b.row.conversation),
+      b.row.conversation.localeCompare(a.row.conversation),
     )
     const latest = members[0]!
     const group: Building = {

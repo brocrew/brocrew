@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { userEvent } from 'vitest/browser'
 import { nextTick, ref, defineComponent, h } from 'vue'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
 import { conv, forestDrawn, task, viewOf } from './forest-fixture'
@@ -29,7 +30,8 @@ describe('compact graph groups and navigation', () => {
     expect(m.q('forest-group').textContent).toContain('Idle')
     expect(m.q('forest-group').classList.contains('current')).toBe(true)
     expect(m.all('forest-group-member')).toHaveLength(0)
-    m.q('forest-group-toggle').click()
+    m.q('forest-group-toggle').focus()
+    await userEvent.keyboard('{Enter}')
     await nextTick()
     expect(m.all('forest-group-member').map((member) => member.dataset.conversation)).toEqual(['teo-two', 'teo-one'])
     m.all('forest-group-member')[1]!.click()

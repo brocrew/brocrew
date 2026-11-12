@@ -29,7 +29,7 @@ import type {
 import type { ResolvedMessageLink } from '../../src/renderer/src/lib/message-links'
 import { idlePanel } from './sub-agents-idle-fixture'
 import { drawnReady } from './drawn'
-import { conv, forestOf, forestDrawn, readingOf } from './forest-fixture'
+import { conv, forestDrawn, readingOf } from './forest-fixture'
 import { mount, META } from './harness'
 
 // Register the fixture's mocks before loading the root's composable imports.
@@ -500,7 +500,7 @@ it('says the forest could not be read instead of displaying an empty Team', asyn
   m.q('rail-team').click()
   await expect.poll(() => runtime.forestReading.mock.calls.length).toBe(1)
   await nextTick()
-  expect(m.q('forest-not-read').textContent).toContain('Nothing has been read')
+  expect(m.q('forest-error').textContent).toContain('Could not finish reading the graph.')
   expect(m.all('forest-empty')).toHaveLength(0)
 })
 
@@ -840,7 +840,7 @@ it.each(['activity', 'forest'] as const)(
   async (slow) => {
     const answer = deferred<Awaited<ReturnType<RuntimeBridge['whoCalledWhom']>>>()
     const activity = deferred<Awaited<ReturnType<RuntimeBridge['whatIsBeingDone']>>>()
-    const forest = deferred<Awaited<ReturnType<RuntimeBridge['theWholeForest']>>>()
+    const forest = deferred<Awaited<ReturnType<RuntimeBridge['forestReading']>>>()
     runtime.whoCalledWhom.mockReturnValueOnce(answer.promise)
     runtime.whatIsBeingDone.mockImplementationOnce(() =>
       slow === 'activity' ? activity.promise : Promise.resolve({ readAt: 2, conversations: [] }),
@@ -848,9 +848,10 @@ it.each(['activity', 'forest'] as const)(
     runtime.forestReading.mockImplementationOnce(() =>
       slow === 'forest'
         ? forest.promise
-        : Promise.resolve({ readAt: 2, nodes: forestWalk(), conversations: 0, heldByNoAgent: 0 }),
+        : Promise.resolve(readingOf([], { is: 'the-tree-of', conversation: 'fictional-source' }, { readAt: 2 })),
     )
     const screen = await panelScreen()
+    screen.q('main-tab-graph').click()
     try {
       await expect.poll(() => screen.all('cast-loading').length).toBe(1)
       expect(screen.q('cast-loading').getAttribute('role')).toBe('status')
@@ -865,7 +866,7 @@ it.each(['activity', 'forest'] as const)(
       expect(runtime.whoCalledWhom).toHaveBeenCalledTimes(1)
     } finally {
       activity.resolve({ readAt: 3, conversations: [] })
-      forest.resolve({ readAt: 3, nodes: forestWalk(), conversations: 0, heldByNoAgent: 0 })
+      forest.resolve(readingOf([], { is: 'the-tree-of', conversation: 'fictional-source' }, { readAt: 3 }))
     }
     await expect
       .poll(() => useWhoCalledWhom().reading.value?.atWork?.readAt)
@@ -894,34 +895,32 @@ it('ends first-read loading on a refusal and keeps the unread line distinct from
   expect(screen.all('cast-not-read')).toHaveLength(0)
 })
 
-it('ignores old graph and activity refinements after a newer relationship reading', async () => {
+it('coalesces graph refreshes and discards stale activity after a newer relationship answer', async () => {
   const oldActivity = deferred<Awaited<ReturnType<RuntimeBridge['whatIsBeingDone']>>>()
-  const oldForest = deferred<Awaited<ReturnType<RuntimeBridge['theWholeForest']>>>()
+  const oldForest = deferred<Awaited<ReturnType<RuntimeBridge['forestReading']>>>()
+  const scope = { is: 'the-tree-of', conversation: 'fictional-source' } as const
   runtime.whoCalledWhom.mockResolvedValueOnce(panelRead())
   runtime.whatIsBeingDone.mockReturnValueOnce(oldActivity.promise)
   runtime.forestReading.mockReturnValueOnce(oldForest.promise)
   const screen = await panelScreen()
+  screen.q('main-tab-graph').click()
   try {
     await expect.poll(() => screen.all('cast-sub-agents').length).toBe(1)
+    await expect.poll(() => runtime.forestReading.mock.calls.length).toBe(1)
     runtime.whoCalledWhom.mockResolvedValueOnce(panelRead(2))
     runtime.whatIsBeingDone.mockResolvedValueOnce({ readAt: 200, conversations: [] })
-    runtime.forestReading.mockResolvedValueOnce({
-      readAt: 200,
-      nodes: forestWalk(),
-      conversations: 0,
-      heldByNoAgent: 0,
-    })
+    runtime.forestReading.mockResolvedValueOnce(readingOf([], scope, { readAt: 200 }))
     changed({ what: 'work' })
     await expect.poll(() => useWhoCalledWhom().reading.value?.atWork?.readAt).toBe(200)
-    expect(screen.q('cast-sub-agents').querySelector('.count')?.textContent).toBe('(2)')
+    expect(runtime.forestReading).toHaveBeenCalledTimes(1)
+    oldForest.resolve(readingOf([], scope, { readAt: 100 }))
     oldActivity.resolve({ readAt: 100, conversations: [] })
-    oldForest.resolve({ readAt: 100, nodes: forestWalk(), conversations: 0, heldByNoAgent: 0 })
-    await drawnReady()
-    expect(useWhoCalledWhom().forest.value?.readAt).toBe(200)
+    await expect.poll(() => useWhoCalledWhom().forest.value?.readAt).toBe(200)
+    expect(runtime.forestReading).toHaveBeenCalledTimes(2)
     expect(useWhoCalledWhom().reading.value?.atWork?.readAt).toBe(200)
   } finally {
     oldActivity.resolve({ readAt: 100, conversations: [] })
-    oldForest.resolve({ readAt: 100, nodes: forestWalk(), conversations: 0, heldByNoAgent: 0 })
+    oldForest.resolve(readingOf([], scope, { readAt: 100 }))
   }
 })
 
@@ -990,11 +989,11 @@ it.each(['B', 'A'] as const)(
 
 it('keeps Graph unread until the independent forest arrives, then draws the current tree', async () => {
   screenFacts().update({ forest: null })
-  const forest = deferred<Awaited<ReturnType<RuntimeBridge['theWholeForest']>>>()
-  const complete = forestOf([
+  const forest = deferred<Awaited<ReturnType<RuntimeBridge['forestReading']>>>()
+  const complete = readingOf([
     conv('fictional-source', null, { identity: 'editor' }),
     conv('fictional-reader-1', 'fictional-source', { identity: 'reader-1' }),
-  ])
+  ], { is: 'the-tree-of', conversation: 'fictional-source' })
   runtime.whoCalledWhom.mockResolvedValueOnce(panelRead())
   runtime.forestReading.mockReturnValueOnce(forest.promise)
   const screen = await panelScreen()
