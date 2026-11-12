@@ -240,13 +240,13 @@ it('waits within the existing closer budget for every installed process to exit'
     }
     expect(run).toHaveBeenCalledWith('/bin/ps', ['-axo', 'pid=,command='], { timeout: 2_000 })
   }
-  for (const failure of ['late-empty', 'rejected']) {
+  for (const failure of ['late-empty', 'slow-persistent', 'rejected']) {
     let time = 0
     const run = vi.fn(async () => {
       if (time === 0) return processLine
       if (failure === 'rejected') throw new Error('ps failed')
       time = 2_001
-      return ''
+      return failure === 'slow-persistent' ? processLine : ''
     })
     const pause = async (ms) => {
       time += ms
