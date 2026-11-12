@@ -34,6 +34,14 @@ async function main() {
   let finishWrites!: () => void
   const writesReleased = new Promise<void>((resolve) => { finishWrites = resolve })
   let finalWritesDone = false
+  let siblingAdmitted!: () => void
+  const siblingClosing = new Promise<void>((resolve) => { siblingAdmitted = resolve })
+  let failed!: () => void
+  const failureObserved = new Promise<void>((resolve) => { failed = resolve })
+  let workerExited!: () => void
+  const nativeExited = new Promise<void>((resolve) => { workerExited = resolve })
+  let hostClosed = false
+  let shutdownFinished = false
   let closeStarted!: () => void
   const closingStarted = new Promise<void>((resolve) => { closeStarted = resolve })
   let closeSettled = false
@@ -79,6 +87,7 @@ async function main() {
       if (unwound) order.push('unwound')
       exited = true
       order.push('exit')
+      workerExited()
     })
     return worker
   }, Date.now, 30_000, {
@@ -115,22 +124,32 @@ async function main() {
   const originalClose = host.close.bind(host)
   Reflect.set(host, 'close', async (...args: Parameters<typeof host.close>) => {
     if (args[0] === sibling.sessionId) {
+      siblingAdmitted()
       await writesReleased
       writer.exec('INSERT INTO kept VALUES(4)')
       finalWritesDone = true
     }
     await originalClose(...args)
-    if (args[0] === first.sessionId && mode === 'session failure')
+    if (args[0] === first.sessionId && mode === 'session failure') {
+      failed()
       throw new Error('fictional session failed')
+    }
   })
   if (mode === 'sign-in failure') {
     Reflect.get(host, 'signIns').set('fictional-sign-in', { signIn: {} })
-    Reflect.set(host, 'boundedCancel', async () => { throw new Error('fictional sign-in failed') })
+    Reflect.set(host, 'boundedCancel', async () => {
+      failed()
+      throw new Error('fictional sign-in failed')
+    })
   }
   const lifetime = createAppLifetime({
     announceClosing: () => {}, recordOpenSessions: () => {},
     stopArchiveWork: () => {}, drainArchiveWork: async () => {},
-    closeAllSessions: () => host.closeAll(),
+    closeAllSessions: () => {
+      const closing = host.closeAll()
+      void closing.then(() => { hostClosed = true }, () => { hostClosed = true })
+      return closing
+    },
     closeDatabase: () => {
       assert.equal(exited, true, 'writer reached checkpoint before reader exit')
       assert.equal(unwound, true, 'native iterator was terminated instead of unwound')
@@ -165,10 +184,18 @@ async function main() {
   })
   lifetime.beforeQuit({ preventDefault() {} })
   const shutdown = lifetime.shuttingDown!
-  void shutdown.catch(() => {})
+  void shutdown.then(() => { shutdownFinished = true }, () => { shutdownFinished = true })
   lifetime.beforeQuit({ preventDefault() {} })
   try {
-    await closingStarted
+    await Promise.race([
+      Promise.all([closingStarted, siblingClosing, mode === 'success' ? Promise.resolve() : failureObserved]),
+      nativeExited.then(() => { throw new Error('native worker exited before held shutdown phases were observed') }),
+      shutdown.then(() => { throw new Error('shutdown finished before held shutdown phases were observed') }),
+    ])
+    assert.equal(Atomics.load(gate, 0), 0)
+    assert.equal(Atomics.load(gate, 1), 0)
+    assert.equal(hostClosed, false)
+    assert.equal(shutdownFinished, false)
     assert.equal(Atomics.load(cancellation!, 0), 1, 'Quit must cancel the actual posted read')
     assert.equal(closeSettled, false, 'join must remain pending while iterator is held')
     assert.equal(exited, false)
@@ -176,6 +203,17 @@ async function main() {
     assert.equal(writer.open, true)
     Atomics.store(gate, 0, 1)
     Atomics.notify(gate, 0)
+    await nativeExited
+    // Give completed exit/host continuations one event-loop turn; no elapsed-time wait.
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    assert.equal(workerExitCode, 0)
+    assert.deepEqual(workerErrors, [])
+    assert.equal(unwound, true)
+    assert.equal(finalWritesDone, false)
+    assert.equal(hostClosed, false, 'host returned before sibling final writes')
+    assert.equal(shutdownFinished, false)
+    assert.equal(checkpointResult, undefined, 'checkpoint ran before final writes')
+    assert.equal(writer.open, true)
     finishWrites()
     await shutdown
   } finally {
