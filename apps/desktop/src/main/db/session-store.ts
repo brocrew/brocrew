@@ -70,9 +70,7 @@ import type {
 import type { HandedPath } from '../../shared/attachment-contracts'
 import type { ScheduleLevel, ScheduledRow } from '../../shared/agent-state-contracts'
 import { createOwnNotesStore, type OwnNotesStore } from './own-notes'
-import {
-  createMemoryRecoveryStore,
-} from './memory-recovery'
+import { createMemoryRecoveryStore } from './memory-recovery'
 export { createMemoryAmendmentObserver } from './memory-recovery'
 import { createAgentKnowledgeHistory } from './agent-knowledge-history'
 import {

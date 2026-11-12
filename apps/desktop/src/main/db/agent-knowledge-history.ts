@@ -7,12 +7,7 @@ import {
   ownInstructionsRowId,
 } from './identity'
 import { agentName, type AgentIdentityName } from '../../shared/runtime-ipc'
-import {
-  actedByFrom,
-  isWhoDidIt,
-  THE_APP_DID_IT,
-  type ActedBy,
-} from '../../shared/who-did-it'
+import { actedByFrom, isWhoDidIt, THE_APP_DID_IT, type ActedBy } from '../../shared/who-did-it'
 import {
   MEMORY_AMENDMENT,
   type MemoryAmendment,
@@ -412,9 +407,8 @@ export function createAgentKnowledgeHistory(
         if (said.whoWroteIt === 'an-agent-direct' && said.by.who === 'an-agent') {
           const identity = receiver.identityOf(said.by.agent)
           if (identity === null || said.conversation !== said.by.agent) return null
-          const named = identityNameById().get(
-            agentIdentityRowId(identity.profileSlug),
-          ) as AgentIdentityName | undefined
+          const named = identityNameById().get(agentIdentityRowId(identity.profileSlug)) as
+            AgentIdentityName | undefined
           if (
             named === undefined ||
             said.author?.profile !== named.slug ||
