@@ -5,7 +5,7 @@ import {
   syntheticProviderHome,
   fixtureProviderConfig,
 } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync,  rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,12 +21,6 @@ import type { CallerIdentity } from '../src/main/runtime/runtime-host'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  CAPABILITY_FIELDS,
-  type MessagingReach,
-  capabilityField,
-  type AnyCapabilityField,
-} from '../src/shared/capabilities'
 
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { agentStateWords } from '../src/shared/agent-state'

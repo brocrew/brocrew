@@ -1,9 +1,6 @@
-import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
-import { capabilityField, DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
-import { thisConversationSpans } from '../src/main/runtime/factory-text'
+import { describe,   } from 'vitest'
 
 /**
  * 🔴 **464 · the grant a person meant to give** — `460` F1, and the half of it `456` could not have

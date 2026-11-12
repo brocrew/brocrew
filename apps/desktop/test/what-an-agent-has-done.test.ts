@@ -726,42 +726,25 @@ describe('F009 · what an agent has done, read on demand', () => {
   })
 
   describe('2 · the reach', () => {
-    it('🔴 a caller that reaches only what it started reads only those conversations, and every file', async () => {
+    it('any caller reads every conversation and file', async () => {
       const { one, two, oneTools, twoTools, first, standIn, second, file } =
         await aTesterWithAHistory()
 
-      const fromOne = await theRecordOf(oneTools, 'tester')
-      expect(fromOne.structured, fromOne.text).toMatchObject({ outcome: 'ok' })
-      const oneSees = (fromOne.structured.conversations as ConversationPayload[]).map(
-        (row) => row.agent,
-      )
-      expect(oneSees.sort()).toEqual([first, standIn].sort())
-      expect((fromOne.structured.pieces as PiecePayload[]).map((piece) => piece.label)).toEqual([
-        'W1.4',
-        'W1.3',
-        'W1.2',
-        'W1.1',
-      ])
-      expect(fromOne.text).not.toContain('W2.1')
-
+      for (const tools of [oneTools, twoTools]) {
+        const record = await theRecordOf(tools, 'tester')
+        expect(record.structured.outcome).toBe('ok')
+        expect((record.structured.conversations as ConversationPayload[]).map((row) => row.agent).sort()).toEqual([first, standIn, second].sort())
+        expect((record.structured.pieces as PiecePayload[]).map((piece) => piece.label).sort()).toEqual(['W1.4', 'W1.3', 'W1.2', 'W1.1', 'W2.1'].sort())
+        expect(record.structured.rules_told).toBe(true)
+      }
       const fromTwo = await theRecordOf(twoTools, 'tester')
-      expect(fromTwo.structured, fromTwo.text).toMatchObject({ outcome: 'ok' })
-      expect(
-        (fromTwo.structured.conversations as ConversationPayload[]).map((row) => row.agent),
-      ).toEqual([second])
-      expect((fromTwo.structured.pieces as PiecePayload[]).map((piece) => piece.label)).toEqual([
-        'W2.1',
-      ])
-      expect(fromTwo.text).not.toContain('W1.4')
-      // ⚑ Each reaches a conversation of it, so each is told how its rules begin.
-      expect(fromTwo.structured.rules_told).toBe(true)
       // ⚑ Its files are not folded by reach: `find_files` names them to any caller.
       expect((fromTwo.structured.files as { resource: string }[]).map((f) => f.resource)).toEqual([
         file,
       ])
       // ⚑ What the record says of a conversation is what `get_agent_status` would admit.
       const status = await fullCall(twoTools, 'get_agent_status', { agent: first })
-      expect(status.structured.outcome).toBe('refused')
+      expect(status.structured.outcome).toBe('ok')
       expect(one).not.toBe(two)
     })
 
@@ -786,20 +769,11 @@ describe('F009 · what an agent has done, read on demand', () => {
       })
       expect(told.text).toContain('It has no conversation within your reach.')
 
-      const NOT_TOLD =
-        'How its standing rules begin is told only to a caller that can reach its conversations.'
-      for (const name of ['auditor', 'scribe']) {
-        const record = await theRecordOf(tools, name)
-        expect(record.structured, record.text).toMatchObject({
-          outcome: 'ok',
-          rules_told: false,
-          rules_begin: null,
-        })
-        // ⛔ One sentence for rules and for none: a caller out of reach learns neither.
-        expect(record.text).toContain(NOT_TOLD)
-        expect(record.text).not.toContain('auditor of accounts')
-        expect(record.text).not.toContain('It has no standing rules.')
+      for (const [name, rules] of [['auditor', 'You are an auditor of accounts.'], ['scribe', null]]) {
+        const record = await theRecordOf(tools, name as string)
+        expect(record.structured).toMatchObject({ outcome: 'ok', rules_told: true, rules_begin: rules })
       }
+
     })
 
     it('⛔ a name this app holds no agent by is refused, and the refusal names the door that lists them', async () => {

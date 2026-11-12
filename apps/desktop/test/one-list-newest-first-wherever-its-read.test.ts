@@ -133,10 +133,7 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
   /** What an agent's own calls look like from outside the toolset — `agent:<its session>`. */
   const speakingAs = (sessionId: string): CallerIdentity => ({ ownerId: agentCallerId(sessionId) })
 
-  const idsListedBy = async (toolset: AgentToolset): Promise<string[]> => {
-    const listed = (await callOn(toolset, 'list_agents', {})) as { agents: { agent: string }[] }
-    return listed.agents.map((one) => one.agent).sort()
-  }
+  
 
   /** ⚑ **The raw order `list_agents` hands back** — unsorted, because §1 is about that order. */
   const agentsInOrder = async (toolset: AgentToolset): Promise<string[]> => {
@@ -190,27 +187,7 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
    * spawn between any two of them, so the only thing that can admit an answer is the grant — and,
    * since §3 below stops the target, the only thing that can admit a STOPPED one.
    */
-  const twoCallersAndOneTarget = async (): Promise<{
-    brobot: string
-    brobotTools: AgentToolset
-    explorer: string
-    explorerTools: AgentToolset
-    manager: string
-  }> => {
-    const manager = await personOpens('pm')
-    const brobot = await personOpens(DEFAULT_PROFILE_ID)
-    const brobotTools = theToolsetJustHandedOut()
-    const explorer = await personOpens('explorer')
-    const explorerTools = theToolsetJustHandedOut()
-    // ⚠️ **The premise, asserted rather than assumed.** ⚑ **`none` since D-016** — the reach
-    // vocabulary is `none | any`, and `none` is the one word that leaves a caller out of reach.
-    // ⛔ **And neither COMMANDS it**, which the door that still asks `mayCommand` says for both.
-    // ⚑ **D-016 · the parent alone** — nothing started the manager, so nothing is above it.
-    expect(store.parentOf(manager)).toBeNull()
-    expect((await host.interruptAgent(manager, speakingAs(brobot))).ok).toBe(false)
-    expect((await host.interruptAgent(manager, speakingAs(explorer))).ok).toBe(false)
-    return { brobot, brobotTools, explorer, explorerTools, manager }
-  }
+  
 
   describe('§3 · a stopped, out-of-reach conversation meets the reach rail, never no-such-agent', () => {
     /**

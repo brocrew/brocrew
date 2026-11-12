@@ -35,9 +35,7 @@ let fixtureLists: ModelLists
 export let sessions: SessionStore
 export let agentStore: ReturnType<typeof createAgentStore>
 const changeListeners = new Set<Parameters<RuntimeBridge['onChanged']>[0]>()
-export const changed: Parameters<RuntimeBridge['onChanged']>[0] = (change) => {
-  for (const listener of [...changeListeners]) listener(change)
-}
+export 
 vi.mock('../../src/renderer/src/composables/useSessionStore', () => ({
   useSessionStore: () => sessions,
 }))

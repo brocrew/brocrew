@@ -50,7 +50,7 @@ import { WORKSPACE_INSTRUCTIONS, workspaceInstructionFiles } from '../src/main/r
 import {
   CAPABILITY_FIELDS,
   DEFAULT_CAPABILITIES,
-  capabilityField,
+  
   grantSays,
 } from '../src/shared/capabilities'
 import type {

@@ -5,7 +5,7 @@ import {
   syntheticProviderHome,
   fixtureProviderConfig,
 } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync,  rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,14 +19,13 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { CallerIdentity } from '../src/main/runtime/runtime-host'
 import {
-  TOOL_REFUSALS,
+  
   agentCallerId,
-  refuseTool,
+  
   type ToolName,
 } from '../src/main/runtime/agent-tools'
 
-import { SPAWN_RAILS, describeRail, permanenceOf } from '../src/main/runtime/spawn-rails'
-import { CAPABILITY_FIELDS, capabilityField } from '../src/shared/capabilities'
+import {   permanenceOf } from '../src/main/runtime/spawn-rails'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
 const here = dirname(fileURLToPath(import.meta.url))
