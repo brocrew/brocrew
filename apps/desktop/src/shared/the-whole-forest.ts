@@ -367,4 +367,3 @@ export interface ForestNodesPage {
   readonly gone: readonly string[]
   readonly readAt: number
 }
-

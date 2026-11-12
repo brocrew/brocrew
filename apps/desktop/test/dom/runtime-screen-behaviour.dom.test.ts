@@ -1237,11 +1237,12 @@ it('reads the full containing tree only when the conversation Graph tab is opene
   expect(m.q('forest-drawn').textContent).toBe('2 conversations')
 })
 
-
 it('workspace graph windows preserve the independent conversation relationship metadata', async () => {
   screenFacts().update({ forest: forestOf([conv('older-holder', null)]) })
   const remembered = useWhoCalledWhom().forest.value
-  runtime.forestReading.mockImplementation(async (scope) => readingOf([conv('recent-holder', null)], scope))
+  runtime.forestReading.mockImplementation(async (scope) =>
+    readingOf([conv('recent-holder', null)], scope),
+  )
   const m = mount(RuntimeScreen, {})
   try {
     m.q('rail-team').click()

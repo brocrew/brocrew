@@ -282,7 +282,7 @@ export interface WorkEdge {
    *
    * 🔴 **The producers are `SessionStore`'s three, and all three compose**: `workThisOneGaveOut`
    * (through `walkWorkGivenBy`, shared with the Work tab), `workThisOneWasGiven`, and
-   * `forestNodesOf`'s piece nodes. ⚠️ {@link workEdge} copies whatever state it is handed,
+   * `forestNodesOf`'s piece nodes. {@link workEdge} copies whatever state it is handed,
    * so the composition is the CALLER's.
    */
   readonly state: TaskState

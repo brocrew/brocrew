@@ -452,8 +452,6 @@ describe('§3 · what RuntimeScreen asks, and what it keeps', () => {
     return rest.slice(0, next < 0 ? undefined : next)
   })()
 
-
-
   it('⛔ a refusal keeps the cards and DROPS the doing words', () => {
     // 🔴 **`beingDone`'s own rule, inherited.** Every other kept read is a LIST whose absence would
     // read as *nothing is here*; this one is a REFINEMENT, so a kept card returns to the faceless
@@ -467,8 +465,6 @@ describe('§3 · what RuntimeScreen asks, and what it keeps', () => {
     expect(readTheCast).toContain('castFacts.update({ reading: { ...reading, atWork: doing } })')
     expect(readTheCast).toContain('reading?.conversation === asked && reading.answered')
   })
-
-
 })
 
 // ───────────────────────────────────────────────────────────────────────────────────────────────

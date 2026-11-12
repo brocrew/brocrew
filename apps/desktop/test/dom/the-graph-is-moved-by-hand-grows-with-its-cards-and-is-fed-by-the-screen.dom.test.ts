@@ -276,8 +276,7 @@ describe('the Graph is moved by hand, grows with its cards, and is fed by the sc
       const column = tab.q('conversation-graph')
       const padding = parseFloat(getComputedStyle(column).paddingBottom)
       expect(
-        column.getBoundingClientRect().bottom -
-          tab.q('forest-rows').getBoundingClientRect().bottom,
+        column.getBoundingClientRect().bottom - tab.q('forest-rows').getBoundingClientRect().bottom,
       ).toBeLessThanOrEqual(padding + 2)
 
       // (b) The control: the same forest on a page, at the same viewport, with the same room.
