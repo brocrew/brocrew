@@ -14,8 +14,17 @@ it('a provider version refresh reaches the drawer, agent picker and launched ali
   let current = false
   let counter = 0
   const rows = (): ModelChoice[] => [
-    { id: 'default', label: 'Default', resolvesTo: current ? 'opus-new' : 'sonnet-old', isDefault: true },
-    { id: 'fable', label: current ? 'Fable new' : 'Fable old', resolvesTo: current ? 'fable-new' : 'fable-old' },
+    {
+      id: 'default',
+      label: 'Default',
+      resolvesTo: current ? 'opus-new' : 'sonnet-old',
+      isDefault: true,
+    },
+    {
+      id: 'fable',
+      label: current ? 'Fable new' : 'Fable old',
+      resolvesTo: current ? 'fable-new' : 'fable-old',
+    },
   ]
   const host = new RuntimeHost({
     ...neutralHostDeps(() => folder),
@@ -49,7 +58,10 @@ it('a provider version refresh reaches the drawer, agent picker and launched ali
     expect(drawer.models).toEqual(rows().map((row) => ({ ...row, addedBy: 'the-provider' })))
     expect(picker.models).toEqual(drawer.models)
     for (const row of picker.models) {
-      await host.createSession({ provider: 'claude', profileId: 'fern', model: row.id }, new RecordingSink())
+      await host.createSession(
+        { provider: 'claude', profileId: 'fern', model: row.id },
+        new RecordingSink(),
+      )
     }
     expect(started.map((options) => options.model)).toEqual(['default', 'fable'])
   } finally {

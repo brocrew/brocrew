@@ -6557,14 +6557,33 @@ describe('the model list, asked of the provider rather than written down (058)',
    */
   it('keeps the current Default and Fable catalogue identities and resolutions verbatim', async () => {
     const rows: ModelInfo[] = [
-      { value: 'default', displayName: 'Default (recommended)', description: 'Supplied default', resolvedModel: 'claude-opus-5-5' },
-      { value: 'fable', displayName: 'Fable 5.2', description: 'Supplied Fable', resolvedModel: 'claude-fable-5-2' },
-      { value: 'older', displayName: 'Older available model', description: '', resolvedModel: 'claude-opus-4-8' },
+      {
+        value: 'default',
+        displayName: 'Default (recommended)',
+        description: 'Supplied default',
+        resolvedModel: 'claude-opus-5-5',
+      },
+      {
+        value: 'fable',
+        displayName: 'Fable 5.2',
+        description: 'Supplied Fable',
+        resolvedModel: 'claude-fable-5-2',
+      },
+      {
+        value: 'older',
+        displayName: 'Older available model',
+        description: '',
+        resolvedModel: 'claude-opus-4-8',
+      },
     ]
     const { runtime, closes } = probeRuntime({ supportedModels: async () => rows })
     const models = await runtime.listModels({ providerHome: '/tmp/x/home' })
     expect(models.map(({ id, label, resolvesTo }) => ({ id, label, resolvesTo }))).toEqual(
-      rows.map(({ value, displayName, resolvedModel }) => ({ id: value, label: displayName, resolvesTo: resolvedModel })),
+      rows.map(({ value, displayName, resolvedModel }) => ({
+        id: value,
+        label: displayName,
+        resolvesTo: resolvedModel,
+      })),
     )
     expect(models.filter((model) => model.isDefault).map((model) => model.id)).toEqual(['default'])
     expect(closes()).toBe(1)

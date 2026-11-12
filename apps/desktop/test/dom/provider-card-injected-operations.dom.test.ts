@@ -217,27 +217,45 @@ it('copies all profiles through the injected operation and retains its result', 
   expect(forbidden).not.toHaveBeenCalled()
 })
 
-
 it('one refreshed provider catalogue feeds the drawer, the agent picker and the taken launch aliases', async () => {
   const rows = (current: boolean): ModelList['models'] => [
-    { id: 'default', label: 'Default (recommended)', resolvesTo: current ? 'claude-opus-5-5' : 'claude-sonnet-5-5', isDefault: true, addedBy: 'the-provider' },
-    { id: 'fable', label: current ? 'Fable 5.2' : 'Fable', resolvesTo: current ? 'claude-fable-5-2' : 'claude-fable-5-1', addedBy: 'the-provider' },
+    {
+      id: 'default',
+      label: 'Default (recommended)',
+      resolvesTo: current ? 'claude-opus-5-5' : 'claude-sonnet-5-5',
+      isDefault: true,
+      addedBy: 'the-provider',
+    },
+    {
+      id: 'fable',
+      label: current ? 'Fable 5.2' : 'Fable',
+      resolvesTo: current ? 'claude-fable-5-2' : 'claude-fable-5-1',
+      addedBy: 'the-provider',
+    },
   ]
   const out = card(rows(false))
   const lists = modelListsForClient(out.api)
   await lists.read('claude', 'fern')
   const take = vi.fn(async () => null)
-  const picker = mount(defineComponent({
-    setup() {
-      provide(CLIENT_PROVIDERS, out.api)
-      return () => h(ModelPicker, {
-        providers: ['claude'], profileId: 'fern',
-        shown: { provider: 'claude', model: 'default', effort: null },
-        takeWords: 'Switch from your next message', take, lists,
-        readiness: { claude: true },
-      })
-    },
-  }), {}, { width: 760, height: 900 })
+  const picker = mount(
+    defineComponent({
+      setup() {
+        provide(CLIENT_PROVIDERS, out.api)
+        return () =>
+          h(ModelPicker, {
+            providers: ['claude'],
+            profileId: 'fern',
+            shown: { provider: 'claude', model: 'default', effort: null },
+            takeWords: 'Switch from your next message',
+            take,
+            lists,
+            readiness: { claude: true },
+          })
+      },
+    }),
+    {},
+    { width: 760, height: 900 },
+  )
   await settle()
   ;(picker.q('model-picker-face') as HTMLElement).click()
   await settle()
