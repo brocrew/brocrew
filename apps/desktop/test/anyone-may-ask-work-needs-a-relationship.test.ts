@@ -581,18 +581,7 @@ describe('553 · anyone may ask; work needs a relationship', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§4 · HO-026 §2, against the new grant', () => {
-    /**
-     * 🔴 **HO-026 §2:** *a reach grant lets you speak; only a command relationship lets you destroy
-     * in-flight work.* ⚠️ **HO-060 makes that line MORE load-bearing**, so it is pressed against
-     * the widest form of both message grants.
-     *
-     * ⛔ **One caller holding BOTH message grants at their widest still cannot interrupt a
-     * conversation it did not start**, because interrupting reads no grant: it reaches only the
-     * chain below the caller (D-014). ⚑ **D-017 — `end_agent` is gone** (nothing ends a
-     * conversation), and the refusal is `not-below-you`: `no-such-agent` is said only about an id
-     * no conversation has.
-     */
-    it('🔴 the widest message grants buy no destruction — interrupt still refuses', async () => {
+    it('a known colleague waiting on a person keeps its question open', async () => {
       const { bossTools, stranger } = await aBossItsChildAndAStranger()
       reach('lead', { canMessage: 'any', canAssignWork: 'any' })
 
@@ -607,9 +596,14 @@ describe('553 · anyone may ask; work needs a relationship', () => {
         ).outcome,
       ).toBe('ok')
 
+      await expect
+        .poll(() => store.routedRequestsOf(stranger).some((request) => request.state === 'open'))
+        .toBe(true)
+      const waiting = store.routedRequestsOf(stranger)
+      expect(waiting.some((request) => request.state === 'open')).toBe(true)
       const refused = await callOn(bossTools, 'interrupt_agent', { agent: stranger, reason: 'no' })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('not-below-you')
+      expect(refused).toMatchObject({ outcome: 'refused', rail: 'a-person-is-being-asked' })
+      expect(store.routedRequestsOf(stranger)).toEqual(waiting)
       expect(host.sessionIds).toContain(stranger)
     })
 

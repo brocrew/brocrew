@@ -399,7 +399,6 @@ describe('a label names the conversation that owns the piece, and no more', () =
       agent: brobot,
     })
 
-    // ⛔ The stranger's label is unknown, and its id meets the chain rail — nothing reached it.
     const strangerByLabel = await callOn(brobotTools, 'interrupt_agent', {
       agent: 'W2',
       reason: 'the routes are no longer wanted',
@@ -409,24 +408,24 @@ describe('a label names the conversation that owns the piece, and no more', () =
       reason: 'the routes are no longer wanted',
     })
     expect(strangerByLabel, JSON.stringify(strangerByLabel)).toMatchObject({
-      outcome: 'refused',
-      rail: 'no-such-agent',
+      outcome: 'ok',
+      agent: stranger,
+      asked: true,
     })
-    expect(withoutTheEchoedSpelling(strangerByLabel)).toEqual(
-      withoutTheEchoedSpelling(unknownLabel),
-    )
-    expect(JSON.stringify(strangerByLabel)).not.toContain(stranger)
+    expect(unknownLabel).toMatchObject({ outcome: 'refused', rail: 'no-such-agent' })
     const strangerById = await callOn(brobotTools, 'interrupt_agent', {
       agent: stranger,
       reason: 'the routes are no longer wanted',
     })
     expect(strangerById, JSON.stringify(strangerById)).toMatchObject({
-      outcome: 'refused',
-      rail: 'not-below-you',
+      outcome: 'ok',
+      agent: stranger,
     })
-    expect(strangerHandle.status()).toBe('working')
-    expect(ledger(stranger)).toHaveLength(strangerRows)
-    expect(ledger(stranger).some((event) => event.type === 'work_interrupted')).toBe(false)
+    expect(ledger(stranger).length).toBeGreaterThan(strangerRows)
+    expect(ledger(stranger).find((event) => event.type === 'work_interrupted')).toMatchObject({
+      by: 'an-agent',
+      agent: brobot,
+    })
   })
 
   it('🔴 a caller that may not message reads, by label, the transcript of a conversation it may read, and not a stranger’s', async () => {
@@ -755,14 +754,12 @@ describe('a label names the conversation that owns the piece, and no more', () =
     expect(status.text).toContain('started by BroBot (the owner of W1')
     expect(status.text).toContain('holds W1.1 · Build the pages')
 
-    // The interrupt sentence names the child by its work.
     const interrupt = await fullCall(brobotTools, 'interrupt_agent', {
       agent: 'W1.1',
       reason: 'nothing to stop',
     })
     expect(interrupt.text).toContain(ADA_BY_ITS_WORK)
 
-    // The receipt of a message names the child by its work.
     const message = await fullCall(brobotTools, 'message_agent', {
       agent: 'W1.1',
       kind: 'follow-up',
@@ -775,7 +772,6 @@ describe('a label names the conversation that owns the piece, and no more', () =
       'Ada to answer the follow-up',
     )
 
-    // The read names the SENDER by its work: BroBot, the owner of W1.
     const read = await fullCall(brobotTools, 'read_transcript', { agent: 'W1.1' })
     expect(read.text).toContain('came from BroBot (the owner of W1)')
 
@@ -812,7 +808,6 @@ describe('a label names the conversation that owns the piece, and no more', () =
     const { brobot, ada } = await aFamily()
     const before = worksAnnounced()
 
-    // Three refusals: blank, a name no piece carries, and a piece a conversation gave.
     expect(host.retitleForAPerson('W1', '   ').ok).toBe(false)
     expect(host.retitleForAPerson('W99', 'Build the pages').ok).toBe(false)
     expect(host.retitleForAPerson('W1.1', 'Build the pages').ok).toBe(false)
@@ -942,13 +937,18 @@ describe('a label names the conversation that owns the piece, and no more', () =
           ])
         })
       }
-      it(`${tool} does not disclose helpers when a stranger’s label is refused`, async () => {
-        const { brobotTools } = await settledFamily()
+      it(`${tool} does not disclose the caller's helpers when addressing a stranger`, async () => {
+        const { brobotTools, stranger } = await settledFamily()
         narrowBroBot()
         const said = await fullCall(brobotTools, tool, argsFor('W2'))
-        expect(said.structured.outcome).toBe('refused')
+        if (tool === 'interrupt_agent') {
+          expect(said.structured).toMatchObject({ outcome: 'ok', agent: stranger })
+        } else {
+          expect(said.structured.outcome).toBe('refused')
+          expect(said.text).not.toContain('Amara')
+        }
         expect(said.text).not.toContain('Its helpers:')
-        expect(said.text).not.toContain('Amara')
+        expect(said.text).not.toContain('Ada (worker) on W1.1')
       })
     }
 

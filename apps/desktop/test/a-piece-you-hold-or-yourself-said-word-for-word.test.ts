@@ -373,7 +373,7 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
           named === label
             ? ` ${label} is your own piece, with no helpers recorded under it. list_agents names who you can reach.`
             : named === itsRoot
-              ? ` ${itsRoot} is your own piece. Its helpers: Ada (worker) on ${label} (working). Reach a helper by its piece's label, even after it ended: message_agent with kind: note, or ask_question. For new work, give_work with its profile. To stop a helper below you, interrupt_agent with its label.`
+              ? ` ${itsRoot} is your own piece. Its helpers: Ada (worker) on ${label} (working). Reach a helper by its piece's label, even after it ended: message_agent with kind: note, or ask_question. For new work, give_work with its profile. To stop a known conversation, interrupt_agent with its label.`
               : ''
         expectRefused(said, 'that-agent-is-you', NOT_ITSELF + guide, named)
         expect(said.structured.detail, named).toEqual({ agent: itself })

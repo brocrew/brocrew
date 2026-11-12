@@ -207,11 +207,8 @@ describe('642 · who can I talk to', () => {
       outcome: 'ok',
       agent: { state: 'idle' },
     })
-    // ⛔ **Not BroBot's to interrupt** — it did not start it and it is not below it — so the door
-    // refuses it in its own word (D-017 · R12), exactly as for the running one. Asked before the
-    // message starts it.
     const interrupted = await callOn(tools, 'interrupt_agent', { agent: worker, reason: 'stop' })
-    expect([interrupted.outcome, interrupted.rail]).toEqual(['refused', 'not-below-you'])
+    expect(interrupted).toMatchObject({ outcome: 'ok', asked: false })
     // ⚑ …and the message starts it again (R1). ⚑ **D-016** — a note: BroBot gave it no piece, and a
     // follow-up must name one.
     const sent = await callOn(tools, 'message_agent', {

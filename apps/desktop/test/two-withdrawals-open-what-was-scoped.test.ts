@@ -261,9 +261,11 @@ describe('two withdrawals — open what was scoped', () => {
       expect(rawColumn('inspector', 'can_message')).toBeNull()
       expect(reached(writer, 'a question about your notes')).toBe(true)
 
+      const waiting = store.routedRequestsOf(writer)
+      expect(waiting.some((request) => request.state === 'open')).toBe(true)
       const refused = await callOn(readerTools, 'interrupt_agent', { agent: writer, reason: 'no' })
-      expect(refused.outcome, `interrupt_agent: ${JSON.stringify(refused)}`).toBe('refused')
-      expect(refused.rail).toBe('not-below-you')
+      expect(refused).toMatchObject({ outcome: 'refused', rail: 'a-person-is-being-asked' })
+      expect(store.routedRequestsOf(writer)).toEqual(waiting)
 
       const taken = await callOn(readerTools, 'withdraw_task', { piece: writerLabel })
       expect(taken.outcome, JSON.stringify(taken)).toBe('refused')

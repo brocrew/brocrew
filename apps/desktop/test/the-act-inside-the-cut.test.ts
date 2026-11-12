@@ -714,7 +714,6 @@ const ACT: Readonly<Record<string, string>> = {
   // ⚑ **F091** — its own work is its own to stop, and another agent is named instead.
   'TOOL_REFUSALS|that-agent-is-you/an-interrupt':
     'Stop your own work yourself, or name another agent to interrupt',
-  'TOOL_REFUSALS|that-agent-is-not-below-you': 'Call message_agent again without interrupt',
   // ⚑ **D-016 · commit 3** — `agent-already-has-work-open` went with the one-open-task rail; the
   // stall rule (`SPAWN_RAILS|its-work-has-stalled`) replaced it until a give came to
   // name a stall instead of refusing.
@@ -912,7 +911,6 @@ const ACT: Readonly<Record<string, string>> = {
   // is comes before it, in the state.
   'INTERRUPT_RAILS|it-is-waiting-on-an-answer': 'If that is you, answer it with answer_question',
   // ⚑ **D-017 · R12** — the doors that reach further than interrupting.
-  'INTERRUPT_RAILS|not-below-you': 'To ask it something use ask_question',
   // ⚑ **D-016 · commit 3** — `DOCUMENT_RAILS` became `RESOURCE_RAILS`: a reply's files are kept as
   // resources, and the registry's words (projects, tasks, registration, the tree) went with it.
   // ⚑ **726 · R92** — the act no longer says *inside this conversation’s working directory*.

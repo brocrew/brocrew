@@ -774,8 +774,6 @@ export const TOOL_REFUSALS = [
    * `me` is minted from it rather than taken from an argument.
    */
   'that-agent-is-you',
-  /** `message_agent` asked to interrupt an agent that is not below the sender, which is who may be interrupted. */
-  'that-agent-is-not-below-you',
   /**
    * ⛔ **The global kill switch is off** (419, brief §5) — the same word `SPAWN_RAILS` uses, on a
    * different door.
@@ -1963,8 +1961,6 @@ export const TOOL_PERMANENCE: Readonly<Record<ToolRefusal, RailPermanence>> = {
   'that-conversation-has-not-started': 'while-this-holds',
   // ⛔ **Permanent: a conversation can never send itself a message.** See the rail's own note.
   'that-agent-is-you': 'permanent',
-  // ⛔ **Permanent: who is below whom is fixed by who started whom.**
-  'that-agent-is-not-below-you': 'permanent',
   // ⚑ **A person has to throw the switch back**, which is exactly what this word is for — and it is
   // the same permanence `SPAWN_RAILS` gives the same switch.
   'spawning-disabled': 'until-a-person-changes-it',
@@ -2115,7 +2111,6 @@ const TOOL_REMEDY: Readonly<Record<ToolRefusal, RefusalRemedy | null>> = {
   // own, no verb in the roster makes a session command itself, and *"change the call, not the
   // world"* is what `permanent` already tells it.
   'that-agent-is-you': null,
-  'that-agent-is-not-below-you': null,
   'spawning-disabled': null,
   // ⛔ **657 · nothing this caller can do** — the biconditional's other half.
   'agent-did-not-start': null,
@@ -2372,8 +2367,6 @@ const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   // told its target was busy, which is the one thing it was not.
   'that-agent-is-you':
     'that is this conversation: a conversation cannot send itself a message, so nothing was queued. Whatever you meant to send, do it yourself — or send it to another agent.',
-  'that-agent-is-not-below-you':
-    'that agent is not one you started, or one started under them, so nothing was sent: only those can be interrupted. Call message_agent again without interrupt and the message goes out when that agent is free.',
   // ⛔ **The sentence carries what the switch's own label does not.** A person turned agent
   // creation off by switching off agents starting new conversations, and a refusal that said only
   // *no* would leave a model retrying a rule only a person can change. ⚠️ It says nothing was
@@ -4470,7 +4463,7 @@ function whatBecameOfTheStop(
     case 'not-below-you':
       return {
         structured: notStopped,
-        said: `${called} is not one you started, or one started under them, so its turn was not stopped; ${what} waits for that turn to end.`,
+        said: `${called} is no longer working on the sender's piece, so its turn was not stopped; ${what} waits for that turn to end.`,
       }
     case 'a-person-is-replacing-its-turn':
       return {
@@ -5414,7 +5407,7 @@ export function agentToolsFor(
         )
         if (facts.helpers.some((helper) => helper.profile !== null))
           lines.push('For new work, give_work with its profile.')
-        lines.push('To stop a helper below you, interrupt_agent with its label.')
+        lines.push('To stop a known conversation, interrupt_agent with its label.')
       } else if (facts.rowsUnread > 0 || (facts.ledgersSkipped ?? 0) > 0) {
         lines.push(`${facts.label} is your own piece. list_agents names who you can reach.`)
       } else {
@@ -6224,7 +6217,7 @@ export function agentToolsFor(
             .describe(
               'true also asks the turn that agent is running to stop, so that this message need not wait for its work to finish — a turn can run for hours. Use it only for something the agent must know before it goes on: a change of plan, a request to pause and save where it is. To answer a question it asked you, use answer_question, which asks that turn to stop by default. ' +
                 theRuleOfAStopForWords(undefined, 'it') +
-                ' Its open questions stay open. Only for an agent you started or one started under it. Leave it out for anything that can wait.',
+                ' Its open questions stay open. The target must be a known conversation. Leave it out for anything that can wait.',
             ),
         } satisfies Readonly<Record<keyof MessageAgentArguments, z.ZodType>>).map(
           ([field, schema]) => [field, agentToolHandlerInput(schema)],
@@ -6473,16 +6466,11 @@ export function agentToolsFor(
               addressedAs: spelled,
               messageAct,
             }
-            // ⚑ **An interrupting message is held first and the stop asked second, inside the host**
-            // ({@link RuntimeHost.messageAgentNow}), and it is refused before anything is held when
-            // the receiver is not one this caller may interrupt — the same reach `interrupt_agent` has.
+            // Hold the message before asking its running turn to stop.
             const now =
               interruptAsked === true
                 ? await host.messageAgentNow(agent, text, by, says, facts)
                 : null
-            if (now !== null && !now.ok) {
-              return refusalAnswer(refuseTool('that-agent-is-not-below-you', { agent }))
-            }
             const outcome =
               now === null
                 ? await host.queueMessage(agent, text, by, [], 'work', facts, says)
@@ -7584,16 +7572,6 @@ export function agentToolsFor(
        * the sentence points at `message_agent` rather than offering to carry the words.
        */
       /**
-       * 🔴 **629 · *an agent you created* was the whole reach and is not any more** (`HO-095` §4).
-       *
-       * ⛔ **The ruling:** *any agent above another in the spawn chain may interrupt it* — so this
-       * verb reaches a conversation one of YOUR conversations started, however many hops down.
-       * ⚠️ **Standing rule 8.1**: a description that went on saying *you created* would instruct a
-       * model not to try the act this app now admits — `402`'s defect pointed the other way.
-       *
-       * ⛔ **It does not name the grant, the chain's depth or how the app records it** (HO-015 §2,
-       * standing): the sentence says which agents, and `list_agents` is where the ids come from.
-       *
        * 🔴 **695 · R35 — *thrown away* is the TURN's work, not its background work.** Until 695 the
        * sentence said *"whatever it was part-way through is thrown away"*, and on Claude that was
        * true of a backgrounded agent or workflow too: the CLI killed them on an interrupt it had not
@@ -7613,7 +7591,7 @@ export function agentToolsFor(
        * state it is in now.
        */
       description:
-        'Stop what an agent below you is doing right now — one you created, or one that those agents created in turn. Its conversation stays open and it can be given something else. It asks the turn it is in to stop: that turn may end there, throwing away whatever it was part-way through, or it may be finished anyway — once the agent is no longer working, get_agent_status says which, so read it there before you rely on either. The stop also ends commands that turn started: ' +
+        'Ask a known conversation to stop what it is doing right now. Its conversation stays open and it can be given something else. It asks the turn it is in to stop: that turn may end there, throwing away whatever it was part-way through, or it may be finished anyway — once the agent is no longer working, get_agent_status says which, so read it there before you rely on either. The stop also ends commands that turn started: ' +
         PROVIDER_DESCRIPTORS.map(
           (descriptor) =>
             `on ${descriptor.displayName}, ${descriptor.words.interruptActionSummary}`,
@@ -7623,7 +7601,7 @@ export function agentToolsFor(
       /**
        * 🔴 **486 · a person is asked as well** (HO-031 §2.4).
        *
-       * ⛔ **Its own description says it: the turn is asked to stop, and what it was part-way through is thrown away unless it is finished anyway** (`720`, `709` F-9). ⚠️ `INTERRUPT_RAILS` refuse the case where cutting the turn would answer a person's card, and only an agent above it in the spawn chain may ask — rails, both, answering *may you*.
+       * ⛔ **Its own description says it: the turn is asked to stop, and what it was part-way through is thrown away unless it is finished anyway** (`720`, `709` F-9). ⚠️ `INTERRUPT_RAILS` refuse the case where cutting the turn would answer a person's card,
        */
       beyondItsRails: 'it-destroys-work-in-flight',
       input: {
@@ -7644,9 +7622,6 @@ export function agentToolsFor(
               refuseTool('malformed-request', { problems: ['agent and reason are both required'] }),
             )
           }
-          // 🔴 **D-016 · commit 7 · R1 — a label names its piece's owner** when this caller may reach
-          // it or stop it — the chain below it, however many hops down, as an id is stopped; one that
-          // names nothing it may reach meets `no-such-agent` as an unknown id does.
           const addressed = host.theConversationAddressed(agent, by, me, 'interrupting')
           // 🔴 **F091 · that is this conversation** — its own id, a piece it holds (a label names its
           // owner), or one it took the place of, whose place it now stands in: `message_agent`'s word
@@ -7665,8 +7640,8 @@ export function agentToolsFor(
             // ⚑ **Two vocabularies meet here and neither is rewritten.** `'no-such-agent'` is
             // `TOOL_REFUSALS`' word — the same one every door gives about an id no conversation has
             // — and everything else is an `INTERRUPT_RAILS` payload carried unchanged.
-            if (outcome.refusal === 'no-such-agent') {
-              return refusalAnswer(refuseTool('no-such-agent', { agent: addressed }))
+            if (outcome.refusal === 'no-such-agent' || outcome.refusal === 'that-agent-is-you') {
+              return refusalAnswer(refuseTool(outcome.refusal, { agent: addressed }))
             }
             const carried = carryInterruptRefusal(outcome.refusal)
             return answer(carried, `refused (${outcome.refusal.rail}): ${outcome.refusal.reason}`)

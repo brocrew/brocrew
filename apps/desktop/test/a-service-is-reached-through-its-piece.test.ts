@@ -304,7 +304,7 @@ describe('a service is reached through the piece it is on', () => {
           agent: service,
           reason: 'not needed now',
         })
-        expect(stopped.structured).toMatchObject({ outcome: 'refused', rail: 'not-below-you' })
+        expect(stopped.structured).toMatchObject({ outcome: 'ok', agent: service })
         const sent = await call(host, outsider, 'message_agent', {
           agent: service,
           kind: 'note',
@@ -332,7 +332,7 @@ describe('a service is reached through the piece it is on', () => {
         agent: service,
         reason: 'not needed now',
       })
-      expect(stopped.structured).toMatchObject({ outcome: 'refused', rail: 'not-below-you' })
+      expect(stopped.structured).toMatchObject({ outcome: 'ok', agent: service })
       const followed = await call(host, caller, 'message_agent', {
         agent: service,
         kind: 'follow-up',
@@ -979,11 +979,6 @@ describe('a service is reached through the piece it is on', () => {
       expect(types.lastIndexOf('work_interrupted')).toBeGreaterThan(
         types.indexOf('work_taken_back'),
       )
-      // Its caller has no reach left while that turn drains.
-      expect(
-        (await call(host, caller, 'interrupt_agent', { agent: service, reason: 'not needed now' }))
-          .structured,
-      ).toMatchObject({ outcome: 'refused', rail: 'not-below-you' })
       // The turn ends before the stop is answered; its notice goes on its own.
       releaseTheTurn()
       await vi.waitFor(() => {

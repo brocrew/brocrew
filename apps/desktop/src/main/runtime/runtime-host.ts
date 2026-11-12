@@ -147,7 +147,6 @@ import {
   mayClaim,
   mayHandBack,
   mayCommand,
-  mayInterruptDownTheChain,
   mayAnswerAsAHuman,
   callerName,
   aPersonTypedIt,
@@ -165,7 +164,6 @@ export {
   mayControl,
   mayHandBack,
   mayCommand,
-  mayInterruptDownTheChain,
   mayAnswerAsAHuman,
   aPersonTypedIt,
   whoDidIt,
@@ -11771,7 +11769,7 @@ export class RuntimeHost implements LiveHost {
       // ⚑ A piece the caller gave a service names that service, so a message or a stop about it is
       // answered for what that piece is, queued or on.
       ((reach === 'messaging' || reach === 'interrupting') && this.itGaveItToAService(row, by)) ||
-      (reach === 'interrupting' && this.mayInterrupt(this.theOneInItsPlace(owner), by)) ||
+      (reach === 'interrupting' && this.mayInterrupt(this.theOneInItsPlace(owner))) ||
       (reach === 'reading' && me !== null && this.mayReadTheTranscriptOf(owner, me))
     return admitted ? owner : address
   }
@@ -24455,7 +24453,7 @@ export class RuntimeHost implements LiveHost {
 
   /**
    * A message the sender wants read now: it is held like any other, and the turn it waits behind is
-   * asked to stop, so it goes out as that turn ends. Only for a conversation the sender may interrupt.
+   * asked to stop, so it goes out as that turn ends.
    *
    * ⚠️ **The message is held first and the stop asked second, never the other way**: a stop with
    * nothing held leaves the conversation idle with nothing to read.
@@ -24467,9 +24465,6 @@ export class RuntimeHost implements LiveHost {
     says: AgentMessageKind,
     facts: FactsAQueueCarries = {},
   ): Promise<MessageNowOutcome> {
-    if (!this.mayInterrupt(this.theOneInItsPlace(sessionId), by)) {
-      return { ok: false, refusal: 'not-below-you' }
-    }
     const delivery = await this.queueMessage(sessionId, text, by, [], 'work', facts, says)
     if (delivery.outcome === 'sent')
       return { ok: true, delivery, stop: 'not-needed', askedOf: null }
@@ -24505,13 +24500,13 @@ export class RuntimeHost implements LiveHost {
 
   /**
    * An answer held behind a running turn, whose answerer did not say to let that turn finish: the
-   * turn is asked to stop, as `message_agent` with interrupt asks it, when the answerer may interrupt
-   * the asker — and when a person's own words did not open that turn, which is theirs.
+   * turn is asked to stop, as `message_agent` with interrupt asks it, when a person's own words did
+   * not open that turn.
    * ⛔ It never throws: the answer is held either way.
    */
   private stopForAnAnswer(asker: string, messageId: string, by: Caller): TheStopItsWordsAsked {
     try {
-      if (!this.mayInterrupt(asker, by)) return { stop: 'not-below-you', askedOf: null }
+      if (!this.mayInterrupt(asker)) return { stop: 'could-not-be-asked', askedOf: null }
     } catch (error) {
       console.warn(`runtime host could not tell who may stop ${asker}: ${errorMessage(error)}`)
       return { stop: 'could-not-be-asked', askedOf: null }
@@ -31170,7 +31165,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * 🔴 **Stop what a conversation below you is doing** — S5's verb (395, HO-007 S5).
+   * Ask the known conversation to stop its running turn.
    *
    * ## ⛔ Why this is not {@link interrupt} with a different caller
    *
@@ -31182,9 +31177,7 @@ export class RuntimeHost implements LiveHost {
    *
    * ## ⚑ The rails, in the one order they may be asked
    *
-   *  1. **Existence, then entitlement** — ⚑ **D-017 · R12**: `no-such-agent` only for an id no
-   *     conversation has, and `not-below-you` for one that is not below the caller —
-   *     {@link mayInterrupt}. ⛔ The fold that answered both in one word is gone.
+   *  1. **Existence** — `no-such-agent` only for an id no conversation has.
    *  2. **Whether a turn runs in it** — a conversation stopped, stopping or idle with no turn open
    *     is answered *nothing to interrupt*, and nothing is asked.
    *  3. **The target's state** — {@link admitInterrupt}, and the rail that matters is
@@ -31219,15 +31212,16 @@ export class RuntimeHost implements LiveHost {
     if (slot === undefined && this.deps.store.recordedOne(sessionId) === null) {
       return { ok: false, refusal: 'no-such-agent' }
     }
+    const speaking = sessionSpeakingAs(by)
+    if (speaking !== null && this.theOneInItsPlace(speaking) === sessionId) {
+      return { ok: false, refusal: 'that-agent-is-you' }
+    }
     // ⚑ A service on another caller's piece: only that caller, or a person, may stop its turn.
     if (this.onAnotherCallersPiece(sessionId, by)) {
       return {
         ok: false,
         refusal: refuseInterrupt('that-service-is-on-another-callers-piece', { agent: sessionId }),
       }
-    }
-    if (!this.mayInterrupt(sessionId, by)) {
-      return { ok: false, refusal: refuseInterrupt('not-below-you', { agent: sessionId }) }
     }
     // ⚑ **D-017 — nothing is running in it, so nothing is asked**: a conversation this app is not
     // running, or one whose provider has stopped or is being stopped. ⛔ Not started to be stopped,
@@ -31331,34 +31325,8 @@ export class RuntimeHost implements LiveHost {
     })
   }
 
-  /**
-   * ⚑ **629 · may this caller interrupt that conversation?** — {@link interruptAgent}'s entitlement,
-   * and the reach {@link theConversationAddressed} resolves `interrupt_agent`'s label by (D-016 ·
-   * commit 7 · R1), so the door and its address cannot come to two readings of it.
-   *
-   * ## ⚑ The entitlement is TWO predicates, and the second is the ruling
-   *
-   * ⛔ **`HO-095` §4: *any agent above another in the spawn chain may interrupt it*.**
-   * ⚠️ {@link mayInterruptDownTheChain} is asked SECOND and short-circuits, so the ledger read costs
-   * nothing on the path a direct commander takes. ⚑ **D-017 · R2 · a conversation this app is not
-   * running is asked the same question** — {@link startable} carries the commander a start would
-   * derive, and the chain is the LEDGER's, which survives the restart. ⚑ **D-017 · R10 — the chain
-   * as it stands now**: a commander or an ancestor that could never be reopened is the one in its
-   * place ({@link commandedNow}).
-   *
-   * @param sessionId already the one in its place ({@link theOneInItsPlace}).
-   */
-  private mayInterrupt(sessionId: string, by: Caller): boolean {
-    // ⚑ The caller whose piece a service is on may stop its turn, while that piece is on.
-    if (this.thePieceItIsOnFor(sessionId, by) !== null) return true
-    const target = this.slots.get(sessionId) ?? this.startable(sessionId)
-    return (
-      (target !== undefined && target !== null && mayCommand(this.commandedNow(target), by)) ||
-      mayInterruptDownTheChain(
-        by,
-        this.ancestorsAsItWillRun(sessionId).map((above) => this.theOneInItsPlace(above)),
-      )
-    )
+  private mayInterrupt(sessionId: string): boolean {
+    return this.slots.has(sessionId) || this.deps.store.recordedOne(sessionId) !== null
   }
 
   /**

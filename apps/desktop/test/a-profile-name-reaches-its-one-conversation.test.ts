@@ -379,10 +379,7 @@ describe('a profile name reaches its one conversation', () => {
     const { giverTools, worker, callerTools } = await aWorld()
     expect(
       await callOn(callerTools, 'message_agent', { ...aNote('worker'), interrupt: true }),
-    ).toMatchObject({
-      outcome: 'refused',
-      rail: 'that-agent-is-not-below-you',
-    })
+    ).toMatchObject({ outcome: 'ok' })
     expect(store.setCapabilities('reviewer', { canMessage: 'none' })).toBe(true)
     const denied = await fullCall(callerTools, 'message_agent', aNote('worker'))
     const unknown = await fullCall(callerTools, 'message_agent', aNote('nobody-by-this-name'))

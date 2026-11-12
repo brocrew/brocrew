@@ -265,7 +265,10 @@ export type InterruptOutcome =
        */
       readonly stillRunning: readonly string[]
     }
-  | { readonly ok: false; readonly refusal: InterruptRefusal | 'no-such-agent' }
+  | {
+      readonly ok: false
+      readonly refusal: InterruptRefusal | 'no-such-agent' | 'that-agent-is-you'
+    }
 
 /** What {@link RuntimeHost.messageAgentNow} did about the turn its message waits behind. */
 export type TheStopAMessageGot =
@@ -281,7 +284,7 @@ export type TheStopAMessageGot =
   | 'it-is-waiting-on-an-answer'
   /** The message is held, and the turn could not be asked to stop. */
   | 'could-not-be-asked'
-  /** An answer's asker is not one its answerer may interrupt; the answer waits for its turn to end. */
+  /** The service is no longer working on the sender's piece; held words still wait. */
   | 'not-below-you'
   /** A person's own words opened the turn an answer waits behind: it is theirs, and runs on. */
   | 'a-person-started-its-turn'
@@ -318,22 +321,20 @@ export type AnswerWithItsStop =
     })
   | Extract<AnswerOutcome, { readonly ok: false }>
 
-/** What {@link RuntimeHost.messageAgentNow} answers: a refusal before anything is held, or both halves. */
-export type MessageNowOutcome =
-  | { readonly ok: false; readonly refusal: 'not-below-you' }
-  | {
-      readonly ok: true
-      readonly delivery: QueueOutcome
-      readonly stop: TheStopAMessageGot
-      /** The conversation whose answer the turn waits for, on `it-is-waiting-on-an-answer`. */
-      readonly askedOf: string | null
-      /** ⚑ **F084** — see {@link TheStopItsWordsAsked.ended}. */
-      readonly ended?: readonly string[]
-      /** ⚑ **F084** — see {@link TheStopItsWordsAsked.stillRunning}. */
-      readonly stillRunning?: readonly string[]
-      /** ⚑ **F084** — see {@link TheStopItsWordsAsked.provider}. */
-      readonly provider?: Provider
-    }
+/** Delivery and the stop requested for its held words. */
+export type MessageNowOutcome = {
+  readonly ok: true
+  readonly delivery: QueueOutcome
+  readonly stop: TheStopAMessageGot
+  /** The conversation whose answer the turn waits for, on `it-is-waiting-on-an-answer`. */
+  readonly askedOf: string | null
+  /** ⚑ **F084** — see {@link TheStopItsWordsAsked.ended}. */
+  readonly ended?: readonly string[]
+  /** ⚑ **F084** — see {@link TheStopItsWordsAsked.stillRunning}. */
+  readonly stillRunning?: readonly string[]
+  /** ⚑ **F084** — see {@link TheStopItsWordsAsked.provider}. */
+  readonly provider?: Provider
+}
 
 /**
  * ⚑ **D-017 · R12 — why a caller may not reach a conversation by that id** (`05` rule 6) — see

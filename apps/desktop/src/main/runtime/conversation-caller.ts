@@ -204,56 +204,6 @@ export function mayCommand(
 }
 
 /**
- * 🔴 **May this caller STOP a conversation it does not command?** (629, `HO-095` §4, D-014.)
- *
- * > ⛔ **The ruling, whole:** *end and interrupt reach the chain below you, not the project.*
- *
- * ## ⛔ What it cost not to have this, measured on the clean-install run
- *
- * Allow an ancestor to interrupt a descendant directly. Routing a stop through each intermediate agent could queue it behind a busy manager while the descendant keeps acting on the person's machine.
- *
- * ## ⚑ A SECOND question and never a wider {@link mayCommand}
- *
- * ⛔ **`mayCommand` answers fourteen questions from five call sites** — its own docblock, and
- * `a-reach-you-can-see.test.ts` §3 computes both numbers rather than restating them. ⚠️ Widening
- * it would have widened spawning, assigning, answering and the two readers with it, which is `340`
- * §5's rule in the direction it is usually read: *an entitlement widening must be opt-in at the
- * call site*. ⚑ **So this is a separate predicate with ONE caller** — `RuntimeHost.mayInterrupt`,
- * the interrupt entitlement, which spells `mayCommand` in the same condition so that census still
- * counts it; `interruptAgent` and the reading of a piece label both ask it (`end_agent`, the
- * second caller, went with D-017).
- *
- * ## 🔴 Not an argument a model passes — standing rule 32
- *
- * ⛔ **`HO-084` §1.3: *a grant a PERSON sets is a rail; an argument a model supplies is a
- * habit*.*** ⚠️ There is no `deep: true` on `interrupt_agent` and there must not be:
- * this widens by a FACT THIS APP RECORDED — who spawned whom — which no caller can state, misstate
- * or forget to state. ⚑ The chain is `provider_session.parent_session_id`, written by the spawn rails in
- * the same transaction as the child.
- *
- * ## ⚠️ What it does NOT widen, because an escalation guarantee is only as wide as what is denied
- *
- *  - ⛔ **Sideways.** A sibling is not in its sibling's ancestry, so nothing here reaches one.
- *  - ⛔ **Upward.** A child is not above its parent; the walk only ever goes up from the TARGET, so a
- *    conversation a person started, with nothing above it, is reached by no agent through this.
- *  - ⛔ **Spawning and starting.** The spawn door's `not-your-parent` rail is untouched.
- *
- * @param by the caller. ⚑ A window and {@link THE_APP_ITSELF} decode to `null` here and are
- *   admitted — or refused — by {@link mayCommand} alone, so this clause cannot widen a person's
- *   reach or the app's by accident.
- * @param above the conversations ABOVE the target, from `SessionStore.ancestorsOf` — **the
- *   DURABLE chain and never the live slot**, so the reach does not blink out at a restart.
- */
-export function mayInterruptDownTheChain(by: Caller, above: readonly string[]): boolean {
-  const speaking = sessionSpeakingAs(by)
-  // ⛔ **A positive test on the CONVERSATION, and `null` is refused by having nothing to match** —
-  // `mayCommand`'s own `null matches nothing, by construction and not by care`, one predicate
-  // over. ⚑ A window's `webContents:…` and the app's symbol both decode to `null`, so neither can
-  // be admitted by a list of session ids however that list was built.
-  return speaking !== null && above.includes(speaking)
-}
-
-/**
  * 🔴 **May this caller answer a question this session stopped to ask a PERSON?** (340 §2.)
  *
  * ⛔ **HO-005 Q2, ruled 2026-09-05, and this is the chokepoint it names**: *"Permissions: always the

@@ -14,7 +14,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, THE_APP_ITSELF, mayInterruptDownTheChain } from './helpers/giver-notice-host'
+import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import {
   A_CONVERSATION_CANNOT_INTERRUPT_ITSELF,
   agentToolsFor,
@@ -202,6 +202,7 @@ describe('629 · a stop reaches down the whole chain', () => {
     aliPiece: string
     aliLabel: string
     aliHandle: FakeSessionHandle
+    adaHandle: FakeSessionHandle
     brobotTools: AgentToolset
     adaTools: AgentToolset
     pmProfile: string
@@ -220,6 +221,7 @@ describe('629 · a stop reaches down the whole chain', () => {
     const brobot = await personOpens(DEFAULT_PROFILE_ID, 'auto')
     const brobotTools = agentToolsFor(host, brobot)
     const ada = (await give(brobotTools, pmProfile, 'run the front-end work')).agent
+    const adaHandle = latestHandle()
     const adaTools = agentToolsFor(host, ada)
     const toAli = await give(adaTools, workerProfile, 'build the world-clock page')
     const ali = toAli.agent
@@ -231,6 +233,7 @@ describe('629 · a stop reaches down the whole chain', () => {
       aliPiece: toAli.piece,
       aliLabel: toAli.label,
       aliHandle,
+      adaHandle,
       brobotTools,
       adaTools,
       pmProfile,
@@ -326,65 +329,42 @@ describe('629 · a stop reaches down the whole chain', () => {
       })
     })
 
-    /**
-     * ⚑ **D-014's pair, one direction over — the grandchild may not stop what is above it.** ⛔ Until
-     * D-017 this was measured on `end_agent` too; commit 3 removed that verb (nothing ends a
-     * conversation), so the chain's reach is interrupt's alone. ⚑ **D-017 · R12**: an id that exists
-     * and is not below the caller is refused `not-below-you`, never `no-such-agent`.
-     */
-    it('🔴 D-014 · the grandchild may not interrupt what is above it — and the grandparent may interrupt it', async () => {
-      const { ada, ali, aliHandle, brobotTools } = await aChainOfThree()
+    it('a grandchild can stop its working parent, and a grandparent can stop its running descendant', async () => {
+      const { ada, ali, aliHandle, adaHandle, brobotTools } = await aChainOfThree()
       await makeItWork(aliHandle)
+      await makeItWork(adaHandle)
       const upward = await callOn(agentToolsFor(host, ali), 'interrupt_agent', {
         agent: ada,
         reason: 'no',
       })
-      expect(upward.outcome, JSON.stringify(upward)).toBe('refused')
-      expect(upward.rail).toBe('not-below-you')
-      expect(ledger(ada).some((event) => event.type === 'work_interrupted')).toBe(false)
+      expect(upward).toMatchObject({ outcome: 'ok', agent: ada, asked: true })
+      expect(ledger(ada).find((event) => event.type === 'work_interrupted')).toMatchObject({
+        by: 'an-agent',
+        agent: ali,
+      })
       const down = await callOn(brobotTools, 'interrupt_agent', { agent: ali, reason: 'done' })
       expect(down.outcome, JSON.stringify(down)).toBe('ok')
     })
   })
 
-  // ─────────────────────────────────────────────────────────────────────────────────────────
-  // §2 · what is STILL refused — the sentence the brief asked for
-  // ─────────────────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * 🔴 **§2.2's four, each an ACTUAL refused call paired with the same call one fact over.**
-   *
-   * ⚑ **D-017 · R12 — `not-below-you` is the word the interrupt refusals get** for a conversation
-   * that exists and is not below the caller; `no-such-agent` is kept for an id no conversation has.
-   * ⛔ `341`'s ordering, which answered both in one word so a caller could not learn whether the
-   * conversation existed, is gone with the one list every agent can read.
-   */
-  describe('§2 · sideways, upward and spawning are all still refused', () => {
-    it('⛔ REFUSED · a SIBLING cannot interrupt its sibling — and their parent can', async () => {
+  describe('§2 · peers may interrupt; self, spawning and work controls remain', () => {
+    it('a sibling can stop its running sibling, and the parent can ask again', async () => {
       const { ali, aliHandle, adaTools, siblingProfile } = await aChainOfThree()
       await makeItWork(aliHandle)
       const sibling = (await give(adaTools, siblingProfile, 'the second worker')).agent
       const siblingTools = agentToolsFor(host, sibling)
-      // ⚑ **They really are siblings**, or the refusal below is about something else.
       expect(store.parentOf(sibling)).toBe(store.parentOf(ali))
-      // ⛔ **And Ali is not above the sibling either** — the walk only goes UP from the target,
-      // so a sibling is absent from it in both directions.
       expect(store.ancestorsOf(ali)).not.toContain(sibling)
 
       const refused = await callOn(siblingTools, 'interrupt_agent', { agent: ali, reason: 'stop' })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('not-below-you')
+      expect(refused).toMatchObject({ outcome: 'ok', asked: true })
 
-      // ⚑ **THE PAIR one fact over** — the same call, the same target, from the conversation that
-      // IS above it.
       const allowed = await callOn(adaTools, 'interrupt_agent', { agent: ali, reason: 'stop' })
       expect(allowed.outcome, JSON.stringify(allowed)).toBe('ok')
     })
-
-    it('⛔ REFUSED · an UNRELATED agent cannot interrupt anything — and its own child it can', async () => {
+    it('an unrelated colleague can stop a running peer as well as its own descendant', async () => {
       const { ali, aliHandle } = await aChainOfThree()
       await makeItWork(aliHandle)
-      // ⚑ **A second, separate chain** — nobody in it is above or below anybody in the first.
       const other = await aChainOfThree()
       await makeItWork(other.aliHandle)
       expect(store.ancestorsOf(ali)).not.toContain(other.brobot)
@@ -394,48 +374,34 @@ describe('629 · a stop reaches down the whole chain', () => {
         agent: ali,
         reason: 'stop',
       })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('not-below-you')
+      expect(refused).toMatchObject({ outcome: 'ok', asked: true })
 
-      // ⚑ **THE PAIR** — the identical caller, one fact over: a grandchild of its OWN.
       const allowed = await callOn(other.brobotTools, 'interrupt_agent', {
         agent: other.ali,
         reason: 'stop',
       })
       expect(allowed.outcome, JSON.stringify(allowed)).toBe('ok')
     })
-
-    it('⛔ REFUSED · a conversation is not ABOVE ITSELF — and the one above it is', async () => {
-      // ⛔ **The ruling is *above another*, and a conversation is not above itself.** ⚠️ The walk
-      // could say otherwise in two ways — by keeping its seed row, or by coming back round a
-      // cycle — and both are refused in the statement rather than here, which is why this arm
-      // exists: the rule is stated where a reader looks for it.
+    it('a conversation cannot interrupt itself, and a colleague can', async () => {
       const { ali, aliHandle, adaTools } = await aChainOfThree()
       await makeItWork(aliHandle)
       expect(store.ancestorsOf(ali)).not.toContain(ali)
 
-      // 🔴 **F091 · the door answers first, with what the call is** — that is this conversation
-      // (`that-agent-is-you`, `message_agent`'s word), where the chain's word pointed at a door that
-      // refuses a message to oneself (§6)…
       const itself = await callOn(agentToolsFor(host, ali), 'interrupt_agent', {
         agent: ali,
         reason: 'stop',
       })
       expect(itself.outcome, JSON.stringify(itself)).toBe('refused')
       expect(itself.rail).toBe('that-agent-is-you')
-      // ⚑ …and the walk's rule still holds where it is asked: the host's own entitlement refuses a
-      // conversation interrupting itself with the chain's word.
       expect(await host.interruptAgent(ali, asAgent(ali))).toMatchObject({
         ok: false,
-        refusal: { rail: 'not-below-you' },
+        refusal: 'that-agent-is-you',
       })
       expect(aliHandle.status()).toBe('working')
 
-      // ⚑ **THE PAIR one fact over** — the same target, from the conversation directly above it.
       const allowed = await callOn(adaTools, 'interrupt_agent', { agent: ali, reason: 'stop' })
       expect(allowed.outcome, JSON.stringify(allowed)).toBe('ok')
     })
-
     it('⛔ REFUSED · the chain grants no SPAWN — a grandparent may not start a child under its grandchild', async () => {
       const { brobot, ali, aliLabel, siblingProfile } = await aChainOfThree()
       // ⛔ **The chain is not a relationship that admits a give**: D-016's give hangs its piece
@@ -523,21 +489,8 @@ describe('629 · a stop reaches down the whole chain', () => {
   // §5 · `mayCommand` did not widen
   // ─────────────────────────────────────────────────────────────────────────────────────────
 
-  /**
-   * 🔴 **§5 row 4 · name `mayCommand`'s other questions and show they did not widen.**
-   *
-   * ⛔ **The enumeration itself is `a-reach-you-can-see.test.ts` §3's**, which COMPUTES the call
-   * sites and the sixteen questions rather than restating them — and it is green on this tree, which
-   * is the evidence that none of the questions moved (`703`'s two new call sites choose a refusal's
-   * words and are named out there). ⚑ **What is asserted here is the other half**: the
-   * widening has exactly ONE call site, the verb D-014 names that is left — ⛔ `end_agent`, the
-   * other, went with D-017's commit 3. ⚑ **D-016 · commit 7 · R1 — that call site is the verb's
-   * entitlement, `mayInterrupt`, in a method of its own**: `interruptAgent` asks it, and so does the
-   * one resolver of an agent address for `interrupt_agent`'s label — one entitlement, two askers,
-   * so the door and its address cannot come to two readings of it.
-   */
-  describe('§5 · the widening is one predicate with one caller', () => {
-    it('⛔ the model-facing sentence of the verb names the chain and not *you created*', () => {
+  describe('§5 · the public description admits known conversations', () => {
+    it('the model-facing sentence names known conversations', () => {
       // 🔴 **Standing rule 8.1.** ⛔ A description that went on saying *an agent you created*
       // would instruct a model not to try the act this app now admits — `402`'s defect pointed
       // the other way. ⚑ One verb since D-017's commit 3 removed `end_agent`.
@@ -546,22 +499,9 @@ describe('629 · a stop reaches down the whole chain', () => {
           (one) => one.name === name,
         )?.description
         expect(said, `${name} has no description`).toBeTruthy()
-        expect(said, name).toContain('below you')
+        expect(said, name).toContain('known conversation')
         expect(said, name).not.toContain('an agent you created')
       }
-    })
-
-    it('⛔ the predicate admits NO caller that is not a conversation, and no empty chain', () => {
-      // 🔴 **A window and the app decode to `null`**, so neither can be matched by a list of
-      // session ids however that list was built — `mayCommand`'s *null matches nothing, by
-      // construction and not by care*, one predicate over.
-      expect(mayInterruptDownTheChain({ ownerId: 'webContents:1' }, ['sess_a'])).toBe(false)
-      expect(mayInterruptDownTheChain(THE_APP_ITSELF, ['sess_a'])).toBe(false)
-      // ⛔ **An empty chain admits nobody** — which is what the null store answers and what a
-      // conversation nobody spawned has.
-      expect(mayInterruptDownTheChain(asAgent('sess_a'), [])).toBe(false)
-      // ⚑ **THE PAIR**: the one shape it does admit.
-      expect(mayInterruptDownTheChain(asAgent('sess_a'), ['sess_b', 'sess_a'])).toBe(true)
     })
   })
 
@@ -569,13 +509,6 @@ describe('629 · a stop reaches down the whole chain', () => {
   // §6 · F091 — a conversation that names itself
   // ─────────────────────────────────────────────────────────────────────────────────────────
 
-  /**
-   * 🔴 **F091 · `interrupt_agent` naming the conversation that calls it says that is this
-   * conversation** — by its id, by a piece it holds (a label names its owner), by its own root, and,
-   * for a conversation standing in another's place, by that one's id or piece — as `message_agent`
-   * says it. ⛔ It answered the chain's word, `not-below-you`, whose *"to tell it something,
-   * message_agent"* pointed at a door that refuses a message to oneself.
-   */
   describe('§6 · a conversation that names itself', () => {
     /** ⚑ The words a model reads, beside the payload. */
     const callWithText = async (
@@ -625,7 +558,7 @@ describe('629 · a stop reaches down the whole chain', () => {
           named === aliLabel
             ? ` ${aliLabel} is your own piece, with no helpers recorded under it. list_agents names who you can reach.`
             : named === brobotsRoot
-              ? ` ${brobotsRoot} is your own piece. Its helpers: Ada (${pmProfile}) on ${adaLabel} (working). Reach a helper by its piece's label, even after it ended: message_agent with kind: note, or ask_question. For new work, give_work with its profile. To stop a helper below you, interrupt_agent with its label.`
+              ? ` ${brobotsRoot} is your own piece. Its helpers: Ada (${pmProfile}) on ${adaLabel} (working). Reach a helper by its piece's label, even after it ended: message_agent with kind: note, or ask_question. For new work, give_work with its profile. To stop a known conversation, interrupt_agent with its label.`
               : ''
         expect(said.structured, named).toMatchObject({
           outcome: 'refused',
@@ -651,13 +584,11 @@ describe('629 · a stop reaches down the whole chain', () => {
       // ⛔ Nothing was interrupted.
       expect(aliHandle.status()).toBe('working')
       expect(ledger(ali).some((event) => event.type === 'work_interrupted')).toBe(false)
-      // ⚑ The controls: a conversation outside its tree keeps the chain's word, and the one above it
-      // interrupts it.
       const other = await aChainOfThree()
       await makeItWork(other.aliHandle)
       expect(
         await callOn(aliTools, 'interrupt_agent', { agent: other.ali, reason: 'stop' }),
-      ).toMatchObject({ outcome: 'refused', rail: 'not-below-you' })
+      ).toMatchObject({ outcome: 'ok', asked: true })
       expect(
         (await callOn(adaTools, 'interrupt_agent', { agent: ali, reason: 'stop' })).outcome,
       ).toBe('ok')

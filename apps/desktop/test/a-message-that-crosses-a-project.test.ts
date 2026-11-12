@@ -203,22 +203,7 @@ describe('431 · the message that crosses a project', () => {
     const manager = await personOpens('pm')
     const brobot = await personOpens(DEFAULT_PROFILE_ID)
     const brobotTools = theToolsetJustHandedOut()
-    // ⛔ **And the entitlement really is absent** — the premise the whole file rests on.
-    //
-    // 🔴 **`433` RE-POINTED this line and did not delete it.** It read
-    // `expect(host.agentCard(…)).toBeNull()`, with *"the card reader cannot see it, which is
-    // `mayCommand` answering no"* beside it — and since `433` the card reader asks the REACH
-    // instead, on the ruling *a caller may SEE exactly what it may SEND to*. ⚠️ **The premise is
-    // unchanged and only its instrument moved**: nothing here makes BroBot command that
-    // conversation or puts it in the chain above it, so the doors that ask for a relationship
-    // refuse it.
-    //
-    // ⛔ **`interruptAgent` is the instrument because it is PURE when it refuses** — it answers
-    // `no-such-agent` before reaching anything, and if the premise ever broke this fixture would
-    // stop being a fixture, loudly, rather than silently interrupting a conversation.
-    // ⚑ **D-016 · the parent alone** — nothing started the manager, so nothing is above it.
     expect(store.parentOf(manager)).toBeNull()
-    expect((await host.interruptAgent(manager, speakingAs(brobot))).ok).toBe(false)
     return { brobot, brobotTools, manager }
   }
 
@@ -414,20 +399,12 @@ describe('431 · the message that crosses a project', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§2 · what the reach did NOT widen', () => {
-    /**
-     * ⛔ **The trap `430` named, measured where the two readings diverge.**
-     *
-     * ⚠️ **`can_message` is at its widest HERE deliberately.** `interruptAgent` reads no grant at
-     * all (D-014): it admits the conversation's commander and the chain above it, in any project.
-     * ⛔ **So the refusal below can only be that relationship** — the manager a person opened has
-     * nothing above it — and the day somebody lets the message reach widen a verb that cuts into a
-     * conversation, this test goes red. ⚑ **D-017** — `end_agent` is gone (nothing ends a
-     * conversation), and the refusal is `not-below-you`, since `no-such-agent` is said only about
-     * an id no conversation has.
-     */
-    it('⛔ `interrupt_agent` still refuses it, with the message reach at its widest', async () => {
+    it('interrupt_agent accepts a known conversation in another project', async () => {
       const { brobotTools, manager } = await aManagerInAnotherProject()
       reach(DEFAULT_PROFILE_ID, { canMessage: 'any' })
+      expect(store.routedRequestsOf(manager)).toEqual([])
+      await ask({ kind: 'setApprovalMode', sessionId: manager, mode: 'auto' })
+      expect(store.findLive(manager)?.approvalMode).toBe('auto')
       // ⚑ **The positive control, first**: the message door admits this exact conversation.
       expect(
         await callOn(brobotTools, 'message_agent', {
@@ -436,9 +413,11 @@ describe('431 · the message that crosses a project', () => {
           kind: 'note',
         }),
       ).toMatchObject({ outcome: 'ok' })
-      expect(
-        await callOn(brobotTools, 'interrupt_agent', { agent: manager, reason: 'stop' }),
-      ).toMatchObject({ outcome: 'refused', rail: 'not-below-you' })
+      const stopped = await callOn(brobotTools, 'interrupt_agent', {
+        agent: manager,
+        reason: 'stop',
+      })
+      expect(stopped, JSON.stringify(stopped)).toMatchObject({ outcome: 'ok' })
       // ⛔ **And it is still there, untouched.**
       expect(host.sessionIds).toContain(manager)
     })

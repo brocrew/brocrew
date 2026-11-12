@@ -525,7 +525,6 @@ describe('425 · a refusal carries its remedy', () => {
         // conversation not below the caller (`permanent` — who started it is fixed), one parked on
         // a question another conversation owes (`until-a-person-changes-it`), and a row a message
         // cannot start (`permanent`). ⚠️ Each SENTENCE names what is left, which is a different call.
-        ['INTERRUPT_RAILS', 'not-below-you'],
         ['INTERRUPT_RAILS', 'it-is-waiting-on-an-answer'],
         ['TOOL_REFUSALS', 'that-conversation-takes-no-messages'],
         ['TOOL_REFUSALS', 'agent-cannot-take-a-message'],
@@ -752,8 +751,6 @@ describe('425 · a refusal carries its remedy', () => {
       // biconditional: `TOOL_REFUSALS`' `no-work-of-your-own` (`take_on_work` from a caller that
       // owns no root, which it never will). ⚠️ Its SENTENCE carries what is left — do the work as
       // part of a piece it holds, or without one — and that is a different call.
-      // ⚑ **+1**, `permanent` and so `null`: `TOOL_REFUSALS`' `that-agent-is-not-below-you`
-      // (`message_agent` with interrupt, to an agent the caller may not interrupt).
       // ⚑ **F009 · +1**, `permanent` and so `null`: `TOOL_REFUSALS`' `no-agent-by-that-name`
       // (`list_profiles` naming an agent this app does not hold) — its sentence names the list.
       // ⚑ **+1**, `until-a-person-changes-it` and so `null`: `SPAWN_RAILS`' `its-provider-is-not-chosen`
@@ -774,7 +771,7 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ **+1**, `until-a-person-changes-it` and so `null`: `services-are-off-so-none-is-made`, a
       // service asked for while services are off — its sentence names the person who turns them on.
       // Two provider choices cannot be cleared by retrying: a fixed service and a full pool.
-      expect(quiet).toHaveLength(87)
+      expect(quiet).toHaveLength(85)
       for (const [rail, permanence] of [
         ['service-provider-is-fixed', 'permanent'],
         ['no-room-for-provider-conversation', 'until-a-person-changes-it'],
@@ -999,7 +996,6 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ **D-016, commit 5 (the giver's verbs)** — +2, the same two words as `quiet` above.
       // ⚑ **D-016, commit 6 (a request the person makes)** — +1, the same word as `quiet` above.
       // ⚑ **Eighty-one** — `answer-too-long`, an answer over the bound.
-      // ⚑ **Eighty-two** — `that-agent-is-not-below-you`, the same word as `quiet` above.
       // ⚑ **Eighty-three** — F009's `no-agent-by-that-name`, the same word as `quiet` above.
       // ⚑ **Eighty-four** — `its-provider-is-not-chosen`, the same word as `quiet` above.
       // ⚑ **Eighty-seven** — `restore_agent`'s three: the two `quiet` gained, and
@@ -1015,7 +1011,7 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ And one more: a service asked for while services are off.
       // ⚑ Four more: a piece that cannot end with the copies of its questions, at two vocabularies.
       // The walk also includes the fixed service provider and a pool with no matching provider.
-      expect(walked).toHaveLength(118)
+      expect(walked).toHaveLength(116)
       expect(walked).toEqual(everyRail().map((one) => `${one.vocabulary} · ${one.rail}`))
     })
   })

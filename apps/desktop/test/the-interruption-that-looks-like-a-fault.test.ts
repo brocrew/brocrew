@@ -599,32 +599,24 @@ describe('395 · the interruption that looks like a provider fault', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§2 · entitlement under both verbs', () => {
-    it('⛔ a caller cannot interrupt a conversation it does not command — entitlement before existence', async () => {
+    it('a colleague can stop a running peer, and a genuinely missing target is refused', async () => {
       const mine = await aPmAndItsWorker()
       const theirs = await aPmAndItsWorker()
       // ⚑ D-016 · each brief's turn is parked on a person's card first; ended, each child is idle.
       await letTheTurnFinish(theirs.worker)
       await letTheTurnFinish(mine.worker)
       await working(theirs.worker, theirs.workerHandle)
-      // ⚑ **D-017 · R12 — `not-below-you`, this door's own word, and NOT the answer an id that names
-      // nothing gets.** ⛔ It was `no-such-agent` for both, so that walking ids could not tell which
-      // exist; the ruling now is that `no-such-agent` is said only about an id no conversation has
-      // (`05` rule 6), and a conversation that exists and is not below the caller is refused as that.
       const notMine = await callOn(mine.pmTools, 'interrupt_agent', {
         agent: theirs.worker,
         reason: 'stop',
       })
-      expect(notMine.outcome).toBe('refused')
-      expect(notMine.rail).toBe('not-below-you')
-      expect(notMine.permanence).toBe('permanent')
+      expect(notMine).toMatchObject({ outcome: 'ok', asked: true })
       const nothing = await callOn(mine.pmTools, 'interrupt_agent', {
         agent: 'sess_nobody',
         reason: 'stop',
       })
       expect(nothing.rail).toBe('no-such-agent')
-      expect(notMine.reason).not.toBe(nothing.reason)
-      // ⚠️ **D-014 · no grant and no project floor stand behind this door any more**, so the refusal
-      // above is entitlement and nothing else — and the same caller reaches its own child.
+      expect(nothing.outcome).toBe('refused')
       await working(mine.worker, mine.workerHandle)
       expect(
         (await callOn(mine.pmTools, 'interrupt_agent', { agent: mine.worker, reason: 'stop' }))
@@ -801,21 +793,16 @@ describe('395 · the interruption that looks like a provider fault', () => {
       expect(pm).toBeTruthy()
     })
 
-    it('⚠️ the rails are asked AFTER entitlement, so a refused caller learns nothing about the target', async () => {
+    it('a peer reaches the same pending-person question rail as the parent', async () => {
       const { worker, pmTools, workerHandle } = await aPmAndItsWorker()
       const stranger = await aPmAndItsWorker()
       // ⚑ D-016 · the brief's turn is the one parked on its card.
       expect(workerHandle.status()).toBe('waiting_permission')
-      // ⛔ **A child parked on a person's card and a caller that is not above it.** Both rails are
-      // live; the one that answers is ENTITLEMENT (D-014: no grant floor stands in front of it any
-      // more), so the caller is never told that somebody is being asked something inside a
-      // conversation it may not touch. ⚑ **D-017 · R12** — in this door's own word, `not-below-you`.
       const refused = await callOn(stranger.pmTools, 'interrupt_agent', {
         agent: worker,
         reason: 'stop',
       })
-      expect(refused.rail).toBe('not-below-you')
-      expect(JSON.stringify(refused)).not.toContain('a-person-is-being-asked')
+      expect(refused.rail).toBe('a-person-is-being-asked')
       // ⚑ **The control**: the caller that started it makes the same call and reaches the card rail
       // — so the ordering above is an ordering and not a state in which the card rail never fires.
       expect(

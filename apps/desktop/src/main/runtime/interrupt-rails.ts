@@ -105,18 +105,6 @@ export const INTERRUPT_RAILS = [
    */
   'it-is-waiting-on-an-answer',
   /**
-   * ⚑ **D-017 · R12 — that conversation is not below the caller in the spawn chain.**
-   *
-   * ⛔ **`no-such-agent` is said only about an id no conversation has** (`05` rule 6), so a
-   * conversation that exists and that this caller may not interrupt is refused in this door's own
-   * word: interrupting reaches the chain below the caller — the conversations it started, and the
-   * ones those started — and nothing a grant widens (D-014).
-   *
-   * ⚠️ **`permanent`**: who started a conversation is fixed when it starts. The sentence names the
-   * acts left — a question or a message, which reach further.
-   */
-  'not-below-you',
-  /**
    * ⚑ **It has not started yet — there is no provider behind it to ask.**
    *
    * ⛔ **A refusal rather than a quiet success** — *"'done' for a teardown that never happened is an
@@ -148,7 +136,6 @@ const PERMANENCE: Readonly<Record<InterruptRail, RailPermanence>> = {
   // 🔴 **`until-a-person-changes-it` since `424`** — see the rail's own note, and HO-023 §2.1.
   'a-person-is-being-asked': 'until-a-person-changes-it',
   'it-is-waiting-on-an-answer': 'until-a-person-changes-it',
-  'not-below-you': 'permanent',
   'that-conversation-has-not-started': 'while-this-holds',
   'that-service-is-on-another-callers-piece': 'while-this-holds',
 }
@@ -206,13 +193,10 @@ export function interruptRetryableOf(rail: InterruptRail): boolean {
  * the rail `until-a-person-changes-it` and rewrote the sentence** — *"Only the person answering ends
  * this, and asking again will not"* — which is the same finding arriving through the permanence.
  *
- * ⚑ **`not-below-you` is `permanent`**, so it carries no act (the biconditional); its sentence
- * names the other doors.
  */
 const REMEDY: Readonly<Record<InterruptRail, RefusalRemedy | null>> = {
   'a-person-is-being-asked': null,
   'it-is-waiting-on-an-answer': null,
-  'not-below-you': null,
   'that-conversation-has-not-started': 'make-the-same-call-when-this-settles',
   'that-service-is-on-another-callers-piece': 'make-the-same-call-when-this-settles',
 }
@@ -274,8 +258,6 @@ const INTERRUPT_SENTENCES: Readonly<Record<InterruptRail, string>> = {
     'that conversation is waiting for a person to answer something. Nothing was interrupted: carry on with something else, or say that you are blocked on it — cutting into it now would throw that question away and answer it as a refusal. Only the person answering ends this, and asking again will not.',
   'it-is-waiting-on-an-answer':
     'that conversation is waiting on an answer from the conversation this refusal names, so nothing was interrupted. If that is you, answer it with answer_question; otherwise it goes on once that one answers. The question went to that conversation, not to a person: cutting into it now would throw that question away and answer it as a refusal, and asking again will not interrupt it.',
-  'not-below-you':
-    'that conversation is not one you started, or one started under them, so nothing was interrupted: only those can be. To ask it something use ask_question; to tell it something, message_agent.',
   // 🔴 **657 · the last clause presupposed the launch would succeed** (`650` F7). ⛔ It said *wait for
   // it to be working*, and a launch that FAILS never is: the reservation is abandoned and the retry
   // meets `no-such-agent`. ⚑ It now names the act and both ways the wait can end — the permanence

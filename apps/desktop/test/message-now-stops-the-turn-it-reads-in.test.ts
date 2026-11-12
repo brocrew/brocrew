@@ -343,25 +343,22 @@ describe('message now · a message or an answer can stop the running turn', () =
       for (const words of handedToTheProvider(ali)) expect(words).not.toContain(STOP_LINE)
     })
 
-    it('an agent that is not below the sender is refused, nothing is sent, and the refusal says how to send it plainly', async () => {
+    it('a note to a known parent is delivered even when no running turn needs stopping', async () => {
       const { ada, ali, aliHandle, siblingProfile } = await aChainOfThree()
       await makeItWork(aliHandle)
-      // Ali is Ada's child: Ali may not interrupt UP the chain.
       const upward = await callOn(asTools(ali), 'message_agent', {
         agent: ada,
         text: 'stop what you are doing',
         kind: 'note',
         interrupt: true,
       })
-      expect(upward.outcome, JSON.stringify(upward)).toBe('refused')
-      expect(JSON.stringify(upward)).toContain('that-agent-is-not-below-you')
-      expect(JSON.stringify(upward)).toContain('without interrupt')
+      expect(upward).toMatchObject({ outcome: 'ok', asked_to_stop: false })
       expect(wordsReaching(ada).some((words) => words.includes('stop what you are doing'))).toBe(
-        false,
+        true,
       )
       expect(ledger(ada).some((event) => event.type === 'work_interrupted')).toBe(false)
 
-      // The pair: the same words, without interrupt, are an ordinary message and are sent.
+      // A plain note still delivers without asking for a stop.
       const plain = await callOn(asTools(ali), 'message_agent', {
         agent: ada,
         text: 'stop what you are doing',

@@ -56,13 +56,6 @@ import type { RefusalRemedy } from '../../shared/refusals'
  * vocabulary and that is a shape, not a derivation**: an identity granted one and refused the other
  * is a state a person can configure.
  *
- * ## ⛔ Interrupting is not here
- *
- * ⚑ No grant gates it. `RuntimeHost.interruptAgent` admits a caller that commands the target or
- * sits above it in the chain that created it, and answers everyone else `not-below-you` (D-017:
- * `no-such-agent` only for an id no conversation has). The states that stop it are
- * `INTERRUPT_RAILS`'.
- *
  * ## 🔴 Every one of these rails is reachable from a wire
  *
  * ⛔ **No count is restated here, deliberately**: a sentence that counts goes stale the next time
