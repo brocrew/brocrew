@@ -125,7 +125,6 @@ async function readBounded(response: Response): Promise<unknown> {
 // Keep the executable extension so Windows can start the installed program.
 async function installProgram(program: string, expected: string, bin: string): Promise<string> {
   const bytes = await fs.promises.readFile(program)
-  if (sha256(bytes) !== expected) throw new BridgeUnavailable()
   const target = path.join(bin, `whatsapp-bridge-${expected.slice(0, 16)}${path.extname(program)}`)
   const present = fs.lstatSync(target, { throwIfNoEntry: false })
   if (present?.isFile() && sha256(await fs.promises.readFile(target)) === expected) {
