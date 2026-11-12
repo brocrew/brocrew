@@ -1,5 +1,4 @@
 import { personOpener } from './helpers/person-opens-session'
-import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
@@ -13,6 +12,7 @@ import { pieceLine } from '../src/shared/piece-called'
 import {
   waitFor,
   type TranscriptEvent,
+  closeHostFixture,
   fixtureFolder,
   fixtureDatabase,
   fixtureProviderConfig,
@@ -104,9 +104,7 @@ describe('D-016 · what a giver is told about a piece it gave, through the real 
   })
 
   afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
+    await closeHostFixture(host, db, userData, root)
   })
 
   const events = (sessionId: string): TranscriptEvent[] =>
