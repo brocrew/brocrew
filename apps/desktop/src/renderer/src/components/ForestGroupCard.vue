@@ -83,7 +83,9 @@ const latest = computed(() => [props.node.row.says, dateOf(props.node)].filter(B
             :here="member.row.conversation === props.current"
             :opened="props.openedMembers.has(member.row.conversation)"
             :file-counts="props.fileCounts"
-            :root-files="props.rootFiles?.conversation === member.row.conversation ? props.rootFiles : null"
+            :root-files="
+              props.rootFiles?.conversation === member.row.conversation ? props.rootFiles : null
+            "
             @toggle="emit('toggleMember', member.row.conversation)"
             @files="(piece) => emit('files', piece)"
           />

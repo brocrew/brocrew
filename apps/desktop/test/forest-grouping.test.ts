@@ -25,8 +25,13 @@ describe('same-agent conversations share a card under their recorded parent', ()
     ])
     for (const cards of [forestNodes(view, true), forestGraph(view, true).generations.flat()]) {
       expect(cards).toHaveLength(3)
-      expect(cards.map((node) => node.members!.map((member) => member.row.conversation).sort()).sort())
-        .toEqual([['left-one', 'left-two'], ['right-one', 'right-two'], ['root-one', 'root-two']])
+      expect(
+        cards.map((node) => node.members!.map((member) => member.row.conversation).sort()).sort(),
+      ).toEqual([
+        ['left-one', 'left-two'],
+        ['right-one', 'right-two'],
+        ['root-one', 'root-two'],
+      ])
       expect(cards.every((node) => node.parent === null)).toBe(true)
     }
   })

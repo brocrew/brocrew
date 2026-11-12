@@ -27,12 +27,24 @@ const fixture = () =>
 
 describe('compact graph groups and navigation', () => {
   it('keeps each supplied standing word rather than treating waits as idle', async () => {
-    const words = ['Needs you', 'Waiting on an answer', 'Running in the background', 'Scheduled', 'Waiting on a worker']
-    const rows = words.map((_, index) => conv(`neri-${index}`, null, { identity: 'neri', updatedAt: index }))
+    const words = [
+      'Needs you',
+      'Waiting on an answer',
+      'Running in the background',
+      'Scheduled',
+      'Waiting on a worker',
+    ]
+    const rows = words.map((_, index) =>
+      conv(`neri-${index}`, null, { identity: 'neri', updatedAt: index }),
+    )
     rows.push(conv('neri-unknown', null, { identity: 'neri', updatedAt: 9 }))
-    const view = viewOf(rows, null, new Map(words.map((word, index) => [
-      `neri-${index}`, { facets: { doing: 'idle' as const }, word },
-    ])))
+    const view = viewOf(
+      rows,
+      null,
+      new Map(
+        words.map((word, index) => [`neri-${index}`, { facets: { doing: 'idle' as const }, word }]),
+      ),
+    )
     const m = mount(TeamForest, { view })
     await forestDrawn()
     await forestDrawn()
@@ -49,11 +61,16 @@ describe('compact graph groups and navigation', () => {
       view: viewOf([
         conv('aster', null),
         conv('neri-old', 'aster', { identity: 'neri', updatedAt: 1 }),
-        ...[1, 2, 3, 4].map((n) => task('neri-old', `piece-${n}`, `W2.${n}`, `Check item ${n}`, 'aster')),
+        ...[1, 2, 3, 4].map((n) =>
+          task('neri-old', `piece-${n}`, `W2.${n}`, `Check item ${n}`, 'aster'),
+        ),
         conv('neri-new', 'aster', { identity: 'neri', updatedAt: 2 }),
       ]),
       current: 'neri-old',
-      fileCounts: new Map([['piece-1', 2], ['piece-4', 3]]),
+      fileCounts: new Map([
+        ['piece-1', 2],
+        ['piece-4', 3],
+      ]),
       rootFiles: { conversation: 'neri-old', piece: 'root', label: 'W2', count: 4 },
       onPress: (row: { conversation: string }) => pressed.push(row.conversation),
       onFiles: (piece: string) => files.push(piece),
@@ -62,7 +79,9 @@ describe('compact graph groups and navigation', () => {
     await forestDrawn()
     m.q('forest-group-toggle').click()
     await forestDrawn()
-    const member = m.all('forest-group-member').find((row) => row.dataset.conversation === 'neri-old')!
+    const member = m
+      .all('forest-group-member')
+      .find((row) => row.dataset.conversation === 'neri-old')!
     const q = (hook: string) => member.querySelector<HTMLButtonElement>(`[data-cy="${hook}"]`)!
     expect(member.textContent).not.toContain('Check item 1')
     expect(member.textContent).toContain('Check item 4')
