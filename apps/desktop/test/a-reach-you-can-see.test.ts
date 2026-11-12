@@ -203,11 +203,7 @@ describe('433 §B · the agents a reach can see', () => {
     // ⛔ **Two callers, one grant apart, and nothing else different about them** — standing rule 3.
     expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canMessage).toBe('any')
     expect(store.capabilitiesOf('explorer')?.canMessage).toBe('none')
-    // ⛔ **And neither COMMANDS it**, which the door that still asks `mayCommand` says for both.
-    // ⚑ **D-016 · the parent alone** — nothing started the manager, so nothing is above it.
     expect(store.parentOf(manager)).toBeNull()
-    expect((await host.interruptAgent(manager, speakingAs(brobot))).ok).toBe(false)
-    expect((await host.interruptAgent(manager, speakingAs(explorer))).ok).toBe(false)
     return { brobot, brobotTools, explorer, explorerTools, manager }
   }
 

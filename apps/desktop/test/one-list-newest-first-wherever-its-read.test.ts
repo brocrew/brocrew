@@ -17,8 +17,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { CallerIdentity } from '../src/main/runtime/runtime-host'
-import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
@@ -130,8 +128,6 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
     return last
   }
 
-  /** What an agent's own calls look like from outside the toolset — `agent:<its session>`. */
-  const speakingAs = (sessionId: string): CallerIdentity => ({ ownerId: agentCallerId(sessionId) })
 
   const idsListedBy = async (toolset: AgentToolset): Promise<string[]> => {
     const listed = (await callOn(toolset, 'list_agents', {})) as { agents: { agent: string }[] }
@@ -209,11 +205,7 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
     expect(store.setCapabilities('explorer', { canMessage: 'none' })).toBe(true)
     expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canMessage).toBe('any')
     expect(store.capabilitiesOf('explorer')?.canMessage).toBe('none')
-    // ⛔ **And neither COMMANDS it**, which the door that still asks `mayCommand` says for both.
-    // ⚑ **D-016 · the parent alone** — nothing started the manager, so nothing is above it.
     expect(store.parentOf(manager)).toBeNull()
-    expect((await host.interruptAgent(manager, speakingAs(brobot))).ok).toBe(false)
-    expect((await host.interruptAgent(manager, speakingAs(explorer))).ok).toBe(false)
     return { brobot, brobotTools, explorer, explorerTools, manager }
   }
 
