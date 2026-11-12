@@ -65,6 +65,27 @@ function rpcFixture() {
   }
 }
 describe('per-view verified assets', () => {
+  it('serves current local asset bytes without requiring the earlier digest', async () => {
+    const { verified } = uiFixture()
+    const original = verified.readFile('ui/index.html')!
+    const bytes = Buffer.from(Buffer.from(original).toString().replace('bakery', 'market'))
+    expect(bytes.byteLength).toBe(original.byteLength)
+    const assets = new PluginUiAssets(
+      { ...verified, readFile: (path) => (path === 'ui/index.html' ? bytes : verified.readFile(path)) },
+      a,
+    )
+    const response = assets.response({ url: assets.entry, method: 'GET' })
+    expect(await response.text()).toBe(bytes.toString())
+    expect(response.headers.get('content-type')).toBe('text/html')
+    expect(await assets.response({ url: assets.entry, method: 'HEAD' }).text()).toBe('')
+    expect(Buffer.from(verified.readFile('ui/index.html')!)).toEqual(Buffer.from(original))
+  })
+  it('still refuses a missing declared local asset', () => {
+    const { verified } = uiFixture()
+    expect(() => new PluginUiAssets({ ...verified, readFile: () => undefined }, a)).toThrow(
+      'Plugin unavailable. Try again.',
+    )
+  })
   it('serves only its admitted GET/HEAD assets with CSP and exact per-view URLs', async () => {
     const { verified } = uiFixture(),
       first = new PluginUiAssets(verified, a),
