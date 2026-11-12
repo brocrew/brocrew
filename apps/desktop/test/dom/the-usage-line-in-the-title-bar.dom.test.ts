@@ -36,6 +36,7 @@ type Usage = Record<'claude' | 'codex', ProviderUsageReading[]>
 async function bar(usage: Usage): Promise<Mounted> {
   ;(window as { api?: unknown }).api = {
     runtime: {
+      providerCatalogue: async () => PROVIDER_DESCRIPTORS,
       providerUsage: () => Promise.resolve(usage),
       onProvidersChanged: () => () => {},
     },

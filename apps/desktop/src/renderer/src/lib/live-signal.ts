@@ -2,7 +2,7 @@ import type { Provider } from '@brobot2/shared'
 import { agoWords } from './clock'
 import { limitsDisplayLabel, limitsDisplayWords } from './limits-display'
 import { LOOK_EVERY_MS, type ProviderLimitsView } from './persons-queue'
-import { providerName } from '../../../shared/runtime-ipc'
+import { usageProviderName, type UsageProviderNames } from './usage-limit'
 import type { LimitStanding, ProviderCondition } from '../../../shared/provider-limit'
 import {
   countsIn,
@@ -265,18 +265,9 @@ function capitalised(line: string): string {
   return line.charAt(0).toUpperCase() + line.slice(1)
 }
 
-/**
- * ⛔ **The providers, named from the TABLE and listed the way this app already lists two** (617).
- *
- * ⚠️ **`providerName` and never a literal** — `provider-neutrality-does-not-see-display-text`: a
- * template that types *Claude* passes the neutrality census and is still wrong, and the day a third
- * provider lands the only place that has to change is `PROVIDER_NAME`.
- *
- * ⚑ **The join is `providerPossessives`' shape one module over**, deliberately: *"A, B and C"* is
- * one sentence a person reads, and a reader counting separators is the failure that file names.
- */
-function providersSaid(providers: readonly Provider[]): string {
-  const names = providers.map((one) => providerName(one))
+/** Join supplied names in provider order, keeping unknown selected names generic. */
+function providersSaid(providers: readonly Provider[], supplied?: UsageProviderNames): string {
+  const names = providers.map((one) => usageProviderName(one, supplied, 'the provider'))
   const last = names[names.length - 1] ?? ''
   return names.length <= 1 ? last : `${names.slice(0, -1).join(', ')} and ${last}`
 }
@@ -300,7 +291,10 @@ function providersSaid(providers: readonly Provider[]): string {
  *
  * @param limits the band's own view — one derivation, two places, never a second answer
  */
-function stoppedOnTheLine(limits: ProviderLimitsView | null): LiveSignalStopped | null {
+function stoppedOnTheLine(
+  limits: ProviderLimitsView | null,
+  names?: UsageProviderNames,
+): LiveSignalStopped | null {
   // ⛔ **Only `stopped`** — see {@link A_STANDING_STOPS_WORK} for why `about-to-stop` is not a stop.
   const walls: readonly ProviderCondition[] = (limits?.walls ?? []).filter(
     (one) => A_STANDING_STOPS_WORK[one.standing],
@@ -313,7 +307,7 @@ function stoppedOnTheLine(limits: ProviderLimitsView | null): LiveSignalStopped 
     const at = display.reading?.evaluatedAt
     const reported =
       at !== undefined && providers.length > 0
-        ? `${limitsDisplayWords.rail(providers)} · ${limitsDisplayWords.reported(at)}`
+        ? `${limitsDisplayWords.rail(providers, names)} · ${limitsDisplayWords.reported(at)}`
         : limitsDisplayLabel(display)
     const label =
       at !== undefined && providers.length > 0 && display.status !== 'ready'
@@ -329,7 +323,8 @@ function stoppedOnTheLine(limits: ProviderLimitsView | null): LiveSignalStopped 
   }
   // ⚑ **The zero form is stated, not omitted** — it is only ever reached with the mark beside it,
   // and *nothing stopped** is the sentence that says *as far as a read that failed can tell*.
-  const says = providers.length === 0 ? 'nothing stopped' : `${providersSaid(providers)} stopped`
+  const says =
+    providers.length === 0 ? 'nothing stopped' : `${providersSaid(providers, names)} stopped`
   return {
     providers,
     says,
@@ -368,6 +363,7 @@ export function liveSignalView(
   reading: WorkspaceReading | null,
   limits: ProviderLimitsView | null,
   now: number,
+  names?: UsageProviderNames,
 ): LiveSignalView | null {
   if (reading === null) return null
   const counts = countsIn(reading)
@@ -393,7 +389,7 @@ export function liveSignalView(
   const counted = capitalised(
     cells.map((cell) => `${cell.says}${cell.short ? '*' : ''}`).join(BETWEEN_CELLS),
   )
-  const stopped = stoppedOnTheLine(limits)
+  const stopped = stoppedOnTheLine(limits, names)
   // ⛔ **The condition goes LAST, which is the PO's own example** — `nothing working · Claude
   // stopped` (`HO-080` §4). ⚑ The band puts a wall ABOVE its rows because a wall outranks a
   // question; on one line the counts are what a person is scanning for and the condition is what
