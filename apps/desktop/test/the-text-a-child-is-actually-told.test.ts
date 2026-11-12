@@ -1087,11 +1087,12 @@ describe('§5 · the repository’s AGENTS layer, selected as Codex selects it',
       provider: 'claude',
       cwd: root,
       providerHome: mkdtempSync(join(tmpdir(), 'brobot2-377-ph-')),
-      home: '/nowhere',
+      home: dirname(root),
     })
-    const kinds = read.instructions.injected.map((item) => item.kind)
-    expect(kinds.indexOf('repository-conventions')).toBeGreaterThanOrEqual(0)
-    expect(kinds.indexOf('repository-conventions')).toBeLessThan(kinds.indexOf('project-memory'))
+    expect(read.instructions.injected.map(({ path, kind }) => ({ path, kind }))).toEqual([
+      { path: join(root, AGENTS_FILENAME), kind: 'repository-conventions' },
+      { path: join(root, 'CLAUDE.md'), kind: 'project-memory' },
+    ])
   })
 
   it('🔴 the app’s own bundle is the FIRST thing on the list, above the agent’s own memory file', () => {
