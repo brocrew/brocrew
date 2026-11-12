@@ -14,6 +14,23 @@ const repeated = () =>
   ])
 
 describe('same-agent conversations share a card under their recorded parent', () => {
+  it('separates omitted parents from each other and from conversations the person started', () => {
+    const view = viewOf([
+      conv('left-one', 'missing-left', { identity: 'neri' }),
+      conv('left-two', 'missing-left', { identity: 'neri' }),
+      conv('right-one', 'missing-right', { identity: 'neri' }),
+      conv('right-two', 'missing-right', { identity: 'neri' }),
+      conv('root-one', null, { identity: 'neri' }),
+      conv('root-two', null, { identity: 'neri' }),
+    ])
+    for (const cards of [forestNodes(view, true), forestGraph(view, true).generations.flat()]) {
+      expect(cards).toHaveLength(3)
+      expect(cards.map((node) => node.members!.map((member) => member.row.conversation).sort()).sort())
+        .toEqual([['left-one', 'left-two'], ['right-one', 'right-two'], ['root-one', 'root-two']])
+      expect(cards.every((node) => node.parent === null)).toBe(true)
+    }
+  })
+
   it('uses the newest member for status, retains every member and keeps a different parent separate', () => {
     const cards = forestNodes(repeated(), true)
     const group = cards.find((node) => node.members)!

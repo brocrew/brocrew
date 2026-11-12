@@ -26,6 +26,64 @@ const fixture = () =>
   )
 
 describe('compact graph groups and navigation', () => {
+  it('keeps each supplied standing word rather than treating waits as idle', async () => {
+    const words = ['Needs you', 'Waiting on an answer', 'Running in the background', 'Scheduled', 'Waiting on a worker']
+    const rows = words.map((_, index) => conv(`neri-${index}`, null, { identity: 'neri', updatedAt: index }))
+    rows.push(conv('neri-unknown', null, { identity: 'neri', updatedAt: 9 }))
+    const view = viewOf(rows, null, new Map(words.map((word, index) => [
+      `neri-${index}`, { facets: { doing: 'idle' as const }, word },
+    ])))
+    const m = mount(TeamForest, { view })
+    await forestDrawn()
+    await forestDrawn()
+    const counts = m.q('forest-group-counts').textContent!
+    for (const word of words) expect(counts).toContain(`1 ${word}`)
+    expect(counts).toContain('1 unknown')
+    expect(counts.toLowerCase()).not.toContain('idle')
+  })
+
+  it('retains grouped members earlier work and file controls without opening a conversation', async () => {
+    const pressed: string[] = []
+    const files: string[] = []
+    const m = mount(TeamForest, {
+      view: viewOf([
+        conv('aster', null),
+        conv('neri-old', 'aster', { identity: 'neri', updatedAt: 1 }),
+        ...[1, 2, 3, 4].map((n) => task('neri-old', `piece-${n}`, `W2.${n}`, `Check item ${n}`, 'aster')),
+        conv('neri-new', 'aster', { identity: 'neri', updatedAt: 2 }),
+      ]),
+      current: 'neri-old',
+      fileCounts: new Map([['piece-1', 2], ['piece-4', 3]]),
+      rootFiles: { conversation: 'neri-old', piece: 'root', label: 'W2', count: 4 },
+      onPress: (row: { conversation: string }) => pressed.push(row.conversation),
+      onFiles: (piece: string) => files.push(piece),
+    })
+    await forestDrawn()
+    await forestDrawn()
+    m.q('forest-group-toggle').click()
+    await forestDrawn()
+    const member = m.all('forest-group-member').find((row) => row.dataset.conversation === 'neri-old')!
+    const q = (hook: string) => member.querySelector<HTMLButtonElement>(`[data-cy="${hook}"]`)!
+    expect(member.textContent).not.toContain('Check item 1')
+    expect(member.textContent).toContain('Check item 4')
+    q('forest-root-files').click()
+    q('forest-task-files').click()
+    q('forest-more').click()
+    await forestDrawn()
+    expect(member.textContent).toContain('Check item 1')
+    member.querySelector<HTMLButtonElement>('[data-piece="piece-1"]')!.click()
+    expect(files).toEqual(['root', 'piece-4', 'piece-1'])
+    expect(pressed).toEqual([])
+    expect(m.q('forest-group-toggle').getAttribute('aria-expanded')).toBe('true')
+    q('forest-open').focus()
+    await userEvent.keyboard('{Enter}')
+    expect(pressed).toEqual(['neri-old'])
+    q('forest-more').click()
+    await forestDrawn()
+    expect(member.textContent).not.toContain('Check item 1')
+    expect(m.q('forest-group-toggle').getAttribute('aria-expanded')).toBe('true')
+  })
+
   it('expands same-agent conversations and opens the exact pressed member', async () => {
     const pressed: string[] = []
     const m = mount(TeamForest, {
@@ -37,7 +95,7 @@ describe('compact graph groups and navigation', () => {
     await forestDrawn()
     expect(m.all('forest-group')).toHaveLength(1)
     expect(m.q('forest-group').textContent).toContain('teo ×2')
-    expect(m.q('forest-group-counts').textContent).toBe('1 active · 1 idle')
+    expect(m.q('forest-group-counts').textContent).toBe('1 Idle · 1 Working')
     expect(m.q('forest-group').textContent).toContain('Latest: Idle')
     expect(m.q('forest-group').classList.contains('current')).toBe(true)
     expect(m.all('forest-group-member')).toHaveLength(0)
