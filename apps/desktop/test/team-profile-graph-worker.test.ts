@@ -44,7 +44,7 @@ const header: TeamProfileGraphResult = {
   coverage: emptyGraphCoverage(),
   metrics: { rows: 0, projectedBytes: 0, aggregateBytes: 0, cacheBytes: 0, elapsedMs: 0 },
 }
-it('keeps native permit and shutdown pending until actual exit, even if terminate already resolves', async () => {
+it('reports the deadline while keeping native permit and shutdown pending until actual exit', async () => {
   vi.useFakeTimers()
   const worker = new Worker(),
     start = vi.fn(() => worker as unknown as ReaderWorker),
@@ -58,8 +58,9 @@ it('keeps native permit and shutdown pending until actual exit, even if terminat
   void first.then(() => (firstDone = true))
   void next.then(() => (nextDone = true))
   await vi.advanceTimersByTimeAsync(50)
-  expect(worker.terminate).toHaveBeenCalledOnce()
-  expect(firstDone).toBe(false)
+  expect(worker.terminate).not.toHaveBeenCalled()
+  expect(worker.sent.at(-1)).toEqual({ type: 'close' })
+  expect(firstDone).toBe(true)
   expect(start).toHaveBeenCalledOnce()
   const closing = reader.close().then(() => (closed = true))
   await settle()
@@ -97,7 +98,8 @@ it('rejects malformed worker replies and waits for native exit', async () => {
   worker.ready()
   worker.emit('message', { type: 'read', id: 1, result: { ...header, privatePath: '/fictional' } })
   await settle()
-  expect(worker.terminate).toHaveBeenCalledOnce()
+  expect(worker.terminate).not.toHaveBeenCalled()
+  expect(worker.sent.at(-1)).toEqual({ type: 'close' })
   worker.emit('exit', 1)
   expect(await reading).toMatchObject({ cause: 'worker' })
   await reader.close()

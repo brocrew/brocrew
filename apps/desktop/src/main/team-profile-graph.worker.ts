@@ -28,6 +28,15 @@ if (parentPort !== null) {
     }
     port.postMessage({ type: 'ready' })
     port.on('message', (message: unknown) => {
+      if (
+        typeof message === 'object' &&
+        message !== null &&
+        'type' in message &&
+        message.type === 'close'
+      ) {
+        close()
+        return
+      }
       const parsed = incoming.safeParse(message)
       if (!parsed.success) {
         close()

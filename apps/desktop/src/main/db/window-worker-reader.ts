@@ -15,6 +15,7 @@ type Pending = {
   readonly resolve: (result: WindowReadResult) => void
   readonly reject: (error: unknown) => void
   readonly cleanUp: () => void
+  readonly cancel: () => void
 }
 
 /** The worker operations used by the reader; subscribing does not use the fluent return value. */
@@ -38,6 +39,7 @@ export class WindowWorkerReader implements WindowStoreReader {
   private closed = false
   private failed = false
   private failureCause: string | undefined
+  private closeError: { error: unknown } | undefined
   private terminating = false
 
   constructor(private readonly worker: WindowReadWorker) {
@@ -79,14 +81,11 @@ export class WindowWorkerReader implements WindowStoreReader {
       throw new WindowReadUnavailable('unavailable', undefined, this.failureCause)
     const id = ++this.nextId
     // The caller can set this flag while the worker is inside synchronous SQLite.
-    const flag =
-      signal !== undefined
-        ? new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT))
-        : undefined
+    const flag = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT))
     let posted = false
     const cleanUp = () => signal?.removeEventListener('abort', abandoned)
     const abandoned = () => {
-      if (flag !== undefined) Atomics.store(flag, 0, 1)
+      Atomics.store(flag, 0, 1)
       // Only an unposted job releases its permit here; a native job must first answer or exit.
       if (!posted) {
         const pending = this.pending.get(id)
@@ -96,7 +95,7 @@ export class WindowWorkerReader implements WindowStoreReader {
       }
     }
     const result = new Promise<WindowReadResult>((resolve, reject) => {
-      this.pending.set(id, { kind: query.kind, resolve, reject, cleanUp })
+      this.pending.set(id, { kind: query.kind, resolve, reject, cleanUp, cancel: abandoned })
     })
     void result.catch(() => {})
     signal?.addEventListener('abort', abandoned, { once: true })
@@ -110,29 +109,24 @@ export class WindowWorkerReader implements WindowStoreReader {
           type: 'read',
           id,
           query,
-          ...(flag === undefined ? {} : { cancellation: flag.buffer }),
+          cancellation: flag.buffer,
         })
       })
-      .catch((error: unknown) => this.fail(error instanceof Error ? error.message : String(error)))
+      .catch((error: unknown) => {
+        if (!this.closed) this.fail(error instanceof Error ? error.message : String(error))
+      })
     return result
   }
 
   async close(): Promise<void> {
     if (!this.closed) {
       this.closed = true
+      for (const one of this.pending.values()) one.cancel()
       this.rejectReady(new WindowReadUnavailable('unavailable', undefined, this.failureCause))
-      try {
-        this.worker.postMessage({ type: 'close' })
-      } catch (error) {
-        this.fail(error instanceof Error ? error.message : String(error))
-      }
+      this.retire()
     }
-    const timer = setTimeout(() => this.terminate(), 3000)
-    try {
-      await this.exited
-    } finally {
-      clearTimeout(timer)
-    }
+    await this.exited
+    if (this.closeError) throw this.closeError.error
   }
 
   private receive(incoming: unknown): void {
@@ -184,13 +178,21 @@ export class WindowWorkerReader implements WindowStoreReader {
     this.failureCause ??= cause
     this.failed = true
     this.rejectReady(new WindowReadUnavailable('unavailable', undefined, this.failureCause))
-    this.terminate()
+    for (const pending of this.pending.values()) {
+      pending.cancel()
+      pending.reject(new WindowReadUnavailable('unavailable', undefined, this.failureCause))
+    }
+    this.retire()
   }
 
-  private terminate(): void {
+  private retire(): void {
     if (this.terminating) return
     this.terminating = true
-    void this.worker.terminate().catch(() => {})
+    try {
+      this.worker.postMessage({ type: 'close' })
+    } catch (error) {
+      this.closeError = { error }
+    }
   }
 }
 

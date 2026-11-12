@@ -41717,65 +41717,66 @@ export class RuntimeHost implements LiveHost {
 
   private quitRecorded = false
 
-  async closeAll(): Promise<void> {
-    this.recordOpenForQuit()
-    this.stopHearingCommits()
-    const memoryClosed = this.deps.memoryKnowledge?.close() ?? Promise.resolve()
-    this.deps.store.closePastWorkSearch?.()
-    this.deps.closeSharedSkills?.()
-    this.windowIncidentReads.invalidate()
-    this.windowRoutesKept = undefined
-    this.windowIncidentsKept = undefined
-    this.workReconciler?.close()
-    clearInterval(this.reconciliationTimer)
-    this.launches.closeAdmission()
-    const limitsClosed = this.deps.limitsReader?.close() ?? Promise.resolve()
-    const workSearchClosed = this.deps.workSearchReader?.close() ?? Promise.resolve()
-    const pastWorkSearchClosed = this.deps.pastWorkSearchReader?.close() ?? Promise.resolve()
-    const windowReadsClosed = this.deps.windowReader?.close() ?? Promise.resolve()
-    const filesLibrariesClosed = this.deps.filesLibraries?.close() ?? Promise.resolve()
-    const teamProfileGraphsClosed = this.deps.teamProfileGraphs?.close() ?? Promise.resolve()
-    if (this.providerLimitExpiry !== null) clearTimeout(this.providerLimitExpiry)
-    this.providerLimitExpiry = null
-    this.providerLimitFacts.invalidate()
-    this.signInReopens.close()
-    // ⚠️ **Sign-ins are processes too** (098, review finding 3). An in-flight sign-in owns a
-    // `detached` app-server holding a loopback OAuth-redirect port, tracked in its own map rather
-    // than in `slots` — so the session teardown below walks straight past it and the child outlives
-    // the app. Cancelled first, bounded, and the map is cleared so a second quit finds nothing.
-    //
-    // ⚑ **The cancel is still made here even though the abort above reaches the same child**, and
-    // the reason is the ack: `account/login/cancel` tells the provider to forget the `loginId`,
-    // which a bare transport close does not. What has changed is that stopping waiting is no longer
-    // the same as letting go — {@link boundedCancel} hands the un-deadlined teardown to the registry
-    // first, so the drain below covers whatever is left of it.
-    const signIns = [...this.signIns.values()]
-    this.signIns.clear()
-    await Promise.all(signIns.map(({ signIn }) => this.boundedCancel(signIn)))
-    // ⚑ **D-029 · no wake-up outlives the quit** — the next launch reads the ledger again. ⚠️ One
-    // that fires first already starts nothing: admission closed on the first line.
-    for (const conversation of [...this.wakeUps.keys()]) this.forgetItsWakeUp(conversation)
-    // ⚑ **F074 — nor a reset's timer**: the next launch reads the walls again.
-    for (const { timer } of this.theResets.values()) clearTimeout(timer)
-    this.theResets.clear()
-    const terminated = settledWithin(this.launches.pending(), this.closeDrainTimeoutMs * 2)
-    let confirmed: boolean
+  private closingAll: Promise<void> | undefined
+
+  closeAll(): Promise<void> {
+    return (this.closingAll ??= this.closeAllOwned())
+  }
+
+  private async closeAllOwned(): Promise<void> {
+    const readersClosed = Promise.allSettled([
+      () => this.deps.memoryKnowledge?.close(),
+      () => this.deps.limitsReader?.close(),
+      () => this.deps.workSearchReader?.close(),
+      () => this.deps.pastWorkSearchReader?.close(),
+      () => this.deps.windowReader?.close(),
+      () => this.deps.filesLibraries?.close(),
+      () => this.deps.teamProfileGraphs?.close(),
+    ].map((close) => Promise.resolve().then(close)))
+    const failures: unknown[] = []
+    let confirmed = false
     try {
-      ;[, confirmed] = await Promise.all([
-        Promise.all([...this.slots.keys()].map((id) => this.close(id, THE_APP_ITSELF))),
-        terminated,
-        limitsClosed,
-        workSearchClosed,
-        pastWorkSearchClosed,
-        windowReadsClosed,
-        filesLibrariesClosed,
-        teamProfileGraphsClosed,
-        memoryClosed,
-      ])
+      this.recordOpenForQuit()
+      this.stopHearingCommits()
+      this.deps.store.closePastWorkSearch?.()
+      this.deps.closeSharedSkills?.()
+      this.windowIncidentReads.invalidate()
+      this.windowRoutesKept = undefined
+      this.windowIncidentsKept = undefined
+      this.workReconciler?.close()
+      clearInterval(this.reconciliationTimer)
+      this.launches.closeAdmission()
+      if (this.providerLimitExpiry !== null) clearTimeout(this.providerLimitExpiry)
+      this.providerLimitExpiry = null
+      this.providerLimitFacts.invalidate()
+      this.signInReopens.close()
+      const signIns = [...this.signIns.values()]
+      this.signIns.clear()
+      const signInsClosed = await Promise.allSettled(
+        signIns.map(({ signIn }) => this.boundedCancel(signIn)),
+      )
+      for (const result of signInsClosed)
+        if (result.status === 'rejected') failures.push(result.reason)
+      // ⚑ **D-029 · no wake-up outlives the quit** — the next launch reads the ledger again. ⚠️ One
+      // that fires first already starts nothing: admission closed on the first line.
+      for (const conversation of [...this.wakeUps.keys()]) this.forgetItsWakeUp(conversation)
+      // ⚑ **F074 — nor a reset's timer**: the next launch reads the walls again.
+      for (const { timer } of this.theResets.values()) clearTimeout(timer)
+      this.theResets.clear()
+      const terminated = settledWithin(this.launches.pending(), this.closeDrainTimeoutMs * 2)
+      const sessionsClosed = await Promise.allSettled(
+        [...this.slots.keys()].map((id) => this.close(id, THE_APP_ITSELF)),
+      )
+      for (const result of sessionsClosed)
+        if (result.status === 'rejected') failures.push(result.reason)
+      confirmed = await terminated
+    } catch (error) {
+      failures.push(error)
     } finally {
-      // A failed session close must still leave memory quiescent before SQLite closes.
-      await Promise.allSettled([memoryClosed, teamProfileGraphsClosed])
+      for (const result of await readersClosed)
+        if (result.status === 'rejected') failures.push(result.reason)
     }
+    if (failures.length) throw new AggregateError(failures, 'Runtime shutdown did not finish')
     // Bounded like every other wait a quit makes, and for the same reason: one adapter that will not
     // let go must not be able to hold the whole application open. What the bound costs is the same
     // thing it costs in `doStopProvider` — the guarantee that the child is down BY NOW — and the

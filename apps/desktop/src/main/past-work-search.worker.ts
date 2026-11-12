@@ -30,6 +30,10 @@ if (parentPort !== null) {
   db.pragma('cache_size = -4096')
   const store = createSessionStore(db)
   port.on('message', (value: unknown) => {
+    if (typeof value === 'object' && value !== null && 'type' in value && value.type === 'close') {
+      port.close()
+      return
+    }
     const parsed = request.safeParse(value)
     if (!parsed.success || parsed.data.source.file !== file) {
       port.postMessage({

@@ -58,7 +58,7 @@ describe('limits transport waits for confirmed worker exit', () => {
   })
 
   it.each(['operation', 'databaseEpoch', 'signInEpoch', 'inputCapturedAt'] as const)(
-    'quarantines a reply with the wrong %s until exit',
+    'reports a reply with the wrong %s while retaining native ownership until exit',
     async (field) => {
       const { events, terminate, transport } = setup()
       let settled = false
@@ -71,24 +71,28 @@ describe('limits transport waits for confirmed worker exit', () => {
       await vi.advanceTimersByTimeAsync(0)
       events.emit('message', { type: 'read', id: 1, read: { ...result, [field]: 99 } })
       await vi.advanceTimersByTimeAsync(1)
-      expect(settled).toBe(false)
-      expect(terminate).toHaveBeenCalledTimes(1)
+      expect(settled).toBe(true)
+      let exited = false
+      void transport.whenExited.then(() => { exited = true })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(exited).toBe(false)
+      expect(terminate).toHaveBeenCalledTimes(0)
       events.emit('exit', 1)
       expect(await answer).toMatchObject({ why: 'failed' })
     },
   )
 
-  it('a stop deadline requests termination and still waits for exit', async () => {
+  it('a stop requests cooperative close and waits for exit without native termination', async () => {
     const { events, transport, terminate } = setup()
     const answer = transport.execute(input).catch((error: unknown) => error)
     await vi.advanceTimersByTimeAsync(0)
     let stopped = false
-    const closing = transport.stop(5).then(() => {
+    const closing = transport.stop().then(() => {
       stopped = true
     })
     await vi.advanceTimersByTimeAsync(20)
     expect(stopped).toBe(false)
-    expect(terminate).toHaveBeenCalledTimes(1)
+    expect(terminate).toHaveBeenCalledTimes(0)
     events.emit('exit', 1)
     await closing
     expect(await answer).toMatchObject({ why: 'closed' })
@@ -107,7 +111,11 @@ describe('limits transport waits for confirmed worker exit', () => {
     await vi.advanceTimersByTimeAsync(0)
     events.emit('error', new Error('fictional crash'))
     await vi.advanceTimersByTimeAsync(0)
-    expect(settled).toBe(false)
+    expect(settled).toBe(true)
+    let exited = false
+    void transport.whenExited.then(() => { exited = true })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(exited).toBe(false)
     events.emit('exit', 1)
     expect(await answer).toMatchObject({ why: 'failed' })
   })

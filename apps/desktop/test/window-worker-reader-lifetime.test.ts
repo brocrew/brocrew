@@ -176,7 +176,7 @@ describe('window reader owns its native connection until confirmed exit', () => 
     await expect(reader.read({ kind: 'routes' })).rejects.toThrow(WindowReadUnavailable)
   })
 
-  it('an invalid reply terminates once and settles its pending read only after exit', async () => {
+  it('an invalid reply reports failure and retains cleanup until cooperative exit', async () => {
     const worker = new ReadWorker()
     const reader = new WindowWorkerReader(worker)
     let settled = false
@@ -190,9 +190,15 @@ describe('window reader owns its native connection until confirmed exit', () => 
     worker.emit('message', { type: 'read', id: sent.id, result: { kind: 'routes', routes: [] } })
     worker.emit('error', new Error('fictional worker failure'))
     await drain()
-    expect(worker.terminate).toHaveBeenCalledOnce()
-    expect(settled).toBe(false)
+    expect(worker.terminate).not.toHaveBeenCalled()
+    expect(worker.sent.at(-1)).toEqual({ type: 'close' })
+    expect(settled).toBe(true)
+    let closed = false
+    const closing = reader.close().then(() => { closed = true })
+    await drain()
+    expect(closed).toBe(false)
     worker.emit('exit', 1)
+    await closing
     expect(await answer).toBeInstanceOf(WindowReadUnavailable)
     await reader.close()
   })
@@ -253,8 +259,9 @@ describe('window reader owns its native connection until confirmed exit', () => 
     initial.emit('error', new Error('fictional native failure'))
     await expect(reader.read({ kind: 'routes' })).rejects.toThrow(WindowReadUnavailable)
     expect(start).toHaveBeenCalledOnce()
-    expect(settled).toBe(false)
-    expect(initial.terminate).toHaveBeenCalledOnce()
+    expect(settled).toBe(true)
+    expect(initial.terminate).not.toHaveBeenCalled()
+    expect(initial.sent.at(-1)).toEqual({ type: 'close' })
     initial.emit('exit', 1)
     expect(await first).toBeInstanceOf(WindowReadUnavailable)
 
