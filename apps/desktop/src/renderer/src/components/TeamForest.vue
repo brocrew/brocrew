@@ -302,8 +302,14 @@ function toggle(conversation: string): void {
                   :node="node"
                   :here="isCurrent(node)"
                   :opened="opened.has(node.row.conversation)"
+                  :current="props.current"
+                  :opened-members="opened"
+                  :file-counts="props.fileCounts"
+                  :root-files="props.rootFiles"
                   @toggle="toggle(node.row.conversation)"
+                  @toggle-member="(conversation) => toggle(conversation)"
                   @press="(row) => emit('press', row)"
+                  @files="(piece) => emit('files', piece)"
                 />
                 <ForestCard
                   v-else

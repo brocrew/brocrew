@@ -3,9 +3,23 @@ import { computed } from 'vue'
 import ForestCard from './ForestCard.vue'
 import type { GraphNode } from '../lib/forest-graph'
 import type { ForestRow } from '../lib/the-forest'
+import type { RootFiles } from '../lib/files-kept'
 
-const props = defineProps<{ node: GraphNode; here: boolean; opened: boolean }>()
-const emit = defineEmits<{ toggle: []; press: [row: ForestRow] }>()
+const props = defineProps<{
+  node: GraphNode
+  here: boolean
+  opened: boolean
+  current?: string | null
+  openedMembers: ReadonlySet<string>
+  fileCounts?: ReadonlyMap<string, number>
+  rootFiles?: RootFiles | null
+}>()
+const emit = defineEmits<{
+  toggle: []
+  toggleMember: [conversation: string]
+  press: [row: ForestRow]
+  files: [piece: string]
+}>()
 const members = computed(() => props.node.members ?? [])
 const summary = computed(() => ({
   ...props.node,
@@ -17,24 +31,13 @@ const summary = computed(() => ({
   tasks: [],
 }))
 const distribution = computed(() => {
-  let active = 0
-  let idle = 0
-  let unknown = 0
+  const counts = new Map<string, number>()
   for (const member of members.value) {
-    const doing = member.row.facets.doing
-    if (doing === undefined || doing === 'unknown') unknown += 1
-    else if (doing === 'idle') idle += 1
-    else active += 1
+    const word = member.row.says ?? 'unknown'
+    counts.set(word, (counts.get(word) ?? 0) + 1)
   }
-  return [
-    active ? `${active} active` : '',
-    idle ? `${idle} idle` : '',
-    unknown ? `${unknown} unknown` : '',
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  return [...counts].map(([word, count]) => `${count} ${word}`).join(' · ')
 })
-const newestTask = (member: GraphNode) => member.tasks.at(-1)?.taskRow
 const dateOf = (member: GraphNode): string | null => {
   const updatedAt = member.row.conversationRow?.updatedAt
   return updatedAt === undefined
@@ -67,24 +70,24 @@ const latest = computed(() => [props.node.row.says, dateOf(props.node)].filter(B
         {{ props.opened ? '▾ Hide conversations' : `▸ ${members.length} conversations` }}
       </button>
       <div v-if="props.opened" class="members" :aria-label="`${props.node.row.name} conversations`">
-        <button
+        <div
           v-for="member in members"
           :key="member.row.key"
-          type="button"
           class="member"
           data-cy="forest-group-member"
           :data-conversation="member.row.conversation"
           @click.stop="emit('press', member.row)"
         >
-          <span class="member-label"
-            >{{ newestTask(member)?.reading.heading ?? member.row.conversation }}
-            <span aria-hidden="true">↗</span></span
-          >
-          <span v-if="member.row.says || dateOf(member)">{{
-            [member.row.says, dateOf(member)].filter(Boolean).join(' · ')
-          }}</span>
-          <span v-if="newestTask(member)" class="piece">{{ newestTask(member)?.said }}</span>
-        </button>
+          <ForestCard
+            :node="member"
+            :here="member.row.conversation === props.current"
+            :opened="props.openedMembers.has(member.row.conversation)"
+            :file-counts="props.fileCounts"
+            :root-files="props.rootFiles?.conversation === member.row.conversation ? props.rootFiles : null"
+            @toggle="emit('toggleMember', member.row.conversation)"
+            @files="(piece) => emit('files', piece)"
+          />
+        </div>
       </div>
     </div>
   </section>
@@ -137,32 +140,8 @@ const latest = computed(() => [props.node.row.says, dateOf(props.node)].filter(B
   overscroll-behavior: contain;
 }
 .member {
-  display: flex;
   width: 100%;
-  flex-direction: column;
-  padding: var(--space-3) 0;
-  border: 0;
-  border-bottom: var(--border-width) solid var(--line);
-  background: none;
-  color: var(--muted);
+  margin-top: var(--space-2);
   cursor: pointer;
-  font: inherit;
-  font-size: var(--type-caption);
-  gap: var(--space-2);
-  text-align: left;
-}
-.member:hover {
-  background: var(--wash-3);
-}
-.member-label {
-  display: flex;
-  overflow-wrap: anywhere;
-  justify-content: space-between;
-  color: var(--text);
-  font-weight: var(--fw-bold);
-}
-.piece {
-  color: var(--text-soft);
-  line-height: 1.45;
 }
 </style>

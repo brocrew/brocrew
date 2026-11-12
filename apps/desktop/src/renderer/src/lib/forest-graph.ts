@@ -85,7 +85,8 @@ function buildForest(view: ForestView, grouped = false): { all: Building[]; root
   const buckets = new Map<string, Building[]>()
   for (const node of all) {
     if (node.row.identity === null || node.row.conversationRow?.context) continue
-    const key = JSON.stringify([node.parent?.row.conversation ?? null, node.row.identity])
+    const parent = node.parent?.row.conversation ?? node.row.conversationRow?.parentNotDrawn ?? null
+    const key = JSON.stringify([parent, node.row.identity])
     const bucket = buckets.get(key)
     if (bucket) bucket.push(node)
     else buckets.set(key, [node])
