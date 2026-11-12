@@ -31726,7 +31726,11 @@ export class RuntimeHost implements LiveHost {
           })
         : ask()
       this.launches.finish(launch, work)
-      return await work
+      const versions = await work
+      for (const provider of Object.keys(versions) as Provider[]) {
+        this.modelCatalogues.setProviderVersion(provider, versions[provider].version)
+      }
+      return versions
     } catch (error) {
       if (launch !== null) this.launches.finish(launch)
       console.warn(`runtime host could not read the providers' versions: ${errorMessage(error)}`)
