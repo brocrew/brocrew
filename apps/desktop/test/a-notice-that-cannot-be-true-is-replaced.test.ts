@@ -1,15 +1,10 @@
-import { waitFor } from './lib/f093-host'
-import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { forestOf } from './lib/forest-of-host'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { rmSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, type FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { isGiverStallNotice, RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -17,6 +12,10 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import {
+  waitFor,
+  type TranscriptEvent,
+  fixtureFolder,
+  fixtureDatabase,
   RecordingSink,
   syntheticProviderHome,
   neutralHostDeps,
@@ -58,8 +57,6 @@ import {
  * §4.2); where nothing is resumed the two runs are the same run, which is stated rather than counted
  * as coverage (`711`'s review).
  */
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 describe('711 · a notice that cannot be true is replaced', () => {
   let userData: string
@@ -93,10 +90,9 @@ describe('711 · a notice that cannot be true is replaced', () => {
   }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-711-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-711-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-711-')
+    root = fixtureFolder('brobot2-711-root-')
+    db = fixtureDatabase(userData)
     clock = 7_110_000
     store = createSessionStore(db, tick)
     counter = 0
