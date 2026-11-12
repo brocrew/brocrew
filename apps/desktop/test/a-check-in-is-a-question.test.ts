@@ -162,7 +162,6 @@ describe('§1 · ⛔ the factory text says which verb a check-in is', () => {
  * `611` — is caught without anybody adding a case for it.
  */
 describe('§2 · 🔴 every tool the factory text names is a tool this app publishes', () => {
-
   const SNAKE = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g
 
   /**

@@ -309,7 +309,7 @@ describe('488 · who exists, and what they were told', () => {
       // this is the only place that can see what actually crossed.
       await bringIdentityIntoBeing('builder')
       expect(store.setAgentProvider('builder', 'codex')).toBe(true)
-      grant('builder', { maxDepth: 9,  })
+      grant('builder', { maxDepth: 9 })
       const me = await anAgentRunning('lead')
 
       const said = await toolsOf(me).call('list_profiles')
@@ -353,7 +353,7 @@ describe('488 · who exists, and what they were told', () => {
       // leak the day anybody widened the door. ⚑ **Measured here it is a defect now**, which is the
       // difference between a bound and a coincidence.
       await bringIdentityIntoBeing('builder')
-      grant('builder', { maxDepth: 9,  })
+      grant('builder', { maxDepth: 9 })
       await anAgentRunning('lead')
 
       // ⚑ **D-014 · the reading takes no caller** — every agent sees every identity.

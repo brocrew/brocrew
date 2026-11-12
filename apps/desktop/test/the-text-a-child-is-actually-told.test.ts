@@ -47,12 +47,7 @@ import {
 import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
 import { CODEX_INSTRUCTIONS_FILE } from '../src/main/providers/codex/layout.mjs'
 import { WORKSPACE_INSTRUCTIONS, workspaceInstructionFiles } from '../src/main/runtime/workspace'
-import {
-  CAPABILITY_FIELDS,
-  DEFAULT_CAPABILITIES,
-  
-  grantSays,
-} from '../src/shared/capabilities'
+import { CAPABILITY_FIELDS, DEFAULT_CAPABILITIES, grantSays } from '../src/shared/capabilities'
 import type {
   AnyCapabilityField,
   ConversationAtLaunch,
@@ -153,7 +148,6 @@ const NOT_ONE_DOMAIN: Record<string, RegExp> = {
 
 const GRANTED: ProfileCapabilities = {
   ...DEFAULT_CAPABILITIES,
-
 }
 
 /**

@@ -219,7 +219,7 @@ describe('681 · a starting child is already in its project', () => {
     const mine = store.identityOf(parent)
     expect(mine).toMatchObject({ profileSlug: 'lead' })
     expect(store.capabilitiesOf('lead')).toEqual(DEFAULT_CAPABILITIES)
-    expect(store.capabilitiesOf('lead')).toMatchObject({   })
+    expect(store.capabilitiesOf('lead')).toMatchObject({})
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────

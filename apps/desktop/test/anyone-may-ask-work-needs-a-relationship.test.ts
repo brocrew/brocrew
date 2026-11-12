@@ -104,7 +104,6 @@ describe('553 · anyone may ask; work needs a relationship', () => {
   }
 
   /** One capability, changed and nothing else — the *"one grant over"* half of every pair below. */
-  
 
   /**
    * ⛔ **The RAW column, not `capabilitiesOf`** — a NULL column is *nobody has chosen*, and it is
@@ -269,7 +268,6 @@ describe('553 · anyone may ask; work needs a relationship', () => {
      * ⚠️ **Paired with the sibling one fact over**: the same caller can still SPEAK to the same
      * child, which is what makes this a narrowing of one act rather than of the conversation.
      */
-
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -277,7 +275,6 @@ describe('553 · anyone may ask; work needs a relationship', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§1b · the grant, asserted on `admitReachAtAll` itself', () => {
-
     /**
      * ⛔ **`none` reaches nothing at all, and the SENTENCE says so in as many words** (standing
      * rule 5, and `449`'s measured defect: a model read a bare vocabulary word and got the rule
@@ -287,7 +284,6 @@ describe('553 · anyone may ask; work needs a relationship', () => {
      * WALKED from this table — so the two move together and an assertion over the help alone is a
      * comparison tested where both sides agree.
      */
-
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────

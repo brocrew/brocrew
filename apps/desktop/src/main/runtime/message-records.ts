@@ -347,9 +347,7 @@ export type MessageNowOutcome =
  *  - `outside-its-reach` — it exists and the caller's reach does not admit it: the reach rail
  *    `message_agent` answers with, carried as it was built.
  */
-export type OutOfReach =
-  | { readonly is: 'no-such-agent' }
-  | { readonly is: 'takes-no-messages' }
+export type OutOfReach = { readonly is: 'no-such-agent' } | { readonly is: 'takes-no-messages' }
 
 /**
  * 🔴 **D-016 · commit 7 · R1 — the reach a door resolves a label by** — see

@@ -48,7 +48,7 @@ const IDENTITIES: AgentIdentity[] = [
     // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
     externalMcpServerIds: [],
     // ⚑ **D-016** — `none`, the one reach word left that is not the default (`same-project` went).
-    capabilities: { ...DEFAULT_CAPABILITIES,  },
+    capabilities: { ...DEFAULT_CAPABILITIES },
     chosen: {
       maxDepth: 'default',
 

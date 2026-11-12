@@ -481,7 +481,6 @@ describe('437 · a question a worker can ask its parent', () => {
    * it a measurement of the REACH rather than of the worker.
    */
   describe('§2 · the reach did not move', () => {
-
     it('⛔ every spelling of an addressee is refused, and the list is the one reply_to_parent refuses', async () => {
       const { worker, workerTools, piece } = await aWorkerHoldingWork()
       // ⛔ **The CONSTANT and never a hand-written subset** (found by this dispatch's own review).

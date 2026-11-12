@@ -1061,7 +1061,7 @@ describe('393 · a reply, and its absence', () => {
     })
 
     it('⚑ a child a person narrowed to no reach at all is still heard — the app delivers its answer', async () => {
-      const { pm, worker, siblings, task } = await workWasGiven()
+      const { pm, worker, task } = await workWasGiven()
       const landed = await reply(worker, {
         piece: task,
         outcome: 'done',
@@ -1412,7 +1412,6 @@ describe('393 · a reply, and its absence', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§7 · what nothing in this file may quietly stop being true', () => {
-
     it('⛔ every reply rail has a permanence, a retryability derived from it, and a sentence of substance', () => {
       for (const rail of REPLY_RAILS) {
         const refusal = refuseReply(rail)

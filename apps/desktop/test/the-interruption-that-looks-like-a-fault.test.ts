@@ -877,7 +877,6 @@ describe('395 · the interruption that looks like a provider fault', () => {
       expect(asked?.remedy).toBeNull()
       expect(asked?.reason).toContain('Only the person answering ends this')
     })
-
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
@@ -1027,7 +1026,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
     it('🔴 an interrupted turn leaves the task, ENDS the question (397), and SENDS the held message', async () => {
       // ⚑ Work given through the real door, so the piece is a derived row and not a fixture — ⚑
       // D-016: the give is that door, and its brief the turn now parked on its card.
-      const { pm, pmProfile, worker, piece, pmTools, workerHandle } = await aPmAndItsWorker()
+      const { pm, worker, piece, pmTools, workerHandle } = await aPmAndItsWorker()
 
       expect(workerHandle.status()).toBe('waiting_permission')
       // ⚑ A second message, held behind the running turn — `354`'s singleton, still one for work.
@@ -1173,7 +1172,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
       // the path: `nothing-waits-on-somebody-looking.test.ts` §1.
       // ⚑ **D-016 · the turn is started by the give's brief**, so the message this test needs HELD
       // is a follow-up on that piece, meeting the running turn.
-      const { pmProfile, worker, piece, pmTools, workerHandle } = await aPmAndItsWorker()
+      const { worker, piece, pmTools, workerHandle } = await aPmAndItsWorker()
 
       expect(workerHandle.status()).toBe('waiting_permission')
       const held = await callOn(pmTools, 'message_agent', {
@@ -1220,7 +1219,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
 
     it('⛔ a conversation ENDING settles all three, which is the sentence that IS true', async () => {
       // ⚑ D-016 · the give is the work, and its brief the turn parked on its card.
-      const { pmProfile, worker, workerHandle } = await aPmAndItsWorker()
+      const { worker, workerHandle } = await aPmAndItsWorker()
 
       expect(workerHandle.status()).toBe('waiting_permission')
       // ⛔ **496 · the PERSON's ending, because this is work IN FLIGHT** (HO-034 §1). ⚠️ What this

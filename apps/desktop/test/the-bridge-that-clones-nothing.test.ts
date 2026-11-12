@@ -39,7 +39,7 @@ describe('§1 · the clone can fail, and it says where (361 §2)', () => {
     ['a `ref` holding an object, read through `.value`', () => ref({ provider: 'codex' }).value],
     ['a `ref` holding an array, read through `.value`', () => ref(['worker']).value],
     ['a member of a `reactive(new Map())`', () => reactive(new Map([['k', { a: 1 }]])).get('k')],
-    ['a proxy nested one level down', () => ({ grant: reactive({  }) })],
+    ['a proxy nested one level down', () => ({ grant: reactive({}) })],
     ['a proxy inside an array', () => ({ attachments: [reactive({ path: '/a' })] })],
     ['a function', () => ({ onDone: (): void => {} })],
   ] as const
@@ -61,7 +61,7 @@ describe('§1 · the clone can fail, and it says where (361 §2)', () => {
     ['a copy of what a `ref` holds', () => ({ ...ref({ provider: 'codex' }).value })],
     ['a copy of an array a `ref` holds', () => [...ref(['worker']).value]],
     ['a copy of a map member', () => ({ ...reactive(new Map([['k', { a: 1 }]])).get('k') })],
-    ['a plain value one level down', () => ({ grant: {  } })],
+    ['a plain value one level down', () => ({ grant: {} })],
     ['plain members of an array', () => ({ attachments: [{ path: '/a' }] })],
     ['no function at all', () => ({ onDone: 'done' })],
   ] as const

@@ -720,6 +720,5 @@ describe('D-024 · a profile reads across its own conversations', () => {
     }
     expect(bobsLabel.text).not.toContain(bob)
     expect(bobsLabel.text).not.toContain(host.whatToCallTheConversation(bob))
-
   })
 })

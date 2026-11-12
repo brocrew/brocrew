@@ -131,8 +131,6 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
   }
 
   /** What an agent's own calls look like from outside the toolset — `agent:<its session>`. */
-  const speakingAs = (sessionId: string): CallerIdentity => ({ ownerId: agentCallerId(sessionId) })
-
   
 
   /** ⚑ **The raw order `list_agents` hands back** — unsorted, because §1 is about that order. */
@@ -187,7 +185,6 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
    * spawn between any two of them, so the only thing that can admit an answer is the grant — and,
    * since §3 below stops the target, the only thing that can admit a STOPPED one.
    */
-  
 
   describe('§3 · a stopped, out-of-reach conversation meets the reach rail, never no-such-agent', () => {
     /**
@@ -197,6 +194,5 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
      * the identical stopped id, is the paired positive**: it is not the target having stopped that
      * excludes `explorer`, because `brobot` reaches the very same stopped conversation fine.
      */
-
   })
 })

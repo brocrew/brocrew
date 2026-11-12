@@ -733,8 +733,12 @@ describe('F009 · what an agent has done, read on demand', () => {
       for (const tools of [oneTools, twoTools]) {
         const record = await theRecordOf(tools, 'tester')
         expect(record.structured.outcome).toBe('ok')
-        expect((record.structured.conversations as ConversationPayload[]).map((row) => row.agent).sort()).toEqual([first, standIn, second].sort())
-        expect((record.structured.pieces as PiecePayload[]).map((piece) => piece.label).sort()).toEqual(['W1.4', 'W1.3', 'W1.2', 'W1.1', 'W2.1'].sort())
+        expect(
+          (record.structured.conversations as ConversationPayload[]).map((row) => row.agent).sort(),
+        ).toEqual([first, standIn, second].sort())
+        expect(
+          (record.structured.pieces as PiecePayload[]).map((piece) => piece.label).sort(),
+        ).toEqual(['W1.4', 'W1.3', 'W1.2', 'W1.1', 'W2.1'].sort())
         expect(record.structured.rules_told).toBe(true)
       }
       const fromTwo = await theRecordOf(twoTools, 'tester')
@@ -769,11 +773,17 @@ describe('F009 · what an agent has done, read on demand', () => {
       })
       expect(told.text).toContain('It has no conversation within your reach.')
 
-      for (const [name, rules] of [['auditor', 'You are an auditor of accounts.'], ['scribe', null]]) {
+      for (const [name, rules] of [
+        ['auditor', 'You are an auditor of accounts.'],
+        ['scribe', null],
+      ]) {
         const record = await theRecordOf(tools, name as string)
-        expect(record.structured).toMatchObject({ outcome: 'ok', rules_told: true, rules_begin: rules })
+        expect(record.structured).toMatchObject({
+          outcome: 'ok',
+          rules_told: true,
+          rules_begin: rules,
+        })
       }
-
     })
 
     it('⛔ a name this app holds no agent by is refused, and the refusal names the door that lists them', async () => {

@@ -167,5 +167,4 @@ describe('D-017 · a start that costs one launch or none', () => {
     expect(gate.entered).toBe(1)
     expect(wordsIn(bo)).toEqual(['first', 'second'])
   })
-
 })

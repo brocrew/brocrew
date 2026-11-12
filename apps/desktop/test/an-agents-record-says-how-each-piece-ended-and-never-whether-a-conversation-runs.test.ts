@@ -399,9 +399,10 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
         rules_begin: 'You are a careful tester of web pages.',
         conversations_not_listed: 0,
       })
-      expect((outsiderRecord.structured.conversations as ConversationPayload[]).map((one) => one.agent)).toEqual([holder])
+      expect(
+        (outsiderRecord.structured.conversations as ConversationPayload[]).map((one) => one.agent),
+      ).toEqual([holder])
       expect((outsiderRecord.structured.pieces as PiecePayload[]).length).toBe(2)
-
     })
   })
 

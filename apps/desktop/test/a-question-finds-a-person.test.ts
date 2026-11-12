@@ -883,13 +883,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
       }
       // ⛔ **No two entries in the compared roster share a NAME** — `374`'s rule, so `rail` says
       // which rule stopped a call whichever door built the payload.
-      const every = [
-        ...SPAWN_RAILS,
-
-        ...REPLY_RAILS,
-        ...QUESTION_RAILS,
-        ...CHANNEL_REFUSALS,
-      ]
+      const every = [...SPAWN_RAILS, ...REPLY_RAILS, ...QUESTION_RAILS, ...CHANNEL_REFUSALS]
       expect(new Set(every).size).toBe(every.length)
       // ⚠️ **And no SENTENCE is shared between the two audiences of one fact.** The channel's
       // sentences are for a reader of a ledger; the rails' are for a model, and a string that had to

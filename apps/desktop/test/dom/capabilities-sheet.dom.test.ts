@@ -252,7 +252,9 @@ describe('355 · the capabilities sheet', () => {
       // this field's vocabulary rather than about whatever the last `<select>` happened to hold.
       // ⚠️ **D-016 · two words now** — `same-project` went with projects.
       expect(
-        [...(m.q('capability-canCreateAgents-select') as HTMLSelectElement).options].map((o) => o.value),
+        [...(m.q('capability-canCreateAgents-select') as HTMLSelectElement).options].map(
+          (o) => o.value,
+        ),
       ).toEqual(['none', 'any'])
       // ⛔ …and it is NOT rendered by the unknown-editor branch, which would also be "on screen".
       expect(m.all('capability-canBroadcast-unknown-editor')).toHaveLength(0)

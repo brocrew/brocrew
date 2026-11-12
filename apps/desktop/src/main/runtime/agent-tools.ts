@@ -4450,7 +4450,6 @@ const outOfReachAnswer = (out: OutOfReach, agent: string): AgentToolAnswer => {
   if (out.is === 'takes-no-messages') {
     return refusalAnswer(refuseTool('that-conversation-takes-no-messages', { agent }))
   }
-
 }
 
 /**
@@ -5872,10 +5871,7 @@ export function agentToolsFor(
             // ⚑ **D-016 · a file that could not be kept** — a `ResourceRefusal` is already
             // `341`-shaped and carries `outcome`, so it is spread unchanged, as `carryReplyRefusal`
             // spreads it.
-            const carried =
-              'outcome' in refusal
-                ? { ...refusal }
-                : carryRailRefusal(refusal)
+            const carried = 'outcome' in refusal ? { ...refusal } : carryRailRefusal(refusal)
             return answer(carried, `refused (${refusal.rail}): ${refusal.reason}`)
           }
           // ⚑ **The agent by the name every surface says**, and its conversation by the label it was
@@ -6035,7 +6031,6 @@ export function agentToolsFor(
       ),
       call: (args) =>
         guarded(async () => {
-
           args = toolArgumentsAtHandler(args)
           const problems: z.core.$ZodIssue[] = []
           const problem = (field: keyof MessageAgentArguments, message: string): void => {
