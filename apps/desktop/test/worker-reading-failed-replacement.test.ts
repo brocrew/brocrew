@@ -99,9 +99,7 @@ describe('worker metadata after a later replacement with an unread ordinary cach
           expect(world.conversationsRecorded()).toBe(conversations)
         } else {
           expect(latest.worker).toMatchObject({ number: 1, bornAs: birth })
-          expect(
-            next.agentCard(current)?.worker,
-          ).toMatchObject({ number: 1, bornAs: birth })
+          expect(next.agentCard(current)?.worker).toMatchObject({ number: 1, bornAs: birth })
         }
       } finally {
         rowFailure.mockRestore()

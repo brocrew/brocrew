@@ -274,17 +274,7 @@ describe('553 · anyone may ask; work needs a relationship', () => {
   // §1b · the gate's own contract, where a product door cannot reach it
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§1b · the grant, asserted on `admitReachAtAll` itself', () => {
-    /**
-     * ⛔ **`none` reaches nothing at all, and the SENTENCE says so in as many words** (standing
-     * rule 5, and `449`'s measured defect: a model read a bare vocabulary word and got the rule
-     * wrong).
-     *
-     * ⚠️ **Asserted against the behaviour and not against the help string**, because the help is
-     * WALKED from this table — so the two move together and an assertion over the help alone is a
-     * comparison tested where both sides agree.
-     */
-  })
+
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
   // §2 · HO-058 §4 · the configuration burden, applied to the new column

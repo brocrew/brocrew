@@ -125,7 +125,7 @@ describe('parallel worker tools and conversation readings', () => {
     const reads = ['workersBorn', 'workerLineage', 'workerInItsPlace', 'workerLedger'] as const
     const probes = reads.map((name) => vi.spyOn(world.store, name))
     try {
-      const by = { ownerId: agentCallerId(caller) }
+
       expect(next.agentCard(a.owner)?.worker).toEqual({
         identity,
         giver: caller,
@@ -196,9 +196,7 @@ describe('parallel worker tools and conversation readings', () => {
     await serviceHost.closeAll()
     world.loseTheKept()
     const unknown = world.aHost()
-    expect(
-      unknown.agentCard(a.owner)?.worker,
-    ).toBeUndefined()
+    expect(unknown.agentCard(a.owner)?.worker).toBeUndefined()
     expect(
       [...unknown.resumableSessions(), ...unknown.unresumableSessions()].find(
         (one) => one.sessionId === a.owner,
@@ -235,8 +233,11 @@ describe('parallel worker tools and conversation readings', () => {
     await next.closeAll()
     world.resumesAreGoneFor = null
     const restarted = world.aHost()
-    expect(
-      restarted.agentCard(current)?.worker,
-    ).toEqual({ identity, giver: caller, number: 2, bornAs: b.owner })
+    expect(restarted.agentCard(current)?.worker).toEqual({
+      identity,
+      giver: caller,
+      number: 2,
+      bornAs: b.owner,
+    })
   })
 })

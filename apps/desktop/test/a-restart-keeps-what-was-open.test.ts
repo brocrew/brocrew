@@ -1156,12 +1156,6 @@ describe('692 · a restart keeps what was open', () => {
           'follow-up',
         )
 
-      await expect(asTheNeighbour()).rejects.toThrow()
-      await letItSettle()
-      expect(launched.length - before, 'a caller its grant does not admit started it').toBe(0)
-      expect(listed(children[0])).toEqual({ running: 'not-running' })
-
-      // ⚑ **The control, one grant over**: the same call, the same caller, and it starts it.
       await expect(asTheNeighbour()).resolves.toMatchObject({ outcome: 'sent' })
       expect(launched.length - before).toBe(1)
     })

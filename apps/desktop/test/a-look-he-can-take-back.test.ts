@@ -1,3 +1,4 @@
+import { ownsStream } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,7 +15,6 @@ import {
   type AgentCard,
   mayHandBack,
   RuntimeHost,
-  
   type RuntimeEventSink,
   type UnclaimedSession,
 } from '../src/main/runtime/runtime-host'
@@ -116,8 +116,8 @@ interface World {
   readonly unclaimed: UnclaimedSession | null
   readonly registered: boolean
   readonly provider: string
-  readonly reachableFromOne: boolean
-  readonly reachableFromTwo: boolean
+  readonly ownedByOne: boolean
+  readonly ownedByTwo: boolean
   readonly ledger: readonly TranscriptEvent[]
 }
 
@@ -231,19 +231,13 @@ describe('523 · a look he can take back', () => {
   const stateOf = (card: AgentCard | null): string =>
     card === null ? 'no card' : agentStateWords(card.state)
 
-  /**
-   * 🔴 **The world, through doors that change none of it.**
-   *
-   * ⛔ **`agentCard` and not `attachOpenSessions`** — see this file's header. It asks
-   * `withinMessagingReach` and returns `null` rather than throwing, so both arms are a read.
-   * ⚠️ **Neither window is the commander**, so for these two sinks reach IS ownership.
-   */
+  /** The stream owner, provider state and ledger before and after a claim. */
   const worldOf = (sessionId: string): World => ({
     unclaimed: host.unclaimedSessions().find((row) => row.sessionId === sessionId) ?? null,
     registered: host.sessionIds.includes(sessionId),
     provider: stateOf(host.agentCard(sessionId)),
-    reachableFromOne: host.agentCard(sessionId) !== null,
-    reachableFromTwo: host.agentCard(sessionId) !== null,
+    ownedByOne: ownsStream(host, sessionId, one),
+    ownedByTwo: ownsStream(host, sessionId, two),
     ledger: ledger(sessionId),
   })
 
@@ -259,8 +253,8 @@ describe('523 · a look he can take back', () => {
       const watched = worldOf(sessionId)
       expect(watched).not.toEqual(before)
       expect(watched.unclaimed, 'a claimed conversation is nobody’s no longer').toBeNull()
-      expect(watched.reachableFromOne).toBe(true)
-      expect(watched.reachableFromTwo).toBe(false)
+      expect(watched.ownedByOne).toBe(true)
+      expect(watched.ownedByTwo).toBe(false)
       // ⛔ **The two fields `519` item 3 asked to be exposed**, on the hand-over itself.
       expect(handed.startedWithoutAWindow).toBe(true)
       expect(handed.mayHandItBack).toBe(true)

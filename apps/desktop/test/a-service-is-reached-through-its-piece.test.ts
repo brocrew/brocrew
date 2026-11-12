@@ -437,7 +437,11 @@ describe('a service is reached through the piece it is on', () => {
       expect(late.structured).toMatchObject({ outcome: 'ok' })
       await new Promise((settled) => setTimeout(settled, 50))
       expect(lives()).toBe(before + 3)
-      expect(rows(service, 'user_turn').some((turn) => turn.type === 'user_turn' && turn.text.includes('one more thing'))).toBe(false)
+      expect(
+        rows(service, 'user_turn').some(
+          (turn) => turn.type === 'user_turn' && turn.text.includes('one more thing'),
+        ),
+      ).toBe(false)
     })
 
     it('stops no turn of its that drives another piece when that piece is taken back', async () => {

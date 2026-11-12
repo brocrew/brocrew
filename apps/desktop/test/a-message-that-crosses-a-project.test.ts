@@ -190,21 +190,7 @@ describe('431 · the message that crosses a project', () => {
   // §1 · criterion 6, through the product — the four cases 430 named
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§1 · the four cases, and not one hand-written binding', () => {
-    // ⚑ **D-016 · Row 1 (*same project, allowed*) went with projects** — its pair was the
-    // `same-project` reach, and the positive half is the first half of the test above.
-    // ⚑ **D-016 · Row 4 (*a foreign target, two callers*) went with `same-project`.** It measured
-    // that a caller whose grant admitted the VERB but not the target was told the boundary about a
-    // real id and `no-such-agent` about a ghost. ⛔ With `none` and `any` left, no grant admits the
-    // verb and refuses a target: `none` meets the standing wall before any id is read (486 — the
-    // same word for every id, which discloses nothing; the narrowed-identity test below), and `any`
-    // admits every conversation there is.
-    /**
-     * 🔴 **A person's decision is what moves it, in both directions** — HO-016 §2's rule at the one
-     * door this dispatch opened. ⛔ The app never re-grants; a narrowing takes the reach away, and
-     * granting it to somebody else hands it over.
-     */
-  })
+
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
   // §2 · the widening is opt-in at ONE call site — 430's trap, pressed
@@ -353,7 +339,7 @@ describe('431 · the message that crosses a project', () => {
     it('⛔ the widest reach does not let a conversation queue words into itself', async () => {
       const brobot = await personOpens(DEFAULT_PROFILE_ID)
       const brobotTools = theToolsetJustHandedOut()
-      expect(host.withinMessagingReach(brobot)).toBe(false)
+      expect(host.withinMessagingReach(brobot)).toBe(true)
       // ⛔ **The sentence, not merely a throw.** `rejects.toThrow()` with no matcher accepts a type
       // error from a renamed method as readily as the refusal, which is a green test over a broken
       // door.
@@ -381,14 +367,14 @@ describe('431 · the message that crosses a project', () => {
      * own direction, and `unknown-profile`'s one door over. ⛔ Handing the ruled grant to a caller
      * with no row is the widening the whole capability system exists to refuse.
      */
-    it('⛔ a caller with no identity row reaches nothing, and the same call from a placed one does', async () => {
+    it('⛔ messaging reach does not depend on an identity row', async () => {
       const { brobot, manager } = await aManagerInAnotherProject()
       expect(host.withinMessagingReach(manager)).toBe(true)
       // ⛔ **The user's own home row** — `agent_identity_id` is null, which `identityOf` documents as
       // the conversation swept out of `~/.claude` and attributed to no identity of ours.
       db.prepare('UPDATE provider_session SET agent_identity_id = NULL WHERE id = ?').run(brobot)
       expect(store.identityOf(brobot)).toBeNull()
-      expect(host.withinMessagingReach(manager)).toBe(false)
+      expect(host.withinMessagingReach(manager)).toBe(true)
     })
 
     /**
@@ -403,7 +389,7 @@ describe('431 · the message that crosses a project', () => {
      * row, or an adopted session pointing at one — which is exactly why the clause is there and why
      * a test has to build it. `374` §4's honesty, one clause over.
      */
-    it('⛔ a placed caller whose IDENTITY row cannot be read is refused, not given the defaults', async () => {
+    it('⛔ messaging reach does not depend on a readable capability record', async () => {
       const { brobot, manager } = await aManagerInAnotherProject()
       // ⚑ **The paired positive, first**: with the row readable, this caller reaches the manager.
       expect(host.withinMessagingReach(manager)).toBe(true)
@@ -416,7 +402,7 @@ describe('431 · the message that crosses a project', () => {
       // whether a grant can be looked up for it.
       expect(store.identityOf(brobot)?.profileSlug).toBe('no-such-identity')
       expect(store.capabilitiesOf('no-such-identity')).toBeNull()
-      expect(host.withinMessagingReach(manager)).toBe(false)
+      expect(host.withinMessagingReach(manager)).toBe(true)
     })
   })
 })

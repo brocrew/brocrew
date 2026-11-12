@@ -20,7 +20,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { giverStallNotices, RuntimeHost,  } from './helpers/giver-notice-host'
+import { giverStallNotices, RuntimeHost } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -195,8 +195,7 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
       (error: unknown): Settled => ({ error }),
     )
 
-  const stateOf = (id: string): AgentState | undefined =>
-    host.agentCard(id)?.state
+  const stateOf = (id: string): AgentState | undefined => host.agentCard(id)?.state
   const lastSaid = (id: string): AgentState | undefined =>
     pushed
       .flatMap((message) => message.moved)

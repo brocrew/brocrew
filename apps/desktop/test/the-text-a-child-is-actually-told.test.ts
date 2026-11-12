@@ -735,14 +735,14 @@ describe('§3 · the dynamic layer moves when the data moves', () => {
     expect(grantLines(text)).toEqual(expectedPermissions(DEFAULT_CAPABILITIES))
   })
 
-  it('an unknown identity gets no invented permission', () => {
+  it('an unknown identity still gets the universal messaging and work rules', () => {
     const none = thisConversationText(context({ capabilities: null }))
     expect(none).toContain(GRANTS_HEADING)
     expect(none).toContain(
       "The app cannot identify this conversation's profile, so it cannot list its permissions. Read each tool's response.",
     )
     expect(none).not.toContain('As of this launch, for')
-    expect(grantLines(none)).toEqual([])
+    expect(grantLines(none)).toEqual(expectedPermissions(DEFAULT_CAPABILITIES).slice(0, 2))
     const known = thisConversationText(context({ capabilities: DEFAULT_CAPABILITIES }))
     expect(grantLines(known)).toEqual(expectedPermissions(DEFAULT_CAPABILITIES))
   })

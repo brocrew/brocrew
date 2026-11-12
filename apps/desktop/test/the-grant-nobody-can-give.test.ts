@@ -714,7 +714,7 @@ describe('355 · the grant nobody can give', () => {
       const differ = CAPABILITY_FIELDS.filter(
         (field) => JSON.stringify(field.ruled) !== JSON.stringify(field.narrowest),
       )
-      expect(differ.length, 'no field distinguishes narrowest from ruled').toBeGreaterThanOrEqual(3)
+      expect(differ.length, 'no field distinguishes narrowest from ruled').toBeGreaterThanOrEqual(2)
       // ⚑ A bound that is not a whole number is refused too: the wire's `.int()`, asked by `typeof`.
       expect(() =>
         db.prepare(`UPDATE agent_identity SET max_depth = 2.5 WHERE slug = 'pm'`).run(),

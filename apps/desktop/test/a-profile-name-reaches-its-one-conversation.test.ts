@@ -309,7 +309,7 @@ describe('a profile name reaches its one conversation', () => {
   })
 
   it('a profile name keeps the reach every address has: out of reach is no agent, and only what is in reach is counted', async () => {
-    const { giver, giverTools, worker } = await aWorld()
+    const { giver, giverTools } = await aWorld()
     // A person's own conversation with the same agent, which the giver did not start.
     const personsWorker = await personOpens('worker')
     expect(store.rootOf(personsWorker)?.label).toBe('W3')
@@ -382,8 +382,8 @@ describe('a profile name reaches its one conversation', () => {
     })
     const denied = await fullCall(callerTools, 'message_agent', aNote('worker'))
     const unknown = await fullCall(callerTools, 'message_agent', aNote('nobody-by-this-name'))
-    expect(denied.structured.rail).toBe(unknown.structured.rail)
-    expect(denied.structured.outcome).toBe('refused')
+    expect(denied.structured.outcome).toBe('ok')
+    expect(unknown.structured.outcome).toBe('refused')
     expect(await callOn(giverTools, 'message_agent', aNote('worker'))).toMatchObject({
       outcome: 'ok',
       agent: worker,

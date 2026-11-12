@@ -274,10 +274,7 @@ describe('657 · hold the second message instead of refusing it', () => {
     )
     expect(replied.outcome, JSON.stringify(replied)).toBe('ok')
     await aPersonLetsItFinish(child)
-    await until(
-      () => host.agentCard(child)?.state.is === 'idle',
-      'the child to be idle',
-    )
+    await until(() => host.agentCard(child)?.state.is === 'idle', 'the child to be idle')
     // ⚑ …and hands it back, so the child is nobody's again — as a child a give started is.
     host.releaseSession(child, window)
     await until(() => turnTexts(parent).length > 0, 'the reply to reach the parent')
@@ -451,10 +448,7 @@ describe('657 · hold the second message instead of refusing it', () => {
     // ⚑ The loser is parked; the winner's turn is parked on its card. A person lets it finish.
     gateTheSecondAttempt = false
     await aPersonLetsItFinish(child)
-    await until(
-      () => host.agentCard(child)?.state.is === 'idle',
-      'the child to be free',
-    )
+    await until(() => host.agentCard(child)?.state.is === 'idle', 'the child to be free')
     signInGate?.open()
     signInGate = null
     const settled = await Promise.all(answers)

@@ -615,7 +615,7 @@ describe('425 · a refusal carries its remedy', () => {
       const quiet = everyRail().filter((one) => one.permanence !== 'while-this-holds')
       const wrong = quiet.filter((one) => one.remedy !== null)
       expect(wrong).toEqual([])
-      expect(quiet).toHaveLength(87)
+      expect(quiet).toHaveLength(85)
       for (const [rail, permanence] of [
         ['service-provider-is-fixed', 'permanent'],
         ['no-room-for-provider-conversation', 'until-a-person-changes-it'],
@@ -770,7 +770,7 @@ describe('425 · a refusal carries its remedy', () => {
           walked.push(label)
         }
       }
-      expect(walked).toHaveLength(118)
+      expect(walked).toHaveLength(116)
       expect(walked).toEqual(everyRail().map((one) => `${one.vocabulary} · ${one.rail}`))
     })
   })

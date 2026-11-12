@@ -224,8 +224,6 @@ describe('732 · a retry that works, and names, not folders', () => {
     return (await tool.call(args)).structured as Record<string, unknown>
   }
 
-  
-
   // ─────────────────────────────────────────────────────────────────────────────────────────────
   // §1 · `681` F-a — a retry is said only where a retry can work
   // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -264,10 +262,7 @@ describe('732 · a retry that works, and names, not folders', () => {
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const child = given.agent as string
     const piece = given.piece as string
-    await waitFor(
-      () => host.agentCard(child)?.state.is === 'idle',
-      'the work’s turn to end',
-    )
+    await waitFor(() => host.agentCard(child)?.state.is === 'idle', 'the work’s turn to end')
     await host.close(child, THE_APP_ITSELF)
     await waitFor(() => !host.sessionIds.includes(child), 'the child to be stopped')
     const task = store.piecesOwnedBy(child)[0]

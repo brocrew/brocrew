@@ -603,8 +603,7 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     return { fn: call[0] as () => void, delay: Number(call[1]) }
   }
 
-  const stateOf = (h: RuntimeHost, id: string): AgentState | undefined =>
-    h.agentCard(id)?.state
+  const stateOf = (h: RuntimeHost, id: string): AgentState | undefined => h.agentCard(id)?.state
 
   const ledger = (id: string): TranscriptEvent[] => store.events(id).map((entry) => entry.event)
 

@@ -205,8 +205,7 @@ describe('what is scheduled is said as it changes', () => {
   const wakeUpsOf = (h: RuntimeHost): Map<string, WakeUpRead> =>
     (h as unknown as { wakeUps: Map<string, WakeUpRead> }).wakeUps
 
-  const stateOf = (id: string): AgentState | undefined =>
-    host.agentCard(id)?.state
+  const stateOf = (id: string): AgentState | undefined => host.agentCard(id)?.state
 
   const lastSaid = (id: string): AgentState | undefined =>
     pushed

@@ -172,7 +172,7 @@ describe('capabilities sheet pending actions', () => {
         grant: {
           maxDepth: null,
 
-          canCreateAgents: null,
+          canCreateAgents: 'any',
           canWriteRules: null,
         },
       })
