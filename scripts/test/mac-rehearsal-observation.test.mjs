@@ -238,7 +238,31 @@ it('waits within the existing closer budget for every installed process to exit'
       await expect(check({ now: () => time, pause })).resolves.toBeUndefined()
       expect(time).toBe(exitAt)
     }
-    expect(run).toHaveBeenCalledWith('/bin/ps', ['-axo', 'pid=,command='])
+    expect(run).toHaveBeenCalledWith('/bin/ps', ['-axo', 'pid=,command='], { timeout: 2_000 })
+  }
+  for (const failure of ['late-empty', 'rejected']) {
+    let time = 0
+    const run = vi.fn(async () => {
+      if (time === 0) return processLine
+      if (failure === 'rejected') throw new Error('ps failed')
+      time = 2_001
+      return ''
+    })
+    const pause = async (ms) => {
+      time += ms
+    }
+    const make = new Function(
+      'app',
+      'run',
+      'requireEvidence',
+      'sleep',
+      `return (${declaration.getText(source)})`,
+    )
+    const check = make(app, run, requireEvidence, pause)
+    const result = check({ now: () => time, pause })
+    await expect(result).rejects.toThrow(processLine)
+    if (failure === 'rejected') await expect(result).rejects.toThrow('ps failed')
+    expect(run).toHaveBeenLastCalledWith('/bin/ps', ['-axo', 'pid=,command='], { timeout: 1_900 })
   }
 })
 

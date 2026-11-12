@@ -173,13 +173,22 @@ async function bundleChecked(bundle, version) {
 }
 async function requireNoInstalledProcesses({ now = Date.now, pause = sleep } = {}) {
   const deadline = now() + 2_000
+  let last = []
+  const diagnostic = () => `Installed app processes remain: ${last.join('; ') || 'none observed'}`
   for (;;) {
-    const listing = await run('/bin/ps', ['-axo', 'pid=,command='])
-    const processes = listing.split('\n').filter((line) => line.includes(`${app}/Contents/`))
-    if (processes.length === 0) return
     const remaining = deadline - now()
-    requireEvidence(remaining > 0, `Installed app processes remain: ${processes.join('; ')}`)
-    await pause(Math.min(100, remaining))
+    requireEvidence(remaining > 0, diagnostic())
+    let listing
+    try {
+      listing = await run('/bin/ps', ['-axo', 'pid=,command='], { timeout: remaining })
+    } catch (error) {
+      throw new Error(`${diagnostic()}; process census failed: ${String(error)}`, { cause: error })
+    }
+    const processes = listing.split('\n').filter((line) => line.includes(`${app}/Contents/`))
+    if (processes.length > 0) last = processes
+    requireEvidence(deadline - now() > 0, diagnostic())
+    if (processes.length === 0) return
+    await pause(Math.min(100, deadline - now()))
   }
 }
 async function launch(
