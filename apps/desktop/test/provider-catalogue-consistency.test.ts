@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Provider } from '@brobot2/shared'
 import type { ModelChoice } from '@brobot2/runtime'
+import { createModelLists } from '../src/renderer/src/lib/model-lists'
 import { ModelCatalogues } from '../src/main/runtime/model-catalogues'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
@@ -73,4 +74,53 @@ describe('one current catalogue per provider', () => {
     expect((await before).models).toEqual((await after).models)
     expect((await holder.modelList('claude', 'fern')).models).toEqual((await after).models)
   })
+
+  it('a newly read bundled version replaces a previously successful catalogue', async () => {
+    let models = oldModels
+    const { holder, probe } = catalogue(async () => models)
+    holder.setProviderVersion('claude', '2.1.321')
+    await holder.modelList('claude')
+    models = currentModels
+    holder.setProviderVersion('claude', '2.1.322')
+    expect((await holder.modelList('claude', 'fern')).models).toEqual(
+      currentModels.map((row) => ({ ...row, addedBy: 'the-provider' })),
+    )
+    expect(probe).toHaveBeenCalledTimes(2)
+    holder.setProviderVersion('claude', '2.1.322')
+    await holder.modelList('claude')
+    expect(probe).toHaveBeenCalledTimes(2)
+  })
+
+  it('the drawer and picker share updated rows while keeping each saved choice', async () => {
+    let models = oldModels
+    const lists = createModelLists(() => ({
+      providerLaunchChoices: async ({ provider, profileId }) => {
+        const own = { model: profileId === 'fern' ? 'fable' : 'default', effort: null }
+        return {
+          list: {
+            provider, models: models.map((row) => ({ ...row, addedBy: 'the-provider' as const })),
+            standIn: null, notAsked: null, lastPicked: null, startsOn: own,
+          },
+          ready: true, defaultModel: own, defaultModelToSend: own,
+        }
+      },
+      resolveProviderLaunch: async () => { throw new Error('not used') },
+      addHandAddedModel: async () => [], deleteHandAddedModel: async () => [],
+    }))
+    await lists.read('claude')
+    await lists.read('claude', 'fern')
+    models = currentModels
+    lists.forget('fern')
+    await lists.read('claude', 'fern')
+    const drawer = lists.held('claude')
+    const picker = lists.held('claude', 'fern')
+    expect(drawer?.state).toBe('answered')
+    expect(picker?.state).toBe('answered')
+    if (drawer?.state !== 'answered' || picker?.state !== 'answered') throw new Error('no rows')
+    expect(drawer.list.models).toEqual(picker.list.models)
+    expect(picker.list.models).toEqual(currentModels.map((row) => ({ ...row, addedBy: 'the-provider' })))
+    expect(lists.choices('claude')?.defaultModel?.model).toBe('default')
+    expect(lists.choices('claude', 'fern')?.defaultModel?.model).toBe('fable')
+  })
+
 })
