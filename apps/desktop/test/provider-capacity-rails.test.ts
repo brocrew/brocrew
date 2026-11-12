@@ -13,7 +13,6 @@ const facts: GiveFacts = {
   held: () => [{ piece: 'root', label: 'W1', root: true, giver: null, received: true }],
   drivenByTheTurn: () => null,
   isAHelper: () => false,
-  mayGiveWork: () => null,
   depthOf: () => 0,
   capabilitiesOf: () => DEFAULT_CAPABILITIES,
   helperAs: () => null,

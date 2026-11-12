@@ -965,4 +965,94 @@ describe('a label names the conversation that owns the piece, and no more', () =
       expect(id.text).not.toContain('is your own piece')
     })
   })
+
+  it('🔴 a caller interrupts, by label, the conversation it may interrupt, and not a stranger’s', async () => {
+    const { brobot, brobotTools, ali, aliHandle, stranger, strangerHandle } = await aFamily()
+
+
+    await makeItWork(aliHandle)
+    await makeItWork(strangerHandle)
+    // ⚠️ The stranger's own thinking is a row of its own: wait for it, so the count below is the
+    // one nothing else is still writing to.
+    await waitFor(
+      () => ledger(stranger).some((event) => event.type === 'thinking'),
+      'the stranger’s thinking to be recorded',
+    )
+    const strangerRows = ledger(stranger).length
+
+    // The chain admits the grandparent: Ali, by its label, is asked to stop.
+    const stopped = await callOn(brobotTools, 'interrupt_agent', {
+      agent: 'W1.1.1',
+      reason: 'the routes are no longer wanted',
+    })
+    expect(stopped, JSON.stringify(stopped)).toMatchObject({
+      outcome: 'ok',
+      agent: ali,
+      asked: true,
+    })
+    const interrupts = ledger(ali).filter((event) => event.type === 'work_interrupted')
+    expect(interrupts, JSON.stringify(interrupts)).toHaveLength(1)
+    expect(interrupts[0], JSON.stringify(interrupts)).toMatchObject({
+      by: 'an-agent',
+      agent: brobot,
+    })
+
+    // ⛔ The stranger's label is unknown, and its id meets the chain rail — nothing reached it.
+    const strangerByLabel = await callOn(brobotTools, 'interrupt_agent', {
+      agent: 'W2',
+      reason: 'the routes are no longer wanted',
+    })
+    const unknownLabel = await callOn(brobotTools, 'interrupt_agent', {
+      agent: 'W9.9',
+      reason: 'the routes are no longer wanted',
+    })
+    expect(strangerByLabel, JSON.stringify(strangerByLabel)).toMatchObject({
+      outcome: 'refused',
+      rail: 'no-such-agent',
+    })
+    expect(withoutTheEchoedSpelling(strangerByLabel)).toEqual(
+      withoutTheEchoedSpelling(unknownLabel),
+    )
+    expect(JSON.stringify(strangerByLabel)).not.toContain(stranger)
+    const strangerById = await callOn(brobotTools, 'interrupt_agent', {
+      agent: stranger,
+      reason: 'the routes are no longer wanted',
+    })
+    expect(strangerById, JSON.stringify(strangerById)).toMatchObject({
+      outcome: 'refused',
+      rail: 'not-below-you',
+    })
+    expect(strangerHandle.status()).toBe('working')
+    expect(ledger(stranger)).toHaveLength(strangerRows)
+    expect(ledger(stranger).some((event) => event.type === 'work_interrupted')).toBe(false)
+  })
+
+  it('🔴 a caller reads, by label, the transcript of a conversation it may read, and not a stranger’s', async () => {
+    const { brobotTools, ali, stranger } = await aFamily()
+
+
+    // The chain admits the grandparent: Ali's lines, by its label.
+    const read = await fullCall(brobotTools, 'read_transcript', { agent: 'W1.1.1' })
+    expect(read.structured, read.text).toMatchObject({ outcome: 'ok', agent: ali, name: 'Ali' })
+    expect(read.text).toContain('wire the routes')
+
+    // ⛔ A stranger's label reads as the label no piece carries, and its id as the same rail.
+    const byLabel = await fullCall(brobotTools, 'read_transcript', { agent: 'W2' })
+    const unknownLabel = await fullCall(brobotTools, 'read_transcript', { agent: 'W9.9' })
+    const byId = await fullCall(brobotTools, 'read_transcript', { agent: stranger })
+    for (const refused of [byLabel, unknownLabel, byId]) {
+      expect(refused.structured, refused.text).toMatchObject({
+        outcome: 'refused',
+        rail: 'not-a-conversation-below-you',
+      })
+    }
+    expect(withoutTheEchoedSpelling(byLabel.structured)).toEqual(
+      withoutTheEchoedSpelling(unknownLabel.structured),
+    )
+    expect(byLabel.text).toBe(unknownLabel.text)
+    for (const said of [JSON.stringify(byLabel.structured), byLabel.text]) {
+      expect(said).not.toContain(stranger)
+      expect(said).not.toContain('Amara')
+    }
+  })
 })

@@ -292,13 +292,14 @@ describe('681 · a starting child is already in its project', () => {
         brief: 'do the thing',
       })
 
-    it('🔴 a caller narrowed only on giving work meets `may-not-assign-work` at once — starting or running', async () => {
+    it('a caller at its depth limit is refused before waiting for a starting child', async () => {
       const parent = await aParent()
       const running = await aRunningChild(parent)
       const child = await aStartingChild(parent)
       // ⚑ **Narrowed once both children exist** — a person's narrowing, and D-016's give asks it
       // of the caller alone, before it looks up the conversation the work would reach.
 
+      grant('lead', { maxDepth: 0 })
       const call = toolsOf(parent)
       const toRunning = payload(await giveTo(call, 'worker'))
       const toStarting = payload(await giveTo(call, 'helper'))
@@ -313,10 +314,10 @@ describe('681 · a starting child is already in its project', () => {
         startingRetryable: toStarting.retryable,
         retried: retried.rail,
       }).toEqual({
-        running: 'may-not-assign-work',
-        starting: 'may-not-assign-work',
+        running: 'too-deep',
+        starting: 'too-deep',
         startingRetryable: false,
-        retried: 'may-not-assign-work',
+        retried: 'too-deep',
       })
     })
 

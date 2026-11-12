@@ -300,18 +300,9 @@ describe('486 · the doors our own verbs do not need', () => {
     })
 
     // ⚑ **D-016** — `list_projects`, the second door on the same reach, is gone with projects.
-    it('⛔ message_agent · the same order, on the reach a person granted', async () => {
+    it('message_agent validates a malformed request without a messaging grant', async () => {
       const worker = await anAgentRunning('worker')
-
-      const tools = toolsOf(worker)
-      expect((await tools.call('message_agent', { kind: 'follow-up' }))['rail']).toBe(
-        'may-not-message',
-      )
-
-      const widened = toolsOf(worker)
-      expect((await widened.call('message_agent', { kind: 'follow-up' }))['rail']).toBe(
-        'malformed-request',
-      )
+      expect((await toolsOf(worker).call('message_agent', { kind: 'follow-up' }))['rail']).toBe('malformed-request')
     })
   })
 
