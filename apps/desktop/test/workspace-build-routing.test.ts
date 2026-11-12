@@ -15,7 +15,12 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { defaultDataFolder, pinTheDataFolder, type PinnableApp } from '../src/main/data-folder'
+import {
+  defaultDataFolder,
+  pinTheDataFolder,
+  workspaceStartup,
+  type PinnableApp,
+} from '../src/main/data-folder'
 import {
   DEVELOPMENT_BUILD_REFUSAL,
   OTHER_BUILD_REFUSAL,
@@ -230,7 +235,7 @@ it.each([false, true])(
       fileURLToPath(new URL('../src/main/index.ts', import.meta.url)),
       'utf8',
     )
-    const start = source.indexOf('\ntry {\n  pinTheDataFolder(app)')
+    const start = source.indexOf('\ntry {\n  pinTheDataFolder(app')
     const end = source.indexOf('\nnameTheAppToWindows(app)', start)
     expect(start).toBeGreaterThan(-1)
     expect(end).toBeGreaterThan(start)
@@ -246,6 +251,7 @@ it.each([false, true])(
         },
       },
       pinTheDataFolder,
+      updateReopenAtLaunch: null,
       workspaceLaunchMessage,
       dialog: {
         showErrorBox: (title: string, line: string) => {
@@ -272,8 +278,10 @@ it('a hidden startup refusal logs the same fixed line and exits without a native
     fileURLToPath(new URL('../src/main/index.ts', import.meta.url)),
     'utf8',
   )
-  const start = source.indexOf('\ntry {\n  pinTheDataFolder(app)')
+  const start = source.indexOf('\ntry {\n  pinTheDataFolder(app')
   const end = source.indexOf('\nnameTheAppToWindows(app)', start)
+  expect(start).toBeGreaterThan(-1)
+  expect(end).toBeGreaterThan(start)
   const events: unknown[] = [],
     exited = new Error('fictional exit')
   expect(() =>
@@ -285,6 +293,7 @@ it('a hidden startup refusal logs the same fixed line and exits without a native
           throw exited
         },
       },
+      updateReopenAtLaunch: null,
       pinTheDataFolder: () => {
         throw new Error(WORKSPACE_LIST_REFUSAL)
       },
@@ -493,3 +502,26 @@ it.skipIf(process.platform === 'win32')(
     expect(packagedWorkspaceOwners(appData)).toEqual([])
   },
 )
+
+it('an update reopen selects the captured existing workspace and retains its database fence', () => {
+  policy()
+  mkdirSync(second)
+  const database = join(second, 'brobot2.sqlite')
+  writeFileSync(database, '')
+  const a = app(true)
+  pinTheDataFolder(a.fake, second)
+  expect(a.set).toEqual([second])
+  expect(() => workspaceStartup(a.fake)!.assertDatabase()).not.toThrow()
+  rmSync(database)
+  expect(() => workspaceStartup(a.fake)!.assertDatabase()).toThrow(database)
+  expect(existsSync(database)).toBe(false)
+})
+
+it('an absent captured update workspace is refused without recreating it or the default', () => {
+  policy()
+  const a = app(true)
+  expect(() => pinTheDataFolder(a.fake, second)).toThrow(second)
+  expect(a.set).toEqual([])
+  expect(existsSync(second)).toBe(false)
+  expect(existsSync(defaultDataFolder(appData))).toBe(false)
+})

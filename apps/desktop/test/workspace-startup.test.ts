@@ -121,6 +121,7 @@ async function startup(
     }),
     workspaceStartup,
     pinTheDataFolder,
+    updateReopenAtLaunch: null,
     WorkspaceUnavailable,
     workspaceLaunchMessage,
     recoveryFiles,
@@ -195,8 +196,9 @@ async function startup(
     },
     createRuntimeHost: () => ({}),
   }
-  const prefixBegin = index.indexOf('try {\n  pinTheDataFolder(app)')
+  const prefixBegin = index.indexOf('try {\n  pinTheDataFolder(app')
   const prefixEnd = index.indexOf('\nnameTheAppToWindows(app)', prefixBegin)
+  expect(prefixBegin).toBeGreaterThan(0)
   expect(prefixEnd).toBeGreaterThan(prefixBegin)
   Object.assign(context.app, { exit: (code: number) => exits.push(code) })
   runInNewContext(
