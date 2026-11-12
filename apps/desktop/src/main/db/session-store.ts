@@ -142,7 +142,6 @@ import type {
 } from '../../shared/runtime-ipc'
 import {
   DEFAULT_PROFILE_ID,
-  agentName,
   PROVIDER_NAME,
   seededProviderFor,
   theMessagesOf,
