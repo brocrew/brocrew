@@ -5,7 +5,7 @@ import {
   syntheticProviderHome,
   fixtureProviderConfig,
 } from './lib/host-fixture'
-import { mkdtempSync,  rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,19 +18,13 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { CallerIdentity } from '../src/main/runtime/runtime-host'
-import {
-  
-  agentCallerId,
-  
-  type ToolName,
-} from '../src/main/runtime/agent-tools'
+import { agentCallerId, type ToolName } from '../src/main/runtime/agent-tools'
 
-import {   permanenceOf } from '../src/main/runtime/spawn-rails'
+import { permanenceOf } from '../src/main/runtime/spawn-rails'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const mainRoot = join(here, '../src/main')
 
 /** `373`'s double, and its registry is shared for `373`'s reason — see {@link issued}. */
 
@@ -162,7 +156,6 @@ describe('374 · the rails a message passes', () => {
   /** One capability, changed and nothing else — the *"one fact over"* half of every pair below. */
 
   describe('§1 · `can_message` is read at the chokepoint', () => {
-
     it('⛔ it did NOT stop seeing its child, and that is what a wider `mayCommand` would have cost', async () => {
       // ⚑ **D-016 · an `auto` PM**, so its worker's brief runs with no card: a child parked on a
       // person's card refuses an interrupt BY THAT CARD first (§9), which is not the grant measured.
@@ -190,7 +183,6 @@ describe('374 · the rails a message passes', () => {
       await expect(host.interrupt(pm, window)).resolves.toBeUndefined()
       await expect(host.sendInterrupting(pm, 'no, this', window)).resolves.toBeUndefined()
     })
-
   })
 
   describe('§2 · one capability, one gate — interrupting asks none', () => {
@@ -238,7 +230,6 @@ describe('374 · the rails a message passes', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§3 · the rail holds on a relationship that was derived rather than live', () => {
-
     it('🔴 …and it works when the parent itself was never reopened, which the slot could not answer', async () => {
       const { pm, worker } = await aPmAndItsWorker()
       await restart()
@@ -387,9 +378,7 @@ describe('374 · the rails a message passes', () => {
    * ruled word is also the widest (`same-project` went); the two loops that walk
    * {@link MESSAGING_ACTS} pass both explicitly.
    */
-  describe('§6 · the payload a model meets', () => {
-
-  })
+  describe('§6 · the payload a model meets', () => {})
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
   // §9 · the interrupt verbs an agent holds — 395 REVERSED the first half of this section
@@ -426,8 +415,4 @@ describe('374 · the rails a message passes', () => {
   // §7 · the door itself, as a pure function — every reading, including the unreachable ones
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§7 · `admitReachAtAll`, at each reading', () => {
-    const caps = capsFor
-
-  })
 })

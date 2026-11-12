@@ -255,7 +255,6 @@ describe('396 · nothing waits on somebody looking', () => {
 
   /** Two notes to the child: the first starts a turn that parks on a card, so the second is held. */
   const aNoteHeldBehindAnother = async ({
-    pmProfile,
     worker,
     pmTools,
     workerHandle,
@@ -265,7 +264,6 @@ describe('396 · nothing waits on somebody looking', () => {
     pmTools: AgentToolset
     workerHandle: FakeSessionHandle
   }): Promise<void> => {
-
     const first = await callOn(pmTools, 'message_agent', {
       agent: worker,
       text: 'first',

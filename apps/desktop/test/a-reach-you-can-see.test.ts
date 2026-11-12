@@ -5,7 +5,7 @@ import {
   syntheticProviderHome,
   fixtureProviderConfig,
 } from './lib/host-fixture'
-import { mkdtempSync,  rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -440,6 +440,5 @@ describe('433 §B · the agents a reach can see', () => {
      * ⚑ **It is the same bytes the person's sheet draws**, which is the property that makes this
      * one sentence rather than three that happen to agree today — `433` F8's shape, refused.
      */
-
   })
 })

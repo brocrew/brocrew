@@ -403,7 +403,7 @@ describe('397 · the word for a question nobody stopped', () => {
 
       // — answered, by the parent through the real door
       {
-        const { pm, pmProfile, worker, pmTools, workerHandle } = await aPmAndItsWorker()
+        const { pm, worker, pmTools, workerHandle } = await aPmAndItsWorker()
 
         const asked = await childAsks(worker, workerHandle)
         const said = await callOn(pmTools, 'answer_question', {
@@ -659,7 +659,7 @@ describe('397 · the word for a question nobody stopped', () => {
       // would be this app stating the wrong half."* ⚑ There is a right word now, so the rail fires
       // ABOVE the adapter and the refusal names the ending — which is what `393`'s
       // `task-already-ended` established the shape for.
-      const { pm, pmProfile, worker, pmTools, workerHandle } = await aPmAndItsWorker()
+      const { pm, worker, pmTools, workerHandle } = await aPmAndItsWorker()
 
       const asked = await childAsks(worker, workerHandle)
       host.claimSession(worker, window)

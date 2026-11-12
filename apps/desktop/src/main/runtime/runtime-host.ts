@@ -8906,10 +8906,8 @@ export class RuntimeHost implements LiveHost {
   private itsCallerMessagesAService(
     service: string,
     by: Caller,
-    says: AgentMessageKind | null,
   ): boolean {
-    if (this.thePieceItIsOnFor(service, by) === null) return false
-    return true
+    return this.thePieceItIsOnFor(service, by) !== null
   }
 
   /** Whether the piece `row` waits, queued, at the service it was given: its brief reached nobody. */
@@ -9108,21 +9106,18 @@ export class RuntimeHost implements LiveHost {
     return this.theServiceOf(conversation) !== null
   }
 
-  /**
-   * Whether `queued`, an agent's words held for `sessionId`, still reach it: `null` for words that
-   * are not an agent's held for a service. `outlived` once the piece its sender gave is not the one
-   * the service is on, and `unknown` where the service's queue, or the services list naming it,
-   * can't be read: such words neither go nor end, and ask no stop. ⚑ A brief reaches it while the
-   * piece it gives waits there: no piece holds the service in the tick its brief goes. ⛔ It never
-   * throws: a read that fails is `unknown`.
-   */
+  /** Piece-bound service words expire with their piece; ordinary notes are unrestricted. */
   private theReachOfACallersWords(
     sessionId: string,
-    queued: Pick<QueuedMessage, 'origin' | 'piece' | 'rebrief'>,
+    queued: Pick<QueuedMessage, 'origin' | 'piece' | 'rebrief' | 'about'>,
   ): 'reaches' | 'outlived' | 'unknown' | null {
     const from = queued.origin
     if (from?.who !== 'a-caller-with-an-id') return null
     try {
+      if (
+        queued.piece === undefined &&
+        (queued.about === undefined || this.deps.store.workById(queued.about)?.owner !== sessionId)
+      ) return null
       const kind = this.theServiceOf(sessionId)
       if (kind === null) return null
       if (kind === 'unknown' && !this.profileExecution.readable) return 'unknown'
@@ -11541,7 +11536,7 @@ export class RuntimeHost implements LiveHost {
     return this.cardFor(slot, this.cardReads())
   }
 
-  withinMessagingReach(sessionId: string, _by: Caller, _me: string | null = null): boolean {
+  withinMessagingReach(sessionId: string, _by: Caller, _me?: string | null): boolean {
     return this.slots.has(sessionId) || this.startable(sessionId) !== null
   }
 
@@ -22926,8 +22921,6 @@ export class RuntimeHost implements LiveHost {
     // ⚠️ Spelled at both call sites rather than hoisted, because `the-origin-a-model-is-told.test.ts`
     // §6 reads the HANDOVER's origin off its call; the gate's is spelled the same for symmetry.
     const session = this.requireToMessage(sessionId, by)
-    if (how.ifItLosesTheRace !== 'pass-it-on' || how.says !== null) {
-    }
     // ⚑ **D-017 · R1** — a stop that lands in the gate's awaits is waited out and the words go after
     // the start ({@link aDeliveryAStopCaught}), never refused *still closing*.
     let handed: Awaited<ReturnType<typeof recheckHandedPaths>>
@@ -23024,7 +23017,7 @@ export class RuntimeHost implements LiveHost {
       // ⛔ A caller's words go straight in to a service only while it is still on that caller's
       // piece, asked again after the gate's waits, in the tick they are handed over: else they lose
       // the race, and the queue door asks them again ({@link aCallersWordsGoNow}).
-      if (this.aCallersWordsNoLongerGoStraightIn(sessionId, by)) throw new TurnInProgress()
+      if (this.aCallersWordsNoLongerGoStraightIn(sessionId, by, about)) throw new TurnInProgress()
       await this.handToProvider(
         session,
         text,
@@ -26776,7 +26769,7 @@ export class RuntimeHost implements LiveHost {
   ): Promise<void> {
     const me = sessionSpeakingAs(by)
     if (me !== null) {
-      if (this.itsCallerMessagesAService(sessionId, by, says)) return
+      if (this.itsCallerMessagesAService(sessionId, by)) return
       if (!this.withinMessagingReach(sessionId, by, me)) {
         throw new Error(`unknown session: ${sessionId}`)
       }
@@ -29009,10 +29002,10 @@ export class RuntimeHost implements LiveHost {
    * Whether a caller's words, about to go straight in to `sessionId`, a service, no longer reach it:
    * the piece they carry has ended, or whether they reach it can't be read.
    */
-  private aCallersWordsNoLongerGoStraightIn(sessionId: string, by: Caller): boolean {
+  private aCallersWordsNoLongerGoStraightIn(sessionId: string, by: Caller, about: string | null): boolean {
     const from = this.originOf(by)
     if (from === null) return false
-    const reach = this.theReachOfACallersWords(sessionId, { origin: from })
+    const reach = this.theReachOfACallersWords(sessionId, { origin: from, ...(about === null ? {} : { about }) })
     return reach === 'outlived' || reach === 'unknown'
   }
 

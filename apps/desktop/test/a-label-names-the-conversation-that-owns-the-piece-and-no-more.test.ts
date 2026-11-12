@@ -296,8 +296,6 @@ describe('a label names the conversation that owns the piece, and no more', () =
   }
 
   /** ⚑ The person narrows BroBot's message grant to `none`, and the store says it took. */
-  const narrowBroBot = (): void => {
-  }
 
   it('🔴 a piece’s label names the conversation that owns it: the status, interrupt and read doors take it exactly as they take the id', async () => {
     const { brobotTools, ada, ali } = await aFamily()
@@ -802,7 +800,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       }
       it(`${tool} does not disclose helpers when a stranger’s label is refused`, async () => {
         const { brobotTools } = await settledFamily()
-        narrowBroBot()
+
         const said = await fullCall(brobotTools, tool, argsFor('W2'))
         expect(said.structured.outcome).toBe('refused')
         expect(said.text).not.toContain('Its helpers:')
@@ -969,7 +967,6 @@ describe('a label names the conversation that owns the piece, and no more', () =
   it('🔴 a caller interrupts, by label, the conversation it may interrupt, and not a stranger’s', async () => {
     const { brobot, brobotTools, ali, aliHandle, stranger, strangerHandle } = await aFamily()
 
-
     await makeItWork(aliHandle)
     await makeItWork(strangerHandle)
     // ⚠️ The stranger's own thinking is a row of its own: wait for it, so the count below is the
@@ -1029,7 +1026,6 @@ describe('a label names the conversation that owns the piece, and no more', () =
 
   it('🔴 a caller reads, by label, the transcript of a conversation it may read, and not a stranger’s', async () => {
     const { brobotTools, ali, stranger } = await aFamily()
-
 
     // The chain admits the grandparent: Ali's lines, by its label.
     const read = await fullCall(brobotTools, 'read_transcript', { agent: 'W1.1.1' })

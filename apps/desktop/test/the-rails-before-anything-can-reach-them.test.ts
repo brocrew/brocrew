@@ -960,7 +960,9 @@ describe('341 · the rails, before anything can reach them', () => {
         CAPABILITY_COLUMNS.filter((column) => column !== 'can_create_agents').map(
           (column) => row[column],
         ),
-      ).toEqual(CAPABILITY_COLUMNS.filter((column) => column !== 'can_create_agents').map(() => null))
+      ).toEqual(
+        CAPABILITY_COLUMNS.filter((column) => column !== 'can_create_agents').map(() => null),
+      )
       expect(CAPABILITY_COLUMNS.length).toBeGreaterThanOrEqual(3)
     })
 

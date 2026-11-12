@@ -108,8 +108,6 @@ const FIXED_RULES =
   "- You can read any agent's standing rules and propose a replacement; the person decides. " +
   'A BroBot conversation the person started may also save one directly, but never its own. ' +
   'Each version keeps its author and reason, and the person can undo it.'
-const MAY_MESSAGE = '- You may message any conversation.'
-const MAY_NOT_MESSAGE = '- You may not send messages to other conversations.'
 
 function expectFixedRules(hint: string): void {
   expect(hint).toContain(FIXED_RULES)
@@ -239,8 +237,6 @@ describe('470 · a grant that waits for the next launch', () => {
     if (tool === undefined) throw new Error(`no such tool: ${name}`)
     return (await tool.call(args)).structured as Record<string, unknown>
   }
-
-  
 
   /** Every launch this app has made for one identity, oldest first. */
   const launchesFor = (who: string): Launched[] => launches.filter((one) => one.who === who)
@@ -478,7 +474,6 @@ describe('470 · a grant that waits for the next launch', () => {
         expect(store.ownInstructionsOf('worker').versions).toHaveLength(0)
       },
     )
-
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────

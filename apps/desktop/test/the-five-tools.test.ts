@@ -185,8 +185,6 @@ describe('347 · the five tools', () => {
     await host.close(id, window)
   }
 
-  const narrowedToNone = (profileId: string): void => {
-  }
 
   /**
    * The ledger's event kinds for one session.
@@ -357,7 +355,7 @@ describe('347 · the five tools', () => {
       // about entitlement rather than about the reader returning everything it can find.
       const stranger = await personOpens('nosy')
       // ⚑ **549 · narrowed, because the ruled default is `any`** — see {@link narrowedToNone}.
-      narrowedToNone('nosy')
+
       const theirs = (await toolsOf(stranger).call('list_agents', {})).agents as { agent: string }[]
       expect(theirs.map((one) => one.agent)).toEqual([stranger])
     })

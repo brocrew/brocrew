@@ -47,7 +47,7 @@ describe('the conversation block at this launch', () => {
   })
 
   it('shows chain limits near the bound', () => {
-    const capabilities = { ...DEFAULT_CAPABILITIES,  maxDepth: 3 }
+    const capabilities = { ...DEFAULT_CAPABILITIES, maxDepth: 3 }
     expect(said({ capabilities, depth: 0 })).not.toContain('delegation limit')
     expect(said({ capabilities, depth: 0 })).not.toContain('level below')
     expect(said({ capabilities, depth: 2 })).toContain(
@@ -57,7 +57,6 @@ describe('the conversation block at this launch', () => {
       expect(said({ capabilities, depth })).toContain(
         '- You have reached your delegation limit and cannot give work from this conversation.',
       )
-
   })
 
   it('dates activity through the same local clock as the window, including midnight', () => {

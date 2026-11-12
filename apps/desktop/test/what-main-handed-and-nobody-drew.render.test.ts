@@ -218,7 +218,7 @@ class HostWorld {
       this.window,
     )
     const leadTools = this.lastToolset()
-    expect(this.store.setCapabilities('lead', {  })).toBe(true)
+    expect(this.store.setCapabilities('lead', {})).toBe(true)
     const children: string[] = []
     for (const kid of kids) {
       const given = await this.callOn(leadTools, 'give_work', {

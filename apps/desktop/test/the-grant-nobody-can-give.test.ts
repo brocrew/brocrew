@@ -574,9 +574,9 @@ describe('355 · the grant nobody can give', () => {
       canWriteRules: 'none',
     } as const
     const MALFORMED_GRANTS = [
-      ['a grant missing a field', { maxDepth: null,  }],
+      ['a grant missing a field', { maxDepth: null }],
       ['a bound that is not a whole number', { ...A_WHOLE_GRANT, maxDepth: 1.5 }],
-      ['a word outside the vocabulary', { ...A_WHOLE_GRANT,  }],
+      ['a word outside the vocabulary', { ...A_WHOLE_GRANT }],
       // ⛔ **A capability nobody has declared**, and the one shape a non-strict object would have
       // STRIPPED: six keys in, five keys out, and a caller told its grant landed. `303` B is the
       // measured cost of that, and the first rail of `admitGive` makes the same ruling one door over.

@@ -302,7 +302,9 @@ describe('486 · the doors our own verbs do not need', () => {
     // ⚑ **D-016** — `list_projects`, the second door on the same reach, is gone with projects.
     it('message_agent validates a malformed request without a messaging grant', async () => {
       const worker = await anAgentRunning('worker')
-      expect((await toolsOf(worker).call('message_agent', { kind: 'follow-up' }))['rail']).toBe('malformed-request')
+      expect((await toolsOf(worker).call('message_agent', { kind: 'follow-up' }))['rail']).toBe(
+        'malformed-request',
+      )
     })
   })
 
@@ -392,7 +394,6 @@ describe('486 · the doors our own verbs do not need', () => {
   })
 
   describe('§4 · the permanence that describes the wall it came from', () => {
-
     it('⛔ `too-deep` is a capability a person sets, and the piece rail beside it is still `permanent`', () => {
       // ⚑ `max_depth` is a count on the grant sheet, and the caller cannot choose a shallower
       // parent — ⚑ D-016: the depth is fixed by the piece the caller holds.

@@ -191,23 +191,19 @@ describe('431 · the message that crosses a project', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§1 · the four cases, and not one hand-written binding', () => {
-
     // ⚑ **D-016 · Row 1 (*same project, allowed*) went with projects** — its pair was the
     // `same-project` reach, and the positive half is the first half of the test above.
-
     // ⚑ **D-016 · Row 4 (*a foreign target, two callers*) went with `same-project`.** It measured
     // that a caller whose grant admitted the VERB but not the target was told the boundary about a
     // real id and `no-such-agent` about a ghost. ⛔ With `none` and `any` left, no grant admits the
     // verb and refuses a target: `none` meets the standing wall before any id is read (486 — the
     // same word for every id, which discloses nothing; the narrowed-identity test below), and `any`
     // admits every conversation there is.
-
     /**
      * 🔴 **A person's decision is what moves it, in both directions** — HO-016 §2's rule at the one
      * door this dispatch opened. ⛔ The app never re-grants; a narrowing takes the reach away, and
      * granting it to somebody else hands it over.
      */
-
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
@@ -215,7 +211,6 @@ describe('431 · the message that crosses a project', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§2 · what the reach did NOT widen', () => {
-
     it('⛔ `interrupt_agent` still refuses it, with the message reach at its widest', async () => {
       const { brobotTools, manager } = await aManagerInAnotherProject()
 
