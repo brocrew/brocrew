@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { createRepoAwarePluginVerifier, type VerifiedPluginCatalogue } from '../package-verifier'
 import type { PluginRelease, PluginTarget } from '../package-schema'
-import { PLUGIN_LIMITS } from '../package-digests'
+import { PLUGIN_LIMITS, pluginSha256 } from '../package-digests'
 import {
   privateChild,
   immutableFile,
@@ -62,6 +62,11 @@ export class PluginPackageVault {
       async (stage) => {
         await immutableFile(join(stage, 'archive'), archive)
         await immutableFile(join(stage, 'catalogue.json'), catalogue.bytes)
+        // Retained for older-version readers; remove when those versions are no longer supported.
+        await immutableFile(
+          join(stage, 'catalogue.sha256'),
+          Buffer.from(pluginSha256(catalogue.bytes)),
+        )
       },
       async (directory) => {
         await this.checked(directory, release)

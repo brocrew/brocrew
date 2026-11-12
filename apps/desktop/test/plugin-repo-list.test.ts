@@ -117,7 +117,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(next.sha256).not.toBe(loaded.sha256)
       const reopened = new PluginPackageVault(f.root, f.opts.target)
       expect((await reopened.load(release)).manifest.id).toBe('chrome')
-      expect(names.sort()).toEqual(['archive', 'catalogue.json'])
+      expect(names.sort()).toEqual(['archive', 'catalogue.json', 'catalogue.sha256'])
       await rm(proof)
       expect((await reopened.load(release)).manifest.id).toBe('chrome')
       await expect(reopened.load({ ...release, manifestSha256: '0'.repeat(64) })).rejects.toThrow()
