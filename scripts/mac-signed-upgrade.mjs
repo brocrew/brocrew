@@ -58,6 +58,7 @@ import {
   press,
   screenshot as captureScreenshot,
   openUpdates,
+  sleep,
 } from './lib/update-rehearsal-app.mjs'
 
 // Only disposable GitHub-hosted arm64 runners may install.
@@ -170,10 +171,16 @@ async function bundleChecked(bundle, version) {
   }
   return { version: base.version, bundleId: base.bundleId, signature: identity }
 }
-async function requireNoInstalledProcesses() {
-  const listing = await run('/bin/ps', ['-axo', 'pid=,command='])
-  const processes = listing.split('\n').filter((line) => line.includes(`${app}/Contents/`))
-  requireEvidence(processes.length === 0, `Installed app processes remain: ${processes.join('; ')}`)
+async function requireNoInstalledProcesses({ now = Date.now, pause = sleep } = {}) {
+  const deadline = now() + 2_000
+  for (;;) {
+    const listing = await run('/bin/ps', ['-axo', 'pid=,command='])
+    const processes = listing.split('\n').filter((line) => line.includes(`${app}/Contents/`))
+    if (processes.length === 0) return
+    const remaining = deadline - now()
+    requireEvidence(remaining > 0, `Installed app processes remain: ${processes.join('; ')}`)
+    await pause(Math.min(100, remaining))
+  }
 }
 async function launch(
   stage,

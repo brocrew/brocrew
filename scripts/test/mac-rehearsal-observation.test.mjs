@@ -204,6 +204,44 @@ describe('shared owned Mac shutdown', () => {
     })
 })
 
+it('waits within the existing closer budget for every installed process to exit', async () => {
+  const source = ts.createSourceFile(
+    'mac-signed-upgrade.mjs',
+    readFileSync(new URL('../mac-signed-upgrade.mjs', import.meta.url), 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  )
+  const declaration = source.statements.find(
+    (node) => ts.isFunctionDeclaration(node) && node.name?.text === 'requireNoInstalledProcesses',
+  )
+  const app = '/Applications/BroCrew.app'
+  const processLine = `5751 ${app}/Contents/MacOS/BroCrew -e closer`
+  for (const exitAt of [0, 1_900, Infinity]) {
+    let time = 0
+    const run = vi.fn(async () => (time < exitAt ? processLine : '123 /other/process'))
+    const pause = vi.fn(async (ms) => {
+      time += ms
+    })
+    const make = new Function(
+      'app',
+      'run',
+      'requireEvidence',
+      'sleep',
+      `return (${declaration.getText(source)})`,
+    )
+    const check = make(app, run, requireEvidence, pause)
+    if (exitAt === Infinity) {
+      await expect(check({ now: () => time, pause })).rejects.toThrow(processLine)
+      expect(time).toBe(2_000)
+    } else {
+      await expect(check({ now: () => time, pause })).resolves.toBeUndefined()
+      expect(time).toBe(exitAt)
+    }
+    expect(run).toHaveBeenCalledWith('/bin/ps', ['-axo', 'pid=,command='])
+  }
+})
+
 describe('entrypoint native-prefix bindings', () => {
   for (const entrypoint of ['mac-update-test.mjs', 'mac-signed-upgrade.mjs'])
     it(`${entrypoint} passes its actual workspace to every native-byte check`, async () => {
