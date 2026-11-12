@@ -1,5 +1,11 @@
 import { ToolWatchingResumeRuntime } from './lib/provider-double'
-import { fixtureFolder, fixtureDatabase, fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
+import {
+  fixtureFolder,
+  fixtureDatabase,
+  fixtureProviderConfig,
+  neutralHostDeps,
+  RecordingSink,
+} from './lib/host-fixture'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'

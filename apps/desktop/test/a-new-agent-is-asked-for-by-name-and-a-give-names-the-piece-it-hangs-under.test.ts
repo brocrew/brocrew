@@ -19,7 +19,12 @@ import {
   type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
 import { ToolWatchingRuntime } from './lib/provider-double'
-import { fixtureFolder, fixtureDatabase, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureFolder,
+  fixtureDatabase,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 
 /**
  * # D-016 · what `give_work` asks of a NEW agent, and which piece a give hangs under

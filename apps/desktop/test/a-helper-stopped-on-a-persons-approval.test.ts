@@ -13,7 +13,14 @@ import { RuntimeHost } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { clockTimeFrom } from '../src/shared/clock'
-import { fixtureFolder, fixtureDatabase, fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureFolder,
+  fixtureDatabase,
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 
 /**
  * A helper in Ask mode whose turn is stopped on a person's approval takes nothing until the person

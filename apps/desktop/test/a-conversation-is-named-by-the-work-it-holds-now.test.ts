@@ -15,7 +15,16 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import type { RuntimeChangeMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
-import { fixtureFolder, fixtureDatabase, ProviderDouble, type ResumeGate, RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  fixtureFolder,
+  fixtureDatabase,
+  ProviderDouble,
+  type ResumeGate,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 /**
  * 🔴 **F033 · a conversation is named by the work it holds NOW, and a sentence about one piece by
  * that piece** — measured on a real host with the fake runtime, one case per rule.

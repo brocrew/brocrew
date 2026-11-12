@@ -21,7 +21,14 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
 import type { RailPermanence } from '../src/shared/refusals'
-import { fixtureFolder, fixtureDatabase, RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  fixtureFolder,
+  fixtureDatabase,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **496 · the card a third party was holding** — Slice 5, HO-034 §1.

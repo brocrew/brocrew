@@ -13,7 +13,14 @@ import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import { fixtureFolder, fixtureDatabase, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig, RecordingSink } from './lib/host-fixture'
+import {
+  fixtureFolder,
+  fixtureDatabase,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+  RecordingSink,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **D-009 · F012 — agents can ask each other, and the answer comes back.**

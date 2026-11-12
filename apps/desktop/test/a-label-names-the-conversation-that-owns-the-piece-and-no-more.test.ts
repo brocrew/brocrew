@@ -23,7 +23,14 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { RETITLE_SAID } from '../src/shared/piece-called'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import type { RuntimeChangeMessage } from '../src/shared/runtime-ipc'
-import { fixtureFolder, fixtureDatabase, RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  fixtureFolder,
+  fixtureDatabase,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 /**
  * ⚑ **A piece's label names the conversation that owns it — and no more** (W1.2).
  *

@@ -22,7 +22,14 @@ import { TASK_IS_OPEN, undrivenSentence } from '../src/shared/tasks'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { ProviderDouble, type ResumeGate } from './lib/provider-double'
-import { fixtureFolder, fixtureDatabase, RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  fixtureFolder,
+  fixtureDatabase,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * What a Close does that a reopen never undoes, on one host with a real Close and a real Reopen:

@@ -18,7 +18,14 @@ import {
   type ResumableSessionInfo,
   type UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
-import { fixtureFolder, fixtureDatabase, fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureFolder,
+  fixtureDatabase,
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 
 /**
  * The window's list of conversations says which piece a helper waits on on purpose.

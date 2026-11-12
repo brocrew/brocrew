@@ -13,7 +13,14 @@ import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { fixtureFolder, fixtureDatabase, fixtureProviderConfig, syntheticProviderHome, neutralHostDeps, RecordingSink } from './lib/host-fixture'
+import {
+  fixtureFolder,
+  fixtureDatabase,
+  fixtureProviderConfig,
+  syntheticProviderHome,
+  neutralHostDeps,
+  RecordingSink,
+} from './lib/host-fixture'
 
 const PASSED_UP =
   'It had passed your question up, and a person answered it there. Its answer below is in its own words: it may quote that answer, or say it differently.'

@@ -35,7 +35,14 @@ import { UNDRIVEN_SENTENCES } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import type { TranscriptState } from '../src/renderer/src/lib/transcript'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { fixtureFolder, fixtureDatabase, syntheticProviderHome, fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
+import {
+  fixtureFolder,
+  fixtureDatabase,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+  neutralHostDeps,
+  RecordingSink,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **624 · a message says who wrote it, and a report says what is true** — ordered by
