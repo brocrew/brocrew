@@ -1,15 +1,14 @@
+import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { ToolWatchingResumeRuntime } from './lib/provider-double'
 import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
@@ -52,7 +51,6 @@ import { resourcesRoot } from '../src/main/resources/resources'
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** A row the ledger cannot parse — the whole of what "torn" means here. */
 const TORN = '{not json'
@@ -99,10 +97,9 @@ describe('676 M13 · a closed child’s torn assignment is missed by the plates 
   }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-m13-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-m13-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-m13-')
+    root = fixtureFolder('brobot2-m13-root-')
+    db = fixtureDatabase(userData)
     clock = 6_760_000
     store = createSessionStore(db, tick)
     counter = 0

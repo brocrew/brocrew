@@ -1,9 +1,8 @@
+import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { rmSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type {
@@ -15,8 +14,7 @@ import type {
   StartOptions,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { giverStallReceipts, RuntimeHost } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -37,8 +35,6 @@ import {
  * an agent-started conversation is handed back rather than ended, a question the conversation was
  * asking stays open and answerable, and a parent is told about stopped work once.
  */
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** What a Close of a worker mid-turn tells its parent: the turn it interrupted. */
 const ITS_TURN_WAS_STOPPED = undrivenSentence('turn_interrupted')
@@ -80,10 +76,9 @@ describe('what a close does that a reopen never undoes', () => {
   }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-close-reopen-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-close-reopen-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-close-reopen-')
+    root = fixtureFolder('brobot2-close-reopen-root-')
+    db = fixtureDatabase(userData)
     clock = 6_610_000
     store = createSessionStore(db, tick)
     counter = 0

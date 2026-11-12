@@ -1,15 +1,13 @@
+import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { rmSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import { type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
@@ -36,8 +34,6 @@ import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from '.
  * `turn` row), after the brief's own turn has ended.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 describe('F080 · a giver reads its child’s wake', () => {
   class RecordingSink implements RuntimeEventSink {
@@ -61,10 +57,9 @@ describe('F080 · a giver reads its child’s wake', () => {
   let window: RecordingSink
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-f080-wake-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-f080-wake-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-f080-wake-')
+    root = fixtureFolder('brobot2-f080-wake-root-')
+    db = fixtureDatabase(userData)
     store = createSessionStore(db)
     counter = 0
     order = []

@@ -1,9 +1,9 @@
+import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { AgentState } from '../src/shared/agent-state-contracts'
 import type { PieceRow } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -17,8 +17,7 @@ import type {
   StartOptions,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { giverStallNotices, RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -50,7 +49,6 @@ import {
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** A delay no other timer in the host uses, and no test waits out: nothing is stopped for idling. */
 const IDLE = 7_654_321
@@ -132,10 +130,9 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
   const tick = (): number => clock++
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-f097-more-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-f097-more-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-f097-more-')
+    root = fixtureFolder('brobot2-f097-more-root-')
+    db = fixtureDatabase(userData)
     clock = 9_000_000
     store = createSessionStore(db, tick)
     counter = 0

@@ -1,16 +1,14 @@
+import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { rmSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type { AgentToolset, FakeRuntime, FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -41,8 +39,6 @@ import {
  * door with {@link ResumeGate} so a test can watch a resume arrive and count it.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 describe('D-017 · a start that costs one launch or none', () => {
   let userData: string
@@ -80,10 +76,9 @@ describe('D-017 · a start that costs one launch or none', () => {
   }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-d017-launch-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-d017-launch-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-d017-launch-')
+    root = fixtureFolder('brobot2-d017-launch-root-')
+    db = fixtureDatabase(userData)
     clock = 17_000_000
     store = createSessionStore(db, tick)
     counter = 0

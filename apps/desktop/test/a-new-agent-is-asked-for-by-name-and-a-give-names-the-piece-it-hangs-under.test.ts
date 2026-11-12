@@ -1,15 +1,13 @@
+import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { rmSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import { type AgentToolAnswer, type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { agentIdentityRowId } from '../src/main/db/identity'
 import { RuntimeHost } from './helpers/giver-notice-host'
@@ -52,8 +50,6 @@ import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
  * Real host, real SQLite ledger, real toolsets; the only double is the provider.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** One `an-agent` creator, folded - see `AgentIdentity.createdBy`. */
 const by = (agent: string): IdentityCreator => ({ by: 'an-agent', agent })
@@ -81,10 +77,9 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
   let window: RecordingSink
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-d016-new-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-d016-new-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-d016-new-')
+    root = fixtureFolder('brobot2-d016-new-root-')
+    db = fixtureDatabase(userData)
     store = createSessionStore(db)
     counter = 0
     order = []

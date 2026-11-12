@@ -1,15 +1,14 @@
+import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import { type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import {
   AN_IDENTITY_THIS_APP_CANNOT_NAME,
@@ -82,7 +81,6 @@ import {
  * agent named** · §5 **what can still reach the go-ahead's entry**, which is the sweep's answer.
  */
 const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 describe('624 · a message says who wrote it', () => {
   let userData: string
@@ -115,10 +113,9 @@ describe('624 · a message says who wrote it', () => {
   }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-624-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-624-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-624-')
+    root = fixtureFolder('brobot2-624-root-')
+    db = fixtureDatabase(userData)
     clock = 9_000_000
     store = createSessionStore(db, tick)
     counter = 0

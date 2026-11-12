@@ -1,15 +1,14 @@
+import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type { FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { giverStallReceipts, isGiverStallNotice, RuntimeHost } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -49,7 +48,6 @@ import {
  * switched before the wake each test measures, as `what-a-wake-still-says-wrong.test.ts` does.
  */
 const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 describe('698 · the wake’s last stale sentences', () => {
   let userData: string
@@ -83,10 +81,9 @@ describe('698 · the wake’s last stale sentences', () => {
   }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-698-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-698-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-698-')
+    root = fixtureFolder('brobot2-698-root-')
+    db = fixtureDatabase(userData)
     clock = 6_980_000
     store = createSessionStore(db, tick)
     counter = 0

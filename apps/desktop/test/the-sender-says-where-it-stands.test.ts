@@ -1,15 +1,14 @@
+import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import { type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
@@ -36,7 +35,6 @@ import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from '.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 describe('D-011 · the sender says where it stands', () => {
   class RecordingSink implements RuntimeEventSink {
@@ -61,10 +59,9 @@ describe('D-011 · the sender says where it stands', () => {
   let window: RecordingSink
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-d011-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-d011-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-d011-')
+    root = fixtureFolder('brobot2-d011-root-')
+    db = fixtureDatabase(userData)
     store = createSessionStore(db)
     counter = 0
     order = []

@@ -1,15 +1,14 @@
+import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -57,7 +56,6 @@ import {
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** A tool's answer: the text a model reads first, and the structured half it acts on. */
 interface Answer {
@@ -86,10 +84,9 @@ describe('D-016 · what a giver is told about a piece it gave, through the real 
   const tick = (): number => clock++
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-d016-number-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-d016-number-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-d016-number-')
+    root = fixtureFolder('brobot2-d016-number-root-')
+    db = fixtureDatabase(userData)
     clock = 16_000_000
     store = createSessionStore(db, tick)
     counter = 0

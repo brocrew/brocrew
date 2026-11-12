@@ -1,3 +1,8 @@
+import { tmpdir } from 'node:os'
+import { dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { openDatabase } from '../../src/main/db/connection'
+import { applyMigrations } from '../../src/main/db/migrate'
 import {
   FakeRuntime,
   type FakeSessionHandle,
@@ -6,7 +11,7 @@ import {
   type SessionRef,
   type ResumeOptions,
 } from '@brobot2/runtime'
-import { mkdirSync, rmSync } from 'node:fs'
+import { mkdirSync, rmSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Provider } from '@brobot2/shared'
 import { NO_DISCOVERY } from '../../src/main/adopt/discover-sessions'
@@ -90,4 +95,14 @@ export class ProviderDouble extends FakeRuntime {
     this.handles.push(handle)
     return handle
   }
+}
+
+export function fixtureFolder(prefix: string): string {
+  return mkdtempSync(join(tmpdir(), prefix))
+}
+
+export function fixtureDatabase(userData: string) {
+  const db = openDatabase(join(userData, 'brobot2.sqlite'))
+  applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../../src/main/db/migrations'))
+  return db
 }
