@@ -71,6 +71,7 @@ describe.each(['claude', 'codex'] as const)('%s agents deliver without grants', 
     db = openDatabase(join(folder, 'test.sqlite'))
     applyMigrations(db, migrations)
     store = createSessionStore(db)
+    store.setDefaultApprovalMode('auto')
     account = 'first@example.test'
     issued = new FakeProviderSessions()
     counter = 0
@@ -132,9 +133,9 @@ describe.each(['claude', 'codex'] as const)('%s agents deliver without grants', 
 
       async function delivers(stage: string) {
         const by = { ownerId: agentCallerId(lead) }
-        expect(host.agentCard(other, by, lead)?.agent).toBe(other)
+        expect(host.agentCard(other)?.agent).toBe(other)
         expect(host.agentsVisibleTo(by, lead).agents.some((one) => one.agent === other)).toBe(true)
-        expect(host.agentCard(service, by, lead)?.agent).toBe(service)
+        expect(host.agentCard(service)?.agent).toBe(service)
         expect(host.agentsVisibleTo(by, lead).agents.some((one) => one.agent === service)).toBe(
           true,
         )

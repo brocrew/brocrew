@@ -323,7 +323,10 @@ describe('a profile name reaches its one conversation', () => {
 
     // Only the worker it started is in reach now, so the name names that one.
     const one = await callOn(giverTools, 'ask_question', aQuestion('worker'))
-    expect(one, JSON.stringify(one)).toMatchObject({ outcome: 'refused', rail: 'that-agent-has-several-conversations' })
+    expect(one, JSON.stringify(one)).toMatchObject({
+      outcome: 'refused',
+      rail: 'that-agent-has-several-conversations',
+    })
 
     // The reviewer's conversation is out of reach: told as a name nobody holds.
     const strange = await fullCall(giverTools, 'ask_question', aQuestion('reviewer'))

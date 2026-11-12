@@ -176,7 +176,11 @@ describe('D-020 · a field nobody declared is refused by name', () => {
 
   describe('§2 · the sheet’s Save', () => {
     it.each([
-      ['a capability sent beside the grant instead of inside it', { canCreateAgents: 'none' }, 'canCreateAgents'],
+      [
+        'a capability sent beside the grant instead of inside it',
+        { canCreateAgents: 'none' },
+        'canCreateAgents',
+      ],
       ['a mistyped second ids list', { externalMcpServerId: [] }, 'externalMcpServerId'],
     ] as const)(
       '🔴 setCapabilities refuses %s beside a whole valid grant, names it and writes nothing',

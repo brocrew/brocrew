@@ -18,7 +18,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
+import { RuntimeHost,  } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -210,7 +210,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
 
   /** The card the app itself reads, through the clause no grant narrows — derived fresh. */
   const stateOf = (id: string): AgentState | undefined =>
-    host.agentCard(id, THE_APP_ITSELF, id)?.state
+    host.agentCard(id)?.state
 
   /** A list read, as the window makes it. */
   const listed = (id: string): ResumableSessionInfo | UnresumableSessionInfo | undefined =>

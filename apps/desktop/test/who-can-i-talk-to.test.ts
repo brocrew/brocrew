@@ -178,12 +178,12 @@ describe('642 · who can I talk to', () => {
 
     await letTheTurnEnd(worker, 'do a thing')
     await waitFor(
-      () => host.agentCard(worker, window, null)?.state.is === 'idle',
+      () => host.agentCard(worker)?.state.is === 'idle',
       'the worker to go idle',
     )
 
     expect(await idsListedBy(tools)).toEqual([brobot, worker].sort())
-    expect(host.agentCard(worker, speakingAs(brobot), brobot)?.state).toEqual({ is: 'idle' })
+    expect(host.agentCard(worker)?.state).toEqual({ is: 'idle' })
   })
 
   /**
@@ -247,7 +247,7 @@ describe('642 · who can I talk to', () => {
 
     expect(await idsListedBy(tools)).toEqual([brobot, worker, brobotAgain].sort())
     for (const stopped of [brobot, worker]) {
-      expect(host.agentCard(stopped, speakingAs(brobotAgain), brobotAgain)?.state, stopped).toEqual(
+      expect(host.agentCard(stopped)?.state, stopped).toEqual(
         { is: 'idle' },
       )
     }
@@ -296,13 +296,13 @@ describe('642 · who can I talk to', () => {
       .sort()
     expect(visible).toEqual([seeded, brobot, child, other].sort())
     for (const stopped of [child, other, seeded]) {
-      expect(host.agentCard(stopped, speakingAs(brobot), brobot)?.state, stopped).toEqual({
+      expect(host.agentCard(stopped)?.state, stopped).toEqual({
         is: 'idle',
       })
     }
     // ⛔ **The grant still decides**: narrowed to none, BroBot is shown only what it commands.
-    expect(host.agentCard(other, speakingAs(brobot), brobot)).toBeNull()
-    expect(host.agentCard(child, speakingAs(brobot), brobot)?.state).toEqual({ is: 'idle' })
+    expect(host.agentCard(other)).toBeNull()
+    expect(host.agentCard(child)?.state).toEqual({ is: 'idle' })
   })
 
   // ───────────────────────────────────────────────────────────────────────────────
@@ -479,7 +479,7 @@ describe('642 · who can I talk to', () => {
       // not a line about how it left.
       expect(after.agents).toContain(child)
       expect(after.keys).toEqual(ONE_LIST)
-      expect(host.agentCard(child, speakingAs(parent), parent)?.state).toEqual({ is: 'idle' })
+      expect(host.agentCard(child)?.state).toEqual({ is: 'idle' })
     })
 
     it('⚑ a child whose provider failed is a stopped agent — a failure is a stop, not an ending', async () => {
@@ -532,7 +532,7 @@ describe('642 · who can I talk to', () => {
           .sort(),
       ).toEqual([child, closed].sort())
       for (const stopped of [child, closed]) {
-        expect(host.agentCard(stopped, speakingAs(parent), parent)?.state, stopped).toEqual({
+        expect(host.agentCard(stopped)?.state, stopped).toEqual({
           is: 'idle',
         })
       }
@@ -579,7 +579,7 @@ describe('642 · who can I talk to', () => {
       // ⚑ **D-017 · R12 — the one list's cut** ({@link CONVERSATIONS_LISTED}), planted at the host's
       // answer as the list apart's page was: the tool says how many more, and which doors take them.
       const { parent, tools } = await aParentAndItsChild()
-      const real = host.agentCard(parent, speakingAs(parent), parent)
+      const real = host.agentCard(parent)
       if (real === null) throw new Error('no card for the parent')
       const many: AgentCard[] = Array.from({ length: CONVERSATIONS_LISTED }, (_, i) => ({
         ...real,

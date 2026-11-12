@@ -158,7 +158,7 @@ describe('a service is reached through the piece it is on', () => {
   }
 
   describe('who may reach it', () => {
-    it('a profile name reaches only the service on the message caller’s piece', async () => {
+    it('a profile name reaches the service from any caller', async () => {
       const { host, caller, stranger, service, one } = await aServiceOnTheFirstPiece()
       const sent = await call(host, caller, 'message_agent', {
         agent: 'browser-driver',
@@ -172,16 +172,13 @@ describe('a service is reached through the piece it is on', () => {
         kind: 'note',
         text: 'the room on the third floor',
       })
-      expect(denied.structured).toMatchObject({ outcome: 'refused', rail: 'no-such-agent' })
+      expect(denied.structured).toMatchObject({ outcome: 'ok', agent: service })
       const asked = await call(host, caller, 'ask_question', {
         who_answers: 'an-agent',
         agent: 'browser-driver',
         question: 'which floor?',
       })
-      expect(asked.structured).toMatchObject({
-        outcome: 'refused',
-        rail: 'no-agent-you-can-ask-by-that-name',
-      })
+      expect(asked.structured).toMatchObject({ outcome: 'ok', agent: service })
     })
 
     it('lets the caller whose piece it is on stop its turn, follow it up and give it a new brief', async () => {
@@ -210,18 +207,18 @@ describe('a service is reached through the piece it is on', () => {
       expect(rebriefed.structured).toMatchObject({ outcome: 'ok' })
     })
 
-    it('opens no other door to it: its status, its record and a question to it stay out of reach', async () => {
+    it('lists the service and accepts status reads and questions from any caller', async () => {
       const { host, caller, service } = await aServiceOnTheFirstPiece()
       const status = await call(host, caller, 'get_agent_status', { agent: service })
-      expect(status.structured).toMatchObject({ outcome: 'refused' })
+      expect(status.structured).toMatchObject({ outcome: 'ok' })
       const asked = await call(host, caller, 'ask_question', {
         who_answers: 'an-agent',
         agent: service,
         question: 'which floor?',
       })
-      expect(asked.structured).toMatchObject({ outcome: 'refused' })
+      expect(asked.structured).toMatchObject({ outcome: 'ok' })
       const listed = await call(host, caller, 'list_agents', {})
-      expect(JSON.stringify(listed.structured)).not.toContain(service)
+      expect(JSON.stringify(listed.structured)).toContain(service)
     })
 
     it('lets a message to it ask its turn to stop only from the caller whose piece it is on', async () => {
@@ -291,7 +288,7 @@ describe('a service is reached through the piece it is on', () => {
         kind: 'note',
         text: 'hello',
       })
-      expect(note.structured).toMatchObject({ outcome: 'refused' })
+      expect(note.structured).toMatchObject({ outcome: 'ok' })
       expect(note.structured['rail']).not.toBe('that-piece-is-still-queued')
       // Its own queued piece is still its to change or take back, and the service hears nothing.
       const before = world.ledger(service).length
@@ -310,7 +307,7 @@ describe('a service is reached through the piece it is on', () => {
       ).toBe(false)
     })
 
-    it('refuses a caller with nothing there, and another conversation of the caller’s own profile', async () => {
+    it('admits notes from unrelated callers while keeping interruption and work ownership unchanged', async () => {
       const { host, stranger, service, one } = await aServiceOnTheFirstPiece()
       const sameProfile = await world.aPersonOpens(host, 'caller')
       for (const outsider of [stranger, sameProfile]) {
@@ -325,7 +322,7 @@ describe('a service is reached through the piece it is on', () => {
           kind: 'note',
           text: 'hello',
         })
-        expect(sent.structured).toMatchObject({ outcome: 'refused' })
+        expect(sent.structured).toMatchObject({ outcome: 'ok' })
         expect(
           (await call(host, outsider, 'withdraw_task', { piece: one.label })).structured,
         ).toMatchObject({ outcome: 'refused', rail: 'not-a-piece-you-gave' })
@@ -336,7 +333,7 @@ describe('a service is reached through the piece it is on', () => {
       expect(stateOf(service, one.piece)).toBe('stalled')
     })
 
-    it('takes the caller’s reach away with its piece, and gives it to the next caller', async () => {
+    it('moves interruption rights to the next caller while messages remain admitted', async () => {
       const { host, caller, other, service, one, two } = await aServiceOnTheFirstPiece()
       const taken = await call(host, caller, 'withdraw_task', { piece: one.label })
       expect(taken.structured).toMatchObject({ outcome: 'ok', state: 'withdrawn' })
@@ -355,7 +352,7 @@ describe('a service is reached through the piece it is on', () => {
         piece: one.label,
         text: 'one more thing',
       })
-      expect(followed.structured).toMatchObject({ outcome: 'refused' })
+      expect(followed.structured).toMatchObject({ outcome: 'ok' })
       expect(
         (await call(host, other, 'interrupt_agent', { agent: service, reason: 'not needed now' }))
           .structured,
@@ -364,7 +361,7 @@ describe('a service is reached through the piece it is on', () => {
   })
 
   describe('its reach after a restart, a stop and a wait', () => {
-    it('lets the conversation standing in for the caller reach it, and starts it for its words; never another of its profile', async () => {
+    it('resumes the service for both the replacement caller and another conversation of its profile', async () => {
       const { host, caller, service, one } = await aServiceOnTheFirstPiece()
       const standIn = await world.aPersonOpens(host, 'caller')
       // Written once nothing runs, so no life of the caller's writes after it.
@@ -383,7 +380,7 @@ describe('a service is reached through the piece it is on', () => {
         kind: 'note',
         text: 'hello',
       })
-      expect(theirs.structured).toMatchObject({ outcome: 'refused' })
+      expect(theirs.structured).toMatchObject({ outcome: 'ok' })
       const followed = await call(after, standIn, 'message_agent', {
         agent: service,
         kind: 'follow-up',
@@ -403,7 +400,7 @@ describe('a service is reached through the piece it is on', () => {
       expect(world.handles.filter((each) => each.as === 'browser-driver').length).toBeGreaterThan(1)
     })
 
-    it('starts a stopped service for its caller’s words, and for a former caller’s never', async () => {
+    it('admits a former caller’s follow-up but does not deliver it after its piece ended', async () => {
       const { host, caller, other, service, one, two } = await aServiceOnTheFirstPiece()
       expect(
         (await call(host, other, 'withdraw_task', { piece: two.label })).structured,
@@ -437,9 +434,10 @@ describe('a service is reached through the piece it is on', () => {
         piece: one.label,
         text: 'one more thing',
       })
-      expect(late.structured).toMatchObject({ outcome: 'refused' })
+      expect(late.structured).toMatchObject({ outcome: 'ok' })
       await new Promise((settled) => setTimeout(settled, 50))
-      expect(lives()).toBe(before + 2)
+      expect(lives()).toBe(before + 3)
+      expect(rows(service, 'user_turn').some((turn) => turn.type === 'user_turn' && turn.text.includes('one more thing'))).toBe(false)
     })
 
     it('stops no turn of its that drives another piece when that piece is taken back', async () => {
@@ -958,7 +956,7 @@ describe('a service is reached through the piece it is on', () => {
           (turn) => turn.type === 'user_turn' && turn.text.includes('the room on the third floor'),
         )
         expect(went).toBe(meanwhile === 'unchanged')
-        expect(sent.structured['outcome']).toBe(meanwhile === 'unchanged' ? 'ok' : 'refused')
+        expect(sent.structured['outcome']).toBe('ok')
       },
     )
 

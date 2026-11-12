@@ -5262,7 +5262,7 @@ export function agentToolsFor(
       (child) => child.owner !== me && host.tookItsPlace(child.owner) !== me,
     )
     const helpers = children.flatMap((child) => {
-      const card = host.agentCard(child.owner, by, me)
+      const card = host.agentCard(child.owner)
       if (card === null || card.agent === me) return []
       const known = card.whose.is === 'an-identity-this-app-holds' ? card.whose : null
       return [
@@ -5704,7 +5704,7 @@ export function agentToolsFor(
           // rail `message_agent` meets, and `no-such-agent` only for an id no conversation has.
           const out = host.whyItIsOutOfReach(agent, by, me)
           if (out !== null) return outOfReachAnswer(out, agent)
-          const card = host.agentCard(agent, by, me)
+          const card = host.agentCard(agent)
           if (card === null) return refusalAnswer(refuseTool('no-such-agent', { agent }))
           // ⚑ **When its last turn ran, and what opened it** — so a giver reading *nothing has
           // started since* can tell whether its own held words were what that turn took.
@@ -6746,7 +6746,7 @@ export function agentToolsFor(
           const cardOf = (row: PieceRow): AgentCard | null => {
             const held = seen.get(row.owner)
             if (held !== undefined) return held
-            const card = host.agentCard(row.owner, by, me) ?? null
+            const card = host.agentCard(row.owner) ?? null
             seen.set(row.owner, card)
             return card
           }
@@ -9787,7 +9787,7 @@ export function agentToolsFor(
         said,
         {
           conversationName: (id) => host.nameByItsWork(id),
-          conversationVisible: (id) => host.agentCard(id, by, me) !== null,
+          conversationVisible: (id) => host.agentCard(id) !== null,
           conversationProfile: (id) => host.navigationProfileForConversation?.(id) ?? null,
           identity: (profile) => host.navigationIdentity?.(profile) ?? null,
           piece: (spelled) => {

@@ -221,7 +221,7 @@ describe('a helper that stopped with a piece open reads as stopped', () => {
       ],
     })
     // What agents read of the giver is unchanged: it still names the helper it gave work to.
-    expect(host.agentCard(brobot, THE_APP_ITSELF, brobot)?.state).toMatchObject({
+    expect(host.agentCard(brobot)?.state).toMatchObject({
       is: 'waiting-on-a-worker',
     })
   })

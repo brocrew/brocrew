@@ -505,7 +505,7 @@ describe('629 · a stop reaches down the whole chain', () => {
       // intervention from ABOVE is the same sentence with a different actor.
       // ⚑ **`me` is Ada's own conversation** — `agentCard`'s third argument, which carries who is
       // asking so the reach is a parameter rather than something the card derives for itself.
-      const card = host.agentCard(ali, asAgent(ada), ada)
+      const card = host.agentCard(ali)
       expect(card, 'Ada cannot read her own worker’s card').not.toBeNull()
       expect(card?.lastAskToStop).toMatchObject({ by: 'an-agent', asker: brobot })
       // ⛔ **And it does NOT say Ada did it**, which is `617`'s distinction and criterion 18: if

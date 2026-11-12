@@ -568,7 +568,7 @@ describe('734 · the queue names agents, not folders', () => {
     // ⚑ **D-017 · R11 — the card's word for a running turn is `active`** (the one shared state),
     // where it said `working`. ⚠️ The brief above was DELIVERED (`sent`), so the turn has begun.
     await waitFor(
-      () => host.agentCard(worker, { ownerId: `agent:${rig.pm}` }, rig.pm)?.state.is === 'active',
+      () => host.agentCard(worker)?.state.is === 'active',
       'the provider turn to be working',
     )
     return { ...rig, worker }

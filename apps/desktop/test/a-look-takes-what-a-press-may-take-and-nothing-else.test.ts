@@ -280,7 +280,7 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
       host.unclaimedSessions().some((row) => row.sessionId === sessionId)
 
     const reaches = (sessionId: string, sink: RuntimeEventSink): boolean =>
-      host.agentCard(sessionId, sink, null) !== null
+      host.agentCard(sessionId) !== null
 
     /** Something a person can end in one act: a conversation started for a window, then stopped. */
     const openThenEnded = async (): Promise<string> => {

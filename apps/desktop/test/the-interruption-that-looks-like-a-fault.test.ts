@@ -395,7 +395,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
     const readingsOf = async (
       sessionId: string,
     ): Promise<Readonly<Record<WhereAStopIsObserved, string>>> => {
-      const card = host.agentCard(sessionId, window, sessionId)
+      const card = host.agentCard(sessionId)
       return {
         // ⚑ **The ledger's own fold** — `how` and `who`, which is the pair no single field carries.
         'the-ledger': JSON.stringify(howWorkStopped(store.events(sessionId))),
@@ -550,8 +550,8 @@ describe('395 · the interruption that looks like a provider fault', () => {
       await busy(done, doneHandle)
       await letTheTurnFinish(done)
 
-      const stoppedCard = host.agentCard(stopped, window, stopped)
-      const doneCard = host.agentCard(done, window, done)
+      const stoppedCard = host.agentCard(stopped)
+      const doneCard = host.agentCard(done)
       // ⛔ **The state agrees**, which is the premise rather than the assertion. ⚑ **D-017 · R11** —
       // the one derivation's `idle`.
       expect(stoppedCard?.state).toEqual({ is: 'idle' })
@@ -1311,7 +1311,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
       // ⚑ **`null` is *there is no closed turn*; `nothing-has-said` is *there is one and we did not
       // see how it ended*.** Two facts, two answers, and `222` is the dispatch that separated them.
       expect(store.lastEndedTurn(fresh)).toBeNull()
-      expect(host.agentCard(fresh, window, fresh)?.lastEndedTurn).toBeNull()
+      expect(host.agentCard(fresh)?.lastEndedTurn).toBeNull()
     })
   })
 
@@ -1429,7 +1429,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
     // `profile` to `whose` — see `AgentCard.whose` — and this key is how that rename was found.
     it('⚠️ the card carries exactly these fields, and the two about the past are null for a conversation with no closed turn', async () => {
       const fresh = await personOpens('fresh')
-      const card = host.agentCard(fresh, window, fresh)
+      const card = host.agentCard(fresh)
       const shape: Record<keyof AgentCard, true> = {
         agent: true,
         worker: true,

@@ -370,7 +370,7 @@ describe('a launch says where it waited', () => {
       expect(lines.filter((one) => one.opening === 'resume')).toMatchObject([
         { stage: 'began', timeoutMs: 60_000 },
       ])
-      expect(host.agentCard(sessionId, sink, null)?.state).toMatchObject({ is: 'active' })
+      expect(host.agentCard(sessionId)?.state).toMatchObject({ is: 'active' })
       release()
       expect(await outcome).toBe('ready')
       expect(lines.filter((one) => one.opening === 'resume')).toMatchObject([

@@ -15,7 +15,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
+import { RuntimeHost,  } from '../src/main/runtime/runtime-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
@@ -427,10 +427,10 @@ describe('659 · the question every teardown asks', () => {
       const id = `sess_${counter}`
       // ⚑ **D-017 · R11 — the one state derivation**: the card said `starting` and then `ending`,
       // states of the SLOT; a launch in flight is `active`, and one on its way out is not.
-      expect(host.agentCard(id, THE_APP_ITSELF, id)).toMatchObject({ state: { is: 'active' } })
+      expect(host.agentCard(id)).toMatchObject({ state: { is: 'active' } })
 
       const closing = host.close(id, window)
-      expect(host.agentCard(id, THE_APP_ITSELF, id)).toMatchObject({ state: { is: 'idle' } })
+      expect(host.agentCard(id)).toMatchObject({ state: { is: 'idle' } })
 
       gate.release()
       await closing

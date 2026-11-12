@@ -109,7 +109,7 @@ describe('parallel worker tools and conversation readings', () => {
     if (typeof aid !== 'string' || typeof bid !== 'string') throw new Error('worker id missing')
     expect(a.structured?.worker).toMatchObject({ bornAs: aid })
     expect(b.structured?.worker).toMatchObject({ bornAs: bid })
-    expect(host.agentCard(bid, { ownerId: agentCallerId(caller) }, caller)?.worker).toMatchObject({
+    expect(host.agentCard(bid)?.worker).toMatchObject({
       number: 2,
       bornAs: bid,
     })
@@ -126,13 +126,13 @@ describe('parallel worker tools and conversation readings', () => {
     const probes = reads.map((name) => vi.spyOn(world.store, name))
     try {
       const by = { ownerId: agentCallerId(caller) }
-      expect(next.agentCard(a.owner, by, caller)?.worker).toEqual({
+      expect(next.agentCard(a.owner)?.worker).toEqual({
         identity,
         giver: caller,
         number: 1,
         bornAs: a.owner,
       })
-      expect(next.agentCard(b.owner, by, caller)?.worker).toEqual({
+      expect(next.agentCard(b.owner)?.worker).toEqual({
         identity,
         giver: caller,
         number: 2,
@@ -197,7 +197,7 @@ describe('parallel worker tools and conversation readings', () => {
     world.loseTheKept()
     const unknown = world.aHost()
     expect(
-      unknown.agentCard(a.owner, { ownerId: agentCallerId(caller) }, caller)?.worker,
+      unknown.agentCard(a.owner)?.worker,
     ).toBeUndefined()
     expect(
       [...unknown.resumableSessions(), ...unknown.unresumableSessions()].find(
@@ -221,7 +221,7 @@ describe('parallel worker tools and conversation readings', () => {
     expect(sent).toMatchObject({ ok: true, delivery: { outcome: 'sent' } })
     const current = world.store.workerInItsPlace(b.owner)
     expect(current).not.toBe(b.owner)
-    expect(next.agentCard(current, { ownerId: agentCallerId(caller) }, caller)?.worker).toEqual({
+    expect(next.agentCard(current)?.worker).toEqual({
       identity,
       giver: caller,
       number: 2,
@@ -236,7 +236,7 @@ describe('parallel worker tools and conversation readings', () => {
     world.resumesAreGoneFor = null
     const restarted = world.aHost()
     expect(
-      restarted.agentCard(current, { ownerId: agentCallerId(caller) }, caller)?.worker,
+      restarted.agentCard(current)?.worker,
     ).toEqual({ identity, giver: caller, number: 2, bornAs: b.owner })
   })
 })

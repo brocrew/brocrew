@@ -626,7 +626,7 @@ describe('484 · state a supervisor can trust', () => {
       // ⚠️ **And the card's live state is the other half of the pair**, so the two together answer
       // *what is it doing* and *what happened last* without either claiming the other's subject.
       // ⚑ **D-017 · R11** — the one derivation's state: parked on a person's card is *needs you*.
-      expect(host.agentCard(quiet, window, quiet)?.state).toEqual({ is: 'needs-you' })
+      expect(host.agentCard(quiet)?.state).toEqual({ is: 'needs-you' })
     })
 
     it('🔴 F080 · a turn its provider started by itself is a turn on the table, and the reading says so', async () => {
@@ -1422,7 +1422,7 @@ describe('484 · state a supervisor can trust', () => {
       )
       expect(host.setAgentDisplayName(pmProfile, 'Ada')).not.toBeNull()
       await waitFor(
-        () => host.agentCard(worker, asPm(pm), pm)?.state.is === 'active',
+        () => host.agentCard(worker)?.state.is === 'active',
         'the deliberately held provider turn to be working',
       )
       const task = pieceOf(worker, piece)
@@ -1494,7 +1494,7 @@ describe('484 · state a supervisor can trust', () => {
       )
       const worker = given.agent
       await waitFor(
-        () => host.agentCard(worker, asPm(pm), pm)?.state.is === 'active',
+        () => host.agentCard(worker)?.state.is === 'active',
         'the deliberately held provider turn to be working',
       )
       return { boss, bossTools, pm, pmTools, worker, piece: given.piece }

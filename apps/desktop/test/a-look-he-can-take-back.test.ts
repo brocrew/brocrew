@@ -14,7 +14,7 @@ import {
   type AgentCard,
   mayHandBack,
   RuntimeHost,
-  THE_APP_ITSELF,
+  
   type RuntimeEventSink,
   type UnclaimedSession,
 } from '../src/main/runtime/runtime-host'
@@ -241,9 +241,9 @@ describe('523 · a look he can take back', () => {
   const worldOf = (sessionId: string): World => ({
     unclaimed: host.unclaimedSessions().find((row) => row.sessionId === sessionId) ?? null,
     registered: host.sessionIds.includes(sessionId),
-    provider: stateOf(host.agentCard(sessionId, THE_APP_ITSELF, null)),
-    reachableFromOne: host.agentCard(sessionId, one, null) !== null,
-    reachableFromTwo: host.agentCard(sessionId, two, null) !== null,
+    provider: stateOf(host.agentCard(sessionId)),
+    reachableFromOne: host.agentCard(sessionId) !== null,
+    reachableFromTwo: host.agentCard(sessionId) !== null,
     ledger: ledger(sessionId),
   })
 

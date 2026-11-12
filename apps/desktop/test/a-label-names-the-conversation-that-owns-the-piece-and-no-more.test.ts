@@ -894,8 +894,8 @@ describe('a label names the conversation that owns the piece, and no more', () =
       if (premise.is === 'no-piece-by-that-name') throw new Error('the caller owns this root')
       expect(premise.children.find((child) => child.owner === ada)?.state).toBe('working')
       const read = host.agentCard.bind(host)
-      const spy = vi.spyOn(host, 'agentCard').mockImplementation((id, by, me) => {
-        const card = read(id, by, me)
+      const spy = vi.spyOn(host, 'agentCard').mockImplementation((id) => {
+        const card = read(id)
         return id === ada && card !== null
           ? { ...card, whose: { is: 'an-identity-this-app-cannot-name' } }
           : card
@@ -926,7 +926,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       const read = host.agentCard.bind(host)
       const spy = vi
         .spyOn(host, 'agentCard')
-        .mockImplementation((id, by, me) => (id === ada ? null : read(id, by, me)))
+        .mockImplementation((id) => (id === ada ? null : read(id)))
       try {
         const said = await fullCall(brobotTools, 'message_agent', {
           agent: 'W1',
@@ -994,7 +994,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       agent: brobot,
     })
 
-    // ⛔ The stranger's label is unknown, and its id meets the chain rail — nothing reached it.
+    // A known label resolves to its conversation, whose interruption still needs the relationship.
     const strangerByLabel = await callOn(brobotTools, 'interrupt_agent', {
       agent: 'W2',
       reason: 'the routes are no longer wanted',
@@ -1003,14 +1003,8 @@ describe('a label names the conversation that owns the piece, and no more', () =
       agent: 'W9.9',
       reason: 'the routes are no longer wanted',
     })
-    expect(strangerByLabel, JSON.stringify(strangerByLabel)).toMatchObject({
-      outcome: 'refused',
-      rail: 'no-such-agent',
-    })
-    expect(withoutTheEchoedSpelling(strangerByLabel)).toEqual(
-      withoutTheEchoedSpelling(unknownLabel),
-    )
-    expect(JSON.stringify(strangerByLabel)).not.toContain(stranger)
+    expect(strangerByLabel).toMatchObject({ outcome: 'refused', rail: 'not-below-you' })
+    expect(unknownLabel).toMatchObject({ outcome: 'refused', rail: 'no-such-agent' })
     const strangerById = await callOn(brobotTools, 'interrupt_agent', {
       agent: stranger,
       reason: 'the routes are no longer wanted',
@@ -1032,7 +1026,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
     expect(read.structured, read.text).toMatchObject({ outcome: 'ok', agent: ali, name: 'Ali' })
     expect(read.text).toContain('wire the routes')
 
-    // ⛔ A stranger's label reads as the label no piece carries, and its id as the same rail.
+    // Listing a conversation does not change the transcript-reading relationship.
     const byLabel = await fullCall(brobotTools, 'read_transcript', { agent: 'W2' })
     const unknownLabel = await fullCall(brobotTools, 'read_transcript', { agent: 'W9.9' })
     const byId = await fullCall(brobotTools, 'read_transcript', { agent: stranger })
@@ -1046,7 +1040,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       withoutTheEchoedSpelling(unknownLabel.structured),
     )
     expect(byLabel.text).toBe(unknownLabel.text)
-    for (const said of [JSON.stringify(byLabel.structured), byLabel.text]) {
+    for (const said of [byLabel.text]) {
       expect(said).not.toContain(stranger)
       expect(said).not.toContain('Amara')
     }

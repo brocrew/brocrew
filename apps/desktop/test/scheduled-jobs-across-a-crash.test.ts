@@ -303,7 +303,7 @@ describe('scheduled jobs across a crash', () => {
   const keptAsMade = (id: string): boolean =>
     kept(id)?.attempts.some((one) => one.attempted) === true
   const stateOf = (id: string): AgentState | undefined =>
-    now.host.agentCard(id, THE_APP_ITSELF, id)?.state
+    now.host.agentCard(id)?.state
   const wakeUpOf = (id: string): unknown =>
     (now.host as unknown as { wakeUps: Map<string, unknown> }).wakeUps.get(id)
 

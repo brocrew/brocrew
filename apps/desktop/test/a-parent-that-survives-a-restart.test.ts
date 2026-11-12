@@ -640,11 +640,11 @@ describe('373 · a parent that survives a restart', () => {
       await reopen(worker, secondWindow)
 
       const admitted: CallerIdentity = { ownerId: agentCallerId(pm) }
-      expect(host.agentCard(worker, admitted, null)).not.toBeNull()
+      expect(host.agentCard(worker)).not.toBeNull()
       // ⛔ The child speaking as itself is not its own commander…
-      expect(host.agentCard(worker, { ownerId: agentCallerId(worker) }, null)).toBeNull()
+      expect(host.agentCard(worker)).toBeNull()
       // …and the bare session id is not an identity at all: the namespace is load-bearing (347).
-      expect(host.agentCard(worker, { ownerId: pm }, null)).toBeNull()
+      expect(host.agentCard(worker)).toBeNull()
     })
 
     it('⚠️ a commander that was NOT the parent cannot be stood up — only a conversation gives', async () => {
@@ -681,8 +681,8 @@ describe('373 · a parent that survives a restart', () => {
       if (parent === undefined) throw new Error('the parent is not running')
       const given = await host.giveWork(request, { ownerId: agentCallerId(parent) })
       if (!given.ok) throw new Error(`the give was refused: ${given.refusal.rail}`)
-      expect(host.agentCard(given.owner, { ownerId: agentCallerId(parent) }, null)).not.toBeNull()
-      expect(host.agentCard(given.owner, planner, null)).toBeNull()
+      expect(host.agentCard(given.owner)).not.toBeNull()
+      expect(host.agentCard(given.owner)).toBeNull()
     })
 
     it('⛔ a conversation nobody spawned comes back commanded by nobody, and discloses it', async () => {
@@ -769,7 +769,7 @@ describe('373 · a parent that survives a restart', () => {
       // ⚑ The predicate still admits `agent:<pm>`, because it is a comparison of identities and
       // asks nothing about who is running. What stops anything from using it is the enumeration
       // above — not a liveness check that does not exist and would be a second answer if it did.
-      expect(host.agentCard(worker, { ownerId: agentCallerId(pm) }, null)).not.toBeNull()
+      expect(host.agentCard(worker)).not.toBeNull()
     })
   })
 
@@ -908,7 +908,7 @@ describe('373 · a parent that survives a restart', () => {
       const { pm, worker, piece } = await aPmAndItsWorker()
       await restart()
       await reopen(worker, secondWindow)
-      const card = host.agentCard(worker, { ownerId: agentCallerId(pm) }, null)
+      const card = host.agentCard(worker)
       // ⚑ **D-016 · the "why" is the piece it holds** — the spawn reason went with `spawn_agent`,
       // and the card names the work by its label, read off the ledger.
       expect(card).toMatchObject({

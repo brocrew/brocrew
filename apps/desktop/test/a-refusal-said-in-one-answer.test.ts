@@ -796,6 +796,8 @@ describe('the approved success words, spelled once', () => {
   })
 
   it('adds nothing but permanence where the reason says every fact', () => {
-    expect(added(answered(refuse('it-would-wait-on-itself', { profileId: 'helper' })))).toBe(` ${WHILE}`)
+    expect(added(answered(refuse('it-would-wait-on-itself', { profileId: 'helper' })))).toBe(
+      ` ${WHILE}`,
+    )
   })
 })

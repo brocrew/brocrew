@@ -604,7 +604,7 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
   }
 
   const stateOf = (h: RuntimeHost, id: string): AgentState | undefined =>
-    h.agentCard(id, THE_APP_ITSELF, id)?.state
+    h.agentCard(id)?.state
 
   const ledger = (id: string): TranscriptEvent[] => store.events(id).map((entry) => entry.event)
 
