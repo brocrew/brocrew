@@ -10,8 +10,9 @@ import { proseSpans } from './lib/prose-spans'
  * ⚑ Since D-033 the host pushes every move of a piece as `work`, so `RuntimeScreen` dropped its
  * three half-minute re-reads (the Team page's forest, the band, the Work tab). ⚑ One glance is left,
  * at what no push carries — what each agent is doing this moment, and its process's memory — and it
- * runs ⛔ **only while a person can see it**: this window in front and the page visible. It also asks
- * again after a read that did not answer, and coming back to the front glances at once.
+ * runs only while this window is in front and the page visible. The approved graph's rolling
+ * window now refreshes membership and counts on that same glance. Work and band reads still retry
+ * only unanswered reads, and returning to the front glances at once.
  *
  * ⚠️ Nothing in this repository mounts `RuntimeScreen`, so the wiring is read from its source —
  * `the-rails-list-is-asked-again-when-an-agents-state-may-have-moved`'s instrument: comments
@@ -97,6 +98,7 @@ const linesWith = (slice: string, call: string): string[] =>
     .filter((line) => line.includes(call))
 
 const GLANCE = functionOf('async function glance(): Promise<void> {')
+const GRAPH_READ = functionOf('async function readWhoIsWorkingOnce(): Promise<void> {')
 
 describe('§1 · no re-read of the work on a clock', () => {
   it('🔴 no interval reads the forest, the band or the Work tab — and the glance is on one', () => {
@@ -112,7 +114,7 @@ describe('§1 · no re-read of the work on a clock', () => {
     }
   })
 
-  it('⛔ the glance reads the work and the band again ONLY after a read that did not answer', () => {
+  it('retries unanswered work and band reads, and refreshes the visible graph window', () => {
     const work = linesWith(GLANCE, 'readTheWork()')
     expect(work, 'the glance no longer asks a refused Work tab again').toHaveLength(1)
     expect(work[0]).toContain('!work.value.answered')
@@ -129,13 +131,16 @@ describe('§1 · no re-read of the work on a clock', () => {
     const forest = linesWith(GLANCE, 'readWhoIsWorking()')
     expect(forest).toHaveLength(1)
     const forestAt = GLANCE.indexOf('void readWhoIsWorking()')
-    expect(GLANCE.slice(GLANCE.lastIndexOf('if (', forestAt), forestAt)).toContain(
-      'theForest.value === null',
-    )
+    const teamGuard = GLANCE.slice(GLANCE.lastIndexOf('if (', forestAt), forestAt)
+    expect(teamGuard).toContain("surface.value === 'team'")
+    expect(teamGuard).not.toContain('theForest.value === null')
+    expect(GLANCE.slice(forestAt)).toMatch(/void readWhoIsWorking\(\)\s+return/)
+    expect(SCREEN).toContain('const readWhoIsWorking = oneReadAtATime(readWhoIsWorkingOnce)')
   })
 
   it('⚑ what no push carries IS glanced at: what each agent is doing, and its memory', () => {
-    expect(GLANCE.match(/store\.whatIsBeingDone\(\)/g) ?? []).toHaveLength(2)
+    expect(GLANCE.match(/store\.whatIsBeingDone\(\)/g) ?? []).toHaveLength(1)
+    expect(GRAPH_READ.match(/store\.whatIsBeingDone\(\)/g) ?? []).toHaveLength(1)
     expect(linesWith(GLANCE, 'readProcessMemory()')).toHaveLength(1)
   })
 })
@@ -153,10 +158,11 @@ describe('§2 · only while a person can see it', () => {
   })
 
   it('⛔ a glance that lands after a newer one, or on another page, writes nothing', () => {
-    const doing = linesWith(GLANCE, 'beingDone.value = doing')
-    expect(doing).toHaveLength(1)
-    expect(doing[0]).toContain('mine === glanceRead')
-    expect(doing[0]).toContain("surface.value === 'team'")
+    expect(linesWith(GRAPH_READ, 'beingDone.value = atWork')).toHaveLength(1)
+    expect(GRAPH_READ).toContain("surface.value === 'team' && epoch === forestEpoch && window === forestWindow.value")
+    expect(GRAPH_READ).toMatch(
+      /const atWork = await doing\s+if \(!current\(\)\) return\s+beingDone.value = atWork/,
+    )
     // ⚑ The band's half: a stale glance, or one for a conversation no longer on screen, returns first.
     expect(GLANCE).toContain('if (mine !== glanceRead || asked !== activeId.value) return')
   })

@@ -6,7 +6,6 @@ import {
   agentStore,
   runtime,
   changed,
-  forestWalk,
   installRuntimeScreenFixture,
   disposeRuntimeScreenFixture,
   agentBookAnswers,

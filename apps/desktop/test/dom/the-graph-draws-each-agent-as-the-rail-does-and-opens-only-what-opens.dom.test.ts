@@ -561,22 +561,23 @@ describe('the graph draws each conversation as the rail does, and opens only wha
    */
   it('🔴 a family too big for the tab is panned inside it — this conversation is in view, Fit brings in the rest, and the page never scrolls sideways', async () => {
     const kids = Array.from({ length: 8 }, (_, i) => `sess_kid_${String(i)}`)
+    const inspectors = kids.map((_, i) => identity(`inspector-${String(i)}`, `Inspector ${String(i)}`))
     const m = await show({
       forest: viewOf(
         [
           conv('sess_boss', null, { identity: 'project-manager' }),
           conv(ID, 'sess_boss', { identity: 'brobot' }),
-          ...kids.map((kid) => conv(kid, 'sess_boss', { identity: 'inspector' })),
+          ...kids.map((kid, i) => conv(kid, 'sess_boss', { identity: inspectors[i]!.slug })),
         ],
-        IDS,
+        [...IDS, ...inspectors],
       ),
     })
     await toGraph(m)
     await drawnReady()
     const graph = m.q('conversation-graph')
     const drawing = m.q('forest-rows').getBoundingClientRect()
-    // The nine siblings stack left to right's other way: down. Together they are taller than the
-    // tab, which is what makes this a family the view has to pan over.
+    // Distinct agents stay separate; same-agent siblings now share one expandable card.
+    // These nine cards are taller than the tab, preserving the pan-and-Fit premise.
     const row = [ID, ...kids].map((id) => card(m, id).getBoundingClientRect())
     expect(
       Math.max(...row.map((one) => one.bottom)) - Math.min(...row.map((one) => one.top)),

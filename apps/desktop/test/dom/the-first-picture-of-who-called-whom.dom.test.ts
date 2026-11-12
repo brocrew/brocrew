@@ -120,7 +120,7 @@ const agentRows = (strip: HTMLElement): HTMLElement[] => [
 const rowOf = (line: Element): HTMLElement | null =>
   line.closest<HTMLElement>('[data-kind="a-conversation"]')
 
-/** ⚑ **One agent's card in the graph** — every card is drawn at once, so finding it is the whole act. */
+/** Each recipient card is available after the fixture opens its same-agent groups. */
 function kidIn(m: Mounted, conversation: string): HTMLElement {
   return m.q(`forest-row-${conversation}`)
 }
@@ -215,11 +215,7 @@ interface Shown {
   rail?: ReadonlyMap<string, RailSays>
 }
 
-/**
- * Read the right panel and main graph together. Both use the same who-called-whom channel;
- * seek a hook first in the drawer and then in the graph, so the assertion follows whichever
- * surface draws the fact.
- */
+/** Read the drawer and graph together, following whichever surface draws each fact. */
 function beside(drawer: Mounted, graph: Mounted): Mounted & { drawer: Mounted; graph: Mounted } {
   return {
     ...drawer,
@@ -266,7 +262,8 @@ async function show(over: Shown) {
     },
     { width: over.graphWidth ?? 1000, height: 900 },
   )
-  // ⚑ Vue Flow draws the forest's cards a frame after the mount.
+  await forestDrawn()
+  for (const toggle of graph.all('forest-group-toggle')) toggle.click()
   await forestDrawn()
   return beside(drawer, graph)
 }
