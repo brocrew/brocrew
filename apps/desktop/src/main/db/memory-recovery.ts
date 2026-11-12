@@ -1,6 +1,6 @@
 import { providerSchema } from '@brobot2/shared'
 import type { AppDatabase } from './connection'
-import type { ActedBy } from '../../shared/who-did-it'
+import { actedByFrom, isWhoDidIt, type ActedBy } from '../../shared/who-did-it'
 import type {
   MemoryAmendment,
   MemoryAmendmentWrite,
@@ -18,7 +18,8 @@ export function validMemoryIntent(said: MemoryAmendmentWrite, at: number): boole
     Buffer.from(value, 'utf8').toString('utf8') === value
   return (
     validTime(at) &&
-    said?.by?.who === 'a-person' &&
+    isWhoDidIt(said?.by?.who) &&
+    (said.by.who !== 'an-agent' || (typeof said.by.agent === 'string' && said.by.agent !== '')) &&
     typeof said.profileSlug === 'string' &&
     typeof said.entry === 'string' &&
     said.entry.length > 0 &&
@@ -136,7 +137,7 @@ export function createMemoryRecoveryStore(db: AppDatabase, now: () => number = D
   return {
     hasPending,
     settle(identity: string, id: string, actual: MemoryObservation, by: ActedBy): boolean {
-      return by.who === 'a-person' && finish(identity, id, actual, { who: 'a-person' })
+      return finish(identity, id, actual, actedByFrom(by))
     },
     reconcile(identity: string, id: string, actual: MemoryObservation, by: ActedBy): boolean {
       return by.who === 'the-app-itself' && finish(identity, id, actual, { who: 'the-app-itself' })

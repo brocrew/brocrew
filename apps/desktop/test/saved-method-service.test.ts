@@ -160,23 +160,33 @@ describe('saved methods change only through a confirmed, recoverable profile ope
     expect(again.ok).toBe(true)
     expect(existsSync(path('review.md'))).toBe(false)
   })
-  it('requires a person and primary confirmation, then reads the ordinary files', async () => {
-    const api = await service()
-    const shown = selection(api)
-    for (const by of [app, agent]) expect((await api.remove('lark', shown, by)).ok).toBe(false)
-    expect((await api.remove('lark', { ...shown, confirmed: false }, person)).ok).toBe(false)
-    writeFileSync(path('index.md'), 'external index')
-    expect((await api.remove('lark', shown, person)).ok).toBe(true)
-    expect(existsSync(path('review.md'))).toBe(false)
-    expect(readFileSync(path('index.md'), 'utf8')).toBe('external index')
-  })
-  it('rejects agent Undo and another profile or an older change id', async () => {
+  it.each([person, app, agent, { who: 'a-caller-this-app-cannot-name' } as const])(
+    'requires primary confirmation and records the ordinary caller $who',
+    async (by) => {
+      const api = await service()
+      const shown = selection(api)
+      expect((await api.remove('lark', { ...shown, confirmed: false }, person)).ok).toBe(false)
+      writeFileSync(path('index.md'), 'external index')
+      const removed = await api.remove('lark', shown, by)
+      expect(removed).toMatchObject({ ok: true, change: { by, settlement: { by } } })
+      expect(changes.read(agentIdentityRowId('lark'), removed.change!.id)).toMatchObject({
+        by,
+        settlement: { by },
+      })
+      expect(existsSync(path('review.md'))).toBe(false)
+      expect(readFileSync(path('index.md'), 'utf8')).toBe('external index')
+    },
+  )
+  it('records colleague Undo while rejecting another profile or an older change id', async () => {
     const api = await service()
     const removed = await api.remove('lark', selection(api), person)
     expect((await api.undo('wren', removed.change!.id, person)).ok).toBe(false)
-    expect((await api.undo('lark', removed.change!.id, agent)).ok).toBe(false)
-    const restored = await api.undo('lark', removed.change!.id, person)
-    expect(restored.ok).toBe(true)
+    const restored = await api.undo('lark', removed.change!.id, agent)
+    expect(restored).toMatchObject({ ok: true, change: { by: agent, settlement: { by: agent } } })
+    expect(api.history('lark')).toMatchObject({
+      ok: true,
+      changes: expect.arrayContaining([expect.objectContaining({ by: agent })]),
+    })
     expect((await api.undo('lark', removed.change!.id, person)).ok).toBe(false)
   })
   it('refuses recreated files and external edits rather than overwriting them', async () => {

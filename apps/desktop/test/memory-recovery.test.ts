@@ -100,10 +100,8 @@ describe('memory intent survives interruption before its single honest observati
     expect(recovery().memoryAmendment('lark', saved.id)).toEqual(saved)
     expect(recovery().hasPendingMemoryAmendment('lark')).toBe(true)
   })
-  it('begins only for a person, a known identity, valid text and a valid time', () => {
+  it('requires a known identity, valid text and a valid time', () => {
     const api = recovery()
-    for (const by of [agent, app])
-      expect(api.beginMemoryAmendment(remove({ by }), clock++)).toBeNull()
     for (const at of [-1, NaN, Infinity, 0.5])
       expect(api.beginMemoryAmendment(remove(), at)).toBeNull()
     for (const bad of [
@@ -128,24 +126,37 @@ describe('memory intent survives interruption before its single honest observati
     expect(store.removeAgentIdentity('lark')).toBe(true)
     expect(store.memoryAmendmentsOf('lark')).toEqual([])
   })
-  it('settles once as the person and keeps the initiating actor, time and planned text', () => {
-    const api = recovery()
-    const saved = api.beginMemoryAmendment(remove(), clock++)!
-    for (const by of [agent, app])
-      expect(api.settleMemoryAmendment('lark', saved.id, absent, by)).toBe(false)
-    expect(api.settleMemoryAmendment('wren', saved.id, absent, person)).toBe(false)
-    expect(api.settleMemoryAmendment('lark', saved.id, absent, person)).toBe(true)
-    expect(api.memoryAmendment('lark', saved.id)).toMatchObject({
-      by: person,
-      at: saved.at,
-      textBefore: text,
-      textAfter: null,
-      outcome: 'done',
-      actual: absent,
-      settlement: { by: person },
-    })
-    expect(api.settleMemoryAmendment('lark', saved.id, absent, person)).toBe(false)
-  })
+  it.each([agent, app, { who: 'a-caller-this-app-cannot-name' } as const])(
+    'keeps initiator and ordinary observer distinct: %j',
+    (by) => {
+      const api = recovery()
+      const saved = api.beginMemoryAmendment(remove(), clock++)!
+      expect(api.settleMemoryAmendment('wren', saved.id, absent, person)).toBe(false)
+      expect(api.settleMemoryAmendment('lark', saved.id, absent, by)).toBe(true)
+      expect(api.memoryAmendment('lark', saved.id)).toMatchObject({
+        by: person,
+        at: saved.at,
+        textBefore: text,
+        textAfter: null,
+        outcome: 'done',
+        actual: absent,
+        settlement: { by },
+      })
+      expect(api.settleMemoryAmendment('lark', saved.id, absent, person)).toBe(false)
+    },
+  )
+  it.each([person, agent, app, { who: 'a-caller-this-app-cannot-name' } as const])(
+    'round-trips an ordinary initiating caller: %j',
+    (by) => {
+      const saved = recovery().beginMemoryAmendment(remove({ by }), clock++)!
+      expect(saved.by).toEqual(by)
+      expect(recovery().settleMemoryAmendment('lark', saved.id, absent, person)).toBe(true)
+      expect(recovery().memoryAmendment('lark', saved.id)).toMatchObject({
+        by,
+        settlement: { by: person },
+      })
+    },
+  )
   it('observes startup only as the app', () => {
     const api = recovery()
     const saved = api.beginMemoryAmendment(remove(), clock++)!
@@ -241,7 +252,8 @@ describe('memory intent survives interruption before its single honest observati
       ['pending', JSON.stringify(absent), JSON.stringify(person), 1],
       ['partial', null, null, null],
       ['unchanged', JSON.stringify({ ...absent, unreadable: true }), JSON.stringify(person), 1],
-      ['done', JSON.stringify(absent), JSON.stringify(agent), 1],
+      ['done', JSON.stringify(absent), JSON.stringify({ who: 'an-agent', agent: '' }), 1],
+      ['done', JSON.stringify(absent), '{}', 1],
       ['done', JSON.stringify(absent), '{broken', 1],
       ['done', JSON.stringify(absent), JSON.stringify(person), -1],
       ['done', JSON.stringify(absent), JSON.stringify(person), 0.5],
@@ -253,6 +265,14 @@ describe('memory intent survives interruption before its single honest observati
         .run('legacy-observer', saved.id),
     ).toThrow(/CHECK/)
     expect(recovery().memoryAmendment('lark', saved.id)?.outcome).toBe('pending')
+    update.run(
+      'done',
+      JSON.stringify({ ...absent, fingerprint: null }),
+      JSON.stringify(agent),
+      1,
+      saved.id,
+    )
+    expect(recovery().memoryAmendment('lark', saved.id)?.settlement?.by).toEqual(agent)
   })
   it.each([18, 21])(
     'roundtrips ordinary data and inert legacy history on the existing post-%i schema',
@@ -502,4 +522,309 @@ describe('memory intent survives interruption before its single honest observati
     expect(badClock.reconcile(agentIdentityRowId('lark'), saved.id, absent, app)).toBe(false)
     expect(api.memoryAmendment('lark', saved.id)?.outcome).toBe('pending')
   })
+})
+
+describe('released 0030 knowledge data survives the actor migration', () => {
+  it.each([
+    { foreignKeys: true, fail: false },
+    { foreignKeys: false, fail: false },
+    { foreignKeys: true, fail: true },
+    { foreignKeys: false, fail: true },
+  ])(
+    'preserves raw data with foreign keys $foreignKeys and rollback $fail',
+    ({ foreignKeys, fail }) => {
+      const journal = JSON.parse(readFileSync(join(migrations, 'meta/_journal.json'), 'utf8'))
+      // This prefix is byte-identical to released v0.2.22 b22ffee through 0030.
+      const entries = journal.entries.filter((one: { idx: number }) => one.idx <= 30)
+      expect(entries).toHaveLength(31)
+      const next = journal.entries[31]
+      expect(next.idx).toBe(31)
+      expect(next.when).toBeGreaterThan(entries[30].when)
+      const prefix = join(root, 'released-0030')
+      const failing = join(root, 'failing-upgrade')
+      for (const folder of [prefix, failing]) {
+        mkdirSync(join(folder, 'meta'), { recursive: true })
+        for (const one of entries)
+          copyFileSync(join(migrations, one.tag + '.sql'), join(folder, one.tag + '.sql'))
+        writeFileSync(join(folder, 'meta/_journal.json'), JSON.stringify({ ...journal, entries }))
+      }
+      writeFileSync(
+        join(failing, next.tag + '.sql'),
+        readFileSync(join(migrations, next.tag + '.sql'), 'utf8') +
+          '\n--> statement-breakpoint\nINSERT INTO fictional_missing_upgrade_table VALUES (1);',
+      )
+      writeFileSync(join(failing, 'meta/_journal.json'), JSON.stringify(journal))
+      const file = join(root, 'released.sqlite')
+      let saved = openDatabase(file)
+      try {
+        applyMigrations(saved, prefix)
+        for (const slug of ['lark', 'wren']) legacyIdentity(saved, slug, 'codex')
+        saved
+          .prepare('INSERT INTO identity_instruction_seen (identity_id,seen_through) VALUES (?,3)')
+          .run(agentIdentityRowId('lark'))
+        const insert = (table: string, values: Record<string, string | number | null>) => {
+          const columns = Object.keys(values)
+          saved
+            .prepare(
+              `INSERT INTO ${table} (${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`,
+            )
+            .run(...Object.values(values))
+        }
+        for (const slug of ['lark', 'wren']) {
+          const identity = agentIdentityRowId(slug)
+          for (const [index, outcome] of [
+            'done',
+            'done',
+            'partial',
+            'unchanged',
+            'pending',
+          ].entries()) {
+            insert('identity_memory_amendment', {
+              id: `${slug}-memory-${index}`,
+              identity_id: identity,
+              seq: index + 1,
+              provider: index % 2 ? 'codex' : 'claude',
+              entry: `${entry}-${index}`,
+              act: 'removed',
+              by: index === 0 ? 'legacy-observer' : '{ "who": "a-person", "old": true }',
+              text_before: text,
+              text_after: null,
+              created_at: 10 + index,
+              source_id: null,
+              outcome,
+              actual: index === 0 || outcome === 'pending' ? null : '{ "fingerprint": null }',
+              settled_by:
+                index === 0 || outcome === 'pending'
+                  ? null
+                  : JSON.stringify(index % 2 ? app : person),
+              settled_at: index === 0 || outcome === 'pending' ? null : 100 + index,
+            })
+          }
+          insert('identity_memory_amendment', {
+            id: `${slug}-restore`,
+            identity_id: identity,
+            seq: 6,
+            provider: 'claude',
+            entry: `${entry}-0`,
+            act: 'restored',
+            by: JSON.stringify(person),
+            text_before: null,
+            text_after: text,
+            created_at: 20,
+            source_id: `${slug}-memory-0`,
+            outcome: 'done',
+            actual: null,
+            settled_by: null,
+            settled_at: null,
+          })
+          insert('identity_memory_amendment', {
+            id: `${slug}-correct`,
+            identity_id: identity,
+            seq: 7,
+            provider: 'codex',
+            entry: `${entry}-correct`,
+            act: 'corrected',
+            by: JSON.stringify(person),
+            text_before: text,
+            text_after: 'After\r\n',
+            created_at: 21,
+            source_id: null,
+            outcome: 'done',
+            actual: '{"fingerprint":null}',
+            settled_by: JSON.stringify(app),
+            settled_at: 22,
+          })
+          for (const [index, outcome] of ['done', 'done', 'partial', 'pending'].entries()) {
+            insert('identity_method_change', {
+              id: `${slug}-method-${index}`,
+              identity_id: identity,
+              seq: index + 1,
+              operation: index === 1 ? 'undo' : 'delete',
+              source_id: index === 1 ? `${slug}-method-0` : null,
+              target: 'review.md',
+              files: JSON.stringify([
+                {
+                  name: 'review.md',
+                  before: {
+                    base64: Buffer.from(text).toString('base64'),
+                    mode: 0o640,
+                  },
+                  afterBase64: null,
+                },
+              ]),
+              by: index === 0 ? 'legacy-method-author' : JSON.stringify(person),
+              outcome,
+              actual:
+                outcome === 'pending' ? null : '[{"name":"review.md","base64":null,"mode":416}]',
+              created_at: 30 + index,
+              settled_by: index === 0 || outcome === 'pending' ? null : JSON.stringify(app),
+              settled_at: index === 0 || outcome === 'pending' ? null : 40 + index,
+            })
+          }
+        }
+        for (const slug of ['lark', 'wren']) {
+          const identity = agentIdentityRowId(slug)
+          const legacyAuthors = [
+            null,
+            '{ "profile": "wren", "name": "Old name", "legacy": true }',
+            '[]',
+            'null',
+            '42',
+          ]
+          for (const [index, author] of legacyAuthors.entries()) {
+            insert('identity_own_notes', {
+              id: `${slug}-notes-${index + 1}`,
+              identity_id: identity,
+              version: index + 1,
+              text: `Original ${index}.\r\nCafé.`,
+              reason: `Saved reason ${index}.\r\n`,
+              actor:
+                index === 0
+                  ? '{ "who": "a-person" }'
+                  : index === 1
+                    ? '{ "who": "an-agent", "agent": "legacy-session", "extra": true }'
+                    : '{"who":"an-agent"}',
+              author,
+              restored_from_version: index === 4 ? 2 : null,
+              created_at: 50 + index,
+            })
+          }
+          insert('identity_own_notes_seen', { identity_id: identity, seen_through: 2 })
+        }
+        const tables = [
+          'identity_memory_amendment',
+          'identity_method_change',
+          'identity_own_notes',
+          'identity_own_notes_seen',
+          'agent_identity',
+          'identity_instruction_seen',
+        ]
+        const rows = () =>
+          tables.map((table) =>
+            saved
+              .prepare(
+                `SELECT * FROM ${table} ORDER BY ${['identity_instruction_seen', 'identity_own_notes_seen'].includes(table) ? 'identity_id' : 'id'}`,
+              )
+              .all(),
+          )
+        const schema = () =>
+          saved
+            .prepare(
+              "SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name",
+            )
+            .all()
+        const journalRows = () =>
+          saved.prepare('SELECT * FROM __drizzle_migrations ORDER BY id').all()
+        const contracts = () =>
+          tables.map((table) => ({
+            columns: saved.prepare(`PRAGMA table_info(${table})`).all(),
+            keys: (
+              saved.prepare(`PRAGMA foreign_key_list(${table})`).all() as { from: string }[]
+            ).sort((a, b) => a.from.localeCompare(b.from)),
+            indexes: (
+              saved
+                .prepare(
+                  "SELECT name,sql FROM sqlite_master WHERE type='index' AND tbl_name=? ORDER BY name",
+                )
+                .all(table) as { name: string; sql: string | null }[]
+            ).map((one) => ({ ...one, sql: one.sql?.replace(/\s+/g, '') ?? null })),
+          }))
+        const beforeRows = rows()
+        const beforeSchema = schema()
+        const beforeJournal = journalRows()
+        const beforeContracts = contracts()
+        saved.pragma(foreignKeys ? 'foreign_keys = ON' : 'foreign_keys = OFF')
+        if (fail) {
+          expect(() => applyMigrations(saved, failing)).toThrow(/fictional_missing_upgrade_table/)
+          expect(schema()).toEqual(beforeSchema)
+          expect(journalRows()).toEqual(beforeJournal)
+        } else {
+          applyMigrations(saved, migrations)
+          expect(contracts()).toEqual(beforeContracts)
+          expect(journalRows().slice(0, -1)).toEqual(beforeJournal)
+          expect(journalRows()).toHaveLength(beforeJournal.length + 1)
+          const upgradedSchema = schema()
+          const upgradedJournal = journalRows()
+          applyMigrations(saved, migrations)
+          expect(journalRows()).toEqual(upgradedJournal)
+          expect(schema()).toEqual(upgradedSchema)
+        }
+        expect(saved.pragma('foreign_keys', { simple: true })).toBe(foreignKeys ? 1 : 0)
+        expect(rows()).toEqual(beforeRows)
+        expect(saved.pragma('foreign_key_check')).toEqual([])
+        const finalSchema = schema()
+        const finalJournal = journalRows()
+        saved.close()
+        saved = openDatabase(file)
+        saved.pragma(foreignKeys ? 'foreign_keys = ON' : 'foreign_keys = OFF')
+        if (!fail) applyMigrations(saved, migrations)
+        expect(rows()).toEqual(beforeRows)
+        expect(schema()).toEqual(finalSchema)
+        expect(journalRows()).toEqual(finalJournal)
+        expect(saved.pragma('foreign_keys', { simple: true })).toBe(foreignKeys ? 1 : 0)
+        expect(saved.pragma('foreign_key_check')).toEqual([])
+        if (!fail) {
+          saved.pragma('foreign_keys = ON')
+          expect(() =>
+            saved.prepare("DELETE FROM identity_memory_amendment WHERE id='lark-memory-0'").run(),
+          ).toThrow(/FOREIGN KEY/)
+          expect(() =>
+            saved
+              .prepare("UPDATE identity_memory_amendment SET seq=1 WHERE id='lark-correct'")
+              .run(),
+          ).toThrow(/UNIQUE/)
+          expect(() =>
+            saved.prepare("UPDATE identity_method_change SET seq=1 WHERE id='lark-method-2'").run(),
+          ).toThrow(/UNIQUE/)
+          expect(() =>
+            saved
+              .prepare(
+                "UPDATE identity_method_change SET outcome='pending',actual=NULL,settled_by=NULL,settled_at=NULL WHERE id='lark-method-2'",
+              )
+              .run(),
+          ).toThrow(/UNIQUE/)
+          expect(() =>
+            saved
+              .prepare(
+                "UPDATE identity_memory_amendment SET outcome='pending',actual=NULL,settled_by=NULL,settled_at=NULL WHERE id='lark-correct'",
+              )
+              .run(),
+          ).toThrow(/UNIQUE/)
+          expect(() =>
+            saved.prepare("DELETE FROM identity_method_change WHERE id='lark-method-0'").run(),
+          ).toThrow(/FOREIGN KEY/)
+          expect(() =>
+            saved.prepare("UPDATE identity_own_notes SET version=1 WHERE id='lark-notes-2'").run(),
+          ).toThrow(/UNIQUE/)
+          expect(() =>
+            saved
+              .prepare(
+                "UPDATE identity_own_notes SET restored_from_version=5 WHERE id='lark-notes-5'",
+              )
+              .run(),
+          ).toThrow(/CHECK/)
+          expect(() =>
+            saved
+              .prepare("UPDATE identity_own_notes SET reason='  ' WHERE id='lark-notes-1'")
+              .run(),
+          ).toThrow(/CHECK/)
+          expect(() =>
+            saved
+              .prepare("UPDATE identity_own_notes SET text=? WHERE id='lark-notes-1'")
+              .run('Invalid\0text'),
+          ).toThrow(/CHECK/)
+          saved.prepare('DELETE FROM agent_identity WHERE id=?').run(agentIdentityRowId('wren'))
+          for (const table of tables.slice(0, 4))
+            expect(
+              saved
+                .prepare(`SELECT * FROM ${table} WHERE identity_id=?`)
+                .all(agentIdentityRowId('wren')),
+            ).toEqual([])
+          expect(saved.pragma('foreign_key_check')).toEqual([])
+        }
+      } finally {
+        saved.close()
+      }
+    },
+  )
 })

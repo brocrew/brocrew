@@ -1017,7 +1017,7 @@ import type {
 } from '../../shared/question-contracts'
 import { countedTogether } from '../../shared/workspace-reading'
 import type { WhatNeedsAPerson, WorkspaceReading } from '../../shared/workspace-reading'
-import { THE_APP_DID_IT } from '../../shared/who-did-it'
+import { THE_APP_DID_IT, didIt } from '../../shared/who-did-it'
 import type { LimitsDisplayAnswer } from '../../shared/limits-display'
 import type { WorkSearchQuery, WorkSearchResult } from '../../shared/work-search'
 import { WorkSearch } from './work-search'
@@ -12240,7 +12240,7 @@ export class RuntimeHost implements LiveHost {
     const waiting = this.untilTheCopiesCanBeEnded(
       asking !== null
         ? this.thePieceItsGiverEnds(input.piece, asking)
-        : this.aPersonMayTakeItBack(input.piece, by)
+        : this.aPersonMayTakeItBack(input.piece)
           ? this.pieceNamed(input.piece)
           : null,
     )
@@ -12255,7 +12255,7 @@ export class RuntimeHost implements LiveHost {
     // work back only where it is the piece a service is on, which they may clear when it is stuck
     // there — not even work a conversation took on for them, whose giver they are (D-016 · commit 6
     // · R5).
-    if (asAgent === null && !this.aPersonMayTakeItBack(input.piece, by)) return notYours
+    if (asAgent === null && !this.aPersonMayTakeItBack(input.piece)) return notYours
     const row = this.pieceNamed(input.piece)
     // ⚑ **D-017 · R10 — what the conversations it took the place of gave is its own to take back.**
     if (
@@ -12333,6 +12333,7 @@ export class RuntimeHost implements LiveHost {
       type: 'work_taken_back',
       piece: piece.piece,
       by: asAgent,
+      ...(asAgent === null && !aPersonTypedIt(by) ? { actor: whoDidIt(by) } : {}),
     }
     this.endThePiece(piece.owner, takenBack, 'work-withdrawn', copies.copies)
     // 🔴 **703 · and what this caller is still holding about it is false now** (`698` F-A).
@@ -12348,9 +12349,9 @@ export class RuntimeHost implements LiveHost {
       tookBackTheMessage,
       endedQuestions,
       atAService: this.itIsAService(piece.owner),
-      ...(await this.tellItsOwnerItWasTakenBack(piece, asAgent)),
+      ...(await this.tellItsOwnerItWasTakenBack(piece, asAgent, whoDidIt(by))),
     }
-    const notice = asAgent === null ? 'a-piece-a-person-took-back' : 'a-piece-taken-back'
+    const notice = aPersonTypedIt(by) ? 'a-piece-a-person-took-back' : 'a-piece-taken-back'
     const theStop = {
       askedItsTurnToStop:
         itsTurn !== null && this.itsNoticeAsksItsTurnToStop(piece, notice, by, itsTurn),
@@ -12358,7 +12359,8 @@ export class RuntimeHost implements LiveHost {
     // ⚑ A person's take-back is told to the conversation that gave it too: its answer is not owed.
     // ⚑ Not waited for: the take-back stands whatever becomes of the tell, and a start it needs
     // is not the person's to wait on.
-    if (asAgent === null) void this.tellItsGiverAPersonEndedIt(piece, 'took back')
+    if (asAgent === null)
+      void this.tellItsGiverAPersonEndedIt(piece, 'took back', null, whoDidIt(by))
     return { ...taken, ...theStop }
   }
 
@@ -12396,22 +12398,14 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /**
-   * A person closes, from the window, stopped work *Waiting on you* lists ({@link
-   * aPersonMayCloseIt}): `work_closed` with `by: null`, in the order a giver's close writes it
-   * ({@link updateWork}). Its owner's questions about it and their copies passed up end with it, its
-   * held brief comes back, its holder is told to stop, at a service the turn working on it is asked
-   * to stop, and the conversation that gave it, if any, is told it is no longer owed.
-   * ⛔ Nothing is written above a refusal.
-   */
   async closeForAPerson(spelled: string, by: Caller): Promise<WorkClosedByAPerson> {
     const notStopped = { ok: false, rail: 'not-a-stopped-piece' } as const
-    if (!this.aPersonMayCloseIt(spelled, by)) return notStopped
+    if (!this.aPersonMayCloseIt(spelled)) return notStopped
     const waiting = this.untilTheCopiesCanBeEnded(this.pieceNamed(spelled))
     if (waiting !== null) {
       await waiting
       // ⚑ Asked again: a start that landed meanwhile may have driven it.
-      if (!this.aPersonMayCloseIt(spelled, by)) return notStopped
+      if (!this.aPersonMayCloseIt(spelled)) return notStopped
     }
     const row = this.pieceNamed(spelled)
     if (row === null) return notStopped
@@ -12420,7 +12414,7 @@ export class RuntimeHost implements LiveHost {
     const queued = this.queuedAtAService(piece)
     const stands = queued
       ? this.whereTheQueuedPieceStands(piece)
-      : this.whereItsHolderStands(piece, by, (one, caller) => this.aPersonMayCloseIt(one, caller))
+      : this.whereItsHolderStands(piece, by, (one) => this.aPersonMayCloseIt(one))
     if (!stands.ok) {
       return {
         ok: false,
@@ -12432,7 +12426,12 @@ export class RuntimeHost implements LiveHost {
     if (!copies.ok) return { ok: false, rail: copies.because }
     this.endThePiece(
       piece.owner,
-      { type: 'work_closed', piece: piece.piece, by: null },
+      {
+        type: 'work_closed',
+        piece: piece.piece,
+        by: sessionSpeakingAs(by),
+        ...(sessionSpeakingAs(by) === null && !aPersonTypedIt(by) ? { actor: whoDidIt(by) } : {}),
+      },
       'work-closed',
       copies.copies,
       true,
@@ -12444,22 +12443,21 @@ export class RuntimeHost implements LiveHost {
     this.theWorldMoved('work')
     const live = this.slots.get(piece.owner)?.session ?? null
     if (live !== null) this.publishStateIfChanged(live)
-    if (!queued) await this.tellItsOwnerItWasClosed(piece, null)
+    if (!queued) await this.tellItsOwnerItWasClosed(piece, sessionSpeakingAs(by), whoDidIt(by))
     const askedItsTurnToStop =
       itsTurn !== null &&
-      this.itsNoticeAsksItsTurnToStop(piece, 'a-piece-a-person-closed', by, itsTurn)
+      this.itsNoticeAsksItsTurnToStop(
+        piece,
+        aPersonTypedIt(by) ? 'a-piece-a-person-closed' : 'a-piece-closed',
+        by,
+        itsTurn,
+      )
     // ⚑ Not waited for, as a person's take-back's tell is not: the close stands either way.
-    void this.tellItsGiverAPersonEndedIt(piece, 'closed')
+    void this.tellItsGiverAPersonEndedIt(piece, 'closed', sessionSpeakingAs(by), whoDidIt(by))
     return { ok: true, piece: piece.piece, label: piece.label, askedItsTurnToStop }
   }
 
-  /**
-   * Whether `by`, a person, may close the piece `spelled` names: one a conversation gave whose
-   * holder has stopped with it ({@link itsHolderStoppedWith}), or a `stopped` work incident
-   * ({@link itIsAStoppedIncident}). ⛔ Never a root, which no ledger row closes.
-   */
-  private aPersonMayCloseIt(spelled: string, by: Caller): boolean {
-    if (whoDidIt(by).who !== 'a-person') return false
+  private aPersonMayCloseIt(spelled: string): boolean {
     const row = this.pieceNamed(spelled)
     if (row === null || row.parent === null) return false
     if (row.givenBy !== null && this.itsHolderStoppedWith(row)) return true
@@ -12472,14 +12470,7 @@ export class RuntimeHost implements LiveHost {
     return read?.disposition === 'unresolved' && read.issue?.kind === 'stopped'
   }
 
-  /**
-   * Whether `by`, a person, may take back the piece `spelled` names: one a conversation gave whose
-   * holder has stopped with it ({@link itsHolderStoppedWith}), which a person may hand back; or the
-   * piece a service is on, which a person may clear when it is stuck there ({@link
-   * aPersonMayTakeBack}).
-   */
-  private aPersonMayTakeItBack(spelled: string, by: Caller): boolean {
-    if (whoDidIt(by).who !== 'a-person') return false
+  private aPersonMayTakeItBack(spelled: string): boolean {
     const row = this.pieceNamed(spelled)
     if (row === null || row.givenBy === null) return false
     if (this.itsHolderStoppedWith(row)) return true
@@ -12538,19 +12529,15 @@ export class RuntimeHost implements LiveHost {
     return this.theWorkThatStopped([held], this.oneWaitReadPerAnswer()).length > 0
   }
 
-  /**
-   * A person took back or closed `piece`: its giver, or the conversation in its place, is told it is
-   * no longer owed, as an app notice about it — now, starting it if nothing runs it. ⚑ A tell that
-   * fails is kept for its next start, whatever starts it, as a reply is. ⛔ It never rejects: the
-   * ending stands either way. ⚑ Nobody is told of work a person gave.
-   */
   private async tellItsGiverAPersonEndedIt(
     piece: PieceRow,
     act: 'took back' | 'closed',
+    by: string | null = null,
+    actor?: ActedBy,
   ): Promise<void> {
     if (piece.giver === null) return
     const giver = this.theOneInItsPlace(piece.giver)
-    const text = `A person ${act} ${pieceLine(piece.label, piece.title)}. It is no longer owed: do not wait for its answer.`
+    const text = `${by === null ? (actor === undefined || actor.who === 'a-person' ? 'A person' : didIt(actor)) : this.whatToCallTheConversation(by)} ${act} ${pieceLine(piece.label, piece.title)}. It is no longer owed: do not wait for its answer.`
     const facts = {
       appNotice:
         act === 'closed' ? 'a-piece-it-gave-a-person-closed' : 'a-piece-it-gave-a-person-took-back',
@@ -12729,7 +12716,11 @@ export class RuntimeHost implements LiveHost {
    * otherwise. ⚑ **D-022 · R3 — the answer says what reached it**: `sent`, or `held` until its turn
    * ends. ⚠️ A tell that fails is logged and answered `not-delivered`; the take-back stands.
    */
-  private async tellItsOwnerItWasTakenBack(piece: PieceRow, giver: string | null): Promise<Told> {
+  private async tellItsOwnerItWasTakenBack(
+    piece: PieceRow,
+    giver: string | null,
+    actor?: ActedBy,
+  ): Promise<Told> {
     // ⛔ `piece` as it stood before it was taken back: one queued at a service never reached it.
     if (this.queuedAtAService(piece)) {
       return { delivery: 'not-delivered', whyNotTold: QUEUED_NEVER_TOLD }
@@ -12737,12 +12728,12 @@ export class RuntimeHost implements LiveHost {
     // ⚑ `null`: a person took it back.
     const text = [
       giver === null
-        ? `A person took back ${pieceLine(piece.label, piece.title)}. Stop working on it and do not reply_to_parent about it.`
+        ? `${actor === undefined || actor.who === 'a-person' ? 'A person' : didIt(actor)} took back ${pieceLine(piece.label, piece.title)}. Stop working on it and do not reply_to_parent about it.`
         : `${this.whatToCallTheConversation(giver)} took back ${pieceLine(piece.label, piece.title)}. Stop working on it and do not reply_to_parent about it.`,
       ...this.itsOpenPiecesAreStillYours(piece),
     ].join(' ')
     try {
-      if (giver === null) {
+      if (giver === null && (actor === undefined || actor.who === 'a-person')) {
         return deliveryOf(
           await this.anAppNoticeToItsHolder(piece, text, 'a-piece-a-person-took-back'),
         )
@@ -12763,9 +12754,13 @@ export class RuntimeHost implements LiveHost {
    * only to the conversation holding it ({@link toItsHolderAlone}), answered by what reached it
    * (D-022 · R3), and a tell that fails is logged and answered `not-delivered`; the close stands.
    */
-  private async tellItsOwnerItWasClosed(piece: PieceRow, giver: string | null): Promise<Told> {
+  private async tellItsOwnerItWasClosed(
+    piece: PieceRow,
+    giver: string | null,
+    actor?: ActedBy,
+  ): Promise<Told> {
     const text = [
-      `${giver === null ? 'A person' : this.whatToCallTheConversation(giver)} closed ${pieceLine(piece.label, piece.title)}: its reply is no longer owed. Stop working on it and do not reply_to_parent about it.`,
+      `${giver === null ? (actor === undefined || actor.who === 'a-person' ? 'A person' : didIt(actor)) : this.whatToCallTheConversation(giver)} closed ${pieceLine(piece.label, piece.title)}: its reply is no longer owed. Stop working on it and do not reply_to_parent about it.`,
       ...this.itsOpenPiecesAreStillYours(piece),
     ].join(' ')
     try {
@@ -12773,7 +12768,9 @@ export class RuntimeHost implements LiveHost {
         await this.anAppNoticeToItsHolder(
           piece,
           text,
-          giver === null ? 'a-piece-a-person-closed' : 'a-piece-closed',
+          giver === null && (actor === undefined || actor.who === 'a-person')
+            ? 'a-piece-a-person-closed'
+            : 'a-piece-closed',
         ),
       )
     } catch (error) {
@@ -13081,8 +13078,8 @@ export class RuntimeHost implements LiveHost {
     piece: PieceRow,
     by: Caller,
     /** Whether a person may end it here: take it back, unless the door says otherwise. */
-    aPersonMayEndIt: (spelled: string, by: Caller) => boolean = (spelled, caller) =>
-      this.aPersonMayTakeItBack(spelled, caller),
+    aPersonMayEndIt: (spelled: string, by: Caller) => boolean = (spelled) =>
+      this.aPersonMayTakeItBack(spelled),
   ):
     | { readonly ok: true; readonly held: TheHeldMessagesCarrying }
     | {
@@ -26840,22 +26837,7 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /**
-   * 🔴 **D-016 · commit 7 · R4 — a person renames a piece a person gave** — a root, or work its owner
-   * took on for one (`given_by` NULL): `work_retitled` with `by: null` in the owner's ledger, whatever
-   * state that conversation is in. ⚑ The newest title wins everywhere — a person's later rename, and
-   * an agent's later `update_work` after it (today's rule). ⛔ A piece a conversation gave is named by
-   * that conversation, and nobody is told of a rename: the words that read a title read the newest.
-   *
-   * ⚑ **A blank title first**, as `update_work`'s tool checks its arguments before the host, then
-   * the piece; trimmed, as `update_work`'s is. ⚠️ Its LENGTH is not asked here: the wire holds it to
-   * `PIECE_TITLE_CHARS` (`ipc.ts`), the bound the header's field carries too, and a trimmed
-   * title is never longer than the one sent. ⛔ Every refusal is a value with a person's sentence
-   * ({@link RETITLE_SAID}). ⚑ `work` is announced once the row is DOWN — a conversation still
-   * starting takes it when its launch settles ({@link writeIntoItsLedger}) — so every window's
-   * re-read of the one list finds the new title for the header, the rail and the palette.
-   */
-  retitleForAPerson(spelled: string, title: string): WorkRetitled {
+  retitleForAPerson(spelled: string, title: string, by?: Caller): WorkRetitled {
     const refused = (rail: RetitleRail): WorkRetitled => ({
       ok: false,
       rail,
@@ -26868,7 +26850,15 @@ export class RuntimeHost implements LiveHost {
     if (row.givenBy !== null) return refused('a-conversation-names-that-piece')
     this.writeIntoItsLedger(
       row.owner,
-      { type: 'work_retitled', piece: row.piece, title: trimmed, by: null },
+      {
+        type: 'work_retitled',
+        piece: row.piece,
+        title: trimmed,
+        by: by === undefined ? null : sessionSpeakingAs(by),
+        ...(by !== undefined && sessionSpeakingAs(by) === null && !aPersonTypedIt(by)
+          ? { actor: whoDidIt(by) }
+          : {}),
+      },
       () => this.theWorldMoved('work'),
     )
     return { ok: true, piece: row.piece, label: row.label, title: trimmed }
@@ -33575,8 +33565,14 @@ export class RuntimeHost implements LiveHost {
   }
 
   /** Brings an archived conversation back to a person's lists, with its archived tree. */
-  restoreConversation(sessionId: string): ArchiveOutcome {
-    return this.restoreFromTheArchive(sessionId, null)
+  restoreConversation(sessionId: string, by?: Caller): ArchiveOutcome {
+    const agent = by === undefined ? null : sessionSpeakingAs(by)
+    return this.restoreFromTheArchive(
+      sessionId,
+      agent === null
+        ? null
+        : `Brought back from the archive: ${this.whatToCallTheConversation(agent)} restored it.`,
+    )
   }
 
   /**
@@ -35981,44 +35977,25 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /**
-   * 🔴 **Bring an identity into existence — a PERSON's door** (419, HO-023 §2.4 / §3).
-   *
-   * ## ⛔ Why this exists at all
-   *
-   * `417` deleted `+ New profile…` from the launcher, and that gesture was the ONLY way an identity
-   * had ever come into being: *"a launch is what CREATES a profile"*. ⚠️ `spawn_agent`'s own schema
-   * says the rest — *"It must already exist"* — so after `417` an app with one identity had no way to
-   * get a second. ⛔ **HO-023 §2.4 measured the cost from the other end**: a person asked BroBot for
-   * another agent, BroBot's only seeded grant was `project-manager`, and *"create another agent"* had
-   * exactly one legal answer — the identity already running. The product had no legitimate way to
-   * satisfy the request, so it reached for the illegitimate one and ended a live conversation. **The
-   * rail was not wrong; this capability was missing.**
-   *
-   * ## ⚠️ What it does NOT do, and each omission is a decision
-   *
-   * ⛔ **No capability check.** HO-005: *"BroBot is global; the human is unrestricted."* A person
-   * pressing a button in their own app is not an identity holding a grant, and
-   * {@link RuntimeHost.createAgentFor} is the door where the grant is asked.
-   *
-   * ⛔ **No home.** Creation lays nothing down on disk: the first LAUNCH does, under `HOME_FOLDER`
-   * like every other home (`provider-homes.ts`). ⚠️ `416` also noted a raw `aid:<slug>` is not a
-   * valid path segment for `clean-base`'s walker, which is a reason nothing here reaches for the id.
-   *
-   * ⛔ **No capabilities, no project and no cwd.** A new identity holds the one default set every
-   * agent holds, and a person narrows it afterwards through the surface that exists for that.
-   *
-   * ⚑ **A taken name THROWS rather than answering null**: there is no useful *there was no such identity to create*, and a null
-   * would throw away the only sentence that names what went wrong. ⚠️ **The name in the sentence is
-   * the FOLDED one**, because that is the row that exists — telling a person `Worker` is taken when
-   * the row says `worker` would name something they cannot find.
-   */
-  createAgent(said: NewAgent): AgentIdentity {
-    // Record `a-person` as the actor when the person creates an identity through the app. `this-app` would conflate that action with an identity minted during launch; no agent grant is needed for the person's action.
+  createAgent(said: NewAgent, by?: Caller): AgentIdentity {
     if (said.asAService === true && !this.servicesAreOn()) {
       throw new Error(NO_SERVICE_IS_MADE_WHILE_OFF)
     }
-    const created = this.deps.store.createAgentIdentity(said, { by: 'a-person' })
+    const actor = by === undefined ? null : whoDidIt(by)
+    const profile =
+      actor?.who === 'an-agent'
+        ? (this.runningAs(actor.agent)?.profileId ??
+          this.deps.store.recordedOne(actor.agent)?.profileId)
+        : null
+    const creator: IdentityCreator | null =
+      actor?.who === 'a-person'
+        ? { by: 'a-person' }
+        : actor?.who === 'the-app-itself'
+          ? { by: 'this-app' }
+          : actor?.who === 'an-agent' && profile
+            ? { by: 'an-agent', agent: foldProfileName(profile) }
+            : null
+    const created = this.deps.store.createAgentIdentity(said, creator)
     if (created === null) throw new Error(nameIsTaken(said.slug))
     if (said.asAService === true) this.keepItAsAService(created)
     // 🔴 **534 · an identity row exists, so every surface that lists identities is stale.**
@@ -36415,7 +36392,7 @@ export class RuntimeHost implements LiveHost {
 
   saveOwnNotes(profile: string, said: OwnNotesWrite, by: Caller): OwnNotesReading | null {
     const actor = whoDidIt(by)
-    if (actor.who !== 'a-person' || !ownNotesWriteFits(said)) return null
+    if (!ownNotesWriteFits(said)) return null
     const page = this.deps.store.currentOwnNotesOf(profile)
     if (page === null || (page.current?.version ?? 0) !== said.expectedVersion) return null
     const written = this.deps.store.writeOwnNotes(profile, said, actor, this.now())
@@ -36426,8 +36403,7 @@ export class RuntimeHost implements LiveHost {
 
   undoOwnNotes(profile: string, expectedVersion: number, by: Caller): OwnNotesReading | null {
     const actor = whoDidIt(by)
-    if (actor.who !== 'a-person' || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1)
-      return null
+    if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) return null
     const current = this.deps.store.currentOwnNotesOf(profile)?.current
     if (current == null || current.version !== expectedVersion) return null
     const written = this.deps.store.undoOwnNotes(profile, { expectedVersion }, actor, this.now())
@@ -36438,7 +36414,6 @@ export class RuntimeHost implements LiveHost {
 
   markOwnNotesSeen(profile: string, throughVersion: number, by: Caller): boolean {
     const actor = whoDidIt(by)
-    if (actor.who !== 'a-person') return false
     const before = this.deps.store.ownNotesUnread(profile).seenThrough
     const marked = this.deps.store.markOwnNotesSeen(profile, throughVersion, actor)
     if (marked && this.deps.store.ownNotesUnread(profile).seenThrough > before)
@@ -38379,16 +38354,11 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /**
-   * A person changes the displayed entry through the awaited memory service. Its intent keeps
-   * the original text durable before the file changes. The reading reports the observed outcome;
-   * a running conversation retains the copy taken at its launch.
-   */
   async amendAgentMemory(
     command: MemoryAmendmentAsked,
     by: Caller,
   ): Promise<AgentMemoryAmended | null> {
-    if (whoDidIt(by).who !== 'a-person' || this.closing || !this.deps.memoryKnowledge) return null
+    if (this.closing || !this.deps.memoryKnowledge) return null
     const profileId = foldProfileName(command.profileId)
     if (this.deps.store.agentIdentities().every(({ slug }) => slug !== profileId)) return null
     const result = await this.deps.memoryKnowledge?.amend(
@@ -38415,7 +38385,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   async undoAgentMemory(command: MemoryUndoAsked, by: Caller): Promise<AgentMemoryAmended | null> {
-    if (whoDidIt(by).who !== 'a-person' || this.closing || !this.deps.memoryKnowledge) return null
+    if (this.closing || !this.deps.memoryKnowledge) return null
     const profileId = foldProfileName(command.profileId)
     if (this.deps.store.agentIdentities().every(({ slug }) => slug !== profileId)) return null
     const result = await this.deps.memoryKnowledge?.undo(
@@ -38440,7 +38410,7 @@ export class RuntimeHost implements LiveHost {
     command: MemoryCheckAsked,
     by: Caller,
   ): Promise<MemoryChecked | null> {
-    if (whoDidIt(by).who !== 'a-person' || this.closing || !this.deps.memoryKnowledge) return null
+    if (this.closing || !this.deps.memoryKnowledge) return null
     const profileId = foldProfileName(command.profileId)
     if (this.deps.store.agentIdentities().every(({ slug }) => slug !== profileId)) return null
     const result = await this.deps.memoryKnowledge?.checkInterrupted(
@@ -38648,7 +38618,6 @@ export class RuntimeHost implements LiveHost {
     by: Caller,
   ): Promise<MethodChangeResult> {
     const actor = whoDidIt(by)
-    if (actor.who !== 'a-person') return { ok: false, reason: 'person-required' }
     return (
       this.deps.savedMethods?.remove(foldProfileName(profile), selection, actor) ?? {
         ok: false,
@@ -38663,7 +38632,6 @@ export class RuntimeHost implements LiveHost {
     by: Caller,
   ): Promise<MethodChangeResult> {
     const actor = whoDidIt(by)
-    if (actor.who !== 'a-person') return { ok: false, reason: 'person-required' }
     return (
       this.deps.savedMethods?.undo(foldProfileName(profile), changeId, actor) ?? {
         ok: false,
@@ -38678,7 +38646,6 @@ export class RuntimeHost implements LiveHost {
     by: Caller,
   ): Promise<MethodChangeResult> {
     const actor = whoDidIt(by)
-    if (actor.who !== 'a-person') return { ok: false, reason: 'person-required' }
     return (
       this.deps.savedMethods?.checkInterrupted(foldProfileName(profile), confirmed, actor) ?? {
         ok: false,
@@ -38707,7 +38674,6 @@ export class RuntimeHost implements LiveHost {
 
   markAgentRulesSeen(profile: string, throughVersion: number, by: Caller): boolean {
     const actor = whoDidIt(by)
-    if (actor.who !== 'a-person') return false
     const marked = this.deps.store.markInstructionsSeen(profile, throughVersion, actor)
     if (marked) this.theWorldMoved('agents')
     return marked

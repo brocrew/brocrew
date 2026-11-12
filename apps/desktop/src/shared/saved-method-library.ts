@@ -1,3 +1,5 @@
+import type { ActedBy } from './who-did-it'
+
 /** The book reads independently of the smaller index sent at launch. */
 export interface MethodReference {
   readonly title: string
@@ -55,10 +57,10 @@ export interface MethodChangeSummary {
   readonly sourceId: string | null
   readonly target: string
   readonly outcome: 'pending' | 'done' | 'partial'
-  readonly by: { readonly who: 'a-person' }
+  readonly by: ActedBy
   readonly createdAt: number
   readonly settlement: {
-    readonly by: { readonly who: 'a-person' } | { readonly who: 'the-app-itself' }
+    readonly by: ActedBy
     readonly at: number
   } | null
   /** The settled observation matches every before-image; this attempt changed nothing. */

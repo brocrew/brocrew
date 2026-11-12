@@ -1,3 +1,6 @@
+import { describeEvent } from '../src/renderer/src/lib/describe-event'
+import { THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
+import { didIt, type ActedBy } from '../src/shared/who-did-it'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { expectIdsOnlyInLinkTargets } from './helpers/navigation-reply'
@@ -32,38 +35,6 @@ import {
   neutralHostDeps,
   fixtureProviderConfig,
 } from './lib/host-fixture'
-/**
- * ⚑ **A piece's label names the conversation that owns it — and no more** (W1.2).
- *
- * A label (`W1.1`) is a second spelling of a conversation, beside its id, and it is worth exactly
- * what the id is worth. This file pins the four places that could make it worth more or less.
- *
- *  1. **Reach.** `get_agent_status`, `interrupt_agent` and `read_transcript` take the label as they
- *     take the id. ⛔ A label whose owner is out of the caller's reach is told exactly like a label
- *     no piece carries — it must not disclose that the conversation exists (its id, or its name) —
- *     while the SAME conversation's id meets the reach rail. ⚠️ `interrupt_agent` and
- *     `read_transcript` widen along the spawn chain, so they widen only to a GRANDPARENT: a direct
- *     parent is in reach whatever it may message, and the narrowed caller in those two cases is the
- *     grandparent.
- *  2. **The person's door.** A person renames a ROOT piece (`retitleForAPerson`); a piece another
- *     conversation gave is named by that conversation, never by a person. A blank title is refused
- *     first, before the piece is looked up.
- *  3. **The naming sentence.** A conversation is named by its newest OPEN piece and how many more
- *     it holds open, else (F033) the piece that ended last, marked with how it ended — and a write
- *     to its ledger re-names it. A sentence names another conversation by its work and hands back
- *     the label — never the id, which only the structured payload carries.
- *  4. **The announcement.** A person's rename announces `work` once, after the row is down, and a
- *     refused rename announces nothing.
- *
- * ⛔ **The expected words are literals.** `nameByItsWork` and `addressOf` are the SUBJECT of the
- * cases that name them and never the oracle: every name, label and sentence below is spelled out
- * here. ⚑ Every negative is paired with a positive from the SAME reader, so a refusal is never a
- * reader that could not see anything at all.
- *
- * ⚑ **The fixture gives its children with `new: true`**, because a person-opened conversation owns
- * a root and takes the next label: opening a helper first, to bring its identity into being, would
- * make the parent `W2` and the literals below `W2.1`.
- */
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -221,16 +192,6 @@ describe('a label names the conversation that owns the piece, and no more', () =
     await waitFor(() => handle.status() === 'working', 'the conversation to be working')
   }
 
-  /**
-   * ⚑ **One family and one stranger**, literal in every label and name:
-   *
-   * - `brobot` — a person's conversation, owning the root `W1`; the caller in most cases.
-   * - `ada` — BroBot's child, `W1.1 · Build the pages`, named Ada.
-   * - `ali` — Ada's child and BroBot's GRANDCHILD, `W1.1.1 · Wire the routes`, named Ali.
-   * - `stranger` — a person's other conversation, the root `W2`, named Amara, opened AFTER the
-   *   gives so it does not take `W1.x`'s numbers. Nothing started it and nothing it started is
-   *   BroBot's.
-   */
   interface Family {
     readonly brobot: string
     readonly brobotTools: AgentToolset
@@ -506,6 +467,53 @@ describe('a label names the conversation that owns the piece, and no more', () =
     }
   })
 
+  it.each(['person', 'agent', 'app', 'unknown'] as const)(
+    'keeps %s attribution on a root rename',
+    async (kind) => {
+      const owner = await personOpens(DEFAULT_PROFILE_ID)
+      const caller =
+        kind === 'person'
+          ? window
+          : kind === 'agent'
+            ? { ownerId: `agent:${owner}` }
+            : kind === 'app'
+              ? THE_APP_ITSELF
+              : { ownerId: 'mcp:unnamed' }
+      const actor: ActedBy =
+        kind === 'person'
+          ? { who: 'a-person' }
+          : kind === 'agent'
+            ? { who: 'an-agent', agent: owner }
+            : kind === 'app'
+              ? { who: 'the-app-itself' }
+              : { who: 'a-caller-this-app-cannot-name' }
+      expect(host.retitleForAPerson('W1', 'A colleague title', caller)).toMatchObject({ ok: true })
+      const row = retitlesIn(owner).at(-1)!
+      const readback = JSON.parse(JSON.stringify(row)) as TranscriptEvent
+      expect(describeEvent(readback)).toContain(`by ${didIt(actor)}`)
+      if (kind === 'app' || kind === 'unknown') expect(row).toMatchObject({ actor })
+      expect(host.retitleForAPerson('W999', 'Missing', caller).ok).toBe(false)
+    },
+  )
+
+  it.each(['work_retitled', 'work_closed', 'work_taken_back'] as const)(
+    'keeps legacy %s attribution and honors new metadata',
+    (kind) => {
+      const legacy = { type: kind, piece: 'work', title: 'Title', by: null } as TranscriptEvent
+      expect(describeEvent(legacy)).toContain('by a person')
+      expect(describeEvent({ ...legacy, by: 'peer' } as TranscriptEvent)).toContain('by peer')
+      for (const actor of [
+        { who: 'a-person' },
+        { who: 'an-agent', agent: 'peer' },
+        { who: 'the-app-itself' },
+        { who: 'a-caller-this-app-cannot-name' },
+      ] as const) {
+        const roundtrip = JSON.parse(JSON.stringify({ ...legacy, actor })) as TranscriptEvent
+        expect(describeEvent(roundtrip)).toContain(`by ${didIt(actor)}`)
+      }
+    },
+  )
+
   it('🔴 a person’s rename of a root piece writes one row by nobody, and the conversation is named by the new title from then on', async () => {
     const brobot = await personOpens(DEFAULT_PROFILE_ID)
     const rootPiece = store.rootOf(brobot)
@@ -539,8 +547,9 @@ describe('a label names the conversation that owns the piece, and no more', () =
     expect(host.nameByItsWork(brobot)).toBe('BroBot (the owner of W1 · Build the pages)')
 
     // A second rename wins, and the first stays in the ledger as the history it is.
-    const again = host.retitleForAPerson('W1', 'Ship the pages')
+    const again = host.retitleForAPerson('W1', 'Ship the pages', { ownerId: `agent:${brobot}` })
     expect(again).toMatchObject({ ok: true, label: 'W1', title: 'Ship the pages' })
+    expect(retitlesIn(brobot).at(-1)).toMatchObject({ type: 'work_retitled', by: brobot })
     expect(retitlesIn(brobot)).toHaveLength(2)
     expect(store.workThatNames(brobot)).toEqual({
       label: 'W1',

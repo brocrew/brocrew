@@ -1,3 +1,5 @@
+import { distil } from '../src/main/runtime/digest'
+import { didIt } from '../src/shared/who-did-it'
 import {
   noteFromGiver,
   registerUnreadableQuestionCases,
@@ -16,14 +18,6 @@ import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { pieceLine } from '../src/shared/piece-called'
 
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
-
-/**
- * A caller reaches a service only through the piece the service is on for it: it may stop that
- * piece's turn, follow it up, give it a new brief, close it or take it back, and nothing more —
- * never another caller's piece, and nothing once its own has ended. A question the service raises
- * goes to the caller of the piece it is on as it is raised, and stays that caller's. Fictional
- * agents only, reached through the host: services are switched off in the app.
- */
 
 type Given = Extract<GiveOutcome, { ok: true }>
 
@@ -86,12 +80,6 @@ describe('a service is reached through the piece it is on', () => {
     return { held, release }
   }
 
-  /**
-   * A service, two callers a person opened, and a third with nothing at the service. `caller` gives
-   * the first piece and `other` the second, which waits behind it. With `turnHeld`, the first
-   * piece's turn is still working; else it has run and its piece stalled. With `signInsChecked`,
-   * its providers check their sign-in, so {@link AServiceWorld.signInWait} can hold words going in.
-   */
   const aServiceOnTheFirstPiece = async (
     opts: {
       turnHeld?: boolean
@@ -248,7 +236,6 @@ describe('a service is reached through the piece it is on', () => {
       })
       expect(own.structured).toMatchObject({ outcome: 'ok' })
       expect(world.stopsAsked).toEqual(['browser-driver'])
-      // It only makes way for the words: the commands that turn started go on.
       expect(world.explicitStops).toEqual([])
       releaseTheTurn()
     })
@@ -293,7 +280,6 @@ describe('a service is reached through the piece it is on', () => {
       })
       expect(note.structured).toMatchObject({ outcome: 'refused' })
       expect(note.structured['rail']).not.toBe('that-piece-is-still-queued')
-      // Its own queued piece is still its to change or take back, and the service hears nothing.
       const before = world.ledger(service).length
       expect(
         (await call(host, other, 'update_work', { piece: two.label, brief: 'order tea' }))
@@ -314,7 +300,6 @@ describe('a service is reached through the piece it is on', () => {
       const { host, stranger, service, one } = await aServiceOnTheFirstPiece()
       const sameProfile = await world.aPersonOpens(host, 'caller')
       for (const outsider of [stranger, sameProfile]) {
-        // Nothing of its own waits there, so no retry is promised.
         const stopped = await call(host, outsider, 'interrupt_agent', {
           agent: service,
           reason: 'not needed now',
@@ -340,7 +325,6 @@ describe('a service is reached through the piece it is on', () => {
       const { host, caller, other, service, one, two } = await aServiceOnTheFirstPiece()
       const taken = await call(host, caller, 'withdraw_task', { piece: one.label })
       expect(taken.structured).toMatchObject({ outcome: 'ok', state: 'withdrawn' })
-      // Nothing ran in it, so no stop was asked, and the answer says none.
       expect(taken.structured['askedItsTurnToStop']).toBeUndefined()
       expect(taken.text).not.toContain('its turn was asked to stop')
       await handedOver(service, two.piece)
@@ -367,7 +351,6 @@ describe('a service is reached through the piece it is on', () => {
     it('lets the conversation standing in for the caller reach it, and starts it for its words; never another of its profile', async () => {
       const { host, caller, service, one } = await aServiceOnTheFirstPiece()
       const standIn = await world.aPersonOpens(host, 'caller')
-      // Written once nothing runs, so no life of the caller's writes after it.
       await host.closeAll()
       world.store.append(
         caller,
@@ -426,7 +409,6 @@ describe('a service is reached through the piece it is on', () => {
       expect(
         (await call(host, caller, 'withdraw_task', { piece: one.label })).structured,
       ).toMatchObject({ outcome: 'ok' })
-      // The take-back's own notice wakes it to be told; then it is stopped again.
       await vi.waitFor(() => {
         expect(lives()).toBe(before + 2)
       })
@@ -544,7 +526,6 @@ describe('a service is reached through the piece it is on', () => {
       await vi.waitFor(() => {
         expect(rows(service, 'user_turn')).toHaveLength(2)
       })
-      // Its words ask that turn to stop, and go in the turn after it.
       const sending = call(host, caller, 'message_agent', {
         agent: service,
         kind: 'follow-up',
@@ -629,7 +610,6 @@ describe('a service is reached through the piece it is on', () => {
         text: 'the room on the third floor',
       })
       await new Promise((settled) => setTimeout(settled, 50))
-      // A row of its work that can't be read, written past where its live session writes next.
       const ordinal = world.store.nextOrdinal(service) + 1_000
       world.store.append(
         service,
@@ -651,7 +631,6 @@ describe('a service is reached through the piece it is on', () => {
       })
       expect(world.stopsAsked).toEqual([])
       releaseTheTurn()
-      // Its turn ends: a person's words go, and the caller's wait.
       await vi.waitFor(() => {
         expect(
           rows(service, 'user_turn').some(
@@ -693,7 +672,6 @@ describe('a service is reached through the piece it is on', () => {
       world.loseTheKept()
       const quiet = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const after = world.aHost()
-      // A person opens it again, and their words go; the caller's are neither sent nor ended.
       await after.resumeSession(service, world.window)
       await after.send(service, 'how is it going?', world.window)
       await vi.waitFor(() => {
@@ -733,12 +711,10 @@ describe('a service is reached through the piece it is on', () => {
           text: 'the room on the third floor',
         })
         expect(followed.structured).toMatchObject({ outcome: 'ok', delivery: 'queued' })
-        // Its turn ends; the flush takes the words and waits at the sign-in check.
         const signIn = aGate()
         world.signInWait = signIn.held
         const checked = world.signInChecks
         releaseTheTurn()
-        // The flush has taken the words, and waits at the sign-in check.
         await vi.waitFor(() => {
           expect(world.signInChecks).toBeGreaterThan(checked)
         })
@@ -758,7 +734,6 @@ describe('a service is reached through the piece it is on', () => {
           })
         }
         if (meanwhile === 'answered, and no ending can be read') {
-          // From here, every read made while asking why held words no longer go fails.
           const reader = host as unknown as {
             whyItNoLongerGoes: (...args: unknown[]) => unknown
           }
@@ -823,7 +798,6 @@ describe('a service is reached through the piece it is on', () => {
         expect(world.stopsAsked).toEqual([])
         vi.restoreAllMocks()
         if (meanwhile !== 'unread') return
-        // Once its queue reads again, the words go with the next words held for it.
         world.db
           .prepare('UPDATE events SET payload = ? WHERE session_id = ? AND ordinal = ?')
           .run(whole, service, tornAt)
@@ -850,7 +824,6 @@ describe('a service is reached through the piece it is on', () => {
         turnHeld: true,
         signInsChecked: true,
       })
-      // A helper's reply and the caller's words are held behind its turn.
       world.anAgent('helper', 'nothing kept')
       const given = await call(host, service, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
@@ -873,7 +846,6 @@ describe('a service is reached through the piece it is on', () => {
         text: 'the room on the third floor',
       })
       expect(followed.structured).toMatchObject({ outcome: 'ok', delivery: 'queued' })
-      // Its turn ends; the flush takes both, and waits at the sign-in check while its queue tears.
       const signIn = aGate()
       world.signInWait = signIn.held
       const checked = world.signInChecks
@@ -896,7 +868,6 @@ describe('a service is reached through the piece it is on', () => {
       signIn.release()
       await new Promise((settled) => setTimeout(settled, 200))
       quiet.mockRestore()
-      // Neither went, nor ended: the reply waits with the words it was held beside.
       expect(rows(service, 'user_turn')).toHaveLength(1)
       expect(
         world
@@ -911,7 +882,6 @@ describe('a service is reached through the piece it is on', () => {
         const { host, caller, service, one } = await aServiceOnTheFirstPiece({
           signInsChecked: true,
         })
-        // The queue door's own sign-in check goes by; the one before the handover waits.
         const signIn = aGate()
         world.signInWait = signIn.held
         world.signInChecksLetThrough = world.signInChecks + 1
@@ -1186,11 +1156,6 @@ describe('a service is reached through the piece it is on', () => {
       theNote.release()
     })
 
-    /**
-     * The caller's words about its piece, held behind the first piece's turn, go in when it ends,
-     * and their turn ends before their hand-over settles. `next` then hands over a turn that is held
-     * working, and their hand-over settles only after it began.
-     */
     const aTurnAfterOneThatSettledLate = async (
       next: (host: RuntimeHost, caller: string, service: string, piece: string) => Promise<void>,
     ): Promise<{ host: RuntimeHost; caller: string; one: Given; release: () => void }> => {
@@ -1308,13 +1273,11 @@ describe('a service is reached through the piece it is on', () => {
 
     it('asks the stop of its caller’s turn on its piece once a person’s turn before it has ended', async () => {
       const { host, caller, service, one } = await aServiceOnTheFirstPiece()
-      // A person's words go in, and their turn ends.
       host.claimSession(service, world.window)
       await host.send(service, 'how is it going?', world.window)
       await vi.waitFor(() => {
         expect(rows(service, 'turn')).toHaveLength(2)
       })
-      // The caller's words about its piece go in next, and their turn is held working.
       const theirs = aGate()
       world.turnsWait = theirs.held
       const sent = await call(host, caller, 'message_agent', {
@@ -1336,13 +1299,11 @@ describe('a service is reached through the piece it is on', () => {
 
     it('reads a turn its provider begins by itself as the one before, when the words after that could not be stamped', async () => {
       const { host, caller, service, one } = await aServiceOnTheFirstPiece()
-      // A person's words go in, and their turn ends.
       host.claimSession(service, world.window)
       await host.send(service, 'how is it going?', world.window)
       await vi.waitFor(() => {
         expect(rows(service, 'turn')).toHaveLength(2)
       })
-      // The caller's words about its piece can't be stamped as they are handed over: nothing goes.
       const reader = host as unknown as { stampFor: (...args: unknown[]) => unknown }
       const stamping = reader.stampFor.bind(host)
       reader.stampFor = () => {
@@ -1358,7 +1319,6 @@ describe('a service is reached through the piece it is on', () => {
       reader.stampFor = stamping
       quiet.mockRestore()
       expect(rows(service, 'user_turn')).toHaveLength(2)
-      // Its provider then works with no turn of this app's open.
       const provider = theServicesProvider()
       provider.simulateThinking({ text: 'checking the calendar', redacted: false })
       expect(provider.status()).toBe('working')
@@ -1368,11 +1328,6 @@ describe('a service is reached through the piece it is on', () => {
       expect(world.stopsAsked).toEqual([])
     })
 
-    /**
-     * A person's turn is held working while two of the caller's words about its piece wait behind
-     * it; it ends, and the two go in one turn of their own, held working — or, when `stamped` is
-     * false, can't be stamped, so nothing is handed over.
-     */
     const twoCallersWordsAfterAPersonsTurn = async (
       stamped: boolean,
     ): Promise<{ host: RuntimeHost; caller: string; one: Given; release: () => void }> => {
@@ -1413,7 +1368,6 @@ describe('a service is reached through the piece it is on', () => {
           expect(tried).toBe(1)
         })
         expect(rows(service, 'user_turn')).toHaveLength(2)
-        // Its provider then works with no turn of this app's open.
         const provider = theServicesProvider()
         provider.simulateThinking({ text: 'checking the calendar', redacted: false })
         expect(provider.status()).toBe('working')
@@ -1452,12 +1406,10 @@ describe('a service is reached through the piece it is on', () => {
         signInsChecked: true,
       })
       const waiting = await theCallersWordsWaitAtTheHandover(host, caller, service, one.label)
-      // A person's words go in meanwhile, and their turn is held working.
       const theirs = aGate()
       world.turnsWait = theirs.held
       host.claimSession(service, world.window)
       await host.send(service, 'how is it going?', world.window)
-      // The caller's words reach the handover, its provider refuses them for that turn, and they are held.
       const provider = theServicesProvider()
       const send = provider.send.bind(provider)
       const refused: unknown[] = []
@@ -1490,14 +1442,12 @@ describe('a service is reached through the piece it is on', () => {
       const { host, caller, service, one } = await aServiceOnTheFirstPiece({
         signInsChecked: true,
       })
-      // A person's words go in, and their turn ends.
       host.claimSession(service, world.window)
       await host.send(service, 'how is it going?', world.window)
       await vi.waitFor(() => {
         expect(rows(service, 'turn')).toHaveLength(2)
       })
       const waiting = await theCallersWordsWaitAtTheHandover(host, caller, service, one.label)
-      // Its provider works with no turn of this app's open, and the caller's words join that turn.
       const provider = theServicesProvider()
       provider.simulateThinking({ text: 'checking the calendar', redacted: false })
       expect(provider.status()).toBe('working')
@@ -1523,7 +1473,6 @@ describe('a service is reached through the piece it is on', () => {
 
     it('asks no stop of a turn its provider began by itself, once a person’s words join it', async () => {
       const { host, caller, service, one } = await aServiceOnTheFirstPiece()
-      // Its provider works with no turn of this app's open, and a person's words join that turn.
       const provider = theServicesProvider()
       provider.simulateThinking({ text: 'checking the calendar', redacted: false })
       expect(provider.status()).toBe('working')
@@ -1547,7 +1496,6 @@ describe('a service is reached through the piece it is on', () => {
         who_answers: 'a-person',
       })
       expect(asked.structured).toMatchObject({ outcome: 'ok' })
-      // A person's answer opens its next turn, held working.
       const theirs = aGate()
       world.turnsWait = theirs.held
       const answered = await host.respondUserInput(
@@ -1572,7 +1520,6 @@ describe('a service is reached through the piece it is on', () => {
       const { host, caller, service, one } = await aServiceOnTheFirstPiece()
       const theirs = aGate()
       world.turnsWait = theirs.held
-      // A person has it plan, then gives the go-ahead, which opens its next turn, held working.
       host.claimSession(service, world.window)
       await host.setSessionSetting(service, { kind: 'planMode', on: true }, world.window)
       await host.endPlanMode(service, world.window, 'Go ahead with the plan.')
@@ -1591,7 +1538,6 @@ describe('a service is reached through the piece it is on', () => {
       const { host, caller, service, one, releaseTheTurn } = await aServiceOnTheFirstPiece({
         turnHeld: true,
       })
-      // A person's words and the caller's wait behind its turn, and go in one turn of their own.
       host.claimSession(service, world.window)
       expect((await host.queueMessage(service, 'how is it going?', world.window)).outcome).toBe(
         'queued',
@@ -1624,7 +1570,6 @@ describe('a service is reached through the piece it is on', () => {
         turnHeld: true,
         signInsChecked: true,
       })
-      // A helper's reply about work under the first piece waits behind its turn, and drives it.
       world.anAgent('helper', 'nothing kept')
       const given = await call(host, service, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
@@ -1640,14 +1585,12 @@ describe('a service is reached through the piece it is on', () => {
         summary: 'Room 4 is free.',
       })
       expect(replied.structured).toMatchObject({ outcome: 'ok' })
-      // The take-back reads that turn, and its notice waits on the sign-in check.
       const signIn = aGate()
       world.signInWait = signIn.held
       const taking = call(host, caller, 'withdraw_task', { piece: one.label })
       await vi.waitFor(() => {
         expect(rows(service, 'work_taken_back')).toHaveLength(1)
       })
-      // Meanwhile that turn ends, and the reply goes in a turn of its own.
       const theReply = aGate()
       releaseTheTurn()
       world.turnsWait = theReply.held
@@ -1677,7 +1620,6 @@ describe('a service is reached through the piece it is on', () => {
           turnHeld: true,
           signInsChecked: true,
         })
-        // Those words wait behind its turn.
         if (words === 'drive another piece') {
           const root = world.store.rootOf(caller)
           if (root === null) throw new Error('the caller holds no work of its own')
@@ -1692,7 +1634,6 @@ describe('a service is reached through the piece it is on', () => {
           host.claimSession(service, world.window)
           await host.send(service, 'how is it going?', world.window)
         }
-        // Its turn ends; the next turn's words are on their way in, held at the sign-in check.
         const signIn = aGate()
         world.signInWait = signIn.held
         const theNext = aGate()
@@ -1702,7 +1643,6 @@ describe('a service is reached through the piece it is on', () => {
           expect(rows(service, 'turn')).toHaveLength(1)
         })
         await new Promise((settled) => setTimeout(settled, 50))
-        // The take-back reads them as the turn to come, and is held at the same check.
         const taking = call(host, caller, 'withdraw_task', { piece: one.label })
         await vi.waitFor(() => {
           expect(rows(service, 'work_taken_back')).toHaveLength(1)
@@ -1848,6 +1788,62 @@ describe('a service is reached through the piece it is on', () => {
             ? [row.text]
             : [],
         )
+
+    it.each([
+      ['app', 'close'],
+      ['unknown', 'close'],
+      ['app', 'take back'],
+      ['unknown', 'take back'],
+    ] as const)('records %s %s without claiming a person acted', async (kind, action) => {
+      const { host, service, one } = await aServiceOnTheFirstPiece()
+      const by = kind === 'app' ? THE_APP_ITSELF : { ownerId: 'mcp:unnamed' }
+      const actor =
+        kind === 'app'
+          ? { who: 'the-app-itself' as const }
+          : { who: 'a-caller-this-app-cannot-name' as const }
+      const result =
+        action === 'close'
+          ? await host.closeForAPerson(one.label, by)
+          : await host.takeBackForAPerson(one.label, by)
+      expect(result).toMatchObject({ ok: true })
+      const [row] = rows(service, action === 'close' ? 'work_closed' : 'work_taken_back')
+      expect(row).toMatchObject({ by: null, actor })
+      expect(describeEvent(row!)).toContain(`by ${didIt(actor)}`)
+      expect(piecesOf(service).find((piece) => piece.piece === one.piece)).toMatchObject({
+        endedByActor: actor,
+      })
+      const digest = distil(world.store.digestWindow(0, Number.MAX_SAFE_INTEGER), (id) => id)
+      const kindOfLine = action === 'close' ? 'work-closed' : 'work-taken-back'
+      expect(digest.lines.some((line) => line.kind === kindOfLine)).toBe(true)
+      expect(digest.lines.some((line) => line.kind === `${kindOfLine}-by-a-person`)).toBe(false)
+      await vi.waitFor(() => {
+        expect(
+          world
+            .ledger(service)
+            .some(
+              (event) =>
+                (event.type === 'message_queued' || event.type === 'user_turn') &&
+                event.text.includes(
+                  `${didIt(actor)} ${action === 'close' ? 'closed' : 'took back'}`,
+                ),
+            ),
+        ).toBe(true)
+      })
+      expect(await host.closeForAPerson(one.label, by)).toMatchObject({ ok: false })
+    })
+
+    it('records the named colleague when its take-back enters through the window command', async () => {
+      const { host, caller, service, one, releaseTheTurn } = await aServiceOnTheFirstPiece({
+        turnHeld: true,
+      })
+      const taken = await host.takeBackForAPerson(one.label, { ownerId: `agent:${caller}` })
+      expect(taken).toMatchObject({ ok: true, piece: one.piece })
+      expect(rows(service, 'work_taken_back')).toEqual([
+        { type: 'work_taken_back', piece: one.piece, by: caller },
+      ])
+      expect(stateOf(service, one.piece)).toBe('withdrawn')
+      releaseTheTurn()
+    })
 
     it('stops the turn on it, tells it and its caller, and the next piece goes on', async () => {
       const { host, caller, other, service, one, two, releaseTheTurn } =
@@ -2173,11 +2169,6 @@ describe('a service is reached through the piece it is on', () => {
       })
     })
 
-    /**
-     * A piece a service is on, whose question went up two conversations to a person: the service
-     * asks its caller, a helper of a conversation a person opened; the caller passes it to that
-     * conversation, and that one to the person.
-     */
     const aQuestionPassedUpTwice = async (opts: {
       readonly endingWaitMs?: number
     }): Promise<{

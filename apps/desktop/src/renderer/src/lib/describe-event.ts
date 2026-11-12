@@ -169,13 +169,10 @@ export function describeEvent(event: TranscriptEvent): string {
     // it, which is the one fact a person reading the Work tab cannot see. ⛔ A status line and a brief
     // print as LENGTHS, `work_replied`'s treatment of a summary; a title is one bounded line and is
     // printed whole.
-    // ⚑ A person takes back only the piece a service is on: the line says a person.
     case 'work_taken_back':
-      if (event.by === null) return `${event.piece} · taken back by a person (ours)`
-      return `${event.piece} · taken back by ${event.by} (ours)`
-    // ⚑ D-016 · commit 7 · R4 · a person's rename writes no conversation: the line says a person.
+      return `${event.piece} · taken back by ${event.actor === undefined ? (event.by ?? 'a person') : didIt(event.actor)} (ours)`
     case 'work_retitled':
-      return `${event.piece} · titled ${event.title} · by ${event.by ?? 'a person'} (ours)`
+      return `${event.piece} · titled ${event.title} · by ${event.actor === undefined ? (event.by ?? 'a person') : didIt(event.actor)} (ours)`
     case 'work_status_set':
       return `${event.piece} · status set · ${event.line.length} chars · by ${event.by} (ours)`
     // ⚑ **D-022 · R1 — and the held give it rides**, by the message's id, as `message_sent` prints
@@ -186,7 +183,7 @@ export function describeEvent(event: TranscriptEvent): string {
         event.messageId === undefined ? '' : ` · rides ${event.messageId}`
       } (ours)`
     case 'work_closed':
-      return `${event.piece} · closed by ${event.by ?? 'a person'} (ours)`
+      return `${event.piece} · closed by ${event.actor === undefined ? (event.by ?? 'a person') : didIt(event.actor)} (ours)`
     // ⚑ **D-047 · what this conversation gave, from its own end** — the piece and its label, whether
     // it was given or given a new brief, and where it went; the title whole and the brief as a
     // LENGTH, as above.
