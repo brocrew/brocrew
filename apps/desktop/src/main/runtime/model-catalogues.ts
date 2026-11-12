@@ -664,6 +664,7 @@ export class ModelCatalogues {
   private probeModelsFor(provider: Provider): Promise<ModelCatalogue> {
     const known = this.modelProbes.get(provider)
     if (known) return known
+    if (this.isClosing()) return Promise.resolve({ ok: false, reason: 'closing' })
     const probe: Promise<ModelCatalogue> = this.askProviderForModels(
       provider,
       DEFAULT_PROFILE_ID,

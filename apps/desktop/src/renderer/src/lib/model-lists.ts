@@ -246,7 +246,7 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
       inFlight.clear()
       const next = { ...lists.value }
       for (const [key, parts] of asked) {
-        if (profileOf(parts.profileId) !== profileId) continue
+        if (profileOf(parts.profileId) !== profileId && next[key]?.state !== 'asking') continue
         delete next[key]
         choices.delete(key)
         inFlight.delete(key)
